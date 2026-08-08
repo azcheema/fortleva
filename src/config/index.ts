@@ -79,3 +79,15 @@ export const mailFrom = {
  * carry links, not data (ARC-09), and always point here. */
 export const absoluteUrl = (path: string): string =>
   new URL(path, appUrl).toString();
+
+/**
+ * Host→plane resolution (ARC-11 / decision 9): ops.naxdor.com serves
+ * ONLY the platform console; os.naxdor.com serves tenant + portal.
+ * In dev both share localhost and path prefixes separate the planes.
+ * The hostname→tenantId lookup for v2 subdomains stubs in here too —
+ * this function is the tenant-resolution seam's host half.
+ */
+export const planeForHost = (host: string): "platform" | "app" => {
+  if (opsUrl.host !== appUrl.host && host === opsUrl.host) return "platform";
+  return "app";
+};
