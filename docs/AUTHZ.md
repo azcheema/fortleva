@@ -117,7 +117,7 @@ Seeding column: **C** = CEO (owner-equivalent), **M** = Manager, **A** = Admin, 
 | `audit:view` | core | View the tenant's own audit log | C A | — | v1 |
 | `tenant:export` | core | Full tenant data export ✦ | C | — | v1 (Phase 8 for scheduled; ad-hoc earlier) |
 
-✦ = `requiresMfa` (see §7.5). 64 codes. `audit:view` and `tenant:export` sit outside the brief's enumerated module list but are required by §9 (tenant-facing audit log, export paths); they are `core`.
+✦ = `requiresMfa` (see §7.5). **63 codes** *(erratum fixed 2026-08-08: prose previously said 64; the table above is normative and has always held 63 rows — verified mechanically at implementation time, and the CI catalog test asserts 63)*. `audit:view` and `tenant:export` sit outside the brief's enumerated module list but are required by §9 (tenant-facing audit log, export paths); they are `core`.
 
 Notes on shape:
 
@@ -131,7 +131,7 @@ Templates ship as the platform's definition; at tenant creation each template is
 
 - **System roles are read-only and undeletable.** A tenant cannot edit or delete a system role — this is how "cannot de-fang the role that owns billing and user management" is enforced structurally, not by an allowlist of "critical" permissions someone forgets to maintain.
 - **Customization = clone.** `role:create` clones any role (system or custom) into an editable custom role (`isSystem = false`, `clonedFromKey` recorded). Tenants then grant/revoke individual permissions on the clone via `role:edit`, subject to the escalation guards (§7).
-- **Owner-equivalence is the `templateKey = 'owner'` system role**, not a permission pattern. A clone of it is just a custom role; the last-owner invariant (§7.3) pins to the system row. The CEO template is seeded with **all 64 codes** — fully, deliberately, so that no code path ever needs an owner bypass (§7.4).
+- **Owner-equivalence is the `templateKey = 'owner'` system role**, not a permission pattern. A clone of it is just a custom role; the last-owner invariant (§7.3) pins to the system row. The CEO template is seeded with **all 63 codes** — fully, deliberately, so that no code path ever needs an owner bypass (§7.4).
 - **Role-explosion guard**: bounded customization, not a blank canvas — a per-tenant cap on custom roles (proposed: an entitlement limit, `maxCustomRoles`, e.g. 5 / 15 / 30 by tier). Templates should carry 90% of tenants with zero customization.
 - **Multiple holders of any role** including owner: `MemberRole` is many-to-many from day one (§3.4).
 

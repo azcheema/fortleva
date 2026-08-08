@@ -10,6 +10,7 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    seed: "tsx prisma/seed.ts",
   },
   // Migrate runs on the unpooled OWNER connection (DIRECT_URL); the app
   // runtime uses the restricted app_runtime role via DATABASE_URL in
