@@ -21,12 +21,13 @@ The eight decisions already settled in brainstorming are recorded first so the w
 | 7 | **v1 scope deltas accepted** — pay-now button v1 (Phase 4); performance reports v2 (v1 = report PDFs as client-visible `Document`s + CrUX charts); version sign-off v1-lite in the portal timeline (Phase 3); Issues framed as client request queue (subsumes forms/intake). Forms / proposals / recurring billing / messaging → v2; time tracking / scheduling / email marketing → skip. | `PLAN.md` (phase contents and v1/v2/skip table) |
 | 8 | **Single app domain for v1** (founder's call, against the subdomain recommendation) with mitigations: one tenant-resolution seam with a hostname→tenantId lookup stubbed in; no tenant slugs in absolute URLs; centralized cookie config; portal and tenant app in separate route groups. Subdomain-per-tenant + custom domains → v2. *(The "buy the product domain now anyway" mitigation is superseded by decision 9.)* | `ARCHITECTURE.md` (routing + seam), `PLAN.md` (v2 items) |
 | 9 | **v1 runs on Naxdor subdomains; product domain deferred to Phase 7** (2026-08-05) — `os.naxdor.com` (tenant + portal), `ops.naxdor.com` (platform console), dedicated sending subdomain for SPF/DKIM. Naxdor is the only tenant through Phases 1–6, one CNAME to Vercel needs no zone delegation, and the wildcard-TLS objection binds only on the v2 rollout. Two day-1 invariants: **INV-D1** no cookie ever carries a `Domain` attribute while under `naxdor.com`; **INV-D2** the host is never hardcoded — one config module owns `APP_URL`, cookies and mail sender. **This demotes B1 from a Phase 1 blocker to a Phase 7 decision.** | `ARCHITECTURE.md` ARC-11, `SECURITY.md` §2.2/§3.3/§12, `PLAN.md` (Phase 1, Phase 7), B1 below |
+| 10 | **Transactional email: Amazon SES `eu-central-1` (Frankfurt)** (2026-08-08) — resolves B4. Resend **disqualified on verification** (its own docs: region selection governs send-routing only; all account data, metadata, logs and API records are stored in the US regardless); Postmark disqualified (no EU hosting, no plans). Scaleway TEM recorded as runner-up and rejected because its zero-US-sub-processor advantage is **unrealizable while Neon, R2, Stripe and Upstash are all US-parent**. AWS is already the substrate under Neon Frankfurt, so Amazon SES adds no new jurisdiction. **Naming: bare "SES" in these docs means Simple Electronic Signature — always write "Amazon SES" for email.** | `ARCHITECTURE.md` ARC-09, `SECURITY.md` §9.2, `PLAN.md` (Phase 1 week 1), B4 below |
 
 ---
 
 ## 2. Blocks Phase 1
 
-Per §12, nothing in this section is assumed. **Items B2, B3, B4 and B6 gate the first week of Phase 1 work.** B1 was demoted to a Phase 7 decision by decision 9 (2026-08-05) and is kept in this section, under its original ID, only so the many cross-references to "B1" still resolve. B5 sits here as a founder-flagged commercial decision that is expensive to reverse — see its decide-by note; it does not gate Phase 1 code.
+Per §12, nothing in this section is assumed. **All Phase 1 gates are now closed** — B2 executed, B3 and B6 decided, B4 resolved (all 2026-08-08); B1 was demoted to Phase 7 by decision 9. Entries are kept in this section, under their original IDs, only so the many cross-references to them still resolve. B5 remains the sole open item here, and it gates Phase 7, not Phase 1 code. B5 sits here as a founder-flagged commercial decision that is expensive to reverse — see its decide-by note; it does not gate Phase 1 code.
 
 ### B1. Product name (decided) + domain purchases — ⬇ DEMOTED to Phase 7 by decision 9
 
@@ -38,14 +39,16 @@ Per §12, nothing in this section is assumed. **Items B2, B3, B4 and B6 gate the
 - **Recommendation.** Clear the trademark check at leisure during Phases 1–6, then buy the product apex + a short ops apex (~$15–25/yr each) **early in Phase 7**; keep all Naxdor DNS untouched throughout. Registering under the founder's existing registrar is fine; delegate the product zone to Vercel nameservers **at purchase time while it is empty** (ARC-11 — delegating a live zone is the painful part), ahead of the v2 subdomain rollout (C6).
 - **Decide by.** **Phase 7 design start** (was: Phase 1 day 1). **No default** — I cannot buy domains. Nothing in Phases 1–6 is blocked.
 
-### B2. Neon project creation in Frankfurt
+### B2. Neon project creation in Frankfurt — ✅ RESOLVED 2026-08-08
 
-- **Question.** Founder must create the Neon project (his account, his billing) in **`aws-eu-central-1` (Frankfurt)** — and confirm the paid plan choice.
-- **Why it matters.** [Region is immutable per project](https://neon.com/docs/introduction/regions); Frankfurt is Neon's only true EU region (London is UK — post-Brexit non-EU, wrong for the §9 residency posture). A project created in the wrong region means a new project + full migration. Two setup facts must be honored at creation time (`TENANCY.md`): console-created roles carry BYPASSRLS via [`neon_superuser`](https://neon.com/docs/manage/roles) — the runtime app role must be created via SQL — and [free-tier projects inactive 90+ days are subject to deletion](https://neon.com/pricing), so tenant zero does not live on the free plan.
-- **Recommendation.** Create the project on the Launch plan in `aws-eu-central-1` during Phase 1 setup week; hand me the pooled + direct connection strings; I script the SQL-created app role and `FORCE ROW LEVEL SECURITY` as the first migration.
-- **Decide by.** Phase 1 day 1. **No default** — needs the founder's account.
+- **Done.** Project `fortleva` created in the founder's account, region confirmed **`aws-eu-central-1` (AWS Europe Central 1, Frankfurt)** from the project dashboard, Postgres 18, default compute 0.25–2 CU. The immutable choice is correct.
+- **One deviation, accepted with a deadline.** Created on the **Free plan**, not Launch. Acceptable during active build (the [90-day-inactivity deletion clause](https://neon.com/pricing) cannot bite a project being worked on daily), but **upgrade to Launch before tenant-zero data lands** — a database holding real Naxdor client data does not live on a free tier. Plan is changeable at any time; only the region was a one-way door.
+- **Standing rules from `TENANCY.md`, still in force.** No roles are ever created via the Neon console/API/CLI (they join `neon_superuser` and carry BYPASSRLS, silently defeating RLS); `app_runtime`/`app_platform` are created in versioned migration SQL — Phase 1, migration 001, not by hand. Pooled connection string (`-pooler`) → `DATABASE_URL`, direct → `DIRECT_URL`; both stored in Bitwarden, never in the repo.
+- ~~**Decide by.** Phase 1 day 1.~~ Done — nothing blocks on Neon.
 
-### B3. Template-drift policy: frozen clones vs tracked-diff-additive
+### B3. Template-drift policy — ✅ RESOLVED 2026-08-08: **Option B, tracked-diff-additive**
+
+Founder accepted the recommendation as specced. The Phase 1 `Role`/`RolePermission` migration therefore carries template lineage + per-permission override tracking from day one, including the `TENANT_REVOKE` tombstone semantics already shaped in `DATA_MODEL.md` (`RolePermissionSource`): additions auto-propagate to clones unless overridden, removals never auto-propagate, every propagation writes an `AuditEvent`. Original decision record kept below.
 
 - **Question.** When a Tenant clones a system role template (CEO/Manager/Admin/Employee) and the Platform later adds a permission to that template — e.g. a new module ships with `report:view` — what happens to existing tenant clones?
   - **Option A — frozen clones:** the clone never changes; tenants (or the Platform, manually) opt in to updates.
@@ -54,13 +57,18 @@ Per §12, nothing in this section is assumed. **Items B2, B3, B4 and B6 gate the
 - **Recommendation.** **Option B, tracked-diff-additive.** One line: additive propagation is the only direction that can never lock a tenant out (removals are the lockout risk; additions are auditable and reversible per tenant), and it keeps role maintenance O(1) for the Platform as modules ship. `AUTHZ.md` specs both options and this recommendation.
 - **Decide by.** Before the Phase 1 roles migration. **No default** (schema-shaping).
 
-### B4. ESP for transactional email
+### B4. ESP for transactional email — ✅ RESOLVED 2026-08-08 (decision 10): **Amazon SES `eu-central-1`**
 
-- **Question.** Which email service provider sends the product's transactional mail — member invites, Contact portal invites, verification/MFA fallback, notifications, and (later) continuity-box alerts?
-- **Why it matters.** Member invite flows are Phase 1; DNS records (SPF/DKIM) go on the new product domain (B1) and deliverability warm-up takes weeks. The ESP becomes a **sub-processor** in the GDPR chain (§9; `SECURITY.md` sub-processor list), and continuity-box notifications are the highest-stakes email this product will ever send. One design rule is already fixed regardless of vendor: **key material never transits email** (`CONTINUITY_BOX.md`) — ESP logs are exactly why.
-- **Honest gap.** The Phase 0 research sweep did not cover ESPs. This needs a half-day spike, not deep research. Selection criteria: EU processing (or at minimum SCC-covered and DPA-clean — the product markets EU residency, so an EU-processing ESP is the consistent story), webhook events for bounce/complaint handling, template DX for a solo developer, and pricing sanity at hundreds of emails/month.
-- **Recommendation.** Spike candidates in this order: **Resend** (Vercel-ecosystem DX — verify its current EU data-processing posture during the spike; do not take my word for it), **AWS SES in `eu-central-1`/`eu-north-1`** (strict-EU and cheapest, more setup), **Postmark** (deliverability gold standard, US processing under SCCs), plus one EU-native (Mailjet/Brevo/Scaleway TEM). One line: pick the best DX that survives the sub-processor review; SES-EU is the fallback that always survives it.
-- **Decide by.** Phase 1, before the invite flow is built (week 1–2). **No default** — DNS + DPA follow the choice.
+- **Question (answered).** Which email service provider sends the product's transactional mail — member invites, Contact portal invites, verification/MFA fallback, notifications, and (later) continuity-box alerts?
+- **Why it mattered.** Member invite flows are Phase 1; DNS records (SPF/DKIM/DMARC) go on the v1 sending subdomain under `naxdor.com` (decision 9, *not* the product domain — B1 is now Phase 7) and deliverability warm-up takes weeks. The ESP becomes a **sub-processor** in the GDPR chain (§9; `SECURITY.md` §9.2), and continuity-box notifications are the highest-stakes email this product will ever send. One design rule was fixed regardless of vendor and still is: **key material never transits email** (`CONTINUITY_BOX.md`) — ESP logs are exactly why.
+- **Spike run 2026-08-06; decided 2026-08-08.** The Phase 0 sweep had not covered ESPs, so a spike ran against four candidates on EU processing, bounce/complaint webhooks, solo-dev DX, and pricing at hundreds of emails/month.
+  - **Resend — disqualified.** Verified against [Resend's own region docs](https://resend.com/docs/dashboard/domains/regions): region selection controls only where mail is *routed and sent from*; "all account data, including email metadata, logs, and API records, is stored in the United States regardless of the sending region you select." EU send-region is also Pro-tier+. This resolved `ARCHITECTURE.md` ARC-09's old "not verified" flag **negative**.
+  - **Postmark — disqualified.** No EU hosting and publicly no plans to add it; all data US, SCCs in the DPA.
+  - **Scaleway TEM — runner-up, not taken.** French (iliad Group), EU-only with no US sub-processors, free ≤300/day then ~€1/1k, native webhooks. Rejected because the sovereignty upgrade it sells is **unrealizable at v1**: Neon, R2, Stripe and Upstash are all US-parent, so a zero-US-sub-processor chain cannot be honestly claimed whichever ESP sends the mail (`SECURITY.md` §9.3). Take it if a tenant's procurement ever demands that chain end-to-end — the adapter swap is a day.
+  - **Amazon SES `eu-central-1` — chosen.** Data at rest in the same region as Neon, and since Neon Frankfurt *is* `aws-eu-central-1`, AWS is already in the chain — this adds no new jurisdiction and yields one clean sentence: everything at rest in Frankfurt. ~$0 at v1 volume. Strongest vendor-longevity story, which is the tiebreak that matters for continuity alerts. Costs accepted: worst DX (React Email still templates fine — the loss is the unified send SDK) and bounce/complaint events via SNS rather than a plain webhook.
+- **Two scheduling claims made on 2026-08-06 were refuted on 2026-08-08 and must not be reintroduced.** (a) Production access does **not** require SPF/DKIM/DMARC to be published first — [AWS's own page](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html) calls prior domain verification "a best practice that helps to get your production access request approved faster", and the only required fields are mail type and website URL; sandbox is 200/24h to verified recipients and AWS promises an *initial response* in 24h, not approval. (b) **Warm-up is effectively zero** — it matters for dedicated IPs and bulk volume, and Fortleva is transactional-only on shared IPs at hundreds of mails/month. Together these shorten the Phase 1 critical path that the earlier framing had inflated to "weeks".
+- **Live DNS survey, 2026-08-08 — the finding that actually changes the plan.** `send.naxdor.com` is **already in use** by a pre-existing Amazon SES identity pinned to `eu-west-1` (Ireland). v1 therefore sends from **`mailer.naxdor.com`** with MAIL FROM `bounce.mailer.naxdor.com`. Details, apex-safety rules and the IAM/SES-Tenants follow-ups are in `ARCHITECTURE.md` ARC-09; the legacy `eu-west-1` identity needs its own audit-and-decommission change (**new item: C20**).
+- **Consequences now landed.** `ARCHITECTURE.md` ARC-09 rewritten; `SECURITY.md` §9.2 sub-processor row replaced with the AWS entity; `PLAN.md` Phase 1 week 1 carries the DNS + production-access task. **Naming hazard recorded:** bare "SES" already means *Simple Electronic Signature* in this doc set (`DATA_MODEL.md` `SignatureLevel.SES`, `AUTHZ.md` `portal.contract.sign`) — the email provider is always written **"Amazon SES"**, and the mail adapter must not be named `ses`.
 
 ### B5. Pricing currency: SEK vs USD vs dual *(flagged decide-by — does not gate Phase 1 code)*
 
@@ -69,7 +77,11 @@ Per §12, nothing in this section is assumed. **Items B2, B3, B4 and B6 gate the
 - **Recommendation.** **Dual, via one Stripe Price with `currency_options`**: SEK for Swedish tenants, USD for everyone else. One line: it matches how each buyer thinks about money and avoids repricing either market later; add a USD bank account when US volume justifies it.
 - **Decide by.** Before Phase 7 design starts (the phase's first task is the plan/price catalog). Listed among blockers at the founder's request because it is a one-way door commercially — but it can safely wait until Phase 7 as long as it is *decided before the first paying tenant checks out*.
 
-### B6. Default role-seeding matrix sign-off (`AUTHZ.md` §3.2)
+### B6. Default role-seeding matrix sign-off — ✅ RESOLVED 2026-08-08: accepted as specced
+
+Founder reviewed a digest of the §3.2 C/M/A/E matrix (including the two most opinionated defaults, called out explicitly: Managers cannot issue invoices while Admins can, and Employees see only assigned clients per decision 5) and accepted it unchanged. The Phase 1 seed migration and the deny-matrix CI suite build from `AUTHZ.md` §3.2 as written. These are defaults — tenants clone and customize, and B3's additive propagation carries future template changes. Original decision record kept below.
+
+### B6 (original record). Default role-seeding matrix sign-off (`AUTHZ.md` §3.2)
 
 - **Question.** Do you accept the C/M/A/E seeding columns of the 64-code catalog as they stand? They are opinionated in three places worth your eyes: **Employees get no invoice permissions at all** (not even `invoice:view`); **Managers can create and edit draft invoices but cannot `invoice:issue`, `invoice:send`, `invoice:record_payment` or `invoice:credit`** (issuing is legally significant and irreversible, so it sits with CEO + Admin); and **`continuity_box:edit` / `:configure` are CEO-only**, as are `invoice:manage_series`, `billing:manage`, `settings:manage_modules` and `tenant:export`.
 - **Why it matters.** `AUTHZ.md` §11 item 2 flags this as needing founder review **before the Phase-1 seed migration**. Permission codes are immutable and the seed rows are what every tenant's system roles are built from; changing the matrix after tenants exist means a per-tenant role migration, not a code edit. It also decides what the deny-matrix CI suite asserts — get it wrong and the tests lock the wrong answer in.
@@ -216,6 +228,13 @@ Each item: question · why it matters · recommendation (one-line rationale) · 
 - **Recommendation.** **Swedish entity issues; scope stands.** The extension path is named and non-destructive when it is worth building (a tenant-level tax-regime enum selecting a per-regime issuer profile set — `VatProfile` is already per-invoice and `sellerSnapshot` already freezes issuer identity per invoice). One line: build the second regime for a paying US tenant, not for a hypothetical one.
 - **Decide by.** Phase 4 design start (the answer only changes what Phase 4 renders).
 
+### C20. Legacy Amazon SES identity on `send.naxdor.com` (`eu-west-1`)
+
+- **Question.** A live SES custom MAIL FROM for `send.naxdor.com` pinned to **`eu-west-1` (Ireland)** was found during the 2026-08-08 DNS survey — `MX 10 feedback-smtp.eu-west-1.amazonses.com` + `TXT v=spf1 include:amazonses.com ~all`, authoritative on `ns1.vercel-dns.com`. What still sends through it, and when is it decommissioned?
+- **Why it matters.** It is unmanaged sending surface on the same registered domain Fortleva now sends from: its reputation is shared with `mailer.naxdor.com` under relaxed DMARC alignment at the organizational-domain level, and nobody is currently watching its bounce or complaint rates. It is *not* a residency violation (Ireland is EU) and it does **not** block Phase 1 — Fortleva sends from a different subdomain by design. It is also financially relevant: SES pricing plans are per account **and** per Region, and whether this identity has metered activity since 2025-06-01 determines whether the account is on legacy à-la-carte (~$0.10/1K) or Essentials ($0.16/1K) — a difference of pennies at v1 volume, so read the console rather than assuming, and never switch to Pro or Enterprise.
+- **Recommendation.** **Audit in Phase 1 week 1, decommission later as its own change with its own rollback.** Do not touch those two DNS records while standing Fortleva up — a broken MAIL FROM MX drives the legacy identity `Success → TemporaryFailure → Failed` and misroutes its bounce feedback. Add both records to the Phase 1 DNS regression baseline so an accidental edit is caught by the same pass.
+- **Decide by.** Audit in Phase 1 week 1; decommission any time after Fortleva mail is live and stable.
+
 ---
 
 ## 4. Decide-by schedule (at a glance)
@@ -223,11 +242,11 @@ Each item: question · why it matters · recommendation (one-line rationale) · 
 | ID | Decision | Decide by | Default if undecided |
 |---|---|---|---|
 | B1 | ~~Product name~~ (decided: **Fortleva**, 2026-08-05; trademark check outstanding) + domain purchases | **Phase 7 design start** (demoted from Phase 1 day 1 by decision 9) | None — v1 runs on `os.`/`ops.naxdor.com` |
-| B2 | Neon project, Frankfurt, founder's account | Phase 1 day 1 | **None — blocks build** |
-| B3 | Template-drift policy | Phase 1 roles migration | **None — blocks schema** (rec: tracked-diff-additive) |
-| B4 | ESP for transactional email | Phase 1 week 1–2 | **None — blocks invites** |
+| B2 | ~~Neon project, Frankfurt, founder's account~~ (done 2026-08-08: `fortleva`, Frankfurt confirmed, PG18; Free plan — upgrade to Launch before tenant-zero data) | ~~Phase 1 day 1~~ — resolved | Settled |
+| B3 | ~~Template-drift policy~~ (decided 2026-08-08: **Option B, tracked-diff-additive**) | ~~Phase 1 roles migration~~ — resolved | Settled |
+| B4 | ~~ESP for transactional email~~ (decided: **Amazon SES `eu-central-1`**, 2026-08-08, decision 10) | ~~Phase 1 week 1–2~~ — resolved | Settled — DNS + production access are now Phase 1 week 1 *tasks*, not decisions |
 | B5 | Pricing currency (SEK/USD/dual) | Phase 7 design start | None — one-way door; rec: dual via `currency_options` |
-| B6 | Default role-seeding matrix sign-off (`AUTHZ.md` §3.2) | Phase 1 seed migration | **None — blocks the seed migration** (rec: accept as specced) |
+| B6 | ~~Default role-seeding matrix sign-off~~ (accepted as specced 2026-08-08) | ~~Phase 1 seed migration~~ — resolved | Settled |
 | C1 | Over-limit portal semantics | Phase 7 | Symmetric read-only, reads never hidden |
 | C2 | Box retention post-churn | Phase 8 (ToS: Phase 7) | 12 months, platform pays |
 | C3 | Veto window / trustee / arbiter | Phase 8 (+C9) | **21d default (7–60 configurable, 7 on corroborating signals)**, optional trustee, process-arbiter stance |
@@ -247,5 +266,6 @@ Each item: question · why it matters · recommendation (one-line rationale) · 
 | C17 | `Contact.email` global uniqueness · branded files apex | With C6 · v2 | Both stay as specced; relax with subdomains |
 | C18 | Lower-tier continuity add-on · Vercel WAF EU rates | Post-Phase 8 · when paid WAF considered | Hold top-tier gate; no action on WAF (free rules only) |
 | C19 | US-established tenants / US sales tax scope | Phase 4 design start | Swedish issuing entity only; extension path named |
+| C20 | Legacy Amazon SES identity on `send.naxdor.com` (`eu-west-1`) | Audit Phase 1 week 1; decommission later | Leave its DNS untouched; audit, then retire in its own change |
 
-*End of Phase 0 decision ledger. Answers to B1–B4 and B6 start the clock on Phase 1 (`PLAN.md`).*
+*End of Phase 0 decision ledger. B1 (Phase 7), B2 (executed), B3 (Option B), B4 (decision 10) and B6 (accepted) are settled — **nothing gates Phase 1; the build clock started 2026-08-08** (`PLAN.md`).*

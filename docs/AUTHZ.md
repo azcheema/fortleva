@@ -320,8 +320,8 @@ Non-negotiable CI suites (run on every PR, alongside the tenancy isolation suite
 ## 11. Open questions and pushback
 
 **Routed to OPEN_QUESTIONS.md:**
-1. **Template-drift policy** (§3.5) — recommendation: tracked-diff-additive; **blocks Phase 1** (shapes `Role` schema).
-2. **Default seeding matrix sign-off** (§3.2, the C/M/A/E columns) — defaults are opinionated (e.g. Employees have no invoice permissions; Managers don't issue invoices); founder review before the Phase 1 seed migration.
+1. ~~**Template-drift policy** (§3.5)~~ — **decided 2026-08-08 (B3): tracked-diff-additive**, as recommended.
+2. ~~**Default seeding matrix sign-off** (§3.2)~~ — **accepted as specced 2026-08-08 (B6)**, opinionated defaults included (Employees have no invoice permissions; Managers don't issue invoices).
 3. `maxCustomRoles` cap values per tier — can wait (Phase 7).
 4. Step-up MFA action list beyond continuity + export — can wait.
 
