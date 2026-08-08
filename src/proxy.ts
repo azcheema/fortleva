@@ -12,7 +12,7 @@ import { planeForHost, sessionCookieName } from "@/config";
 
 const OPS_PREFIX = "/ops";
 const PORTAL_PREFIX = "/portal";
-const PUBLIC_PATHS = new Set(["/login", "/ops/login", "/api/health"]);
+const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", "/api/health"]);
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
@@ -34,7 +34,7 @@ export function proxy(request: NextRequest): NextResponse {
     return NextResponse.rewrite(new URL("/404", request.url));
   }
 
-  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+  if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/invite/")) return NextResponse.next();
 
   const cookieFor =
     pathname.startsWith(OPS_PREFIX)
