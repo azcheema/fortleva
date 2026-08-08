@@ -37,6 +37,7 @@ model User {
   locale        String?
   platformRole  String?   @map("platform_role") // "SUPERADMIN" | null
   role          String? // admin-plugin mirror only
+  twoFactorEnabled Boolean @default(false) @map("two_factor_enabled") // twoFactor-plugin required column
   banned        Boolean   @default(false)
   banReason     String?   @map("ban_reason")
   banExpires    DateTime? @map("ban_expires") @db.Timestamptz(6)
