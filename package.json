@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
