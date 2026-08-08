@@ -1,0 +1,563 @@
+// ═══════════════════════════════════════════════════════════════════
+// Fortleva — Phase 1 schema.
+// docs/DATA_MODEL.md is the canonical naming authority and carries the
+// full per-model rationale; comments here state only load-bearing
+// constraints. Client/Project/portal models land in Phase 2–3 per
+// docs/PLAN.md. Physical names are snake_case (§1.3) so RLS policies,
+// REVOKEs and triggers in migrations resolve unquoted.
+// ═══════════════════════════════════════════════════════════════════
+
+// Connection URLs live outside the schema in Prisma 7: the CLI reads
+// DIRECT_URL (unpooled, owner role — Migrate only) from prisma.config.ts;
+// the runtime client gets DATABASE_URL (pooled, app_runtime — restricted,
+// no BYPASSRLS) via the pg driver adapter in src/db.
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// ───────────────────────────────────────────────────────────────────
+// IDENTITY & AUTH — member side (Better Auth ≥ 1.6.11)
+// ───────────────────────────────────────────────────────────────────
+
+/// Global member identity; membership is tenant-scoped via Member.
+/// platformRole is THE platform-plane flag authorizePlatform() reads;
+/// role is Better Auth admin-plugin plumbing mirrored from it, never
+/// read by any authorization path.
+model User {
+  id            String    @id @default(uuid(7))
+  name          String
+  email         String    @unique // lowercase-normalized at write
+  emailVerified Boolean   @default(false) @map("email_verified")
+  image         String?
+  locale        String?
+  platformRole  String?   @map("platform_role") // "SUPERADMIN" | null
+  role          String? // admin-plugin mirror only
+  banned        Boolean   @default(false)
+  banReason     String?   @map("ban_reason")
+  banExpires    DateTime? @map("ban_expires") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sessions   Session[]
+  accounts   Account[]
+  twoFactor  TwoFactor?
+  passkeys   Passkey[]
+  memberships Member[]
+
+  @@map("user")
+}
+
+enum SessionPlane {
+  MEMBER
+  PLATFORM
+}
+
+/// plane is the structural barrier between planes (SECURITY.md §3.3):
+/// each route group's middleware accepts only its own cookie AND its
+/// own plane value. activeTenantId is a UX pointer only — authorization
+/// always re-derives membership.
+model Session {
+  id             String       @id @default(uuid(7))
+  token          String       @unique
+  userId         String       @map("user_id")
+  plane          SessionPlane @default(MEMBER)
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
+  ipAddress      String?      @map("ip_address")
+  userAgent      String?      @map("user_agent")
+  impersonatedBy String?      @map("impersonated_by")
+  activeTenantId String?      @map("active_tenant_id")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(uuid(7))
+  userId                String    @map("user_id")
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  password              String? // scrypt hash, credential provider only
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(6)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(6)
+  scope                 String?
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(uuid(7))
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([identifier])
+  @@index([expiresAt])
+  @@map("verification")
+}
+
+/// secret and backupCodes are ENCRYPTED with the app AES-256-GCM field
+/// service before storage (SECURITY.md §6).
+model TwoFactor {
+  id          String @id @default(uuid(7))
+  userId      String @unique @map("user_id")
+  secret      String
+  backupCodes String @map("backup_codes")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("two_factor")
+}
+
+model Passkey {
+  id           String   @id @default(uuid(7))
+  userId       String   @map("user_id")
+  name         String?
+  publicKey    String   @map("public_key")
+  credentialID String   @unique @map("credential_id")
+  counter      Int
+  deviceType   String   @map("device_type")
+  backedUp     Boolean  @map("backed_up")
+  transports   String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("passkey")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// TENANT ROOT & PLATFORM CONFIG
+// ───────────────────────────────────────────────────────────────────
+
+enum TenantStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  OFFBOARDING
+  CLOSED
+}
+
+/// entitlements is the versioned JSON of DATA_MODEL.md §4 — the shape
+/// ships in Phase 1 with everything-on defaults; Stripe fills it in
+/// Phase 7. bankgiro/plusgiro/iban/bic/databaseUrl are ENCRYPTED.
+model Tenant {
+  id                    String       @id @default(uuid(7))
+  name                  String
+  legalName             String?      @map("legal_name")
+  slug                  String       @unique
+  status                TenantStatus @default(TRIALING)
+  entitlements          Json
+  entitlementsUpdatedAt DateTime?    @map("entitlements_updated_at") @db.Timestamptz(6)
+  planCode              String?      @map("plan_code")
+  stripeCustomerId      String?      @unique @map("stripe_customer_id")
+  stripeSubscriptionId  String?      @map("stripe_subscription_id")
+  billingCurrency       String?      @map("billing_currency") @db.Char(3)
+  trialEndsAt           DateTime?    @map("trial_ends_at") @db.Timestamptz(6)
+  permissionsVersion    Int          @default(1) @map("permissions_version")
+  cell                  String?
+  databaseUrl           String?      @map("database_url")
+  orgNr                 String?      @map("org_nr")
+  vatNumber             String?      @map("vat_number")
+  seat                  String?
+  fSkattApproved        Boolean      @default(false) @map("f_skatt_approved")
+  addressLine1          String?      @map("address_line1")
+  addressLine2          String?      @map("address_line2")
+  postalCode            String?      @map("postal_code")
+  city                  String?
+  countryCode           String?      @map("country_code") @db.Char(2)
+  bankgiro              String?
+  plusgiro              String?
+  iban                  String?
+  bic                   String?
+  storageUsedBytes      BigInt       @default(0) @map("storage_used_bytes")
+  defaultLocale         String       @default("sv") @map("default_locale")
+  suspendedAt           DateTime?    @map("suspended_at") @db.Timestamptz(6)
+  offboardedAt          DateTime?    @map("offboarded_at") @db.Timestamptz(6)
+  deleteAfter           DateTime?    @map("delete_after") @db.Timestamptz(6)
+  createdAt             DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members     Member[]
+  invites     MemberInvite[]
+  roles       Role[]
+  preferences TenantPreference[]
+  counters    TenantCounter[]
+  documents   Document[]
+  fileObjects FileObject[]
+
+  @@map("tenant")
+}
+
+/// Keyed rows, not one JSON blob — every flip individually audited.
+model TenantPreference {
+  id                String   @id @default(uuid(7))
+  tenantId          String   @map("tenant_id")
+  key               String
+  value             Json
+  updatedByMemberId String?  @map("updated_by_member_id") // attribution, no FK
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@map("tenant_preference")
+}
+
+/// Monotonic counters for human-facing numbers with NO legal gap-free
+/// requirement. Invoices use InvoiceSeries (Phase 4), never this.
+model TenantCounter {
+  tenantId String @map("tenant_id")
+  key      String
+  value    Int    @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@id([tenantId, key])
+  @@map("tenant_counter")
+}
+
+/// Engineering-owned, temporary, never monetization (gate 4 of 4).
+model FeatureFlag {
+  id              String    @id @default(uuid(7))
+  key             String    @unique
+  description     String
+  defaultOn       Boolean   @default(false) @map("default_on")
+  tenantOverrides Json?     @map("tenant_overrides")
+  removeBy        DateTime? @map("remove_by") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("feature_flag")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// MEMBERSHIP & AUTHORIZATION (tenant plane)
+// ───────────────────────────────────────────────────────────────────
+
+enum MemberStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// Role is NEVER a column here — many-to-many via MemberRole.
+model Member {
+  id          String       @id @default(uuid(7))
+  tenantId    String       @map("tenant_id")
+  userId      String       @map("user_id")
+  status      MemberStatus @default(ACTIVE)
+  title       String?
+  invitedById String?      @map("invited_by_id") // attribution, no FK
+  joinedAt    DateTime     @default(now()) @map("joined_at") @db.Timestamptz(6)
+  suspendedAt DateTime?    @map("suspended_at") @db.Timestamptz(6)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  memberRoles MemberRole[]
+
+  @@unique([tenantId, userId])
+  @@unique([tenantId, id]) // composite-FK target
+  @@index([userId])
+  @@map("member")
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+/// Stores a token HASH, never the raw token.
+model MemberInvite {
+  id                String       @id @default(uuid(7))
+  tenantId          String       @map("tenant_id")
+  email             String // lowercase-normalized
+  proposedRoleIds   Json         @map("proposed_role_ids") // Role.id[], subset-checked
+  tokenHash         String       @unique @map("token_hash")
+  status            InviteStatus @default(PENDING)
+  invitedByMemberId String       @map("invited_by_member_id") // attribution, no FK
+  expiresAt         DateTime     @map("expires_at") @db.Timestamptz(6)
+  acceptedAt        DateTime?    @map("accepted_at") @db.Timestamptz(6)
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, email])
+  @@index([expiresAt])
+  @@map("member_invite")
+}
+
+/// GLOBAL seeded catalog; codes are immutable `resource:verb`, from
+/// AUTHZ.md §3.1's closed 64-code catalog. module is NOT nullable —
+/// core permissions carry the literal "core". requiresMfa is the ✦ set.
+model Permission {
+  id          String  @id @default(uuid(7))
+  code        String  @unique
+  description String
+  module      String
+  requiresMfa Boolean @default(false) @map("requires_mfa")
+
+  rolePermissions RolePermission[]
+
+  @@map("permission")
+}
+
+/// Template lineage + drift tracking (B3: tracked-diff-additive) ships
+/// in this first migration. templateKey values are canonical:
+/// "owner" | "manager" | "admin" | "employee" — AUTHZ.md §7.3 pins the
+/// last-owner invariant to templateKey = 'owner'.
+model Role {
+  id              String   @id @default(uuid(7))
+  tenantId        String   @map("tenant_id")
+  name            String
+  description     String?
+  isSystem        Boolean  @default(false) @map("is_system")
+  templateKey     String?  @map("template_key")
+  clonedFromKey   String?  @map("cloned_from_key")
+  templateVersion Int?     @map("template_version")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  rolePermissions RolePermission[]
+  memberRoles     MemberRole[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id]) // composite-FK target
+  @@index([tenantId, templateKey])
+  @@map("role")
+}
+
+enum RolePermissionSource {
+  TEMPLATE
+  TENANT_GRANT
+  TENANT_REVOKE
+}
+
+/// TENANT_REVOKE rows are tombstones: NOT effective, exist so a tenant's
+/// deliberate trim survives template propagation. Effective set = rows
+/// where source != TENANT_REVOKE. Every change bumps
+/// Tenant.permissionsVersion in the same transaction.
+model RolePermission {
+  tenantId     String               @map("tenant_id")
+  roleId       String               @map("role_id")
+  permissionId String               @map("permission_id")
+  source       RolePermissionSource @default(TENANT_GRANT)
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  role       Role       @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([tenantId, roleId, permissionId])
+  @@index([tenantId, permissionId])
+  @@map("role_permission")
+}
+
+/// Effective permissions = union across held roles (additive-only).
+/// Role relation is Restrict: a role still assigned cannot be deleted.
+model MemberRole {
+  tenantId     String   @map("tenant_id")
+  memberId     String   @map("member_id")
+  roleId       String   @map("role_id")
+  assignedById String?  @map("assigned_by_id") // attribution, no FK
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  member Member @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Cascade)
+  role   Role   @relation(fields: [tenantId, roleId], references: [tenantId, id])
+
+  @@id([tenantId, memberId, roleId])
+  @@index([tenantId, roleId])
+  @@map("member_role")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// DOCUMENTS & FILES (file bytes live in R2 EU; DB holds metadata)
+// ───────────────────────────────────────────────────────────────────
+
+enum Visibility {
+  INTERNAL // THE DEFAULT, everywhere — worst-bug guard (§5)
+  CLIENT_VISIBLE
+}
+
+enum AttachableType {
+  CLIENT
+  PROJECT
+  PROJECT_VERSION
+  MILESTONE
+  SERVICE
+  CONTRACT
+  INVOICE
+  ISSUE
+}
+
+/// clientId nullable = tenant-internal. CHECK constraint in migration:
+/// CLIENT_VISIBLE requires clientId. The composite FK to Client lands
+/// in Phase 2 with the Client table. (attachedToType, attachedToId) is
+/// a presentation anchor — authorization never traverses it.
+model Document {
+  id                 String          @id @default(uuid(7))
+  tenantId           String          @map("tenant_id")
+  clientId           String?         @map("client_id") // FK added in Phase 2
+  projectId          String?         @map("project_id") // FK added in Phase 2
+  name               String
+  tags               String[]        @default([])
+  visibility         Visibility      @default(INTERNAL)
+  attachedToType     AttachableType? @map("attached_to_type")
+  attachedToId       String?         @map("attached_to_id")
+  createdByMemberId  String?         @map("created_by_member_id") // attribution, no FK
+  createdByContactId String?         @map("created_by_contact_id") // attribution, no FK
+  deletedAt          DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id])
+  versions FileVersion[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, clientId, visibility])
+  @@index([tenantId, projectId])
+  @@index([tenantId, attachedToType, attachedToId])
+  // Composite GIN needs the btree_gin extension (created in migration 001)
+  @@index([tenantId(ops: raw("text_ops")), tags], type: Gin)
+  @@map("document")
+}
+
+/// Current version = max versionNumber. The portal never queries this
+/// layer — downloads resolve through Document's visibility check.
+model FileVersion {
+  id                  String   @id @default(uuid(7))
+  tenantId            String   @map("tenant_id")
+  documentId          String   @map("document_id")
+  versionNumber       Int      @map("version_number")
+  fileObjectId        String   @map("file_object_id")
+  note                String?
+  uploadedByMemberId  String?  @map("uploaded_by_member_id") // attribution, no FK
+  uploadedByContactId String?  @map("uploaded_by_contact_id") // attribution, no FK
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  document   Document   @relation(fields: [tenantId, documentId], references: [tenantId, id], onDelete: Cascade)
+  fileObject FileObject @relation(fields: [tenantId, fileObjectId], references: [tenantId, id])
+
+  @@unique([tenantId, documentId, versionNumber])
+  @@index([tenantId, fileObjectId])
+  @@map("file_version")
+}
+
+enum FileObjectStatus {
+  PENDING
+  COMMITTED
+  DELETED
+}
+
+enum ScanStatus {
+  UNSCANNED
+  CLEAN
+  INFECTED
+}
+
+enum FileKind {
+  GENERAL
+  INVOICE_PDF
+  CONTRACT_PDF
+  SIGNATURE_EVIDENCE
+  THUMBNAIL
+  EXPORT
+}
+
+/// One immutable blob in R2 (key: {tenantId}/{fileObjectId}). sizeBytes
+/// is THE quota-metering unit; PENDING reserves quota, HEAD-verify then
+/// COMMITTED + Tenant.storageUsedBytes increment in one transaction.
+model FileObject {
+  id                 String           @id @default(uuid(7))
+  tenantId           String           @map("tenant_id")
+  r2Key              String           @unique @map("r2_key")
+  kind               FileKind         @default(GENERAL)
+  sha256             String
+  sizeBytes          BigInt           @map("size_bytes")
+  contentType        String           @map("content_type") // server-side allowlist
+  originalFilename   String?          @map("original_filename")
+  status             FileObjectStatus @default(PENDING)
+  scanStatus         ScanStatus       @default(UNSCANNED) @map("scan_status")
+  createdByMemberId  String?          @map("created_by_member_id") // attribution, no FK
+  createdByContactId String?          @map("created_by_contact_id") // attribution, no FK
+  committedAt        DateTime?        @map("committed_at") @db.Timestamptz(6)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id])
+  versions FileVersion[]
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@index([tenantId, status])
+  @@index([tenantId, sha256])
+  @@index([tenantId, kind])
+  @@map("file_object")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// AUDIT
+// ───────────────────────────────────────────────────────────────────
+
+enum ActorType {
+  MEMBER
+  CONTACT
+  PLATFORM_ADMIN
+  SYSTEM
+}
+
+enum AuditVisibility {
+  TENANT
+  PLATFORM
+}
+
+/// Append-only (runtime role: INSERT+SELECT only + guard trigger).
+/// NO foreign keys by design — rows survive their actors, targets and
+/// (for PLATFORM events) the tenant. createdAt is DB now(), never
+/// app-supplied. metadata is minimized: never plaintext of encrypted
+/// fields, never document contents, never personnummer.
+model AuditEvent {
+  id             String          @id @default(uuid(7))
+  tenantId       String?         @map("tenant_id") // NULL = platform-plane event
+  actorType      ActorType       @map("actor_type")
+  actorId        String?         @map("actor_id")
+  impersonatorId String?         @map("impersonator_id")
+  action         String // static catalog, "entity.verb"
+  targetType     String?         @map("target_type")
+  targetId       String?         @map("target_id")
+  metadata       Json?
+  requestId      String?         @map("request_id")
+  ip             String?
+  userAgent      String?         @map("user_agent")
+  visibility     AuditVisibility
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, targetType, targetId])
+  @@index([actorType, actorId, createdAt(sort: Desc)])
+  @@index([requestId])
+  @@map("audit_event")
+}
