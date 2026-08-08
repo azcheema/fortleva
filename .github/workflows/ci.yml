@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Typecheck, lint, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - run: pnpm typecheck
+      - run: pnpm exec eslint src --max-warnings 0
+      - run: pnpm test
+      # INV-D1 is inside pnpm test (inv-d1.test.ts) — the ARC-11
+      # CI-enforced cookie assertion. Do not remove.
+
+  isolation:
+    name: Cross-tenant isolation suite
+    runs-on: ubuntu-latest
+    # Shared dev database for now — serialize runs. TODO(founder):
+    # provide NEON_API_KEY to switch to an ephemeral Neon branch per
+    # run (TENANCY.md §11 target infrastructure).
+    concurrency:
+      group: isolation-db
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      PLATFORM_DATABASE_URL: ${{ secrets.PLATFORM_DATABASE_URL }}
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+      FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+      FIELD_ENCRYPTION_KEY_ID: k1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - run: pnpm exec prisma migrate deploy
+      - run: pnpm exec tsx prisma/seed.ts
+      - run: pnpm test:db
