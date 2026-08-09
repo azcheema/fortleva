@@ -24,7 +24,11 @@ export const platformAuth = betterAuth({
   database: prismaAdapter(runtimeClient, { provider: "postgresql" }),
   advanced: {
     database: { generateId: false },
-    useSecureCookies: true,
+    // false is load-bearing — see src/auth/index.ts: secure mode would
+    // rename the cookie to __Secure-__Host-flv.platform and break the
+    // plane gate. Secure comes from defaultCookieAttributes.
+    useSecureCookies: false,
+    defaultCookieAttributes: { secure: true, httpOnly: true },
     cookies: {
       session_token: {
         name: sessionCookieName("platform"),

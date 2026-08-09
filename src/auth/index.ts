@@ -27,11 +27,17 @@ export const auth = betterAuth({
   database: prismaAdapter(runtimeClient, { provider: "postgresql" }),
   advanced: {
     database: { generateId: false }, // Prisma uuid(7) defaults generate ids
-    useSecureCookies: true,
+    // false is deliberate and load-bearing: Better Auth prepends
+    // "__Secure-" to even CUSTOM cookie names when secure mode is on,
+    // which would silently rename the session cookie to
+    // __Secure-__Host-flv.member and break the plane gate. The name
+    // below already carries __Host- (browser-enforced Secure + Path=/
+    // + no Domain — INV-D1 armor); the Secure attribute for every
+    // cookie comes from defaultCookieAttributes instead.
+    useSecureCookies: false,
+    defaultCookieAttributes: { secure: true, httpOnly: true },
     cookies: {
       session_token: {
-        // INV-D1: __Host- prefix is browser-enforced armor — requires
-        // Secure + Path=/ and REJECTS any Domain attribute.
         name: sessionCookieName("member"),
         attributes: { sameSite: "lax", path: "/", secure: true, httpOnly: true },
       },
