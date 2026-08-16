@@ -1,3 +1,4 @@
+import { ShieldIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
 import { requirePlatformAdmin } from "@/auth/session";
@@ -17,7 +18,12 @@ export default async function OpsHome() {
     <Page width="form">
       <PageHeader
         title={t("title")}
-        badges={<Badge variant="brand">{t("eyebrow")}</Badge>}
+        badges={
+          <Badge variant="brand">
+            <ShieldIcon aria-hidden="true" />
+            {t("eyebrow")}
+          </Badge>
+        }
       />
       <div className="mt-6">
         <SectionCard title={t("session")}>

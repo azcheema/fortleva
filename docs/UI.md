@@ -2,6 +2,7 @@
 
 **Status:** Normative conventions, created 2026-08-16 (work-management plan, Step 0). Applies to every screen from Phase 1b onward; retro-applied to the six Phase-1 pages during 1b.
 **Amended 2026-08-17** — §9 and §10 rewritten as the normative visual system: tokens, type scale, spacing, radii, elevation, motion, the semantic colour map for every enum, the entity-colour algorithm, the component catalogue, dark-mode rules, the accessibility checklist, and the rule that new UI uses tokens and components only (with grep tripwires as enforcement).
+**Amended again 2026-08-17 (set B + reconciliation)** — the project tree, files, members, settings and account screens landed, and the whole app was then reconciled against this document: §10.10 gains `Timeline`, `ProgressMeter` and `EntityTile`; §10.15 is new and records the six recurring screen patterns every route must now use; §10.4 gains the row-cue token; §10.14 records the set-B contrast rows. Three tokens moved as a result of that audit and are noted where they live.
 **Companion docs:** `PLAN.md` (phase bodies name the screens), `ARCHITECTURE.md` (ARC-15 UI kit, ARC-17 DnD, ARC-18 freshness, ARC-19 rich text), `AUTHZ.md` (what a screen may show is a permission question, never a UI one), `TENANCY.md` §7.2 (portal projections), `DATA_MODEL.md` (vocabulary).
 **Evidence:** `docs/research/2026-08-16-work-management-synthesis.md` §5 (complaint corpora → UX rules), `…-plan-draft-ux-product.md`, `…-reviews.md`.
 
@@ -236,6 +237,8 @@ Testable rules. Every numeric claim below is asserted in `src/lib/contrast.test.
 | **the release gate** | `src/lib/contrast.test.ts` (+ `color.ts`, `css-tokens.ts`) |
 | the living preview | `/settings/design` |
 
+Since set B: `src/components/semantic/timeline.tsx`, `progress-meter.tsx`, and `EntityTile` in `entity-chip.tsx`. Everything in `src/components/semantic/` is re-exported from `@/components/semantic` — **screens import from the barrel**, never from a deep path.
+
 There is **no `tailwind.config.js`** — Tailwind 4 is CSS-first. Everything is `@theme` in `globals.css`.
 
 ### 10.2 Colour: three layers, in this order
@@ -252,7 +255,9 @@ The brand accent has exactly **three jobs**: filled primary buttons, the active 
 
 ### 10.3 The semantic tone set — six tones
 
-`neutral · brand · caution · success · danger · quiet`. Each is three tokens: `--tone-<t>-bg`, `--tone-<t>-fg`, `--tone-<t>-line`. A tinted chip is `bg` + `fg` (measures 6.3–7.9:1 light, 10.7–11.4:1 dark); an outline chip is transparent + `line` + `fg`. `quiet` is transparent with `--muted-foreground` and strikes its label.
+`neutral · brand · caution · success · danger · quiet`. Each is three tokens: `--tone-<t>-bg`, `--tone-<t>-fg`, `--tone-<t>-line`. A tinted chip is `bg` + `fg` (measures 6.3–7.9:1 light, 10.7–11.4:1 dark); an outline chip is transparent + `line` + `fg`. `quiet` is transparent with `--muted-foreground` and strikes its label; **`--tone-quiet-line` is `var(--input)`** so the quiet outline chip's hairline and the cancelled timeline node's glyph — the only marks those states carry — clear 3:1 instead of the 1.90:1 a decorative grey measured.
+
+**Tone as plain text.** `--destructive` is a FILL colour: white on it measures 4.60:1, but *as text* on a dark card it measures 3.90:1 and fails SC 1.4.3. Danger text — `<FormMessage>`, `<Field error>`, the destructive menu item, the error toast icon — is therefore `--tone-danger-fg`, and every tone's `fg` is asserted ≥4.5:1 on card, canvas, muted, accent and popover. Reach for `--destructive` only where it is a fill or an outline.
 
 Never reach for a tone by hand — `<StatusBadge>` picks it from `src/lib/enum-map.ts`.
 
@@ -267,13 +272,14 @@ The worst bug this product can ship is a client seeing internal data. The two st
 | shape | 4px radius | full pill |
 | weight | 500 | 600 |
 | border | 1px `--input` | 1px `--vis-client-border` |
-| row cue | none | 2px left border via `visibilityRowCue()` |
+| row cue | 2px transparent left border (no layout shift) | 2px left border in `--vis-client-cue` via `visibilityRowCue()` |
 
 Measured separation (client fill vs the card showing through the internal chip): **ΔE_OK 0.249–0.290 light, 0.543–0.593 dark**, across normal / protan / deutan / tritan.
 
 Rules, all enforced in code:
 
 - **Both states always render a chip.** Absence is not a state — absence is indistinguishable from a bug.
+- The **fill** (`--vis-client`) is identical in both themes, because that is the pair the CVD gate measures. The **2px row cue** (`--vis-client-cue`) is not: the warm fill measures 2.10:1 on a white row, and a 2px edge at 2.1:1 is a decoration rather than a signal, so light draws the cue in the darker warm (≥4.19:1 on card, canvas, muted and row hover) and dark keeps the fill (≥6.49:1 on the same four). Never hand-write the class — call `visibilityRowCue()`, which the design gate itself renders.
 - Never icon-only, at any density. Never optimistic.
 - The **write** control wears the same warm fill as the read chip when set to `CLIENT_VISIBLE` (`VisibilitySelect`, the upload form, the milestone row) — an editable row is never less legible than a read-only one.
 - **Collision rule:** the warm band is the caution family, and a **filled warm pill means "Client can see" and nothing else, product-wide.** `warning` renders only as a tinted surface + 1px border + `triangle-alert` (`<Callout tone="caution">`), never as a filled pill. Project "Portal on" is `Badge variant="brand"` + `globe` for exactly this reason.
@@ -359,7 +365,12 @@ Never `transition-all` — enumerate the properties. Loading: under 200ms render
 | `Pending {label}` | the ellipsis indicator (was duplicated five ways) |
 | `EmptyState {variant}` | `empty` vs `filtered` vs `forbidden` — three variants, never conflated |
 | `Page {width}` / `PageHeader` | the content column and the h1 block |
+| `Timeline` + `TimelineItem` | the one dated rail (§10.15) |
+| `ProgressMeter {value,total,label}` | done-of-total, wherever a count has a denominator |
+| `EntityTile {id,name,size}` | the identity mark alone, for an h1 that cannot be `EntityChip` |
 | `MetricTile`, `HealthChip`, `PriorityIndicator`, `KeyboardHint`, `ThemeToggle`, `StatusIcon` | as named |
+
+Utilities carry the roles that are typographic rather than componentised: `num` (tabular figures), `eyebrow` (the 11px/600/+0.04em uppercase table-header and eyebrow role — **never** written out as four classes), `otp-field` (a six-digit code), `row-h` (the `--row-h` rhythm outside a `<Table>`), `hairline-b`, `entity-tint`.
 
 `src/components/ui/` — 25 primitives. Two are deliberately native: **`NativeSelect` and `NativeCheckbox` fire real `change` events**, which is what `<AutoForm>` listens for. The Radix `Checkbox` renders a button plus a bubble input and does **not** emit a bubbling change event — an auto-saving form built on it silently stops saving. Use the native pair inside `<AutoForm>`, Radix elsewhere.
 
@@ -407,15 +418,42 @@ grep -rEn "text-\[[0-9]" src/app src/components --include=*.tsx
 
 # 6. raw checkboxes (use NativeCheckbox inside AutoForm, Checkbox elsewhere)
 grep -rn 'type="checkbox"' src/app src/components | grep -v native-checkbox
+
+# 7. hand-written eyebrows and one-time-code fields (use the utilities)
+grep -rEn "tracking-\[" src/app src/components --include=*.tsx
+
+# 8. danger as TEXT (it is a fill colour; use --tone-danger-fg)
+grep -rn "text-destructive" src/app src/components --include=*.tsx | grep -v "text-destructive-foreground"
+
+# 9. a bordered DataTable nested inside a padded card (use flush)
+grep -rn "rounded-none border-0" src/app | grep -i datatable
 ```
 
-Justified standing exceptions, all inside `src/components/**`, none of them a colour: `KeyboardHint` (`h-[18px] min-w-[18px]`, `shadow-[0_1px_0_var(--input)]` — the specified kbd geometry), `PriorityIndicator` (`w-[3px] rounded-[1px]` — a sub-grid glyph), `EntityChip` (`text-[0.5625rem]` — 9px initials inside a 16px `aria-hidden` tile), the `Tooltip` arrow geometry, and the four `shadow-[inset_2px_0_0_var(--primary)]` active-row bars (a token reference; Tailwind has no inset-shadow utility). `Switch` uses `data-disabled:opacity-100` to *defeat* Radix's own dimming.
+Justified standing exceptions, all inside `src/components/**`, none of them a colour: `KeyboardHint` (`h-[18px] min-w-[18px]`, `shadow-[0_1px_0_var(--input)]` — the specified kbd geometry), `PriorityIndicator` (`w-[3px] rounded-[1px]` — a sub-grid glyph), `EntityTile` (`text-[0.5625rem]` — 9px initials inside a 16px `aria-hidden` tile), `EmptyState` (`max-w-[340px]` — the specified measure), the `Tooltip` arrow geometry, the viewport-relative `Dialog`/`Sheet` widths, and the four `shadow-[inset_2px_0_0_var(--primary)]` active-row bars (a token reference; Tailwind has no inset-shadow utility). `Switch` uses `data-disabled:opacity-100` to *defeat* Radix's own dimming. `h-10` is the `lg` (40px) control height, not an ad-hoc value; `h-11`/`h-14` are the specified command-palette input row and mobile tab bar.
 
 ### 10.14 The release gate
 
 `pnpm test` runs `src/lib/contrast.test.ts`, which parses `globals.css` and asserts the whole table in both themes: text ≥ 4.5:1 on every surface it renders on; non-text ≥ 3:1; tone chips, outline borders, visibility, entity dots, chart series and avatar washes; dark ΔL ≥ 0.04 and monotonically lighter; ΔE_OK ≥ 0.15 between the visibility fills and ≥ 0.10 between chart series under Machado 2009 severity-1.0 protan/deutan/tritan; no alpha borders; the brand seam excluded from `--ring`/`--destructive`/`--vis-*`; every colour role defined in **both** themes; and the `theme-color` literals equal to `--background`.
 
+Set B added the pairs those screens actually paint: **every** tone (including `quiet`) as plain text and as a rule mark on card / canvas / muted / **accent** / popover; `--input` and `--ring` on `--accent`, because a control inside a table row is read on the HOVER surface and not on the resting one; `--destructive` as an outline; the internal chip's label and hairline on a hovered row; and the client-visible row cue at ≥3:1 on all five surfaces **plus** ΔE_OK ≥ 0.15 against the row it marks under all four vision types. Three tokens moved to satisfy those rows — dark `--input` 0.535 → 0.590, `--tone-quiet-line` → `var(--input)`, and the new `--vis-client-cue` — because the fix for a failing row is the token, never the threshold.
+
 `/settings/design` renders the same system live — the token ladder with computed ratios, every component state, all twelve entity colours, and the two visibility chips under protanopia / deuteranopia / tritanopia / greyscale filters. **If the two visibility chips are not instantly distinguishable in every panel, the pass is not done.**
+
+### 10.15 Recurring screen patterns
+
+Six shapes recur across the app. A new screen picks one of them; it does not invent a seventh.
+
+**1. List surface.** A page's primary table is a `<DataTable>` — which already *is* the card surface (1px hairline, 10px radius, `--card`). When the list needs a caption (a count, a second population on the same page, an inline create beneath), it goes inside a `<SectionCard title description>` with `contentClassName="p-0"` and `<DataTable flush>`, which drops the table's own hairline so the card's carries it. Never nest a bordered `DataTable` inside a padded card: that draws two borders 16px apart. Numeric columns are right-aligned `.num`; a project key column is `w-[10ch]` of the mono face; a byte size splits into `.num` value + muted unit (`bytesParts`).
+
+**2. Create-in-place.** A page that can create shows a `size="sm"` primary button in the `PageHeader` linking to `#new-<thing>`, the same button in its `EmptyState`, and an anchored `<SectionCard id="new-<thing>" className="scroll-mt-16">` at the foot. `/clients` and `/projects` are the reference; a modal is never used for creation (§12).
+
+**3. Dated rail.** The `Timeline` is one column: a 24px node carrying the state's *icon* (silhouette first, tone second), a 1px `--border` rail that stops at the last node, and 16px between entries. Terminal states fill the node — except `quiet`, which is transparent by definition and would erase the ring, so a cancelled entry stays outlined and strikes its label. The rail and the node are `aria-hidden`; the state is repeated as a `StatusBadge` in the content, so nothing is carried by the decoration alone. `contentClassName` is where `visibilityRowCue()` goes. Used by the project timeline and by TOTP enrolment (three numbered steps).
+
+**4. File visibility.** Every documents row says it three times: a `<VisibilityBadge>` (or `<VisibilitySelect>`, which wears the *same* warm fill when set to `CLIENT_VISIBLE` — an editable row is never less legible than a read-only one), the 2px `visibilityRowCue()` on the row, and a legend strip under the table naming both states in words. The row also emits `data-visibility` for E2E. The upload form states where the file will land *before* it is sent: a standing info `Callout` for private, swapped for a caution naming who can open it the moment "Client can see" is chosen.
+
+**5. Permission matrix.** One scrolling region (`max-h-96`) with `position: sticky` module headers — it is a bare `fieldset`, not a nested `SectionCard`, because sticky is inert inside the card's `overflow-hidden`. Codes split `namespace:` + verb; the ✦ MFA marker is `role="img"` with an `aria-label`, not a bare span; tombstones are a caution `Callout` plus a per-row badge. A **system** role has no controls to label, so it renders as a tick/dash ledger with `sr-only` "granted"/"not granted" rather than 63 disabled checkboxes.
+
+**6. The three empty states.** `empty` (nothing yet → create it), `filtered` (things exist, none match → clear the filter), `forbidden` (things exist, not for you). They are never conflated, and a whole-page denial is an `EmptyState variant="forbidden"` inside a `SectionCard` — never a `Callout`, which is for notices about content the reader *can* see. A tab whose feature has not shipped keeps the `empty` state and puts a static, `aria-hidden` **structural preview** beside it, built from the real tokens and the real `--row-h` (board columns, backlog ghost rows). Never an illustration.
 
 ---
 

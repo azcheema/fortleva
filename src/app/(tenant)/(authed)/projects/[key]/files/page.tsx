@@ -27,10 +27,21 @@ export default async function ProjectFilesPage({
   const t = await getTranslations("projects.files");
   const tFiles = await getTranslations("files");
   const returnTo = `/projects/${project.key}/files`;
+  if (!project.caps.viewDocuments) {
+    // "Nothing here" and "not yours to see" are different facts and get
+    // different empty states, exactly as on the client Files tab.
+    return (
+      <SectionCard>
+        <EmptyState variant="forbidden" title={t("noAccess")} body={t("noAccessDescription")} />
+      </SectionCard>
+    );
+  }
+
   const { membership, actor } = await requireTenantContext();
-  const documents = project.caps.viewDocuments
-    ? await listDocuments({ tenantId: membership.tenantId, actor }, { projectId: project.id })
-    : [];
+  const documents = await listDocuments(
+    { tenantId: membership.tenantId, actor },
+    { projectId: project.id },
+  );
 
   return (
     <div className="flex flex-col gap-6">

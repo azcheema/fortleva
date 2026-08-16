@@ -34,7 +34,7 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
                 the same labels are now visible above the columns. */}
             <div
               aria-hidden="true"
-              className={`hairline-b hidden h-8 items-center px-3 text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase sm:grid ${CONTACT_GRID}`}
+              className={`hairline-b hidden h-8 items-center px-3 eyebrow text-muted-foreground sm:grid ${CONTACT_GRID}`}
             >
               {headers.map((label) => (
                 <span key={label} className="truncate">

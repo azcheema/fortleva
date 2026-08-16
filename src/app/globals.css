@@ -139,6 +139,13 @@
   --text-3xl--line-height: 2.25rem;
   --text-3xl--letter-spacing: -0.021em;
 
+  /* The only two tracking values outside the type scale, both of them
+     structural rather than aesthetic: `eyebrow` is the +0.04em of the
+     table-header/eyebrow role, and `otp` opens a six-digit code so the
+     digits are read one at a time. */
+  --tracking-eyebrow: 0.04em;
+  --tracking-otp: 0.4em;
+
   /* Shape — explicit integers, not a multiplicative scale. Nothing
      above 12px. Cards, dialogs, popovers and menus use --radius-card. */
   --radius: 8px;
@@ -248,7 +255,10 @@
   --tone-danger-line: var(--color-red-600);
   --tone-quiet-bg: transparent;
   --tone-quiet-fg: var(--muted-foreground);
-  --tone-quiet-line: var(--color-slate-400);
+  /* The quiet outline chip's hairline and the cancelled timeline node's
+     glyph are the only marks that carry the state, so the quiet rule
+     colour is the control hairline (>=3:1), not a decorative grey. */
+  --tone-quiet-line: var(--input);
 
   /* Visibility (§2.4) — safety-critical. The two chips differ in FILL,
      ICON, WEIGHT, SHAPE and row border, not merely in hue. The solid
@@ -257,6 +267,13 @@
   --vis-client: oklch(0.772 0.125 70);
   --vis-client-fg: oklch(0.264 0.054 70); /* 7.37:1 */
   --vis-client-border: oklch(0.569 0.115 70);
+  /* The 2px row cue. The FILL is identical in both themes because that
+     is what the CVD gate measures; the 2px EDGE is not, because on a
+     white row the fill reads 2.10:1 and a 2px line at 2.1:1 is a
+     decoration rather than a signal. Light therefore draws the cue in
+     the darker warm (>=4.19:1 on card, canvas, muted and row hover)
+     and dark keeps the fill (>=6.49:1 on the same four). */
+  --vis-client-cue: oklch(0.569 0.115 70);
   --vis-internal-bg: transparent;
   --vis-internal-fg: var(--muted-foreground);
   --vis-internal-border: var(--input);
@@ -332,7 +349,9 @@
   /* Opaque, never oklch(1 0 0 / n%): alpha borders cannot be statically
      contrast-tested and change meaning per backdrop. */
   --border: var(--color-surface-d4);
-  --input: oklch(0.535 0.013 var(--brand-h)); /* 3.78 canvas / 3.47 card / 3.14 popover */
+  /* 4.86 canvas / 4.45 card / 4.03 popover / 3.31 on --accent, the row-hover
+     surface a select or checkbox inside a table row actually sits on. */
+  --input: oklch(0.59 0.013 var(--brand-h));
   --input-hover: oklch(0.61 0.013 var(--brand-h));
   --ring: oklch(0.676 0.158 268);
 
@@ -373,13 +392,14 @@
   --tone-danger-line: var(--color-red-400);
   --tone-quiet-bg: transparent;
   --tone-quiet-fg: var(--muted-foreground);
-  --tone-quiet-line: var(--color-slate-600);
+  --tone-quiet-line: var(--input);
 
   /* Identical fill in both themes: "Client can see" must look the same
      everywhere so it is never mistaken for a theme artefact. */
   --vis-client: oklch(0.772 0.125 70);
   --vis-client-fg: oklch(0.264 0.054 70);
   --vis-client-border: oklch(0.569 0.115 70);
+  --vis-client-cue: oklch(0.772 0.125 70);
   --vis-internal-bg: transparent;
   --vis-internal-fg: var(--muted-foreground);
   --vis-internal-border: var(--input);
@@ -457,6 +477,7 @@
   --color-vis-client: var(--vis-client);
   --color-vis-client-fg: var(--vis-client-fg);
   --color-vis-client-border: var(--vis-client-border);
+  --color-vis-client-cue: var(--vis-client-cue);
   --color-vis-internal-fg: var(--vis-internal-fg);
   --color-vis-internal-border: var(--vis-internal-border);
   --color-entity-ink: var(--entity-ink);
@@ -486,6 +507,26 @@
    shadow rides along with the sticky element. */
 @utility row-h {
   height: var(--row-h, 36px);
+}
+
+/* The table-header / eyebrow role (DESIGN SPEC 3.3): 11px, 600, +0.04em,
+   uppercase, on a 16px line. It was written out as four classes in a
+   dozen places, which is three chances to drift; it is one name now. */
+@utility eyebrow {
+  font-size: var(--text-2xs);
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+/* A six-digit one-time code: monospace, centred, opened up so the
+   digits are read individually rather than as a number. */
+@utility otp-field {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+  text-align: center;
+  letter-spacing: var(--tracking-otp);
 }
 
 /* The entity-identity tint (DESIGN SPEC §6, avatar). A wash of the

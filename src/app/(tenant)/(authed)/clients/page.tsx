@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ArchiveIcon, ArchiveRestoreIcon } from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
@@ -9,12 +9,13 @@ import {
   DataTable,
   EmptyState,
   EntityChip,
+  MemberAvatar,
   Page,
   PageHeader,
   SectionCard,
   StatusBadge,
 } from "@/components/semantic";
-import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar";
+import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -33,14 +34,6 @@ export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("clients");
   return { title: t("shortTitle") };
 }
-
-const initials = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]!)
-    .join("");
 
 /**
  * /clients (UI.md §3.1): table + inline create + archived toggle. The
@@ -72,12 +65,22 @@ export default async function ClientsPage({
       <PageHeader
         title={t("title")}
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link href={includeArchived ? "/clients" : "/clients?archived=1"}>
-              {includeArchived ? <ArchiveRestoreIcon /> : <ArchiveIcon />}
-              {includeArchived ? t("hideArchived") : t("showArchived")}
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link href={includeArchived ? "/clients" : "/clients?archived=1"}>
+                {includeArchived ? <ArchiveRestoreIcon /> : <ArchiveIcon />}
+                {includeArchived ? t("hideArchived") : t("showArchived")}
+              </Link>
+            </Button>
+            {canCreate ? (
+              <Button asChild size="sm">
+                <Link href="#new-client">
+                  <PlusIcon />
+                  {t("create.title")}
+                </Link>
+              </Button>
+            ) : null}
+          </>
         }
       />
 
@@ -85,7 +88,19 @@ export default async function ClientsPage({
         {clients.length === 0 ? (
           <SectionCard>
             {canCreate ? (
-              <EmptyState variant="empty" title={t("empty.title")} body={t("empty.description")} />
+              <EmptyState
+                variant="empty"
+                title={t("empty.title")}
+                body={t("empty.description")}
+                action={
+                  <Button asChild size="sm">
+                    <Link href="#new-client">
+                      <PlusIcon />
+                      {t("create.title")}
+                    </Link>
+                  </Button>
+                }
+              />
             ) : (
               <EmptyState
                 variant="forbidden"
@@ -134,9 +149,7 @@ export default async function ClientsPage({
                       ) : (
                         <AvatarGroup>
                           {c.assignedMembers.slice(0, 3).map((m) => (
-                            <Avatar key={m.memberId} size="sm" title={m.name}>
-                              <AvatarFallback>{initials(m.name)}</AvatarFallback>
-                            </Avatar>
+                            <MemberAvatar key={m.memberId} id={m.memberId} name={m.name} />
                           ))}
                           {c.assignedMembers.length > 3 ? (
                             <AvatarGroupCount>
@@ -156,7 +169,12 @@ export default async function ClientsPage({
 
       {canCreate ? (
         <div className="mt-6">
-          <SectionCard title={t("create.title")} description={t("create.description")}>
+          <SectionCard
+            id="new-client"
+            className="scroll-mt-16"
+            title={t("create.title")}
+            description={t("create.description")}
+          >
             <CreateClientForm autoFocus={clients.length === 0} />
           </SectionCard>
         </div>

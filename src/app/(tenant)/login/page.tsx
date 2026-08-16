@@ -109,7 +109,7 @@ function LoginForm() {
               autoComplete="one-time-code"
               value={totp}
               onChange={(e) => setTotp(e.target.value)}
-              className="num h-10 text-center font-mono text-lg tracking-[0.4em]"
+              className="otp-field h-10 text-lg"
             />
           </Field>
           <Button type="submit" size="lg" className="mt-2 w-full" disabled={busy}>

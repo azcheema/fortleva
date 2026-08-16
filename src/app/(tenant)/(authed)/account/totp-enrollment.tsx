@@ -119,7 +119,7 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
                   autoComplete="one-time-code"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className="num w-32 text-center font-mono tracking-[0.4em]"
+                  className="otp-field w-32"
                 />
               </Field>
               <Button type="submit" disabled={busy}>

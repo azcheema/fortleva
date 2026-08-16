@@ -64,9 +64,15 @@ export default async function ExportPage({
     return (
       <Page width="form">
         <PageHeader title={t("title")} />
-        <Callout tone="info" className="mt-4">
-          {t("noPermission")}
-        </Callout>
+        <div className="mt-6">
+          <SectionCard>
+            <EmptyState
+              variant="forbidden"
+              title={tCommon("forbiddenTitle")}
+              body={t("noPermission")}
+            />
+          </SectionCard>
+        </div>
       </Page>
     );
   }
@@ -99,7 +105,11 @@ export default async function ExportPage({
           {canExport ? (
             <GenerateExportForm />
           ) : (
-            <p className="text-sm text-muted-foreground">{t("needsPermission")}</p>
+            <EmptyState
+              variant="forbidden"
+              title={tCommon("forbiddenTitle")}
+              body={t("needsPermission")}
+            />
           )}
         </SectionCard>
 
@@ -110,7 +120,7 @@ export default async function ExportPage({
           {exports.length === 0 ? (
             <EmptyState variant="empty" title={t("emptyTitle")} body={t("emptyDescription")} />
           ) : (
-            <DataTable className="rounded-none border-0">
+            <DataTable flush>
               <Table>
                 <TableHeader>
                   <TableRow>

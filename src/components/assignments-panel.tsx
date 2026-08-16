@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { EmptyState } from "@/components/empty-state";
 import { InlineConfirm } from "@/components/inline-confirm";
+import { EmptyState, MemberAvatar } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 
@@ -19,7 +19,9 @@ export type AssignmentActionResult = { ok: boolean; message: string };
  * assign/unassign for holders of the manage_assignments permission.
  * Deliberately shows nothing but names (UI.md rule 14: no presence,
  * time or activity). Actions arrive as props so the same panel serves
- * both resources.
+ * both resources. Every person wears the same MemberAvatar as on
+ * /members and /clients, so the same colleague is recognisable by the
+ * same mark on every screen.
  */
 export function AssignmentsPanel({
   assigned,
@@ -56,14 +58,17 @@ export function AssignmentsPanel({
   return (
     <div className="flex flex-col gap-3">
       {assigned.length === 0 ? (
-        <EmptyState title={emptyTitle} description={emptyDescription} />
+        <EmptyState variant="empty" title={emptyTitle} body={emptyDescription} />
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {assigned.map((a) => (
             <li key={a.memberId} className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 text-sm">
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate font-medium">{a.name}</span>
-                <span className="truncate text-xs text-muted-foreground">{a.email}</span>
+              <span className="flex min-w-0 items-center gap-2.5">
+                <MemberAvatar id={a.memberId} name={a.name} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate font-medium">{a.name}</span>
+                  <span className="truncate text-xs text-muted-foreground">{a.email}</span>
+                </span>
               </span>
               {canManage ? (
                 <InlineConfirm

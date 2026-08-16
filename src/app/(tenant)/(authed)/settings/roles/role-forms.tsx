@@ -113,7 +113,7 @@ export function RolePermissionsForm({
       >
         {groups.map((g) => (
           <div key={g.module}>
-            <h4 className="hairline-b sticky top-0 z-1 bg-card px-3 py-1.5 text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+            <h4 className="hairline-b sticky top-0 z-1 bg-card px-3 py-1.5 eyebrow text-muted-foreground">
               {isModuleKey(g.module) ? t(`modules.${g.module}`) : g.module}
             </h4>
             <ul className="flex flex-col">
@@ -127,8 +127,9 @@ export function RolePermissionsForm({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span
-                            className="cursor-help text-muted-foreground"
+                            role="img"
                             aria-label={t("requiresMfa")}
+                            className="cursor-help text-muted-foreground"
                           >
                             {"✦"}
                           </span>

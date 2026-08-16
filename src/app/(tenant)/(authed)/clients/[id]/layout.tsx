@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
-import { Callout, Page, PageHeader, StatusBadge } from "@/components/semantic";
+import { Callout, EntityTile, Page, PageHeader, StatusBadge } from "@/components/semantic";
 import { TabNav } from "@/components/tab-nav";
-import { entityStyle } from "@/lib/entity-color";
 
 import { loadClient } from "./data";
 
@@ -44,11 +43,7 @@ export default async function ClientLayout({
       <PageHeader
         title={
           <span className="flex min-w-0 items-center gap-2.5">
-            <span
-              aria-hidden="true"
-              style={entityStyle(client.id, client.name)}
-              className="inline-block size-2.5 shrink-0 rounded-full bg-(--entity)"
-            />
+            <EntityTile id={client.id} name={client.name} size="lg" />
             <span className="truncate">{client.name}</span>
           </span>
         }

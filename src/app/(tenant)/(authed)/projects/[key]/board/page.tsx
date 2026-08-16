@@ -39,7 +39,7 @@ export default async function ProjectBoardPage({ params }: { params: Promise<{ k
       >
         {COLUMNS.map((category) => (
           <div key={category} className="flex flex-col gap-2 rounded-md bg-muted p-2">
-            <div className="flex items-center gap-1.5 text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+            <div className="flex items-center gap-1.5 eyebrow text-muted-foreground">
               <StatusIcon
                 name={STATUS_MAP.stateCategory[category].icon}
                 className="size-3 shrink-0"

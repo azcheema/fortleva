@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-import { Callout, EntityChip, Page, PageHeader, StatusBadge } from "@/components/semantic";
+import { Callout, EntityChip, EntityTile, Page, PageHeader, StatusBadge } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TabNav } from "@/components/tab-nav";
@@ -64,7 +64,10 @@ export default async function ProjectLayout({
           />
         }
         title={
-          <span className="flex min-w-0 items-baseline gap-2">
+          <span className="flex min-w-0 items-center gap-2.5">
+            {/* The project's own mark, the same one its rows wear in every
+                list — identity should not vanish on the detail page. */}
+            <EntityTile id={project.id} name={project.name} size="lg" />
             <span className="num shrink-0 font-mono text-base text-muted-foreground">
               {project.key}
             </span>

@@ -3,7 +3,7 @@ import { getTranslations } from "next-intl/server";
 
 import { effectivePermissions } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
-import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
+import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { parseEntitlements } from "@/entitlements/resolver";
 import { requireTenantContext } from "@/members/tenant-context";
@@ -25,6 +25,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PreferencesPage() {
   const { membership, actor } = await requireTenantContext();
   const t = await getTranslations("settings.preferences");
+  const tCommon = await getTranslations("common");
 
   let prefs: TenantPreferences | null = null;
   try {
@@ -36,9 +37,15 @@ export default async function PreferencesPage() {
     return (
       <Page width="form">
         <PageHeader title={t("title")} />
-        <Callout tone="info" className="mt-4">
-          {t("noPermission")}
-        </Callout>
+        <div className="mt-6">
+          <SectionCard>
+            <EmptyState
+              variant="forbidden"
+              title={tCommon("forbiddenTitle")}
+              body={t("noPermission")}
+            />
+          </SectionCard>
+        </div>
       </Page>
     );
   }

@@ -22,7 +22,10 @@ export function FormMessage({
       role={state.ok ? "status" : "alert"}
       className={cn(
         "inline-flex items-start gap-1.5 text-sm",
-        state.ok ? "text-(--tone-success-fg)" : "text-destructive",
+        // Danger as TEXT is --tone-danger-fg, never --destructive: the
+        // latter is a FILL colour (white label at 4.6:1) and measures
+        // 3.90:1 as text on a dark card, i.e. it fails SC 1.4.3.
+        state.ok ? "text-(--tone-success-fg)" : "text-(--tone-danger-fg)",
         className,
       )}
     >

@@ -5,7 +5,7 @@ import { getTranslations } from "next-intl/server";
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
 import { MODULES, PERMISSIONS, ROLE_TEMPLATES } from "@/authz/catalog";
 import { AuthzError } from "@/authz/errors";
-import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
+import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { withTenant } from "@/db";
 import { listRoles, type RoleSummary } from "@/members/roles";
@@ -57,9 +57,15 @@ export default async function RolesPage() {
     return (
       <Page width="form">
         <PageHeader title={t("shortTitle")} />
-        <Callout tone="info" className="mt-4">
-          {t("noPermission")}
-        </Callout>
+        <div className="mt-6">
+          <SectionCard>
+            <EmptyState
+              variant="forbidden"
+              title={tCommon("forbiddenTitle")}
+              body={t("noPermission")}
+            />
+          </SectionCard>
+        </div>
       </Page>
     );
   }

@@ -108,7 +108,7 @@ export default async function MembersPage() {
           description={tCommon("members", { count: data.members.length })}
           contentClassName="p-0"
         >
-          <DataTable className="rounded-none border-0">
+          <DataTable flush>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -181,7 +181,7 @@ export default async function MembersPage() {
             description={t("pending.description")}
             contentClassName="p-0"
           >
-            <DataTable density="compact" className="rounded-none border-0">
+            <DataTable density="compact" flush>
               <Table>
                 <TableHeader>
                   <TableRow>

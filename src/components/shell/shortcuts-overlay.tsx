@@ -50,7 +50,7 @@ export function ShortcutsOverlay({
           <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
         <section>
-          <h3 className="text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+          <h3 className="eyebrow text-muted-foreground">
             {t("global")}
           </h3>
           <ul className="mt-1 divide-y divide-border">
@@ -61,7 +61,7 @@ export function ShortcutsOverlay({
         </section>
         {goEntries.length > 0 ? (
           <section>
-            <h3 className="text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+            <h3 className="eyebrow text-muted-foreground">
               {t("navigation")}
             </h3>
             <ul className="mt-1 divide-y divide-border">

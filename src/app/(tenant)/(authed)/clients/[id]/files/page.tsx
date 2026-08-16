@@ -61,7 +61,7 @@ export default async function ClientFilesPage({
         />
       )}
       {client.caps.uploadDocuments && client.status === "ACTIVE" ? (
-        <SectionCard title={tFiles("upload.title")}>
+        <SectionCard title={tFiles("upload.title")} description={t("emptyDescription")}>
           <UploadForm target={{ clientId: client.id, returnTo }} visibilityEnabled />
         </SectionCard>
       ) : null}

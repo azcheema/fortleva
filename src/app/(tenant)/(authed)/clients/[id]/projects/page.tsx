@@ -4,6 +4,7 @@ import {
   DataTable,
   EmptyState,
   EntityChip,
+  ProgressMeter,
   SectionCard,
   StatusBadge,
 } from "@/components/semantic";
@@ -19,7 +20,12 @@ import {
 import { loadClient } from "../data";
 import { CreateClientProjectForm } from "./create-project-form";
 
-/** Projects tab: the client's projects in the actor's scope + inline create (project:create, direct scope). */
+/**
+ * Projects tab: the client's projects in the actor's scope + inline
+ * create (project:create, direct scope). Same columns, same key rail
+ * and the same milestone meter as /projects — one table, two entry
+ * points, so a project cannot look like two different things.
+ */
 export default async function ClientProjectsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const client = await loadClient(id);
@@ -73,11 +79,19 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
                   <TableCell>
                     <StatusBadge domain="projectStatus" value={p.status} />
                   </TableCell>
-                  <TableCell className="num text-right">
-                    {tProjects("milestonesProgress", {
-                      done: p.milestoneDone,
-                      total: p.milestoneTotal,
-                    })}
+                  <TableCell className="text-right">
+                    {p.milestoneTotal === 0 ? (
+                      <span className="text-muted-foreground">{"—"}</span>
+                    ) : (
+                      <ProgressMeter
+                        value={p.milestoneDone}
+                        total={p.milestoneTotal}
+                        label={tProjects("milestonesProgress", {
+                          done: p.milestoneDone,
+                          total: p.milestoneTotal,
+                        })}
+                      />
+                    )}
                   </TableCell>
                   <TableCell className="num text-muted-foreground">
                     {format.dateTime(p.updatedAt, { dateStyle: "medium" })}

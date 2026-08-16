@@ -73,7 +73,7 @@ export function AuthShell({
         <div className="flex flex-col gap-6">
           <header className="flex flex-col gap-1.5">
             {eyebrow ? (
-              <p className="text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+              <p className="eyebrow text-muted-foreground">
                 {eyebrow}
               </p>
             ) : null}

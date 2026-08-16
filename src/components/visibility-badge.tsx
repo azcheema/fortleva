@@ -70,8 +70,18 @@ export function VisibilityBadge({
  * The row cue that goes WITH the chip, never instead of it: a 2px left
  * border in the client-visible colour on any row or card that a client
  * can see. Apply to the row element, not to a cell.
+ *
+ * The cue is --vis-client-cue, not --vis-client. The chip's FILL is
+ * identical in both themes because that is the pair the CVD gate
+ * measures; a 2px EDGE has to clear 3:1 against the surface it is drawn
+ * on, and the warm fill measures 2.10:1 on a white row. Light therefore
+ * draws the edge in the darker warm and dark keeps the fill; both clear
+ * 4:1 on card, canvas, muted and the row-hover surface.
+ *
+ * Both branches emit the 2px border so the cue costs no layout shift:
+ * an internal row reserves the same 2px, transparent.
  */
 export const visibilityRowCue = (value: VisibilityValue): string =>
   value === "CLIENT_VISIBLE"
-    ? "border-l-2 border-l-vis-client"
+    ? "border-l-2 border-l-vis-client-cue"
     : "border-l-2 border-l-transparent";

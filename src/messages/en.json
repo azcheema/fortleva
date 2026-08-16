@@ -36,7 +36,9 @@
     "contacts": "{count, plural, =1 {1 contact} other {# contacts}}",
     "unknown": "Unknown",
     "actions": "Actions",
-    "overflow": "+{count}"
+    "overflow": "+{count}",
+    "forbiddenTitle": "You don’t have access",
+    "sections": "Sections"
   },
   "nav": {
     "home": "Home",
@@ -843,7 +845,9 @@
       "empty": "Upload the first file",
       "emptyDescription": "Project files — private to your team unless marked \"Client can see\".",
       "uploadPortalOn": "The portal is on: a file marked \"Client can see\" reaches the client as soon as it is uploaded.",
-      "uploadPortalOff": "The portal is off, so nothing here reaches the client yet — the mark still travels with the file."
+      "uploadPortalOff": "The portal is off, so nothing here reaches the client yet — the mark still travels with the file.",
+      "noAccess": "Files aren’t open to your roles",
+      "noAccessDescription": "You can see this project, but not its documents. Someone who manages roles can add document access."
     },
     "team": {
       "empty": "No one assigned yet",
@@ -978,7 +982,9 @@
       "charts": "Chart series",
       "feedback": "Feedback",
       "elevation": "Elevation and motion",
-      "density": "Density"
+      "density": "Density",
+      "rail": "Rail, meters and people",
+      "railHint": "The timeline is one column: a 24px node carrying the state glyph, a 1px rail, and a warm 2px edge where a client can read the entry. Terminal states fill their node; cancelled stays outlined, because the quiet tone is transparent and a filled quiet node would have no ring at all."
     },
     "columns": {
       "token": "Token",

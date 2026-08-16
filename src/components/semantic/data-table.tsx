@@ -18,11 +18,19 @@ export const ROW_HEIGHT: Record<Density, string> = { compact: "32px", default: "
 export function DataTable({
   density = "default",
   stickyHeader = false,
+  flush = false,
   className,
   children,
 }: {
   density?: Density;
   stickyHeader?: boolean;
+  /**
+   * The table fills a SectionCard edge to edge (pair with
+   * `contentClassName="p-0"`), so it drops its own hairline and radius
+   * and lets the card's carry the surface. Without this a titled table
+   * draws two borders 16px apart.
+   */
+  flush?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -32,7 +40,8 @@ export function DataTable({
       data-density={density}
       style={{ "--row-h": ROW_HEIGHT[density] } as CSSProperties}
       className={cn(
-        "w-full overflow-x-auto rounded-card border border-border bg-card scrollbar-gutter-stable",
+        "w-full overflow-x-auto bg-card scrollbar-gutter-stable",
+        flush ? "rounded-none border-0" : "rounded-card border border-border",
         // The sticky header draws its own rule as an inset shadow: a
         // border-bottom on a sticky <th> detaches in Chromium.
         stickyHeader && "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-1",

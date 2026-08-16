@@ -36,7 +36,9 @@
     "contacts": "{count, plural, =1 {1 kontakt} other {# kontakter}}",
     "unknown": "Okänd",
     "actions": "Åtgärder",
-    "overflow": "+{count}"
+    "overflow": "+{count}",
+    "forbiddenTitle": "Du har inte behörighet",
+    "sections": "Avsnitt"
   },
   "nav": {
     "home": "Hem",
@@ -843,7 +845,9 @@
       "empty": "Ladda upp den första filen",
       "emptyDescription": "Projektfiler — privata för teamet om de inte märks \"Kunden kan se\".",
       "uploadPortalOn": "Portalen är på: en fil märkt ”Kunden kan se” når kunden så snart den laddats upp.",
-      "uploadPortalOff": "Portalen är av, så inget här når kunden ännu — märkningen följer ändå med filen."
+      "uploadPortalOff": "Portalen är av, så inget här når kunden ännu — märkningen följer ändå med filen.",
+      "noAccess": "Filer är inte öppna för dina roller",
+      "noAccessDescription": "Du ser det här projektet men inte dess dokument. Någon som hanterar roller kan lägga till dokumentåtkomst."
     },
     "team": {
       "empty": "Ingen tilldelad ännu",
@@ -978,7 +982,9 @@
       "charts": "Diagramserier",
       "feedback": "Återkoppling",
       "elevation": "Höjd och rörelse",
-      "density": "Täthet"
+      "density": "Täthet",
+      "rail": "Tidslinje, mätare och personer",
+      "railHint": "Tidslinjen är en enda kolumn: en nod på 24 px med tillståndets symbol, en 1 px lodrät linje och en varm 2 px kant där kunden kan läsa posten. Avslutade tillstånd fyller sin nod; avbrutna förblir konturerade, eftersom den tysta tonen är genomskinlig och en fylld tyst nod skulle sakna ring."
     },
     "columns": {
       "token": "Token",

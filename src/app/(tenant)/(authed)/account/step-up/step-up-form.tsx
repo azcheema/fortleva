@@ -28,7 +28,7 @@ export function StepUpForm({ next }: { next: string }) {
           maxLength={32}
           required
           autoFocus
-          className="num h-10 text-center font-mono text-lg tracking-[0.4em]"
+          className="otp-field h-10 text-lg"
         />
       </Field>
       <Button type="submit" size="lg" disabled={pending} className="w-full">

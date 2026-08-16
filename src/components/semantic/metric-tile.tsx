@@ -29,7 +29,7 @@ export function MetricTile({
 }) {
   const body = (
     <>
-      <span className="text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+      <span className="eyebrow text-muted-foreground">
         {label}
       </span>
       <span className="flex items-baseline gap-1.5">

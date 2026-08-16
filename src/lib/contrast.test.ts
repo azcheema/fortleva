@@ -341,6 +341,101 @@ describe.each(THEMES)("%s theme — pairs the screens actually render", (theme) 
   });
 });
 
+/* ------------------------------------------------------------------ *
+ * Set B: projects, files, members, settings, account
+ *
+ * These are the pairs those screens put on the glass that the earlier
+ * table did not reach: danger and success as PLAIN TEXT on a card
+ * (FormMessage, Field errors, the MetricTile delta) rather than inside
+ * a tint; tone rules used as marks (the timeline node ring, the
+ * progress meter, the toast icons); control boundaries inside a HOVERED
+ * table row, whose surface is --accent and not --card; and the warm 2px
+ * row cue that says a client can read this row.
+ * ------------------------------------------------------------------ */
+
+/** Every tone, including `quiet`, which the tinted-chip tables skip. */
+const ALL_TONES = [...TONES, "quiet"] as const;
+
+/** The four surfaces a row, a card body or a menu actually paints. */
+const BODY_SURFACES = ["--card", "--background", "--muted", "--accent", "--popover"];
+
+describe.each(THEMES)("%s theme — set B", (theme) => {
+  // FormMessage, <Field error> and the destructive menu item put tone
+  // text straight on a surface with no tint under it. --destructive is
+  // a FILL colour (white label at 4.6:1) and measures 3.90:1 as text on
+  // a dark card, which is why danger text is --tone-danger-fg.
+  it.each(ALL_TONES)("the %s tone reads as plain text on every body surface", (tone) => {
+    for (const surface of BODY_SURFACES) {
+      expect(
+        ratio(`--tone-${tone}-fg`, surface, theme),
+        `--tone-${tone}-fg on ${surface}`,
+      ).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  // Marks, not text: the timeline node's ring and glyph, the progress
+  // meter's fill on its --muted track, the toast icons, the quiet
+  // outline chip's hairline.
+  it.each(ALL_TONES)("the %s tone rule is a legible mark on every body surface", (tone) => {
+    for (const surface of BODY_SURFACES) {
+      expect(
+        ratio(`--tone-${tone}-line`, surface, theme),
+        `--tone-${tone}-line on ${surface}`,
+      ).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+  });
+
+  // A select or checkbox inside a table row: the row hovers to --accent,
+  // so the control's boundary has to clear 3:1 against the HOVER
+  // surface, not only against the resting one.
+  it.each(["--accent", "--muted"])("--input keeps its boundary on %s", (surface) => {
+    expect(ratio("--input", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  it.each(["--muted", "--accent"])("--ring is >= 3:1 on %s", (surface) => {
+    expect(ratio("--ring", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  // The destructive button draws its own focus outline; at offset 2px
+  // what it must beat is the surface behind the button.
+  it.each(["--card", "--background"])("--destructive is a visible outline on %s", (surface) => {
+    expect(ratio("--destructive", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  // SAFETY-CRITICAL. The 2px left border on a client-visible row is a
+  // second channel for "a client can read this", so it is held to the
+  // non-text floor on every surface a row is painted on — including the
+  // hover surface, where a warm edge is easiest to lose.
+  it.each(BODY_SURFACES)("the client-visible row cue is >= 3:1 on %s", (surface) => {
+    expect(ratio("--vis-client-cue", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  // "Private to team" is a transparent chip, so on a hovered row its
+  // label sits on --accent and its 1px border is its only boundary.
+  it("the internal chip survives the row-hover surface", () => {
+    expect(ratio("--vis-internal-fg", "--accent", theme)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(ratio("--vis-internal-border", "--accent", theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+});
+
+describe("colour-vision deficiency — the row cue", () => {
+  // The chip pair is asserted above; this is the OTHER half of the
+  // visibility system. A cue that collapses into its row under deutan
+  // would leave the leftmost edge of a files table saying nothing.
+  it.each(THEMES)("%s: the row cue stays separable from the row it marks", (theme) => {
+    for (const vision of VISION_TYPES) {
+      for (const surface of ["--card", "--accent"]) {
+        const cue = simulateCvd(rgb("--vis-client-cue", theme), vision);
+        const row = simulateCvd(rgb(surface, theme), vision);
+        expect(
+          round(deltaEOk(cue, row)),
+          `${theme}/${vision}/${surface}`,
+        ).toBeGreaterThanOrEqual(0.15);
+      }
+    }
+  });
+});
+
 describe("browser chrome matches the app canvas", () => {
   // <meta name="theme-color"> cannot read a custom property, so the two
   // literals in src/app/layout.tsx are the only place a colour is

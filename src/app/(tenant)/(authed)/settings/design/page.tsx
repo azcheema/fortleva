@@ -4,20 +4,30 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
-import { EmptyState } from "@/components/empty-state";
-import { FormMessage } from "@/components/form-message";
-import { Page, PageHeader } from "@/components/page-header";
-import { Callout } from "@/components/semantic/callout";
-import { DataTable } from "@/components/semantic/data-table";
-import { EntityChip } from "@/components/semantic/entity-chip";
-import { Field } from "@/components/semantic/field";
-import { HealthChip } from "@/components/semantic/health-chip";
-import { KeyboardHint } from "@/components/semantic/keyboard-hint";
-import { MetricTile } from "@/components/semantic/metric-tile";
-import { PriorityIndicator } from "@/components/semantic/priority-indicator";
-import { SectionCard } from "@/components/semantic/section-card";
-import { StatusBadge } from "@/components/semantic/status-badge";
-import { ThemeToggle } from "@/components/semantic/theme-toggle";
+import {
+  Callout,
+  DataTable,
+  EmptyState,
+  EntityChip,
+  Field,
+  FormMessage,
+  HealthChip,
+  KeyboardHint,
+  MemberAvatar,
+  MetricTile,
+  Page,
+  PageHeader,
+  PriorityIndicator,
+  ProgressMeter,
+  SectionCard,
+  StatusBadge,
+  StatusIcon,
+  ThemeToggle,
+  Timeline,
+  TimelineItem,
+  VisibilityBadge,
+  visibilityRowCue,
+} from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,7 +44,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { VisibilityBadge } from "@/components/visibility-badge";
 import { oklchToHex } from "@/lib/color";
 import { loadDesignTokens, type DesignTokens, type ThemeName } from "@/lib/css-tokens";
 import { ENTITY_HUES } from "@/lib/entity-color";
@@ -78,6 +87,18 @@ const ROLE_PAIRS: Pair[] = [
   { token: "--ring", against: "--card", floor: 3 },
   { token: "--fg-disabled", against: "--muted", floor: 3 },
   { token: "--border", against: "--card", floor: 1 },
+  // Set B. Danger as plain text (FormMessage, Field errors, the
+  // destructive menu item), control boundaries on the row-hover
+  // surface, and the safety-critical 2px row cue.
+  { token: "--tone-danger-fg", against: "--card", floor: 4.5 },
+  { token: "--tone-success-fg", against: "--card", floor: 4.5 },
+  { token: "--tone-quiet-fg", against: "--card", floor: 4.5 },
+  { token: "--tone-quiet-line", against: "--card", floor: 3 },
+  { token: "--input", against: "--accent", floor: 3 },
+  { token: "--ring", against: "--accent", floor: 3 },
+  { token: "--vis-client-cue", against: "--card", floor: 3 },
+  { token: "--vis-client-cue", against: "--accent", floor: 3 },
+  { token: "--vis-internal-border", against: "--accent", floor: 3 },
 ];
 
 const TONE_KEYS = ["neutral", "brand", "caution", "success", "danger", "quiet"] as const;
@@ -116,7 +137,7 @@ const TYPE_ROLES = [
   { key: "bodyStrong", className: "text-sm font-medium" },
   { key: "secondary", className: "text-xs text-muted-foreground" },
   { key: "caption", className: "text-2xs" },
-  { key: "tableHeader", className: "text-2xs font-semibold tracking-[0.04em] uppercase" },
+  { key: "tableHeader", className: "eyebrow" },
   { key: "code", className: "num font-mono text-xs" },
 ] as const;
 
@@ -253,7 +274,7 @@ export default async function DesignPage() {
     );
   };
 
-  const eyebrow = "text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase";
+  const eyebrow = "eyebrow text-muted-foreground";
 
   return (
     <Page width="wide" className="flex flex-col gap-6">
@@ -324,7 +345,7 @@ export default async function DesignPage() {
                       <span
                         aria-hidden="true"
                         style={{ background: `var(${token})` }}
-                        className="h-9 rounded-sm border border-border"
+                        className="h-8 rounded-sm border border-border"
                       />
                       <span className="num font-mono text-2xs text-muted-foreground">{step}</span>
                       <span className="num font-mono text-2xs text-muted-foreground">
@@ -344,7 +365,7 @@ export default async function DesignPage() {
                   <span
                     aria-hidden="true"
                     style={{ background: `var(${token})` }}
-                    className="h-9 rounded-sm border border-border"
+                    className="h-8 rounded-sm border border-border"
                   />
                   <span className="num font-mono text-2xs text-muted-foreground">
                     {token.replace("--color-surface-", "")}
@@ -512,14 +533,14 @@ export default async function DesignPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow className="border-l-2 border-l-transparent">
+                <TableRow className={visibilityRowCue("INTERNAL")}>
                   <TableCell>{t("entitySamples.one")}</TableCell>
                   <TableCell>
                     <VisibilityBadge value="INTERNAL" />
                   </TableCell>
                   <TableCell className="num text-right">{SAMPLE.hoursA}</TableCell>
                 </TableRow>
-                <TableRow className="border-l-2 border-l-vis-client">
+                <TableRow className={visibilityRowCue("CLIENT_VISIBLE")}>
                   <TableCell>{t("entitySamples.two")}</TableCell>
                   <TableCell>
                     <VisibilityBadge value="CLIENT_VISIBLE" />
@@ -540,7 +561,7 @@ export default async function DesignPage() {
                 <span
                   aria-hidden="true"
                   style={{ background: `var(${token})` }}
-                  className="h-9 rounded-sm border border-border"
+                  className="h-8 rounded-sm border border-border"
                 />
                 <span className="num font-mono text-2xs text-muted-foreground">
                   {ENTITY_HUES[index]}
@@ -577,7 +598,7 @@ export default async function DesignPage() {
               <span
                 aria-hidden="true"
                 style={{ background: `var(${token})` }}
-                className="h-9 rounded-sm border border-border"
+                className="h-8 rounded-sm border border-border"
               />
               <span className="num font-mono text-2xs text-muted-foreground">{token}</span>
               <span className="num font-mono text-2xs text-muted-foreground">
@@ -585,6 +606,56 @@ export default async function DesignPage() {
               </span>
             </div>
           ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard title={t("sections.rail")} description={t("sections.railHint")}>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Timeline>
+            {(
+              [
+                { value: "DONE", filled: true, cue: "INTERNAL", name: "one" },
+                { value: "IN_PROGRESS", filled: false, cue: "CLIENT_VISIBLE", name: "two" },
+                { value: "CANCELLED", filled: true, cue: "INTERNAL", name: "three" },
+                { value: "PLANNED", filled: false, cue: "INTERNAL", name: "four" },
+              ] as const
+            ).map((row, i, all) => {
+              const spec = STATUS_MAP.milestoneStatus[row.value];
+              return (
+                <TimelineItem
+                  key={row.value}
+                  node={<StatusIcon name={spec.icon} className="size-3.5" />}
+                  tone={spec.tone}
+                  filled={row.filled}
+                  last={i === all.length - 1}
+                  contentClassName={cn("flex flex-col gap-1.5", visibilityRowCue(row.cue))}
+                >
+                  <span
+                    className={cn(
+                      "text-sm",
+                      row.filled ? "text-muted-foreground line-through" : "font-medium",
+                    )}
+                  >
+                    {t(`entitySamples.${row.name}`)}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <StatusBadge domain="milestoneStatus" value={row.value} />
+                    <VisibilityBadge value={row.cue} />
+                  </span>
+                </TimelineItem>
+              );
+            })}
+          </Timeline>
+          <div className="flex flex-col gap-4">
+            <ProgressMeter value={3} total={8} label={formatNumber(locale, 3) + "/" + formatNumber(locale, 8)} />
+            <ProgressMeter value={8} total={8} label={formatNumber(locale, 8) + "/" + formatNumber(locale, 8)} />
+            <div className="flex items-center gap-2 border-t border-border pt-4">
+              <MemberAvatar id="cuid-1" name={t("entitySamples.one")} />
+              <MemberAvatar id="cuid-2" name={t("entitySamples.two")} size="default" />
+              <MemberAvatar id="cuid-3" name={t("entitySamples.three")} size="lg" />
+              <MemberAvatar id="cuid-4" name={t("entitySamples.four")} size="lg" />
+            </div>
+          </div>
         </div>
       </SectionCard>
 

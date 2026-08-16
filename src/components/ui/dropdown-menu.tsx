@@ -93,7 +93,7 @@ function DropdownMenuItem({
       className={cn(
         "group/dropdown-menu-item",
         MENU_ITEM,
-        "data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-(--tone-danger-bg) data-[variant=destructive]:focus:text-(--tone-danger-fg) data-[variant=destructive]:*:[svg]:text-current",
+        "data-[variant=destructive]:text-(--tone-danger-fg) data-[variant=destructive]:focus:bg-(--tone-danger-bg) data-[variant=destructive]:focus:text-(--tone-danger-fg) data-[variant=destructive]:*:[svg]:text-current",
         className
       )}
       {...props}
@@ -182,7 +182,7 @@ function DropdownMenuLabel({
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
-        "px-2 py-1.5 text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase data-inset:pl-7",
+        "px-2 py-1.5 eyebrow text-muted-foreground data-inset:pl-7",
         className
       )}
       {...props}

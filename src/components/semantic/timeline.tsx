@@ -62,7 +62,12 @@ export function TimelineItem({
         aria-hidden="true"
         className={cn(
           "relative z-1 flex size-6 shrink-0 items-center justify-center rounded-full border",
-          filled ? cn("border-transparent", TONE_CHIP[tone]) : cn("border-border bg-card", TONE_LINE[tone]),
+          // `quiet` is transparent by definition, so filling with it would
+          // erase the node's ring and leave one entry on the rail with no
+          // circle at all. A cancelled entry is terminal but still outlined.
+          filled && tone !== "quiet"
+            ? cn("border-transparent", TONE_CHIP[tone])
+            : cn("border-border bg-card", TONE_LINE[tone]),
         )}
       >
         {node}
