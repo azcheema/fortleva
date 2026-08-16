@@ -72,6 +72,11 @@ model Session {
   userAgent      String?      @map("user_agent")
   impersonatedBy String?      @map("impersonated_by")
   activeTenantId String?      @map("active_tenant_id")
+  /// Last interactive second-factor verification on THIS session
+  /// (SECURITY.md §3.5 step-up): stamped on TOTP/backup-code verify at
+  /// sign-in and by verifyStepUp(); NULL = no fresh factor. Trusted-device
+  /// logins leave it NULL on purpose.
+  mfaVerifiedAt  DateTime?    @map("mfa_verified_at") @db.Timestamptz(6)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -124,6 +129,11 @@ model TwoFactor {
   userId      String @unique @map("user_id")
   secret      String
   backupCodes String @map("backup_codes")
+  // twoFactor-plugin (1.6.26) required columns: enrollment is pending
+  // until the first code verifies; lockout counters for sign-in verify.
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0) @map("failed_verification_count")
+  lockedUntil             DateTime? @map("locked_until") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

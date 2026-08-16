@@ -11,6 +11,8 @@ import { absoluteUrl, appUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
 import { send } from "@/mailer";
 
+import { auditPlugin, memberDatabaseHooks, onPasswordResetHook } from "./audit-hooks";
+
 /**
  * Member-plane Better Auth instance (SECURITY.md §3): identity,
  * sessions, MFA, invitations acceptance. Better Auth owns identity and
@@ -22,6 +24,22 @@ import { send } from "@/mailer";
  * (membership is ours), sso, scim, oidcProvider, deviceAuthorization —
  * enable nothing unused.
  */
+/**
+ * Session columns Better Auth must know about to READ them back and to
+ * WRITE them: the adapter filters both directions by schema, so a column
+ * that is only in Prisma is silently dropped (plane would never leave
+ * MEMBER, mfaVerifiedAt would never be returned). input:false — never
+ * settable from a client body; hooks set them server-side.
+ */
+export const SESSION_ADDITIONAL_FIELDS = {
+  plane: { type: "string", required: false, input: false },
+  activeTenantId: { type: "string", required: false, input: false },
+  // Last interactive second factor on this session (SECURITY.md §3.5);
+  // stamped by memberDatabaseHooks + verifyStepUp(), read by
+  // requireTenantContext() → authorize() for ✦ codes.
+  mfaVerifiedAt: { type: "date", required: false, input: false },
+} as const;
+
 export const auth = betterAuth({
   baseURL: appUrl.origin,
   database: prismaAdapter(runtimeClient, { provider: "postgresql" }),
@@ -64,6 +82,8 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: true,
+    revokeSessionsOnPasswordReset: true,
+    onPasswordReset: onPasswordResetHook,
     sendResetPassword: async ({ user, url }) => {
       await send({
         to: user.email,
@@ -86,13 +106,18 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // rolling refresh daily
+    additionalFields: SESSION_ADDITIONAL_FIELDS,
   },
+  databaseHooks: memberDatabaseHooks,
   plugins: [
     twoFactor({
       issuer: "Fortleva",
       totpOptions: { digits: 6, period: 30 },
     }),
     admin(), // impersonation + ban machinery for the platform plane
+    // After twoFactor on purpose: its after-hooks must observe the
+    // FINAL newSession (null while a 2FA challenge is pending).
+    auditPlugin(),
     // passkey: moved to a separate package in better-auth 1.6.26; the
     // Passkey table is ready — wire @better-auth/passkey when enabled.
     nextCookies(), // must be last (Better Auth docs)

@@ -9,6 +9,9 @@ import { opsUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
 import { send } from "@/mailer";
 
+import { isFreshFactorPath } from "./audit-hooks";
+import { SESSION_ADDITIONAL_FIELDS } from "./index";
+
 /**
  * Platform-console Better Auth instance (SECURITY.md §2.2/§3.3):
  * SAME identity tables as the member instance, but its own cookie
@@ -45,8 +48,14 @@ export const platformAuth = betterAuth({
   databaseHooks: {
     session: {
       create: {
-        before: async (session) => ({
-          data: { ...session, plane: "PLATFORM" as const },
+        // plane stamp + the same step-up freshness rule as the member
+        // instance (a fresh TOTP at sign-in counts; nothing else does).
+        before: async (session, ctx) => ({
+          data: {
+            ...session,
+            plane: "PLATFORM" as const,
+            ...(isFreshFactorPath(ctx?.path) ? { mfaVerifiedAt: new Date() } : {}),
+          },
         }),
       },
     },
@@ -65,6 +74,7 @@ export const platformAuth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 8, // 8h — console sessions are short
     updateAge: 60 * 60,
+    additionalFields: SESSION_ADDITIONAL_FIELDS,
   },
   plugins: [twoFactor({ issuer: "Fortleva Ops" }), admin(), nextCookies()],
   trustedOrigins: [opsUrl.origin],

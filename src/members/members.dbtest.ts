@@ -92,7 +92,7 @@ describe("invite lifecycle", () => {
 
     await createInvite({
       tenantId,
-      actorMemberId: ownerMemberId,
+      actor: { memberId: ownerMemberId },
       email: invitee.email.toUpperCase(), // normalization check
       roleIds: [employeeRoleId],
     });
@@ -156,7 +156,7 @@ describe("invite lifecycle", () => {
     await expect(
       createInvite({
         tenantId,
-        actorMemberId: employeeMember!.id,
+        actor: { memberId: employeeMember!.id },
         email: `nope-${run}@test.invalid`,
         roleIds: [managerRole!.id],
       }),

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { withPlatform, withTenant } from "@/db";
-import { authorize, effectivePermissions } from "@/authz/authorize";
+import { authorize, effectivePermissions, type MemberActor } from "@/authz/authorize";
 import { AuthzError, deny } from "@/authz/errors";
 import { record } from "@/audit/record";
 import { inviteUrl } from "@/auth";
@@ -21,18 +21,20 @@ const hashToken = (token: string): string =>
 
 export async function createInvite(input: {
   tenantId: string;
-  actorMemberId: string;
+  /** From requireTenantContext() — carries the session's MFA posture. */
+  actor: MemberActor;
   email: string;
   roleIds: string[];
 }): Promise<{ inviteId: string }> {
   const email = input.email.trim().toLowerCase();
   const token = randomBytes(32).toString("base64url");
+  const actorMemberId = input.actor.memberId;
 
   const inviteId = await withTenant(
     input.tenantId,
-    { type: "member", id: input.actorMemberId },
+    { type: "member", id: actorMemberId },
     async (tx) => {
-      await authorize(tx, { memberId: input.actorMemberId }, "member:invite");
+      await authorize(tx, input.actor, "member:invite");
 
       const roles = await tx.role.findMany({
         where: { id: { in: input.roleIds } },
@@ -49,7 +51,7 @@ export async function createInvite(input: {
 
       // Subset guard: assigning a role grants its whole set — the
       // actor's effective set must be a superset (§7.1 rule 1).
-      const actorSet = await effectivePermissions(tx, input.actorMemberId);
+      const actorSet = await effectivePermissions(tx, actorMemberId);
       for (const role of roles) {
         for (const rp of role.rolePermissions) {
           if (!actorSet.has(rp.permission.code)) {
@@ -73,7 +75,7 @@ export async function createInvite(input: {
           email,
           proposedRoleIds: input.roleIds,
           tokenHash: hashToken(token),
-          invitedByMemberId: input.actorMemberId,
+          invitedByMemberId: actorMemberId,
           expiresAt: new Date(Date.now() + INVITE_TTL_MS),
         },
       });

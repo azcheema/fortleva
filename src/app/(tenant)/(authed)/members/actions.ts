@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createInvite } from "@/members/invites";
 import { requireTenantContext } from "@/members/tenant-context";
 import { AuthzError } from "@/authz/errors";
+import { handleAuthzRedirect } from "@/authz/redirects";
 
 const inviteSchema = z.object({
   email: z.email(),
@@ -18,7 +19,7 @@ export async function inviteMemberAction(
   _prev: InviteFormState,
   formData: FormData,
 ): Promise<InviteFormState> {
-  const { membership } = await requireTenantContext();
+  const { membership, actor } = await requireTenantContext();
 
   const parsed = inviteSchema.safeParse({
     email: formData.get("email"),
@@ -31,11 +32,14 @@ export async function inviteMemberAction(
   try {
     await createInvite({
       tenantId: membership.tenantId,
-      actorMemberId: membership.memberId,
+      actor,
       email: parsed.data.email,
       roleIds: parsed.data.roleIds,
     });
   } catch (e) {
+    // MFA_REQUIRED (deferred denial, AUTHZ.md §7.5) becomes navigation to
+    // step-up / enrolment; every other denial is shown inline.
+    handleAuthzRedirect(e, "/members");
     if (e instanceof AuthzError) {
       return { ok: false, message: e.message };
     }

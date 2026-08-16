@@ -12,13 +12,22 @@ export type DenialReason =
   | "NOT_FOUND" // gate 4 — out of scope: existence must not leak
   | "MFA_REQUIRED"; // ✦ permission without MFA enrolled / fresh factor
 
+/** Sub-reason carried by MFA_REQUIRED (AUTHZ.md §7.5): which remedy. */
+export type MfaRemedy = "enrol" | "step_up";
+
 export class AuthzError extends Error {
   constructor(
     readonly reason: DenialReason,
-    detail?: string,
+    readonly detail?: string,
   ) {
     super(detail ? `${reason}: ${detail}` : reason);
     this.name = "AuthzError";
+  }
+
+  /** For MFA_REQUIRED: "enrol" (no factor enrolled) or "step_up" (stale). */
+  get mfaRemedy(): MfaRemedy | undefined {
+    if (this.reason !== "MFA_REQUIRED") return undefined;
+    return this.detail === "enrol" ? "enrol" : "step_up";
   }
 }
 

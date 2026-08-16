@@ -11,12 +11,53 @@ import { AuthzError, deny } from "./errors";
  */
 
 const KNOWN_CODES = new Set(PERMISSIONS.map((p) => p.code));
+const PERMISSION_BY_CODE = new Map(PERMISSIONS.map((p) => [p.code, p]));
+
+/**
+ * Step-up ("sudo") window for ✦ codes (SECURITY.md §3.5/§3.6): a second
+ * factor verified on THIS session within the window satisfies authorize();
+ * older or absent ⇒ MFA_REQUIRED/step_up. Callers with a stricter window
+ * (vault, continuity box) call requireRecentMfa() after requireAccess().
+ */
+export const STEP_UP_WINDOW_MINUTES = 15;
+
+export type MfaState = {
+  /** User.twoFactorEnabled — a TOTP factor is enrolled. */
+  readonly enrolled: boolean;
+  /** Session.mfaVerifiedAt — last interactive factor on this session. */
+  readonly verifiedAt: Date | null;
+};
 
 export type MemberActor = {
   readonly memberId: string;
   /** Set during platform impersonation — restricts to view-class verbs. */
   readonly impersonated?: boolean;
+  /**
+   * MFA posture of the session (AUTHZ.md §7.5). Absent means "unknown"
+   * and is treated as not enrolled — a ✦ code then denies; only
+   * requireTenantContext() should build actors for ✦ paths.
+   */
+  readonly mfa?: MfaState;
 };
+
+const minutesSince = (at: Date, now: Date): number => (now.getTime() - at.getTime()) / 60_000;
+
+/**
+ * Sudo-window helper (AUTHZ.md §7.5, SECURITY.md §3.5): throws
+ * MFA_REQUIRED unless the actor's session carries a second-factor
+ * verification newer than `minutes`. Enrolment missing ⇒ "enrol";
+ * stale/absent verification ⇒ "step_up". Pure and synchronous-safe;
+ * async for call-site symmetry with authorize().
+ */
+export async function requireRecentMfa(
+  actor: MemberActor,
+  minutes: number,
+  now: Date = new Date(),
+): Promise<void> {
+  if (!actor.mfa?.enrolled) deny("MFA_REQUIRED", "enrol");
+  const at = actor.mfa?.verifiedAt;
+  if (!at || minutesSince(at, now) > minutes) deny("MFA_REQUIRED", "step_up");
+}
 
 /**
  * Effective permission set = union across held roles, minus
@@ -71,6 +112,12 @@ export async function authorize(
   }
   const held = await effectivePermissions(tx, actor.memberId);
   if (!held.has(code)) deny("FORBIDDEN");
+  // ✦ codes (§7.5): permission held is necessary, not sufficient — the
+  // session must carry an enrolled AND recent second factor. Checked
+  // AFTER the permission so MFA_REQUIRED never leaks "would be allowed".
+  if (PERMISSION_BY_CODE.get(code)?.requiresMfa) {
+    await requireRecentMfa(actor, STEP_UP_WINDOW_MINUTES);
+  }
 }
 
 export async function isAuthorized(

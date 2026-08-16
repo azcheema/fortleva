@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { TenantDb } from "@/db";
 import { tenantContextStorage } from "@/db/context";
-import { requestContext } from "@/lib/request-context";
+import { getRequestContext } from "@/lib/request-context";
 
 import { AUDIT_EVENTS, isAuditAction, type AuditAction } from "./catalog";
 
@@ -36,7 +36,9 @@ export async function record(tx: TenantDb, input: AuditInput): Promise<void> {
       `audit.record: "${input.action}" is a PLATFORM event — emit it through withPlatform, not from tenant context`,
     );
   }
-  const req = requestContext();
+  // requestId/ip/userAgent from the ALS store or the Next request scope
+  // (DATA_MODEL.md §3); NULL outside any request (jobs, tests).
+  const req = await getRequestContext();
 
   const actorType =
     ctx.principal.type === "member"
