@@ -54,6 +54,7 @@ export const AUDIT_EVENTS = {
   "client.archived": TENANT,
   "client.deleted": TENANT,
   "client.note_updated": TENANT,
+  "client.unarchived": TENANT,
   "project.created": TENANT,
   "project.updated": TENANT,
   "project.status_changed": TENANT,
@@ -64,6 +65,7 @@ export const AUDIT_EVENTS = {
   "project.hours_sharing_changed": TENANT,
   "project.viewed_as_contact": TENANT,
   "project_version.created": TENANT,
+  "project_version.updated": TENANT,
   "project_version.shipped": TENANT,
   "project_version.approval_requested": TENANT,
   "project_version.approved": TENANT,
@@ -74,9 +76,12 @@ export const AUDIT_EVENTS = {
   "service.created": TENANT,
   "service.updated": TENANT,
   "service.ended": TENANT,
+  "service.deleted": TENANT,
   // Contacts & portal (contact.created is a Phase-2 record emitter; the
   // rest are Phase 3 emitters — catalog is static)
   "contact.created": TENANT,
+  "contact.updated": TENANT,
+  "contact.deleted": TENANT,
   "contact.invited": TENANT,
   "contact.activated": TENANT,
   "contact.suspended": TENANT,

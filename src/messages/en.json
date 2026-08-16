@@ -22,7 +22,19 @@
     "expires": "expires {date}",
     "versions": "{count, plural, =1 {1 version} other {# versions}}",
     "members": "{count, plural, =1 {1 member} other {# members}}",
-    "permissions": "{count, plural, =1 {1 permission} other {# permissions}}"
+    "permissions": "{count, plural, =1 {1 permission} other {# permissions}}",
+    "saved": "Saved",
+    "yes": "Yes",
+    "no": "No",
+    "add": "Add",
+    "remove": "Remove",
+    "none": "None",
+    "archived": "archived",
+    "private": "Private to team",
+    "optional": "optional",
+    "projects": "{count, plural, =1 {1 project} other {# projects}}",
+    "contacts": "{count, plural, =1 {1 contact} other {# contacts}}",
+    "unknown": "Unknown"
   },
   "nav": {
     "home": "Home",
@@ -39,7 +51,9 @@
     "expand": "Expand navigation",
     "signedInAs": "Signed in as {email}",
     "workspace": "Workspace",
-    "switchWorkspace": "Switch workspace"
+    "switchWorkspace": "Switch workspace",
+    "clients": "Clients",
+    "projects": "Projects"
   },
   "shell": {
     "palette": {
@@ -309,7 +323,7 @@
       "internal": "Private to team",
       "clientVisible": "Client can see",
       "label": "Visibility",
-      "hint": "Files are private to your team. Sharing with a client arrives with Clients (Phase 2)."
+      "hint": "Files here are private to your team. Share with a client from the client's or project's Files tab."
     },
     "download": "Download",
     "delete": "Delete",
@@ -341,5 +355,340 @@
     "generic": "Something went wrong.",
     "invalidInput": "Invalid input.",
     "forbidden": "You do not have permission to do that."
+  },
+  "visibility": {
+    "label": "Visibility",
+    "internal": "Private to team",
+    "clientVisible": "Client can see"
+  },
+  "domainErrors": {
+    "NAME_REQUIRED": "A name is required.",
+    "KEY_INVALID": "Key must be 1–8 characters: a letter followed by letters or digits (e.g. ACME).",
+    "KEY_TAKEN": "That key is already used by another project.",
+    "EMAIL_INVALID": "That email address does not look right.",
+    "EMAIL_TAKEN": "A contact with that email already exists.",
+    "VERSION_TAKEN": "That version already exists in this project.",
+    "ALREADY_SHIPPED": "This version has already shipped.",
+    "ARCHIVED": "This record is archived — restore it first.",
+    "CLIENT_MISMATCH": "The project does not belong to that client.",
+    "INVALID_INPUT": "Invalid input.",
+    "NOT_FOUND": "Not found.",
+    "FORBIDDEN": "You do not have permission to do that.",
+    "NOT_ENTITLED": "Not included in your plan."
+  },
+  "assignments": {
+    "title": "Team",
+    "empty": "No one assigned yet",
+    "emptyDescription": "Assign a member — assignments decide who can see this.",
+    "pick": "Pick a member…",
+    "assign": "Assign",
+    "unassign": "Unassign",
+    "unassignConfirm": "Unassign?",
+    "added": "Assigned {name}",
+    "removed": "Unassigned {name}",
+    "assignedOn": "assigned {date}",
+    "noPresence": "Who is assigned, nothing more — no time or activity is shown here."
+  },
+  "clients": {
+    "title": "Clients",
+    "shortTitle": "Clients",
+    "columns": {
+      "name": "Client",
+      "status": "Status",
+      "projects": "Projects",
+      "contacts": "Contacts",
+      "members": "Assigned members"
+    },
+    "empty": {
+      "title": "Add the first client",
+      "description": "Type a company name below and press Enter — everything else can be filled in later.",
+      "scoped": "No clients in your scope",
+      "scopedDescription": "Ask a manager to assign you to a client or project."
+    },
+    "create": {
+      "name": "Company name",
+      "namePlaceholder": "Acme AB",
+      "orgNr": "Org. no.",
+      "submit": "Add client",
+      "submitting": "Adding…",
+      "created": "Added {name}"
+    },
+    "showArchived": "Show archived",
+    "hideArchived": "Hide archived",
+    "status": {
+      "ACTIVE": "Active",
+      "ARCHIVED": "Archived"
+    },
+    "tabs": {
+      "overview": "Overview",
+      "projects": "Projects",
+      "contacts": "Contacts",
+      "files": "Files"
+    },
+    "overview": {
+      "company": "Company",
+      "name": "Name",
+      "orgNr": "Org. no.",
+      "vatNumber": "VAT number",
+      "vatProfile": "VAT profile",
+      "vatProfiles": {
+        "none": "Not set",
+        "SE_DOMESTIC": "Swedish (domestic VAT)",
+        "EU_REVERSE_CHARGE": "EU reverse charge",
+        "OUTSIDE_SCOPE": "Outside VAT scope"
+      },
+      "countryCode": "Country (ISO)",
+      "addressLine1": "Address",
+      "addressLine2": "Address line 2",
+      "postalCode": "Postal code",
+      "city": "City",
+      "billingEmail": "Billing email",
+      "invoiceLocale": "Invoice language",
+      "notes": "Internal notes",
+      "notesHint": "Only your team can ever read this — never a client, never the portal.",
+      "notesPlaceholder": "Context for the team: who to call, quirks, history…",
+      "liftedNotice": "You see this client through a project assignment: the card and its contacts only.",
+      "archive": "Archive client",
+      "archiveConfirm": "Archive this client?",
+      "unarchive": "Restore client",
+      "archivedBanner": "This client is archived. Records are read-only until restored.",
+      "archivedToast": "Client archived",
+      "restoredToast": "Client restored"
+    },
+    "contacts": {
+      "title": "Contacts",
+      "empty": "Add the first contact",
+      "emptyDescription": "People at the client — records only for now; portal access arrives with the portal.",
+      "name": "Name",
+      "email": "Email",
+      "jobTitle": "Title",
+      "phone": "Phone",
+      "profile": "Portal profile",
+      "profiles": {
+        "CONTACT_PRIMARY": "Primary contact",
+        "CONTACT_COLLABORATOR": "Collaborator"
+      },
+      "add": "Add contact",
+      "adding": "Adding…",
+      "added": "Added {name}",
+      "remove": "Remove",
+      "removeConfirm": "Remove contact?",
+      "removed": "Contact removed",
+      "portalStatus": {
+        "NO_ACCESS": "No portal access",
+        "INVITED": "Invited",
+        "ACTIVE": "Portal active",
+        "SUSPENDED": "Suspended",
+        "REVOKED": "Revoked"
+      },
+      "portalHint": "Portal invitations arrive in Phase 3 — contacts are records until then."
+    },
+    "projects": {
+      "empty": "Create the first project",
+      "emptyDescription": "A key (e.g. ACME) and a name — milestones and files hang off it.",
+      "scopedEmpty": "No projects in your scope",
+      "scopedEmptyDescription": "You see this client through a project assignment; ask a manager for more."
+    },
+    "files": {
+      "empty": "Upload the first file",
+      "emptyDescription": "Client-level files — contracts, briefs. Private to your team unless you say otherwise.",
+      "noAccess": "Client-level files need a client assignment",
+      "noAccessDescription": "You reach this client through a project; its files live under that project."
+    },
+    "services": {
+      "title": "Services",
+      "empty": "Add the first service",
+      "emptyDescription": "What the client buys — hosting, retainers, one-offs — with renewal dates as data.",
+      "name": "Service",
+      "kind": "Kind",
+      "kinds": {
+        "ONE_TIME": "One-time",
+        "RECURRING": "Recurring"
+      },
+      "interval": "Interval",
+      "intervals": {
+        "MONTHLY": "Monthly",
+        "QUARTERLY": "Quarterly",
+        "YEARLY": "Yearly"
+      },
+      "price": "Price ex. VAT",
+      "currency": "Currency",
+      "renewsAt": "Renews",
+      "project": "Project",
+      "clientLevel": "Client level",
+      "status": {
+        "ACTIVE": "Active",
+        "PAUSED": "Paused",
+        "ENDED": "Ended"
+      },
+      "add": "Add service",
+      "adding": "Adding…",
+      "added": "Added {name}",
+      "end": "End",
+      "endConfirm": "End this service?",
+      "ended": "Service ended",
+      "delete": "Delete",
+      "deleteConfirm": "Delete service?",
+      "deleted": "Service deleted"
+    }
+  },
+  "projects": {
+    "title": "Projects",
+    "shortTitle": "Projects",
+    "columns": {
+      "key": "Key",
+      "name": "Project",
+      "status": "Status",
+      "client": "Client",
+      "lead": "Lead",
+      "milestones": "Milestones",
+      "updated": "Updated"
+    },
+    "empty": {
+      "title": "Create the first project",
+      "description": "Pick a client, choose a short key (e.g. ACME) and a name — press Enter.",
+      "scoped": "No projects in your scope",
+      "scopedDescription": "Ask a manager to assign you to a client or project.",
+      "noClients": "Add a client first",
+      "noClientsDescription": "Projects belong to a client."
+    },
+    "create": {
+      "title": "New project",
+      "client": "Client",
+      "key": "Key",
+      "keyPlaceholder": "ACME",
+      "keyHint": "1–8 characters, letters and digits — the prefix of every task (ACME-12).",
+      "name": "Name",
+      "namePlaceholder": "Acme website",
+      "submit": "Create project",
+      "submitting": "Creating…",
+      "created": "Created {key}"
+    },
+    "showArchived": "Show archived",
+    "hideArchived": "Hide archived",
+    "status": {
+      "PLANNED": "Planned",
+      "ACTIVE": "Active",
+      "PAUSED": "Paused",
+      "COMPLETED": "Completed",
+      "CANCELLED": "Cancelled",
+      "ARCHIVED": "Archived"
+    },
+    "milestonesProgress": "{done}/{total}",
+    "tabs": {
+      "overview": "Overview",
+      "board": "Board",
+      "backlog": "Backlog",
+      "timeline": "Timeline",
+      "files": "Files",
+      "team": "Team"
+    },
+    "overview": {
+      "details": "Details",
+      "name": "Name",
+      "key": "Key",
+      "keyHint": "Changing the key renames every task prefix; old keys are not redirected.",
+      "type": "Type",
+      "typePlaceholder": "Website, app, retainer…",
+      "scopeSummary": "Scope",
+      "status": "Status",
+      "startDate": "Start",
+      "launchDate": "Launch",
+      "productionUrl": "Production URL",
+      "stagingUrl": "Staging URL",
+      "internal": "Internal",
+      "internalHint": "These fields never leave the team — not in the portal, not in exports to clients.",
+      "repoUrl": "Repository",
+      "hostingNotes": "Hosting",
+      "hostingHint": "Pointers only — provider, plan, where to look. Never a secret.",
+      "internalNotes": "Internal notes",
+      "lead": "Lead",
+      "leadNone": "No lead",
+      "billingCurrency": "Billing currency",
+      "defaultBillable": "Time is billable by default",
+      "updateCadence": "Update cadence",
+      "cadences": {
+        "NONE": "None",
+        "WEEKLY": "Weekly",
+        "BIWEEKLY": "Every two weeks",
+        "MONTHLY": "Monthly"
+      },
+      "portal": "Client portal",
+      "portalEnabled": "Portal enabled for this project",
+      "portalHint": "The portal itself arrives in Phase 3. This switch is already the gate: off means a client sees nothing from this project, even items marked \"Client can see\".",
+      "portalOn": "Portal enabled",
+      "portalOff": "Portal disabled",
+      "hoursSharing": "Hours shown to the client",
+      "hoursModes": {
+        "NONE": "Nothing",
+        "HOURS": "Hours",
+        "BILLABLE_AMOUNT": "Hours and billable amount"
+      },
+      "archive": "Archive project",
+      "archiveConfirm": "Archive this project?",
+      "unarchive": "Restore project",
+      "archivedBanner": "This project is archived. It is read-only until restored.",
+      "archivedToast": "Project archived",
+      "restoredToast": "Project restored",
+      "client": "Client"
+    },
+    "timeline": {
+      "milestones": "Milestones",
+      "milestonesEmpty": "Add the first milestone",
+      "milestonesEmptyDescription": "Phases of the project in order — design, build, launch. Reorder with the arrows.",
+      "addMilestone": "Add milestone",
+      "milestoneName": "Milestone",
+      "milestonePlaceholder": "Design",
+      "due": "Due",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "moveTop": "Move to top",
+      "moveBottom": "Move to bottom",
+      "complete": "Complete",
+      "reopen": "Reopen",
+      "start": "Start",
+      "cancel": "Cancel",
+      "cancelConfirm": "Cancel milestone?",
+      "statuses": {
+        "PLANNED": "Planned",
+        "IN_PROGRESS": "In progress",
+        "PAUSED": "Paused",
+        "DONE": "Done",
+        "CANCELLED": "Cancelled"
+      },
+      "completedOn": "done {date}",
+      "dueOn": "due {date}",
+      "versions": "Versions",
+      "versionsEmpty": "Add the first version",
+      "versionsEmptyDescription": "What shipped when — a version label and release notes; ship it when it is live.",
+      "addVersion": "Add version",
+      "version": "Version",
+      "versionPlaceholder": "1.0",
+      "versionTitle": "Title",
+      "releaseNotes": "Release notes",
+      "ship": "Ship",
+      "shipConfirm": "Mark as shipped?",
+      "shipped": "Shipped {date}",
+      "draft": "Draft",
+      "shippedToast": "Shipped {version}",
+      "shippedVisibleHint": "Shipped versions are visible to the client once the portal is enabled.",
+      "more": "More actions"
+    },
+    "files": {
+      "empty": "Upload the first file",
+      "emptyDescription": "Project files — private to your team unless marked \"Client can see\"."
+    },
+    "team": {
+      "empty": "No one assigned yet",
+      "emptyDescription": "Assign a member to give them this project (and the client card)."
+    },
+    "board": {
+      "title": "Tasks arrive with the Work module",
+      "description": "The board — columns are states, position is priority — lands in the next phase."
+    },
+    "backlog": {
+      "title": "Tasks arrive with the Work module",
+      "description": "The backlog — every open task by rank — lands in the next phase."
+    }
   }
 }

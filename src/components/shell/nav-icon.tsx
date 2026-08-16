@@ -1,5 +1,7 @@
 import {
+  Building2Icon,
   FolderIcon,
+  FolderKanbanIcon,
   HouseIcon,
   KeyRoundIcon,
   SettingsIcon,
@@ -14,6 +16,8 @@ import type { NavIcon as NavIconName } from "@/app/(tenant)/(authed)/nav";
 /** One icon per concept, reused everywhere (UI.md §10). */
 const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   home: HouseIcon,
+  clients: Building2Icon,
+  projects: FolderKanbanIcon,
   files: FolderIcon,
   members: UsersIcon,
   settings: SettingsIcon,

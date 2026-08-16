@@ -17,10 +17,12 @@ import {
   softDeleteDocument,
   type CreateUploadResult,
 } from "@/documents/service";
+import { DomainError } from "@/lib/domain-error";
 import { requireTenantContext } from "@/members/tenant-context";
 
 /**
- * Server actions for /files. Tenant + actor come from the session
+ * Server actions for files — used by /files and by the client/project
+ * Files tabs. Tenant + actor come from the session
  * (requireTenantContext) — never from the form. Errors are flattened
  * to messages; MFA denials become step-up navigation.
  */
@@ -54,6 +56,7 @@ const messageOf = (t: Translate, e: unknown): string | null => {
         return t("nameInvalid");
     }
   }
+  if (e instanceof DomainError && e.code === "CLIENT_MISMATCH") return t("clientRequired");
   if (e instanceof DocumentError) {
     switch (e.code) {
       case "UPLOAD_MISSING":
@@ -80,6 +83,23 @@ async function guard<T>(path: string, fn: () => Promise<T>): Promise<ActionResul
   }
 }
 
+/** Same-origin absolute path only (never an open redirect). */
+const SAFE_PATH = /^\/(?![/\\])/;
+
+/**
+ * Where a document hangs (Phase 2): tenant-internal (nothing), a client
+ * (client-level) or a project. Scope is asserted server-side by the
+ * service; CLIENT_VISIBLE needs a client. `returnTo` is the page to
+ * revalidate / bounce back to.
+ */
+const targetSchema = z.object({
+  clientId: z.uuid().optional(),
+  projectId: z.uuid().optional(),
+  visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]).default("INTERNAL"),
+  returnTo: z.string().regex(SAFE_PATH).default("/files"),
+});
+export type UploadTarget = z.input<typeof targetSchema>;
+
 const presignSchema = z.object({
   name: z.string().min(1).max(255),
   contentType: z.string().max(255),
@@ -89,66 +109,87 @@ const presignSchema = z.object({
 
 export async function presignUploadAction(
   raw: z.input<typeof presignSchema>,
+  rawTarget: UploadTarget = {},
 ): Promise<ActionResult<CreateUploadResult>> {
   const { membership, actor } = await requireTenantContext();
   const parsed = presignSchema.safeParse(raw);
-  if (!parsed.success) {
+  const target = targetSchema.safeParse(rawTarget);
+  if (!parsed.success || !target.success) {
     const t = await getTranslations("files.errors");
     return { ok: false, message: t("invalidRequest") };
   }
-  return guard("/files", () =>
+  const { clientId, projectId, visibility, returnTo } = target.data;
+  return guard(returnTo, () =>
     createUpload(
       { tenantId: membership.tenantId, actor },
-      { ...parsed.data, visibility: "INTERNAL" },
+      { ...parsed.data, clientId, projectId, visibility },
     ),
   );
 }
 
 export async function commitUploadAction(
   fileObjectId: string,
+  rawTarget: UploadTarget = {},
 ): Promise<ActionResult<{ documentId: string }>> {
   const { membership, actor } = await requireTenantContext();
-  const result = await guard("/files", () =>
+  const target = targetSchema.safeParse(rawTarget);
+  if (!target.success) {
+    const t = await getTranslations("files.errors");
+    return { ok: false, message: t("invalidRequest") };
+  }
+  const { clientId, projectId, visibility, returnTo } = target.data;
+  const result = await guard(returnTo, () =>
     commitUpload(
       { tenantId: membership.tenantId, actor },
-      { fileObjectId, visibility: "INTERNAL" },
+      { fileObjectId, clientId, projectId, visibility },
     ),
   );
-  if (result.ok) revalidatePath("/files");
+  if (result.ok) revalidatePath(returnTo);
   return result;
 }
 
+const returnToOf = (formData: FormData): string => {
+  const v = formData.get("returnTo");
+  return typeof v === "string" && SAFE_PATH.test(v) ? v : "/files";
+};
+
+const withError = (path: string, message: string): string =>
+  `${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(message)}`;
+
 export async function downloadAction(formData: FormData): Promise<void> {
   const documentId = String(formData.get("documentId") ?? "");
+  const returnTo = returnToOf(formData);
   const { membership, actor } = await requireTenantContext();
-  const result = await guard("/files", () =>
+  const result = await guard(returnTo, () =>
     getDownloadUrl({ tenantId: membership.tenantId, actor }, documentId),
   );
-  if (!result.ok) redirect(`/files?error=${encodeURIComponent(result.message)}`);
+  if (!result.ok) redirect(withError(returnTo, result.message));
   // Off-origin, short-lived, Content-Disposition: attachment (SECURITY.md §5).
   redirect(result.value.url);
 }
 
 export async function deleteDocumentAction(formData: FormData): Promise<void> {
   const documentId = String(formData.get("documentId") ?? "");
+  const returnTo = returnToOf(formData);
   const { membership, actor } = await requireTenantContext();
-  const result = await guard("/files", () =>
+  const result = await guard(returnTo, () =>
     softDeleteDocument({ tenantId: membership.tenantId, actor }, documentId),
   );
-  if (!result.ok) redirect(`/files?error=${encodeURIComponent(result.message)}`);
-  revalidatePath("/files");
+  if (!result.ok) redirect(withError(returnTo, result.message));
+  revalidatePath(returnTo);
 }
 
-/** Wired for Phase 2 (clients): today the select is disabled in the UI
- * and CLIENT_VISIBLE is refused server-side without a clientId. */
+/** Flip INTERNAL ⇄ CLIENT_VISIBLE (document:change_visibility, audited);
+ * CLIENT_VISIBLE is refused server-side without a clientId. */
 export async function changeVisibilityAction(formData: FormData): Promise<void> {
   const documentId = String(formData.get("documentId") ?? "");
+  const returnTo = returnToOf(formData);
   const visibility =
     formData.get("visibility") === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL";
   const { membership, actor } = await requireTenantContext();
-  const result = await guard("/files", () =>
+  const result = await guard(returnTo, () =>
     changeVisibility({ tenantId: membership.tenantId, actor }, documentId, visibility),
   );
-  if (!result.ok) redirect(`/files?error=${encodeURIComponent(result.message)}`);
-  revalidatePath("/files");
+  if (!result.ok) redirect(withError(returnTo, result.message));
+  revalidatePath(returnTo);
 }

@@ -1,7 +1,8 @@
 import { record } from "@/audit/record";
 import { requireAccess, parseEntitlements } from "@/entitlements/resolver";
-import type { MemberActor } from "@/authz/authorize";
+import { assertInScope, scopeWhere, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
+import { fail } from "@/lib/domain-error";
 import { withPlatform, withTenant, type TenantDb } from "@/db";
 import { newId } from "@/lib/ids";
 import { getStorage } from "@/storage";
@@ -108,6 +109,42 @@ export type CreateUploadResult = {
   contentType: string;
 };
 
+/**
+ * Attachment target (Phase 2): a project document must sit in the
+ * actor's project scope (and clientId, if given, must be the project's
+ * client — else derived from it); a client-level document needs DIRECT
+ * client scope. Resolved inside the transaction, before any row/presign.
+ */
+async function resolveTarget(
+  tx: TenantDb,
+  actor: MemberActor,
+  clientId: string | null | undefined,
+  projectId: string | null | undefined,
+): Promise<{ clientId: string | null; projectId: string | null }> {
+  if (projectId) {
+    await assertInScope(tx, actor, { projectId });
+    const p = await tx.project.findFirst({ where: { id: projectId }, select: { clientId: true } });
+    if (!p) deny("NOT_FOUND");
+    if (clientId && clientId !== p!.clientId) fail("CLIENT_MISMATCH");
+    return { clientId: p!.clientId, projectId };
+  }
+  if (clientId) {
+    await assertInScope(tx, actor, { clientId });
+    return { clientId, projectId: null };
+  }
+  return { clientId: null, projectId: null };
+}
+
+/** Member-plane scope gate for an existing document row (NOT_FOUND outside scope). */
+async function assertDocumentInScope(
+  tx: TenantDb,
+  actor: MemberActor,
+  doc: { clientId: string | null; projectId: string | null },
+): Promise<void> {
+  if (doc.projectId) await assertInScope(tx, actor, { projectId: doc.projectId });
+  else if (doc.clientId) await assertInScope(tx, actor, { clientId: doc.clientId });
+}
+
 const assertVisibilityTarget = (
   visibility: Visibility,
   clientId: string | null | undefined,
@@ -126,7 +163,7 @@ export async function createUpload(
   input: CreateUploadInput,
 ): Promise<CreateUploadResult> {
   const { contentType } = validateUpload(input);
-  assertVisibilityTarget(input.visibility ?? "INTERNAL", input.clientId);
+  assertVisibilityTarget(input.visibility ?? "INTERNAL", input.clientId ?? input.projectId);
   if (!/^[0-9a-f]{64}$/i.test(input.sha256)) {
     throw new Error("createUpload: sha256 must be 64 hex chars");
   }
@@ -136,6 +173,7 @@ export async function createUpload(
 
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:upload");
+    await resolveTarget(tx, ctx.actor, input.clientId, input.projectId);
     await enforceStorageQuota(tx, ctx.tenantId, input.sizeBytes);
     await tx.fileObject.create({
       data: {
@@ -256,17 +294,18 @@ export async function commitUpload(
   input: CommitUploadInput,
 ): Promise<{ documentId: string }> {
   const visibility = input.visibility ?? "INTERNAL";
-  assertVisibilityTarget(visibility, input.clientId);
+  assertVisibilityTarget(visibility, input.clientId ?? input.projectId);
   const documentId = newId();
 
   await commitFileObject(ctx, input.fileObjectId, async (tx, obj) => {
+    const target = await resolveTarget(tx, ctx.actor, input.clientId, input.projectId);
     const name = (input.name ?? obj.originalFilename ?? "untitled").trim() || "untitled";
     await tx.document.create({
       data: {
         id: documentId,
         tenantId: ctx.tenantId,
-        clientId: input.clientId ?? null,
-        projectId: input.projectId ?? null,
+        clientId: target.clientId,
+        projectId: target.projectId,
         name,
         visibility,
         createdByMemberId: ctx.actor.memberId,
@@ -283,7 +322,13 @@ export async function commitUpload(
       action: "document.created",
       targetType: "Document",
       targetId: documentId,
-      metadata: { name, visibility, fileObjectId: obj.id, clientId: input.clientId ?? null },
+      metadata: {
+        name,
+        visibility,
+        fileObjectId: obj.id,
+        clientId: target.clientId,
+        projectId: target.projectId,
+      },
     });
   });
 
@@ -301,10 +346,13 @@ export async function addVersion(
       where: { id: input.documentId, deletedAt: null },
       select: {
         id: true,
+        clientId: true,
+        projectId: true,
         versions: { orderBy: { versionNumber: "desc" }, take: 1, select: { versionNumber: true } },
       },
     });
     if (!doc) deny("NOT_FOUND");
+    await assertDocumentInScope(tx, ctx.actor, doc!);
     versionNumber = (doc!.versions[0]?.versionNumber ?? 0) + 1;
     await tx.fileVersion.create({
       data: {
@@ -336,11 +384,36 @@ export type DocumentListItem = {
   updatedAt: Date;
 };
 
-export async function listDocuments(ctx: DocumentCtx): Promise<DocumentListItem[]> {
+export type DocumentFilter = {
+  /** Client-level documents of one client (projectId null). */
+  clientId?: string;
+  /** Documents of one project. */
+  projectId?: string;
+};
+
+/**
+ * document:view. Tenant-internal documents (no client) are visible to
+ * every holder; client/project documents compose the actor's scope
+ * (AUTHZ.md §4): direct client assignment for client-level rows, the
+ * project axis for project rows. Zero assignments ⇒ only tenant-internal.
+ */
+export async function listDocuments(
+  ctx: DocumentCtx,
+  filter: DocumentFilter = {},
+): Promise<DocumentListItem[]> {
   return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:view");
+    const scope = await scopeWhere(tx, ctx.actor, {
+      clientField: "clientId",
+      projectField: "projectId",
+    });
+    const where = filter.projectId
+      ? { projectId: filter.projectId, ...scope }
+      : filter.clientId
+        ? { clientId: filter.clientId, projectId: null, ...scope }
+        : { OR: [{ clientId: null }, { clientId: { not: null }, ...scope }] };
     const rows = await tx.document.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...where },
       orderBy: { updatedAt: "desc" },
       include: {
         _count: { select: { versions: true } },
@@ -418,6 +491,12 @@ export async function getDownloadUrl(
 ): Promise<{ url: string; filename: string }> {
   const target = await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:view");
+    const doc = await tx.document.findFirst({
+      where: { id: documentId, deletedAt: null },
+      select: { clientId: true, projectId: true },
+    });
+    if (!doc) deny("NOT_FOUND");
+    await assertDocumentInScope(tx, ctx.actor, doc!);
     return resolveDownload(tx, documentId);
   });
   const url = await getStorage().presignGet(target.key, {
@@ -441,9 +520,10 @@ export async function renameDocument(
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:edit");
     const doc = await tx.document.findFirst({
       where: { id: documentId, deletedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, name: true, clientId: true, projectId: true },
     });
     if (!doc) deny("NOT_FOUND");
+    await assertDocumentInScope(tx, ctx.actor, doc!);
     await tx.document.update({ where: { id: doc!.id }, data: { name: next } });
     await record(tx, {
       action: "document.renamed",
@@ -464,9 +544,10 @@ export async function changeVisibility(
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:change_visibility");
     const doc = await tx.document.findFirst({
       where: { id: documentId, deletedAt: null },
-      select: { id: true, clientId: true, visibility: true },
+      select: { id: true, clientId: true, projectId: true, visibility: true },
     });
     if (!doc) deny("NOT_FOUND");
+    await assertDocumentInScope(tx, ctx.actor, doc!);
     assertVisibilityTarget(visibility, doc!.clientId);
     if (doc!.visibility === visibility) return;
     await tx.document.update({ where: { id: doc!.id }, data: { visibility } });
@@ -486,9 +567,10 @@ export async function softDeleteDocument(ctx: DocumentCtx, documentId: string): 
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:delete");
     const doc = await tx.document.findFirst({
       where: { id: documentId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, clientId: true, projectId: true },
     });
     if (!doc) deny("NOT_FOUND");
+    await assertDocumentInScope(tx, ctx.actor, doc!);
     await tx.document.update({ where: { id: doc!.id }, data: { deletedAt: new Date() } });
     await record(tx, { action: "document.deleted", targetType: "Document", targetId: doc!.id });
   });

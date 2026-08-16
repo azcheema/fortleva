@@ -8,21 +8,18 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/native-select";
 
-import { commitUploadAction, presignUploadAction } from "./actions";
+import { commitUploadAction, presignUploadAction, type UploadTarget } from "./actions";
 
 /**
  * Upload = three hops, none of which stream bytes through the app:
  * 1) presign (server action → PENDING FileObject + signed PUT URL),
  * 2) PUT the bytes straight to storage with the signed headers,
  * 3) commit (server action → HEAD-verify → COMMITTED + Document).
+ * `target` attaches the document to a client or project (scope is
+ * asserted server-side); the visibility select is enabled only there —
+ * a tenant-internal file cannot be client-visible (schema CHECK).
  */
 
 const sha256Hex = async (file: File): Promise<string> => {
@@ -37,9 +34,17 @@ type Phase =
   | { kind: "busy"; step: "preparing" | "uploading" | "finishing" }
   | { kind: "error"; message: string };
 
-export function UploadForm() {
+export function UploadForm({
+  target = {},
+  visibilityEnabled = false,
+}: {
+  target?: Omit<UploadTarget, "visibility">;
+  visibilityEnabled?: boolean;
+}) {
   const t = useTranslations("files");
+  const tVis = useTranslations("visibility");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [visibility, setVisibility] = useState<"INTERNAL" | "CLIENT_VISIBLE">("INTERNAL");
   const [, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -48,15 +53,14 @@ export function UploadForm() {
     e.preventDefault();
     const file = inputRef.current?.files?.[0];
     if (!file) return;
+    const fullTarget: UploadTarget = { ...target, visibility };
 
     setPhase({ kind: "busy", step: "preparing" });
     const sha256 = await sha256Hex(file);
-    const presign = await presignUploadAction({
-      name: file.name,
-      contentType: file.type,
-      sizeBytes: file.size,
-      sha256,
-    });
+    const presign = await presignUploadAction(
+      { name: file.name, contentType: file.type, sizeBytes: file.size, sha256 },
+      fullTarget,
+    );
     if (!presign.ok) return setPhase({ kind: "error", message: presign.message });
 
     setPhase({ kind: "busy", step: "uploading" });
@@ -75,12 +79,13 @@ export function UploadForm() {
     }
 
     setPhase({ kind: "busy", step: "finishing" });
-    const commit = await commitUploadAction(presign.value.fileObjectId);
+    const commit = await commitUploadAction(presign.value.fileObjectId, fullTarget);
     if (!commit.ok) return setPhase({ kind: "error", message: commit.message });
 
     setPhase({ kind: "idle" });
     toast.success(t("upload.done", { name: file.name }));
     if (inputRef.current) inputRef.current.value = "";
+    setVisibility("INTERNAL");
     startTransition(() => router.refresh());
   };
 
@@ -93,17 +98,20 @@ export function UploadForm() {
         <Input id="upload-file" ref={inputRef} type="file" name="file" required disabled={busy} />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="upload-visibility">{t("visibility.label")}</Label>
-        <Select name="visibility" defaultValue="INTERNAL" disabled>
-          <SelectTrigger id="upload-visibility" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="INTERNAL">{t("visibility.internal")}</SelectItem>
-            <SelectItem value="CLIENT_VISIBLE">{t("visibility.clientVisible")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <span className="text-xs text-muted-foreground">{t("visibility.hint")}</span>
+        <Label htmlFor="upload-visibility">{tVis("label")}</Label>
+        <NativeSelect
+          id="upload-visibility"
+          name="visibility"
+          value={visibility}
+          onChange={(e) => setVisibility(e.target.value === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL")}
+          disabled={!visibilityEnabled || busy}
+        >
+          <option value="INTERNAL">{tVis("internal")}</option>
+          <option value="CLIENT_VISIBLE">{tVis("clientVisible")}</option>
+        </NativeSelect>
+        {!visibilityEnabled ? (
+          <span className="text-xs text-muted-foreground">{t("visibility.hint")}</span>
+        ) : null}
       </div>
       <Button type="submit" disabled={busy} className="self-start">
         {phase.kind === "busy" ? t(`upload.${phase.step}`) : t("upload.submit")}

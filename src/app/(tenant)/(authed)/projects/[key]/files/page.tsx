@@ -1,0 +1,67 @@
+import { getTranslations } from "next-intl/server";
+
+import { EmptyState } from "@/components/empty-state";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { listDocuments } from "@/documents/service";
+import { requireTenantContext } from "@/members/tenant-context";
+
+import { DocumentsTable } from "../../../files/documents-table";
+import { UploadForm } from "../../../files/upload-form";
+import { loadProject } from "../data";
+
+/**
+ * Files tab: project documents. Uploads attach to the project (clientId
+ * derived server-side); visibility select enabled — CLIENT_VISIBLE rows
+ * reach the portal only while Project.portalEnabled (trigger-derived).
+ */
+export default async function ProjectFilesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ key: string }>;
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { key } = await params;
+  const { error } = await searchParams;
+  const project = await loadProject(key);
+  const t = await getTranslations("projects.files");
+  const tFiles = await getTranslations("files");
+  const returnTo = `/projects/${project.key}/files`;
+  const { membership, actor } = await requireTenantContext();
+  const documents = project.caps.viewDocuments
+    ? await listDocuments({ tenantId: membership.tenantId, actor }, { projectId: project.id })
+    : [];
+
+  return (
+    <div className="flex flex-col gap-6">
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
+      {documents.length === 0 ? (
+        <EmptyState title={t("empty")} description={t("emptyDescription")} />
+      ) : (
+        <DocumentsTable
+          documents={documents}
+          returnTo={returnTo}
+          canDelete={project.caps.deleteDocuments}
+          canChangeVisibility={project.caps.changeDocumentVisibility}
+        />
+      )}
+      {project.caps.uploadDocuments && project.status !== "ARCHIVED" ? (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>{tFiles("upload.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <UploadForm target={{ projectId: project.id, returnTo }} visibilityEnabled />
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}

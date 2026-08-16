@@ -77,7 +77,7 @@ const isActive = (pathname: string, href: string): boolean =>
  * Member-plane app shell (UI.md §3, ARC-15): collapsible left rail
  * (icons only < 1280 px or when collapsed), header with tenant name +
  * timer-pill slot + palette/keymap/user menu, mobile bottom tabs
- * (Home / Files / More), ⌘K palette and `?` overlay. Data-driven from
+ * (Home / Projects / Clients / More), ⌘K palette and `?` overlay. Data-driven from
  * the nav registry — the layout has already filtered it by permission.
  */
 export function AppShell({
@@ -329,7 +329,7 @@ export function AppShell({
         <main className="flex-1 pb-16 md:pb-0">{children}</main>
       </div>
 
-      {/* Mobile bottom tabs: Home / Files / More (UI.md §3.3) */}
+      {/* Mobile bottom tabs: Home / Projects / Clients / More (UI.md §3.3; Board/Timer/Inbox arrive with their modules) */}
       <nav
         aria-label={t("menu")}
         className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-background md:hidden"

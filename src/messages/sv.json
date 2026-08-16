@@ -22,7 +22,19 @@
     "expires": "går ut {date}",
     "versions": "{count, plural, =1 {1 version} other {# versioner}}",
     "members": "{count, plural, =1 {1 medlem} other {# medlemmar}}",
-    "permissions": "{count, plural, =1 {1 behörighet} other {# behörigheter}}"
+    "permissions": "{count, plural, =1 {1 behörighet} other {# behörigheter}}",
+    "saved": "Sparat",
+    "yes": "Ja",
+    "no": "Nej",
+    "add": "Lägg till",
+    "remove": "Ta bort",
+    "none": "Ingen",
+    "archived": "arkiverad",
+    "private": "Privat för teamet",
+    "optional": "valfritt",
+    "projects": "{count, plural, =1 {1 projekt} other {# projekt}}",
+    "contacts": "{count, plural, =1 {1 kontakt} other {# kontakter}}",
+    "unknown": "Okänd"
   },
   "nav": {
     "home": "Hem",
@@ -39,7 +51,9 @@
     "expand": "Fäll ut navigeringen",
     "signedInAs": "Inloggad som {email}",
     "workspace": "Arbetsyta",
-    "switchWorkspace": "Byt arbetsyta"
+    "switchWorkspace": "Byt arbetsyta",
+    "clients": "Kunder",
+    "projects": "Projekt"
   },
   "shell": {
     "palette": {
@@ -309,7 +323,7 @@
       "internal": "Privat för teamet",
       "clientVisible": "Kunden kan se",
       "label": "Synlighet",
-      "hint": "Filer är privata för ditt team. Delning med kund kommer med Kunder (fas 2)."
+      "hint": "Filer här är privata för teamet. Dela med en kund från kundens eller projektets Filer-flik."
     },
     "download": "Ladda ner",
     "delete": "Ta bort",
@@ -341,5 +355,340 @@
     "generic": "Något gick fel.",
     "invalidInput": "Ogiltig inmatning.",
     "forbidden": "Du har inte behörighet att göra det."
+  },
+  "visibility": {
+    "label": "Synlighet",
+    "internal": "Privat för teamet",
+    "clientVisible": "Kunden kan se"
+  },
+  "domainErrors": {
+    "NAME_REQUIRED": "Ett namn krävs.",
+    "KEY_INVALID": "Nyckeln ska vara 1–8 tecken: en bokstav följd av bokstäver eller siffror (t.ex. ACME).",
+    "KEY_TAKEN": "Den nyckeln används redan av ett annat projekt.",
+    "EMAIL_INVALID": "E-postadressen ser inte rätt ut.",
+    "EMAIL_TAKEN": "Det finns redan en kontakt med den e-postadressen.",
+    "VERSION_TAKEN": "Den versionen finns redan i projektet.",
+    "ALREADY_SHIPPED": "Den här versionen är redan levererad.",
+    "ARCHIVED": "Posten är arkiverad — återställ den först.",
+    "CLIENT_MISMATCH": "Projektet tillhör inte den kunden.",
+    "INVALID_INPUT": "Ogiltig inmatning.",
+    "NOT_FOUND": "Hittades inte.",
+    "FORBIDDEN": "Du har inte behörighet att göra det.",
+    "NOT_ENTITLED": "Ingår inte i din plan."
+  },
+  "assignments": {
+    "title": "Team",
+    "empty": "Ingen tilldelad ännu",
+    "emptyDescription": "Tilldela en medlem — tilldelningar avgör vem som ser detta.",
+    "pick": "Välj medlem…",
+    "assign": "Tilldela",
+    "unassign": "Ta bort",
+    "unassignConfirm": "Ta bort tilldelningen?",
+    "added": "Tilldelade {name}",
+    "removed": "Tog bort {name}",
+    "assignedOn": "tilldelad {date}",
+    "noPresence": "Vem som är tilldelad, inget mer — ingen tid eller aktivitet visas här."
+  },
+  "clients": {
+    "title": "Kunder",
+    "shortTitle": "Kunder",
+    "columns": {
+      "name": "Kund",
+      "status": "Status",
+      "projects": "Projekt",
+      "contacts": "Kontakter",
+      "members": "Tilldelade medlemmar"
+    },
+    "empty": {
+      "title": "Lägg till den första kunden",
+      "description": "Skriv ett företagsnamn nedan och tryck Enter — resten kan fyllas i senare.",
+      "scoped": "Inga kunder i ditt omfång",
+      "scopedDescription": "Be en chef tilldela dig en kund eller ett projekt."
+    },
+    "create": {
+      "name": "Företagsnamn",
+      "namePlaceholder": "Acme AB",
+      "orgNr": "Org.nr",
+      "submit": "Lägg till kund",
+      "submitting": "Lägger till…",
+      "created": "La till {name}"
+    },
+    "showArchived": "Visa arkiverade",
+    "hideArchived": "Dölj arkiverade",
+    "status": {
+      "ACTIVE": "Aktiv",
+      "ARCHIVED": "Arkiverad"
+    },
+    "tabs": {
+      "overview": "Översikt",
+      "projects": "Projekt",
+      "contacts": "Kontakter",
+      "files": "Filer"
+    },
+    "overview": {
+      "company": "Företag",
+      "name": "Namn",
+      "orgNr": "Org.nr",
+      "vatNumber": "Momsregistreringsnummer",
+      "vatProfile": "Momsprofil",
+      "vatProfiles": {
+        "none": "Ej angiven",
+        "SE_DOMESTIC": "Svensk (inhemsk moms)",
+        "EU_REVERSE_CHARGE": "Omvänd skattskyldighet (EU)",
+        "OUTSIDE_SCOPE": "Utanför momsområdet"
+      },
+      "countryCode": "Land (ISO)",
+      "addressLine1": "Adress",
+      "addressLine2": "Adressrad 2",
+      "postalCode": "Postnummer",
+      "city": "Ort",
+      "billingEmail": "Faktura-e-post",
+      "invoiceLocale": "Fakturaspråk",
+      "notes": "Interna anteckningar",
+      "notesHint": "Bara ditt team kan någonsin läsa detta — aldrig en kund, aldrig portalen.",
+      "notesPlaceholder": "Kontext för teamet: vem man ringer, egenheter, historik…",
+      "liftedNotice": "Du ser den här kunden via en projekttilldelning: bara kortet och kontakterna.",
+      "archive": "Arkivera kund",
+      "archiveConfirm": "Arkivera kunden?",
+      "unarchive": "Återställ kund",
+      "archivedBanner": "Kunden är arkiverad. Posterna är skrivskyddade tills den återställs.",
+      "archivedToast": "Kunden arkiverad",
+      "restoredToast": "Kunden återställd"
+    },
+    "contacts": {
+      "title": "Kontakter",
+      "empty": "Lägg till den första kontakten",
+      "emptyDescription": "Personer hos kunden — bara poster tills vidare; portalåtkomst kommer med portalen.",
+      "name": "Namn",
+      "email": "E-post",
+      "jobTitle": "Titel",
+      "phone": "Telefon",
+      "profile": "Portalprofil",
+      "profiles": {
+        "CONTACT_PRIMARY": "Huvudkontakt",
+        "CONTACT_COLLABORATOR": "Medarbetare"
+      },
+      "add": "Lägg till kontakt",
+      "adding": "Lägger till…",
+      "added": "La till {name}",
+      "remove": "Ta bort",
+      "removeConfirm": "Ta bort kontakten?",
+      "removed": "Kontakten borttagen",
+      "portalStatus": {
+        "NO_ACCESS": "Ingen portalåtkomst",
+        "INVITED": "Inbjuden",
+        "ACTIVE": "Portal aktiv",
+        "SUSPENDED": "Avstängd",
+        "REVOKED": "Återkallad"
+      },
+      "portalHint": "Portalinbjudningar kommer i fas 3 — kontakter är poster tills dess."
+    },
+    "projects": {
+      "empty": "Skapa det första projektet",
+      "emptyDescription": "En nyckel (t.ex. ACME) och ett namn — milstolpar och filer hänger på det.",
+      "scopedEmpty": "Inga projekt i ditt omfång",
+      "scopedEmptyDescription": "Du ser den här kunden via en projekttilldelning; be en chef om mer."
+    },
+    "files": {
+      "empty": "Ladda upp den första filen",
+      "emptyDescription": "Filer på kundnivå — avtal, briefer. Privata för teamet om du inte säger annat.",
+      "noAccess": "Filer på kundnivå kräver en kundtilldelning",
+      "noAccessDescription": "Du når den här kunden via ett projekt; dess filer ligger under projektet."
+    },
+    "services": {
+      "title": "Tjänster",
+      "empty": "Lägg till den första tjänsten",
+      "emptyDescription": "Vad kunden köper — hosting, retainers, engångsjobb — med förnyelsedatum som data.",
+      "name": "Tjänst",
+      "kind": "Typ",
+      "kinds": {
+        "ONE_TIME": "Engång",
+        "RECURRING": "Återkommande"
+      },
+      "interval": "Intervall",
+      "intervals": {
+        "MONTHLY": "Månadsvis",
+        "QUARTERLY": "Kvartalsvis",
+        "YEARLY": "Årsvis"
+      },
+      "price": "Pris exkl. moms",
+      "currency": "Valuta",
+      "renewsAt": "Förnyas",
+      "project": "Projekt",
+      "clientLevel": "Kundnivå",
+      "status": {
+        "ACTIVE": "Aktiv",
+        "PAUSED": "Pausad",
+        "ENDED": "Avslutad"
+      },
+      "add": "Lägg till tjänst",
+      "adding": "Lägger till…",
+      "added": "La till {name}",
+      "end": "Avsluta",
+      "endConfirm": "Avsluta tjänsten?",
+      "ended": "Tjänsten avslutad",
+      "delete": "Ta bort",
+      "deleteConfirm": "Ta bort tjänsten?",
+      "deleted": "Tjänsten borttagen"
+    }
+  },
+  "projects": {
+    "title": "Projekt",
+    "shortTitle": "Projekt",
+    "columns": {
+      "key": "Nyckel",
+      "name": "Projekt",
+      "status": "Status",
+      "client": "Kund",
+      "lead": "Ansvarig",
+      "milestones": "Milstolpar",
+      "updated": "Uppdaterad"
+    },
+    "empty": {
+      "title": "Skapa det första projektet",
+      "description": "Välj kund, en kort nyckel (t.ex. ACME) och ett namn — tryck Enter.",
+      "scoped": "Inga projekt i ditt omfång",
+      "scopedDescription": "Be en chef tilldela dig en kund eller ett projekt.",
+      "noClients": "Lägg till en kund först",
+      "noClientsDescription": "Projekt tillhör en kund."
+    },
+    "create": {
+      "title": "Nytt projekt",
+      "client": "Kund",
+      "key": "Nyckel",
+      "keyPlaceholder": "ACME",
+      "keyHint": "1–8 tecken, bokstäver och siffror — prefixet för varje uppgift (ACME-12).",
+      "name": "Namn",
+      "namePlaceholder": "Acme webbplats",
+      "submit": "Skapa projekt",
+      "submitting": "Skapar…",
+      "created": "Skapade {key}"
+    },
+    "showArchived": "Visa arkiverade",
+    "hideArchived": "Dölj arkiverade",
+    "status": {
+      "PLANNED": "Planerat",
+      "ACTIVE": "Aktivt",
+      "PAUSED": "Pausat",
+      "COMPLETED": "Klart",
+      "CANCELLED": "Avbrutet",
+      "ARCHIVED": "Arkiverat"
+    },
+    "milestonesProgress": "{done}/{total}",
+    "tabs": {
+      "overview": "Översikt",
+      "board": "Tavla",
+      "backlog": "Backlogg",
+      "timeline": "Tidslinje",
+      "files": "Filer",
+      "team": "Team"
+    },
+    "overview": {
+      "details": "Detaljer",
+      "name": "Namn",
+      "key": "Nyckel",
+      "keyHint": "Att byta nyckel byter prefixet på varje uppgift; gamla nycklar omdirigeras inte.",
+      "type": "Typ",
+      "typePlaceholder": "Webbplats, app, retainer…",
+      "scopeSummary": "Omfattning",
+      "status": "Status",
+      "startDate": "Start",
+      "launchDate": "Lansering",
+      "productionUrl": "Produktions-URL",
+      "stagingUrl": "Staging-URL",
+      "internal": "Internt",
+      "internalHint": "De här fälten lämnar aldrig teamet — inte i portalen, inte i exporter till kunder.",
+      "repoUrl": "Kodförråd",
+      "hostingNotes": "Hosting",
+      "hostingHint": "Bara pekare — leverantör, plan, var man tittar. Aldrig en hemlighet.",
+      "internalNotes": "Interna anteckningar",
+      "lead": "Ansvarig",
+      "leadNone": "Ingen ansvarig",
+      "billingCurrency": "Faktureringsvaluta",
+      "defaultBillable": "Tid är fakturerbar som standard",
+      "updateCadence": "Uppdateringsfrekvens",
+      "cadences": {
+        "NONE": "Ingen",
+        "WEEKLY": "Veckovis",
+        "BIWEEKLY": "Varannan vecka",
+        "MONTHLY": "Månadsvis"
+      },
+      "portal": "Kundportal",
+      "portalEnabled": "Portalen aktiverad för projektet",
+      "portalHint": "Själva portalen kommer i fas 3. Den här brytaren är redan grinden: av betyder att kunden inte ser något från projektet, inte ens det som är märkt \"Kunden kan se\".",
+      "portalOn": "Portalen aktiverad",
+      "portalOff": "Portalen avaktiverad",
+      "hoursSharing": "Timmar som visas för kunden",
+      "hoursModes": {
+        "NONE": "Inget",
+        "HOURS": "Timmar",
+        "BILLABLE_AMOUNT": "Timmar och fakturerbart belopp"
+      },
+      "archive": "Arkivera projekt",
+      "archiveConfirm": "Arkivera projektet?",
+      "unarchive": "Återställ projekt",
+      "archivedBanner": "Projektet är arkiverat. Det är skrivskyddat tills det återställs.",
+      "archivedToast": "Projektet arkiverat",
+      "restoredToast": "Projektet återställt",
+      "client": "Kund"
+    },
+    "timeline": {
+      "milestones": "Milstolpar",
+      "milestonesEmpty": "Lägg till den första milstolpen",
+      "milestonesEmptyDescription": "Projektets faser i ordning — design, bygge, lansering. Ändra ordning med pilarna.",
+      "addMilestone": "Lägg till milstolpe",
+      "milestoneName": "Milstolpe",
+      "milestonePlaceholder": "Design",
+      "due": "Förfaller",
+      "moveUp": "Flytta upp",
+      "moveDown": "Flytta ner",
+      "moveTop": "Flytta överst",
+      "moveBottom": "Flytta underst",
+      "complete": "Slutför",
+      "reopen": "Öppna igen",
+      "start": "Starta",
+      "cancel": "Avbryt",
+      "cancelConfirm": "Avbryt milstolpen?",
+      "statuses": {
+        "PLANNED": "Planerad",
+        "IN_PROGRESS": "Pågår",
+        "PAUSED": "Pausad",
+        "DONE": "Klar",
+        "CANCELLED": "Avbruten"
+      },
+      "completedOn": "klar {date}",
+      "dueOn": "förfaller {date}",
+      "versions": "Versioner",
+      "versionsEmpty": "Lägg till den första versionen",
+      "versionsEmptyDescription": "Vad som levererades när — en versionsetikett och release notes; leverera när den är live.",
+      "addVersion": "Lägg till version",
+      "version": "Version",
+      "versionPlaceholder": "1.0",
+      "versionTitle": "Titel",
+      "releaseNotes": "Release notes",
+      "ship": "Leverera",
+      "shipConfirm": "Markera som levererad?",
+      "shipped": "Levererad {date}",
+      "draft": "Utkast",
+      "shippedToast": "Levererade {version}",
+      "shippedVisibleHint": "Levererade versioner syns för kunden när portalen är aktiverad.",
+      "more": "Fler åtgärder"
+    },
+    "files": {
+      "empty": "Ladda upp den första filen",
+      "emptyDescription": "Projektfiler — privata för teamet om de inte märks \"Kunden kan se\"."
+    },
+    "team": {
+      "empty": "Ingen tilldelad ännu",
+      "emptyDescription": "Tilldela en medlem för att ge hen projektet (och kundkortet)."
+    },
+    "board": {
+      "title": "Uppgifter kommer med Arbete-modulen",
+      "description": "Tavlan — kolumner är statusar, position är prioritet — kommer i nästa fas."
+    },
+    "backlog": {
+      "title": "Uppgifter kommer med Arbete-modulen",
+      "description": "Backloggen — alla öppna uppgifter efter rang — kommer i nästa fas."
+    }
   }
 }

@@ -7,19 +7,37 @@
  * tenant-specific. Icons are names so the registry stays serialisable
  * from server to client.
  */
-export type NavIcon = "home" | "files" | "members" | "settings" | "roles" | "preferences" | "account";
+export type NavIcon =
+  | "home"
+  | "clients"
+  | "projects"
+  | "files"
+  | "members"
+  | "settings"
+  | "roles"
+  | "preferences"
+  | "account";
 
 export type NavEntry = {
   id: string;
   /** Key under the `nav` message namespace. */
-  labelKey: "home" | "files" | "members" | "settings" | "roles" | "preferences" | "account";
+  labelKey:
+    | "home"
+    | "clients"
+    | "projects"
+    | "files"
+    | "members"
+    | "settings"
+    | "roles"
+    | "preferences"
+    | "account";
   href: string;
   icon: NavIcon;
   /** Permission that must be held for the entry to show; none = always. */
   permission?: string;
   /** Two-key "go to" sequence shown in the ? overlay and the palette (UI.md §6). */
   goKey?: string;
-  /** Shown as a bottom tab on mobile (Home / Files / More — UI.md §3.3). */
+  /** Shown as a bottom tab on mobile (Home / Projects / Clients / More until 2W — UI.md §3.3). */
   mobileTab?: boolean;
   children?: NavEntry[];
 };
