@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { MODEL_CLASSES, RLS_CLASSES, allClassifiedModels, classOf, tableNameOf } from "./model-registry";
+import {
+  MODEL_CLASSES,
+  PORTAL_ENABLED_FANOUT_TARGETS,
+  PORTAL_GATE_VARIANTS,
+  RLS_CLASSES,
+  allClassifiedModels,
+  classOf,
+  tableNameOf,
+} from "./model-registry";
 
 /**
  * TENANCY.md §11 model census. Prisma 7 has no runtime DMMF, so the
@@ -76,6 +84,37 @@ describe("model census (TENANCY.md §11)", () => {
       (m) => !(MODEL_CLASSES.tenant as readonly string[]).includes(m),
     );
     expect(strays, "RLS_CLASSES lists non-tenant-scoped models").toEqual([]);
+  });
+
+  it("portal-gate variants name class-B models only; fan-out targets are the projectScoped set minus project", () => {
+    const classB = new Set<string>([...RLS_CLASSES.B_clientScoped, ...RLS_CLASSES.B_projectScoped]);
+    for (const m of Object.keys(PORTAL_GATE_VARIANTS)) {
+      expect(classB.has(m), `${m} has a portal_gate variant but is not class B`).toBe(true);
+    }
+    // Structural rows must not carry a visibility field in the schema.
+    for (const m of Object.keys(PORTAL_GATE_VARIANTS)) {
+      const model = parsed.find((x) => camel(x.name) === m);
+      expect(model?.fields.has("visibility"), `${m}: structural gate ⇒ no visibility field`).toBe(false);
+    }
+    // Every other class-B model carries visibility.
+    for (const m of classB) {
+      if (m in PORTAL_GATE_VARIANTS) continue;
+      const model = parsed.find((x) => camel(x.name) === m);
+      expect(model?.fields.has("visibility"), `${m} must carry visibility`).toBe(true);
+    }
+    // Every projectScoped model carries portalEnabled; no other model does.
+    for (const m of RLS_CLASSES.B_projectScoped) {
+      const model = parsed.find((x) => camel(x.name) === m);
+      expect(model?.fields.has("portalEnabled"), `${m} must carry portalEnabled`).toBe(true);
+    }
+    for (const m of [...RLS_CLASSES.A, ...RLS_CLASSES.B_clientScoped]) {
+      const model = parsed.find((x) => camel(x.name) === m);
+      expect(model?.fields.has("portalEnabled"), `${m} must not carry portalEnabled`).toBe(false);
+    }
+    expect([...PORTAL_ENABLED_FANOUT_TARGETS].sort()).toEqual(
+      RLS_CLASSES.B_projectScoped.filter((m) => m !== "project").sort(),
+    );
+    expect(PORTAL_ENABLED_FANOUT_TARGETS).not.toContain("project");
   });
 
   it("tableNameOf matches every model's @@map", () => {

@@ -9,6 +9,14 @@ export { withUser } from "./with-user";
 export type { UserDb } from "./with-user";
 export type { Principal, TenantContext } from "./context";
 export { currentTenantId } from "./context";
-export { MODEL_CLASSES, RLS_CLASSES, classOf, allClassifiedModels, tableNameOf } from "./model-registry";
+export {
+  MODEL_CLASSES,
+  RLS_CLASSES,
+  PORTAL_GATE_VARIANTS,
+  PORTAL_ENABLED_FANOUT_TARGETS,
+  classOf,
+  allClassifiedModels,
+  tableNameOf,
+} from "./model-registry";
 export type { ModelClass, RlsClass } from "./model-registry";
 export { nextCounter } from "./counters";

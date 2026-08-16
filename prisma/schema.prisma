@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
-// Fortleva — Phase 1 schema.
+// Fortleva — Phase 1 + Phase 2 core-domain schema.
 // docs/DATA_MODEL.md is the canonical naming authority and carries the
 // full per-model rationale; comments here state only load-bearing
-// constraints. Client/Project/portal models land in Phase 2–3 per
+// constraints. Portal identity (Contact auth stack) lands in Phase 3 per
 // docs/PLAN.md. Physical names are snake_case (§1.3) so RLS policies,
 // REVOKEs and triggers in migrations resolve unquoted.
 // ═══════════════════════════════════════════════════════════════════
@@ -29,25 +29,25 @@ generator client {
 /// role is Better Auth admin-plugin plumbing mirrored from it, never
 /// read by any authorization path.
 model User {
-  id            String    @id @default(uuid(7))
-  name          String
-  email         String    @unique // lowercase-normalized at write
-  emailVerified Boolean   @default(false) @map("email_verified")
-  image         String?
-  locale        String?
-  platformRole  String?   @map("platform_role") // "SUPERADMIN" | null
-  role          String? // admin-plugin mirror only
-  twoFactorEnabled Boolean @default(false) @map("two_factor_enabled") // twoFactor-plugin required column
-  banned        Boolean   @default(false)
-  banReason     String?   @map("ban_reason")
-  banExpires    DateTime? @map("ban_expires") @db.Timestamptz(6)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String    @id @default(uuid(7))
+  name             String
+  email            String    @unique // lowercase-normalized at write
+  emailVerified    Boolean   @default(false) @map("email_verified")
+  image            String?
+  locale           String?
+  platformRole     String?   @map("platform_role") // "SUPERADMIN" | null
+  role             String? // admin-plugin mirror only
+  twoFactorEnabled Boolean   @default(false) @map("two_factor_enabled") // twoFactor-plugin required column
+  banned           Boolean   @default(false)
+  banReason        String?   @map("ban_reason")
+  banExpires       DateTime? @map("ban_expires") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  sessions   Session[]
-  accounts   Account[]
-  twoFactor  TwoFactor?
-  passkeys   Passkey[]
+  sessions    Session[]
+  accounts    Account[]
+  twoFactor   TwoFactor?
+  passkeys    Passkey[]
   memberships Member[]
 
   @@map("user")
@@ -125,10 +125,10 @@ model Verification {
 /// secret and backupCodes are ENCRYPTED with the app AES-256-GCM field
 /// service before storage (SECURITY.md §6).
 model TwoFactor {
-  id          String @id @default(uuid(7))
-  userId      String @unique @map("user_id")
-  secret      String
-  backupCodes String @map("backup_codes")
+  id                      String    @id @default(uuid(7))
+  userId                  String    @unique @map("user_id")
+  secret                  String
+  backupCodes             String    @map("backup_codes")
   // twoFactor-plugin (1.6.26) required columns: enrollment is pending
   // until the first code verifies; lockout counters for sign-in verify.
   verified                Boolean   @default(true)
@@ -211,14 +211,22 @@ model Tenant {
   createdAt             DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  members     Member[]
-  invites     MemberInvite[]
-  roles       Role[]
-  preferences TenantPreference[]
-  counters    TenantCounter[]
-  keys        TenantKey[]
-  documents   Document[]
-  fileObjects FileObject[]
+  members         Member[]
+  invites         MemberInvite[]
+  roles           Role[]
+  preferences     TenantPreference[]
+  counters        TenantCounter[]
+  keys            TenantKey[]
+  documents       Document[]
+  fileObjects     FileObject[]
+  clients         Client[]
+  contacts        Contact[]
+  memberClients   MemberClient[]
+  memberProjects  MemberProject[]
+  projects        Project[]
+  projectVersions ProjectVersion[]
+  milestones      Milestone[]
+  services        Service[]
 
   @@map("tenant")
 }
@@ -321,9 +329,11 @@ model Member {
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id])
-  user        User         @relation(fields: [userId], references: [id])
-  memberRoles MemberRole[]
+  tenant             Tenant          @relation(fields: [tenantId], references: [id])
+  user               User            @relation(fields: [userId], references: [id])
+  memberRoles        MemberRole[]
+  clientAssignments  MemberClient[]
+  projectAssignments MemberProject[]
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id]) // composite-FK target
@@ -442,6 +452,363 @@ model MemberRole {
 }
 
 // ───────────────────────────────────────────────────────────────────
+// CORE DOMAIN — clients, contacts, assignments, projects (Phase 2)
+// DATA_MODEL.md §6.3–§6.6 as amended 2026-08-16. RLS: Client/Contact
+// are class B_clientScoped (structural gate — client match only);
+// MemberClient/MemberProject class A; Project/ProjectVersion/Milestone/
+// Service class B_projectScoped with the trigger-maintained
+// portal_enabled column (TENANCY.md §7.2). Composite FKs everywhere.
+// ───────────────────────────────────────────────────────────────────
+
+enum ClientStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum VatProfile {
+  SE_DOMESTIC
+  EU_REVERSE_CHARGE
+  OUTSIDE_SCOPE
+}
+
+/// A customer of a tenant; a company record, never a login. The
+/// client-root: its portal_gate is `id = app.client_id` (no client_id
+/// column of its own). internalNotes is INTERNAL-ONLY — never selected
+/// by any portal projection, never in AuditEvent.metadata.
+model Client {
+  id                   String       @id @default(uuid(7))
+  tenantId             String       @map("tenant_id")
+  name                 String
+  orgNr                String?      @map("org_nr")
+  vatNumber            String?      @map("vat_number")
+  vatNumberValidatedAt DateTime?    @map("vat_number_validated_at") @db.Timestamptz(6)
+  vatProfile           VatProfile?  @map("vat_profile")
+  countryCode          String?      @map("country_code") @db.Char(2)
+  addressLine1         String?      @map("address_line1")
+  addressLine2         String?      @map("address_line2")
+  postalCode           String?      @map("postal_code")
+  city                 String?
+  billingEmail         String?      @map("billing_email")
+  invoiceLocale        String?      @map("invoice_locale")
+  status               ClientStatus @default(ACTIVE)
+  internalNotes        String?      @map("internal_notes") // INTERNAL-ONLY
+  archivedAt           DateTime?    @map("archived_at") @db.Timestamptz(6)
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  contacts        Contact[]
+  memberClients   MemberClient[]
+  projects        Project[]
+  projectVersions ProjectVersion[]
+  milestones      Milestone[]
+  services        Service[]
+  documents       Document[]
+
+  @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
+  @@index([tenantId, status])
+  @@index([tenantId, name])
+  @@map("client")
+}
+
+/// Fixed portal capability profiles (AUTHZ.md §8 is the source of truth
+/// for the split). Contacts never enter tenant RBAC.
+enum ContactPortalProfile {
+  CONTACT_PRIMARY
+  CONTACT_COLLABORATOR
+}
+
+enum ContactPortalStatus {
+  NO_ACCESS
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+/// A person at a client — RECORD ONLY in Phase 2 (portalStatus stays
+/// NO_ACCESS). The portal identity stack (ContactSession/Account/
+/// Verification, second Better Auth instance) lands in Phase 3 and maps
+/// onto the identity columns kept here. Structural class-B row: gated
+/// by client match only (no visibility column).
+model Contact {
+  id            String               @id @default(uuid(7))
+  tenantId      String               @map("tenant_id")
+  clientId      String               @map("client_id")
+  name          String
+  email         String               @unique // v1 global (single app domain); (tenantId, email) is the permanent unique
+  emailVerified Boolean              @default(false) @map("email_verified")
+  image         String?
+  title         String?
+  phone         String?
+  portalProfile ContactPortalProfile @default(CONTACT_COLLABORATOR) @map("portal_profile")
+  portalStatus  ContactPortalStatus  @default(NO_ACCESS) @map("portal_status")
+  invitedAt     DateTime?            @map("invited_at") @db.Timestamptz(6)
+  invitedById   String?              @map("invited_by_id") // Member.id, attribution, no FK
+  activatedAt   DateTime?            @map("activated_at") @db.Timestamptz(6)
+  locale        String?
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  client Client @relation(fields: [tenantId, clientId], references: [tenantId, id])
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, id]) // composite-FK target
+  @@index([tenantId, clientId])
+  @@map("contact")
+}
+
+/// Explicit member↔client assignment (decision #5, deny-default):
+/// scope over the client AND all its projects. Class A.
+model MemberClient {
+  tenantId     String   @map("tenant_id")
+  memberId     String   @map("member_id")
+  clientId     String   @map("client_id")
+  assignedById String?  @map("assigned_by_id") // attribution, no FK
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  member Member @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Cascade)
+  client Client @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, memberId, clientId])
+  @@index([tenantId, clientId])
+  @@map("member_client")
+}
+
+/// Explicit member↔project assignment: scope over that single project
+/// and its child records plus the parent client's card (AUTHZ.md §4).
+/// Class A.
+model MemberProject {
+  tenantId     String   @map("tenant_id")
+  memberId     String   @map("member_id")
+  projectId    String   @map("project_id")
+  assignedById String?  @map("assigned_by_id") // attribution, no FK
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  member  Member  @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Cascade)
+  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, memberId, projectId])
+  @@index([tenantId, projectId])
+  @@map("member_project")
+}
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+/// What the portal hours widget may show (CONTACT_PRIMARY only). Never per-member.
+enum HoursSharingMode {
+  NONE
+  HOURS
+  BILLABLE_AMOUNT
+}
+
+/// Progress-update cadence intent (Phase 3); ProjectUpdateSchedule (Phase 5) enforces it.
+enum UpdateCadence {
+  NONE
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+/// Belongs to exactly one Client. key (<= 8 chars, [A-Z][A-Z0-9]*,
+/// CHECK in migration) is the human WorkItem prefix ("ACME-12").
+/// portalEnabled is THE project-level portal gate: fanned out by
+/// trigger to portal_enabled on every projectScoped table; the row's
+/// own portal_gate is `client_id = app.client_id AND portal_enabled`
+/// (structural row — no visibility column). INTERNAL-ONLY fields
+/// (never in a portal projection): repoUrl, hostingNotes, internalNotes,
+/// leadMemberId. hostingNotes holds POINTERS only, never secrets.
+model Project {
+  id                 String           @id @default(uuid(7))
+  tenantId           String           @map("tenant_id")
+  clientId           String           @map("client_id")
+  key                String           @db.VarChar(8)
+  name               String
+  type               String? // free text — tenant taxonomy
+  scopeSummary       String?          @map("scope_summary")
+  status             ProjectStatus    @default(PLANNED)
+  startDate          DateTime?        @map("start_date") @db.Timestamptz(6)
+  launchDate         DateTime?        @map("launch_date") @db.Timestamptz(6)
+  productionUrl      String?          @map("production_url")
+  stagingUrl         String?          @map("staging_url")
+  repoUrl            String?          @map("repo_url") // INTERNAL-ONLY
+  hostingNotes       String?          @map("hosting_notes") // INTERNAL-ONLY, pointers only
+  internalNotes      String?          @map("internal_notes") // INTERNAL-ONLY
+  portalEnabled      Boolean          @default(false) @map("portal_enabled")
+  hoursSharingMode   HoursSharingMode @default(NONE) @map("hours_sharing_mode")
+  billingCurrency    String?          @map("billing_currency") @db.Char(3)
+  defaultBillable    Boolean          @default(true) @map("default_billable")
+  leadMemberId       String?          @map("lead_member_id") // Member.id, attribution, no FK
+  updateCadence      UpdateCadence    @default(NONE) @map("update_cadence")
+  autoArchiveMonths  Int?             @map("auto_archive_months")
+  autoStartParent    Boolean          @default(false) @map("auto_start_parent")
+  autoCompleteParent Boolean          @default(false) @map("auto_complete_parent")
+  archivedAt         DateTime?        @map("archived_at") @db.Timestamptz(6)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
+  client         Client           @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  memberProjects MemberProject[]
+  versions       ProjectVersion[]
+  milestones     Milestone[]
+  services       Service[]
+  documents      Document[]
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@unique([tenantId, key])
+  @@index([tenantId, clientId, status])
+  @@index([tenantId, status])
+  @@map("project")
+}
+
+enum ProjectVersionStatus {
+  DRAFT
+  SHIPPED
+}
+
+enum ApprovalStatus {
+  NOT_REQUESTED
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+/// What shipped when, with release notes (the version timeline).
+/// Structural-status gate (DATA_MODEL.md §6.5): no visibility column —
+/// SHIPPED ⇒ client-visible; portal_gate = client match AND
+/// status = 'SHIPPED' AND portal_enabled. Approval columns become
+/// contact-writable in Phase 3.
+model ProjectVersion {
+  id                  String               @id @default(uuid(7))
+  tenantId            String               @map("tenant_id")
+  clientId            String               @map("client_id") // denormalised for portal RLS
+  projectId           String               @map("project_id")
+  version             String
+  title               String?
+  releaseNotes        String?              @map("release_notes")
+  status              ProjectVersionStatus @default(DRAFT)
+  shippedAt           DateTime?            @map("shipped_at") @db.Timestamptz(6)
+  portalEnabled       Boolean              @default(false) @map("portal_enabled") // trigger-maintained
+  approvalStatus      ApprovalStatus       @default(NOT_REQUESTED) @map("approval_status")
+  approvalRequestedAt DateTime?            @map("approval_requested_at") @db.Timestamptz(6)
+  approvalDecidedAt   DateTime?            @map("approval_decided_at") @db.Timestamptz(6)
+  approvalByContactId String?              @map("approval_by_contact_id") // attribution, no FK
+  approvalNote        String?              @map("approval_note")
+  createdByMemberId   String?              @map("created_by_member_id") // attribution, no FK
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  client  Client  @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, projectId, version])
+  @@unique([tenantId, id]) // composite-FK target (WorkItem.fixedInVersionId)
+  @@index([tenantId, clientId, shippedAt])
+  @@map("project_version")
+}
+
+enum MilestoneStatus {
+  PLANNED
+  IN_PROGRESS
+  PAUSED
+  DONE
+  CANCELLED
+}
+
+/// The agency "phase" unit. rank is text COLLATE "C" (fractional-
+/// indexing; the collation is applied in the migration SQL — Prisma
+/// cannot express it). Carries visibility like every content row.
+model Milestone {
+  id            String          @id @default(uuid(7))
+  tenantId      String          @map("tenant_id")
+  clientId      String          @map("client_id") // denormalised for portal RLS
+  projectId     String          @map("project_id")
+  name          String
+  description   String?
+  status        MilestoneStatus @default(PLANNED)
+  dueAt         DateTime?       @map("due_at") @db.Timestamptz(6)
+  completedAt   DateTime?       @map("completed_at") @db.Timestamptz(6)
+  rank          String // text COLLATE "C" (migration SQL)
+  visibility    Visibility      @default(INTERNAL)
+  portalEnabled Boolean         @default(false) @map("portal_enabled") // trigger-maintained
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  client  Client  @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id]) // composite-FK target (WorkItem.milestoneId)
+  @@unique([tenantId, projectId, rank])
+  @@index([tenantId, clientId, visibility])
+  @@map("milestone")
+}
+
+enum ServiceKind {
+  ONE_TIME
+  RECURRING
+}
+
+enum BillingInterval {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum ServiceStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+/// What the client buys — a RECORD with renewal dates, not a billing
+/// engine. projectId optional: portal_enabled is trigger-maintained
+/// (TRUE when projectId is NULL, so the two-term client gate applies
+/// in effect; else the project's switch). internalNotes INTERNAL-ONLY.
+model Service {
+  id              String           @id @default(uuid(7))
+  tenantId        String           @map("tenant_id")
+  clientId        String           @map("client_id")
+  projectId       String?          @map("project_id")
+  name            String
+  description     String?
+  kind            ServiceKind
+  billingInterval BillingInterval? @map("billing_interval")
+  priceExVat      Decimal?         @map("price_ex_vat") @db.Decimal(12, 2)
+  currency        String?          @db.Char(3)
+  status          ServiceStatus    @default(ACTIVE)
+  startedAt       DateTime?        @map("started_at") @db.Timestamptz(6)
+  renewsAt        DateTime?        @map("renews_at") @db.Timestamptz(6)
+  endsAt          DateTime?        @map("ends_at") @db.Timestamptz(6)
+  internalNotes   String?          @map("internal_notes") // INTERNAL-ONLY
+  visibility      Visibility       @default(INTERNAL)
+  portalEnabled   Boolean          @default(false) @map("portal_enabled") // trigger-maintained
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  client  Client   @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project Project? @relation(fields: [tenantId, projectId], references: [tenantId, id])
+
+  @@unique([tenantId, id]) // composite-FK target (InvoiceLine.serviceId)
+  @@index([tenantId, clientId, status])
+  @@index([tenantId, renewsAt])
+  @@map("service")
+}
+
+// ───────────────────────────────────────────────────────────────────
 // DOCUMENTS & FILES (file bytes live in R2 EU; DB holds metadata)
 // ───────────────────────────────────────────────────────────────────
 
@@ -458,21 +825,41 @@ enum AttachableType {
   SERVICE
   CONTRACT
   INVOICE
-  ISSUE
+  ISSUE // DEPRECATED — never used; new anchors use WORK_ITEM (enum stays additive)
+  WORK_ITEM // 2W
+  COMMENT // 2W
+  PROJECT_UPDATE // Phase 3
+  CREDENTIAL // 3V — non-secret attachments only
+  ASSET // 3V
+}
+
+/// Drives the portal "Files & deliverables" grouping, the Client
+/// Timeline and the approval flow (DELIVERABLE only, Phase 3).
+enum DocumentKind {
+  GENERAL
+  DELIVERABLE
+  REPORT
+  EXPORT
 }
 
 /// clientId nullable = tenant-internal. CHECK constraint in migration:
-/// CLIENT_VISIBLE requires clientId. The composite FK to Client lands
-/// in Phase 2 with the Client table. (attachedToType, attachedToId) is
-/// a presentation anchor — authorization never traverses it.
+/// CLIENT_VISIBLE requires clientId. Composite FKs to Client/Project.
+/// (attachedToType, attachedToId) is a presentation anchor —
+/// authorization never traverses it.
+/// portalEnabled (class B_projectScoped, TENANCY.md §7.2) is trigger-
+/// maintained, never written by the app: TRUE when projectId is NULL
+/// (a client-level document has no project switch to honour), else the
+/// project's portalEnabled. The portal_gate ANDs it in.
 model Document {
   id                 String          @id @default(uuid(7))
   tenantId           String          @map("tenant_id")
-  clientId           String?         @map("client_id") // FK added in Phase 2
-  projectId          String?         @map("project_id") // FK added in Phase 2
+  clientId           String?         @map("client_id")
+  projectId          String?         @map("project_id")
   name               String
+  kind               DocumentKind    @default(GENERAL)
   tags               String[]        @default([])
   visibility         Visibility      @default(INTERNAL)
+  portalEnabled      Boolean         @default(false) @map("portal_enabled") // trigger-maintained
   attachedToType     AttachableType? @map("attached_to_type")
   attachedToId       String?         @map("attached_to_id")
   createdByMemberId  String?         @map("created_by_member_id") // attribution, no FK
@@ -482,11 +869,13 @@ model Document {
   updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant   Tenant        @relation(fields: [tenantId], references: [id])
+  client   Client?       @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project  Project?      @relation(fields: [tenantId, projectId], references: [tenantId, id])
   versions FileVersion[]
 
   @@unique([tenantId, id])
   @@index([tenantId, clientId, visibility])
-  @@index([tenantId, projectId])
+  @@index([tenantId, projectId, kind])
   @@index([tenantId, attachedToType, attachedToId])
   // Composite GIN needs the btree_gin extension (created in migration 001)
   @@index([tenantId(ops: raw("text_ops")), tags], type: Gin)

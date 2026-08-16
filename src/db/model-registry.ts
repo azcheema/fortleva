@@ -24,6 +24,14 @@ export const MODEL_CLASSES = {
     "tenantPreference",
     "tenantCounter",
     "tenantKey",
+    "client",
+    "contact",
+    "memberClient",
+    "memberProject",
+    "project",
+    "projectVersion",
+    "milestone",
+    "service",
     "document",
     "fileVersion",
     "fileObject",
@@ -52,10 +60,12 @@ export type ModelClass = keyof typeof MODEL_CLASSES;
  * pg_policies / information_schema:
  *   A               — portal_deny; NEVER a visibility column
  *   B_clientScoped  — client_id + visibility; portal_gate (two-term)
- *   B_projectScoped — + portal_enabled; portal_gate (three-term); Phase 2
+ *   B_projectScoped — + portal_enabled; portal_gate (three-term, qual
+ *                     contains portal_enabled)
  *   principalScoped — per-principal carve-out (Notification, later)
  * model-registry.test.ts asserts every MODEL_CLASSES.tenant model is in
- * exactly one subclass.
+ * exactly one subclass. Structural exceptions to the visibility term are
+ * declared in PORTAL_GATE_VARIANTS — never implied.
  */
 export const RLS_CLASSES = {
   A: [
@@ -67,15 +77,49 @@ export const RLS_CLASSES = {
     "tenantPreference",
     "tenantCounter",
     "tenantKey",
+    "memberClient",
+    "memberProject",
     "fileVersion",
     "fileObject",
   ],
-  B_clientScoped: ["document"],
-  B_projectScoped: [],
+  B_clientScoped: ["client", "contact"],
+  B_projectScoped: ["project", "projectVersion", "milestone", "service", "document"],
   principalScoped: [],
 } as const satisfies Record<string, readonly string[]>;
 
 export type RlsClass = keyof typeof RLS_CLASSES;
+
+/**
+ * Class-B rows whose portal_gate does NOT use the `visibility` column
+ * (TENANCY.md §7.1 "structural rows"; DATA_MODEL.md §2.3/§6.5). Every
+ * other class-B model carries `visibility` and the standard term. The
+ * posture test requires these tables to have NO visibility column (a
+ * structural row that grows one must move out of this map, deliberately)
+ * and, for projectScoped ones, still checks portal_enabled + gate qual.
+ *   client         — the client-root: gate is `id = app.client_id`
+ *   contact        — client match only
+ *   project        — client match AND its own portal_enabled
+ *   projectVersion — client match AND status = 'SHIPPED' AND portal_enabled
+ */
+export const PORTAL_GATE_VARIANTS = {
+  client: { clientColumn: "id", term: "structural" },
+  contact: { clientColumn: "client_id", term: "structural" },
+  project: { clientColumn: "client_id", term: "portal_enabled" },
+  projectVersion: { clientColumn: "client_id", term: "status" },
+} as const satisfies Record<
+  string,
+  { clientColumn: "id" | "client_id"; term: "structural" | "portal_enabled" | "status" }
+>;
+
+/**
+ * Tables the `project.portal_enabled` fan-out trigger must reach: every
+ * B_projectScoped model except `project` itself. The trigger body in the
+ * migration is checked against this list by the posture dbtest so a new
+ * projectScoped table cannot be forgotten (TENANCY.md §7.2).
+ */
+export const PORTAL_ENABLED_FANOUT_TARGETS = RLS_CLASSES.B_projectScoped.filter(
+  (m) => m !== "project",
+);
 
 /** Physical table name of a Prisma model (all models @@map to snake_case). */
 export const tableNameOf = (model: string): string =>
