@@ -2,9 +2,9 @@
 
 > **This file is the ongoing source of truth for build progress (§12).** Mark progress here — check items off, update the Status column, and append dated notes to the log at the bottom. Do not fork planning into other tools.
 >
-> Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Last updated: 2026-08-03 (Phase 0).
+> Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` superseded (kept for history, dated). Last updated: **2026-08-16** (work-management plan reconciled — decisions 11–13, phases 1b / 2W / 2T / 3V added; previous: 2026-08-03, Phase 0).
 >
-> Companion docs: `ARCHITECTURE.md` (stack decisions, ARC-xx), `TENANCY.md` (isolation), `AUTHZ.md` (permissions), `DATA_MODEL.md` (schema), `SECURITY.md` (threat model, GDPR), `CONTINUITY_BOX.md` (§8 design), `OPEN_QUESTIONS.md` (founder decisions).
+> Companion docs: `ARCHITECTURE.md` (stack decisions, ARC-xx), `TENANCY.md` (isolation), `AUTHZ.md` (permissions), `DATA_MODEL.md` (schema), `SECURITY.md` (threat model, GDPR), `CONTINUITY_BOX.md` (§8 design), `OPEN_QUESTIONS.md` (founder decisions), `UI.md` (UX conventions, added 2026-08-16), `research/2026-08-16-*` (evidence for the 2026-08-16 amendments — cite, do not re-derive).
 
 ---
 
@@ -21,7 +21,17 @@ The honest counterargument — earlier external validation of willingness-to-pay
 
 **Pushback — launch sequencing (§12).** The brief puts the continuity box (the strongest differentiator, §8) *after* productization. I keep that order — the box's trigger model consumes billing state (lapsed-subscription dead-man signals) and the platform console (veto disputes), both Phase 7 artifacts — but the consequence is that at the moment self-signup opens, the flagship feature does not exist yet. Recommendation: treat Phase 7's self-signup as a **soft launch** (waitlist / hand-onboarded tenants), and time the public marketing launch after Phase 8, so "the agency platform with a continuity box" is true on day one of saying it. Phases 7 and 8 should be planned back-to-back.
 
-**Note on Phase 6.** After the settled scope deltas (decision #7: reports v1 = uploaded PDFs as client-visible `Document`s + CrUX charts; GSC/GA4 sync → v2), Phase 6 is the smallest phase (~1–2 weeks). It keeps its number so all eight docs agree, but it can ship inside the Phase 5 release window if convenient — it is still independently shippable on its own.
+**Note on Phase 6.** After the settled scope deltas (decision #7: reports v1 = uploaded PDFs as client-visible `Document`s + CrUX charts; GSC/GA4 sync → v2), Phase 6 is the smallest phase (~1–2 weeks). It keeps its number so all eight docs agree, but it can ship inside the Phase 5 release window if convenient — it is still independently shippable on its own. *(2026-08-16: Phase 6 gains the project-health portfolio table and charts — now ~2 wk; see its section.)*
+
+**Ordering revised 2026-08-16 (work-management plan; decisions 11–13, `OPEN_QUESTIONS.md`).** The founder reviewed the running Phase-1 shell (commit `78b58b5`) and redirected the product toward *"the agency's operating system with a client window"*: ADO's data model (generic work item, category-typed states, single rank, Epic → Task → Subtask) under a Planner/Linear surface, plus first-class time & cost, selective client sharing with progress updates, and a per-client credential vault. Phase numbers 1–8 stay stable so every doc keeps agreeing; three new phases are inserted and one is rescoped. **The execution order is now `1b → 2 → 2W → 2T → 3 → 3V → 5 → 4 → 6 → 7 → 8`.** Why:
+
+- **Naxdor's daily need is tasks + time.** Boards after 2W (~week 10) and timers + cost after 2T (~week 14) are what makes tenant zero *use* the product every day; nothing else generates that validation loop as early.
+- **A portal without work behind it is empty.** Phase 3 (portal) now sits *after* 2W/2T so the first client logs in to shared tasks, milestones, updates and (opt-in) hours — not a bare timeline.
+- **5 before 4** because Phase 5 is short (Issue absorbed into `WorkItem`; what remains is digests/inbox/push/schedules) and completes the portal loop, while Naxdor keeps invoicing elsewhere a few more weeks. Phase 4 is regulated and long; it must not block the collaboration loop.
+- **3V after 3** because the vault's share links and portal credential submission ride the Contact identity stack. Security tests land before UI, no exceptions.
+- **CP3 may swap 3/3V or 4/5** — schema is unaffected either way (see Checkpoints).
+- Estimates: 1b 2–3 · 2 3 · 2W 5 · 2T 4 · 3 5 · 3V 3–4 · 5 2–3 · 4 7–8 · 6 2 ≈ **34–37 wk to end of Phase 6**, then 7/8 (~12–16 wk) as planned. Riskiest overruns: 2W (UX polish is unbounded — cap with the fixed screen list and the one-`<WorkItemView>` rule), 4 (regulated), 3V (security tests before UI).
+- **Step 0 was docs, not code:** the spec docs contradicted this direction (skip-list "Time tracking", "pointers not secrets", `Issue` entity, 63-code catalog test). They received dated amendments on 2026-08-16 — history struck, not deleted — before any phase build resumes.
 
 ---
 
@@ -40,14 +50,27 @@ The honest counterargument — earlier external validation of willingness-to-pay
 - [ ] Nothing Naxdor-specific in schema or UI — if only Naxdor needs it, it is a `TenantPreference` (§12).
 - [ ] Small, reviewable commits (§12).
 
+**Cross-cutting CI tripwires** *(added 2026-08-16 — work-management plan §4/§9; each ships in the same commit as the feature that could break it, from the phase noted)*:
+
+- [ ] **Registry posture test** (1b →): every class-B table registered as `clientScoped` / `projectScoped` in `model-registry` carries `client_id`, `visibility`, [`portal_enabled` for project-scoped], and a RESTRICTIVE `portal_gate` policy; every class-A table has `portal_deny`; no unforced table (`TENANCY.md` §7.2 amendment).
+- [ ] **Contact-writable census test** (2 →): the set of tables a contact principal can INSERT/UPDATE is exactly {`Comment` INSERT, `ProjectVersion` approval columns, `Document` approval columns, `Notification.readAt/archivedAt` on contact receiver rows, `ContinuityOpenRequest`}; anything else fails the build (`TENANCY.md` §7.2/§11).
+- [ ] **Portal forbidden-columns grep** (2 →): `modules/*/portal.ts` projections never select rates, cost, `internalNotes`, `repoUrl`, `hostingNotes`, non-billable flags, per-member breakdowns, state *names*, labels, links, `assigneeMemberId`, INTERNAL activity.
+- [ ] **"No INTERNAL fact to a Contact" fixtures** (2W →): INTERNAL child of a CLIENT_VISIBLE parent, INTERNAL comment on a CLIENT_VISIBLE item, unpublished update, hours widget when `hoursSharingMode=NONE`, state names, per-member data — each asserted invisible to a contact session *and* to View-as-Contact.
+- [ ] **Search lexeme probe** (2W →): a word that occurs only in an INTERNAL body never matches under a contact principal.
+- [ ] **Kind-catalog audience test** (2W →): every notification kind with `audience` CONTACT is `clientVisibleOnly`.
+- [ ] **`withPlatform` import-boundary test** (1b →): `withPlatform` / `getPlatformClient` importable only from `(platform)` routes and `jobs/`; never from `(tenant)`/`(portal)` code (ESLint rule + test).
+- [ ] Standing: INV-D1 cookie test; permission-catalog count + `requiresMfa` (✦) set pinned per phase; `audit.record()` throws on uncatalogued actions.
+
+**Checkpoint rule** *(added 2026-08-16)*: brainstorm checkpoints CP0–CP6 sit at the phase boundaries listed in **Checkpoints** below. Claude proceeds with the recorded default if a checkpoint is unanswered within 48 h — **except CP4 (vault stance), which blocks 3V**. Any phase demo that surfaces something wrong is itself a checkpoint: checkpoints are cheap, retrofits are not.
+
 **Parallel external tracks** (start early; they have lead time, not effort):
 
 | Track | Start | Needed by |
 |---|---|---|
-| Swedish lawyer engagement (question list in `CONTINUITY_BOX.md`; ToS/DPA review) | during Phase 6–7 | Phase 7 ToS, Phase 8 box |
+| Swedish lawyer engagement (question list in `CONTINUITY_BOX.md`; ToS/DPA review; **2026-08-16: + staff-notice / MBL 13 § / BFL-status-of-time-entries questions from `OPEN_QUESTIONS.md` decision 11**) | during Phase 6–7 (time-tracking questions: **before Naxdor uses 2T timers**) | Phase 7 ToS, Phase 8 box, 2T go-live |
 | Trademark clearance for "Fortleva" (classes 9 + 42; TMview/EUIPO/PRV/USPTO) | any time in Phases 1–6 — manual check, blocks only the purchase | before the Phase 7 domain buy |
 | Product domain purchase — product apex **+ platform-ops apex** (ARC-11) | **Phase 7** — no longer blocks Phase 1 (decision 9; `OPEN_QUESTIONS.md` B1) | Phase 7, leading the cutover by weeks (DNS + warm-up) |
-| ~~ESP selection~~ (settled: **Amazon SES `eu-central-1`**, decision 10) → **DNS on `mailer.naxdor.com` + AWS production-access request** | **now — still blocks Phase 1's invite flow**, but it is *shorter* than previously recorded: DNS/DKIM verification is minutes, AWS commits to an initial response within 24h (approval is not guaranteed — plan 1 business day, tolerate 4), and **sender warm-up is effectively zero** for transactional mail on shared IPs at this volume | Phase 1 week 1 — the invite flow can be coded against the sandbox throughout |
+| ~~ESP selection~~ (settled: **Amazon SES `eu-central-1`**, decision 10) → **DNS on `mailer.naxdor.com` + AWS production-access request** | **now — still blocks Phase 1's invite flow**, but it is *shorter* than previously recorded: DNS/DKIM verification is minutes, AWS commits to an initial response within 24h (approval is not guaranteed — plan 1 business day, tolerate 4), and **sender warm-up is effectively zero** for transactional mail on shared IPs at this volume. *(2026-08-16: not blocking code — the dev outbox carries every phase until Phase 3's real client invites; see "Founder-side provisioning".)* | Phase 3 contact invites (was: Phase 1 week 1) |
 | Idura (BankID) contract | only when a tenant asks | v2 |
 | Google OAuth / service-account sync decision | only if v2 sync confirmed | v2 |
 
@@ -55,23 +78,29 @@ The honest counterargument — earlier external validation of willingness-to-pay
 
 ## 3. Phase overview and status
 
+*(Table rewritten 2026-08-16: rows 1b, 2W, 2T, 3V inserted; estimates re-based on plan §4; execution order `1b → 2 → 2W → 2T → 3 → 3V → 5 → 4 → 6 → 7 → 8`; phase numbers kept stable for cross-doc references.)*
+
 | # | Phase | Shippable = | Est. (solo, full-time) | Status |
 |---|---|---|---|---|
-| 0 | Research & specification | 8 docs in `/docs`, founder review | done | `[~]` docs written, review pending |
-| 1 | Foundation | Naxdor team runs identity, roles, files, audit on it | 6–8 wk | `[ ]` |
-| 2 | Core domain | Naxdor runs clients & projects day-to-day on it | 4–5 wk | `[ ]` |
-| 3 | Client portal | First real Naxdor client uses the portal | 4–5 wk | `[ ]` |
-| 4 | Money | Naxdor issues compliant invoices & contracts through it | 6–8 wk | `[ ]` |
-| 5 | Collaboration | Clients report issues in-product, not by email | 3–4 wk | `[ ]` |
-| 6 | Reports | Clients see report documents + CrUX charts | 1–2 wk | `[ ]` |
+| 0 | Research & specification | 8 docs in `/docs`, founder review | done | `[x]` exit 2026-08-08 |
+| 1 | Foundation | Naxdor team runs identity, roles, files, audit on it | 6–8 wk (build so far ≈ 2 days of commits) | `[~]` build started 2026-08-08 (commits `43f49a1`…`78b58b5`); see progress log and the ticked list below |
+| 1b | Foundation close-out *(added 2026-08-16)* | i18n, UI kit, MFA enforcement, member admin, R2 transport, crypto v2, GUC/registry/counter helpers — every screen after this assumes them | 2–3 wk | `[ ]` |
+| 2 | Core domain, trimmed | Naxdor runs clients & projects day-to-day on it; scoping live; export v0 | 3 wk (was 4–5) | `[ ]` |
+| 2W | Work *(added 2026-08-16)* | Naxdor's live projects decomposed into epics/tasks on boards; `/home` is where staff start their day | 5 wk | `[ ]` |
+| 2T | Time *(added 2026-08-16)* | Naxdor staff track every billable hour with the timer; project money page reconciles | 4 wk | `[ ]` |
+| 3 | Client portal + sharing + updates | First real Naxdor client uses the portal: shared tasks, milestones, updates, files, requests | 5 wk (was 4–5) | `[ ]` |
+| 3V | Vault, asset registry, expirations *(added 2026-08-16)* | Naxdor's per-client logins live in the vault, every reveal audited; expirations feed live | 3–4 wk | `[ ]` |
+| 5 | Collaboration channels (rescoped) | Digests, inbox, push, update schedules — clients and staff are notified without a firehose | 2–3 wk (was 3–4) | `[ ]` |
+| 4 | Money (+ time → invoice bridge) | Naxdor issues compliant invoices & contracts through it; time flows to invoice lines and locks | 7–8 wk (was 6–8) | `[ ]` |
+| 6 | Reports | Clients see report documents + CrUX charts; staff see project-health portfolio | 2 wk (was 1–2) | `[ ]` |
 | 7 | Productization | A stranger signs up, pays, runs their agency | 6–8 wk | `[ ]` |
 | 8 | Continuity box | Boxes sealable/openable; platform continuity promises live | 6–8 wk + legal latency | `[ ]` |
 
-Total: roughly **9–11 months** solo full-time, including slack. Phase 1 is the one that must never be compressed — tenancy, permissions, and audit are foundations, not features, and are never retrofitted (§11).
+Total: **≈ 34–37 wk to the end of Phase 6** (was "roughly 9–11 months" for Phases 1–8), then **12–16 wk for Phases 7 + 8** — roughly **11–13 months** end-to-end solo full-time, including slack. Phase 1 (+1b) is the one that must never be compressed — tenancy, permissions, and audit are foundations, not features, and are never retrofitted (§11).
 
 ---
 
-## Phase 0 — Research & specification (current)
+## Phase 0 — Research & specification (complete)
 
 Scope: this document set. Exit criteria: founder reviews the 8 docs and resolves the **blocks-Phase-1** group in `OPEN_QUESTIONS.md` — **all resolved as of 2026-08-08**:
 
@@ -88,90 +117,279 @@ Downgrade semantics for portal Contacts is **not** a Phase-0 gate — it is C1, 
 
 - [x] Research sweep (12 areas, sourced)
 - [x] Docs drafted
-- [ ] Founder review + Phase-1 blockers resolved
+- [x] Founder review + Phase-1 blockers resolved *(2026-08-08)*
+- [x] *(2026-08-16)* Second research sweep — work management, time, portal sharing, vault (`docs/research/2026-08-16-*`); decisions 11–13 recorded; docs amended (Step 0 of the revised plan)
 
 ---
 
-## Phase 1 — Foundation (v1)
+## Phase 1 — Foundation (v1) — `[~]` build started 2026-08-08
 
 **Goal:** the multi-tenant, permissioned, audited shell everything else assumes. Naxdor as tenant zero (fresh start, no migration).
 
+*(Checkboxes reconciled 2026-08-16 against the codebase at `78b58b5` — `docs/research/2026-08-16-research-digest.md` "code-foundations". Items left open here that every later screen needs are pulled into **Phase 1b** below; founder-side provisioning items are tracked in the "Founder-side provisioning" table.)*
+
 **Scope:**
 
-- [ ] **Infrastructure day-1 irreversibles:** Neon project in Frankfurt `aws-eu-central-1` ([region is immutable](https://neon.com/docs/introduction/regions); London is UK, not EU); **both** R2 buckets created with `jurisdiction=eu` ([immutable at creation](https://developers.cloudflare.com/r2/reference/data-location/)) — the general document bucket **and** the dedicated continuity bucket with its 90-day bucket lock and no-delete runtime credential (ARC-06, `CONTINUITY_BOX.md` §2.6); **two CNAMEs under `naxdor.com` — `os` (tenant + portal) and `ops` (platform console) — pointed at Vercel, plus a dedicated sending subdomain for SPF/DKIM/DMARC** (ARC-11 / decision 9; **no domain purchase in Phase 1**, no zone delegation, Naxdor DNS and mail untouched; file delivery rides the `<account>.eu.r2.cloudflarestorage.com` endpoint and a branded files apex is v2); Vercel Pro, functions pinned EU.
+- [~] **Infrastructure day-1 irreversibles:** Neon project in Frankfurt `aws-eu-central-1` ([region is immutable](https://neon.com/docs/introduction/regions); London is UK, not EU) — **done 2026-08-08**; **both** R2 buckets created with `jurisdiction=eu` ([immutable at creation](https://developers.cloudflare.com/r2/reference/data-location/)) — the general document bucket **and** the dedicated continuity bucket with its 90-day bucket lock and no-delete runtime credential (ARC-06, `CONTINUITY_BOX.md` §2.6) — **outstanding (founder provisioning; local-disk transport until then)**; **two CNAMEs under `naxdor.com` — `os` (tenant + portal) and `ops` (platform console) — pointed at Vercel, plus a dedicated sending subdomain for SPF/DKIM/DMARC** (ARC-11 / decision 9; **no domain purchase in Phase 1**, no zone delegation, Naxdor DNS and mail untouched; file delivery rides the `<account>.eu.r2.cloudflarestorage.com` endpoint and a branded files apex is v2) — **outstanding**; Vercel Pro, functions pinned EU — **outstanding (Pro needed by 2W crons)**.
 
-  Note the asymmetry: unlike Neon's region and R2's bucket jurisdiction, the hostnames are **the one day-1 choice here that is *not* irreversible** — that is the whole point of decision 9, and it holds only while INV-D1/INV-D2 (ARC-11) hold. Build the config module and the CI cookie assertion in the same week as the CNAMEs, not later.
-- [ ] **Identity via Better Auth** (self-hosted, pinned ≥ 1.6.11, only needed plugins — `SECURITY.md` §3): `User` (member identity), email+password, **MFA** (TOTP + backup codes; mandatory for platform and owner-equivalent roles §9), member invitation flow, admin plugin for the platform plane. Better Auth owns identity/sessions/invitations **only**; all authorization lives in our own schema (ARC-04/05).
-- [ ] **Tenancy plumbing** (`TENANCY.md`): `Tenant`, `Member`; `withTenant(tenantId, principal, fn)` unit-of-work with transaction-local `set_config`; thin `$extends` belt; RLS with `FORCE ROW LEVEL SECURITY`, InitPlan-wrapped fail-closed policies; composite-FK discipline; `cell`/`databaseUrl` column on `Tenant` (physical-isolation seam, execution v2).
-- [ ] **Restricted DB roles:** SQL-created runtime role without BYPASSRLS (Neon console roles bypass RLS silently), separate owner/migrate credentials, `REVOKE UPDATE, DELETE` on `AuditEvent` + guard trigger.
-- [ ] **Tenant-scoped roles & permissions** (`AUTHZ.md`): `Role`, `Permission`, `RolePermission`, `MemberRole`; immutable **`resource:verb`** permission codes (colon — `AUTHZ.md` §3.1 is the normative source; audit actions stay `entity.verb` and portal capabilities stay `portal.area.verb`, three deliberately distinct namespaces); system role templates (templateKeys `owner` / `manager` / `admin` / `employee`, the owner template displayed as "CEO", + the portal Contact profiles) with clone-and-customize and the template-lineage/override columns from the first migration (B3); transactional escalation guards (grant-subset, last-owner, no-self-escalation); the single `authorize()` / `authorizedResourceIds()` seam with **deny-default resource scoping** semantics (decision #5 — zero assignments ⇒ see nothing; `client:view_all` seeded on CEO/Manager/Admin templates only). The `MemberClient` / `MemberProject` assignment tables are designed here but land physically in Phase 2 with their parent entities.
-- [ ] **CI isolation suite** (`TENANCY.md` §11): adversarial cross-tenant reads/writes enumerated from the Prisma DMMF, unset-GUC ⇒ zero rows, run on ephemeral Neon branches on every PR.
-- [ ] **AuditEvent + static event catalog:** `audit.record()` inside the same transaction as each mutation; write-time visibility (TENANT | PLATFORM); `impersonatorId` field and impersonation start/stop events (machinery now, console UI in Phase 7); retention job via Vercel cron.
-- [ ] **File storage:** `FileObject` + `FileVersion` (app-level versioning — R2 has no object versioning, and version rows are needed anyway; §10.6); presigned PUT with signed Content-Length + HEAD verification; per-tenant quota metering in Postgres; **`visibility` flag (`internal` default | `client_visible`) enforced at the data layer** (§5); downloads served off-origin from the R2 endpoint (`<account>.eu.r2.cloudflarestorage.com` — a separate apex by construction, no purchase) with `Content-Disposition: attachment`; extension/MIME allowlist (v1 anti-abuse; attachmentAV = v2); multipart-abort lifecycle rule + reconciliation job.
-- [ ] **Entitlement shape now, Stripe later (§4):** versioned `entitlements` JSON on `Tenant` (modules + limits: maxClients, maxMembers, maxStorageBytes), `TenantPreference`, `FeatureFlag`, and the four-gate resolver in evaluation order (flag kill-switch → entitlement → tenant preference → permission), all server-side, each gate one function call. Defaults: everything on, unlimited, until Phase 7.
-- [ ] **Encryption service seam** (`SECURITY.md` §6): own ~80-line AES-256-GCM service, `v1.<keyId>.<iv>.<ct>.<tag>` format, env-var key + offline copy, seam for per-tenant DEK/KMS later. Applied from day 1 to TOTP secrets/backup codes; ready for integration credentials (Phase 4).
-- [ ] **Three planes as route groups** (§2, ARC-12): platform / tenant / portal with separate middleware and session claims; portal group is a locked shell until Phase 3. Single app host (decision #8, hosted per decision #9): tenant resolved through one seam (hostname→tenantId lookup stubbed), no tenant slugs in absolute URLs, **one config module owning `APP_URL` + cookie attributes + mail sender (INV-D2) — the host is never hardcoded**, so the Phase 7 move off `naxdor.com` is a config edit plus DNS.
-- [ ] **Amazon SES `eu-central-1` — start in week 1** (decision 10, ARC-09). Sending domain **`mailer.naxdor.com`**, custom MAIL FROM **`bounce.mailer.naxdor.com`**. Order: pre-flight `aws sesv2 get-account --region eu-central-1` plus `list-email-identities` (catches a pre-existing identity or an already-pending review that would 409 the request) → publish `_dmarc.mailer` → create the identity → publish the three Easy DKIM CNAMEs (tokens only exist *after* creation; use the returned `SigningHostedZone`, never a hardcoded suffix, and no leading underscore on the token) → publish the MAIL FROM `MX 10 feedback-smtp.eu-central-1.amazonses.com` + `TXT v=spf1 include:amazonses.com ~all` on `bounce.mailer`, then enable custom MAIL FROM → IAM principal scoped by `ses:FromAddress` → config set + SNS + webhook + DLQ → mailbox-simulator tests → file production access. **`send.naxdor.com` is off-limits** — it carries a live SES `eu-west-1` MAIL FROM (ARC-09); audit and decommission it as a *separate* change with its own rollback. **Nothing on the `naxdor.com` apex may be touched** — not SPF, not MX, not `default._domainkey`, not `_dmarc`.
-- [ ] **Bounce/complaint webhook — EU-pinned, verified, dead-lettered.** The SNS payload carries recipient email addresses (personal data), so the route inherits ARC-01's `fra1` pin and that pin must be *asserted*, not assumed — Vercel Functions default to `iad1` (Washington DC), which would process recipient addresses in the US and contradict `SECURITY.md` §9.3. Also: confirm Vercel Deployment Protection does not cover the path (SNS posts the subscription confirmation unauthenticated and a 401 presents as a subscription that never confirms); SNS posts `Content-Type: text/plain`, so read the raw body; branch `bounceSubType` — `OnAccountSuppressionList`/`OnTenantSuppressionList` mean "already known bad", do **not** count toward the bounce rate, and must not trigger reputation escalation. Account-level suppression *management* APIs are disabled in the sandbox, so the GDPR erasure path (`DeleteSuppressedDestination`) is a **post-approval** task.
-- [ ] **Decide the reply path for `mailer.naxdor.com` before the first invite ships.** Nothing in the record set can *receive* mail, and the A-wildcard means a reply to `noreply@mailer.naxdor.com` reaches a Vercel edge with no SMTP listener and fails at connect. For an invite-driven product that is a product defect, not a mail detail. Cheapest fix: a `Reply-To` on a monitored SiteGround mailbox — changes no DNS, touches no apex record. (An MX on `mailer.` is also permitted; AWS's "MAIL FROM must not receive mail" restriction binds `bounce.mailer`, not `mailer`.)
-- [ ] i18n scaffold (sv + en); **transactional email adapter** — one `send(message)` interface over Amazon SES so the vendor stays swappable in a day (ARC-09); **do not name the module `ses`** — bare "SES" means Simple Electronic Signature in this codebase (`SignatureLevel.SES`, Phase 4), so name it `mail` / `mailer`; baseline auth rate limiting (Upstash Redis EU).
-- [ ] **Naxdor seeded as tenant zero**; founder = platform admin with MFA.
-- [ ] *Platform-continuity cheap win #1:* founder credentials into Bitwarden Emergency Access; self-hosting runbook skeleton in the repo (kept current every phase, formalized in Phase 8).
+  Note the asymmetry: unlike Neon's region and R2's bucket jurisdiction, the hostnames are **the one day-1 choice here that is *not* irreversible** — that is the whole point of decision 9, and it holds only while INV-D1/INV-D2 (ARC-11) hold. Build the config module and the CI cookie assertion in the same week as the CNAMEs, not later. *(Config module + INV-D1/D2 CI tests: done `323968a`.)*
+- [~] **Identity via Better Auth** (self-hosted, pinned ≥ 1.6.11, only needed plugins — `SECURITY.md` §3): `User` (member identity), email+password, **MFA** (TOTP + backup codes; mandatory for platform and owner-equivalent roles §9), member invitation flow, admin plugin for the platform plane. Better Auth owns identity/sessions/invitations **only**; all authorization lives in our own schema (ARC-04/05). — **Built:** member identity, email+password, TOTP enrolment + login step + backup codes, invite flow, account security page (`155f9a7`, `15750e5`, `78b58b5`; login-loop cookie fix `649a90c`). **Open → 1b:** `requiresMfa` enforcement (`MFA_REQUIRED` denial + `requireRecentMfa()`), Better Auth databaseHooks → `auth.*` audit events; passkey plugin not wired (table exists; v1.5).
+- [x] **Tenancy plumbing** (`TENANCY.md`): `Tenant`, `Member`; `withTenant(tenantId, principal, fn)` unit-of-work with transaction-local `set_config`; thin `$extends` belt; RLS with `FORCE ROW LEVEL SECURITY`, InitPlan-wrapped fail-closed policies; composite-FK discipline; `cell`/`databaseUrl` column on `Tenant` (physical-isolation seam, execution v2). — `43f49a1`, `6d525c5`. *(1b adds the `app.principal_id` GUC.)*
+- [x] **Restricted DB roles:** SQL-created runtime role without BYPASSRLS (Neon console roles bypass RLS silently), separate owner/migrate credentials, `REVOKE UPDATE, DELETE` on `AuditEvent` + guard trigger. — `43f49a1`.
+- [~] **Tenant-scoped roles & permissions** (`AUTHZ.md`): `Role`, `Permission`, `RolePermission`, `MemberRole`; immutable **`resource:verb`** permission codes (colon — `AUTHZ.md` §3.1 is the normative source; audit actions stay `entity.verb` and portal capabilities stay `portal.area.verb`, three deliberately distinct namespaces); system role templates (templateKeys `owner` / `manager` / `admin` / `employee`, the owner template displayed as "CEO", + the portal Contact profiles) with clone-and-customize and the template-lineage/override columns from the first migration (B3); transactional escalation guards (grant-subset, last-owner, no-self-escalation); the single `authorize()` / `authorizedResourceIds()` seam with **deny-default resource scoping** semantics (decision #5 — zero assignments ⇒ see nothing; `client:view_all` seeded on CEO/Manager/Admin templates only). The `MemberClient` / `MemberProject` assignment tables are designed here but land physically in Phase 2 with their parent entities. — **Built:** 63-code catalog + `catalog.test.ts` pin, templates seeded, B3 lineage/`TENANT_REVOKE` columns, `authorize()` seam (`6f0b0fc`, `6d525c5`). **Open → 1b:** escalation guards + role assign/revoke + `permissionsVersion` bump + B3 propagation utility. **Open → 2:** `authorizedResourceIds` (currently returns empty scope for non-`view_all` members — TODO at `authorize.ts` ~l.99–107).
+- [x] **CI isolation suite** (`TENANCY.md` §11): adversarial cross-tenant reads/writes enumerated from the Prisma DMMF, unset-GUC ⇒ zero rows, run on ephemeral Neon branches on every PR. — `6d525c5`, `78419e2`. *Deviation to record:* runs against a shared Neon dev DB serialised by a concurrency group, not an ephemeral branch per run — acceptable while solo; revisit when a second contributor exists.
+- [~] **AuditEvent + static event catalog:** `audit.record()` inside the same transaction as each mutation; write-time visibility (TENANT | PLATFORM); `impersonatorId` field and impersonation start/stop events (machinery now, console UI in Phase 7); retention job via Vercel cron. — **Built:** catalog + `record()` (throws on unknown action), append-only enforced (`230ca88`). **Open → 1b:** `withRequestContext()` has no callers (rows carry NULL `requestId/ip/userAgent`). **Open → 5:** retention cron.
+- [~] **File storage:** `FileObject` + `FileVersion` (app-level versioning — R2 has no object versioning, and version rows are needed anyway; §10.6); presigned PUT with signed Content-Length + HEAD verification; per-tenant quota metering in Postgres; **`visibility` flag (`internal` default | `client_visible`) enforced at the data layer** (§5); downloads served off-origin from the R2 endpoint (`<account>.eu.r2.cloudflarestorage.com` — a separate apex by construction, no purchase) with `Content-Disposition: attachment`; extension/MIME allowlist (v1 anti-abuse; attachmentAV = v2); multipart-abort lifecycle rule + reconciliation job. — **Built:** schema (`FileObject`/`FileVersion`/`Document`) with `visibility`, denormalised `clientId`, `portal_gate` policy (`43f49a1`). **Open → 1b:** R2 transport (`StorageTransport` interface + local-disk dev transport), quota, commit, allowlist, reconciliation.
+- [x] **Entitlement shape now, Stripe later (§4):** versioned `entitlements` JSON on `Tenant` (modules + limits: maxClients, maxMembers, maxStorageBytes), `TenantPreference`, `FeatureFlag`, and the four-gate resolver in evaluation order (flag kill-switch → entitlement → tenant preference → permission), all server-side, each gate one function call. Defaults: everything on, unlimited, until Phase 7. — `230ca88`. *(2026-08-16: `entitlementsSchema.schemaVersion` → 2 with keys `work`, `time`, `vault` lands in 2W/2T/3V; `issues` kept as deprecated alias.)*
+- [x] **Encryption service seam** (`SECURITY.md` §6): own ~80-line AES-256-GCM service, `v1.<keyId>.<iv>.<ct>.<tag>` format, env-var key + offline copy, seam for per-tenant DEK/KMS later. Applied from day 1 to TOTP secrets/backup codes; ready for integration credentials (Phase 4). — `155f9a7` (service exists; no app callers yet — TOTP secrets currently rely on Better Auth's own handling). *(2026-08-16: **v2 format + `TenantKey` + AAD lands in 1b, before any encrypted app data exists — one-way door**, decision 12.)*
+- [x] **Three planes as route groups** (§2, ARC-12): platform / tenant / portal with separate middleware and session claims; portal group is a locked shell until Phase 3. Single app host (decision #8, hosted per decision #9): tenant resolved through one seam (hostname→tenantId lookup stubbed), no tenant slugs in absolute URLs, **one config module owning `APP_URL` + cookie attributes + mail sender (INV-D2) — the host is never hardcoded**, so the Phase 7 move off `naxdor.com` is a config edit plus DNS. — `7bfb60c`, `323968a`.
+- [ ] **Amazon SES `eu-central-1` — start in week 1** (decision 10, ARC-09). Sending domain **`mailer.naxdor.com`**, custom MAIL FROM **`bounce.mailer.naxdor.com`**. Order: pre-flight `aws sesv2 get-account --region eu-central-1` plus `list-email-identities` (catches a pre-existing identity or an already-pending review that would 409 the request) → publish `_dmarc.mailer` → create the identity → publish the three Easy DKIM CNAMEs (tokens only exist *after* creation; use the returned `SigningHostedZone`, never a hardcoded suffix, and no leading underscore on the token) → publish the MAIL FROM `MX 10 feedback-smtp.eu-central-1.amazonses.com` + `TXT v=spf1 include:amazonses.com ~all` on `bounce.mailer`, then enable custom MAIL FROM → IAM principal scoped by `ses:FromAddress` → config set + SNS + webhook + DLQ → mailbox-simulator tests → file production access. **`send.naxdor.com` is off-limits** — it carries a live SES `eu-west-1` MAIL FROM (ARC-09); audit and decommission it as a *separate* change with its own rollback. **Nothing on the `naxdor.com` apex may be touched** — not SPF, not MX, not `default._domainkey`, not `_dmarc`. *(2026-08-16: founder provisioning; the dev outbox `.dev-outbox/outbox.jsonl` carries development until Phase 3's real invites.)*
+- [ ] **Bounce/complaint webhook — EU-pinned, verified, dead-lettered.** The SNS payload carries recipient email addresses (personal data), so the route inherits ARC-01's `fra1` pin and that pin must be *asserted*, not assumed — Vercel Functions default to `iad1` (Washington DC), which would process recipient addresses in the US and contradict `SECURITY.md` §9.3. Also: confirm Vercel Deployment Protection does not cover the path (SNS posts the subscription confirmation unauthenticated and a 401 presents as a subscription that never confirms); SNS posts `Content-Type: text/plain`, so read the raw body; branch `bounceSubType` — `OnAccountSuppressionList`/`OnTenantSuppressionList` mean "already known bad", do **not** count toward the bounce rate, and must not trigger reputation escalation. Account-level suppression *management* APIs are disabled in the sandbox, so the GDPR erasure path (`DeleteSuppressedDestination`) is a **post-approval** task. *(2026-08-16: lands with SES production access — Phase 3 at the latest, Phase 5 backstop; writes `EmailSuppression` from 2W.)*
+- [ ] **Decide the reply path for `mailer.naxdor.com` before the first invite ships.** Nothing in the record set can *receive* mail, and the A-wildcard means a reply to `noreply@mailer.naxdor.com` reaches a Vercel edge with no SMTP listener and fails at connect. For an invite-driven product that is a product defect, not a mail detail. Cheapest fix: a `Reply-To` on a monitored SiteGround mailbox — changes no DNS, touches no apex record. (An MX on `mailer.` is also permitted; AWS's "MAIL FROM must not receive mail" restriction binds `bounce.mailer`, not `mailer`.) *(2026-08-16: CP6 question.)*
+- [~] i18n scaffold (sv + en) — **not started → 1b (next-intl, ARC-14; all current UI copy is hard-coded English)**; **transactional email adapter** — one `send(message)` interface over Amazon SES so the vendor stays swappable in a day (ARC-09); **do not name the module `ses`** — bare "SES" means Simple Electronic Signature in this codebase (`SignatureLevel.SES`, Phase 4), so name it `mail` / `mailer` — **built as `src/mailer` with dev-outbox transport (`155f9a7`); production `send()` throws until SES exists**; baseline auth rate limiting (Upstash Redis EU) — **not started → 1b (one config module, no-op fallback)**.
+- [x] **Naxdor seeded as tenant zero**; founder = platform admin with MFA. — `15750e5` (tenant provisioning + seed); founder TOTP enrolled via the account page (`78b58b5`).
+- [ ] *Platform-continuity cheap win #1:* founder credentials into Bitwarden Emergency Access; self-hosting runbook skeleton in the repo (kept current every phase, formalized in Phase 8). *(Founder action + a `docs/RUNBOOK.md` skeleton in 1b.)*
 
 **Shippable =** Naxdor staff log in with MFA, manage members and roles, upload files with visibility flags, and every privileged operation lands in an append-only audit log — with CI proving a second seeded tenant can see none of it.
 
-**Non-negotiable tests before ship (§12):** cross-tenant isolation suite (all models); privilege-escalation deny-matrix (grant-subset, last-owner removal, self-escalation); file-visibility default-internal enforcement at data layer; RLS fail-closed (unset GUC ⇒ zero rows); runtime role verified `rolbypassrls = false`; audit append-only (UPDATE/DELETE rejected); invite-only paths (no public member signup); **no session cookie carries a `Domain` attribute and every one is `__Host-`-prefixed (INV-D1) — asserted in CI, because while the app is under `naxdor.com` a stray `Domain=` leaks sessions to every sibling Naxdor property.**
+**Non-negotiable tests before ship (§12):** cross-tenant isolation suite (all models) — **green since `78419e2`**; privilege-escalation deny-matrix (grant-subset, last-owner removal, self-escalation) — **1b**; file-visibility default-internal enforcement at data layer — **green (posture test)**; RLS fail-closed (unset GUC ⇒ zero rows) — **green**; runtime role verified `rolbypassrls = false` — **green**; audit append-only (UPDATE/DELETE rejected) — **green**; invite-only paths (no public member signup) — **green**; **no session cookie carries a `Domain` attribute and every one is `__Host-`-prefixed (INV-D1) — asserted in CI, because while the app is under `naxdor.com` a stray `Domain=` leaks sessions to every sibling Naxdor property** — **green (`323968a`)**.
 
-**Effort:** 6–8 weeks. Highest overrun risk of any phase; do not trim the test suite to make a date.
+**Effort:** 6–8 weeks (of which ≈ 2 days of build have landed as of `78b58b5`; the remainder is Phase 1b). Highest overrun risk of any phase; do not trim the test suite to make a date.
 
 ---
 
-## Phase 2 — Core domain (v1)
+## Phase 1b — Foundation close-out *(added 2026-08-16 — work-management plan §4)*
 
-**Goal:** Naxdor's real client and project records live here, not in spreadsheets.
+**Goal:** finish what Phase 1 owes and that every screen from Phase 2 onward assumes. Prerequisite, not new scope. Nothing here is a product feature; all of it is a retrofit if skipped.
+
+**Scope:**
+
+- [ ] **i18n scaffold** — next-intl sv + en (ARC-14); locale resolution `Member.locale` → `Tenant.defaultLocale` → `Accept-Language` → `en`; ESLint rule banning literal JSX strings under `src/app`; convert the six existing pages; root layout title fixed.
+- [ ] **UI kit (ARC-15)** — ~15 shadcn/ui-style copy-in primitives on Radix + Tailwind 4 under `src/components/ui`; app shell = left rail + header with a **timer-pill slot** + `?` shortcut overlay + ⌘K shell (`cmdk`); error/loading boundaries; toasts via `sonner`; `<EntityChip>`. **Default: neutral preset — proceed if CP1 is unanswered within 48 h.** Conventions in `UI.md`.
+- [ ] **`withRequestContext()`** wired in root layouts and route handlers so audit rows carry `requestId/ip/userAgent` + a test.
+- [ ] **MFA enforcement** — `authorize()` denies `MFA_REQUIRED` for `requiresMfa` (✦) codes without a recent TOTP; `requireRecentMfa(minutes)` sudo helper (reused by 3V reveal, ✦ actions); Better Auth `databaseHooks` → `auth.*` audit events.
+- [ ] **Member admin minimum** — assign/revoke roles with subset / last-owner / no-self-escalation guards; suspend/remove member; revoke invite; `permissionsVersion` bump; **B3 template-propagation utility** (additive; used by every catalog bump from 2W on). All events already catalogued.
+- [ ] **R2 transport** behind a `StorageTransport` interface with a local-disk dev transport (presign PUT/GET, HEAD verify, quota, commit, MIME/extension allowlist).
+- [ ] **Upstash rate limiting** behind one config module with a no-op (fail-open) fallback; vault reveal budget later uses a fail-closed Postgres counter (3V).
+- [ ] **Crypto v2 + `TenantKey`** (decision 12; one-way door — lands before any encrypted app data exists): per-tenant DEK wrapped by the env root keyring; ciphertext `v2.<rootKeyId>.<tenantKeyId>.<iv>.<ct>.<tag>` with **AAD `tenantId:model:rowId:field`**; v1 stays decryptable; `SECURITY.md` §6 amendment.
+- [ ] **`app.principal_id` GUC** in `withTenant()` (needed by the contact-writable `Comment` policy and portal brokered writes).
+- [ ] **Model-registry subclasses** (`clientScoped`, `projectScoped`) + the **registry posture test** (§2 tripwire); `withPlatform` import-boundary ESLint rule + test.
+- [ ] **`counters.next(tx, key)`** helper on `TenantCounter` (`INSERT … ON CONFLICT DO UPDATE … RETURNING`) — used by `WorkItem.number` under key `work_item:<projectId>` (displayed `<Project.key>-<number>`, e.g. `ACME-12`), `ProjectUpdate.seq` (`project_update:<projectId>`), later invoice-adjacent counters.
+- [ ] `Member.timezone`, `Member.workCountry`, `Member.hoursPerDay?` (`DATA_MODEL.md` amendment).
+- [ ] **1-day Neon spike** — `btree_gist` EXCLUDE, `CREATE TEXT SEARCH CONFIGURATION` (`fortleva_sv` / `fortleva_en`), IMMUTABLE `f_unaccent` in a GENERATED column; result written into the 2W/2T migrations as a decided fallback (`ARCHITECTURE.md` "verified on" notes).
+- [ ] Draft sv/en **staff-notice text** into the seed (consumed by 2T; purposes billing/planning/profitability, explicitly not performance evaluation).
+- [ ] `docs/RUNBOOK.md` skeleton (self-hosting; kept current every phase).
+- [ ] Vercel Pro (execution item, already ARC-01) — founder.
+
+**Tests:** MFA deny-matrix; last-owner guard; audit rows carry `requestId`; storage transport contract (local always; R2 when env exists); v2 round-trip + AAD mismatch fails + v1 decrypts; i18n lint; registry posture; import-boundary.
+
+**Founder provisioning (parallel, non-blocking — Claude uses dev transports until env vars appear):** R2 buckets (`jurisdiction=eu`), Upstash EU, Vercel Pro, SES DNS + production access, Neon Launch before tenant-zero data grows.
+
+**Shippable =** the shell in two languages with a real component kit; step-up MFA works; a role can be granted/revoked safely; a file goes through the transport with a visibility badge.
+
+**Demo:** switch locale on `/account` → Swedish; `role:edit` without recent TOTP → step-up dialog; upload a file with a visibility badge; audit row shows the request id.
+
+**Effort:** 2–3 weeks. **CP0** precedes this phase (approve order + decisions 11–13 + vocabulary; recorded defaults apply if silent).
+
+---
+
+## Phase 2 — Core domain, trimmed to what 2W needs *(retitled and rescoped 2026-08-16)*
+
+**Goal:** Naxdor's real client and project records live here, not in spreadsheets — and the scoping/RLS/export rails that every later table rides are proven on small entities first.
 
 **Scope:**
 
 - [ ] `Client` — company details, org.nr / VAT ID, billing address, assigned members; **internal private notes** (visibility `internal`, never in any portal-reachable query path) (§6).
 - [ ] `Contact` — person records at a client (name, email, role). Records only; portal identity arrives in Phase 3 (decision #6 keeps the identity stacks separate).
-- [ ] `MemberClient`, `MemberProject` assignment tables wired into the Phase-1 `authorize()` seam; deny-default live (decision #5).
-- [ ] `Project` — type, scope, status, start/launch dates, environments, repo link, hosting details; `ProjectVersion` (current version, release notes) + `Milestone`; the **timeline / stage view** — milestones + version list, deliberately not a Gantt (§6, decision #7). This is the portal's centerpiece next phase; design it well now.
+- [ ] `MemberClient`, `MemberProject` assignment tables wired into the Phase-1 `authorize()` seam; deny-default live (decision #5). *(2026-08-16: **scoping goes live here** — `authorizedResourceIds(actor, 'client')` **and** `'project'`, `assertInScope(tx, actor, {clientId|projectId})` (deny-default → NOT_FOUND), and a `scopeWhere(actor)` helper composing both axes into every list `where`.)*
+- [ ] `Project` — type, scope, status, start/launch dates, environments, repo link, hosting details; `ProjectVersion` (current version, release notes) + `Milestone`; the **timeline / stage view** — milestones + version list, deliberately not a Gantt (§6, decision #7). This is the portal's centerpiece next phase; design it well now. *(2026-08-16 additions — `DATA_MODEL.md` amendment:* `Project.key` (≤ 8 chars, unique per tenant, e.g. `ACME`), `portalEnabled=false`, `hoursSharingMode {NONE, HOURS, BILLABLE_AMOUNT} = NONE`, `billingCurrency`, `defaultBillable`, `leadMemberId`, `updateCadence=NONE`, `autoArchiveMonths?`, `autoStartParent` / `autoCompleteParent`; `Milestone` gains `rank`, status widened to `{PLANNED, IN_PROGRESS, PAUSED, DONE, CANCELLED}`, `@@unique([tenantId, id])` and a composite-FK target; `ProjectVersion` as drafted — small, keeps the version timeline.)*
 - [ ] `Service` — what the client buys (one-off / retainer / hosting / SEO / maintenance; recurring vs one-time; renewal dates as data). Renewal *automation* is Phase 4; the entity lands here because Phase 3's portal reads it.
-- [ ] `Document` — general storage layer over `FileObject`/`FileVersion`: attach to `Client`/`Project`, folders or tags, version history, visibility flag surfaced in UI (default `internal`, §5).
-- [ ] *Platform-continuity cheap win #2:* **per-tenant export v0** — manually triggered export of all tenant entities (JSONL + files + schema-versioned manifest). Standing rule from here: every later phase extends the manifest as part of its definition of done.
+- [ ] `Document` — general storage layer over `FileObject`/`FileVersion`: attach to `Client`/`Project`, folders or tags, version history, visibility flag surfaced in UI (default `internal`, §5). *(2026-08-16: real FKs `clientId/projectId`; `AttachableType` extended (WORK_ITEM / COMMENT / PROJECT_UPDATE / CREDENTIAL / ASSET reserved now); `Document.kind {GENERAL, DELIVERABLE, REPORT, EXPORT}`; attach UI.)*
+- [ ] **Class-B RLS with `portal_enabled` from day one** *(2026-08-16 — `TENANCY.md` §7.2 amendment)*: every project-scoped class-B table (here: `Milestone`, `ProjectVersion`, `Service`, `Document`-with-`projectId`) carries `visibility`, denormalised `client_id` and `portal_enabled boolean NOT NULL DEFAULT false`, maintained by an `AFTER UPDATE OF portal_enabled ON project` trigger fanning out in the same tx; RESTRICTIVE `portal_gate` = `client_id = app.client_id AND visibility='CLIENT_VISIBLE' AND portal_enabled`. Registered as `projectScoped` in the model registry.
+- [ ] *Platform-continuity cheap win #2:* **per-tenant export v0** — manually triggered export of all tenant entities (DMMF-driven JSONL + files + schema-versioned manifest). Standing rule from here: every later phase extends the manifest as part of its definition of done.
+- [ ] **`TenantPreference` UI** *(2026-08-16)* — `/settings/preferences`: locale, timezone, week start, duration style, currency, module toggles.
+
+**Permissions:** none new. **Audit:** `client.*`, `project.*` (+ `portal_enabled` / `portal_disabled`, `key_changed`), `milestone.*`, `service.*`, `assignment.*`, `preference.changed`.
+
+**Screens** *(2026-08-16)*: `/clients` (table + inline create), `/clients/[id]` (tabs Overview · Projects · Contacts · Files), `/projects` (grouped by client), `/projects/[key]` shell with tabs (Board/Backlog empty-state until 2W · Timeline = milestones + versions · Files · Team), `/settings/{general, members, roles, preferences, export}`.
 
 **Shippable =** Naxdor runs day-to-day client/project work in the product: every active client, project, version, and document is in, and an employee assigned to two clients provably cannot see the third.
 
-**Non-negotiable tests before ship:** client↔client scoping (deny-default: zero assignments ⇒ zero rows; `client:view_all` only via template roles); internal notes/documents absent from every client-visible query path (tested at the data layer via the RESTRICTIVE portal policy, before any portal UI exists — `TENANCY.md` §7); isolation suite extended to all new models; export round-trip (export → validate manifest completeness).
+**Non-negotiable tests before ship:** client↔client scoping (deny-default: zero assignments ⇒ zero rows; `client:view_all` only via template roles; *2026-08-16:* project assignment lifts only the parent card; `MemberProject(P1)` sees P1's rows and none of the client's P2); internal notes/documents absent from every client-visible query path (tested at the data layer via the RESTRICTIVE portal policy, before any portal UI exists — `TENANCY.md` §7); isolation suite extended to all new models; export round-trip (export → validate manifest completeness vs DMMF); *2026-08-16:* `Client.internalNotes` / `Project.repoUrl|hostingNotes|internalNotes` absent from every projection (forbidden-columns grep); registry posture test on the new subclasses; contact-writable census (empty at this point except `ContinuityOpenRequest` reservation); `portalEnabled=false` ⇒ 0 rows for a contact principal across every table.
 
-**Effort:** 4–5 weeks.
+**Demo:** create client "Acme", assign an employee, create project "Acme site" key `ACME`, add three milestones, upload an internal document; log in as the employee → sees Acme only. **CP1** after this demo (react to visual style before 2W multiplies it).
+
+**Effort:** 3 weeks (was 4–5 — trimmed to what 2W needs; scoping and export are the substance).
 
 ---
 
-## Phase 3 — Client portal (v1)
+## Phase 2W — Work: items, board, backlog, home, comments, notify seam, search *(added 2026-08-16 — work-management plan §4)*
 
-**Goal:** the read-mostly surface contacts actually use (§2, §6).
+**Goal:** Naxdor's daily entry point. One generic `WorkItem` (UI word **"Task"**; levels **Epic → Task → Subtask**) under a Planner/Linear-class surface: title-only create, inline everything, one board per project, an ordered backlog, ⌘K, and a personal `/home`. Absorbs the previously planned Phase-5 `Issue` (`kind=REQUEST`). Spec pins: plan §3.1/§3.2/§3.5; models in `DATA_MODEL.md` §6.14 (Work), §6.18 (Notifications), §6.19 (Search).
 
-**Scope:**
+**Entitlement:** `work` (new module key; `entitlementsSchema.schemaVersion` → 2 with v1→v2 upgrade path, defaults on; `issues` kept as deprecated alias). **Preferences:** `module.work.enabled`, `work.defaultPreset`.
 
-- [ ] **Separate Contact identity stack** (decision #6 — final): distinct account table, session namespace, cookie name, and audience from the member stack, even for identical emails; portal route group goes live; middleware rejects portal sessions on tenant/platform routes by audience alone.
+**Models (summary — Prisma in `DATA_MODEL.md`):**
+
+- [ ] `WorkflowState` (per project; tenant-named states inside fixed `StateCategory {BACKLOG, TODO, IN_PROGRESS, DONE, CANCELLED, TRIAGE}`; category immutable per state — trigger) and `WorkflowPreset` (tenant-editable; copied at project creation; default = Backlog / To do / In progress / Done / Cancelled + a **hidden Triage** state auto-created per project, shown only when it has items). Class A — the portal only ever sees *categories*.
+- [ ] `WorkItem` — `type {EPIC, TASK, SUBTASK}`, `depth` 0-indexed with `CHECK depth <= 2` (EPIC=0 only; TASK 0|1; SUBTASK 1|2; parent type strictly higher, same project, acyclic — trigger); `kind {TASK, BUG, REQUEST}`; `Project.key` + `number` from `TenantCounter` `work_item:<projectId>` (display `ACME-12`); `stateId` + **denormalised `stateCategory`** (state service + trigger keep in sync); `priority {NONE, LOW, MEDIUM, HIGH, URGENT}`; **single assignee `assigneeMemberId` xor `assigneeContactId`** (contact assignee ⇒ CLIENT_VISIBLE by CHECK; portal UI in 3); `rank text COLLATE "C"` unique `(tenantId, projectId, rank)` (fractional-indexing, computed server-side with neighbour `SELECT … FOR UPDATE`, retry with jitter, rebalance > 50 chars); `estimateMinutes`; `startDate/targetDate`, `startedAt/completedAt`; `milestoneId?`, `fixedInVersionId?` (composite FK → `ProjectVersion`); `rootId` denormalised for flat rollups; description `Json` (Tiptap) + `descriptionText`; `checklistTotal/Done` denormalised (Tiptap taskList — no `ChecklistItem` table); `visibility`, denormalised `clientId`, `portal_enabled`; triage fields, `source {IN_APP, PORTAL, EMAIL, IMPORT}` (values per `DATA_MODEL.md` §6.14), `archivedAt`, `sourceSystem/sourceId/importJobId?`. Class B.
+- [ ] `WorkItemActivity` (field-level history, own visibility; INTERNAL unless the field is portal-safe: `stateCategory`, `title`, `targetDate`, `milestoneId`, `assigneeContactId`). Separate from `AuditEvent`.
+- [ ] `Label` / `WorkItemLabel` (tenant-wide, optional project scope, fixed palette) — internal-only in v1. `WorkItemCollaborator`, `WorkItemSubscriber`.
+- [ ] `Comment` — polymorphic (`subjectType {WORK_ITEM, PROJECT_UPDATE, DOCUMENT, FILE_VERSION, PROJECT_VERSION}`, `subjectId`, `parentId?`, author member xor contact, `body Json` + `bodyText`, `visibility`, `clientId`, `portal_enabled`) + `Mention` (ids only). Contact INSERT policy written now (WITH CHECK `visibility='CLIENT_VISIBLE' AND client_id=app.client_id AND author_contact_id=app.principal_id`), exercised by data-layer tests before any portal UI. No `Reaction` in v1.
+- [ ] `ProjectTemplate` (states, epics, items with checklist/estimate/visibility/labels; "save project as template" / "new project from template").
+- [ ] **`search_index`** — narrow trigger-fed table: `entityType, entityId, clientId?, projectId?, visibility, portal_enabled, title, subtitle, bodyText ≤ 100k, metaText, lang regconfig, search tsvector GENERATED ALWAYS AS (…weighted A/B/C) STORED, stateCategory?, assigneeMemberId?, updatedAt`; **`lang` per row derived from `Tenant.defaultLocale`** (`fortleva_sv` = unaccent + swedish_stem, `fortleva_en` = unaccent + english_stem — no two-language assumption); same tenant + `portal_gate` policies; unique `(tenantId, entityType, entityId)`; btree indexes only — **no GIN/trgm under FORCE RLS**. Modelling rule: no member-only free-text column on any entity that can be CLIENT_VISIBLE.
+- [ ] **Notifications core (never entitlement-gated; channels by preference):** `Notification` (`receiverType {MEMBER, CONTACT}`, `receiverId`, `clientId?` required for CONTACT, `projectId?`, `kind`, `class {INSTANT, COALESCED, DIGEST_ONLY}`, `entityType/Id`, actor, `params Json` ids-only, `dedupeKey`, `readAt`, `archivedAt`, `snoozedTill`, `emailedAt`), `Subscription {WATCH, PARTICIPATE, MUTED}`, `NotificationPreference`, **`EmailOutbox`** (`idempotencyKey` unique, `sendAfter`, `status {QUEUED, SENDING, SENT, FAILED, DEAD, SUPPRESSED, SKIPPED}`, attempts, `lockedAt`, `sesMessageId`) + `EmailSuppression`; **one `notify.emit(tx, …)` seam** called inside the same `withTenant` tx as the write; static kind catalog with `audience` (every CONTACT-audience kind `clientVisibleOnly`); worker drains the outbox under `withPlatform({type:'system', job:'outbox'})` with `FOR UPDATE SKIP LOCKED` (Vercel Cron `*/2` on Pro + `after()` kick + `POST /api/jobs/run` for dev), sending through the existing `mailer`. In 2W the only INSTANT email kinds are **assignment** (debounced 2 min, cancelled if read) and **mention**. System jobs audit one summary `job.run` event per run (`TENANCY.md` §12 amendment).
+
+**Services** (`src/modules/work/` — ARC-16; recipe = the members recipe: `withTenant(tenantId, principal, tx => { requireAccess; assertInScope; …mutate…; record; notify.emit })`, side effects after commit): `items.ts`, `states.ts` (state machine: sets `stateCategory`, stamps `startedAt/completedAt`, clears on regression, parent rollup per project flags, writes activity, dual-writes catalogued audit — invoked from **every** entry point: drag, inline, palette, bulk, triage, import), `ordering.ts`, `activity.ts`, `comments.ts`, `labels.ts`, `triage.ts`, `rollup.ts` (progress % = DONE / (all − CANCELLED) via flat GROUP BY on `rootId`/`milestoneId`; bounded CTE only in one item's subtree pane), `templates.ts`, `portal.ts` (allow-listed projections; empty of UI until 3), `actions.ts`, `ui/`. ESLint: cross-module imports only via `index.ts`; direction `time → work → core`.
+
+**Permissions** (module `work`, 17 new; catalog **63 → 80**; `TEMPLATE_VERSION` → 2 with B3 additive propagation; template seeding C=CEO/owner · M=manager · A=admin · E=employee): `work_item:view` CMAE · `work_item:create` CMAE · `work_item:edit` CMAE (scope-checked) · `work_item:delete` CM · `work_item:change_visibility` CMA · `work_item:triage` CME · `workflow:manage` CMA · `label:manage` CMA · `comment:create` CMAE · `comment:edit_any` CM · `comment:delete` CM · `comment:change_visibility` CMA · `project_update:view` CMAE · `project_update:create` CME · `project_update:publish` CM · `project_update:change_visibility` CMA · `project_template:manage` CMA. The five `issue:*` codes are **kept but deprecated and unseeded** at `TEMPLATE_VERSION` 2 (`AUTHZ.md` §3.1 — first deprecation).
+
+**Audit:** `work_item.created|deleted|state_changed|visibility_changed|triaged|archived|bulk_edited`, `comment.deleted|visibility_changed`, `workflow.changed`, `label.created|deleted`, `project_template.applied`, `notification.preference_changed`, `search.index_rebuilt`, `job.run`. Routine field edits → `WorkItemActivity`, not audit.
+
+**Screens:**
+
+- [ ] **`/home`** ("My Work"): assigned overdue / today / next-7, "waiting on client" (empty until 3), triage count, inbox top-5, timer slot (filled in 2T). `/dashboard` becomes the workspace picker only when > 1 membership.
+- [ ] `/projects/[key]/board` — columns = states, count + Σ estimate; **group-by assignee / epic / priority / label** (group-by-assignee *is* the team view); card = title / avatar / labels / priority dot / key / checklist n/m / estimate; drag desktop-only (Pragmatic DnD, ARC-17) with a **"Move to…" keyboard/mobile twin**; optimistic (`useOptimistic` + Server Action); freshness = 12 s version-poll + focus refresh (ARC-18).
+- [ ] `/projects/[key]/backlog` — virtualised ordered list, hide-done + group-by-epic toggles, inline add top/bottom, filter chips via `nuqs`, epic rollup columns, multiselect bar.
+- [ ] Item **side-peek** (`?item=KEY-123`) + full page: properties rail, Tiptap description (ARC-19) with checklist + paste-upload, subtasks, attachments, comments, Activity tab; single keys `S A L P E D V M X`, `⌘⇧O` convert checklist → subtask.
+- [ ] `/projects/[key]/team` — members on the project, open items, Σ estimate — **no time, no presence**.
+- [ ] `/projects/[key]/settings/workflow`; `/settings/labels`, `/settings/templates`, `/settings/workflow-presets`; `/inbox` (minimal); `/search`; ⌘K palette (recents → `KEY-123` jump → per-type capped UNION → actions) + keymap (`C` create anywhere, `?` overlay).
+- [ ] One universal **`<WorkItemView>`** (filters + groupBy + orderBy + layout LIST|BOARD + display props, URL state) for Home, backlog, board, later portal list. **No `SavedView` table in v1.**
+
+**Non-negotiable tests before ship:** isolation (DMMF auto-covers new tables); scoping (employee with one project sees only its items; out-of-scope → 404; search respects scope); file visibility (attachment on INTERNAL item invisible to contact principal; child cannot be CLIENT_VISIBLE under INTERNAL parent; downgrade refused while a child is CLIENT_VISIBLE); escalation (employee cannot delete / change visibility / manage workflow; catalog × template deny-matrix regenerated at 80); feature: rank uniqueness under 50 concurrent moves; depth-3 / type triggers; `stateCategory` stays in sync; per-project number monotonic under 100 concurrent creates; contact principal sees only CLIENT_VISIBLE items of `portalEnabled` projects and never a label / link / INTERNAL activity row; **search lexeme probe**; outbox idempotency + retry; **kind-catalog audience test**; "no INTERNAL fact to a Contact" fixtures; optimistic rollback; keyboard-only create/move E2E.
+
+**Shippable / DoD =** Naxdor's live projects decomposed into epics/tasks on boards; every state change optimistic; nothing time-related visible; i18n complete; export manifest extended; catalog test pinned at 80.
+
+**Demo:** press `C` on `/home`, type a title, Enter → `ACME-1`; drag across the board; open it, add a subtask, `P` priority, an internal comment then a client-visible one (badge differs); ⌘K "ACME-1" jumps; group board by assignee; employee not on Acme → `/projects/ACME/board` 404s; assignment email lands in the dev outbox.
+
+**Founder inputs:** CP1 answered (or 48 h default); Vercel Pro for crons (fallback: lazy evaluation + `POST /api/jobs/run`).
+
+**Effort:** 5 weeks. Highest UX-polish overrun risk — cap with the fixed screen list above and the one-`<WorkItemView>` rule.
+
+---
+
+## Phase 2T — Time: timer, entries, rates, budgets, rollups, money *(added 2026-08-16 — reverses the skip-list, decision 11)*
+
+**Goal:** per-task start/stop timer → rate snapshot → budget → rollups per member / team / project / client → (Phase 4) invoice line. Self-reported time only; the **never-list** (see Skip list) is a design constraint, not a roadmap. Spec pins: plan §3.3; models in `DATA_MODEL.md` §6.15 (Time); legal posture in `SECURITY.md` §9.7.
+
+**Entitlement:** `time`. **Preferences:** `time.autoStopHours (12)`, `time.nudgeHours (8)`, `time.allowOverlap (false)`, `time.allowEntriesWithoutItem (true)`, `time.durationStyle {hm, clock, decimal}`, `finance.costRates.enabled`, `weekStart`, `showIsoWeek`.
+
+**Models (summary):**
+
+- [ ] `TimeEntry` — **class A, no `visibility` column**: `startedAt/stoppedAt timestamptz` (NULL = running), `durationSeconds` (CHECK `(stopped_at IS NULL) = (duration_seconds IS NULL)`, `stopped_at >= started_at`), `timezone`, `localDate`, `entryMode {TIMER, MANUAL, DURATION}`, `source {TIMER, MANUAL, IMPORT}`, `billable`, `description`, `workItemId?` (project-level entries allowed with required note), `memberId`, `clientId`, `projectId`, `billRate` (plaintext snapshot), `currency`, `rateSource`, `billRateCardId`, **`costRateCardId` only** (cost never fanned onto entries), `lockedReason {INVOICED, INVOICE_DRAFT, LOCK_DATE, APPROVED, BILLED_EXTERNAL, WRITTEN_OFF}?`, `needsReview`, `invoiceLineId?` (set in 4). Hand-written SQL: **partial UNIQUE `(tenant_id, member_id) WHERE stopped_at IS NULL AND deleted_at IS NULL`** (one running timer per member — DB-enforced), CHECKs, lock trigger (BEFORE UPDATE/DELETE raises unless `current_setting('app.time_lock_bypass', true)='on'` — transaction-local, only the invoicing service sets it, always with an audit row), indexes `(tenantId, memberId, startedAt DESC)`, `(tenantId, projectId, startedAt)`, `(tenantId, workItemId)`, `(tenantId, localDate, memberId)`, partial unbilled. Never IP/location.
+- [ ] `RateCard` — `kind {BILL, COST}`, `scope {TENANT, MEMBER, PROJECT, PROJECT_MEMBER}`, `memberId?`, `projectId?`, `amount Decimal(12,2)?` [BILL], **`amountCiphertext?` [COST, v2-encrypted, AAD `tenantId:rate_card:<id>:amount`]**, `currency`, `effectiveFrom`, `effectiveTo?`. **Rows immutable** (change = close old + insert). Resolution at entry **write**, never read: BILL `PROJECT_MEMBER → PROJECT → MEMBER → TENANT`; COST `MEMBER → TENANT`. EXCLUDE on daterange if btree_gist verified in 1b, else app check. No task-scoped rates; one billing currency per project; no FX in time reports.
+- [ ] `ProjectBudget` (`kind {HOURS, MONEY}`, `billingModel {T_AND_M, FIXED_FEE, RETAINER, NON_BILLABLE}`, amount, currency, `period {NONE, WEEKLY, MONTHLY, QUARTERLY, YEARLY}`, `periodAnchor`, `includeNonBillable`, `thresholds int[] default {80,100}`, `notifyMemberIds`, status; one ACTIVE per project) + `BudgetAlert(budgetId, periodKey, threshold)` unique = once per threshold. Retainer/hour-bank ledger = Phase 4.
+- [ ] **`ProjectTimeSummary`** — physical class-B table `(tenantId, projectId, clientId, periodMonth, billableSeconds, nonBillableSeconds, billableAmount?, budgetSeconds?, budgetAmount?, currency, visibility derived from hoursSharingMode, portal_enabled)`; **recomputed (not delta-upserted) for the touched (project, month) in the same transaction as every entry write**; nightly self-heal; **no member id column by construction**. The only portal-reachable time surface. *(A SQL view was rejected: under FORCE RLS it returns 0 rows to a contact — `DATA_MODEL.md` §11.)*
+- [ ] `StaffNotice(locale, version, purposes[], jurisdictionTags[])` + `StaffNoticeAcknowledgment` (unique per member/notice/version); **timers refuse to start until acknowledged**; sv/en draft text seeded in 1b.
+- [ ] `Member.timezone / workCountry / hoursPerDay` (landed 1b) used for `localDate`, ISO week, nudges.
+
+**Services** (`src/modules/time/`): `timer.ts` (`start` = `pg_advisory_xact_lock(hashtext(tenant||member))` → auto-stop running → resolve rate → insert → `record('timer.started')` → return both for the undo toast; `stop`; `continue`; lazy nudge/auto-stop applied on `GET /timer/current` and list reads so it is correct before crons exist), `entries.ts` (manual `1h 30m` / `90m` / `1,5` and start/end modes; edit own past; split; midnight-spanning stays one row; overlaps blocked by app check, tenant toggle), `rates.ts` (resolution at write; audited reprice `(rateCardId, FROM_DATE|ALL_UNBILLED)` touching only unlocked entries), `budgets.ts` (thresholds hourly → `BudgetAlert` + `notify.emit`), `rollup.ts` (flat SUMs per project / epic / item / client × member / total × date range; epic subtree via `rootId`; cost aggregation = `SUM(seconds) GROUP BY cost_rate_card_id` → decrypt a handful of cards behind `rate:view_cost` + recent MFA), `summary.ts`, `notice.ts`, `portal.ts` (summary rows only). Timer API (Node route handlers): `GET /api/timer/current`, `POST /api/timer/start {workItemId?, projectId}`, `POST /api/timer/stop`, `PATCH /api/time-entries/:id`, `POST …/split`, `POST …/continue`. Cron `*/15` nudge (8 h in-app) / auto-stop (12 h → `needsReview`); budget cron hourly. Server-authoritative timestamps; offline event queue = v1.5.
+
+**Permissions** (module `time`, 13 new; catalog **→ 93**): `time:track` CMAE · `time:view_team` CM · `time:edit_any` CM · `time:delete_any` CM · `time:manage_locks` CA · `time:reprice` CA · `time:export` CMA · `rate:view_bill` CM · `rate:manage_bill` CA · `rate:view_cost` C ✦ · `rate:manage_cost` C ✦ · `budget:view` CM · `budget:manage` CMA. **Who sees money:** employee — own hours; manager — hours + bill rates + budgets; CEO/finance — cost + margin (✦, step-up). Cost never in CSV by default, never in `AuditEvent` metadata, never portal-reachable.
+
+**Audit:** `timer.started|stopped|auto_stopped`, `time_entry.created|edited_by_other|deleted|locked|unlocked|repriced`, `time.exported`, `rate_card.created|closed|cost_revealed` (aggregate, per session), `budget.created|changed|alert_sent`, `staff_notice.published|acknowledged`. Metadata never contains a cost amount.
+
+**Screens:**
+
+- [ ] **Persistent timer pill** (header desktop / above tabs mobile; item title, elapsed with skew-corrected local tick, stop; click → jump); `T` on a focused item; stop → inline confirm (duration editable, note, billable).
+- [ ] `/time` (My Time: today, ISO week grid Monday-first, `N` new entry, copy last week, `needsReview` banner, lock reasons explained); `/time/team` (CM: per-member totals by project, date range, `needsReview` queue, lock date).
+- [ ] `/projects/[key]/time` — range picker; totals strip: logged / billable / estimate remaining / budget bar; **table by member × week with totals; table by item/epic**; CSV (raw hours, no cost by default).
+- [ ] `/projects/[key]/money` — finance-gated: revenue = billable hours × bill rate, cost, profit, margin — cost columns only with `rate:view_cost` + step-up. UI labels: **"Rate / Value"** (bill) vs **"Internal cost / Margin"** (cost) — the founder's "cost per hour for the project" is the *bill rate*.
+- [ ] `/settings/rates` (bill cards; cost cards behind ✦); `/settings/time` (purposes, staff-notice publish, acknowledgment status).
+- [ ] Board cards show Σ spent / estimate + running-timer badge; `/home` shows "this week: 23 h 40 m · today 6 h" (own only). First timer start per member shows the staff notice (sv/en) and requires acknowledgment.
+
+**Non-negotiable tests before ship:** isolation; scoping (own entries always; team only with `time:view_team` inside scope; unassigned project `/time` → 404); visibility (contact principal reads 0 `time_entry` / `rate_card` / `budget` rows and only summary rows of enabled projects; `ProjectTimeSummary` has no member id column; forbidden-columns grep on `time/portal.ts`); escalation (employee cannot edit others' entries or read `RateCard`; cost never decrypted without `rate:view_cost` + recent MFA; CSV omits cost by default); feature: two concurrent starts → exactly one running row; auto-stop-previous atomic + undo restores; lock trigger blocks edit/delete, bypass GUC transaction-local; rate snapshot stable after card closure; reprice touches only unlocked entries pointing at that card; overlap toggle; midnight-spanning single row with correct `localDate`; auto-stop idempotent; **rollup equality (Σ task = epic = project = client; per member + total) incl. DST**; **`summary == SUM(time_entry)` property test**; staff-notice gate.
+
+**Shippable / DoD =** Naxdor staff track every billable hour in-product; the project money page reconciles with a hand calculation; the notice is acknowledged by all members; catalog pinned at 93.
+
+**Demo:** open a task, press `T` → pill starts; start another → first stops with undo toast; stop → confirm dialog with note + billable; `/projects/ACME/time` shows per-member and team totals; set project bill rate 1 200 SEK and (optionally) a member cost rate → `/money` shows value and margin (CEO with TOTP); employee sees own hours only.
+
+**Founder inputs:** **CP2** before this phase (rate tiers, time-without-task, overlap policy, who sees money, staff-notice purposes, MBL check if any union member, US notice if NY/CT/DE staff, rounding = none at tenant / per-project at invoice); Vercel Pro upgraded; lawyer sign-off on the staff notice **before Naxdor uses timers for real** (draft shipped; gated behind acknowledgment).
+
+**Effort:** 4 weeks.
+
+---
+
+## Phase 3 — Client portal + sharing + progress updates + request intake (v1) *(extended 2026-08-16)*
+
+**Goal:** the read-mostly surface contacts actually use (§2, §6) — now a *projection of the same rows* the team works on: shared tasks, milestones, updates, files, hours (opt-in), and a request inbox.
+
+**Scope (existing — stands):**
+
+- [ ] **Separate Contact identity stack** (decision #6 — final): distinct account table, session namespace, cookie name, and audience from the member stack, even for identical emails; portal route group goes live; middleware rejects portal sessions on tenant/platform routes by audience alone. `ContactSession/Account/Verification` + portal Better Auth instance; `authorizePortal()`.
 - [ ] **Invite flow:** invite-only forever, no contact self-signup (§3); invites issued by staff holding `client:manage_contacts`, audited; acceptance sets up portal credentials (**contact MFA is v2** — `DATA_MODEL.md` P5, `SECURITY.md` §3.5; no `ContactTwoFactor` model exists in v1).
 - [ ] **Read surfaces:** projects + timeline (versions, milestones, release notes), `Document`s/files (client-visible only, short-lived signed URLs authorization-checked at issue time §9), `Service`s, own company record. Hardcoded portal capability set — contacts never enter the role/permission machinery (`AUTHZ.md` §8).
-- [ ] **Version sign-off, v1-lite** (decision #7): a Contact approves/acknowledges a `ProjectVersion` from the timeline; recorded with identity + timestamp, audited, displayed. (Full deliverable-approval workflows: v2.)
-- [ ] **Portal rate limiting** (§9): per-principal and per-email limits on login, invite acceptance, and downloads (Upstash Redis EU + `@upstash/ratelimit`), Vercel WAF free rules as outer shield.
+- [ ] **Version sign-off, v1-lite** (decision #7): a Contact approves/acknowledges a `ProjectVersion` from the timeline; recorded with identity + timestamp, audited, displayed. (Full deliverable-approval workflows: v2 — *2026-08-16: Document approvals for `kind=DELIVERABLE` land here, mirroring `ProjectVersion`.*)
+- [ ] **Portal rate limiting** (§9): per-principal and per-email limits on login, invite acceptance, and downloads (Upstash Redis EU + `@upstash/ratelimit`), Vercel WAF free rules as outer shield. *(+ request creation, comment creation, credential submission.)*
 - [ ] Portal file downloads audited (`AuditEvent`), per catalog.
 
-**Shippable =** a real Naxdor client contact logs in, sees exactly their own projects/timeline/files/services, signs off a version — and nothing else, provably.
+**Scope — additions 2026-08-16 (work-management plan §4):**
 
-**Non-negotiable tests before ship:** portal deny-matrix — cross-client read attempts, cross-tenant read attempts, `internal` file/document/note access, tenant-route access with a portal session (audience rejection), self-signup attempts; sign-off recorded exactly once per version per contact; rate-limit behavior under brute force.
+- [ ] **`portalEnabled` gate wired end-to-end** (trigger fan-out already landed in 2); Project → **Portal** tab (master switch, "what the client sees" checkboxes: task list / kanban / hours mode / updates / files / milestones; contacts + last login + invite; **View as client**).
+- [ ] **Sharing UI:** item-level visibility with the two-token badge ("Private to team" / "Client can see"); composer asks visibility on create when the project is portal-enabled; inheritance tooltip; bulk visibility change with count confirmation ("make private with N children", audited).
+- [ ] **Comment two-mode composer:** "Internal note" (default) / "Reply to client" (distinct colour); contact-authored forced CLIENT_VISIBLE; warning when mentioning/assigning a Contact on an INTERNAL item.
+- [ ] **View-as-Contact** — red banner; **reuses the exact same `modules/*/portal.ts` projection functions** (asserted by import graph); byte-identical JSON to a real contact session.
+- [ ] **`ProjectUpdate` + `ProjectUpdateInternalSnapshot`** (portal centrepiece; rides entitlement `work`): `seq` (TenantCounter `project_update:<projectId>`), `health {ON_TRACK, AT_RISK, OFF_TRACK, ON_HOLD, COMPLETE}` **human-chosen, never computed**, `periodStart/End`, `body Json` sections `{SUMMARY, DONE, NEXT, BLOCKERS, DECISIONS_NEEDED, CUSTOM}`, `portalSnapshot Json` (portal-safe: tasks done/total, milestones, versions, hours only when `hoursSharingMode` allows), `status {DRAFT, PUBLISHED, ARCHIVED}`, `visibility`, `publishedAt/By`, `editNote`, `pdfDocumentId?`; **`ProjectUpdateInternalSnapshot`** (class A, 1:1: by-member, cost, budget) so per-member/cost never sit on a contact-selectable row; immutable after publish (trigger allows only status / visibility / editNote / pdf), 15-min grace, archive-only. Composer: health picker, sections with default template, "changes since last update" pull-in panel, metrics card with include toggles, live portal preview. Project → **Updates** tab (latest pinned, list, composer). Schedules/cadence reminders/templates = Phase 5.
+- [ ] **Portal REQUEST intake:** `WorkItem kind=REQUEST`, `source=PORTAL`, forced CLIENT_VISIBLE, lands in the TRIAGE state; **brokered write** under `withTenant(tenantId, {type:'system'})` after `authorizePortal()`; triage lane on board/backlog with Accept / Decline / Duplicate / Snooze single keys.
+- [ ] **Client-side tasks:** `assigneeContactId` surfaced; contact "Done" = brokered state change on own-assigned items only.
+- [ ] `Document` approval columns (mirroring `ProjectVersion`) + `Document.kind DELIVERABLE` approve / request changes.
+- [ ] **Hours widget** from `ProjectTimeSummary` when `hoursSharingMode ≠ NONE` (CONTACT_PRIMARY only). Portal never reads `time_entry`.
+- [ ] **Client Timeline** — derived UNION over PUBLISHED + CLIENT_VISIBLE `ProjectUpdate`s, milestone completions/dues, version ships/approvals, CLIENT_VISIBLE `Document(kind DELIVERABLE|REPORT)` versions, approval decisions. Never `AuditEvent`, never `WorkItemActivity` beyond the portal-safe list. Materialise only if measured slow.
+- [ ] **Portal capabilities** (`AUTHZ.md` §8 union additions): `portal.work_item.view`, `portal.work_item.act` (complete own task), `portal.request.create`, `portal.comment.create`, `portal.update.view`, `portal.timeline.view`, `portal.hours.view` (PRIMARY only), `portal.deliverable.approve` (PRIMARY only). What a Contact can do, exhaustively: view; approve / request changes; complete an own-assigned task; comment (CLIENT_VISIBLE); create a request; download; submit a credential (3V); open a share link (3V). **Nothing else.** No public/no-login links, no magic links, no client push in v1.
+- [ ] Portal screens: `/portal` = **action items first** (approvals, tasks assigned to you, questions awaiting reply, credential submission requests) then project cards; `/portal/projects/[key]` = **one screen**: header (name, health chip, "Phase: Design · Next milestone: Launch due 12 Sep", milestone progress bar) → action items → latest update → timeline → shared tasks grouped by *category* (only if enabled; no estimates / priorities / state names / assignee names) → files & deliverables → hours & retainer (opt-in) → requests; `/portal/files`, `/portal/company`.
 
-**Effort:** 4–5 weeks.
+**Permissions:** `project:manage_portal` CM (module `portal`) — enable/disable, `hoursSharingMode`, task-list/kanban toggles (catalog **→ 94**). **Audit:** `project.portal_enabled|disabled|hours_sharing_changed`, `project.viewed_as_contact`, `project_update.published|archived|visibility_changed`, `portal.request_created`, `portal.comment_created`, `portal.task_completed`, `document.approval_requested|decided`, `contact.*`, `file.downloaded`.
+
+**Shippable =** a real Naxdor client contact logs in, sees exactly their own projects / shared tasks / timeline / updates / files / services, signs off a version, submits a request that lands in triage — and nothing else, provably.
+
+**Non-negotiable tests before ship:** portal deny-matrix — cross-client read attempts, cross-tenant read attempts, `internal` file/document/note access, tenant-route access with a portal session (audience rejection), self-signup attempts; sign-off recorded exactly once per version per contact; rate-limit behavior under brute force. *2026-08-16 additions:* "no INTERNAL fact to a Contact" suite (INTERNAL child of CLIENT_VISIBLE parent, INTERNAL comment on CLIENT_VISIBLE item, unpublished update, hours widget when NONE, per-member breakdown never, state names never); `portalEnabled=false` ⇒ 0 rows for every table; view-as returns byte-identical JSON to a real contact session; request insert with any other kind/state/visibility rejected; contact "Done" only on own-assigned items; update immutability; **contact-writable census test updated in the same commit** (`Comment`, `ProjectVersion`/`Document` approval columns, `Notification.readAt/archivedAt` contact rows); rate limits on request creation.
+
+**Demo:** enable the portal on `ACME`, share two tasks and a milestone, publish an update with health AT_RISK; log in as the contact → one screen; approve a deliverable; submit a request → appears in triage; View-as-Contact matches. **CP3** before this phase (portal surface defaults; `hoursSharingMode` default NONE; REQUEST submission on; swap 3/3V or 4/5?).
+
+**Founder input:** SES production access (blocks only real client invites; dev outbox otherwise).
+
+**Effort:** 5 weeks (was 4–5).
 
 ---
 
-## Phase 4 — Money (v1)
+## Phase 3V — Vault, asset registry, expirations *(added 2026-08-16 — decision 12; new phase)*
 
-**Goal:** contracts and legally compliant invoices; the phase where correctness is regulated, not chosen.
+**Goal:** per-client credential storage *next to* the project (Hudu/IT Glue model), masked by default, reveal as an explicit audited act with step-up MFA; a typed asset registry (domain / hosting / DNS / SSL / licences) with a unified expirations feed. The continuity box stays pointer-only and auto-fills its systems section from `ClientAsset`. Spec pins: plan §3.4; `SECURITY.md` §6 (v2 envelope crypto, "operator can technically decrypt" — DPA wording).
+
+**Entitlement:** `vault`. **Preferences:** `vault.stepUpMinutes (10)`, `vault.revealBudgetPerHour (30)`, `vault.shareLinkMaxTtlHours (168)`, `vault.allowExternalShareLinks (true)`, `vault.allowPortalCredentials (false)`, `vault.allowContactSubmission (true)`.
+
+**Models:**
+
+- [ ] **`TenantKey` back-filled for existing tenants first** (landed 1b; rotation path).
+- [ ] `CredentialItem` — class B, **metadata only**: type, name, username, url, tags, notes, `secretFieldKeys[]`, `hasTotp`, expiry/rotation, `visibility`, `clientId`, `projectId?` (a filter, not a portal gate — `clientScoped`, two-term `portal_gate`, no `portal_enabled`; `TENANCY.md` §7.2).
+- [ ] `CredentialSecret` — **class A, 1:1**: `secretCiphertext`, `totpSecretCiphertext?`, version (v2 format, AAD `tenantId:credential_secret:<id>:secret` / `…:totp_secret` (convention: `tenantId:<table>:<rowId>:<field>`, `SECURITY.md` §6.1, `DATA_MODEL.md` §4)). A contact principal cannot SELECT ciphertext even for a CLIENT_VISIBLE item; Prisma `omit` keeps ciphertext out of every list/detail select (belt two). `CredentialVersion` (last N). `CredentialAccessGrant` (optional overlay).
+- [ ] `CredentialShareLink` — token `<tenantId>.<random>` (hash of the random part at rest); resolved via **`withTenant(tenantId, {type:'system'})` — never `withPlatform` from a portal/tenant route** (import-boundary test); recipient = authenticated Contact of that client **or** mandatory email-OTP (`requireEmailVerification=true` default); `maxViews=1`, TTL ≤ 7 d; view-once consumed atomically with the audit row. Passcode-only, TOTP-in-link, browser extension: not v1.
+- [ ] `ClientAsset` (`type {DOMAIN, HOSTING, DNS_ZONE, SSL_CERT, EMAIL, CMS_APP, THIRD_PARTY_SERVICE, LICENSE, CUSTOM}`, provider, url, identifier, status, `expiresAt`, `autoRenew`, `renewalCost`, currency, `fields Json` (zod per type), `visibility`, notes, tags); **Expirations feed** = computed UNION (assets, credentials, services, later contracts) + `ExpirationReminderSent` dedupe (60/30/14/7/1 d). RDAP/TLS `AssetCheck` = later.
+- [ ] Secrets never in `search_index` (name / username / url / tags only), never in logs (log-scrub test).
+
+**Reveal path:** `POST /api/vault/[id]/reveal|copy|totp` → `requireAccess(credential:reveal)` → `requireRecentMfa(vault.stepUpMinutes)` → reveal budget (Upstash; in-Postgres counter fallback, **fail-closed**) → decrypt **one** field → `record('credential.revealed')` in the same tx. Reveal and Copy are separate calls; per-item TOTP code generated server-side. **Portal:** contact *submits* credentials via a portal form (brokered write, never in comments/email); persistent CLIENT_VISIBLE credentials behind `vault.allowPortalCredentials` default OFF. **Offboarding:** removing a member flags credentials they revealed in the last 90 d as "needs rotation".
+
+**Permissions** (module `vault`, 11 new; catalog **→ 105**): `credential:view` CMAE · `credential:create` CMAE · `credential:edit` CMA · `credential:delete` CM · **`credential:reveal` CMA ✦** (decision 13 default — tenants grant it to employees deliberately, which forces MFA enrolment for those holders per `AUTHZ.md` §7.5; CP4 fallback: seed CMAE) · `credential:share` CMA ✦ · `credential:export` C ✦ · `credential:change_visibility` CA ✦ · `asset:view` CMAE · `asset:manage` CMA · `asset:delete` CM.
+
+**Audit:** `credential.created|updated|deleted|revealed|copied|totp_generated|visibility_changed|shared|share_revoked|share_viewed|exported|rotation_flagged`, `asset.created|updated|deleted`, `tenant_key.created|rotated`, `expiration.reminder_sent`, `vault.step_up_required`, `vault.reveal_budget_exceeded`. Metadata: credential id + field name only.
+
+**Screens:** Client → **Vault** tab (list masked; side panel with Reveal / Copy separate buttons + "this was logged" hint; TOTP code with countdown; history; share-link creator TTL / view-once / email-verify; "needs rotation" badge); Project → Vault (filtered); Client → **Assets** tab (typed registry, expiring-soon strip); `/vault` tenant-wide with client filter; `/expirations` + Home "Expiring soon" widget; portal `/portal/share/[token]` (email-OTP or authenticated contact) and `/portal/projects/[key]/submit-credential`; step-up dialog reused for all ✦ actions; offboarding hook.
+
+**Non-negotiable tests before ship — land before UI, no exceptions:** DB dump contains no plaintext; AAD mismatch (row/tenant swap) fails to decrypt; reveal without recent MFA → `MFA_REQUIRED`; reveal budget exceeded → deny + audit; employee cannot share/export; contact principal → 0 rows on `credential_secret` even for CLIENT_VISIBLE items; share link view-once atomic under concurrency, token hash only at rest, TTL enforced; `withPlatform` unreachable from portal routes; export ✦ + audited; TOTP vectors; expiration union + reminder dedupe; offboarding flags; log-scrub.
+
+**Shippable / DoD =** Naxdor's per-client logins live in the vault, every reveal audited; the expirations page shows domains / SSL / licences with reminders; catalog pinned at 105.
+
+**Demo:** add a hosting credential to Acme; reveal as CEO → step-up → value + audit row; employee without ✦ grant → masked; create a view-once share link → contact opens with email OTP → second open fails; add a domain expiring in 20 days → shows on `/expirations` and Home.
+
+**Founder inputs:** **CP4 — blocking; do not start 3V unanswered** (server-side envelope vs E2EE; MFA to reveal; portal-persistent credentials; external share links). Upstash EU for the reveal budget (Postgres fallback exists).
+
+**Effort:** 3–4 weeks.
+
+---
+
+## Phase 4 — Money (v1) + the time → invoice bridge *(bridge added 2026-08-16)*
+
+**Goal:** contracts and legally compliant invoices; the phase where correctness is regulated, not chosen. Executes **after Phase 5** in the revised order (CP3/CP5 may swap back).
 
 **Scope:**
 
@@ -183,56 +401,79 @@ Downgrade semantics for portal Contacts is **not** a Phase-0 gate — it is C1, 
 - [ ] **Pay-now button (v1, competitor delta):** `Invoice.paymentLinkUrl` — a **tenant-provided payment link** (their own Stripe Checkout/payment link, Swish, or bank link) rendered as the pay-now button on the invoice and in the portal, plus manual paid-status marking and reconciliation notes (`externalPaymentRef`). Optional per `TenantPreference`. The platform never touches the money flow — **no Stripe Connect** (skip list). *This is deliberately the no-credentials version:* v1 stores a URL, not a key, so Phase 4 needs no tenant-credential store.
 - [ ] *v1.5 (not this phase):* the tenant's **own Stripe restricted key** via `IntegrationConnection(STRIPE_TENANT)` (encrypted with the Phase-1 service), giving per-invoice Checkout Sessions and automatic paid-status reconciliation — `DATA_MODEL.md` §11. Build when a tenant asks for automatic reconciliation; the `paymentLinkUrl` path stays as the permanent fallback.
 - [ ] **`Service` renewals:** renewal-date reminders, renewal → draft invoice linkage.
-- [ ] **BFL carve-out (§9):** issued invoices are the tenant's räkenskapsinformation — [7-year retention](https://www.bfn.se/fragor-och-svar/arkivering/) that outlives the subscription; GDPR deletion flows exempt them; archive export at offboarding is a contractual promise (lands in the Phase 7 ToS).
-
+- [ ] **BFL carve-out (§9):** issued invoices are the tenant's räkenskapsinformation — [7-year retention](https://www.bfn.se/fragor-och-svar/arkivering/) that outlives the subscription; GDPR deletion flows exempt them; archive export at offboarding is a contractual promise (lands in the Phase 7 ToS). *(2026-08-16: invoiced `TimeEntry` rows inherit R1 — member pseudonymised on erasure.)*
 - [ ] **Seller-side scope, stated in the product:** v1 supports **Swedish-established issuing tenants only** (`DATA_MODEL.md` §6.7). Selling *to* US/non-EU clients is fully covered by the OUTSIDE_SCOPE profile; a **US-established issuing entity, and US sales tax, are out of scope for v1** — a tenant operating from both jurisdictions (Naxdor included) issues through its Swedish entity. Extension path (tenant-level tax-regime enum + per-regime issuer profile) is named, not built.
 
-**Shippable =** Naxdor issues its real invoices and contracts through the product: a Swedish invoice, a reverse-charge EU invoice, and a US invoice all render compliant PDFs; a client signs a contract in the portal; an invoice gets paid via its pay-now link.
+**Scope — time → invoice bridge (added 2026-08-16):**
 
-**Non-negotiable tests before ship:** gap-free numbering under concurrent issuance (parallel allocation race — exactly one sequence, no gaps, no duplicates); issued-invoice immutability; credit-note flow; VAT fixtures for all three profiles incl. SEK-VAT-on-EUR/USD-invoice; contract seal hash verification; portal visibility of invoices/contracts scoped per client (CONTACT_PRIMARY profile only).
+- [ ] `RoundingRule (incrementMinutes {1,6,10,15,30,60}, mode {UP, NEAREST, DOWN}, minimumBillableMinutes)` referenced by `Project`, applied **at line creation only** (raw + rounded stored on line metadata; stored seconds never mutate).
+- [ ] **Uninvoiced-time queue → invoice draft** (`InvoiceLine.unit="h"`); `TimeEntry.invoiceLineId` + immutable `InvoiceLineTimeEntry` history; `lockedReason=INVOICE_DRAFT` on draft / `INVOICED` on issue; release on draft delete or full credit note under `app.time_lock_bypass` (Odoo semantics), always with an audit row; "mark billed externally" / "write off".
+- [ ] `RetainerPlan` / `RetainerPeriod` / `HourBankTransaction` (carry-over, overage, prepaid packs) + portal retainer widget — **build only if Naxdor has a retainer client by then**.
+- [ ] Tidrapport PDF as `Document(kind REPORT, retention R1)`; FX snapshot (Riksbank SWEA) for SEK totals on non-SEK invoices; CSV fakturajournal export first, Bokio private-token connector v1.5, Fortnox voucher mode v2.
+- [ ] Permissions: `invoice:generate_from_time` CA, `time:write_off` CA, `retainer:manage` CM (+ the invoice/contract codes already in the catalog).
 
-**Effort:** 6–8 weeks.
+**Shippable =** Naxdor issues its real invoices and contracts through the product: a Swedish invoice, a reverse-charge EU invoice, and a US invoice all render compliant PDFs; a client signs a contract in the portal; an invoice gets paid via its pay-now link; **tracked hours flow onto invoice lines and lock**.
 
----
+**Non-negotiable tests before ship:** gap-free numbering under concurrent issuance (parallel allocation race — exactly one sequence, no gaps, no duplicates); issued-invoice immutability; credit-note flow; VAT fixtures for all three profiles incl. SEK-VAT-on-EUR/USD-invoice; contract seal hash verification; portal visibility of invoices/contracts scoped per client (CONTACT_PRIMARY profile only). *2026-08-16:* entries locked at issue and released on full credit; draft lock; rounding never mutates stored seconds.
 
-## Phase 5 — Collaboration (v1)
-
-**Goal:** issues framed as the client **request queue** (decision #7 — this framing subsumes forms/intake for v1; the productized-service lane validates it).
-
-**Scope:**
-
-- [ ] `Issue` — type (bug / idea / requirement), priority, status, attachments (`FileObject`), reporter (Contact or Member), link to the `ProjectVersion` that fixes it (§6). Lightweight tracker, not Jira.
-- [ ] `IssueComment` — threaded comments; per-comment visibility (`internal` triage notes vs client-visible replies), same data-layer enforcement as §5.
-- [ ] Staff triage views (queue per client/project, status transitions, assignment).
-- [ ] **Notifications:** in-app + email on issue created/commented/status-changed and sign-off requests; minimal per-recipient preferences; digest option. (Messaging-as-threaded-comments beyond issues: v2.)
-
-**Shippable =** Naxdor's clients report bugs/ideas/requirements in the portal instead of email; staff triage and close them against releases; everyone gets notified.
-
-**Non-negotiable tests before ship:** internal comments never reach any portal query path; cross-client issue isolation; notification fan-out respects visibility (a client-visible status change never emails another client's contacts); rate limiting on portal issue creation (abuse surface, §9).
-
-**Effort:** 3–4 weeks.
+**Effort:** 7–8 weeks (was 6–8). **CP5** before (lock/release semantics; retainer ledger only if a retainer client exists; rounding rule per project; CSV → Bokio → Fortnox).
 
 ---
 
-## Phase 6 — Reports (v1, deliberately thin)
+## Phase 5 — Collaboration channels (v1) *(rescoped 2026-08-16 — Issue absorbed into WorkItem)*
 
-**Goal:** performance reporting without the OAuth swamp (decision #7).
+**Goal:** the notification/collaboration *channels* on top of the 2W core: digests, inbox polish, push, update schedules, approval generalisation, email-in — digest, not firehose. Executes **before Phase 4** in the revised order.
+
+> **Superseded 2026-08-16 (work-management plan; decision 11 context):** the original scope below is struck. `Issue` → `WorkItem kind=REQUEST` (2W model, 3 portal intake), `IssueComment` → polymorphic `Comment` (2W), staff triage views → the triage lane (2W/3), base notifications → `notify.emit` + outbox (2W). The `issue:*` permission codes remain in the catalog as deprecated, unseeded from `TEMPLATE_VERSION` 2 (`AUTHZ.md` §3.1).
+>
+> - ~~`Issue` — type (bug / idea / requirement), priority, status, attachments (`FileObject`), reporter (Contact or Member), link to the `ProjectVersion` that fixes it (§6). Lightweight tracker, not Jira.~~
+> - ~~`IssueComment` — threaded comments; per-comment visibility (`internal` triage notes vs client-visible replies), same data-layer enforcement as §5.~~
+> - ~~Staff triage views (queue per client/project, status transitions, assignment).~~
+> - ~~**Notifications:** in-app + email on issue created/commented/status-changed and sign-off requests; minimal per-recipient preferences; digest option.~~
+
+**Scope (2026-08-16):**
+
+- [ ] **Digests** — member daily; client weekly (Monday 08:00 tenant TZ, built under the portal role, skipped when empty; RFC 8058 one-click unsubscribe).
+- [ ] `/settings/notifications` (levels, digest cadence/hour, quiet hours); per-item coalescing.
+- [ ] **Inbox polish** — grouped, `j/k/e/u/s`, snooze, reason chip, unread badge with partial index, 500 cap.
+- [ ] **Web Push** — `PushSubscription`, VAPID, content-free payloads, opt-in (push service = new processor row, `SECURITY.md` §9.2).
+- [ ] `ProjectUpdateSchedule` (cadence, owner, auto-draft pre-fill, +1/+2 working-day reminders, "update missing" badge) + `ProjectUpdateTemplate`.
+- [ ] `ApprovalRequest` generalisation (versions, deliverables, later contracts).
+- [ ] Audit-retention cron (`SECURITY.md` §7); SES SNS bounce/complaint webhook (fra1-pinned) if not already landed.
+- [ ] Reply-by-email / email-in (`InboundEmail`, SES receiving) behind entitlement `work.email_intake` — **only if wanted** (CP6).
+
+**Shippable =** staff and clients are notified of what matters on their cadence; nobody is emailed per keystroke; updates are prompted on schedule.
+
+**Non-negotiable tests before ship:** fan-out respects visibility (an INTERNAL comment never notifies a contact; a CLIENT_VISIBLE change never emails another client's contacts); a digest built under the contact principal cannot contain INTERNAL rows; suppression honoured; assignment debounce cancels if read; unsubscribe idempotent.
+
+**Effort:** 2–3 weeks (was 3–4). **CP6** before (digest cadence, Reply-To mailbox, reply-by-email deferred?).
+
+---
+
+## Phase 6 — Reports (v1, deliberately thin) *(extended 2026-08-16)*
+
+**Goal:** performance reporting without the OAuth swamp (decision #7) — plus the staff-side project-health view that 2W/2T data now makes possible.
 
 **Scope:**
 
-- [ ] `PerformanceReport` — uploaded report files (PDF/CSV) published as **client-visible `Document`s**, listed on a per-client reports surface (v1 = manual upload, confirmed §10.5).
+- [ ] `PerformanceReport` — uploaded report files (PDF/CSV) published as **client-visible `Document`s** (`kind=REPORT`), listed on a per-client reports surface (v1 = manual upload, confirmed §10.5).
 - [ ] **CrUX + CrUX History charts (v1):** [API-key only, free](https://developer.chrome.com/docs/crux/api), per-project origin/URL Core Web Vitals with a designed empty state (small client sites often have no CrUX data).
 - [ ] **GSC/GA4 sync — explicitly v2** (service-account-invite pattern preferred over OAuth; see v2 backlog). Manual upload remains the permanent fallback either way.
+- [ ] *(2026-08-16)* Staff **"Project health" portfolio table** (health from latest `ProjectUpdate`, update age, % done, hours vs budget, update-missing); permission `report:view_portfolio` CM.
+- [ ] *(2026-08-16)* Fixed Recharts set (status donut incl. late, per-state, hours by member/project, budget burn); cycle/lead time from `WorkItemActivity` (recorded since 2W). **No builders.**
+- [ ] *(2026-08-16)* PDF exports (`@react-pdf/renderer` in fra1 → R2 → `Document(kind REPORT)`); generic CSV/Trello import (`ImportJob`); first-run onboarding polish.
 
-**Shippable =** a client opens Reports and sees their monthly report file plus live Core Web Vitals trend charts (or an honest empty state).
+**Shippable =** a client opens Reports and sees their monthly report file plus live Core Web Vitals trend charts (or an honest empty state); staff see the portfolio table.
 
-**Non-negotiable tests before ship:** report visibility flags (a report is client-visible only when explicitly published); CrUX empty/error states; per-client scoping on the reports surface.
+**Non-negotiable tests before ship:** report visibility flags (a report is client-visible only when explicitly published); CrUX empty/error states; per-client scoping on the reports surface; portfolio table respects project scoping and never exposes cost without `rate:view_cost`.
 
-**Effort:** 1–2 weeks. May ship with Phase 5's release (see §1 note).
+**Effort:** 2 weeks (was 1–2). May ship with Phase 5's release (see §1 note).
 
 ---
 
 ## Phase 7 — Productization (v1)
+
+*(2026-08-16 — inherited additions:* Phase 7 gates `work` (every tier), `time` (mid-tier+), `vault` (top tier with the box) as entitlements; the onboarding wizard uses project templates; the DPA gains vault wording ("operator can technically decrypt"); the legal package gains the MBL 13 § / staff-notice questions.)
 
 **Goal:** turn Naxdor's system into a SaaS: plans, self-signup, platform console. Soft launch; public marketing launch after Phase 8 (see §1 pushback).
 
@@ -243,7 +484,7 @@ Downgrade semantics for portal Contacts is **not** a Phase-0 gate — it is C1, 
 - [ ] **Tax:** `tax_id_collection` → automatic reverse charge for EU B2B; **we still file periodisk sammanställning** — Stripe calculates, never files; follow-up process for failed VIES validations.
 - [ ] **Trials & dunning:** 14 days, no card (`if_required`, `end_behavior=pause`); Smart Retries + dunning emails + in-app payment-failed banner.
 - [ ] **Downgrade = read-only grandfathering** ([Trello model](https://community.atlassian.com/forums/Trello-questions/What-happens-to-the-boards-when-you-downgrade-to-free/qaq-p/1987366)): block creation past the new limit, never delete or hide existing data; applies at period end. The entitlement resolver gains an **exemption mechanism** here — required by Phase 8's rule that the continuity box survives billing lapse.
-- [ ] **Tenant self-signup + onboarding:** tenant creation wizard, role templates seeded, guided first client/project; reserved-name hygiene at signup.
+- [ ] **Tenant self-signup + onboarding:** tenant creation wizard, role templates seeded, guided first client/project (from a project template); reserved-name hygiene at signup.
 - [ ] **Platform admin console** (§7): tenant provisioning, plan/entitlement overrides, trials, usage & health (storage, members, activity), suspension/offboarding, full data export, hard deletion with grace period; **impersonation UI** on the Phase-1 machinery — exceptional, reason-logged, time-boxed, visible in the tenant's own audit log (§7), and **read-only with no write-elevation path in v1**: the permission set is intersected with a read-only mask server-side and no write-mode flag is built (`AUTHZ.md` §9, `SECURITY.md` §8). Scoped write elevation — a separate start-time flag, separately reasoned and audited — is **v2**, only if support reality demands it.
 - [ ] **Domain cutover off `naxdor.com`** (decision #9, `OPEN_QUESTIONS.md` B1 — **start this first, it is the phase's long pole**): buy the product apex + platform-ops apex, delegate the product zone to Vercel nameservers **while it is empty** (ARC-11), move `os.naxdor.com` → `app.<product>.tld` and `ops.naxdor.com` → `<product-ops>.tld` through the INV-D2 config module, stand up the marketing site on the product apex, re-issue SPF/DKIM/DMARC on the new sending domain and **warm the sender before launch traffic** (calendar time, not effort). Old hosts 301 to new for a grace period; `__Host-` cookies mean every session is invalidated by the move, so schedule it before the first external tenant, not after. INV-D1's prohibition on `Domain=` cookies lifts only once this lands.
 - [ ] **Branding basics (v1):** tenant logo, colors, email sender name. Subdomains/custom domains/white-label: v2 (decision #8).
@@ -259,6 +500,8 @@ Downgrade semantics for portal Contacts is **not** a Phase-0 gate — it is C1, 
 
 ## Phase 8 — Continuity box (v1, both levels)
 
+*(2026-08-16 — inherited additions:* the box's "systems & assets" section auto-fills from `ClientAsset` at seal time and *points at* the vault; the box itself stays pointer-only — decision 12 leaves live secrets in the vault, not the box. See `CONTINUITY_BOX.md` amendment.)
+
 **Goal:** the differentiator, built on Phase-1 foundations (encryption seam, audit catalog, R2 EU bucket) and Phase-7 billing state. Full design in `CONTINUITY_BOX.md`.
 
 **Scope — tenant → client box:**
@@ -267,7 +510,7 @@ Downgrade semantics for portal Contacts is **not** a Phase-0 gate — it is C1, 
 - [ ] **Key custody: 2-of-3 Shamir (decision #1 — final):** Share A printed continuity card held by the client (generated client-side, never touches the server); Share B in the platform DB (single share useless alone); Share C trustee. Platform alone can never decrypt; card loss recoverable via B+C. Never email key material.
 - [ ] `ContinuityOpenRequest` — **request + veto-window trigger** (Bitwarden emergency-access model): a `CONTACT_PRIMARY` contact requests → all tenant admins notified on every channel with escalation → **veto window (default 21 days, configurable 7–60)** → auto-grant on expiry. Platform-observed dead-man signals (lapsed subscription + no staff logins) **badge/enable the request and may shorten the window — never auto-open.** Cooldown after veto; hostile-veto escalation to platform-mediated human review.
 - [ ] **Open-once + download window (decision #2 — final):** atomic SEALED→OPENED transition (conditional update + audit row in one transaction), then a 7-day window ([R2 presign max](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)) with unlimited re-downloads of the same blob, every issuance logged. Friction on request: plain-language warning, confirmation, cooldown (§8 abuse design).
-- [ ] **Content-rot defenses:** quarterly reseal ritual with reminders; contact offboarding forces reseal; contents template = **pointers + recovery instructions, not live credentials** (founder's lean, confirmed): registrar/DNS, hosting, repos, third-party services, where real secrets live, architecture notes, successor recommendations.
+- [ ] **Content-rot defenses:** quarterly reseal ritual with reminders; contact offboarding forces reseal; contents template = **pointers + recovery instructions, not live credentials** (founder's lean, confirmed; *2026-08-16: reconfirmed — live credentials live in the 3V vault, the box points there*): registrar/DNS, hosting, repos, third-party services, where real secrets live, architecture notes, successor recommendations.
 - [ ] **Billing-lapse exemption:** the box is entitlement-gated for *selling* (top tier, decision #4) but read/open paths survive nonpayment via the Phase-7 exemption mechanism — a continuity feature that seals itself on a missed invoice defeats its purpose. Retention window for lapsed tenants: `OPEN_QUESTIONS.md`.
 - [ ] Every box lifecycle event in the audit catalog (seal, reseal, request, veto, open, download, dispute).
 - [ ] **Legal package (with lawyer, not advice):** template continuity clause for the agency↔client contract referencing the box; ToS disclaimers (no verification beyond described procedure, no accuracy warranty, not an estate instrument, liability cap, wrongful-release indemnity); lawyer question list headlined by konkursbo enforceability (`CONTINUITY_BOX.md`).
@@ -276,7 +519,7 @@ Downgrade semantics for portal Contacts is **not** a Phase-0 gate — it is C1, 
 
 - [ ] **Scheduled automated per-tenant exports pushed outside our infrastructure** (tenant-provided bucket or signed delivery; JSONL + files + manifest, optional SQLite bundle) — productizing the Phase-2 manual export.
 - [ ] Self-hosting runbook finalized; founder dead-man arrangements formalized (Bitwarden Emergency Access from Phase 1 + named successor).
-- [ ] *Already landed earlier, by design:* export path (Phase 2, extended every phase) · founder emergency access + runbook skeleton (Phase 1) · ToS wind-down commitment ≥90 days + free export (Phase 7). Formal SaaS escrow ([Codekeeper ~$2.6k/yr](https://codekeeper.co/pricing/saas-escrow)): **v2**, flagged as a marketing asset ("we escrow ourselves").
+- [ ] *Already landed earlier, by design:* export path (Phase 2, extended every phase) · founder emergency access + runbook skeleton (Phase 1/1b) · ToS wind-down commitment ≥90 days + free export (Phase 7). Formal SaaS escrow ([Codekeeper ~$2.6k/yr](https://codekeeper.co/pricing/saas-escrow)): **v2**, flagged as a marketing asset ("we escrow ourselves").
 
 **Shippable =** a tenant seals a box for a client; the client holds a printed card; an open request survives the full veto/notify/grant flow; the opened package downloads for 7 days; the platform can prove — cryptographically, not contractually — that it could never read the contents.
 
@@ -286,28 +529,67 @@ Downgrade semantics for portal Contacts is **not** a Phase-0 gate — it is C1, 
 
 ---
 
+## Checkpoints *(added 2026-08-16 — plan §7; recommended defaults in bold; Claude proceeds with the default if unanswered within 48 h, except CP4)*
+
+| CP | When | Questions (default) |
+|---|---|---|
+| **CP0** | before Step 0 / 1b | Approve execution order + decisions 11–13 (**yes**); "cost per hour for the project" = **bill rate**, internal cost rate as optional encrypted finance layer (**build both; cost layer on for Naxdor, CEO-only**); UI says "Task", Epic/Task/Subtask, `Issue` gone (**yes**); single assignee + collaborators, configurable state names inside fixed categories, hours as estimate unit (**yes**); project key `ACME-12` per-project numbering (**yes**); UI kit shadcn-style on Radix + Tailwind 4, neutral preset (**yes**); outbox + assignment/mention emails in 2W (**yes**) |
+| **CP1** | after the Phase 2 demo | React to visual style before 2W multiplies it (**proceed if silent 48 h**) |
+| **CP2** | before 2T | Rate tiers (**BILL project-member > project > member > tenant; COST member > tenant**); time without task (**allow, note required**); overlap (**block, toggle**); who sees money (**as 2T**); staff-notice purposes (**billing/planning/profitability, not evaluation**); MBL check if any union member; US notice if NY/CT/DE staff; rounding (**none at tenant; per-project at invoice**); Vercel Pro upgraded |
+| **CP3** | before Phase 3 | Portal surface (**action items + one-screen project page; shared task list per project default OFF; no client kanban; no public links**); `hoursSharingMode` default (**NONE**); client REQUEST submission (**on**); swap 3/3V or 4/5? (**no**) |
+| **CP4** | before 3V — **blocking** | Server-side envelope vs E2EE (**server-side**); MFA to reveal (**required; step-up 10 min; always step-up for share/export/visibility**); portal-persistent credentials (**OFF**); external share links (**on, email-OTP, view-once, ≤ 7 d**) |
+| **CP5** | before Phase 4 | Lock on issue / release on full credit (**yes**); retainer ledger only if a retainer client exists; rounding rule per project; Bokio vs Fortnox first (**CSV → Bokio → Fortnox**) |
+| **CP6** | before Phase 5 | Digest cadence (**member daily; client Monday 08:00**); Reply-To mailbox; reply-by-email (**deferred**) |
+| Standing | any demo | Any phase demo that surfaces something wrong is a checkpoint — checkpoints are cheap, retrofits are not |
+
+---
+
+## Founder-side provisioning and fallbacks *(added 2026-08-16 — plan §8; the build proceeds without these)*
+
+| Item | Needed by | Fallback while missing |
+|---|---|---|
+| Vercel Pro (crons, `after()` durability) | 2W outbox, 2T auto-stop | lazy evaluation on read; authenticated `POST /api/jobs/run` |
+| R2 buckets + keys (`jurisdiction=eu`; general + continuity with bucket lock) | Phase 2 documents, 2W attachments | local-disk `StorageTransport`; integration test skipped without env |
+| SES production access + DNS (`mailer.naxdor.com`, MAIL FROM `bounce.mailer`) | Phase 3 contact invites, Phase 5 email | dev outbox `.dev-outbox/outbox.jsonl` (as today) |
+| Upstash Redis EU | 1b rate limits, 3V reveal budget | no-op limiter (fail-open) except vault reveal budget → in-Postgres counter (fail-closed) |
+| Neon Launch plan | before tenant-zero data grows | none needed for code |
+| Staff-notice text / MBL check / lawyer | before Naxdor *uses* 2T timers | draft sv/en shipped; feature gated behind acknowledgment |
+| CP4 vault stance | 3V | do not start 3V until closed |
+| Bitwarden Emergency Access for founder credentials | Phase 1 cheap win #1 | none — founder action |
+| Trademark check "Fortleva" | before Phase 7 domain buy | none |
+
+---
+
 ## v2 backlog (build when the trigger fires — not before)
 
 | Item | Trigger | Notes |
 |---|---|---|
 | BankID signing via pooled [Idura](https://idura.eu/pricing/signatures) broker (€139/mo incl. 200 signatures, €0.013/tx) | first tenant asks / offers to pay | one platform account, metered per tenant as an entitlement; per-tenant vendor accounts don't scale down |
-| [Fortnox](https://www.fortnox.se/developer) invoice push | tenant demand | self-serve dev portal, marketplace review, end-customer integration license ~189 kr/mån; Bokio later (gatekept API) |
+| [Fortnox](https://www.fortnox.se/developer) invoice push | tenant demand | self-serve dev portal, marketplace review, end-customer integration license ~189 kr/mån; Bokio later (gatekept API) — *2026-08-16: order is CSV fakturajournal (4) → Bokio private-token (v1.5) → Fortnox voucher mode (v2)* |
 | Subdomain-per-tenant, then custom domains | v2 rollout / mid-tier plan sales (decision #8) | Phase-1 seams (hostname→tenantId resolver, centralized cookie config, no slugs in URLs) keep this a config-plus-routing job, not a rewrite |
 | GSC/GA4 sync | tenants want automated reports | service-account-invite pattern first (no Google verification, ships in days); OAuth only if needed — start [sensitive-scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification) 1–2 months ahead, never run production sync in Testing mode |
-| Forms / intake builder | request-queue framing stops covering intake | Phase 5's Issue queue is the v1 answer |
+| Forms / intake builder | request-queue framing stops covering intake | ~~Phase 5's Issue queue~~ *2026-08-16:* portal REQUEST intake (Phase 3) is the v1 answer |
 | Proposals / quotes | tenant demand | Services + Contracts cover the v1 job; add quote-accept later |
 | Recurring billing (tenant → their clients) | tenant demand | the productized-service lane lives on this; likely the point Stripe Connect gets re-evaluated |
-| Messaging as threaded comments beyond issues | tenant demand | never a full chat product |
+| Messaging as threaded comments beyond ~~issues~~ work items / updates / documents | tenant demand | never a full chat product |
 | attachmentAV virus scanning via R2 events | real portal upload volume | v1 mitigation: allowlist + attachment disposition + separate download host |
 | Formal SaaS escrow (Codekeeper) | upmarket tenant asks / marketing decision | "we escrow ourselves" as credibility asset |
 | Peppol e-invoicing adapter | Swedish mandate materializes (inquiry reports 2027-11-30; ViDA 2030) | EN 16931 alignment from Phase 4 makes this an adapter |
 | Physical tenant isolation (dedicated Neon project) | a tenant demands/pays for it | `cell` seam from Phase 1 makes extraction mechanical |
+| **Later work/time/vault modules** *(added 2026-08-16 — plan §4; entitlement-gated, build only when a tenant asks)* | tenant asks | Sprints (`Sprint`, taskboard, capacity, burndown) · `WorkItemLink` {RELATED, BLOCKS, DUPLICATE_OF} (v1.5) · `SavedView` / `Favorite` · `Reaction` · WIP limits + definition of done · custom typed properties · calendar layout · Gantt with dependencies (SVAR) · Pages/wiki (Tiptap tree, Hudu-style) · Toggl/Clockify/Jira/Asana imports · offline timer queue (v1.5) · SSE realtime over Upstash EU pub/sub (v1.5, behind flag) · timesheet submit/approve workflow · utilisation · RDAP/TLS `AssetCheck` · HIBP · passcode/TOTP-in-share-link · browser extension · AI-drafted updates (deterministic pre-fill first; JSONB room left, no schema commitment) · points as estimate unit (behind a preference) · `RollupCache` (only when a tenant needs it) · Bokio connector (v1.5) · tenant Stripe key `IntegrationConnection` (v1.5) · passkeys (v1.5) · contact MFA · scoped write-elevation for impersonation |
 
 ## Skip list (decided — do not build)
 
 | Item | Reason |
 |---|---|
-| Time tracking | table stakes only in the freelancer/per-seat-priced lane; integrate later if ever, don't build |
+| ~~Time tracking~~ | ~~table stakes only in the freelancer/per-seat-priced lane; integrate later if ever, don't build~~ — **superseded 2026-08-16 by decision 11** (`OPEN_QUESTIONS.md`): self-reported timer + entries + rates + budgets + rollups are Phase 2T. What stays skipped is the *monitoring* half — see the never-list row below. |
+| **Employee-monitoring features — never** *(added 2026-08-16, decision 11; also `SECURITY.md` §9.7)* | idle detection, screenshots, app/URL/keystroke capture, presence / "who is working now" broadcast, per-minute heatmaps, leaderboards, geolocation, peer-visible timelines. Anything captured without the employee's own act turns tidsredovisning into övervakning (IMY; DPIA-mandatory; MBL 11 §; NY/CT/DE notice statutes) — a legal object, not a feature. This is a design constraint on 2T and every later phase, not a backlog item. |
+| **ADO's configuration surface** *(added 2026-08-16)* | process templates, area/iteration paths, teams-in-project, WIQL/managed queries, delivery plans, dashboard/report builders, card style rules, per-team board settings, hidden board-column fields, silent 183-day archive. We copy ADO's data model, not its configuration surface — its reviewers call it "overkill for small teams / not for business people", i.e. our client persona. |
+| **Work-model complexity** *(added 2026-08-16)* | multi-assignee · 4+ hierarchy levels · custom typed properties (v1) · sprints / velocity / capacity by default · Gantt with dependency auto-scheduling · timesheet approval workflows (v1) · task-scoped rate cards · FX inside time reports · `RollupCache` before a tenant needs it |
+| **Portal shortcuts** *(added 2026-08-16)* | public / no-login project links · magic links · client push notifications (v1) · client kanban editing rights (Planner guest-access failure mode) |
+| **Vault variants** *(added 2026-08-16, decision 12)* | E2EE / passphrase vault (Infisical dropped it; IT Glue's is a support burden — breaks search/share/TOTP/portal submission) · browser extension · uptime monitoring · emergency-access state machine (the continuity box owns that) |
+| **A second path for anything** *(added 2026-08-16)* | a second comment / attachment / notification / search path · external search engines, pgvector, GIN under FORCE RLS · realtime SaaS / WebSockets / sync engine, Slack/Teams hooks, Novu/Knock/OneSignal · live Asana/Jira/Trello sync |
+| **UX anti-patterns** *(added 2026-08-16, `UI.md`)* | modal forms for tasks / time / comments · Save buttons · hidden filters · AI drafting before deterministic pre-fill |
 | Scheduling | link Calendly; zero differentiation |
 | Email marketing | different product; crowded market |
 | Full chat (read receipts, email bridging) | a quarter of work masquerading as a feature; threaded comments suffice |
@@ -321,3 +603,8 @@ Downgrade semantics for portal Contacts is **not** a Phase-0 gate — it is C1, 
 | Date | Note |
 |---|---|
 | 2026-08-03 | Phase 0: research sweep + 8 docs drafted; awaiting founder review and Phase-1 blocker decisions (`OPEN_QUESTIONS.md`). |
+| 2026-08-05 | Product name decided: **Fortleva** (trademark check outstanding). |
+| 2026-08-06 | `f5e7523` Phase 0 specification committed. |
+| 2026-08-08 | **Phase 0 exit** (`24672a5`): B2 Neon `fortleva` in `aws-eu-central-1` (PG18), B3 Option B, B4 SES `eu-central-1` (decision 10), B6 accepted; B1 demoted to Phase 7 (decision 9). **Phase 1 build started** the same day: `323968a` Next.js 16 scaffold + INV-D2 config module + INV-D1 CI test · `43f49a1` Phase 1 schema + security migrations (RLS forced everywhere, role split) · `6f0b0fc` permission catalog (63 codes) + role templates seeded to Neon · `6d525c5` tenancy runtime (`withTenant`/`withPlatform`, `authorize()` seam, isolation suite) · `230ca88` audit capture + four-gate entitlement resolver · `155f9a7` Better Auth member identity + field encryption + mailer stub · `78419e2` CI: typecheck + lint + unit tests + isolation suite against Neon (serialised) · `7bfb60c` three planes (proxy gating, per-plane auth, dashboard + login + shells) · `15750e5` invite flow + tenant provisioning + **Naxdor seeded as tenant zero**. |
+| 2026-08-09 | `649a90c` login-loop fix (Better Auth secure mode was renaming the session cookie) · `78b58b5` account security page (change password + TOTP enrolment) + app nav. Phase 1 status `[~]`: foundations (schema/RLS/roles/permissions/isolation/audit/encryption seam/three planes/Better Auth/tenant zero) landed; i18n, R2 transport, MFA enforcement, member admin, request context, rate limiting outstanding → Phase 1b. |
+| 2026-08-16 | **Overnight research (24-agent workflow, ~2.9 M tokens) + plan revision.** Founder judged the running shell an MVP and redirected toward a full work-management product. Outcome: `docs/research/2026-08-16-*` (digest, synthesis, reviews, three plan drafts) added; **decisions 11 (time tracking reversed + never-list), 12 (vault module, box stays pointer-only), 13 (`credential:reveal` seeded CMA ✦)** recorded in `OPEN_QUESTIONS.md`; execution order **`1b → 2 → 2W → 2T → 3 → 3V → 5 → 4 → 6 → 7 → 8`**; new phases 1b / 2W / 2T / 3V; Phase 5 rescoped (Issue absorbed into `WorkItem`); Phase 4 gains the time → invoice bridge; catalog plan 63 → 80 → 93 → 94 → 105; `PLAN.md`, `DATA_MODEL.md`, `AUTHZ.md`, `TENANCY.md`, `SECURITY.md`, `ARCHITECTURE.md` (ARC-15…24), `CONTINUITY_BOX.md` amended with dated markers; `UI.md` added. Next: CP0, then Phase 1b. |

@@ -1,6 +1,8 @@
 # PROJECT_BRIEF.md — Fortleva
 ### Multi-tenant SaaS: client & project management, client portal, and continuity box
 
+> **Amended 2026-08-16 (work-management plan; decisions 11–13 in `OPEN_QUESTIONS.md` §1.1).** This brief is the founder's original input and is kept verbatim as history. Three of its positions were later reversed or extended by dated founder decisions and are *superseded where the specs say so*: (1) the Phase-0 skip of time tracking (decision 7 in `OPEN_QUESTIONS.md`, taken on this brief's scope; not stated in the brief itself) — reversed by decision 11 (Phase 2T, `PLAN.md`; the monitoring half stays on the never-list); (2) §8 "pointers, not live credentials" — still true for the continuity box, but a separate credential **vault** module (Phase 3V, server-side envelope encryption) now holds live secrets (decision 12, `SECURITY.md` §6.1–§6.3, `CONTINUITY_BOX.md` §6); (3) the §6/§11 **Issues** entity (Phase 5) — absorbed into `WorkItem(kind = REQUEST)` + polymorphic `Comment` (`DATA_MODEL.md` §1.2/§6.14, `AUTHZ.md` §3.1 first deprecation). Where this brief and the spec docs disagree, the dated spec amendment wins.
+
 ## 0. How to use this document
 
 You are Claude Code. **Do not write application code in your first pass.**
