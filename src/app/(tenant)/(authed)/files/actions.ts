@@ -1,0 +1,149 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+
+import { AuthzError } from "@/authz/errors";
+import { handleAuthzRedirect } from "@/authz/redirects";
+import { UploadRejectedError } from "@/documents/allowlist";
+import {
+  changeVisibility,
+  commitUpload,
+  createUpload,
+  DocumentError,
+  getDownloadUrl,
+  softDeleteDocument,
+  type CreateUploadResult,
+} from "@/documents/service";
+import { requireTenantContext } from "@/members/tenant-context";
+
+/**
+ * Server actions for /files. Tenant + actor come from the session
+ * (requireTenantContext) — never from the form. Errors are flattened
+ * to messages; MFA denials become step-up navigation.
+ */
+
+export type ActionResult<T = undefined> =
+  | { ok: true; value: T }
+  | { ok: false; message: string };
+
+const messageOf = (e: unknown): string | null => {
+  if (e instanceof AuthzError) {
+    switch (e.reason) {
+      case "NOT_ENTITLED":
+        return e.detail?.startsWith("maxStorageBytes")
+          ? "Storage quota reached — delete files or upgrade the plan."
+          : "Not included in your plan.";
+      case "NOT_FOUND":
+        return "File not found.";
+      case "FORBIDDEN":
+        return "You do not have permission to do that.";
+      default:
+        return e.message;
+    }
+  }
+  if (e instanceof UploadRejectedError) {
+    switch (e.code) {
+      case "TYPE_NOT_ALLOWED":
+        return "That file type is not accepted.";
+      case "SIZE_INVALID":
+        return "File is empty or too large (max 100 MB).";
+      case "NAME_INVALID":
+        return "Invalid file name.";
+    }
+  }
+  if (e instanceof DocumentError) {
+    switch (e.code) {
+      case "UPLOAD_MISSING":
+      case "UPLOAD_SIZE_MISMATCH":
+        return "Upload did not complete correctly — please try again.";
+      case "NOT_PENDING":
+        return "This upload was already finished or expired.";
+      case "CLIENT_REQUIRED":
+        return "A client-visible file needs a client.";
+    }
+  }
+  return null;
+};
+
+async function guard<T>(path: string, fn: () => Promise<T>): Promise<ActionResult<T>> {
+  try {
+    return { ok: true, value: await fn() };
+  } catch (e) {
+    handleAuthzRedirect(e, path);
+    const message = messageOf(e);
+    if (message) return { ok: false, message };
+    throw e;
+  }
+}
+
+const presignSchema = z.object({
+  name: z.string().min(1).max(255),
+  contentType: z.string().max(255),
+  sizeBytes: z.number().int().positive(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/i),
+});
+
+export async function presignUploadAction(
+  raw: z.input<typeof presignSchema>,
+): Promise<ActionResult<CreateUploadResult>> {
+  const { membership, actor } = await requireTenantContext();
+  const parsed = presignSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, message: "Invalid upload request." };
+  return guard("/files", () =>
+    createUpload(
+      { tenantId: membership.tenantId, actor },
+      { ...parsed.data, visibility: "INTERNAL" },
+    ),
+  );
+}
+
+export async function commitUploadAction(
+  fileObjectId: string,
+): Promise<ActionResult<{ documentId: string }>> {
+  const { membership, actor } = await requireTenantContext();
+  const result = await guard("/files", () =>
+    commitUpload(
+      { tenantId: membership.tenantId, actor },
+      { fileObjectId, visibility: "INTERNAL" },
+    ),
+  );
+  if (result.ok) revalidatePath("/files");
+  return result;
+}
+
+export async function downloadAction(formData: FormData): Promise<void> {
+  const documentId = String(formData.get("documentId") ?? "");
+  const { membership, actor } = await requireTenantContext();
+  const result = await guard("/files", () =>
+    getDownloadUrl({ tenantId: membership.tenantId, actor }, documentId),
+  );
+  if (!result.ok) redirect(`/files?error=${encodeURIComponent(result.message)}`);
+  // Off-origin, short-lived, Content-Disposition: attachment (SECURITY.md §5).
+  redirect(result.value.url);
+}
+
+export async function deleteDocumentAction(formData: FormData): Promise<void> {
+  const documentId = String(formData.get("documentId") ?? "");
+  const { membership, actor } = await requireTenantContext();
+  const result = await guard("/files", () =>
+    softDeleteDocument({ tenantId: membership.tenantId, actor }, documentId),
+  );
+  if (!result.ok) redirect(`/files?error=${encodeURIComponent(result.message)}`);
+  revalidatePath("/files");
+}
+
+/** Wired for Phase 2 (clients): today the select is disabled in the UI
+ * and CLIENT_VISIBLE is refused server-side without a clientId. */
+export async function changeVisibilityAction(formData: FormData): Promise<void> {
+  const documentId = String(formData.get("documentId") ?? "");
+  const visibility =
+    formData.get("visibility") === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL";
+  const { membership, actor } = await requireTenantContext();
+  const result = await guard("/files", () =>
+    changeVisibility({ tenantId: membership.tenantId, actor }, documentId, visibility),
+  );
+  if (!result.ok) redirect(`/files?error=${encodeURIComponent(result.message)}`);
+  revalidatePath("/files");
+}

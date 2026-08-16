@@ -19,8 +19,11 @@ export function proxy(request: NextRequest): NextResponse {
   const host = request.headers.get("host") ?? "";
   const plane = planeForHost(host);
 
-  // Auth endpoints pass through untouched on both hosts.
-  if (pathname.startsWith("/api/auth")) return NextResponse.next();
+  // Auth endpoints pass through untouched on both hosts. The dev-only
+  // storage stand-in is authorized by its own signed URL, like R2.
+  if (pathname.startsWith("/api/auth") || pathname.startsWith("/api/dev-storage")) {
+    return NextResponse.next();
+  }
 
   if (plane === "platform") {
     // The ops host serves ONLY the platform console.

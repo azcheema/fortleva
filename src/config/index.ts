@@ -23,6 +23,16 @@ const envSchema = z.object({
   MAIL_FROM_ADDRESS: z.email().default("dev@localhost.invalid"),
   DATABASE_URL: z.string().optional(),
   DIRECT_URL: z.string().optional(),
+  // File storage (SECURITY.md §5): Cloudflare R2, EU jurisdiction. All
+  // four present ⇒ R2 transport; otherwise the local-disk dev transport.
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().optional(),
+  // HMAC secret for the dev-only "presigned" local-storage URLs. Falls
+  // back to BETTER_AUTH_SECRET, then a per-process random (dev only).
+  DEV_STORAGE_SECRET: z.string().optional(),
+  BETTER_AUTH_SECRET: z.string().optional(),
 });
 
 const env = envSchema.parse(process.env);
@@ -91,3 +101,43 @@ export const planeForHost = (host: string): "platform" | "app" => {
   if (opsUrl.host !== appUrl.host && host === opsUrl.host) return "platform";
   return "app";
 };
+
+/**
+ * File storage endpoints (INV-D2: hosts live here and only here). The
+ * R2 endpoint is a separate apex by construction — downloads are served
+ * off-origin with Content-Disposition: attachment (SECURITY.md §5).
+ */
+export type R2Config = {
+  readonly accountId: string;
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly bucket: string;
+  /** https://<account>.eu.r2.cloudflarestorage.com — EU jurisdiction. */
+  readonly endpoint: string;
+};
+
+export const r2Config: R2Config | null =
+  env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_BUCKET
+    ? {
+        accountId: env.R2_ACCOUNT_ID,
+        accessKeyId: env.R2_ACCESS_KEY_ID,
+        secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+        bucket: env.R2_BUCKET,
+        endpoint: `https://${env.R2_ACCOUNT_ID}.eu.r2.cloudflarestorage.com`,
+      }
+    : null;
+
+/** Local-disk dev transport: bytes under .dev-storage/, "presigned"
+ * URLs point at the dev-only route handler on the app origin. */
+export const devStorageConfig = {
+  routePath: "/api/dev-storage",
+  signingSecret:
+    env.DEV_STORAGE_SECRET ??
+    env.BETTER_AUTH_SECRET ??
+    `dev-storage-${Math.random().toString(36).slice(2)}`,
+  /** Absolute URL of the dev-storage handler for a storage key. */
+  urlFor(key: string): URL {
+    const path = key.split("/").map(encodeURIComponent).join("/");
+    return new URL(`${this.routePath}/${path}`, appUrl);
+  },
+} as const;

@@ -22,6 +22,9 @@ export default async function AuthedLayout({
           <Link href="/members" className="hover:underline">
             Members
           </Link>
+          <Link href="/files" className="hover:underline">
+            Files
+          </Link>
           <Link href="/account" className="hover:underline">
             Account
           </Link>
