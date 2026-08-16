@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 
 import { listAssignableMembers } from "@/clients/service";
 import { AssignmentsPanel } from "@/components/assignments-panel";
+import { SectionCard } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -13,6 +14,7 @@ export default async function ProjectTeamPage({ params }: { params: Promise<{ ke
   const { key } = await params;
   const project = await loadProject(key);
   const t = await getTranslations("projects.team");
+  const tAssign = await getTranslations("assignments");
   const { membership } = await requireTenantContext();
   const members = project.caps.manageAssignments
     ? await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, listAssignableMembers)
@@ -30,14 +32,18 @@ export default async function ProjectTeamPage({ params }: { params: Promise<{ ke
   };
 
   return (
-    <AssignmentsPanel
-      assigned={project.assignments}
-      members={members}
-      canManage={project.caps.manageAssignments && project.status !== "ARCHIVED"}
-      assign={assign}
-      unassign={unassign}
-      emptyTitle={t("empty")}
-      emptyDescription={t("emptyDescription")}
-    />
+    <div className="max-w-(--content-default)">
+      <SectionCard title={tAssign("title")} description={t("description")}>
+        <AssignmentsPanel
+          assigned={project.assignments}
+          members={members}
+          canManage={project.caps.manageAssignments && project.status !== "ARCHIVED"}
+          assign={assign}
+          unassign={unassign}
+          emptyTitle={t("empty")}
+          emptyDescription={t("emptyDescription")}
+        />
+      </SectionCard>
+    </div>
   );
 }

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { LockIcon, ShieldIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
 import { MODULES, PERMISSIONS, ROLE_TEMPLATES } from "@/authz/catalog";
 import { AuthzError } from "@/authz/errors";
 import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
+import { Badge } from "@/components/ui/badge";
 import { withTenant } from "@/db";
 import { listRoles, type RoleSummary } from "@/members/roles";
 import { requireTenantContext } from "@/members/tenant-context";
@@ -73,11 +75,29 @@ export default async function RolesPage() {
     <Page>
       <PageHeader title={t("title", { tenant: membership.tenantName })} description={t("intro")} />
 
-      <ul className="mt-6 flex flex-col gap-3">
+      <ul className="mt-6 flex flex-col gap-4">
         {data.roles.map((role) => (
           <li key={role.id}>
             <SectionCard
-              title={role.name}
+              title={
+                <span className="flex flex-wrap items-center gap-2">
+                  {role.name}
+                  {/* System vs custom is the first thing to know about a role:
+                      one is the platform template and read-only, the other is
+                      this workspace's own. Badge shape and glyph say which. */}
+                  {role.isSystem ? (
+                    <Badge variant="neutral">
+                      <LockIcon aria-hidden="true" />
+                      {t("badge.system")}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">
+                      <ShieldIcon aria-hidden="true" />
+                      {t("badge.custom")}
+                    </Badge>
+                  )}
+                </span>
+              }
               description={
                 <>
                   {metaOf(role)}
@@ -100,7 +120,7 @@ export default async function RolesPage() {
                 <p className="text-sm text-muted-foreground">{role.description}</p>
               ) : null}
               <details className="group/details">
-                <summary className="inline-flex cursor-pointer items-center rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                <summary className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-sm text-muted-foreground transition-colors duration-(--dur-instant) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                   {t("permissions")}
                 </summary>
                 <RolePermissionsForm

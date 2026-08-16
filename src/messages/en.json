@@ -211,7 +211,9 @@
       "submit": "Change password",
       "submitting": "Changing…",
       "failed": "Password change failed",
-      "changed": "Password changed. Other sessions have been signed out."
+      "changed": "Password changed. Other sessions have been signed out.",
+      "description": "At least 12 characters. Longer beats complicated.",
+      "revokeHint": "Changing it signs out every other session."
     },
     "totp": {
       "title": "Two-factor authentication",
@@ -221,7 +223,7 @@
       "enrol": "Enrol TOTP",
       "starting": "Starting…",
       "startFailed": "Could not start enrolment",
-      "scan": "1. Scan with your authenticator app (or add the secret manually):",
+      "scan": "Scan with your authenticator app, or add the secret manually",
       "qrAlt": "TOTP enrolment QR code",
       "cantScan": "Can't scan? Show the URI",
       "backupTitle": "Backup codes — store them in your password manager now:",
@@ -229,7 +231,11 @@
       "activate": "Verify & activate",
       "verifying": "Verifying…",
       "mismatch": "Code did not match — try the next one",
-      "done": "Two-factor authentication is active. You'll be asked for a code at every sign-in."
+      "done": "Two-factor authentication is active. You'll be asked for a code at every sign-in.",
+      "badgeOn": "Enabled",
+      "badgeOff": "Not enrolled",
+      "activeSummary": "A code from your authenticator app is required at every sign-in.",
+      "confirmPasswordHint": "We ask for it once, to prove the account is yours."
     },
     "stepUp": {
       "title": "Confirm it's you",
@@ -239,7 +245,9 @@
       "verifying": "Verifying…",
       "enterCode": "Enter the code from your authenticator app.",
       "mismatch": "That code did not match — try the next one.",
-      "tooManyAttempts": "Too many attempts. Wait a few minutes and try again."
+      "tooManyAttempts": "Too many attempts. Wait a few minutes and try again.",
+      "codeHint": "Six digits from the app, or one of your backup codes.",
+      "reassurance": "Fortleva never asks for this code by email, chat or phone."
     },
     "timezone": {
       "title": "Time zone",
@@ -252,6 +260,7 @@
   },
   "members": {
     "title": "{tenant} — members",
+    "description": "Who is in the workspace, and what each of them may do.",
     "manageRoles": "Manage roles →",
     "columns": {
       "member": "Member",
@@ -263,7 +272,10 @@
       "save": "Save roles",
       "saving": "Saving…",
       "noChanges": "No changes",
-      "updated": "Roles updated ({added} added, {removed} removed)"
+      "updated": "Roles updated ({added} added, {removed} removed)",
+      "title": "Roles",
+      "none": "No roles",
+      "edit": "Edit roles for {name}"
     },
     "status": {
       "suspend": "Suspend",
@@ -276,7 +288,8 @@
       "title": "Pending invitations",
       "revoke": "Revoke",
       "revoked": "Invitation revoked",
-      "expires": "Expires"
+      "expires": "Expires",
+      "description": "Invited, not yet joined. An invitation expires on its own."
     },
     "invite": {
       "title": "Invite a member",
@@ -286,7 +299,12 @@
       "pickRole": "Pick at least one role",
       "submit": "Send invitation",
       "submitting": "Sending…",
-      "sent": "Invitation sent to {email}"
+      "sent": "Invitation sent to {email}",
+      "description": "They receive a link and choose their own password.",
+      "emailHint": "A work address — the invitation is valid for this address only."
+    },
+    "active": {
+      "title": "Members"
     }
   },
   "roles": {
@@ -327,16 +345,24 @@
       "clone": "Clone {name} (without ✦ permissions)",
       "submit": "Create role",
       "submitting": "Creating…",
-      "created": "Role \"{name}\" created"
-    }
+      "created": "Role \"{name}\" created",
+      "startFromHint": "A clone copies the template’s permissions, except the ✦ ones."
+    },
+    "badge": {
+      "system": "System",
+      "custom": "Custom"
+    },
+    "systemReadOnly": "A system role follows the platform template and cannot be edited. Clone it to make a version of your own.",
+    "tombstoneTitle": "Removed from the template",
+    "tombstoneBody": "{count, plural, =1 {1 permission is no longer part of the template it came from. It keeps working until you remove it.} other {# permissions are no longer part of the template they came from. They keep working until you remove them.}}",
+    "granted": "granted",
+    "notGranted": "not granted"
   },
   "settings": {
     "preferences": {
       "title": "Preferences",
       "description": "Workspace-wide defaults. Members can override language and time zone on their own account.",
       "noPermission": "You do not have permission to view workspace preferences.",
-      "general": "General",
-      "generalDescription": "Every field saves as soon as it changes.",
       "locale": "Default language",
       "localeHint": "Used for members who have not chosen a language of their own.",
       "timezone": "Time zone",
@@ -377,7 +403,12 @@
         "documentation": "Client-facing documentation pages.",
         "continuity_box": "Sealed continuity box for each client (Phase 8).",
         "portal": "The client window: shared milestones, files, updates and requests (Phase 3)."
-      }
+      },
+      "regional": "Language and region",
+      "regionalDescription": "How dates, weeks and language read for everyone here. Each field saves as soon as it changes.",
+      "formats": "Formats",
+      "formatsDescription": "How hours and money are written throughout the product.",
+      "weekStartHint": "Calendars, week numbers and weekly totals start on this day."
     },
     "export": {
       "title": "Export",
@@ -397,12 +428,16 @@
         "name": "Name",
         "created": "Created",
         "size": "Size"
-      }
+      },
+      "description": "Take the whole workspace with you, whenever you want it.",
+      "commitmentTitle": "Your data is yours",
+      "generatingHint": "Building the archive. This can take a minute on a large workspace — you can leave the page."
     }
   },
   "files": {
     "title": "{tenant} — files",
     "shortTitle": "Files",
+    "subtitle": "Every file in your scope: workspace files plus the ones on your clients and projects.",
     "empty": {
       "title": "No files yet",
       "description": "Upload the first file — it stays private to your team until a client is attached."
@@ -430,7 +465,14 @@
       "uploading": "Uploading…",
       "finishing": "Finishing…",
       "done": "Uploaded {name}",
-      "failed": "Upload failed ({status})."
+      "failed": "Upload failed ({status}).",
+      "dropHint": "Drop a file here, or choose one",
+      "dropNow": "Drop to upload",
+      "defaultPrivate": "Private to your team. Nothing leaves the workspace until you say so.",
+      "clientVisibleWarning": "Anyone with portal access at this client will be able to open this file.",
+      "step": "Step {step} of {total}",
+      "progressLabel": "Upload progress",
+      "tenantScope": "Files uploaded here belong to the workspace and cannot be shared with a client."
     },
     "errors": {
       "quota": "Storage quota reached — delete files or upgrade the plan.",
@@ -444,6 +486,10 @@
       "notPending": "This upload was already finished or expired.",
       "clientRequired": "A client-visible file needs a client.",
       "invalidRequest": "Invalid upload request."
+    },
+    "legend": {
+      "internal": "stays inside the team",
+      "clientVisible": "reaches the client portal — the row is marked in the left margin"
     }
   },
   "errors": {
@@ -647,6 +693,7 @@
       "key": "Key",
       "name": "Project",
       "status": "Status",
+      "portal": "Portal",
       "client": "Client",
       "lead": "Lead",
       "milestones": "Milestones",
@@ -671,7 +718,8 @@
       "submit": "Create project",
       "submitting": "Creating…",
       "created": "Created {key}",
-      "description": "Create a project under a client. The key is the short handle you will type everywhere."
+      "description": "Create a project under a client. The key is the short handle you will type everywhere.",
+      "enterHint": "creates it and starts the next"
     },
     "showArchived": "Show archived",
     "hideArchived": "Hide archived",
@@ -739,7 +787,11 @@
       "archivedBanner": "This project is archived. It is read-only until restored.",
       "archivedToast": "Project archived",
       "restoredToast": "Project restored",
-      "client": "Client"
+      "client": "Client",
+      "openProduction": "Open site",
+      "portalCalloutTitle": "This switch decides what the client can reach",
+      "hoursSharingHint": "A summary only — never per member, never who did what.",
+      "hoursSharingWarning": "The client can see this project’s hours in the portal."
     },
     "timeline": {
       "milestones": "Milestones",
@@ -781,15 +833,22 @@
       "draft": "Draft",
       "shippedToast": "Shipped {version}",
       "shippedVisibleHint": "Shipped versions are visible to the client once the portal is enabled.",
-      "more": "More actions"
+      "more": "More actions",
+      "title": "Timeline",
+      "description": "Milestones in plan order, with each shipped version placed where it landed.",
+      "milestonesHint": "Phases of the project in order — design, build, launch.",
+      "versionsHint": "What shipped, and the notes that went with it."
     },
     "files": {
       "empty": "Upload the first file",
-      "emptyDescription": "Project files — private to your team unless marked \"Client can see\"."
+      "emptyDescription": "Project files — private to your team unless marked \"Client can see\".",
+      "uploadPortalOn": "The portal is on: a file marked \"Client can see\" reaches the client as soon as it is uploaded.",
+      "uploadPortalOff": "The portal is off, so nothing here reaches the client yet — the mark still travels with the file."
     },
     "team": {
       "empty": "No one assigned yet",
-      "emptyDescription": "Assign a member to give them this project (and the client card)."
+      "emptyDescription": "Assign a member to give them this project (and the client card).",
+      "description": "Assignments decide who can open this project."
     },
     "board": {
       "title": "Tasks arrive with the Work module",
@@ -798,6 +857,10 @@
     "backlog": {
       "title": "Tasks arrive with the Work module",
       "description": "The backlog — every open task by rank — lands in the next phase."
+    },
+    "portalState": {
+      "on": "On",
+      "off": "Off"
     }
   },
   "states": {

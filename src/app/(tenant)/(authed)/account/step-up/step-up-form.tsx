@@ -19,7 +19,7 @@ export function StepUpForm({ next }: { next: string }) {
   return (
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
-      <Field label={t("label")} htmlFor="step-up-code">
+      <Field label={t("label")} htmlFor="step-up-code" hint={t("codeHint")}>
         <Input
           id="step-up-code"
           name="code"
@@ -28,10 +28,10 @@ export function StepUpForm({ next }: { next: string }) {
           maxLength={32}
           required
           autoFocus
-          className="num text-center font-mono text-lg tracking-[0.4em]"
+          className="num h-10 text-center font-mono text-lg tracking-[0.4em]"
         />
       </Field>
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" size="lg" disabled={pending} className="w-full">
         {pending ? t("verifying") : t("verify")}
       </Button>
       <FormMessage state={state} />

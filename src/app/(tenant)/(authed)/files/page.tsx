@@ -19,7 +19,8 @@ export async function generateMetadata(): Promise<Metadata> {
  * /files: every document the member may see — tenant-internal ones plus
  * client/project documents inside their scope. Uploads here are
  * tenant-internal; attaching to a client/project happens on that
- * client's or project's Files tab.
+ * client's or project's Files tab, which is also the only place
+ * "Client can see" is a legal choice.
  */
 export default async function FilesPage({
   searchParams,
@@ -45,7 +46,10 @@ export default async function FilesPage({
 
   return (
     <Page width="wide">
-      <PageHeader title={t("title", { tenant: membership.tenantName })} />
+      <PageHeader
+        title={t("title", { tenant: membership.tenantName })}
+        description={t("subtitle")}
+      />
 
       {error ? (
         <Callout tone="danger" role="alert" className="mt-4">
@@ -70,7 +74,7 @@ export default async function FilesPage({
 
       {caps.canUpload ? (
         <div className="mt-6">
-          <SectionCard title={t("upload.title")}>
+          <SectionCard title={t("upload.title")} description={t("upload.tenantScope")}>
             <UploadForm />
           </SectionCard>
         </div>

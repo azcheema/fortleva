@@ -12,10 +12,12 @@ export { KeyboardHint } from "./keyboard-hint";
 export { MemberAvatar } from "./member-avatar";
 export { MetricTile } from "./metric-tile";
 export { PriorityIndicator } from "./priority-indicator";
+export { ProgressMeter } from "./progress-meter";
 export { SectionCard } from "./section-card";
 export { StatusBadge } from "./status-badge";
 export { StatusIcon } from "./status-icon";
 export { ThemeToggle } from "./theme-toggle";
+export { Timeline, TimelineItem } from "./timeline";
 
 export { EmptyState, type EmptyStateVariant } from "../empty-state";
 export { FormMessage } from "../form-message";

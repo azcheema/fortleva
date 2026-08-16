@@ -10,8 +10,9 @@ import { loadProject } from "../data";
 
 /**
  * Files tab: project documents. Uploads attach to the project (clientId
- * derived server-side); visibility select enabled — CLIENT_VISIBLE rows
- * reach the portal only while Project.portalEnabled (trigger-derived).
+ * derived server-side); the visibility select is enabled here —
+ * CLIENT_VISIBLE rows reach the portal only while Project.portalEnabled
+ * (trigger-derived), which the upload card says in words.
  */
 export default async function ProjectFilesPage({
   params,
@@ -51,7 +52,10 @@ export default async function ProjectFilesPage({
         />
       )}
       {project.caps.uploadDocuments && project.status !== "ARCHIVED" ? (
-        <SectionCard title={tFiles("upload.title")}>
+        <SectionCard
+          title={tFiles("upload.title")}
+          description={project.portalEnabled ? t("uploadPortalOn") : t("uploadPortalOff")}
+        >
           <UploadForm target={{ projectId: project.id, returnTo }} visibilityEnabled />
         </SectionCard>
       ) : null}

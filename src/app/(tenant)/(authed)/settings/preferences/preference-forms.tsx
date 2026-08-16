@@ -25,8 +25,14 @@ import {
 
 import { setModuleEnabledAction, updatePreferencesAction } from "./actions";
 
-/** General preferences: every field auto-saves on change (UI.md §5.10). Read-only without settings:edit. */
-export function GeneralPreferencesForm({
+/**
+ * Language, time zone and the week — the settings that change how
+ * every date on every page reads. Each field auto-saves on change
+ * (UI.md §5.10); the action writes only the fields the form carries,
+ * which is what lets the page split into two cards without either half
+ * clobbering the other.
+ */
+export function RegionalPreferencesForm({
   prefs,
   editable,
 }: {
@@ -39,7 +45,12 @@ export function GeneralPreferencesForm({
   return (
     <AutoForm action={updatePreferencesAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Field htmlFor="p-locale" label={t("locale")} hint={t("localeHint")}>
-        <NativeSelect id="p-locale" name="defaultLocale" defaultValue={prefs.defaultLocale} disabled={ro}>
+        <NativeSelect
+          id="p-locale"
+          name="defaultLocale"
+          defaultValue={prefs.defaultLocale}
+          disabled={ro}
+        >
           {LOCALES.map((l) => (
             <option key={l} value={l}>
               {tCommon(`languageName.${l}`)}
@@ -56,7 +67,7 @@ export function GeneralPreferencesForm({
           ))}
         </NativeSelect>
       </Field>
-      <Field htmlFor="p-week" label={t("weekStart")}>
+      <Field htmlFor="p-week" label={t("weekStart")} hint={t("weekStartHint")}>
         <NativeSelect id="p-week" name="weekStart" defaultValue={prefs.weekStart} disabled={ro}>
           {WEEK_STARTS.map((w) => (
             <option key={w} value={w}>
@@ -65,28 +76,15 @@ export function GeneralPreferencesForm({
           ))}
         </NativeSelect>
       </Field>
-      <Field htmlFor="p-duration" label={t("durationStyle")} hint={t("durationStyleHint")}>
-        <NativeSelect id="p-duration" name="durationStyle" defaultValue={prefs.durationStyle} disabled={ro}>
-          {DURATION_STYLES.map((d) => (
-            <option key={d} value={d}>
-              {t(`durationStyles.${d}`)}
-            </option>
-          ))}
-        </NativeSelect>
-      </Field>
-      <Field htmlFor="p-currency" label={t("currency")} hint={t("currencyHint")}>
-        <NativeSelect id="p-currency" name="currencyDefault" defaultValue={prefs.currencyDefault} disabled={ro}>
-          {CURRENCIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </NativeSelect>
-      </Field>
-      <div className="flex items-center gap-2 self-end pb-1">
+      <div className="flex items-center gap-2 self-end pb-2">
         <input type="hidden" name="showIsoWeekMarker" value="1" />
         {/* Native, not Radix: <AutoForm> saves on a real change event. */}
-        <NativeCheckbox id="p-iso" name="showIsoWeek" defaultChecked={prefs.showIsoWeek} disabled={ro} />
+        <NativeCheckbox
+          id="p-iso"
+          name="showIsoWeek"
+          defaultChecked={prefs.showIsoWeek}
+          disabled={ro}
+        />
         <Label htmlFor="p-iso" className="font-normal">
           {t("showIsoWeek")}
         </Label>
@@ -95,7 +93,60 @@ export function GeneralPreferencesForm({
   );
 }
 
-/** Module toggles (settings:manage_modules ✦): a Switch per entitlement module; commits on change. */
+/** How hours and money are written. Same auto-save contract as above. */
+export function FormatPreferencesForm({
+  prefs,
+  editable,
+}: {
+  prefs: TenantPreferences;
+  editable: boolean;
+}) {
+  const t = useTranslations("settings.preferences");
+  const ro = !editable;
+  return (
+    <AutoForm action={updatePreferencesAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <Field htmlFor="p-duration" label={t("durationStyle")} hint={t("durationStyleHint")}>
+        <NativeSelect
+          id="p-duration"
+          name="durationStyle"
+          defaultValue={prefs.durationStyle}
+          disabled={ro}
+          className="num"
+        >
+          {DURATION_STYLES.map((d) => (
+            <option key={d} value={d}>
+              {t(`durationStyles.${d}`)}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+      <Field htmlFor="p-currency" label={t("currency")} hint={t("currencyHint")}>
+        <NativeSelect
+          id="p-currency"
+          name="currencyDefault"
+          defaultValue={prefs.currencyDefault}
+          disabled={ro}
+        >
+          {CURRENCIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+    </AutoForm>
+  );
+}
+
+/**
+ * Module toggles (settings:manage_modules ✦): one row per module, each
+ * a label, a one-line consequence, and a switch. A module the plan
+ * does not include keeps its row — hiding it would leave the reader
+ * wondering whether it exists — but wears "Not in plan", so the two
+ * reasons a module is off (this workspace's choice, the plan) are
+ * never confused. The switch itself stays as it was: the entitlement
+ * gate is enforced server-side, not by dimming a control.
+ */
 export function ModuleToggles({
   prefs,
   entitled,
@@ -126,23 +177,27 @@ export function ModuleToggles({
   };
 
   return (
-    <ul className="divide-y divide-border">
+    <ul className="flex flex-col divide-y divide-border">
       {TOGGLEABLE_MODULES.map((m) => (
-        <li key={m} className="flex items-center justify-between gap-4 py-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+        <li key={m} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
               <Label htmlFor={`mod-${m}`} className="font-medium">
                 {t(`modules.${m}`)}
               </Label>
               {!entitled[m] ? <Badge variant="outline">{t("notInPlan")}</Badge> : null}
             </div>
-            <p className="text-xs text-muted-foreground">{t(`moduleHints.${m}`)}</p>
+            <p id={`mod-${m}-hint`} className="text-xs text-muted-foreground">
+              {t(`moduleHints.${m}`)}
+            </p>
           </div>
           <Switch
             id={`mod-${m}`}
+            aria-describedby={`mod-${m}-hint`}
             checked={state[m]}
             disabled={!canManage || pending}
             onCheckedChange={(v) => flip(m, v)}
+            className="mt-1"
           />
         </li>
       ))}

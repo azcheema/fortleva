@@ -1,19 +1,28 @@
 "use client";
 
+import { PlusIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
+import { Field, FormMessage, KeyboardHint } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import { FormMessage } from "@/components/form-message";
 import type { FormResult } from "@/lib/server-actions";
 
 import { createProjectAction } from "./actions";
 
-/** Inline project creation: client · key · name; Enter creates the next (UI.md rule 2). */
+/**
+ * Inline project creation (UI.md rule 2): client · key · name on one
+ * row, Enter creates and re-focuses the key so a batch of projects can
+ * be typed without touching the mouse. The client stays selected
+ * between creations — the common case is several projects for the same
+ * workspace.
+ *
+ * The keyboard hint is part of the affordance, not decoration: rule 7
+ * says every action shows its key where the action is.
+ */
 export function CreateProjectForm({
   clients,
   autoFocus = false,
@@ -38,20 +47,29 @@ export function CreateProjectForm({
       keyRef.current?.focus();
     }
   }, [state]);
+
   return (
-    <form ref={formRef} action={action} className="flex flex-wrap items-end gap-3">
-      <div className="flex w-56 flex-col gap-1.5">
-        <Label htmlFor="p-client">{t("client")}</Label>
-        <NativeSelect id="p-client" name="clientId" required defaultValue={clients[0]?.id} disabled={pending}>
+    <form
+      ref={formRef}
+      action={action}
+      className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[14rem_8rem_1fr_auto]"
+    >
+      <Field label={t("client")} htmlFor="p-client">
+        <NativeSelect
+          id="p-client"
+          name="clientId"
+          required
+          defaultValue={clients[0]?.id}
+          disabled={pending}
+        >
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
         </NativeSelect>
-      </div>
-      <div className="flex w-32 flex-col gap-1.5">
-        <Label htmlFor="p-key">{t("key")}</Label>
+      </Field>
+      <Field label={t("key")} htmlFor="p-key">
         <Input
           id="p-key"
           ref={keyRef}
@@ -60,13 +78,12 @@ export function CreateProjectForm({
           maxLength={8}
           pattern="[A-Za-z][A-Za-z0-9]{0,7}"
           placeholder={t("keyPlaceholder")}
-          className="font-mono uppercase"
+          className="num font-mono uppercase"
           autoFocus={autoFocus}
           disabled={pending}
         />
-      </div>
-      <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-        <Label htmlFor="p-name">{t("name")}</Label>
+      </Field>
+      <Field label={t("name")} htmlFor="p-name">
         <Input
           id="p-name"
           name="name"
@@ -75,12 +92,19 @@ export function CreateProjectForm({
           placeholder={t("namePlaceholder")}
           disabled={pending}
         />
-      </div>
+      </Field>
       <Button type="submit" disabled={pending}>
+        <PlusIcon />
         {pending ? t("submitting") : t("submit")}
       </Button>
-      <p className="basis-full text-xs text-muted-foreground">{t("keyHint")}</p>
-      {state && !state.ok ? <FormMessage state={state} className="basis-full" /> : null}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:col-span-4">
+        <p className="text-xs text-muted-foreground">{t("keyHint")}</p>
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <KeyboardHint keys={["Enter"]} />
+          {t("enterHint")}
+        </span>
+      </div>
+      {state && !state.ok ? <FormMessage state={state} className="sm:col-span-4" /> : null}
     </form>
   );
 }

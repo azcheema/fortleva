@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
  * hairline, 10px radius, 16px rhythm (12px at size="sm"), no shadow.
  */
 export function SectionCard({
+  id,
   title,
   description,
   actions,
@@ -15,6 +16,8 @@ export function SectionCard({
   className,
   children,
 }: {
+  /** Anchor target, so a page can link to the card ("#new-project"). */
+  id?: string;
   title?: React.ReactNode;
   description?: React.ReactNode;
   actions?: React.ReactNode;
@@ -26,6 +29,7 @@ export function SectionCard({
   const pad = size === "sm" ? "p-3" : "p-4";
   return (
     <section
+      id={id}
       data-slot="section-card"
       data-size={size}
       className={cn("overflow-hidden rounded-card border border-border bg-card text-card-foreground", className)}

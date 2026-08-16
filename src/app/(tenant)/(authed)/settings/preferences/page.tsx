@@ -9,7 +9,7 @@ import { parseEntitlements } from "@/entitlements/resolver";
 import { requireTenantContext } from "@/members/tenant-context";
 import { getPreferences, type TenantPreferences } from "@/preferences/service";
 
-import { GeneralPreferencesForm, ModuleToggles } from "./preference-forms";
+import { FormatPreferencesForm, ModuleToggles, RegionalPreferencesForm } from "./preference-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("nav");
@@ -58,9 +58,12 @@ export default async function PreferencesPage() {
   return (
     <Page width="form">
       <PageHeader title={t("title")} description={t("description")} />
-      <div className="mt-6 grid gap-4">
-        <SectionCard title={t("general")} description={t("generalDescription")}>
-          <GeneralPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
+      <div className="mt-6 flex flex-col gap-4">
+        <SectionCard title={t("regional")} description={t("regionalDescription")}>
+          <RegionalPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
+        </SectionCard>
+        <SectionCard title={t("formats")} description={t("formatsDescription")}>
+          <FormatPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
         </SectionCard>
         <SectionCard title={t("modulesTitle")} description={t("modulesDescription")}>
           {/* ✦ code: shown to holders; a stale factor becomes step-up on the first flip. */}

@@ -34,8 +34,11 @@ export function ChangePasswordForm() {
     setMessage({ ok: true, message: t("changed") });
   }
 
+  // The change revokes every other session (below), which is a
+  // consequence worth stating next to the field rather than in a toast
+  // after the fact.
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3">
+    <form onSubmit={submit} className="flex max-w-sm flex-col gap-4">
       <Field label={t("current")} htmlFor="current-password">
         <Input
           id="current-password"
@@ -46,7 +49,7 @@ export function ChangePasswordForm() {
           onChange={(e) => setCurrent(e.target.value)}
         />
       </Field>
-      <Field label={t("new")} htmlFor="new-password">
+      <Field label={t("new")} htmlFor="new-password" hint={t("revokeHint")}>
         <Input
           id="new-password"
           type="password"

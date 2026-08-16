@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { GlobeIcon } from "lucide-react";
-import Link from "next/link";
+import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-import { Callout, Page, PageHeader, StatusBadge } from "@/components/semantic";
+import { Callout, EntityChip, Page, PageHeader, StatusBadge } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { TabNav } from "@/components/tab-nav";
 
 import { loadProject } from "./data";
@@ -24,6 +24,12 @@ export async function generateMetadata({
  * Backlog · Timeline · Files · Team (Updates/Time/Portal arrive with
  * their phases; Board/Backlog are empty states until 2W). Overview is
  * the landing tab in Phase 2 because there is no board to land on.
+ *
+ * The header is the project's identity in one line: the key in the
+ * mono face (it is a code, and it is typed), the name, then the two
+ * facts that change how the project behaves — its status and whether a
+ * client can reach it at all. The client sits above as an EntityChip,
+ * so the workspace colour is present on every tab.
  */
 export default async function ProjectLayout({
   params,
@@ -49,8 +55,16 @@ export default async function ProjectLayout({
   return (
     <Page width="wide">
       <PageHeader
+        breadcrumb={
+          <EntityChip
+            id={project.client.id}
+            name={project.client.name}
+            kind="client"
+            href={`/clients/${project.client.id}`}
+          />
+        }
         title={
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex min-w-0 items-baseline gap-2">
             <span className="num shrink-0 font-mono text-base text-muted-foreground">
               {project.key}
             </span>
@@ -62,22 +76,32 @@ export default async function ProjectLayout({
             <StatusBadge domain="projectStatus" value={project.status} />
             {/* Portal state is NOT client-visibility: it gets the brand tone and
                 its own glyph so it can never be read as the warm "client can
-                see" pill (DESIGN SPEC §2.4 collision rule). */}
+                see" pill (DESIGN SPEC §2.4 collision rule). Both states render
+                — "no badge" would be indistinguishable from a missing badge. */}
             {project.portalEnabled ? (
               <Badge variant="brand">
                 <GlobeIcon aria-hidden="true" />
                 {t("overview.portalOn")}
               </Badge>
-            ) : null}
+            ) : (
+              <Badge variant="outline">
+                <GlobeIcon aria-hidden="true" />
+                {t("overview.portalOff")}
+              </Badge>
+            )}
+            {/* Phase 3 slot: <HealthChip value={project.health} /> lands here,
+                beside the status, once ProjectUpdate.health exists. */}
           </>
         }
-        description={
-          <Link
-            href={`/clients/${project.client.id}`}
-            className="rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          >
-            {project.client.name}
-          </Link>
+        actions={
+          project.productionUrl ? (
+            <Button asChild variant="outline" size="sm">
+              <a href={project.productionUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLinkIcon />
+                {t("overview.openProduction")}
+              </a>
+            </Button>
+          ) : null
         }
       />
       {project.status === "ARCHIVED" ? (
@@ -86,7 +110,7 @@ export default async function ProjectLayout({
         </Callout>
       ) : null}
       <TabNav tabs={tabs} className="mt-4" />
-      <div className="mt-4">{children}</div>
+      <div className="mt-6">{children}</div>
     </Page>
   );
 }

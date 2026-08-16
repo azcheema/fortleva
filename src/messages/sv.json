@@ -211,7 +211,9 @@
       "submit": "Byt lösenord",
       "submitting": "Byter…",
       "failed": "Lösenordsbytet misslyckades",
-      "changed": "Lösenordet har bytts. Övriga sessioner har loggats ut."
+      "changed": "Lösenordet har bytts. Övriga sessioner har loggats ut.",
+      "description": "Minst 12 tecken. Långt slår krångligt.",
+      "revokeHint": "Bytet loggar ut alla andra sessioner."
     },
     "totp": {
       "title": "Tvåfaktorsautentisering",
@@ -221,7 +223,7 @@
       "enrol": "Registrera TOTP",
       "starting": "Startar…",
       "startFailed": "Registreringen kunde inte startas",
-      "scan": "1. Skanna med din autentiseringsapp (eller lägg till hemligheten manuellt):",
+      "scan": "Skanna med din autentiseringsapp, eller lägg till hemligheten manuellt",
       "qrAlt": "QR-kod för TOTP-registrering",
       "cantScan": "Kan du inte skanna? Visa URI:n",
       "backupTitle": "Reservkoder — spara dem i din lösenordshanterare nu:",
@@ -229,7 +231,11 @@
       "activate": "Verifiera och aktivera",
       "verifying": "Verifierar…",
       "mismatch": "Koden stämde inte — prova nästa",
-      "done": "Tvåfaktorsautentisering är aktiv. Du blir ombedd att ange en kod vid varje inloggning."
+      "done": "Tvåfaktorsautentisering är aktiv. Du blir ombedd att ange en kod vid varje inloggning.",
+      "badgeOn": "Aktiverad",
+      "badgeOff": "Inte registrerad",
+      "activeSummary": "En kod från din autentiseringsapp krävs vid varje inloggning.",
+      "confirmPasswordHint": "Vi frågar en gång, för att styrka att kontot är ditt."
     },
     "stepUp": {
       "title": "Bekräfta att det är du",
@@ -239,7 +245,9 @@
       "verifying": "Verifierar…",
       "enterCode": "Ange koden från din autentiseringsapp.",
       "mismatch": "Koden stämde inte — prova nästa.",
-      "tooManyAttempts": "För många försök. Vänta några minuter och försök igen."
+      "tooManyAttempts": "För många försök. Vänta några minuter och försök igen.",
+      "codeHint": "Sex siffror från appen, eller en av dina reservkoder.",
+      "reassurance": "Fortleva ber aldrig om den här koden via e-post, chatt eller telefon."
     },
     "timezone": {
       "title": "Tidszon",
@@ -252,6 +260,7 @@
   },
   "members": {
     "title": "{tenant} — medlemmar",
+    "description": "Vilka som finns i arbetsytan, och vad var och en får göra.",
     "manageRoles": "Hantera roller →",
     "columns": {
       "member": "Medlem",
@@ -263,7 +272,10 @@
       "save": "Spara roller",
       "saving": "Sparar…",
       "noChanges": "Inga ändringar",
-      "updated": "Roller uppdaterade ({added} tillagda, {removed} borttagna)"
+      "updated": "Roller uppdaterade ({added} tillagda, {removed} borttagna)",
+      "title": "Roller",
+      "none": "Inga roller",
+      "edit": "Redigera roller för {name}"
     },
     "status": {
       "suspend": "Stäng av",
@@ -276,7 +288,8 @@
       "title": "Väntande inbjudningar",
       "revoke": "Återkalla",
       "revoked": "Inbjudan har återkallats",
-      "expires": "Går ut"
+      "expires": "Går ut",
+      "description": "Inbjudna, ännu inte anslutna. En inbjudan går ut av sig själv."
     },
     "invite": {
       "title": "Bjud in en medlem",
@@ -286,7 +299,12 @@
       "pickRole": "Välj minst en roll",
       "submit": "Skicka inbjudan",
       "submitting": "Skickar…",
-      "sent": "Inbjudan skickad till {email}"
+      "sent": "Inbjudan skickad till {email}",
+      "description": "Personen får en länk och väljer sitt eget lösenord.",
+      "emailHint": "En jobbadress — inbjudan gäller bara för den här adressen."
+    },
+    "active": {
+      "title": "Medlemmar"
     }
   },
   "roles": {
@@ -327,16 +345,24 @@
       "clone": "Klona {name} (utan ✦-behörigheter)",
       "submit": "Skapa roll",
       "submitting": "Skapar…",
-      "created": "Rollen \"{name}\" har skapats"
-    }
+      "created": "Rollen \"{name}\" har skapats",
+      "startFromHint": "En klon kopierar mallens behörigheter, utom ✦-behörigheterna."
+    },
+    "badge": {
+      "system": "System",
+      "custom": "Anpassad"
+    },
+    "systemReadOnly": "En systemroll följer plattformens mall och kan inte redigeras. Klona den för att göra en egen version.",
+    "tombstoneTitle": "Borttagen från mallen",
+    "tombstoneBody": "{count, plural, =1 {1 behörighet ingår inte längre i mallen den kom från. Den fortsätter fungera tills du tar bort den.} other {# behörigheter ingår inte längre i mallen de kom från. De fortsätter fungera tills du tar bort dem.}}",
+    "granted": "tilldelad",
+    "notGranted": "inte tilldelad"
   },
   "settings": {
     "preferences": {
       "title": "Preferenser",
       "description": "Standardvärden för hela arbetsytan. Medlemmar kan själva välja språk och tidszon på sitt konto.",
       "noPermission": "Du har inte behörighet att se arbetsytans preferenser.",
-      "general": "Allmänt",
-      "generalDescription": "Varje fält sparas så snart det ändras.",
       "locale": "Standardspråk",
       "localeHint": "Används för medlemmar som inte valt ett eget språk.",
       "timezone": "Tidszon",
@@ -377,7 +403,12 @@
         "documentation": "Dokumentationssidor riktade till kunden.",
         "continuity_box": "Förseglad kontinuitetsbox per kund (fas 8).",
         "portal": "Kundfönstret: delade milstolpar, filer, uppdateringar och förfrågningar (fas 3)."
-      }
+      },
+      "regional": "Språk och region",
+      "regionalDescription": "Hur datum, veckor och språk visas för alla här. Varje fält sparas så snart det ändras.",
+      "formats": "Format",
+      "formatsDescription": "Hur timmar och belopp skrivs i hela produkten.",
+      "weekStartHint": "Kalendrar, veckonummer och veckosummor börjar på den här dagen."
     },
     "export": {
       "title": "Export",
@@ -397,12 +428,16 @@
         "name": "Namn",
         "created": "Skapad",
         "size": "Storlek"
-      }
+      },
+      "description": "Ta med dig hela arbetsytan, när du vill.",
+      "commitmentTitle": "Er data är er",
+      "generatingHint": "Arkivet byggs. Det kan ta en minut på en stor arbetsyta — du kan lämna sidan."
     }
   },
   "files": {
     "title": "{tenant} — filer",
     "shortTitle": "Filer",
+    "subtitle": "Alla filer i ditt omfång: arbetsytans filer plus de som ligger på dina kunder och projekt.",
     "empty": {
       "title": "Inga filer ännu",
       "description": "Ladda upp den första filen — den är privat för teamet tills en kund kopplas."
@@ -430,7 +465,14 @@
       "uploading": "Laddar upp…",
       "finishing": "Slutför…",
       "done": "{name} har laddats upp",
-      "failed": "Uppladdningen misslyckades ({status})."
+      "failed": "Uppladdningen misslyckades ({status}).",
+      "dropHint": "Släpp en fil här, eller välj en",
+      "dropNow": "Släpp för att ladda upp",
+      "defaultPrivate": "Privat för teamet. Inget lämnar arbetsytan förrän du säger till.",
+      "clientVisibleWarning": "Alla med portalåtkomst hos den här kunden kommer kunna öppna filen.",
+      "step": "Steg {step} av {total}",
+      "progressLabel": "Uppladdningsförlopp",
+      "tenantScope": "Filer som laddas upp här tillhör arbetsytan och kan inte delas med en kund."
     },
     "errors": {
       "quota": "Lagringskvoten är full — ta bort filer eller uppgradera planen.",
@@ -444,6 +486,10 @@
       "notPending": "Den här uppladdningen är redan slutförd eller har gått ut.",
       "clientRequired": "En fil som kunden kan se behöver en kund.",
       "invalidRequest": "Ogiltig uppladdningsbegäran."
+    },
+    "legend": {
+      "internal": "stannar inom teamet",
+      "clientVisible": "når kundportalen — raden är markerad i vänstermarginalen"
     }
   },
   "errors": {
@@ -647,6 +693,7 @@
       "key": "Nyckel",
       "name": "Projekt",
       "status": "Status",
+      "portal": "Portal",
       "client": "Kund",
       "lead": "Ansvarig",
       "milestones": "Milstolpar",
@@ -671,7 +718,8 @@
       "submit": "Skapa projekt",
       "submitting": "Skapar…",
       "created": "Skapade {key}",
-      "description": "Skapa ett projekt under en kund. Nyckeln är den korta beteckning du skriver överallt."
+      "description": "Skapa ett projekt under en kund. Nyckeln är den korta beteckning du skriver överallt.",
+      "enterHint": "skapar det och börjar på nästa"
     },
     "showArchived": "Visa arkiverade",
     "hideArchived": "Dölj arkiverade",
@@ -739,7 +787,11 @@
       "archivedBanner": "Projektet är arkiverat. Det är skrivskyddat tills det återställs.",
       "archivedToast": "Projektet arkiverat",
       "restoredToast": "Projektet återställt",
-      "client": "Kund"
+      "client": "Kund",
+      "openProduction": "Öppna sajten",
+      "portalCalloutTitle": "Den här brytaren avgör vad kunden når",
+      "hoursSharingHint": "Bara en sammanställning — aldrig per medlem, aldrig vem som gjort vad.",
+      "hoursSharingWarning": "Kunden kan se projektets timmar i portalen."
     },
     "timeline": {
       "milestones": "Milstolpar",
@@ -781,15 +833,22 @@
       "draft": "Utkast",
       "shippedToast": "Levererade {version}",
       "shippedVisibleHint": "Levererade versioner syns för kunden när portalen är aktiverad.",
-      "more": "Fler åtgärder"
+      "more": "Fler åtgärder",
+      "title": "Tidslinje",
+      "description": "Milstolpar i planens ordning, med varje levererad version inlagd där den hamnade.",
+      "milestonesHint": "Projektets faser i ordning — design, bygge, lansering.",
+      "versionsHint": "Vad som levererades, och anteckningarna som följde med."
     },
     "files": {
       "empty": "Ladda upp den första filen",
-      "emptyDescription": "Projektfiler — privata för teamet om de inte märks \"Kunden kan se\"."
+      "emptyDescription": "Projektfiler — privata för teamet om de inte märks \"Kunden kan se\".",
+      "uploadPortalOn": "Portalen är på: en fil märkt ”Kunden kan se” når kunden så snart den laddats upp.",
+      "uploadPortalOff": "Portalen är av, så inget här når kunden ännu — märkningen följer ändå med filen."
     },
     "team": {
       "empty": "Ingen tilldelad ännu",
-      "emptyDescription": "Tilldela en medlem för att ge hen projektet (och kundkortet)."
+      "emptyDescription": "Tilldela en medlem för att ge hen projektet (och kundkortet).",
+      "description": "Tilldelningar avgör vem som kan öppna projektet."
     },
     "board": {
       "title": "Uppgifter kommer med Arbete-modulen",
@@ -798,6 +857,10 @@
     "backlog": {
       "title": "Uppgifter kommer med Arbete-modulen",
       "description": "Backloggen — alla öppna uppgifter efter rang — kommer i nästa fas."
+    },
+    "portalState": {
+      "on": "På",
+      "off": "Av"
     }
   },
   "states": {

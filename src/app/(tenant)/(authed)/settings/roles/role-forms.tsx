@@ -1,9 +1,10 @@
 "use client";
 
+import { CheckIcon, MinusIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useState } from "react";
 
-import { Field, FormMessage, Pending, SectionCard } from "@/components/semantic";
+import { Callout, Field, FormMessage, Pending } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 import {
   createRoleAction,
@@ -43,10 +45,34 @@ const MODULE_KEYS = [
 type ModuleKey = (typeof MODULE_KEYS)[number];
 const isModuleKey = (m: string): m is ModuleKey => (MODULE_KEYS as readonly string[]).includes(m);
 
+/** `client:view` reads faster as a quiet namespace plus a loud verb. */
+function PermissionCode({ code, granted }: { code: string; granted: boolean }) {
+  const [resource, verb] = code.split(":");
+  return (
+    <code className={cn("font-mono text-xs", granted ? "text-foreground" : "text-muted-foreground")}>
+      <span className="text-muted-foreground">
+        {resource}
+        {":"}
+      </span>
+      {verb}
+    </code>
+  );
+}
+
 /**
- * One role's permission matrix, grouped by module. System roles render
- * read-only; custom roles are editable when the viewer holds role:edit
- * (a stale factor is resolved by the step-up redirect on save).
+ * One role's permission matrix.
+ *
+ * Sixty-three codes is too many to read as a wall, so the matrix is a
+ * single scrolling column with a STICKY module header: whatever row
+ * the eye is on, the module it belongs to is still on screen. The
+ * scroll container is what makes the stickiness real — an
+ * overflow-hidden card would make position:sticky inert.
+ *
+ * System roles render as a read-only ledger (tick / dash) rather than
+ * 63 disabled checkboxes: they cannot be edited, so a checkbox would
+ * be a control that lies. Custom roles get real checkboxes when the
+ * viewer holds role:edit (a stale factor is resolved by the step-up
+ * redirect on save).
  */
 export function RolePermissionsForm({
   role,
@@ -74,53 +100,89 @@ export function RolePermissionsForm({
   return (
     <form action={action} className="mt-3 flex flex-col gap-3">
       <input type="hidden" name="roleId" value={role.id} />
-      <fieldset disabled={!editable || pending} className="grid gap-3 sm:grid-cols-2">
+      {role.isSystem ? <Callout tone="info">{t("systemReadOnly")}</Callout> : null}
+      {revoked.size > 0 ? (
+        <Callout tone="caution" title={t("tombstoneTitle")}>
+          {t("tombstoneBody", { count: revoked.size })}
+        </Callout>
+      ) : null}
+
+      <fieldset
+        disabled={!editable || pending}
+        className="max-h-96 overflow-y-auto rounded-md border border-border"
+      >
         {groups.map((g) => (
-          <SectionCard
-            key={g.module}
-            size="sm"
-            title={
-              <span className="text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
-                {isModuleKey(g.module) ? t(`modules.${g.module}`) : g.module}
-              </span>
-            }
-          >
-            <ul className="flex flex-col gap-1 text-sm">
-              {g.permissions.map((p) => (
-                <li key={p.code}>
-                  <Label className="flex items-start gap-2 font-normal" title={p.description}>
-                    <Checkbox
-                      name="codes"
-                      value={p.code}
-                      defaultChecked={held.has(p.code)}
-                      disabled={!editable || pending}
-                      className="mt-0.5"
-                    />
-                    <span className={held.has(p.code) ? "" : "text-muted-foreground"}>
-                      <code className="font-mono text-xs">{p.code}</code>
-                      {p.requiresMfa ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="ml-1 cursor-help" aria-label={t("requiresMfa")}>
-                              {"✦"}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>{t("requiresMfa")}</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-                      {revoked.has(p.code) ? (
-                        <Badge variant="caution" className="ml-1 align-middle">
-                          {t("tombstone")}
-                        </Badge>
-                      ) : null}
-                    </span>
-                  </Label>
-                </li>
-              ))}
+          <div key={g.module}>
+            <h4 className="hairline-b sticky top-0 z-1 bg-card px-3 py-1.5 text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+              {isModuleKey(g.module) ? t(`modules.${g.module}`) : g.module}
+            </h4>
+            <ul className="flex flex-col">
+              {g.permissions.map((p) => {
+                const granted = held.has(p.code);
+                const rowClass = "flex min-h-8 items-center gap-2.5 px-3 py-1 font-normal";
+                const body = (
+                  <>
+                    <PermissionCode code={p.code} granted={granted} />
+                    {p.requiresMfa ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="cursor-help text-muted-foreground"
+                            aria-label={t("requiresMfa")}
+                          >
+                            {"✦"}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("requiresMfa")}</TooltipContent>
+                      </Tooltip>
+                    ) : null}
+                    {revoked.has(p.code) ? (
+                      <Badge variant="caution" className="ml-auto">
+                        {t("tombstone")}
+                      </Badge>
+                    ) : null}
+                  </>
+                );
+                return (
+                  <li key={p.code} className="scroll-mt-8 border-b border-border last:border-0">
+                    {editable ? (
+                      <Label className={rowClass} title={p.description}>
+                        <Checkbox
+                          name="codes"
+                          value={p.code}
+                          defaultChecked={granted}
+                          disabled={pending}
+                        />
+                        {body}
+                      </Label>
+                    ) : (
+                      // No control to label: a system role is a ledger, so the
+                      // grant state is an icon plus a word for screen readers.
+                      <div className={rowClass} title={p.description}>
+                        <span
+                          className={cn(
+                            "inline-flex size-4 shrink-0 items-center justify-center",
+                            granted ? "text-(--tone-success-line)" : "text-muted-foreground",
+                          )}
+                        >
+                          {granted ? (
+                            <CheckIcon aria-hidden="true" className="size-3.5" />
+                          ) : (
+                            <MinusIcon aria-hidden="true" className="size-3.5" />
+                          )}
+                          <span className="sr-only">{granted ? t("granted") : t("notGranted")}</span>
+                        </span>
+                        {body}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
-          </SectionCard>
+          </div>
         ))}
       </fieldset>
+
       {editable ? (
         <div className="flex items-center gap-3">
           <Button type="submit" size="sm" disabled={pending}>
@@ -136,10 +198,7 @@ export function RolePermissionsForm({
 export function DeleteRoleForm({ roleId, name }: { roleId: string; name: string }) {
   const t = useTranslations("roles");
   const tCommon = useTranslations("common");
-  const [state, action, pending] = useActionState<RoleFormState, FormData>(
-    deleteRoleAction,
-    null,
-  );
+  const [state, action, pending] = useActionState<RoleFormState, FormData>(deleteRoleAction, null);
   return (
     <form action={action} className="flex items-center gap-3">
       <input type="hidden" name="roleId" value={roleId} />
@@ -157,20 +216,17 @@ export function CreateRoleForm({
   templates: { templateKey: string; displayName: string }[];
 }) {
   const t = useTranslations("roles.create");
-  const [state, action, pending] = useActionState<RoleFormState, FormData>(
-    createRoleAction,
-    null,
-  );
+  const [state, action, pending] = useActionState<RoleFormState, FormData>(createRoleAction, null);
   const [templateKey, setTemplateKey] = useState("blank");
   return (
-    <form action={action} className="flex max-w-md flex-col gap-3">
-      <Field label={t("name")} htmlFor="role-name">
+    <form action={action} className="flex max-w-lg flex-col gap-4">
+      <Field label={t("name")} htmlFor="role-name" required>
         <Input id="role-name" type="text" name="name" required minLength={2} maxLength={60} />
       </Field>
       <Field label={t("description")} htmlFor="role-description">
         <Input id="role-description" type="text" name="description" maxLength={200} />
       </Field>
-      <Field label={t("startFrom")} htmlFor="role-template">
+      <Field label={t("startFrom")} htmlFor="role-template" hint={t("startFromHint")}>
         {/* Radix Select cannot carry an empty-string item value; "blank" maps to "" for the action. */}
         <input type="hidden" name="templateKey" value={templateKey === "blank" ? "" : templateKey} />
         <Select value={templateKey} onValueChange={setTemplateKey}>

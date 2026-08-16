@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { ShieldAlertIcon, ShieldCheckIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
 import { requireMemberSession } from "@/auth/session";
 import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
+import { Badge } from "@/components/ui/badge";
 import { withTenant } from "@/db";
 import { isLocale } from "@/i18n/config";
 import { getActiveMembership } from "@/members/tenant-context";
@@ -18,6 +20,15 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
+/**
+ * /account: one column at form width (720px), security first.
+ *
+ * Two-factor carries its state as a badge in the card header — enabled
+ * is a tick in the success tone, not enrolled is a triangle in the
+ * caution tone — because "am I protected?" should be answerable from
+ * the top of the card without reading a paragraph. Both states always
+ * render; absence would be indistinguishable from a bug.
+ */
 export default async function AccountPage({
   searchParams,
 }: {
@@ -49,7 +60,31 @@ export default async function AccountPage({
         </Callout>
       ) : null}
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <div className="mt-6 flex flex-col gap-4">
+        <SectionCard title={t("password.title")} description={t("password.description")}>
+          <ChangePasswordForm />
+        </SectionCard>
+
+        <SectionCard
+          title={t("totp.title")}
+          description={twoFactorEnabled ? t("totp.enabled") : t("totp.notEnrolled")}
+          actions={
+            twoFactorEnabled ? (
+              <Badge variant="success">
+                <ShieldCheckIcon aria-hidden="true" />
+                {t("totp.badgeOn")}
+              </Badge>
+            ) : (
+              <Badge variant="caution">
+                <ShieldAlertIcon aria-hidden="true" />
+                {t("totp.badgeOff")}
+              </Badge>
+            )
+          }
+        >
+          <TotpEnrollment enabled={twoFactorEnabled} />
+        </SectionCard>
+
         <SectionCard title={t("language.title")} description={t("language.description")}>
           <LocaleForm current={isLocale(userLocale) ? userLocale : ""} />
         </SectionCard>
@@ -59,18 +94,6 @@ export default async function AccountPage({
             <TimezoneForm current={membership.timezone} workspaceDefault={workspaceTimezone} />
           </SectionCard>
         ) : null}
-
-        <SectionCard title={t("password.title")}>
-          <ChangePasswordForm />
-        </SectionCard>
-
-        <SectionCard
-          title={t("totp.title")}
-          description={twoFactorEnabled ? t("totp.enabled") : t("totp.notEnrolled")}
-          className="md:col-span-2"
-        >
-          <TotpEnrollment enabled={twoFactorEnabled} />
-        </SectionCard>
       </div>
     </Page>
   );
