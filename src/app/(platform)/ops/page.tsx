@@ -1,15 +1,16 @@
+import { getTranslations } from "next-intl/server";
+
 import { requirePlatformAdmin } from "@/auth/session";
 
 export default async function OpsHome() {
   const session = await requirePlatformAdmin();
+  const t = await getTranslations("auth.ops");
 
   return (
     <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-semibold">Fortleva Ops</h1>
-      <p className="mt-2 text-sm text-neutral-600">
-        Signed in as {session.user.email} (SUPERADMIN). Console UI lands in
-        Phase 7 — the machinery (impersonation, entitlement overrides,
-        audit) exists behind withPlatform().
+      <h1 className="text-2xl font-semibold">{t("title")}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {t("signedInAs", { email: session.user.email })}
       </p>
     </main>
   );

@@ -1,38 +1,53 @@
-import Link from "next/link";
-
+import { isAuthorized } from "@/authz/authorize";
 import { requireMemberSession } from "@/auth/session";
+import { AppShell } from "@/components/shell/app-shell";
+import { withTenant } from "@/db";
+import { getActiveMembership, mfaStateOf } from "@/members/tenant-context";
 
-import { SignOutButton } from "./sign-out-button";
+import { switchLocaleAction } from "./account/actions";
+import { NAV, visibleNav, type NavEntry } from "./nav";
 
-export default async function AuthedLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+/**
+ * Member-plane chrome (UI.md §3). Nav visibility is a permission
+ * question (AUTHZ.md): every gated entry is checked with isAuthorized()
+ * under the member principal and HIDDEN when not held. A user with no
+ * active membership (workspace picker only) gets the ungated entries.
+ */
+export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
   const session = await requireMemberSession();
+  const membership = await getActiveMembership(session);
+
+  let nav: NavEntry[];
+  if (membership) {
+    const actor = { memberId: membership.memberId, mfa: mfaStateOf(session) };
+    const gated = [...new Set(collectPermissions(NAV))];
+    const held = await withTenant(
+      membership.tenantId,
+      { type: "member", id: membership.memberId },
+      async (tx) => {
+        const results = await Promise.all(gated.map((code) => isAuthorized(tx, actor, code)));
+        return new Set(gated.filter((_, i) => results[i]));
+      },
+    );
+    nav = visibleNav(NAV, (code) => held.has(code));
+  } else {
+    nav = visibleNav(NAV, () => false);
+  }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-neutral-200">
-        <nav className="mx-auto flex max-w-3xl items-center gap-6 px-8 py-3 text-sm">
-          <span className="font-semibold">Fortleva</span>
-          <Link href="/dashboard" className="hover:underline">
-            Dashboard
-          </Link>
-          <Link href="/members" className="hover:underline">
-            Members
-          </Link>
-          <Link href="/files" className="hover:underline">
-            Files
-          </Link>
-          <Link href="/account" className="hover:underline">
-            Account
-          </Link>
-          <span className="ml-auto text-neutral-500">{session.user.email}</span>
-          <SignOutButton />
-        </nav>
-      </header>
+    <AppShell
+      nav={nav}
+      tenantName={membership?.tenantName ?? null}
+      user={{ name: session.user.name, email: session.user.email }}
+      onSwitchLocale={switchLocaleAction}
+    >
       {children}
-    </div>
+    </AppShell>
   );
 }
+
+const collectPermissions = (entries: readonly NavEntry[]): string[] =>
+  entries.flatMap((e) => [
+    ...(e.permission ? [e.permission] : []),
+    ...(e.children ? collectPermissions(e.children) : []),
+  ]);

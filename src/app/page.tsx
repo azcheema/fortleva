@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
-export default function Home() {
-  redirect("/dashboard");
+/** UI.md rule 8: Home is the home page. */
+export default function Root() {
+  redirect("/home");
 }

@@ -1,7 +1,19 @@
+import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
+
 import { requireMemberSession } from "@/auth/session";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Page, PageHeader } from "@/components/page-header";
+import { isLocale } from "@/i18n/config";
 
 import { ChangePasswordForm } from "./change-password-form";
+import { LocaleForm } from "./locale-form";
 import { TotpEnrollment } from "./totp-enrollment";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("account");
+  return { title: t("title") };
+}
 
 export default async function AccountPage({
   searchParams,
@@ -9,35 +21,56 @@ export default async function AccountPage({
   searchParams: Promise<{ notice?: string }>;
 }) {
   const session = await requireMemberSession();
+  const t = await getTranslations("account");
   const twoFactorEnabled =
     (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled ?? false;
+  const userLocale = (session.user as { locale?: string | null }).locale;
   const notice = (await searchParams).notice;
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-semibold">Account security</h1>
-      <p className="mt-1 text-sm text-neutral-600">{session.user.email}</p>
+    <Page>
+      <PageHeader title={t("security")} description={session.user.email} />
       {notice === "mfa_required" && !twoFactorEnabled ? (
-        <p className="mt-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
-          The action you tried requires two-factor authentication. Enrol below, then
-          try again.
+        <p
+          role="alert"
+          className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+        >
+          {t("mfaRequiredNotice")}
         </p>
       ) : null}
 
-      <section className="mt-8 max-w-md">
-        <h2 className="text-lg font-medium">Change password</h2>
-        <ChangePasswordForm />
-      </section>
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("language.title")}</CardTitle>
+            <CardDescription>{t("language.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <LocaleForm current={isLocale(userLocale) ? userLocale : ""} />
+          </CardContent>
+        </Card>
 
-      <section className="mt-10 max-w-md">
-        <h2 className="text-lg font-medium">Two-factor authentication</h2>
-        <p className="mt-1 text-sm text-neutral-600">
-          {twoFactorEnabled
-            ? "Enabled. Codes from your authenticator app are required at sign-in."
-            : "Not enrolled. Your role holds sensitive permissions — TOTP is mandatory before they can be used."}
-        </p>
-        <TotpEnrollment enabled={twoFactorEnabled} />
-      </section>
-    </main>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("password.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChangePasswordForm />
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle>{t("totp.title")}</CardTitle>
+            <CardDescription>
+              {twoFactorEnabled ? t("totp.enabled") : t("totp.notEnrolled")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TotpEnrollment enabled={twoFactorEnabled} />
+          </CardContent>
+        </Card>
+      </div>
+    </Page>
   );
 }

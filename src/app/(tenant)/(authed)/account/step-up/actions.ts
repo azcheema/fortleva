@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
 import { verifyStepUpWithHeaders } from "@/auth/step-up";
@@ -23,18 +24,19 @@ export async function verifyStepUpAction(
   _prev: StepUpFormState,
   formData: FormData,
 ): Promise<StepUpFormState> {
+  const t = await getTranslations("account.stepUp");
   const parsed = schema.safeParse({
     code: formData.get("code"),
     next: formData.get("next") ?? undefined,
   });
-  if (!parsed.success) return { ok: false, message: "Enter the code from your authenticator app." };
+  if (!parsed.success) return { ok: false, message: t("enterCode") };
   const next = safeNextPath(parsed.data.next);
 
   const result = await verifyStepUpWithHeaders(parsed.data.code, await headers());
   if (!result.ok) {
     if (result.reason === "no_session") redirect("/login");
     if (result.reason === "not_enrolled") redirect(enrolUrl(next));
-    return { ok: false, message: "That code did not match — try the next one." };
+    return { ok: false, message: t("mismatch") };
   }
   redirect(next);
 }

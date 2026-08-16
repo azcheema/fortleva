@@ -1,10 +1,17 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useActionState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { FormMessage } from "@/components/form-message";
 
 import { verifyStepUpAction, type StepUpFormState } from "./actions";
 
 export function StepUpForm({ next }: { next: string }) {
+  const t = useTranslations("account.stepUp");
   const [state, action, pending] = useActionState<StepUpFormState, FormData>(
     verifyStepUpAction,
     null,
@@ -13,26 +20,23 @@ export function StepUpForm({ next }: { next: string }) {
   return (
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
-      <label className="flex flex-col gap-1 text-sm">
-        Authenticator code (or a backup code)
-        <input
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="step-up-code">{t("label")}</Label>
+        <Input
+          id="step-up-code"
           name="code"
           inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={32}
           required
           autoFocus
-          className="rounded border border-neutral-300 px-3 py-2 text-center text-lg tracking-widest"
+          className="text-center text-lg tracking-widest"
         />
-      </label>
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded bg-neutral-900 px-4 py-2 text-white disabled:opacity-50"
-      >
-        {pending ? "Verifying…" : "Verify"}
-      </button>
-      {state && !state.ok ? <p className="text-sm text-red-600">{state.message}</p> : null}
+      </div>
+      <Button type="submit" disabled={pending}>
+        {pending ? t("verifying") : t("verify")}
+      </Button>
+      <FormMessage state={state} />
     </form>
   );
 }

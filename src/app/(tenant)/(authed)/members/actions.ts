@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
 import { createInvite } from "@/members/invites";
@@ -16,7 +17,7 @@ import { handleAuthzRedirect } from "@/authz/redirects";
 
 const inviteSchema = z.object({
   email: z.email(),
-  roleIds: z.array(z.string()).min(1, "pick at least one role"),
+  roleIds: z.array(z.string()).min(1),
 });
 
 export type InviteFormState = { ok: boolean; message: string } | null;
@@ -26,13 +27,16 @@ export async function inviteMemberAction(
   formData: FormData,
 ): Promise<InviteFormState> {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("members");
+  const tCommon = await getTranslations("common");
 
   const parsed = inviteSchema.safeParse({
     email: formData.get("email"),
     roleIds: formData.getAll("roleIds").map(String),
   });
   if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "invalid input" };
+    const roleIssue = parsed.error.issues.some((i) => i.path[0] === "roleIds");
+    return { ok: false, message: roleIssue ? t("invite.pickRole") : tCommon("invalidInput") };
   }
 
   try {
@@ -53,7 +57,7 @@ export async function inviteMemberAction(
   }
 
   revalidatePath("/members");
-  return { ok: true, message: `Invitation sent to ${parsed.data.email}` };
+  return { ok: true, message: t("invite.sent", { email: parsed.data.email }) };
 }
 
 /** Shared state shape for the per-member admin forms. */
@@ -84,9 +88,11 @@ export async function setMemberRolesAction(
   formData: FormData,
 ): Promise<AdminFormState> {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("members");
+  const tCommon = await getTranslations("common");
   const memberId = uuid.safeParse(formData.get("memberId"));
   const roleIds = z.array(uuid).safeParse(formData.getAll("roleIds").map(String));
-  if (!memberId.success || !roleIds.success) return { ok: false, message: "invalid input" };
+  if (!memberId.success || !roleIds.success) return { ok: false, message: tCommon("invalidInput") };
   return runAdmin(async () => {
     const r = await setMemberRoles({
       tenantId: membership.tenantId,
@@ -95,7 +101,9 @@ export async function setMemberRolesAction(
       roleIds: roleIds.data,
     });
     const n = r.added.length + r.removed.length;
-    return n === 0 ? "No changes" : `Roles updated (${r.added.length} added, ${r.removed.length} removed)`;
+    return n === 0
+      ? t("roles.noChanges")
+      : t("roles.updated", { added: r.added.length, removed: r.removed.length });
   });
 }
 
@@ -104,18 +112,20 @@ export async function setMemberStatusAction(
   formData: FormData,
 ): Promise<AdminFormState> {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("members");
+  const tCommon = await getTranslations("common");
   const memberId = uuid.safeParse(formData.get("memberId"));
   const op = formData.get("op");
   if (!memberId.success || (op !== "suspend" && op !== "reactivate")) {
-    return { ok: false, message: "invalid input" };
+    return { ok: false, message: tCommon("invalidInput") };
   }
   return runAdmin(async () => {
     if (op === "suspend") {
       await suspendMember({ tenantId: membership.tenantId, actor, memberId: memberId.data });
-      return "Member suspended";
+      return t("status.suspended");
     }
     await reactivateMember({ tenantId: membership.tenantId, actor, memberId: memberId.data });
-    return "Member reactivated";
+    return t("status.reactivated");
   });
 }
 
@@ -124,10 +134,12 @@ export async function revokeInviteAction(
   formData: FormData,
 ): Promise<AdminFormState> {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("members");
+  const tCommon = await getTranslations("common");
   const inviteId = uuid.safeParse(formData.get("inviteId"));
-  if (!inviteId.success) return { ok: false, message: "invalid input" };
+  if (!inviteId.success) return { ok: false, message: tCommon("invalidInput") };
   return runAdmin(async () => {
     await revokeInvite({ tenantId: membership.tenantId, actor, inviteId: inviteId.data });
-    return "Invitation revoked";
+    return t("pending.revoked");
   });
 }

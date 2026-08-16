@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useState } from "react";
 
 import { platformAuthClient } from "@/auth/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function OpsLoginPage() {
+  const t = useTranslations("auth");
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +26,7 @@ export default function OpsLoginPage() {
     const { data, error: err } = await platformAuthClient.signIn.email({ email, password });
     setBusy(false);
     if (err) {
-      setError(err.message ?? "Sign-in failed");
+      setError(err.message ?? t("login.failed"));
       return;
     }
     if ((data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) {
@@ -38,7 +43,7 @@ export default function OpsLoginPage() {
     const { error: err } = await platformAuthClient.twoFactor.verifyTotp({ code: totp });
     setBusy(false);
     if (err) {
-      setError(err.message ?? "Invalid code");
+      setError(err.message ?? t("login.invalidCode"));
       return;
     }
     router.push("/ops");
@@ -46,55 +51,62 @@ export default function OpsLoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
-      <h1 className="text-2xl font-semibold">Fortleva Ops — sign in</h1>
+      <h1 className="text-2xl font-semibold">{t("ops.loginTitle")}</h1>
       {stage === "credentials" ? (
         <form onSubmit={submitCredentials} className="flex flex-col gap-4">
-          <input
-            type="email"
-            placeholder="Email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded border border-neutral-300 px-3 py-2"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded border border-neutral-300 px-3 py-2"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded bg-neutral-900 px-4 py-2 text-white disabled:opacity-50"
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email">{t("email")}</Label>
+            <Input
+              id="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password">{t("password")}</Label>
+            <Input
+              id="password"
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <Button type="submit" disabled={busy}>
+            {busy ? t("login.submitting") : t("login.submit")}
+          </Button>
         </form>
       ) : (
         <form onSubmit={submitTotp} className="flex flex-col gap-4">
-          <input
-            inputMode="numeric"
-            maxLength={6}
-            required
-            autoFocus
-            placeholder="6-digit code"
-            value={totp}
-            onChange={(e) => setTotp(e.target.value)}
-            className="rounded border border-neutral-300 px-3 py-2 text-center"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded bg-neutral-900 px-4 py-2 text-white disabled:opacity-50"
-          >
-            Verify
-          </button>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="totp">{t("login.totpLabel")}</Label>
+            <Input
+              id="totp"
+              inputMode="numeric"
+              maxLength={6}
+              required
+              autoFocus
+              autoComplete="one-time-code"
+              placeholder={t("ops.codePlaceholder")}
+              value={totp}
+              onChange={(e) => setTotp(e.target.value)}
+              className="text-center"
+            />
+          </div>
+          <Button type="submit" disabled={busy}>
+            {busy ? t("login.verifying") : t("login.verify")}
+          </Button>
         </form>
       )}
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
     </main>
   );
 }

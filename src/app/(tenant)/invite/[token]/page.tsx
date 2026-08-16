@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 
 import { getMemberSession } from "@/auth/session";
-import { acceptInvite, previewInvite } from "@/members/invites";
 import { AuthzError } from "@/authz/errors";
+import { Button } from "@/components/ui/button";
+import { acceptInvite, previewInvite } from "@/members/invites";
 
 /**
  * Invitation acceptance. The link carries the raw token exactly once;
@@ -12,20 +14,21 @@ import { AuthzError } from "@/authz/errors";
  */
 export default async function InvitePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { token } = await params;
+  const { error } = await searchParams;
+  const t = await getTranslations("auth.invite");
   const preview = await previewInvite(token);
 
   if (!preview || preview.status !== "PENDING" || preview.expired) {
     return (
       <Shell>
-        <h1 className="text-xl font-semibold">Invitation not available</h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          This invitation link is invalid, expired, or already used. Ask your
-          admin to send a new one.
-        </p>
+        <h1 className="text-xl font-semibold">{t("unavailableTitle")}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{t("unavailable")}</p>
       </Shell>
     );
   }
@@ -34,19 +37,16 @@ export default async function InvitePage({
   if (!session) {
     return (
       <Shell>
-        <h1 className="text-xl font-semibold">
-          Join {preview.tenantName} on Fortleva
-        </h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          This invitation is for <strong>{preview.email}</strong>. Sign in with
-          that address (or create your account) and open this link again.
+        <h1 className="text-xl font-semibold">{t("joinTitle", { tenant: preview.tenantName })}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t.rich("signInFirst", {
+            email: preview.email,
+            strong: (chunks) => <strong className="text-foreground">{chunks}</strong>,
+          })}
         </p>
-        <Link
-          href={`/signup?next=/invite/${token}`}
-          className="mt-4 inline-block rounded bg-neutral-900 px-4 py-2 text-white"
-        >
-          Create account / sign in
-        </Link>
+        <Button asChild className="mt-4 self-start">
+          <Link href={`/signup?next=/invite/${token}`}>{t("createOrSignIn")}</Link>
+        </Button>
       </Shell>
     );
   }
@@ -65,27 +65,27 @@ export default async function InvitePage({
       if (e instanceof AuthzError) redirect(`/invite/${token}?error=1`);
       throw e;
     }
-    redirect("/dashboard");
+    redirect("/home");
   }
+
+  const mismatch = session.user.email !== preview.email;
 
   return (
     <Shell>
-      <h1 className="text-xl font-semibold">
-        Join {preview.tenantName} on Fortleva
-      </h1>
-      <p className="mt-2 text-sm text-neutral-600">
-        Signed in as {session.user.email}.
-        {session.user.email !== preview.email
-          ? ` This invitation was issued to ${preview.email} — accepting will fail unless the addresses match.`
-          : ""}
+      <h1 className="text-xl font-semibold">{t("joinTitle", { tenant: preview.tenantName })}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {t("signedInAs", { email: session.user.email })}
+        {mismatch ? ` ${t("mismatch", { email: preview.email })}` : null}
       </p>
+      {error ? (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {t("failed")}
+        </p>
+      ) : null}
       <form action={accept}>
-        <button
-          type="submit"
-          className="mt-4 rounded bg-neutral-900 px-4 py-2 text-white"
-        >
-          Accept invitation
-        </button>
+        <Button type="submit" className="mt-4">
+          {t("accept")}
+        </Button>
       </form>
     </Shell>
   );

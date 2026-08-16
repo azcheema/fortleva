@@ -1,0 +1,345 @@
+{
+  "common": {
+    "appName": "Fortleva",
+    "cancel": "Avbryt",
+    "close": "Stäng",
+    "delete": "Ta bort",
+    "download": "Ladda ner",
+    "loading": "Laddar…",
+    "retry": "Försök igen",
+    "back": "Tillbaka",
+    "you": "du",
+    "active": "aktiv",
+    "suspended": "avstängd",
+    "invalidInput": "Ogiltig inmatning.",
+    "noPermission": "Du har inte behörighet att göra det.",
+    "signOut": "Logga ut",
+    "language": "Språk",
+    "languageName": {
+      "sv": "Svenska",
+      "en": "English"
+    },
+    "expires": "går ut {date}",
+    "versions": "{count, plural, =1 {1 version} other {# versioner}}",
+    "members": "{count, plural, =1 {1 medlem} other {# medlemmar}}",
+    "permissions": "{count, plural, =1 {1 behörighet} other {# behörigheter}}"
+  },
+  "nav": {
+    "home": "Hem",
+    "files": "Filer",
+    "members": "Medlemmar",
+    "settings": "Inställningar",
+    "roles": "Roller",
+    "preferences": "Preferenser",
+    "account": "Konto",
+    "dashboard": "Arbetsytor",
+    "more": "Mer",
+    "menu": "Meny",
+    "collapse": "Fäll ihop navigeringen",
+    "expand": "Fäll ut navigeringen",
+    "signedInAs": "Inloggad som {email}",
+    "workspace": "Arbetsyta",
+    "switchWorkspace": "Byt arbetsyta"
+  },
+  "shell": {
+    "palette": {
+      "title": "Kommandopalett",
+      "description": "Sök efter en sida eller en åtgärd",
+      "placeholder": "Skriv ett kommando eller sök…",
+      "empty": "Inga träffar.",
+      "navigate": "Gå till",
+      "actions": "Åtgärder",
+      "switchLanguage": "Byt språk",
+      "shortcuts": "Kortkommandon",
+      "signOut": "Logga ut",
+      "open": "Öppna kommandopaletten"
+    },
+    "shortcuts": {
+      "title": "Kortkommandon",
+      "description": "Tangenter som fungerar på den här sidan. Enskilda tangenter är inaktiva när ett fält har fokus.",
+      "open": "Visa kortkommandon",
+      "global": "Globalt",
+      "navigation": "Gå till",
+      "palette": "Kommandopalett",
+      "overlay": "Den här översikten",
+      "close": "Stäng palett / översikt",
+      "goHome": "Hem",
+      "goFiles": "Filer",
+      "goMembers": "Medlemmar",
+      "goAccount": "Konto",
+      "then": "sedan"
+    },
+    "timer": {
+      "slot": "Tidtagare"
+    },
+    "error": {
+      "title": "Något gick fel",
+      "description": "Sidan kunde inte visas. Du kan försöka igen; om felet kvarstår, notera referensen nedan.",
+      "reference": "Referens: {digest}",
+      "retry": "Försök igen",
+      "home": "Gå till Hem"
+    },
+    "notFound": {
+      "title": "Sidan hittades inte",
+      "description": "Det finns inget på den här adressen, eller så saknar du åtkomst till den.",
+      "home": "Gå till Hem"
+    }
+  },
+  "home": {
+    "title": "Mitt arbete",
+    "greeting": {
+      "morning": "God morgon, {name}",
+      "afternoon": "God eftermiddag, {name}",
+      "evening": "God kväll, {name}"
+    },
+    "empty": {
+      "title": "Inget att arbeta med ännu",
+      "description": "Tavlor och uppgifter kommer med modulen Arbete — tills vidare: Medlemmar och Filer.",
+      "members": "Öppna Medlemmar",
+      "files": "Öppna Filer"
+    },
+    "workspace": "Arbetsyta: {name}"
+  },
+  "dashboard": {
+    "title": "Välkommen, {name}",
+    "workspaces": "Dina arbetsytor",
+    "none": "Du är inte medlem i någon arbetsyta ännu. Be en administratör om en inbjudan.",
+    "goHome": "Gå till Hem"
+  },
+  "auth": {
+    "email": "E-post",
+    "password": "Lösenord",
+    "name": "Fullständigt namn",
+    "login": {
+      "title": "Logga in på Fortleva",
+      "submit": "Logga in",
+      "submitting": "Loggar in…",
+      "failed": "Inloggningen misslyckades",
+      "totpHint": "Ange den 6-siffriga koden från din autentiseringsapp.",
+      "totpLabel": "Kod från autentiseringsappen",
+      "verify": "Verifiera",
+      "verifying": "Verifierar…",
+      "invalidCode": "Ogiltig kod",
+      "noAccount": "Har du inget konto?",
+      "signUp": "Skapa ett"
+    },
+    "signup": {
+      "title": "Skapa ditt Fortleva-konto",
+      "passwordHint": "Lösenord (minst 12 tecken)",
+      "submit": "Skapa konto",
+      "submitting": "Skapar…",
+      "failed": "Registreringen misslyckades",
+      "checkEmailTitle": "Kontrollera din e-post",
+      "checkEmail": "Vi har skickat en verifieringslänk till <strong>{email}</strong>. Verifiera adressen och logga sedan in.",
+      "haveAccount": "Har du redan ett konto?",
+      "signIn": "Logga in"
+    },
+    "invite": {
+      "unavailableTitle": "Inbjudan är inte tillgänglig",
+      "unavailable": "Den här inbjudningslänken är ogiltig, har gått ut eller har redan använts. Be din administratör skicka en ny.",
+      "joinTitle": "Gå med i {tenant} på Fortleva",
+      "signInFirst": "Den här inbjudan gäller <strong>{email}</strong>. Logga in med den adressen (eller skapa ditt konto) och öppna länken igen.",
+      "createOrSignIn": "Skapa konto / logga in",
+      "signedInAs": "Inloggad som {email}.",
+      "mismatch": "Inbjudan utfärdades till {email} — det går inte att acceptera om adresserna inte stämmer överens.",
+      "accept": "Acceptera inbjudan",
+      "failed": "Inbjudan kunde inte accepteras. Kontrollera att du är inloggad med den inbjudna adressen."
+    },
+    "ops": {
+      "loginTitle": "Fortleva Ops — logga in",
+      "codePlaceholder": "6-siffrig kod",
+      "title": "Fortleva Ops",
+      "signedInAs": "Inloggad som {email} (SUPERADMIN). Konsolens gränssnitt kommer i fas 7 — maskineriet (imitation, entitlement-överstyrningar, revision) finns bakom withPlatform()."
+    },
+    "portal": {
+      "title": "Kundportal",
+      "closed": "Portalen är inte öppen ännu. Din byrå skickar en inbjudan när den är det."
+    }
+  },
+  "account": {
+    "title": "Konto",
+    "security": "Kontosäkerhet",
+    "mfaRequiredNotice": "Åtgärden du försökte utföra kräver tvåfaktorsautentisering. Registrera nedan och försök igen.",
+    "language": {
+      "title": "Språk",
+      "description": "Gäller ditt konto på alla enheter. Om inget är valt används arbetsytans standard.",
+      "label": "Språk",
+      "workspaceDefault": "Arbetsytans standard",
+      "saved": "Språket har uppdaterats.",
+      "failed": "Språket kunde inte sparas."
+    },
+    "password": {
+      "title": "Byt lösenord",
+      "current": "Nuvarande lösenord",
+      "new": "Nytt lösenord (minst 12 tecken)",
+      "submit": "Byt lösenord",
+      "submitting": "Byter…",
+      "failed": "Lösenordsbytet misslyckades",
+      "changed": "Lösenordet har bytts. Övriga sessioner har loggats ut."
+    },
+    "totp": {
+      "title": "Tvåfaktorsautentisering",
+      "enabled": "Aktiverad. Koder från din autentiseringsapp krävs vid inloggning.",
+      "notEnrolled": "Inte registrerad. Din roll har känsliga behörigheter — TOTP krävs innan de kan användas.",
+      "confirmPassword": "Bekräfta ditt lösenord",
+      "enrol": "Registrera TOTP",
+      "starting": "Startar…",
+      "startFailed": "Registreringen kunde inte startas",
+      "scan": "1. Skanna med din autentiseringsapp (eller lägg till hemligheten manuellt):",
+      "qrAlt": "QR-kod för TOTP-registrering",
+      "cantScan": "Kan du inte skanna? Visa URI:n",
+      "backupTitle": "Reservkoder — spara dem i din lösenordshanterare nu:",
+      "codePlaceholder": "6-siffrig kod",
+      "activate": "Verifiera och aktivera",
+      "verifying": "Verifierar…",
+      "mismatch": "Koden stämde inte — prova nästa",
+      "done": "Tvåfaktorsautentisering är aktiv. Du blir ombedd att ange en kod vid varje inloggning."
+    },
+    "stepUp": {
+      "title": "Bekräfta att det är du",
+      "description": "Den här åtgärden är känslig. Ange en ny kod från din autentiseringsapp för att fortsätta.",
+      "label": "Kod från autentiseringsappen (eller en reservkod)",
+      "verify": "Verifiera",
+      "verifying": "Verifierar…",
+      "enterCode": "Ange koden från din autentiseringsapp.",
+      "mismatch": "Koden stämde inte — prova nästa."
+    }
+  },
+  "members": {
+    "title": "{tenant} — medlemmar",
+    "manageRoles": "Hantera roller →",
+    "columns": {
+      "member": "Medlem",
+      "email": "E-post",
+      "roles": "Roller",
+      "status": "Status"
+    },
+    "roles": {
+      "save": "Spara roller",
+      "saving": "Sparar…",
+      "noChanges": "Inga ändringar",
+      "updated": "Roller uppdaterade ({added} tillagda, {removed} borttagna)"
+    },
+    "status": {
+      "suspend": "Stäng av",
+      "reactivate": "Återaktivera",
+      "cannotSuspendSelf": "Du kan inte stänga av dig själv",
+      "suspended": "Medlemmen har stängts av",
+      "reactivated": "Medlemmen har återaktiverats"
+    },
+    "pending": {
+      "title": "Väntande inbjudningar",
+      "revoke": "Återkalla",
+      "revoked": "Inbjudan har återkallats"
+    },
+    "invite": {
+      "title": "Bjud in en medlem",
+      "email": "E-post",
+      "emailPlaceholder": "kollega@foretag.se",
+      "roles": "Roller",
+      "pickRole": "Välj minst en roll",
+      "submit": "Skicka inbjudan",
+      "submitting": "Skickar…",
+      "sent": "Inbjudan skickad till {email}"
+    }
+  },
+  "roles": {
+    "title": "{tenant} — roller",
+    "shortTitle": "Roller",
+    "intro": "Systemroller följer plattformens mallar och är skrivskyddade. Anpassade roller kan redigeras inom de behörigheter du själv har; ✦ markerar behörigheter som kräver tvåfaktorsautentisering.",
+    "noPermission": "Du har inte behörighet att visa roller.",
+    "meta": {
+      "system": "system · mall {template}",
+      "cloned": "anpassad · klonad från {template}",
+      "custom": "anpassad"
+    },
+    "permissions": "Behörigheter",
+    "tombstone": "(borttagen från mallen)",
+    "requiresMfa": "kräver tvåfaktorsautentisering",
+    "modules": {
+      "core": "Kärna",
+      "invoicing": "Fakturering",
+      "contracts": "Avtal",
+      "reports": "Rapporter",
+      "issues": "Ärenden",
+      "documentation": "Dokumentation",
+      "continuity_box": "Kontinuitetsbox",
+      "portal": "Portal"
+    },
+    "save": "Spara behörigheter",
+    "saving": "Sparar…",
+    "noChanges": "Inga ändringar",
+    "updated": "Behörigheter uppdaterade ({granted} tilldelade, {revoked} återkallade)",
+    "delete": "Ta bort \"{name}\"",
+    "deleted": "Rollen har tagits bort",
+    "create": {
+      "title": "Skapa en roll",
+      "name": "Rollnamn",
+      "description": "Beskrivning (valfritt)",
+      "startFrom": "Utgå från",
+      "blank": "Tom (inga behörigheter)",
+      "clone": "Klona {name} (utan ✦-behörigheter)",
+      "submit": "Skapa roll",
+      "submitting": "Skapar…",
+      "created": "Rollen \"{name}\" har skapats"
+    }
+  },
+  "settings": {
+    "preferences": {
+      "title": "Preferenser",
+      "emptyTitle": "Inget att ställa in ännu",
+      "emptyDescription": "Arbetsytans preferenser (språk, veckonummer, tidsformat, notiser) kommer med inställningssidorna i fas 2."
+    }
+  },
+  "files": {
+    "title": "{tenant} — filer",
+    "shortTitle": "Filer",
+    "empty": {
+      "title": "Inga filer ännu",
+      "description": "Ladda upp den första filen — den är privat för teamet tills en kund kopplas."
+    },
+    "columns": {
+      "name": "Namn",
+      "size": "Storlek",
+      "versions": "Versioner",
+      "updated": "Uppdaterad",
+      "visibility": "Synlighet"
+    },
+    "visibility": {
+      "internal": "Privat för teamet",
+      "clientVisible": "Kunden kan se",
+      "label": "Synlighet",
+      "hint": "Filer är privata för ditt team. Delning med kund kommer med Kunder (fas 2)."
+    },
+    "download": "Ladda ner",
+    "delete": "Ta bort",
+    "upload": {
+      "title": "Ladda upp en fil",
+      "file": "Fil",
+      "submit": "Ladda upp",
+      "preparing": "Förbereder…",
+      "uploading": "Laddar upp…",
+      "finishing": "Slutför…",
+      "done": "{name} har laddats upp",
+      "failed": "Uppladdningen misslyckades ({status})."
+    },
+    "errors": {
+      "quota": "Lagringskvoten är full — ta bort filer eller uppgradera planen.",
+      "notEntitled": "Ingår inte i din plan.",
+      "notFound": "Filen hittades inte.",
+      "forbidden": "Du har inte behörighet att göra det.",
+      "typeNotAllowed": "Den filtypen accepteras inte.",
+      "sizeInvalid": "Filen är tom eller för stor (max 100 MB).",
+      "nameInvalid": "Ogiltigt filnamn.",
+      "uploadIncomplete": "Uppladdningen slutfördes inte korrekt — försök igen.",
+      "notPending": "Den här uppladdningen är redan slutförd eller har gått ut.",
+      "clientRequired": "En fil som kunden kan se behöver en kund.",
+      "invalidRequest": "Ogiltig uppladdningsbegäran."
+    }
+  },
+  "errors": {
+    "generic": "Något gick fel.",
+    "invalidInput": "Ogiltig inmatning.",
+    "forbidden": "Du har inte behörighet att göra det."
+  }
+}

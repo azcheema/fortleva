@@ -1,14 +1,28 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { getFormatter, getTranslations } from "next-intl/server";
 
-import { withTenant } from "@/db";
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Page, PageHeader } from "@/components/page-header";
+import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 
 import { InviteForm } from "./invite-form";
 import { MemberRolesForm, MemberStatusForm, RevokeInviteForm } from "./member-admin";
 
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("nav");
+  return { title: t("members") };
+}
+
 export default async function MembersPage() {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("members");
+  const tCommon = await getTranslations("common");
+  const format = await getFormatter();
 
   const data = await withTenant(
     membership.tenantId,
@@ -49,74 +63,89 @@ export default async function MembersPage() {
   const roleOptions = data.roles.map((r) => ({ id: r.id, name: r.name }));
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">{membership.tenantName} — members</h1>
-        {data.canViewRoles ? (
-          <Link href="/settings/roles" className="text-sm hover:underline">
-            Manage roles →
-          </Link>
-        ) : null}
-      </div>
+    <Page>
+      <PageHeader
+        title={t("title", { tenant: membership.tenantName })}
+        actions={
+          data.canViewRoles ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/settings/roles">{t("manageRoles")}</Link>
+            </Button>
+          ) : null
+        }
+      />
 
       <ul className="mt-6 flex flex-col gap-2">
-        {data.members.map((m) => (
-          <li key={m.id} className="rounded border border-neutral-200 px-4 py-3">
-            <div className="flex items-baseline justify-between gap-4">
-              <span className="font-medium">
-                {m.user.name}
-                {m.id === membership.memberId ? (
-                  <span className="ml-2 text-xs text-neutral-500">(you)</span>
-                ) : null}
-                {m.status === "SUSPENDED" ? (
-                  <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
-                    suspended
-                  </span>
-                ) : null}
-              </span>
-              <span className="text-sm text-neutral-500">{m.user.email}</span>
-            </div>
-            <MemberRolesForm
-              memberId={m.id}
-              roles={roleOptions}
-              heldRoleIds={m.memberRoles.map((r) => r.role.id)}
-              canManage={data.canManageRoles}
-            />
-            {data.canRemove ? (
-              <div className="mt-2">
-                <MemberStatusForm
-                  memberId={m.id}
-                  status={m.status}
-                  isSelf={m.id === membership.memberId}
-                />
-              </div>
-            ) : null}
-          </li>
-        ))}
+        {data.members.map((m) => {
+          const isSelf = m.id === membership.memberId;
+          return (
+            <li key={m.id}>
+              <Card size="sm">
+                <CardContent className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <span className="flex items-center gap-2 font-medium">
+                      {m.user.name}
+                      {isSelf ? (
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {"("}
+                          {tCommon("you")}
+                          {")"}
+                        </span>
+                      ) : null}
+                      {m.status === "SUSPENDED" ? (
+                        <Badge variant="outline">{tCommon("suspended")}</Badge>
+                      ) : null}
+                    </span>
+                    <span className="text-sm text-muted-foreground">{m.user.email}</span>
+                  </div>
+                  <MemberRolesForm
+                    memberId={m.id}
+                    roles={roleOptions}
+                    heldRoleIds={m.memberRoles.map((r) => r.role.id)}
+                    canManage={data.canManageRoles}
+                  />
+                  {data.canRemove ? (
+                    <MemberStatusForm memberId={m.id} status={m.status} isSelf={isSelf} />
+                  ) : null}
+                </CardContent>
+              </Card>
+            </li>
+          );
+        })}
       </ul>
 
       {data.invites.length > 0 ? (
-        <section className="mt-8">
-          <h2 className="text-lg font-medium">Pending invitations</h2>
-          <ul className="mt-2 flex flex-col gap-1 text-sm text-neutral-600">
-            {data.invites.map((i) => (
-              <li key={i.id} className="flex items-center gap-3">
-                <span>
-                  {i.email} — expires {i.expiresAt.toISOString().slice(0, 10)}
-                </span>
-                {data.canInvite ? <RevokeInviteForm inviteId={i.id} /> : null}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Card size="sm" className="mt-6">
+          <CardHeader>
+            <CardTitle>{t("pending.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+              {data.invites.map((i) => (
+                <li key={i.id} className="flex flex-wrap items-center gap-3">
+                  <span>
+                    {i.email}
+                    {" — "}
+                    {tCommon("expires", { date: format.dateTime(i.expiresAt, { dateStyle: "medium" }) })}
+                  </span>
+                  {data.canInvite ? <RevokeInviteForm inviteId={i.id} /> : null}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       ) : null}
 
       {data.canInvite ? (
-        <section className="mt-8">
-          <h2 className="text-lg font-medium">Invite a member</h2>
-          <InviteForm roles={roleOptions} />
-        </section>
+        <Card size="sm" className="mt-6">
+          <CardHeader>
+            <CardTitle>{t("invite.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <InviteForm roles={roleOptions} />
+          </CardContent>
+        </Card>
       ) : null}
-    </main>
+    </Page>
   );
 }

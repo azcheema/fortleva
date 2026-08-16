@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
-import { requireMemberSession } from "@/auth/session";
+import { getMemberSession, requireMemberSession } from "@/auth/session";
 import type { MemberActor, MfaState } from "@/authz/authorize";
 
 import { listMembershipsForUser, type Membership } from "./service";
@@ -31,19 +32,38 @@ const asDate = (v: unknown): Date | null => {
   return null;
 };
 
+type MemberSession = NonNullable<Awaited<ReturnType<typeof getMemberSession>>>;
+
+/** Per-request memoised membership list (the layout, pages and locale resolution all ask). */
+const membershipsFor = cache((userId: string) => listMembershipsForUser(userId));
+
+/**
+ * The active membership for a session: the session's activeTenantId
+ * pointer when it names an ACTIVE membership, else the first ACTIVE one;
+ * null when the user has no active membership at all.
+ */
+export const getActiveMembership = cache(
+  async (session: MemberSession): Promise<Membership | null> => {
+    const memberships = await membershipsFor(session.user.id);
+    const active = memberships.filter((m) => m.status === "ACTIVE");
+    const pointer = (session.session as { activeTenantId?: string | null }).activeTenantId;
+    return active.find((m) => m.tenantId === pointer) ?? active[0] ?? null;
+  },
+);
+
+/** MFA posture of a session (AUTHZ.md §7.5): enrolment + last factor. */
+export const mfaStateOf = (session: MemberSession): MfaState => ({
+  enrolled: (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled === true,
+  verifiedAt: asDate((session.session as { mfaVerifiedAt?: unknown }).mfaVerifiedAt),
+});
+
 export async function requireTenantContext(): Promise<TenantContext> {
   const session = await requireMemberSession();
-  const memberships = await listMembershipsForUser(session.user.id);
-  const active = memberships.filter((m) => m.status === "ACTIVE");
-  if (active.length === 0) redirect("/dashboard");
+  const memberships = await membershipsFor(session.user.id);
+  const membership = await getActiveMembership(session);
+  if (!membership) redirect("/dashboard");
 
-  const pointer = (session.session as { activeTenantId?: string | null }).activeTenantId;
-  const membership = active.find((m) => m.tenantId === pointer) ?? active[0]!;
-
-  const mfa: MfaState = {
-    enrolled: (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled === true,
-    verifiedAt: asDate((session.session as { mfaVerifiedAt?: unknown }).mfaVerifiedAt),
-  };
+  const mfa = mfaStateOf(session);
 
   return {
     userId: session.user.id,

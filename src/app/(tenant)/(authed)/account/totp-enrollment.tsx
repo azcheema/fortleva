@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import QRCode from "qrcode";
+import { useState } from "react";
 
 import { authClient } from "@/auth/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type Stage =
   | { step: "idle" }
@@ -12,6 +16,7 @@ type Stage =
   | { step: "done"; backupCodes: string[] };
 
 export function TotpEnrollment({ enabled }: { enabled: boolean }) {
+  const t = useTranslations("account.totp");
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -30,7 +35,7 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
     const { data, error: err } = await authClient.twoFactor.enable({ password });
     setBusy(false);
     if (err || !data) {
-      setError(err?.message ?? "Could not start enrollment");
+      setError(err?.message ?? t("startFailed"));
       return;
     }
     const qrDataUrl = await QRCode.toDataURL(data.totpURI, { width: 220 });
@@ -51,7 +56,7 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
     const { error: err } = await authClient.twoFactor.verifyTotp({ code });
     setBusy(false);
     if (err) {
-      setError(err.message ?? "Code did not match — try the next one");
+      setError(err.message ?? t("mismatch"));
       return;
     }
     setStage({ step: "done", backupCodes: stage.backupCodes });
@@ -60,75 +65,78 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
 
   if (stage.step === "scan") {
     return (
-      <div className="mt-3 flex flex-col gap-4">
-        <p className="text-sm">
-          1. Scan with your authenticator app (or add the secret manually):
-        </p>
+      <div className="flex flex-col gap-4">
+        <p className="text-sm">{t("scan")}</p>
         {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
-        <img src={stage.qrDataUrl} alt="TOTP enrollment QR code" width={220} height={220} />
-        <details className="text-xs text-neutral-600">
-          <summary>Can&apos;t scan? Show the URI</summary>
+        <img src={stage.qrDataUrl} alt={t("qrAlt")} width={220} height={220} />
+        <details className="text-xs text-muted-foreground">
+          <summary>{t("cantScan")}</summary>
           <code className="break-all">{stage.totpUri}</code>
         </details>
-        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
-          <p className="font-medium">Backup codes — store them in Bitwarden now:</p>
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-medium">{t("backupTitle")}</p>
           <ul className="mt-1 grid grid-cols-2 gap-x-6 font-mono text-xs">
             {stage.backupCodes.map((c) => (
               <li key={c}>{c}</li>
             ))}
           </ul>
         </div>
-        <form onSubmit={verify} className="flex items-center gap-3">
-          <input
-            inputMode="numeric"
-            maxLength={6}
-            required
-            placeholder="6-digit code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="rounded border border-neutral-300 px-3 py-2 text-center"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded bg-neutral-900 px-4 py-2 text-white disabled:opacity-50"
-          >
-            {busy ? "Verifying…" : "Verify & activate"}
-          </button>
+        <form onSubmit={verify} className="flex items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="totp-code">{t("codePlaceholder")}</Label>
+            <Input
+              id="totp-code"
+              inputMode="numeric"
+              maxLength={6}
+              required
+              autoComplete="one-time-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="w-32 text-center"
+            />
+          </div>
+          <Button type="submit" disabled={busy}>
+            {busy ? t("verifying") : t("activate")}
+          </Button>
         </form>
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
       </div>
     );
   }
 
   if (stage.step === "done") {
     return (
-      <p className="mt-3 text-sm text-green-700">
-        Two-factor authentication is active. You&apos;ll be asked for a code at
-        every sign-in.
+      <p role="status" className="text-sm text-green-700">
+        {t("done")}
       </p>
     );
   }
 
   return (
-    <form onSubmit={begin} className="mt-3 flex items-center gap-3">
-      <input
-        type="password"
-        placeholder="Confirm your password"
-        required
-        autoComplete="current-password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="rounded border border-neutral-300 px-3 py-2"
-      />
-      <button
-        type="submit"
-        disabled={busy}
-        className="rounded bg-neutral-900 px-4 py-2 text-white disabled:opacity-50"
-      >
-        {busy ? "Starting…" : "Enroll TOTP"}
-      </button>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+    <form onSubmit={begin} className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="totp-password">{t("confirmPassword")}</Label>
+        <Input
+          id="totp-password"
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </div>
+      <Button type="submit" disabled={busy}>
+        {busy ? t("starting") : t("enrol")}
+      </Button>
+      {error ? (
+        <p role="alert" className="w-full text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
     </form>
   );
 }

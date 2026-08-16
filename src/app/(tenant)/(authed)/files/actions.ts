@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
 import { AuthzError } from "@/authz/errors";
@@ -28,17 +29,17 @@ export type ActionResult<T = undefined> =
   | { ok: true; value: T }
   | { ok: false; message: string };
 
-const messageOf = (e: unknown): string | null => {
+type Translate = Awaited<ReturnType<typeof getTranslations<"files.errors">>>;
+
+const messageOf = (t: Translate, e: unknown): string | null => {
   if (e instanceof AuthzError) {
     switch (e.reason) {
       case "NOT_ENTITLED":
-        return e.detail?.startsWith("maxStorageBytes")
-          ? "Storage quota reached — delete files or upgrade the plan."
-          : "Not included in your plan.";
+        return e.detail?.startsWith("maxStorageBytes") ? t("quota") : t("notEntitled");
       case "NOT_FOUND":
-        return "File not found.";
+        return t("notFound");
       case "FORBIDDEN":
-        return "You do not have permission to do that.";
+        return t("forbidden");
       default:
         return e.message;
     }
@@ -46,22 +47,22 @@ const messageOf = (e: unknown): string | null => {
   if (e instanceof UploadRejectedError) {
     switch (e.code) {
       case "TYPE_NOT_ALLOWED":
-        return "That file type is not accepted.";
+        return t("typeNotAllowed");
       case "SIZE_INVALID":
-        return "File is empty or too large (max 100 MB).";
+        return t("sizeInvalid");
       case "NAME_INVALID":
-        return "Invalid file name.";
+        return t("nameInvalid");
     }
   }
   if (e instanceof DocumentError) {
     switch (e.code) {
       case "UPLOAD_MISSING":
       case "UPLOAD_SIZE_MISMATCH":
-        return "Upload did not complete correctly — please try again.";
+        return t("uploadIncomplete");
       case "NOT_PENDING":
-        return "This upload was already finished or expired.";
+        return t("notPending");
       case "CLIENT_REQUIRED":
-        return "A client-visible file needs a client.";
+        return t("clientRequired");
     }
   }
   return null;
@@ -72,7 +73,8 @@ async function guard<T>(path: string, fn: () => Promise<T>): Promise<ActionResul
     return { ok: true, value: await fn() };
   } catch (e) {
     handleAuthzRedirect(e, path);
-    const message = messageOf(e);
+    const t = await getTranslations("files.errors");
+    const message = messageOf(t, e);
     if (message) return { ok: false, message };
     throw e;
   }
@@ -90,7 +92,10 @@ export async function presignUploadAction(
 ): Promise<ActionResult<CreateUploadResult>> {
   const { membership, actor } = await requireTenantContext();
   const parsed = presignSchema.safeParse(raw);
-  if (!parsed.success) return { ok: false, message: "Invalid upload request." };
+  if (!parsed.success) {
+    const t = await getTranslations("files.errors");
+    return { ok: false, message: t("invalidRequest") };
+  }
   return guard("/files", () =>
     createUpload(
       { tenantId: membership.tenantId, actor },

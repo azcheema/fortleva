@@ -1,9 +1,17 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 
 import { requireMemberSession } from "@/auth/session";
 import { enrolUrl, safeNextPath } from "@/authz/redirects";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { StepUpForm } from "./step-up-form";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("account.stepUp");
+  return { title: t("title") };
+}
 
 /**
  * Step-up page (SECURITY.md §3.5): reached when authorize() denied a ✦
@@ -19,17 +27,19 @@ export default async function StepUpPage({
   const next = safeNextPath((await searchParams).next);
   const enrolled = (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled === true;
   if (!enrolled) redirect(enrolUrl(next));
+  const t = await getTranslations("account.stepUp");
 
   return (
-    <main className="mx-auto flex max-w-sm flex-col gap-6 p-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Confirm it&apos;s you</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          This action is sensitive. Enter a fresh code from your authenticator app to
-          continue.
-        </p>
-      </div>
-      <StepUpForm next={next} />
-    </main>
+    <div className="mx-auto w-full max-w-sm px-4 py-10">
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("title")}</CardTitle>
+          <CardDescription>{t("description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <StepUpForm next={next} />
+        </CardContent>
+      </Card>
+    </div>
   );
 }

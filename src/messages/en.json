@@ -1,0 +1,345 @@
+{
+  "common": {
+    "appName": "Fortleva",
+    "cancel": "Cancel",
+    "close": "Close",
+    "delete": "Delete",
+    "download": "Download",
+    "loading": "Loading…",
+    "retry": "Try again",
+    "back": "Back",
+    "you": "you",
+    "active": "active",
+    "suspended": "suspended",
+    "invalidInput": "Invalid input.",
+    "noPermission": "You do not have permission to do that.",
+    "signOut": "Sign out",
+    "language": "Language",
+    "languageName": {
+      "sv": "Svenska",
+      "en": "English"
+    },
+    "expires": "expires {date}",
+    "versions": "{count, plural, =1 {1 version} other {# versions}}",
+    "members": "{count, plural, =1 {1 member} other {# members}}",
+    "permissions": "{count, plural, =1 {1 permission} other {# permissions}}"
+  },
+  "nav": {
+    "home": "Home",
+    "files": "Files",
+    "members": "Members",
+    "settings": "Settings",
+    "roles": "Roles",
+    "preferences": "Preferences",
+    "account": "Account",
+    "dashboard": "Workspaces",
+    "more": "More",
+    "menu": "Menu",
+    "collapse": "Collapse navigation",
+    "expand": "Expand navigation",
+    "signedInAs": "Signed in as {email}",
+    "workspace": "Workspace",
+    "switchWorkspace": "Switch workspace"
+  },
+  "shell": {
+    "palette": {
+      "title": "Command palette",
+      "description": "Search for a page or an action",
+      "placeholder": "Type a command or search…",
+      "empty": "No results.",
+      "navigate": "Go to",
+      "actions": "Actions",
+      "switchLanguage": "Switch language",
+      "shortcuts": "Keyboard shortcuts",
+      "signOut": "Sign out",
+      "open": "Open command palette"
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "description": "Keys available on this page. Single keys are inert while an input has focus.",
+      "open": "Show keyboard shortcuts",
+      "global": "Global",
+      "navigation": "Go to",
+      "palette": "Command palette",
+      "overlay": "This overlay",
+      "close": "Close palette / overlay",
+      "goHome": "Home",
+      "goFiles": "Files",
+      "goMembers": "Members",
+      "goAccount": "Account",
+      "then": "then"
+    },
+    "timer": {
+      "slot": "Timer"
+    },
+    "error": {
+      "title": "Something went wrong",
+      "description": "The page could not be rendered. You can try again; if it keeps failing, note the reference below.",
+      "reference": "Reference: {digest}",
+      "retry": "Try again",
+      "home": "Go to Home"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "description": "There is nothing at this address, or you do not have access to it.",
+      "home": "Go to Home"
+    }
+  },
+  "home": {
+    "title": "My Work",
+    "greeting": {
+      "morning": "Good morning, {name}",
+      "afternoon": "Good afternoon, {name}",
+      "evening": "Good evening, {name}"
+    },
+    "empty": {
+      "title": "Nothing to work on yet",
+      "description": "Boards and tasks arrive with the Work module — for now: Members and Files.",
+      "members": "Open Members",
+      "files": "Open Files"
+    },
+    "workspace": "Workspace: {name}"
+  },
+  "dashboard": {
+    "title": "Welcome, {name}",
+    "workspaces": "Your workspaces",
+    "none": "You are not a member of any workspace yet. Ask an admin for an invitation.",
+    "goHome": "Go to Home"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "name": "Full name",
+    "login": {
+      "title": "Sign in to Fortleva",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "failed": "Sign-in failed",
+      "totpHint": "Enter the 6-digit code from your authenticator app.",
+      "totpLabel": "Authenticator code",
+      "verify": "Verify",
+      "verifying": "Verifying…",
+      "invalidCode": "Invalid code",
+      "noAccount": "No account yet?",
+      "signUp": "Create one"
+    },
+    "signup": {
+      "title": "Create your Fortleva account",
+      "passwordHint": "Password (12+ characters)",
+      "submit": "Create account",
+      "submitting": "Creating…",
+      "failed": "Sign-up failed",
+      "checkEmailTitle": "Check your email",
+      "checkEmail": "We sent a verification link to <strong>{email}</strong>. Verify your address, then sign in.",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in"
+    },
+    "invite": {
+      "unavailableTitle": "Invitation not available",
+      "unavailable": "This invitation link is invalid, expired, or already used. Ask your admin to send a new one.",
+      "joinTitle": "Join {tenant} on Fortleva",
+      "signInFirst": "This invitation is for <strong>{email}</strong>. Sign in with that address (or create your account) and open this link again.",
+      "createOrSignIn": "Create account / sign in",
+      "signedInAs": "Signed in as {email}.",
+      "mismatch": "This invitation was issued to {email} — accepting will fail unless the addresses match.",
+      "accept": "Accept invitation",
+      "failed": "The invitation could not be accepted. Make sure you are signed in with the invited address."
+    },
+    "ops": {
+      "loginTitle": "Fortleva Ops — sign in",
+      "codePlaceholder": "6-digit code",
+      "title": "Fortleva Ops",
+      "signedInAs": "Signed in as {email} (SUPERADMIN). The console UI lands in Phase 7 — the machinery (impersonation, entitlement overrides, audit) exists behind withPlatform()."
+    },
+    "portal": {
+      "title": "Client portal",
+      "closed": "The portal is not open yet. Your agency will send you an invitation when it is."
+    }
+  },
+  "account": {
+    "title": "Account",
+    "security": "Account security",
+    "mfaRequiredNotice": "The action you tried requires two-factor authentication. Enrol below, then try again.",
+    "language": {
+      "title": "Language",
+      "description": "Applies to your account on every device. When unset, the workspace default is used.",
+      "label": "Language",
+      "workspaceDefault": "Workspace default",
+      "saved": "Language updated.",
+      "failed": "The language could not be saved."
+    },
+    "password": {
+      "title": "Change password",
+      "current": "Current password",
+      "new": "New password (12+ characters)",
+      "submit": "Change password",
+      "submitting": "Changing…",
+      "failed": "Password change failed",
+      "changed": "Password changed. Other sessions have been signed out."
+    },
+    "totp": {
+      "title": "Two-factor authentication",
+      "enabled": "Enabled. Codes from your authenticator app are required at sign-in.",
+      "notEnrolled": "Not enrolled. Your role holds sensitive permissions — TOTP is mandatory before they can be used.",
+      "confirmPassword": "Confirm your password",
+      "enrol": "Enrol TOTP",
+      "starting": "Starting…",
+      "startFailed": "Could not start enrolment",
+      "scan": "1. Scan with your authenticator app (or add the secret manually):",
+      "qrAlt": "TOTP enrolment QR code",
+      "cantScan": "Can't scan? Show the URI",
+      "backupTitle": "Backup codes — store them in your password manager now:",
+      "codePlaceholder": "6-digit code",
+      "activate": "Verify & activate",
+      "verifying": "Verifying…",
+      "mismatch": "Code did not match — try the next one",
+      "done": "Two-factor authentication is active. You'll be asked for a code at every sign-in."
+    },
+    "stepUp": {
+      "title": "Confirm it's you",
+      "description": "This action is sensitive. Enter a fresh code from your authenticator app to continue.",
+      "label": "Authenticator code (or a backup code)",
+      "verify": "Verify",
+      "verifying": "Verifying…",
+      "enterCode": "Enter the code from your authenticator app.",
+      "mismatch": "That code did not match — try the next one."
+    }
+  },
+  "members": {
+    "title": "{tenant} — members",
+    "manageRoles": "Manage roles →",
+    "columns": {
+      "member": "Member",
+      "email": "Email",
+      "roles": "Roles",
+      "status": "Status"
+    },
+    "roles": {
+      "save": "Save roles",
+      "saving": "Saving…",
+      "noChanges": "No changes",
+      "updated": "Roles updated ({added} added, {removed} removed)"
+    },
+    "status": {
+      "suspend": "Suspend",
+      "reactivate": "Reactivate",
+      "cannotSuspendSelf": "You cannot suspend yourself",
+      "suspended": "Member suspended",
+      "reactivated": "Member reactivated"
+    },
+    "pending": {
+      "title": "Pending invitations",
+      "revoke": "Revoke",
+      "revoked": "Invitation revoked"
+    },
+    "invite": {
+      "title": "Invite a member",
+      "email": "Email",
+      "emailPlaceholder": "colleague@company.com",
+      "roles": "Roles",
+      "pickRole": "Pick at least one role",
+      "submit": "Send invitation",
+      "submitting": "Sending…",
+      "sent": "Invitation sent to {email}"
+    }
+  },
+  "roles": {
+    "title": "{tenant} — roles",
+    "shortTitle": "Roles",
+    "intro": "System roles follow the platform templates and are read-only. Custom roles can be edited within the permissions you hold; ✦ marks permissions that require two-factor authentication.",
+    "noPermission": "You do not have permission to view roles.",
+    "meta": {
+      "system": "system · template {template}",
+      "cloned": "custom · cloned from {template}",
+      "custom": "custom"
+    },
+    "permissions": "Permissions",
+    "tombstone": "(removed from template)",
+    "requiresMfa": "requires two-factor authentication",
+    "modules": {
+      "core": "Core",
+      "invoicing": "Invoicing",
+      "contracts": "Contracts",
+      "reports": "Reports",
+      "issues": "Issues",
+      "documentation": "Documentation",
+      "continuity_box": "Continuity box",
+      "portal": "Portal"
+    },
+    "save": "Save permissions",
+    "saving": "Saving…",
+    "noChanges": "No changes",
+    "updated": "Permissions updated ({granted} granted, {revoked} revoked)",
+    "delete": "Delete \"{name}\"",
+    "deleted": "Role deleted",
+    "create": {
+      "title": "Create a role",
+      "name": "Role name",
+      "description": "Description (optional)",
+      "startFrom": "Start from",
+      "blank": "Blank (no permissions)",
+      "clone": "Clone {name} (without ✦ permissions)",
+      "submit": "Create role",
+      "submitting": "Creating…",
+      "created": "Role \"{name}\" created"
+    }
+  },
+  "settings": {
+    "preferences": {
+      "title": "Preferences",
+      "emptyTitle": "Nothing to configure yet",
+      "emptyDescription": "Workspace preferences (locale, week numbers, duration style, notifications) arrive with the settings pages of Phase 2."
+    }
+  },
+  "files": {
+    "title": "{tenant} — files",
+    "shortTitle": "Files",
+    "empty": {
+      "title": "No files yet",
+      "description": "Upload the first file — it stays private to your team until a client is attached."
+    },
+    "columns": {
+      "name": "Name",
+      "size": "Size",
+      "versions": "Versions",
+      "updated": "Updated",
+      "visibility": "Visibility"
+    },
+    "visibility": {
+      "internal": "Private to team",
+      "clientVisible": "Client can see",
+      "label": "Visibility",
+      "hint": "Files are private to your team. Sharing with a client arrives with Clients (Phase 2)."
+    },
+    "download": "Download",
+    "delete": "Delete",
+    "upload": {
+      "title": "Upload a file",
+      "file": "File",
+      "submit": "Upload",
+      "preparing": "Preparing…",
+      "uploading": "Uploading…",
+      "finishing": "Finishing…",
+      "done": "Uploaded {name}",
+      "failed": "Upload failed ({status})."
+    },
+    "errors": {
+      "quota": "Storage quota reached — delete files or upgrade the plan.",
+      "notEntitled": "Not included in your plan.",
+      "notFound": "File not found.",
+      "forbidden": "You do not have permission to do that.",
+      "typeNotAllowed": "That file type is not accepted.",
+      "sizeInvalid": "File is empty or too large (max 100 MB).",
+      "nameInvalid": "Invalid file name.",
+      "uploadIncomplete": "Upload did not complete correctly — please try again.",
+      "notPending": "This upload was already finished or expired.",
+      "clientRequired": "A client-visible file needs a client.",
+      "invalidRequest": "Invalid upload request."
+    }
+  },
+  "errors": {
+    "generic": "Something went wrong.",
+    "invalidInput": "Invalid input.",
+    "forbidden": "You do not have permission to do that."
+  }
+}

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
 import { ROLE_TEMPLATES, type TemplateKey } from "@/authz/catalog";
@@ -39,13 +40,15 @@ export async function createRoleAction(
   formData: FormData,
 ): Promise<RoleFormState> {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("roles");
+  const tCommon = await getTranslations("common");
   const parsed = createSchema.safeParse({
     name: formData.get("name"),
     description: formData.get("description") ?? undefined,
     templateKey: formData.get("templateKey") ?? "",
   });
   if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "invalid input" };
+    return { ok: false, message: tCommon("invalidInput") };
   }
   return run(async () => {
     await createRole({
@@ -55,7 +58,7 @@ export async function createRoleAction(
       description: parsed.data.description,
       templateKey: parsed.data.templateKey || null,
     });
-    return `Role "${parsed.data.name}" created`;
+    return t("create.created", { name: parsed.data.name });
   });
 }
 
@@ -64,9 +67,11 @@ export async function setRolePermissionsAction(
   formData: FormData,
 ): Promise<RoleFormState> {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("roles");
+  const tCommon = await getTranslations("common");
   const roleId = uuid.safeParse(formData.get("roleId"));
   const codes = z.array(z.string().max(80)).safeParse(formData.getAll("codes").map(String));
-  if (!roleId.success || !codes.success) return { ok: false, message: "invalid input" };
+  if (!roleId.success || !codes.success) return { ok: false, message: tCommon("invalidInput") };
   return run(async () => {
     const r = await setRolePermissions({
       tenantId: membership.tenantId,
@@ -76,8 +81,8 @@ export async function setRolePermissionsAction(
     });
     const n = r.granted.length + r.revoked.length;
     return n === 0
-      ? "No changes"
-      : `Permissions updated (${r.granted.length} granted, ${r.revoked.length} revoked)`;
+      ? t("noChanges")
+      : t("updated", { granted: r.granted.length, revoked: r.revoked.length });
   });
 }
 
@@ -86,10 +91,12 @@ export async function deleteRoleAction(
   formData: FormData,
 ): Promise<RoleFormState> {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("roles");
+  const tCommon = await getTranslations("common");
   const roleId = uuid.safeParse(formData.get("roleId"));
-  if (!roleId.success) return { ok: false, message: "invalid input" };
+  if (!roleId.success) return { ok: false, message: tCommon("invalidInput") };
   return run(async () => {
     await deleteRole({ tenantId: membership.tenantId, actor, roleId: roleId.data });
-    return "Role deleted";
+    return t("deleted");
   });
 }

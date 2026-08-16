@@ -1,7 +1,12 @@
-import { withTenant } from "@/db";
+import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
+
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
 import { MODULES, PERMISSIONS, ROLE_TEMPLATES } from "@/authz/catalog";
 import { AuthzError } from "@/authz/errors";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Page, PageHeader } from "@/components/page-header";
+import { withTenant } from "@/db";
 import { listRoles, type RoleSummary } from "@/members/roles";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -16,8 +21,15 @@ const GROUPS: PermissionGroup[] = MODULES.map((module) => ({
   })),
 })).filter((g) => g.permissions.length > 0);
 
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("roles");
+  return { title: t("shortTitle") };
+}
+
 export default async function RolesPage() {
   const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("roles");
+  const tCommon = await getTranslations("common");
 
   const data = await withTenant(
     membership.tenantId,
@@ -42,75 +54,81 @@ export default async function RolesPage() {
 
   if (!data.roles) {
     return (
-      <main className="mx-auto max-w-3xl p-8">
-        <h1 className="text-2xl font-semibold">Roles</h1>
-        <p className="mt-4 text-sm text-neutral-600">You do not have permission to view roles.</p>
-      </main>
+      <Page>
+        <PageHeader title={t("shortTitle")} />
+        <p className="mt-4 text-sm text-muted-foreground">{t("noPermission")}</p>
+      </Page>
     );
   }
 
-  return (
-    <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-semibold">{membership.tenantName} — roles</h1>
-      <p className="mt-1 text-sm text-neutral-600">
-        System roles follow the platform templates and are read-only. Custom roles can be
-        edited within the permissions you hold; ✦ marks permissions that require two-factor
-        authentication.
-      </p>
+  const metaOf = (role: RoleSummary): string =>
+    role.isSystem
+      ? t("meta.system", { template: role.templateKey ?? "" })
+      : role.clonedFromKey
+        ? t("meta.cloned", { template: role.clonedFromKey })
+        : t("meta.custom");
 
-      <ul className="mt-6 flex flex-col gap-4">
+  return (
+    <Page>
+      <PageHeader title={t("title", { tenant: membership.tenantName })} description={t("intro")} />
+
+      <ul className="mt-6 flex flex-col gap-3">
         {data.roles.map((role) => (
-          <li key={role.id} className="rounded border border-neutral-200 px-4 py-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="font-medium">
-                {role.name}
-                <span className="ml-2 text-xs text-neutral-500">
-                  {role.isSystem
-                    ? `system · template ${role.templateKey}`
-                    : role.clonedFromKey
-                      ? `custom · cloned from ${role.clonedFromKey}`
-                      : "custom"}
-                  {" · "}
-                  {role.holderCount} member{role.holderCount === 1 ? "" : "s"}
-                  {" · "}
-                  {role.codes.length} permission{role.codes.length === 1 ? "" : "s"}
-                </span>
-              </span>
-              {data.canDelete && !role.isSystem && role.holderCount === 0 ? (
-                <DeleteRoleForm roleId={role.id} name={role.name} />
-              ) : null}
-            </div>
-            {role.description ? (
-              <p className="mt-1 text-sm text-neutral-600">{role.description}</p>
-            ) : null}
-            <details className="mt-2">
-              <summary className="cursor-pointer text-sm text-neutral-700">Permissions</summary>
-              <RolePermissionsForm
-                role={{
-                  id: role.id,
-                  isSystem: role.isSystem,
-                  codes: role.codes,
-                  revokedCodes: role.revokedCodes,
-                }}
-                groups={GROUPS}
-                canEdit={data.canEdit}
-              />
-            </details>
+          <li key={role.id}>
+            <Card size="sm">
+              <CardContent className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-medium">
+                    {role.name}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      {metaOf(role)}
+                      {" · "}
+                      {tCommon("members", { count: role.holderCount })}
+                      {" · "}
+                      {tCommon("permissions", { count: role.codes.length })}
+                    </span>
+                  </span>
+                  {data.canDelete && !role.isSystem && role.holderCount === 0 ? (
+                    <DeleteRoleForm roleId={role.id} name={role.name} />
+                  ) : null}
+                </div>
+                {role.description ? (
+                  <p className="text-sm text-muted-foreground">{role.description}</p>
+                ) : null}
+                <details>
+                  <summary className="cursor-pointer text-sm">{t("permissions")}</summary>
+                  <RolePermissionsForm
+                    role={{
+                      id: role.id,
+                      isSystem: role.isSystem,
+                      codes: role.codes,
+                      revokedCodes: role.revokedCodes,
+                    }}
+                    groups={GROUPS}
+                    canEdit={data.canEdit}
+                  />
+                </details>
+              </CardContent>
+            </Card>
           </li>
         ))}
       </ul>
 
       {data.canCreate ? (
-        <section className="mt-8">
-          <h2 className="text-lg font-medium">Create a role</h2>
-          <CreateRoleForm
-            templates={ROLE_TEMPLATES.map((t) => ({
-              templateKey: t.templateKey,
-              displayName: t.displayName,
-            }))}
-          />
-        </section>
+        <Card size="sm" className="mt-6">
+          <CardHeader>
+            <CardTitle>{t("create.title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CreateRoleForm
+              templates={ROLE_TEMPLATES.map((tpl) => ({
+                templateKey: tpl.templateKey,
+                displayName: tpl.displayName,
+              }))}
+            />
+          </CardContent>
+        </Card>
       ) : null}
-    </main>
+    </Page>
   );
 }

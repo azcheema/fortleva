@@ -1,6 +1,13 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useActionState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { FormMessage } from "@/components/form-message";
 
 import {
   revokeInviteAction,
@@ -10,11 +17,6 @@ import {
 } from "./actions";
 
 type RoleOption = { id: string; name: string };
-
-const Message = ({ state }: { state: AdminFormState }) =>
-  state ? (
-    <p className={`text-xs ${state.ok ? "text-green-700" : "text-red-600"}`}>{state.message}</p>
-  ) : null;
 
 /** Roles editor for one member: checkboxes of tenant roles, saved as a set. */
 export function MemberRolesForm({
@@ -28,32 +30,29 @@ export function MemberRolesForm({
   heldRoleIds: string[];
   canManage: boolean;
 }) {
+  const t = useTranslations("members.roles");
   const [state, action, pending] = useActionState<AdminFormState, FormData>(
     setMemberRolesAction,
     null,
   );
   const held = new Set(heldRoleIds);
   return (
-    <form action={action} className="mt-2 flex flex-col gap-2">
+    <form action={action} className="flex flex-col gap-2">
       <input type="hidden" name="memberId" value={memberId} />
-      <fieldset disabled={!canManage || pending} className="flex flex-wrap gap-3 text-sm">
+      <fieldset disabled={!canManage || pending} className="flex flex-wrap gap-x-4 gap-y-1.5">
         {roles.map((r) => (
-          <label key={r.id} className="flex items-center gap-1">
-            <input type="checkbox" name="roleIds" value={r.id} defaultChecked={held.has(r.id)} />
+          <Label key={r.id} className="flex items-center gap-2 font-normal">
+            <Checkbox name="roleIds" value={r.id} defaultChecked={held.has(r.id)} disabled={!canManage || pending} />
             {r.name}
-          </label>
+          </Label>
         ))}
       </fieldset>
       {canManage ? (
         <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-50 disabled:opacity-50"
-          >
-            {pending ? "Saving…" : "Save roles"}
-          </button>
-          <Message state={state} />
+          <Button type="submit" variant="outline" size="xs" disabled={pending}>
+            {pending ? t("saving") : t("save")}
+          </Button>
+          <FormMessage state={state} className="text-xs" />
         </div>
       ) : null}
     </form>
@@ -70,34 +69,44 @@ export function MemberStatusForm({
   status: "ACTIVE" | "SUSPENDED";
   isSelf: boolean;
 }) {
+  const t = useTranslations("members.status");
   const [state, action, pending] = useActionState<AdminFormState, FormData>(
     setMemberStatusAction,
     null,
   );
   const suspend = status === "ACTIVE";
+  const button = (
+    <Button
+      type="submit"
+      variant={suspend ? "destructive" : "outline"}
+      size="xs"
+      disabled={pending || (suspend && isSelf)}
+    >
+      {pending ? "…" : suspend ? t("suspend") : t("reactivate")}
+    </Button>
+  );
   return (
     <form action={action} className="flex items-center gap-3">
       <input type="hidden" name="memberId" value={memberId} />
       <input type="hidden" name="op" value={suspend ? "suspend" : "reactivate"} />
-      <button
-        type="submit"
-        disabled={pending || (suspend && isSelf)}
-        title={suspend && isSelf ? "You cannot suspend yourself" : undefined}
-        className={`rounded border px-3 py-1 text-xs disabled:opacity-50 ${
-          suspend
-            ? "border-red-300 text-red-700 hover:bg-red-50"
-            : "border-green-300 text-green-700 hover:bg-green-50"
-        }`}
-      >
-        {pending ? "…" : suspend ? "Suspend" : "Reactivate"}
-      </button>
-      <Message state={state} />
+      {suspend && isSelf ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0}>{button}</span>
+          </TooltipTrigger>
+          <TooltipContent>{t("cannotSuspendSelf")}</TooltipContent>
+        </Tooltip>
+      ) : (
+        button
+      )}
+      <FormMessage state={state} className="text-xs" />
     </form>
   );
 }
 
 /** Revoke button for one pending invitation (member:invite). */
 export function RevokeInviteForm({ inviteId }: { inviteId: string }) {
+  const t = useTranslations("members.pending");
   const [state, action, pending] = useActionState<AdminFormState, FormData>(
     revokeInviteAction,
     null,
@@ -105,14 +114,10 @@ export function RevokeInviteForm({ inviteId }: { inviteId: string }) {
   return (
     <form action={action} className="flex items-center gap-3">
       <input type="hidden" name="inviteId" value={inviteId} />
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-50 disabled:opacity-50"
-      >
-        {pending ? "…" : "Revoke"}
-      </button>
-      <Message state={state} />
+      <Button type="submit" variant="outline" size="xs" disabled={pending}>
+        {pending ? "…" : t("revoke")}
+      </Button>
+      <FormMessage state={state} className="text-xs" />
     </form>
   );
 }
