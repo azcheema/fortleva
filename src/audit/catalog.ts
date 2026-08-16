@@ -34,6 +34,7 @@ export const AUDIT_EVENTS = {
   "member.invite_revoked": TENANT,
   "member.joined": TENANT,
   "member.suspended": TENANT,
+  "member.reactivated": TENANT,
   "member.removed": TENANT,
   "member.role_assigned": TENANT,
   "member.role_removed": TENANT,

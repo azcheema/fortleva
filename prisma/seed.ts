@@ -6,6 +6,7 @@ import { config as loadEnv } from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PERMISSIONS } from "../src/authz/catalog";
+import { runTemplatePropagation } from "../src/members/templates";
 import { PrismaClient } from "../src/generated/prisma/client";
 
 loadEnv({ path: ".env.local" });
@@ -49,6 +50,14 @@ async function main() {
       stray.map((s) => s.code),
     );
   }
+
+  // B3 additive template propagation (AUTHZ.md §3.5): after a
+  // TEMPLATE_VERSION bump, every tenant's system roles and clones receive
+  // the codes they now lack; tombstones and ✦-on-clones are respected.
+  const propagated = await runTemplatePropagation(prisma);
+  console.log(
+    `Template propagation: ${propagated.tenants} tenant(s), ${propagated.rolesTouched} role(s) touched, ${propagated.codesGranted} grant(s)`,
+  );
 
   await prisma.$disconnect();
 }
