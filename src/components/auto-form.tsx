@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { Pending } from "@/components/semantic/field";
 import { cn } from "@/lib/utils";
 
 export type AutoFormResult = { ok: boolean; message: string };
@@ -99,7 +100,7 @@ export function AutoForm({
     >
       {children}
       <span aria-live="polite" className="pointer-events-none absolute top-0 right-0 text-xs text-muted-foreground">
-        {pending ? "…" : saved ? t("saved") : null}
+        {pending ? <Pending label={t("loading")} /> : saved ? t("saved") : null}
       </span>
     </form>
   );

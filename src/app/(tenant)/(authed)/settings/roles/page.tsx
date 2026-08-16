@@ -4,8 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
 import { MODULES, PERMISSIONS, ROLE_TEMPLATES } from "@/authz/catalog";
 import { AuthzError } from "@/authz/errors";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Page, PageHeader } from "@/components/page-header";
+import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { listRoles, type RoleSummary } from "@/members/roles";
 import { requireTenantContext } from "@/members/tenant-context";
@@ -54,9 +53,11 @@ export default async function RolesPage() {
 
   if (!data.roles) {
     return (
-      <Page>
+      <Page width="form">
         <PageHeader title={t("shortTitle")} />
-        <p className="mt-4 text-sm text-muted-foreground">{t("noPermission")}</p>
+        <Callout tone="info" className="mt-4">
+          {t("noPermission")}
+        </Callout>
       </Page>
     );
   }
@@ -75,59 +76,60 @@ export default async function RolesPage() {
       <ul className="mt-6 flex flex-col gap-3">
         {data.roles.map((role) => (
           <li key={role.id}>
-            <Card size="sm">
-              <CardContent className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="font-medium">
-                    {role.name}
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      {metaOf(role)}
-                      {" · "}
-                      {tCommon("members", { count: role.holderCount })}
-                      {" · "}
-                      {tCommon("permissions", { count: role.codes.length })}
-                    </span>
+            <SectionCard
+              title={role.name}
+              description={
+                <>
+                  {metaOf(role)}
+                  {" · "}
+                  <span className="num">{tCommon("members", { count: role.holderCount })}</span>
+                  {" · "}
+                  <span className="num">
+                    {tCommon("permissions", { count: role.codes.length })}
                   </span>
-                  {data.canDelete && !role.isSystem && role.holderCount === 0 ? (
-                    <DeleteRoleForm roleId={role.id} name={role.name} />
-                  ) : null}
-                </div>
-                {role.description ? (
-                  <p className="text-sm text-muted-foreground">{role.description}</p>
-                ) : null}
-                <details>
-                  <summary className="cursor-pointer text-sm">{t("permissions")}</summary>
-                  <RolePermissionsForm
-                    role={{
-                      id: role.id,
-                      isSystem: role.isSystem,
-                      codes: role.codes,
-                      revokedCodes: role.revokedCodes,
-                    }}
-                    groups={GROUPS}
-                    canEdit={data.canEdit}
-                  />
-                </details>
-              </CardContent>
-            </Card>
+                </>
+              }
+              actions={
+                data.canDelete && !role.isSystem && role.holderCount === 0 ? (
+                  <DeleteRoleForm roleId={role.id} name={role.name} />
+                ) : null
+              }
+              contentClassName="flex flex-col gap-2"
+            >
+              {role.description ? (
+                <p className="text-sm text-muted-foreground">{role.description}</p>
+              ) : null}
+              <details className="group/details">
+                <summary className="inline-flex cursor-pointer items-center rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                  {t("permissions")}
+                </summary>
+                <RolePermissionsForm
+                  role={{
+                    id: role.id,
+                    isSystem: role.isSystem,
+                    codes: role.codes,
+                    revokedCodes: role.revokedCodes,
+                  }}
+                  groups={GROUPS}
+                  canEdit={data.canEdit}
+                />
+              </details>
+            </SectionCard>
           </li>
         ))}
       </ul>
 
       {data.canCreate ? (
-        <Card size="sm" className="mt-6">
-          <CardHeader>
-            <CardTitle>{t("create.title")}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="mt-6">
+          <SectionCard title={t("create.title")}>
             <CreateRoleForm
               templates={ROLE_TEMPLATES.map((tpl) => ({
                 templateKey: tpl.templateKey,
                 displayName: tpl.displayName,
               }))}
             />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </div>
       ) : null}
     </Page>
   );

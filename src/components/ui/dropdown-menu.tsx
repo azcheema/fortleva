@@ -9,8 +9,16 @@ import { CheckIcon, ChevronRightIcon } from "lucide-react"
 const MENU_SURFACE =
   "z-50 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-card border border-border bg-popover p-1 text-popover-foreground shadow-(--shadow-1) duration-(--dur-fast) ease-entrance data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:duration-(--dur-instant) data-closed:ease-exit"
 
+/**
+ * The highlighted item carries TWO channels, not one. A bare
+ * --accent fill measures ~1.07:1 against --popover, which is not a
+ * visible focus indicator (SC 2.4.11); the 2px --primary inset bar is
+ * the one that actually reads. Identical treatment to the command
+ * palette and to a selected table row, so "this is the active row"
+ * looks the same everywhere in the product.
+ */
 const MENU_ITEM =
-  "relative flex h-7 cursor-default items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:text-fg-disabled [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+  "relative flex h-7 cursor-default items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:shadow-[inset_2px_0_0_var(--primary)] data-inset:pl-7 data-disabled:pointer-events-none data-disabled:text-fg-disabled [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
 
 function DropdownMenu({
   ...props

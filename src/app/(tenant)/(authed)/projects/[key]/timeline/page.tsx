@@ -1,7 +1,6 @@
 import { getTranslations } from "next-intl/server";
 
-import { EmptyState } from "@/components/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState, SectionCard } from "@/components/semantic";
 
 import { loadProject } from "../data";
 import { CreateMilestoneForm, CreateVersionForm, MilestoneItem, VersionItem } from "./timeline-forms";
@@ -20,49 +19,49 @@ export default async function ProjectTimelinePage({ params }: { params: Promise<
 
   return (
     <div className="flex flex-col gap-6">
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>{t("milestones")}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {project.milestones.length === 0 ? (
-            <EmptyState title={t("milestonesEmpty")} description={t("milestonesEmptyDescription")} />
-          ) : (
-            <ol className="divide-y divide-border rounded-md border border-border">
-              {project.milestones.map((m, i) => (
-                <MilestoneItem
-                  key={m.id}
-                  projectKey={project.key}
-                  milestone={m}
-                  index={i}
-                  siblings={siblings}
-                  editable={editable}
-                />
-              ))}
-            </ol>
-          )}
-          {editable ? <CreateMilestoneForm projectId={project.id} projectKey={project.key} /> : null}
-        </CardContent>
-      </Card>
+      <SectionCard title={t("milestones")} contentClassName="flex flex-col gap-4">
+        {project.milestones.length === 0 ? (
+          <EmptyState
+            variant="empty"
+            title={t("milestonesEmpty")}
+            body={t("milestonesEmptyDescription")}
+          />
+        ) : (
+          // 36px rhythm, hairline separators, no zebra — the same row
+          // language as DataTable, in a list because milestones reorder.
+          <ol className="divide-y divide-border overflow-hidden rounded-md border border-border">
+            {project.milestones.map((m, i) => (
+              <MilestoneItem
+                key={m.id}
+                projectKey={project.key}
+                milestone={m}
+                index={i}
+                siblings={siblings}
+                editable={editable}
+              />
+            ))}
+          </ol>
+        )}
+        {editable ? <CreateMilestoneForm projectId={project.id} projectKey={project.key} /> : null}
+      </SectionCard>
 
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>{t("versions")}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {project.versions.length === 0 ? (
-            <EmptyState title={t("versionsEmpty")} description={t("versionsEmptyDescription")} />
-          ) : (
-            <ul className="divide-y divide-border rounded-md border border-border">
-              {project.versions.map((v) => (
-                <VersionItem key={v.id} projectKey={project.key} version={v} editable={editable} />
-              ))}
-            </ul>
-          )}
-          {editable ? <CreateVersionForm projectId={project.id} projectKey={project.key} /> : null}
-          <p className="text-xs text-muted-foreground">{t("shippedVisibleHint")}</p>
-        </CardContent>
-      </Card>
+      <SectionCard title={t("versions")} contentClassName="flex flex-col gap-4">
+        {project.versions.length === 0 ? (
+          <EmptyState
+            variant="empty"
+            title={t("versionsEmpty")}
+            body={t("versionsEmptyDescription")}
+          />
+        ) : (
+          <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
+            {project.versions.map((v) => (
+              <VersionItem key={v.id} projectKey={project.key} version={v} editable={editable} />
+            ))}
+          </ul>
+        )}
+        {editable ? <CreateVersionForm projectId={project.id} projectKey={project.key} /> : null}
+        <p className="text-xs text-muted-foreground">{t("shippedVisibleHint")}</p>
+      </SectionCard>
     </div>
   );
 }

@@ -5,8 +5,8 @@ import { useTranslations } from "next-intl";
 import { useEffect, useTransition, useState } from "react";
 import { toast } from "sonner";
 
+import { FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { FormMessage } from "@/components/form-message";
 import type { FormResult } from "@/lib/server-actions";
 
 import { generateExportAction } from "./actions";

@@ -6,9 +6,9 @@ import QRCode from "qrcode";
 import { useState } from "react";
 
 import { authClient } from "@/auth/client";
+import { Callout, Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 type Stage =
   | { step: "idle" }
@@ -70,20 +70,20 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
         {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
         <img src={stage.qrDataUrl} alt={t("qrAlt")} width={220} height={220} />
         <details className="text-xs text-muted-foreground">
-          <summary>{t("cantScan")}</summary>
-          <code className="break-all">{stage.totpUri}</code>
+          <summary className="cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            {t("cantScan")}
+          </summary>
+          <code className="num break-all font-mono">{stage.totpUri}</code>
         </details>
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-medium">{t("backupTitle")}</p>
-          <ul className="mt-1 grid grid-cols-2 gap-x-6 font-mono text-xs">
+        <Callout tone="info" title={t("backupTitle")}>
+          <ul className="num grid grid-cols-2 gap-x-6 font-mono text-xs">
             {stage.backupCodes.map((c) => (
               <li key={c}>{c}</li>
             ))}
           </ul>
-        </div>
+        </Callout>
         <form onSubmit={verify} className="flex items-end gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="totp-code">{t("codePlaceholder")}</Label>
+          <Field label={t("codePlaceholder")} htmlFor="totp-code">
             <Input
               id="totp-code"
               inputMode="numeric"
@@ -92,34 +92,25 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
               autoComplete="one-time-code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="w-32 text-center"
+              className="num w-32 text-center font-mono tracking-[0.4em]"
             />
-          </div>
+          </Field>
           <Button type="submit" disabled={busy}>
             {busy ? t("verifying") : t("activate")}
           </Button>
         </form>
-        {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
+        {error ? <FormMessage state={{ ok: false, message: error }} /> : null}
       </div>
     );
   }
 
   if (stage.step === "done") {
-    return (
-      <p role="status" className="text-sm text-green-700">
-        {t("done")}
-      </p>
-    );
+    return <FormMessage state={{ ok: true, message: t("done") }} />;
   }
 
   return (
     <form onSubmit={begin} className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="totp-password">{t("confirmPassword")}</Label>
+      <Field label={t("confirmPassword")} htmlFor="totp-password">
         <Input
           id="totp-password"
           type="password"
@@ -128,15 +119,11 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-      </div>
+      </Field>
       <Button type="submit" disabled={busy}>
         {busy ? t("starting") : t("enrol")}
       </Button>
-      {error ? (
-        <p role="alert" className="w-full text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      {error ? <FormMessage state={{ ok: false, message: error }} className="basis-full" /> : null}
     </form>
   );
 }

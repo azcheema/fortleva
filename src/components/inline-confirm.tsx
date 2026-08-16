@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
+import { Pending } from "@/components/semantic/field";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -16,7 +17,7 @@ export function InlineConfirm({
   onConfirm,
   pending = false,
   variant = "outline",
-  size = "xs",
+  size = "sm",
   disabled,
 }: {
   label: React.ReactNode;
@@ -38,7 +39,7 @@ export function InlineConfirm({
   if (!asking) {
     return (
       <Button type="button" variant={variant} size={size} disabled={disabled || pending} onClick={() => setAsking(true)}>
-        {pending ? "…" : label}
+        {pending ? <Pending label={t("loading")} /> : label}
       </Button>
     );
   }
@@ -58,7 +59,7 @@ export function InlineConfirm({
         ref={yesRef}
         type="button"
         variant={variant === "destructive" ? "destructive" : "default"}
-        size="xs"
+        size="sm"
         onClick={() => {
           setAsking(false);
           onConfirm();
@@ -66,7 +67,7 @@ export function InlineConfirm({
       >
         {t("yes")}
       </Button>
-      <Button type="button" variant="ghost" size="xs" onClick={() => setAsking(false)}>
+      <Button type="button" variant="ghost" size="sm" onClick={() => setAsking(false)}>
         {t("no")}
       </Button>
     </span>

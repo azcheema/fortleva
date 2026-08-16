@@ -3,13 +3,18 @@
 import { ArrowDownIcon, ArrowUpIcon, MoreHorizontalIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
-import { useActionState, useEffect, useRef, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { AutoForm } from "@/components/auto-form";
-import { FormMessage } from "@/components/form-message";
 import { InlineConfirm } from "@/components/inline-confirm";
-import { Badge } from "@/components/ui/badge";
+import {
+  Field,
+  FormMessage,
+  StatusBadge,
+  VisibilityBadge,
+  visibilityRowCue,
+} from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,11 +23,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { VisibilityBadge } from "@/components/visibility-badge";
 import { isoDate, type FormResult } from "@/lib/server-actions";
+import { cn } from "@/lib/utils";
 import type { MilestoneRow, VersionRow } from "@/projects/service";
 
 import {
@@ -83,19 +87,21 @@ export function MilestoneItem({
 
   const meta = (
     <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <Badge variant={done ? "default" : "outline"}>{t(`statuses.${m.status}`)}</Badge>
-      <VisibilityBadge visibility={m.visibility} />
-      {done && m.completedAt
-        ? t("completedOn", { date: format.dateTime(m.completedAt, { dateStyle: "medium" }) })
-        : m.dueAt
-          ? t("dueOn", { date: format.dateTime(m.dueAt, { dateStyle: "medium" }) })
-          : null}
+      <StatusBadge domain="milestoneStatus" value={m.status} />
+      <VisibilityBadge value={m.visibility} />
+      <span className="num">
+        {done && m.completedAt
+          ? t("completedOn", { date: format.dateTime(m.completedAt, { dateStyle: "medium" }) })
+          : m.dueAt
+            ? t("dueOn", { date: format.dateTime(m.dueAt, { dateStyle: "medium" }) })
+            : null}
+      </span>
     </span>
   );
 
   if (!editable) {
     return (
-      <li className="flex flex-col gap-1 px-3 py-2">
+      <li className={cn("flex flex-col justify-center gap-1 px-3 py-2", visibilityRowCue(m.visibility))}>
         <span className={done || cancelled ? "text-muted-foreground line-through" : "font-medium"}>{m.name}</span>
         {meta}
       </li>
@@ -103,12 +109,12 @@ export function MilestoneItem({
   }
 
   return (
-    <li className="flex items-start gap-2 px-3 py-2">
+    <li className={cn("flex items-start gap-2 px-3 py-2", visibilityRowCue(m.visibility))}>
       <div className="flex flex-col">
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           aria-label={t("moveUp")}
           disabled={first || pending}
           onClick={() => move({ beforeId: siblings[index - 1]!.id })}
@@ -118,7 +124,7 @@ export function MilestoneItem({
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           aria-label={t("moveDown")}
           disabled={last || pending}
           onClick={() => move({ afterId: siblings[index + 1]!.id })}
@@ -144,22 +150,22 @@ export function MilestoneItem({
       </div>
       <div className="flex items-center gap-1">
         {m.status === "PLANNED" || m.status === "PAUSED" ? (
-          <Button type="button" variant="outline" size="xs" disabled={pending} onClick={() => setStatus("IN_PROGRESS")}>
+          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setStatus("IN_PROGRESS")}>
             {t("start")}
           </Button>
         ) : null}
         {!done && !cancelled ? (
-          <Button type="button" variant="outline" size="xs" disabled={pending} onClick={() => setStatus("DONE")}>
+          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setStatus("DONE")}>
             {t("complete")}
           </Button>
         ) : (
-          <Button type="button" variant="ghost" size="xs" disabled={pending} onClick={() => setStatus("PLANNED")}>
+          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setStatus("PLANNED")}>
             {t("reopen")}
           </Button>
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="icon-xs" aria-label={t("more")} disabled={pending}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t("more")} disabled={pending}>
               <MoreHorizontalIcon />
             </Button>
           </DropdownMenuTrigger>
@@ -185,10 +191,27 @@ export function MilestoneItem({
   );
 }
 
+/**
+ * SAFETY-CRITICAL (DESIGN SPEC §2.4): the write control wears the same
+ * warm fill as the read chip while it is set to CLIENT_VISIBLE, so an
+ * editable milestone is never less legible than a read-only one.
+ */
 function VisibilityNativeSelect({ value, id }: { value: "INTERNAL" | "CLIENT_VISIBLE"; id?: string }) {
   const t = useTranslations("visibility");
+  const [current, setCurrent] = useState(value);
   return (
-    <NativeSelect id={id} name="visibility" defaultValue={value} aria-label={t("label")}>
+    <NativeSelect
+      id={id}
+      name="visibility"
+      value={current}
+      data-visibility={current}
+      aria-label={t("label")}
+      className={cn(
+        current === "CLIENT_VISIBLE" &&
+          "border-vis-client-border bg-vis-client font-semibold text-vis-client-fg",
+      )}
+      onChange={(e) => setCurrent(e.target.value === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL")}
+    >
       <option value="INTERNAL">{t("internal")}</option>
       <option value="CLIENT_VISIBLE">{t("clientVisible")}</option>
     </NativeSelect>
@@ -212,24 +235,15 @@ export function CreateMilestoneForm({ projectId, projectKey }: { projectId: stri
     <form ref={formRef} action={action} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_9rem_11rem_auto]">
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="projectKey" value={projectKey} />
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="ms-name" className="text-xs text-muted-foreground">
-          {t("milestoneName")}
-        </Label>
+      <Field label={t("milestoneName")} htmlFor="ms-name">
         <Input id="ms-name" ref={nameRef} name="name" required placeholder={t("milestonePlaceholder")} disabled={pending} />
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="ms-due" className="text-xs text-muted-foreground">
-          {t("due")}
-        </Label>
+      </Field>
+      <Field label={t("due")} htmlFor="ms-due">
         <Input id="ms-due" name="dueAt" type="date" disabled={pending} />
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="ms-vis" className="text-xs text-muted-foreground">
-          {tVis("label")}
-        </Label>
+      </Field>
+      <Field label={tVis("label")} htmlFor="ms-vis">
         <VisibilityNativeSelect id="ms-vis" value="INTERNAL" />
-      </div>
+      </Field>
       <Button type="submit" size="sm" disabled={pending}>
         {t("addMilestone")}
       </Button>
@@ -254,17 +268,22 @@ export function VersionItem({
   const { pending, run } = useRun();
   const v = version;
   const shipped = v.status === "SHIPPED";
-  const badge = shipped ? (
-    <Badge>{t("shipped", { date: v.shippedAt ? format.dateTime(v.shippedAt, { dateStyle: "medium" }) : "" })}</Badge>
-  ) : (
-    <Badge variant="outline">{t("draft")}</Badge>
+  const badge = (
+    <>
+      <StatusBadge domain="versionStatus" value={v.status} />
+      {shipped && v.shippedAt ? (
+        <span className="num text-xs text-muted-foreground">
+          {t("shipped", { date: format.dateTime(v.shippedAt, { dateStyle: "medium" }) })}
+        </span>
+      ) : null}
+    </>
   );
 
   if (!editable) {
     return (
       <li className="flex flex-col gap-1 px-3 py-2">
         <span className="flex items-center gap-2">
-          <span className="font-mono text-sm font-medium">{v.version}</span>
+          <span className="num font-mono text-sm font-medium">{v.version}</span>
           {v.title ? <span>{v.title}</span> : null}
           {badge}
         </span>
@@ -280,9 +299,9 @@ export function VersionItem({
           <input type="hidden" name="versionId" value={v.id} />
           <input type="hidden" name="projectKey" value={projectKey} />
           {shipped ? (
-            <span className="flex h-8 items-center font-mono text-sm font-medium">{v.version}</span>
+            <span className="num flex h-8 items-center font-mono text-sm font-medium">{v.version}</span>
           ) : (
-            <Input name="version" defaultValue={v.version} required aria-label={t("version")} className="font-mono" />
+            <Input name="version" defaultValue={v.version} required aria-label={t("version")} className="num font-mono" />
           )}
           <Input name="title" defaultValue={v.title ?? ""} aria-label={t("versionTitle")} placeholder={t("versionTitle")} />
           <Textarea
@@ -324,10 +343,7 @@ export function CreateVersionForm({ projectId, projectKey }: { projectId: string
     <form ref={formRef} action={action} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[8rem_1fr_auto]">
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="projectKey" value={projectKey} />
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="v-version" className="text-xs text-muted-foreground">
-          {t("version")}
-        </Label>
+      <Field label={t("version")} htmlFor="v-version">
         <Input
           id="v-version"
           ref={versionRef}
@@ -335,16 +351,13 @@ export function CreateVersionForm({ projectId, projectKey }: { projectId: string
           required
           maxLength={64}
           placeholder={t("versionPlaceholder")}
-          className="font-mono"
+          className="num font-mono"
           disabled={pending}
         />
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="v-title" className="text-xs text-muted-foreground">
-          {t("versionTitle")}
-        </Label>
+      </Field>
+      <Field label={t("versionTitle")} htmlFor="v-title">
         <Input id="v-title" name="title" disabled={pending} />
-      </div>
+      </Field>
       <Button type="submit" size="sm" disabled={pending}>
         {t("addVersion")}
       </Button>

@@ -1,8 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { deltaEOk, simulateCvd, VISION_TYPES, type Rgb } from "./color";
+import { contrastRatio, deltaEOk, hexToLinearSrgb, over, simulateCvd, VISION_TYPES, type Rgb } from "./color";
 import { loadDesignTokens, type ThemeName } from "./css-tokens";
+import { THEME_COLOR_DARK, THEME_COLOR_LIGHT } from "./theme";
 
 /**
  * THE RELEASE GATE (DESIGN SPEC §2.7 and §9).
@@ -274,5 +275,82 @@ describe("token hygiene", () => {
       expect(() => TOKENS.color(name, "dark"), `dark/${name}`).not.toThrow();
       expect(TOKENS.color(name, "dark"), `dark/${name}`).not.toBeNull();
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Pairs the screens actually render (stage 5 extension)
+ * ------------------------------------------------------------------ */
+
+describe.each(THEMES)("%s theme — pairs the screens actually render", (theme) => {
+  // An outline chip's 1px boundary IS the chip: SC 1.4.11 applies to it.
+  it.each(TONES)("the %s outline chip's border is >= 3:1 on the card it sits on", (tone) => {
+    expect(ratio(`--tone-${tone}-line`, "--card", theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  // "Private to team" is a transparent chip: its label sits directly on
+  // whatever surface the row uses, and its border is its only boundary.
+  it.each(["--background", "--card", "--muted"])(
+    "--vis-internal-fg is >= 4.5:1 on %s",
+    (surface) => {
+      expect(ratio("--vis-internal-fg", surface, theme)).toBeGreaterThanOrEqual(AA_TEXT);
+    },
+  );
+
+  it.each(["--background", "--card"])("--vis-internal-border is >= 3:1 on %s", (surface) => {
+    expect(ratio("--vis-internal-border", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  // A focused control can sit inside a tinted callout or on the active
+  // nav item, not only on a plain canvas.
+  //
+  // --vis-client is deliberately NOT in this list. The focus ring is an
+  // outline at offset 2px, so both of its adjacent colours are the
+  // SURFACE behind the control, never the control's own fill; the warm
+  // select's ring lands on --card, which is asserted above. Adding the
+  // fill here would measure a pair that never touches on screen (it
+  // reads 2.19:1 light / 1.42:1 dark) and would push the ring off the
+  // brand for no accessibility gain.
+  it.each([...TONES.map((t) => `--tone-${t}-bg`), "--sidebar-accent"])(
+    "--ring is >= 3:1 on %s",
+    (surface) => {
+      expect(ratio("--ring", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    },
+  );
+
+  // The active nav item's label sits on --sidebar-accent, not --sidebar.
+  it("--sidebar-foreground on --sidebar-accent is >= 4.5:1", () => {
+    expect(ratio("--sidebar-foreground", "--sidebar-accent", theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("--sidebar-primary on --sidebar-accent is >= 3:1 (the active indicator)", () => {
+    expect(ratio("--sidebar-primary", "--sidebar-accent", theme)).toBeGreaterThanOrEqual(
+      AA_NON_TEXT,
+    );
+  });
+
+  // MemberAvatar: initials are --foreground over the entity-tint wash
+  // (15% light / 28% dark, .entity-tint in globals.css). This is the
+  // reason the wash carries the identity and the letters do not.
+  it.each(ENTITIES)("avatar initials stay >= 4.5:1 over the %s tint", (entity) => {
+    const lch = TOKENS.color(entity, theme);
+    if (!lch) throw new Error(`${theme}: ${entity} is not a colour`);
+    const mix = theme === "dark" ? 0.28 : 0.15;
+    const washed = over({ ...lch, alpha: mix }, rgb("--card", theme));
+    expect(round(contrastRatio(rgb("--foreground", theme), washed))).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+});
+
+describe("browser chrome matches the app canvas", () => {
+  // <meta name="theme-color"> cannot read a custom property, so the two
+  // literals in src/app/layout.tsx are the only place a colour is
+  // written twice. This is the tripwire that keeps them equal.
+  it.each([
+    ["light", THEME_COLOR_LIGHT],
+    ["dark", THEME_COLOR_DARK],
+  ] as const)("%s theme-color equals --background", (theme, hex) => {
+    const chrome = hexToLinearSrgb(hex);
+    const canvas = rgb("--background", theme);
+    expect(round(contrastRatio(chrome, canvas))).toBe(1);
   });
 });

@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 
-import { EmptyState } from "@/components/empty-state";
+import { EmptyState, SectionCard } from "@/components/semantic";
 
 import { loadProject } from "../data";
 
@@ -9,5 +9,11 @@ export default async function ProjectBoardPage({ params }: { params: Promise<{ k
   const { key } = await params;
   await loadProject(key);
   const t = await getTranslations("projects.board");
-  return <EmptyState title={t("title")} description={t("description")} />;
+  // Pre-wired for Phase 2W: the board/backlog drops into this same
+  // SectionCard at Page width="wide" (set by the project layout).
+  return (
+    <SectionCard>
+      <EmptyState variant="empty" title={t("title")} body={t("description")} />
+    </SectionCard>
+  );
 }

@@ -3,8 +3,7 @@ import { getTranslations } from "next-intl/server";
 
 import { effectivePermissions } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Page, PageHeader } from "@/components/page-header";
+import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { parseEntitlements } from "@/entitlements/resolver";
 import { requireTenantContext } from "@/members/tenant-context";
@@ -35,9 +34,11 @@ export default async function PreferencesPage() {
   }
   if (!prefs) {
     return (
-      <Page>
+      <Page width="form">
         <PageHeader title={t("title")} />
-        <p className="mt-4 text-sm text-muted-foreground">{t("noPermission")}</p>
+        <Callout tone="info" className="mt-4">
+          {t("noPermission")}
+        </Callout>
       </Page>
     );
   }
@@ -55,32 +56,20 @@ export default async function PreferencesPage() {
   );
 
   return (
-    <Page>
+    <Page width="form">
       <PageHeader title={t("title")} description={t("description")} />
       <div className="mt-6 grid gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("general")}</CardTitle>
-            <CardDescription>{t("generalDescription")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <GeneralPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("modulesTitle")}</CardTitle>
-            <CardDescription>{t("modulesDescription")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* ✦ code: shown to holders; a stale factor becomes step-up on the first flip. */}
-            <ModuleToggles
-              prefs={prefs}
-              entitled={entitled}
-              canManage={held.has("settings:manage_modules")}
-            />
-          </CardContent>
-        </Card>
+        <SectionCard title={t("general")} description={t("generalDescription")}>
+          <GeneralPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
+        </SectionCard>
+        <SectionCard title={t("modulesTitle")} description={t("modulesDescription")}>
+          {/* ✦ code: shown to holders; a stale factor becomes step-up on the first flip. */}
+          <ModuleToggles
+            prefs={prefs}
+            entitled={entitled}
+            canManage={held.has("settings:manage_modules")}
+          />
+        </SectionCard>
       </div>
     </Page>
   );

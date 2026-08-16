@@ -5,7 +5,13 @@ import { getLocale, getTranslations } from "next-intl/server";
 
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SYSTEM_THEME_SCRIPT, THEME_COOKIE, resolveThemePreference } from "@/lib/theme";
+import {
+  SYSTEM_THEME_SCRIPT,
+  THEME_COLOR_DARK,
+  THEME_COLOR_LIGHT,
+  THEME_COOKIE,
+  resolveThemePreference,
+} from "@/lib/theme";
 
 import { geistMonoVariable, interVariable } from "./fonts/fonts";
 
@@ -18,11 +24,21 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Browser chrome follows the theme: surface-l1 in light, surface-d1 in dark. */
+/**
+ * Browser chrome follows the theme: surface-l1 in light, surface-d1 in
+ * dark. The two literals live in src/lib/theme.ts, where the contrast
+ * gate asserts them equal to --background so they cannot drift.
+ *
+ * Keyed on prefers-color-scheme rather than the cookie on purpose:
+ * reading cookies here would make viewport request-time and, per the
+ * Next 16 docs, block the document shell until it resolves. An explicit
+ * theme that contradicts the OS gets browser chrome one step off — the
+ * page itself is still correct.
+ */
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f9fafb" },
-    { media: "(prefers-color-scheme: dark)", color: "#1c1d23" },
+    { media: "(prefers-color-scheme: light)", color: THEME_COLOR_LIGHT },
+    { media: "(prefers-color-scheme: dark)", color: THEME_COLOR_DARK },
   ],
 };
 

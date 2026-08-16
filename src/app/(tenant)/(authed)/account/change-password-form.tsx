@@ -4,10 +4,9 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { authClient } from "@/auth/client";
+import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { FormMessage } from "@/components/form-message";
 
 export function ChangePasswordForm() {
   const t = useTranslations("account.password");
@@ -37,8 +36,7 @@ export function ChangePasswordForm() {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="current-password">{t("current")}</Label>
+      <Field label={t("current")} htmlFor="current-password">
         <Input
           id="current-password"
           type="password"
@@ -47,9 +45,8 @@ export function ChangePasswordForm() {
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
         />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="new-password">{t("new")}</Label>
+      </Field>
+      <Field label={t("new")} htmlFor="new-password">
         <Input
           id="new-password"
           type="password"
@@ -59,7 +56,7 @@ export function ChangePasswordForm() {
           value={next}
           onChange={(e) => setNext(e.target.value)}
         />
-      </div>
+      </Field>
       <Button type="submit" disabled={busy} className="self-start">
         {busy ? t("submitting") : t("submit")}
       </Button>

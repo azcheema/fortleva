@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { GlobeIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { Callout, Page, PageHeader, StatusBadge } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
-import { Page, PageHeader } from "@/components/page-header";
 import { TabNav } from "@/components/tab-nav";
 
 import { loadProject } from "./data";
@@ -46,33 +47,43 @@ export default async function ProjectLayout({
   ];
 
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader
         title={
-          <span className="flex items-center gap-2">
-            <span className="font-mono text-base text-muted-foreground">{project.key}</span>
-            {project.name}
-            <Badge variant={project.status === "ACTIVE" ? "secondary" : "outline"}>
-              {t(`status.${project.status}`)}
-            </Badge>
-            {project.portalEnabled ? (
-              <Badge className="bg-blue-50 text-blue-700">{t("overview.portalOn")}</Badge>
-            ) : null}
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="num shrink-0 font-mono text-base text-muted-foreground">
+              {project.key}
+            </span>
+            <span className="truncate">{project.name}</span>
           </span>
         }
+        badges={
+          <>
+            <StatusBadge domain="projectStatus" value={project.status} />
+            {/* Portal state is NOT client-visibility: it gets the brand tone and
+                its own glyph so it can never be read as the warm "client can
+                see" pill (DESIGN SPEC §2.4 collision rule). */}
+            {project.portalEnabled ? (
+              <Badge variant="brand">
+                <GlobeIcon aria-hidden="true" />
+                {t("overview.portalOn")}
+              </Badge>
+            ) : null}
+          </>
+        }
         description={
-          <Link href={`/clients/${project.client.id}`} className="hover:underline">
+          <Link
+            href={`/clients/${project.client.id}`}
+            className="rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
             {project.client.name}
           </Link>
         }
       />
       {project.status === "ARCHIVED" ? (
-        <p
-          role="status"
-          className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
-        >
+        <Callout tone="caution" role="status" className="mt-4">
           {t("overview.archivedBanner")}
-        </p>
+        </Callout>
       ) : null}
       <TabNav tabs={tabs} className="mt-4" />
       <div className="mt-4">{children}</div>

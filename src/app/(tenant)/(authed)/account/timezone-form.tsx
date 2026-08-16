@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Label } from "@/components/ui/label";
+import { Field } from "@/components/semantic";
 import { NativeSelect } from "@/components/ui/native-select";
 import type { FormResult } from "@/lib/server-actions";
 import { TIMEZONES } from "@/preferences/config";
@@ -36,8 +36,7 @@ export function TimezoneForm({ current, workspaceDefault }: { current: string | 
   }, [state, router]);
 
   return (
-    <div className="flex max-w-xs flex-col gap-1.5">
-      <Label htmlFor="member-timezone">{t("label")}</Label>
+    <Field label={t("label")} htmlFor="member-timezone" className="max-w-xs">
       <NativeSelect
         id="member-timezone"
         name="timezone"
@@ -58,6 +57,6 @@ export function TimezoneForm({ current, workspaceDefault }: { current: string | 
           </option>
         ))}
       </NativeSelect>
-    </div>
+    </Field>
   );
 }

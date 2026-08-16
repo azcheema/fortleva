@@ -275,7 +275,8 @@
     "pending": {
       "title": "Väntande inbjudningar",
       "revoke": "Återkalla",
-      "revoked": "Inbjudan har återkallats"
+      "revoked": "Inbjudan har återkallats",
+      "expires": "Går ut"
     },
     "invite": {
       "title": "Bjud in en medlem",
@@ -669,7 +670,8 @@
       "namePlaceholder": "Acme webbplats",
       "submit": "Skapa projekt",
       "submitting": "Skapar…",
-      "created": "Skapade {key}"
+      "created": "Skapade {key}",
+      "description": "Skapa ett projekt under en kund. Nyckeln är den korta beteckning du skriver överallt."
     },
     "showArchived": "Visa arkiverade",
     "hideArchived": "Dölj arkiverade",

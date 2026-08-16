@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { requireMemberSession } from "@/auth/session";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Page, PageHeader } from "@/components/page-header";
+import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { isLocale } from "@/i18n/config";
 import { getActiveMembership } from "@/members/tenant-context";
@@ -42,60 +41,36 @@ export default async function AccountPage({
     : null;
 
   return (
-    <Page>
+    <Page width="form">
       <PageHeader title={t("security")} description={session.user.email} />
       {notice === "mfa_required" && !twoFactorEnabled ? (
-        <p
-          role="alert"
-          className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
-        >
+        <Callout tone="caution" role="alert" className="mt-4">
           {t("mfaRequiredNotice")}
-        </p>
+        </Callout>
       ) : null}
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("language.title")}</CardTitle>
-            <CardDescription>{t("language.description")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LocaleForm current={isLocale(userLocale) ? userLocale : ""} />
-          </CardContent>
-        </Card>
+        <SectionCard title={t("language.title")} description={t("language.description")}>
+          <LocaleForm current={isLocale(userLocale) ? userLocale : ""} />
+        </SectionCard>
 
         {membership && workspaceTimezone ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("timezone.title")}</CardTitle>
-              <CardDescription>{t("timezone.description")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TimezoneForm current={membership.timezone} workspaceDefault={workspaceTimezone} />
-            </CardContent>
-          </Card>
+          <SectionCard title={t("timezone.title")} description={t("timezone.description")}>
+            <TimezoneForm current={membership.timezone} workspaceDefault={workspaceTimezone} />
+          </SectionCard>
         ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("password.title")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChangePasswordForm />
-          </CardContent>
-        </Card>
+        <SectionCard title={t("password.title")}>
+          <ChangePasswordForm />
+        </SectionCard>
 
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>{t("totp.title")}</CardTitle>
-            <CardDescription>
-              {twoFactorEnabled ? t("totp.enabled") : t("totp.notEnrolled")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TotpEnrollment enabled={twoFactorEnabled} />
-          </CardContent>
-        </Card>
+        <SectionCard
+          title={t("totp.title")}
+          description={twoFactorEnabled ? t("totp.enabled") : t("totp.notEnrolled")}
+          className="md:col-span-2"
+        >
+          <TotpEnrollment enabled={twoFactorEnabled} />
+        </SectionCard>
       </div>
     </Page>
   );

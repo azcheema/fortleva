@@ -1,6 +1,7 @@
 # UI.md — Interface conventions
 
 **Status:** Normative conventions, created 2026-08-16 (work-management plan, Step 0). Applies to every screen from Phase 1b onward; retro-applied to the six Phase-1 pages during 1b.
+**Amended 2026-08-17** — §9 and §10 rewritten as the normative visual system: tokens, type scale, spacing, radii, elevation, motion, the semantic colour map for every enum, the entity-colour algorithm, the component catalogue, dark-mode rules, the accessibility checklist, and the rule that new UI uses tokens and components only (with grep tripwires as enforcement).
 **Companion docs:** `PLAN.md` (phase bodies name the screens), `ARCHITECTURE.md` (ARC-15 UI kit, ARC-17 DnD, ARC-18 freshness, ARC-19 rich text), `AUTHZ.md` (what a screen may show is a permission question, never a UI one), `TENANCY.md` §7.2 (portal projections), `DATA_MODEL.md` (vocabulary).
 **Evidence:** `docs/research/2026-08-16-work-management-synthesis.md` §5 (complaint corpora → UX rules), `…-plan-draft-ux-product.md`, `…-reviews.md`.
 
@@ -117,7 +118,9 @@ Config: `{ filters, groupBy, orderBy, layout: 'LIST' | 'BOARD', display: { estim
 Item opens as a right panel over the current view; `⌘↵`/full-screen icon → `/projects/[key]/items/[number]`. Back closes the peek. Panel: title, properties rail, Tiptap description (checklist nodes, paste-upload), subtasks, attachments, comments, Activity tab.
 
 ### 5.5 Visibility badge — two tokens only
-`Private to team` (neutral) / `Client can see` (accent). Every class-B row shows one; never a third wording, never an icon alone. Inheritance tooltip: "Follows ACME-12". Bulk change shows the count: "Make 14 tasks private?".
+`Private to team` / `Client can see`. Every class-B row shows one; never a third wording, never an icon alone. Inheritance tooltip: "Follows ACME-12". Bulk change shows the count: "Make 14 tasks private?".
+
+**The rendering is specified in §10.4, which supersedes the "neutral / accent" wording once used here** — the pair now differs on five channels (fill, icon, shape, weight, border) plus a 2px row cue, and is measured under three colour-vision simulations by the release gate.
 
 ### 5.6 Comment composer — two modes
 Toggle "Internal note" (default, neutral) / "Reply to client" (distinct colour, border). Mode maps 1:1 to visibility; contact-authored comments have no toggle. Mentioning a Contact in an internal note warns inline. `⌘Enter` posts.
@@ -196,24 +199,223 @@ Rules: single keys are inert while an input has focus; `⌘` = `Ctrl` on Windows
 
 ## 9. Accessibility
 
+Testable rules. Every numeric claim below is asserted in `src/lib/contrast.test.ts`, which parses `src/app/globals.css` itself — the file that ships — so a lowered contrast fails CI rather than review. **When a row fails, the fix is the token, never the threshold.**
+
+- Body and muted text ≥ 4.5:1 on every surface it renders on (`--background`, `--card`, `--popover`, `--muted`, `--sidebar`, `--accent`, and every tone tint). Placeholders included — SC 1.4.3 grants them no exemption.
+- Control boundaries (`--input`, not `--border`) ≥ 3:1; outline-chip borders (`--tone-*-line`) ≥ 3:1 on the card they sit on.
+- Focus indicator: `outline: 2px solid var(--ring)` at `outline-offset: 2px`, **never** a `box-shadow` ring (box-shadows are clipped by `overflow:hidden` ancestors — the table container, the tab strip, cards). Inside a scroll container use a negative offset (`-outline-offset-2`), as `TabNav` does. Because the offset puts the ring on the *surface* behind the control, the gate measures ring × surface, not ring × control fill.
 - Every drag has a keyboard twin (§7.1); every single-key action is also a menu item.
-- Visible focus ring on all interactive elements (`focus-visible`), never `outline: none` without a replacement.
-- Pickers: `role="listbox"`/`combobox`, `aria-activedescendant`, announced selection; badges carry text, not only colour (rule 10 two-token wording is the aria label).
-- Colour never the sole carrier: priority dot + label on hover/tooltip, health chip + text.
-- `prefers-reduced-motion`: no drag ghost animation, no toast slide, instant peek.
-- Minimum tap target 40 px on mobile; contrast AA on the neutral palette.
+- Every icon-only control carries `aria-label` from `t()`, and its tooltip text is the identical string.
+- Colour is never the sole carrier. Every enum value has a distinct icon silhouette; terminal values additionally strike their label; priority is geometry, not hue, at every level except URGENT.
+- The active-row indicator is two channels everywhere — `--accent` fill **plus** a 2px `--primary` inset bar — in the table, the dropdown menu, the select and the command palette. An `--accent` fill alone measures ~1.07:1 against `--popover` and is not a focus indicator.
+- Targets ≥ 24×24 CSS px; **grouped** icon buttons ≥ 28px (`size="icon-sm"` / `size="sm"`, SC 2.5.8 spacing clause). `size="xs"` (24px) is for isolated controls only.
+- `prefers-reduced-motion: reduce` clamps every duration to **1ms — never `animation: none`**, because Radix exit transitions wait on `animationend` and would leave dialogs mounted for ever.
+- `role="status"` on results, `role="alert"` on errors; `aria-invalid` helper text is announced, not merely tinted. `<FormMessage>` and `<Field>` do this for you.
+- `aria-current="page"` on the active nav item, which also carries a 2px indicator and a colour change (three channels).
+- Disabled state uses `--fg-disabled` / `--bg-disabled` + `cursor: not-allowed` (≥ 3:1), never `opacity: 0.5`.
+- `color-scheme` is declared per theme so native scrollbars, date pickers and autofill follow.
+- Both locales must pass at the longest Swedish string: chips and buttons wrap or grow, never truncate.
 
 ---
 
-## 10. Density and visual language (ARC-15)
+## 10. The visual system (normative)
 
-- **Compact by default.** 13–14 px body, 32 px rows in lists, 8 px grid, no card shadows in lists (borders only).
-- Palette matches the current pages: `rounded border border-neutral-200` surfaces, `bg-neutral-900 text-white` primary button, `text-neutral-600` secondary text, one accent for "Client can see" and one for danger. shadcn/ui **neutral** preset (CP1 default) generated for Tailwind 4 + React 19 on Radix.
-- Typography: **self-hosted Inter** (`next/font/local`) or the system stack; no CDN fonts (EU-neutral, self-host bias).
-- Icons: `lucide-react`; one icon per concept, reused (Task, Epic, Subtask, Milestone, Client, Contact, Vault, Timer, Private, Client-visible).
-- Colours for state **categories** are fixed (grey/blue/yellow/green/red/purple for BACKLOG/TODO/IN_PROGRESS/DONE/CANCELLED/TRIAGE); tenants name states, not colours.
-- Charts (Phase 6): Recharts 3, fixed set, palette from the same tokens.
-- Dark mode: tokens prepared, shipped when cheap; never a blocker.
+**Amended 2026-08-17.** This section replaces the ARC-15 sketch that preceded it. It is the reference for every new screen: **new UI is assembled from the tokens and components named here, and adds neither a colour nor a component of its own.**
+
+### 10.1 Where the system lives
+
+| concern | file |
+|---|---|
+| all tokens, utilities, base layer | `src/app/globals.css` |
+| self-hosted faces + licences | `src/app/fonts/` (`inter-eu.woff2` 110 KB, `geistmono-eu.woff2` 28.5 KB, `build-fonts.mjs`) |
+| entity colour algorithm | `src/lib/entity-color.ts` |
+| tone → class strings | `src/lib/tones.ts` |
+| enum → tone / icon / shape | `src/lib/enum-map.ts` |
+| locale-correct numbers, money, durations, bytes | `src/lib/format.ts` |
+| theme vocabulary, cookie, no-FOUC script | `src/lib/theme.ts` |
+| **the release gate** | `src/lib/contrast.test.ts` (+ `color.ts`, `css-tokens.ts`) |
+| the living preview | `/settings/design` |
+
+There is **no `tailwind.config.js`** — Tailwind 4 is CSS-first. Everything is `@theme` in `globals.css`.
+
+### 10.2 Colour: three layers, in this order
+
+1. **Primitives** in `@theme static` — the ramps. `@theme static` is required: without it Tailwind tree-shakes theme vars it cannot see used, and `--brand-h`, the surface ladder and the motion tokens vanish.
+2. **Roles** in `:root` / `.dark` as plain custom properties — *not* in `@theme`.
+3. **Bridge** in `@theme inline { --color-primary: var(--primary); … }`. Omitting `inline` makes dark mode silently do nothing.
+
+Ramps: `slate` (neutral, carrying a hairline of brand chroma — zero-chroma grey is the signature of an untouched preset), `indigo` (brand, hue 268), `red` h25, `amber` h70, `green` h150. **No blue and no violet ramp**: info states use brand tints plus an info glyph. Surfaces are a separate ladder (`l0`–`l2`, `d0`–`d4`) so elevation is explicit rather than borrowed from the text ramp.
+
+The brand accent has exactly **three jobs**: filled primary buttons, the active nav indicator, and the focus ring. Everything else is neutral chrome plus the tone set.
+
+**Phase 7 seam.** Brand tokens are written `oklch(<L> <C> var(--brand-h, 268))`; a tenant override is one inline `style="--brand-h: 250"` on `<html>`. **Excluded from tenant control, and asserted so by the gate:** `--ring`, `--destructive`, `--success`, `--warning`, `--vis-*`, all `--chart-*`. A tenant whose hue is 25° must not make their primary button read as delete.
+
+### 10.3 The semantic tone set — six tones
+
+`neutral · brand · caution · success · danger · quiet`. Each is three tokens: `--tone-<t>-bg`, `--tone-<t>-fg`, `--tone-<t>-line`. A tinted chip is `bg` + `fg` (measures 6.3–7.9:1 light, 10.7–11.4:1 dark); an outline chip is transparent + `line` + `fg`. `quiet` is transparent with `--muted-foreground` and strikes its label.
+
+Never reach for a tone by hand — `<StatusBadge>` picks it from `src/lib/enum-map.ts`.
+
+### 10.4 The visibility system (safety-critical)
+
+The worst bug this product can ship is a client seeing internal data. The two states differ on **five channels at once**, none of them hue alone:
+
+| | Private to team | Client can see |
+|---|---|---|
+| fill | transparent | **solid warm** `--vis-client`, *identical in both themes* |
+| icon | `lock`, outline | `eye`, filled |
+| shape | 4px radius | full pill |
+| weight | 500 | 600 |
+| border | 1px `--input` | 1px `--vis-client-border` |
+| row cue | none | 2px left border via `visibilityRowCue()` |
+
+Measured separation (client fill vs the card showing through the internal chip): **ΔE_OK 0.249–0.290 light, 0.543–0.593 dark**, across normal / protan / deutan / tritan.
+
+Rules, all enforced in code:
+
+- **Both states always render a chip.** Absence is not a state — absence is indistinguishable from a bug.
+- Never icon-only, at any density. Never optimistic.
+- The **write** control wears the same warm fill as the read chip when set to `CLIENT_VISIBLE` (`VisibilitySelect`, the upload form, the milestone row) — an editable row is never less legible than a read-only one.
+- **Collision rule:** the warm band is the caution family, and a **filled warm pill means "Client can see" and nothing else, product-wide.** `warning` renders only as a tinted surface + 1px border + `triangle-alert` (`<Callout tone="caution">`), never as a filled pill. Project "Portal on" is `Badge variant="brand"` + `globe` for exactly this reason.
+
+### 10.5 Enum → tone / icon / shape
+
+The full table lives in `src/lib/enum-map.ts` (`STATUS_MAP`) and covers `clientStatus, projectStatus, milestoneStatus, versionStatus, approvalStatus, memberStatus, inviteStatus, serviceStatus, portalStatus, stateCategory, projectHealth, workItemKind, workItemType` plus `PRIORITIES`. It is the single source of truth: a screen never decides what colour `ACTIVE` is, so the same word cannot mean two things on two pages.
+
+Labels come from `t("states.<domain>.<value>")` and are **never passed in** — a caller that could pass a label could pass a different word for the same state.
+
+Deliberate: **priority is not hue-coded** across levels (geometry only; URGENT alone is red). **Health keeps RAG** because stakeholders read it that way, but always carries a distinct icon silhouette *and* its text.
+
+### 10.6 Deterministic entity colour
+
+Twelve frozen hues, each anchored to 3:1 against every surface of its theme, exposed as `--entity-0 … --entity-11`. `entityHash()` is FNV-1a 32-bit over the **immutable id** (`name` is a last-resort fallback for optimistic rows, reconciled on the server response — otherwise renaming a client would silently change its identity).
+
+Entity colour is **identity, never status**; the label beside it always carries the meaning, and the tile is `aria-hidden`. Used by `<EntityChip>` (clients, projects) and `<MemberAvatar>` (people).
+
+`<MemberAvatar>` deviates from the original spec on purpose: the spec coloured the *initials*, but the entity ramp is anchored to 3:1 — a non-text threshold — so coloured initials on a tint of their own hue measure ~3:1 and fail SC 1.4.3. The `.entity-tint` utility carries the identity (15% wash light, 28% dark) and the initials stay `--foreground`, measuring 16.8:1 light / 8.9:1 dark.
+
+### 10.7 Typography
+
+Self-hosted, subset, **zero network**: Inter 4.1 variable + Geist Mono 1.7.2 variable via `next/font/local`, two preloads, ~140 KB total, OFL licences committed beside them. Google's Inter build is stripped of `zero`, `ss01`–`ss08` and `cv01`–`cv14` — the exact features that disambiguate `ACME-12` — which alone forces a local file.
+
+Root stays 16px; the `--text-*` keys are remapped so existing `text-sm`/`text-xs` sites moved with the system.
+
+| role | utility | px | line | weight | tracking |
+|---|---|---|---|---|---|
+| display (auth) | `text-3xl` | 30 | 36 | 600 | −0.021em |
+| dialog heading | `text-2xl` | 24 | 32 | 600 | −0.0195em |
+| page title h1 | `text-xl` | 22 | 28 | 600 | −0.018em |
+| section title h2 | `text-lg` | 16 | 22 | 600 | −0.011em |
+| subsection h3 | `text-base` | 14 | 20 | 600 | −0.006em |
+| body, table cell | `text-sm` | 13 | 20 | 400 | 0 |
+| secondary / hint | `text-xs` | 12 | 16 | 400 | 0 |
+| caption, badge, kbd | `text-2xs` | 11 | 14 | 500 | +0.005em |
+| table header, eyebrow | `text-2xs uppercase` | 11 | 16 | 600 | +0.04em |
+
+Weights are capped at **600**; 700 and 300 do not exist in this product. Hierarchy is size + colour, **three foreground tokens per view maximum** (`--foreground`, `--muted-foreground`, plus one tone). No italics.
+
+`font-feature-settings` is declared **exactly once**, on `html` — it replaces rather than merges, so any second declaration silently drops `cv01`/`cv05`/`ss01`.
+
+**Numerals.** `@utility num { font-variant-numeric: tabular-nums lining-nums slashed-zero }` goes on every numeric cell, duration, money value, count, byte size, version number, date, percentage, project key and `<kbd>`. Prose keeps proportional figures. Use `font-variant-numeric`, never `font-feature-settings`.
+
+**Formatting** is `src/lib/format.ts` only — `Intl` formatters built once per locale in a module-level Map, never inside a render. sv-SE's group separator is U+00A0, so machine output uses `{useGrouping:false}` and client-side matching normalises it. Swedish runs 10–25% longer than English.
+
+### 10.8 Space, shape, elevation
+
+- **Spacing** on a 4px grid: `2 4 6 8 12 16 24 32 48`. The 2px step is only for icon-to-label gaps inside chips.
+- **Control heights**: `xs 24` (isolated icon-only), `sm 28` (compact / **grouped** icon buttons), `default 32`, `lg 40` (prominent CTA).
+- **Rows**: 36px default / 32px compact, set once by `<DataTable density>` as `--row-h` and consumed by both `TableRow` **and** `Skeleton`, so a table cannot load at one rhythm and settle at another. Table header 32px.
+- **Radii**: `sm 4 · md 6 · lg 8 · xl 12`, plus `--radius-card: 10px`. Controls 6px, cards/dialogs/popovers 10px, badges/avatars `rounded-full`. **Nothing above 12px.**
+- **One surface language: `1px solid var(--border)`.** Anchored things (cards, rows, sidebar, inputs, tables) get border + surface step, **never a shadow**. Exactly three shadows exist (`--shadow-1/2/3`) and only for things that genuinely float: dropdown/popover/tooltip/select, command palette/toast, dialog/sheet.
+- **Content widths**: `--content-form` 720px (settings, account, auth), `--content-default` 1080px (detail pages), `--content-wide` 1440px (tables, board, backlog). Chosen via `<Page width>`.
+- Card padding 16px (12px at `size="sm"`); 16px between cards, 24px between sections.
+
+### 10.9 Motion
+
+Tokens: `--dur-instant 80 · --dur-fast 120 · --dur-base 200 · --dur-slow 320`, with `--ease-out` / `--ease-entrance` / `--ease-exit`. Exits run at roughly two-thirds the enter duration.
+
+**Animates:** colour on hover and press (80ms); popover, dropdown, tooltip and select opacity + 4px translate (120 enter / 80 exit); dialog and command palette (200 / 120); disclosure height; sheet transform (320 / 200); the toast stack.
+
+**Never animates:** table row insert, remove or reorder; sort; column resize; numeric value changes; the board on data refresh (only on user drag); route changes; anything on an interval.
+
+Never `transition-all` — enumerate the properties. Loading: under 200ms render nothing; 200ms–1s swap the trigger's leading icon for a spinner in a **fixed-width slot** so the button never resizes; over 1s show a skeleton matching the real row height and column widths.
+
+### 10.10 Component catalogue
+
+**Rule: a screen imports from `@/components/semantic` for anything that carries domain meaning, and from `@/components/ui` only for raw controls.**
+
+`src/components/semantic/` — the layer that knows what a value *means*:
+
+| component | use it for |
+|---|---|
+| `SectionCard` | **the one boxed surface.** Replaces every raw `<Card>` and every `rounded-md border border-border` wrapper |
+| `DataTable` | the density/rhythm wrapper around every `<Table>` |
+| `StatusBadge {domain, value}` | **every** enum value. Never a hand-rolled `<Badge variant={…}>` |
+| `EntityChip {id, name, kind}` | every client/project reference in a list |
+| `MemberAvatar {id, name}` | every person |
+| `VisibilityBadge` + `visibilityRowCue()` | §10.4, always together on a row |
+| `Callout {tone}` | every tinted notice block. Replaces the hand-rolled amber divs |
+| `Field {label, htmlFor, hint, error}` | every labelled control (was duplicated three ways) |
+| `Pending {label}` | the ellipsis indicator (was duplicated five ways) |
+| `EmptyState {variant}` | `empty` vs `filtered` vs `forbidden` — three variants, never conflated |
+| `Page {width}` / `PageHeader` | the content column and the h1 block |
+| `MetricTile`, `HealthChip`, `PriorityIndicator`, `KeyboardHint`, `ThemeToggle`, `StatusIcon` | as named |
+
+`src/components/ui/` — 25 primitives. Two are deliberately native: **`NativeSelect` and `NativeCheckbox` fire real `change` events**, which is what `<AutoForm>` listens for. The Radix `Checkbox` renders a button plus a bubble input and does **not** emit a bubbling change event — an auto-saving form built on it silently stops saving. Use the native pair inside `<AutoForm>`, Radix elsewhere.
+
+### 10.11 Dark mode
+
+Dark is a separate design, not an inversion.
+
+1. **Elevation reverses** — surfaces get *lighter* with height (`d0` sidebar 0.115 → `d1` canvas 0.155 → `d2` card 0.205 → `d3` popover 0.245 → `d4` border/hover 0.300). The contract is **ΔL ≥ 0.04, not a contrast ratio** (card-over-canvas measures 1.10:1 — arithmetically nothing, perceptually obvious). Shipped steps: 0.040 / 0.050 / 0.040 / 0.055.
+2. **Shadows stop doing work** — hairlines and surface steps carry elevation; the shadow tokens become pure black at higher alpha and are kept for dialogs only.
+3. **Chroma drops**; the twelve entity dots are re-anchored to 3:1 against `--card`, not the canvas.
+4. **Neither pure black nor pure white.**
+5. **Borders are opaque** — never `oklch(1 0 0 / n%)`. Alpha borders cannot be statically contrast-tested and change meaning per backdrop; the gate asserts `alpha === 1`.
+6. The sidebar **recedes** — darker than the canvas in *both* themes (asserted).
+7. `color-scheme` is set per theme.
+
+**The toggle is not `next-themes`.** The app already resolves per-request preferences server-side; a second client-only source of truth would drift from it and force a client boundary at the root. The preference lives in the `fl_theme` cookie (`SameSite=Lax`, one year), which becomes the mirror of the member preference row when that lands.
+
+**No-FOUC contract, verified:** an explicit `light`/`dark` is server-rendered onto `<html>` and ships **zero** script; only `system` emits a ~180-byte synchronous script in `<head>`, before `<body>`, so it resolves pre-paint. `suppressHydrationWarning` on `<html>` only. `<meta name="theme-color">` cannot read a custom property, so its two literals live in `src/lib/theme.ts` and the gate asserts them equal to `--background` in each theme.
+
+### 10.12 Density
+
+Compact, information-dense, but calm — this is a tool people live in all day. 13px body on a 4px grid, 32px controls, 36px rows, 16px card padding, no zebra striping, no shadows on anchored elements, borders only.
+
+### 10.13 The rule: tokens and components only
+
+**New UI adds no colour and no component of its own.** If a screen needs a colour, it is already a token; if it needs a boxed surface, it is `SectionCard`; if it needs a status, it is `StatusBadge`.
+
+Tripwires — each must return **nothing** across `src/app/**` and `src/components/**`:
+
+```sh
+# 1. raw palette utilities
+grep -rEn "\b(bg|text|border|ring|fill|outline|divide|placeholder)-(neutral|gray|slate|zinc|stone|red|green|blue|amber|yellow|orange|purple|violet|indigo|teal|cyan|pink|rose|emerald|lime|sky)-[0-9]{2,3}" src/app src/components
+
+# 2. colour literals (the only allowed pair lives in src/lib/theme.ts)
+grep -rEn "#[0-9a-fA-F]{3,8}\b|oklch\(" src/app src/components --include=*.tsx
+
+# 3. removed focus patterns
+grep -rEn "ring-3|focus-visible:ring-\[|ring-ring/50|ring-1 ring-foreground" src/app src/components
+
+# 4. dimming as a disabled state
+grep -rEn "disabled:opacity-[0-9]{1,2}|[^-]opacity-50" src/app src/components --include=*.tsx
+
+# 5. off-scale type
+grep -rEn "text-\[[0-9]" src/app src/components --include=*.tsx
+
+# 6. raw checkboxes (use NativeCheckbox inside AutoForm, Checkbox elsewhere)
+grep -rn 'type="checkbox"' src/app src/components | grep -v native-checkbox
+```
+
+Justified standing exceptions, all inside `src/components/**`, none of them a colour: `KeyboardHint` (`h-[18px] min-w-[18px]`, `shadow-[0_1px_0_var(--input)]` — the specified kbd geometry), `PriorityIndicator` (`w-[3px] rounded-[1px]` — a sub-grid glyph), `EntityChip` (`text-[0.5625rem]` — 9px initials inside a 16px `aria-hidden` tile), the `Tooltip` arrow geometry, and the four `shadow-[inset_2px_0_0_var(--primary)]` active-row bars (a token reference; Tailwind has no inset-shadow utility). `Switch` uses `data-disabled:opacity-100` to *defeat* Radix's own dimming.
+
+### 10.14 The release gate
+
+`pnpm test` runs `src/lib/contrast.test.ts`, which parses `globals.css` and asserts the whole table in both themes: text ≥ 4.5:1 on every surface it renders on; non-text ≥ 3:1; tone chips, outline borders, visibility, entity dots, chart series and avatar washes; dark ΔL ≥ 0.04 and monotonically lighter; ΔE_OK ≥ 0.15 between the visibility fills and ≥ 0.10 between chart series under Machado 2009 severity-1.0 protan/deutan/tritan; no alpha borders; the brand seam excluded from `--ring`/`--destructive`/`--vis-*`; every colour role defined in **both** themes; and the `theme-color` literals equal to `--background`.
+
+`/settings/design` renders the same system live — the token ladder with computed ratios, every component state, all twelve entity colours, and the two visibility chips under protanopia / deuteranopia / tritanopia / greyscale filters. **If the two visibility chips are not instantly distinguishable in every panel, the pass is not done.**
 
 ---
 

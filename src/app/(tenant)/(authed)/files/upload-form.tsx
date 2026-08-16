@@ -5,10 +5,11 @@ import { useTranslations } from "next-intl";
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { cn } from "@/lib/utils";
 
 import { commitUploadAction, presignUploadAction, type UploadTarget } from "./actions";
 
@@ -93,33 +94,38 @@ export function UploadForm({
 
   return (
     <form onSubmit={onSubmit} className="flex max-w-md flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="upload-file">{t("upload.file")}</Label>
+      <Field label={t("upload.file")} htmlFor="upload-file">
         <Input id="upload-file" ref={inputRef} type="file" name="file" required disabled={busy} />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="upload-visibility">{tVis("label")}</Label>
+      </Field>
+      <Field
+        label={tVis("label")}
+        htmlFor="upload-visibility"
+        hint={!visibilityEnabled ? t("visibility.hint") : undefined}
+      >
+        {/* SAFETY-CRITICAL: the control wears the warm fill while it is set
+            to CLIENT_VISIBLE, so the choice is legible before submitting
+            and not only after the row renders. */}
         <NativeSelect
           id="upload-visibility"
           name="visibility"
           value={visibility}
+          data-visibility={visibility}
+          className={cn(
+            visibility === "CLIENT_VISIBLE" &&
+              "border-vis-client-border bg-vis-client font-semibold text-vis-client-fg",
+          )}
           onChange={(e) => setVisibility(e.target.value === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL")}
           disabled={!visibilityEnabled || busy}
         >
           <option value="INTERNAL">{tVis("internal")}</option>
           <option value="CLIENT_VISIBLE">{tVis("clientVisible")}</option>
         </NativeSelect>
-        {!visibilityEnabled ? (
-          <span className="text-xs text-muted-foreground">{t("visibility.hint")}</span>
-        ) : null}
-      </div>
+      </Field>
       <Button type="submit" disabled={busy} className="self-start">
         {phase.kind === "busy" ? t(`upload.${phase.step}`) : t("upload.submit")}
       </Button>
       {phase.kind === "error" ? (
-        <p role="alert" className="text-sm text-destructive">
-          {phase.message}
-        </p>
+        <FormMessage state={{ ok: false, message: phase.message }} />
       ) : null}
     </form>
   );

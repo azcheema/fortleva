@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -128,15 +129,8 @@ export function ProjectDetailsForm({
       </Field>
       <div className="flex items-center gap-2 sm:col-span-2">
         <input type="hidden" name="defaultBillableMarker" value="1" />
-        {/* Native checkbox: fires a real change event for the auto-saving form. */}
-        <input
-          id="p-billable"
-          type="checkbox"
-          name="defaultBillable"
-          defaultChecked={project.defaultBillable}
-          disabled={ro}
-          className="size-4 rounded border-input accent-primary"
-        />
+        {/* Native, not Radix: <AutoForm> saves on a real change event. */}
+        <NativeCheckbox id="p-billable" name="defaultBillable" defaultChecked={project.defaultBillable} disabled={ro} />
         <Label htmlFor="p-billable" className="font-normal">
           {t("defaultBillable")}
         </Label>

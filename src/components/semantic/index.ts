@@ -9,6 +9,7 @@ export { EntityChip } from "./entity-chip";
 export { Field, Pending } from "./field";
 export { HealthChip } from "./health-chip";
 export { KeyboardHint } from "./keyboard-hint";
+export { MemberAvatar } from "./member-avatar";
 export { MetricTile } from "./metric-tile";
 export { PriorityIndicator } from "./priority-indicator";
 export { SectionCard } from "./section-card";

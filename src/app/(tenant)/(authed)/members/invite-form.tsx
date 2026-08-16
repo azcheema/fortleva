@@ -3,11 +3,11 @@
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
 
+import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FormMessage } from "@/components/form-message";
 
 import { inviteMemberAction, type InviteFormState } from "./actions";
 
@@ -20,8 +20,7 @@ export function InviteForm({ roles }: { roles: { id: string; name: string }[] })
 
   return (
     <form action={action} className="flex max-w-md flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="invite-email">{t("email")}</Label>
+      <Field label={t("email")} htmlFor="invite-email">
         <Input
           id="invite-email"
           type="email"
@@ -29,7 +28,7 @@ export function InviteForm({ roles }: { roles: { id: string; name: string }[] })
           required
           placeholder={t("emailPlaceholder")}
         />
-      </div>
+      </Field>
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-sm font-medium">{t("roles")}</legend>
         <div className="flex flex-wrap gap-x-4 gap-y-2">

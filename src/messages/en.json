@@ -275,7 +275,8 @@
     "pending": {
       "title": "Pending invitations",
       "revoke": "Revoke",
-      "revoked": "Invitation revoked"
+      "revoked": "Invitation revoked",
+      "expires": "Expires"
     },
     "invite": {
       "title": "Invite a member",
@@ -669,7 +670,8 @@
       "namePlaceholder": "Acme website",
       "submit": "Create project",
       "submitting": "Creating…",
-      "created": "Created {key}"
+      "created": "Created {key}",
+      "description": "Create a project under a client. The key is the short handle you will type everywhere."
     },
     "showArchived": "Show archived",
     "hideArchived": "Hide archived",

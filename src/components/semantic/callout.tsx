@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 /**
  * A block-level notice: tinted surface, 1px hairline in the tone, a 2px
  * leading bar and a 16px icon. It replaces the copy-pasted amber
- * "bg-amber-50 border-amber-300" blocks.
+ * hand-rolled amber notice blocks.
  *
  * It is never a filled pill — that shape is reserved product-wide for
  * "Client can see" and must not be borrowed by a warning.

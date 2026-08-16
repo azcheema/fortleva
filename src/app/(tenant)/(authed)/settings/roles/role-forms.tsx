@@ -3,6 +3,8 @@
 import { useTranslations } from "next-intl";
 import { useActionState, useState } from "react";
 
+import { Field, FormMessage, Pending, SectionCard } from "@/components/semantic";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -15,7 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FormMessage } from "@/components/form-message";
 
 import {
   createRoleAction,
@@ -75,11 +76,16 @@ export function RolePermissionsForm({
       <input type="hidden" name="roleId" value={role.id} />
       <fieldset disabled={!editable || pending} className="grid gap-3 sm:grid-cols-2">
         {groups.map((g) => (
-          <div key={g.module} className="rounded-md border border-border p-2">
-            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              {isModuleKey(g.module) ? t(`modules.${g.module}`) : g.module}
-            </p>
-            <ul className="mt-1 flex flex-col gap-1 text-sm">
+          <SectionCard
+            key={g.module}
+            size="sm"
+            title={
+              <span className="text-2xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+                {isModuleKey(g.module) ? t(`modules.${g.module}`) : g.module}
+              </span>
+            }
+          >
+            <ul className="flex flex-col gap-1 text-sm">
               {g.permissions.map((p) => (
                 <li key={p.code}>
                   <Label className="flex items-start gap-2 font-normal" title={p.description}>
@@ -95,20 +101,24 @@ export function RolePermissionsForm({
                       {p.requiresMfa ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="ml-1 cursor-help">{"✦"}</span>
+                            <span className="ml-1 cursor-help" aria-label={t("requiresMfa")}>
+                              {"✦"}
+                            </span>
                           </TooltipTrigger>
                           <TooltipContent>{t("requiresMfa")}</TooltipContent>
                         </Tooltip>
                       ) : null}
                       {revoked.has(p.code) ? (
-                        <span className="ml-1 text-xs text-amber-700">{t("tombstone")}</span>
+                        <Badge variant="caution" className="ml-1 align-middle">
+                          {t("tombstone")}
+                        </Badge>
                       ) : null}
                     </span>
                   </Label>
                 </li>
               ))}
             </ul>
-          </div>
+          </SectionCard>
         ))}
       </fieldset>
       {editable ? (
@@ -125,6 +135,7 @@ export function RolePermissionsForm({
 
 export function DeleteRoleForm({ roleId, name }: { roleId: string; name: string }) {
   const t = useTranslations("roles");
+  const tCommon = useTranslations("common");
   const [state, action, pending] = useActionState<RoleFormState, FormData>(
     deleteRoleAction,
     null,
@@ -132,8 +143,8 @@ export function DeleteRoleForm({ roleId, name }: { roleId: string; name: string 
   return (
     <form action={action} className="flex items-center gap-3">
       <input type="hidden" name="roleId" value={roleId} />
-      <Button type="submit" variant="destructive" size="xs" disabled={pending}>
-        {pending ? "…" : t("delete", { name })}
+      <Button type="submit" variant="destructive" size="sm" disabled={pending}>
+        {pending ? <Pending label={tCommon("loading")} /> : t("delete", { name })}
       </Button>
       <FormMessage state={state} className="text-xs" />
     </form>
@@ -153,16 +164,13 @@ export function CreateRoleForm({
   const [templateKey, setTemplateKey] = useState("blank");
   return (
     <form action={action} className="flex max-w-md flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="role-name">{t("name")}</Label>
+      <Field label={t("name")} htmlFor="role-name">
         <Input id="role-name" type="text" name="name" required minLength={2} maxLength={60} />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="role-description">{t("description")}</Label>
+      </Field>
+      <Field label={t("description")} htmlFor="role-description">
         <Input id="role-description" type="text" name="description" maxLength={200} />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="role-template">{t("startFrom")}</Label>
+      </Field>
+      <Field label={t("startFrom")} htmlFor="role-template">
         {/* Radix Select cannot carry an empty-string item value; "blank" maps to "" for the action. */}
         <input type="hidden" name="templateKey" value={templateKey === "blank" ? "" : templateKey} />
         <Select value={templateKey} onValueChange={setTemplateKey}>
@@ -178,7 +186,7 @@ export function CreateRoleForm({
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </Field>
       <Button type="submit" disabled={pending} className="self-start">
         {pending ? t("submitting") : t("submit")}
       </Button>

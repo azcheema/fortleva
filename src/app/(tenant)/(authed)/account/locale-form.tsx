@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Label } from "@/components/ui/label";
+import { Field } from "@/components/semantic";
 import {
   Select,
   SelectContent,
@@ -50,8 +50,7 @@ export function LocaleForm({ current }: { current: string }) {
   };
 
   return (
-    <div className="flex max-w-xs flex-col gap-1.5">
-      <Label htmlFor="locale">{t("label")}</Label>
+    <Field label={t("label")} htmlFor="locale" className="max-w-xs">
       <Select value={value} onValueChange={onChange} disabled={pending}>
         <SelectTrigger id="locale" className="w-full">
           <SelectValue />
@@ -65,6 +64,6 @@ export function LocaleForm({ current }: { current: string }) {
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </Field>
   );
 }

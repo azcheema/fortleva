@@ -4,7 +4,7 @@ import { getTranslations } from "next-intl/server";
 
 import { requireMemberSession } from "@/auth/session";
 import { enrolUrl, safeNextPath } from "@/authz/redirects";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Page, SectionCard } from "@/components/semantic";
 
 import { StepUpForm } from "./step-up-form";
 
@@ -30,16 +30,10 @@ export default async function StepUpPage({
   const t = await getTranslations("account.stepUp");
 
   return (
-    <div className="mx-auto w-full max-w-sm px-4 py-10">
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("title")}</CardTitle>
-          <CardDescription>{t("description")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <StepUpForm next={next} />
-        </CardContent>
-      </Card>
-    </div>
+    <Page width="form">
+      <SectionCard title={t("title")} description={t("description")} className="max-w-sm">
+        <StepUpForm next={next} />
+      </SectionCard>
+    </Page>
   );
 }

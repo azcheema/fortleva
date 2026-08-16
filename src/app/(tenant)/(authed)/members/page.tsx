@@ -3,10 +3,23 @@ import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
-import { Badge } from "@/components/ui/badge";
+import {
+  DataTable,
+  MemberAvatar,
+  Page,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+} from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Page, PageHeader } from "@/components/page-header";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -63,7 +76,7 @@ export default async function MembersPage() {
   const roleOptions = data.roles.map((r) => ({ id: r.id, name: r.name }));
 
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader
         title={t("title", { tenant: membership.tenantName })}
         actions={
@@ -75,76 +88,108 @@ export default async function MembersPage() {
         }
       />
 
-      <ul className="mt-6 flex flex-col gap-2">
-        {data.members.map((m) => {
-          const isSelf = m.id === membership.memberId;
-          return (
-            <li key={m.id}>
-              <Card size="sm">
-                <CardContent className="flex flex-col gap-2">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                    <span className="flex items-center gap-2 font-medium">
-                      {m.user.name}
-                      {isSelf ? (
-                        <span className="text-xs font-normal text-muted-foreground">
-                          {"("}
-                          {tCommon("you")}
-                          {")"}
-                        </span>
+      <section className="mt-6">
+        <DataTable>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("columns.member")}</TableHead>
+                <TableHead>{t("columns.email")}</TableHead>
+                <TableHead>{t("columns.roles")}</TableHead>
+                <TableHead>{t("columns.status")}</TableHead>
+                <TableHead className="w-0">
+                  <span className="sr-only">{tCommon("actions")}</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.members.map((m) => {
+                const isSelf = m.id === membership.memberId;
+                return (
+                  <TableRow key={m.id}>
+                    <TableCell className="max-w-64">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <MemberAvatar id={m.id} name={m.user.name} />
+                        <span className="truncate font-medium">{m.user.name}</span>
+                        {isSelf ? (
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {"("}
+                            {tCommon("you")}
+                            {")"}
+                          </span>
+                        ) : null}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-64 truncate text-muted-foreground">
+                      {m.user.email}
+                    </TableCell>
+                    <TableCell>
+                      <MemberRolesForm
+                        memberId={m.id}
+                        roles={roleOptions}
+                        heldRoleIds={m.memberRoles.map((r) => r.role.id)}
+                        canManage={data.canManageRoles}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge domain="memberStatus" value={m.status} />
+                    </TableCell>
+                    <TableCell>
+                      {data.canRemove ? (
+                        <MemberStatusForm memberId={m.id} status={m.status} isSelf={isSelf} />
                       ) : null}
-                      {m.status === "SUSPENDED" ? (
-                        <Badge variant="outline">{tCommon("suspended")}</Badge>
-                      ) : null}
-                    </span>
-                    <span className="text-sm text-muted-foreground">{m.user.email}</span>
-                  </div>
-                  <MemberRolesForm
-                    memberId={m.id}
-                    roles={roleOptions}
-                    heldRoleIds={m.memberRoles.map((r) => r.role.id)}
-                    canManage={data.canManageRoles}
-                  />
-                  {data.canRemove ? (
-                    <MemberStatusForm memberId={m.id} status={m.status} isSelf={isSelf} />
-                  ) : null}
-                </CardContent>
-              </Card>
-            </li>
-          );
-        })}
-      </ul>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </DataTable>
+      </section>
 
       {data.invites.length > 0 ? (
-        <Card size="sm" className="mt-6">
-          <CardHeader>
-            <CardTitle>{t("pending.title")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-1.5 text-sm text-muted-foreground">
-              {data.invites.map((i) => (
-                <li key={i.id} className="flex flex-wrap items-center gap-3">
-                  <span>
-                    {i.email}
-                    {" — "}
-                    {tCommon("expires", { date: format.dateTime(i.expiresAt, { dateStyle: "medium" }) })}
-                  </span>
-                  {data.canInvite ? <RevokeInviteForm inviteId={i.id} /> : null}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        <div className="mt-6">
+          <SectionCard title={t("pending.title")} contentClassName="p-0">
+            <DataTable density="compact" className="rounded-none border-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("columns.email")}</TableHead>
+                    <TableHead>{t("columns.status")}</TableHead>
+                    <TableHead>{t("pending.expires")}</TableHead>
+                    <TableHead className="w-0">
+                      <span className="sr-only">{tCommon("actions")}</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.invites.map((i) => (
+                    <TableRow key={i.id}>
+                      <TableCell className="max-w-64 truncate">{i.email}</TableCell>
+                      <TableCell>
+                        <StatusBadge domain="inviteStatus" value="PENDING" />
+                      </TableCell>
+                      <TableCell className="num text-muted-foreground">
+                        {format.dateTime(i.expiresAt, { dateStyle: "medium" })}
+                      </TableCell>
+                      <TableCell>
+                        {data.canInvite ? <RevokeInviteForm inviteId={i.id} /> : null}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </DataTable>
+          </SectionCard>
+        </div>
       ) : null}
 
       {data.canInvite ? (
-        <Card size="sm" className="mt-6">
-          <CardHeader>
-            <CardTitle>{t("invite.title")}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="mt-6">
+          <SectionCard title={t("invite.title")}>
             <InviteForm roles={roleOptions} />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </div>
       ) : null}
     </Page>
   );

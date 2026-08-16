@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
+import { ArchiveIcon, ArchiveRestoreIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { isAuthorized } from "@/authz/authorize";
 import { listClients } from "@/clients/service";
-import { Badge } from "@/components/ui/badge";
+import {
+  DataTable,
+  EmptyState,
+  EntityChip,
+  Page,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+} from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -15,8 +23,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyState } from "@/components/empty-state";
-import { Page, PageHeader } from "@/components/page-header";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listProjects } from "@/projects/service";
@@ -51,12 +57,13 @@ export default async function ProjectsPage({
   const clients = canCreate ? (await listClients(ctx)).map((c) => ({ id: c.id, name: c.name })) : [];
 
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader
         title={t("title")}
         actions={
-          <Button asChild variant="ghost" size="sm">
+          <Button asChild variant="outline" size="sm">
             <Link href={includeArchived ? "/projects" : "/projects?archived=1"}>
+              {includeArchived ? <ArchiveRestoreIcon /> : <ArchiveIcon />}
               {includeArchived ? t("hideArchived") : t("showArchived")}
             </Link>
           </Button>
@@ -65,36 +72,48 @@ export default async function ProjectsPage({
 
       <section className="mt-6 flex flex-col gap-6">
         {groups.length === 0 ? (
-          canCreate ? (
-            clients.length === 0 ? (
-              <EmptyState
-                title={t("empty.noClients")}
-                description={t("empty.noClientsDescription")}
-                actions={
-                  <Button asChild size="sm">
-                    <Link href="/clients">{tCommon("add")}</Link>
-                  </Button>
-                }
-              />
+          <SectionCard>
+            {canCreate ? (
+              clients.length === 0 ? (
+                <EmptyState
+                  variant="empty"
+                  title={t("empty.noClients")}
+                  body={t("empty.noClientsDescription")}
+                  action={
+                    <Button asChild size="sm">
+                      <Link href="/clients">{tCommon("add")}</Link>
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState variant="empty" title={t("empty.title")} body={t("empty.description")} />
+              )
             ) : (
-              <EmptyState title={t("empty.title")} description={t("empty.description")} />
-            )
-          ) : (
-            <EmptyState title={t("empty.scoped")} description={t("empty.scopedDescription")} />
-          )
+              <EmptyState
+                variant="forbidden"
+                title={t("empty.scoped")}
+                body={t("empty.scopedDescription")}
+              />
+            )}
+          </SectionCard>
         ) : (
           groups.map((g) => (
             <div key={g.clientId}>
-              <h2 className="mb-2 text-sm font-semibold">
-                <Link href={`/clients/${g.clientId}`} className="hover:underline">
-                  {g.clientName}
-                </Link>
+              <h2 className="mb-2">
+                <EntityChip
+                  id={g.clientId}
+                  name={g.clientName}
+                  kind="client"
+                  size="md"
+                  href={`/clients/${g.clientId}`}
+                  className="font-medium"
+                />
               </h2>
-              <div className="overflow-x-auto rounded-md border border-border">
+              <DataTable>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-24">{t("columns.key")}</TableHead>
+                      <TableHead className="w-[10ch]">{t("columns.key")}</TableHead>
                       <TableHead>{t("columns.name")}</TableHead>
                       <TableHead>{t("columns.status")}</TableHead>
                       <TableHead>{t("columns.lead")}</TableHead>
@@ -104,46 +123,46 @@ export default async function ProjectsPage({
                   <TableBody>
                     {g.projects.map((p) => (
                       <TableRow key={p.id}>
-                        <TableCell className="font-mono text-xs">
-                          <Link href={`/projects/${p.key}`} className="hover:underline">
-                            {p.key}
-                          </Link>
+                        <TableCell className="num w-[10ch] font-mono text-xs text-muted-foreground">
+                          {p.key}
                         </TableCell>
-                        <TableCell className="font-medium">
-                          <Link href={`/projects/${p.key}`} className="hover:underline">
-                            {p.name}
-                          </Link>
+                        <TableCell className="max-w-80">
+                          <EntityChip
+                            id={p.id}
+                            name={p.name}
+                            kind="project"
+                            href={`/projects/${p.key}`}
+                            className="font-medium"
+                          />
                         </TableCell>
                         <TableCell>
-                          <Badge variant={p.status === "ACTIVE" ? "secondary" : "outline"}>
-                            {t(`status.${p.status}`)}
-                          </Badge>
+                          <StatusBadge domain="projectStatus" value={p.status} />
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {p.leadName ?? tCommon("none")}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {t("milestonesProgress", { done: p.milestoneDone, total: p.milestoneTotal })}
+                        <TableCell className="num text-right">
+                          {t("milestonesProgress", {
+                            done: p.milestoneDone,
+                            total: p.milestoneTotal,
+                          })}
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
+              </DataTable>
             </div>
           ))
         )}
       </section>
 
       {canCreate && clients.length > 0 ? (
-        <Card size="sm" className="mt-6">
-          <CardHeader>
-            <CardTitle>{t("create.title")}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="mt-6">
+          <SectionCard title={t("create.title")} description={t("create.description")}>
             <CreateProjectForm clients={clients} autoFocus={groups.length === 0} />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </div>
       ) : null}
     </Page>
   );

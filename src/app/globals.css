@@ -488,6 +488,15 @@
   height: var(--row-h, 36px);
 }
 
+/* The entity-identity tint (DESIGN SPEC §6, avatar). A wash of the
+   entity colour rather than the colour itself, so the initials on top
+   can stay --foreground and clear 4.5:1: the entity ramp is anchored to
+   3:1 (non-text) and would fail as text against its own tint. Dark
+   needs the heavier mix to read at all against the lighter card. */
+@utility entity-tint {
+  background-color: color-mix(in oklab, var(--entity) 15%, transparent);
+}
+
 /* ---------------------------------------------------------------- *
  * Base
  * ---------------------------------------------------------------- */
@@ -574,4 +583,9 @@
       scroll-behavior: auto !important;
     }
   }
+}
+
+/* entity-tint, dark: the card sits at L 0.205, so a 15% wash disappears. */
+:where(.dark) .entity-tint {
+  background-color: color-mix(in oklab, var(--entity) 28%, transparent);
 }

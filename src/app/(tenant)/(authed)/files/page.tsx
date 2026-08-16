@@ -2,9 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { isAuthorized } from "@/authz/authorize";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/empty-state";
-import { Page, PageHeader } from "@/components/page-header";
+import { Callout, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { listDocuments } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
@@ -46,21 +44,20 @@ export default async function FilesPage({
   ]);
 
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader title={t("title", { tenant: membership.tenantName })} />
 
       {error ? (
-        <p
-          role="alert"
-          className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <Callout tone="danger" role="alert" className="mt-4">
           {error}
-        </p>
+        </Callout>
       ) : null}
 
       <section className="mt-6">
         {documents.length === 0 ? (
-          <EmptyState title={t("empty.title")} description={t("empty.description")} />
+          <SectionCard>
+            <EmptyState variant="empty" title={t("empty.title")} body={t("empty.description")} />
+          </SectionCard>
         ) : (
           <DocumentsTable
             documents={documents}
@@ -72,14 +69,11 @@ export default async function FilesPage({
       </section>
 
       {caps.canUpload ? (
-        <Card size="sm" className="mt-6">
-          <CardHeader>
-            <CardTitle>{t("upload.title")}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="mt-6">
+          <SectionCard title={t("upload.title")}>
             <UploadForm />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </div>
       ) : null}
     </Page>
   );

@@ -1,5 +1,6 @@
-import { getFormatter, getTranslations } from "next-intl/server";
+import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
+import { DataTable, VisibilityBadge, visibilityRowCue } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -9,25 +10,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { VisibilityBadge } from "@/components/visibility-badge";
 import type { DocumentListItem } from "@/documents/service";
+import { formatBytes } from "@/lib/format";
 
 import { changeVisibilityAction, deleteDocumentAction, downloadAction } from "./actions";
 import { VisibilitySelect } from "./visibility-select";
 
-/** Byte sizes: binary units, one decimal (locale-formatted number). */
-const bytesParts = (n: number): { value: number; unit: "B" | "KB" | "MB" | "GB" } => {
-  if (n < 1024) return { value: n, unit: "B" };
-  if (n < 1024 * 1024) return { value: n / 1024, unit: "KB" };
-  if (n < 1024 * 1024 * 1024) return { value: n / (1024 * 1024), unit: "MB" };
-  return { value: n / (1024 * 1024 * 1024), unit: "GB" };
-};
-
 /**
  * The one documents table (server component) shared by /files and the
- * client/project Files tabs. Visibility is a two-token badge, and — for
- * document:change_visibility holders on client-attached rows — a select
- * that commits on change (no Save button).
+ * client/project Files tabs. Visibility is SAFETY-CRITICAL here: every
+ * row renders a chip (never absence), and a client-visible row
+ * additionally carries the 2px warm left border from
+ * visibilityRowCue() — so the "a client can read this" signal survives
+ * both colour-blindness and a glance down the leftmost edge of the
+ * table, without reading a single chip.
  */
 export async function DocumentsTable({
   documents,
@@ -43,13 +39,10 @@ export async function DocumentsTable({
   const t = await getTranslations("files");
   const tCommon = await getTranslations("common");
   const format = await getFormatter();
-  const formatBytes = (n: number): string => {
-    const { value, unit } = bytesParts(n);
-    return `${format.number(value, { maximumFractionDigits: unit === "B" ? 0 : 1 })} ${unit}`;
-  };
+  const locale = await getLocale();
 
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
+    <DataTable>
       <Table>
         <TableHeader>
           <TableRow>
@@ -58,12 +51,14 @@ export async function DocumentsTable({
             <TableHead className="text-right">{t("columns.size")}</TableHead>
             <TableHead className="text-right">{t("columns.versions")}</TableHead>
             <TableHead>{t("columns.updated")}</TableHead>
-            <TableHead className="w-0" />
+            <TableHead className="w-0">
+              <span className="sr-only">{tCommon("actions")}</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {documents.map((d) => (
-            <TableRow key={d.id}>
+            <TableRow key={d.id} className={visibilityRowCue(d.visibility)}>
               <TableCell className="max-w-64 truncate font-medium">{d.name}</TableCell>
               <TableCell>
                 {canChangeVisibility && d.clientId ? (
@@ -73,14 +68,14 @@ export async function DocumentsTable({
                     <VisibilitySelect value={d.visibility} />
                   </form>
                 ) : (
-                  <VisibilityBadge visibility={d.visibility} />
+                  <VisibilityBadge value={d.visibility} />
                 )}
               </TableCell>
-              <TableCell className="text-right tabular-nums">{formatBytes(d.sizeBytes)}</TableCell>
-              <TableCell className="text-right tabular-nums">
+              <TableCell className="num text-right">{formatBytes(locale, d.sizeBytes)}</TableCell>
+              <TableCell className="num text-right">
                 {tCommon("versions", { count: d.versionCount })}
               </TableCell>
-              <TableCell className="text-muted-foreground">
+              <TableCell className="num text-muted-foreground">
                 {format.dateTime(d.updatedAt, { dateStyle: "medium" })}
               </TableCell>
               <TableCell>
@@ -88,7 +83,7 @@ export async function DocumentsTable({
                   <form action={downloadAction}>
                     <input type="hidden" name="documentId" value={d.id} />
                     <input type="hidden" name="returnTo" value={returnTo} />
-                    <Button type="submit" variant="ghost" size="xs">
+                    <Button type="submit" variant="ghost" size="sm">
                       {t("download")}
                     </Button>
                   </form>
@@ -96,7 +91,7 @@ export async function DocumentsTable({
                     <form action={deleteDocumentAction}>
                       <input type="hidden" name="documentId" value={d.id} />
                       <input type="hidden" name="returnTo" value={returnTo} />
-                      <Button type="submit" variant="destructive" size="xs">
+                      <Button type="submit" variant="destructive" size="sm">
                         {t("delete")}
                       </Button>
                     </form>
@@ -107,6 +102,6 @@ export async function DocumentsTable({
           ))}
         </TableBody>
       </Table>
-    </div>
+    </DataTable>
   );
 }

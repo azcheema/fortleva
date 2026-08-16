@@ -14,6 +14,15 @@
  * client components.
  */
 
+/**
+ * Browser-chrome colours for <meta name="theme-color">, which cannot
+ * read a CSS custom property. These are the only place a colour from
+ * globals.css is written a second time, so src/lib/contrast.test.ts
+ * asserts them equal to --background in each theme.
+ */
+export const THEME_COLOR_LIGHT = "#f9fafb"; // oklch(0.985 0.002 268) = --color-surface-l1
+export const THEME_COLOR_DARK = "#0a0c11"; //  oklch(0.155 0.010 268) = --color-surface-d1
+
 export const THEME_COOKIE = "fl_theme";
 export const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 

@@ -6,8 +6,10 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { AutoForm } from "@/components/auto-form";
+import { Field } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { LOCALES } from "@/i18n/config";
@@ -23,28 +25,6 @@ import {
 
 import { setModuleEnabledAction, updatePreferencesAction } from "./actions";
 
-function Field({
-  id,
-  label,
-  hint,
-  children,
-}: {
-  id: string;
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">
-        {label}
-      </Label>
-      {children}
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
-  );
-}
-
 /** General preferences: every field auto-saves on change (UI.md §5.10). Read-only without settings:edit. */
 export function GeneralPreferencesForm({
   prefs,
@@ -58,7 +38,7 @@ export function GeneralPreferencesForm({
   const ro = !editable;
   return (
     <AutoForm action={updatePreferencesAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <Field id="p-locale" label={t("locale")} hint={t("localeHint")}>
+      <Field htmlFor="p-locale" label={t("locale")} hint={t("localeHint")}>
         <NativeSelect id="p-locale" name="defaultLocale" defaultValue={prefs.defaultLocale} disabled={ro}>
           {LOCALES.map((l) => (
             <option key={l} value={l}>
@@ -67,7 +47,7 @@ export function GeneralPreferencesForm({
           ))}
         </NativeSelect>
       </Field>
-      <Field id="p-tz" label={t("timezone")} hint={t("timezoneHint")}>
+      <Field htmlFor="p-tz" label={t("timezone")} hint={t("timezoneHint")}>
         <NativeSelect id="p-tz" name="timezone" defaultValue={prefs.timezone} disabled={ro}>
           {TIMEZONES.map((z) => (
             <option key={z} value={z}>
@@ -76,7 +56,7 @@ export function GeneralPreferencesForm({
           ))}
         </NativeSelect>
       </Field>
-      <Field id="p-week" label={t("weekStart")}>
+      <Field htmlFor="p-week" label={t("weekStart")}>
         <NativeSelect id="p-week" name="weekStart" defaultValue={prefs.weekStart} disabled={ro}>
           {WEEK_STARTS.map((w) => (
             <option key={w} value={w}>
@@ -85,7 +65,7 @@ export function GeneralPreferencesForm({
           ))}
         </NativeSelect>
       </Field>
-      <Field id="p-duration" label={t("durationStyle")} hint={t("durationStyleHint")}>
+      <Field htmlFor="p-duration" label={t("durationStyle")} hint={t("durationStyleHint")}>
         <NativeSelect id="p-duration" name="durationStyle" defaultValue={prefs.durationStyle} disabled={ro}>
           {DURATION_STYLES.map((d) => (
             <option key={d} value={d}>
@@ -94,7 +74,7 @@ export function GeneralPreferencesForm({
           ))}
         </NativeSelect>
       </Field>
-      <Field id="p-currency" label={t("currency")} hint={t("currencyHint")}>
+      <Field htmlFor="p-currency" label={t("currency")} hint={t("currencyHint")}>
         <NativeSelect id="p-currency" name="currencyDefault" defaultValue={prefs.currencyDefault} disabled={ro}>
           {CURRENCIES.map((c) => (
             <option key={c} value={c}>
@@ -105,15 +85,8 @@ export function GeneralPreferencesForm({
       </Field>
       <div className="flex items-center gap-2 self-end pb-1">
         <input type="hidden" name="showIsoWeekMarker" value="1" />
-        {/* Native checkbox: fires a real change event for the auto-saving form. */}
-        <input
-          id="p-iso"
-          type="checkbox"
-          name="showIsoWeek"
-          defaultChecked={prefs.showIsoWeek}
-          disabled={ro}
-          className="size-4 rounded border-input accent-primary"
-        />
+        {/* Native, not Radix: <AutoForm> saves on a real change event. */}
+        <NativeCheckbox id="p-iso" name="showIsoWeek" defaultChecked={prefs.showIsoWeek} disabled={ro} />
         <Label htmlFor="p-iso" className="font-normal">
           {t("showIsoWeek")}
         </Label>

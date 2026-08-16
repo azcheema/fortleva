@@ -24,8 +24,11 @@ export function TabNav({ tabs, className }: { tabs: TabLink[]; className?: strin
             href={tab.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "shrink-0 border-b-2 border-transparent px-2.5 py-1.5 text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-              active && "border-foreground font-medium text-foreground",
+              // 32px tab, hairline underline. The focus ring is an outline
+              // with a NEGATIVE offset: this nav scrolls horizontally, and a
+              // positive offset would be clipped by the scroll container.
+              "inline-flex h-8 shrink-0 items-center border-b-2 border-transparent px-2.5 text-sm text-muted-foreground transition-[color,border-color] duration-(--dur-instant) ease-out hover:text-foreground focus-visible:rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+              active && "border-primary font-medium text-foreground",
             )}
           >
             {tab.label}

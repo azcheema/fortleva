@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
 import { listAssignableMembers } from "@/clients/service";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -28,40 +28,20 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="flex flex-col gap-6 lg:col-span-2">
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>{t("details")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ProjectDetailsForm project={project} members={members} />
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>{t("internal")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ProjectInternalForm project={project} />
-          </CardContent>
-        </Card>
+        <SectionCard title={t("details")}>
+          <ProjectDetailsForm project={project} members={members} />
+        </SectionCard>
+        <SectionCard title={t("internal")}>
+          <ProjectInternalForm project={project} />
+        </SectionCard>
       </div>
       <div className="flex flex-col gap-6">
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>{t("status")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ProjectStatusControls project={project} />
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>{t("portal")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PortalControls project={project} />
-          </CardContent>
-        </Card>
+        <SectionCard title={t("status")}>
+          <ProjectStatusControls project={project} />
+        </SectionCard>
+        <SectionCard title={t("portal")}>
+          <PortalControls project={project} />
+        </SectionCard>
       </div>
     </div>
   );
