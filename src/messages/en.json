@@ -54,7 +54,8 @@
     "switchWorkspace": "Switch workspace",
     "clients": "Clients",
     "projects": "Projects",
-    "export": "Export"
+    "export": "Export",
+    "design": "Design"
   },
   "shell": {
     "palette": {
@@ -762,6 +763,245 @@
     "backlog": {
       "title": "Tasks arrive with the Work module",
       "description": "The backlog — every open task by rank — lands in the next phase."
+    }
+  },
+  "states": {
+    "clientStatus": {
+      "ACTIVE": "Active",
+      "ARCHIVED": "Archived"
+    },
+    "projectStatus": {
+      "PLANNED": "Planned",
+      "ACTIVE": "Active",
+      "PAUSED": "Paused",
+      "COMPLETED": "Completed",
+      "CANCELLED": "Cancelled",
+      "ARCHIVED": "Archived"
+    },
+    "milestoneStatus": {
+      "PLANNED": "Planned",
+      "IN_PROGRESS": "In progress",
+      "PAUSED": "Paused",
+      "DONE": "Done",
+      "CANCELLED": "Cancelled"
+    },
+    "versionStatus": {
+      "DRAFT": "Draft",
+      "SHIPPED": "Shipped"
+    },
+    "approvalStatus": {
+      "NOT_REQUESTED": "Not requested",
+      "PENDING": "Awaiting review",
+      "APPROVED": "Approved",
+      "CHANGES_REQUESTED": "Changes requested"
+    },
+    "memberStatus": {
+      "ACTIVE": "Active",
+      "SUSPENDED": "Suspended"
+    },
+    "inviteStatus": {
+      "PENDING": "Pending",
+      "ACCEPTED": "Accepted",
+      "EXPIRED": "Expired",
+      "REVOKED": "Revoked"
+    },
+    "serviceStatus": {
+      "ACTIVE": "Active",
+      "PAUSED": "Paused",
+      "ENDED": "Ended"
+    },
+    "portalStatus": {
+      "NO_ACCESS": "No portal access",
+      "INVITED": "Invited",
+      "ACTIVE": "Portal active",
+      "SUSPENDED": "Suspended",
+      "REVOKED": "Revoked"
+    },
+    "stateCategory": {
+      "BACKLOG": "Backlog",
+      "TODO": "To do",
+      "IN_PROGRESS": "In progress",
+      "DONE": "Done",
+      "CANCELLED": "Cancelled",
+      "TRIAGE": "Triage"
+    },
+    "projectHealth": {
+      "ON_TRACK": "On track",
+      "AT_RISK": "At risk",
+      "OFF_TRACK": "Off track",
+      "ON_HOLD": "On hold",
+      "COMPLETE": "Complete"
+    },
+    "workItemKind": {
+      "TASK": "Task",
+      "BUG": "Bug",
+      "REQUEST": "Request"
+    },
+    "workItemType": {
+      "EPIC": "Epic",
+      "TASK": "Task",
+      "SUBTASK": "Subtask"
+    },
+    "priority": {
+      "NONE": "No priority",
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "URGENT": "Urgent"
+    }
+  },
+  "theme": {
+    "label": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark",
+    "hint": "Follows your device until you choose."
+  },
+  "design": {
+    "title": "Design system",
+    "shortTitle": "Design",
+    "description": "Every token and every state, rendered in the theme you are looking at. This page is the release gate: if two things here are not instantly distinguishable, the pass is not done.",
+    "devOnly": "Development only — this page returns 404 in production.",
+    "sections": {
+      "color": "Colour tokens",
+      "colorHint": "Measured against the surface each token is used on. AA means the pair meets WCAG 2.2 at its required floor: 4.5:1 for text, 3:1 for non-text UI.",
+      "ramps": "Primitive ramps",
+      "rampsHint": "Every step is anchored to a contrast target on white and its chroma clamped to 93% of what the gamut allows at that lightness.",
+      "surfaces": "Surface ladder",
+      "surfacesHint": "Depth is a surface step plus a hairline, never a shadow. In dark the ladder reverses: higher surfaces are lighter.",
+      "type": "Typography",
+      "typeHint": "Inter for the interface, Geist Mono for keys and figures — both self-hosted, no network call.",
+      "controls": "Controls",
+      "states": "States",
+      "statesHint": "Tone, icon and shape come from one table. Hue is never the only signal — read this section in greyscale and nothing should become ambiguous.",
+      "visibility": "Visibility",
+      "entities": "Entity colours",
+      "entitiesHint": "Twelve frozen hues, picked from the immutable id. Identity, never status.",
+      "charts": "Chart series",
+      "feedback": "Feedback",
+      "elevation": "Elevation and motion",
+      "density": "Density"
+    },
+    "columns": {
+      "token": "Token",
+      "value": "Value",
+      "sample": "Sample",
+      "contrast": "Contrast",
+      "against": "Against",
+      "role": "Role",
+      "size": "Size",
+      "state": "State",
+      "name": "Name",
+      "status": "Status",
+      "visibility": "Visibility",
+      "hours": "Hours"
+    },
+    "pass": "AA",
+    "fail": "Below AA",
+    "ratio": "{value}:1",
+    "typeSample": "The quick brown fox jumps over the lazy dog",
+    "numeralSample": "0123456789 · ACME-12 · 1 234 567,50",
+    "typeRoles": {
+      "display": "Display — auth pages",
+      "pageTitle": "Page title (h1)",
+      "dialog": "Dialog / large heading",
+      "section": "Section title (h2)",
+      "subsection": "Subsection (h3)",
+      "body": "Body, table cell, control label",
+      "bodyStrong": "Body strong",
+      "secondary": "Secondary / hint",
+      "caption": "Caption, badge, kbd",
+      "tableHeader": "Table header, eyebrow",
+      "code": "Code, project key"
+    },
+    "controls": {
+      "buttons": "Buttons",
+      "sizes": "Sizes",
+      "fields": "Fields",
+      "toggles": "Checkbox and switch",
+      "badges": "Badges",
+      "menus": "Menus and overlays",
+      "rest": "Rest",
+      "focus": "Focus ring",
+      "disabled": "Disabled",
+      "invalid": "Invalid",
+      "hoverNote": "Hover and press are 80ms colour changes; press adds a 1px downward nudge.",
+      "label": "Label",
+      "placeholder": "Type here…",
+      "invalidHint": "That value is not accepted.",
+      "hint": "A short hint under the field.",
+      "openMenu": "Open menu",
+      "menuItem": "Menu item",
+      "menuDestructive": "Delete",
+      "tooltipTrigger": "Hover me",
+      "tooltipText": "Hover me",
+      "dialogTrigger": "Open dialog",
+      "dialogTitle": "A dialog",
+      "dialogBody": "Dialogs float, so they get the only large shadow in the product.",
+      "selectPlaceholder": "Choose…",
+      "optionA": "First option",
+      "optionB": "Second option"
+    },
+    "visibilityHint": "The safety-critical pair. They differ in fill, icon, shape, weight and border — five channels, so that no eye, no screen and no colour-vision type can confuse them.",
+    "visibilityRow": "A client-visible row also carries a 2px leading bar.",
+    "simulation": {
+      "normal": "Normal vision",
+      "protanopia": "Protanopia",
+      "deuteranopia": "Deuteranopia",
+      "tritanopia": "Tritanopia",
+      "greyscale": "Greyscale"
+    },
+    "entitySamples": {
+      "one": "Acme AB",
+      "two": "Nordkust Design",
+      "three": "Väderö Bygg",
+      "four": "Sjöberg & Partner"
+    },
+    "chartsHint": "Five series, each at least 3:1 against the canvas and at least 0.10 apart in perceptual distance under normal, protan, deutan and tritan vision.",
+    "feedbackItems": {
+      "toast": "Show a toast",
+      "toastMessage": "Saved.",
+      "empty": "Empty state",
+      "emptyTitle": "Add the first client",
+      "emptyBody": "Type a company name and press Enter — everything else can be filled in later.",
+      "filteredTitle": "No clients match",
+      "filteredBody": "Nothing here fits the current filter. Clear it to see everything again.",
+      "forbiddenTitle": "No clients in your scope",
+      "forbiddenBody": "Ask a manager to assign you to a client or project.",
+      "callouts": "Callouts",
+      "calloutInfo": "Backup codes are shown once.",
+      "calloutInfoBody": "Store them in your password manager now — they cannot be shown again.",
+      "calloutCaution": "This client is archived.",
+      "calloutCautionBody": "Records are read-only until it is restored.",
+      "calloutDanger": "The upload did not finish.",
+      "calloutDangerBody": "Nothing was saved. Try again, or pick a smaller file.",
+      "calloutSuccess": "Export ready.",
+      "calloutSuccessBody": "It appears below and under Files.",
+      "messages": "Form results",
+      "messageOk": "Saved.",
+      "messageError": "That key is already used by another project.",
+      "keyboard": "Keyboard hints",
+      "skeleton": "Loading shape",
+      "metrics": "Metric tiles",
+      "metricProjects": "Open projects",
+      "metricHours": "Hours this week",
+      "metricUnbilled": "Unbilled"
+    },
+    "elevationItems": {
+      "shadow1": "Dropdown, popover, tooltip",
+      "shadow2": "Command palette, toast",
+      "shadow3": "Dialog, sheet",
+      "anchored": "Anchored: hairline only",
+      "motion": "Durations",
+      "instant": "Instant — hover, press",
+      "fast": "Fast — popover, tooltip",
+      "base": "Base — dialog, disclosure",
+      "slow": "Slow — sheet",
+      "reducedMotion": "Under prefers-reduced-motion every duration is clamped to 1ms — never removed, or Radix exits would never finish."
+    },
+    "densityItems": {
+      "default": "Default — 36px rows",
+      "compact": "Compact — 32px rows"
     }
   }
 }

@@ -16,6 +16,8 @@ import { useState, useSyncExternalStore, useTransition } from "react";
 
 import type { NavEntry } from "@/app/(tenant)/(authed)/nav";
 import { authClient } from "@/auth/client";
+import { KeyboardHint } from "@/components/semantic/keyboard-hint";
+import { ThemeToggle } from "@/components/semantic/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,7 +43,7 @@ import { CommandPalette, flatNav } from "./command-palette";
 import { NavIcon } from "./nav-icon";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { TimerPillSlot } from "./timer-pill-slot";
-import { isApplePlatform, useGlobalHotkeys } from "./use-hotkeys";
+import { useGlobalHotkeys } from "./use-hotkeys";
 
 const RAIL_KEY = "flv.rail.collapsed";
 const RAIL_EVENT = "flv:rail";
@@ -74,11 +76,13 @@ const isActive = (pathname: string, href: string): boolean =>
   pathname === href || pathname.startsWith(`${href}/`);
 
 /**
- * Member-plane app shell (UI.md §3, ARC-15): collapsible left rail
- * (icons only < 1280 px or when collapsed), header with tenant name +
- * timer-pill slot + palette/keymap/user menu, mobile bottom tabs
- * (Home / Projects / Clients / More), ⌘K palette and `?` overlay. Data-driven from
- * the nav registry — the layout has already filtered it by permission.
+ * Member-plane app shell (UI.md §3, ARC-15). The rail RECEDES — it is
+ * darker than the canvas in both themes — and it is collapsible at
+ * every breakpoint from 768px up, not only above 1280px, so the
+ * 768-1280 band is no longer permanently icon-only with no escape.
+ *
+ * The active nav item carries three channels at once: aria-current, a
+ * 2px indicator bar and a colour change.
  */
 export function AppShell({
   nav,
@@ -133,8 +137,8 @@ export function AppShell({
     });
   };
 
-  const modKey = isApplePlatform() ? "⌘K" : "Ctrl K";
   const tabs = nav.filter((e) => e.mobileTab);
+  const labelClass = collapsed ? "hidden" : "hidden md:inline";
 
   const railLink = (entry: NavEntry, depth = 0) => {
     const active = isActive(pathname, entry.href);
@@ -144,25 +148,33 @@ export function AppShell({
         href={entry.href}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "flex h-8 items-center gap-2 rounded-md px-2 text-sm text-foreground/80 hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-          active && "bg-muted font-medium text-foreground",
-          depth > 0 && "h-7 text-[0.8rem]",
+          "relative flex h-8 items-center gap-2 rounded-md px-2 text-sm text-sidebar-foreground transition-colors duration-(--dur-instant) ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          active &&
+            "bg-sidebar-accent font-medium text-sidebar-accent-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary",
+          depth > 0 && "h-7 text-xs",
         )}
       >
-        <NavIcon name={entry.icon} className={cn("size-4 shrink-0", depth > 0 && "size-3.5")} />
-        <span className={cn("truncate", collapsed ? "hidden" : "hidden xl:inline")}>{label}</span>
+        <NavIcon
+          name={entry.icon}
+          className={cn(
+            "size-4 shrink-0",
+            depth > 0 && "size-3.5",
+            active && "text-sidebar-primary",
+          )}
+        />
+        <span className={cn("truncate", labelClass)}>{label}</span>
       </Link>
     );
     return (
       <li key={entry.id}>
         <Tooltip>
           <TooltipTrigger asChild>{link}</TooltipTrigger>
-          <TooltipContent side="right" className={cn(!collapsed && "xl:hidden")}>
+          <TooltipContent side="right" className={cn(!collapsed && "md:hidden")}>
             {label}
           </TooltipContent>
         </Tooltip>
         {entry.children ? (
-          <ul className={cn("mt-0.5 flex flex-col gap-0.5", collapsed ? "pl-0" : "xl:pl-4")}>
+          <ul className={cn("mt-0.5 flex flex-col gap-0.5", collapsed ? "pl-0" : "md:pl-4")}>
             {entry.children.map((c) => railLink(c, depth + 1))}
           </ul>
         ) : null}
@@ -177,9 +189,9 @@ export function AppShell({
         onClick={() => setSheetOpen(false)}
         aria-current={isActive(pathname, entry.href) ? "page" : undefined}
         className={cn(
-          "flex h-10 items-center gap-3 rounded-md px-3 text-sm hover:bg-muted",
-          isActive(pathname, entry.href) && "bg-muted font-medium",
-          depth > 0 && "h-9 pl-9 text-[0.8rem]",
+          "flex h-10 items-center gap-3 rounded-md px-3 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          isActive(pathname, entry.href) && "bg-accent font-medium",
+          depth > 0 && "h-9 pl-9 text-xs",
         )}
       >
         <NavIcon name={entry.icon} className="size-4" />
@@ -196,20 +208,28 @@ export function AppShell({
       {/* Desktop rail */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-sidebar px-2 py-3 md:flex",
-          collapsed ? "w-12" : "w-12 xl:w-56",
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2 py-3 text-sidebar-foreground md:flex",
+          collapsed ? "w-(--rail-w-collapsed)" : "w-(--rail-w-collapsed) md:w-(--rail-w)",
         )}
       >
-        <div className={cn("flex items-center px-1", collapsed ? "justify-center" : "xl:justify-between")}>
+        <div className={cn("flex items-center px-1", collapsed ? "justify-center" : "md:justify-between")}>
           <Link
             href="/home"
-            className={cn("truncate text-sm font-semibold", collapsed ? "hidden" : "hidden xl:inline")}
+            className={cn(
+              "truncate rounded-sm text-sm font-semibold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+              labelClass,
+            )}
           >
             {tCommon("appName")}
           </Link>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={toggleRail} aria-label={collapsed ? t("expand") : t("collapse")}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={toggleRail}
+                aria-label={collapsed ? t("expand") : t("collapse")}
+              >
                 {collapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
               </Button>
             </TooltipTrigger>
@@ -266,7 +286,7 @@ export function AppShell({
             >
               <SearchIcon />
               <span>{tShell("palette.title")}</span>
-              <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">{modKey}</kbd>
+              <KeyboardHint keys={["mod", "K"]} />
             </Button>
             <Button
               variant="ghost"
@@ -294,15 +314,17 @@ export function AppShell({
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-1.5 px-1.5">
                   <Avatar className="size-6">
-                    <AvatarFallback className="text-[10px]">{initials(user.name)}</AvatarFallback>
+                    <AvatarFallback>{initials(user.name)}</AvatarFallback>
                   </Avatar>
                   <ChevronDownIcon className="size-3.5 text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="flex flex-col">
-                  <span className="truncate font-medium">{user.name}</span>
-                  <span className="truncate text-xs font-normal text-muted-foreground">{user.email}</span>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuLabel className="flex flex-col gap-0.5 normal-case tracking-normal">
+                  <span className="truncate text-sm font-medium text-foreground">{user.name}</span>
+                  <span className="truncate text-xs font-normal text-muted-foreground">
+                    {user.email}
+                  </span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
@@ -314,6 +336,10 @@ export function AppShell({
                 <DropdownMenuItem asChild>
                   <Link href="/dashboard">{t("switchWorkspace")}</Link>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <div className="px-2 py-1.5">
+                  <ThemeToggle className="w-full" />
+                </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={signOut}>
                   <LogOutIcon />
@@ -340,8 +366,9 @@ export function AppShell({
             href={e.href}
             aria-current={isActive(pathname, e.href) ? "page" : undefined}
             className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-muted-foreground",
-              isActive(pathname, e.href) && "text-foreground",
+              "relative flex flex-1 flex-col items-center justify-center gap-0.5 text-2xs text-muted-foreground",
+              isActive(pathname, e.href) &&
+                "font-semibold text-foreground before:absolute before:inset-x-4 before:top-0 before:h-0.5 before:rounded-full before:bg-primary",
             )}
           >
             <NavIcon name={e.icon} className="size-5" />
@@ -351,7 +378,7 @@ export function AppShell({
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
-          className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-muted-foreground"
+          className="flex flex-1 flex-col items-center justify-center gap-0.5 text-2xs text-muted-foreground"
         >
           <MenuIcon className="size-5" />
           {t("more")}

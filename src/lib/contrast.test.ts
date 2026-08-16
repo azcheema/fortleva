@@ -1,0 +1,278 @@
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+import { deltaEOk, simulateCvd, VISION_TYPES, type Rgb } from "./color";
+import { loadDesignTokens, type ThemeName } from "./css-tokens";
+
+/**
+ * THE RELEASE GATE (DESIGN SPEC §2.7 and §9).
+ *
+ * This test parses src/app/globals.css — the file that actually ships —
+ * rather than a copy of the numbers, so it fails the moment somebody
+ * lowers a contrast in the stylesheet. It resolves var() chains the way
+ * the cascade does, converts OKLCH -> OKLab -> LMS -> clamped linear
+ * sRGB -> relative luminance, and asserts a declarative table in BOTH
+ * themes.
+ *
+ * When a row here fails, the fix is the token, never the threshold.
+ */
+
+const TOKENS = loadDesignTokens(fileURLToPath(new URL("../app/globals.css", import.meta.url)));
+const THEMES: ThemeName[] = ["light", "dark"];
+
+const round = (n: number) => Math.round(n * 100) / 100;
+
+function ratio(a: string, b: string, theme: ThemeName): number {
+  const value = TOKENS.ratio(a, b, theme);
+  if (value === null) throw new Error(`${theme}: ${a} or ${b} is not a colour this gate can measure`);
+  return round(value);
+}
+
+function rgb(name: string, theme: ThemeName): Rgb {
+  const value = TOKENS.linear(name, theme);
+  if (value === null) throw new Error(`${theme}: ${name} is not a colour`);
+  return value;
+}
+
+const lightness = (name: string, theme: ThemeName): number => {
+  const lch = TOKENS.color(name, theme);
+  if (!lch) throw new Error(`${theme}: ${name} is not a colour`);
+  return lch.l;
+};
+
+/* ------------------------------------------------------------------ *
+ * The table
+ * ------------------------------------------------------------------ */
+
+/** Surfaces that body text and muted text actually render on. */
+const TEXT_SURFACES = ["--background", "--card", "--popover", "--muted", "--sidebar", "--accent"];
+const TONES = ["neutral", "brand", "caution", "success", "danger"] as const;
+const CHARTS = [1, 2, 3, 4, 5].map((n) => `--chart-${n}`);
+const ENTITIES = Array.from({ length: 12 }, (_, i) => `--entity-${i}`);
+
+/** Surfaces a dot or a series can be drawn on, per theme. */
+const NON_TEXT_SURFACES: Record<ThemeName, string[]> = {
+  light: ["--background", "--card", "--sidebar", "--muted", "--accent"],
+  dark: ["--background", "--card", "--popover", "--accent"],
+};
+
+const AA_TEXT = 4.5;
+const AA_NON_TEXT = 3;
+
+describe.each(THEMES)("%s theme — text contrast (WCAG 2.2 SC 1.4.3)", (theme) => {
+  it.each(TEXT_SURFACES)(`--foreground on %s is >= ${AA_TEXT}:1`, (surface) => {
+    expect(ratio("--foreground", surface, theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  // Placeholder text is --muted-foreground, and SC 1.4.3 grants
+  // placeholders no exemption whatsoever.
+  it.each(TEXT_SURFACES)(`--muted-foreground on %s is >= ${AA_TEXT}:1`, (surface) => {
+    expect(ratio("--muted-foreground", surface, theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it.each(TONES)("--muted-foreground on the %s tint is >= 4.5:1", (tone) => {
+    expect(ratio("--muted-foreground", `--tone-${tone}-bg`, theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("--sidebar-foreground on --sidebar is >= 4.5:1", () => {
+    expect(ratio("--sidebar-foreground", "--sidebar", theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("--secondary-foreground on --secondary is >= 4.5:1", () => {
+    expect(ratio("--secondary-foreground", "--secondary", theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it.each(TONES)("the %s chip's label on its own fill is >= 4.5:1", (tone) => {
+    expect(ratio(`--tone-${tone}-fg`, `--tone-${tone}-bg`, theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it.each([
+    ["--primary-foreground", "--primary"],
+    ["--primary-foreground", "--primary-hover"],
+    ["--destructive-foreground", "--destructive"],
+    ["--destructive-foreground", "--destructive-hover"],
+    ["--success-foreground", "--success"],
+    ["--warning-foreground", "--warning"],
+    ["--sidebar-primary-foreground", "--sidebar-primary"],
+    ["--background", "--foreground"], // the inverted tooltip surface
+  ])("%s on %s is >= 4.5:1", (fg, bg) => {
+    expect(ratio(fg, bg, theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("--vis-client-fg on --vis-client is >= 4.5:1 (safety-critical)", () => {
+    expect(ratio("--vis-client-fg", "--vis-client", theme)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+});
+
+describe.each(THEMES)("%s theme — non-text contrast (WCAG 2.2 SC 1.4.11)", (theme) => {
+  it.each(["--background", "--card", "--popover", "--muted"])(
+    `--input boundary on %s is >= ${AA_NON_TEXT}:1`,
+    (surface) => {
+      expect(ratio("--input", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    },
+  );
+
+  // The focus outline sits in the 2px offset gap, so what it must beat
+  // is the SURFACE behind the control, not the control's own fill.
+  it.each(["--background", "--card", "--popover", "--sidebar"])(
+    `--ring on %s is >= ${AA_NON_TEXT}:1`,
+    (surface) => {
+      expect(ratio("--ring", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    },
+  );
+
+  it.each(["--muted", "--card", "--background"])(
+    "--fg-disabled on %s is >= 3:1 (disabled is never conveyed by dimming alone)",
+    (surface) => {
+      expect(ratio("--fg-disabled", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    },
+  );
+
+  it("--vis-client-border on --card is >= 3:1", () => {
+    expect(ratio("--vis-client-border", "--card", theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  it.each(CHARTS)(`%s is >= ${AA_NON_TEXT}:1 on every surface it plots on`, (series) => {
+    for (const surface of NON_TEXT_SURFACES[theme]) {
+      expect(ratio(series, surface, theme), `${series} on ${surface}`).toBeGreaterThanOrEqual(
+        AA_NON_TEXT,
+      );
+    }
+  });
+
+  it.each(ENTITIES)(`%s is >= ${AA_NON_TEXT}:1 on every surface it appears on`, (entity) => {
+    for (const surface of NON_TEXT_SURFACES[theme]) {
+      expect(ratio(entity, surface, theme), `${entity} on ${surface}`).toBeGreaterThanOrEqual(
+        AA_NON_TEXT,
+      );
+    }
+  });
+
+  // The initials are decorative (aria-hidden, the name carries the
+  // meaning) but they still have to be readable at 11px.
+  it.each(ENTITIES)("--entity-ink on %s is >= 4:1", (entity) => {
+    expect(ratio("--entity-ink", entity, theme)).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("dark theme — elevation is lightness, not shadow", () => {
+  it.each([
+    ["--sidebar", "--background"],
+    ["--background", "--card"],
+    ["--card", "--popover"],
+    ["--popover", "--accent"],
+  ])("delta-L(%s, %s) is >= 0.04", (lower, upper) => {
+    const delta = Math.abs(lightness(upper, "dark") - lightness(lower, "dark"));
+    expect(round(delta)).toBeGreaterThanOrEqual(0.04);
+  });
+
+  it("gets lighter with height, never darker", () => {
+    const ladder = ["--sidebar", "--background", "--card", "--popover", "--accent"].map((n) =>
+      lightness(n, "dark"),
+    );
+    for (let i = 1; i < ladder.length; i++) {
+      expect(ladder[i]!, `step ${i}`).toBeGreaterThan(ladder[i - 1]!);
+    }
+  });
+});
+
+describe("colour-vision deficiency (Machado 2009, severity 1.0)", () => {
+  /**
+   * The internal chip is transparent, so what a reader actually
+   * compares is the CLIENT-VISIBLE fill against the surface showing
+   * through the internal one. 0.15 is the floor; the shipped pair
+   * measures 0.25-0.29 in light and 0.54-0.59 in dark.
+   */
+  it.each(THEMES)(
+    "%s: the two visibility fills stay >= 0.15 apart for every vision type",
+    (theme) => {
+      for (const vision of VISION_TYPES) {
+        const client = simulateCvd(rgb("--vis-client", theme), vision);
+        const internal = simulateCvd(rgb("--card", theme), vision);
+        expect(round(deltaEOk(client, internal)), `${theme}/${vision}`).toBeGreaterThanOrEqual(0.15);
+      }
+    },
+  );
+
+  it.each(THEMES)("%s: client-visible never collapses onto the brand colour", (theme) => {
+    for (const vision of VISION_TYPES) {
+      const client = simulateCvd(rgb("--vis-client", theme), vision);
+      const primary = simulateCvd(rgb("--primary", theme), vision);
+      expect(round(deltaEOk(client, primary)), `${theme}/${vision}`).toBeGreaterThanOrEqual(0.15);
+    }
+  });
+
+  it.each(THEMES)(
+    "%s: every pair of chart series stays >= 0.10 apart for every vision type",
+    (theme) => {
+      for (const vision of VISION_TYPES) {
+        for (let i = 0; i < CHARTS.length; i++) {
+          for (let j = i + 1; j < CHARTS.length; j++) {
+            const a = simulateCvd(rgb(CHARTS[i]!, theme), vision);
+            const b = simulateCvd(rgb(CHARTS[j]!, theme), vision);
+            expect(
+              round(deltaEOk(a, b)),
+              `${theme}/${vision}: ${CHARTS[i]} vs ${CHARTS[j]}`,
+            ).toBeGreaterThanOrEqual(0.1);
+          }
+        }
+      }
+    },
+  );
+});
+
+describe("token hygiene", () => {
+  it("has no alpha borders: they cannot be statically measured", () => {
+    for (const theme of THEMES) {
+      for (const name of ["--border", "--input", "--sidebar-border", "--ring"]) {
+        expect(TOKENS.color(name, theme)?.alpha, `${theme}/${name}`).toBe(1);
+      }
+    }
+  });
+
+  it("keeps the sidebar's active colour on the brand, not on a preset leftover", () => {
+    for (const theme of THEMES) {
+      expect(TOKENS.resolve("--sidebar-primary", theme)).toBe(TOKENS.resolve("--primary", theme));
+    }
+  });
+
+  it("keeps the sidebar receding: it is darker than the canvas in both themes", () => {
+    for (const theme of THEMES) {
+      expect(lightness("--sidebar", theme)).toBeLessThan(lightness("--background", theme));
+    }
+  });
+
+  it("keeps the client-visible fill identical in both themes", () => {
+    expect(TOKENS.resolve("--vis-client", "dark")).toBe(TOKENS.resolve("--vis-client", "light"));
+    expect(TOKENS.resolve("--vis-client-fg", "dark")).toBe(
+      TOKENS.resolve("--vis-client-fg", "light"),
+    );
+  });
+
+  it("keeps --ring, --destructive and --vis-* out of the tenant hue seam", () => {
+    for (const name of ["--ring", "--destructive", "--success", "--warning", "--vis-client"]) {
+      for (const theme of THEMES) {
+        const raw = TOKENS.vars[theme].get(name) ?? "";
+        const chased = raw.startsWith("var(")
+          ? (TOKENS.vars[theme].get(raw.slice(4, -1)) ?? raw)
+          : raw;
+        expect(chased, `${theme}/${name}`).not.toContain("--brand-h");
+      }
+    }
+  });
+
+  it("defines every colour role in both themes", () => {
+    for (const name of TOKENS.vars.light.keys()) {
+      if (!name.startsWith("--")) continue;
+      let isColour = false;
+      try {
+        isColour = TOKENS.color(name, "light") !== null;
+      } catch {
+        continue;
+      }
+      if (!isColour) continue;
+      expect(() => TOKENS.color(name, "dark"), `dark/${name}`).not.toThrow();
+      expect(TOKENS.color(name, "dark"), `dark/${name}`).not.toBeNull();
+    }
+  });
+});

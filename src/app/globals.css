@@ -2,134 +2,576 @@
 @import "tw-animate-css";
 @import "./ui-base.css";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * Fortleva design system v1.0 — token layer.
+ *
+ * Three layers, in this order, and the order is load-bearing:
+ *   1. PRIMITIVES  — @theme: the OKLCH ramps and the surface ladder.
+ *   2. ROLES       — :root / .dark: plain custom properties. NOT in
+ *                    @theme, or dark mode silently stops working.
+ *   3. BRIDGE      — @theme inline: maps --color-<name> to var(--name)
+ *                    so Tailwind utilities resolve through the role at
+ *                    use time rather than baking the light value in.
+ *
+ * Every step of every ramp is anchored to a contrast target on white
+ * (500 = 3.0:1, 600 = 4.6:1, 700 = 6.0:1, 800 = 8.0:1, 900 = 10.5:1,
+ * 950 = 15.5:1) and every chroma is clamped to 0.93 x maxC(L, h).
+ * src/lib/contrast.test.ts parses THIS FILE and fails the build if a
+ * ratio ever drops below its WCAG 2.2 AA floor, in either theme.
+ *
+ * Phase 7 tenant-branding seam: brand and neutral hues are written as
+ * var(--brand-h, 268), so one inline style="--brand-h: 250" on <html>
+ * re-hues the chrome. --ring, --destructive, --success, --warning,
+ * --vis-* and --chart-* deliberately hard-code their hue: a tenant must
+ * never be able to make their primary button read as "delete".
+ */
 
-@theme inline {
-    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-    --font-heading: var(--font-sans);
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------- *
+ * 1. PRIMITIVES
+ * ---------------------------------------------------------------- */
+
+@theme static {
+  --brand-h: 268;
+
+  /* Neutral — a hairline of brand chroma; flat greys are the signature
+     of an untouched preset. */
+  --color-slate-50: oklch(0.985 0.002 var(--brand-h));
+  --color-slate-100: oklch(0.968 0.003 var(--brand-h));
+  --color-slate-200: oklch(0.93 0.005 var(--brand-h));
+  --color-slate-300: oklch(0.882 0.007 var(--brand-h));
+  --color-slate-400: oklch(0.795 0.01 var(--brand-h));
+  --color-slate-500: oklch(0.67 0.013 var(--brand-h));
+  --color-slate-600: oklch(0.535 0.014 var(--brand-h));
+  --color-slate-700: oklch(0.468 0.014 var(--brand-h));
+  --color-slate-800: oklch(0.356 0.012 var(--brand-h));
+  --color-slate-900: oklch(0.262 0.011 var(--brand-h));
+  --color-slate-950: oklch(0.18 0.01 var(--brand-h));
+
+  /* Surface ladder — separate from the text ramp so elevation is
+     explicit. Dark steps are 0.040 / 0.050 / 0.040 / 0.055: the
+     contract there is delta-L >= 0.04, not a contrast ratio. */
+  --color-surface-l0: oklch(0.955 0.004 var(--brand-h));
+  --color-surface-l1: oklch(0.985 0.002 var(--brand-h));
+  --color-surface-l2: oklch(1 0 0);
+  --color-surface-d0: oklch(0.115 0.009 var(--brand-h));
+  --color-surface-d1: oklch(0.155 0.01 var(--brand-h));
+  --color-surface-d2: oklch(0.205 0.011 var(--brand-h));
+  --color-surface-d3: oklch(0.245 0.012 var(--brand-h));
+  --color-surface-d4: oklch(0.3 0.012 var(--brand-h));
+
+  /* Brand — indigo, hue 268. Deep blue with a violet lean: permanent
+     at 700-950, present at 500-600, never collapses to grey under any
+     CVD. (Teal was measured and rejected: anchored to 4.6:1 it caps at
+     chroma 0.088 and lands 0.020 from grey under deuteranopia.) */
+  --color-indigo-100: oklch(0.961 0.017 var(--brand-h));
+  --color-indigo-200: oklch(0.917 0.037 var(--brand-h));
+  --color-indigo-300: oklch(0.882 0.053 var(--brand-h));
+  --color-indigo-400: oklch(0.769 0.109 var(--brand-h));
+  --color-indigo-500: oklch(0.676 0.158 var(--brand-h));
+  --color-indigo-600: oklch(0.575 0.205 var(--brand-h));
+  --color-indigo-700: oklch(0.512 0.191 var(--brand-h));
+  --color-indigo-800: oklch(0.444 0.17 var(--brand-h));
+  --color-indigo-950: oklch(0.268 0.107 var(--brand-h));
+
+  /* Semantics. Hues are fixed: 25 danger, 70 caution / client-visible,
+     150 success. No blue and no violet ramp — info uses brand tints
+     plus a glyph, because info-blue and brand-indigo are 0.067 apart
+     under deuteranopia and the extra hue costs a reserved band. */
+  --color-red-100: oklch(0.956 0.024 25);
+  --color-red-200: oklch(0.906 0.048 25);
+  --color-red-300: oklch(0.882 0.058 25);
+  --color-red-400: oklch(0.78 0.119 25);
+  --color-red-600: oklch(0.589 0.215 25);
+  --color-red-800: oklch(0.421 0.152 25);
+  --color-red-950: oklch(0.254 0.084 25);
+
+  --color-amber-100: oklch(0.958 0.028 70);
+  --color-amber-200: oklch(0.912 0.062 70);
+  --color-amber-300: oklch(0.882 0.08 70);
+  --color-amber-400: oklch(0.772 0.125 70);
+  --color-amber-600: oklch(0.569 0.115 70);
+  --color-amber-800: oklch(0.421 0.087 70);
+  --color-amber-950: oklch(0.264 0.054 70);
+
+  --color-green-100: oklch(0.956 0.04 150);
+  --color-green-200: oklch(0.91 0.072 150);
+  --color-green-300: oklch(0.882 0.08 150);
+  --color-green-400: oklch(0.752 0.133 150);
+  --color-green-600: oklch(0.548 0.14 150);
+  --color-green-800: oklch(0.421 0.108 150);
+  --color-green-950: oklch(0.254 0.065 150);
+
+  /* Type. NEVER name a next/font variable --font-sans: it would
+     self-reference this key and silently resolve to nothing. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* Scale. Bidirectional tracking from Inter's own metric curve
+     (-0.0223 + 0.185 * e^(-0.1745 * px)): negative above 16px, zero at
+     13-14px, positive below 12px. Weight is capped at 600 product-wide;
+     700 and 300 do not exist here. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 0.875rem;
+  --text-2xs--letter-spacing: 0.005em;
+  --text-2xs--font-weight: 500;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-xs--letter-spacing: 0em;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-sm--letter-spacing: 0em;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-base--letter-spacing: -0.006em;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.375rem;
+  --text-lg--letter-spacing: -0.011em;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.75rem;
+  --text-xl--letter-spacing: -0.018em;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-2xl--letter-spacing: -0.0195em;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-3xl--letter-spacing: -0.021em;
+
+  /* Shape — explicit integers, not a multiplicative scale. Nothing
+     above 12px. Cards, dialogs, popovers and menus use --radius-card. */
+  --radius: 8px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-card: 10px;
+
+  /* Motion. Exits run at ~2/3 the enter duration. */
+  --dur-instant: 80ms;
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0, 0.38, 0.9);
+  --ease-entrance: cubic-bezier(0, 0, 0.38, 0.9);
+  --ease-exit: cubic-bezier(0.2, 0, 1, 0.9);
+
+  /* Frame */
+  --content-form: 720px;
+  --content-default: 1080px;
+  --content-wide: 1440px;
+  --header-h: 48px;
+  --rail-w: 224px;
+  --rail-w-collapsed: 48px;
 }
+
+/* ---------------------------------------------------------------- *
+ * 2. ROLES — light
+ * ---------------------------------------------------------------- */
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.5rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  color-scheme: light;
+
+  --background: var(--color-surface-l1);
+  --foreground: var(--color-slate-950); /* 18.0:1 on canvas */
+  --card: var(--color-surface-l2); /* the card is the brightest light surface */
+  --card-foreground: var(--foreground);
+  --popover: var(--color-surface-l2);
+  --popover-foreground: var(--foreground);
+
+  --muted: var(--color-slate-100);
+  /* 5.28 card / 5.06 canvas / 4.82 muted / 4.63 sidebar / >=4.60 on every -100 tint */
+  --muted-foreground: oklch(0.53 0.014 var(--brand-h));
+
+  --secondary: var(--color-slate-100);
+  --secondary-foreground: var(--color-slate-900);
+
+  /* --accent is the HOVER SURFACE, not the brand. */
+  --accent: var(--color-slate-100);
+  --accent-foreground: var(--foreground);
+
+  --primary: var(--color-indigo-600); /* 4.59:1 on white */
+  --primary-foreground: oklch(0.995 0.002 var(--brand-h)); /* 4.53:1 */
+  --primary-hover: oklch(0.53 0.205 var(--brand-h));
+
+  --destructive: var(--color-red-600); /* white label 4.60:1 */
+  --destructive-foreground: oklch(1 0 0);
+  --destructive-hover: oklch(0.544 0.215 25);
+  --success: var(--color-green-600);
+  --success-foreground: oklch(1 0 0);
+  --warning: var(--color-amber-600);
+  --warning-foreground: oklch(1 0 0);
+
+  --border: var(--color-slate-200); /* decorative hairline, no WCAG duty */
+  --input: oklch(0.638 0.013 var(--brand-h)); /* 3.25 canvas / 3.39 card */
+  --input-hover: oklch(0.56 0.014 var(--brand-h));
+  --ring: oklch(0.575 0.205 268); /* brand-independent by design */
+
+  --fg-disabled: oklch(0.641 0.01 var(--brand-h)); /* 3.06:1 on --muted */
+  --bg-disabled: var(--color-slate-100);
+  --scrollbar-thumb: var(--color-slate-400);
+
+  /* Chart series: >=3:1 against every light surface (sidebar is the
+     strictest) and >=0.11 delta-E apart under normal/deutan/protan/tritan. */
+  --chart-1: oklch(0.644 0.171 45);
+  --chart-2: oklch(0.432 0.084 103);
+  --chart-3: oklch(0.532 0.084 196);
+  --chart-4: oklch(0.302 0.104 258);
+  --chart-5: oklch(0.516 0.23 320);
+
+  /* The sidebar RECEDES: darker than the canvas in both themes. */
+  --sidebar: var(--color-surface-l0);
+  --sidebar-foreground: var(--color-slate-700); /* 6.04:1 — inactive nav */
+  --sidebar-primary: var(--color-indigo-600);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.93 0.005 var(--brand-h));
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: oklch(0.912 0.006 var(--brand-h));
+  --sidebar-ring: var(--ring);
+
+  /* Tone set (§2.5). Tinted chip = -100 fill + -800 text (>=7.1:1). */
+  --tone-neutral-bg: var(--color-slate-100);
+  --tone-neutral-fg: var(--color-slate-700);
+  --tone-neutral-line: var(--color-slate-600);
+  --tone-brand-bg: var(--color-indigo-100);
+  --tone-brand-fg: var(--color-indigo-800);
+  --tone-brand-line: var(--color-indigo-600);
+  --tone-caution-bg: var(--color-amber-100);
+  --tone-caution-fg: var(--color-amber-800);
+  --tone-caution-line: var(--color-amber-600);
+  --tone-success-bg: var(--color-green-100);
+  --tone-success-fg: var(--color-green-800);
+  --tone-success-line: var(--color-green-600);
+  --tone-danger-bg: var(--color-red-100);
+  --tone-danger-fg: var(--color-red-800);
+  --tone-danger-line: var(--color-red-600);
+  --tone-quiet-bg: transparent;
+  --tone-quiet-fg: var(--muted-foreground);
+  --tone-quiet-line: var(--color-slate-400);
+
+  /* Visibility (§2.4) — safety-critical. The two chips differ in FILL,
+     ICON, WEIGHT, SHAPE and row border, not merely in hue. The solid
+     warm pill means "Client can see" and nothing else, product-wide;
+     `warning` is never rendered as a filled pill. */
+  --vis-client: oklch(0.772 0.125 70);
+  --vis-client-fg: oklch(0.264 0.054 70); /* 7.37:1 */
+  --vis-client-border: oklch(0.569 0.115 70);
+  --vis-internal-bg: transparent;
+  --vis-internal-fg: var(--muted-foreground);
+  --vis-internal-border: var(--input);
+
+  /* Entity identity dots (§2.6): twelve frozen hues, each >=3:1 against
+     every light surface. Identity, never status. */
+  --entity-0: oklch(0.659 0.215 15);
+  --entity-1: oklch(0.648 0.172 45);
+  --entity-2: oklch(0.637 0.125 75);
+  --entity-3: oklch(0.628 0.124 105);
+  --entity-4: oklch(0.615 0.184 140);
+  --entity-5: oklch(0.617 0.116 168);
+  --entity-6: oklch(0.62 0.098 196);
+  --entity-7: oklch(0.624 0.11 225);
+  --entity-8: oklch(0.635 0.185 255);
+  --entity-9: oklch(0.646 0.184 285);
+  --entity-10: oklch(0.663 0.247 315);
+  --entity-11: oklch(0.667 0.263 345);
+  /* Initials on an entity tile: decorative, but still legible (>=5:1
+     light, >=4.2:1 dark against every entity hue). */
+  --entity-ink: oklch(0.18 0.01 var(--brand-h));
+
+  /* Elevation. Three shadows, for things that genuinely float. */
+  --shadow-1: 0 1px 2px oklch(0.18 0.01 268 / 0.06), 0 1px 3px oklch(0.18 0.01 268 / 0.1);
+  --shadow-2: 0 4px 12px oklch(0.18 0.01 268 / 0.1), 0 1px 3px oklch(0.18 0.01 268 / 0.08);
+  --shadow-3: 0 16px 40px oklch(0.18 0.01 268 / 0.16), 0 2px 8px oklch(0.18 0.01 268 / 0.1);
+  --scrim: oklch(0.18 0.01 268 / 0.32);
 }
+
+/* ---------------------------------------------------------------- *
+ * 2b. ROLES — dark. A separate design, not an inversion: elevation
+ * reverses (surfaces get LIGHTER with height), chroma drops, shadows
+ * stop doing the work, borders are opaque, and neither pure black nor
+ * pure white appears anywhere.
+ * ---------------------------------------------------------------- */
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+  color-scheme: dark;
+
+  --background: var(--color-surface-d1);
+  --foreground: var(--color-slate-100); /* 17.8:1 */
+  --card: var(--color-surface-d2);
+  --card-foreground: var(--foreground);
+  --popover: var(--color-surface-d3);
+  --popover-foreground: var(--foreground);
+
+  --muted: var(--color-surface-d3);
+  /* 6.78 canvas / 6.22 card / 5.63 popover / 4.73 on the hover surface */
+  --muted-foreground: oklch(0.68 0.013 var(--brand-h));
+
+  --secondary: var(--color-surface-d3);
+  --secondary-foreground: var(--color-slate-100);
+
+  --accent: var(--color-surface-d4);
+  --accent-foreground: var(--foreground);
+
+  --primary: var(--color-indigo-500);
+  --primary-foreground: var(--color-indigo-950); /* 5.17:1 */
+  /* Dark hover RAISES the fill (light text on light fill would lose
+     contrast if it darkened) — elevation and hover point the same way. */
+  --primary-hover: oklch(0.721 0.158 var(--brand-h));
+
+  /* Do NOT lighten destructive in dark: red-600 keeps its white label
+     at 4.60:1 and the pair stays identical across themes. */
+  --destructive: var(--color-red-600);
+  --destructive-foreground: oklch(1 0 0);
+  --destructive-hover: oklch(0.544 0.215 25);
+  --success: var(--color-green-600);
+  --success-foreground: oklch(1 0 0);
+  --warning: var(--color-amber-600);
+  --warning-foreground: oklch(1 0 0);
+
+  /* Opaque, never oklch(1 0 0 / n%): alpha borders cannot be statically
+     contrast-tested and change meaning per backdrop. */
+  --border: var(--color-surface-d4);
+  --input: oklch(0.535 0.013 var(--brand-h)); /* 3.78 canvas / 3.47 card / 3.14 popover */
+  --input-hover: oklch(0.61 0.013 var(--brand-h));
+  --ring: oklch(0.676 0.158 268);
+
+  --fg-disabled: oklch(0.528 0.012 var(--brand-h)); /* 3.05:1 on --muted */
+  --bg-disabled: var(--color-surface-d3);
+  --scrollbar-thumb: var(--color-slate-800);
+
+  --chart-1: oklch(0.589 0.157 45);
+  --chart-2: oklch(0.824 0.161 103);
+  --chart-3: oklch(0.599 0.095 196);
+  --chart-4: oklch(0.927 0.033 258);
+  --chart-5: oklch(0.722 0.221 320);
+
+  --sidebar: var(--color-surface-d0);
+  --sidebar-foreground: var(--color-slate-300); /* 14.3:1 */
+  --sidebar-primary: var(--color-indigo-500);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--color-surface-d2);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--color-surface-d3);
+  --sidebar-ring: var(--ring);
+
+  /* Tinted chip in dark = -950 fill + -300 text (>=10.7:1). */
+  --tone-neutral-bg: var(--color-surface-d3);
+  --tone-neutral-fg: var(--color-slate-300);
+  --tone-neutral-line: var(--color-slate-500);
+  --tone-brand-bg: var(--color-indigo-950);
+  --tone-brand-fg: var(--color-indigo-300);
+  --tone-brand-line: var(--color-indigo-400);
+  --tone-caution-bg: var(--color-amber-950);
+  --tone-caution-fg: var(--color-amber-300);
+  --tone-caution-line: var(--color-amber-400);
+  --tone-success-bg: var(--color-green-950);
+  --tone-success-fg: var(--color-green-300);
+  --tone-success-line: var(--color-green-400);
+  --tone-danger-bg: var(--color-red-950);
+  --tone-danger-fg: var(--color-red-300);
+  --tone-danger-line: var(--color-red-400);
+  --tone-quiet-bg: transparent;
+  --tone-quiet-fg: var(--muted-foreground);
+  --tone-quiet-line: var(--color-slate-600);
+
+  /* Identical fill in both themes: "Client can see" must look the same
+     everywhere so it is never mistaken for a theme artefact. */
+  --vis-client: oklch(0.772 0.125 70);
+  --vis-client-fg: oklch(0.264 0.054 70);
+  --vis-client-border: oklch(0.569 0.115 70);
+  --vis-internal-bg: transparent;
+  --vis-internal-fg: var(--muted-foreground);
+  --vis-internal-border: var(--input);
+
+  /* Re-anchored to 3:1 against the LIGHTEST dark surface (the row-hover
+     step), not against the canvas. */
+  --entity-0: oklch(0.598 0.222 15);
+  --entity-1: oklch(0.585 0.156 45);
+  --entity-2: oklch(0.574 0.113 75);
+  --entity-3: oklch(0.567 0.112 105);
+  --entity-4: oklch(0.554 0.166 140);
+  --entity-5: oklch(0.556 0.105 168);
+  --entity-6: oklch(0.559 0.089 196);
+  --entity-7: oklch(0.563 0.099 225);
+  --entity-8: oklch(0.573 0.175 255);
+  --entity-9: oklch(0.59 0.218 285);
+  --entity-10: oklch(0.607 0.278 315);
+  --entity-11: oklch(0.601 0.238 345);
+  --entity-ink: oklch(0.995 0.002 var(--brand-h));
+
+  /* Shadows barely read on dark; the surface ladder does the work. */
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-2: 0 4px 12px oklch(0 0 0 / 0.5);
+  --shadow-3: 0 16px 40px oklch(0 0 0 / 0.6);
+  --scrim: oklch(0 0 0 / 0.55);
 }
 
+/* ---------------------------------------------------------------- *
+ * 3. BRIDGE — `inline` is mandatory: without it Tailwind copies the
+ * light value into the utility and .dark does nothing.
+ * ---------------------------------------------------------------- */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-hover: var(--input-hover);
+  --color-ring: var(--ring);
+  --color-fg-disabled: var(--fg-disabled);
+  --color-bg-disabled: var(--bg-disabled);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-vis-client: var(--vis-client);
+  --color-vis-client-fg: var(--vis-client-fg);
+  --color-vis-client-border: var(--vis-client-border);
+  --color-vis-internal-fg: var(--vis-internal-fg);
+  --color-vis-internal-border: var(--vis-internal-border);
+  --color-entity-ink: var(--entity-ink);
+  --color-scrim: var(--scrim);
+}
+
+/* ---------------------------------------------------------------- *
+ * Utilities
+ * ---------------------------------------------------------------- */
+
+/* Lining tabular figures with a slashed zero: every duration, money
+   value, count, byte size, version, date, percentage, project key and
+   <kbd>. Prose keeps proportional figures. Use font-variant-numeric,
+   never font-feature-settings — the latter REPLACES rather than merges. */
+@utility num {
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+}
+
+/* The tinted-chip surface. Tone selection happens in TypeScript
+   (src/lib/tones.ts hands out `bg-(--tone-success-bg)` and friends as
+   static class strings), so no functional utility is needed here. */
+@utility hairline-b {
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+/* A border-bottom on a sticky <th> detaches in Chromium; an inset
+   shadow rides along with the sticky element. */
+@utility row-h {
+  height: var(--row-h, 36px);
+}
+
+/* ---------------------------------------------------------------- *
+ * Base
+ * ---------------------------------------------------------------- */
+
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-    }
-  body {
-    @apply bg-background text-foreground;
-    }
-  button:not(:disabled), [role="button"]:not(:disabled) {
-    cursor: pointer;
-    }
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+
   html {
-    @apply font-sans;
-    }
+    font-family: var(--font-sans);
+    /* Declared exactly ONCE in the whole product: font-feature-settings
+       replaces rather than merges, so a second declaration lower down
+       would silently drop these. cv01 = single-storey a-alternates off,
+       cv05 = disambiguated l, ss01 = open digits. */
+    font-feature-settings:
+      "cv01" 1,
+      "cv05" 1,
+      "ss01" 1;
+    font-variant-numeric: lining-nums proportional-nums;
+    font-optical-sizing: auto;
+    font-synthesis-weight: none;
+    font-synthesis-style: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
   body {
-    font-size: 0.875rem;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+  }
+
+  /* An OUTLINE, not a box-shadow ring: box-shadows are clipped by the
+     overflow:hidden ancestors this product is full of (the table
+     container, cards, scroll areas). */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /* Chrome overrides dark fills on autofill unless this is explicit. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--foreground);
+    -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
+    caret-color: var(--foreground);
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--primary) 24%, transparent);
+  }
+
+  /* 1ms, never `animation: none`: Radix exit transitions wait on
+     animationend and would leave dialogs mounted for ever. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
     }
+  }
 }

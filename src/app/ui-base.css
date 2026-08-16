@@ -14,6 +14,17 @@
     }
   }
 
+  /* Skeleton: ONE pass, never a loop — a looping shimmer on a table
+     that is already 80% painted reads as a broken page. */
+  @keyframes shimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
   @keyframes accordion-up {
     from {
       height: var(--radix-accordion-content-height, var(--accordion-panel-height, auto));

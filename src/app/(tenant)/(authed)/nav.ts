@@ -17,6 +17,7 @@ export type NavIcon =
   | "roles"
   | "preferences"
   | "export"
+  | "design"
   | "account";
 
 export type NavEntry = {
@@ -32,6 +33,7 @@ export type NavEntry = {
     | "roles"
     | "preferences"
     | "export"
+    | "design"
     | "account";
   href: string;
   icon: NavIcon;
@@ -41,6 +43,8 @@ export type NavEntry = {
   goKey?: string;
   /** Shown as a bottom tab on mobile (Home / Projects / Clients / More until 2W — UI.md §3.3). */
   mobileTab?: boolean;
+  /** Development-only entry (the design preview): dropped in production. */
+  devOnly?: boolean;
   children?: NavEntry[];
 };
 
@@ -101,6 +105,9 @@ export const NAV: readonly NavEntry[] = [
         icon: "export",
         permission: "settings:view",
       },
+      // The design system preview: every member may open it, and it
+      // 404s in production (src/app/(tenant)/(authed)/settings/design).
+      { id: "design", labelKey: "design", href: "/settings/design", icon: "design", devOnly: true },
     ],
   },
   { id: "account", labelKey: "account", href: "/account", icon: "account", goKey: "A" },
@@ -116,7 +123,9 @@ export function visibleNav(
   allowed: (permission: string) => boolean,
 ): NavEntry[] {
   const out: NavEntry[] = [];
+  const isProduction = process.env.NODE_ENV === "production";
   for (const e of entries) {
+    if (e.devOnly && isProduction) continue;
     if (e.permission && !allowed(e.permission)) continue;
     if (e.children) {
       const children = visibleNav(e.children, allowed);

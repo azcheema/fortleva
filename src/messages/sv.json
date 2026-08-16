@@ -54,7 +54,8 @@
     "switchWorkspace": "Byt arbetsyta",
     "clients": "Kunder",
     "projects": "Projekt",
-    "export": "Export"
+    "export": "Export",
+    "design": "Design"
   },
   "shell": {
     "palette": {
@@ -762,6 +763,245 @@
     "backlog": {
       "title": "Uppgifter kommer med Arbete-modulen",
       "description": "Backloggen — alla öppna uppgifter efter rang — kommer i nästa fas."
+    }
+  },
+  "states": {
+    "clientStatus": {
+      "ACTIVE": "Aktiv",
+      "ARCHIVED": "Arkiverad"
+    },
+    "projectStatus": {
+      "PLANNED": "Planerat",
+      "ACTIVE": "Pågående",
+      "PAUSED": "Pausat",
+      "COMPLETED": "Avslutat",
+      "CANCELLED": "Avbrutet",
+      "ARCHIVED": "Arkiverat"
+    },
+    "milestoneStatus": {
+      "PLANNED": "Planerad",
+      "IN_PROGRESS": "Pågår",
+      "PAUSED": "Pausad",
+      "DONE": "Klar",
+      "CANCELLED": "Avbruten"
+    },
+    "versionStatus": {
+      "DRAFT": "Utkast",
+      "SHIPPED": "Levererad"
+    },
+    "approvalStatus": {
+      "NOT_REQUESTED": "Ej begärt",
+      "PENDING": "Väntar på granskning",
+      "APPROVED": "Godkänt",
+      "CHANGES_REQUESTED": "Ändringar begärda"
+    },
+    "memberStatus": {
+      "ACTIVE": "Aktiv",
+      "SUSPENDED": "Avstängd"
+    },
+    "inviteStatus": {
+      "PENDING": "Väntar",
+      "ACCEPTED": "Accepterad",
+      "EXPIRED": "Utgången",
+      "REVOKED": "Återkallad"
+    },
+    "serviceStatus": {
+      "ACTIVE": "Aktiv",
+      "PAUSED": "Pausad",
+      "ENDED": "Avslutad"
+    },
+    "portalStatus": {
+      "NO_ACCESS": "Ingen portalåtkomst",
+      "INVITED": "Inbjuden",
+      "ACTIVE": "Portal aktiv",
+      "SUSPENDED": "Avstängd",
+      "REVOKED": "Återkallad"
+    },
+    "stateCategory": {
+      "BACKLOG": "Backlogg",
+      "TODO": "Att göra",
+      "IN_PROGRESS": "Pågår",
+      "DONE": "Klart",
+      "CANCELLED": "Avbrutet",
+      "TRIAGE": "Triage"
+    },
+    "projectHealth": {
+      "ON_TRACK": "Enligt plan",
+      "AT_RISK": "Risk",
+      "OFF_TRACK": "Ur kurs",
+      "ON_HOLD": "Vilande",
+      "COMPLETE": "Klart"
+    },
+    "workItemKind": {
+      "TASK": "Uppgift",
+      "BUG": "Bugg",
+      "REQUEST": "Förfrågan"
+    },
+    "workItemType": {
+      "EPIC": "Epik",
+      "TASK": "Uppgift",
+      "SUBTASK": "Deluppgift"
+    },
+    "priority": {
+      "NONE": "Ingen prioritet",
+      "LOW": "Låg",
+      "MEDIUM": "Medel",
+      "HIGH": "Hög",
+      "URGENT": "Brådskande"
+    }
+  },
+  "theme": {
+    "label": "Tema",
+    "system": "System",
+    "light": "Ljust",
+    "dark": "Mörkt",
+    "hint": "Följer din enhet tills du väljer själv."
+  },
+  "design": {
+    "title": "Designsystem",
+    "shortTitle": "Design",
+    "description": "Varje token och varje tillstånd, i det tema du tittar på just nu. Sidan är släppgrinden: om två saker här inte går att skilja åt direkt är passet inte klart.",
+    "devOnly": "Endast under utveckling — sidan ger 404 i produktion.",
+    "sections": {
+      "color": "Färgtokens",
+      "colorHint": "Mätt mot den yta varje token faktiskt används på. AA betyder att paret klarar WCAG 2.2 på sin nivå: 4,5:1 för text, 3:1 för gränssnitt som inte är text.",
+      "ramps": "Primitiva skalor",
+      "rampsHint": "Varje steg är förankrat i ett kontrastmål mot vitt, och varje kroma är klämd till 93 % av vad färgrymden tillåter vid den ljusheten.",
+      "surfaces": "Ytstege",
+      "surfacesHint": "Djup är ett ytsteg plus en hårfin linje, aldrig en skugga. I mörkt läge vänder stegen: högre ytor är ljusare.",
+      "type": "Typografi",
+      "typeHint": "Inter för gränssnittet, Geist Mono för nycklar och siffror — båda självhostade, inget nätverksanrop.",
+      "controls": "Kontroller",
+      "states": "Tillstånd",
+      "statesHint": "Ton, ikon och form kommer från en enda tabell. Nyans är aldrig den enda signalen — läs avsnittet i gråskala, ingenting ska bli tvetydigt.",
+      "visibility": "Synlighet",
+      "entities": "Entitetsfärger",
+      "entitiesHint": "Tolv låsta nyanser, valda utifrån det oföränderliga id:t. Identitet, aldrig status.",
+      "charts": "Diagramserier",
+      "feedback": "Återkoppling",
+      "elevation": "Höjd och rörelse",
+      "density": "Täthet"
+    },
+    "columns": {
+      "token": "Token",
+      "value": "Värde",
+      "sample": "Exempel",
+      "contrast": "Kontrast",
+      "against": "Mot",
+      "role": "Roll",
+      "size": "Storlek",
+      "state": "Tillstånd",
+      "name": "Namn",
+      "status": "Status",
+      "visibility": "Synlighet",
+      "hours": "Timmar"
+    },
+    "pass": "AA",
+    "fail": "Under AA",
+    "ratio": "{value}:1",
+    "typeSample": "Flygande bäckasiner söka hwila på mjuka tuvor",
+    "numeralSample": "0123456789 · ACME-12 · 1 234 567,50",
+    "typeRoles": {
+      "display": "Display — inloggningssidor",
+      "pageTitle": "Sidrubrik (h1)",
+      "dialog": "Dialog / stor rubrik",
+      "section": "Avsnittsrubrik (h2)",
+      "subsection": "Underrubrik (h3)",
+      "body": "Brödtext, tabellcell, fältetikett",
+      "bodyStrong": "Brödtext, betonad",
+      "secondary": "Sekundärt / ledtext",
+      "caption": "Bildtext, etikett, tangent",
+      "tableHeader": "Tabellrubrik, överrad",
+      "code": "Kod, projektnyckel"
+    },
+    "controls": {
+      "buttons": "Knappar",
+      "sizes": "Storlekar",
+      "fields": "Fält",
+      "toggles": "Kryssruta och reglage",
+      "badges": "Etiketter",
+      "menus": "Menyer och lager",
+      "rest": "Vila",
+      "focus": "Fokusring",
+      "disabled": "Inaktiverad",
+      "invalid": "Ogiltig",
+      "hoverNote": "Hovring och tryck är färgbyten på 80 ms; tryck lägger till en knuff på 1 px nedåt.",
+      "label": "Etikett",
+      "placeholder": "Skriv här…",
+      "invalidHint": "Det värdet accepteras inte.",
+      "hint": "En kort ledtext under fältet.",
+      "openMenu": "Öppna meny",
+      "menuItem": "Menyval",
+      "menuDestructive": "Ta bort",
+      "tooltipTrigger": "Hovra här",
+      "tooltipText": "Hovra här",
+      "dialogTrigger": "Öppna dialog",
+      "dialogTitle": "En dialog",
+      "dialogBody": "Dialoger svävar, och får därför produktens enda stora skugga.",
+      "selectPlaceholder": "Välj…",
+      "optionA": "Första valet",
+      "optionB": "Andra valet"
+    },
+    "visibilityHint": "Det säkerhetskritiska paret. De skiljer sig i fyllning, ikon, form, vikt och ram — fem kanaler, så att varken öga, skärm eller färgseende kan blanda ihop dem.",
+    "visibilityRow": "En rad som kunden kan se bär också en 2 px bred stapel längst till vänster.",
+    "simulation": {
+      "normal": "Normalt färgseende",
+      "protanopia": "Protanopi",
+      "deuteranopia": "Deuteranopi",
+      "tritanopia": "Tritanopi",
+      "greyscale": "Gråskala"
+    },
+    "entitySamples": {
+      "one": "Acme AB",
+      "two": "Nordkust Design",
+      "three": "Väderö Bygg",
+      "four": "Sjöberg & Partner"
+    },
+    "chartsHint": "Fem serier, var och en minst 3:1 mot bakgrunden och minst 0,10 isär i upplevt avstånd vid normalt seende, protanopi, deuteranopi och tritanopi.",
+    "feedbackItems": {
+      "toast": "Visa en avisering",
+      "toastMessage": "Sparat.",
+      "empty": "Tomt läge",
+      "emptyTitle": "Lägg till den första kunden",
+      "emptyBody": "Skriv ett företagsnamn och tryck Enter — allt annat kan fyllas i senare.",
+      "filteredTitle": "Ingen kund matchar",
+      "filteredBody": "Inget här passar det aktuella filtret. Rensa det för att se allt igen.",
+      "forbiddenTitle": "Inga kunder i din behörighet",
+      "forbiddenBody": "Be en ansvarig koppla dig till en kund eller ett projekt.",
+      "callouts": "Notiser",
+      "calloutInfo": "Reservkoderna visas en gång.",
+      "calloutInfoBody": "Spara dem i din lösenordshanterare nu — de kan inte visas igen.",
+      "calloutCaution": "Kunden är arkiverad.",
+      "calloutCautionBody": "Uppgifterna är skrivskyddade tills den återställs.",
+      "calloutDanger": "Uppladdningen blev inte klar.",
+      "calloutDangerBody": "Ingenting sparades. Försök igen, eller välj en mindre fil.",
+      "calloutSuccess": "Exporten är klar.",
+      "calloutSuccessBody": "Den finns nedan och under Filer.",
+      "messages": "Formulärsvar",
+      "messageOk": "Sparat.",
+      "messageError": "Nyckeln används redan av ett annat projekt.",
+      "keyboard": "Tangentbordsgenvägar",
+      "skeleton": "Laddningsform",
+      "metrics": "Nyckeltal",
+      "metricProjects": "Öppna projekt",
+      "metricHours": "Timmar denna vecka",
+      "metricUnbilled": "Ofakturerat"
+    },
+    "elevationItems": {
+      "shadow1": "Rullgardin, popover, verktygstips",
+      "shadow2": "Kommandopalett, avisering",
+      "shadow3": "Dialog, panel",
+      "anchored": "Förankrat: bara hårlinje",
+      "motion": "Tider",
+      "instant": "Direkt — hovring, tryck",
+      "fast": "Snabb — popover, verktygstips",
+      "base": "Bas — dialog, utfällning",
+      "slow": "Långsam — panel",
+      "reducedMotion": "Med prefers-reduced-motion kläms varje tid till 1 ms — aldrig bort, för då skulle Radix utgångar aldrig avslutas."
+    },
+    "densityItems": {
+      "default": "Standard — 36 px rader",
+      "compact": "Kompakt — 32 px rader"
     }
   }
 }

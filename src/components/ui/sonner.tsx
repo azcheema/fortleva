@@ -1,44 +1,66 @@
 "use client"
 
 import { Toaster as Sonner, type ToasterProps } from "sonner"
-import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import {
+  CircleCheckIcon,
+  InfoIcon,
+  TriangleAlertIcon,
+  OctagonXIcon,
+  Loader2Icon,
+} from "lucide-react"
+import { useEffect, useState } from "react"
+
+/**
+ * The toast surface follows the RESOLVED theme, not a hardcoded one:
+ * sonner paints its own background, so a light toast over a dark app is
+ * the one place the theme can visibly disagree with itself.
+ *
+ * Resolution is read from the <html> class the layout (or the pre-paint
+ * script) already set, and re-read when the OS preference flips.
+ */
+function useResolvedTheme(): "light" | "dark" {
+  const [theme, setTheme] = useState<"light" | "dark">("light")
+
+  useEffect(() => {
+    const read = () =>
+      setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light")
+    read()
+    const observer = new MutationObserver(read)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
+    const media = window.matchMedia("(prefers-color-scheme: dark)")
+    media.addEventListener("change", read)
+    return () => {
+      observer.disconnect()
+      media.removeEventListener("change", read)
+    }
+  }, [])
+
+  return theme
+}
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  // Light theme only for now (UI.md §10: dark mode when cheap, never a blocker).
+  const theme = useResolvedTheme()
+
   return (
     <Sonner
-      theme="light"
+      theme={theme}
       className="toaster group"
       icons={{
-        success: (
-          <CircleCheckIcon className="size-4" />
-        ),
-        info: (
-          <InfoIcon className="size-4" />
-        ),
-        warning: (
-          <TriangleAlertIcon className="size-4" />
-        ),
-        error: (
-          <OctagonXIcon className="size-4" />
-        ),
-        loading: (
-          <Loader2Icon className="size-4 animate-spin" />
-        ),
+        success: <CircleCheckIcon className="size-4 text-(--tone-success-line)" />,
+        info: <InfoIcon className="size-4 text-primary" />,
+        warning: <TriangleAlertIcon className="size-4 text-(--tone-caution-line)" />,
+        error: <OctagonXIcon className="size-4 text-destructive" />,
+        loading: <Loader2Icon className="size-4 animate-spin text-muted-foreground" />,
       }}
       style={
         {
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
+          "--border-radius": "var(--radius-card)",
+          "--shadow": "var(--shadow-2)",
         } as React.CSSProperties
       }
-      toastOptions={{
-        classNames: {
-          toast: "cn-toast",
-        },
-      }}
       {...props}
     />
   )

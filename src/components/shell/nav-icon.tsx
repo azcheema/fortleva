@@ -5,6 +5,7 @@ import {
   FolderKanbanIcon,
   HouseIcon,
   KeyRoundIcon,
+  PaletteIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
   UserRoundIcon,
@@ -25,6 +26,7 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   roles: KeyRoundIcon,
   preferences: SlidersHorizontalIcon,
   export: ArchiveIcon,
+  design: PaletteIcon,
   account: UserRoundIcon,
 };
 
