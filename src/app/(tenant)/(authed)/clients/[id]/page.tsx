@@ -2,8 +2,7 @@ import { getTranslations } from "next-intl/server";
 
 import { listAssignableMembers } from "@/clients/service";
 import { AssignmentsPanel } from "@/components/assignments-panel";
-import { EmptyState } from "@/components/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState, SectionCard, VisibilityBadge } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listServices } from "@/services/service";
@@ -47,65 +46,56 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
 
   return (
     <div className="flex flex-col gap-6">
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>{t("overview.company")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ClientCardForm client={client} editable={client.caps.edit} />
-        </CardContent>
-      </Card>
+      <SectionCard title={t("overview.company")}>
+        <ClientCardForm client={client} editable={client.caps.edit} />
+      </SectionCard>
 
       {client.internalNotes !== undefined ? (
-        <Card size="sm">
-          <CardContent>
-            <ClientNotesForm client={client} />
-          </CardContent>
-        </Card>
+        <SectionCard
+          title={t("overview.notes")}
+          description={t("overview.notesHint")}
+          actions={<VisibilityBadge value="INTERNAL" />}
+        >
+          <ClientNotesForm client={client} />
+        </SectionCard>
       ) : null}
 
       {client.caps.viewServices ? (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>{t("services.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {services.length === 0 ? (
-              <EmptyState title={t("services.empty")} description={t("services.emptyDescription")} />
-            ) : (
-              <ServicesList
-                clientId={client.id}
-                services={services}
-                canEdit={client.caps.editServices}
-                canDelete={client.caps.deleteServices}
-              />
-            )}
-            {client.caps.createServices && client.status === "ACTIVE" ? (
-              <CreateServiceForm
-                clientId={client.id}
-                projects={client.projects.map((p) => ({ id: p.id, key: p.key, name: p.name }))}
-              />
-            ) : null}
-          </CardContent>
-        </Card>
+        <SectionCard title={t("services.title")} contentClassName="flex flex-col gap-4">
+          {services.length === 0 ? (
+            <EmptyState
+              variant="empty"
+              title={t("services.empty")}
+              body={t("services.emptyDescription")}
+            />
+          ) : (
+            <ServicesList
+              clientId={client.id}
+              services={services}
+              canEdit={client.caps.editServices}
+              canDelete={client.caps.deleteServices}
+            />
+          )}
+          {client.caps.createServices && client.status === "ACTIVE" ? (
+            <CreateServiceForm
+              clientId={client.id}
+              projects={client.projects.map((p) => ({ id: p.id, key: p.key, name: p.name }))}
+            />
+          ) : null}
+        </SectionCard>
       ) : null}
 
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>{tAssign("title")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AssignmentsPanel
-            assigned={client.assignments}
-            members={members}
-            canManage={client.caps.manageAssignments}
-            assign={assign}
-            unassign={unassign}
-            emptyTitle={tAssign("empty")}
-            emptyDescription={tAssign("emptyDescription")}
-          />
-        </CardContent>
-      </Card>
+      <SectionCard title={tAssign("title")}>
+        <AssignmentsPanel
+          assigned={client.assignments}
+          members={members}
+          canManage={client.caps.manageAssignments}
+          assign={assign}
+          unassign={unassign}
+          emptyTitle={tAssign("empty")}
+          emptyDescription={tAssign("emptyDescription")}
+        />
+      </SectionCard>
 
       {client.caps.delete ? (
         <div className="flex justify-end">

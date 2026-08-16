@@ -4,11 +4,17 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { AUTH_CONTROL, AuthShell } from "@/app/(tenant)/login/auth-shell";
 import { platformAuthClient } from "@/auth/client";
+import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
+/**
+ * The platform plane's entry. Identical geometry to the member login so
+ * the product reads as one system, but a shield mark and a "Platform"
+ * eyebrow — the two planes must never be mistaken for one another.
+ */
 export default function OpsLoginPage() {
   const t = useTranslations("auth");
   const router = useRouter();
@@ -50,40 +56,43 @@ export default function OpsLoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
-      <h1 className="text-2xl font-semibold">{t("ops.loginTitle")}</h1>
+    <AuthShell
+      plane="platform"
+      eyebrow={t("ops.eyebrow")}
+      title={t("ops.loginTitle")}
+      description={stage === "credentials" ? t("ops.loginSubtitle") : t("login.totpHint")}
+    >
       {stage === "credentials" ? (
         <form onSubmit={submitCredentials} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email">{t("email")}</Label>
+          <Field label={t("email")} htmlFor="email">
             <Input
               id="email"
               type="email"
               required
               autoComplete="email"
+              className={AUTH_CONTROL}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">{t("password")}</Label>
+          </Field>
+          <Field label={t("password")} htmlFor="password">
             <Input
               id="password"
               type="password"
               required
               autoComplete="current-password"
+              className={AUTH_CONTROL}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-          </div>
-          <Button type="submit" disabled={busy}>
+          </Field>
+          <Button type="submit" size="lg" className="mt-2 w-full" disabled={busy}>
             {busy ? t("login.submitting") : t("login.submit")}
           </Button>
         </form>
       ) : (
         <form onSubmit={submitTotp} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="totp">{t("login.totpLabel")}</Label>
+          <Field label={t("login.totpLabel")} htmlFor="totp">
             <Input
               id="totp"
               inputMode="numeric"
@@ -94,19 +103,15 @@ export default function OpsLoginPage() {
               placeholder={t("ops.codePlaceholder")}
               value={totp}
               onChange={(e) => setTotp(e.target.value)}
-              className="text-center"
+              className="num h-10 text-center font-mono text-lg tracking-[0.4em]"
             />
-          </div>
-          <Button type="submit" disabled={busy}>
+          </Field>
+          <Button type="submit" size="lg" className="mt-2 w-full" disabled={busy}>
             {busy ? t("login.verifying") : t("login.verify")}
           </Button>
         </form>
       )}
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </main>
+      {error ? <FormMessage state={{ ok: false, message: error }} /> : null}
+    </AuthShell>
   );
 }

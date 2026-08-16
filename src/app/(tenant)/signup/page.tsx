@@ -6,9 +6,11 @@ import { useTranslations } from "next-intl";
 import { Suspense, useState } from "react";
 
 import { authClient } from "@/auth/client";
+import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
+import { AUTH_CONTROL, AuthShell, authLinkClass } from "../login/auth-shell";
 
 /**
  * Member self-signup creates a global User IDENTITY only — membership
@@ -47,71 +49,74 @@ function SignupForm() {
 
   if (done) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-6">
-        <h1 className="text-2xl font-semibold">{t("signup.checkEmailTitle")}</h1>
-        <p className="text-sm text-muted-foreground">
-          {t.rich("signup.checkEmail", {
-            email,
-            strong: (chunks) => <strong className="text-foreground">{chunks}</strong>,
-          })}
-        </p>
-      </main>
+      <AuthShell
+        title={t("signup.checkEmailTitle")}
+        description={t.rich("signup.checkEmail", {
+          email,
+          strong: (chunks) => <strong className="font-medium text-foreground">{chunks}</strong>,
+        })}
+        footer={
+          <Link className={authLinkClass} href={`/login?next=${encodeURIComponent(next)}`}>
+            {t("signup.signIn")}
+          </Link>
+        }
+      />
     );
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
-      <h1 className="text-2xl font-semibold">{t("signup.title")}</h1>
+    <AuthShell
+      title={t("signup.title")}
+      description={t("signup.subtitle")}
+      footer={
+        <>
+          {t("signup.haveAccount")}{" "}
+          <Link className={authLinkClass} href={`/login?next=${encodeURIComponent(next)}`}>
+            {t("signup.signIn")}
+          </Link>
+        </>
+      }
+    >
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="name">{t("name")}</Label>
+        <Field label={t("name")} htmlFor="name">
           <Input
             id="name"
             required
             autoComplete="name"
+            className={AUTH_CONTROL}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">{t("email")}</Label>
+        </Field>
+        <Field label={t("email")} htmlFor="email">
           <Input
             id="email"
             type="email"
             required
             autoComplete="email"
+            className={AUTH_CONTROL}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password">{t("signup.passwordHint")}</Label>
+        </Field>
+        <Field label={t("signup.passwordHint")} htmlFor="password">
           <Input
             id="password"
             type="password"
             required
             minLength={12}
             autoComplete="new-password"
+            className={AUTH_CONTROL}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </div>
-        <Button type="submit" disabled={busy}>
+        </Field>
+        <Button type="submit" size="lg" className="mt-2 w-full" disabled={busy}>
           {busy ? t("signup.submitting") : t("signup.submit")}
         </Button>
       </form>
-      <p className="text-sm text-muted-foreground">
-        {t("signup.haveAccount")}{" "}
-        <Link className="underline" href={`/login?next=${encodeURIComponent(next)}`}>
-          {t("signup.signIn")}
-        </Link>
-      </p>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </main>
+      {error ? <FormMessage state={{ ok: false, message: error }} /> : null}
+    </AuthShell>
   );
 }
 

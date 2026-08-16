@@ -1,12 +1,21 @@
 import type { Metadata } from "next";
+import { ArchiveIcon, ArchiveRestoreIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { isAuthorized } from "@/authz/authorize";
 import { listClients } from "@/clients/service";
-import { Badge } from "@/components/ui/badge";
+import {
+  DataTable,
+  EmptyState,
+  EntityChip,
+  Page,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+} from "@/components/semantic";
+import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -15,8 +24,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyState } from "@/components/empty-state";
-import { Page, PageHeader } from "@/components/page-header";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -26,6 +33,14 @@ export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("clients");
   return { title: t("shortTitle") };
 }
+
+const initials = (name: string): string =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]!)
+    .join("");
 
 /**
  * /clients (UI.md §3.1): table + inline create + archived toggle. The
@@ -53,12 +68,13 @@ export default async function ClientsPage({
   ]);
 
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader
         title={t("title")}
         actions={
-          <Button asChild variant="ghost" size="sm">
+          <Button asChild variant="outline" size="sm">
             <Link href={includeArchived ? "/clients" : "/clients?archived=1"}>
+              {includeArchived ? <ArchiveRestoreIcon /> : <ArchiveIcon />}
               {includeArchived ? t("hideArchived") : t("showArchived")}
             </Link>
           </Button>
@@ -67,13 +83,19 @@ export default async function ClientsPage({
 
       <section className="mt-6">
         {clients.length === 0 ? (
-          canCreate ? (
-            <EmptyState title={t("empty.title")} description={t("empty.description")} />
-          ) : (
-            <EmptyState title={t("empty.scoped")} description={t("empty.scopedDescription")} />
-          )
+          <SectionCard>
+            {canCreate ? (
+              <EmptyState variant="empty" title={t("empty.title")} body={t("empty.description")} />
+            ) : (
+              <EmptyState
+                variant="forbidden"
+                title={t("empty.scoped")}
+                body={t("empty.scopedDescription")}
+              />
+            )}
+          </SectionCard>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-border">
+          <DataTable>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -87,43 +109,57 @@ export default async function ClientsPage({
               <TableBody>
                 {clients.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell className="font-medium">
-                      <Link href={`/clients/${c.id}`} className="hover:underline">
-                        {c.name}
-                      </Link>
-                      {c.city ? (
-                        <span className="ml-2 text-xs text-muted-foreground">{c.city}</span>
-                      ) : null}
+                    <TableCell className="max-w-80">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <EntityChip
+                          id={c.id}
+                          name={c.name}
+                          kind="client"
+                          href={`/clients/${c.id}`}
+                          className="font-medium"
+                        />
+                        {c.city ? (
+                          <span className="shrink-0 text-xs text-muted-foreground">{c.city}</span>
+                        ) : null}
+                      </span>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={c.status === "ACTIVE" ? "secondary" : "outline"}>
-                        {t(`status.${c.status}`)}
-                      </Badge>
+                      <StatusBadge domain="clientStatus" value={c.status} />
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{c.projectCount}</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.contactCount}</TableCell>
-                    <TableCell className="max-w-64 truncate text-muted-foreground">
-                      {c.assignedMembers.length === 0
-                        ? tCommon("none")
-                        : c.assignedMembers.map((m) => m.name).join(", ")}
+                    <TableCell className="num text-right">{c.projectCount}</TableCell>
+                    <TableCell className="num text-right">{c.contactCount}</TableCell>
+                    <TableCell>
+                      {c.assignedMembers.length === 0 ? (
+                        <span className="text-muted-foreground">{tCommon("none")}</span>
+                      ) : (
+                        <AvatarGroup>
+                          {c.assignedMembers.slice(0, 3).map((m) => (
+                            <Avatar key={m.memberId} size="sm" title={m.name}>
+                              <AvatarFallback>{initials(m.name)}</AvatarFallback>
+                            </Avatar>
+                          ))}
+                          {c.assignedMembers.length > 3 ? (
+                            <AvatarGroupCount>
+                              {tCommon("overflow", { count: c.assignedMembers.length - 3 })}
+                            </AvatarGroupCount>
+                          ) : null}
+                        </AvatarGroup>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </DataTable>
         )}
       </section>
 
       {canCreate ? (
-        <Card size="sm" className="mt-6">
-          <CardHeader>
-            <CardTitle>{t("create.submit")}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="mt-6">
+          <SectionCard title={t("create.title")} description={t("create.description")}>
             <CreateClientForm autoFocus={clients.length === 0} />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </div>
       ) : null}
     </Page>
   );

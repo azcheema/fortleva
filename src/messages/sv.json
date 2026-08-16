@@ -34,7 +34,9 @@
     "optional": "valfritt",
     "projects": "{count, plural, =1 {1 projekt} other {# projekt}}",
     "contacts": "{count, plural, =1 {1 kontakt} other {# kontakter}}",
-    "unknown": "Okänd"
+    "unknown": "Okänd",
+    "actions": "Åtgärder",
+    "overflow": "+{count}"
   },
   "nav": {
     "home": "Hem",
@@ -114,13 +116,23 @@
       "clients": "Öppna Kunder",
       "projects": "Öppna Projekt"
     },
-    "workspace": "Arbetsyta: {name}"
+    "workspace": "Arbetsyta: {name}",
+    "queue": "Din kö",
+    "queueDescription": "Arbete som är tilldelat dig, över alla kunder och projekt.",
+    "tiles": {
+      "assigned": "Tilldelat dig",
+      "waiting": "Väntar på kund",
+      "due": "Förfaller denna vecka",
+      "pending": "—"
+    }
   },
   "dashboard": {
     "title": "Välkommen, {name}",
     "workspaces": "Dina arbetsytor",
     "none": "Du är inte medlem i någon arbetsyta ännu. Be en administratör om en inbjudan.",
-    "goHome": "Gå till Hem"
+    "goHome": "Gå till Hem",
+    "metric": "Arbetsytor",
+    "noneTitle": "Ingen arbetsyta ännu"
   },
   "auth": {
     "email": "E-post",
@@ -137,7 +149,9 @@
       "verifying": "Verifierar…",
       "invalidCode": "Ogiltig kod",
       "noAccount": "Har du inget konto?",
-      "signUp": "Skapa ett"
+      "signUp": "Skapa ett",
+      "subtitle": "Ange din e-post och ditt lösenord för att fortsätta.",
+      "totpTitle": "Tvåstegsverifiering"
     },
     "signup": {
       "title": "Skapa ditt Fortleva-konto",
@@ -148,7 +162,8 @@
       "checkEmailTitle": "Kontrollera din e-post",
       "checkEmail": "Vi har skickat en verifieringslänk till <strong>{email}</strong>. Verifiera adressen och logga sedan in.",
       "haveAccount": "Har du redan ett konto?",
-      "signIn": "Logga in"
+      "signIn": "Logga in",
+      "subtitle": "Kontot är din identitet — en arbetsyta bjuder in dig separat."
     },
     "invite": {
       "unavailableTitle": "Inbjudan är inte tillgänglig",
@@ -159,17 +174,22 @@
       "signedInAs": "Inloggad som {email}.",
       "mismatch": "Inbjudan utfärdades till {email} — det går inte att acceptera om adresserna inte stämmer överens.",
       "accept": "Acceptera inbjudan",
-      "failed": "Inbjudan kunde inte accepteras. Kontrollera att du är inloggad med den inbjudna adressen."
+      "failed": "Inbjudan kunde inte accepteras. Kontrollera att du är inloggad med den inbjudna adressen.",
+      "eyebrow": "Inbjudan"
     },
     "ops": {
       "loginTitle": "Fortleva Ops — logga in",
       "codePlaceholder": "6-siffrig kod",
       "title": "Fortleva Ops",
-      "signedInAs": "Inloggad som {email} (SUPERADMIN). Konsolens gränssnitt kommer i fas 7 — maskineriet (imitation, entitlement-överstyrningar, revision) finns bakom withPlatform()."
+      "signedInAs": "Inloggad som {email} (SUPERADMIN). Konsolens gränssnitt kommer i fas 7 — maskineriet (imitation, entitlement-överstyrningar, revision) finns bakom withPlatform().",
+      "eyebrow": "Plattform",
+      "loginSubtitle": "Plattformsplanet är skilt från alla arbetsytor.",
+      "session": "Session"
     },
     "portal": {
       "title": "Kundportal",
-      "closed": "Portalen är inte öppen ännu. Din byrå skickar en inbjudan när den är det."
+      "closed": "Portalen är inte öppen ännu. Din byrå skickar en inbjudan när den är det.",
+      "eyebrow": "Portal"
     }
   },
   "account": {
@@ -485,7 +505,9 @@
       "orgNr": "Org.nr",
       "submit": "Lägg till kund",
       "submitting": "Lägger till…",
-      "created": "La till {name}"
+      "created": "La till {name}",
+      "title": "Ny kund",
+      "description": "Ett obligatoriskt fält. Enter skapar kunden och tömmer formuläret."
     },
     "showArchived": "Visa arkiverade",
     "hideArchived": "Dölj arkiverade",
@@ -555,7 +577,10 @@
         "SUSPENDED": "Avstängd",
         "REVOKED": "Återkallad"
       },
-      "portalHint": "Portalinbjudningar kommer i fas 3 — kontakter är poster tills dess."
+      "portalHint": "Portalinbjudningar kommer i fas 3 — kontakter är poster tills dess.",
+      "columns": {
+        "status": "Portal"
+      }
     },
     "projects": {
       "empty": "Skapa det första projektet",
@@ -603,7 +628,15 @@
       "ended": "Tjänsten avslutad",
       "delete": "Ta bort",
       "deleteConfirm": "Ta bort tjänsten?",
-      "deleted": "Tjänsten borttagen"
+      "deleted": "Tjänsten borttagen",
+      "columns": {
+        "name": "Tjänst",
+        "billing": "Fakturering",
+        "scope": "Omfattning",
+        "price": "Pris exkl. moms",
+        "renews": "Förnyas",
+        "status": "Status"
+      }
     }
   },
   "projects": {

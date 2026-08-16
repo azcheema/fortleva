@@ -3,8 +3,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
+import { AuthShell } from "@/app/(tenant)/login/auth-shell";
 import { getMemberSession } from "@/auth/session";
 import { AuthzError } from "@/authz/errors";
+import { Callout, EntityChip } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { acceptInvite, previewInvite } from "@/members/invites";
 import { allow, clientIp } from "@/ratelimit";
@@ -13,6 +15,9 @@ import { allow, clientIp } from "@/ratelimit";
  * Invitation acceptance. The link carries the raw token exactly once;
  * the page previews the invite, and a signed-in user whose email
  * matches accepts it. Not signed in → sign up first, come back.
+ *
+ * The inviting workspace is shown as an EntityChip so the reader
+ * recognises what they are about to join before they act.
  */
 export default async function InvitePage({
   params,
@@ -27,29 +32,38 @@ export default async function InvitePage({
   const preview = await previewInvite(token);
 
   if (!preview || preview.status !== "PENDING" || preview.expired) {
-    return (
-      <Shell>
-        <h1 className="text-xl font-semibold">{t("unavailableTitle")}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t("unavailable")}</p>
-      </Shell>
-    );
+    return <AuthShell eyebrow={t("eyebrow")} title={t("unavailableTitle")} description={t("unavailable")} />;
   }
+
+  // previewInvite() runs before authentication and deliberately returns
+  // no tenant id; the chip derives its colour from the name, which is
+  // the documented last-resort fallback.
+  const workspace = (
+    <EntityChip
+      id={null}
+      name={preview.tenantName}
+      kind="client"
+      size="md"
+      className="font-medium"
+    />
+  );
 
   const session = await getMemberSession();
   if (!session) {
     return (
-      <Shell>
-        <h1 className="text-xl font-semibold">{t("joinTitle", { tenant: preview.tenantName })}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t.rich("signInFirst", {
-            email: preview.email,
-            strong: (chunks) => <strong className="text-foreground">{chunks}</strong>,
-          })}
-        </p>
-        <Button asChild className="mt-4 self-start">
+      <AuthShell
+        eyebrow={t("eyebrow")}
+        title={t("joinTitle", { tenant: preview.tenantName })}
+        description={t.rich("signInFirst", {
+          email: preview.email,
+          strong: (chunks) => <strong className="font-medium text-foreground">{chunks}</strong>,
+        })}
+      >
+        {workspace}
+        <Button asChild size="lg" className="w-full">
           <Link href={`/signup?next=/invite/${token}`}>{t("createOrSignIn")}</Link>
         </Button>
-      </Shell>
+      </AuthShell>
     );
   }
 
@@ -77,30 +91,27 @@ export default async function InvitePage({
   const mismatch = session.user.email !== preview.email;
 
   return (
-    <Shell>
-      <h1 className="text-xl font-semibold">{t("joinTitle", { tenant: preview.tenantName })}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        {t("signedInAs", { email: session.user.email })}
-        {mismatch ? ` ${t("mismatch", { email: preview.email })}` : null}
-      </p>
+    <AuthShell
+      eyebrow={t("eyebrow")}
+      title={t("joinTitle", { tenant: preview.tenantName })}
+      description={t("signedInAs", { email: session.user.email })}
+    >
+      {workspace}
+      {mismatch ? (
+        <Callout tone="caution" role="status">
+          {t("mismatch", { email: preview.email })}
+        </Callout>
+      ) : null}
       {error ? (
-        <p role="alert" className="mt-3 text-sm text-destructive">
+        <Callout tone="danger" role="alert">
           {t("failed")}
-        </p>
+        </Callout>
       ) : null}
       <form action={accept}>
-        <Button type="submit" className="mt-4">
+        <Button type="submit" size="lg" className="w-full">
           {t("accept")}
         </Button>
       </form>
-    </Shell>
-  );
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
-      {children}
-    </main>
+    </AuthShell>
   );
 }

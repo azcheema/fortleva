@@ -34,7 +34,9 @@
     "optional": "optional",
     "projects": "{count, plural, =1 {1 project} other {# projects}}",
     "contacts": "{count, plural, =1 {1 contact} other {# contacts}}",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "actions": "Actions",
+    "overflow": "+{count}"
   },
   "nav": {
     "home": "Home",
@@ -114,13 +116,23 @@
       "clients": "Open Clients",
       "projects": "Open Projects"
     },
-    "workspace": "Workspace: {name}"
+    "workspace": "Workspace: {name}",
+    "queue": "Your queue",
+    "queueDescription": "Work assigned to you, across every client and project.",
+    "tiles": {
+      "assigned": "Assigned to you",
+      "waiting": "Waiting on client",
+      "due": "Due this week",
+      "pending": "—"
+    }
   },
   "dashboard": {
     "title": "Welcome, {name}",
     "workspaces": "Your workspaces",
     "none": "You are not a member of any workspace yet. Ask an admin for an invitation.",
-    "goHome": "Go to Home"
+    "goHome": "Go to Home",
+    "metric": "Workspaces",
+    "noneTitle": "No workspace yet"
   },
   "auth": {
     "email": "Email",
@@ -137,7 +149,9 @@
       "verifying": "Verifying…",
       "invalidCode": "Invalid code",
       "noAccount": "No account yet?",
-      "signUp": "Create one"
+      "signUp": "Create one",
+      "subtitle": "Enter your email and password to continue.",
+      "totpTitle": "Two-factor verification"
     },
     "signup": {
       "title": "Create your Fortleva account",
@@ -148,7 +162,8 @@
       "checkEmailTitle": "Check your email",
       "checkEmail": "We sent a verification link to <strong>{email}</strong>. Verify your address, then sign in.",
       "haveAccount": "Already have an account?",
-      "signIn": "Sign in"
+      "signIn": "Sign in",
+      "subtitle": "An account is your identity — a workspace invites you separately."
     },
     "invite": {
       "unavailableTitle": "Invitation not available",
@@ -159,17 +174,22 @@
       "signedInAs": "Signed in as {email}.",
       "mismatch": "This invitation was issued to {email} — accepting will fail unless the addresses match.",
       "accept": "Accept invitation",
-      "failed": "The invitation could not be accepted. Make sure you are signed in with the invited address."
+      "failed": "The invitation could not be accepted. Make sure you are signed in with the invited address.",
+      "eyebrow": "Invitation"
     },
     "ops": {
       "loginTitle": "Fortleva Ops — sign in",
       "codePlaceholder": "6-digit code",
       "title": "Fortleva Ops",
-      "signedInAs": "Signed in as {email} (SUPERADMIN). The console UI lands in Phase 7 — the machinery (impersonation, entitlement overrides, audit) exists behind withPlatform()."
+      "signedInAs": "Signed in as {email} (SUPERADMIN). The console UI lands in Phase 7 — the machinery (impersonation, entitlement overrides, audit) exists behind withPlatform().",
+      "eyebrow": "Platform",
+      "loginSubtitle": "The platform plane is separate from every workspace.",
+      "session": "Session"
     },
     "portal": {
       "title": "Client portal",
-      "closed": "The portal is not open yet. Your agency will send you an invitation when it is."
+      "closed": "The portal is not open yet. Your agency will send you an invitation when it is.",
+      "eyebrow": "Portal"
     }
   },
   "account": {
@@ -485,7 +505,9 @@
       "orgNr": "Org. no.",
       "submit": "Add client",
       "submitting": "Adding…",
-      "created": "Added {name}"
+      "created": "Added {name}",
+      "title": "New client",
+      "description": "One required field. Enter creates the client and clears the form."
     },
     "showArchived": "Show archived",
     "hideArchived": "Hide archived",
@@ -555,7 +577,10 @@
         "SUSPENDED": "Suspended",
         "REVOKED": "Revoked"
       },
-      "portalHint": "Portal invitations arrive in Phase 3 — contacts are records until then."
+      "portalHint": "Portal invitations arrive in Phase 3 — contacts are records until then.",
+      "columns": {
+        "status": "Portal"
+      }
     },
     "projects": {
       "empty": "Create the first project",
@@ -603,7 +628,15 @@
       "ended": "Service ended",
       "delete": "Delete",
       "deleteConfirm": "Delete service?",
-      "deleted": "Service deleted"
+      "deleted": "Service deleted",
+      "columns": {
+        "name": "Service",
+        "billing": "Billing",
+        "scope": "Scope",
+        "price": "Price ex. VAT",
+        "renews": "Renews",
+        "status": "Status"
+      }
     }
   },
   "projects": {

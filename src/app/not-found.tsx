@@ -1,20 +1,19 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { AuthShell } from "@/app/(tenant)/login/auth-shell";
 import { Button } from "@/components/ui/button";
 
-/** Root 404 (outside the member shell). */
+/** Root 404 (outside the member shell): the unauthenticated lockup. */
 export default async function RootNotFound() {
   const t = await getTranslations("shell.notFound");
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 p-6">
-      <h1 className="text-xl font-semibold">{t("title")}</h1>
-      <p className="text-sm text-muted-foreground">{t("description")}</p>
+    <AuthShell title={t("title")} description={t("description")}>
       <div>
-        <Button asChild>
+        <Button asChild size="lg">
           <Link href="/">{t("home")}</Link>
         </Button>
       </div>
-    </main>
+    </AuthShell>
   );
 }

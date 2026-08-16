@@ -4,10 +4,9 @@ import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
+import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { FormMessage } from "@/components/form-message";
 import type { FormResult } from "@/lib/server-actions";
 
 import { createClientProjectAction } from "../actions";
@@ -31,8 +30,7 @@ export function CreateClientProjectForm({ clientId }: { clientId: string }) {
   return (
     <form ref={formRef} action={action} className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="clientId" value={clientId} />
-      <div className="flex w-32 flex-col gap-1.5">
-        <Label htmlFor="cp-key">{t("key")}</Label>
+      <Field label={t("key")} htmlFor="cp-key" className="w-36">
         <Input
           id="cp-key"
           ref={keyRef}
@@ -41,12 +39,11 @@ export function CreateClientProjectForm({ clientId }: { clientId: string }) {
           maxLength={8}
           pattern="[A-Za-z][A-Za-z0-9]{0,7}"
           placeholder={t("keyPlaceholder")}
-          className="font-mono uppercase"
+          className="num font-mono uppercase"
           disabled={pending}
         />
-      </div>
-      <div className="flex min-w-56 flex-1 flex-col gap-1.5">
-        <Label htmlFor="cp-name">{t("name")}</Label>
+      </Field>
+      <Field label={t("name")} htmlFor="cp-name" className="min-w-56 flex-1">
         <Input
           id="cp-name"
           name="name"
@@ -55,7 +52,7 @@ export function CreateClientProjectForm({ clientId }: { clientId: string }) {
           placeholder={t("namePlaceholder")}
           disabled={pending}
         />
-      </div>
+      </Field>
       <Button type="submit" disabled={pending}>
         {pending ? t("submitting") : t("submit")}
       </Button>

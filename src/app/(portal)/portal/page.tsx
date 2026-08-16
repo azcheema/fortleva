@@ -1,5 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
+import { AuthShell } from "@/app/(tenant)/login/auth-shell";
+
 /**
  * Portal plane — LOCKED SHELL until Phase 3 (PLAN.md). The route group,
  * cookie namespace (__Host-flv.portal) and proxy gating exist from
@@ -7,10 +9,5 @@ import { getTranslations } from "next-intl/server";
  */
 export default async function PortalShell() {
   const t = await getTranslations("auth.portal");
-  return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6 text-center">
-      <h1 className="text-xl font-semibold">{t("title")}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{t("closed")}</p>
-    </main>
-  );
+  return <AuthShell plane="portal" eyebrow={t("eyebrow")} title={t("title")} description={t("closed")} />;
 }

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
-import { Badge } from "@/components/ui/badge";
-import { Page, PageHeader } from "@/components/page-header";
+import { Callout, Page, PageHeader, StatusBadge } from "@/components/semantic";
 import { TabNav } from "@/components/tab-nav";
+import { entityStyle } from "@/lib/entity-color";
 
 import { loadClient } from "./data";
 
@@ -43,22 +43,22 @@ export default async function ClientLayout({
     <Page>
       <PageHeader
         title={
-          <span className="flex items-center gap-2">
-            {client.name}
-            {client.status === "ARCHIVED" ? (
-              <Badge variant="outline">{t("status.ARCHIVED")}</Badge>
-            ) : null}
+          <span className="flex min-w-0 items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              style={entityStyle(client.id, client.name)}
+              className="inline-block size-2.5 shrink-0 rounded-full bg-(--entity)"
+            />
+            <span className="truncate">{client.name}</span>
           </span>
         }
+        badges={<StatusBadge domain="clientStatus" value={client.status} />}
         description={[client.orgNr, client.city].filter(Boolean).join(" · ") || undefined}
       />
       {client.status === "ARCHIVED" ? (
-        <p
-          role="status"
-          className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
-        >
+        <Callout tone="caution" role="status" className="mt-4">
           {t("overview.archivedBanner")}
-        </p>
+        </Callout>
       ) : null}
       {!client.direct ? (
         <p role="status" className="mt-3 text-xs text-muted-foreground">

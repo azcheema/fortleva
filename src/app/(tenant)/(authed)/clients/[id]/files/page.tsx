@@ -1,7 +1,6 @@
 import { getTranslations } from "next-intl/server";
 
-import { EmptyState } from "@/components/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Callout, EmptyState, SectionCard } from "@/components/semantic";
 import { listDocuments } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -29,7 +28,11 @@ export default async function ClientFilesPage({
   const returnTo = `/clients/${client.id}/files`;
 
   if (!client.caps.viewDocuments) {
-    return <EmptyState title={t("noAccess")} description={t("noAccessDescription")} />;
+    return (
+      <SectionCard>
+        <EmptyState variant="forbidden" title={t("noAccess")} body={t("noAccessDescription")} />
+      </SectionCard>
+    );
   }
 
   const { membership, actor } = await requireTenantContext();
@@ -41,15 +44,14 @@ export default async function ClientFilesPage({
   return (
     <div className="flex flex-col gap-6">
       {error ? (
-        <p
-          role="alert"
-          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <Callout tone="danger" role="alert">
           {error}
-        </p>
+        </Callout>
       ) : null}
       {documents.length === 0 ? (
-        <EmptyState title={t("empty")} description={t("emptyDescription")} />
+        <SectionCard>
+          <EmptyState variant="empty" title={t("empty")} body={t("emptyDescription")} />
+        </SectionCard>
       ) : (
         <DocumentsTable
           documents={documents}
@@ -59,14 +61,9 @@ export default async function ClientFilesPage({
         />
       )}
       {client.caps.uploadDocuments && client.status === "ACTIVE" ? (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>{tFiles("upload.title")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <UploadForm target={{ clientId: client.id, returnTo }} visibilityEnabled />
-          </CardContent>
-        </Card>
+        <SectionCard title={tFiles("upload.title")}>
+          <UploadForm target={{ clientId: client.id, returnTo }} visibilityEnabled />
+        </SectionCard>
       ) : null}
     </div>
   );

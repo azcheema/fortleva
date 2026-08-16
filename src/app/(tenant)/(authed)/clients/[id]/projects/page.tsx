@@ -1,9 +1,12 @@
-import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
-import { EmptyState } from "@/components/empty-state";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DataTable,
+  EmptyState,
+  EntityChip,
+  SectionCard,
+  StatusBadge,
+} from "@/components/semantic";
 import {
   Table,
   TableBody,
@@ -27,17 +30,25 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
   return (
     <div className="flex flex-col gap-6">
       {client.projects.length === 0 ? (
-        client.caps.createProject ? (
-          <EmptyState title={t("empty")} description={t("emptyDescription")} />
-        ) : (
-          <EmptyState title={t("scopedEmpty")} description={t("scopedEmptyDescription")} />
-        )
+        <SectionCard>
+          {client.caps.createProject ? (
+            <EmptyState variant="empty" title={t("empty")} body={t("emptyDescription")} />
+          ) : (
+            <EmptyState
+              variant="forbidden"
+              title={t("scopedEmpty")}
+              body={t("scopedEmptyDescription")}
+            />
+          )}
+        </SectionCard>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border">
+        <DataTable>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{tProjects("columns.key")}</TableHead>
+                {/* Fixed in ch of the mono face: the keys are 1-8 characters
+                    and must form a straight left edge across every row. */}
+                <TableHead className="w-[10ch]">{tProjects("columns.key")}</TableHead>
                 <TableHead>{tProjects("columns.name")}</TableHead>
                 <TableHead>{tProjects("columns.status")}</TableHead>
                 <TableHead className="text-right">{tProjects("columns.milestones")}</TableHead>
@@ -47,43 +58,41 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
             <TableBody>
               {client.projects.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell className="font-mono text-xs">
-                    <Link href={`/projects/${p.key}`} className="hover:underline">
-                      {p.key}
-                    </Link>
+                  <TableCell className="num w-[10ch] font-mono text-xs text-muted-foreground">
+                    {p.key}
                   </TableCell>
-                  <TableCell className="font-medium">
-                    <Link href={`/projects/${p.key}`} className="hover:underline">
-                      {p.name}
-                    </Link>
+                  <TableCell className="max-w-80">
+                    <EntityChip
+                      id={p.id}
+                      name={p.name}
+                      kind="project"
+                      href={`/projects/${p.key}`}
+                      className="font-medium"
+                    />
                   </TableCell>
                   <TableCell>
-                    <Badge variant={p.status === "ACTIVE" ? "secondary" : "outline"}>
-                      {tProjects(`status.${p.status}`)}
-                    </Badge>
+                    <StatusBadge domain="projectStatus" value={p.status} />
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {tProjects("milestonesProgress", { done: p.milestoneDone, total: p.milestoneTotal })}
+                  <TableCell className="num text-right">
+                    {tProjects("milestonesProgress", {
+                      done: p.milestoneDone,
+                      total: p.milestoneTotal,
+                    })}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="num text-muted-foreground">
                     {format.dateTime(p.updatedAt, { dateStyle: "medium" })}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </div>
+        </DataTable>
       )}
 
       {client.caps.createProject && client.status === "ACTIVE" ? (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>{tProjects("create.title")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CreateClientProjectForm clientId={client.id} />
-          </CardContent>
-        </Card>
+        <SectionCard title={tProjects("create.title")}>
+          <CreateClientProjectForm clientId={client.id} />
+        </SectionCard>
       ) : null}
     </div>
   );
