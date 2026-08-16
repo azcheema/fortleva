@@ -1,84 +1,97 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from "node:crypto";
+
+import type { TenantDb } from "@/db";
+
+import { decryptField, isEncryptedField } from "./root-keyring";
+import { getActiveTenantDek, getTenantDek } from "./tenant-key";
+
+// v1 primitives live next to the root keyring (they ARE root-key
+// operations); re-exported here so callers have one import.
+export { decryptField, encryptField, isEncryptedField, resetKeyringCache } from "./root-keyring";
 
 /**
- * Field-level encryption service (SECURITY.md §6): AES-256-GCM,
- * ciphertext format `v1.<keyId>.<iv>.<ct>.<tag>` (base64url parts).
- * The key lives in env at v1; keyId is in the format so rotation and a
- * later per-tenant-DEK/KMS upgrade are additive, not migrations.
- * Applied to: TwoFactor.secret/backupCodes, Tenant bank fields,
- * Tenant.databaseUrl (DATA_MODEL.md §4 — the closed inventory).
+ * Field-level encryption service (SECURITY.md §6, DATA_MODEL.md §4).
+ * AES-256-GCM in two formats:
+ *   v1 `v1.<keyId>.<iv>.<ct>.<tag>` — directly under an env root key,
+ *      no AAD. Kept for the closed Phase-1 inventory (TwoFactor
+ *      secret/backupCodes, Tenant bank fields, Tenant.databaseUrl) and
+ *      for wrapping per-tenant DEKs. Still decryptable forever.
+ *   v2 `v2.<rootKeyId>.<tenantKeyId>.<iv>.<ct>.<tag>` — under the
+ *      tenant's DEK (src/crypto/tenant-key.ts) with MANDATORY AAD
+ *      `tenantId:model:rowId:field`: a ciphertext moved to another row,
+ *      tenant, model or column fails authentication. New app data is v2.
+ * All parts base64url.
  */
 
-const VERSION = "v1";
+const V2 = "v2";
 const ALGO = "aes-256-gcm";
 const IV_BYTES = 12;
 
-type Keyring = { activeKeyId: string; keys: Map<string, Buffer> };
+const b64u = (b: Buffer): string => b.toString("base64url");
+const fromB64u = (s: string): Buffer => Buffer.from(s, "base64url");
 
-let cachedKeyring: Keyring | null = null;
+// ── v2 ──────────────────────────────────────────────────────────────
 
-function keyring(): Keyring {
-  if (cachedKeyring) return cachedKeyring;
-  const raw = process.env["FIELD_ENCRYPTION_KEY"];
-  if (!raw) throw new Error("FIELD_ENCRYPTION_KEY is not set");
-  const activeKeyId = process.env["FIELD_ENCRYPTION_KEY_ID"] ?? "k1";
-  const key = Buffer.from(raw, "base64");
-  if (key.length !== 32) {
-    throw new Error("FIELD_ENCRYPTION_KEY must be 32 bytes, base64-encoded");
-  }
-  // Rotation seam: FIELD_ENCRYPTION_KEY_PREVIOUS ("keyId:base64key")
-  // lets decrypt keep working while re-encryption proceeds.
-  const keys = new Map([[activeKeyId, key]]);
-  const prev = process.env["FIELD_ENCRYPTION_KEY_PREVIOUS"];
-  if (prev) {
-    const [prevId, prevKey] = prev.split(":");
-    if (prevId && prevKey) keys.set(prevId, Buffer.from(prevKey, "base64"));
-  }
-  cachedKeyring = { activeKeyId, keys };
-  return cachedKeyring;
-}
-
-/** Test seam — clears the cached env-derived keyring. */
-export const resetKeyringCache = (): void => {
-  cachedKeyring = null;
+/** Binds a ciphertext to exactly one (tenant, model, row, field). */
+export type EncryptionContext = {
+  tenantId: string;
+  model: string;
+  rowId: string;
+  field: string;
 };
 
-const b64u = (b: Buffer): string => b.toString("base64url");
+const aadOf = (ctx: EncryptionContext): Buffer =>
+  Buffer.from(`${ctx.tenantId}:${ctx.model}:${ctx.rowId}:${ctx.field}`, "utf8");
 
-export function encryptField(plaintext: string): string {
-  const { activeKeyId, keys } = keyring();
-  const key = keys.get(activeKeyId);
-  if (!key) throw new Error("active encryption key missing");
+export async function encryptFieldV2(
+  tx: TenantDb,
+  ctx: EncryptionContext,
+  plaintext: string,
+): Promise<string> {
+  const { keyId, rootKeyId, dek } = await getActiveTenantDek(tx, ctx.tenantId);
   const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv(ALGO, key, iv);
+  const cipher = createCipheriv(ALGO, dek, iv);
+  cipher.setAAD(aadOf(ctx));
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return [VERSION, activeKeyId, b64u(iv), b64u(ct), b64u(tag)].join(".");
+  return [V2, rootKeyId, keyId, b64u(iv), b64u(ct), b64u(tag)].join(".");
 }
 
-export function decryptField(ciphertext: string): string {
+export async function decryptFieldV2(
+  tx: TenantDb,
+  ctx: EncryptionContext,
+  ciphertext: string,
+): Promise<string> {
   const parts = ciphertext.split(".");
-  if (parts.length !== 5 || parts[0] !== VERSION) {
+  if (parts.length !== 6 || parts[0] !== V2) {
     throw new Error("field ciphertext has an unknown format");
   }
-  const [, keyId, ivB64, ctB64, tagB64] = parts as [string, string, string, string, string];
-  const key = keyring().keys.get(keyId);
-  if (!key) throw new Error(`no key for keyId "${keyId}"`);
-  const decipher = createDecipheriv(ALGO, key, Buffer.from(ivB64, "base64url"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64url"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(ctB64, "base64url")),
-    decipher.final(),
-  ]).toString("utf8");
+  const [, , tenantKeyId, ivB64, ctB64, tagB64] = parts as [
+    string, string, string, string, string, string,
+  ];
+  // The row's rootKeyId is not checked against the ciphertext's: a root
+  // re-wrap changes the row, never the data. Whatever root wrapped the
+  // DEK at unwrap time is what decryptField() resolves.
+  const { dek } = await getTenantDek(tx, ctx.tenantId, tenantKeyId);
+  const decipher = createDecipheriv(ALGO, dek, fromB64u(ivB64));
+  decipher.setAAD(aadOf(ctx));
+  decipher.setAuthTag(fromB64u(tagB64));
+  return Buffer.concat([decipher.update(fromB64u(ctB64)), decipher.final()]).toString("utf8");
 }
 
-export const isEncryptedField = (value: string): boolean =>
-  value.startsWith(`${VERSION}.`) && value.split(".").length === 5;
+export const isEncryptedFieldV2 = (value: string): boolean =>
+  value.startsWith(`${V2}.`) && value.split(".").length === 6;
+
+/** Dispatches on the version prefix: v1 (root key, no AAD) or v2. */
+export async function decryptAnyField(
+  tx: TenantDb,
+  ctx: EncryptionContext,
+  ciphertext: string,
+): Promise<string> {
+  if (isEncryptedField(ciphertext)) return decryptField(ciphertext);
+  if (isEncryptedFieldV2(ciphertext)) return decryptFieldV2(tx, ctx, ciphertext);
+  throw new Error("field ciphertext has an unknown format");
+}
 
 /** Constant-time comparison for secrets that pass through here. */
 export const secretsEqual = (a: string, b: string): boolean => {

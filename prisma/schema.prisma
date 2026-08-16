@@ -206,6 +206,7 @@ model Tenant {
   roles       Role[]
   preferences TenantPreference[]
   counters    TenantCounter[]
+  keys        TenantKey[]
   documents   Document[]
   fileObjects FileObject[]
 
@@ -255,6 +256,37 @@ model FeatureFlag {
 }
 
 // ───────────────────────────────────────────────────────────────────
+// CRYPTO — per-tenant envelope keys (SECURITY.md §6, DATA_MODEL.md §4)
+// ───────────────────────────────────────────────────────────────────
+
+enum TenantKeyStatus {
+  ACTIVE
+  RETIRED
+}
+
+/// One DEK per tenant per key version. wrappedDek is the 32-byte DEK
+/// wrapped by the env root keyring (v1 field-encryption format);
+/// rootKeyId names the wrapping key (the KMS seam). Class A: a contact
+/// never reads this table. Rows are never deleted while v2 ciphertext
+/// under them exists — retirement is a status flip.
+model TenantKey {
+  id         String          @id @default(uuid(7))
+  tenantId   String          @map("tenant_id")
+  keyId      String          @map("key_id") // short id, e.g. "t1"
+  wrappedDek String          @map("wrapped_dek")
+  rootKeyId  String          @map("root_key_id")
+  status     TenantKeyStatus @default(ACTIVE)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  retiredAt  DateTime?       @map("retired_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, keyId])
+  @@index([tenantId, status])
+  @@map("tenant_key")
+}
+
+// ───────────────────────────────────────────────────────────────────
 // MEMBERSHIP & AUTHORIZATION (tenant plane)
 // ───────────────────────────────────────────────────────────────────
 
@@ -270,6 +302,9 @@ model Member {
   userId      String       @map("user_id")
   status      MemberStatus @default(ACTIVE)
   title       String?
+  timezone    String?      @db.VarChar(64) // IANA zone, e.g. "Europe/Stockholm"
+  workCountry String?      @map("work_country") @db.Char(2) // ISO 3166-1 alpha-2
+  hoursPerDay Decimal?     @map("hours_per_day") @db.Decimal(4, 2)
   invitedById String?      @map("invited_by_id") // attribution, no FK
   joinedAt    DateTime     @default(now()) @map("joined_at") @db.Timestamptz(6)
   suspendedAt DateTime?    @map("suspended_at") @db.Timestamptz(6)

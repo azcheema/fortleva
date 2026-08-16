@@ -1,8 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { withPlatform, withTenant } from "./index";
+import { MODEL_CLASSES, RLS_CLASSES, tableNameOf, withPlatform, withTenant } from "./index";
 import { getPlatformClient, runtimeClient } from "./client";
+
+/** Every tenant-scoped table, from the registry — a new model is
+ * covered by the fail-closed / portal_deny tests the moment it is
+ * classified. */
+const TENANT_TABLES = MODEL_CLASSES.tenant.map(tableNameOf);
+
+const countAll = async (
+  db: { $queryRawUnsafe: typeof runtimeClient.$queryRawUnsafe },
+  tables: readonly string[],
+): Promise<Record<string, number>> => {
+  const out: Record<string, number> = {};
+  for (const t of tables) {
+    // Table names come from the registry (constants), never from input.
+    const rows = await db.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ${t}`);
+    out[t] = rows[0]?.n ?? -1;
+  }
+  return out;
+};
 
 /**
  * CI cross-tenant isolation suite, Phase 1 slice (TENANCY.md §11).
@@ -127,12 +145,33 @@ describe("write isolation", () => {
 
 describe("fail-closed and GUC lifecycle", () => {
   it("no GUC set → zero rows on every tenant table (raw, as app_runtime)", async () => {
-    const counts = await runtimeClient.$queryRaw<
-      { tenants: number; roles: number; members: number }[]
-    >`SELECT (SELECT count(*)::int FROM tenant)  AS tenants,
-             (SELECT count(*)::int FROM role)    AS roles,
-             (SELECT count(*)::int FROM member)  AS members`;
-    expect(counts[0]).toEqual({ tenants: 0, roles: 0, members: 0 });
+    const counts = await countAll(runtimeClient, ["tenant", ...TENANT_TABLES]);
+    expect(counts).toEqual(
+      Object.fromEntries(["tenant", ...TENANT_TABLES].map((t) => [t, 0])),
+    );
+  });
+
+  it("app.principal_id is set transaction-locally per principal kind, empty outside", async () => {
+    const read = (tx: { $queryRaw: typeof runtimeClient.$queryRaw }) =>
+      tx
+        .$queryRaw<{ v: string }[]>`SELECT current_setting('app.principal_id', true) AS v`
+        .then((r) => r[0]?.v);
+
+    expect(
+      await withTenant(A.id, { type: "member", id: memberA.id }, (tx) => read(tx)),
+    ).toBe(memberA.id);
+    const contactId = randomUUID();
+    expect(
+      await withTenant(
+        A.id,
+        { type: "contact", id: contactId, clientId: randomUUID() },
+        (tx) => read(tx),
+      ),
+    ).toBe(contactId);
+    expect(await withTenant(A.id, { type: "system" }, (tx) => read(tx))).toBe("");
+    // Outside any unit of work: unset ('' or NULL) — never a leaked id.
+    expect(await read(runtimeClient)).not.toBe(memberA.id);
+    expect(await read(runtimeClient) ?? "").toBe("");
   });
 
   it("GUC does not leak across transactions on the pooled connection", async () => {
@@ -201,6 +240,12 @@ describe("portal principal (contact) is denied everywhere in Phase 1", () => {
         expect(await tx.member.count()).toBe(0);
         expect(await tx.tenant.count()).toBe(0);
         expect(await tx.document.count()).toBe(0);
+        // Every registered tenant table, raw — class A is denied outright,
+        // class B has no CLIENT_VISIBLE rows for a fake client.
+        const counts = await countAll(tx, ["tenant", ...TENANT_TABLES]);
+        expect(counts).toEqual(
+          Object.fromEntries(["tenant", ...TENANT_TABLES].map((t) => [t, 0])),
+        );
       },
     );
   });
@@ -221,5 +266,64 @@ describe("posture assertions", () => {
         AND relname NOT LIKE '_prisma%'
         AND NOT (relrowsecurity AND relforcerowsecurity)`;
     expect(unforced).toEqual([]);
+  });
+
+  it("every RLS subclass has the columns and policies its class implies", async () => {
+    type Posture = { table: string; policies: string[]; columns: string[] };
+    const posture = await withPlatform(
+      { type: "system", job: "posture-test" },
+      "read RLS posture from pg_policies / information_schema",
+      async (tx) => {
+        const policies = await tx.$queryRaw<{ tablename: string; policyname: string }[]>`
+          SELECT tablename, policyname FROM pg_policies WHERE schemaname = 'public'`;
+        const columns = await tx.$queryRaw<{ table_name: string; column_name: string }[]>`
+          SELECT table_name, column_name FROM information_schema.columns
+          WHERE table_schema = 'public'`;
+        const byTable = new Map<string, Posture>();
+        const get = (t: string) => {
+          let p = byTable.get(t);
+          if (!p) byTable.set(t, (p = { table: t, policies: [], columns: [] }));
+          return p;
+        };
+        for (const p of policies) get(p.tablename).policies.push(p.policyname);
+        for (const c of columns) get(c.table_name).columns.push(c.column_name);
+        return byTable;
+      },
+      { readOnly: true },
+    );
+
+    const of = (model: string): Posture => {
+      const p = posture.get(tableNameOf(model));
+      expect(p, `${tableNameOf(model)} exists`).toBeDefined();
+      return p!;
+    };
+
+    for (const m of RLS_CLASSES.A) {
+      const p = of(m);
+      expect(p.policies, `${p.table}: class A needs tenant_isolation`).toContain("tenant_isolation");
+      expect(p.policies, `${p.table}: class A needs portal_deny`).toContain("portal_deny");
+      expect(p.policies, `${p.table}: class A must not carry portal_gate`).not.toContain("portal_gate");
+      expect(p.columns, `${p.table}: class A must NEVER have visibility`).not.toContain("visibility");
+    }
+    for (const m of RLS_CLASSES.B_clientScoped) {
+      const p = of(m);
+      expect(p.policies, `${p.table}: class B needs tenant_isolation`).toContain("tenant_isolation");
+      expect(p.policies, `${p.table}: class B needs portal_gate`).toContain("portal_gate");
+      expect(p.policies, `${p.table}: class B must not carry portal_deny`).not.toContain("portal_deny");
+      expect(p.columns, `${p.table}: needs client_id`).toContain("client_id");
+      expect(p.columns, `${p.table}: needs visibility`).toContain("visibility");
+    }
+    for (const m of RLS_CLASSES.B_projectScoped) {
+      const p = of(m);
+      expect(p.policies, `${p.table}: needs tenant_isolation`).toContain("tenant_isolation");
+      expect(p.policies, `${p.table}: needs portal_gate`).toContain("portal_gate");
+      expect(p.columns, `${p.table}: needs client_id`).toContain("client_id");
+      expect(p.columns, `${p.table}: needs visibility`).toContain("visibility");
+      expect(p.columns, `${p.table}: needs portal_enabled`).toContain("portal_enabled");
+    }
+    // Every tenant-scoped table (any subclass) physically has tenant_id.
+    for (const m of MODEL_CLASSES.tenant) {
+      expect(of(m).columns, `${tableNameOf(m)}: tenant_id`).toContain("tenant_id");
+    }
   });
 });

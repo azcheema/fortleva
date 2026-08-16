@@ -23,6 +23,7 @@ export const MODEL_CLASSES = {
     "memberRole",
     "tenantPreference",
     "tenantCounter",
+    "tenantKey",
     "document",
     "fileVersion",
     "fileObject",
@@ -43,6 +44,42 @@ export const MODEL_CLASSES = {
 } as const;
 
 export type ModelClass = keyof typeof MODEL_CLASSES;
+
+/**
+ * RLS subclass of every tenant-scoped model (TENANCY.md §1 amendment,
+ * DATA_MODEL.md §2.3). Each subclass implies a column set and policy
+ * names that the posture dbtest (isolation.dbtest.ts) checks against
+ * pg_policies / information_schema:
+ *   A               — portal_deny; NEVER a visibility column
+ *   B_clientScoped  — client_id + visibility; portal_gate (two-term)
+ *   B_projectScoped — + portal_enabled; portal_gate (three-term); Phase 2
+ *   principalScoped — per-principal carve-out (Notification, later)
+ * model-registry.test.ts asserts every MODEL_CLASSES.tenant model is in
+ * exactly one subclass.
+ */
+export const RLS_CLASSES = {
+  A: [
+    "member",
+    "memberInvite",
+    "role",
+    "rolePermission",
+    "memberRole",
+    "tenantPreference",
+    "tenantCounter",
+    "tenantKey",
+    "fileVersion",
+    "fileObject",
+  ],
+  B_clientScoped: ["document"],
+  B_projectScoped: [],
+  principalScoped: [],
+} as const satisfies Record<string, readonly string[]>;
+
+export type RlsClass = keyof typeof RLS_CLASSES;
+
+/** Physical table name of a Prisma model (all models @@map to snake_case). */
+export const tableNameOf = (model: string): string =>
+  model.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`).replace(/^_/, "");
 
 const lookup = new Map<string, ModelClass>();
 for (const [cls, models] of Object.entries(MODEL_CLASSES) as [ModelClass, readonly string[]][]) {

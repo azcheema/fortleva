@@ -75,6 +75,9 @@ export const AUDIT_EVENTS = {
   "export.downloaded": TENANT,
   // Preferences
   "preference.changed": TENANT,
+  // Crypto — per-tenant envelope keys (metadata: key ids only)
+  "tenant_key.created": TENANT,
+  "tenant_key.rotated": TENANT,
   // Continuity box (Phase 8 emitters)
   "continuity_box.sealed": TENANT,
   "continuity_box.resealed": TENANT,

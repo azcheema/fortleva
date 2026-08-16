@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { MODEL_CLASSES, allClassifiedModels, classOf } from "./model-registry";
+import { MODEL_CLASSES, RLS_CLASSES, allClassifiedModels, classOf, tableNameOf } from "./model-registry";
 
 /**
  * TENANCY.md §11 model census. Prisma 7 has no runtime DMMF, so the
@@ -61,6 +61,28 @@ describe("model census (TENANCY.md §11)", () => {
     for (const name of MODEL_CLASSES.global) {
       const model = parsed.find((m) => camel(m.name) === name);
       expect(model?.fields.has("tenantId"), `${name} is filed global but has tenantId`).toBe(false);
+    }
+  });
+
+  it("every tenant-scoped model is in exactly one RLS subclass", () => {
+    const seen = new Map<string, string[]>();
+    for (const [cls, models] of Object.entries(RLS_CLASSES)) {
+      for (const m of models) seen.set(m, [...(seen.get(m) ?? []), cls]);
+    }
+    for (const name of MODEL_CLASSES.tenant) {
+      expect(seen.get(name), `${name} must be in exactly one RLS_CLASSES entry`).toHaveLength(1);
+    }
+    const strays = [...seen.keys()].filter(
+      (m) => !(MODEL_CLASSES.tenant as readonly string[]).includes(m),
+    );
+    expect(strays, "RLS_CLASSES lists non-tenant-scoped models").toEqual([]);
+  });
+
+  it("tableNameOf matches every model's @@map", () => {
+    const schema = readFileSync(join(process.cwd(), "prisma", "schema.prisma"), "utf8");
+    for (const match of schema.matchAll(/^model\s+(\w+)\s+\{([\s\S]*?)^\}/gm)) {
+      const mapped = match[2]?.match(/@@map\("(\w+)"\)/)?.[1];
+      expect(tableNameOf(camel(match[1] ?? "")), match[1]).toBe(mapped);
     }
   });
 

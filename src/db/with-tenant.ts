@@ -30,6 +30,11 @@ export async function withTenant<T>(
   }
 
   const clientId = principal.type === "contact" ? principal.clientId : "";
+  // app.principal_id (TENANCY.md §4.1): the member/contact id so
+  // RESTRICTIVE policies can pin a row to THIS principal; empty for
+  // system / platform_admin (fail-closed: '' matches no id).
+  const principalId =
+    principal.type === "member" || principal.type === "contact" ? principal.id : "";
 
   return tenantContextStorage.run({ tenantId, principal }, () =>
     runtimeClient.$transaction(
@@ -37,7 +42,8 @@ export async function withTenant<T>(
         await tx.$queryRaw`
           SELECT set_config('app.tenant_id', ${tenantId}, true),
                  set_config('app.principal', ${principal.type}, true),
-                 set_config('app.client_id', ${clientId}, true)`;
+                 set_config('app.client_id', ${clientId}, true),
+                 set_config('app.principal_id', ${principalId}, true)`;
         return fn(tx as unknown as TenantDb);
       },
       { timeout: opts?.timeoutMs ?? 5000 },

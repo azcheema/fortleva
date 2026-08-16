@@ -22,3 +22,7 @@ export const tenantContextStorage = new AsyncLocalStorage<TenantContext>();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const isUuid = (value: string): boolean => UUID_RE.test(value);
+
+/** The tenant of the enclosing withTenant() unit of work, if any. */
+export const currentTenantId = (): string | undefined =>
+  tenantContextStorage.getStore()?.tenantId;
