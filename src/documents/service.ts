@@ -3,7 +3,7 @@ import { requireAccess, parseEntitlements } from "@/entitlements/resolver";
 import { assertInScope, scopeWhere, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { fail } from "@/lib/domain-error";
-import { withPlatform, withTenant, type TenantDb } from "@/db";
+import { withTenant, type TenantDb } from "@/db";
 import { newId } from "@/lib/ids";
 import { getStorage } from "@/storage";
 
@@ -458,6 +458,7 @@ export async function resolveDownload(
     select: {
       id: true,
       name: true,
+      kind: true,
       versions: {
         orderBy: { versionNumber: "desc" },
         take: 1,
@@ -476,6 +477,16 @@ export async function resolveDownload(
     targetId: doc!.id,
     metadata: { versionNumber: latest!.versionNumber },
   });
+  // A tenant export leaving the building is a data-egress event of its
+  // own (SECURITY.md §7 "export.*"), on top of the ordinary file row.
+  if (doc!.kind === "EXPORT") {
+    await record(tx, {
+      action: "export.downloaded",
+      targetType: "Document",
+      targetId: doc!.id,
+      metadata: { versionNumber: latest!.versionNumber },
+    });
+  }
   return {
     key: latest!.fileObject.r2Key,
     filename: doc!.name,
@@ -574,38 +585,4 @@ export async function softDeleteDocument(ctx: DocumentCtx, documentId: string): 
     await tx.document.update({ where: { id: doc!.id }, data: { deletedAt: new Date() } });
     await record(tx, { action: "document.deleted", targetType: "Document", targetId: doc!.id });
   });
-}
-
-// ── Reconciliation ───────────────────────────────────────────────────
-
-/**
- * Stale PENDING objects (presigned but never committed) release their
- * quota reservation: mark DELETED and best-effort remove any bytes.
- * Cross-tenant by nature ⇒ system job under withPlatform (audited
- * there). Called manually for now; cron in a later phase.
- */
-export async function expirePendingUploads(
-  olderThanMinutes: number,
-): Promise<{ expired: number }> {
-  const cutoff = new Date(Date.now() - olderThanMinutes * 60_000);
-  const keys = await withPlatform(
-    { type: "system", job: "expire-pending-uploads" },
-    `expire PENDING file objects older than ${olderThanMinutes} min`,
-    async (tx) => {
-      const stale = await tx.fileObject.findMany({
-        where: { status: "PENDING", createdAt: { lt: cutoff } },
-        select: { id: true, r2Key: true },
-      });
-      if (stale.length === 0) return [];
-      await tx.fileObject.updateMany({
-        where: { id: { in: stale.map((s) => s.id) }, status: "PENDING" },
-        data: { status: "DELETED" },
-      });
-      return stale.map((s) => s.r2Key);
-    },
-    { readOnly: false },
-  );
-  const storage = getStorage();
-  await Promise.all(keys.map((k) => storage.delete(k).catch(() => undefined)));
-  return { expired: keys.length };
 }

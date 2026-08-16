@@ -53,7 +53,8 @@
     "workspace": "Workspace",
     "switchWorkspace": "Switch workspace",
     "clients": "Clients",
-    "projects": "Projects"
+    "projects": "Projects",
+    "export": "Export"
   },
   "shell": {
     "palette": {
@@ -108,9 +109,9 @@
     },
     "empty": {
       "title": "Nothing to work on yet",
-      "description": "Boards and tasks arrive with the Work module — for now: Members and Files.",
-      "members": "Open Members",
-      "files": "Open Files"
+      "description": "Boards and tasks arrive with the Work module — for now, start with your clients and projects.",
+      "clients": "Open Clients",
+      "projects": "Open Projects"
     },
     "workspace": "Workspace: {name}"
   },
@@ -216,7 +217,16 @@
       "verify": "Verify",
       "verifying": "Verifying…",
       "enterCode": "Enter the code from your authenticator app.",
-      "mismatch": "That code did not match — try the next one."
+      "mismatch": "That code did not match — try the next one.",
+      "tooManyAttempts": "Too many attempts. Wait a few minutes and try again."
+    },
+    "timezone": {
+      "title": "Time zone",
+      "description": "Dates and times are shown in this zone. When unset, the workspace default is used.",
+      "label": "Time zone",
+      "workspaceDefault": "Workspace default ({zone})",
+      "saved": "Time zone updated.",
+      "failed": "The time zone could not be saved."
     }
   },
   "members": {
@@ -301,8 +311,71 @@
   "settings": {
     "preferences": {
       "title": "Preferences",
-      "emptyTitle": "Nothing to configure yet",
-      "emptyDescription": "Workspace preferences (locale, week numbers, duration style, notifications) arrive with the settings pages of Phase 2."
+      "description": "Workspace-wide defaults. Members can override language and time zone on their own account.",
+      "noPermission": "You do not have permission to view workspace preferences.",
+      "general": "General",
+      "generalDescription": "Every field saves as soon as it changes.",
+      "locale": "Default language",
+      "localeHint": "Used for members who have not chosen a language of their own.",
+      "timezone": "Time zone",
+      "timezoneHint": "Used for members who have not set a personal time zone.",
+      "weekStart": "Week starts on",
+      "weekStarts": {
+        "MONDAY": "Monday",
+        "SUNDAY": "Sunday",
+        "SATURDAY": "Saturday"
+      },
+      "showIsoWeek": "Show ISO week numbers",
+      "durationStyle": "Duration style",
+      "durationStyleHint": "How hours are written throughout the product.",
+      "durationStyles": {
+        "hm": "1h 30m",
+        "clock": "1:30",
+        "decimal": "1.5 h"
+      },
+      "currency": "Default currency",
+      "currencyHint": "Proposed for new projects and services; each can still choose its own.",
+      "modulesTitle": "Modules",
+      "modulesDescription": "Switch modules off for this workspace. A module your plan does not include stays unavailable regardless.",
+      "notInPlan": "Not in plan",
+      "modules": {
+        "invoicing": "Invoicing",
+        "contracts": "Contracts",
+        "reports": "Reports",
+        "issues": "Issues",
+        "documentation": "Documentation",
+        "continuity_box": "Continuity box",
+        "portal": "Client portal"
+      },
+      "moduleHints": {
+        "invoicing": "Invoices, credit notes and payment tracking (Phase 4).",
+        "contracts": "Contracts and e-signing (Phase 4).",
+        "reports": "Report documents and project-health portfolio (Phase 6).",
+        "issues": "Issue intake and tracking (folds into Work).",
+        "documentation": "Client-facing documentation pages.",
+        "continuity_box": "Sealed continuity box for each client (Phase 8).",
+        "portal": "The client window: shared milestones, files, updates and requests (Phase 3)."
+      }
+    },
+    "export": {
+      "title": "Export",
+      "commitment": "Your data is yours: everything this workspace holds can be exported at any time as an open, documented archive — that is our continuity commitment.",
+      "newExport": "New export",
+      "contents": "One JSONL file per table (clients, projects, milestones, members, roles, documents, audit log …), a schema-versioned manifest.json, and file contents when they fit within 200 MB — otherwise pointers to each file.",
+      "generate": "Generate export",
+      "generating": "Generating…",
+      "generated": "Export {name} is ready below.",
+      "mfaHint": "Requires a recent two-factor confirmation.",
+      "needsPermission": "Only members with the tenant export permission can generate an export.",
+      "noPermission": "You do not have permission to view exports.",
+      "previous": "Previous exports",
+      "emptyTitle": "No exports yet",
+      "emptyDescription": "Generate one above; each export appears here and under Files.",
+      "columns": {
+        "name": "Name",
+        "created": "Created",
+        "size": "Size"
+      }
     }
   },
   "files": {

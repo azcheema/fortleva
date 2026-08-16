@@ -1,4 +1,5 @@
 import {
+  ArchiveIcon,
   Building2Icon,
   FolderIcon,
   FolderKanbanIcon,
@@ -23,6 +24,7 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   settings: SettingsIcon,
   roles: KeyRoundIcon,
   preferences: SlidersHorizontalIcon,
+  export: ArchiveIcon,
   account: UserRoundIcon,
 };
 

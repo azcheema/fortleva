@@ -8,6 +8,10 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { requireMemberSession } from "@/auth/session";
 import { LOCALES } from "@/i18n/config";
+import { runForm, type FormResult } from "@/lib/server-actions";
+import { setOwnTimezone } from "@/members/profile";
+import { requireTenantContext } from "@/members/tenant-context";
+import { TIMEZONES } from "@/preferences/config";
 
 export type LocaleFormState = { ok: boolean; message: string } | null;
 
@@ -50,4 +54,32 @@ export async function switchLocaleAction(locale: string): Promise<void> {
   if (!parsed.success) return;
   await auth.api.updateUser({ headers: await headers(), body: { locale: parsed.data } });
   revalidatePath("/", "layout");
+}
+
+const timezoneSchema = z.object({
+  timezone: z.union([z.literal(""), z.enum(TIMEZONES)]),
+});
+
+/**
+ * Member.timezone for the active membership ("" clears it so the
+ * workspace `ui.timezone` preference applies again). Own row only — the
+ * member id comes from the session's active membership.
+ */
+export async function setTimezoneAction(
+  _prev: FormResult | null,
+  formData: FormData,
+): Promise<FormResult> {
+  const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("account.timezone");
+  const parsed = timezoneSchema.safeParse({ timezone: formData.get("timezone") ?? "" });
+  if (!parsed.success) return { ok: false, message: t("failed") };
+  const r = await runForm("/account", async () => {
+    await setOwnTimezone(
+      { tenantId: membership.tenantId, actor },
+      parsed.data.timezone === "" ? null : parsed.data.timezone,
+    );
+    return t("saved");
+  });
+  if (r.ok) revalidatePath("/", "layout");
+  return r;
 }

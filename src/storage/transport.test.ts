@@ -90,6 +90,16 @@ function contract(
       await expect(transport.delete(key)).resolves.toBeUndefined();
     });
 
+    it("putObject/getObject round-trip server-produced bytes; getObject of a missing key is null", async () => {
+      const k = `${key}-export`;
+      const body = new TextEncoder().encode('{"schemaVersion":1}');
+      await transport.putObject(k, body, "application/zip");
+      expect((await transport.head(k))?.sizeBytes).toBe(body.byteLength);
+      expect(Buffer.from((await transport.getObject(k))!).toString()).toBe('{"schemaVersion":1}');
+      await transport.delete(k);
+      expect(await transport.getObject(k)).toBeNull();
+    });
+
     it("rejects traversal / malformed keys before touching the backend", async () => {
       for (const bad of ["../x", "a/../b", "/abs", "a//b", "", "a/.hidden"]) {
         await expect(transport.head(bad)).rejects.toThrow(/invalid key/);

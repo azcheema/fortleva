@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 
@@ -109,6 +109,22 @@ export class LocalDiskTransport implements StorageTransport {
 
   async delete(key: string): Promise<void> {
     await rm(this.pathFor(key), { force: true });
+  }
+
+  async putObject(key: string, body: Uint8Array): Promise<void> {
+    // Content type is a response-time concern here (signed into the GET).
+    const path = this.pathFor(key);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, body);
+  }
+
+  async getObject(key: string): Promise<Uint8Array | null> {
+    try {
+      return new Uint8Array(await readFile(this.pathFor(key)));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw e;
+    }
   }
 
   // ── Route-handler halves (called by src/app/api/dev-storage) ──────

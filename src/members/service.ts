@@ -12,6 +12,8 @@ export type Membership = {
   tenantSlug: string;
   /** Tenant.defaultLocale — the second step of locale resolution (UI.md §8). */
   defaultLocale: string;
+  /** Member.timezone — overrides the tenant's `ui.timezone` preference when set. */
+  timezone: string | null;
   status: "ACTIVE" | "SUSPENDED";
 };
 
@@ -28,6 +30,7 @@ export async function listMembershipsForUser(userId: string): Promise<Membership
       tenantName: m.tenant.name,
       tenantSlug: m.tenant.slug,
       defaultLocale: m.tenant.defaultLocale,
+      timezone: m.timezone,
       status: m.status,
     }));
   });

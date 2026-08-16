@@ -39,6 +39,14 @@ export interface StorageTransport {
   presignGet(key: string, opts: PresignGetOptions): Promise<string>;
   /** Idempotent: deleting a missing key is not an error. */
   delete(key: string): Promise<void>;
+  /**
+   * Server-side write of bytes the APP produced (tenant export zips,
+   * later invoice PDFs). User uploads never come this way — they go
+   * browser → bucket via presignPut so the app never streams them.
+   */
+  putObject(key: string, body: Uint8Array, contentType: string): Promise<void>;
+  /** Server-side read (export packaging bundles file bytes); null when missing. */
+  getObject(key: string): Promise<Uint8Array | null>;
   /** Multipart uploads are not issued in v1; the hook exists so the
    * reconciliation job can abort strays where the backend supports it. */
   abortMultipart?(key: string, uploadId: string): Promise<void>;

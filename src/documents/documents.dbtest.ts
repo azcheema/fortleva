@@ -10,6 +10,7 @@ import { getPlatformClient, runtimeClient } from "@/db/client";
 import { withTenant } from "@/db";
 import { AuthzError } from "@/authz/errors";
 import { provisionTenant } from "@/members/provisioning";
+import { expirePendingUploads } from "@/jobs/expire-pending-uploads";
 import { LocalDiskTransport, setStorage } from "@/storage";
 
 import { UploadRejectedError } from "./allowlist";
@@ -19,7 +20,6 @@ import {
   commitUpload,
   createUpload,
   DocumentError,
-  expirePendingUploads,
   getDownloadUrl,
   listDocuments,
   resolveDownload,

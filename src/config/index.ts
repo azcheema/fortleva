@@ -33,6 +33,10 @@ const envSchema = z.object({
   // back to BETTER_AUTH_SECRET, then a per-process random (dev only).
   DEV_STORAGE_SECRET: z.string().optional(),
   BETTER_AUTH_SECRET: z.string().optional(),
+  // Rate limiting (SECURITY.md §3.7): Upstash Redis REST (EU region).
+  // Both present => real limiter; otherwise a no-op that logs once.
+  UPSTASH_REDIS_REST_URL: z.url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
 });
 
 const env = envSchema.parse(process.env);
@@ -141,3 +145,9 @@ export const devStorageConfig = {
     return new URL(`${this.routePath}/${path}`, appUrl);
   },
 } as const;
+
+/** Upstash Redis REST credentials for the rate limiter (INV-D2: hosts live here). */
+export const upstashConfig: { readonly url: string; readonly token: string } | null =
+  env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN
+    ? { url: env.UPSTASH_REDIS_REST_URL, token: env.UPSTASH_REDIS_REST_TOKEN }
+    : null;

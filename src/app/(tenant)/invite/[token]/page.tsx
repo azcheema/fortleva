@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
@@ -6,6 +7,7 @@ import { getMemberSession } from "@/auth/session";
 import { AuthzError } from "@/authz/errors";
 import { Button } from "@/components/ui/button";
 import { acceptInvite, previewInvite } from "@/members/invites";
+import { allow, clientIp } from "@/ratelimit";
 
 /**
  * Invitation acceptance. The link carries the raw token exactly once;
@@ -55,6 +57,10 @@ export default async function InvitePage({
     "use server";
     const current = await getMemberSession();
     if (!current) redirect(`/login?next=/invite/${token}`);
+    // Token guessing budget per IP (no-op until Upstash env exists).
+    if (!(await allow("auth.invite_accept", clientIp(await headers())))) {
+      redirect(`/invite/${token}?error=1`);
+    }
     try {
       await acceptInvite({
         token,

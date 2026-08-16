@@ -4,12 +4,14 @@
    RLS portal_deny still governs them). */
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { admin, twoFactor } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 
 import { absoluteUrl, appUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
 import { send } from "@/mailer";
+import { allow, clientIp, type RateLimitBucket } from "@/ratelimit";
 
 import { auditPlugin, memberDatabaseHooks, onPasswordResetHook } from "./audit-hooks";
 
@@ -39,6 +41,14 @@ export const SESSION_ADDITIONAL_FIELDS = {
   // requireTenantContext() → authorize() for ✦ codes.
   mfaVerifiedAt: { type: "date", required: false, input: false },
 } as const;
+
+/** Better Auth endpoint path → rate-limit bucket. */
+const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
+  "/sign-in/email": "auth.sign_in",
+  "/sign-up/email": "auth.sign_up",
+  "/two-factor/verify-totp": "auth.step_up",
+  "/two-factor/verify-backup-code": "auth.step_up",
+};
 
 export const auth = betterAuth({
   baseURL: appUrl.origin,
@@ -109,6 +119,19 @@ export const auth = betterAuth({
     additionalFields: SESSION_ADDITIONAL_FIELDS,
   },
   databaseHooks: memberDatabaseHooks,
+  hooks: {
+    // Per-IP limits on the credential endpoints (SECURITY.md §3.7) on
+    // top of Better Auth's built-in limiter; no-op until Upstash env
+    // exists (src/ratelimit). 429 before any handler runs.
+    before: createAuthMiddleware(async (ctx) => {
+      const bucket = RATE_LIMITED_PATHS[ctx.path];
+      if (!bucket) return;
+      const ip = clientIp(ctx.headers ?? new Headers());
+      if (!(await allow(bucket, ip))) {
+        throw new APIError("TOO_MANY_REQUESTS", { message: "Too many attempts. Try again later." });
+      }
+    }),
+  },
   plugins: [
     twoFactor({
       issuer: "Fortleva",

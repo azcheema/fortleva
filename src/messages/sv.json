@@ -53,7 +53,8 @@
     "workspace": "Arbetsyta",
     "switchWorkspace": "Byt arbetsyta",
     "clients": "Kunder",
-    "projects": "Projekt"
+    "projects": "Projekt",
+    "export": "Export"
   },
   "shell": {
     "palette": {
@@ -108,9 +109,9 @@
     },
     "empty": {
       "title": "Inget att arbeta med ännu",
-      "description": "Tavlor och uppgifter kommer med modulen Arbete — tills vidare: Medlemmar och Filer.",
-      "members": "Öppna Medlemmar",
-      "files": "Öppna Filer"
+      "description": "Tavlor och uppgifter kommer med arbetsmodulen — börja tills vidare med dina kunder och projekt.",
+      "clients": "Öppna Kunder",
+      "projects": "Öppna Projekt"
     },
     "workspace": "Arbetsyta: {name}"
   },
@@ -216,7 +217,16 @@
       "verify": "Verifiera",
       "verifying": "Verifierar…",
       "enterCode": "Ange koden från din autentiseringsapp.",
-      "mismatch": "Koden stämde inte — prova nästa."
+      "mismatch": "Koden stämde inte — prova nästa.",
+      "tooManyAttempts": "För många försök. Vänta några minuter och försök igen."
+    },
+    "timezone": {
+      "title": "Tidszon",
+      "description": "Datum och tider visas i den här zonen. När inget är valt används arbetsytans standard.",
+      "label": "Tidszon",
+      "workspaceDefault": "Arbetsytans standard ({zone})",
+      "saved": "Tidszonen är uppdaterad.",
+      "failed": "Tidszonen kunde inte sparas."
     }
   },
   "members": {
@@ -301,8 +311,71 @@
   "settings": {
     "preferences": {
       "title": "Preferenser",
-      "emptyTitle": "Inget att ställa in ännu",
-      "emptyDescription": "Arbetsytans preferenser (språk, veckonummer, tidsformat, notiser) kommer med inställningssidorna i fas 2."
+      "description": "Standardvärden för hela arbetsytan. Medlemmar kan själva välja språk och tidszon på sitt konto.",
+      "noPermission": "Du har inte behörighet att se arbetsytans preferenser.",
+      "general": "Allmänt",
+      "generalDescription": "Varje fält sparas så snart det ändras.",
+      "locale": "Standardspråk",
+      "localeHint": "Används för medlemmar som inte valt ett eget språk.",
+      "timezone": "Tidszon",
+      "timezoneHint": "Används för medlemmar som inte satt en egen tidszon.",
+      "weekStart": "Veckan börjar på",
+      "weekStarts": {
+        "MONDAY": "Måndag",
+        "SUNDAY": "Söndag",
+        "SATURDAY": "Lördag"
+      },
+      "showIsoWeek": "Visa ISO-veckonummer",
+      "durationStyle": "Tidsformat",
+      "durationStyleHint": "Hur timmar skrivs i hela produkten.",
+      "durationStyles": {
+        "hm": "1h 30m",
+        "clock": "1:30",
+        "decimal": "1,5 h"
+      },
+      "currency": "Standardvaluta",
+      "currencyHint": "Föreslås för nya projekt och tjänster; varje kan ändå välja sin egen.",
+      "modulesTitle": "Moduler",
+      "modulesDescription": "Stäng av moduler för den här arbetsytan. En modul som inte ingår i er plan förblir otillgänglig oavsett.",
+      "notInPlan": "Ingår inte i planen",
+      "modules": {
+        "invoicing": "Fakturering",
+        "contracts": "Avtal",
+        "reports": "Rapporter",
+        "issues": "Ärenden",
+        "documentation": "Dokumentation",
+        "continuity_box": "Kontinuitetsbox",
+        "portal": "Kundportal"
+      },
+      "moduleHints": {
+        "invoicing": "Fakturor, kreditnotor och betalningsuppföljning (fas 4).",
+        "contracts": "Avtal och e-signering (fas 4).",
+        "reports": "Rapportdokument och projekthälsa i portföljvy (fas 6).",
+        "issues": "Ärendemottagning och uppföljning (går upp i Arbete).",
+        "documentation": "Dokumentationssidor riktade till kunden.",
+        "continuity_box": "Förseglad kontinuitetsbox per kund (fas 8).",
+        "portal": "Kundfönstret: delade milstolpar, filer, uppdateringar och förfrågningar (fas 3)."
+      }
+    },
+    "export": {
+      "title": "Export",
+      "commitment": "Er data är er: allt den här arbetsytan innehåller kan när som helst exporteras som ett öppet, dokumenterat arkiv — det är vårt kontinuitetslöfte.",
+      "newExport": "Ny export",
+      "contents": "En JSONL-fil per tabell (kunder, projekt, milstolpar, medlemmar, roller, dokument, granskningslogg …), en versionsmärkt manifest.json och filinnehåll när det ryms inom 200 MB — annars pekare till varje fil.",
+      "generate": "Skapa export",
+      "generating": "Skapar…",
+      "generated": "Exporten {name} finns klar nedan.",
+      "mfaHint": "Kräver en nyligen bekräftad tvåfaktorsinloggning.",
+      "needsPermission": "Bara medlemmar med behörigheten för export av arbetsytan kan skapa en export.",
+      "noPermission": "Du har inte behörighet att se exporter.",
+      "previous": "Tidigare exporter",
+      "emptyTitle": "Inga exporter ännu",
+      "emptyDescription": "Skapa en ovan; varje export visas här och under Filer.",
+      "columns": {
+        "name": "Namn",
+        "created": "Skapad",
+        "size": "Storlek"
+      }
     }
   },
   "files": {

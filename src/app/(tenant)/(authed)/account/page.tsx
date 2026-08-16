@@ -4,10 +4,14 @@ import { getTranslations } from "next-intl/server";
 import { requireMemberSession } from "@/auth/session";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Page, PageHeader } from "@/components/page-header";
+import { withTenant } from "@/db";
 import { isLocale } from "@/i18n/config";
+import { getActiveMembership } from "@/members/tenant-context";
+import { readPreferences } from "@/preferences/service";
 
 import { ChangePasswordForm } from "./change-password-form";
 import { LocaleForm } from "./locale-form";
+import { TimezoneForm } from "./timezone-form";
 import { TotpEnrollment } from "./totp-enrollment";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -26,6 +30,16 @@ export default async function AccountPage({
     (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled ?? false;
   const userLocale = (session.user as { locale?: string | null }).locale;
   const notice = (await searchParams).notice;
+  // Personal time zone lives on the active membership (Member.timezone);
+  // the workspace default is the tenant's `ui.timezone` preference.
+  const membership = await getActiveMembership(session);
+  const workspaceTimezone = membership
+    ? await withTenant(
+        membership.tenantId,
+        { type: "member", id: membership.memberId },
+        async (tx) => (await readPreferences(tx, membership.tenantId)).timezone,
+      )
+    : null;
 
   return (
     <Page>
@@ -49,6 +63,18 @@ export default async function AccountPage({
             <LocaleForm current={isLocale(userLocale) ? userLocale : ""} />
           </CardContent>
         </Card>
+
+        {membership && workspaceTimezone ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("timezone.title")}</CardTitle>
+              <CardDescription>{t("timezone.description")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TimezoneForm current={membership.timezone} workspaceDefault={workspaceTimezone} />
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

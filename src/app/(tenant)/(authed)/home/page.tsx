@@ -6,6 +6,7 @@ import { requireMemberSession } from "@/auth/session";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { Page, PageHeader } from "@/components/page-header";
+import { resolveTimeZone } from "@/i18n/resolve";
 import { requireTenantContext } from "@/members/tenant-context";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -19,20 +20,19 @@ const greetingKey = (hour: number): "morning" | "afternoon" | "evening" =>
 /**
  * /home — "My Work" (UI.md rule 8): the post-login destination. Assigned
  * work, waiting-on-client, triage, inbox and the timer arrive with their
- * modules; until then one empty state with the two verbs available.
+ * modules; until then one empty state pointing at Clients and Projects.
  */
 export default async function HomePage() {
   const { membership, userEmail } = await requireTenantContext();
   const session = await requireMemberSession();
   const t = await getTranslations("home");
   const firstName = session.user.name.split(/\s+/)[0] || userEmail;
-  // Member.timezone drives this once timezone formatting lands (UI.md §8);
-  // the tenant-default Europe/Stockholm clock is the Phase 1b approximation.
+  // The viewer's clock: Member.timezone → tenant `ui.timezone` → Europe/Stockholm (UI.md §8).
   const hour = Number(
     new Intl.DateTimeFormat("en-GB", {
       hour: "numeric",
       hourCycle: "h23",
-      timeZone: "Europe/Stockholm",
+      timeZone: await resolveTimeZone(),
     }).format(new Date()),
   );
   const greeting = t(`greeting.${greetingKey(hour)}`, { name: firstName });
@@ -47,10 +47,10 @@ export default async function HomePage() {
           actions={
             <>
               <Button asChild>
-                <Link href="/members">{t("empty.members")}</Link>
+                <Link href="/clients">{t("empty.clients")}</Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href="/files">{t("empty.files")}</Link>
+                <Link href="/projects">{t("empty.projects")}</Link>
               </Button>
             </>
           }

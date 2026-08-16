@@ -40,6 +40,59 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    // Import boundary (ARCHITECTURE.md ARC-16, TENANCY.md §12): the
+    // cross-tenant seam withPlatform()/getPlatformClient() is reachable
+    // only from the platform plane, jobs, src/db itself, tests and the
+    // seed. Tenant-plane services never bypass RLS. The two members/*
+    // files below are grandfathered because invitation acceptance and
+    // tenant provisioning are cross-tenant by construction (a user
+    // without a membership yet); belt two is
+    // src/db/import-boundary.test.ts, which pins the same allowlist.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/db/**",
+      "src/jobs/**",
+      "src/app/(platform)/**",
+      "src/**/*.test.ts",
+      "src/**/*.dbtest.ts",
+      "src/**/dbtest-fixture.ts",
+      "src/members/invites.ts",
+      "src/members/provisioning.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/db",
+              importNames: ["withPlatform"],
+              message:
+                "withPlatform() is platform-plane only (ARC-16): src/app/(platform)/**, src/jobs/**, src/db/**, tests, prisma/seed. Tenant-plane code uses withTenant().",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@/generated/prisma/client", "**/generated/prisma/client"],
+              message:
+                "Import the data layer through '@/db' (withTenant/withPlatform) — TENANCY.md one-seam rule. Types are fine via '@/generated/prisma/models'.",
+              allowTypeImports: true,
+            },
+            {
+              group: ["@/db/client", "**/db/client"],
+              message: "The base Prisma client is module-private to src/db.",
+            },
+            {
+              group: ["@/db/with-tenant", "**/db/with-tenant"],
+              importNames: ["withPlatform"],
+              message: "withPlatform() is platform-plane only (ARC-16) — and always via '@/db'.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // No literal user-facing strings in JSX (UI.md §8, ARC-14): every
     // string a person can read comes from src/messages/*.json through
     // next-intl. jsx-no-literals covers JSX text and {"…"} children;

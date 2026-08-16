@@ -36,6 +36,7 @@ export const AUDIT_EVENTS = {
   "member.suspended": TENANT,
   "member.reactivated": TENANT,
   "member.removed": TENANT,
+  "member.profile_updated": TENANT, // own-row profile fields (timezone …), metadata: field names only
   "member.role_assigned": TENANT,
   "member.role_removed": TENANT,
   "role.created": TENANT,

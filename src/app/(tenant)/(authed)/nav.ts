@@ -16,6 +16,7 @@ export type NavIcon =
   | "settings"
   | "roles"
   | "preferences"
+  | "export"
   | "account";
 
 export type NavEntry = {
@@ -30,6 +31,7 @@ export type NavEntry = {
     | "settings"
     | "roles"
     | "preferences"
+    | "export"
     | "account";
   href: string;
   icon: NavIcon;
@@ -45,13 +47,30 @@ export type NavEntry = {
 export const NAV: readonly NavEntry[] = [
   { id: "home", labelKey: "home", href: "/home", icon: "home", goKey: "H", mobileTab: true },
   {
+    id: "clients",
+    labelKey: "clients",
+    href: "/clients",
+    icon: "clients",
+    permission: "client:view",
+    goKey: "C",
+    mobileTab: true,
+  },
+  {
+    id: "projects",
+    labelKey: "projects",
+    href: "/projects",
+    icon: "projects",
+    permission: "project:view",
+    goKey: "P",
+    mobileTab: true,
+  },
+  {
     id: "files",
     labelKey: "files",
     href: "/files",
     icon: "files",
     permission: "document:view",
     goKey: "F",
-    mobileTab: true,
   },
   {
     id: "members",
@@ -68,7 +87,20 @@ export const NAV: readonly NavEntry[] = [
     icon: "settings",
     children: [
       { id: "roles", labelKey: "roles", href: "/settings/roles", icon: "roles", permission: "role:view" },
-      { id: "preferences", labelKey: "preferences", href: "/settings/preferences", icon: "preferences" },
+      {
+        id: "preferences",
+        labelKey: "preferences",
+        href: "/settings/preferences",
+        icon: "preferences",
+        permission: "settings:view",
+      },
+      {
+        id: "export",
+        labelKey: "export",
+        href: "/settings/export",
+        icon: "export",
+        permission: "settings:view",
+      },
     ],
   },
   { id: "account", labelKey: "account", href: "/account", icon: "account", goKey: "A" },

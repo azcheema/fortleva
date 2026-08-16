@@ -93,6 +93,33 @@ export class R2Transport implements StorageTransport {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
+  async putObject(key: string, body: Uint8Array, contentType: string): Promise<void> {
+    assertStorageKey(key);
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        ContentLength: body.byteLength,
+      }),
+    );
+  }
+
+  async getObject(key: string): Promise<Uint8Array | null> {
+    assertStorageKey(key);
+    try {
+      const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      if (!res.Body) return null;
+      return await res.Body.transformToByteArray();
+    } catch (e) {
+      const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      const name = (e as { name?: string }).name;
+      if (status === 404 || name === "NotFound" || name === "NoSuchKey") return null;
+      throw e;
+    }
+  }
+
   async abortMultipart(key: string, uploadId: string): Promise<void> {
     assertStorageKey(key);
     await this.client.send(
