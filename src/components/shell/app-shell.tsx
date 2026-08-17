@@ -2,6 +2,7 @@
 
 import {
   ChevronDownIcon,
+  ChevronLeftIcon,
   CircleHelpIcon,
   LogOutIcon,
   MenuIcon,
@@ -65,6 +66,16 @@ const subscribeRail = (cb: () => void): (() => void) => {
 
 type ShellUser = { name: string; email: string };
 
+/**
+ * The mobile tab. The current-tab indicator sits INSIDE the bar's
+ * padding box (`top-1`): drawn on the bar's own top hairline it read as
+ * a stray 2px segment floating over the content above it.
+ */
+const TAB =
+  "relative flex flex-1 flex-col items-center justify-center gap-0.5 text-2xs text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
+const TAB_CURRENT =
+  "font-semibold text-foreground before:absolute before:inset-x-4 before:top-1 before:h-0.5 before:rounded-full before:bg-primary";
+
 const initials = (name: string): string =>
   name
     .split(/\s+/)
@@ -88,6 +99,7 @@ const isActive = (pathname: string, href: string): boolean =>
 export function AppShell({
   nav,
   tenantName,
+  breadcrumb,
   user,
   theme,
   onSwitchLocale,
@@ -95,6 +107,13 @@ export function AppShell({
 }: {
   nav: readonly NavEntry[];
   tenantName: string | null;
+  /**
+   * The route trail — "Clients › ACME" — fed from the route segment.
+   * The header says WHERE YOU ARE; a constant tenant string on all 25
+   * routes says nothing. Falls back to the deepest matching nav entry,
+   * so the header is never a constant even before a route feeds it.
+   */
+  breadcrumb?: React.ReactNode;
   user: ShellUser;
   /** Preference the server rendered <html> with (src/lib/theme-server). */
   theme: ThemePreference;
@@ -143,6 +162,16 @@ export function AppShell({
 
   const tabs = nav.filter((e) => e.mobileTab);
   const labelClass = collapsed ? "hidden" : "hidden md:inline";
+
+  // The deepest nav entry that owns this route: the header's fallback
+  // trail and, on a phone, the section title that replaces the tenant.
+  const activeEntry = flat
+    .filter((e) => isActive(pathname, e.href))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  const sectionLabel = activeEntry ? t(activeEntry.labelKey) : (tenantName ?? tCommon("appName"));
+  const trail = breadcrumb ?? (activeEntry ? t(activeEntry.labelKey) : null);
+  // "More" owns every route none of the four tabs does (UI.md §3.3).
+  const tabOwnsRoute = tabs.some((e) => isActive(pathname, e.href));
 
   const railLink = (entry: NavEntry, depth = 0) => {
     const active = isActive(pathname, entry.href);
@@ -248,16 +277,10 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-background/95 px-3 backdrop-blur md:px-4">
+          {/* No hamburger here: §3.3 names `More` as the single sheet
+              entry, and the same navigation offered at two opposite
+              corners of a phone is duplication, not redundancy. */}
           <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="md:hidden"
-              onClick={() => setSheetOpen(true)}
-              aria-label={t("menu")}
-            >
-              <MenuIcon />
-            </Button>
             <SheetContent side="left" className="w-72 p-4">
               <SheetHeader className="p-0">
                 <SheetTitle>{tenantName ?? tCommon("appName")}</SheetTitle>
@@ -274,8 +297,24 @@ export function AppShell({
             </SheetContent>
           </Sheet>
 
-          <div className="flex min-w-0 items-center gap-2">
+          {/* Phone: back + the section you are in. Desktop: the
+              workspace, then the route trail. */}
+          <div className="flex min-w-0 items-center gap-1 md:hidden">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={tCommon("back")}
+              onClick={() => router.back()}
+            >
+              <ChevronLeftIcon />
+            </Button>
+            <span className="truncate text-sm font-semibold">{sectionLabel}</span>
+          </div>
+          <div className="hidden min-w-0 items-center gap-2 md:flex">
             <span className="truncate text-sm font-semibold">{tenantName ?? tCommon("appName")}</span>
+            {trail ? (
+              <span className="min-w-0 truncate text-xs text-muted-foreground">{trail}</span>
+            ) : null}
           </div>
 
           <TimerPillSlot className="ml-2 hidden md:block" />
@@ -370,9 +409,8 @@ export function AppShell({
             href={e.href}
             aria-current={isActive(pathname, e.href) ? "page" : undefined}
             className={cn(
-              "relative flex flex-1 flex-col items-center justify-center gap-0.5 text-2xs text-muted-foreground",
-              isActive(pathname, e.href) &&
-                "font-semibold text-foreground before:absolute before:inset-x-4 before:top-0 before:h-0.5 before:rounded-full before:bg-primary",
+              TAB,
+              isActive(pathname, e.href) && TAB_CURRENT,
             )}
           >
             <NavIcon name={e.icon} className="size-5" />
@@ -382,7 +420,8 @@ export function AppShell({
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
-          className="flex flex-1 flex-col items-center justify-center gap-0.5 text-2xs text-muted-foreground"
+          aria-current={tabOwnsRoute ? undefined : "page"}
+          className={cn(TAB, !tabOwnsRoute && TAB_CURRENT)}
         >
           <MenuIcon className="size-5" />
           {t("more")}

@@ -38,7 +38,25 @@
     "actions": "Actions",
     "overflow": "+{count}",
     "forbiddenTitle": "You don’t have access",
-    "sections": "Sections"
+    "sections": "Sections",
+    "inlineEdit": {
+      "trigger": "Edit {label}, currently {value}",
+      "triggerEmpty": "Edit {label}, currently empty",
+      "editing": "Editing {label}"
+    },
+    "file": {
+      "clear": "Remove {name}",
+      "replace": "Replace file"
+    },
+    "actionsFor": "Actions for {name}",
+    "moreActions": "More actions",
+    "table": "Table",
+    "edit": "Edit",
+    "addDetails": "Add details",
+    "notSet": "Not set",
+    "danger": {
+      "title": "Danger zone"
+    }
   },
   "nav": {
     "home": "Home",

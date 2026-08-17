@@ -36,7 +36,12 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   return (
     <tbody
       data-slot="table-body"
-      className={cn("[&_tr:last-child]:border-0", className)}
+      // border-b-0, NOT border-0: `border-0` zeroes all four widths,
+      // including the border-LEFT that visibilityRowCue() paints. The
+      // last client-visible row of every table in the product was
+      // therefore missing the safety-critical warm edge the legend
+      // promises in words. Only the horizontal rule is dropped here.
+      className={cn("[&_tr:last-child]:border-b-0", className)}
       {...props}
     />
   )
@@ -69,15 +74,36 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 }
 
 /**
+ * Column priority (UI.md §12: never a second implementation of a list).
+ * A phone drops COLUMNS, not the table — one prop per column, no
+ * parallel stacked-row renderer to drift from this one. The trailing
+ * actions column is always `high`: an action a reader cannot reach is
+ * the same as an action that does not exist.
+ */
+type ColumnPriority = "high" | "medium" | "low"
+
+const PRIORITY: Record<ColumnPriority, string> = {
+  high: "",
+  medium: "hidden sm:table-cell",
+  low: "hidden md:table-cell",
+}
+
+/**
  * A border-bottom on a sticky <th> detaches in Chromium, so the rule is
  * drawn as an inset box-shadow that rides along with the sticky box.
  */
-function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+function TableHead({
+  className,
+  priority = "high",
+  ...props
+}: React.ComponentProps<"th"> & { priority?: ColumnPriority }) {
   return (
     <th
       data-slot="table-head"
+      data-priority={priority}
       className={cn(
         "h-8 bg-card px-2 text-left align-middle eyebrow whitespace-nowrap text-muted-foreground hairline-b has-[[role=checkbox]]:pr-0",
+        PRIORITY[priority],
         className
       )}
       {...props}
@@ -85,12 +111,18 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   )
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+function TableCell({
+  className,
+  priority = "high",
+  ...props
+}: React.ComponentProps<"td"> & { priority?: ColumnPriority }) {
   return (
     <td
       data-slot="table-cell"
+      data-priority={priority}
       className={cn(
         "px-2 py-1.5 align-middle whitespace-nowrap has-[[role=checkbox]]:pr-0",
+        PRIORITY[priority],
         className
       )}
       {...props}
@@ -112,6 +144,7 @@ function TableCaption({
 }
 
 export {
+  type ColumnPriority,
   Table,
   TableHeader,
   TableBody,

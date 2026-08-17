@@ -1,6 +1,14 @@
 import { cn } from "@/lib/utils";
 
-/** Page title block: h1, optional description, badges inline, actions right. */
+/**
+ * Page title block: h1, optional description, badges inline, actions right.
+ *
+ * Below `md` it STACKS — title block on its own row, actions on a second
+ * full-width row — and the h1 wraps rather than truncating. §9 forbids
+ * truncating a chip or a button and requires both locales to pass at the
+ * longest Swedish string; at 390px "Visa arkiverade" + "Ny klient" alone
+ * is most of the line.
+ */
 export function PageHeader({
   title,
   description,
@@ -17,16 +25,24 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-start justify-between gap-3", className)}>
+    <div
+      data-slot="page-header"
+      className={cn(
+        "flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between",
+        className,
+      )}
+    >
       <div className="min-w-0">
         {breadcrumb ? <div className="mb-1 text-xs text-muted-foreground">{breadcrumb}</div> : null}
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h1 className="min-w-0 truncate text-xl font-semibold text-foreground">{title}</h1>
+          <h1 className="min-w-0 text-xl font-semibold text-balance text-foreground">{title}</h1>
           {badges}
         </div>
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:shrink-0">{actions}</div>
+      ) : null}
     </div>
   );
 }

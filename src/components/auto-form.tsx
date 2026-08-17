@@ -27,11 +27,18 @@ export function AutoForm({
   children,
   className,
   onSaved,
+  onError,
 }: {
   action: (formData: FormData) => Promise<AutoFormResult>;
   children: React.ReactNode;
   className?: string;
   onSaved?: (result: AutoFormResult) => void;
+  /**
+   * The save came back not-ok. `<InlineEdit invalid>` uses this to stay
+   * open with the user's text intact — a failed save that silently
+   * restores the server value is a bug this product has shipped once.
+   */
+  onError?: (result: AutoFormResult) => void;
 }) {
   const t = useTranslations("common");
   const router = useRouter();
@@ -53,13 +60,14 @@ export function AutoForm({
       if (!result.ok) {
         toast.error(result.message);
         setSaved(false);
+        onError?.(result);
         return;
       }
       setSaved(true);
       onSaved?.(result);
       router.refresh();
     });
-  }, [action, onSaved, router]);
+  }, [action, onError, onSaved, router]);
 
   return (
     <form

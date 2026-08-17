@@ -38,7 +38,25 @@
     "actions": "Åtgärder",
     "overflow": "+{count}",
     "forbiddenTitle": "Du har inte behörighet",
-    "sections": "Avsnitt"
+    "sections": "Avsnitt",
+    "inlineEdit": {
+      "trigger": "Redigera {label}, just nu {value}",
+      "triggerEmpty": "Redigera {label}, just nu tomt",
+      "editing": "Redigerar {label}"
+    },
+    "file": {
+      "clear": "Ta bort {name}",
+      "replace": "Byt fil"
+    },
+    "actionsFor": "Åtgärder för {name}",
+    "moreActions": "Fler åtgärder",
+    "table": "Tabell",
+    "edit": "Redigera",
+    "addDetails": "Lägg till uppgifter",
+    "notSet": "Inte angivet",
+    "danger": {
+      "title": "Riskzon"
+    }
   },
   "nav": {
     "home": "Hem",
