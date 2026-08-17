@@ -52,3 +52,60 @@ jobs:
       - run: pnpm exec prisma migrate deploy
       - run: pnpm exec tsx prisma/seed.ts
       - run: pnpm test:db
+
+  e2e:
+    name: Browser harness (Playwright)
+    runs-on: ubuntu-latest
+    # Only after the cheap checks pass: this job provisions a real
+    # tenant in the shared dev database and downloads a browser.
+    needs: check
+    # Same shared dev database as the isolation suite — the two must
+    # never run at once. One group serialises both (TENANCY.md §11
+    # ephemeral-branch TODO applies here too).
+    concurrency:
+      group: isolation-db
+      cancel-in-progress: false
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      PLATFORM_DATABASE_URL: ${{ secrets.PLATFORM_DATABASE_URL }}
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+      FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+      FIELD_ENCRYPTION_KEY_ID: k1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - run: pnpm exec prisma migrate deploy
+      # provisionTenant refuses to run without the permission catalog.
+      - run: pnpm exec tsx prisma/seed.ts
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # Chromium only (~700 MB): the harness exists to catch DOM and
+      # mount-time behaviour, not to certify browser coverage.
+      - run: pnpm exec playwright install --with-deps chromium
+      # playwright.config.ts owns the server: `pnpm build && pnpm start`
+      # with APP_URL pinned to the harness origin (Better Auth refuses a
+      # foreign origin, INV-D2). Fixtures live in a throwaway tenant
+      # (slug "e2e-…") that global-teardown removes.
+      - run: pnpm test:e2e
+      - name: Ensure the throwaway tenant is gone
+        if: always()
+        run: pnpm exec tsx e2e/fixtures/seed-cli.ts teardown .auth/seed.json
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
