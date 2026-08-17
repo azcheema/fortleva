@@ -60,6 +60,14 @@ export async function provisionE2ETenant(): Promise<{ password: string; tenantSl
 }
 
 /** Idempotent: does nothing when the seed file is already gone. */
+/** Remove throwaway tenants an interrupted run orphaned (older than
+ * maxAgeMinutes). Prefix-guarded in the worker; never touches a real
+ * tenant. Returns how many were removed. */
+export async function sweepStaleE2ETenants(maxAgeMinutes = 60): Promise<number> {
+  const { swept } = await runCli<{ swept: number }>(["sweep", String(maxAgeMinutes)]);
+  return swept;
+}
+
 export async function teardownE2ETenant(): Promise<boolean> {
   const { removed } = await runCli<{ removed: boolean }>(["teardown", SEED_FILE]);
   return removed;

@@ -9,6 +9,7 @@ import {
   STORAGE_STATE,
   provisionE2ETenant,
   requireSeed,
+  sweepStaleE2ETenants,
   teardownE2ETenant,
 } from "./fixtures/tenant";
 
@@ -28,6 +29,11 @@ export default async function globalSetup(): Promise<void> {
   // Done from global setup because Playwright recycles the worker after
   // a failing test, so the spec's own module scope runs more than once.
   rmSync(join(process.cwd(), ".design-shots"), { recursive: true, force: true });
+  // Teardown is keyed on a seed file, so a killed run (or a webServer
+  // that dies mid-suite) orphans its tenant. Sweep anything older than
+  // an hour before provisioning; a concurrent run is never in range.
+  const swept = await sweepStaleE2ETenants();
+  if (swept > 0) console.log(`[e2e] swept ${swept} orphaned throwaway tenant(s)`);
   const { password, tenantSlug } = await provisionE2ETenant();
   console.log(`[e2e] throwaway tenant ${tenantSlug} provisioned`);
 

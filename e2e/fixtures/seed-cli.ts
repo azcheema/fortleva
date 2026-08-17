@@ -18,6 +18,7 @@
  *        tsx e2e/fixtures/seed-cli.ts visibility <documentId>
  *        tsx e2e/fixtures/seed-cli.ts set-visibility <documentId> <value>
  *        tsx e2e/fixtures/seed-cli.ts milestone <milestoneId>
+ *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -33,6 +34,8 @@ const SLUG_PREFIX = "e2e-";
 const EMAIL_DOMAIN = "@test.invalid";
 /** Single-line, machine-readable result channel (stdout also carries logs). */
 const MARKER = "__E2E_RESULT__";
+
+type PlatformDb = ReturnType<typeof import("../../src/db/client").getPlatformClient>;
 
 export type E2ESeed = {
   readonly tenantId: string;
@@ -342,6 +345,71 @@ async function provision(seedFile: string): Promise<void> {
  * Remove everything the fixture created — rows first, then the tenant,
  * the owner (sessions and credentials cascade) and the audit trail.
  */
+/**
+ * Delete every row a throwaway tenant owns, then the tenant itself.
+ * Guarded twice: the caller must have matched the slug prefix, and this
+ * refuses anything else outright. Audit rows need the maintenance GUC —
+ * the table is append-only to every ordinary path.
+ */
+async function removeTenant(
+  db: PlatformDb,
+  tenantId: string,
+  slug: string,
+): Promise<void> {
+  if (!slug.startsWith(SLUG_PREFIX)) {
+    throw new Error(`refusing to remove non-throwaway tenant "${slug}"`);
+  }
+  await db.fileVersion.deleteMany({ where: { tenantId } });
+  await db.document.deleteMany({ where: { tenantId } });
+  await db.fileObject.deleteMany({ where: { tenantId } });
+  await db.milestone.deleteMany({ where: { tenantId } });
+  await db.projectVersion.deleteMany({ where: { tenantId } });
+  await db.service.deleteMany({ where: { tenantId } });
+  await db.memberProject.deleteMany({ where: { tenantId } });
+  await db.memberClient.deleteMany({ where: { tenantId } });
+  await db.contact.deleteMany({ where: { tenantId } });
+  await db.project.deleteMany({ where: { tenantId } });
+  await db.client.deleteMany({ where: { tenantId } });
+  await db.memberInvite.deleteMany({ where: { tenantId } });
+  await db.memberRole.deleteMany({ where: { tenantId } });
+  await db.rolePermission.deleteMany({ where: { tenantId } });
+  await db.role.deleteMany({ where: { tenantId } });
+  const members = await db.member.findMany({ where: { tenantId }, select: { userId: true } });
+  await db.member.deleteMany({ where: { tenantId } });
+  await db.tenant.deleteMany({ where: { id: tenantId } });
+  for (const { userId } of members) {
+    await db.user.deleteMany({
+      where: { id: userId, email: { endsWith: EMAIL_DOMAIN }, memberships: { none: {} } },
+    });
+  }
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
+    await tx.auditEvent.deleteMany({ where: { tenantId } });
+  });
+}
+
+/**
+ * Sweep throwaway tenants an interrupted run left behind. Teardown is
+ * keyed on a seed file, so a killed process (or a webServer that dies
+ * mid-suite) orphans its tenant; without this they accumulate in the
+ * shared dev database. Only "e2e-"-prefixed tenants older than the age
+ * guard are touched, so a concurrent run is never harmed.
+ */
+async function sweep(maxAgeMinutesRaw: string | undefined): Promise<void> {
+  const maxAgeMinutes = Number(maxAgeMinutesRaw ?? 60);
+  const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000);
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  const stale = await db.tenant.findMany({
+    where: { slug: { startsWith: SLUG_PREFIX }, createdAt: { lt: cutoff } },
+    select: { id: true, slug: true },
+  });
+  for (const t of stale) await removeTenant(db, t.id, t.slug);
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"swept":${stale.length}}
+`);
+}
+
 async function teardown(seedFile: string): Promise<void> {
   let seed: E2ESeed;
   try {
@@ -359,30 +427,7 @@ async function teardown(seedFile: string): Promise<void> {
     throw new Error(`refusing to tear down non-throwaway tenant "${tenant.slug}"`);
   }
 
-  await db.fileVersion.deleteMany({ where: { tenantId } });
-  await db.document.deleteMany({ where: { tenantId } });
-  await db.fileObject.deleteMany({ where: { tenantId } });
-  await db.milestone.deleteMany({ where: { tenantId } });
-  await db.projectVersion.deleteMany({ where: { tenantId } });
-  await db.service.deleteMany({ where: { tenantId } });
-  await db.memberProject.deleteMany({ where: { tenantId } });
-  await db.memberClient.deleteMany({ where: { tenantId } });
-  await db.contact.deleteMany({ where: { tenantId } });
-  await db.project.deleteMany({ where: { tenantId } });
-  await db.client.deleteMany({ where: { tenantId } });
-  await db.memberInvite.deleteMany({ where: { tenantId } });
-  await db.memberRole.deleteMany({ where: { tenantId } });
-  await db.rolePermission.deleteMany({ where: { tenantId } });
-  await db.role.deleteMany({ where: { tenantId } });
-  await db.member.deleteMany({ where: { tenantId } });
-  if (tenant) await db.tenant.delete({ where: { id: tenantId } });
-  if (seed.email.endsWith(EMAIL_DOMAIN)) {
-    await db.user.deleteMany({ where: { id: seed.userId, email: seed.email } });
-  }
-  await db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
-    await tx.auditEvent.deleteMany({ where: { tenantId } });
-  });
+  await removeTenant(db, tenantId, tenant?.slug ?? seed.tenantSlug);
   await db.$disconnect();
 
   rmSync(seed.storageDir, { recursive: true, force: true });
@@ -464,6 +509,7 @@ const main = async (): Promise<void> => {
   if (command === "visibility") return visibility(argument!);
   if (command === "set-visibility") return setVisibility(argument!, process.argv[4]!);
   if (command === "milestone") return milestone(argument!);
+  if (command === "sweep") return sweep(argument);
   throw new Error(`unknown command "${command ?? ""}"`);
 };
 
