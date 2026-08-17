@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { MailIcon } from "lucide-react";
+import { MailIcon, UserPlusIcon } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
@@ -90,13 +90,18 @@ export default async function MembersPage() {
 
   return (
     <Page width="wide">
+      {/* The h1 is the page noun. The tenant name is in the header and
+          in <title>; saying it a third time here is not context. */}
       <PageHeader
-        title={t("title", { tenant: membership.tenantName })}
+        title={t("heading")}
         description={t("description")}
         actions={
-          data.canViewRoles ? (
-            <Button asChild variant="outline" size="sm">
-              <Link href="/settings/roles">{t("manageRoles")}</Link>
+          data.canInvite ? (
+            <Button asChild size="sm">
+              <Link href="#new-member">
+                <UserPlusIcon />
+                {t("invite.title")}
+              </Link>
             </Button>
           ) : null
         }
@@ -107,13 +112,25 @@ export default async function MembersPage() {
           title={t("active.title")}
           description={tCommon("members", { count: data.members.length })}
           contentClassName="p-0"
+          actions={
+            data.canViewRoles ? (
+              // A plain link, not a button with a trailing arrow — that
+              // shape appears nowhere else in the product.
+              <Link
+                href="/settings/roles"
+                className="rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                {t("manageRoles")}
+              </Link>
+            ) : null
+          }
         >
-          <DataTable flush>
+          <DataTable flush scrollLabel={t("active.title")}>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("columns.member")}</TableHead>
-                  <TableHead>{t("columns.email")}</TableHead>
+                  <TableHead priority="low">{t("columns.email")}</TableHead>
                   <TableHead>{t("columns.roles")}</TableHead>
                   <TableHead>{t("columns.status")}</TableHead>
                   <TableHead className="w-0 text-right">
@@ -147,7 +164,7 @@ export default async function MembersPage() {
                           ) : null}
                         </span>
                       </TableCell>
-                      <TableCell className="max-w-64 truncate text-muted-foreground">
+                      <TableCell priority="low" className="max-w-64 truncate text-muted-foreground">
                         {m.user.email}
                       </TableCell>
                       <TableCell className="max-w-80">
@@ -164,7 +181,12 @@ export default async function MembersPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         {data.canRemove ? (
-                          <MemberStatusForm memberId={m.id} status={m.status} isSelf={isSelf} />
+                          <MemberStatusForm
+                            memberId={m.id}
+                            memberName={m.user.name}
+                            status={m.status}
+                            isSelf={isSelf}
+                          />
                         ) : null}
                       </TableCell>
                     </TableRow>
@@ -181,13 +203,13 @@ export default async function MembersPage() {
             description={t("pending.description")}
             contentClassName="p-0"
           >
-            <DataTable density="compact" flush>
+            <DataTable density="compact" flush scrollLabel={t("pending.title")}>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("columns.email")}</TableHead>
                     <TableHead>{t("columns.status")}</TableHead>
-                    <TableHead>{t("pending.expires")}</TableHead>
+                    <TableHead priority="low">{t("pending.expires")}</TableHead>
                     <TableHead className="w-0 text-right">
                       <span className="sr-only">{tCommon("actions")}</span>
                     </TableHead>
@@ -208,14 +230,16 @@ export default async function MembersPage() {
                       <TableCell>
                         <StatusBadge domain="inviteStatus" value="PENDING" />
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell priority="low" className="text-muted-foreground">
                         <span>{format.relativeTime(i.expiresAt, now)}</span>
                         <span className="num ml-2">
                           {format.dateTime(i.expiresAt, { dateStyle: "medium" })}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        {data.canInvite ? <RevokeInviteForm inviteId={i.id} /> : null}
+                        {data.canInvite ? (
+                          <RevokeInviteForm inviteId={i.id} email={i.email} />
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -226,7 +250,12 @@ export default async function MembersPage() {
         ) : null}
 
         {data.canInvite ? (
-          <SectionCard title={t("invite.title")} description={t("invite.description")}>
+          <SectionCard
+            id="new-member"
+            className="scroll-mt-16"
+            title={t("invite.title")}
+            description={t("invite.description")}
+          >
             <InviteForm roles={roleOptions} />
           </SectionCard>
         ) : null}

@@ -1,10 +1,13 @@
 "use client";
 
 import { CheckIcon, MinusIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
+import { toast } from "sonner";
 
-import { Callout, Field, FormMessage, Pending } from "@/components/semantic";
+import { InlineConfirm } from "@/components/inline-confirm";
+import { Callout, Field, FormMessage } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -196,18 +199,38 @@ export function RolePermissionsForm({
   );
 }
 
+/**
+ * Deleting a role is destructive, so it asks (UI.md §5.9) — and it asks
+ * at resting weight `outline`. The solid `--destructive` fill is spent
+ * on the "Yes" of the question and nowhere else, so a page of role
+ * cards is not a page of red buttons.
+ */
 export function DeleteRoleForm({ roleId, name }: { roleId: string; name: string }) {
   const t = useTranslations("roles");
   const tCommon = useTranslations("common");
-  const [state, action, pending] = useActionState<RoleFormState, FormData>(deleteRoleAction, null);
+  const router = useRouter();
+  const [pending, start] = useTransition();
   return (
-    <form action={action} className="flex items-center gap-3">
-      <input type="hidden" name="roleId" value={roleId} />
-      <Button type="submit" variant="destructive" size="sm" disabled={pending}>
-        {pending ? <Pending label={tCommon("loading")} /> : t("delete", { name })}
-      </Button>
-      <FormMessage state={state} className="text-xs" />
-    </form>
+    <InlineConfirm
+      label={tCommon("delete")}
+      question={t("deleteConfirm", { name })}
+      variant="outline"
+      tone="danger"
+      size="sm"
+      pending={pending}
+      onConfirm={() =>
+        start(async () => {
+          const fd = new FormData();
+          fd.set("roleId", roleId);
+          const r = await deleteRoleAction(null, fd);
+          if (r) {
+            if (r.ok) toast.success(r.message);
+            else toast.error(r.message);
+          }
+          router.refresh();
+        })
+      }
+    />
   );
 }
 

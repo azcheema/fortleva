@@ -4,19 +4,19 @@ import { useTranslations } from "next-intl";
 import { useOptimistic, useTransition } from "react";
 import { toast } from "sonner";
 
-import { NativeSelect } from "@/components/ui/native-select";
+import { VisibilityInlineEdit } from "@/components/semantic";
 import type { Visibility } from "@/documents/service";
-import { cn } from "@/lib/utils";
 
 import { changeVisibilityAction } from "./actions";
 
 /**
- * Two-token visibility select that saves on change (no Save button).
- * SAFETY-CRITICAL (DESIGN SPEC §2.4): the write control carries the
- * same warm fill as the read chip when the value is CLIENT_VISIBLE, so
- * an editable row is never *less* legible than a read-only one. The row
- * it sits in also carries the 2px warm left border, and the option text
- * states the value in words — three channels, no hue dependency.
+ * The documents table's editable visibility (SAFETY-CRITICAL, UI.md
+ * §10.4). At rest it IS the `<VisibilityBadge>` — the same silhouette
+ * the read-only rows wear, carrying all five channels (fill, icon,
+ * shape, weight, border); the picker opens on click, Enter, Space or
+ * F2 and wears the same warm fill while it is set to CLIENT_VISIBLE.
+ * A 28px filled `<select>` dropped the icon and the shape, so one
+ * value was rendered three ways down a four-row table.
  *
  * It is NOT wrapped in a <form action>: React resets a form once its
  * action has run, which restores a native <select> to the value the
@@ -37,26 +37,18 @@ export function VisibilitySelect({
   value: Visibility;
   returnTo: string;
 }) {
-  const t = useTranslations("visibility");
   const tErrors = useTranslations("files.errors");
   const [, startTransition] = useTransition();
   const [current, setCurrent] = useOptimistic(value);
-  const isClientVisible = current === "CLIENT_VISIBLE";
 
   return (
-    <NativeSelect
-      name="visibility"
+    <VisibilityInlineEdit
       value={current}
-      aria-label={t("label")}
-      data-visibility={current}
-      className={cn(
-        "h-7 w-auto text-xs",
-        isClientVisible &&
-          "border-vis-client-border bg-vis-client font-semibold text-vis-client-fg",
-      )}
-      onChange={(e) => {
-        const next: Visibility =
-          e.target.value === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL";
+      // There is no <AutoForm> here and no FormData to preserve, so the
+      // resting hidden input would only add a stray field to any form
+      // this table ever lands inside.
+      hiddenInput={false}
+      onCommit={(next) => {
         startTransition(async () => {
           setCurrent(next);
           const result = await changeVisibilityAction({
@@ -67,9 +59,6 @@ export function VisibilitySelect({
           if (!result.ok) toast.error(result.message);
         });
       }}
-    >
-      <option value="INTERNAL">{t("internal")}</option>
-      <option value="CLIENT_VISIBLE">{t("clientVisible")}</option>
-    </NativeSelect>
+    />
   );
 }

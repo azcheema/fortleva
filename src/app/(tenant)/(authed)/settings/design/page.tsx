@@ -104,6 +104,47 @@ const ROLE_PAIRS: Pair[] = [
 
 const TONE_KEYS = ["neutral", "brand", "caution", "success", "danger", "quiet"] as const;
 const CORE_BADGES = ["default", "secondary", "outline", "destructive"] as const;
+/** Every button variant, so a reader can tell six specimens apart. */
+const BUTTON_VARIANTS = [
+  "default",
+  "secondary",
+  "outline",
+  "ghost",
+  "destructive",
+  "link",
+] as const;
+
+/**
+ * A specimen and the words for what it is. Without the caption a reader
+ * cannot tell `default` from `secondary` from `outline` from `ghost`,
+ * which is the only thing this page exists to make possible. The
+ * caption is a code identifier (a variant name), so it wears the mono
+ * face and is not a translated string.
+ */
+function Specimen({ caption, children }: { caption: string; children: React.ReactNode }) {
+  return (
+    <span className="flex flex-col items-start gap-1">
+      {children}
+      <span className="num font-mono text-2xs text-muted-foreground">{caption}</span>
+    </span>
+  );
+}
+
+/** The page is ~11 700px tall; the jump list is how it is navigable. */
+const SECTIONS = [
+  "color",
+  "ramps",
+  "type",
+  "controls",
+  "states",
+  "visibility",
+  "entities",
+  "charts",
+  "rail",
+  "feedback",
+  "elevation",
+  "density",
+] as const;
 
 const RAMPS = [
   { name: "slate", steps: [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] },
@@ -233,6 +274,7 @@ export default async function DesignPage() {
 
   const t = await getTranslations("design");
   const tTheme = await getTranslations("theme");
+  const tCommon = await getTranslations("common");
   const locale = await getLocale();
   const theme = await getThemePreference();
 
@@ -267,7 +309,7 @@ export default async function DesignPage() {
     if (value === null) return <span className="text-muted-foreground">{SAMPLE.dash}</span>;
     const ok = value >= floor;
     return (
-      <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center justify-end gap-1.5">
         <span className="num">{t("ratio", { value: num(value) })}</span>
         {floor > 1 ? (
           <Badge variant={ok ? "success" : "danger"}>{ok ? t("pass") : t("fail")}</Badge>
@@ -299,18 +341,40 @@ export default async function DesignPage() {
         actions={<ThemeToggle value={theme} />}
       />
 
+      <nav
+        aria-label={tCommon("sections")}
+        className="sticky top-0 z-10 -mx-4 flex gap-1 overflow-x-auto border-b border-border bg-background px-4 py-2 md:-mx-6 md:px-6"
+      >
+        {SECTIONS.map((section) => (
+          <a
+            key={section}
+            href={`#${section}`}
+            className="inline-flex h-7 shrink-0 items-center rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground transition-colors duration-(--dur-instant) ease-out hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          >
+            {t(`sections.${section}`)}
+          </a>
+        ))}
+      </nav>
+
       <Callout tone="caution" title={t("devOnly")} />
 
-      <SectionCard title={t("sections.color")} description={t("sections.colorHint")}>
-        <DataTable density="compact">
+      {/* The card owns the surface; the table drops its own hairline
+          (§10.15.1) instead of drawing a second one 16px inside it. */}
+      <SectionCard
+        id="color" className="scroll-mt-14"
+        title={t("sections.color")}
+        description={t("sections.colorHint")}
+        contentClassName="p-0"
+      >
+        <DataTable density="compact" flush scrollLabel={t("sections.color")}>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("columns.sample")}</TableHead>
                 <TableHead>{t("columns.token")}</TableHead>
-                <TableHead>{t("columns.against")}</TableHead>
-                <TableHead>{tTheme("light")}</TableHead>
-                <TableHead>{tTheme("dark")}</TableHead>
+                <TableHead priority="medium">{t("columns.against")}</TableHead>
+                <TableHead className="text-right">{tTheme("light")}</TableHead>
+                <TableHead className="text-right">{tTheme("dark")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -326,11 +390,20 @@ export default async function DesignPage() {
                     </span>
                   </TableCell>
                   <TableCell className="num font-mono text-xs">{pair.token}</TableCell>
-                  <TableCell className="num font-mono text-xs text-muted-foreground">
+                  <TableCell
+                    priority="medium"
+                    className="num font-mono text-xs text-muted-foreground"
+                  >
                     {pair.against}
                   </TableCell>
-                  <TableCell>{ratioCell(ratio(pair.token, pair.against, "light"), pair.floor)}</TableCell>
-                  <TableCell>{ratioCell(ratio(pair.token, pair.against, "dark"), pair.floor)}</TableCell>
+                  {/* Numbers right-align, always (§10.15.1): forty ragged
+                      rows was the most visible violation on this page. */}
+                  <TableCell className="text-right">
+                    {ratioCell(ratio(pair.token, pair.against, "light"), pair.floor)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {ratioCell(ratio(pair.token, pair.against, "dark"), pair.floor)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -338,7 +411,7 @@ export default async function DesignPage() {
         </DataTable>
       </SectionCard>
 
-      <SectionCard title={t("sections.ramps")} description={t("sections.rampsHint")}>
+      <SectionCard id="ramps" className="scroll-mt-14" title={t("sections.ramps")} description={t("sections.rampsHint")}>
         <div className="flex flex-col gap-5">
           {RAMPS.map((ramp) => (
             <div key={ramp.name} className="flex flex-col gap-1.5">
@@ -383,7 +456,7 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.type")} description={t("sections.typeHint")}>
+      <SectionCard id="type" className="scroll-mt-14" title={t("sections.type")} description={t("sections.typeHint")}>
         <div className="flex flex-col gap-3">
           {TYPE_ROLES.map((role) => (
             <div key={role.key} className="flex flex-wrap items-baseline justify-between gap-3">
@@ -399,35 +472,49 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.controls")} description={t("controls.hoverNote")}>
+      <SectionCard id="controls" className="scroll-mt-14" title={t("sections.controls")} description={t("controls.hoverNote")}>
         <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-2">
+          {/* Every specimen says what it is. Six buttons all labelled
+              "Rest" cannot be told apart, which is the one thing a
+              showcase has to make possible. */}
+          <div className="flex flex-col gap-4">
             <p className={eyebrow}>{t("controls.buttons")}</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button>{t("controls.rest")}</Button>
-              <Button variant="secondary">{t("controls.rest")}</Button>
-              <Button variant="outline">{t("controls.rest")}</Button>
-              <Button variant="ghost">{t("controls.rest")}</Button>
-              <Button variant="destructive">{t("controls.menuDestructive")}</Button>
-              <Button variant="link">{t("controls.rest")}</Button>
+            <div className="flex flex-wrap items-start gap-3">
+              {BUTTON_VARIANTS.map((variant) => (
+                <Specimen key={variant} caption={`${variant} · ${t("controls.rest")}`}>
+                  <Button variant={variant}>{t("controls.rest")}</Button>
+                </Specimen>
+              ))}
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button disabled>{t("controls.disabled")}</Button>
-              <Button variant="outline" disabled>
-                {t("controls.disabled")}
-              </Button>
-              <Button variant="destructive" disabled>
-                {t("controls.disabled")}
-              </Button>
-              <span className="inline-flex rounded-md outline-2 outline-offset-2 outline-ring">
-                <Button variant="outline">{t("controls.focus")}</Button>
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {BUTTON_SIZES.map((item) => (
-                <Button key={item.size} size={item.size}>
-                  {item.label}
+            <div className="flex flex-wrap items-start gap-3">
+              <Specimen caption={`default · ${t("controls.disabled")}`}>
+                <Button disabled>{t("controls.disabled")}</Button>
+              </Specimen>
+              <Specimen caption={`outline · ${t("controls.disabled")}`}>
+                <Button variant="outline" disabled>
+                  {t("controls.disabled")}
                 </Button>
+              </Specimen>
+              <Specimen caption={`destructive · ${t("controls.disabled")}`}>
+                <Button variant="destructive" disabled>
+                  {t("controls.disabled")}
+                </Button>
+              </Specimen>
+              <Specimen caption={`outline · ${t("controls.focus")}`}>
+                <span className="inline-flex rounded-md outline-2 outline-offset-2 outline-ring">
+                  <Button variant="outline">{t("controls.focus")}</Button>
+                </span>
+              </Specimen>
+            </div>
+            {/* The size ladder is a ruler, and §10.2 gives the brand fill
+                exactly three jobs — measuring is not one of them. */}
+            <div className="flex flex-wrap items-start gap-3">
+              {BUTTON_SIZES.map((item) => (
+                <Specimen key={item.size} caption={`${item.size} · ${item.label}px`}>
+                  <Button variant="outline" size={item.size}>
+                    {item.label}
+                  </Button>
+                </Specimen>
               ))}
             </div>
           </div>
@@ -463,19 +550,29 @@ export default async function DesignPage() {
             </Field>
           </div>
 
-          <div className="flex flex-col gap-2">
+          {/* Tones and variants are two different axes; run together they
+              read as one list of ten interchangeable chips. */}
+          <div className="flex flex-col gap-3">
             <p className={eyebrow}>{t("controls.badges")}</p>
-            <div className="flex flex-wrap items-center gap-2">
-              {TONE_KEYS.map((tone) => (
-                <Badge key={tone} variant={tone}>
-                  {tone}
-                </Badge>
-              ))}
-              {CORE_BADGES.map((variant) => (
-                <Badge key={variant} variant={variant}>
-                  {variant}
-                </Badge>
-              ))}
+            <div className="flex flex-col gap-1.5">
+              <p className="text-2xs text-muted-foreground">{t("controls.badgeTones")}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {TONE_KEYS.map((tone) => (
+                  <Badge key={tone} variant={tone}>
+                    {tone}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-2xs text-muted-foreground">{t("controls.badgeVariants")}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {CORE_BADGES.map((variant) => (
+                  <Badge key={variant} variant={variant}>
+                    {variant}
+                  </Badge>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -486,14 +583,24 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.states")} description={t("sections.statesHint")}>
+      <SectionCard id="states" className="scroll-mt-14" title={t("sections.states")} description={t("sections.statesHint")}>
         <div className="flex flex-col gap-3">
+          {/* Below md the label sits ABOVE its chips with a hairline
+              between rows: wrapped chips used to restart under the NEXT
+              row's label, which reads as the wrong domain. */}
           {STATUS_DOMAINS.map((domain) => (
-            <div key={domain} className="flex flex-wrap items-center gap-2">
-              <span className="w-36 shrink-0 font-mono text-2xs text-muted-foreground">{domain}</span>
-              {Object.keys(STATUS_MAP[domain]).map((value) => (
-                <AnyStatusBadge key={value} domain={domain} value={value} />
-              ))}
+            <div
+              key={domain}
+              className="flex flex-col gap-1.5 border-t border-border pt-3 first:border-t-0 first:pt-0 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:border-t-0 sm:pt-0"
+            >
+              <span className="font-mono text-2xs text-muted-foreground sm:w-36 sm:shrink-0">
+                {domain}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {Object.keys(STATUS_MAP[domain]).map((value) => (
+                  <AnyStatusBadge key={value} domain={domain} value={value} />
+                ))}
+              </div>
             </div>
           ))}
           <div className="flex flex-wrap items-center gap-5 border-t border-border pt-4">
@@ -509,7 +616,11 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.visibility")} description={t("visibilityHint")}>
+      <SectionCard
+        id="visibility" className="scroll-mt-14"
+        title={t("sections.visibility")}
+        description={t("visibilityHint")}
+      >
         <div className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {SIMULATIONS.map((sim) => (
@@ -529,7 +640,11 @@ export default async function DesignPage() {
             ))}
           </div>
           <p className="text-xs text-muted-foreground">{t("visibilityRow")}</p>
-          <DataTable density="compact">
+          {/* Bled to the card's edges, so the card's own hairline is the
+              only one: a bordered table inside 16px of padding draws two
+              rules 16px apart (§10.15.1). */}
+          <div className="-mx-4 -mb-4 border-t border-border">
+            <DataTable density="compact" flush scrollLabel={t("sections.visibility")}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -554,12 +669,13 @@ export default async function DesignPage() {
                   <TableCell className="num text-right">{SAMPLE.hoursB}</TableCell>
                 </TableRow>
               </TableBody>
-            </Table>
-          </DataTable>
+              </Table>
+            </DataTable>
+          </div>
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.entities")} description={t("sections.entitiesHint")}>
+      <SectionCard id="entities" className="scroll-mt-14" title={t("sections.entities")} description={t("sections.entitiesHint")}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
             {ENTITY_TOKENS.map((token, index) => (
@@ -597,7 +713,7 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.charts")} description={t("chartsHint")}>
+      <SectionCard id="charts" className="scroll-mt-14" title={t("sections.charts")} description={t("chartsHint")}>
         <div className="flex flex-wrap gap-2">
           {CHART_TOKENS.map((token) => (
             <div key={token} className="flex w-28 flex-col gap-1">
@@ -615,7 +731,7 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.rail")} description={t("sections.railHint")}>
+      <SectionCard id="rail" className="scroll-mt-14" title={t("sections.rail")} description={t("sections.railHint")}>
         <div className="grid gap-6 lg:grid-cols-2">
           <Timeline>
             {(
@@ -665,7 +781,7 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.feedback")}>
+      <SectionCard id="feedback" className="scroll-mt-14" title={t("sections.feedback")}>
         <div className="flex flex-col gap-5">
           <div className="grid gap-3 md:grid-cols-3">
             <MetricTile label={t("feedbackItems.metricProjects")} value={SAMPLE.metricProjects} />
@@ -743,7 +859,7 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.elevation")}>
+      <SectionCard id="elevation" className="scroll-mt-14" title={t("sections.elevation")}>
         <div className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {ELEVATIONS.map((item) => (
@@ -767,12 +883,23 @@ export default async function DesignPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={t("sections.density")}>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {DENSITIES.map((density) => (
-            <div key={density} className="flex flex-col gap-2">
-              <span className={eyebrow}>{t(`densityItems.${density}`)}</span>
-              <DataTable density={density} stickyHeader>
+      <SectionCard id="density" className="scroll-mt-14" title={t("sections.density")} contentClassName="p-0">
+        {/* Two specimens of the list surface, each owning a half of the
+            card. A bordered DataTable inside the card's padding would
+            draw a second hairline 16px in (§10.15.1). */}
+        <div className="grid lg:grid-cols-2">
+          {DENSITIES.map((density, i) => (
+            <div
+              key={density}
+              className={cn(
+                "flex flex-col",
+                i > 0 && "border-t border-border lg:border-t-0 lg:border-l",
+              )}
+            >
+              <span className={cn(eyebrow, "px-4 pt-4 pb-2")}>
+                {t(`densityItems.${density}`)}
+              </span>
+              <DataTable density={density} stickyHeader flush scrollLabel={t("sections.density")}>
                 <Table>
                   <TableHeader>
                     <TableRow>

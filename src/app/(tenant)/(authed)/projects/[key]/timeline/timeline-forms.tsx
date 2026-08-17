@@ -1,6 +1,17 @@
 "use client";
 
-import { ArrowDownIcon, ArrowUpIcon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BanIcon,
+  ChevronsDownIcon,
+  ChevronsUpIcon,
+  CircleCheckIcon,
+  PauseIcon,
+  PlayIcon,
+  PlusIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
@@ -11,22 +22,19 @@ import { InlineConfirm } from "@/components/inline-confirm";
 import {
   Field,
   FormMessage,
+  InlineEdit,
+  RowActions,
   StatusBadge,
   StatusIcon,
   TimelineItem,
   VisibilityBadge,
+  VisibilityInlineEdit,
   visibilityRowCue,
+  type RowAction,
 } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Textarea } from "@/components/ui/textarea";
 import { STATUS_MAP } from "@/lib/enum-map";
 import { isoDate, type FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
@@ -58,16 +66,25 @@ const useRun = () => {
 // ── Milestones ──────────────────────────────────────────────────────
 
 /**
- * One milestone node on the rail: name/due/visibility auto-save
- * (manage_versions), status actions, and the keyboard twin of drag —
- * up/down arrows plus a "Move to…" menu (UI.md §7.1). Rank is never
- * rendered.
+ * One milestone on the rail. THE TIMELINE IS CONTENT, NOT A FORM
+ * (founder mandate 1): the name is plain 13px/500 text — the
+ * highest-contrast thing in its own row — the due date is a quiet
+ * formatted date, and the visibility IS the chip. Each becomes the
+ * control it always was on click, Enter, Space or F2, and saves exactly
+ * where it always did: `<AutoForm>` on blur, on `change` for a select.
+ * Three permanently-mounted 32px boxes per milestone is what made this
+ * page read as data entry rather than a plan.
  *
- * The node itself carries the state ICON, so the five milestone states
- * are told apart by silhouette before any hue is read; terminal states
- * fill their node and strike the name. The warm 2px edge on the
- * content block is the visibility row cue (§2.4) — it always travels
- * with the chip, never instead of it.
+ * One statement per fact, and one verb per row: the visibility is no
+ * longer printed twice (as a 190px select AND a chip 30px below),
+ * reordering moved into the `⋯` menu instead of two arrow buttons, and
+ * the only button left is the verb the row is actually waiting for.
+ *
+ * The node carries the state ICON, so the five milestone states are
+ * told apart by silhouette before any hue is read; terminal states fill
+ * their node and strike the name. The warm 2px edge on the content
+ * block is the visibility row cue (§10.4) — it always travels with the
+ * chip, never instead of it.
  */
 export function MilestoneItem({
   projectKey,
@@ -86,6 +103,7 @@ export function MilestoneItem({
   last?: boolean;
 }) {
   const t = useTranslations("projects.timeline");
+  const tCommon = useTranslations("common");
   const format = useFormatter();
   const { pending, run } = useRun();
   const m = milestone;
@@ -97,20 +115,21 @@ export function MilestoneItem({
     run(() => setMilestoneStatusAction(m.id, projectKey, status), true);
   const done = m.status === "DONE";
   const cancelled = m.status === "CANCELLED";
+  const terminal = done || cancelled;
   const spec = STATUS_MAP.milestoneStatus[m.status];
 
   const node = <StatusIcon name={spec.icon} className="size-3.5" />;
-  const date = done && m.completedAt
-    ? t("completedOn", { date: format.dateTime(m.completedAt, { dateStyle: "medium" }) })
-    : m.dueAt
-      ? t("dueOn", { date: format.dateTime(m.dueAt, { dateStyle: "medium" }) })
+  const completed =
+    done && m.completedAt
+      ? t("completedOn", { date: format.dateTime(m.completedAt, { dateStyle: "medium" }) })
       : null;
+  const dueText = m.dueAt
+    ? t("dueOn", { date: format.dateTime(m.dueAt, { dateStyle: "medium" }) })
+    : null;
 
-  const meta = (
-    <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <StatusBadge domain="milestoneStatus" value={m.status} />
-      <VisibilityBadge value={m.visibility} />
-      {date ? <span className="num">{date}</span> : null}
+  const name = (
+    <span className={cn(terminal ? "text-muted-foreground line-through" : "font-medium")}>
+      {m.name}
     </span>
   );
 
@@ -119,156 +138,180 @@ export function MilestoneItem({
       <TimelineItem
         node={node}
         tone={spec.tone}
-        filled={done || cancelled}
+        filled={terminal}
         last={last}
         contentClassName={cn("flex flex-col gap-1.5", visibilityRowCue(m.visibility))}
       >
-        <span
-          className={cn(
-            "text-sm",
-            done || cancelled ? "text-muted-foreground line-through" : "font-medium",
-          )}
-        >
-          {m.name}
+        <span className="min-w-0 truncate text-sm">{name}</span>
+        <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <StatusBadge domain="milestoneStatus" value={m.status} />
+          <VisibilityBadge value={m.visibility} />
+          {completed ?? dueText ? <span className="num">{completed ?? dueText}</span> : null}
         </span>
-        {meta}
       </TimelineItem>
     );
   }
+
+  // Reordering is the keyboard twin of drag (UI.md §7.1) and lives in
+  // the menu, so a row carries two controls rather than six. An item
+  // that cannot act is left out rather than rendered permanently inert.
+  const moveUp: RowAction[] = first
+    ? []
+    : [
+        {
+          key: "up",
+          label: t("moveUp"),
+          icon: ArrowUpIcon,
+          onSelect: () => move({ beforeId: siblings[index - 1]!.id }),
+        },
+        {
+          key: "top",
+          label: t("moveTop"),
+          icon: ChevronsUpIcon,
+          onSelect: () => move({ position: "top" }),
+        },
+      ];
+  const moveDown: RowAction[] = isLastSibling
+    ? []
+    : [
+        {
+          key: "down",
+          label: t("moveDown"),
+          icon: ArrowDownIcon,
+          onSelect: () => move({ afterId: siblings[index + 1]!.id }),
+        },
+        {
+          key: "bottom",
+          label: t("moveBottom"),
+          icon: ChevronsDownIcon,
+          onSelect: () => move({ position: "bottom" }),
+        },
+      ];
+  const statusItems: RowAction[] = [
+    ...(m.status === "PLANNED" || m.status === "PAUSED"
+      ? [
+          {
+            key: "start",
+            label: t("start"),
+            icon: PlayIcon,
+            onSelect: () => setStatus("IN_PROGRESS"),
+          } as RowAction,
+        ]
+      : []),
+    ...(m.status === "IN_PROGRESS"
+      ? [
+          {
+            key: "pause",
+            label: t("statuses.PAUSED"),
+            icon: PauseIcon,
+            onSelect: () => setStatus("PAUSED"),
+          } as RowAction,
+        ]
+      : []),
+    ...(terminal
+      ? [
+          {
+            key: "reopen",
+            label: t("reopen"),
+            icon: RotateCcwIcon,
+            onSelect: () => setStatus("PLANNED"),
+          } as RowAction,
+        ]
+      : []),
+    ...(cancelled
+      ? []
+      : [
+          {
+            key: "cancel",
+            label: t("cancel"),
+            icon: BanIcon,
+            tone: "danger",
+            confirm: t("cancelConfirm"),
+            onSelect: () => setStatus("CANCELLED"),
+          } as RowAction,
+        ]),
+  ];
+  const items = [...moveUp, ...moveDown, ...statusItems];
 
   return (
     <TimelineItem
       node={node}
       tone={spec.tone}
-      filled={done || cancelled}
+      filled={terminal}
       last={last}
-      contentClassName={cn("flex flex-col gap-2", visibilityRowCue(m.visibility))}
+      contentClassName={cn("flex flex-col", visibilityRowCue(m.visibility))}
     >
-      <div className="@container flex flex-wrap items-start justify-between gap-2">
+      {/* The actions sit OUTSIDE the <AutoForm>: the form paints its own
+          "…" / "Saved" indicator at its own top-right corner, which is
+          exactly where the ⋯ trigger would be. */}
+      <div className="flex items-start justify-between gap-2">
         <AutoForm
           action={updateMilestoneAction}
-          // min-w-48, not min-w-0: `flex-1` with no floor let the action
-          // buttons (which are shrink-0) squeeze the name field down to
-          // 30px on a phone instead of wrapping to their own line.
-          className="grid min-w-48 flex-1 grid-cols-1 gap-2 @2xl:grid-cols-[1fr_9rem_11rem]"
+          className="flex min-w-0 flex-1 flex-col gap-0.5 pr-10"
         >
           <input type="hidden" name="milestoneId" value={m.id} />
           <input type="hidden" name="projectKey" value={projectKey} />
-          <Input
+          {/* -ml-2.5 pulls the rest button's control padding back out, so
+              the name sits on the same left edge as the meta line. */}
+          <InlineEdit
+            kind="text"
             name="name"
-            defaultValue={m.name}
-            required
-            aria-label={t("milestoneName")}
-            className={done || cancelled ? "line-through" : ""}
+            value={m.name}
+            label={t("milestoneName")}
+            placeholder={t("milestonePlaceholder")}
+            display={name}
+            inputProps={{ required: true }}
+            className="-ml-2.5"
           />
-          <Input
-            name="dueAt"
-            type="date"
-            defaultValue={isoDate(m.dueAt)}
-            aria-label={t("due")}
-            className="num"
-          />
-          <VisibilityNativeSelect value={m.visibility} />
+          <div className="-ml-2.5 flex flex-wrap items-center gap-y-1 text-xs text-muted-foreground">
+            <StatusBadge domain="milestoneStatus" value={m.status} className="ml-2.5" />
+            <VisibilityInlineEdit value={m.visibility} className="ml-1 w-auto" />
+            {/* Never a native yyyy-mm-dd placeholder: an undated milestone
+                offers a quiet verb instead. */}
+            <InlineEdit
+              kind="date"
+              name="dueAt"
+              value={isoDate(m.dueAt)}
+              label={t("due")}
+              placeholder={t("setDate")}
+              display={<span className="num">{dueText}</span>}
+              density="table"
+              className="w-auto"
+            />
+            {completed ? <span className="num ml-1.5">{completed}</span> : null}
+          </div>
         </AutoForm>
-        <div className="flex shrink-0 items-center gap-1">
-          {m.status === "PLANNED" || m.status === "PAUSED" ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={pending}
-              onClick={() => setStatus("IN_PROGRESS")}
-            >
-              {t("start")}
-            </Button>
-          ) : null}
-          {!done && !cancelled ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={pending}
-              onClick={() => setStatus("DONE")}
-            >
-              {t("complete")}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={pending}
-              onClick={() => setStatus("PLANNED")}
-            >
-              {t("reopen")}
-            </Button>
-          )}
-          {/* Grouped icon buttons are 28px, never 24 flush (SC 2.5.8). */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("moveUp")}
-            disabled={first || pending}
-            onClick={() => move({ beforeId: siblings[index - 1]!.id })}
-          >
-            <ArrowUpIcon />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("moveDown")}
-            disabled={isLastSibling || pending}
-            onClick={() => move({ afterId: siblings[index + 1]!.id })}
-          >
-            <ArrowDownIcon />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("more")}
-                disabled={pending}
-              >
-                <MoreHorizontalIcon />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem disabled={first} onSelect={() => move({ position: "top" })}>
-                {t("moveTop")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={isLastSibling}
-                onSelect={() => move({ position: "bottom" })}
-              >
-                {t("moveBottom")}
-              </DropdownMenuItem>
-              {m.status === "IN_PROGRESS" ? (
-                <DropdownMenuItem onSelect={() => setStatus("PAUSED")}>
-                  {t("statuses.PAUSED")}
-                </DropdownMenuItem>
-              ) : null}
-              {!cancelled ? (
-                <DropdownMenuItem variant="destructive" onSelect={() => setStatus("CANCELLED")}>
-                  {t("cancel")}
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <span className="shrink-0">
+          <RowActions
+            label={tCommon("actionsFor", { name: m.name })}
+            primary={
+              m.status === "IN_PROGRESS" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => setStatus("DONE")}
+                >
+                  <CircleCheckIcon />
+                  {t("complete")}
+                </Button>
+              ) : null
+            }
+            items={items}
+          />
+        </span>
       </div>
-      {meta}
     </TimelineItem>
   );
 }
 
 /**
- * SAFETY-CRITICAL (DESIGN SPEC §2.4): the write control wears the same
- * warm fill as the read chip while it is set to CLIENT_VISIBLE, so an
- * editable milestone is never less legible than a read-only one.
+ * SAFETY-CRITICAL (UI.md §10.4): the write control wears the same warm
+ * fill as the read chip while it is set to CLIENT_VISIBLE, so a new
+ * milestone is never less legible than an existing one. Creation keeps
+ * a real labelled control — read-first editing is for values that
+ * already exist.
  */
 function VisibilityNativeSelect({ value, id }: { value: "INTERNAL" | "CLIENT_VISIBLE"; id?: string }) {
   const t = useTranslations("visibility");
@@ -349,6 +392,12 @@ export function CreateMilestoneForm({ projectId, projectKey }: { projectId: stri
  * sits between: what actually went live, when, and the notes that went
  * with it. Shipped nodes are filled and carry package-check; drafts
  * stay outlined with file-pen.
+ *
+ * The same read-first treatment as a milestone: the label, the title
+ * and the release notes render as text and become their controls on
+ * activation. A shipped label is immutable server-side, so it renders
+ * with no affordance at all rather than as a control that will be
+ * refused.
  */
 export function VersionItem({
   projectKey,
@@ -407,51 +456,57 @@ export function VersionItem({
       tone={spec.tone}
       filled={shipped}
       last={last}
-      contentClassName="flex flex-col gap-2"
+      contentClassName="flex flex-col gap-1.5"
     >
-      <div className="@container flex flex-wrap items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2">
         <AutoForm
           action={updateVersionAction}
-          className="grid min-w-48 flex-1 grid-cols-1 gap-2 @xl:grid-cols-[8rem_1fr]"
+          className="flex min-w-0 flex-1 flex-col gap-0.5 pr-10"
         >
           <input type="hidden" name="versionId" value={v.id} />
           <input type="hidden" name="projectKey" value={projectKey} />
-          {shipped ? (
-            <span className="num flex h-8 items-center font-mono text-sm font-medium">
-              {v.version}
-            </span>
-          ) : (
-            <Input
+          <span className="-ml-2.5 flex min-w-0 flex-wrap items-center">
+            <InlineEdit
+              kind="text"
               name="version"
-              defaultValue={v.version}
-              required
-              aria-label={t("version")}
-              className="num font-mono"
+              value={v.version}
+              label={t("version")}
+              placeholder={t("versionPlaceholder")}
+              display={<span className="num font-mono font-medium">{v.version}</span>}
+              readOnly={shipped}
+              inputProps={{ required: true, maxLength: 64 }}
+              controlClassName="num font-mono"
+              className={shipped ? "ml-2.5 w-auto" : "w-32"}
             />
-          )}
-          <Input
-            name="title"
-            defaultValue={v.title ?? ""}
-            aria-label={t("versionTitle")}
-            placeholder={t("versionTitle")}
-          />
-          <Textarea
+            <InlineEdit
+              kind="text"
+              name="title"
+              value={v.title ?? ""}
+              label={t("versionTitle")}
+              placeholder={t("versionTitle")}
+              className="min-w-32 flex-1"
+            />
+          </span>
+          <InlineEdit
+            kind="multiline"
             name="releaseNotes"
-            defaultValue={v.releaseNotes ?? ""}
-            rows={2}
-            aria-label={t("releaseNotes")}
+            value={v.releaseNotes ?? ""}
+            label={t("releaseNotes")}
             placeholder={t("releaseNotes")}
-            className="@xl:col-span-2"
+            display={<span className="text-muted-foreground">{v.releaseNotes}</span>}
+            className="-ml-2.5"
           />
         </AutoForm>
         {!shipped ? (
-          <InlineConfirm
-            label={t("ship")}
-            question={t("shipConfirm")}
-            variant="default"
-            pending={pending}
-            onConfirm={() => run(() => shipVersionAction(v.id, projectKey, v.version))}
-          />
+          <span className="shrink-0">
+            <InlineConfirm
+              label={t("ship")}
+              question={t("shipConfirm")}
+              variant="outline"
+              pending={pending}
+              onConfirm={() => run(() => shipVersionAction(v.id, projectKey, v.version))}
+            />
+          </span>
         ) : null}
       </div>
       {meta}

@@ -8,6 +8,7 @@ import { requireTenantContext } from "@/members/tenant-context";
 import { loadProject } from "./data";
 import {
   PortalControls,
+  ProjectDangerZone,
   ProjectDetailsForm,
   ProjectInternalForm,
   ProjectStatusControls,
@@ -22,6 +23,9 @@ import {
  * internal card wears a VisibilityBadge in its header rather than a
  * grey badge per field (DESIGN SPEC §7) — one unmistakable statement
  * about the whole card.
+ *
+ * Archiving is a danger footer at the foot of the main column, not a
+ * red button inside the routine Status card (UI.md §5.9).
  */
 export default async function ProjectOverviewPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
@@ -47,6 +51,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
         >
           <ProjectInternalForm project={project} />
         </SectionCard>
+        <ProjectDangerZone project={project} />
       </div>
       <div className="flex flex-col gap-6">
         <SectionCard title={t("status")}>

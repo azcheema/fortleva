@@ -6,24 +6,43 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Field } from "@/components/semantic";
-import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { FormResult } from "@/lib/server-actions";
 import { TIMEZONES } from "@/preferences/config";
 
 import { setTimezoneAction } from "./actions";
 
-const WORKSPACE_DEFAULT = "";
-
 /**
  * Personal time-zone override (UI.md §5.10: auto-save on change). Writes
- * Member.timezone for the active membership; empty = workspace default.
+ * Member.timezone for the active membership; the sentinel value maps
+ * back to "" — the workspace default.
+ *
+ * Radix `Select`, like the language field beside it: §10.10 reserves
+ * `NativeSelect` for inside `<AutoForm>` (it needs a real `change`
+ * event), and this is not one. Two implementations of the same control
+ * 100px apart is two arrow glyphs, two text insets and, on a phone, two
+ * interaction models.
  */
-export function TimezoneForm({ current, workspaceDefault }: { current: string | null; workspaceDefault: string }) {
+const WORKSPACE_DEFAULT = "__default";
+
+export function TimezoneForm({
+  current,
+  workspaceDefault,
+}: {
+  current: string | null;
+  workspaceDefault: string;
+}) {
   const t = useTranslations("account.timezone");
   const router = useRouter();
   const [state, action, pending] = useActionState<FormResult | null, FormData>(setTimezoneAction, null);
   const [, startTransition] = useTransition();
-  const [value, setValue] = useState(current ?? WORKSPACE_DEFAULT);
+  const [value, setValue] = useState(current || WORKSPACE_DEFAULT);
 
   useEffect(() => {
     if (!state) return;
@@ -35,28 +54,31 @@ export function TimezoneForm({ current, workspaceDefault }: { current: string | 
     }
   }, [state, router]);
 
+  const onChange = (next: string) => {
+    setValue(next);
+    const fd = new FormData();
+    // Radix cannot carry an empty-string item value; the sentinel maps to "".
+    fd.set("timezone", next === WORKSPACE_DEFAULT ? "" : next);
+    startTransition(() => action(fd));
+  };
+
   return (
-    <Field label={t("label")} htmlFor="member-timezone" className="max-w-xs">
-      <NativeSelect
-        id="member-timezone"
-        name="timezone"
-        value={value}
-        disabled={pending}
-        onChange={(e) => {
-          const next = e.target.value;
-          setValue(next);
-          const fd = new FormData();
-          fd.set("timezone", next);
-          startTransition(() => action(fd));
-        }}
-      >
-        <option value={WORKSPACE_DEFAULT}>{t("workspaceDefault", { zone: workspaceDefault })}</option>
-        {TIMEZONES.map((z) => (
-          <option key={z} value={z}>
-            {z}
-          </option>
-        ))}
-      </NativeSelect>
+    <Field label={t("label")} htmlFor="member-timezone">
+      <Select value={value} onValueChange={onChange} disabled={pending}>
+        <SelectTrigger id="member-timezone" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={WORKSPACE_DEFAULT}>
+            {t("workspaceDefault", { zone: workspaceDefault })}
+          </SelectItem>
+          {TIMEZONES.map((z) => (
+            <SelectItem key={z} value={z}>
+              {z}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </Field>
   );
 }

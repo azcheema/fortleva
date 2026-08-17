@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DownloadIcon, FileArchiveIcon } from "lucide-react";
+import Link from "next/link";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
 import { effectivePermissions } from "@/authz/authorize";
@@ -13,6 +14,7 @@ import {
   SectionCard,
 } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -36,11 +38,13 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * /settings/export (PLAN.md Phase 2, CONTINUITY_BOX.md): the export
- * path is the continuity commitment, so the page opens by SAYING it —
- * as a Callout, not as small print under the title. settings:view
- * lists previous exports; tenant:export (✦) generates a new one;
- * downloads go through the ordinary presigned document path
- * (document:view).
+ * path is the continuity commitment, so the page says it in its own
+ * words under the title. It is NOT a Callout: a tinted block is a
+ * notice about something unexpected, and it outweighed the action it
+ * introduced — the loudest thing on the page was a sentence, and the
+ * button that does the work was quieter than it. settings:view lists
+ * previous exports; tenant:export (✦) generates a new one; downloads go
+ * through the ordinary presigned document path (document:view).
  */
 export default async function ExportPage({
   searchParams,
@@ -96,12 +100,15 @@ export default async function ExportPage({
         </Callout>
       ) : null}
 
-      <div className="mt-6 flex flex-col gap-4">
-        <Callout tone="info" title={t("commitmentTitle")}>
-          {t("commitment")}
-        </Callout>
+      <p className="mt-2 max-w-prose text-sm text-muted-foreground">{t("commitmentBody")}</p>
 
-        <SectionCard title={t("newExport")} description={t("contents")}>
+      <div className="mt-6 flex flex-col gap-4">
+        <SectionCard
+          id="new-export"
+          className="scroll-mt-16"
+          title={t("newExport")}
+          description={t("contents")}
+        >
           {canExport ? (
             <GenerateExportForm />
           ) : (
@@ -118,15 +125,32 @@ export default async function ExportPage({
           contentClassName={exports.length === 0 ? undefined : "p-0"}
         >
           {exports.length === 0 ? (
-            <EmptyState variant="empty" title={t("emptyTitle")} body={t("emptyDescription")} />
+            <EmptyState
+              variant="empty"
+              icon={DownloadIcon}
+              title={t("emptyTitle")}
+              body={t("emptyDescription")}
+              action={
+                canExport ? (
+                  <Button asChild size="sm">
+                    <Link href="#new-export">
+                      <FileArchiveIcon />
+                      {t("generate")}
+                    </Link>
+                  </Button>
+                ) : null
+              }
+            />
           ) : (
-            <DataTable flush>
+            <DataTable flush scrollLabel={t("previous")}>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("columns.name")}</TableHead>
-                    <TableHead>{t("columns.created")}</TableHead>
-                    <TableHead className="text-right">{t("columns.size")}</TableHead>
+                    <TableHead priority="medium">{t("columns.created")}</TableHead>
+                    <TableHead priority="low" className="text-right">
+                      {t("columns.size")}
+                    </TableHead>
                     <TableHead className="w-0 text-right">
                       <span className="sr-only">{tCommon("actions")}</span>
                     </TableHead>
@@ -148,25 +172,38 @@ export default async function ExportPage({
                             </span>
                           </span>
                         </TableCell>
-                        <TableCell className="num text-muted-foreground">
+                        <TableCell priority="medium" className="num text-muted-foreground">
                           {format.dateTime(e.createdAt, {
                             dateStyle: "medium",
                             timeStyle: "short",
                           })}
                         </TableCell>
-                        <TableCell className="num text-right whitespace-nowrap">
+                        <TableCell priority="low" className="num text-right whitespace-nowrap">
                           {size.value}
                           <span className="ml-1 text-muted-foreground">{size.unit}</span>
                         </TableCell>
                         <TableCell className="text-right">
                           {canDownload ? (
-                            <form action={downloadAction}>
+                            // The row's one everyday verb: a quiet 28px ghost
+                            // icon, the same shape the documents table uses.
+                            <form action={downloadAction} className="flex justify-end">
                               <input type="hidden" name="documentId" value={e.documentId} />
                               <input type="hidden" name="returnTo" value="/settings/export" />
-                              <Button type="submit" variant="outline" size="sm">
-                                <DownloadIcon />
-                                {tCommon("download")}
-                              </Button>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    type="submit"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={tCommon("downloadName", { name: e.name })}
+                                  >
+                                    <DownloadIcon />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {tCommon("downloadName", { name: e.name })}
+                                </TooltipContent>
+                              </Tooltip>
                             </form>
                           ) : null}
                         </TableCell>

@@ -2,15 +2,14 @@
 
 import { UploadIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Callout, Field, FormMessage } from "@/components/semantic";
+import { Callout, Field, FileDropField, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { formatBytes } from "@/lib/format";
+import { chosenFileFrom, type ChosenFile } from "@/lib/file-field";
 import { cn } from "@/lib/utils";
 
 import { commitUploadAction, presignUploadAction, type UploadTarget } from "./actions";
@@ -24,9 +23,10 @@ import { commitUploadAction, presignUploadAction, type UploadTarget } from "./ac
  * asserted server-side); the visibility select is enabled only there —
  * a tenant-internal file cannot be client-visible (schema CHECK).
  *
- * The affordance around those three hops: a real drop target (the
- * native input stays, so keyboard and screen-reader users lose
- * nothing), a labelled three-phase progress bar rather than a spinner
+ * The affordance around those three hops: `<FileDropField>` — one
+ * dashed surface with one outline "Choose file" affordance, the native
+ * input sr-only behind it so keyboard and screen-reader users lose
+ * nothing — a labelled three-phase progress bar rather than a spinner
  * — the phases are the only honest units, since a signed PUT gives no
  * byte progress — and, most importantly, a standing statement of where
  * this file will land. Private is the default and says so; choosing
@@ -58,11 +58,9 @@ export function UploadForm({
 }) {
   const t = useTranslations("files");
   const tVis = useTranslations("visibility");
-  const locale = useLocale();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [visibility, setVisibility] = useState<"INTERNAL" | "CLIENT_VISIBLE">("INTERNAL");
-  const [chosen, setChosen] = useState<{ name: string; size: number } | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const [chosen, setChosen] = useState<ChosenFile | null>(null);
   const [, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -112,60 +110,21 @@ export function UploadForm({
   const stepIndex = phase.kind === "busy" ? STEPS.indexOf(phase.step) + 1 : 0;
   const clientVisible = visibility === "CLIENT_VISIBLE";
 
-  const take = (files: FileList | null | undefined) => {
-    const file = files?.[0];
-    setChosen(file ? { name: file.name, size: file.size } : null);
-  };
-
   return (
     <form onSubmit={onSubmit} className="flex max-w-lg flex-col gap-4">
-      <Field label={t("upload.file")} htmlFor="upload-file">
-        <div
-          onDragOver={(e) => {
-            if (busy) return;
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={(e) => {
-            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-            setDragging(false);
-          }}
-          onDrop={(e) => {
-            if (busy) return;
-            e.preventDefault();
-            setDragging(false);
-            const input = inputRef.current;
-            if (!input || e.dataTransfer.files.length === 0) return;
-            input.files = e.dataTransfer.files;
-            take(input.files);
-          }}
-          className={cn(
-            "flex flex-col items-start gap-3 rounded-card border border-dashed border-input p-4 transition-[background-color,border-color] duration-(--dur-instant) ease-out",
-            dragging && "border-solid border-foreground bg-accent",
-          )}
-        >
-          <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <UploadIcon aria-hidden="true" className="size-4 shrink-0" />
-            {dragging ? t("upload.dropNow") : t("upload.dropHint")}
-          </span>
-          <Input
-            id="upload-file"
-            ref={inputRef}
-            type="file"
-            name="file"
-            required
-            disabled={busy}
-            onChange={(e) => take(e.target.files)}
-          />
-          {chosen ? (
-            <p className="num text-xs text-muted-foreground">
-              {chosen.name}
-              {" · "}
-              {formatBytes(locale, chosen.size)}
-            </p>
-          ) : null}
-        </div>
-      </Field>
+      <FileDropField
+        id="upload-file"
+        name="file"
+        label={t("upload.file")}
+        hint={t("upload.dropHint")}
+        draggingHint={t("upload.dropNow")}
+        chooseLabel={t("upload.choose")}
+        chosen={chosen}
+        onChange={(files) => setChosen(chosenFileFrom(files))}
+        inputRef={inputRef}
+        required
+        disabled={busy}
+      />
 
       <Field
         label={tVis("label")}

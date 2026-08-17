@@ -1,6 +1,9 @@
+import { FileIcon, UploadIcon, XIcon } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { Callout, EmptyState, SectionCard } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 import { listDocuments } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -26,6 +29,7 @@ export default async function ProjectFilesPage({
   const project = await loadProject(key);
   const t = await getTranslations("projects.files");
   const tFiles = await getTranslations("files");
+  const tCommon = await getTranslations("common");
   const returnTo = `/projects/${project.key}/files`;
   if (!project.caps.viewDocuments) {
     // "Nothing here" and "not yours to see" are different facts and get
@@ -43,16 +47,44 @@ export default async function ProjectFilesPage({
     { projectId: project.id },
   );
 
+  const canUpload = project.caps.uploadDocuments && project.status !== "ARCHIVED";
+  const uploadButton = (
+    <Button asChild size="sm">
+      <Link href="#new-file">
+        <UploadIcon />
+        {tFiles("upload.title")}
+      </Link>
+    </Button>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       {error ? (
         <Callout tone="danger" role="alert">
-          {error}
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="min-w-0 flex-1">{error}</span>
+            {canUpload ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href="#new-file">{tCommon("retry")}</Link>
+              </Button>
+            ) : null}
+            <Button asChild variant="ghost" size="icon-sm">
+              <Link href={returnTo} aria-label={tCommon("close")}>
+                <XIcon />
+              </Link>
+            </Button>
+          </span>
         </Callout>
       ) : null}
       {documents.length === 0 ? (
         <SectionCard>
-          <EmptyState variant="empty" title={t("empty")} body={t("emptyDescription")} />
+          <EmptyState
+            variant="empty"
+            icon={FileIcon}
+            title={t("empty")}
+            body={t("emptyDescription")}
+            action={canUpload ? uploadButton : null}
+          />
         </SectionCard>
       ) : (
         <DocumentsTable
@@ -62,13 +94,17 @@ export default async function ProjectFilesPage({
           canChangeVisibility={project.caps.changeDocumentVisibility}
         />
       )}
-      {project.caps.uploadDocuments && project.status !== "ARCHIVED" ? (
-        <SectionCard
-          title={tFiles("upload.title")}
-          description={project.portalEnabled ? t("uploadPortalOn") : t("uploadPortalOff")}
-        >
-          <UploadForm target={{ projectId: project.id, returnTo }} visibilityEnabled />
-        </SectionCard>
+      {canUpload ? (
+        <div className="max-w-(--content-form)">
+          <SectionCard
+            id="new-file"
+            className="scroll-mt-16"
+            title={tFiles("upload.title")}
+            description={project.portalEnabled ? t("uploadPortalOn") : t("uploadPortalOff")}
+          >
+            <UploadForm target={{ projectId: project.id, returnTo }} visibilityEnabled />
+          </SectionCard>
+        </div>
       ) : null}
     </div>
   );

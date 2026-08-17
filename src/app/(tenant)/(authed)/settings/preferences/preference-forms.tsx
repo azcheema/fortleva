@@ -43,7 +43,12 @@ export function RegionalPreferencesForm({
   const tCommon = useTranslations("common");
   const ro = !editable;
   return (
-    <AutoForm action={updatePreferencesAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    // items-start, not stretch: a two-line hint under one field used to
+    // stretch its neighbour and push the next row's label off the rail.
+    <AutoForm
+      action={updatePreferencesAction}
+      className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2"
+    >
       <Field htmlFor="p-locale" label={t("locale")} hint={t("localeHint")}>
         <NativeSelect
           id="p-locale"
@@ -67,27 +72,31 @@ export function RegionalPreferencesForm({
           ))}
         </NativeSelect>
       </Field>
-      <Field htmlFor="p-week" label={t("weekStart")} hint={t("weekStartHint")}>
-        <NativeSelect id="p-week" name="weekStart" defaultValue={prefs.weekStart} disabled={ro}>
-          {WEEK_STARTS.map((w) => (
-            <option key={w} value={w}>
-              {t(`weekStarts.${w}`)}
-            </option>
-          ))}
-        </NativeSelect>
-      </Field>
-      <div className="flex items-center gap-2 self-end pb-2">
-        <input type="hidden" name="showIsoWeekMarker" value="1" />
-        {/* Native, not Radix: <AutoForm> saves on a real change event. */}
-        <NativeCheckbox
-          id="p-iso"
-          name="showIsoWeek"
-          defaultChecked={prefs.showIsoWeek}
-          disabled={ro}
-        />
-        <Label htmlFor="p-iso" className="font-normal">
-          {t("showIsoWeek")}
-        </Label>
+      {/* ISO weeks are a property OF the week setting, so they live under
+          it rather than floating in the column beside it. */}
+      <div className="flex flex-col gap-3">
+        <Field htmlFor="p-week" label={t("weekStart")} hint={t("weekStartHint")}>
+          <NativeSelect id="p-week" name="weekStart" defaultValue={prefs.weekStart} disabled={ro}>
+            {WEEK_STARTS.map((w) => (
+              <option key={w} value={w}>
+                {t(`weekStarts.${w}`)}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+        <div className="flex items-center gap-2">
+          <input type="hidden" name="showIsoWeekMarker" value="1" />
+          {/* Native, not Radix: <AutoForm> saves on a real change event. */}
+          <NativeCheckbox
+            id="p-iso"
+            name="showIsoWeek"
+            defaultChecked={prefs.showIsoWeek}
+            disabled={ro}
+          />
+          <Label htmlFor="p-iso" className="font-normal">
+            {t("showIsoWeek")}
+          </Label>
+        </div>
       </div>
     </AutoForm>
   );
@@ -104,7 +113,10 @@ export function FormatPreferencesForm({
   const t = useTranslations("settings.preferences");
   const ro = !editable;
   return (
-    <AutoForm action={updatePreferencesAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <AutoForm
+      action={updatePreferencesAction}
+      className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2"
+    >
       <Field htmlFor="p-duration" label={t("durationStyle")} hint={t("durationStyleHint")}>
         <NativeSelect
           id="p-duration"
@@ -191,13 +203,18 @@ export function ModuleToggles({
               {t(`moduleHints.${m}`)}
             </p>
           </div>
+          {/* Neutral track, not the brand fill: eight switches all on is a
+              vertical --primary stripe carrying no information, and the
+              brand accent has exactly three jobs (UI.md §10.2), none of
+              them "a row of settings that are all in their default
+              state". The thumb's position is the signal. */}
           <Switch
             id={`mod-${m}`}
             aria-describedby={`mod-${m}-hint`}
             checked={state[m]}
             disabled={!canManage || pending}
             onCheckedChange={(v) => flip(m, v)}
-            className="mt-1"
+            className="mt-1 data-checked:bg-(--tone-neutral-line)"
           />
         </li>
       ))}

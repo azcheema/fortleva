@@ -50,7 +50,7 @@ export function LocaleForm({ current }: { current: string }) {
   };
 
   return (
-    <Field label={t("label")} htmlFor="locale" className="max-w-xs">
+    <Field label={t("label")} htmlFor="locale">
       <Select value={value} onValueChange={onChange} disabled={pending}>
         <SelectTrigger id="locale" className="w-full">
           <SelectValue />

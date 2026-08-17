@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { FileIcon, UploadIcon, XIcon } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { isAuthorized } from "@/authz/authorize";
 import { Callout, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { listDocuments } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
@@ -30,6 +33,7 @@ export default async function FilesPage({
   const { membership, actor } = await requireTenantContext();
   const { error } = await searchParams;
   const t = await getTranslations("files");
+  const tCommon = await getTranslations("common");
   const ctx = { tenantId: membership.tenantId, actor };
 
   const [documents, caps] = await Promise.all([
@@ -44,23 +48,55 @@ export default async function FilesPage({
     }),
   ]);
 
+  const uploadButton = (
+    <Button asChild size="sm">
+      <Link href="#new-file">
+        <UploadIcon />
+        {t("upload.title")}
+      </Link>
+    </Button>
+  );
+
   return (
     <Page width="wide">
+      {/* The h1 is the page noun; the workspace name lives in the header
+          and in <title>, not in the heading of every route. */}
       <PageHeader
-        title={t("title", { tenant: membership.tenantName })}
+        title={t("shortTitle")}
         description={t("subtitle")}
+        actions={caps.canUpload ? uploadButton : null}
       />
 
       {error ? (
         <Callout tone="danger" role="alert" className="mt-4">
-          {error}
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="min-w-0 flex-1">{error}</span>
+            {/* The banner names a failed action; it now also offers the
+                two ways out instead of living in the layout for ever. */}
+            {caps.canUpload ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href="#new-file">{tCommon("retry")}</Link>
+              </Button>
+            ) : null}
+            <Button asChild variant="ghost" size="icon-sm">
+              <Link href="/files" aria-label={tCommon("close")}>
+                <XIcon />
+              </Link>
+            </Button>
+          </span>
         </Callout>
       ) : null}
 
       <section className="mt-6">
         {documents.length === 0 ? (
           <SectionCard>
-            <EmptyState variant="empty" title={t("empty.title")} body={t("empty.description")} />
+            <EmptyState
+              variant="empty"
+              icon={FileIcon}
+              title={t("empty.title")}
+              body={t("empty.description")}
+              action={caps.canUpload ? uploadButton : null}
+            />
           </SectionCard>
         ) : (
           <DocumentsTable
@@ -73,8 +109,10 @@ export default async function FilesPage({
       </section>
 
       {caps.canUpload ? (
-        <div className="mt-6">
-          <SectionCard title={t("upload.title")} description={t("upload.tenantScope")}>
+        // Constrained to the form column: a 1440px card around a 512px
+        // form reads as a missing second column.
+        <div className="mt-6 max-w-(--content-form)">
+          <SectionCard id="new-file" className="scroll-mt-16" title={t("upload.title")}>
             <UploadForm />
           </SectionCard>
         </div>

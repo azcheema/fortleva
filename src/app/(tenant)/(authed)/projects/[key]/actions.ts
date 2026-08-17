@@ -252,10 +252,20 @@ export async function updateMilestoneAction(formData: FormData): Promise<FormRes
   const ctx = await ctxOf();
   const tCommon = await getTranslations("common");
   const r = await runForm(projectPath(key, "/timeline"), async () => {
+    // Absent field = not edited, NEVER an erase (WORKLIST hazard H1).
+    // <InlineEdit> keeps a hidden input at rest so the FormData is
+    // unchanged, but a partial post must still be safe on its own.
     await updateMilestone(ctx, milestoneId.data, {
-      name: field(formData, "name") ?? "",
-      dueAt: dateField(formData, "dueAt"),
-      visibility: field(formData, "visibility") === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL",
+      ...(has(formData, "name") ? { name: field(formData, "name") ?? "" } : {}),
+      ...(has(formData, "dueAt") ? { dueAt: dateField(formData, "dueAt") } : {}),
+      ...(has(formData, "visibility")
+        ? {
+            visibility:
+              field(formData, "visibility") === "CLIENT_VISIBLE"
+                ? ("CLIENT_VISIBLE" as const)
+                : ("INTERNAL" as const),
+          }
+        : {}),
     });
     return tCommon("saved");
   });
@@ -330,10 +340,14 @@ export async function updateVersionAction(formData: FormData): Promise<FormResul
   const ctx = await ctxOf();
   const tCommon = await getTranslations("common");
   const r = await runForm(projectPath(key, "/timeline"), async () => {
+    // Same H1 guard: title and release notes were unguarded, so a form
+    // that posted only `version` wiped both.
     await updateVersion(ctx, versionId.data, {
       ...(has(formData, "version") ? { version: field(formData, "version") ?? "" } : {}),
-      title: field(formData, "title"),
-      releaseNotes: field(formData, "releaseNotes"),
+      ...(has(formData, "title") ? { title: field(formData, "title") } : {}),
+      ...(has(formData, "releaseNotes")
+        ? { releaseNotes: field(formData, "releaseNotes") }
+        : {}),
     });
     return tCommon("saved");
   });

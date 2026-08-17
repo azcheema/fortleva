@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { Callout, EntityChip, EntityTile, Page, PageHeader, StatusBadge } from "@/components/semantic";
+import { Callout, EntityTile, Page, PageHeader, StatusBadge } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TabNav } from "@/components/tab-nav";
@@ -56,12 +57,15 @@ export default async function ProjectLayout({
     <Page width="wide">
       <PageHeader
         breadcrumb={
-          <EntityChip
-            id={project.client.id}
-            name={project.client.name}
-            kind="client"
+          // A trail, not a chip: the client's tile stacked directly above
+          // the project's own mark and — in a workspace of one client —
+          // resolved to the same square twice. The name is the trail.
+          <Link
             href={`/clients/${project.client.id}`}
-          />
+            className="rounded-sm underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {project.client.name}
+          </Link>
         }
         title={
           <span className="flex min-w-0 items-center gap-2.5">
@@ -79,19 +83,15 @@ export default async function ProjectLayout({
             <StatusBadge domain="projectStatus" value={project.status} />
             {/* Portal state is NOT client-visibility: it gets the brand tone and
                 its own glyph so it can never be read as the warm "client can
-                see" pill (DESIGN SPEC §2.4 collision rule). Both states render
-                — "no badge" would be indistinguishable from a missing badge. */}
+                see" pill (UI.md §10.4 collision rule). §10.4 specifies a badge
+                for portal ON only — "off" is the resting state of every
+                project and does not need a chip on every tab. */}
             {project.portalEnabled ? (
               <Badge variant="brand">
                 <GlobeIcon aria-hidden="true" />
                 {t("overview.portalOn")}
               </Badge>
-            ) : (
-              <Badge variant="outline">
-                <GlobeIcon aria-hidden="true" />
-                {t("overview.portalOff")}
-              </Badge>
-            )}
+            ) : null}
             {/* Phase 3 slot: <HealthChip value={project.health} /> lands here,
                 beside the status, once ProjectUpdate.health exists. */}
           </>

@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
-import { ArchiveIcon, ArchiveRestoreIcon, GlobeIcon, PlusIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  Building2Icon,
+  FolderKanbanIcon,
+  GlobeIcon,
+  PlusIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
@@ -101,6 +108,7 @@ export default async function ProjectsPage({
               clients.length === 0 ? (
                 <EmptyState
                   variant="empty"
+                  icon={Building2Icon}
                   title={t("empty.noClients")}
                   body={t("empty.noClientsDescription")}
                   action={
@@ -112,6 +120,7 @@ export default async function ProjectsPage({
               ) : (
                 <EmptyState
                   variant="empty"
+                  icon={FolderKanbanIcon}
                   title={t("empty.title")}
                   body={t("empty.description")}
                   action={
@@ -135,35 +144,41 @@ export default async function ProjectsPage({
         ) : (
           groups.map((g) => (
             <div key={g.clientId} className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="min-w-0">
-                  <EntityChip
-                    id={g.clientId}
-                    name={g.clientName}
-                    kind="client"
-                    size="md"
-                    href={`/clients/${g.clientId}`}
-                    className="font-medium"
-                  />
-                </h2>
+              {/* The count belongs to the group heading, beside the name it
+                  counts — not stranded at the far right of the row. */}
+              <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                <EntityChip
+                  id={g.clientId}
+                  name={g.clientName}
+                  kind="client"
+                  size="md"
+                  href={`/clients/${g.clientId}`}
+                  className="font-medium"
+                />
                 <span className="num shrink-0 text-xs text-muted-foreground">
                   {tCommon("projects", { count: g.projects.length })}
                 </span>
-              </div>
+              </h2>
               {/* One table per client, stacked — so the columns are pinned
                   rather than measured. With auto layout each group sized
                   its own columns from its own rows and the six headings
                   landed at six different x positions down the page. */}
-              <DataTable>
+              <DataTable scrollLabel={g.clientName}>
                 <Table className="table-fixed min-w-3xl">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[10ch]">{t("columns.key")}</TableHead>
-                      <TableHead>{t("columns.name")}</TableHead>
+                      <TableHead className="max-w-[420px]">{t("columns.name")}</TableHead>
                       <TableHead className="w-36">{t("columns.status")}</TableHead>
-                      <TableHead className="w-28">{t("columns.portal")}</TableHead>
-                      <TableHead className="w-56">{t("columns.lead")}</TableHead>
-                      <TableHead className="w-32 text-right">{t("columns.milestones")}</TableHead>
+                      <TableHead priority="low" className="w-28">
+                        {t("columns.portal")}
+                      </TableHead>
+                      <TableHead priority="low" className="w-56">
+                        {t("columns.lead")}
+                      </TableHead>
+                      <TableHead priority="medium" className="w-32 text-right">
+                        {t("columns.milestones")}
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -172,7 +187,7 @@ export default async function ProjectsPage({
                         <TableCell className="num w-[10ch] font-mono text-xs text-muted-foreground">
                           {p.key}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="max-w-[420px]">
                           <EntityChip
                             id={p.id}
                             name={p.name}
@@ -184,39 +199,47 @@ export default async function ProjectsPage({
                         <TableCell>
                           <StatusBadge domain="projectStatus" value={p.status} />
                         </TableCell>
-                        <TableCell>
+                        {/* Presence, not absence: "Off" and "No lead" on every
+                            row is body-weight text that reads as data. A muted
+                            dash says the same thing and stops competing with
+                            the project name for the eye. */}
+                        <TableCell priority="low">
                           {p.portalEnabled ? (
                             <Badge variant="brand">
                               <GlobeIcon aria-hidden="true" />
                               {t("portalState.on")}
                             </Badge>
                           ) : (
-                            <span className="text-muted-foreground">{t("portalState.off")}</span>
+                            <span className="text-muted-foreground" title={t("portalState.off")}>
+                              {"—"}
+                              <span className="sr-only">{t("portalState.off")}</span>
+                            </span>
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell priority="low">
                           {p.leadName ? (
                             <span className="flex min-w-0 items-center gap-2">
                               <MemberAvatar id={p.leadMemberId} name={p.leadName} size="sm" />
                               <span className="truncate">{p.leadName}</span>
                             </span>
                           ) : (
-                            <span className="text-muted-foreground">{t("overview.leadNone")}</span>
+                            <span className="text-muted-foreground" title={t("overview.leadNone")}>
+                              {"—"}
+                              <span className="sr-only">{t("overview.leadNone")}</span>
+                            </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {p.milestoneTotal === 0 ? (
-                            <span className="text-muted-foreground">{"—"}</span>
-                          ) : (
-                            <ProgressMeter
-                              value={p.milestoneDone}
-                              total={p.milestoneTotal}
-                              label={t("milestonesProgress", {
-                                done: p.milestoneDone,
-                                total: p.milestoneTotal,
-                              })}
-                            />
-                          )}
+                        {/* One shape per column: a project with no milestones
+                            gets the same meter at zero, not an em-dash. */}
+                        <TableCell priority="medium" className="text-right">
+                          <ProgressMeter
+                            value={p.milestoneDone}
+                            total={p.milestoneTotal}
+                            label={t("milestonesProgress", {
+                              done: p.milestoneDone,
+                              total: p.milestoneTotal,
+                            })}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}

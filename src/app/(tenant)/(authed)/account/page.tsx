@@ -28,6 +28,15 @@ export async function generateMetadata(): Promise<Metadata> {
  * caution tone — because "am I protected?" should be answerable from
  * the top of the card without reading a paragraph. Both states always
  * render; absence would be indistinguishable from a bug.
+ *
+ * Order is not fixed. A member sent here mid-action ("this needs
+ * two-factor") arrives to do exactly one thing, so the two-factor card
+ * comes first and the reason is a caution INSIDE it — the banner used
+ * to say "enrol below" above a Change-password card, with the card it
+ * meant 350px further down and nothing linking to it.
+ *
+ * Language and time zone are one "Regional" card: each was a card whose
+ * only control repeated its own heading.
  */
 export default async function AccountPage({
   searchParams,
@@ -40,6 +49,7 @@ export default async function AccountPage({
     (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled ?? false;
   const userLocale = (session.user as { locale?: string | null }).locale;
   const notice = (await searchParams).notice;
+  const steppedUp = notice === "mfa_required" && !twoFactorEnabled;
   // Personal time zone lives on the active membership (Member.timezone);
   // the workspace default is the tenant's `ui.timezone` preference.
   const membership = await getActiveMembership(session);
@@ -51,49 +61,58 @@ export default async function AccountPage({
       )
     : null;
 
+  const totpCard = (
+    <SectionCard
+      title={t("totp.title")}
+      description={twoFactorEnabled ? t("totp.enabled") : undefined}
+      actions={
+        twoFactorEnabled ? (
+          <Badge variant="success">
+            <ShieldCheckIcon aria-hidden="true" />
+            {t("totp.badgeOn")}
+          </Badge>
+        ) : (
+          <Badge variant="caution">
+            <ShieldAlertIcon aria-hidden="true" />
+            {t("totp.badgeOff")}
+          </Badge>
+        )
+      }
+      contentClassName="flex flex-col gap-4"
+    >
+      {/* The page's most consequential fact was its quietest: third-tier
+          grey under the heading. It is a caution, and it belongs beside
+          the control that resolves it. */}
+      {!twoFactorEnabled ? (
+        <Callout tone="caution" role={steppedUp ? "alert" : undefined}>
+          {steppedUp ? t("mfaRequiredNotice") : t("totp.notEnrolled")}
+        </Callout>
+      ) : null}
+      <TotpEnrollment enabled={twoFactorEnabled} />
+    </SectionCard>
+  );
+
   return (
     <Page width="form">
       <PageHeader title={t("security")} description={session.user.email} />
-      {notice === "mfa_required" && !twoFactorEnabled ? (
-        <Callout tone="caution" role="alert" className="mt-4">
-          {t("mfaRequiredNotice")}
-        </Callout>
-      ) : null}
 
       <div className="mt-6 flex flex-col gap-4">
+        {steppedUp ? totpCard : null}
+
         <SectionCard title={t("password.title")} description={t("password.description")}>
           <ChangePasswordForm />
         </SectionCard>
 
-        <SectionCard
-          title={t("totp.title")}
-          description={twoFactorEnabled ? t("totp.enabled") : t("totp.notEnrolled")}
-          actions={
-            twoFactorEnabled ? (
-              <Badge variant="success">
-                <ShieldCheckIcon aria-hidden="true" />
-                {t("totp.badgeOn")}
-              </Badge>
-            ) : (
-              <Badge variant="caution">
-                <ShieldAlertIcon aria-hidden="true" />
-                {t("totp.badgeOff")}
-              </Badge>
-            )
-          }
-        >
-          <TotpEnrollment enabled={twoFactorEnabled} />
-        </SectionCard>
+        {steppedUp ? null : totpCard}
 
-        <SectionCard title={t("language.title")} description={t("language.description")}>
-          <LocaleForm current={isLocale(userLocale) ? userLocale : ""} />
+        <SectionCard title={t("regional.title")} description={t("regional.description")}>
+          <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+            <LocaleForm current={isLocale(userLocale) ? userLocale : ""} />
+            {membership && workspaceTimezone ? (
+              <TimezoneForm current={membership.timezone} workspaceDefault={workspaceTimezone} />
+            ) : null}
+          </div>
         </SectionCard>
-
-        {membership && workspaceTimezone ? (
-          <SectionCard title={t("timezone.title")} description={t("timezone.description")}>
-            <TimezoneForm current={membership.timezone} workspaceDefault={workspaceTimezone} />
-          </SectionCard>
-        ) : null}
       </div>
     </Page>
   );

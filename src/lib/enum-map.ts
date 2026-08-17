@@ -98,7 +98,12 @@ export const STATUS_MAP = {
     CHANGES_REQUESTED: spec("danger", "undo-2"),
   },
   memberStatus: {
-    ACTIVE: spec("neutral", "user-round", "text"),
+    // A tinted chip, like clientStatus.ACTIVE — as bare text it read as
+    // less important than the PENDING invitation two cards below it,
+    // which is the wrong ranking on a page about who is in the
+    // workspace. The person silhouette stays: within a domain the icon
+    // is what survives greyscale.
+    ACTIVE: spec("success", "user-round"),
     SUSPENDED: spec("danger", "user-round-x"),
   },
   inviteStatus: {
