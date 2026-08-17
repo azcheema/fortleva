@@ -10,7 +10,7 @@
 
 ## 0. Next session starts here *(written 2026-08-17 at a context boundary — keep this section current)*
 
-**State:** HEAD `78ccdb5` on `origin/main`, working tree clean, every check green — `pnpm typecheck`, `pnpm exec eslint src e2e --max-warnings 0`, unit **523 pass / 1 skipped**, db **156 pass**, e2e **14 pass**, `next build`. Phases 0 → 1 → 1b → 2 are code complete, plus a full visual design pass and a browser harness.
+**State:** HEAD `d5e7a78` on `origin/main` (last code commit `78ccdb5`; `c3bdf5f` and `d5e7a78` are this handoff and the `AGENTS.md` project instructions), working tree clean, every check green — `pnpm typecheck`, `pnpm exec eslint src e2e --max-warnings 0`, unit **523 pass / 1 skipped**, db **156 pass**, e2e **14 pass**, `next build`. Phases 0 → 1 → 1b → 2 are code complete, plus a full visual design pass and a browser harness.
 
 **Read in this order before writing code:**
 1. this file (§0, the §3 phase table, then the phase section you are building);
