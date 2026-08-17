@@ -14,10 +14,11 @@ import { cn } from "@/lib/utils"
  */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div
-      data-slot="table-container"
-      className="relative w-full overflow-x-auto scrollbar-gutter-stable"
-    >
+    // Not a scroll container: <DataTable> owns the horizontal scroll and
+    // its gutter. Two nested `overflow-x:auto` boxes each reserved a
+    // vertical scrollbar gutter they could never use, and every table in
+    // the product sat 32px short of its card's right edge.
+    <div data-slot="table-container" className="relative w-full">
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}

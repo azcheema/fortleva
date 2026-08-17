@@ -1,4 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
+
+import { join } from "node:path";
 
 import { chromium } from "@playwright/test";
 
@@ -22,6 +24,10 @@ import {
  */
 export default async function globalSetup(): Promise<void> {
   const baseURL = process.env["E2E_BASE_URL"] ?? "http://127.0.0.1:3000";
+  // One clean screenshot set per run (e2e/visual.spec.ts writes here).
+  // Done from global setup because Playwright recycles the worker after
+  // a failing test, so the spec's own module scope runs more than once.
+  rmSync(join(process.cwd(), ".design-shots"), { recursive: true, force: true });
   const { password, tenantSlug } = await provisionE2ETenant();
   console.log(`[e2e] throwaway tenant ${tenantSlug} provisioned`);
 

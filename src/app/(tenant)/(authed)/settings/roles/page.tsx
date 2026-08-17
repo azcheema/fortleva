@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LockIcon, ShieldIcon } from "lucide-react";
+import { ChevronRightIcon, LockIcon, ShieldIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
@@ -126,7 +126,14 @@ export default async function RolesPage() {
                 <p className="text-sm text-muted-foreground">{role.description}</p>
               ) : null}
               <details className="group/details">
-                <summary className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-sm text-muted-foreground transition-colors duration-(--dur-instant) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                {/* `display: inline-flex` removes the native marker, so the
+                    summary read as a plain grey word with no affordance at
+                    all. The chevron IS the affordance; it turns on open. */}
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm text-muted-foreground transition-colors duration-(--dur-instant) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+                  <ChevronRightIcon
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0 transition-transform duration-(--dur-instant) ease-out group-open/details:rotate-90"
+                  />
                   {t("permissions")}
                 </summary>
                 <RolePermissionsForm

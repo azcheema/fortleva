@@ -9,11 +9,19 @@ import { Button } from "@/components/ui/button";
 export default async function AuthedNotFound() {
   const t = await getTranslations("shell.notFound");
   return (
-    <Page width="form">
+    // This state IS the page, so it is centred in what is left of the
+    // viewport under the header: the top-left corner of an otherwise
+    // empty canvas reads as a page that failed to load rather than as a
+    // deliberate answer.
+    <Page
+      width="form"
+      className="flex min-h-[calc(100svh-var(--header-h))] flex-col justify-center"
+    >
       <EmptyState
         variant="filtered"
         icon={FileQuestionIcon}
         title={t("title")}
+        titleAs="h1"
         body={t("description")}
         action={
           <Button asChild>

@@ -18,7 +18,7 @@
  *        tsx e2e/fixtures/seed-cli.ts visibility <documentId>
  *        tsx e2e/fixtures/seed-cli.ts set-visibility <documentId> <value>
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -52,6 +52,34 @@ export type E2ESeed = {
   readonly internalDocName: string;
   /** Temp dir holding the fixture's bytes; removed at teardown. */
   readonly storageDir: string;
+
+  /* ── Visual-sweep fixture (e2e/visual.spec.ts) ──────────────────────
+   * A one-row table hides every alignment defect there is, and an
+   * empty state that is empty because nothing was seeded proves
+   * nothing. These rows exist so the screenshots show the app as a
+   * working workspace looks: several clients (one archived, one with a
+   * name long enough to truncate), projects in three statuses,
+   * contacts, services, milestones with and without dates, documents
+   * at both visibilities and at all three scopes, and one pending
+   * invitation — which is also what /invite/[token] renders. */
+  readonly longClientId: string;
+  readonly longClientName: string;
+  readonly archivedClientId: string;
+  /** ACTIVE project, carries a production URL (header action button). */
+  readonly activeProjectKey: string;
+  /** COMPLETED project — the third status badge in the list. */
+  readonly completedProjectKey: string;
+  /** Tenant-scoped document: no client, no project, INTERNAL by law. */
+  readonly tenantDocId: string;
+  /** Project-scoped CLIENT_VISIBLE document (project Files tab). */
+  readonly projectDocId: string;
+  /**
+   * Raw token of a PENDING invitation into the throwaway tenant. It is
+   * worthless the moment teardown deletes the row, it is never printed,
+   * and it lives only in the gitignored seed file.
+   */
+  readonly inviteToken: string;
+  readonly inviteEmail: string;
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -63,8 +91,11 @@ async function provision(seedFile: string): Promise<void> {
   const { hashPassword } = await import("better-auth/crypto");
   const { getPlatformClient } = await import("../../src/db/client");
   const { provisionTenant } = await import("../../src/members/provisioning");
-  const { createClient } = await import("../../src/clients/service");
-  const { createProject } = await import("../../src/projects/service");
+  const { archiveClient, createClient, createContact, updateClient } = await import(
+    "../../src/clients/service"
+  );
+  const { createProject, updateProject } = await import("../../src/projects/service");
+  const { createService } = await import("../../src/services/service");
   const { createMilestone } = await import("../../src/projects/milestones");
   const { commitUpload, createUpload } = await import("../../src/documents/service");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
@@ -117,14 +148,22 @@ async function provision(seedFile: string): Promise<void> {
     name: `E2E Milestone ${run}`,
   });
 
-  const document = async (name: string, visibility: "INTERNAL" | "CLIENT_VISIBLE") => {
+  /**
+   * `scope` is the document's owner: a client, a project, or neither
+   * (tenant-wide, which the model only allows to be INTERNAL).
+   */
+  const document = async (
+    name: string,
+    visibility: "INTERNAL" | "CLIENT_VISIBLE",
+    scope: { clientId?: string; projectId?: string } = { clientId },
+  ) => {
     const body = new TextEncoder().encode(`${name}\n`);
     const presigned = await createUpload(ctx, {
       name,
       contentType: "text/plain",
       sizeBytes: body.byteLength,
       sha256: sha256(body),
-      clientId,
+      ...scope,
       visibility,
     });
     // The browser's half of the upload, performed in process.
@@ -144,11 +183,114 @@ async function provision(seedFile: string): Promise<void> {
     if (res.status !== 200) throw new Error(`fixture upload failed: ${res.status}`);
     const { documentId } = await commitUpload(ctx, {
       fileObjectId: presigned.fileObjectId,
-      clientId,
+      ...scope,
       visibility,
     });
     return documentId;
   };
+
+  // ── Visual-sweep fixture ───────────────────────────────────────────
+  // Everything below exists so the screenshots show populated tables,
+  // several statuses and a real invitation rather than a workspace of
+  // one row. All of it is inside the throwaway tenant and all of it is
+  // removed by teardown() below.
+  await updateClient(ctx, clientId, {
+    orgNr: "556677-8899",
+    city: "Stockholm",
+    countryCode: "SE",
+    billingEmail: `billing-${run}${EMAIL_DOMAIN}`,
+  });
+
+  const longClientName = `Långnamn Förvaltning & Digital Byrå Aktiebolag ${run}`;
+  const { id: longClientId } = await createClient(ctx, {
+    name: longClientName,
+    city: "Göteborg",
+    countryCode: "SE",
+  });
+  const { id: archivedClientId } = await createClient(ctx, { name: `E2E Archived ${run}` });
+  await archiveClient(ctx, archivedClientId);
+
+  await createContact(ctx, clientId, {
+    name: "Astrid Lindqvist",
+    email: `astrid-${run}${EMAIL_DOMAIN}`,
+    title: "Marknadschef",
+    phone: "+46 70 123 45 67",
+    portalProfile: "CONTACT_PRIMARY",
+  });
+  await createContact(ctx, clientId, {
+    name: "Bo Nilsson",
+    email: `bo-${run}${EMAIL_DOMAIN}`,
+    title: "Utvecklare",
+    portalProfile: "CONTACT_COLLABORATOR",
+  });
+
+  const { id: activeProjectId, key: activeProjectKey } = await createProject(ctx, {
+    clientId,
+    key: `A${run.slice(0, 3).toUpperCase()}`,
+    name: `Webbplats ${run}`,
+    type: "Website",
+    status: "ACTIVE",
+  });
+  await updateProject(ctx, activeProjectId, {
+    productionUrl: "https://example.invalid",
+    scopeSummary: "Ny webbplats, tre språk, e-handel.",
+  });
+  const { key: completedProjectKey } = await createProject(ctx, {
+    clientId: longClientId,
+    key: `C${run.slice(0, 3).toUpperCase()}`,
+    name: `Designsystem ${run}`,
+    status: "COMPLETED",
+  });
+
+  const day = 24 * 60 * 60 * 1000;
+  await createMilestone(ctx, {
+    projectId,
+    name: "Designgranskning",
+    description: "Genomgång av flöden och komponenter med kunden.",
+    dueAt: new Date(Date.now() - 14 * day),
+    visibility: "CLIENT_VISIBLE",
+  });
+  await createMilestone(ctx, {
+    projectId,
+    name: "Lansering",
+    dueAt: new Date(Date.now() + 21 * day),
+  });
+
+  await createService(ctx, {
+    clientId,
+    name: "Förvaltning",
+    description: "Löpande underhåll, säkerhetsuppdateringar och support.",
+    kind: "RECURRING",
+    billingInterval: "MONTHLY",
+    priceExVat: "7500.00",
+    currency: "SEK",
+    startedAt: new Date(Date.now() - 200 * day),
+    renewsAt: new Date(Date.now() + 30 * day),
+  });
+  await createService(ctx, {
+    clientId,
+    projectId: activeProjectId,
+    name: "Migrering",
+    kind: "ONE_TIME",
+    priceExVat: "42000.00",
+    currency: "SEK",
+  });
+
+  // The invitation row is written directly rather than through
+  // createInvite(): the service also sends mail, and a fixture must not
+  // leave an envelope in .dev-outbox behind. Same columns, same hash.
+  const inviteToken = randomBytes(32).toString("base64url");
+  const inviteEmail = `e2e-invitee-${run}${EMAIL_DOMAIN}`;
+  await db.memberInvite.create({
+    data: {
+      tenantId,
+      email: inviteEmail,
+      proposedRoleIds: [],
+      tokenHash: createHash("sha256").update(inviteToken).digest("hex"),
+      invitedByMemberId: ownerMemberId,
+      expiresAt: new Date(Date.now() + 7 * day),
+    },
+  });
 
   const clientVisibleDocName = `e2e-shared-${run}.txt`;
   const internalDocName = `e2e-private-${run}.txt`;
@@ -168,6 +310,15 @@ async function provision(seedFile: string): Promise<void> {
     internalDocId: await document(internalDocName, "INTERNAL"),
     internalDocName,
     storageDir,
+    longClientId,
+    longClientName,
+    archivedClientId,
+    activeProjectKey,
+    completedProjectKey,
+    tenantDocId: await document(`e2e-tenant-${run}.txt`, "INTERNAL", {}),
+    projectDocId: await document(`e2e-projekt-${run}.txt`, "CLIENT_VISIBLE", { projectId }),
+    inviteToken,
+    inviteEmail,
   };
 
   mkdirSync(dirname(seedFile), { recursive: true });

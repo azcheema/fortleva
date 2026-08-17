@@ -98,13 +98,19 @@ export default async function ProjectTimelinePage({ params }: { params: Promise<
 
       {editable ? (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <SectionCard title={t("milestones")} description={t("milestonesHint")}>
+          {/* The two cards are half the content column wide, so the forms
+              inside them lay themselves out against the CARD's width. */}
+          <SectionCard
+            title={t("milestones")}
+            description={t("milestonesHint")}
+            contentClassName="@container"
+          >
             <CreateMilestoneForm projectId={project.id} projectKey={project.key} />
           </SectionCard>
           <SectionCard
             title={t("versions")}
             description={t("versionsHint")}
-            contentClassName="flex flex-col gap-4"
+            contentClassName="@container flex flex-col gap-4"
           >
             <CreateVersionForm projectId={project.id} projectKey={project.key} />
             <Callout tone="info">{t("shippedVisibleHint")}</Callout>

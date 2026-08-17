@@ -144,10 +144,13 @@ export function MilestoneItem({
       last={last}
       contentClassName={cn("flex flex-col gap-2", visibilityRowCue(m.visibility))}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="@container flex flex-wrap items-start justify-between gap-2">
         <AutoForm
           action={updateMilestoneAction}
-          className="grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-[1fr_9rem_11rem]"
+          // min-w-48, not min-w-0: `flex-1` with no floor let the action
+          // buttons (which are shrink-0) squeeze the name field down to
+          // 30px on a phone instead of wrapping to their own line.
+          className="grid min-w-48 flex-1 grid-cols-1 gap-2 @2xl:grid-cols-[1fr_9rem_11rem]"
         >
           <input type="hidden" name="milestoneId" value={m.id} />
           <input type="hidden" name="projectKey" value={projectKey} />
@@ -303,10 +306,14 @@ export function CreateMilestoneForm({ projectId, projectKey }: { projectId: stri
     }
   }, [state]);
   return (
+    // Container breakpoints, not viewport ones: this form lives in a card
+    // that is half the content column wide (the card carries @container),
+    // so `sm:` gave it four columns inside 538px and clipped the name
+    // field to the width of "Des".
     <form
       ref={formRef}
       action={action}
-      className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_9rem_11rem_auto]"
+      className="grid grid-cols-1 items-end gap-3 @2xl:grid-cols-[1fr_9rem_11rem_auto]"
     >
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="projectKey" value={projectKey} />
@@ -330,7 +337,7 @@ export function CreateMilestoneForm({ projectId, projectKey }: { projectId: stri
         <PlusIcon />
         {t("addMilestone")}
       </Button>
-      {state && !state.ok ? <FormMessage state={state} className="sm:col-span-4" /> : null}
+      {state && !state.ok ? <FormMessage state={state} className="@2xl:col-span-4" /> : null}
     </form>
   );
 }
@@ -402,10 +409,10 @@ export function VersionItem({
       last={last}
       contentClassName="flex flex-col gap-2"
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="@container flex flex-wrap items-start justify-between gap-2">
         <AutoForm
           action={updateVersionAction}
-          className="grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-[8rem_1fr]"
+          className="grid min-w-48 flex-1 grid-cols-1 gap-2 @xl:grid-cols-[8rem_1fr]"
         >
           <input type="hidden" name="versionId" value={v.id} />
           <input type="hidden" name="projectKey" value={projectKey} />
@@ -434,7 +441,7 @@ export function VersionItem({
             rows={2}
             aria-label={t("releaseNotes")}
             placeholder={t("releaseNotes")}
-            className="sm:col-span-2"
+            className="@xl:col-span-2"
           />
         </AutoForm>
         {!shipped ? (
@@ -467,7 +474,7 @@ export function CreateVersionForm({ projectId, projectKey }: { projectId: string
     <form
       ref={formRef}
       action={action}
-      className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[8rem_1fr_auto]"
+      className="grid grid-cols-1 items-end gap-3 @lg:grid-cols-[8rem_1fr_auto]"
     >
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="projectKey" value={projectKey} />
@@ -490,7 +497,7 @@ export function CreateVersionForm({ projectId, projectKey }: { projectId: string
         <PlusIcon />
         {t("addVersion")}
       </Button>
-      {state && !state.ok ? <FormMessage state={state} className="sm:col-span-3" /> : null}
+      {state && !state.ok ? <FormMessage state={state} className="@lg:col-span-3" /> : null}
     </form>
   );
 }

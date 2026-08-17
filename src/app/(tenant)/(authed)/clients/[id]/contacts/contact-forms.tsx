@@ -16,13 +16,9 @@ import type { FormResult } from "@/lib/server-actions";
 
 import { createContactAction, deleteContactAction, updateContactAction } from "../actions";
 
-const PROFILES = ["CONTACT_PRIMARY", "CONTACT_COLLABORATOR"] as const;
+import { CONTACT_GRID } from "./grid";
 
-/**
- * One grid, shared by the column headers, the read-only row and the
- * editable row — so the three can never drift out of alignment.
- */
-export const CONTACT_GRID = "grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-6";
+const PROFILES = ["CONTACT_PRIMARY", "CONTACT_COLLABORATOR"] as const;
 
 /** One contact row: inline auto-saving fields (client:manage_contacts) or read-only text. */
 export function ContactRowForm({
@@ -49,7 +45,7 @@ export function ContactRowForm({
 
   if (!editable) {
     return (
-      <li className={`${CONTACT_GRID} items-center px-3 py-2 text-sm`}>
+      <li className={`grid ${CONTACT_GRID} items-center px-3 py-2 text-sm`}>
         <span className="truncate font-medium">{contact.name}</span>
         <span className="truncate text-muted-foreground">{contact.email}</span>
         <span className="truncate text-muted-foreground">{contact.title ?? "—"}</span>
@@ -64,7 +60,7 @@ export function ContactRowForm({
 
   return (
     <li className="px-3 py-2">
-      <AutoForm action={updateContactAction} className={`${CONTACT_GRID} items-center`}>
+      <AutoForm action={updateContactAction} className={`grid ${CONTACT_GRID} items-center`}>
         <input type="hidden" name="clientId" value={clientId} />
         <input type="hidden" name="contactId" value={contact.id} />
         <Input name="name" defaultValue={contact.name} required aria-label={t("name")} />
@@ -93,7 +89,7 @@ export function ContactRowForm({
             </option>
           ))}
         </NativeSelect>
-        <span className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           {status}
           {contact.portalStatus === "NO_ACCESS" ? (
             <InlineConfirm

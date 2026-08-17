@@ -3,7 +3,8 @@ import { getTranslations } from "next-intl/server";
 import { EmptyState, SectionCard } from "@/components/semantic";
 
 import { loadClient } from "../data";
-import { CONTACT_GRID, ContactRowForm, CreateContactForm } from "./contact-forms";
+import { ContactRowForm, CreateContactForm } from "./contact-forms";
+import { CONTACT_GRID } from "./grid";
 
 /** Contacts tab: records list with inline edit + inline add (client:manage_contacts). No invites yet. */
 export default async function ClientContactsPage({ params }: { params: Promise<{ id: string }> }) {

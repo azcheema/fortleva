@@ -26,6 +26,7 @@ export function EmptyState({
   variant = "empty",
   icon: Icon,
   title,
+  titleAs: TitleTag = "p",
   description,
   body,
   actions,
@@ -36,6 +37,13 @@ export function EmptyState({
   variant?: EmptyStateVariant;
   icon?: React.ComponentType<LucideProps>;
   title: React.ReactNode;
+  /**
+   * "h1" when the empty state IS the page — the 404 and the error
+   * boundary replace a whole route, PageHeader and all, and a page with
+   * no h1 has no heading outline for anyone navigating by headings.
+   * Inside a card it stays a paragraph: the card's title is the heading.
+   */
+  titleAs?: "p" | "h1";
   /** Legacy prop name kept so existing call sites keep working. */
   description?: React.ReactNode;
   body?: React.ReactNode;
@@ -57,7 +65,7 @@ export function EmptyState({
         <Glyph aria-hidden="true" className="size-5" />
       </span>
       <div>
-        <p className="text-base font-semibold text-foreground">{title}</p>
+        <TitleTag className="text-base font-semibold text-foreground">{title}</TitleTag>
         {text ? <p className="mt-1 text-sm text-muted-foreground">{text}</p> : null}
       </div>
       {action || secondary || actions ? (

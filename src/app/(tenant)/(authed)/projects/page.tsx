@@ -150,16 +150,20 @@ export default async function ProjectsPage({
                   {tCommon("projects", { count: g.projects.length })}
                 </span>
               </div>
+              {/* One table per client, stacked — so the columns are pinned
+                  rather than measured. With auto layout each group sized
+                  its own columns from its own rows and the six headings
+                  landed at six different x positions down the page. */}
               <DataTable>
-                <Table>
+                <Table className="table-fixed min-w-3xl">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[10ch]">{t("columns.key")}</TableHead>
                       <TableHead>{t("columns.name")}</TableHead>
-                      <TableHead>{t("columns.status")}</TableHead>
-                      <TableHead>{t("columns.portal")}</TableHead>
-                      <TableHead>{t("columns.lead")}</TableHead>
-                      <TableHead className="text-right">{t("columns.milestones")}</TableHead>
+                      <TableHead className="w-36">{t("columns.status")}</TableHead>
+                      <TableHead className="w-28">{t("columns.portal")}</TableHead>
+                      <TableHead className="w-56">{t("columns.lead")}</TableHead>
+                      <TableHead className="w-32 text-right">{t("columns.milestones")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -168,7 +172,7 @@ export default async function ProjectsPage({
                         <TableCell className="num w-[10ch] font-mono text-xs text-muted-foreground">
                           {p.key}
                         </TableCell>
-                        <TableCell className="max-w-80">
+                        <TableCell>
                           <EntityChip
                             id={p.id}
                             name={p.name}

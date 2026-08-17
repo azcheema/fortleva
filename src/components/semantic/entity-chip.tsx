@@ -79,7 +79,10 @@ export function EntityChip({
   );
 
   const classes = cn(
-    "inline-flex min-w-0 items-center gap-1.5 text-sm text-foreground",
+    // max-w-full, not only min-w-0: an inline-flex box sizes to its
+    // max-content unless it is capped, so a long client name pushed the
+    // whole page sideways wherever a chip sat outside a table.
+    "inline-flex max-w-full min-w-0 items-center gap-1.5 text-sm text-foreground",
     href && "rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
     className,
   );

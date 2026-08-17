@@ -57,3 +57,6 @@ playwright-report/
 blob-report/
 playwright/.cache/
 .auth/
+
+# Visual sweep output (e2e/visual.spec.ts) — reviewed, never committed
+.design-shots/
