@@ -14,7 +14,7 @@
 
 **Read in this order before writing code:**
 1. this file (§0, the §3 phase table, then the phase section you are building);
-2. `C:\Users\azche\.claude\plans\i-have-seen-this-polymorphic-bird.md` §3 "spec pins" — the decisions that resolve every ambiguity for 2W/2T/3/3V. **They are settled; do not re-litigate them.**
+2. `docs/research/2026-08-16-work-management-plan.md` §3 "spec pins" (in-repo copy of the approved plan) — the decisions that resolve every ambiguity for 2W/2T/3/3V. **They are settled; do not re-litigate them.**
 3. `UI.md` (visual system + screen patterns — normative) and `DATA_MODEL.md` §6.14–§6.19 (the already-designed Work/Time/Updates/Vault/Notify/Search schema);
 4. `OPEN_QUESTIONS.md` §1.1 (decisions 11–13) and §5 (checkpoints CP0–CP6).
 
