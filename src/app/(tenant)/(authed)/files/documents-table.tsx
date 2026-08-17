@@ -83,7 +83,11 @@ export async function DocumentsTable({
                   data-visibility={d.visibility}
                   className={visibilityRowCue(d.visibility)}
                 >
-                  <TableCell className="max-w-64">
+                  {/* The cap is per-viewport, not absolute: at 390px an
+                      untruncated filename pushed the download and the ⋯
+                      clean off the screen, which is the one thing a row
+                      of files exists to offer. */}
+                  <TableCell className="max-w-28 sm:max-w-64">
                     <span className="flex min-w-0 items-center gap-2">
                       <FileIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate font-medium" title={d.name}>
@@ -140,7 +144,10 @@ export async function DocumentsTable({
                     ) : (
                       // No menu rather than an always-disabled one: a
                       // control that can never act is noise in every row.
-                      <div className="flex items-center justify-end gap-1">
+                      <div
+                        data-slot="row-actions"
+                        className="flex items-center justify-end gap-1"
+                      >
                         <DownloadButton id={d.id} returnTo={returnTo} label={download} />
                       </div>
                     )}

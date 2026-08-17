@@ -78,7 +78,7 @@ export function CreateProjectForm({
           maxLength={8}
           pattern="[A-Za-z][A-Za-z0-9]{0,7}"
           placeholder={t("keyPlaceholder")}
-          className="num font-mono uppercase"
+          className="num-id font-mono uppercase"
           autoFocus={autoFocus}
           disabled={pending}
         />

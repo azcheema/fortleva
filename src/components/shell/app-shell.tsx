@@ -395,13 +395,18 @@ export function AppShell({
 
         <TimerPillSlot className="md:hidden" />
 
-        <main className="flex-1 pb-16 md:pb-0">{children}</main>
+        {/* 64px clears the 56px bar; the safe-area inset clears the home
+            indicator underneath it on a notched phone. */}
+        <main className="flex-1 pb-[calc(--spacing(16)+env(safe-area-inset-bottom))] md:pb-0">
+          {children}
+        </main>
       </div>
 
       {/* Mobile bottom tabs: Home / Projects / Clients / More (UI.md §3.3; Board/Timer/Inbox arrive with their modules) */}
       <nav
+        data-slot="tab-bar"
         aria-label={t("menu")}
-        className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-background md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
       >
         {tabs.map((e) => (
           <Link

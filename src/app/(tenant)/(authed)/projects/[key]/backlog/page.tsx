@@ -36,7 +36,18 @@ export default async function ProjectBacklogPage({ params }: { params: Promise<{
 
   return (
     <SectionCard contentClassName="flex flex-col gap-6">
-      <EmptyState variant="empty" icon={ListIcon} title={t("title")} body={t("description")} />
+      {/* NOT variant="empty": that one means "nothing here yet, make
+          the first one", and its type demands the verb that does it.
+          The Work module does not exist yet, so there is no verb to
+          offer and inventing one would be a lie. `forbidden` is the
+          honest shape — the thing is real, it is just not yours to use
+          on this route today. */}
+      <EmptyState
+        variant="forbidden"
+        icon={ListIcon}
+        title={t("title")}
+        body={t("description")}
+      />
       <div className="flex flex-col gap-2">
         <p className="eyebrow text-muted-foreground">{tCommon("preview")}</p>
         {/* The real --row-h and the real card surface, so the preview is

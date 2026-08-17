@@ -115,7 +115,9 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
         </SectionCard>
       ) : null}
 
-      <SectionCard title={tAssign("title")}>
+      {/* The "no presence, no activity" promise is a property of the
+          card, not a footnote under its list (UI.md rule 14). */}
+      <SectionCard title={tAssign("title")} description={tAssign("noPresence")}>
         <AssignmentsPanel
           assigned={client.assignments}
           members={members}

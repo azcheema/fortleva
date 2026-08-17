@@ -564,6 +564,7 @@
   "assignments": {
     "title": "Team",
     "empty": "No one assigned yet",
+    "emptyForbidden": "An admin decides who is assigned here.",
     "emptyDescription": "Assign a member — assignments decide who can see this.",
     "pick": "Pick a member…",
     "assign": "Assign",

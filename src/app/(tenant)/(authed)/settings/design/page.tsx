@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { FolderOpenIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -125,7 +126,7 @@ function Specimen({ caption, children }: { caption: string; children: React.Reac
   return (
     <span className="flex flex-col items-start gap-1">
       {children}
-      <span className="num font-mono text-2xs text-muted-foreground">{caption}</span>
+      <span className="num-id font-mono text-2xs text-muted-foreground">{caption}</span>
     </span>
   );
 }
@@ -180,7 +181,7 @@ const TYPE_ROLES = [
   { key: "secondary", className: "text-xs text-muted-foreground" },
   { key: "caption", className: "text-2xs" },
   { key: "tableHeader", className: "eyebrow" },
-  { key: "code", className: "num font-mono text-xs" },
+  { key: "code", className: "num-id font-mono text-xs" },
 ] as const;
 
 const SIMULATIONS = [
@@ -389,10 +390,10 @@ export default async function DesignPage() {
                       {SAMPLE.aa}
                     </span>
                   </TableCell>
-                  <TableCell className="num font-mono text-xs">{pair.token}</TableCell>
+                  <TableCell className="num-id font-mono text-xs">{pair.token}</TableCell>
                   <TableCell
                     priority="medium"
-                    className="num font-mono text-xs text-muted-foreground"
+                    className="num-id font-mono text-xs text-muted-foreground"
                   >
                     {pair.against}
                   </TableCell>
@@ -415,7 +416,7 @@ export default async function DesignPage() {
         <div className="flex flex-col gap-5">
           {RAMPS.map((ramp) => (
             <div key={ramp.name} className="flex flex-col gap-1.5">
-              <p className="num font-mono text-xs text-muted-foreground">{ramp.name}</p>
+              <p className="num-id font-mono text-xs text-muted-foreground">{ramp.name}</p>
               <div className="flex flex-wrap gap-1.5">
                 {ramp.steps.map((step) => {
                   const token = `--color-${ramp.name}-${step}`;
@@ -426,8 +427,8 @@ export default async function DesignPage() {
                         style={{ background: `var(${token})` }}
                         className="h-8 rounded-sm border border-border"
                       />
-                      <span className="num font-mono text-2xs text-muted-foreground">{step}</span>
-                      <span className="num font-mono text-2xs text-muted-foreground">
+                      <span className="num-id font-mono text-2xs text-muted-foreground">{step}</span>
+                      <span className="num-id font-mono text-2xs text-muted-foreground">
                         {hex(token, "light") ?? SAMPLE.dash}
                       </span>
                     </div>
@@ -446,7 +447,7 @@ export default async function DesignPage() {
                     style={{ background: `var(${token})` }}
                     className="h-8 rounded-sm border border-border"
                   />
-                  <span className="num font-mono text-2xs text-muted-foreground">
+                  <span className="num-id font-mono text-2xs text-muted-foreground">
                     {token.replace("--color-surface-", "")}
                   </span>
                 </div>
@@ -685,10 +686,10 @@ export default async function DesignPage() {
                   style={{ background: `var(${token})` }}
                   className="h-8 rounded-sm border border-border"
                 />
-                <span className="num font-mono text-2xs text-muted-foreground">
+                <span className="num-id font-mono text-2xs text-muted-foreground">
                   {ENTITY_HUES[index]}
                 </span>
-                <span className="num font-mono text-2xs text-muted-foreground">
+                <span className="num-id font-mono text-2xs text-muted-foreground">
                   {ratioText(ratio(token, "--card", "light"))}
                 </span>
               </div>
@@ -722,8 +723,8 @@ export default async function DesignPage() {
                 style={{ background: `var(${token})` }}
                 className="h-8 rounded-sm border border-border"
               />
-              <span className="num font-mono text-2xs text-muted-foreground">{token}</span>
-              <span className="num font-mono text-2xs text-muted-foreground">
+              <span className="num-id font-mono text-2xs text-muted-foreground">{token}</span>
+              <span className="num-id font-mono text-2xs text-muted-foreground">
                 {ratioText(ratio(token, "--background", "light"))}
               </span>
             </div>
@@ -832,6 +833,7 @@ export default async function DesignPage() {
           <div className="grid gap-6 md:grid-cols-3">
             <EmptyState
               variant="empty"
+              icon={FolderOpenIcon}
               title={t("feedbackItems.emptyTitle")}
               body={t("feedbackItems.emptyBody")}
               action={<Button size="sm">{t("feedbackItems.empty")}</Button>}

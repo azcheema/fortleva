@@ -45,6 +45,7 @@ export function TabNav({ tabs, className }: { tabs: TabLink[]; className?: strin
   return (
     <nav
       ref={stripRef}
+      data-slot="tab-strip"
       aria-label={t("sections")}
       className={cn("-mb-px flex gap-1 overflow-x-auto border-b border-border", className)}
     >

@@ -39,7 +39,7 @@ export function CreateClientProjectForm({ clientId }: { clientId: string }) {
           maxLength={8}
           pattern="[A-Za-z][A-Za-z0-9]{0,7}"
           placeholder={t("keyPlaceholder")}
-          className="num font-mono uppercase"
+          className="num-id font-mono uppercase"
           disabled={pending}
         />
       </Field>

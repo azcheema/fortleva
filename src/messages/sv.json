@@ -564,6 +564,7 @@
   "assignments": {
     "title": "Team",
     "empty": "Ingen tilldelad ännu",
+    "emptyForbidden": "En administratör avgör vem som tilldelas här.",
     "emptyDescription": "Tilldela en medlem — tilldelningar avgör vem som ser detta.",
     "pick": "Välj medlem…",
     "assign": "Tilldela",

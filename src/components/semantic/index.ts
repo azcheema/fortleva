@@ -5,6 +5,7 @@
  */
 export { Callout, type CalloutTone } from "./callout";
 export { DataTable, ROW_HEIGHT, type Density } from "./data-table";
+export { Disclosure } from "./disclosure";
 export { EntityChip, EntityTile } from "./entity-chip";
 export { Field, Pending } from "./field";
 export { FileDropField, type FileDropFieldProps } from "./file-drop-field";

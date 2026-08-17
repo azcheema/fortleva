@@ -69,9 +69,16 @@ export function DataTable({
               // column hangs 8px left of the title above it.
               "rounded-none border-0 [&_td:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:first-child]:pl-4 [&_th:last-child]:pr-4"
             : "rounded-card border border-border",
-          // An <InlineEdit> at table density is a 28px box; without this
-          // the cell's 6px padding pushes the row past its --row-h.
-          "[&_td:has([data-slot=inline-edit])]:py-0.5 [&_td:has([data-slot=inline-edit-field])]:py-0.5",
+          // THE ROW IS ITS --row-h, and cells are `align-middle`, so
+          // vertical cell padding buys nothing visually — it only acts as
+          // a floor that taller content pushes through. 6px of it turned
+          // a 28px control (an <InlineEdit> at table density, a
+          // <RowActions> trigger, a <MemberAvatar>) into a 40px row and a
+          // 22px chip into a 34px compact row: the density promise
+          // broken by padding rather than by content. 2px leaves a 32px
+          // budget in a 36px row and 28px in a compact one, which is
+          // every in-row object the product has.
+          "[&_td]:py-0.5",
           // The sticky header draws its own rule as an inset shadow: a
           // border-bottom on a sticky <th> detaches in Chromium.
           stickyHeader && "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-1",

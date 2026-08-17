@@ -378,7 +378,13 @@
   --tone-neutral-bg: var(--color-surface-d3);
   --tone-neutral-fg: var(--color-slate-300);
   --tone-neutral-line: var(--color-slate-500);
-  --tone-brand-bg: var(--color-indigo-950);
+  /* NOT --color-indigo-950 (C 0.107): brand is the only tone whose dark
+     fill rose in chroma instead of falling (§10.11), which made the info
+     Callout out-weigh the primary button beside it. Brought into the
+     band the other dark tones sit in (amber .054, green .065, red .084)
+     and nearer the card surface. Literal oklch, never color-mix: the
+     release gate parses this file. */
+  --tone-brand-bg: oklch(0.255 0.055 var(--brand-h));
   --tone-brand-fg: var(--color-indigo-300);
   --tone-brand-line: var(--color-indigo-400);
   --tone-caution-bg: var(--color-amber-950);
@@ -488,11 +494,21 @@
  * Utilities
  * ---------------------------------------------------------------- */
 
-/* Lining tabular figures with a slashed zero: every duration, money
-   value, count, byte size, version, date, percentage, project key and
-   <kbd>. Prose keeps proportional figures. Use font-variant-numeric,
-   never font-feature-settings — the latter REPLACES rather than merges. */
+/* Lining tabular figures for every QUANTITY: duration, money, count,
+   byte size, percentage, date. Columns line up; the zero is a normal
+   zero, because a slashed zero in a two-row count column at 13px reads
+   as a rendering fault rather than as a digit. Prose keeps proportional
+   figures. Use font-variant-numeric, never font-feature-settings — the
+   latter REPLACES rather than merges. */
 @utility num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* The same figures for an IDENTIFIER — a project key, a version, a hash,
+   an org. number, a postal code. Here the slash earns its keep: these
+   are read character by character and transcribed, so 0 must never be
+   mistakable for O. */
+@utility num-id {
   font-variant-numeric: tabular-nums lining-nums slashed-zero;
 }
 
@@ -518,6 +534,22 @@
   font-weight: 600;
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
+}
+
+/* A touch target the mark cannot afford to grow into. §9 sets a 24px
+   floor (28px for grouped controls), and at 390px an EntityChip link is
+   20px tall, a <summary> 20px, a Switch 32x18, a Checkbox 16x16. This
+   enlarges the HIT AREA rather than the glyph: an invisible 6px collar
+   on all four sides, which lands every one of them over the floor
+   without moving a single pixel of the design. */
+@utility hit {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
 }
 
 /* A six-digit one-time code: monospace, centred, opened up so the
@@ -553,6 +585,10 @@
 
   html {
     font-family: var(--font-sans);
+    /* The phone tab bar is fixed at the foot, so an "#new-client" jump
+       would otherwise land its target underneath it. Zeroed from md up,
+       where the bar does not exist. */
+    scroll-padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
     /* Declared exactly ONCE in the whole product: font-feature-settings
        replaces rather than merges, so a second declaration lower down
        would silently drop these. cv01 = single-storey a-alternates off,
@@ -570,6 +606,11 @@
     text-rendering: optimizeLegibility;
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;
+
+    /* The bar is md:hidden, so the reserve is too. */
+    @media (width >= 48rem) {
+      scroll-padding-bottom: 0;
+    }
   }
 
   body {

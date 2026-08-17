@@ -37,8 +37,14 @@ export default async function ProjectBoardPage({ params }: { params: Promise<{ k
 
   return (
     <SectionCard contentClassName="flex flex-col gap-6">
+      {/* NOT variant="empty": that one means "nothing here yet, make
+          the first one", and its type demands the verb that does it.
+          The Work module does not exist yet, so there is no verb to
+          offer and inventing one would be a lie. `forbidden` is the
+          honest shape — the thing is real, it is just not yours to use
+          on this route today. */}
       <EmptyState
-        variant="empty"
+        variant="forbidden"
         icon={KanbanSquareIcon}
         title={t("title")}
         body={t("description")}

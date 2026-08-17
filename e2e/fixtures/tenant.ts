@@ -83,6 +83,20 @@ export async function setDocumentVisibility(
   await runCli(["set-visibility", documentId, value]);
 }
 
+export type MilestoneRecord = {
+  name: string;
+  dueAt: string | null;
+  visibility: string;
+};
+
+/**
+ * The stored milestone — hazard H1's regression check. Editing one
+ * field through an inline edit must leave the other two byte-identical.
+ */
+export async function readMilestone(milestoneId: string): Promise<MilestoneRecord> {
+  return runCli<MilestoneRecord>(["milestone", milestoneId]);
+}
+
 export function readSeed(): E2ESeed | null {
   if (!existsSync(SEED_FILE)) return null;
   return JSON.parse(readFileSync(SEED_FILE, "utf8")) as E2ESeed;

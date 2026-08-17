@@ -17,6 +17,7 @@
  * Usage: tsx e2e/fixtures/seed-cli.ts <provision|teardown> <seedFile>
  *        tsx e2e/fixtures/seed-cli.ts visibility <documentId>
  *        tsx e2e/fixtures/seed-cli.ts set-visibility <documentId> <value>
+ *        tsx e2e/fixtures/seed-cli.ts milestone <milestoneId>
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -44,6 +45,13 @@ export type E2ESeed = {
   readonly projectId: string;
   readonly projectKey: string;
   readonly milestoneId: string;
+  /**
+   * A milestone that HAS a due date and is CLIENT_VISIBLE — the subject
+   * of hazard H1's round-trip test: editing its name through an inline
+   * edit must leave both of those columns untouched.
+   */
+  readonly datedMilestoneId: string;
+  readonly datedMilestoneName: string;
   /** Seeded CLIENT_VISIBLE document — the one BUG 1 is reproduced on. */
   readonly clientVisibleDocId: string;
   readonly clientVisibleDocName: string;
@@ -243,9 +251,10 @@ async function provision(seedFile: string): Promise<void> {
   });
 
   const day = 24 * 60 * 60 * 1000;
-  await createMilestone(ctx, {
+  const datedMilestoneName = "Designgranskning";
+  const { id: datedMilestoneId } = await createMilestone(ctx, {
     projectId,
-    name: "Designgranskning",
+    name: datedMilestoneName,
     description: "Genomgång av flöden och komponenter med kunden.",
     dueAt: new Date(Date.now() - 14 * day),
     visibility: "CLIENT_VISIBLE",
@@ -305,6 +314,8 @@ async function provision(seedFile: string): Promise<void> {
     projectId,
     projectKey,
     milestoneId,
+    datedMilestoneId,
+    datedMilestoneName,
     clientVisibleDocId: await document(clientVisibleDocName, "CLIENT_VISIBLE"),
     clientVisibleDocName,
     internalDocId: await document(internalDocName, "INTERNAL"),
@@ -407,6 +418,32 @@ async function setVisibility(documentId: string, value: string): Promise<void> {
 `);
 }
 
+/**
+ * The three columns an inline edit of a milestone must NOT disturb.
+ *
+ * Hazard H1: `AutoForm` posts the whole FormData, and `updateMilestone`
+ * used to read an absent field as an erase — so editing the name alone
+ * could blank the due date and reset the visibility to INTERNAL. This
+ * is the read side of that regression test.
+ */
+async function milestone(milestoneId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  const row = await db.milestone.findUniqueOrThrow({
+    where: { id: milestoneId },
+    select: { name: true, dueAt: true, visibility: true },
+  });
+  await db.$disconnect();
+  process.stdout.write(
+    `${MARKER}${JSON.stringify({
+      name: row.name,
+      dueAt: row.dueAt ? row.dueAt.toISOString() : null,
+      visibility: row.visibility,
+    })}
+`,
+  );
+}
+
 /** The DB half of the visibility assertions. */
 async function visibility(documentId: string): Promise<void> {
   const { getPlatformClient } = await import("../../src/db/client");
@@ -426,6 +463,7 @@ const main = async (): Promise<void> => {
   if (command === "teardown") return teardown(argument!);
   if (command === "visibility") return visibility(argument!);
   if (command === "set-visibility") return setVisibility(argument!, process.argv[4]!);
+  if (command === "milestone") return milestone(argument!);
   throw new Error(`unknown command "${command ?? ""}"`);
 };
 

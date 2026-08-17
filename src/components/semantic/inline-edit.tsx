@@ -64,6 +64,13 @@ export type InlineEditProps = {
   readOnly?: boolean;
   /** "table" = 28px control inside a 36px row; "default" = 32px. */
   density?: "default" | "table";
+  /**
+   * Shrink-wrap to the value instead of filling its column. A property
+   * list wants the full width (the hit area is the whole row); a value
+   * sitting in a meta line among chips must be exactly as wide as it
+   * reads, or it pushes its neighbours onto their own lines.
+   */
+  fit?: boolean;
   align?: "start" | "end";
   /** The last save failed: stay open, mark the control invalid. */
   invalid?: boolean;
@@ -99,6 +106,7 @@ function InlineEditControl({
   options,
   readOnly = false,
   density = "default",
+  fit = false,
   align = "start",
   invalid = false,
   hiddenInput = true,
@@ -193,7 +201,8 @@ function InlineEditControl({
   }
 
   const box = cn(
-    "flex w-full min-w-0 items-center gap-1.5 rounded-md border bg-clip-padding px-2.5 text-sm",
+    "flex min-w-0 items-center gap-1.5 rounded-md border bg-clip-padding px-2.5 text-sm",
+    fit ? "w-fit max-w-full" : "w-full",
     density === "table" ? "h-7" : "h-8",
     align === "end" && "justify-end text-right",
   );
@@ -260,7 +269,11 @@ function InlineEditControl({
     <span
       data-slot="inline-edit-field"
       data-editing={editing || undefined}
-      className={cn("flex w-full min-w-0 items-center", className)}
+      className={cn(
+        "flex min-w-0 items-center",
+        fit ? "w-fit max-w-full" : "w-full",
+        className,
+      )}
     >
       {/* The mode change is announced; the region is always mounted so
           the first transition is not swallowed. */}
@@ -324,6 +337,7 @@ export function VisibilityInlineEdit({
   value,
   name = "visibility",
   density = "table",
+  fit,
   readOnly,
   hiddenInput,
   invalid,
@@ -333,6 +347,7 @@ export function VisibilityInlineEdit({
   value: VisibilityValue;
   name?: string;
   density?: "default" | "table";
+  fit?: boolean;
   readOnly?: boolean;
   hiddenInput?: boolean;
   invalid?: boolean;
@@ -356,6 +371,7 @@ export function VisibilityInlineEdit({
       options={options}
       readOnly={readOnly}
       density={density}
+      fit={fit}
       hiddenInput={hiddenInput}
       invalid={invalid}
       onCommit={(next) => onCommit?.(next === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL")}

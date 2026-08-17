@@ -46,7 +46,7 @@ export function KeyboardHint({
           <kbd
             key={index}
             data-slot="kbd"
-            className="num inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-sm border border-input bg-muted px-1 font-mono text-2xs font-medium text-foreground shadow-[0_1px_0_var(--input)]"
+            className="num-id inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-sm border border-input bg-muted px-1 font-mono text-2xs font-medium text-foreground shadow-[0_1px_0_var(--input)]"
           >
             {label}
           </kbd>

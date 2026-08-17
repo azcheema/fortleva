@@ -48,7 +48,7 @@ export function CreateClientForm({ autoFocus = false }: { autoFocus?: boolean })
           id="client-orgnr"
           name="orgNr"
           maxLength={32}
-          className="num font-mono"
+          className="num-id font-mono"
           disabled={pending}
         />
       </Field>

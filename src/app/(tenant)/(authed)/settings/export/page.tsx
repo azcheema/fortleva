@@ -167,7 +167,7 @@ export default async function ExportPage({
                               aria-hidden="true"
                               className="size-3.5 shrink-0 text-muted-foreground"
                             />
-                            <span className="num truncate font-mono text-xs" title={e.name}>
+                            <span className="num-id truncate font-mono text-xs" title={e.name}>
                               {e.name}
                             </span>
                           </span>

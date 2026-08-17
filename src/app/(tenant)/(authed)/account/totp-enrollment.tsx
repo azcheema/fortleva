@@ -7,7 +7,14 @@ import QRCode from "qrcode";
 import { useState } from "react";
 
 import { authClient } from "@/auth/client";
-import { Callout, Field, FormMessage, Timeline, TimelineItem } from "@/components/semantic";
+import {
+  Callout,
+  Disclosure,
+  Field,
+  FormMessage,
+  Timeline,
+  TimelineItem,
+} from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -89,18 +96,17 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
                 {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
                 <img src={stage.qrDataUrl} alt={t("qrAlt")} width={220} height={220} />
               </div>
-              <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-                  {t("cantScan")}
-                </summary>
-                <code className="num mt-1.5 block break-all font-mono">{stage.totpUri}</code>
-              </details>
+              <Disclosure label={t("cantScan")} className="-ml-2.5">
+                <code className="num-id block break-all font-mono text-xs text-muted-foreground">
+                  {stage.totpUri}
+                </code>
+              </Disclosure>
             </div>
           </TimelineItem>
 
           <TimelineItem node={<span className="text-2xs font-semibold">{2}</span>}>
             <Callout tone="info" title={t("backupTitle")}>
-              <ul className="num mt-1 grid grid-cols-2 gap-x-6 font-mono text-xs">
+              <ul className="num-id mt-1 grid grid-cols-2 gap-x-6 font-mono text-xs">
                 {stage.backupCodes.map((c) => (
                   <li key={c}>{c}</li>
                 ))}

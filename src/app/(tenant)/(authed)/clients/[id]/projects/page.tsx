@@ -92,7 +92,7 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
             <TableBody>
               {client.projects.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell className="num w-[10ch] font-mono text-xs text-muted-foreground">
+                  <TableCell className="num-id w-[10ch] font-mono text-xs text-muted-foreground">
                     {p.key}
                   </TableCell>
                   <TableCell className="max-w-[420px]">

@@ -4,6 +4,7 @@
 **Amended 2026-08-17** — §9 and §10 rewritten as the normative visual system: tokens, type scale, spacing, radii, elevation, motion, the semantic colour map for every enum, the entity-colour algorithm, the component catalogue, dark-mode rules, the accessibility checklist, and the rule that new UI uses tokens and components only (with grep tripwires as enforcement).
 **Amended again 2026-08-17 (set B + reconciliation)** — the project tree, files, members, settings and account screens landed, and the whole app was then reconciled against this document: §10.10 gains `Timeline`, `ProgressMeter` and `EntityTile`; §10.15 is new and records the six recurring screen patterns every route must now use; §10.4 gains the row-cue token; §10.14 records the set-B contrast rows. Three tokens moved as a result of that audit and are noted where they live.
 **Amended 2026-08-17 (release gate)** — §10.14 now requires the browser visual sweep (`e2e/visual.spec.ts`, `RUNBOOK.md` §7) for every visual change: the contrast table proves the palette, only the sweep proves the pages.
+**Amended 2026-08-17 (craft refinement)** — the app was functional and consistent and still did not read as a product, for three reasons the founder named: every editable row rendered an always-visible input, so pages that are content looked like data entry; a solid red `Delete` was repeated on every row of every table; and the raw OS file input showed inside the upload target. Three patterns fix all three and are **normative from this date**: §5.11 `InlineEdit` (a value is text until you edit it), §5.12 `RowActions` (the row's verbs live in a `⋯` menu, and destructive weight is spent only on the confirm's "Yes"), §5.13 `FileDropField` (the native input is `sr-only`, never `hidden`). §5.14 adds the one disclosure and §5.15 the whole-page state. §10.15 grows from six recurring patterns to nine, §10.13 gains four tripwires, and §10.14 folds the craft audit (`e2e/audit.ts`) into the gate so none of the three can regress silently.
 **Companion docs:** `PLAN.md` (phase bodies name the screens), `ARCHITECTURE.md` (ARC-15 UI kit, ARC-17 DnD, ARC-18 freshness, ARC-19 rich text), `AUTHZ.md` (what a screen may show is a permission question, never a UI one), `TENANCY.md` §7.2 (portal projections), `DATA_MODEL.md` (vocabulary).
 **Evidence:** `docs/research/2026-08-16-work-management-synthesis.md` §5 (complaint corpora → UX rules), `…-plan-draft-ux-product.md`, `…-reviews.md`.
 
@@ -27,7 +28,7 @@ Vocabulary is law (DATA_MODEL §1): **Tenant, Member, Client, Contact, Platform*
 |---|---|---|---|
 | 1 | **Latency is a feature.** | Every mutation is optimistic (§7). Navigation to an item is a side-peek (`?item=ACME-12`), not a page load. Perceived < 100 ms on board drag, < 50 ms on inline property change. No modal for create. | E2E: drag reflow before server round-trip; lint: no `<Dialog>` in a `create*` component |
 | 2 | **Title-only creation.** | `C` anywhere, `+` in any list/column. One text field, Enter creates and focuses the next; `⌘⇧Enter` create-another with the same properties; `⌘Enter` create-and-open. Defaults come from context (column ⇒ state, group ⇒ assignee/epic, project ⇒ visibility). | E2E: keyboard-only create; review: create form has one required field |
-| 3 | **Inline edit everything.** | Every property is a `<PropertyPicker>` popover (§5.2). Single keys `S A L P E D V M T X` on a focused item. **No Save buttons anywhere** — a change is committed on select/blur, undoable via toast. | Lint: no button whose label key ends in `.save` outside `/settings/*` and auth pages |
+| 3 | **Inline edit everything.** | A record property is an `<InlineEdit>` (§5.11) — text at rest, the real control on click / Enter / F2; a *work-item* property is the `<PropertyPicker>` popover (§5.2, Phase 2) with single keys `S A L P E D V M T X`. **No Save buttons anywhere** — a change is committed on select/blur, undoable via toast. An always-mounted input for a value nobody is editing is the defect this rule exists to prevent. | Lint: no button whose label key ends in `.save` outside `/settings/*` and auth pages; audit: no visible input inside a resting table row |
 | 4 | **Drag with a keyboard twin.** | Desktop: Pragmatic DnD, drop indicator + auto-scroll. Keyboard/mobile: "Move to…" (menu, palette, long-press sheet). `rank` never rendered. | E2E: keyboard-only move; grep: `rank` absent from any client component's JSX |
 | 5 | **One board per project; columns are states; position is priority.** | No swimlane settings, no per-team boards, no board-only fields. Group-by (assignee/epic/priority/label) is a *display* transform of the same view. Portal never sees state names, only categories. | Review; portal forbidden-columns grep (state names) |
 | 6 | **One universal `<WorkItemView>`.** | Home, backlog, board, project list, portal task list are the same component with different config (§5.3). URL-addressable via `nuqs`. No `SavedView` table in v1. | Import graph: no second list/board implementation |
@@ -133,11 +134,56 @@ One `<StepUpDialog>` reused for every ✦ action (role edit, cost reveal, creden
 ### 5.8 Empty state
 One verb + one sentence + one primary action, e.g. "**Create** the first task — press C or click +". No illustrations larger than the text. Onboarding checklists are skippable and dismissible for good.
 
+`variant="empty"` **requires** an `icon` and an `action` — enforced by the type, not by review. An open folder on a Team tab and an open folder on a Board tab say nothing about either, and a "nothing here yet" with no verb is a dead end. A state that genuinely has no verb to offer is not `empty`: it is `filtered` (clear the filter) or `forbidden` (this is real, it is not yours). The audit asserts the runtime half — every `[data-variant=empty]` contains a focusable descendant.
+
 ### 5.9 Inline confirm
-Destructive actions (delete, archive-with-children, lock, revoke) confirm **in place**: the button becomes "Delete? Yes / No" or a popover with the count; no modal. Undo toast where reversible.
+Destructive actions (delete, archive-with-children, lock, revoke) confirm **in place**: the trailing slot becomes `Delete "file.pdf"? [Yes] [No]`; no modal. Undo toast where reversible. Esc and focus leaving both cancel; focus moves to `Yes` when the question opens and returns to the trigger when it closes.
+
+**Resting weight and confirm weight are separate.** The resting control is `variant="outline"` (or a `tone="danger"` menu item, §5.12); the `Yes` of the question is `variant="destructive"`, and that is **the only solid `--destructive` fill in the product's resting UI**. A page-level destructive — Archive client, Archive project, Delete role — is not a button floating on the canvas either: it gets its own `<SectionCard title={t("danger.title")}>` at the foot of the main column, one line of consequence, and the outline resting weight.
 
 ### 5.10 No Save buttons
 Forms outside `/settings/*` and auth do not have Save; settings forms auto-save per field with a saved-tick and undo. Rule 3 tripwire.
+
+### 5.11 `<InlineEdit>` — a value is text until you edit it (FOUNDER MANDATE 1)
+
+**A page of labelled properties is content, not a form.** A record property renders as TEXT and becomes its control on activation. An always-mounted `<Input>` for a value nobody is editing turns a Timeline into a data-entry screen, makes the milestone *name* the lowest-contrast thing in its own row (32px of chrome around 13px of text), and advertises the browser's `yyyy-mm-dd` on every undated field.
+
+- **Rest** is a real `<button data-slot="inline-edit">`: transparent background, `1px solid transparent` border, and the **same box** as the control it becomes — `px-2.5`, `h-8` (`h-7` at `density="table"`). `hover:bg-accent hover:border-input`. Focus is the standard `outline-2 outline-offset-2 outline-ring`, never a ring shadow (§9). A `select` shows its chevron on hover/focus only.
+- **Empty** shows a `placeholder` verb in `--muted-foreground` — "Set date", never a native date placeholder.
+- **Editing** mounts the existing `Input` / `Input type="date"` / `NativeSelect` / `Textarea`, uncontrolled, autofocused, text selected. `key={value}` re-seeds it from a server refresh.
+- **Commit is unchanged**: blur for text and multiline, `change` for select and date — the two events `<AutoForm>` already listens for. `InlineEdit` adds **no second save path**.
+- **Keyboard**: Enter / Space / **F2** open; Escape restores the value into the control *before* blurring (so AutoForm's focus snapshot matches and **nothing is posted**) and returns focus to the trigger; Tab out commits; `⌘/Ctrl+Enter` commits a multiline.
+- **ARIA**: the trigger's accessible name is `common.inlineEdit.trigger` — "Edit due date, currently 12 September 2026" — the mode change is announced in a live region, and the trigger is the **only** tab stop for the value.
+- **Failure is not lossy.** `invalid` keeps the control open with `aria-invalid` and the user's text intact. Reverting to the server value while the edit is still on screen is a bug this product shipped once.
+
+**The hazard, stated once so nobody re-introduces it.** `<AutoForm>` posts the *whole* FormData and several server actions read an absent field as an erase. So `InlineEdit` **always renders `<input type="hidden" name value>` at rest**, and never mounts it at the same time as the real control (`FormData.get()` returns the first entry, and a stale hidden value would win). Every action reached this way is additionally `has(formData, name)`-guarded. `e2e/inline-edit.spec.ts` is the regression gate: it edits a milestone's name alone and asserts, in the database, that the due date still names the same day and the visibility is unchanged.
+
+`VisibilityInlineEdit` is the safety-critical companion: its rest state **is** the `<VisibilityBadge>`, so it carries all five §10.4 channels, which a 28px filled `<select>` drops two of.
+
+**Not for**: a preferences page (a control panel *is* its switches, §5.10) or a writing surface (`ClientNotesForm`, `internalNotes`, `scopeSummary` keep their textarea). Inline edit is for *labelled properties*.
+
+### 5.12 `<RowActions>` — the row's verbs live in a menu (FOUNDER MANDATE 2)
+
+A solid `--destructive` button repeated on every row of every table is the highest-chroma object on most pages and outranks the row it serves.
+
+- The trailing cell holds **at most one** ghost `size="icon-sm"` icon button for the row's everyday verb (download, open), then a ghost `⋯` trigger. Nothing else.
+- The menu is the existing `ui/dropdown-menu`. Destructive items are `variant="destructive"` — danger **text**, tinted hover — and **no `variant="destructive"` `<Button>` may exist inside a table row anywhere in the app**.
+- `tone: "danger"` **requires** `confirm`; the type refuses it otherwise. Selecting it does not act: it closes the menu and swaps the trailing slot for the §5.9 question in place.
+- Reorder arrows, "Move up" / "Move down" and every other row verb go **into the menu**, not behind hover: a hover-only control is unreachable by touch and invisible to a keyboard user scanning the row.
+- A menu whose items are all disabled is not focusable, so a reason nobody can read is worse than no control: render **nothing** in that row instead, and let the row's own marker ("(you)") say why.
+- Icons are client-only — a lucide component does not serialise across the RSC boundary, so a server component passes items without `icon`.
+
+### 5.13 `<FileDropField>` — the OS input never shows (FOUNDER MANDATE 3)
+
+The dashed region is a `<label htmlFor>`. Inside it: a 16px `UploadIcon`, the hint, and a **`<span>` wearing `buttonVariants({variant:"outline",size:"sm"})`** — not a `<button>`, which would swallow the label's click. The real `<input type="file">` is `className="sr-only"` — **never** `hidden`, never `display:none`, both of which take it out of the tab order and the AT tree. The label shows the input's focus ring via `has-[input:focus-visible]:outline-*`. Dragging swaps to a solid border and a "Drop now" hint; a chosen file replaces the hint with `filename · 1,2 MB` plus a ghost `×`. Disabled is `--bg-disabled`, never opacity.
+
+### 5.14 `<Disclosure>` — one progressive-disclosure trigger
+
+Fields that are empty, and matrices nobody has asked for yet, wait behind one 28px ghost trigger with a rotating chevron: `<details>`/`<summary>`, so it is keyboard-operable, announced as expandable, and findable by find-in-page — which a React-state disclosure is not. Hidden inputs inside it still post, so a closed disclosure and an open one send identical FormData.
+
+### 5.15 `<PageState>` — one component for every whole-page state
+
+404 (anonymous and in-app), the error boundary and an unusable invitation are four renderings of one idea, and they used to differ in every dimension. All four are now `<Page>` → `<SectionCard>` → `<EmptyState titleAs="h1">`: a 22px h1 (the page-title role, §10.7), inside a card, at the content column's normal top-left — no `min-h`/`justify-center` gymnastics — and **always at least one action**, because a whole-page state that offers nothing to do is a dead end.
 
 ---
 
@@ -364,14 +410,22 @@ Never `transition-all` — enumerate the properties. Loading: under 200ms render
 | `Callout {tone}` | every tinted notice block. Replaces the hand-rolled amber divs |
 | `Field {label, htmlFor, hint, error}` | every labelled control (was duplicated three ways) |
 | `Pending {label}` | the ellipsis indicator (was duplicated five ways) |
-| `EmptyState {variant}` | `empty` vs `filtered` vs `forbidden` — three variants, never conflated |
+| `EmptyState {variant}` | `empty` vs `filtered` vs `forbidden` — three variants, never conflated. `empty` **requires** `icon` + `action` (§5.8) |
+| `InlineEdit {kind,name,value,label}` | **every editable record property** (§5.11). Never a bare `<Input>` for a value that should read as text |
+| `VisibilityInlineEdit` | the safety-critical one: rest state IS the badge (§10.4) |
+| `RowActions {label,primary,items}` | **every** per-row verb (§5.12). No destructive `<Button>` in a row, ever |
+| `FileDropField` | the only file input in the product (§5.13) |
+| `Disclosure {label}` | the one 28px progressive-disclosure trigger (§5.14) |
+| `PageState {variant,icon,title,body,primary}` | 404, error boundary, unusable invitation (§5.15) |
 | `Page {width}` / `PageHeader` | the content column and the h1 block |
 | `Timeline` + `TimelineItem` | the one dated rail (§10.15) |
 | `ProgressMeter {value,total,label}` | done-of-total, wherever a count has a denominator |
 | `EntityTile {id,name,size}` | the identity mark alone, for an h1 that cannot be `EntityChip` |
 | `MetricTile`, `HealthChip`, `PriorityIndicator`, `KeyboardHint`, `ThemeToggle`, `StatusIcon` | as named |
 
-Utilities carry the roles that are typographic rather than componentised: `num` (tabular figures), `eyebrow` (the 11px/600/+0.04em uppercase table-header and eyebrow role — **never** written out as four classes), `otp-field` (a six-digit code), `row-h` (the `--row-h` rhythm outside a `<Table>`), `hairline-b`, `entity-tint`.
+Utilities carry the roles that are typographic rather than componentised: `eyebrow` (the 11px/600/+0.04em uppercase table-header and eyebrow role — **never** written out as four classes), `otp-field` (a six-digit code), `row-h` (the `--row-h` rhythm outside a `<Table>`), `hairline-b`, `entity-tint`, and `hit` (an invisible 6px collar that lifts a 20px mark over the §9 touch floor **without moving a pixel of the design** — enlarge the hit area, never the glyph).
+
+**Figures split by job.** `num` is tabular lining figures for a QUANTITY — money, counts, byte sizes, percentages, dates; `num-id` adds `slashed-zero` for an IDENTIFIER that is read character by character and transcribed — a project key, a version, a hash, an org. number, a postal code. The slash is a disambiguation device, and a slashed zero in a two-row count column at 13px reads as a rendering fault. In practice the rule is mechanical: wherever the mono face carries a code, it is `num-id`.
 
 `src/components/ui/` — 25 primitives. Two are deliberately native: **`NativeSelect` and `NativeCheckbox` fire real `change` events**, which is what `<AutoForm>` listens for. The Radix `Checkbox` renders a button plus a bubble input and does **not** emit a bubbling change event — an auto-saving form built on it silently stops saving. Use the native pair inside `<AutoForm>`, Radix elsewhere.
 
@@ -394,6 +448,10 @@ Dark is a separate design, not an inversion.
 ### 10.12 Density
 
 Compact, information-dense, but calm — this is a tool people live in all day. 13px body on a 4px grid, 32px controls, 36px rows, 16px card padding, no zebra striping, no shadows on anchored elements, borders only.
+
+Inside a row a control is 28px (`InlineEdit density="table"`, `RowActions`' ghost `icon-sm`, `MemberAvatar`). **`DataTable` sets `[&_td]:py-0.5`** — 2px, not the primitive's 6px — because a fixed-height row centres its cells, so vertical padding buys nothing visually and acts only as a floor that taller content pushes through. At 6px a 28px control made a 40px row and a 22px chip made a 34px compact row: the density promise broken by padding rather than by content. The audit measures every row's height against the `--row-h` it declares, so it cannot happen quietly again.
+
+**Below `sm`/`md`, columns drop rather than scroll off.** `TableHead`/`TableCell` take `priority="high" | "medium" | "low"` (`low` hides below `md`, `medium` below `sm`, `high` always renders, and the trailing actions column is always `high`). The scroll box that remains is `role="region" tabIndex={0}` with a real `aria-label` and a right-edge fade — a scroll container only a mouse can reach is content a keyboard user cannot read. **There is no second, stacked-row renderer for tables** (§12): one list implementation, columns removed by one prop. What priority must buy is the trailing actions cell: the audit fails any `[data-slot=row-actions]` that sits outside its table's visible box, because a verb behind an unadvertised horizontal scroll is a verb nobody finds. Where the priorities alone are not enough, the identifying column takes a per-viewport cap (`max-w-28 sm:max-w-64` on `/files`, `max-w-36 sm:max-w-64` on `/members`) and truncates with a `title` — never the actions.
 
 ### 10.13 The rule: tokens and components only
 
@@ -426,9 +484,28 @@ grep -rEn "tracking-\[" src/app src/components --include=*.tsx
 # 8. danger as TEXT (it is a fill colour; use --tone-danger-fg)
 grep -rn "text-destructive" src/app src/components --include=*.tsx | grep -v "text-destructive-foreground"
 
-# 9. a bordered DataTable nested inside a padded card (use flush)
+# 9. a bordered DataTable nested inside a padded card (use flush).
+#    The grep below only finds CORRECT usage, so it is a reading aid,
+#    not the gate: the real check is the audit's `doubleHairlines`,
+#    which measures the rendered borders and padding (§10.14).
 grep -rn "rounded-none border-0" src/app | grep -i datatable
+
+# 10. MANDATE 2 — a solid destructive FILL (the menu item is the correct
+#     shape; the only legal fill is InlineConfirm's "Yes")
+grep -rn 'variant="destructive"' src/app --include=*.tsx | grep -v DropdownMenuItem
+
+# 11. MANDATE 3 — a file input outside FileDropField
+grep -rn 'type="file"' src/app src/components --include=*.tsx | grep -v file-drop-field
+
+# 12. MANDATE 1 — a bare control bound to a record property inside a
+#     table row or a definition list (use InlineEdit)
+grep -rEn "<(Input|NativeSelect|Textarea)[ />]" src/app --include=*.tsx | grep -iE "TableCell|<dd"
+
+# 13. a second <details>/<summary> (use Disclosure)
+grep -rn "<summary" src/app src/components --include=*.tsx | grep -v disclosure.tsx
 ```
+
+Tripwire 10's one standing hit is `/settings/design`, the showcase whose job is to render every variant of every control; it is captioned as such. Tripwire 13's is nothing — `Disclosure` is the only `<summary>` in the product.
 
 Justified standing exceptions, all inside `src/components/**`, none of them a colour: `KeyboardHint` (`h-[18px] min-w-[18px]`, `shadow-[0_1px_0_var(--input)]` — the specified kbd geometry), `PriorityIndicator` (`w-[3px] rounded-[1px]` — a sub-grid glyph), `EntityTile` (`text-[0.5625rem]` — 9px initials inside a 16px `aria-hidden` tile), `EmptyState` (`max-w-[340px]` — the specified measure), the `Tooltip` arrow geometry, the viewport-relative `Dialog`/`Sheet` widths, and the four `shadow-[inset_2px_0_0_var(--primary)]` active-row bars (a token reference; Tailwind has no inset-shadow utility). `Switch` uses `data-disabled:opacity-100` to *defeat* Radix's own dimming. `h-10` is the `lg` (40px) control height, not an ad-hoc value; `h-11`/`h-14` are the specified command-palette input row and mobile tab bar.
 
@@ -440,23 +517,51 @@ Set B added the pairs those screens actually paint: **every** tone (including `q
 
 **No visual change ships on a screenshot of one page.** Every change to a token, a component or a screen is verified with the browser visual sweep — `pnpm test:e2e` (`e2e/visual.spec.ts`, `RUNBOOK.md` §7): 32 routes × light/dark × 1440×900 and 390×844, each stop audited in the page for exactly one `h1`, text that composites to its own backdrop, untranslated message keys, horizontal overflow at phone width, broken images, and console/network errors. The shots land in `.design-shots/` (git-ignored) and are reviewed in both themes before the commit. A contrast table that passes proves the palette; only the sweep proves the pages.
 
+**The craft audit** (`e2e/audit.ts`, run at all 128 stops) is the half of this document a screenshot cannot hold open. Each of these must be empty on every stop, or the run fails:
+
+| it asserts | because |
+|---|---|
+| no visible `input`/`select`/`textarea` inside a resting `[data-slot=table-row]` (toggles excluded — a checkbox *is* its value) | MANDATE 1 |
+| every `[data-slot=inline-edit]` is a `<button>` with a non-empty accessible name | §5.11 |
+| no `[data-variant=destructive]` inside a table row, and no computed `--destructive` background on any control outside a `[role=group]` confirm | MANDATE 2 |
+| `input[type=file]:not(.sr-only)` is empty | MANDATE 3 |
+| every `[data-variant=empty]` contains a focusable descendant | §5.8 |
+| every scrollable `[data-slot=data-table]` has `role=region`, `tabindex` and a non-empty `aria-label` | §10.12 |
+| every `[data-slot=row-actions]` sits inside the visible box of its own table — never behind a horizontal scroll | §10.12 |
+| no bordered `[data-slot=data-table]` inside a padded `[data-slot=section-card]` content box | §10.15.1 |
+| every row's measured height equals its own `--row-h` (desktop) | §10.12 |
+| exactly one `aria-current="page"` in the phone tab bar; the current tab is inside its strip's box | §3.3 |
+| the h1 of `/files`, `/members`, `/settings/roles` does not contain the tenant name (the `<title>` may — today it is "{page} · Fortleva") | §10.7 |
+
+Behavioural halves that a DOM audit cannot reach live in specs: `e2e/inline-edit.spec.ts` (a keyboard-only edit — Tab, Enter, type, Enter — persists across a reload; Escape sends **zero** `next-action` POSTs and returns focus to the trigger; a one-field edit leaves the other columns intact in the database) and `e2e/visibility.spec.ts` (the client-visible row cue survives `:last-child`; deleting a document takes two interactions and the first posts nothing).
+
+One thing that gate deliberately does **not** assert: a `dueAt` is compared as a calendar DAY, not as an instant. The control is an `<input type="date">`, so the field's precision has always been the day, and the first save through the form normalises a seeded timestamp to midnight — the same thing the always-mounted date input did. Losing the day, or the visibility, is the erase H1 is about; losing a time-of-day the UI never showed is not.
+
 `/settings/design` renders the same system live — the token ladder with computed ratios, every component state, all twelve entity colours, and the two visibility chips under protanopia / deuteranopia / tritanopia / greyscale filters. **If the two visibility chips are not instantly distinguishable in every panel, the pass is not done.**
 
 ### 10.15 Recurring screen patterns
 
-Six shapes recur across the app. A new screen picks one of them; it does not invent a seventh.
+Nine shapes recur across the app. A new screen picks one of them; it does not invent a tenth.
 
-**1. List surface.** A page's primary table is a `<DataTable>` — which already *is* the card surface (1px hairline, 10px radius, `--card`). When the list needs a caption (a count, a second population on the same page, an inline create beneath), it goes inside a `<SectionCard title description>` with `contentClassName="p-0"` and `<DataTable flush>`, which drops the table's own hairline so the card's carries it. Never nest a bordered `DataTable` inside a padded card: that draws two borders 16px apart. Numeric columns are right-aligned `.num`; a project key column is `w-[10ch]` of the mono face; a byte size splits into `.num` value + muted unit (`bytesParts`).
+**1. List surface.** A page's primary table is a `<DataTable>` — which already *is* the card surface (1px hairline, 10px radius, `--card`). When the list needs a caption (a count, a second population on the same page, an inline create beneath), it goes inside a `<SectionCard title description>` with `contentClassName="p-0"` and `<DataTable flush>`, which drops the table's own hairline so the card's carries it — and adds the 16px first/last-column padding, or the table's content hangs 8px left of the title above it. Never nest a bordered `DataTable` inside a padded card: that draws two borders 16px apart, and the audit fails the run when it happens. Numeric columns are right-aligned `.num`; a project key column is `w-[10ch]` of the mono face marked `.num-id`; a byte size splits into `.num` value + muted unit (`bytesParts`). Columns carry `priority` (§10.12), and the row's verbs are a `<RowActions>` in the trailing, right-aligned, always-`high` column.
 
 **2. Create-in-place.** A page that can create shows a `size="sm"` primary button in the `PageHeader` linking to `#new-<thing>`, the same button in its `EmptyState`, and an anchored `<SectionCard id="new-<thing>" className="scroll-mt-16">` at the foot. `/clients` and `/projects` are the reference; a modal is never used for creation (§12).
 
 **3. Dated rail.** The `Timeline` is one column: a 24px node carrying the state's *icon* (silhouette first, tone second), a 1px `--border` rail that stops at the last node, and 16px between entries. Terminal states fill the node — except `quiet`, which is transparent by definition and would erase the ring, so a cancelled entry stays outlined and strikes its label. The rail and the node are `aria-hidden`; the state is repeated as a `StatusBadge` in the content, so nothing is carried by the decoration alone. `contentClassName` is where `visibilityRowCue()` goes. Used by the project timeline and by TOTP enrolment (three numbered steps).
 
-**4. File visibility.** Every documents row says it three times: a `<VisibilityBadge>` (or `<VisibilitySelect>`, which wears the *same* warm fill when set to `CLIENT_VISIBLE` — an editable row is never less legible than a read-only one), the 2px `visibilityRowCue()` on the row, and a legend strip under the table naming both states in words. The row also emits `data-visibility` for E2E. The upload form states where the file will land *before* it is sent: a standing info `Callout` for private, swapped for a caution naming who can open it the moment "Client can see" is chosen.
+**4. File visibility.** Every documents row says it three times: a `<VisibilityBadge>` — which is now literally the rest state of the editable control too (`VisibilityInlineEdit`, §5.11), so an editable row and a read-only row are the same silhouette — the 2px `visibilityRowCue()` on the row, and a legend strip *outside* the table hairline naming both states in words. The row also emits `data-visibility` for E2E. The upload form states where the file will land *before* it is sent: a standing info `Callout` for private, swapped for a caution naming who can open it the moment "Client can see" is chosen.
+
+**The cue must survive the last row.** `TableBody` carries `[&_tr:last-child]:border-b-0`, **not** `border-0`: `border-0` zeroes all four widths, including the `border-left` the cue paints — which meant the last client-visible row of every table in the product silently lost its safety marking while the legend below it asserted it in words. `/settings/design`'s visibility demo puts a client-visible row **last** on purpose, so the showcase proves this rather than hiding it, and `e2e/visibility.spec.ts` asserts the computed `border-left-width` on `:last-child`.
 
 **5. Permission matrix.** One scrolling region (`max-h-96`) with `position: sticky` module headers — it is a bare `fieldset`, not a nested `SectionCard`, because sticky is inert inside the card's `overflow-hidden`. Codes split `namespace:` + verb; the ✦ MFA marker is `role="img"` with an `aria-label`, not a bare span; tombstones are a caution `Callout` plus a per-row badge. A **system** role has no controls to label, so it renders as a tick/dash ledger with `sr-only` "granted"/"not granted" rather than 63 disabled checkboxes.
 
-**6. The three empty states.** `empty` (nothing yet → create it), `filtered` (things exist, none match → clear the filter), `forbidden` (things exist, not for you). They are never conflated, and a whole-page denial is an `EmptyState variant="forbidden"` inside a `SectionCard` — never a `Callout`, which is for notices about content the reader *can* see. A tab whose feature has not shipped keeps the `empty` state and puts a static, `aria-hidden` **structural preview** beside it, built from the real tokens and the real `--row-h` (board columns, backlog ghost rows). Never an illustration.
+**6. The three empty states.** `empty` (nothing yet → create it), `filtered` (things exist, none match → clear the filter), `forbidden` (things exist, not for you). They are never conflated, and a whole-page denial is an `EmptyState variant="forbidden"` inside a `SectionCard` — never a `Callout`, which is for notices about content the reader *can* see. `empty` requires an icon and a verb (§5.8), so a tab whose feature has not shipped is **`forbidden`, not `empty`**: there is no verb to offer and inventing one would be a lie. It keeps its static, `aria-hidden` **structural preview** beside it under a "Preview" eyebrow, built from the real tokens and the real `--row-h` (board columns, backlog ghost rows), outline-only so it cannot be mistaken for a `<Skeleton>` that is about to resolve. Never an illustration.
+
+**7. The read-first property list.** A card of labelled properties is a `<dl>`: `<dt>` the label at `text-xs text-muted-foreground`, `<dd>` an `<InlineEdit>` (§5.11). The label carries the control's own `px-2.5` inset so the resting text sits under its label rather than 10px right of it. **Only populated fields render at rest**; everything blank waits behind one `<Disclosure label={t("addDetails")}>`, so the card states what is true instead of advertising ten blanks. The hidden inputs inside the disclosure still post, open or closed. Lead with the fact that identifies the record, not with the name the h1 already carries.
+
+**8. The row's actions.** The trailing cell is right-aligned and holds at most one ghost icon plus a `⋯` (§5.12). A page-level destructive is not a row action: it is a danger-footer `SectionCard` at the foot of the main column (§5.9).
+
+**9. The whole-page state.** `<PageState>` (§5.15). Four routes, one shape, one h1 size, one left edge, always a way forward.
 
 ---
 

@@ -33,7 +33,17 @@ export default async function ProjectTeamPage({ params }: { params: Promise<{ ke
 
   return (
     <div className="max-w-(--content-default)">
-      <SectionCard title={tAssign("title")} description={t("description")}>
+      {/* Both sentences belong to the card, not to a paragraph under
+          the list: what an assignment DOES, and what it deliberately
+          does not show (UI.md rule 14). */}
+      <SectionCard
+        title={tAssign("title")}
+        description={
+          <>
+            {t("description")} {tAssign("noPresence")}
+          </>
+        }
+      >
         <AssignmentsPanel
           assigned={project.assignments}
           members={members}

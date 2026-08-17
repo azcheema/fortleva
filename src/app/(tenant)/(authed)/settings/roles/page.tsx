@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { ChevronRightIcon, LockIcon, PlusIcon, ShieldIcon } from "lucide-react";
+import { LockIcon, PlusIcon, ShieldIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
 import { MODULES, PERMISSIONS, ROLE_TEMPLATES } from "@/authz/catalog";
 import { AuthzError } from "@/authz/errors";
-import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
+import { Disclosure, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
@@ -150,18 +150,10 @@ export default async function RolesPage() {
               {role.description ? (
                 <p className="text-sm text-muted-foreground">{role.description}</p>
               ) : null}
-              <details className="group/details">
-                {/* This is the card's only interaction, so it is a real
-                    28px trigger with a hover surface and a rotating
-                    chevron — not a grey word at the bottom of the card.
-                    `display: inline-flex` removes the native marker. */}
-                <summary className="inline-flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md border border-transparent px-2 text-sm text-muted-foreground transition-[color,background-color,border-color] duration-(--dur-instant) ease-out select-none hover:border-input hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
-                  <ChevronRightIcon
-                    aria-hidden="true"
-                    className="size-3.5 shrink-0 transition-transform duration-(--dur-instant) ease-out group-open/details:rotate-90"
-                  />
-                  {t("permissions")}
-                </summary>
+              {/* This is the card's only interaction, so it is the
+                  product's one 28px disclosure trigger, not a grey word
+                  at the bottom of the card. */}
+              <Disclosure label={t("permissions")}>
                 <RolePermissionsForm
                   role={{
                     id: role.id,
@@ -172,7 +164,7 @@ export default async function RolesPage() {
                   groups={GROUPS}
                   canEdit={data.canEdit}
                 />
-              </details>
+              </Disclosure>
             </SectionCard>
           </li>
         ))}

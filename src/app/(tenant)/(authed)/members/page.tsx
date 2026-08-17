@@ -144,7 +144,9 @@ export default async function MembersPage() {
                   const suspended = m.status === "SUSPENDED";
                   return (
                     <TableRow key={m.id} data-status={m.status}>
-                      <TableCell className="max-w-64">
+                      {/* Capped per viewport so a long name can never
+                          push this row's actions off a 390px screen. */}
+                      <TableCell className="max-w-36 sm:max-w-64">
                         <span className="flex min-w-0 items-center gap-2">
                           <MemberAvatar id={m.id} name={m.user.name} />
                           <span
@@ -167,7 +169,7 @@ export default async function MembersPage() {
                       <TableCell priority="low" className="max-w-64 truncate text-muted-foreground">
                         {m.user.email}
                       </TableCell>
-                      <TableCell className="max-w-80">
+                      <TableCell className="max-w-32 sm:max-w-80">
                         <MemberRolesForm
                           memberId={m.id}
                           memberName={m.user.name}
@@ -218,7 +220,7 @@ export default async function MembersPage() {
                 <TableBody>
                   {data.invites.map((i) => (
                     <TableRow key={i.id}>
-                      <TableCell className="max-w-64">
+                      <TableCell className="max-w-36 sm:max-w-64">
                         <span className="flex min-w-0 items-center gap-2">
                           <MailIcon
                             aria-hidden="true"

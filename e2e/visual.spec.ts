@@ -59,6 +59,13 @@ type Stop = {
 /** A route that does not exist, for the root 404. */
 const MISSING = "/this-route-does-not-exist";
 
+/**
+ * Workspace-level routes: their h1 is the page noun ("Files"), never
+ * "{tenant} — Files". An entity route's h1 IS the entity's name and may
+ * legitimately contain anything.
+ */
+const WORKSPACE_H1 = ["files", "members", "settings-roles"];
+
 const stops = (seed: E2ESeed): Stop[] => {
   const client = `/clients/${seed.clientId}`;
   const project = `/projects/${seed.projectKey}`;
@@ -219,6 +226,7 @@ async function visit(
   device: Device,
   trace: Trace,
   findings: Finding[],
+  seed: E2ESeed,
 ): Promise<void> {
   clear(trace);
   const response = await page.goto(stop.path, { waitUntil: "domcontentloaded" });
@@ -274,6 +282,80 @@ async function visit(
       .toBeLessThanOrEqual(audit.overflow.clientWidth + 1);
   }
 
+  // ── the craft gate (refinement pass §4) ──────────────────────────
+  // These are the three founder mandates plus the acceptance criteria,
+  // asserted on every stop so none of them can regress quietly. Soft,
+  // like everything else here: one bad route must not hide the rest.
+  const craft = audit.craft;
+
+  // MANDATE 1 — pages that should read as content read as content.
+  expect
+    .soft(craft.restingRowControls, `${at}: form control visible in a resting table row`)
+    .toEqual([]);
+  expect.soft(craft.badInlineEdits, `${at}: inline-edit rest state is not a named <button>`).toEqual([]);
+
+  // MANDATE 2 — the destructive weight lives in the menu and in the
+  // confirm's "Yes", nowhere else.
+  expect.soft(craft.destructiveInRows, `${at}: destructive control inside a table row`).toEqual([]);
+  expect
+    .soft(craft.destructiveFills, `${at}: solid --destructive fill outside a confirm group`)
+    .toEqual([]);
+
+  // MANDATE 3 — no OS file input anywhere in the product.
+  expect.soft(craft.visibleFileInputs, `${at}: raw native file input on screen`).toEqual([]);
+
+  // A "nothing here yet" state that offers nothing to do is a dead end.
+  expect.soft(craft.deadEndEmptyStates, `${at}: empty state with no action`).toEqual([]);
+
+  // A table that scrolls must be reachable and named.
+  expect.soft(craft.unnamedScrollRegions, `${at}: unnamed or unfocusable scroll region`).toEqual([]);
+
+  // §10.15.1 — a bordered table inside a padded card is two hairlines.
+  expect.soft(craft.doubleHairlines, `${at}: bordered DataTable inside a padded SectionCard`).toEqual([]);
+
+  // A row's verbs behind an unadvertised horizontal scroll are verbs
+  // nobody will find — the phone case column priority exists to fix.
+  expect
+    .soft(craft.offscreenRowActions, `${at}: row actions outside their table's visible box`)
+    .toEqual([]);
+
+  // Row rhythm. Desktop only: at 390px a cell legitimately wraps and
+  // takes its row with it, which is the point of column priority.
+  if (device === "desktop") {
+    expect
+      .soft(
+        craft.rowPitch.map((r) => `${r.selector} ${r.actual}px ≠ ${r.expected}px`),
+        `${at}: row pitch is not its --row-h`,
+      )
+      .toEqual([]);
+  }
+
+  // The shell says where you are exactly once (§3.3, P8 rule 3). Null
+  // means the route renders outside the app shell (the root 404, the
+  // auth lockup) and therefore has no bar to mark.
+  if (device === "mobile" && craft.tabBarCurrent !== null) {
+    expect.soft(craft.tabBarCurrent, `${at}: aria-current entries in the tab bar`).toBe(1);
+  }
+
+  // The current tab is on screen inside its own strip.
+  if (craft.tabStrip) {
+    expect.soft(craft.tabStrip.visible, `${at}: current tab is outside the tab strip`).toBe(true);
+  }
+
+  // §10.7 — a WORKSPACE-level page's h1 is the page noun, not
+  // "{tenant} — {page}"; the tenant name stays in <title> and in the
+  // header trail. Scoped to the three routes that had it wrong: every
+  // fixture entity is named after the same run id, so a blanket
+  // substring test would flag "E2E Project 0b672f2a" — an entity h1,
+  // which is correct — rather than the defect.
+  // The <title> is only required to be non-empty: §4 says it *may*
+  // carry the workspace, and today it carries "{page} · Fortleva".
+  const tenant = seed.tenantSlug.replace(/^e2e-/, "");
+  if (WORKSPACE_H1.includes(stop.name)) {
+    expect.soft(audit.h1.texts[0] ?? "", `${at}: h1 carries the tenant name`).not.toContain(tenant);
+    expect.soft(audit.documentTitle, `${at}: document has no title`).not.toBe("");
+  }
+
   if (!stop.expectsFailure) {
     // A stop whose document is legitimately a 404 gets one console line
     // from the browser itself for that very response; the defect this
@@ -313,7 +395,7 @@ for (const theme of ["light", "dark"] as const) {
 
         try {
           for (const stop of all.filter((s) => !s.anon)) {
-            await visit(page, stop, theme, device, trace, findings);
+            await visit(page, stop, theme, device, trace, findings, seed);
           }
 
           // The auth lockup has no session by definition.
@@ -328,7 +410,7 @@ for (const theme of ["light", "dark"] as const) {
             const anonPage = await anon.newPage();
             const anonTrace = watch(anonPage);
             for (const stop of all.filter((s) => s.anon)) {
-              await visit(anonPage, stop, theme, device, anonTrace, findings);
+              await visit(anonPage, stop, theme, device, anonTrace, findings, seed);
             }
           } finally {
             await anon.close();

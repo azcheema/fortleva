@@ -1,6 +1,9 @@
+import { FlagIcon, PlusIcon } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { Callout, EmptyState, SectionCard, Timeline } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 import type { MilestoneRow, VersionRow } from "@/projects/service";
 
 import { loadProject } from "../data";
@@ -64,11 +67,31 @@ export default async function ProjectTimelinePage({ params }: { params: Promise<
     <div className="flex flex-col gap-6">
       <SectionCard title={t("title")} description={t("description")}>
         {entries.length === 0 ? (
-          <EmptyState
-            variant="empty"
-            title={t("milestonesEmpty")}
-            body={t("milestonesEmptyDescription")}
-          />
+          editable ? (
+            // §10.15 pattern 2: the empty state repeats the create verb
+            // and points at the anchored card that carries the form.
+            <EmptyState
+              variant="empty"
+              icon={FlagIcon}
+              title={t("milestonesEmpty")}
+              body={t("milestonesEmptyDescription")}
+              action={
+                <Button asChild size="sm">
+                  <Link href="#new-milestone">
+                    <PlusIcon />
+                    {t("addMilestone")}
+                  </Link>
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              variant="forbidden"
+              icon={FlagIcon}
+              title={t("milestonesEmpty")}
+              body={t("milestonesEmptyDescription")}
+            />
+          )
         ) : (
           <Timeline>
             {entries.map((entry, i) =>
@@ -101,9 +124,11 @@ export default async function ProjectTimelinePage({ params }: { params: Promise<
           {/* The two cards are half the content column wide, so the forms
               inside them lay themselves out against the CARD's width. */}
           <SectionCard
+            id="new-milestone"
             title={t("milestones")}
             description={t("milestonesHint")}
             contentClassName="@container"
+            className="scroll-mt-16"
           >
             <CreateMilestoneForm projectId={project.id} projectKey={project.key} />
           </SectionCard>

@@ -245,10 +245,12 @@ export function MilestoneItem({
           "…" / "Saved" indicator at its own top-right corner, which is
           exactly where the ⋯ trigger would be. */}
       <div className="flex items-start justify-between gap-2">
-        <AutoForm
-          action={updateMilestoneAction}
-          className="flex min-w-0 flex-1 flex-col gap-0.5 pr-10"
-        >
+        {/* The 40px right inset that keeps text clear of AutoForm's
+            "…"/"Saved" indicator belongs on the NAME line, which is what
+            the indicator sits over — not on the whole form. On the meta
+            line those 40px were the difference between the two chips
+            sharing a row and each taking one of its own at 390px. */}
+        <AutoForm action={updateMilestoneAction} className="flex min-w-0 flex-1 flex-col gap-0.5">
           <input type="hidden" name="milestoneId" value={m.id} />
           <input type="hidden" name="projectKey" value={projectKey} />
           {/* -ml-2.5 pulls the rest button's control padding back out, so
@@ -261,11 +263,11 @@ export function MilestoneItem({
             placeholder={t("milestonePlaceholder")}
             display={name}
             inputProps={{ required: true }}
-            className="-ml-2.5"
+            className="-ml-2.5 pr-10"
           />
           <div className="-ml-2.5 flex flex-wrap items-center gap-y-1 text-xs text-muted-foreground">
             <StatusBadge domain="milestoneStatus" value={m.status} className="ml-2.5" />
-            <VisibilityInlineEdit value={m.visibility} className="ml-1 w-auto" />
+            <VisibilityInlineEdit value={m.visibility} fit className="ml-1" />
             {/* Never a native yyyy-mm-dd placeholder: an undated milestone
                 offers a quiet verb instead. */}
             <InlineEdit
@@ -276,7 +278,7 @@ export function MilestoneItem({
               placeholder={t("setDate")}
               display={<span className="num">{dueText}</span>}
               density="table"
-              className="w-auto"
+              fit
             />
             {completed ? <span className="num ml-1.5">{completed}</span> : null}
           </div>
@@ -439,7 +441,7 @@ export function VersionItem({
         contentClassName="flex flex-col gap-1.5"
       >
         <span className="flex flex-wrap items-baseline gap-2">
-          <span className="num font-mono text-sm font-medium">{v.version}</span>
+          <span className="num-id font-mono text-sm font-medium">{v.version}</span>
           {v.title ? <span className="text-sm">{v.title}</span> : null}
         </span>
         {meta}
@@ -472,11 +474,12 @@ export function VersionItem({
               value={v.version}
               label={t("version")}
               placeholder={t("versionPlaceholder")}
-              display={<span className="num font-mono font-medium">{v.version}</span>}
+              display={<span className="num-id font-mono font-medium">{v.version}</span>}
               readOnly={shipped}
               inputProps={{ required: true, maxLength: 64 }}
-              controlClassName="num font-mono"
-              className={shipped ? "ml-2.5 w-auto" : "w-32"}
+              controlClassName="num-id font-mono"
+              fit={shipped}
+              className={shipped ? "ml-2.5" : "w-32"}
             />
             <InlineEdit
               kind="text"
@@ -541,7 +544,7 @@ export function CreateVersionForm({ projectId, projectKey }: { projectId: string
           required
           maxLength={64}
           placeholder={t("versionPlaceholder")}
-          className="num font-mono"
+          className="num-id font-mono"
           disabled={pending}
         />
       </Field>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRightIcon, CircleSlashIcon, Trash2Icon } from "lucide-react";
+import { CircleSlashIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useActionState, useRef, useState, useTransition } from "react";
@@ -10,6 +10,7 @@ import { AutoForm } from "@/components/auto-form";
 import { InlineConfirm } from "@/components/inline-confirm";
 import {
   DataTable,
+  Disclosure,
   Field,
   FormMessage,
   InlineEdit,
@@ -152,10 +153,10 @@ export function ClientCardForm({ client, editable }: { client: ClientDetail; edi
             label={f.label}
             placeholder={f.placeholder ?? tCommon("notSet")}
             options={f.options}
-            display={f.mono ? <span className="num font-mono">{value}</span> : undefined}
+            display={f.mono ? <span className="num-id font-mono">{value}</span> : undefined}
             readOnly={ro}
             inputProps={f.inputProps}
-            controlClassName={f.mono ? "num font-mono" : undefined}
+            controlClassName={f.mono ? "num-id font-mono" : undefined}
             className={ro ? "px-2.5" : undefined}
           />
         </dd>
@@ -171,18 +172,9 @@ export function ClientCardForm({ client, editable }: { client: ClientDetail; edi
       <input type="hidden" name="clientId" value={client.id} />
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">{known.map(row)}</dl>
       {blank.length > 0 && !ro ? (
-        <details className="group/details">
-          <summary className="inline-flex h-7 w-fit cursor-pointer list-none items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground transition-colors duration-(--dur-instant) ease-out hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
-            <ChevronRightIcon
-              aria-hidden="true"
-              className="size-3.5 transition-transform duration-(--dur-instant) ease-out group-open/details:rotate-90"
-            />
-            {tCommon("addDetails")}
-          </summary>
-          <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-            {blank.map(row)}
-          </dl>
-        </details>
+        <Disclosure label={tCommon("addDetails")}>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">{blank.map(row)}</dl>
+        </Disclosure>
       ) : null}
     </AutoForm>
   );
@@ -349,7 +341,7 @@ export function ServicesList({
                 </TableCell>
                 <TableCell priority="low">
                   {s.projectKey ? (
-                    <span className="num font-mono text-xs">{s.projectKey}</span>
+                    <span className="num-id font-mono text-xs">{s.projectKey}</span>
                   ) : (
                     <span className="text-muted-foreground">{t("clientLevel")}</span>
                   )}

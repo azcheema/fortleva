@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRightIcon, GlobeIcon, LockIcon } from "lucide-react";
+import { GlobeIcon, LockIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { Fragment, useTransition } from "react";
@@ -10,6 +10,7 @@ import { AutoForm } from "@/components/auto-form";
 import { InlineConfirm } from "@/components/inline-confirm";
 import {
   Callout,
+  Disclosure,
   Field,
   InlineEdit,
   MemberAvatar,
@@ -90,18 +91,11 @@ function Prop({ label, children }: { label: React.ReactNode; children: React.Rea
  * `<details>`, so the posted FormData is identical whether it is open
  * or closed — and `updateProjectAction` is `has()`-guarded either way.
  */
-function Disclosure({ label, children }: { label: string; children: React.ReactNode }) {
+function BlankFields({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <details className="group/details">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm py-1 text-xs text-muted-foreground transition-colors duration-(--dur-instant) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
-        <ChevronRightIcon
-          aria-hidden="true"
-          className="size-3.5 shrink-0 transition-transform duration-(--dur-instant) ease-out group-open/details:rotate-90"
-        />
-        {label}
-      </summary>
-      <dl className="mt-1 flex flex-col">{children}</dl>
-    </details>
+    <Disclosure label={label} contentClassName="flex flex-col">
+      <dl className="flex flex-col">{children}</dl>
+    </Disclosure>
   );
 }
 
@@ -274,7 +268,8 @@ export function ProjectDetailsForm({
             placeholder={tCommon("notSet")}
             readOnly={ro}
             inputProps={{ maxLength: 3, className: "w-24 uppercase" }}
-            className="-ml-2.5 w-auto"
+            fit
+            className="-ml-2.5"
           />
         </Prop>
       ),
@@ -339,11 +334,11 @@ export function ProjectDetailsForm({
       </div>
 
       {rest.length > 0 ? (
-        <Disclosure label={tCommon("addDetails")}>
+        <BlankFields label={tCommon("addDetails")}>
           {rest.map((p) => (
             <Fragment key={p.key}>{p.node}</Fragment>
           ))}
-        </Disclosure>
+        </BlankFields>
       ) : null}
     </AutoForm>
   );
@@ -386,7 +381,10 @@ export function ProjectInternalForm({ project }: { project: ProjectDetail }) {
             name="hostingNotes"
             value={project.hostingNotes ?? ""}
             label={t("hostingNotes")}
-            placeholder={t("hostingHint")}
+            // "Not set", like every other empty property. The guidance
+            // sentence that used to sit here rendered at value weight in
+            // the value's slot, so an unset field read as a set one.
+            placeholder={tCommon("notSet")}
             readOnly={ro}
             className="-ml-2.5"
           />
@@ -464,7 +462,7 @@ export function ProjectStatusControls({ project }: { project: ProjectDetail }) {
               defaultValue={project.key}
               maxLength={8}
               pattern="[A-Za-z][A-Za-z0-9]{0,7}"
-              className="num w-40 font-mono uppercase"
+              className="num-id w-40 font-mono uppercase"
             />
           </Field>
         </AutoForm>

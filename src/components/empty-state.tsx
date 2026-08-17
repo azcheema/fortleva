@@ -14,14 +14,15 @@ import { cn } from "@/lib/utils";
  * primary action. Left-aligned in the content column, 48px of vertical
  * air — an empty state is a signpost, not a billboard.
  *
- * CONTRACT for `variant="empty"`: pass a real `icon` and a real
- * `action`. The `FolderOpenIcon` default below is a fallback, not a
- * design — an open folder on a Team tab ("No one assigned yet") and on
- * a Board tab ("Tasks arrive with the Work module") says nothing about
- * either. `StrictEmptyStateProps` states that requirement in the type
- * system; swap it into the signature once every `empty` call site
- * passes both (the audit asserts the runtime half via `data-variant` +
- * a focusable descendant).
+ * CONTRACT for `variant="empty"`, enforced by the TYPE: it requires a
+ * real `icon` and a real `action`. An open folder on a Team tab ("No
+ * one assigned yet") and on a Board tab ("Tasks arrive with the Work
+ * module") says nothing about either, and a nothing-yet state with no
+ * verb is a dead end. The `FolderOpenIcon` below is now only reachable
+ * from JavaScript; `filtered` and `forbidden` keep their defaults,
+ * because "no matches" and "not for you" have one sensible glyph each.
+ * The audit asserts the runtime half (`data-variant` + a focusable
+ * descendant) so a `filtered` state cannot smuggle the dead end back.
  */
 const ICONS: Record<EmptyStateVariant, React.ComponentType<LucideProps>> = {
   empty: FolderOpenIcon,
@@ -34,7 +35,14 @@ export type EmptyStateVariant = "empty" | "filtered" | "forbidden";
 type EmptyStateBase = {
   icon?: React.ComponentType<LucideProps>;
   title: React.ReactNode;
+  /**
+   * "h1" when the empty state IS the page — the 404 and the error
+   * boundary replace a whole route, PageHeader and all, and a page with
+   * no h1 has no heading outline for anyone navigating by headings.
+   * Inside a card it stays a paragraph: the card's title is the heading.
+   */
   titleAs?: "p" | "h1";
+  /** Legacy prop name kept so existing call sites keep working. */
   description?: React.ReactNode;
   body?: React.ReactNode;
   actions?: React.ReactNode;
@@ -68,25 +76,7 @@ export function EmptyState({
   action,
   secondary,
   className,
-}: {
-  variant?: EmptyStateVariant;
-  icon?: React.ComponentType<LucideProps>;
-  title: React.ReactNode;
-  /**
-   * "h1" when the empty state IS the page — the 404 and the error
-   * boundary replace a whole route, PageHeader and all, and a page with
-   * no h1 has no heading outline for anyone navigating by headings.
-   * Inside a card it stays a paragraph: the card's title is the heading.
-   */
-  titleAs?: "p" | "h1";
-  /** Legacy prop name kept so existing call sites keep working. */
-  description?: React.ReactNode;
-  body?: React.ReactNode;
-  actions?: React.ReactNode;
-  action?: React.ReactNode;
-  secondary?: React.ReactNode;
-  className?: string;
-}) {
+}: StrictEmptyStateProps) {
   const Glyph = Icon ?? ICONS[variant];
   const text = body ?? description;
 

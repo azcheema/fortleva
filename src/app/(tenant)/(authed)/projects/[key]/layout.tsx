@@ -72,7 +72,7 @@ export default async function ProjectLayout({
             {/* The project's own mark, the same one its rows wear in every
                 list — identity should not vanish on the detail page. */}
             <EntityTile id={project.id} name={project.name} size="lg" />
-            <span className="num shrink-0 font-mono text-base text-muted-foreground">
+            <span className="num-id shrink-0 font-mono text-base text-muted-foreground">
               {project.key}
             </span>
             <span className="truncate">{project.name}</span>

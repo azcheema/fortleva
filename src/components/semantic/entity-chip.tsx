@@ -73,7 +73,7 @@ export function EntityChip({
       <EntityTile id={id} name={name} size={size} />
       <span className="truncate">{name}</span>
       {entityKey ? (
-        <span className="num shrink-0 font-mono text-xs text-muted-foreground">{entityKey}</span>
+        <span className="num-id shrink-0 font-mono text-xs text-muted-foreground">{entityKey}</span>
       ) : null}
     </>
   );
@@ -83,7 +83,10 @@ export function EntityChip({
     // max-content unless it is capped, so a long client name pushed the
     // whole page sideways wherever a chip sat outside a table.
     "inline-flex max-w-full min-w-0 items-center gap-1.5 text-sm text-foreground",
-    href && "rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+    // `hit` is the invisible 6px collar (§9): the chip's own box is
+    // 20px tall, which is under the 24px touch floor, and the fix is the
+    // hit area rather than the mark.
+    href && "hit rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
     className,
   );
 
