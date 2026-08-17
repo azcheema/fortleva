@@ -19,13 +19,15 @@
  * the header's `hidden` at equal specificity.
  */
 /**
- * Five flexible text columns plus a FIXED last track for the portal
- * status and the remove control. Six equal `1fr` tracks could not hold
- * a status chip and a button: a grid item's automatic minimum is its
- * content, so the last track grew past the card and clipped "Remove"
- * against its edge. Fixed, not `auto`, because the header is a separate
- * grid — an auto track would size itself from the word "Status" and the
- * two rows would stop lining up.
+ * EMAIL GETS THE WIDEST TRACK. It is the contact's primary identifier
+ * and the one value a reader actually needs to copy; on five equal
+ * tracks it was clipped mid-address inside a 32px input
+ * (`astrid-c25f863b@t`) with no ellipsis and no title. Portal profile
+ * is demoted to the narrowest text track — it is a setting, not a
+ * fact about the person — and the last track stays FIXED for the
+ * status chip plus the row's actions trigger. Fixed, not `auto`,
+ * because the header is a separate grid: an auto track would size
+ * itself from the word "Status" and the two rows would stop lining up.
  */
 export const CONTACT_GRID =
-  "grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-[repeat(5,minmax(0,1fr))_15rem]";
+  "grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_11rem]";

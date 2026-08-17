@@ -56,7 +56,9 @@
     "notSet": "Inte angivet",
     "danger": {
       "title": "Riskzon"
-    }
+    },
+    "preview": "Förhandsvisning",
+    "downloadName": "Ladda ner {name}"
   },
   "nav": {
     "home": "Hem",
@@ -112,7 +114,8 @@
     },
     "error": {
       "title": "Något gick fel",
-      "description": "Sidan kunde inte visas. Du kan försöka igen; om felet kvarstår, notera referensen nedan.",
+      "description": "Sidan kunde inte visas. Du kan försöka igen.",
+      "referenceHint": "Om felet kvarstår, uppge den här referensen när du rapporterar det.",
       "reference": "Referens: {digest}",
       "retry": "Försök igen",
       "home": "Gå till Hem"
@@ -120,7 +123,8 @@
     "notFound": {
       "title": "Sidan hittades inte",
       "description": "Det finns inget på den här adressen, eller så saknar du åtkomst till den.",
-      "home": "Gå till Hem"
+      "home": "Gå till Hem",
+      "signIn": "Logga in"
     }
   },
   "home": {
@@ -133,6 +137,7 @@
     "empty": {
       "title": "Inget att arbeta med ännu",
       "description": "Tavlor och uppgifter kommer med arbetsmodulen — börja tills vidare med dina kunder och projekt.",
+      "action": "Skapa en kund",
       "clients": "Öppna Kunder",
       "projects": "Öppna Projekt"
     },
@@ -149,6 +154,8 @@
   "dashboard": {
     "title": "Välkommen, {name}",
     "workspaces": "Dina arbetsytor",
+    "open": "Öppna {name}",
+    "current": "Nuvarande arbetsyta",
     "none": "Du är inte medlem i någon arbetsyta ännu. Be en administratör om en inbjudan.",
     "goHome": "Gå till Hem",
     "metric": "Arbetsytor",
@@ -187,13 +194,15 @@
     },
     "invite": {
       "unavailableTitle": "Inbjudan är inte tillgänglig",
-      "unavailable": "Den här inbjudningslänken är ogiltig, har gått ut eller har redan använts. Be din administratör skicka en ny.",
+      "unavailable": "Den här inbjudningslänken är ogiltig, har gått ut eller har redan använts. Be din administratör om en ny och öppna den sedan igen.",
       "joinTitle": "Gå med i {tenant} på Fortleva",
       "signInFirst": "Den här inbjudan gäller <strong>{email}</strong>. Logga in med den adressen (eller skapa ditt konto) och öppna länken igen.",
       "createOrSignIn": "Skapa konto / logga in",
       "signedInAs": "Inloggad som {email}.",
       "mismatch": "Inbjudan utfärdades till {email} — det går inte att acceptera om adresserna inte stämmer överens.",
       "accept": "Acceptera inbjudan",
+      "signIn": "Logga in",
+      "createAccount": "Skapa ett konto",
       "failed": "Inbjudan kunde inte accepteras. Kontrollera att du är inloggad med den inbjudna adressen.",
       "eyebrow": "Inbjudan"
     },
@@ -276,6 +285,10 @@
       "workspaceDefault": "Arbetsytans standard ({zone})",
       "saved": "Tidszonen är uppdaterad.",
       "failed": "Tidszonen kunde inte sparas."
+    },
+    "regional": {
+      "title": "Regionalt",
+      "description": "Hur datum, tider och gränssnittet visas för dig. Båda följer arbetsytans standard när de inte är satta."
     }
   },
   "members": {
@@ -302,14 +315,16 @@
       "reactivate": "Återaktivera",
       "cannotSuspendSelf": "Du kan inte stänga av dig själv",
       "suspended": "Medlemmen har stängts av",
-      "reactivated": "Medlemmen har återaktiverats"
+      "reactivated": "Medlemmen har återaktiverats",
+      "suspendConfirm": "Stäng av {name}?"
     },
     "pending": {
       "title": "Väntande inbjudningar",
       "revoke": "Återkalla",
       "revoked": "Inbjudan har återkallats",
       "expires": "Går ut",
-      "description": "Inbjudna, ännu inte anslutna. En inbjudan går ut av sig själv."
+      "description": "Inbjudna, ännu inte anslutna. En inbjudan går ut av sig själv.",
+      "revokeConfirm": "Återkalla inbjudan till {email}?"
     },
     "invite": {
       "title": "Bjud in en medlem",
@@ -325,7 +340,8 @@
     },
     "active": {
       "title": "Medlemmar"
-    }
+    },
+    "heading": "Medlemmar"
   },
   "roles": {
     "title": "{tenant} — roller",
@@ -335,7 +351,8 @@
     "meta": {
       "system": "system · mall {template}",
       "cloned": "anpassad · klonad från {template}",
-      "custom": "anpassad"
+      "custom": "anpassad",
+      "template": "mall {template}"
     },
     "permissions": "Behörigheter",
     "tombstone": "(borttagen från mallen)",
@@ -376,7 +393,8 @@
     "tombstoneTitle": "Borttagen från mallen",
     "tombstoneBody": "{count, plural, =1 {1 behörighet ingår inte längre i mallen den kom från. Den fortsätter fungera tills du tar bort den.} other {# behörigheter ingår inte längre i mallen de kom från. De fortsätter fungera tills du tar bort dem.}}",
     "granted": "tilldelad",
-    "notGranted": "inte tilldelad"
+    "notGranted": "inte tilldelad",
+    "deleteConfirm": "Ta bort rollen {name}?"
   },
   "settings": {
     "preferences": {
@@ -451,7 +469,8 @@
       },
       "description": "Ta med dig hela arbetsytan, när du vill.",
       "commitmentTitle": "Er data är er",
-      "generatingHint": "Arkivet byggs. Det kan ta en minut på en stor arbetsyta — du kan lämna sidan."
+      "generatingHint": "Arkivet byggs. Det kan ta en minut på en stor arbetsyta — du kan lämna sidan.",
+      "commitmentBody": "Allt den här arbetsytan innehåller kan när som helst exporteras som ett öppet, dokumenterat arkiv — det är vårt kontinuitetslöfte."
     }
   },
   "files": {
@@ -492,7 +511,8 @@
       "clientVisibleWarning": "Alla med portalåtkomst hos den här kunden kommer kunna öppna filen.",
       "step": "Steg {step} av {total}",
       "progressLabel": "Uppladdningsförlopp",
-      "tenantScope": "Filer som laddas upp här tillhör arbetsytan och kan inte delas med en kund."
+      "tenantScope": "Filer som laddas upp här tillhör arbetsytan och kan inte delas med en kund.",
+      "choose": "Välj fil"
     },
     "errors": {
       "quota": "Lagringskvoten är full — ta bort filer eller uppgradera planen.",
@@ -511,7 +531,10 @@
     "legend": {
       "internal": "stannar inom teamet",
       "clientVisible": "når kundportalen — raden är markerad i vänstermarginalen"
-    }
+    },
+    "tableLabel": "Filer",
+    "downloadName": "Ladda ner {name}",
+    "deleteConfirm": "Ta bort {name}?"
   },
   "errors": {
     "generic": "Något gick fel.",
@@ -614,6 +637,7 @@
       "liftedNotice": "Du ser den här kunden via en projekttilldelning: bara kortet och kontakterna.",
       "archive": "Arkivera kund",
       "archiveConfirm": "Arkivera kunden?",
+      "dangerDescription": "Arkivering döljer kunden i listor och gör posterna skrivskyddade. Du kan återställa den när som helst.",
       "unarchive": "Återställ kund",
       "archivedBanner": "Kunden är arkiverad. Posterna är skrivskyddade tills den återställs.",
       "archivedToast": "Kunden arkiverad",
@@ -623,6 +647,8 @@
       "title": "Kontakter",
       "empty": "Lägg till den första kontakten",
       "emptyDescription": "Personer hos kunden — bara poster tills vidare; portalåtkomst kommer med portalen.",
+      "emptyReadOnly": "Inga kontakter ännu",
+      "emptyReadOnlyDescription": "Ingen är registrerad hos den här kunden.",
       "name": "Namn",
       "email": "E-post",
       "jobTitle": "Titel",
@@ -637,6 +663,7 @@
       "added": "La till {name}",
       "remove": "Ta bort",
       "removeConfirm": "Ta bort kontakten?",
+      "removeContact": "Ta bort kontakt",
       "removed": "Kontakten borttagen",
       "portalStatus": {
         "NO_ACCESS": "Ingen portalåtkomst",
@@ -653,12 +680,16 @@
     "projects": {
       "empty": "Skapa det första projektet",
       "emptyDescription": "En nyckel (t.ex. ACME) och ett namn — milstolpar och filer hänger på det.",
+      "emptyReadOnly": "Inga projekt ännu",
+      "emptyReadOnlyDescription": "Den här kunden har inga projekt.",
       "scopedEmpty": "Inga projekt i ditt omfång",
       "scopedEmptyDescription": "Du ser den här kunden via en projekttilldelning; be en chef om mer."
     },
     "files": {
       "empty": "Ladda upp den första filen",
       "emptyDescription": "Filer på kundnivå — avtal, briefer. Privata för teamet om du inte säger annat.",
+      "emptyReadOnly": "Inga filer ännu",
+      "emptyReadOnlyDescription": "Inget har laddats upp här.",
       "noAccess": "Filer på kundnivå kräver en kundtilldelning",
       "noAccessDescription": "Du når den här kunden via ett projekt; dess filer ligger under projektet."
     },
@@ -666,6 +697,8 @@
       "title": "Tjänster",
       "empty": "Lägg till den första tjänsten",
       "emptyDescription": "Vad kunden köper — hosting, retainers, engångsjobb — med förnyelsedatum som data.",
+      "emptyReadOnly": "Inga tjänster ännu",
+      "emptyReadOnlyDescription": "Inget har registrerats för den här kunden.",
       "name": "Tjänst",
       "kind": "Typ",
       "kinds": {
@@ -693,9 +726,11 @@
       "added": "La till {name}",
       "end": "Avsluta",
       "endConfirm": "Avsluta tjänsten?",
+      "endService": "Avsluta tjänst",
       "ended": "Tjänsten avslutad",
       "delete": "Ta bort",
       "deleteConfirm": "Ta bort tjänsten?",
+      "deleteService": "Ta bort tjänst",
       "deleted": "Tjänsten borttagen",
       "columns": {
         "name": "Tjänst",
@@ -705,6 +740,10 @@
         "renews": "Förnyas",
         "status": "Status"
       }
+    },
+    "filters": {
+      "archived": "Endast arkiverade kunder",
+      "clear": "Visa aktiva kunder"
     }
   },
   "projects": {
@@ -812,7 +851,10 @@
       "openProduction": "Öppna sajten",
       "portalCalloutTitle": "Den här brytaren avgör vad kunden når",
       "hoursSharingHint": "Bara en sammanställning — aldrig per medlem, aldrig vem som gjort vad.",
-      "hoursSharingWarning": "Kunden kan se projektets timmar i portalen."
+      "hoursSharingWarning": "Kunden kan se projektets timmar i portalen.",
+      "setDate": "Ange datum",
+      "archiveHint": "Arkivering döljer projektet i listorna och gör det skrivskyddat. Ingenting raderas, och du kan återställa det när som helst.",
+      "unarchiveHint": "Projektet är arkiverat och skrivskyddat. Återställer du det dyker det upp i listorna igen."
     },
     "timeline": {
       "milestones": "Milstolpar",
@@ -858,7 +900,8 @@
       "title": "Tidslinje",
       "description": "Milstolpar i planens ordning, med varje levererad version inlagd där den hamnade.",
       "milestonesHint": "Projektets faser i ordning — design, bygge, lansering.",
-      "versionsHint": "Vad som levererades, och anteckningarna som följde med."
+      "versionsHint": "Vad som levererades, och anteckningarna som följde med.",
+      "setDate": "Ange datum"
     },
     "files": {
       "empty": "Ladda upp den första filen",
@@ -874,11 +917,11 @@
       "description": "Tilldelningar avgör vem som kan öppna projektet."
     },
     "board": {
-      "title": "Uppgifter kommer med Arbete-modulen",
+      "title": "Tavlan kommer med Arbete",
       "description": "Tavlan — kolumner är statusar, position är prioritet — kommer i nästa fas."
     },
     "backlog": {
-      "title": "Uppgifter kommer med Arbete-modulen",
+      "title": "Backloggen kommer med Arbete",
       "description": "Backloggen — alla öppna uppgifter efter rang — kommer i nästa fas."
     },
     "portalState": {
@@ -1063,7 +1106,9 @@
       "dialogBody": "Dialoger svävar, och får därför produktens enda stora skugga.",
       "selectPlaceholder": "Välj…",
       "optionA": "Första valet",
-      "optionB": "Andra valet"
+      "optionB": "Andra valet",
+      "badgeTones": "Toner",
+      "badgeVariants": "Varianter"
     },
     "visibilityHint": "Det säkerhetskritiska paret. De skiljer sig i fyllning, ikon, form, vikt och ram — fem kanaler, så att varken öga, skärm eller färgseende kan blanda ihop dem.",
     "visibilityRow": "En rad som kunden kan se bär också en 2 px bred stapel längst till vänster.",

@@ -42,9 +42,11 @@ export default async function ClientLayout({
     <Page>
       <PageHeader
         title={
+          // No truncate: §9 forbids clipping a title, and PageHeader
+          // stacks below md precisely so the h1 can wrap instead.
           <span className="flex min-w-0 items-center gap-2.5">
             <EntityTile id={client.id} name={client.name} size="lg" />
-            <span className="truncate">{client.name}</span>
+            <span className="min-w-0">{client.name}</span>
           </span>
         }
         badges={<StatusBadge domain="clientStatus" value={client.status} />}

@@ -53,16 +53,25 @@ export function AuthShell({
 }: {
   plane?: AuthPlane;
   eyebrow?: React.ReactNode;
-  title: React.ReactNode;
+  /**
+   * Optional, because a whole-page state brings its OWN h1 inside a
+   * `<PageState chrome="bare">` card and a page may have exactly one.
+   * When it is absent the lockup stands alone above the card.
+   */
+  title?: React.ReactNode;
   description?: React.ReactNode;
   footer?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const t = useTranslations("common");
   return (
+    // The lockup holds ONE baseline across the whole flow. Centring it
+    // vertically drifted the wordmark by ~180px between /signup, /login,
+    // /invite and the unavailable state — the four pages this component
+    // exists to make look like one product.
     <main
       data-plane={plane}
-      className="flex min-h-svh flex-col items-center justify-center bg-background px-4 py-12"
+      className="flex min-h-svh flex-col items-center justify-start bg-background px-4 pt-24 pb-12 md:pt-32"
     >
       <div className="flex w-full max-w-sm flex-col gap-8">
         <div className="flex items-center gap-3">
@@ -71,15 +80,17 @@ export function AuthShell({
         </div>
 
         <div className="flex flex-col gap-6">
-          <header className="flex flex-col gap-1.5">
-            {eyebrow ? (
-              <p className="eyebrow text-muted-foreground">
-                {eyebrow}
-              </p>
-            ) : null}
-            <h1 className="text-xl font-semibold text-balance text-foreground">{title}</h1>
-            {description ? <div className="text-sm text-muted-foreground">{description}</div> : null}
-          </header>
+          {eyebrow || title || description ? (
+            <header className="flex flex-col gap-1.5">
+              {eyebrow ? <p className="eyebrow text-muted-foreground">{eyebrow}</p> : null}
+              {title ? (
+                <h1 className="text-xl font-semibold text-balance text-foreground">{title}</h1>
+              ) : null}
+              {description ? (
+                <div className="text-sm text-muted-foreground">{description}</div>
+              ) : null}
+            </header>
+          ) : null}
           {children}
         </div>
 

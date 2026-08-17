@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRightIcon, CircleSlashIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useActionState, useRef, useState, useTransition } from "react";
@@ -7,7 +8,15 @@ import { toast } from "sonner";
 
 import { AutoForm } from "@/components/auto-form";
 import { InlineConfirm } from "@/components/inline-confirm";
-import { DataTable, Field, FormMessage, StatusBadge } from "@/components/semantic";
+import {
+  DataTable,
+  Field,
+  FormMessage,
+  InlineEdit,
+  RowActions,
+  StatusBadge,
+  type RowAction,
+} from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +32,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { ClientDetail } from "@/clients/service";
 import { formatMoney } from "@/lib/format";
+import type { InlineEditOption } from "@/lib/inline-edit";
 import type { FormResult } from "@/lib/server-actions";
 import type { ServiceRow } from "@/services/service";
 
@@ -37,57 +47,143 @@ import {
 
 const VAT_PROFILES = ["SE_DOMESTIC", "EU_REVERSE_CHARGE", "OUTSIDE_SCOPE"] as const;
 
-/** Company card: every field auto-saves on blur/change (UI.md §5.10). Read-only without client:edit. */
+type CardFieldName =
+  | "name"
+  | "orgNr"
+  | "vatNumber"
+  | "vatProfile"
+  | "countryCode"
+  | "addressLine1"
+  | "addressLine2"
+  | "postalCode"
+  | "city"
+  | "billingEmail"
+  | "invoiceLocale";
+
+type CardField = {
+  name: CardFieldName;
+  label: string;
+  kind: "text" | "select";
+  /** Always shown, even when empty — the record cannot exist without it. */
+  always?: boolean;
+  options?: InlineEditOption[];
+  /** Identifiers read in the mono face with lining figures (§10.7). */
+  mono?: boolean;
+  placeholder?: string;
+  inputProps?: Omit<React.ComponentProps<"input">, "name" | "defaultValue" | "type" | "ref">;
+};
+
+/**
+ * The company card is a RECORD, not a data-entry form (founder mandate
+ * 1; UI.md rule 3). Eleven bordered inputs — most of them empty — made
+ * the page read as a form someone abandoned halfway. Now every value is
+ * text in a box geometrically identical to the control it becomes, and
+ * only a click, Enter, Space or F2 turns one into that control.
+ *
+ * Two consequences of that, both deliberate:
+ *  - the empty fields are behind ONE disclosure, so the card leads with
+ *    what is known about the client instead of with what is not;
+ *  - the org. number leads, not the name — the name is already the h1
+ *    60px above, and stating it twice in the first two lines of a page
+ *    is the duplication this pass removes everywhere else.
+ *
+ * The posted FormData is unchanged: `<InlineEdit>` renders a hidden
+ * input at rest (WORKLIST hazard H1), including for the fields inside
+ * the closed disclosure, which are hidden but still in the DOM.
+ */
 export function ClientCardForm({ client, editable }: { client: ClientDetail; editable: boolean }) {
   const t = useTranslations("clients.overview");
+  const tCommon = useTranslations("common");
   const ro = !editable || client.status === "ARCHIVED";
-  const text = (
-    name: keyof ClientDetail & string,
-    id: string,
-    label: string,
-    extra?: React.ComponentProps<"input"> & { fieldClassName?: string },
-  ) => {
-    const { fieldClassName, ...inputProps } = extra ?? {};
+
+  const valueOf = (name: CardFieldName): string => (client[name] as string | null) ?? "";
+
+  const fields: CardField[] = [
+    { name: "orgNr", label: t("orgNr"), kind: "text", always: true, mono: true },
+    {
+      name: "name",
+      label: t("name"),
+      kind: "text",
+      always: true,
+      inputProps: { required: true },
+    },
+    { name: "vatNumber", label: t("vatNumber"), kind: "text", mono: true },
+    {
+      name: "vatProfile",
+      label: t("vatProfile"),
+      kind: "select",
+      placeholder: t("vatProfiles.none"),
+      options: [
+        { value: "", label: t("vatProfiles.none") },
+        ...VAT_PROFILES.map((p) => ({ value: p, label: t(`vatProfiles.${p}`) })),
+      ],
+    },
+    {
+      name: "billingEmail",
+      label: t("billingEmail"),
+      kind: "text",
+      inputProps: { inputMode: "email", autoComplete: "email" },
+    },
+    { name: "addressLine1", label: t("addressLine1"), kind: "text" },
+    { name: "addressLine2", label: t("addressLine2"), kind: "text" },
+    { name: "postalCode", label: t("postalCode"), kind: "text", mono: true },
+    { name: "city", label: t("city"), kind: "text" },
+    {
+      name: "countryCode",
+      label: t("countryCode"),
+      kind: "text",
+      inputProps: { maxLength: 2, className: "uppercase" },
+    },
+    { name: "invoiceLocale", label: t("invoiceLocale"), kind: "text", inputProps: { maxLength: 8 } },
+  ];
+
+  const row = (f: CardField) => {
+    const value = valueOf(f.name);
     return (
-      <Field label={label} htmlFor={id} className={fieldClassName}>
-        <Input
-          id={id}
-          name={name}
-          defaultValue={(client[name] as string | null) ?? ""}
-          readOnly={ro}
-          {...inputProps}
-        />
-      </Field>
+      <div key={f.name} className="flex min-w-0 flex-col gap-0.5">
+        {/* The label carries the control's own horizontal inset, so the
+            resting text sits directly under it rather than 10px right. */}
+        <dt className="px-2.5 text-xs text-muted-foreground">{f.label}</dt>
+        <dd className="min-w-0">
+          <InlineEdit
+            kind={f.kind}
+            name={f.name}
+            value={value}
+            label={f.label}
+            placeholder={f.placeholder ?? tCommon("notSet")}
+            options={f.options}
+            display={f.mono ? <span className="num font-mono">{value}</span> : undefined}
+            readOnly={ro}
+            inputProps={f.inputProps}
+            controlClassName={f.mono ? "num font-mono" : undefined}
+            className={ro ? "px-2.5" : undefined}
+          />
+        </dd>
+      </div>
     );
   };
+
+  const known = fields.filter((f) => f.always || valueOf(f.name) !== "");
+  const blank = fields.filter((f) => !f.always && valueOf(f.name) === "");
+
   return (
-    <AutoForm action={updateClientCardAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <AutoForm action={updateClientCardAction} className="flex flex-col gap-4">
       <input type="hidden" name="clientId" value={client.id} />
-      {text("name", "c-name", t("name"), { required: true, fieldClassName: "sm:col-span-2" })}
-      {text("orgNr", "c-orgnr", t("orgNr"), { className: "num font-mono" })}
-      {text("vatNumber", "c-vat", t("vatNumber"), { className: "num font-mono" })}
-      <Field label={t("vatProfile")} htmlFor="c-vatprofile">
-        <NativeSelect
-          id="c-vatprofile"
-          name="vatProfile"
-          defaultValue={client.vatProfile ?? ""}
-          disabled={ro}
-        >
-          <option value="">{t("vatProfiles.none")}</option>
-          {VAT_PROFILES.map((p) => (
-            <option key={p} value={p}>
-              {t(`vatProfiles.${p}`)}
-            </option>
-          ))}
-        </NativeSelect>
-      </Field>
-      {text("countryCode", "c-country", t("countryCode"), { maxLength: 2, className: "uppercase" })}
-      {text("addressLine1", "c-addr1", t("addressLine1"))}
-      {text("addressLine2", "c-addr2", t("addressLine2"))}
-      {text("postalCode", "c-postal", t("postalCode"), { className: "num" })}
-      {text("city", "c-city", t("city"))}
-      {text("billingEmail", "c-billing", t("billingEmail"), { type: "email" })}
-      {text("invoiceLocale", "c-locale", t("invoiceLocale"), { maxLength: 8 })}
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">{known.map(row)}</dl>
+      {blank.length > 0 && !ro ? (
+        <details className="group/details">
+          <summary className="inline-flex h-7 w-fit cursor-pointer list-none items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground transition-colors duration-(--dur-instant) ease-out hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+            <ChevronRightIcon
+              aria-hidden="true"
+              className="size-3.5 transition-transform duration-(--dur-instant) ease-out group-open/details:rotate-90"
+            />
+            {tCommon("addDetails")}
+          </summary>
+          <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+            {blank.map(row)}
+          </dl>
+        </details>
+      ) : null}
     </AutoForm>
   );
 }
@@ -96,6 +192,9 @@ export function ClientCardForm({ client, editable }: { client: ClientDetail; edi
  * INTERNAL-only notes. The card header carries the VisibilityBadge, so
  * the field label here is for screen readers only: the promise that
  * only the team can read this is made once, loudly, and never in grey.
+ *
+ * Deliberately NOT an inline edit: a card whose whole purpose is
+ * writing free text keeps its writing surface (WORKLIST §3.8).
  */
 export function ClientNotesForm({ client }: { client: ClientDetail }) {
   const t = useTranslations("clients.overview");
@@ -117,6 +216,12 @@ export function ClientNotesForm({ client }: { client: ClientDetail }) {
   );
 }
 
+/**
+ * Archiving rests at OUTLINE weight inside the page's danger footer;
+ * the product's only solid --destructive fill is the "Yes" of the
+ * question it asks (§5.9). It used to be a solid red button floating
+ * right-aligned on the canvas outside any card.
+ */
 export function ArchiveClientControl({ client }: { client: ClientDetail }) {
   const t = useTranslations("clients.overview");
   const router = useRouter();
@@ -137,7 +242,8 @@ export function ArchiveClientControl({ client }: { client: ClientDetail }) {
     <InlineConfirm
       label={t("archive")}
       question={t("archiveConfirm")}
-      variant="destructive"
+      variant="outline"
+      tone="danger"
       size="sm"
       pending={pending}
       onConfirm={run}
@@ -164,7 +270,7 @@ export function ServicesList({
   const locale = useLocale();
   const format = useFormatter();
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [, start] = useTransition();
   const run = (fn: () => Promise<FormResult>) =>
     start(async () => {
       const r = await fn();
@@ -180,16 +286,47 @@ export function ServicesList({
     return formatMoney(locale, amount, row.currency ?? "SEK");
   };
 
+  /**
+   * One quiet trigger per row instead of two solid buttons: a
+   * destructive verb repeated down a table is the loudest object on the
+   * page and it outranks the rows it serves (§5.9).
+   */
+  const actionsFor = (s: ServiceRow): RowAction[] => [
+    ...(canEdit && s.status !== "ENDED"
+      ? [
+          {
+            key: "end",
+            label: t("endService"),
+            icon: CircleSlashIcon,
+            confirm: t("endConfirm"),
+            onSelect: () => run(() => endServiceAction(clientId, s.id)),
+          } satisfies RowAction,
+        ]
+      : []),
+    ...(canDelete
+      ? [
+          {
+            key: "delete",
+            label: t("deleteService"),
+            icon: Trash2Icon,
+            tone: "danger",
+            confirm: t("deleteConfirm"),
+            onSelect: () => run(() => deleteServiceAction(clientId, s.id)),
+          } satisfies RowAction,
+        ]
+      : []),
+  ];
+
   return (
-    <DataTable density="compact">
+    <DataTable density="compact" flush scrollLabel={t("title")}>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>{t("columns.name")}</TableHead>
-            <TableHead>{t("columns.billing")}</TableHead>
-            <TableHead>{t("columns.scope")}</TableHead>
+            <TableHead priority="medium">{t("columns.billing")}</TableHead>
+            <TableHead priority="low">{t("columns.scope")}</TableHead>
             <TableHead className="text-right">{t("columns.price")}</TableHead>
-            <TableHead>{t("columns.renews")}</TableHead>
+            <TableHead priority="low">{t("columns.renews")}</TableHead>
             <TableHead>{t("columns.status")}</TableHead>
             <TableHead className="text-right">
               <span className="sr-only">{tCommon("actions")}</span>
@@ -197,54 +334,44 @@ export function ServicesList({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {services.map((s) => (
-            <TableRow key={s.id}>
-              <TableCell className="max-w-64 truncate font-medium">{s.name}</TableCell>
-              <TableCell className="text-muted-foreground">
-                {[
-                  t(`kinds.${s.kind}`),
-                  s.billingInterval ? t(`intervals.${s.billingInterval}`) : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </TableCell>
-              <TableCell>
-                {s.projectKey ? (
-                  <span className="num font-mono text-xs">{s.projectKey}</span>
-                ) : (
-                  <span className="text-muted-foreground">{t("clientLevel")}</span>
-                )}
-              </TableCell>
-              <TableCell className="num text-right">{money(s) ?? "—"}</TableCell>
-              <TableCell className="num text-muted-foreground">
-                {s.renewsAt ? format.dateTime(s.renewsAt, { dateStyle: "medium" }) : "—"}
-              </TableCell>
-              <TableCell>
-                <StatusBadge domain="serviceStatus" value={s.status} />
-              </TableCell>
-              <TableCell className="text-right">
-                <span className="inline-flex items-center gap-1">
-                  {canEdit && s.status !== "ENDED" ? (
-                    <InlineConfirm
-                      label={t("end")}
-                      question={t("endConfirm")}
-                      pending={pending}
-                      onConfirm={() => run(() => endServiceAction(clientId, s.id))}
+          {services.map((s) => {
+            const actions = actionsFor(s);
+            return (
+              <TableRow key={s.id}>
+                <TableCell className="max-w-64 truncate font-medium">{s.name}</TableCell>
+                <TableCell priority="medium" className="text-muted-foreground">
+                  {[
+                    t(`kinds.${s.kind}`),
+                    s.billingInterval ? t(`intervals.${s.billingInterval}`) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </TableCell>
+                <TableCell priority="low">
+                  {s.projectKey ? (
+                    <span className="num font-mono text-xs">{s.projectKey}</span>
+                  ) : (
+                    <span className="text-muted-foreground">{t("clientLevel")}</span>
+                  )}
+                </TableCell>
+                <TableCell className="num text-right">{money(s) ?? "—"}</TableCell>
+                <TableCell priority="low" className="num text-muted-foreground">
+                  {s.renewsAt ? format.dateTime(s.renewsAt, { dateStyle: "medium" }) : "—"}
+                </TableCell>
+                <TableCell>
+                  <StatusBadge domain="serviceStatus" value={s.status} />
+                </TableCell>
+                <TableCell className="text-right">
+                  {actions.length > 0 ? (
+                    <RowActions
+                      label={tCommon("actionsFor", { name: s.name })}
+                      items={actions}
                     />
                   ) : null}
-                  {canDelete ? (
-                    <InlineConfirm
-                      label={t("delete")}
-                      question={t("deleteConfirm")}
-                      variant="destructive"
-                      pending={pending}
-                      onConfirm={() => run(() => deleteServiceAction(clientId, s.id))}
-                    />
-                  ) : null}
-                </span>
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </DataTable>

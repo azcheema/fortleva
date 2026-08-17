@@ -1,8 +1,11 @@
+import { PlusIcon, ReceiptIcon } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { listAssignableMembers } from "@/clients/service";
 import { AssignmentsPanel } from "@/components/assignments-panel";
 import { EmptyState, SectionCard, VisibilityBadge } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listServices } from "@/services/service";
@@ -24,6 +27,7 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
   const { membership, actor } = await requireTenantContext();
   const t = await getTranslations("clients");
   const tAssign = await getTranslations("assignments");
+  const tCommon = await getTranslations("common");
   const ctx = { tenantId: membership.tenantId, actor };
 
   const [services, members] = await Promise.all([
@@ -44,6 +48,8 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
     return unassignClientMemberAction(client.id, memberId, name);
   };
 
+  const canAddService = client.caps.createServices && client.status === "ACTIVE";
+
   return (
     <div className="flex flex-col gap-6">
       <SectionCard title={t("overview.company")}>
@@ -61,13 +67,35 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
       ) : null}
 
       {client.caps.viewServices ? (
-        <SectionCard title={t("services.title")} contentClassName="flex flex-col gap-4">
+        // p-0 + <DataTable flush>: a bordered table inside a padded card
+        // draws two hairlines 16px apart (§10.15.1).
+        <SectionCard title={t("services.title")} contentClassName="p-0">
           {services.length === 0 ? (
-            <EmptyState
-              variant="empty"
-              title={t("services.empty")}
-              body={t("services.emptyDescription")}
-            />
+            <div className="px-4">
+              {canAddService ? (
+                <EmptyState
+                  variant="empty"
+                  icon={ReceiptIcon}
+                  title={t("services.empty")}
+                  body={t("services.emptyDescription")}
+                  action={
+                    <Button asChild size="sm">
+                      <Link href="#new-service">
+                        <PlusIcon />
+                        {t("services.add")}
+                      </Link>
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  variant="forbidden"
+                  icon={ReceiptIcon}
+                  title={t("services.emptyReadOnly")}
+                  body={t("services.emptyReadOnlyDescription")}
+                />
+              )}
+            </div>
           ) : (
             <ServicesList
               clientId={client.id}
@@ -76,11 +104,13 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
               canDelete={client.caps.deleteServices}
             />
           )}
-          {client.caps.createServices && client.status === "ACTIVE" ? (
-            <CreateServiceForm
-              clientId={client.id}
-              projects={client.projects.map((p) => ({ id: p.id, key: p.key, name: p.name }))}
-            />
+          {canAddService ? (
+            <div id="new-service" className="border-t border-border p-4 scroll-mt-16">
+              <CreateServiceForm
+                clientId={client.id}
+                projects={client.projects.map((p) => ({ id: p.id, key: p.key, name: p.name }))}
+              />
+            </div>
           ) : null}
         </SectionCard>
       ) : null}
@@ -98,9 +128,17 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
       </SectionCard>
 
       {client.caps.delete ? (
-        <div className="flex justify-end">
-          <ArchiveClientControl client={client} />
-        </div>
+        // A page-level destructive is not a row action and not a button
+        // floating on the canvas: it gets its own footer card, one line
+        // of consequence, and an outline resting weight (§5.9).
+        <SectionCard title={tCommon("danger.title")}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 text-sm text-muted-foreground">
+              {t("overview.dangerDescription")}
+            </p>
+            <ArchiveClientControl client={client} />
+          </div>
+        </SectionCard>
       ) : null}
     </div>
   );

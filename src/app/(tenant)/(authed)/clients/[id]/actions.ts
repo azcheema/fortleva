@@ -177,20 +177,29 @@ export async function createContactAction(
   return r;
 }
 
+/**
+ * An ABSENT field is "not submitted", never "erase this" (WORKLIST
+ * hazard H1). `updateContact` already treats its patch as partial —
+ * `"name" in patch` — so the guard belongs here, in the same shape
+ * `updateClientCardAction` uses. Without it a form that ever posts a
+ * subset of its fields silently wipes the other four.
+ */
 export async function updateContactAction(formData: FormData): Promise<FormResult> {
   const clientId = uuid.safeParse(formData.get("clientId"));
   const contactId = uuid.safeParse(formData.get("contactId"));
   if (!clientId.success || !contactId.success) return invalid();
   const ctx = await ctxOf();
   const tCommon = await getTranslations("common");
+  const patch: Parameters<typeof updateContact>[2] = {};
+  if (has(formData, "name")) patch.name = field(formData, "name") ?? "";
+  if (has(formData, "email")) patch.email = field(formData, "email") ?? "";
+  if (has(formData, "title")) patch.title = field(formData, "title");
+  if (has(formData, "phone")) patch.phone = field(formData, "phone");
+  if (has(formData, "portalProfile")) {
+    patch.portalProfile = profileOf(field(formData, "portalProfile"));
+  }
   const r = await runForm(path(clientId.data, "/contacts"), async () => {
-    await updateContact(ctx, contactId.data, {
-      name: field(formData, "name") ?? "",
-      email: field(formData, "email") ?? "",
-      title: field(formData, "title"),
-      phone: field(formData, "phone"),
-      portalProfile: profileOf(field(formData, "portalProfile")),
-    });
+    await updateContact(ctx, contactId.data, patch);
     return tCommon("saved");
   });
   if (r.ok) revalidatePath(path(clientId.data, "/contacts"));

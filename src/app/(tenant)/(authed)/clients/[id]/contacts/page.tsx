@@ -1,6 +1,9 @@
+import { PlusIcon, UsersIcon } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { EmptyState, SectionCard } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 
 import { loadClient } from "../data";
 import { ContactRowForm, CreateContactForm } from "./contact-forms";
@@ -27,18 +30,42 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
       <SectionCard title={t("title")} contentClassName="p-0">
         {client.contacts.length === 0 ? (
           <div className="px-4">
-            <EmptyState variant="empty" title={t("empty")} body={t("emptyDescription")} />
+            {editable ? (
+              <EmptyState
+                variant="empty"
+                icon={UsersIcon}
+                title={t("empty")}
+                body={t("emptyDescription")}
+                action={
+                  <Button asChild size="sm">
+                    <Link href="#new-contact">
+                      <PlusIcon />
+                      {t("add")}
+                    </Link>
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                variant="forbidden"
+                icon={UsersIcon}
+                title={t("emptyReadOnly")}
+                body={t("emptyReadOnlyDescription")}
+              />
+            )}
           </div>
         ) : (
           <>
-            {/* The inline edit grid used to be labelled only by aria-label;
-                the same labels are now visible above the columns. */}
+            {/* The values are read-first text now; the column labels are
+                what tells you which value is which. */}
             <div
               aria-hidden="true"
               className={`hairline-b hidden h-8 items-center px-3 eyebrow text-muted-foreground sm:grid ${CONTACT_GRID}`}
             >
               {headers.map((label) => (
-                <span key={label} className="truncate">
+                // The same 10px inset the resting value carries, so a
+                // label sits directly above the value it names.
+                <span key={label} className="truncate px-2.5">
                   {label}
                 </span>
               ))}
@@ -53,7 +80,12 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
       </SectionCard>
 
       {editable ? (
-        <SectionCard title={t("add")} description={t("portalHint")}>
+        <SectionCard
+          id="new-contact"
+          className="scroll-mt-16"
+          title={t("add")}
+          description={t("portalHint")}
+        >
           <CreateContactForm clientId={client.id} />
         </SectionCard>
       ) : null}

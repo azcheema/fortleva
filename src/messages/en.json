@@ -56,7 +56,9 @@
     "notSet": "Not set",
     "danger": {
       "title": "Danger zone"
-    }
+    },
+    "preview": "Preview",
+    "downloadName": "Download {name}"
   },
   "nav": {
     "home": "Home",
@@ -112,7 +114,8 @@
     },
     "error": {
       "title": "Something went wrong",
-      "description": "The page could not be rendered. You can try again; if it keeps failing, note the reference below.",
+      "description": "The page could not be rendered. You can try again.",
+      "referenceHint": "If it keeps failing, quote this reference when you report it.",
       "reference": "Reference: {digest}",
       "retry": "Try again",
       "home": "Go to Home"
@@ -120,7 +123,8 @@
     "notFound": {
       "title": "Page not found",
       "description": "There is nothing at this address, or you do not have access to it.",
-      "home": "Go to Home"
+      "home": "Go to Home",
+      "signIn": "Sign in"
     }
   },
   "home": {
@@ -133,6 +137,7 @@
     "empty": {
       "title": "Nothing to work on yet",
       "description": "Boards and tasks arrive with the Work module — for now, start with your clients and projects.",
+      "action": "Create a client",
       "clients": "Open Clients",
       "projects": "Open Projects"
     },
@@ -149,6 +154,8 @@
   "dashboard": {
     "title": "Welcome, {name}",
     "workspaces": "Your workspaces",
+    "open": "Open {name}",
+    "current": "Current workspace",
     "none": "You are not a member of any workspace yet. Ask an admin for an invitation.",
     "goHome": "Go to Home",
     "metric": "Workspaces",
@@ -187,13 +194,15 @@
     },
     "invite": {
       "unavailableTitle": "Invitation not available",
-      "unavailable": "This invitation link is invalid, expired, or already used. Ask your admin to send a new one.",
+      "unavailable": "This invitation link is invalid, expired, or already used. Ask your admin for a new one, then open it again.",
       "joinTitle": "Join {tenant} on Fortleva",
       "signInFirst": "This invitation is for <strong>{email}</strong>. Sign in with that address (or create your account) and open this link again.",
       "createOrSignIn": "Create account / sign in",
       "signedInAs": "Signed in as {email}.",
       "mismatch": "This invitation was issued to {email} — accepting will fail unless the addresses match.",
       "accept": "Accept invitation",
+      "signIn": "Sign in",
+      "createAccount": "Create an account",
       "failed": "The invitation could not be accepted. Make sure you are signed in with the invited address.",
       "eyebrow": "Invitation"
     },
@@ -276,6 +285,10 @@
       "workspaceDefault": "Workspace default ({zone})",
       "saved": "Time zone updated.",
       "failed": "The time zone could not be saved."
+    },
+    "regional": {
+      "title": "Regional",
+      "description": "How dates, times and the interface are shown to you. Both fall back to the workspace default when unset."
     }
   },
   "members": {
@@ -302,14 +315,16 @@
       "reactivate": "Reactivate",
       "cannotSuspendSelf": "You cannot suspend yourself",
       "suspended": "Member suspended",
-      "reactivated": "Member reactivated"
+      "reactivated": "Member reactivated",
+      "suspendConfirm": "Suspend {name}?"
     },
     "pending": {
       "title": "Pending invitations",
       "revoke": "Revoke",
       "revoked": "Invitation revoked",
       "expires": "Expires",
-      "description": "Invited, not yet joined. An invitation expires on its own."
+      "description": "Invited, not yet joined. An invitation expires on its own.",
+      "revokeConfirm": "Revoke the invitation to {email}?"
     },
     "invite": {
       "title": "Invite a member",
@@ -325,7 +340,8 @@
     },
     "active": {
       "title": "Members"
-    }
+    },
+    "heading": "Members"
   },
   "roles": {
     "title": "{tenant} — roles",
@@ -335,7 +351,8 @@
     "meta": {
       "system": "system · template {template}",
       "cloned": "custom · cloned from {template}",
-      "custom": "custom"
+      "custom": "custom",
+      "template": "template {template}"
     },
     "permissions": "Permissions",
     "tombstone": "(removed from template)",
@@ -376,7 +393,8 @@
     "tombstoneTitle": "Removed from the template",
     "tombstoneBody": "{count, plural, =1 {1 permission is no longer part of the template it came from. It keeps working until you remove it.} other {# permissions are no longer part of the template they came from. They keep working until you remove them.}}",
     "granted": "granted",
-    "notGranted": "not granted"
+    "notGranted": "not granted",
+    "deleteConfirm": "Delete the role {name}?"
   },
   "settings": {
     "preferences": {
@@ -451,7 +469,8 @@
       },
       "description": "Take the whole workspace with you, whenever you want it.",
       "commitmentTitle": "Your data is yours",
-      "generatingHint": "Building the archive. This can take a minute on a large workspace — you can leave the page."
+      "generatingHint": "Building the archive. This can take a minute on a large workspace — you can leave the page.",
+      "commitmentBody": "Everything this workspace holds can be exported at any time as an open, documented archive — that is our continuity commitment."
     }
   },
   "files": {
@@ -492,7 +511,8 @@
       "clientVisibleWarning": "Anyone with portal access at this client will be able to open this file.",
       "step": "Step {step} of {total}",
       "progressLabel": "Upload progress",
-      "tenantScope": "Files uploaded here belong to the workspace and cannot be shared with a client."
+      "tenantScope": "Files uploaded here belong to the workspace and cannot be shared with a client.",
+      "choose": "Choose file"
     },
     "errors": {
       "quota": "Storage quota reached — delete files or upgrade the plan.",
@@ -511,7 +531,10 @@
     "legend": {
       "internal": "stays inside the team",
       "clientVisible": "reaches the client portal — the row is marked in the left margin"
-    }
+    },
+    "tableLabel": "Files",
+    "downloadName": "Download {name}",
+    "deleteConfirm": "Delete {name}?"
   },
   "errors": {
     "generic": "Something went wrong.",
@@ -614,6 +637,7 @@
       "liftedNotice": "You see this client through a project assignment: the card and its contacts only.",
       "archive": "Archive client",
       "archiveConfirm": "Archive this client?",
+      "dangerDescription": "Archiving hides the client from lists and makes its records read-only. You can restore it at any time.",
       "unarchive": "Restore client",
       "archivedBanner": "This client is archived. Records are read-only until restored.",
       "archivedToast": "Client archived",
@@ -623,6 +647,8 @@
       "title": "Contacts",
       "empty": "Add the first contact",
       "emptyDescription": "People at the client — records only for now; portal access arrives with the portal.",
+      "emptyReadOnly": "No contacts yet",
+      "emptyReadOnlyDescription": "No one is recorded at this client.",
       "name": "Name",
       "email": "Email",
       "jobTitle": "Title",
@@ -637,6 +663,7 @@
       "added": "Added {name}",
       "remove": "Remove",
       "removeConfirm": "Remove contact?",
+      "removeContact": "Remove contact",
       "removed": "Contact removed",
       "portalStatus": {
         "NO_ACCESS": "No portal access",
@@ -653,12 +680,16 @@
     "projects": {
       "empty": "Create the first project",
       "emptyDescription": "A key (e.g. ACME) and a name — milestones and files hang off it.",
+      "emptyReadOnly": "No projects yet",
+      "emptyReadOnlyDescription": "This client has no projects.",
       "scopedEmpty": "No projects in your scope",
       "scopedEmptyDescription": "You see this client through a project assignment; ask a manager for more."
     },
     "files": {
       "empty": "Upload the first file",
       "emptyDescription": "Client-level files — contracts, briefs. Private to your team unless you say otherwise.",
+      "emptyReadOnly": "No files yet",
+      "emptyReadOnlyDescription": "Nothing has been uploaded here.",
       "noAccess": "Client-level files need a client assignment",
       "noAccessDescription": "You reach this client through a project; its files live under that project."
     },
@@ -666,6 +697,8 @@
       "title": "Services",
       "empty": "Add the first service",
       "emptyDescription": "What the client buys — hosting, retainers, one-offs — with renewal dates as data.",
+      "emptyReadOnly": "No services yet",
+      "emptyReadOnlyDescription": "Nothing has been recorded for this client.",
       "name": "Service",
       "kind": "Kind",
       "kinds": {
@@ -693,9 +726,11 @@
       "added": "Added {name}",
       "end": "End",
       "endConfirm": "End this service?",
+      "endService": "End service",
       "ended": "Service ended",
       "delete": "Delete",
       "deleteConfirm": "Delete service?",
+      "deleteService": "Delete service",
       "deleted": "Service deleted",
       "columns": {
         "name": "Service",
@@ -705,6 +740,10 @@
         "renews": "Renews",
         "status": "Status"
       }
+    },
+    "filters": {
+      "archived": "Archived clients only",
+      "clear": "Show active clients"
     }
   },
   "projects": {
@@ -812,7 +851,10 @@
       "openProduction": "Open site",
       "portalCalloutTitle": "This switch decides what the client can reach",
       "hoursSharingHint": "A summary only — never per member, never who did what.",
-      "hoursSharingWarning": "The client can see this project’s hours in the portal."
+      "hoursSharingWarning": "The client can see this project’s hours in the portal.",
+      "setDate": "Set date",
+      "archiveHint": "Archiving hides the project from lists and makes it read-only. Nothing is deleted, and you can restore it at any time.",
+      "unarchiveHint": "This project is archived and read-only. Restoring puts it back in the lists it came from."
     },
     "timeline": {
       "milestones": "Milestones",
@@ -858,7 +900,8 @@
       "title": "Timeline",
       "description": "Milestones in plan order, with each shipped version placed where it landed.",
       "milestonesHint": "Phases of the project in order — design, build, launch.",
-      "versionsHint": "What shipped, and the notes that went with it."
+      "versionsHint": "What shipped, and the notes that went with it.",
+      "setDate": "Set date"
     },
     "files": {
       "empty": "Upload the first file",
@@ -874,11 +917,11 @@
       "description": "Assignments decide who can open this project."
     },
     "board": {
-      "title": "Tasks arrive with the Work module",
+      "title": "The board arrives with Work",
       "description": "The board — columns are states, position is priority — lands in the next phase."
     },
     "backlog": {
-      "title": "Tasks arrive with the Work module",
+      "title": "The backlog arrives with Work",
       "description": "The backlog — every open task by rank — lands in the next phase."
     },
     "portalState": {
@@ -1063,7 +1106,9 @@
       "dialogBody": "Dialogs float, so they get the only large shadow in the product.",
       "selectPlaceholder": "Choose…",
       "optionA": "First option",
-      "optionB": "Second option"
+      "optionB": "Second option",
+      "badgeTones": "Tones",
+      "badgeVariants": "Variants"
     },
     "visibilityHint": "The safety-critical pair. They differ in fill, icon, shape, weight and border — five channels, so that no eye, no screen and no colour-vision type can confuse them.",
     "visibilityRow": "A client-visible row also carries a 2px leading bar.",

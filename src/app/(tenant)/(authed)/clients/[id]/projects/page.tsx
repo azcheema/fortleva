@@ -1,3 +1,5 @@
+import { FolderKanbanIcon, PlusIcon } from "lucide-react";
+import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
 import {
@@ -8,6 +10,7 @@ import {
   SectionCard,
   StatusBadge,
 } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -32,13 +35,34 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
   const t = await getTranslations("clients.projects");
   const tProjects = await getTranslations("projects");
   const format = await getFormatter();
+  const canCreate = client.caps.createProject && client.status === "ACTIVE";
 
   return (
     <div className="flex flex-col gap-6">
       {client.projects.length === 0 ? (
         <SectionCard>
-          {client.caps.createProject ? (
-            <EmptyState variant="empty" title={t("empty")} body={t("emptyDescription")} />
+          {canCreate ? (
+            <EmptyState
+              variant="empty"
+              icon={FolderKanbanIcon}
+              title={t("empty")}
+              body={t("emptyDescription")}
+              action={
+                <Button asChild size="sm">
+                  <Link href="#new-project">
+                    <PlusIcon />
+                    {tProjects("create.title")}
+                  </Link>
+                </Button>
+              }
+            />
+          ) : client.caps.createProject ? (
+            <EmptyState
+              variant="forbidden"
+              icon={FolderKanbanIcon}
+              title={t("emptyReadOnly")}
+              body={t("emptyReadOnlyDescription")}
+            />
           ) : (
             <EmptyState
               variant="forbidden"
@@ -48,7 +72,7 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
           )}
         </SectionCard>
       ) : (
-        <DataTable>
+        <DataTable scrollLabel={tProjects("title")}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -57,8 +81,12 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
                 <TableHead className="w-[10ch]">{tProjects("columns.key")}</TableHead>
                 <TableHead>{tProjects("columns.name")}</TableHead>
                 <TableHead>{tProjects("columns.status")}</TableHead>
-                <TableHead className="text-right">{tProjects("columns.milestones")}</TableHead>
-                <TableHead>{tProjects("columns.updated")}</TableHead>
+                <TableHead priority="medium" className="text-right">
+                  {tProjects("columns.milestones")}
+                </TableHead>
+                <TableHead priority="low" className="text-right">
+                  {tProjects("columns.updated")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -67,7 +95,7 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
                   <TableCell className="num w-[10ch] font-mono text-xs text-muted-foreground">
                     {p.key}
                   </TableCell>
-                  <TableCell className="max-w-80">
+                  <TableCell className="max-w-[420px]">
                     <EntityChip
                       id={p.id}
                       name={p.name}
@@ -79,7 +107,7 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
                   <TableCell>
                     <StatusBadge domain="projectStatus" value={p.status} />
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell priority="medium" className="text-right">
                     {p.milestoneTotal === 0 ? (
                       <span className="text-muted-foreground">{"—"}</span>
                     ) : (
@@ -93,7 +121,7 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
                       />
                     )}
                   </TableCell>
-                  <TableCell className="num text-muted-foreground">
+                  <TableCell priority="low" className="num text-right text-muted-foreground">
                     {format.dateTime(p.updatedAt, { dateStyle: "medium" })}
                   </TableCell>
                 </TableRow>
@@ -103,8 +131,8 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
         </DataTable>
       )}
 
-      {client.caps.createProject && client.status === "ACTIVE" ? (
-        <SectionCard title={tProjects("create.title")}>
+      {canCreate ? (
+        <SectionCard id="new-project" className="scroll-mt-16" title={tProjects("create.title")}>
           <CreateClientProjectForm clientId={client.id} />
         </SectionCard>
       ) : null}

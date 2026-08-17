@@ -1,3 +1,4 @@
+import { MailXIcon } from "lucide-react";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -6,7 +7,7 @@ import { getTranslations } from "next-intl/server";
 import { AuthShell } from "@/app/(tenant)/login/auth-shell";
 import { getMemberSession } from "@/auth/session";
 import { AuthzError } from "@/authz/errors";
-import { Callout, EntityChip } from "@/components/semantic";
+import { Callout, PageState } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { acceptInvite, previewInvite } from "@/members/invites";
 import { allow, clientIp } from "@/ratelimit";
@@ -16,8 +17,9 @@ import { allow, clientIp } from "@/ratelimit";
  * the page previews the invite, and a signed-in user whose email
  * matches accepts it. Not signed in → sign up first, come back.
  *
- * The inviting workspace is shown as an EntityChip so the reader
- * recognises what they are about to join before they act.
+ * The workspace name is said ONCE, in the h1 that names what you are
+ * joining. It used to appear again as a chip under it and a third time
+ * in the button label, on a page of four short lines.
  */
 export default async function InvitePage({
   params,
@@ -32,21 +34,30 @@ export default async function InvitePage({
   const preview = await previewInvite(token);
 
   if (!preview || preview.status !== "PENDING" || preview.expired) {
-    return <AuthShell eyebrow={t("eyebrow")} title={t("unavailableTitle")} description={t("unavailable")} />;
+    // A dead end is not a state (§5.8): the page used to offer a 1440px
+    // canvas and not one control. Both ways forward are named here.
+    return (
+      <AuthShell>
+        <PageState
+          chrome="bare"
+          variant="filtered"
+          icon={MailXIcon}
+          title={t("unavailableTitle")}
+          body={t("unavailable")}
+          primary={
+            <Button asChild size="lg" className="w-full">
+              <Link href="/login">{t("signIn")}</Link>
+            </Button>
+          }
+          secondary={
+            <Button asChild variant="outline" size="lg" className="w-full">
+              <Link href="/signup">{t("createAccount")}</Link>
+            </Button>
+          }
+        />
+      </AuthShell>
+    );
   }
-
-  // previewInvite() runs before authentication and deliberately returns
-  // no tenant id; the chip derives its colour from the name, which is
-  // the documented last-resort fallback.
-  const workspace = (
-    <EntityChip
-      id={null}
-      name={preview.tenantName}
-      kind="client"
-      size="md"
-      className="font-medium"
-    />
-  );
 
   const session = await getMemberSession();
   if (!session) {
@@ -59,9 +70,11 @@ export default async function InvitePage({
           strong: (chunks) => <strong className="font-medium text-foreground">{chunks}</strong>,
         })}
       >
-        {workspace}
+        {/* One verb for one outcome: the destination decides whether the
+            visitor signs in or signs up, so the button says what the
+            visitor is doing, not what the router is doing. */}
         <Button asChild size="lg" className="w-full">
-          <Link href={`/signup?next=/invite/${token}`}>{t("createOrSignIn")}</Link>
+          <Link href={`/signup?next=/invite/${token}`}>{t("accept")}</Link>
         </Button>
       </AuthShell>
     );
@@ -96,7 +109,6 @@ export default async function InvitePage({
       title={t("joinTitle", { tenant: preview.tenantName })}
       description={t("signedInAs", { email: session.user.email })}
     >
-      {workspace}
       {mismatch ? (
         <Callout tone="caution" role="status">
           {t("mismatch", { email: preview.email })}

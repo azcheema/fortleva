@@ -1,6 +1,9 @@
+import { FileIcon, PlusIcon } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { Callout, EmptyState, SectionCard } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 import { listDocuments } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -40,6 +43,7 @@ export default async function ClientFilesPage({
     { tenantId: membership.tenantId, actor },
     { clientId: client.id },
   );
+  const canUpload = client.caps.uploadDocuments && client.status === "ACTIVE";
 
   return (
     <div className="flex flex-col gap-6">
@@ -50,7 +54,29 @@ export default async function ClientFilesPage({
       ) : null}
       {documents.length === 0 ? (
         <SectionCard>
-          <EmptyState variant="empty" title={t("empty")} body={t("emptyDescription")} />
+          {canUpload ? (
+            <EmptyState
+              variant="empty"
+              icon={FileIcon}
+              title={t("empty")}
+              body={t("emptyDescription")}
+              action={
+                <Button asChild size="sm">
+                  <Link href="#new-file">
+                    <PlusIcon />
+                    {tFiles("upload.title")}
+                  </Link>
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              variant="forbidden"
+              icon={FileIcon}
+              title={t("emptyReadOnly")}
+              body={t("emptyReadOnlyDescription")}
+            />
+          )}
         </SectionCard>
       ) : (
         <DocumentsTable
@@ -60,8 +86,13 @@ export default async function ClientFilesPage({
           canChangeVisibility={client.caps.changeDocumentVisibility}
         />
       )}
-      {client.caps.uploadDocuments && client.status === "ACTIVE" ? (
-        <SectionCard title={tFiles("upload.title")} description={t("emptyDescription")}>
+      {canUpload ? (
+        <SectionCard
+          id="new-file"
+          className="scroll-mt-16"
+          title={tFiles("upload.title")}
+          description={t("emptyDescription")}
+        >
           <UploadForm target={{ clientId: client.id, returnTo }} visibilityEnabled />
         </SectionCard>
       ) : null}
