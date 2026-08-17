@@ -14,7 +14,7 @@ import {
 import type { DocumentListItem } from "@/documents/service";
 import { bytesParts } from "@/lib/format";
 
-import { changeVisibilityAction, deleteDocumentAction, downloadAction } from "./actions";
+import { deleteDocumentAction, downloadAction } from "./actions";
 import { VisibilitySelect } from "./visibility-select";
 
 /**
@@ -82,11 +82,11 @@ export async function DocumentsTable({
                 </TableCell>
                 <TableCell>
                   {canChangeVisibility && d.clientId ? (
-                    <form action={changeVisibilityAction} className="inline-flex items-center gap-2">
-                      <input type="hidden" name="documentId" value={d.id} />
-                      <input type="hidden" name="returnTo" value={returnTo} />
-                      <VisibilitySelect value={d.visibility} />
-                    </form>
+                    <VisibilitySelect
+                      documentId={d.id}
+                      value={d.visibility}
+                      returnTo={returnTo}
+                    />
                   ) : (
                     <VisibilityBadge value={d.visibility} />
                   )}

@@ -1,17 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import {
-  SYSTEM_THEME_SCRIPT,
-  THEME_COLOR_DARK,
-  THEME_COLOR_LIGHT,
-  THEME_COOKIE,
-  resolveThemePreference,
-} from "@/lib/theme";
+import { SYSTEM_THEME_SCRIPT, THEME_COLOR_DARK, THEME_COLOR_LIGHT } from "@/lib/theme";
+import { getThemePreference } from "@/lib/theme-server";
 
 import { geistMonoVariable, interVariable } from "./fonts/fonts";
 
@@ -47,7 +41,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const locale = await getLocale();
   // Theme is data too: an explicit choice is server-rendered onto <html>
   // (no script, no flash); "system" resolves pre-paint in <head>.
-  const theme = resolveThemePreference((await cookies()).get(THEME_COOKIE)?.value);
+  const theme = await getThemePreference();
 
   return (
     <html

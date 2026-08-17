@@ -2,6 +2,7 @@ import { isAuthorized } from "@/authz/authorize";
 import { requireMemberSession } from "@/auth/session";
 import { AppShell } from "@/components/shell/app-shell";
 import { withTenant } from "@/db";
+import { getThemePreference } from "@/lib/theme-server";
 import { getActiveMembership, mfaStateOf } from "@/members/tenant-context";
 
 import { switchLocaleAction } from "./account/actions";
@@ -16,6 +17,10 @@ import { NAV, visibleNav, type NavEntry } from "./nav";
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
   const session = await requireMemberSession();
   const membership = await getActiveMembership(session);
+  // The shell renders a ThemeToggle: it gets the same preference the
+  // root layout rendered <html> with, so server and client never
+  // disagree about which segment is active (src/lib/theme.ts).
+  const theme = await getThemePreference();
 
   let nav: NavEntry[];
   if (membership) {
@@ -39,6 +44,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       nav={nav}
       tenantName={membership?.tenantName ?? null}
       user={{ name: session.user.name, email: session.user.email }}
+      theme={theme}
       onSwitchLocale={switchLocaleAction}
     >
       {children}

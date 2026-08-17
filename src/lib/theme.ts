@@ -36,6 +36,39 @@ export const resolveThemePreference = (raw: string | undefined | null): ThemePre
   isThemePreference(raw) ? raw : "system";
 
 /**
+ * The stored preference inside a cookie string — `document.cookie` in
+ * the browser, a Cookie header on the server. Returns null when there
+ * is no stored preference at all, which is NOT the same as "system":
+ * "system" can be chosen explicitly, and absence must not overwrite it.
+ */
+export const themeFromCookieString = (raw: string | undefined | null): ThemePreference | null => {
+  if (!raw) return null;
+  for (const part of raw.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() !== THEME_COOKIE) continue;
+    const value = decodeURIComponent(part.slice(eq + 1).trim());
+    if (isThemePreference(value)) return value;
+  }
+  return null;
+};
+
+/**
+ * What a freshly mounted theme control must adopt (INV: a control's own
+ * default NEVER overrides an explicit stored choice). The cookie is the
+ * authority — it is the same value the server rendered <html> from —
+ * and the server-resolved preference is the fallback for the first
+ * visit, when nothing is stored yet.
+ *
+ * This is the whole of the theme-persistence rule, written once and
+ * pinned by src/lib/theme.test.ts, so no render site can re-invent it.
+ */
+export const themeOnMount = (
+  cookieString: string | undefined | null,
+  serverResolved: ThemePreference,
+): ThemePreference => themeFromCookieString(cookieString) ?? serverResolved;
+
+/**
  * Runs synchronously in <head> before first paint, and only when the
  * preference is "system" — an explicit choice is server-rendered onto
  * <html> and ships no script at all.
@@ -55,8 +88,28 @@ export function applyTheme(pref: ThemePreference): void {
   document.documentElement.style.colorScheme = pref === "system" ? "light dark" : pref;
 }
 
-/** Persist the preference in the mirror cookie (client-side). */
+/** The stored preference as the browser sees it (client-side). */
+export function readStoredTheme(): ThemePreference | null {
+  if (typeof document === "undefined") return null;
+  return themeFromCookieString(document.cookie);
+}
+
+/**
+ * Cookie writes are invisible to the DOM, so the one store every mounted
+ * control reads from needs a change signal of its own. Controls
+ * subscribe with subscribeStoredTheme(); writeThemeCookie() emits.
+ */
+const THEME_EVENT = "flv:theme";
+
+/** Persist the preference in the mirror cookie (client-side) and announce it. */
 export function writeThemeCookie(pref: ThemePreference): void {
   if (typeof document === "undefined") return;
   document.cookie = `${THEME_COOKIE}=${pref}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; SameSite=Lax`;
+  window.dispatchEvent(new Event(THEME_EVENT));
+}
+
+/** Subscribe to preference changes made anywhere in this document. */
+export function subscribeStoredTheme(onChange: () => void): () => void {
+  window.addEventListener(THEME_EVENT, onChange);
+  return () => window.removeEventListener(THEME_EVENT, onChange);
 }

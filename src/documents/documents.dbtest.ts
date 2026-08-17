@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getPlatformClient, runtimeClient } from "@/db/client";
 import { withTenant } from "@/db";
 import { AuthzError } from "@/authz/errors";
+import { createClient } from "@/clients/service";
 import { provisionTenant } from "@/members/provisioning";
 import { expirePendingUploads } from "@/jobs/expire-pending-uploads";
 import { LocalDiskTransport, setStorage } from "@/storage";
@@ -88,6 +89,8 @@ afterAll(async () => {
   await p.fileVersion.deleteMany({ where: { tenantId } });
   await p.document.deleteMany({ where: { tenantId } });
   await p.fileObject.deleteMany({ where: { tenantId } });
+  await p.memberClient.deleteMany({ where: { tenantId } });
+  await p.client.deleteMany({ where: { tenantId } });
   await p.memberRole.deleteMany({ where: { tenantId } });
   await p.rolePermission.deleteMany({ where: { tenantId } });
   await p.role.deleteMany({ where: { tenantId } });
@@ -325,6 +328,60 @@ describe("presign → PUT → commit", () => {
     expect(await auditActions(documentId)).toContain("document.deleted");
     // soft: rows remain
     expect(await platform().document.count({ where: { id: documentId } })).toBe(1);
+  });
+});
+
+describe("the visibility lever on a client document (both directions persist)", () => {
+  /**
+   * The browser harness caught a client-side revert here (the control
+   * showed the old value while the row held the new one), so the
+   * service-level half is pinned too: each flip is stored, audited with
+   * from/to, and the next read returns the value that was written —
+   * never the previous one.
+   */
+  const body = new TextEncoder().encode("client-facing offer");
+  let documentId: string;
+
+  it("CLIENT_VISIBLE ⇄ INTERNAL is stored and audited, in both directions", async () => {
+    const { id: clientId } = await createClient(ctx, { name: "Visibility Co" });
+    const presign = await createUpload(ctx, {
+      name: "offer.txt",
+      contentType: "text/plain",
+      sizeBytes: body.byteLength,
+      sha256: sha(body),
+      clientId,
+      visibility: "CLIENT_VISIBLE",
+    });
+    await putBytes(presign.uploadUrl, { ...presign.headers }, body);
+    ({ documentId } = await commitUpload(ctx, {
+      fileObjectId: presign.fileObjectId,
+      clientId,
+      visibility: "CLIENT_VISIBLE",
+    }));
+
+    const stored = async () =>
+      (await platform().document.findUniqueOrThrow({ where: { id: documentId } })).visibility;
+    const listed = async () => (await listDocuments(ctx)).find((d) => d.id === documentId)!.visibility;
+
+    expect(await stored()).toBe("CLIENT_VISIBLE");
+
+    await changeVisibility(ctx, documentId, "INTERNAL");
+    expect(await stored()).toBe("INTERNAL");
+    expect(await listed()).toBe("INTERNAL");
+
+    await changeVisibility(ctx, documentId, "CLIENT_VISIBLE");
+    expect(await stored()).toBe("CLIENT_VISIBLE");
+    expect(await listed()).toBe("CLIENT_VISIBLE");
+
+    const changes = await platform().auditEvent.findMany({
+      where: { tenantId, targetId: documentId, action: "document.visibility_changed" },
+      orderBy: { createdAt: "asc" },
+      select: { metadata: true },
+    });
+    expect(changes.map((e) => e.metadata)).toEqual([
+      { from: "CLIENT_VISIBLE", to: "INTERNAL" },
+      { from: "INTERNAL", to: "CLIENT_VISIBLE" },
+    ]);
   });
 });
 

@@ -50,3 +50,10 @@ desktop.ini
 src/generated/
 .dev-outbox/
 .dev-storage/
+
+# Playwright (browser harness)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+.auth/

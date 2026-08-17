@@ -179,17 +179,37 @@ export async function deleteDocumentAction(formData: FormData): Promise<void> {
   revalidatePath(returnTo);
 }
 
-/** Flip INTERNAL ⇄ CLIENT_VISIBLE (document:change_visibility, audited);
- * CLIENT_VISIBLE is refused server-side without a clientId. */
-export async function changeVisibilityAction(formData: FormData): Promise<void> {
-  const documentId = String(formData.get("documentId") ?? "");
-  const returnTo = returnToOf(formData);
-  const visibility =
-    formData.get("visibility") === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL";
+const visibilitySchema = z.object({
+  documentId: z.uuid(),
+  visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]),
+  returnTo: z.string().regex(SAFE_PATH).default("/files"),
+});
+
+/**
+ * Flip INTERNAL ⇄ CLIENT_VISIBLE (document:change_visibility, audited);
+ * CLIENT_VISIBLE is refused server-side without a clientId.
+ *
+ * Deliberately NOT a <form action>: React resets a form after its
+ * action runs, which restores the native <select> to the value the
+ * server rendered — so a successful change looked like a silent revert
+ * while the database held the new value (the worst possible lie for
+ * this particular control). The caller invokes this directly inside a
+ * transition and renders the result; a failure returns a message to
+ * show, never a redirect the surface might swallow.
+ */
+export async function changeVisibilityAction(
+  raw: z.input<typeof visibilitySchema>,
+): Promise<ActionResult<void>> {
+  const parsed = visibilitySchema.safeParse(raw);
+  if (!parsed.success) {
+    const t = await getTranslations("files.errors");
+    return { ok: false, message: t("visibilityFailed") };
+  }
+  const { documentId, visibility, returnTo } = parsed.data;
   const { membership, actor } = await requireTenantContext();
   const result = await guard(returnTo, () =>
     changeVisibility({ tenantId: membership.tenantId, actor }, documentId, visibility),
   );
-  if (!result.ok) redirect(withError(returnTo, result.message));
-  revalidatePath(returnTo);
+  if (result.ok) revalidatePath(returnTo);
+  return result;
 }

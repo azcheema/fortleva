@@ -49,6 +49,7 @@ import { loadDesignTokens, type DesignTokens, type ThemeName } from "@/lib/css-t
 import { ENTITY_HUES } from "@/lib/entity-color";
 import { PRIORITIES, PROJECT_HEALTHS, STATUS_MAP, type StatusDomain } from "@/lib/enum-map";
 import { formatNumber } from "@/lib/format";
+import { getThemePreference } from "@/lib/theme-server";
 import { cn } from "@/lib/utils";
 
 import { DemoControls } from "./demo-controls";
@@ -233,6 +234,7 @@ export default async function DesignPage() {
   const t = await getTranslations("design");
   const tTheme = await getTranslations("theme");
   const locale = await getLocale();
+  const theme = await getThemePreference();
 
   let tokens: DesignTokens | null = null;
   try {
@@ -291,7 +293,11 @@ export default async function DesignPage() {
         </defs>
       </svg>
 
-      <PageHeader title={t("title")} description={t("description")} actions={<ThemeToggle />} />
+      <PageHeader
+        title={t("title")}
+        description={t("description")}
+        actions={<ThemeToggle value={theme} />}
+      />
 
       <Callout tone="caution" title={t("devOnly")} />
 

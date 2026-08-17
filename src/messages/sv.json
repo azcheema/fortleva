@@ -487,6 +487,7 @@
       "uploadIncomplete": "Uppladdningen slutfördes inte korrekt — försök igen.",
       "notPending": "Den här uppladdningen är redan slutförd eller har gått ut.",
       "clientRequired": "En fil som kunden kan se behöver en kund.",
+      "visibilityFailed": "Det gick inte att ändra synligheten — inget ändrades. Försök igen.",
       "invalidRequest": "Ogiltig uppladdningsbegäran."
     },
     "legend": {

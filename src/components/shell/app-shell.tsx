@@ -37,6 +37,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 import { CommandPalette, flatNav } from "./command-palette";
@@ -88,12 +89,15 @@ export function AppShell({
   nav,
   tenantName,
   user,
+  theme,
   onSwitchLocale,
   children,
 }: {
   nav: readonly NavEntry[];
   tenantName: string | null;
   user: ShellUser;
+  /** Preference the server rendered <html> with (src/lib/theme-server). */
+  theme: ThemePreference;
   onSwitchLocale: (locale: string) => Promise<void>;
   children: React.ReactNode;
 }) {
@@ -338,7 +342,7 @@ export function AppShell({
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <div className="px-2 py-1.5">
-                  <ThemeToggle className="w-full" />
+                  <ThemeToggle value={theme} className="w-full" />
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={signOut}>

@@ -487,6 +487,7 @@
       "uploadIncomplete": "Upload did not complete correctly — please try again.",
       "notPending": "This upload was already finished or expired.",
       "clientRequired": "A client-visible file needs a client.",
+      "visibilityFailed": "Could not change visibility — nothing was changed. Please try again.",
       "invalidRequest": "Invalid upload request."
     },
     "legend": {

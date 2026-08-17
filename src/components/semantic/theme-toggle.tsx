@@ -2,9 +2,17 @@
 
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useSyncExternalStore } from "react";
 
-import { THEMES, applyTheme, writeThemeCookie, type ThemePreference } from "@/lib/theme";
+import {
+  THEMES,
+  applyTheme,
+  readStoredTheme,
+  subscribeStoredTheme,
+  themeOnMount,
+  writeThemeCookie,
+  type ThemePreference,
+} from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 const ICONS = { system: MonitorIcon, light: SunIcon, dark: MoonIcon } as const;
@@ -15,29 +23,45 @@ const ICONS = { system: MonitorIcon, light: SunIcon, dark: MoonIcon } as const;
  * tick — because a theme switch that waits for a round trip reads as a
  * broken button.
  *
- * The useLayoutEffect re-applies the stored preference on mount. In
- * production the pre-paint script in <head> has already done it; in
- * development React Strict Mode remounts once and resets the
- * attributes <html> got outside JSX, so without this the toggle would
- * appear to lose its setting on every refresh.
+ * The control has NO state of its own: it renders the STORED preference,
+ * read through useSyncExternalStore so the server render (no cookie
+ * access) and the client agree without an effect. `value` — the
+ * preference the server resolved for this request, and therefore the
+ * one <html> was rendered with — is the server snapshot and is
+ * REQUIRED: every render site must thread it.
+ *
+ * That shape is the fix for a real bug. This control is mounted far
+ * more often than the page is rendered (it lives inside the user menu,
+ * which re-creates it every time the menu opens), and it used to seed
+ * itself from a default of "system" and re-apply that on mount —
+ * silently overwriting an explicit Light on a machine set to dark. A
+ * control's default must never outrank a stored choice; the rule lives
+ * in themeOnMount() and is unit-tested in src/lib/theme.test.ts.
  */
 export function ThemeToggle({
-  value = "system",
+  value,
   className,
 }: {
-  value?: ThemePreference;
+  value: ThemePreference;
   className?: string;
 }) {
   const t = useTranslations("theme");
-  const [current, setCurrent] = useState<ThemePreference>(value);
+  const current = useSyncExternalStore(
+    subscribeStoredTheme,
+    () => themeOnMount(readStoredTheme(), value),
+    () => value,
+  );
 
+  // Sync the DOM to the preference we render. Idempotent in the normal
+  // case — the cookie is exactly what the server rendered <html> from —
+  // and it re-asserts the choice after a client navigation re-renders
+  // <html> from a request that predates it.
   useLayoutEffect(() => {
     applyTheme(current);
   }, [current]);
 
   const choose = (next: ThemePreference) => {
-    setCurrent(next);
-    writeThemeCookie(next);
+    writeThemeCookie(next); // notifies every mounted control
     applyTheme(next);
   };
 
