@@ -1,4 +1,4 @@
-import { clearAuthState, teardownE2ETenant } from "./fixtures/tenant";
+import { clearAuthState, sweepStaleE2ETenants, teardownE2ETenant } from "./fixtures/tenant";
 
 /**
  * Runs after the whole run — passed, failed or interrupted. Nothing the
@@ -10,6 +10,11 @@ export default async function globalTeardown(): Promise<void> {
   try {
     const removed = await teardownE2ETenant();
     console.log(`[e2e] throwaway tenant ${removed ? "torn down" : "already gone"}`);
+    // Belt to the setup sweep's braces: anything a crashed earlier run
+    // orphaned goes now too, so leftovers can never accumulate across
+    // runs. The age guard keeps a concurrent run out of range.
+    const swept = await sweepStaleE2ETenants(15);
+    if (swept > 0) console.log(`[e2e] swept ${swept} orphaned throwaway tenant(s)`);
   } finally {
     clearAuthState();
   }

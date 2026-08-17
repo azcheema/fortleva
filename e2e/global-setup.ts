@@ -32,7 +32,7 @@ export default async function globalSetup(): Promise<void> {
   // Teardown is keyed on a seed file, so a killed run (or a webServer
   // that dies mid-suite) orphans its tenant. Sweep anything older than
   // an hour before provisioning; a concurrent run is never in range.
-  const swept = await sweepStaleE2ETenants();
+  const swept = await sweepStaleE2ETenants(15);
   if (swept > 0) console.log(`[e2e] swept ${swept} orphaned throwaway tenant(s)`);
   const { password, tenantSlug } = await provisionE2ETenant();
   console.log(`[e2e] throwaway tenant ${tenantSlug} provisioned`);

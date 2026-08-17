@@ -386,6 +386,14 @@ async function removeTenant(
     await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
     await tx.auditEvent.deleteMany({ where: { tenantId } });
   });
+
+  // Prove it. Reporting a teardown that did not happen is worse than
+  // failing: eight orphaned tenants accumulated in the shared dev
+  // database behind a "torn down" log line before this check existed.
+  const survivor = await db.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+  if (survivor) {
+    throw new Error(`teardown did not remove throwaway tenant "${survivor.slug}" (${tenantId})`);
+  }
 }
 
 /**
