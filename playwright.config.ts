@@ -39,7 +39,12 @@ export default defineConfig({
     : [["list"], ["html", { open: "never" }]],
   globalSetup: "./e2e/global-setup.ts",
   globalTeardown: "./e2e/global-teardown.ts",
-  timeout: 60_000,
+  // 120 s, not 60: several specs assert against the database, and each
+  // such assertion spawns a fresh tsx + Prisma process (the generated
+  // client is ESM, so it cannot run inside the CJS test worker). Three
+  // of those plus two full reloads exceeded a 60 s budget on a warm
+  // machine, which would have flaked in CI rather than failed honestly.
+  timeout: 120_000,
   expect: { timeout: 10_000 },
   use: {
     baseURL: BASE_URL,
