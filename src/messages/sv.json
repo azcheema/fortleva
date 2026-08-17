@@ -289,6 +289,17 @@
     "regional": {
       "title": "Regionalt",
       "description": "Hur datum, tider och gränssnittet visas för dig. Båda följer arbetsytans standard när de inte är satta."
+    },
+    "profile": {
+      "title": "Profil",
+      "description": "Så här visas du för andra i den här arbetsytan."
+    },
+    "name": {
+      "label": "Visningsnamn",
+      "hint": "Visas i medlemslistan, på tilldelningar och i din avatar.",
+      "placeholder": "Lägg till ditt namn",
+      "saved": "Namnet uppdaterades.",
+      "invalid": "Ange ett namn på 1 till 80 tecken."
     }
   },
   "members": {

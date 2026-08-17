@@ -11,7 +11,9 @@ loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
 
 const FOUNDER_EMAIL = "azcheema@gmail.com";
-const FOUNDER_NAME = "Aizaz Cheema";
+const FOUNDER_NAME = "Ansar Cheema";
+// Only used when the founder row does not exist yet (fresh database or a
+// restore); the live name is edited on /account, never here.
 
 async function main() {
   const { getPlatformClient } = await import("../src/db/client");

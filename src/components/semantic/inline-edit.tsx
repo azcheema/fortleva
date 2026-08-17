@@ -27,8 +27,9 @@ import { cn } from "@/lib/utils";
  * renders as TEXT, in a box that is geometrically identical to the
  * control it becomes — same height, same padding, same radius — with a
  * transparent border that only appears on hover. Click, Enter, Space or
- * F2 swaps the text for the real control; Escape restores; blur (or
- * `change`, for a select) commits.
+ * F2 swaps the text for the real control; Escape restores; Enter (on a
+ * single-line control) or blur commits, and a select commits on
+ * `change`.
  *
  * It adds NO save path. `<AutoForm>` already posts on exactly those two
  * events, and this component mounts the same `<Input>` / `<Textarea>` /
@@ -160,6 +161,19 @@ function InlineEditControl({
   const onControlKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
+    // Enter commits a single-line control. Inside an <AutoForm> the
+    // native submit would have done it; standalone there is no form, so
+    // without this the edit sits open and the keystroke does nothing —
+    // and "Enter or blur commits" is the contract this pattern documents
+    // and that AGENTS.md repeats. Blurring reuses the one commit path
+    // rather than adding a second. `multiline` is excluded: there Enter
+    // is a newline, and blur still commits.
+    if (e.key === "Enter" && kind !== "multiline" && kind !== "select") {
+      e.preventDefault();
+      returnFocus.current = true;
+      e.currentTarget.blur();
+      return;
+    }
     if (e.key !== "Escape") return;
     e.preventDefault();
     // Do not also close a dialog, a menu or the command palette.

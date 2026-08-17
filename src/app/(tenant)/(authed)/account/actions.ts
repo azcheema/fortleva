@@ -9,7 +9,7 @@ import { auth } from "@/auth";
 import { requireMemberSession } from "@/auth/session";
 import { LOCALES } from "@/i18n/config";
 import { runForm, type FormResult } from "@/lib/server-actions";
-import { setOwnTimezone } from "@/members/profile";
+import { recordOwnProfileChange, setOwnTimezone } from "@/members/profile";
 import { requireTenantContext } from "@/members/tenant-context";
 import { TIMEZONES } from "@/preferences/config";
 
@@ -54,6 +54,35 @@ export async function switchLocaleAction(locale: string): Promise<void> {
   if (!parsed.success) return;
   await auth.api.updateUser({ headers: await headers(), body: { locale: parsed.data } });
   revalidatePath("/", "layout");
+}
+
+const nameSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+});
+
+/**
+ * Display name on the global identity (User.name). The user is the
+ * session's, never a form parameter. Goes through Better Auth's
+ * updateUser so the session cache sees it immediately, then records
+ * member.profile_updated in the active tenant's own log — the name is
+ * what colleagues see, so its change belongs in the record they can
+ * read. Field names only in the metadata, never the value.
+ */
+export async function setNameAction(
+  _prev: FormResult | null,
+  formData: FormData,
+): Promise<FormResult> {
+  const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("account.name");
+  const parsed = nameSchema.safeParse({ name: formData.get("name") ?? "" });
+  if (!parsed.success) return { ok: false, message: t("invalid") };
+
+  return runForm("/account", async () => {
+    await auth.api.updateUser({ headers: await headers(), body: { name: parsed.data.name } });
+    await recordOwnProfileChange({ tenantId: membership.tenantId, actor }, "name");
+    revalidatePath("/", "layout");
+    return t("saved");
+  });
 }
 
 const timezoneSchema = z.object({

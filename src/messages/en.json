@@ -289,6 +289,17 @@
     "regional": {
       "title": "Regional",
       "description": "How dates, times and the interface are shown to you. Both fall back to the workspace default when unset."
+    },
+    "profile": {
+      "title": "Profile",
+      "description": "How you appear to everyone else in this workspace."
+    },
+    "name": {
+      "label": "Display name",
+      "hint": "Shown on the member list, on assignments and in your avatar.",
+      "placeholder": "Add your name",
+      "saved": "Name updated.",
+      "invalid": "Enter a name of 1 to 80 characters."
     }
   },
   "members": {

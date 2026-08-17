@@ -32,3 +32,29 @@ export async function setOwnTimezone(
     });
   });
 }
+
+
+/**
+ * Audit a change a member made to their OWN global identity (User.name
+ * …) in the tenant's log. The write itself belongs to Better Auth; this
+ * only records that it happened, with the field name and never the
+ * value. Pinned to the acting member — no id comes from a form.
+ */
+export async function recordOwnProfileChange(
+  ctx: { tenantId: string; actor: MemberActor },
+  ...fields: string[]
+): Promise<void> {
+  await withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
+    const me = await tx.member.findFirst({
+      where: { id: ctx.actor.memberId, status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (!me) deny("NOT_FOUND");
+    await record(tx, {
+      action: "member.profile_updated",
+      targetType: "Member",
+      targetId: me!.id,
+      metadata: { fields },
+    });
+  });
+}

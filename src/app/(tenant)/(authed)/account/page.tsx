@@ -12,6 +12,7 @@ import { readPreferences } from "@/preferences/service";
 
 import { ChangePasswordForm } from "./change-password-form";
 import { LocaleForm } from "./locale-form";
+import { NameForm } from "./name-form";
 import { TimezoneForm } from "./timezone-form";
 import { TotpEnrollment } from "./totp-enrollment";
 
@@ -104,6 +105,10 @@ export default async function AccountPage({
         </SectionCard>
 
         {steppedUp ? null : totpCard}
+
+        <SectionCard title={t("profile.title")} description={t("profile.description")}>
+          <NameForm current={session.user.name ?? ""} />
+        </SectionCard>
 
         <SectionCard title={t("regional.title")} description={t("regional.description")}>
           <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
