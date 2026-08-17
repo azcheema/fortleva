@@ -50,6 +50,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - `[&_tr:last-child]:border-0` on a table body **deletes row-level left cues**; use `border-b-0`.
 - A `"use client"` module's exported constant interpolated into a **server** component's `className` becomes a throwing client reference.
 - State a shared component must reflect is a **required prop** (or its own store), never a default.
+- **Never run `pnpm build`, `pnpm start` or the e2e suite while `next dev` is running.** The production build rewrites `.next` underneath the dev server, whose browser runtime then requests chunks that no longer exist and reports only "An unexpected Turbopack error". Stop the dev server first; if it happens, kill the process, `rm -rf .next`, and restart. Background dev servers survive killing the `pnpm` wrapper — check with `netstat -ano | grep LISTENING`.
 
 ## Commands
 
