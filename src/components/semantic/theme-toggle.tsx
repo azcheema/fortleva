@@ -7,9 +7,8 @@ import { useLayoutEffect, useSyncExternalStore } from "react";
 import {
   THEMES,
   applyTheme,
-  readStoredTheme,
+  storedThemeOrSystem,
   subscribeStoredTheme,
-  themeOnMount,
   writeThemeCookie,
   type ThemePreference,
 } from "@/lib/theme";
@@ -36,7 +35,7 @@ const ICONS = { system: MonitorIcon, light: SunIcon, dark: MoonIcon } as const;
  * itself from a default of "system" and re-apply that on mount —
  * silently overwriting an explicit Light on a machine set to dark. A
  * control's default must never outrank a stored choice; the rule lives
- * in themeOnMount() and is unit-tested in src/lib/theme.test.ts.
+ * in clientTheme() and is unit-tested in src/lib/theme.test.ts.
  */
 export function ThemeToggle({
   value,
@@ -46,11 +45,11 @@ export function ThemeToggle({
   className?: string;
 }) {
   const t = useTranslations("theme");
-  const current = useSyncExternalStore(
-    subscribeStoredTheme,
-    () => themeOnMount(readStoredTheme(), value),
-    () => value,
-  );
+  // Client snapshot reads the cookie and nothing else, so it cannot go
+  // stale. `value` is used ONLY as the server snapshot, where it is
+  // fresh by construction — it comes from the very request being
+  // rendered — and React uses it for SSR and hydration only.
+  const current = useSyncExternalStore(subscribeStoredTheme, storedThemeOrSystem, () => value);
 
   // Sync the DOM to the preference we render. Idempotent in the normal
   // case — the cookie is exactly what the server rendered <html> from —

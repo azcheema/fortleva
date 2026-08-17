@@ -47,6 +47,42 @@ const closeMenu = async (page: Page): Promise<void> => {
 test.describe("theme preference, OS set to dark", () => {
   test.use({ colorScheme: "dark" });
 
+  test("re-opening the menu after choosing does not re-apply the OS theme", async ({ page }) => {
+    // The reported steps, exactly: choose Light, use the app, then open
+    // the user menu again for an unrelated reason. No reload anywhere —
+    // a reload re-renders the layout and hides the bug, which is why the
+    // first version of this suite passed while the app was broken.
+    await page.goto("/home");
+    await openUserMenu(page);
+    await chooseTheme(page, "Light");
+    await closeMenu(page);
+    expect(await isDark(page)).toBe(false);
+
+    // Client navigation only: the layout (and its server-rendered theme
+    // prop) is preserved across this.
+    await page.getByRole("link", { name: "Clients", exact: true }).first().click();
+    await expect(page).toHaveURL(/\/clients/);
+    expect(await isDark(page)).toBe(false);
+
+    // Opening the menu remounts the toggle. That must change nothing.
+    await openUserMenu(page);
+    expect(await isDark(page)).toBe(false);
+    await expect(
+      page
+        .locator('[data-slot="dropdown-menu-content"] [data-slot="theme-toggle"]')
+        .getByRole("radio", { name: "Light", exact: true }),
+    ).toHaveAttribute("aria-checked", "true");
+    await closeMenu(page);
+    expect(await isDark(page)).toBe(false);
+
+    // And again, twice more — the bug needed only one remount.
+    await openUserMenu(page);
+    await closeMenu(page);
+    await openUserMenu(page);
+    await closeMenu(page);
+    expect(await isDark(page)).toBe(false);
+  });
+
   test("Light survives navigation, reload and re-opening the menu", async ({ page, context }) => {
     await page.goto("/home");
     // No preference yet: "system" is honoured, so the emulated OS wins.

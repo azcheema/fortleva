@@ -63,10 +63,32 @@ export const themeFromCookieString = (raw: string | undefined | null): ThemePref
  * This is the whole of the theme-persistence rule, written once and
  * pinned by src/lib/theme.test.ts, so no render site can re-invent it.
  */
-export const themeOnMount = (
-  cookieString: string | undefined | null,
-  serverResolved: ThemePreference,
-): ThemePreference => themeFromCookieString(cookieString) ?? serverResolved;
+/**
+ * The preference as the BROWSER knows it.
+ *
+ * The cookie is the ONLY client-side truth, and "no cookie" means
+ * "system" — never a value rendered by the server. That fallback used to
+ * exist and was the second half of a real bug: a control receives the
+ * server's preference as a prop, but a layout is not re-rendered when
+ * the cookie changes, nor on a client navigation, so that prop is stale
+ * from the moment the user chooses. A control remounting later (opening
+ * the user menu) then re-applied the page-load preference — "system" —
+ * and an OS set to dark turned the app dark on a click that only meant
+ * "show me my profile".
+ *
+ * Takes the RAW cookie string, not a parsed preference: passing an
+ * already-parsed value here is what silently defeated the lookup before,
+ * and `ThemePreference` is a string, so the types did not object. The
+ * `RawCookieString` brand makes that mistake fail to compile.
+ */
+export type RawCookieString = string & { readonly __rawCookie?: never };
+
+export const clientTheme = (cookieString: RawCookieString | null | undefined): ThemePreference =>
+  themeFromCookieString(cookieString) ?? "system";
+
+/** `clientTheme` against the live document; "system" outside a browser. */
+export const storedThemeOrSystem = (): ThemePreference =>
+  typeof document === "undefined" ? "system" : clientTheme(document.cookie);
 
 /**
  * Runs synchronously in <head> before first paint, and only when the

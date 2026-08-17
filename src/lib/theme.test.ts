@@ -5,7 +5,7 @@ import {
   isThemePreference,
   resolveThemePreference,
   themeFromCookieString,
-  themeOnMount,
+  clientTheme,
   type ThemePreference,
 } from "./theme";
 
@@ -52,24 +52,29 @@ describe("themeFromCookieString", () => {
   });
 });
 
-describe("themeOnMount", () => {
-  it("never lets a control's default override an explicit stored choice", () => {
-    // The bug, in one line: the toggle mounted with "system" while
-    // "light" was stored, and re-applied "system".
-    expect(themeOnMount(`${THEME_COOKIE}=light`, "system")).toBe("light");
-    expect(themeOnMount(`${THEME_COOKIE}=dark`, "system")).toBe("dark");
-    expect(themeOnMount(`${THEME_COOKIE}=light`, "dark")).toBe("light");
+describe("clientTheme", () => {
+  it("reads an explicit stored choice out of the cookie string", () => {
+    expect(clientTheme(`${THEME_COOKIE}=light`)).toBe("light");
+    expect(clientTheme(`${THEME_COOKIE}=dark`)).toBe("dark");
+    expect(clientTheme(`a=1; ${THEME_COOKIE}=light; b=2`)).toBe("light");
   });
 
-  it("falls back to the server-resolved value when nothing is stored", () => {
-    expect(themeOnMount(null, "system")).toBe("system");
-    expect(themeOnMount("", "dark")).toBe("dark");
-    expect(themeOnMount("unrelated=1", "light")).toBe("light");
+  it("treats 'nothing stored' as system — never a server-rendered value", () => {
+    // The removed fallback took a preference resolved on the server. That
+    // value is stale the moment the user chooses (a layout is not
+    // re-rendered on a cookie write or a client navigation), so a control
+    // remounting later re-applied the page-load theme. "system" is the
+    // only correct answer when the cookie is absent.
+    expect(clientTheme(null)).toBe("system");
+    expect(clientTheme("")).toBe("system");
+    expect(clientTheme("unrelated=1")).toBe("system");
   });
 
-  it("is idempotent when the two agree — the normal render", () => {
-    for (const value of ["system", "light", "dark"] satisfies ThemePreference[]) {
-      expect(themeOnMount(`${THEME_COOKIE}=${value}`, value)).toBe(value);
-    }
+  it("does not mistake an already-parsed preference for a cookie string", () => {
+    // The exact regression: readStoredTheme() returns "light", which was
+    // then handed to a parser looking for `fl_theme=…`, matched nothing,
+    // and fell through to the stale server value. The parameter is branded
+    // so this no longer type-checks; the behaviour is pinned here too.
+    expect(clientTheme("light")).toBe("system");
   });
 });
