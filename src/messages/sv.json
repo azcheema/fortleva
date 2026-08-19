@@ -522,7 +522,6 @@
       "clientVisibleWarning": "Alla med portalåtkomst hos den här kunden kommer kunna öppna filen.",
       "step": "Steg {step} av {total}",
       "progressLabel": "Uppladdningsförlopp",
-      "tenantScope": "Filer som laddas upp här tillhör arbetsytan och kan inte delas med en kund.",
       "choose": "Välj fil"
     },
     "errors": {

@@ -522,7 +522,6 @@
       "clientVisibleWarning": "Anyone with portal access at this client will be able to open this file.",
       "step": "Step {step} of {total}",
       "progressLabel": "Upload progress",
-      "tenantScope": "Files uploaded here belong to the workspace and cannot be shared with a client.",
       "choose": "Choose file"
     },
     "errors": {
