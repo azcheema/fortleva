@@ -132,7 +132,14 @@ export default async function MembersPage() {
                   <TableHead>{t("columns.member")}</TableHead>
                   <TableHead priority="low">{t("columns.email")}</TableHead>
                   <TableHead>{t("columns.roles")}</TableHead>
-                  <TableHead>{t("columns.status")}</TableHead>
+                  {/* medium: at 390px this column pushed a row's actions
+                      34px past the table's visible box the moment the
+                      table held a member who was not the viewer (the
+                      self row renders no actions, which is why a
+                      one-member fixture never saw it). A suspended
+                      member still reads on a phone — the name is muted
+                      — and the badge returns at ≥640px. */}
+                  <TableHead priority="medium">{t("columns.status")}</TableHead>
                   <TableHead className="w-0 text-right">
                     <span className="sr-only">{tCommon("actions")}</span>
                   </TableHead>
@@ -178,7 +185,7 @@ export default async function MembersPage() {
                           canManage={data.canManageRoles}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell priority="medium">
                         <StatusBadge domain="memberStatus" value={m.status} />
                       </TableCell>
                       <TableCell className="text-right">
