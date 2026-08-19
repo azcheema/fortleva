@@ -91,6 +91,17 @@ export type E2ESeed = {
    */
   readonly inviteToken: string;
   readonly inviteEmail: string;
+
+  /* ── Member-plane scoping fixture (e2e/scoping.spec.ts) ─────────────
+   * An employee — the template role WITHOUT client:view_all — assigned
+   * to exactly one client. The long-name client and its completed
+   * project double as the forbidden targets: the employee holds no
+   * assignment there, so reaching them must be a 404. The password is
+   * worthless the moment teardown deletes the tenant, is never printed,
+   * and lives only in the gitignored seed file (same contract as
+   * inviteToken above). */
+  readonly employeeEmail: string;
+  readonly employeePassword: string;
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -102,6 +113,7 @@ async function provision(seedFile: string): Promise<void> {
   const { hashPassword } = await import("better-auth/crypto");
   const { getPlatformClient } = await import("../../src/db/client");
   const { provisionTenant } = await import("../../src/members/provisioning");
+  const { assignMemberToClient } = await import("../../src/clients/assignments");
   const { archiveClient, createClient, createContact, updateClient } = await import(
     "../../src/clients/service"
   );
@@ -304,6 +316,43 @@ async function provision(seedFile: string): Promise<void> {
     },
   });
 
+  // ── Member-plane scoping fixture ───────────────────────────────────
+  // A real employee: sign-in-capable (verified email + credential
+  // account, exactly like the owner above), holding the Employee
+  // template role — the one WITHOUT client:view_all — and one client
+  // assignment, written through the real service so the fixture walks
+  // the same requireAccess → assertInScope → audit path a member would.
+  const employeeEmail = `e2e-employee-${run}${EMAIL_DOMAIN}`;
+  const employeePassword = randomBytes(24).toString("base64url");
+  const employeeUser = await db.user.create({
+    data: { name: "E2E Employee", email: employeeEmail, emailVerified: true, locale: "en" },
+  });
+  await db.account.create({
+    data: {
+      userId: employeeUser.id,
+      providerId: "credential",
+      accountId: employeeUser.id,
+      password: await hashPassword(employeePassword),
+    },
+  });
+  const employeeMember = await db.member.create({
+    data: { tenantId, userId: employeeUser.id, title: null },
+  });
+  const employeeRole = await db.role.findFirst({
+    where: { tenantId, templateKey: "employee" },
+    select: { id: true },
+  });
+  if (!employeeRole) throw new Error("provisionTenant seeded no employee role");
+  await db.memberRole.create({
+    data: { tenantId, memberId: employeeMember.id, roleId: employeeRole.id },
+  });
+  await assignMemberToClient({
+    tenantId,
+    actor: ctx.actor,
+    memberId: employeeMember.id,
+    clientId,
+  });
+
   const clientVisibleDocName = `e2e-shared-${run}.txt`;
   const internalDocName = `e2e-private-${run}.txt`;
   const seed: E2ESeed = {
@@ -333,6 +382,8 @@ async function provision(seedFile: string): Promise<void> {
     projectDocId: await document(`e2e-projekt-${run}.txt`, "CLIENT_VISIBLE", { projectId }),
     inviteToken,
     inviteEmail,
+    employeeEmail,
+    employeePassword,
   };
 
   mkdirSync(dirname(seedFile), { recursive: true });
