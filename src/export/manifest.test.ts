@@ -116,7 +116,28 @@ describe("buildManifest", () => {
   });
 
   it("file paths inside the zip are opaque-id scoped and sanitised", () => {
-    expect(filePathFor("abc", "../../evil name.pdf")).toBe("files/abc/.._.._evil name.pdf");
+    // Path separators die, and a leading run of dots cannot survive as
+    // a traversal — the entry stays inside its opaque-id directory.
+    expect(filePathFor("abc", "../../evil name.pdf")).toBe("files/abc/_.._evil name.pdf");
     expect(filePathFor("abc", null)).toBe("files/abc/abc");
+    // Windows-reserved characters and control characters are replaced.
+    expect(filePathFor("abc", 'a<b>:c"d|e?f*.pdf')).toBe("files/abc/a_b__c_d_e_f_.pdf");
+    expect(filePathFor("abc", "tab\there.txt")).toBe("files/abc/tab_here.txt");
+    // Windows strips trailing dots and spaces on extraction — so do we.
+    expect(filePathFor("abc", "report. ")).toBe("files/abc/report");
+    // A name that sanitises to nothing falls back to the opaque id.
+    expect(filePathFor("abc", "..")).toBe("files/abc/abc");
+  });
+
+  it("Swedish and other Unicode file names round-trip intact", () => {
+    // The continuity archive of a Swedish product must not flatten
+    // å/ä/ö (zip has carried UTF-8 entry names via GP bit 11 since
+    // 2007; fflate sets it automatically for non-ASCII names).
+    expect(filePathFor("abc", "Matte läxa 1.pdf")).toBe("files/abc/Matte läxa 1.pdf");
+    expect(filePathFor("abc", "Årsredovisning 2026 – utkast.pdf")).toBe(
+      "files/abc/Årsredovisning 2026 – utkast.pdf",
+    );
+    // Decomposed input (a + U+0308) normalises to the composed form.
+    expect(filePathFor("abc", "läxa.txt")).toBe("files/abc/läxa.txt");
   });
 });

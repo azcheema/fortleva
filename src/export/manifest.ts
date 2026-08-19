@@ -89,9 +89,21 @@ export type ExportManifest = {
 
 export const dataPathFor = (table: string): string => `data/${table}.jsonl`;
 
-/** Zip-safe file name: opaque id directory + sanitised original name. */
+/**
+ * Zip-safe file name: opaque id directory + sanitised original name.
+ * The name keeps its Unicode — å/ä/ö must round-trip in a Swedish
+ * product's continuity archive, and fflate flags non-ASCII entry names
+ * UTF-8 (zip GP bit 11). Only what genuinely cannot travel is replaced:
+ * path separators and the characters Windows refuses in file names,
+ * control characters, and leading/trailing dots or spaces (Windows
+ * strips them on extraction; a bare ".." must never survive as a name).
+ */
 export const filePathFor = (fileObjectId: string, originalFilename: string | null): string => {
-  const base = (originalFilename ?? fileObjectId).replace(/[^A-Za-z0-9._ -]/g, "_").slice(0, 120);
+  const base = (originalFilename ?? fileObjectId)
+    .normalize("NFC")
+    .replace(/[<>:"/\\|?*]|\p{Cc}/gu, "_")
+    .slice(0, 120)
+    .replace(/^[\s.]+|[\s.]+$/g, "");
   return `files/${fileObjectId}/${base || fileObjectId}`;
 };
 
