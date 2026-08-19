@@ -315,21 +315,31 @@ export function MilestoneItem({
  * a real labelled control — read-first editing is for values that
  * already exist.
  */
-function VisibilityNativeSelect({ value, id }: { value: "INTERNAL" | "CLIENT_VISIBLE"; id?: string }) {
+function VisibilityNativeSelect({
+  value,
+  onChange,
+  id,
+  disabled,
+}: {
+  value: "INTERNAL" | "CLIENT_VISIBLE";
+  onChange: (value: "INTERNAL" | "CLIENT_VISIBLE") => void;
+  id?: string;
+  disabled?: boolean;
+}) {
   const t = useTranslations("visibility");
-  const [current, setCurrent] = useState(value);
   return (
     <NativeSelect
       id={id}
       name="visibility"
-      value={current}
-      data-visibility={current}
+      value={value}
+      data-visibility={value}
       aria-label={t("label")}
+      disabled={disabled}
       className={cn(
-        current === "CLIENT_VISIBLE" &&
+        value === "CLIENT_VISIBLE" &&
           "border-vis-client-border bg-vis-client font-semibold text-vis-client-fg",
       )}
-      onChange={(e) => setCurrent(e.target.value === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL")}
+      onChange={(e) => onChange(e.target.value === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL")}
     >
       <option value="INTERNAL">{t("internal")}</option>
       <option value="CLIENT_VISIBLE">{t("clientVisible")}</option>
@@ -341,7 +351,21 @@ function VisibilityNativeSelect({ value, id }: { value: "INTERNAL" | "CLIENT_VIS
 export function CreateMilestoneForm({ projectId, projectKey }: { projectId: string; projectKey: string }) {
   const t = useTranslations("projects.timeline");
   const tVis = useTranslations("visibility");
-  const [state, action, pending] = useActionState<FormResult | null, FormData>(createMilestoneAction, null);
+  // The form owns the visibility state (the standing trap: a control
+  // holding its own defaulted state desyncs from a form reset). On
+  // success the action wrapper re-seeds it to INTERNAL — the safe
+  // default — so the DOM, the React state and the warm styling can
+  // never disagree. On failure it keeps the member's choice: a failed
+  // action must never look like a revert.
+  const [visibility, setVisibility] = useState<"INTERNAL" | "CLIENT_VISIBLE">("INTERNAL");
+  const [state, action, pending] = useActionState<FormResult | null, FormData>(
+    async (prev, formData) => {
+      const result = await createMilestoneAction(prev, formData);
+      if (result?.ok) setVisibility("INTERNAL");
+      return result;
+    },
+    null,
+  );
   const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -376,7 +400,7 @@ export function CreateMilestoneForm({ projectId, projectKey }: { projectId: stri
         <Input id="ms-due" name="dueAt" type="date" className="num" disabled={pending} />
       </Field>
       <Field label={tVis("label")} htmlFor="ms-vis">
-        <VisibilityNativeSelect id="ms-vis" value="INTERNAL" />
+        <VisibilityNativeSelect id="ms-vis" value={visibility} onChange={setVisibility} disabled={pending} />
       </Field>
       <Button type="submit" disabled={pending}>
         <PlusIcon />
