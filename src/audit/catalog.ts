@@ -124,6 +124,25 @@ export const AUDIT_EVENTS = {
   "continuity_box.opened": TENANT,
   "continuity_box.download_issued": TENANT,
   "continuity_box.closed": TENANT,
+  // Work (Phase 2W — privileged transitions only; routine field edits
+  // live in WorkItemActivity, never here)
+  "work_item.created": TENANT,
+  "work_item.deleted": TENANT,
+  "work_item.state_changed": TENANT,
+  "work_item.visibility_changed": TENANT,
+  "work_item.triaged": TENANT,
+  "work_item.archived": TENANT,
+  "work_item.bulk_edited": TENANT,
+  "comment.deleted": TENANT,
+  "comment.visibility_changed": TENANT,
+  "workflow.changed": TENANT,
+  "label.created": TENANT,
+  "label.deleted": TENANT,
+  "project_template.applied": TENANT,
+  "notification.preference_changed": TENANT,
+  "search.index_rebuilt": TENANT,
+  // System jobs: ONE summary event per run (TENANCY §12 amendment)
+  "job.run": PLATFORM,
   // Platform plane
   "tenant.provisioned": PLATFORM,
   "tenant.suspended": PLATFORM,

@@ -15,12 +15,13 @@ describe("clone code sets (AUTHZ.md §3.5: ✦ never auto-propagates to clones)"
     }
   });
 
-  it("an owner clone lacks exactly the ✦ set", () => {
+  it("an owner clone lacks exactly the ✦ set (deprecated codes seed nowhere)", () => {
     const clone = new Set(cloneCodesForTemplate("owner"));
     const mfa = PERMISSIONS.filter((p) => p.requiresMfa).map((p) => p.code);
     expect(mfa.length).toBeGreaterThan(0);
     for (const code of mfa) expect(clone.has(code)).toBe(false);
-    expect(clone.size + mfa.length).toBe(PERMISSIONS.length);
+    const live = PERMISSIONS.filter((p) => !p.deprecated);
+    expect(clone.size + mfa.length).toBe(live.length);
   });
 });
 

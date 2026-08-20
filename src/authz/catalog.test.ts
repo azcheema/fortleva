@@ -8,9 +8,21 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 63 codes, all unique", () => {
-    expect(PERMISSIONS).toHaveLength(63);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(63);
+  it("holds exactly 80 codes, all unique (63 v1 + 17 work @ 2W — bumped deliberately 2026-08-20)", () => {
+    expect(PERMISSIONS).toHaveLength(80);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(80);
+  });
+
+  it("the deprecated set is exactly issue:* — unseeded everywhere, rows kept (first §3.1 deprecation)", () => {
+    const deprecated = PERMISSIONS.filter((p) => p.deprecated);
+    expect(deprecated.map((p) => p.code).sort()).toEqual([
+      "issue:comment",
+      "issue:create",
+      "issue:delete",
+      "issue:edit",
+      "issue:view",
+    ]);
+    for (const p of deprecated) expect(p.seeded, p.code).toEqual([]);
   });
 
   it("codes are resource:verb — colon namespace, never dots", () => {
@@ -45,8 +57,9 @@ describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
 });
 
 describe("role templates (AUTHZ.md §3.3, B6 accepted 2026-08-08)", () => {
-  it("owner is seeded with every code — no owner bypass exists anywhere", () => {
-    expect(permissionsForTemplate("owner")).toHaveLength(PERMISSIONS.length);
+  it("owner is seeded with every non-deprecated code — no owner bypass exists anywhere", () => {
+    const live = PERMISSIONS.filter((p) => !p.deprecated);
+    expect(permissionsForTemplate("owner")).toHaveLength(live.length);
   });
 
   it("templateKey identities are canonical; CEO is only a display name", () => {

@@ -376,7 +376,10 @@
       "issues": "Ärenden",
       "documentation": "Dokumentation",
       "continuity_box": "Kontinuitetsbox",
-      "portal": "Portal"
+      "portal": "Portal",
+      "work": "Arbete",
+      "time": "Tid",
+      "vault": "Valv"
     },
     "save": "Spara behörigheter",
     "saving": "Sparar…",
@@ -442,7 +445,10 @@
         "issues": "Ärenden",
         "documentation": "Dokumentation",
         "continuity_box": "Kontinuitetsbox",
-        "portal": "Kundportal"
+        "portal": "Kundportal",
+        "work": "Arbete",
+        "time": "Tid",
+        "vault": "Valv"
       },
       "moduleHints": {
         "invoicing": "Fakturor, kreditnotor och betalningsuppföljning (fas 4).",
@@ -451,7 +457,10 @@
         "issues": "Ärendemottagning och uppföljning (går upp i Arbete).",
         "documentation": "Dokumentationssidor riktade till kunden.",
         "continuity_box": "Förseglad kontinuitetsbox per kund (fas 8).",
-        "portal": "Kundfönstret: delade milstolpar, filer, uppdateringar och förfrågningar (fas 3)."
+        "portal": "Kundfönstret: delade milstolpar, filer, uppdateringar och förfrågningar (fas 3).",
+        "work": "Uppgifter, tavlor och backloggar för varje projekt (fas 2W).",
+        "time": "Arbetspass, tidtagning, avtal och tidrapporter (fas 2T).",
+        "vault": "Uppgiftsvalv och tillgångsregister per kund (fas 3V)."
       },
       "regional": "Språk och region",
       "regionalDescription": "Hur datum, veckor och språk visas för alla här. Varje fält sparas så snart det ändras.",

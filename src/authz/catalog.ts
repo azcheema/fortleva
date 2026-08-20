@@ -17,10 +17,13 @@ export const MODULES = [
   "invoicing",
   "contracts",
   "reports",
-  "issues",
+  "issues", // deprecated alias (2026-08-16: absorbed by `work`) — codes stay, unseeded from TEMPLATE_VERSION 2
   "documentation",
   "continuity_box",
   "portal",
+  "work", // 2W
+  "time", // 2T
+  "vault", // 3V
 ] as const;
 
 export type Module = (typeof MODULES)[number];
@@ -32,8 +35,13 @@ export type PermissionDef = {
   readonly module: Module;
   readonly description: string;
   readonly requiresMfa: boolean;
-  /** Which role templates seed this permission (owner always does). */
+  /** Which role templates seed this permission (owner always does,
+   * except deprecated codes — those seed nowhere from their
+   * deprecation's TEMPLATE_VERSION on). */
   readonly seeded: readonly TemplateKey[];
+  /** Immutable-forever codes are deprecated, never renamed or removed
+   * (AUTHZ.md §3.1 — first use: issue:* at TEMPLATE_VERSION 2). */
+  readonly deprecated?: true;
 };
 
 const CMAE: readonly TemplateKey[] = ["owner", "manager", "admin", "employee"];
@@ -89,11 +97,16 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("document:edit", "documentation", "Rename, move, tag, upload new version", CMAE),
   p("document:delete", "documentation", "Delete documents", CMA),
   p("document:change_visibility", "documentation", "Flip internal/client-visible — audited", CMA),
-  p("issue:view", "issues", "View issues", CMAE),
-  p("issue:create", "issues", "Create issues (also on behalf of a contact)", CMAE),
-  p("issue:edit", "issues", "Triage: type, priority, status, assignee, link to release", CME),
-  p("issue:comment", "issues", "Comment on issues", CMAE),
-  p("issue:delete", "issues", "Delete issues", CM),
+  // DEPRECATED 2026-08-16 (work-management plan; the first §3.1
+  // deprecation): Issue was absorbed by WorkItem(kind=REQUEST) +
+  // polymorphic Comment. Codes are immutable so the rows stay, but they
+  // seed NOWHERE from TEMPLATE_VERSION 2 (B3 propagation is additive —
+  // existing grants survive until a tenant revokes them).
+  { ...p("issue:view", "issues", "DEPRECATED — absorbed by work_item:view", []), deprecated: true },
+  { ...p("issue:create", "issues", "DEPRECATED — absorbed by work_item:create", []), deprecated: true },
+  { ...p("issue:edit", "issues", "DEPRECATED — absorbed by work_item:edit / work_item:triage", []), deprecated: true },
+  { ...p("issue:comment", "issues", "DEPRECATED — absorbed by comment:create", []), deprecated: true },
+  { ...p("issue:delete", "issues", "DEPRECATED — absorbed by work_item:delete", []), deprecated: true },
   p("report:view", "reports", "View performance reports / CrUX charts", CMAE),
   p("report:upload", "reports", "Upload report data files", CMA),
   p("report:delete", "reports", "Delete reports", CM),
@@ -116,6 +129,25 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("settings:manage_modules", "core", "Toggle tenant module switches", C, true),
   p("audit:view", "core", "View the tenant's own audit log", CA),
   p("tenant:export", "core", "Full tenant data export", C, true),
+  // ── Phase 2W (module `work`, +17; catalog 63 → 80; TEMPLATE_VERSION
+  // 2026-08-20 per AUTHZ.md §3.2.1) ─────────────────────────────────
+  p("work_item:view", "work", "View Tasks/Epics/Subtasks incl. activity, labels, collaborators, subtree", CMAE),
+  p("work_item:create", "work", "Create work items of any kind (portal REQUEST intake is brokered)", CMAE),
+  p("work_item:edit", "work", "Edit fields, state, rank, assignee, parent, milestone, archive/restore — scope-checked", CMAE),
+  p("work_item:delete", "work", "Hard-delete work items (subtree)", CM),
+  p("work_item:change_visibility", "work", "Flip INTERNAL/CLIENT_VISIBLE incl. bulk make-private — audited, the worst-bug surface", CMA),
+  p("work_item:triage", "work", "Accept / Decline / Duplicate / Snooze a REQUEST out of TRIAGE", CME),
+  p("workflow:manage", "work", "Edit a project's WorkflowStates and tenant WorkflowPresets (category immutable)", CMA),
+  p("label:manage", "work", "Create/rename/delete tenant labels", CMA),
+  p("comment:create", "work", "Comment on any commentable subject; edit/delete own comments", CMAE),
+  p("comment:edit_any", "work", "Edit other members' comments", CM),
+  p("comment:delete", "work", "Delete comments (any author)", CM),
+  p("comment:change_visibility", "work", "Flip comment visibility (child <= parent rule) — audited", CMA),
+  p("project_update:view", "work", "View ProjectUpdates incl. drafts and the internal snapshot", CMAE),
+  p("project_update:create", "work", "Draft and edit unpublished updates", CME),
+  p("project_update:publish", "work", "Publish (freezes seq + snapshots), archive", CM),
+  p("project_update:change_visibility", "work", "Flip update visibility — audited", CMA),
+  p("project_template:manage", "work", "Create/edit/delete ProjectTemplates; save project as template", CMA),
 ];
 
 export type RoleTemplate = {
@@ -150,8 +182,9 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
 ] as const;
 
 /** Current template generation (Role.templateVersion) — bump on any
- * template change so B3 additive propagation knows what to reconcile. */
-export const TEMPLATE_VERSION = 1;
+ * template change so B3 additive propagation knows what to reconcile.
+ * v2 (2026-08-20): +17 `work` codes; issue:* unseeded (deprecated). */
+export const TEMPLATE_VERSION = 2;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

@@ -376,7 +376,10 @@
       "issues": "Issues",
       "documentation": "Documentation",
       "continuity_box": "Continuity box",
-      "portal": "Portal"
+      "portal": "Portal",
+      "work": "Work",
+      "time": "Time",
+      "vault": "Vault"
     },
     "save": "Save permissions",
     "saving": "Saving…",
@@ -442,7 +445,10 @@
         "issues": "Issues",
         "documentation": "Documentation",
         "continuity_box": "Continuity box",
-        "portal": "Client portal"
+        "portal": "Client portal",
+        "work": "Work",
+        "time": "Time",
+        "vault": "Vault"
       },
       "moduleHints": {
         "invoicing": "Invoices, credit notes and payment tracking (Phase 4).",
@@ -451,7 +457,10 @@
         "issues": "Issue intake and tracking (folds into Work).",
         "documentation": "Client-facing documentation pages.",
         "continuity_box": "Sealed continuity box for each client (Phase 8).",
-        "portal": "The client window: shared milestones, files, updates and requests (Phase 3)."
+        "portal": "The client window: shared milestones, files, updates and requests (Phase 3).",
+        "work": "Tasks, boards and backlogs for every project (Phase 2W).",
+        "time": "Shifts, timers, agreements and time reports (Phase 2T).",
+        "vault": "Per-client credential vault and asset registry (Phase 3V)."
       },
       "regional": "Language and region",
       "regionalDescription": "How dates, weeks and language read for everyone here. Each field saves as soon as it changes.",

@@ -15,7 +15,12 @@ import { deny } from "@/authz/errors";
 /** Versioned entitlements JSON on Tenant (DATA_MODEL.md §4). Defaults
  * are everything-on/unlimited until Stripe fills this in at Phase 7. */
 export const entitlementsSchema = z.object({
-  schemaVersion: z.literal(1).default(1),
+  // v2 (2026-08-20, DATA_MODEL §4 / plan §3.5): adds work/time/vault.
+  // The reader accepts BOTH versions — parseEntitlements falls back to
+  // the everything-on default on a parse failure, so a stored version
+  // the reader cannot parse would silently grant everything (fail-open);
+  // never ship a writer for a version before this union accepts it.
+  schemaVersion: z.union([z.literal(1), z.literal(2)]).default(2),
   planCode: z.string().default("dev-unlimited"),
   source: z.enum(["stripe", "manual_override"]).default("manual_override"),
   modules: z
@@ -23,10 +28,13 @@ export const entitlementsSchema = z.object({
       invoicing: z.boolean().default(true),
       contracts: z.boolean().default(true),
       reports: z.boolean().default(true),
-      issues: z.boolean().default(true),
+      issues: z.boolean().default(true), // deprecated alias (absorbed by `work`); kept so stored v1 JSON parses
       documentation: z.boolean().default(true),
       continuity_box: z.boolean().default(true),
       portal: z.boolean().default(true),
+      work: z.boolean().default(true), // 2W
+      time: z.boolean().default(true), // 2T
+      vault: z.boolean().default(true), // 3V
     })
     .prefault({}),
   limits: z
