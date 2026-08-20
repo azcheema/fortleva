@@ -388,7 +388,10 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        test.setTimeout(300_000);
+        // ~35 stops × 3 navigations. Five minutes next to the database; on
+        // CI (US runner, EU database — ~10 s a stop on a slow evening) the
+        // same walk needs three times that.
+        test.setTimeout(process.env["CI"] ? 900_000 : 300_000);
         const seed = requireSeed();
         const all = stops(seed);
         const findings: Finding[] = [];

@@ -97,7 +97,11 @@ export function QuickStart({
       }
       const { startedId, stoppedId, stoppedLabel } = r.value;
       if (stoppedId) {
+        // The toast IS the undo affordance: the server accepts the undo for
+        // UNDO_WINDOW_SECONDS (120 s); sonner's 4 s default vanished before a
+        // slow refresh even showed the new timer. 30 s is the visible window.
         toast.success(t("startedStopped", { label: stoppedLabel ?? "" }), {
+          duration: 30_000,
           action: {
             label: t("undo"),
             onClick: () => {
