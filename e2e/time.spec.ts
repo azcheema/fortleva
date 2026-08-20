@@ -15,6 +15,11 @@ import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 let seed!: E2ESeed;
 
+// Timer start / clock-in are a server action plus a full refresh of
+// /time — dozens of queries. Stated for the fast path; on CI (US runner,
+// EU database) the same waits get three times the leash.
+const SLOW = process.env["CI"] ? 3 : 1;
+
 test.beforeAll(() => {
   seed = requireSeed();
 });
@@ -30,7 +35,7 @@ async function acknowledgeNoticeIfShown(page: Page): Promise<void> {
   const ack = page.getByTestId("notice-acknowledge");
   if (await ack.isVisible().catch(() => false)) {
     await ack.click();
-    await expect(ack).toHaveCount(0, { timeout: 15_000 });
+    await expect(ack).toHaveCount(0, { timeout: 15_000 * SLOW });
   }
 }
 
@@ -38,7 +43,7 @@ async function stopIfRunning(page: Page): Promise<void> {
   const stop = stopButton(page);
   if (await stop.isVisible().catch(() => false)) {
     await stop.click();
-    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 });
+    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
   }
 }
 
@@ -53,18 +58,18 @@ test.describe("my time (owner)", () => {
   test("an instant task: quick start → the pill ticks → stop → the row is in the week", async ({ page }) => {
     await page.getByTestId("quick-start-description").fill("E2E instant task");
     await page.getByTestId("quick-start-start").click();
-    await expect(pill(page)).toBeVisible({ timeout: 15_000 });
+    await expect(pill(page)).toBeVisible({ timeout: 15_000 * SLOW });
     await expect(pill(page)).toContainText("E2E instant task");
 
     // The elapsed clock moves (1 Hz from the server start instant).
     const elapsed = elapsedClock(page);
     const before = await elapsed.textContent();
-    await expect.poll(async () => elapsed.textContent(), { timeout: 5_000 }).not.toBe(before);
+    await expect.poll(async () => elapsed.textContent(), { timeout: 5_000 * SLOW }).not.toBe(before);
     // The tab title mirrors it.
-    await expect.poll(async () => page.title(), { timeout: 5_000 }).toMatch(/^\d+:\d\d:\d\d · /);
+    await expect.poll(async () => page.title(), { timeout: 5_000 * SLOW }).toMatch(/^\d+:\d\d:\d\d · /);
 
     await stopButton(page).click();
-    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 });
+    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
     const row = page.getByTestId("time-entry-row").filter({ hasText: "E2E instant task" });
     await expect(row.first()).toBeVisible();
     await expect(row.first()).toContainText("Not billable");
@@ -74,38 +79,38 @@ test.describe("my time (owner)", () => {
     await page.getByTestId("quick-start-project").selectOption(seed.projectId);
     await page.getByTestId("quick-start-description").fill("E2E project work");
     await page.getByTestId("quick-start-start").click();
-    await expect(pill(page)).toContainText(seed.projectKey, { timeout: 15_000 });
+    await expect(pill(page)).toContainText(seed.projectKey, { timeout: 15_000 * SLOW });
 
     await page.getByTestId("quick-start-description").fill("E2E second timer");
     await page.getByTestId("quick-start-start").click();
     const toast = page.getByText(/was stopped/);
-    await expect(toast).toBeVisible({ timeout: 15_000 });
+    await expect(toast).toBeVisible({ timeout: 15_000 * SLOW });
     await expect(pill(page)).toContainText("E2E second timer");
 
     await page.getByRole("button", { name: "Undo" }).click();
-    await expect(pill(page)).toContainText(seed.projectKey, { timeout: 15_000 });
+    await expect(pill(page)).toContainText(seed.projectKey, { timeout: 15_000 * SLOW });
     await expect(pill(page)).not.toContainText("E2E second timer");
 
     await stopButton(page).click();
-    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 });
+    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
   });
 
   test("shift: clock in, a break stops the running timer, clock out", async ({ page }) => {
     await page.getByTestId("quick-start-description").fill("E2E before break");
     await page.getByTestId("quick-start-start").click();
-    await expect(pill(page)).toBeVisible({ timeout: 15_000 });
+    await expect(pill(page)).toBeVisible({ timeout: 15_000 * SLOW });
 
     await page.getByTestId("shift-clock-in").click();
-    await expect(page.getByText("Clocked in", { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Clocked in", { exact: true })).toBeVisible({ timeout: 15_000 * SLOW });
     await page.getByTestId("shift-start-break").click();
-    await expect(page.getByText(/the running timer was stopped/)).toBeVisible({ timeout: 15_000 });
-    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/the running timer was stopped/)).toBeVisible({ timeout: 15_000 * SLOW });
+    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
     await expect(page.getByText("On break", { exact: true })).toBeVisible();
 
     await page.getByTestId("shift-end-break").click();
-    await expect(page.getByText("Clocked in", { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Clocked in", { exact: true })).toBeVisible({ timeout: 15_000 * SLOW });
     await page.getByTestId("shift-clock-out").click();
-    await expect(page.getByText("Clocked out", { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Clocked out", { exact: true })).toBeVisible({ timeout: 15_000 * SLOW });
   });
 
   test("a typed duration entry lands in the week grid", async ({ page }) => {
@@ -113,7 +118,7 @@ test.describe("my time (owner)", () => {
     await page.getByTestId("new-entry-description").fill("E2E manual entry");
     await page.getByTestId("new-entry-submit").click();
     const row = page.getByTestId("time-entry-row").filter({ hasText: "E2E manual entry" });
-    await expect(row.first()).toBeVisible({ timeout: 15_000 });
+    await expect(row.first()).toBeVisible({ timeout: 15_000 * SLOW });
     await expect(row.first()).toContainText("1h 30m");
   });
 });

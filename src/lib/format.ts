@@ -65,33 +65,31 @@ export const formatPercent = (locale: string, ratio: number, fractionDigits = 0)
 
 /* -------------------------------------------------------------- *
  * Durations — three formats, never mixed inside one column
+ *
+ * Deliberately NOT Intl.DurationFormat. It exists in Chromium and in
+ * Node ≥ 23 but not in Node 22, and it renders { minutes: 0 } as "" —
+ * so a server without it and a browser with it emit different bytes for
+ * the same value, which React reports as a hydration mismatch (#418) on
+ * every page with a 0-minute row (CI, 2026-08-20: /time and /time/team
+ * straight after a timer was started and stopped). Intl.NumberFormat's
+ * unit style exists everywhere, prints "0m" for zero, and was checked
+ * byte-for-byte equal between Node and Chromium for en and sv.
  * -------------------------------------------------------------- */
 
-type DurationFormatLike = { format: (parts: Record<string, number>) => string };
-
-const hasDurationFormat = (): boolean =>
-  typeof (Intl as { DurationFormat?: unknown }).DurationFormat === "function";
-
-function durationFormat(locale: string, style: "narrow" | "digital"): DurationFormatLike | null {
-  if (!hasDurationFormat()) return null;
-  return memo(`d:${locale}:${style}`, () => {
-    const Ctor = (Intl as unknown as { DurationFormat: new (l: string, o: unknown) => DurationFormatLike })
-      .DurationFormat;
-    return style === "narrow"
-      ? new Ctor(locale, { style: "narrow" })
-      : new Ctor(locale, { style: "digital", hoursDisplay: "always", secondsDisplay: "auto" });
-  });
+function unitFormat(locale: string, unit: "hour" | "minute") {
+  return memo(`u:${locale}:${unit}`, () =>
+    new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "narrow" }),
+  );
 }
 
-/** Lists and chips: "1h 30m". Ten-line fallback where Intl.DurationFormat is missing. */
+/** Lists and chips: "1h 30m" / "45m" / "2h" — never an empty string. */
 export function formatDurationHm(locale: string, minutes: number): string {
   const total = Math.max(0, Math.round(minutes));
   const hours = Math.floor(total / 60);
   const mins = total % 60;
-  const fmt = durationFormat(locale, "narrow");
-  if (fmt) return fmt.format(hours ? { hours, minutes: mins } : { minutes: mins });
-  if (!hours) return `${mins}m`;
-  return mins ? `${hours}h ${mins}m` : `${hours}h`;
+  if (!hours) return unitFormat(locale, "minute").format(mins);
+  const h = unitFormat(locale, "hour").format(hours);
+  return mins ? `${h} ${unitFormat(locale, "minute").format(mins)}` : h;
 }
 
 /** A running timer: "0:07:05". Re-rendered once per second, never animated. */
@@ -100,10 +98,9 @@ export function formatDurationClock(locale: string, seconds: number): string {
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const secs = total % 60;
-  const fmt = durationFormat(locale, "digital");
-  if (fmt) return fmt.format({ hours, minutes, seconds: secs });
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${hours}:${pad(minutes)}:${pad(secs)}`;
+  const one = numberFormat(locale, { useGrouping: false });
+  const two = numberFormat(locale, { minimumIntegerDigits: 2, useGrouping: false });
+  return `${one.format(hours)}:${two.format(minutes)}:${two.format(secs)}`;
 }
 
 /** Decimal hours — ONLY where the value multiplies a rate: "1,5 h". */
