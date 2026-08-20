@@ -264,13 +264,18 @@ export function BacklogTable({
   );
 }
 
-/** Title-only create (UI rule 2): one field, Enter creates and keeps
- * focus for the next one. Deliberately not a <form action> — the value
- * is cleared by us on success, never reset by React mid-flight. */
+/** Title-only create (UI rules 2 + 3): AT REST this row is a button —
+ * an always-mounted input in a resting row is the defect the founder
+ * mandate exists to prevent (and the visual audit fails on it).
+ * Activating swaps in the focused field; Enter creates and STAYS open
+ * for the next title; Escape or an empty blur returns to rest.
+ * Deliberately not a <form action> — we clear the value on success,
+ * React never resets it mid-flight. */
 function CreateRow({ projectId, projectKey }: { projectId: string; projectKey: string }) {
   const t = useTranslations("projects.backlog");
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -298,21 +303,38 @@ function CreateRow({ projectId, projectKey }: { projectId: string; projectKey: s
         <PlusIcon className="size-3.5" />
       </TableCell>
       <TableCell colSpan={6}>
-        <Input
-          ref={inputRef}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder={t("createPlaceholder")}
-          aria-label={t("createLabel")}
-          disabled={pending}
-          className="h-7 border-none bg-transparent px-1 shadow-none focus-visible:ring-1"
-        />
+        {editing ? (
+          <Input
+            ref={inputRef}
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              } else if (e.key === "Escape") {
+                setTitle("");
+                setEditing(false);
+              }
+            }}
+            onBlur={() => {
+              if (title.trim() === "" && !pending) setEditing(false);
+            }}
+            placeholder={t("createPlaceholder")}
+            aria-label={t("createLabel")}
+            disabled={pending}
+            className="h-7 border-none bg-transparent px-1 shadow-none"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="flex h-7 w-full items-center rounded-md px-1 text-left text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {t("empty.action")}
+          </button>
+        )}
       </TableCell>
     </TableRow>
   );
