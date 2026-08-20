@@ -7,8 +7,9 @@ import { AuthzError } from "@/authz/errors";
 import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
-import { resolveTimeZone } from "@/i18n/resolve";
+import { resolveLocale, resolveTimeZone } from "@/i18n/resolve";
 import { localDateString } from "@/lib/duration";
+import { dateFormat } from "@/lib/format";
 import { addDays, isIsoDate, weekContaining } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listTeamShiftTotals, teamRollup } from "@/modules/time";
@@ -34,6 +35,7 @@ export default async function TimeTeamPage({ searchParams }: { searchParams: Pro
   const t = await getTranslations("time.team");
   const tCommon = await getTranslations("common");
   const timezone = await resolveTimeZone();
+  const locale = await resolveLocale();
   const sp = await searchParams;
   const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
     readPreferences(tx, membership.tenantId),
@@ -94,6 +96,9 @@ export default async function TimeTeamPage({ searchParams }: { searchParams: Pro
           shifts={data.shifts.map((s) => ({ ...s, localDate: s.localDate.toISOString().slice(0, 10) }))}
           durationStyle={prefs.durationStyle}
           days={week.days}
+          dayLabels={Object.fromEntries(
+            week.days.map((d) => [d, dateFormat(locale, { weekday: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`))]),
+          )}
         />
       </div>
     </Page>

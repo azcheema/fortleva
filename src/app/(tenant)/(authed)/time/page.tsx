@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { resolveLocale, resolveTimeZone } from "@/i18n/resolve";
 import { localDateString } from "@/lib/duration";
+import { dateFormat } from "@/lib/format";
 import { addDays, isIsoDate, weekContaining } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
@@ -49,6 +50,9 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
   const tCommon = await getTranslations("common");
   const locale = await resolveLocale();
   const timezone = await resolveTimeZone();
+  // Clock labels are formatted HERE, once, with the memoised server
+  // formatter — never in the client grid (see TimeWeek's note on ICU).
+  const clock = dateFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone: timezone, hourCycle: "h23" });
   const sp = await searchParams;
 
   const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
@@ -118,6 +122,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     stoppedAt: e.stoppedAt?.toISOString() ?? null,
     durationSeconds: e.durationSeconds,
     label: labelOf(e),
+    timeLabel: `${clock.format(e.startedAt)}–${e.stoppedAt ? clock.format(e.stoppedAt) : "…"}`,
     projectKey: e.project?.key ?? null,
     serviceName: e.service?.name ?? null,
     workTypeName: e.workType?.name ?? null,
@@ -127,6 +132,10 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     locked: e.lockedReason !== null,
     entryMode: e.entryMode,
   }));
+  // Day headings, formatted once here (server ICU only — see TimeWeek's note).
+  const dayLabels = Object.fromEntries(
+    week.days.map((d) => [d, dateFormat(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`))]),
+  );
 
   const toShift = (s: (typeof shifts)[number]): ShiftStripShift => ({
     id: s.id,
@@ -205,7 +214,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
           serverNow={serverNow}
           noticeRequired={noticeRequired}
         />
-        <TimeWeek days={week.days} entries={rows} durationStyle={prefs.durationStyle} timezone={timezone} />
+        <TimeWeek days={week.days} dayLabels={dayLabels} entries={rows} durationStyle={prefs.durationStyle} />
         {noticeRequired ? null : (
           <NewEntryForm today={today} projects={projects} workTypes={workTypes.map((w) => ({ id: w.id, name: w.name }))} />
         )}

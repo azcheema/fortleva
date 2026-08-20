@@ -30,23 +30,31 @@ export type TeamShiftDay = {
   shifts: number;
 };
 
-/** Two read-only tables: hours per member × project, and closed-shift day totals. */
+/**
+ * Two read-only tables: hours per member × project, and closed-shift day
+ * totals. Day headings arrive pre-formatted from the server: an Intl
+ * formatter built in a client component renders once in Node and once in
+ * the browser, and their ICU builds can disagree on `weekday: "short"` —
+ * a React #418 hydration mismatch (seen on CI). One string, one place.
+ */
 export function TeamTable({
   lines,
   shifts,
   durationStyle,
   days,
+  dayLabels,
 }: {
   lines: TeamLine[];
   shifts: TeamShiftDay[];
   durationStyle: DurationStyle;
   days: string[];
+  /** ISO date → server-formatted heading ("Thu 20"). */
+  dayLabels: Record<string, string>;
 }) {
   const t = useTranslations("time.team");
   const locale = useLocale();
   const fmt = (seconds: number) => formatDuration(locale, seconds / 60, durationStyle);
   const hasAmounts = lines.some((l) => l.amount !== null);
-  const dayFmt = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", timeZone: "UTC" });
 
   // Per-member totals for the footer-ish rows.
   const byMember = new Map<string, { name: string; seconds: number; billable: number; amount: number }>();
@@ -159,7 +167,7 @@ export function TeamTable({
                   <TableHead>{t("shifts.columns.member")}</TableHead>
                   {days.map((d) => (
                     <TableHead key={d} className="num text-right">
-                      {dayFmt.format(new Date(`${d}T00:00:00Z`))}
+                      {dayLabels[d] ?? d}
                     </TableHead>
                   ))}
                   <TableHead className="num text-right">{t("shifts.columns.total")}</TableHead>

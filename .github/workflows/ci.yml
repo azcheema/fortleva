@@ -89,8 +89,10 @@ jobs:
       group: isolation-db
       cancel-in-progress: false
     # The suite is ~15 min next to the database; on this link the first
-    # public run was still going at 25 min. 60 is a ceiling, not a target.
-    timeout-minutes: 60
+    # full run was still going at 60 min (every assertion waits on the
+    # database, and a failure retries). 120 is a ceiling, not a target —
+    # the US-region CI database (PLAN §0) is the real fix.
+    timeout-minutes: 120
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DIRECT_URL: ${{ secrets.DIRECT_URL }}

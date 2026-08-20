@@ -22,6 +22,8 @@ export type WeekEntryRow = {
   date: string;
   startedAt: string;
   stoppedAt: string | null;
+  /** "08:00–09:30" (or "08:00–…" while running) formatted on the SERVER — see the note in TimeWeek. */
+  timeLabel: string;
   durationSeconds: number | null;
   label: string;
   projectKey: string | null;
@@ -41,17 +43,25 @@ export type WeekEntryRow = {
  * one-click continue (D6) and a delete behind an inline confirm; overlap
  * (allow + flag), needs-review and locked are badges — locked rows say
  * why (D6 UX) and never mutate. Running entries show live elsewhere.
+ *
+ * Date and clock labels arrive PRE-FORMATTED from the server (`dayLabels`,
+ * `timeLabel`): an `Intl.DateTimeFormat` built here runs once in Node
+ * (SSR) and once in the browser (hydration), and the two ICU builds do
+ * not always agree on `weekday: "short"` order or separators — React
+ * #418 on every visit where they differ (first seen on CI: Node 22 vs
+ * Chromium). One formatter, one place, one string.
  */
 export function TimeWeek({
   days,
+  dayLabels,
   entries,
   durationStyle,
-  timezone,
 }: {
   days: string[];
+  /** ISO date → server-formatted heading ("Thu 20 Aug"), built with @/lib/format. */
+  dayLabels: Record<string, string>;
   entries: WeekEntryRow[];
   durationStyle: DurationStyle;
-  timezone: string;
 }) {
   const t = useTranslations("time.week");
   const tCommon = useTranslations("common");
@@ -69,8 +79,6 @@ export function TimeWeek({
     });
 
   const fmt = (seconds: number) => formatDuration(locale, seconds / 60, durationStyle);
-  const timeFmt = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone: timezone, hourCycle: "h23" });
-  const dayFmt = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
   const byDay = new Map<string, WeekEntryRow[]>();
   for (const e of entries) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]);
   const weekTotal = entries.reduce((s, e) => s + (e.durationSeconds ?? 0), 0);
@@ -104,7 +112,9 @@ export function TimeWeek({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[12ch]">{t("columns.time")}</TableHead>
+              {/* medium: at 390px the clock range is the column that yields, so the
+                  trailing verbs stay inside the table's visible box (UI.md §10.15 1). */}
+              <TableHead priority="medium" className="w-[12ch]">{t("columns.time")}</TableHead>
               <TableHead>{t("columns.what")}</TableHead>
               <TableHead priority="medium" className="w-[16ch]">{t("columns.agreement")}</TableHead>
               <TableHead priority="low" className="w-[14ch]">{t("columns.type")}</TableHead>
@@ -122,12 +132,16 @@ export function TimeWeek({
               const dayTotal = rows.reduce((s, e) => s + (e.durationSeconds ?? 0), 0);
               return (
                 <Fragment key={day}>
+                  {/* One cell spanning every column: a fixed colSpan + a separate total cell
+                      assumed all seven columns are visible, and on a phone (four hidden by
+                      priority) the total landed past the right edge. */}
                   <TableRow className="bg-muted/40">
-                    <TableCell colSpan={5} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {dayFmt.format(new Date(`${day}T00:00:00Z`))}
+                    <TableCell colSpan={7} className="text-xs font-semibold text-muted-foreground">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="uppercase tracking-wide">{dayLabels[day] ?? day}</span>
+                        <span className="num">{fmt(dayTotal)}</span>
+                      </div>
                     </TableCell>
-                    <TableCell className="num text-right text-xs font-semibold text-muted-foreground">{fmt(dayTotal)}</TableCell>
-                    <TableCell />
                   </TableRow>
                   {rows.map((e) => {
                     const running = e.stoppedAt === null;
@@ -146,10 +160,8 @@ export function TimeWeek({
                     ];
                     return (
                       <TableRow key={e.id} data-testid="time-entry-row" data-entry-id={e.id} className={cn(running && "bg-(--tone-success-bg)/30")}>
-                        <TableCell className="num text-muted-foreground">
-                          {e.entryMode === "DURATION"
-                            ? t("durationOnly")
-                            : `${timeFmt.format(new Date(e.startedAt))}–${e.stoppedAt ? timeFmt.format(new Date(e.stoppedAt)) : "…"}`}
+                        <TableCell priority="medium" className="num text-muted-foreground">
+                          {e.entryMode === "DURATION" ? t("durationOnly") : e.timeLabel}
                         </TableCell>
                         <TableCell>
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
