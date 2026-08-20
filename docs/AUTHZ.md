@@ -126,7 +126,7 @@ Seeding column: **C** = CEO (owner-equivalent), **M** = Manager, **A** = Admin, 
 
 ✦ = `requiresMfa` (see §7.5). **63 codes** *(erratum fixed 2026-08-08: prose previously said 64; the table above is normative and has always held 63 rows — verified mechanically at implementation time, and the CI catalog test asserts 63 — **at TEMPLATE_VERSION 1; from 2W the count grows per phase, see the running-count paragraph below**)*. `audit:view` and `tenant:export` sit outside the brief's enumerated module list but are required by §9 (tenant-facing audit log, export paths); they are `core`.
 
-**Amended 2026-08-16 (work-management plan) — running catalog count.** The v1 table above stays at 63 rows (the five deprecated `issue:*` rows are still rows). New codes are appended per phase in §3.2.1 below, and `src/authz/catalog.test.ts` pins the count and is **bumped deliberately in the same commit as the codes** — the bump is the reviewable event, never an incidental fixture change: **63 → 80** (Phase 2W, module `work`, +17) **→ 93** (Phase 2T, `time`, +13) **→ 94** (Phase 3, `portal`, +1) **→ 105** (Phase 3V, `vault`, +11) **→ 108** (Phase 4, +3) **→ 109** (Phase 6, +1). The ✦ set is pinned by the same test (§7.5).
+**Amended 2026-08-16 (work-management plan) — running catalog count.** The v1 table above stays at 63 rows (the five deprecated `issue:*` rows are still rows). New codes are appended per phase in §3.2.1 below, and `src/authz/catalog.test.ts` pins the count and is **bumped deliberately in the same commit as the codes** — the bump is the reviewable event, never an incidental fixture change: **63 → 80** (Phase 2W, module `work`, +17) **→ 96** (Phase 2T, `time`, +16 — *re-based 2026-08-20, founder time-tracking extensions: the 13 pinned codes + `time_report:manage` + `time_report:publish` + `work_type:manage`; shifts/breaks deliberately reuse the four `time:*` codes and add none*) **→ 97** (Phase 3, `portal`, +1) **→ 108** (Phase 3V, `vault`, +11) **→ 111** (Phase 4, +3) **→ 112** (Phase 6, +1). The ✦ set is pinned by the same test (§7.5).
 
 Notes on shape:
 
@@ -157,10 +157,10 @@ Same columns and seeding legend as the v1 table. "Scoped" now means filtered by 
 | `project_update:publish` | work | Publish (freezes `seq` + snapshots), archive | C M | scoped | 2W (UI Phase 3) |
 | `project_update:change_visibility` | work | Flip update visibility — audited | C M A | scoped | 2W (UI Phase 3) |
 | `project_template:manage` | work | Create/edit/delete `ProjectTemplate`s, "save project as template" | C M A | — | 2W |
-| `time:track` | time | Start/stop own timer; create/edit/delete/split **own unlocked** entries | C M A E | scoped | 2T |
-| `time:view_team` | time | See other members' entries and totals within scope (`/time/team`, per-member project tables) | C M | scoped | 2T |
-| `time:edit_any` | time | Edit other members' unlocked entries | C M | scoped | 2T |
-| `time:delete_any` | time | Delete other members' unlocked entries | C M | scoped | 2T |
+| `time:track` | time | Start/stop own timer; create/edit/delete/split **own unlocked** entries; *2026-08-20:* clock own shift in/out, record own breaks | C M A E | scoped | 2T |
+| `time:view_team` | time | See other members' entries and totals within scope (`/time/team`, per-member project tables); *2026-08-20:* + per-member shift/worked/break day totals — **closed rows only, never live presence** | C M | scoped | 2T |
+| `time:edit_any` | time | Edit other members' unlocked entries; *2026-08-20:* + their shifts/breaks (audited `shift.edited_by_other`) | C M | scoped | 2T |
+| `time:delete_any` | time | Delete other members' unlocked entries; *2026-08-20:* + their shifts | C M | scoped | 2T |
 | `time:manage_locks` | time | Set lock date; lock/unlock entries (`app.time_lock_bypass`, always audited) | C A | scoped | 2T |
 | `time:reprice` | time | Run the reprice command (`FROM_DATE` or `ALL_UNBILLED`) on unlocked entries — audited | C A | scoped | 2T |
 | `time:export` | time | CSV export of entries/rollups — cost columns never by default | C M A | scoped | 2T |
@@ -170,6 +170,9 @@ Same columns and seeding legend as the v1 table. "Scoped" now means filtered by 
 | `rate:manage_cost` | time | Create/close COST `RateCard` rows ✦ (step-up) | C | — | 2T |
 | `budget:view` | time | See `ProjectBudget` and burn | C M | scoped | 2T |
 | `budget:manage` | time | Create/edit budgets, thresholds, notify list | C M A | scoped | 2T |
+| `time_report:manage` | time | Create/generate/edit/archive `TimeReport` drafts (DATA_MODEL §6.15 D3) *(added 2026-08-20)* | C M | scoped | 2T |
+| `time_report:publish` | time | Publish/unpublish a `TimeReport` to the portal — immutable snapshot, audited *(added 2026-08-20)* | C M | scoped | 2T |
+| `work_type:manage` | time | Create/edit/archive tenant `WorkType` rows (DATA_MODEL §6.15 D5) *(added 2026-08-20)* | C M A | — | 2T |
 | `project:manage_portal` | portal | `Project.portalEnabled`, `hoursSharingMode`, task-list/kanban toggles, "View as client" — audited | C M | scoped | 3 |
 | `credential:view` | vault | List/detail `CredentialItem` metadata (masked; ciphertext never selected) | C M A E | scoped | 3V |
 | `credential:create` | vault | Create credential items (incl. secret) | C M A E | scoped | 3V |
@@ -425,7 +428,7 @@ Contacts get **capabilities, not permissions**. The capability universe is a har
 | `portal.comment.create` *(added 2026-08-16)* | Comment on a `CLIENT_VISIBLE` subject the contact can see — the one **contact-writable** row (`Comment` INSERT under RLS `WITH CHECK`), forced `CLIENT_VISIBLE`, `authorContactId = principal` | v1 (P3) |
 | `portal.update.view` *(added 2026-08-16)* | Read `PUBLISHED` + `CLIENT_VISIBLE` `ProjectUpdate`s and their `portalSnapshot` (never the internal snapshot, never drafts) | v1 (P3) |
 | `portal.timeline.view` *(added 2026-08-16)* | The derived Client Timeline (updates, milestone/version events, deliverable versions, approvals) | v1 (P3) |
-| `portal.hours.view` *(added 2026-08-16)* | The hours / billable-amount widget from `ProjectTimeSummary` when `Project.hoursSharingMode ≠ NONE` — **`CONTACT_PRIMARY` only**; never `time_entry`, never per member | v1 (P3) |
+| `portal.hours.view` *(added 2026-08-16; widened 2026-08-20)* | The hours / billable-amount widget from `ProjectTimeSummary` when `Project.hoursSharingMode ≠ NONE`, **plus published `TimeReport` snapshots** (DATA_MODEL §6.15 D3 — PUBLISHED + CLIENT_VISIBLE + portal-enabled only) — **`CONTACT_PRIMARY` only**; never `time_entry`, never per member, never an INTERNAL name (folded at generation) | v1 (P3) |
 | `portal.deliverable.approve` *(added 2026-08-16)* | Approve / request changes on a `CLIENT_VISIBLE` `Document(kind = DELIVERABLE)` — approval columns are contact-writable, mirroring `portal.version.approve` — **`CONTACT_PRIMARY` only** | v1 (P3) |
 | `portal.credential.submit` *(added 2026-08-16)* | Submit a credential through the portal form (never in a comment or email) — **brokered** insert of `CredentialItem` + `CredentialSecret`, `visibility` per `vault.allowPortalCredentials`; gated by `vault.allowContactSubmission` | v1 (P3V) |
 | `portal.share_link.view` *(added 2026-08-16)* | Open a `CredentialShareLink` as an **authenticated contact of that client** (the alternative recipient — email-OTP — is not a portal principal and is resolved by the token path outside `authorizePortal()`, under the same view-once/TTL rules) | v1 (P3V) |
