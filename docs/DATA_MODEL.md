@@ -31,7 +31,7 @@ Supporting models (this doc's additions, still canonical): `Session, Account, Ve
 **Amended 2026-08-16 (work-management plan).** Added canonical names, by module:
 
 - **Work** (`work`, Phase 2W — §6.14): `WorkItem` (**UI word: "Task"**; levels Epic / Task / Subtask via `WorkItem.type`), `WorkflowState`, `WorkflowPreset`, `WorkItemActivity`, `Comment` (polymorphic; **replaces `IssueComment`**), `Mention`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `ProjectTemplate`.
-- **Time** (`time`, Phase 2T — §6.15): `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `ProjectTimeSummary`, `StaffNotice`, `StaffNoticeAcknowledgment`; Phase 4: `RoundingRule`, `InvoiceLineTimeEntry`, `RetainerPlan`, `RetainerPeriod`, `HourBankTransaction`.
+- **Time** (`time`, Phase 2T — §6.15): `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `ProjectTimeSummary`, `StaffNotice`, `StaffNoticeAcknowledgment`, `Shift`, `ShiftBreak`, `TimeReport`, `WorkType` *(last four added 2026-08-20 — founder time-tracking extensions)*; Phase 4: `RoundingRule`, `InvoiceLineTimeEntry`, `RetainerPlan`, `RetainerPeriod`, `HourBankTransaction`.
 - **Progress updates** (rides on `work`, Phase 3 — §6.16): `ProjectUpdate`, `ProjectUpdateInternalSnapshot`; Phase 5: `ProjectUpdateSchedule`, `ProjectUpdateTemplate`.
 - **Vault & assets** (`vault`, Phase 3V — §6.17): `TenantKey` (Phase 1b, core), `CredentialItem`, `CredentialSecret`, `CredentialVersion`, `CredentialAccessGrant`, `CredentialShareLink`, `ClientAsset`, `ExpirationReminderSent`; later: `AssetCheck`.
 - **Notifications & email** (core, never entitlement-gated, Phase 2W — §6.18): `Notification`, `Subscription`, `NotificationPreference`, `EmailOutbox`, `EmailSuppression`; Phase 5: `PushSubscription`; later: `InboundEmail`.
@@ -972,6 +972,10 @@ enum ProjectStatus {
 ///   IN_PROGRESS; all children DONE/CANCELLED ⇒ parent DONE).
 /// - roundingRuleId? [Phase 4]: → RoundingRule (§6.15); applied at
 ///   invoice-line creation only. Column reserved, NULL until Phase 4.
+/// - defaultServiceId? [ADDED 2026-08-20, D4]: → Service (§6.6, the
+///   "agreement") — seeds TimeEntry.serviceId when the member picks
+///   none (the whole-project-under-one-agreement case); the per-entry
+///   picker overrides. Managed with service:* + rate:manage_bill.
 /// - hostingNotes: still POINTERS only. Live credentials now have a home
 ///   (CredentialItem/CredentialSecret, §6.17); hostingNotes stays free
 ///   text for provider/plan/where-to-look and is never a secret field.
@@ -1007,6 +1011,7 @@ model Project {
   autoStartParent    Boolean          @default(true)    // WorkItem rollup rule
   autoCompleteParent Boolean          @default(false)   // WorkItem rollup rule
   roundingRuleId     String?                            // Phase 4 → RoundingRule (§6.15); NULL until then
+  defaultServiceId   String?                            // ADDED 2026-08-20 (D4) → Service (tenantId, id); seeds TimeEntry.serviceId
   archivedAt    DateTime?     @db.Timestamptz(6)
   createdAt     DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime      @updatedAt @db.Timestamptz(6)
@@ -1166,6 +1171,18 @@ enum ServiceStatus {
 /// client-visible — the default is now fail-closed, and the service form
 /// asks). Also a source row of the Expirations feed (§6.17: renewsAt /
 /// endsAt).
+/// AMENDED 2026-08-20 (D4 — founder decision, time-tracking session):
+/// Service IS the commercial "agreement" (UI label: Agreement / sv
+/// Avtal; Phase 4's signed Contract stays a distinct legal document). A
+/// client holds several concurrently (development @ X kr/h, maintenance
+/// @ Y kr/h). Hourly rates NEVER live as columns here — they are
+/// RateCard rows with scope SERVICE (§6.15): immutable, effective-
+/// dated, snapshotted onto entries at write. TimeEntry.serviceId points
+/// here (picked at start/during/after); Project.defaultServiceId seeds
+/// it. The agreement page shows a consumption strip ("X h this period",
+/// a SUM — the retainer LEDGER stays Phase 4). priceExVat/currency
+/// below remain the fixed/recurring FEE of the service (e.g. hosting
+/// per month) — distinct from the hourly rate cards.
 /// scope=client  rls=B (projectScoped when projectId set, else clientScoped)  ret=R2  enc=none
 /// audit: service.created | service.updated | service.ended
 model Service {
@@ -2549,11 +2566,14 @@ Posture first (SECURITY.md §9.7, PLAN.md skip-list): a **self-started/stopped t
 
 Pinned facts (plan §3.3): `TimeEntry` is **class A with no visibility column**; one running timer per member via partial unique index; `RateCard` rows immutable, COST amount encrypted on the card only, entry stores `costRateCardId`; `ProjectTimeSummary` is a **physical class-B table recomputed** per (project, month) in the entry transaction; the founder's "cost per hour" = project BILL rate.
 
+**Amended 2026-08-20 (founder time-tracking session; three-track industry sweep in the session plan).** Six deltas join this section: **(D1)** `Shift` + `ShiftBreak` — a self-reported attendance layer (clock-in/out with breaks), class A, one open shift per member, reconciled against task time in the day view; team surfaces aggregate **closed** rows only — never a live "who is in" (never-list). **(D2)** ad-hoc "instant task" entries — `TimeEntry.clientId/projectId` become **nullable as a pair**; description-only, forced non-billable; categorize-later re-runs rate resolution. **(D3)** `TimeReport` — explicitly published, **immutable** client time reports (class B projectScoped; snapshot frozen at publish; INTERNAL names folded at generation). **(D4)** agreements — the existing `Service` (§6.6; UI label "Agreement"/"Avtal") becomes the rate carrier: `RateCard` scope `SERVICE`, `TimeEntry.serviceId` picked at start/during/after, resolution tier **above** PROJECT_MEMBER (an explicit pick outranks ambient defaults — the Productive/Accelo container semantics). **(D5)** `WorkType` — tenant-editable analytics dimension with `defaultBillable`; never rate-bearing. **(D6)** researched refinements: overlaps **allow + flag** by default (amendment below), one-click continue on recents, copy-last-week copies rows not hours, statutory-break warn flags (never auto-insert), monthly working-time statement export.
+
 ```prisma
 // ───────────────────────────────────────────────────────────────────
 // 6.15 TIME (Phase 2T) — module `time`
-// Folder: src/modules/time/{timer,entries,rates,budgets,rollup,summary,
-// notice,portal,actions}.ts. Import direction: time → work → core.
+// Folder: src/modules/time/{timer,entries,shifts,rates,budgets,rollup,
+// summary,reports,work-types,notice,portal,actions}.ts (shifts/reports/
+// work-types ADDED 2026-08-20). Import direction: time → work → core.
 // ───────────────────────────────────────────────────────────────────
 
 enum TimeEntryMode {
@@ -2570,6 +2590,7 @@ enum TimeEntrySource {
 }
 
 enum RateSource {
+  SERVICE    // ADDED 2026-08-20 (D4) — resolved from the explicitly picked agreement's card
   PROJECT_MEMBER
   PROJECT
   MEMBER
@@ -2622,18 +2643,37 @@ enum TimeReviewReason {
 ///   CHECK (work_item_id IS NOT NULL OR description IS NOT NULL) —
 ///     project-level entries require a note (preference
 ///     time.allowEntriesWithoutItem gates the UI; the CHECK is the floor);
+///   CHECK ((client_id IS NULL) = (project_id IS NULL)) — ADDED
+///     2026-08-20 (D2): ad-hoc "instant task" entries carry neither;
+///   CHECK (work_item_id IS NULL OR project_id IS NOT NULL) — ADDED
+///     2026-08-20 (D2);
+///   CHECK (project_id IS NOT NULL OR NOT billable) — ADDED 2026-08-20
+///     (D2): ad-hoc is forced non-billable (no rate context without a
+///     project); attaching a project later re-runs resolution and
+///     unlocks billable — categorize-later is the flow, not a failure;
+///   CHECK (service_id IS NULL OR project_id IS NOT NULL) — ADDED
+///     2026-08-20 (D4): an agreement implies client work;
 ///   TRIGGER time_entry_lock_guard BEFORE UPDATE OR DELETE: OLD.locked_
 ///     reason IS NOT NULL AND coalesce(current_setting('app.time_lock_
 ///     bypass', true), '') <> 'on' ⇒ RAISE;
-///   TRIGGER time_entry_scope_guard BEFORE INSERT OR UPDATE: work_item
-///     (if set) belongs to project; project belongs to client; all same
+///   TRIGGER time_entry_scope_guard BEFORE INSERT OR UPDATE (AMENDED
+///     2026-08-20 — NULL-tolerant): validates ONLY when project_id IS
+///     NOT NULL — work_item (if set) belongs to project; project
+///     belongs to client; service (if set) belongs to the same client
+///     AND (service.project_id IS NULL OR = project_id); all same
 ///     tenant;
 ///   no EXCLUDE constraint for overlaps — overlap policy is a TENANT
-///     TOGGLE (time.allowOverlap, default false) enforced by an app
-///     check under pg_advisory_xact_lock(hashtext(tenant_id || member_
-///     id)); a constraint cannot be per-tenant. (btree_gist EXCLUDE
-///     verified/decided in the 1b Neon spike; if used later it is a
-///     tenant-level opt-in via a partial predicate, still not global.)
+///     TOGGLE (time.allowOverlap — AMENDED 2026-08-20: default TRUE,
+///     allow + flag; Toggl and Clockify both allow overlaps and refuse
+///     to block, since manual/duration edits make them inevitable —
+///     blocking is the documented failure mode. Overlapping rows get a
+///     computed warn badge + a Team-view filter; timer-created overlaps
+///     stay impossible via the one-running index. The app check under
+///     pg_advisory_xact_lock(hashtext(tenant_id || member_id)) enforces
+///     blocking only for tenants that switch the toggle off; a
+///     constraint cannot be per-tenant. btree_gist EXCLUDE verified/
+///     decided in the 1b Neon spike; if used later it is a tenant-level
+///     opt-in via a partial predicate, still not global.)
 ///   Partial index (tenant_id, project_id, member_id) WHERE invoice_line_id
 ///     IS NULL AND billable AND deleted_at IS NULL — the uninvoiced queue.
 /// Timer policy (timer.ts): start another ⇒ auto-stop the running one in
@@ -2647,8 +2687,10 @@ enum TimeReviewReason {
 model TimeEntry {
   id               String           @id @default(uuid(7))
   tenantId         String
-  clientId         String                         // denormalised from project — scoping + client rollups
-  projectId        String                         // → Project (tenantId, id)
+  clientId         String?                        // denormalised from project — scoping + client rollups; NULL = ad-hoc (AMENDED 2026-08-20, D2 — pair-null with projectId)
+  projectId        String?                        // → Project (tenantId, id); NULL = ad-hoc "instant task"
+  serviceId        String?                        // ADDED 2026-08-20 (D4) → Service (tenantId, id) — the chosen agreement
+  workTypeId       String?                        // ADDED 2026-08-20 (D5) → WorkType (tenantId, id) — analytics, never rate-bearing
   workItemId       String?                        // → WorkItem (tenantId, id); NULL = project-level (note required)
   memberId         String                         // → Member (tenantId, id); pseudonymised on erasure (R1)
   description      String?
@@ -2690,6 +2732,8 @@ model TimeEntry {
   @@index([tenantId, memberId, startedAt(sort: Desc)])  // My Time
   @@index([tenantId, projectId, startedAt])       // project time tab, summary recompute
   @@index([tenantId, workItemId])                 // Σ spent on a card
+  @@index([tenantId, serviceId])                  // ADDED 2026-08-20 — per-agreement rollups + consumption strip
+  @@index([tenantId, workTypeId])                 // ADDED 2026-08-20 — per-type rollups
   @@index([tenantId, localDate, memberId])        // week grid, team view
   @@index([tenantId, costRateCardId])             // cost aggregation GROUP BY
   @@index([tenantId, billRateCardId])             // reprice scope
@@ -2706,6 +2750,8 @@ enum RateScope {
   MEMBER
   PROJECT
   PROJECT_MEMBER
+  SERVICE          // ADDED 2026-08-20 (D4) — the agreement's own BILL rate; serviceId only
+  // SERVICE_MEMBER reserved (v1.5) — per-member rates within an agreement; ALTER TYPE ADD VALUE later is cheap
 }
 
 /// RateCard — IMMUTABLE ROWS: a change = close the old row (set
@@ -2718,15 +2764,20 @@ enum RateScope {
 /// (rate_card.cost_revealed). No task-scoped rates (§11).
 /// SQL: CHECK ((kind = 'BILL') = (amount IS NOT NULL) AND (kind = 'COST')
 ///   = (amount_ciphertext IS NOT NULL)); CHECK scope ↔ member_id/
-///   project_id nullness (TENANT: both NULL; MEMBER: member only; PROJECT:
-///   project only; PROJECT_MEMBER: both); CHECK (kind <> 'COST' OR scope
-///   IN ('MEMBER','TENANT')); TRIGGER rate_card_immutable BEFORE UPDATE:
-///   only effective_to may change, and only from NULL to a date >=
-///   effective_from; no-overlap per (tenant, kind, scope, member,
-///   project): EXCLUDE USING gist (… daterange(effective_from,
-///   effective_to) WITH &&) IF btree_gist verified on Neon in the 1b
-///   spike, ELSE app check under advisory lock (decided fallback written
-///   into the 2T migration).
+///   project_id/service_id nullness (TENANT: all NULL; MEMBER: member
+///   only; PROJECT: project only; PROJECT_MEMBER: member + project;
+///   SERVICE: service only — AMENDED 2026-08-20, D4); CHECK (kind <>
+///   'COST' OR scope IN ('MEMBER','TENANT')) — COST stays salary-
+///   derived, never per agreement; TRIGGER rate_card_immutable BEFORE
+///   UPDATE: only effective_to may change, and only from NULL to a date
+///   >= effective_from; no-overlap per (tenant, kind, scope, member,
+///   project, service — dimension AMENDED 2026-08-20): EXCLUDE USING
+///   gist (… daterange(effective_from, effective_to) WITH &&) IF
+///   btree_gist verified on Neon in the 1b spike, ELSE app check under
+///   advisory lock (decided fallback written into the 2T migration).
+///   Rate-change UI wording is pinned (2026-08-20, industry-converged):
+///   "applies from <date>; past entries unchanged; use Reprice to
+///   correct history."
 /// scope=tenant  rls=A (principalScoped)  ret=R2 / R1 when referenced by an invoiced entry / COST 24 mo after close (§5)  enc=amountCiphertext (COST)
 /// audit: rate_card.created | rate_card.closed | rate_card.cost_revealed
 model RateCard {
@@ -2736,6 +2787,7 @@ model RateCard {
   scope            RateScope
   memberId         String?                        // MEMBER / PROJECT_MEMBER
   projectId        String?                        // PROJECT / PROJECT_MEMBER
+  serviceId        String?                        // ADDED 2026-08-20 (D4) — SERVICE scope → Service (tenantId, id)
   amount           Decimal?  @db.Decimal(12, 2)   // BILL only, plaintext
   amountCiphertext String?                        // COST only — v2 ENCRYPTED, AAD-bound, omit()ted
   currency         String    @db.Char(3)
@@ -2746,6 +2798,7 @@ model RateCard {
 
   @@unique([tenantId, id])
   @@index([tenantId, kind, scope, projectId, memberId, effectiveFrom])  // resolution lookup
+  @@index([tenantId, serviceId, kind])            // ADDED 2026-08-20 — agreement-rate lookup
   @@index([tenantId, memberId, kind])
 }
 
@@ -2857,6 +2910,7 @@ model ProjectTimeSummary {
   budgetAmount       Decimal?   @db.Decimal(12, 2)  // from the ACTIVE MONEY budget, when shared
   currency           String?    @db.Char(3)
   visibility         Visibility @default(INTERNAL)  // derived from Project.hoursSharingMode
+  portalEnabled      Boolean    @default(false)     // ADDED 2026-08-20 (doc fix) — trigger-derived like every projectScoped row; the rls=B annotation below always required it
   computedAt         DateTime   @default(now()) @db.Timestamptz(6)
 
   @@unique([tenantId, projectId, periodMonth])
@@ -2903,6 +2957,237 @@ model StaffNoticeAcknowledgment {
 
   @@unique([tenantId, memberId, noticeId, noticeVersion])
   @@index([tenantId, memberId])
+}
+
+// ─── ADDED 2026-08-20 — D1 attendance layer, D3 published reports, ───
+// ─── D5 work types (founder session; industry sweep in session log) ───
+
+/// Shift — self-reported attendance: clock-in/out with breaks. A
+/// second, deliberate layer next to TimeEntry (the Clockify/Clockodo/
+/// Personio convention): the shift answers "when did I work", entries
+/// answer "what on"; the personal day view reconciles shift − breaks −
+/// tracked = unallocated (a view no comparator ships without activity
+/// monitoring — differentiator). NO live presence: team surfaces
+/// aggregate CLOSED rows only for members other than the viewer; no
+/// open/active flag is ever selected for another member (never-list,
+/// SECURITY §9.7). Timers never REQUIRE a shift; the staff-notice gate
+/// covers clockIn exactly as timer start. CCOO (C-55/18) readiness:
+/// with the monthly working-time statement export this is the
+/// "objective, reliable, accessible" daily record; retention =
+/// working-time/HR class (ATL §11 journal: its year + 2 following;
+/// Denmark's 5-y 2024 law is the Nordic benchmark — SECURITY §9.7).
+/// SQL (hand-written, 2T migration):
+///   CREATE UNIQUE INDEX shift_one_open ON shift (tenant_id, member_id)
+///     WHERE stopped_at IS NULL AND deleted_at IS NULL; — one open shift
+///   CHECK (stopped_at IS NULL OR stopped_at >= started_at);
+///   CHECK ((stopped_at IS NULL) = (worked_seconds IS NULL));
+///   CHECK (worked_seconds IS NULL OR (worked_seconds >= 0 AND
+///     worked_seconds <= EXTRACT(EPOCH FROM (stopped_at -
+///     started_at))::int)); — exact equality vs Σ breaks is service-
+///     maintained + property-tested (cross-row, not CHECK-able);
+///   TRIGGER shift_shrink_guard BEFORE UPDATE OF started_at, stopped_at:
+///     RAISE if any shift_break would fall outside the new span.
+/// Policy (shifts.ts, under pg_advisory_xact_lock(hashtext(tenant_id ||
+/// member_id)) — the same lock timer.ts takes): startBreak requires an
+/// open shift and auto-stops a running TimeEntry in the same tx (undo
+/// toast — the pinned start-another pattern); startTimer auto-closes an
+/// open break (working ⇒ not on break); clockOut closes the open break,
+/// recomputes workedSeconds, closes the shift, and auto-stops a running
+/// timer (undo offered). Auto-stop at time.shiftAutoStopHours (pref,
+/// default 14): deterministic stopped_at = started_at + cap ⇒
+/// idempotent under lazy + cron double-run; closes the open break at
+/// the same bound; needsReview + AUTO_STOPPED; auto-closed shifts are
+/// VISIBLY PROVISIONAL until the member confirms the real end (one
+/// click from the needs-review banner). Statutory-break WARN flag
+/// (computed, never stored, NEVER auto-inserted — auto-deduction
+/// fabricates records; Clockodo's warn-at-entry is the model): a closed
+/// span > 5 h without a recorded break gets a rast badge (ATL). v1
+/// break stance, stated in the staff notice: a recorded break = rast
+/// (unpaid); paus is working time and simply is not clocked.
+/// Member.hoursPerDay is the v1 display expectation only — a dated
+/// MemberWorkSchedule is the designated structure when the cumulative
+/// overtime account lands (deliberately deferred, §11).
+/// Permissions: reuses time:track / time:view_team / time:edit_any /
+/// time:delete_any — zero new codes for shifts.
+/// scope=tenant  rls=A (principalScoped — never portal-reachable)  ret=working-time/HR class (§5)  enc=none
+/// audit: shift.started | shift.stopped | shift.auto_stopped | shift.edited_by_other | shift.deleted | shift.break_started | shift.break_stopped
+model Shift {
+  id                String            @id @default(uuid(7))
+  tenantId          String
+  memberId          String                          // → Member (tenantId, id)
+  startedAt         DateTime          @db.Timestamptz(6)
+  stoppedAt         DateTime?         @db.Timestamptz(6)  // NULL = open
+  workedSeconds     Int?                            // service-maintained = span − Σ breaks
+  timezone          String            @db.VarChar(64)     // IANA at write (Member.timezone → tenant)
+  localDate         DateTime          @db.Date       // start date in `timezone`
+  note              String?
+  needsReview       Boolean           @default(false)
+  reviewReason      TimeReviewReason?                // AUTO_STOPPED fits; enum shared with TimeEntry
+  createdByMemberId String?                          // ≠ memberId ⇒ shift.edited_by_other
+  deletedAt         DateTime?         @db.Timestamptz(6)  // soft delete; excluded from the open index
+  createdAt         DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(6)
+
+  @@unique([tenantId, id])                          // composite-FK target (ShiftBreak)
+  @@index([tenantId, memberId, startedAt(sort: Desc)])
+  @@index([tenantId, localDate, memberId])          // day grids, team totals, statement export
+}
+
+/// ShiftBreak — a typed break ROW inside a shift (rows, not pause-
+/// events: the Clockify/Personio/Factorial convention, and what the
+/// rast check and an authority-facing export need). Hard delete;
+/// after-the-fact corrections by another member ride
+/// shift.edited_by_other metadata. One open break per shift + one open
+/// shift per member ⇒ transitively one open break per member.
+/// SQL: CREATE UNIQUE INDEX shift_break_one_open ON shift_break
+///     (tenant_id, shift_id) WHERE stopped_at IS NULL;
+///   CHECK (stopped_at IS NULL OR stopped_at >= started_at);
+///   CHECK ((stopped_at IS NULL) = (duration_seconds IS NULL));
+///   CHECK (duration_seconds IS NULL OR duration_seconds =
+///     EXTRACT(EPOCH FROM (stopped_at - started_at))::int);
+///   TRIGGER shift_break_bounds_guard BEFORE INSERT OR UPDATE: parent
+///     shift exists; started_at >= shift.started_at; when the shift is
+///     closed the break lies fully inside it. (Triggers, not app-only:
+///     bounds are absolute invariants with multiple writer paths —
+///     self-service, time:edit_any, future import.)
+/// scope=tenant  rls=A (principalScoped)  ret=follows Shift  enc=none
+model ShiftBreak {
+  id                String    @id @default(uuid(7))
+  tenantId          String
+  shiftId           String                          // → Shift (tenantId, id) ON DELETE CASCADE
+  memberId          String                          // denormalised — break totals per member/day without a join
+  startedAt         DateTime  @db.Timestamptz(6)
+  stoppedAt         DateTime? @db.Timestamptz(6)    // NULL = open
+  durationSeconds   Int?                            // CHECK-tied, as on TimeEntry
+  note              String?
+  createdByMemberId String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, shiftId])
+  @@index([tenantId, memberId, startedAt])
+}
+
+enum TimeReportStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TimeReportGroupBy {
+  DAY
+  WORK_ITEM
+  EPIC
+  SERVICE    // by agreement — "maintenance hours this month"
+}
+
+/// TimeReport — an EXPLICITLY published, IMMUTABLE client time report
+/// ("not all the reports — the ones the user wants"; founder decision
+/// 2026-08-20). Industry ships live share links whose data silently
+/// changes after edits (Toggl/Clockify) or says "export a PDF yourself"
+/// (Harvest); a hosted frozen snapshot is deliberately better and
+/// mirrors ProjectUpdate's publish model (§6.16). Coexists with the
+/// live monthly ProjectTimeSummary widget (hoursSharingMode): widget =
+/// ambient transparency, report = statement of record.
+/// SNAPSHOT IS CLIENT-SAFE BY CONSTRUCTION: the generator's SQL never
+/// selects/groups member_id (no member key can exist — same rule as
+/// ProjectTimeSummary), and lines carry an entity's NAME only when that
+/// entity (work item / service) is CLIENT_VISIBLE — INTERNAL ones fold
+/// into one generic "Other work" line AT GENERATION TIME, so any
+/// snapshot is publishable without a validate-at-publish step. Fixture
+/// test: an INTERNAL task title / agreement name never appears in any
+/// snapshot.
+/// Generation runs under the acting member (RLS live): requires
+/// time_report:manage + time:view_team (+ rate:view_bill when
+/// includeAmounts); internal readers without rate:view_bill get amount
+/// keys stripped by the service. Per-project in v1 (cross-project
+/// analysis stays in /time/team + CSV).
+/// SQL: CHECK (period_end >= period_start);
+///   CHECK ((status = 'DRAFT') = (published_at IS NULL));
+///   CHECK (visibility = 'INTERNAL' OR status = 'PUBLISHED');
+///   portal_gate is FOUR-term: client_id = app.client_id AND visibility
+///     = 'CLIENT_VISIBLE' AND portal_enabled AND status = 'PUBLISHED';
+///   TRIGGER time_report_immutable BEFORE UPDATE: once published_at is
+///     set, only status (PUBLISHED → ARCHIVED), visibility, updated_at
+///     may change, else RAISE;
+///   TRIGGER time_report_no_delete_published BEFORE DELETE: RAISE when
+///     published_at IS NOT NULL (drafts hard-delete; published are
+///     archive-only).
+/// Publish = status → PUBLISHED + visibility → CLIENT_VISIBLE in ONE
+/// audited tx; unpublish = visibility → INTERNAL (status stays
+/// PUBLISHED; republish allowed). Portal capability: portal.hours.view
+/// (CONTACT_PRIMARY) — the portal page section lands Phase 3; the gate
+/// is proven by contact-principal dbtests in 2T.
+/// scope=client  rls=B (projectScoped: client_id, visibility, portal_enabled)  ret=R2 (R1-adjacent once invoice-referenced, Phase 4)  enc=none
+/// audit: time_report.created | time_report.updated | time_report.published | time_report.unpublished | time_report.archived | time_report.deleted
+model TimeReport {
+  id                  String            @id @default(uuid(7))
+  tenantId            String
+  clientId            String
+  projectId           String
+  title               String
+  periodStart         DateTime          @db.Date
+  periodEnd           DateTime          @db.Date
+  groupBy             TimeReportGroupBy @default(DAY)
+  includeAmounts      Boolean           @default(false)
+  includeNonBillable  Boolean           @default(false)
+  snapshot            Json                            // lines + totals; NEVER a member key; INTERNAL names folded
+  totalSeconds        Int               @default(0)
+  billableSeconds     Int               @default(0)
+  billableAmount      Decimal?          @db.Decimal(12, 2)  // only when includeAmounts
+  currency            String?           @db.Char(3)         // = Project.billingCurrency at generation
+  status              TimeReportStatus  @default(DRAFT)
+  visibility          Visibility        @default(INTERNAL)  // publish flips to CLIENT_VISIBLE; app-written
+  portalEnabled       Boolean           @default(false)     // trigger-derived, never app-written
+  generatedAt         DateTime          @default(now()) @db.Timestamptz(6)
+  publishedAt         DateTime?         @db.Timestamptz(6)
+  publishedByMemberId String?
+  createdByMemberId   String?
+  createdAt           DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, projectId, periodStart])
+  @@index([tenantId, clientId, visibility])
+}
+
+/// WorkType — tenant-editable time category ("where does the time
+/// go"): a LOOKUP TABLE, not an enum — a fixed enum would bake one
+/// tenant's vocabulary into the schema (§12) — and NOT rate-bearing:
+/// rate-carrying type lists are a substitute for a missing engagement
+/// layer and degenerate (Harvest's documented "Jane Programming"
+/// workaround); differentiated pricing per kind of work = a second
+/// agreement (D4, §6.6). defaultBillable (nullable) seeds
+/// TimeEntry.billable — order: explicit choice → workType.
+/// defaultBillable → project.defaultBillable. Seeded per tenant at
+/// provisioning, localized by Tenant.defaultLocale: Client development
+/// · Internal product development (false) · Consultancy · Meeting ·
+/// Learning (false) · Marketing (false) — editable/extendable per
+/// tenant. Internal product work itself uses the SELF-CLIENT
+/// CONVENTION (a Client row for the tenant itself, portal never
+/// enabled) — Project.clientId stays NOT NULL; nullable clientId was
+/// considered and rejected (client_id is load-bearing in every RLS
+/// gate and scope axis). Archived types stay on history, disappear
+/// from pickers. Never portal-reachable in v1.
+/// SQL: CREATE UNIQUE INDEX work_type_name_live ON work_type
+///   (tenant_id, name) WHERE archived_at IS NULL; — names unique among
+///   live rows, reusable after archive.
+/// scope=tenant  rls=A (principalScoped)  ret=R2  enc=none
+/// audit: work_type.created | work_type.updated | work_type.archived
+model WorkType {
+  id                String    @id @default(uuid(7))
+  tenantId          String
+  name              String
+  sortOrder         Int       @default(0)
+  defaultBillable   Boolean?                        // NULL = inherit project.defaultBillable
+  archivedAt        DateTime? @db.Timestamptz(6)
+  createdByMemberId String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, archivedAt, sortOrder])       // picker: live rows in order
 }
 
 // ─── Phase 4 (invoicing bridge) — shapes fixed now, tables land then ───
@@ -2962,9 +3247,9 @@ model InvoiceLineTimeEntry {
 /// (retainerIncludedSeconds/UsedSeconds), added then.
 ```
 
-**Rate resolution (`rates.ts`) — at WRITE, never at read.** Runs on entry create and on any change of `memberId`, `projectId`, `billable`, `localDate`: candidates = cards with `effectiveFrom ≤ localDate < coalesce(effectiveTo, 'infinity')`; **BILL** = first non-empty tier in `PROJECT_MEMBER(projectId, memberId) → PROJECT(projectId) → MEMBER(memberId) → TENANT`; **COST** = `MEMBER → TENANT`. Store `billRate` (plaintext snapshot), `currency`, `rateSource`, `billRateCardId`, `costRateCardId` (id only). `billable = false ⇒ billRate NULL, rateSource NONE`. A later card change never touches existing entries (snapshot stability test). Bill amounts in SQL: `SUM(duration_seconds)/3600 × bill_rate`; **cost aggregation** = `SUM(duration_seconds) GROUP BY cost_rate_card_id` → decrypt the handful of cards in app behind `rate:view_cost` ✦ + `requireRecentMfa()` → multiply; cost columns never in CSV by default, never in `AuditEvent.metadata`, never portal-reachable.
+**Rate resolution (`rates.ts`) — at WRITE, never at read.** *(Amended 2026-08-20: SERVICE tier + `serviceId` joins the re-resolution list.)* Runs on entry create and on any change of `memberId`, `projectId`, `serviceId`, `billable`, `localDate`: candidates = cards with `effectiveFrom ≤ localDate < coalesce(effectiveTo, 'infinity')`; **BILL** = first non-empty tier in `SERVICE(serviceId)` *(only when the entry carries an agreement — an explicit pick outranks ambient defaults; Productive/Accelo container semantics)* `→ PROJECT_MEMBER(projectId, memberId) → PROJECT(projectId) → MEMBER(memberId) → TENANT`; **COST** = `MEMBER → TENANT` (never per agreement). Store `billRate` (plaintext snapshot), `currency`, `rateSource`, `billRateCardId`, `costRateCardId` (id only). `billable = false ⇒ billRate NULL, rateSource NONE`. A later card change never touches existing entries (snapshot stability test). Bill amounts in SQL: `SUM(duration_seconds)/3600 × bill_rate`; **cost aggregation** = `SUM(duration_seconds) GROUP BY cost_rate_card_id` → decrypt the handful of cards in app behind `rate:view_cost` ✦ + `requireRecentMfa()` → multiply; cost columns never in CSV by default, never in `AuditEvent.metadata`, never portal-reachable.
 
-**Reprice** = audited command `(rateCardId, FROM_DATE | ALL_UNBILLED)` in one tx: re-resolves and updates only entries that (a) currently point at that card, (b) are unlocked, (c) fall in scope; recomputes every touched `ProjectTimeSummary` (project, month); `time_entry.repriced` with counts.
+**Reprice** = audited command `(rateCardId, FROM_DATE | ALL_UNBILLED)` in one tx: re-resolves and updates only entries that (a) currently point at that card, (b) are unlocked, (c) fall in scope; recomputes every touched `ProjectTimeSummary` (project, month); `time_entry.repriced` with counts. *(2026-08-20)* Locked entries are **skipped and counted** in the audit metadata — the contract exists before Phase 4's locks do.
 
 **Who sees money.** Employee: own hours. Manager: hours + bill rates + budgets (`time:view_team`, `rate:view_bill`, `budget:view`). CEO/finance: cost + margin (`rate:view_cost` ✦, `rate:manage_cost` ✦; preference `finance.costRates.enabled`). UI labels: "Rate / Value" vs "Internal cost / Margin".
 
@@ -3855,6 +4140,20 @@ The decisive argument: **the security-relevant dimensions of a file are tenant, 
 | **Public/no-login project links, magic links, client push** | never in v1 | Portal is invite-only; credential share links are the one hardened exception. |
 | **The never-list (decision 11): idle detection, screenshots, app/URL/keystroke capture, presence/"who is working now" broadcast, per-minute activity heatmaps, leaderboards, geolocation, peer-visible timelines** | **NEVER** | Any of these turns tidsredovisning into övervakning (DPIA-mandatory, MBL 11 §, US notice statutes) and breaks the product's promise to staff. Enforced by absence of columns (§6.15) and by PLAN.md's skip-list; a PR adding such a column fails review by rule, not by taste. |
 
+*(rows below added 2026-08-20 — founder time-tracking session; each is a decision, not an oversight)*
+
+| Omission | Verdict | Why |
+|---|---|---|
+| **A parallel `Agreement` entity** | rejected | The founder's "contracts/agreements" ARE `Service` rows (§6.6 amendment): one place per concept — a second commercial object would duplicate kind/renewal semantics and double the Phase-3 portal projection surface. UI label "Agreement"/"Avtal" is i18n only; Phase 4's signed `Contract` stays the legal document. |
+| **Agreements as separate projects** | rejected | Conflates the delivery workspace (board, tasks) with the commercial engagement — exactly the documented workaround cost in tools without an engagement layer (Harvest/Toggl clone projects per rate). |
+| **Nullable `Project.clientId` for internal projects** | rejected | `client_id` is load-bearing in every RLS gate and scope axis. Internal product work uses the self-client convention (a `Client` row for the tenant itself, portal never enabled) — standard agency practice, zero schema surgery. |
+| **Rate-bearing `WorkType`** | rejected | A rate-carrying type list is a substitute for a missing engagement layer and degenerates (Harvest's documented "Jane Programming" workaround). Types carry `defaultBillable` only; differentiated pricing per kind of work = a second agreement (D4). |
+| **Auto-inserted statutory breaks** | **NEVER** | Auto-deduction fabricates records (Personio's API cannot distinguish auto from employee-entered breaks; US auto-deduct suits; German BAG guidance requires deductions match reality). Warn flags on self-reported data deliver the compliance value without fabrication. |
+| **Live "who is on shift" / presence widget** | **NEVER** (never-list) | Every attendance competitor ships one; this product's IMY-aligned posture is closed rows + aggregates only. The absence is a worker-friendly selling point, not a gap. |
+| **Cumulative overtime account (Stundenkonto)** | later | Expected eventually (Clockodo/Personio/Kimai all carry one) but gated on absences, holiday calendars and a dated `MemberWorkSchedule`; v1 ships per-day + period delta vs `Member.hoursPerDay` (display expectation only). |
+| **Blocking overlapping entries by default** | rejected 2026-08-20 (amends the 2026-08-16 default) | Toggl and Clockify allow overlaps and refuse to block — manual/duration edits make them inevitable; blocking is the documented failure mode. Default = allow + computed warn badge; strict blocking stays the tenant opt-in (`time.allowOverlap` off). |
+| **Live public time-report links** | never | Toggl/Clockify-style anonymous URLs both leak (unauthenticated) and silently change after edits. Client visibility goes through the portal principal; the statement of record is the immutable `TimeReport` (§6.15 D3). |
+
 ## 12. Pushback & flagged tensions (§12: disagree in the doc)
 
 **P1 — Portal contact "roles" are a hardcoded enum, not the Role machinery.** Brief §3 lists "portal-side Contact roles" among the cloneable templates. I spec'd `ContactPortalProfile { CONTACT_PRIMARY, CONTACT_COLLABORATOR }` (the fixed profiles of `AUTHZ.md` §8, `CONTACT_FINANCE` reserved v2) instead: contacts are a different principal with a hardcoded capability set (§3's own "physically separate paths" requirement, decision #6, research architecture rule). Putting contacts into tenant-customizable RBAC would reopen the exact ambiguity the separation exists to kill, for a customization no competitor's customers demonstrably use. If a tenant ever needs per-contact granularity beyond two levels, that is a v2 enum extension (`CONTACT_FINANCE`) or a portal-capability matrix — still never the member Role tables.
@@ -3881,4 +4180,4 @@ The decisive argument: **the security-relevant dimensions of a file are tenant, 
 
 ---
 
-*End of DATA_MODEL.md. Schema version **0.2 (2026-08-16)** — v0.1 (2026-08-03) plus the work-management amendments (§6.14–§6.19, §2.3 `portal_enabled` refinement, crypto v2, decisions 11–13). Every change to entity names or key structure after Phase 1 begins requires updating this file first; the other docs reference these names.*
+*End of DATA_MODEL.md. Schema version **0.3 (2026-08-20)** — v0.2 plus the founder time-tracking extensions (§6.15 D1–D6: `Shift`/`ShiftBreak`, ad-hoc entries, `TimeReport`, Service-as-agreement `SERVICE` rate tier, `WorkType`, researched refinements incl. the overlap-default amendment; §6.6 Service agreement amendment; `Project.defaultServiceId`; `ProjectTimeSummary.portalEnabled` doc fix). v0.2 (2026-08-16) was v0.1 (2026-08-03) plus the work-management amendments (§6.14–§6.19, §2.3 `portal_enabled` refinement, crypto v2, decisions 11–13). Every change to entity names or key structure after Phase 1 begins requires updating this file first; the other docs reference these names.*
