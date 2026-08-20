@@ -354,6 +354,34 @@ describe("posture assertions", () => {
         );
       }
     }
+    // principalScoped (notification): tenant_isolation + the RESTRICTIVE
+    // receiver binding on SELECT and UPDATE, an INSERT deny for contacts,
+    // and NEVER the class-B columns (it is not portal content).
+    for (const m of RLS_CLASSES.principalScoped) {
+      const p = of(m);
+      expect(p.policies, `${p.table}: principalScoped needs tenant_isolation`).toContain(
+        "tenant_isolation",
+      );
+      expect(p.policies, `${p.table}: principalScoped needs principal_scope`).toContain(
+        "principal_scope",
+      );
+      expect(p.policies, `${p.table}: principalScoped needs principal_scope_update`).toContain(
+        "principal_scope_update",
+      );
+      expect(p.policies, `${p.table}: principalScoped needs portal_insert_deny`).toContain(
+        "portal_insert_deny",
+      );
+      const scope = p.quals["principal_scope"] ?? "";
+      expect(scope, `${p.table}: principal_scope binds to app.principal_id`).toContain(
+        "app.principal_id",
+      );
+      expect(p.columns, `${p.table}: principalScoped never has visibility`).not.toContain(
+        "visibility",
+      );
+      expect(p.columns, `${p.table}: principalScoped never has portal_enabled`).not.toContain(
+        "portal_enabled",
+      );
+    }
     // Every tenant-scoped table (any subclass) physically has tenant_id.
     for (const m of MODEL_CLASSES.tenant) {
       expect(of(m).columns, `${tableNameOf(m)}: tenant_id`).toContain("tenant_id");

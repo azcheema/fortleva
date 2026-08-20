@@ -94,12 +94,45 @@ beforeAll(async () => {
         { tenantId: T, clientId, projectId: null, name: "Contract (client-level).pdf", visibility: "CLIENT_VISIBLE" },
       ],
     });
+    // 2W rows (work_item / work_item_activity / comment joined
+    // B_projectScoped — one CLIENT_VISIBLE and one INTERNAL of each, so
+    // the gate walk proves the visibility term on the new tables too).
+    const stateId = randomUUID();
+    await db.workflowState.create({
+      data: { id: stateId, tenantId: T, projectId, name: "To do", category: "TODO", rank: "a0", isDefault: true },
+    });
+    const wiVisible = randomUUID();
+    const wiInternal = randomUUID();
+    await db.workItem.create({
+      data: { id: wiVisible, tenantId: T, clientId, projectId, number: 1, title: "Visible task", stateId, stateCategory: "TODO", rootId: wiVisible, rank: "a0", visibility: "CLIENT_VISIBLE" },
+    });
+    await db.workItem.create({
+      data: { id: wiInternal, tenantId: T, clientId, projectId, number: 2, title: "Internal task", stateId, stateCategory: "TODO", rootId: wiInternal, rank: "a1", visibility: "INTERNAL" },
+    });
+    await db.workItemActivity.createMany({
+      data: [
+        { tenantId: T, clientId, projectId, workItemId: wiVisible, field: "stateCategory", visibility: "CLIENT_VISIBLE" },
+        { tenantId: T, clientId, projectId, workItemId: wiInternal, field: "title", visibility: "INTERNAL" },
+      ],
+    });
+    // clientId/projectId deliberately omitted: comment_denorm_guard
+    // derives them from the subject — that derivation is under test.
+    await db.comment.createMany({
+      data: [
+        { tenantId: T, subjectType: "WORK_ITEM", subjectId: wiVisible, authorMemberId: member.id, body: {}, bodyText: "client reply", visibility: "CLIENT_VISIBLE" },
+        { tenantId: T, subjectType: "WORK_ITEM", subjectId: wiInternal, authorMemberId: member.id, body: {}, bodyText: "triage note", visibility: "INTERNAL" },
+      ],
+    });
   }
 });
 
 afterAll(async () => {
   const db = getPlatformClient();
   await db.$transaction(async (tx) => {
+    await tx.comment.deleteMany({ where: { tenantId: T } });
+    await tx.workItemActivity.deleteMany({ where: { tenantId: T } });
+    await tx.workItem.deleteMany({ where: { tenantId: T } });
+    await tx.workflowState.deleteMany({ where: { tenantId: T } });
     await tx.document.deleteMany({ where: { tenantId: T } });
     await tx.service.deleteMany({ where: { tenantId: T } });
     await tx.milestone.deleteMany({ where: { tenantId: T } });
@@ -154,7 +187,16 @@ describe("portalEnabled=false ⇒ zero project rows for the contact", () => {
     await withTenant(T, contactBeta, async (tx) => {
       expect(await countProjectRows(tx, P)).toEqual(zeros);
       const b = await countProjectRows(tx, PB);
-      expect(b).toEqual({ project: 1, project_version: 1, milestone: 1, service: 1, document: 1 });
+      expect(b).toEqual({
+        project: 1,
+        project_version: 1,
+        milestone: 1,
+        service: 1,
+        document: 1,
+        work_item: 1, // CLIENT_VISIBLE only (2W)
+        work_item_activity: 1,
+        comment: 1,
+      });
     });
   });
 });
@@ -183,6 +225,9 @@ describe("flipping portalEnabled=true exposes only CLIENT_VISIBLE / SHIPPED rows
         project_version: 1, // SHIPPED only
         service: 1, // CLIENT_VISIBLE only
         document: 1, // CLIENT_VISIBLE only
+        work_item: 1, // CLIENT_VISIBLE only (2W)
+        work_item_activity: 1,
+        comment: 1,
       });
       expect((await tx.milestone.findMany()).map((m) => m.name)).toEqual(["Design"]);
       expect((await tx.projectVersion.findMany()).map((v) => v.version)).toEqual(["1.0"]);

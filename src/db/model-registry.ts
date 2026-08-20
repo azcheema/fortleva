@@ -35,6 +35,22 @@ export const MODEL_CLASSES = {
     "document",
     "fileVersion",
     "fileObject",
+    // 2W — work + notifications core:
+    "workflowState",
+    "workflowPreset",
+    "workItem",
+    "workItemActivity",
+    "label",
+    "workItemLabel",
+    "workItemCollaborator",
+    "workItemSubscriber",
+    "comment",
+    "mention",
+    "projectTemplate",
+    "notification",
+    "subscription",
+    "notificationPreference",
+    "emailOutbox",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -48,6 +64,9 @@ export const MODEL_CLASSES = {
     "passkey",
     "permission",
     "featureFlag",
+    // Platform-owned suppression list (no tenant column by design —
+    // SES reputation is shared; DATA_MODEL §6.18):
+    "emailSuppression",
   ],
 } as const;
 
@@ -81,10 +100,38 @@ export const RLS_CLASSES = {
     "memberProject",
     "fileVersion",
     "fileObject",
+    // 2W:
+    "workflowState",
+    "workflowPreset",
+    "label",
+    "workItemLabel",
+    "workItemCollaborator",
+    "workItemSubscriber",
+    "mention",
+    "projectTemplate",
+    "subscription",
+    "notificationPreference",
+    "emailOutbox",
   ],
   B_clientScoped: ["client", "contact"],
-  B_projectScoped: ["project", "projectVersion", "milestone", "service", "document"],
-  principalScoped: [],
+  B_projectScoped: [
+    "project",
+    "projectVersion",
+    "milestone",
+    "service",
+    "document",
+    // 2W (comment: nullable projectId — the stamp trigger derives
+    // portal_enabled TRUE when projectId is NULL, like document):
+    "workItem",
+    "workItemActivity",
+    "comment",
+  ],
+  // Receiver-bound rows: tenant_isolation + a RESTRICTIVE principal_scope
+  // policy binding SELECT/UPDATE to the receiver (member => own MEMBER
+  // rows, contact => own CONTACT rows of its client, system passes);
+  // INSERT is any non-contact principal (notify.emit fans out — and must
+  // use createMany: INSERT..RETURNING would trip the SELECT binding).
+  principalScoped: ["notification"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type RlsClass = keyof typeof RLS_CLASSES;

@@ -227,6 +227,22 @@ model Tenant {
   projectVersions ProjectVersion[]
   milestones      Milestone[]
   services        Service[]
+  // 2W (work + notifications core):
+  workflowStates          WorkflowState[]
+  workflowPresets         WorkflowPreset[]
+  workItems               WorkItem[]
+  workItemActivities      WorkItemActivity[]
+  labels                  Label[]
+  workItemLabels          WorkItemLabel[]
+  workItemCollaborators   WorkItemCollaborator[]
+  workItemSubscribers     WorkItemSubscriber[]
+  comments                Comment[]
+  mentions                Mention[]
+  projectTemplates        ProjectTemplate[]
+  notifications           Notification[]
+  subscriptions           Subscription[]
+  notificationPreferences NotificationPreference[]
+  emailOutbox             EmailOutbox[]
 
   @@map("tenant")
 }
@@ -334,6 +350,11 @@ model Member {
   memberRoles        MemberRole[]
   clientAssignments  MemberClient[]
   projectAssignments MemberProject[]
+  // 2W:
+  assignedWorkItems      WorkItem[]             @relation("WorkItemAssigneeMember")
+  workItemCollaborations WorkItemCollaborator[]
+  workItemSubscriptions  WorkItemSubscriber[]
+  subscriptions          Subscription[]
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id]) // composite-FK target
@@ -504,6 +525,11 @@ model Client {
   milestones      Milestone[]
   services        Service[]
   documents       Document[]
+  // 2W:
+  workItems          WorkItem[]
+  workItemActivities WorkItemActivity[]
+  comments           Comment[]
+  notifications      Notification[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -552,6 +578,8 @@ model Contact {
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   client Client @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  // 2W:
+  assignedWorkItems WorkItem[] @relation("WorkItemAssigneeContact")
 
   @@unique([tenantId, email])
   @@unique([tenantId, id]) // composite-FK target
@@ -664,6 +692,12 @@ model Project {
   milestones     Milestone[]
   services       Service[]
   documents      Document[]
+  // 2W:
+  workflowStates     WorkflowState[]
+  workItems          WorkItem[]
+  workItemActivities WorkItemActivity[]
+  labels             Label[]
+  comments           Comment[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -709,9 +743,10 @@ model ProjectVersion {
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id])
-  client  Client  @relation(fields: [tenantId, clientId], references: [tenantId, id])
-  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  tenant         Tenant     @relation(fields: [tenantId], references: [id])
+  client         Client     @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project        Project    @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  fixedWorkItems WorkItem[]
 
   @@unique([tenantId, projectId, version])
   @@unique([tenantId, id]) // composite-FK target (WorkItem.fixedInVersionId)
@@ -746,9 +781,10 @@ model Milestone {
   createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id])
-  client  Client  @relation(fields: [tenantId, clientId], references: [tenantId, id])
-  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  client    Client     @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project   Project    @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  workItems WorkItem[]
 
   @@unique([tenantId, id]) // composite-FK target (WorkItem.milestoneId)
   @@unique([tenantId, projectId, rank])
@@ -995,4 +1031,611 @@ model AuditEvent {
   @@index([actorType, actorId, createdAt(sort: Desc)])
   @@index([requestId])
   @@map("audit_event")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// WORK (Phase 2W) — module `work` (DATA_MODEL.md §6.14)
+// One generic WorkItem (UI word "Task"; Epic → Task → Subtask) with
+// tenant-named states inside fixed categories, one fractional rank,
+// field-level activity, polymorphic comments, labels, templates.
+// Every constraint Prisma cannot express (CHECKs, COLLATE "C",
+// parent/state/visibility triggers, portal policies) is hand-written
+// in the 2W migration; each has a data-layer test.
+// NOTE: search_index (§6.19) is deliberately NOT a Prisma model —
+// generated tsvector + regconfig columns are hand-written DDL; the app
+// reads it via $queryRaw in src/search/ only.
+// ───────────────────────────────────────────────────────────────────
+
+/// Fixed categories. Tenants name their states; the category of a
+/// state is immutable (trigger). Rollups, the portal and the state
+/// machine read ONLY the category. TRIAGE = landing zone for
+/// kind=REQUEST; one hidden Triage state auto-created per project.
+enum StateCategory {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+  TRIAGE
+
+  @@map("state_category")
+}
+
+/// Per-project named states (tenant text, never i18n). Copied from a
+/// WorkflowPreset at project creation. Class A — the portal never
+/// joins this table; it reads WorkItem.stateCategory only (P10).
+model WorkflowState {
+  id               String        @id @default(uuid(7))
+  tenantId         String        @map("tenant_id")
+  projectId        String        @map("project_id")
+  name             String
+  color            String?
+  category         StateCategory // IMMUTABLE after insert (trigger)
+  rank             String // text COLLATE "C" (migration SQL) — column order
+  isDefault        Boolean       @default(false) @map("is_default") // where new items land (exactly one per project — service)
+  isHidden         Boolean       @default(false) @map("is_hidden") // TRIAGE hidden until it has items
+  wipLimit         Int?          @map("wip_limit") // stored; soft warning only in v1
+  definitionOfDone String?       @map("definition_of_done") // v1.5 UI; column reserved
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  project   Project    @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  workItems WorkItem[]
+
+  @@unique([tenantId, projectId, name])
+  @@unique([tenantId, projectId, rank])
+  @@unique([tenantId, id]) // composite-FK target (WorkItem.stateId)
+  @@index([tenantId, projectId, category])
+  @@map("workflow_state")
+}
+
+/// Tenant-editable named state sets, copied into each new project.
+/// states Json = [{name, color, category, rank, isDefault}]. The seed
+/// ships one preset per tenant (locale-aware names at provisioning;
+/// tenant text after that — never re-translated).
+model WorkflowPreset {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  name      String
+  states    Json
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("workflow_preset")
+}
+
+/// The three levels. UI: Epic / Task / Subtask. No "Feature" level.
+enum WorkItemType {
+  EPIC // depth 0 only
+  TASK // depth 0 or 1
+  SUBTASK // depth 1 or 2
+
+  @@map("work_item_type")
+}
+
+/// What the row is about; orthogonal to type. REQUEST = portal/email-
+/// submitted, starts in the TRIAGE-category state (absorbs Issue).
+enum WorkItemKind {
+  TASK
+  BUG
+  REQUEST
+
+  @@map("work_item_kind")
+}
+
+enum WorkItemPriority {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+
+  @@map("work_item_priority")
+}
+
+/// Triage outcome for kind=REQUEST (and anything parked in TRIAGE).
+enum TriageStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  SNOOZED
+  DUPLICATE
+
+  @@map("triage_status")
+}
+
+enum WorkItemSource {
+  IN_APP
+  PORTAL // brokered contact write (system principal after authorizePortal)
+  EMAIL // Phase 5+, behind entitlement work.email_intake
+  IMPORT // ImportJob (Phase 6)
+
+  @@map("work_item_source")
+}
+
+/// THE table (UI word "Task"). Denormalised on purpose — each column
+/// is load-bearing for RLS or flat rollups: clientId (portal_gate),
+/// stateCategory (portal reads it, never workflow_state), rootId/depth
+/// (flat GROUP BY replaces recursive CTEs), checklist counters,
+/// portalEnabled (trigger-maintained). Single assignee member XOR
+/// contact (CHECK); contact assignee forces CLIENT_VISIBLE (CHECK).
+/// Child <= parent visibility + downgrade refusal + depth/type/state
+/// sync + cross-project-move refusal: triggers in the 2W migration.
+model WorkItem {
+  id                  String           @id @default(uuid(7))
+  tenantId            String           @map("tenant_id")
+  clientId            String           @map("client_id") // denormalised from project — RLS predicate
+  projectId           String           @map("project_id")
+  number              Int // counters.next("work_item:<projectId>") — display "<Project.key>-<number>"
+  type                WorkItemType     @default(TASK)
+  kind                WorkItemKind     @default(TASK)
+  title               String
+  description         Json? // Tiptap ProseMirror JSON (checklist = taskList nodes)
+  descriptionText     String?          @map("description_text") // extracted plain text (search feed, previews)
+  stateId             String           @map("state_id")
+  stateCategory       StateCategory    @map("state_category") // DENORMALISED — the only state field the portal reads
+  priority            WorkItemPriority @default(NONE)
+  assigneeMemberId    String?          @map("assignee_member_id") // XOR assigneeContactId (CHECK)
+  assigneeContactId   String?          @map("assignee_contact_id") // => visibility CLIENT_VISIBLE (CHECK); portal UI Phase 3
+  parentId            String?          @map("parent_id") // same project, strictly higher type (trigger)
+  rootId              String           @map("root_id") // DENORMALISED — top of the tree (self at depth 0)
+  depth               Int              @default(0) // 0-indexed; CHECK depth <= 2
+  milestoneId         String?          @map("milestone_id")
+  fixedInVersionId    String?          @map("fixed_in_version_id") // "the release that fixes it"
+  rank                String // text COLLATE "C"; UNIQUE per project (migration SQL)
+  estimateMinutes     Int?             @map("estimate_minutes") // hours in the UI
+  remainingMinutes    Int?             @map("remaining_minutes")
+  startDate           DateTime?        @map("start_date") @db.Date
+  targetDate          DateTime?        @map("target_date") @db.Date
+  startedAt           DateTime?        @map("started_at") @db.Timestamptz(6) // first IN_PROGRESS; cleared on regression
+  completedAt         DateTime?        @map("completed_at") @db.Timestamptz(6) // DONE; cleared when leaving DONE
+  visibility          Visibility       @default(INTERNAL)
+  portalEnabled       Boolean          @default(false) @map("portal_enabled") // trigger-maintained
+  triageStatus        TriageStatus?    @map("triage_status")
+  snoozedUntil        DateTime?        @map("snoozed_until") @db.Timestamptz(6)
+  duplicateOfId       String?          @map("duplicate_of_id")
+  source              WorkItemSource   @default(IN_APP)
+  checklistTotal      Int              @default(0) @map("checklist_total") // denormalised from description on save
+  checklistDone       Int              @default(0) @map("checklist_done")
+  sourceSystem        String?          @map("source_system") // "trello" | "csv" | … (Phase 6 import)
+  sourceId            String?          @map("source_id") // (sourceSystem, sourceId) idempotency
+  importJobId         String?          @map("import_job_id")
+  createdByMemberId   String?          @map("created_by_member_id") // attribution, no FK
+  reportedByContactId String?          @map("reported_by_contact_id") // attribution, no FK (PORTAL/EMAIL requests)
+  archivedAt          DateTime?        @map("archived_at") @db.Timestamptz(6) // explicit archive; never silent
+  deletedAt           DateTime?        @map("deleted_at") @db.Timestamptz(6) // soft delete (30 d), then hard delete
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+  client          Client                 @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project         Project                @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  state           WorkflowState          @relation(fields: [tenantId, stateId], references: [tenantId, id])
+  assigneeMember  Member?                @relation("WorkItemAssigneeMember", fields: [tenantId, assigneeMemberId], references: [tenantId, id])
+  assigneeContact Contact?               @relation("WorkItemAssigneeContact", fields: [tenantId, assigneeContactId], references: [tenantId, id])
+  parent          WorkItem?              @relation("WorkItemParent", fields: [tenantId, parentId], references: [tenantId, id])
+  children        WorkItem[]             @relation("WorkItemParent")
+  milestone       Milestone?             @relation(fields: [tenantId, milestoneId], references: [tenantId, id])
+  fixedInVersion  ProjectVersion?        @relation(fields: [tenantId, fixedInVersionId], references: [tenantId, id])
+  duplicateOf     WorkItem?              @relation("WorkItemDuplicate", fields: [tenantId, duplicateOfId], references: [tenantId, id])
+  duplicates      WorkItem[]             @relation("WorkItemDuplicate")
+  activity        WorkItemActivity[]
+  labels          WorkItemLabel[]
+  collaborators   WorkItemCollaborator[]
+  subscribers     WorkItemSubscriber[]
+
+  @@unique([tenantId, projectId, number]) // human key ACME-12
+  @@unique([tenantId, projectId, rank]) // one position per item (retry-with-jitter)
+  @@unique([tenantId, id]) // composite-FK target (parent, duplicateOf, activity, labels, time entries)
+  @@index([tenantId, projectId, stateId, rank]) // board column
+  @@index([tenantId, projectId, stateCategory, rank]) // backlog, rollups
+  @@index([tenantId, assigneeMemberId, stateCategory, targetDate]) // /home
+  @@index([tenantId, parentId])
+  @@index([tenantId, rootId]) // epic subtree rollups (flat)
+  @@index([tenantId, milestoneId])
+  @@index([tenantId, clientId, visibility, stateCategory]) // portal list + gate
+  @@index([tenantId, projectId, archivedAt])
+  @@index([tenantId, projectId, triageStatus]) // triage lane
+  @@index([tenantId, sourceSystem, sourceId]) // import idempotency
+  @@map("work_item")
+}
+
+/// Field-level HISTORY (who changed what, from → to) — not AuditEvent:
+/// privileged transitions are dual-written there; routine edits live
+/// only here. visibility CLIENT_VISIBLE only for the portal-safe field
+/// list on CLIENT_VISIBLE items (service decides, row carries it,
+/// portal_gate enforces it). oldRef/newRef are ids (a member id here
+/// is INTERNAL by construction).
+model WorkItemActivity {
+  id             String     @id @default(uuid(7))
+  tenantId       String     @map("tenant_id")
+  clientId       String     @map("client_id") // denormalised — RLS
+  projectId      String     @map("project_id") // denormalised — portal_enabled fan-out
+  workItemId     String     @map("work_item_id")
+  actorMemberId  String?    @map("actor_member_id") // attribution, no FK
+  actorContactId String?    @map("actor_contact_id") // attribution, no FK
+  field          String // "stateCategory" | "title" | "priority" | "assignee" | …
+  oldValue       String?    @map("old_value")
+  newValue       String?    @map("new_value")
+  oldRef         String?    @map("old_ref")
+  newRef         String?    @map("new_ref")
+  commentId      String?    @map("comment_id") // soft pointer when field = "comment"
+  visibility     Visibility @default(INTERNAL)
+  portalEnabled  Boolean    @default(false) @map("portal_enabled") // trigger-maintained
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  client   Client   @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project  Project  @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  workItem WorkItem @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, workItemId, createdAt])
+  @@index([tenantId, clientId, visibility])
+  @@map("work_item_activity")
+}
+
+/// Tenant-wide (optionally project-scoped) tags. INTERNAL-ONLY in v1 —
+/// labels never reach the portal, so class A, no visibility column.
+model Label {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  projectId String?  @map("project_id") // NULL = tenant-wide
+  name      String
+  color     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  project   Project?        @relation(fields: [tenantId, projectId], references: [tenantId, id])
+  workItems WorkItemLabel[]
+
+  @@unique([tenantId, projectId, name]) // NULL projectId distinct — app also checks tenant-wide uniqueness
+  @@unique([tenantId, id]) // composite-FK target
+  @@map("label")
+}
+
+/// Join. Class A like Label.
+model WorkItemLabel {
+  tenantId   String   @map("tenant_id")
+  workItemId String   @map("work_item_id")
+  labelId    String   @map("label_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  workItem WorkItem @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
+  label    Label    @relation(fields: [tenantId, labelId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, workItemId, labelId])
+  @@index([tenantId, labelId])
+  @@map("work_item_label")
+}
+
+/// Extra members on an item (not the assignee). Drives notifications
+/// (participating) and "my work" collaborating. Members only.
+model WorkItemCollaborator {
+  tenantId   String   @map("tenant_id")
+  workItemId String   @map("work_item_id")
+  memberId   String   @map("member_id")
+  addedById  String?  @map("added_by_id") // attribution, no FK
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  workItem WorkItem @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
+  member   Member   @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, workItemId, memberId])
+  @@index([tenantId, memberId])
+  @@map("work_item_collaborator")
+}
+
+/// Explicit watch/mute per member per item — the hottest fan-out
+/// lookup, so its own narrow table (generic Subscription covers other
+/// entity types).
+model WorkItemSubscriber {
+  tenantId   String            @map("tenant_id")
+  workItemId String            @map("work_item_id")
+  memberId   String            @map("member_id")
+  level      SubscriptionLevel @default(WATCH)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  workItem WorkItem @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
+  member   Member   @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, workItemId, memberId])
+  @@index([tenantId, memberId])
+  @@map("work_item_subscriber")
+}
+
+/// What a Comment hangs on. PROJECT_VERSION covers release-note threads.
+enum CommentSubjectType {
+  WORK_ITEM
+  PROJECT_UPDATE
+  DOCUMENT
+  FILE_VERSION
+  PROJECT_VERSION
+
+  @@map("comment_subject_type")
+}
+
+/// ONE polymorphic thread table. Staff write INTERNAL comments on
+/// CLIENT_VISIBLE items (DB default INTERNAL); contact-authored
+/// comments are FORCED CLIENT_VISIBLE — the one table a contact
+/// principal INSERTs directly (WITH CHECK in the migration; the
+/// contact-writable census). subjectId is a soft pointer validated by
+/// trigger — never used for authorization (§10); clientId/projectId
+/// are denormalised from the subject by the same trigger.
+model Comment {
+  id              String             @id @default(uuid(7))
+  tenantId        String             @map("tenant_id")
+  clientId        String?            @map("client_id") // NULL only for tenant-internal documents
+  projectId       String?            @map("project_id")
+  subjectType     CommentSubjectType @map("subject_type")
+  subjectId       String             @map("subject_id") // soft pointer (trigger-validated)
+  parentId        String?            @map("parent_id") // threaded reply, same subject (trigger)
+  authorMemberId  String?            @map("author_member_id") // XOR authorContactId (CHECK); attribution, no FK
+  authorContactId String?            @map("author_contact_id") // attribution, no FK
+  body            Json // Tiptap JSON
+  bodyText        String             @map("body_text") // extracted text (search feed, email, previews)
+  visibility      Visibility         @default(INTERNAL) // contact-authored forced CLIENT_VISIBLE
+  portalEnabled   Boolean            @default(false) @map("portal_enabled") // trigger-maintained (TRUE when projectId NULL)
+  editedAt        DateTime?          @map("edited_at") @db.Timestamptz(6)
+  deletedAt       DateTime?          @map("deleted_at") @db.Timestamptz(6) // soft delete keeps the thread shape
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  client   Client?   @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project  Project?  @relation(fields: [tenantId, projectId], references: [tenantId, id])
+  parent   Comment?  @relation("CommentThread", fields: [tenantId, parentId], references: [tenantId, id])
+  replies  Comment[] @relation("CommentThread")
+  mentions Mention[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, subjectType, subjectId, createdAt])
+  @@index([tenantId, clientId, visibility])
+  @@index([tenantId, projectId, createdAt])
+  @@map("comment")
+}
+
+/// Extracted @-mentions (ids only) for notification fan-out and the
+/// "mentioned a Contact on an INTERNAL item" warning. Never rendered
+/// from here.
+model Mention {
+  id                 String   @id @default(uuid(7))
+  tenantId           String   @map("tenant_id")
+  commentId          String   @map("comment_id")
+  mentionedMemberId  String?  @map("mentioned_member_id") // XOR mentionedContactId; id only, no FK
+  mentionedContactId String?  @map("mentioned_contact_id")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  comment Comment @relation(fields: [tenantId, commentId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, commentId, mentionedMemberId, mentionedContactId])
+  @@index([tenantId, mentionedMemberId])
+  @@map("mention")
+}
+
+/// "Pick a template" is the ONLY process picker (UI.md rule 13).
+/// Tenant-owned rows only — platform templates are COPIED in at
+/// provisioning (no nullable tenantId; keeps RLS and the census clean).
+model ProjectTemplate {
+  id                String   @id @default(uuid(7))
+  tenantId          String   @map("tenant_id")
+  name              String
+  description       String?
+  locale            String? // language of the seeded titles (informational)
+  definition        Json // { states, epics: [{title, items}], milestones, settings }
+  createdByMemberId String?  @map("created_by_member_id") // attribution, no FK
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("project_template")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// NOTIFICATIONS & EMAIL (core, never entitlement-gated) — §6.18
+// One seam: notify.emit(tx, …) inside the same withTenant transaction
+// as the write. Static kind catalog (TS module) fixes audience/class/
+// template per kind; every CONTACT-audience kind is clientVisibleOnly
+// (CI-tested). Worker drains EmailOutbox under the platform system
+// principal with FOR UPDATE SKIP LOCKED. PushSubscription/InboundEmail
+// are Phase 5.
+// ───────────────────────────────────────────────────────────────────
+
+enum ReceiverType {
+  MEMBER
+  CONTACT
+
+  @@map("receiver_type")
+}
+
+enum NotificationClass {
+  INSTANT // in-app + email now (assignment, mention)
+  COALESCED // in-app now, email folded into digest / per-item coalesce
+  DIGEST_ONLY // in-app only, digest mention
+
+  @@map("notification_class")
+}
+
+/// One row per receiver per event. params carries IDS ONLY — the
+/// UI/email renders from live rows under the RECEIVER's principal, so
+/// a notification can never leak a fact the receiver cannot read now.
+/// CONTACT rows: clientId REQUIRED (CHECK); readable + updatable
+/// (readAt/archivedAt ONLY — column-level GRANT + policy WITH CHECK)
+/// by the contact — the Notification entry in the contact-writable
+/// census. Member rows: contact principals never see them (policy).
+model Notification {
+  id           String            @id @default(uuid(7))
+  tenantId     String            @map("tenant_id")
+  receiverType ReceiverType      @map("receiver_type")
+  receiverId   String            @map("receiver_id") // Member.id | Contact.id (bound to app.principal_id for contacts)
+  clientId     String?           @map("client_id") // REQUIRED for CONTACT receivers (CHECK)
+  projectId    String?           @map("project_id") // grouping hint, no FK
+  kind         String // catalog code, e.g. "work_item.assigned"
+  class        NotificationClass @default(COALESCED)
+  entityType   String            @map("entity_type")
+  entityId     String            @map("entity_id")
+  actorType    ActorType?        @map("actor_type")
+  actorId      String?           @map("actor_id")
+  params       Json? // ids only, zod-validated per kind
+  dedupeKey    String?           @map("dedupe_key")
+  readAt       DateTime?         @map("read_at") @db.Timestamptz(6)
+  archivedAt   DateTime?         @map("archived_at") @db.Timestamptz(6)
+  snoozedTill  DateTime?         @map("snoozed_till") @db.Timestamptz(6)
+  emailedAt    DateTime?         @map("emailed_at") @db.Timestamptz(6) // set by the outbox worker
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  client Client? @relation(fields: [tenantId, clientId], references: [tenantId, id])
+
+  @@index([tenantId, receiverType, receiverId, createdAt(sort: Desc)])
+  @@index([tenantId, receiverType, receiverId, dedupeKey])
+  @@index([tenantId, entityType, entityId])
+  @@map("notification")
+}
+
+/// Shared with WorkItemSubscriber.
+enum SubscriptionLevel {
+  WATCH // everything on the entity
+  PARTICIPATE // default when you touch it
+  MUTED
+
+  @@map("subscription_level")
+}
+
+/// Explicit per-entity subscription for entities other than WorkItem.
+/// Members only in v1.
+model Subscription {
+  tenantId   String            @map("tenant_id")
+  memberId   String            @map("member_id")
+  entityType String            @map("entity_type")
+  entityId   String            @map("entity_id")
+  level      SubscriptionLevel @default(PARTICIPATE)
+  reason     String? // "assigned" | "commented" | "manual"
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  member Member @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, memberId, entityType, entityId])
+  @@index([tenantId, entityType, entityId])
+  @@map("subscription")
+}
+
+enum EmailLevel {
+  ALL
+  PARTICIPATING
+  MENTIONS
+  NONE
+
+  @@map("email_level")
+}
+
+enum DigestCadence {
+  NONE
+  DAILY
+  WEEKLY
+
+  @@map("digest_cadence")
+}
+
+/// Per member (Phase 5: per contact, written by the system principal —
+/// contacts do not edit it in v1). receiverId is polymorphic — no FK.
+model NotificationPreference {
+  id                   String        @id @default(uuid(7))
+  tenantId             String        @map("tenant_id")
+  receiverType         ReceiverType  @default(MEMBER) @map("receiver_type")
+  receiverId           String        @map("receiver_id")
+  emailLevel           EmailLevel    @default(PARTICIPATING) @map("email_level")
+  inAppLevel           EmailLevel    @default(ALL) @map("in_app_level")
+  digestCadence        DigestCadence @default(DAILY) @map("digest_cadence")
+  digestHour           Int           @default(8) @map("digest_hour")
+  digestWeekday        Int?          @map("digest_weekday") // 1 = Monday (WEEKLY)
+  quietHoursFrom       Int?          @map("quiet_hours_from") // 0-23 local
+  quietHoursTo         Int?          @map("quiet_hours_to")
+  timezone             String?
+  perKind              Json?         @map("per_kind") // { "<kind>": {email, inApp} }
+  unsubscribeTokenHash String?       @map("unsubscribe_token_hash") // RFC 8058 (digests, Phase 5)
+  updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, receiverType, receiverId])
+  @@map("notification_preference")
+}
+
+enum EmailOutboxStatus {
+  QUEUED
+  SENDING // lockedAt set; SKIP LOCKED worker owns it
+  SENT
+  FAILED // retry with backoff (attempts < max)
+  DEAD // gave up; platform console
+  SUPPRESSED // recipient on EmailSuppression
+  SKIPPED // debounce cancelled (e.g. assignment read within 2 min)
+
+  @@map("email_outbox_status")
+}
+
+/// The Postgres outbox (ARC-21). idempotencyKey unique = the whole
+/// exactly-once story. params (template inputs) nulled at 90 d;
+/// delivery metadata kept 12 mo. Worker runs under withPlatform
+/// system, cross-tenant.
+model EmailOutbox {
+  id              String            @id @default(uuid(7))
+  tenantId        String            @map("tenant_id")
+  idempotencyKey  String            @unique @map("idempotency_key")
+  receiverType    ReceiverType      @map("receiver_type")
+  receiverId      String            @map("receiver_id")
+  toEmail         String            @map("to_email") // lowercase snapshot at enqueue
+  kind            String // template key
+  locale          String
+  params          Json? // nulled at 90 d
+  notificationIds String[]          @default([]) @map("notification_ids")
+  configSet       String?           @map("config_set") // SES configuration set
+  sendAfter       DateTime          @default(now()) @map("send_after") @db.Timestamptz(6) // debounce / digest scheduling
+  status          EmailOutboxStatus @default(QUEUED)
+  attempts        Int               @default(0)
+  lastError       String?           @map("last_error")
+  lockedAt        DateTime?         @map("locked_at") @db.Timestamptz(6)
+  sentAt          DateTime?         @map("sent_at") @db.Timestamptz(6)
+  sesMessageId    String?           @map("ses_message_id")
+  messageIdHeader String?           @map("message_id_header") // threading / reply-by-email (Phase 5)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([status, sendAfter]) // worker pick (cross-tenant, SYSTEM)
+  @@index([tenantId, receiverType, receiverId, createdAt(sort: Desc)])
+  @@map("email_outbox")
+}
+
+enum SuppressionReason {
+  HARD_BOUNCE
+  COMPLAINT
+  UNSUBSCRIBED // RFC 8058 / preference NONE
+  MANUAL
+
+  @@map("suppression_reason")
+}
+
+/// GLOBAL (platform-owned): an address that bounced or complained is
+/// never mailed again from any tenant (SES reputation is shared).
+/// Checked at enqueue and at send. No tenant column by design.
+model EmailSuppression {
+  email     String            @id // lowercase
+  reason    SuppressionReason
+  source    String? // "ses-sns" | "manual" | "unsubscribe"
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("email_suppression")
 }
