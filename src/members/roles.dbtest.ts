@@ -56,7 +56,7 @@ describe("listRoles (role:view)", () => {
     const roles = await list(f.seats.owner.memberId);
     expect(roles.filter((r) => r.isSystem)).toHaveLength(4);
     const ceo = roles.find((r) => r.templateKey === "owner")!;
-    expect(ceo.codes).toHaveLength(PERMISSIONS.length);
+    expect(ceo.codes).toHaveLength(PERMISSIONS.filter((p) => !p.deprecated).length);
     expect(ceo.holderCount).toBe(1);
     const emp = roles.find((r) => r.templateKey === "employee")!;
     expect(emp.codes.sort()).toEqual(permissionsForTemplate("employee").map((p) => p.code).sort());
@@ -98,7 +98,7 @@ describe("createRole (role:create)", () => {
     expect(codes).toEqual([...cloneCodesForTemplate("owner")].sort());
     expect(codes).not.toContain("role:edit");
     expect(codes).not.toContain("member:manage_roles");
-    expect(codes.length).toBe(PERMISSIONS.filter((p) => !p.requiresMfa).length);
+    expect(codes.length).toBe(PERMISSIONS.filter((p) => !p.requiresMfa && !p.deprecated).length);
     expect(await f.permissionsVersion()).toBe(before + 1);
     expect(await f.audits("role.created")).toHaveLength(1);
   });
@@ -202,7 +202,7 @@ describe("role editing (role:edit ✦, §7.1 rule 2, §7.2)", () => {
 
     const ceoRows = await rowsOf(f.roleId("owner"));
     expect(ceoRows.find((r) => r.permission.code === "member:invite")?.source).toBe("TEMPLATE");
-    expect(ceoRows).toHaveLength(PERMISSIONS.length);
+    expect(ceoRows).toHaveLength(PERMISSIONS.filter((p) => !p.deprecated).length);
 
     const updates = await f.audits("role.updated");
     expect(updates).toHaveLength(2);

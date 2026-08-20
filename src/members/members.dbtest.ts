@@ -63,10 +63,10 @@ describe("tenant provisioning (B6 matrix stamped as rows)", () => {
     });
   });
 
-  it("the owner's effective set is the full catalog", async () => {
+  it("the owner's effective set is the full live catalog (deprecated codes seed nowhere)", async () => {
     await withTenant(tenantId, { type: "member", id: ownerMemberId }, async (tx) => {
       const held = await effectivePermissions(tx, ownerMemberId);
-      expect(held.size).toBe(PERMISSIONS.length);
+      expect(held.size).toBe(PERMISSIONS.filter((p) => !p.deprecated).length);
     });
   });
 

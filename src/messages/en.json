@@ -941,8 +941,44 @@
       "description": "The board — columns are states, position is priority — lands in the next phase."
     },
     "backlog": {
-      "title": "The backlog arrives with Work",
-      "description": "The backlog — every open task by rank — lands in the next phase."
+      "empty": {
+        "title": "No tasks yet",
+        "body": "Every task in this project lives here, in one ordered list. Create the first one.",
+        "bodyReadOnly": "Tasks will appear here once someone creates them.",
+        "action": "New task"
+      },
+      "columns": {
+        "key": "Key",
+        "title": "Title",
+        "state": "State",
+        "assignee": "Assignee",
+        "estimate": "Estimate",
+        "visibility": "Visibility",
+        "actions": "Actions"
+      },
+      "createPlaceholder": "Task title — Enter creates",
+      "createLabel": "New task title",
+      "created": "Task {key} created",
+      "titleLabel": "Task title",
+      "stateLabel": "State",
+      "assigneeLabel": "Assignee",
+      "unassigned": "Unassigned",
+      "estimateLabel": "Estimate (hours)",
+      "estimatePlaceholder": "Add",
+      "invalidTitle": "That could not be saved.",
+      "invalidEstimate": "Estimates are hours, like 2 or 1.5.",
+      "saved": "Saved",
+      "actionFailed": "The change did not save. The list shows the current state.",
+      "archivedToast": "Task archived",
+      "restoredToast": "Task restored",
+      "deletedToast": "Task deleted",
+      "scrollLabel": "Task list",
+      "actions": {
+        "archive": "Archive",
+        "restore": "Restore",
+        "delete": "Delete",
+        "confirmDelete": "Delete this task?"
+      }
     },
     "portalState": {
       "on": "On",

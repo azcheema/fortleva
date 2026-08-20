@@ -941,8 +941,44 @@
       "description": "Tavlan — kolumner är statusar, position är prioritet — kommer i nästa fas."
     },
     "backlog": {
-      "title": "Backloggen kommer med Arbete",
-      "description": "Backloggen — alla öppna uppgifter efter rang — kommer i nästa fas."
+      "empty": {
+        "title": "Inga uppgifter ännu",
+        "body": "Alla uppgifter i projektet samlas här, i en ordnad lista. Skapa den första.",
+        "bodyReadOnly": "Uppgifter visas här när någon har skapat dem.",
+        "action": "Ny uppgift"
+      },
+      "columns": {
+        "key": "Nyckel",
+        "title": "Titel",
+        "state": "Status",
+        "assignee": "Ansvarig",
+        "estimate": "Estimat",
+        "visibility": "Synlighet",
+        "actions": "Åtgärder"
+      },
+      "createPlaceholder": "Uppgiftens titel — Enter skapar",
+      "createLabel": "Ny uppgifts titel",
+      "created": "Uppgift {key} skapad",
+      "titleLabel": "Uppgiftens titel",
+      "stateLabel": "Status",
+      "assigneeLabel": "Ansvarig",
+      "unassigned": "Ingen ansvarig",
+      "estimateLabel": "Estimat (timmar)",
+      "estimatePlaceholder": "Lägg till",
+      "invalidTitle": "Det gick inte att spara.",
+      "invalidEstimate": "Estimat anges i timmar, t.ex. 2 eller 1,5.",
+      "saved": "Sparat",
+      "actionFailed": "Ändringen sparades inte. Listan visar aktuellt läge.",
+      "archivedToast": "Uppgiften arkiverad",
+      "restoredToast": "Uppgiften återställd",
+      "deletedToast": "Uppgiften borttagen",
+      "scrollLabel": "Uppgiftslista",
+      "actions": {
+        "archive": "Arkivera",
+        "restore": "Återställ",
+        "delete": "Ta bort",
+        "confirmDelete": "Ta bort uppgiften?"
+      }
     },
     "portalState": {
       "on": "På",
