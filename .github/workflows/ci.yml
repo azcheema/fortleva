@@ -88,7 +88,9 @@ jobs:
     concurrency:
       group: isolation-db
       cancel-in-progress: false
-    timeout-minutes: 25
+    # The suite is ~15 min next to the database; on this link the first
+    # public run was still going at 25 min. 60 is a ceiling, not a target.
+    timeout-minutes: 60
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DIRECT_URL: ${{ secrets.DIRECT_URL }}

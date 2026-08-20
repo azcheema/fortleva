@@ -31,8 +31,11 @@ export default async function globalSetup(): Promise<void> {
   rmSync(join(process.cwd(), ".design-shots"), { recursive: true, force: true });
   // Teardown is keyed on a seed file, so a killed run (or a webServer
   // that dies mid-suite) orphans its tenant. Sweep anything older than
-  // an hour before provisioning; a concurrent run is never in range.
-  const swept = await sweepStaleE2ETenants(15);
+  // 90 minutes before provisioning; a concurrent run is never in range.
+  // 90 min, not 15: the age guard is what keeps a CONCURRENT run's tenant
+  // out of range, and a run on the CI link (US runner, EU database) takes
+  // 30+ min — a local run's sweep once deleted a live CI fixture mid-run.
+  const swept = await sweepStaleE2ETenants(90);
   if (swept > 0) console.log(`[e2e] swept ${swept} orphaned throwaway tenant(s)`);
   const { password, tenantSlug } = await provisionE2ETenant();
   console.log(`[e2e] throwaway tenant ${tenantSlug} provisioned`);
