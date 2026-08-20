@@ -24,6 +24,10 @@ const COPY: Record<NotificationKind, Record<"en" | "sv", Copy>> = {
     en: { subject: "New comment", body: "A task you follow has a new comment." },
     sv: { subject: "Ny kommentar", body: "En uppgift du följer har en ny kommentar." },
   },
+  "budget.threshold_reached": {
+    en: { subject: "A project budget reached a threshold", body: "A project budget in Fortleva reached one of its thresholds." },
+    sv: { subject: "En projektbudget har nått en tröskel", body: "En projektbudget i Fortleva har nått en av sina trösklar." },
+  },
 };
 
 export function renderEmail(

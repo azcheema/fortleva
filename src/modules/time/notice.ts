@@ -4,6 +4,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { isUniqueViolation } from "@/lib/domain-error";
 
+import { ensureTimeDefaults } from "./bootstrap";
 import { principalOf, type TimeCtx } from "./ctx";
 
 /**
@@ -197,6 +198,7 @@ export async function assertNoticeAcknowledged(
 
 /** time:track — what the timer UI shows before the first start. */
 export async function getNoticeStatus(ctx: TimeCtx, preferredLocale?: string): Promise<NoticeStatus> {
+  await ensureTimeDefaults(ctx.tenantId); // the notice must exist before anyone can read it
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
     return noticeStatusFor(tx, ctx.tenantId, ctx.actor.memberId, preferredLocale);

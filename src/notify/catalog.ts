@@ -44,6 +44,12 @@ const KINDS = {
     audience: "MEMBER",
     class: "COALESCED",
   },
+  // 2T: budget threshold crossed (once per budget × period × threshold —
+  // the BudgetAlert unique dedupes; ids only; coalesces until digests).
+  "budget.threshold_reached": {
+    audience: "MEMBER",
+    class: "COALESCED",
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

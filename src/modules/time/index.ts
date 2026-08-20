@@ -28,6 +28,7 @@ export {
   createRateCard,
   listBillRateCards,
   listCostRateCards,
+  repriceRateCard,
   revealCostRates,
   type RateCardView,
   type RateKind,
@@ -72,3 +73,41 @@ export {
 export { settleMember, settleTenant, type SettleResult } from "./settle";
 export { recomputeProjectMonth } from "./summary";
 export type { EntryTargetInput, ResolvedTarget } from "./target";
+export {
+  archiveBudget,
+  checkBudgetAlerts,
+  createBudget,
+  currentPeriod,
+  getProjectBudget,
+  updateBudget,
+  type BudgetBurn,
+  type BudgetInput,
+  type BudgetKind,
+  type BudgetPeriod,
+  type BudgetView,
+  type BillingModel,
+} from "./budgets";
+export {
+  agreementConsumption,
+  projectRollup,
+  teamRollup,
+  type ProjectRollup,
+  type Range,
+  type RollupLine,
+  type TeamRollupLine,
+} from "./rollup";
+export {
+  archiveReport,
+  deleteReport,
+  generateReport,
+  getReport,
+  listReports,
+  publishReport,
+  regenerateReport,
+  unpublishReport,
+  type ReportGroupBy,
+  type ReportLine,
+  type ReportSnapshot,
+  type ReportStatus,
+  type ReportView,
+} from "./reports";

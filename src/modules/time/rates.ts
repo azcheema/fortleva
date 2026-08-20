@@ -9,6 +9,7 @@ import { dateColumn, isoDateOf } from "@/lib/duration";
 import { fail } from "@/lib/domain-error";
 
 import { guarded, idsOnly, principalOf, type TimeCtx } from "./ctx";
+import { recomputeTouched } from "./summary";
 
 /**
  * Rates (DATA_MODEL.md §6.15 "Rate resolution", plan §3.3, D4):
@@ -436,4 +437,91 @@ export async function revealCostRates(
     });
     return out;
   });
+}
+
+/**
+ * time:reprice — the audited correction command (DATA_MODEL.md §6.15
+ * "Reprice"): re-resolve the snapshot of every UNBILLED entry that points
+ * at `rateCardId` (bill or cost), in FROM_DATE or ALL_UNBILLED scope;
+ * locked entries are SKIPPED AND COUNTED (the contract exists before
+ * Phase 4's locks do); every touched (project, month) summary is
+ * recomputed in the same transaction.
+ */
+export async function repriceRateCard(
+  ctx: TimeCtx,
+  input: { rateCardId: string; mode: "FROM_DATE" | "ALL_UNBILLED"; fromDate?: string },
+): Promise<{ repriced: number; skippedLocked: number }> {
+  const fromDate = input.mode === "FROM_DATE" ? isoDate(input.fromDate ?? "") : null;
+  return withTenant(
+    ctx.tenantId,
+    principalOf(ctx),
+    async (tx) =>
+      guarded(async () => {
+        await requireAccess(tx, ctx.tenantId, ctx.actor, "time:reprice");
+        const card = await tx.rateCard.findFirst({
+          where: { tenantId: ctx.tenantId, id: input.rateCardId },
+          select: { id: true, kind: true, memberId: true, projectId: true, serviceId: true },
+        });
+        if (!card) fail("INVALID_INPUT", "unknown rate card");
+        await assertCardScope(tx, ctx, { memberId: card!.memberId, projectId: card!.projectId, serviceId: card!.serviceId });
+        const entries = await tx.timeEntry.findMany({
+          where: {
+            tenantId: ctx.tenantId,
+            deletedAt: null,
+            invoiceLineId: null,
+            OR: [{ billRateCardId: card!.id }, { costRateCardId: card!.id }],
+            ...(fromDate ? { localDate: { gte: dateColumn(fromDate) } } : {}),
+          },
+          select: {
+            id: true,
+            memberId: true,
+            projectId: true,
+            serviceId: true,
+            localDate: true,
+            billable: true,
+            lockedReason: true,
+          },
+          orderBy: { startedAt: "asc" },
+          take: 5000,
+        });
+        let repriced = 0;
+        let skippedLocked = 0;
+        const touches: { projectId: string | null; localDate: Date }[] = [];
+        for (const e of entries) {
+          if (e.lockedReason) {
+            skippedLocked += 1;
+            continue;
+          }
+          const snap = await resolveRateSnapshot(tx, {
+            tenantId: ctx.tenantId,
+            memberId: e.memberId,
+            projectId: e.projectId,
+            serviceId: e.serviceId,
+            localDate: e.localDate,
+            billable: e.billable,
+          });
+          await tx.timeEntry.update({
+            where: { id: e.id },
+            data: {
+              billRate: snap.billRate,
+              currency: snap.billRate !== null ? snap.currency : null,
+              rateSource: snap.rateSource,
+              billRateCardId: snap.billRateCardId,
+              costRateCardId: snap.costRateCardId,
+            },
+          });
+          touches.push({ projectId: e.projectId, localDate: e.localDate });
+          repriced += 1;
+        }
+        await recomputeTouched(tx, ctx.tenantId, touches);
+        await record(tx, {
+          action: "time_entry.repriced",
+          targetType: "RateCard",
+          targetId: card!.id,
+          metadata: idsOnly({ mode: input.mode, fromDate, repriced, skippedLocked }),
+        });
+        return { repriced, skippedLocked };
+      }),
+    { timeoutMs: 60_000 },
+  );
 }
