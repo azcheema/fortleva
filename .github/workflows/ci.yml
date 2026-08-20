@@ -47,9 +47,10 @@ jobs:
     # shared dev database in the EU (~100 ms per round trip), so the same
     # suite takes 25–35 min here and the 5 s transaction budget / 30 s
     # per-test guard that are right locally are too tight — both are
-    # widened below. TODO(founder): a CI-only Neon project in a US region
-    # (throwaway test data only) brings this back to minutes. Never the
-    # 6-hour default timeout.
+    # widened below. TODO(founder): an EU-located runner (a larger runner
+    # with Azure private networking in an EU region, or an ephemeral
+    # self-hosted one) brings this back to minutes — the database stays in
+    # Frankfurt. Never the 6-hour default timeout.
     timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -91,7 +92,7 @@ jobs:
     # The suite is ~15 min next to the database; on this link the first
     # full run was still going at 60 min (every assertion waits on the
     # database, and a failure retries). 120 is a ceiling, not a target —
-    # the US-region CI database (PLAN §0) is the real fix.
+    # an EU-located runner (PLAN §0) is the real fix.
     timeout-minutes: 120
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
