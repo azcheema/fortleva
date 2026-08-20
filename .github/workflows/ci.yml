@@ -43,9 +43,14 @@ jobs:
     concurrency:
       group: isolation-db
       cancel-in-progress: false
-    # ~3 min locally; the shared dev database is in the EU and the runner
-    # is not, so allow for latency — but never the 6-hour default.
-    timeout-minutes: 20
+    # ~3 min next to the database; the GitHub runner is in the US and the
+    # shared dev database in the EU (~100 ms per round trip), so the same
+    # suite takes 25–35 min here and the 5 s transaction budget / 30 s
+    # per-test guard that are right locally are too tight — both are
+    # widened below. TODO(founder): a CI-only Neon project in a US region
+    # (throwaway test data only) brings this back to minutes. Never the
+    # 6-hour default timeout.
+    timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
@@ -53,6 +58,8 @@ jobs:
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
       FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
       FIELD_ENCRYPTION_KEY_ID: k1
+      DB_TX_TIMEOUT_MS: "20000"
+      DBTEST_TIMEOUT_MS: "120000"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -89,6 +96,9 @@ jobs:
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
       FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
       FIELD_ENCRYPTION_KEY_ID: k1
+      # The `next start` under test is as far from the database as the
+      # isolation job is (see above).
+      DB_TX_TIMEOUT_MS: "20000"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

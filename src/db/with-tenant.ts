@@ -16,6 +16,15 @@ export type TenantDb = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
 
+/**
+ * Interactive-transaction budget. 5 s is right next to the database
+ * (Vercel Frankfurt ↔ Neon EU); a caller 100 ms away per round trip —
+ * the GitHub-hosted runner in the US — blows it on ordinary multi-
+ * statement work, so CI widens it through DB_TX_TIMEOUT_MS. Callers
+ * with a known longer critical section still pass `timeoutMs`.
+ */
+const DEFAULT_TX_TIMEOUT_MS = Number(process.env["DB_TX_TIMEOUT_MS"]) || 5000;
+
 export async function withTenant<T>(
   tenantId: string,
   principal: Principal,
@@ -46,7 +55,7 @@ export async function withTenant<T>(
                  set_config('app.principal_id', ${principalId}, true)`;
         return fn(tx as unknown as TenantDb);
       },
-      { timeout: opts?.timeoutMs ?? 5000 },
+      { timeout: opts?.timeoutMs ?? DEFAULT_TX_TIMEOUT_MS },
     ),
   );
 }
@@ -102,7 +111,7 @@ export async function withPlatform<T>(
       await tx.auditEvent.create({ data: auditData });
       return value;
     },
-    { timeout: opts?.timeoutMs ?? 5000 },
+    { timeout: opts?.timeoutMs ?? DEFAULT_TX_TIMEOUT_MS },
   );
 
   // A READ ONLY transaction cannot hold its own audit row; every
