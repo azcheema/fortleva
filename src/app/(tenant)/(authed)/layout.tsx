@@ -1,12 +1,27 @@
+import type { Metadata } from "next";
+
 import { isAuthorized } from "@/authz/authorize";
 import { requireMemberSession } from "@/auth/session";
 import { AppShell } from "@/components/shell/app-shell";
+import { PwaRegister } from "@/components/shell/pwa-register";
 import { withTenant } from "@/db";
 import { getThemePreference } from "@/lib/theme-server";
 import { getActiveMembership, mfaStateOf } from "@/members/tenant-context";
 
 import { switchLocaleAction } from "./account/actions";
 import { NAV, visibleNav, type NavEntry } from "./nav";
+import { getTimerStateAction, type TimerPillState } from "./time/actions";
+
+/**
+ * PWA shell (decision 15 / ARC-25, Stage A): the member plane links the
+ * manifest and the Apple install tags; the ops host never renders this
+ * layout, and the manifest route 404s there anyway.
+ */
+export const metadata: Metadata = {
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Fortleva" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+};
 
 /**
  * Member-plane chrome (UI.md §3). Nav visibility is a permission
@@ -23,6 +38,7 @@ export default async function AuthedLayout({ children }: { children: React.React
   const theme = await getThemePreference();
 
   let nav: NavEntry[];
+  let timer: TimerPillState | null = null;
   if (membership) {
     const actor = { memberId: membership.memberId, mfa: mfaStateOf(session) };
     const gated = [...new Set(collectPermissions(NAV))];
@@ -35,6 +51,8 @@ export default async function AuthedLayout({ children }: { children: React.React
       },
     );
     nav = visibleNav(NAV, (code) => held.has(code));
+    // The pill's initial snapshot (2T): only for members who may track time.
+    if (held.has("time:track")) timer = await getTimerStateAction();
   } else {
     nav = visibleNav(NAV, () => false);
   }
@@ -46,7 +64,9 @@ export default async function AuthedLayout({ children }: { children: React.React
       user={{ name: session.user.name, email: session.user.email }}
       theme={theme}
       onSwitchLocale={switchLocaleAction}
+      timer={timer}
     >
+      <PwaRegister />
       {children}
     </AppShell>
   );

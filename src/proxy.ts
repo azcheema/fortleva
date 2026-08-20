@@ -12,7 +12,10 @@ import { planeForHost, sessionCookieName } from "@/config";
 
 const OPS_PREFIX = "/ops";
 const PORTAL_PREFIX = "/portal";
-const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", "/api/health"]);
+// The PWA shell's manifest and worker (ARC-25) carry no tenant data and
+// must be fetchable without a session; on the ops host they are swept
+// under /ops/… by the platform branch and 404 there — un-installable.
+const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", "/api/health", "/manifest.webmanifest", "/sw.js"]);
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;

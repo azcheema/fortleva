@@ -3,7 +3,10 @@ import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { isAuthorized } from "@/authz/authorize";
 import { Callout, EntityTile, Page, PageHeader, StatusBadge } from "@/components/semantic";
+import { withTenant } from "@/db";
+import { requireTenantContext } from "@/members/tenant-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TabNav } from "@/components/tab-nav";
@@ -43,12 +46,18 @@ export default async function ProjectLayout({
   const project = await loadProject(key);
   const t = await getTranslations("projects");
   const base = `/projects/${project.key}`;
+  // 2T: the Time tab (rollups, budget, reports) is a team surface.
+  const { membership, actor } = await requireTenantContext();
+  const canViewTime = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
+    isAuthorized(tx, actor, "time:view_team"),
+  );
 
   const tabs = [
     { href: base, label: t("tabs.overview"), exact: true },
     { href: `${base}/board`, label: t("tabs.board") },
     { href: `${base}/backlog`, label: t("tabs.backlog") },
     { href: `${base}/timeline`, label: t("tabs.timeline") },
+    ...(canViewTime ? [{ href: `${base}/time`, label: t("tabs.time") }] : []),
     ...(project.caps.viewDocuments ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),
     { href: `${base}/team`, label: t("tabs.team") },
   ];

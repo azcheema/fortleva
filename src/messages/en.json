@@ -79,7 +79,8 @@
     "clients": "Clients",
     "projects": "Projects",
     "export": "Export",
-    "design": "Design"
+    "design": "Design",
+    "time": "Time"
   },
   "shell": {
     "palette": {
@@ -107,10 +108,17 @@
       "goFiles": "Files",
       "goMembers": "Members",
       "goAccount": "Account",
-      "then": "then"
+      "then": "then",
+      "goTime": "Time"
     },
     "timer": {
-      "slot": "Timer"
+      "slot": "Timer",
+      "start": "Start timer",
+      "startLabel": "Start a timer",
+      "stop": "Stop timer",
+      "stopped": "Stopped after {duration}",
+      "stopFailed": "Could not stop the timer.",
+      "nudge": "This timer has been running for a long time."
     },
     "error": {
       "title": "Something went wrong",
@@ -466,7 +474,25 @@
       "regionalDescription": "How dates, weeks and language read for everyone here. Each field saves as soon as it changes.",
       "formats": "Formats",
       "formatsDescription": "How hours and money are written throughout the product.",
-      "weekStartHint": "Calendars, week numbers and weekly totals start on this day."
+      "weekStartHint": "Calendars, week numbers and weekly totals start on this day.",
+      "timeTitle": "Time tracking",
+      "timeDescription": "How timers, entries and shifts behave in this workspace.",
+      "time": {
+        "shiftsEnabled": "Shifts (clock in / out)",
+        "shiftsEnabledHint": "Members can clock a shift with breaks next to their task timers.",
+        "allowOverlap": "Allow overlapping entries",
+        "allowOverlapHint": "On: overlaps are allowed and flagged. Off: a new entry that overlaps another is refused.",
+        "allowAdhoc": "Entries without a project",
+        "allowAdhocHint": "Quick, description-only time (always non-billable until a project is attached).",
+        "allowEntriesWithoutItem": "Entries without a task",
+        "allowEntriesWithoutItemHint": "Time on a project without picking a task (a note is required).",
+        "autoStopHours": "Auto-stop timers after (hours)",
+        "autoStopHoursHint": "A forgotten timer stops at this bound and is flagged for review.",
+        "nudgeHours": "Nudge after (hours)",
+        "nudgeHoursHint": "The pill marks a long-running timer after this many hours.",
+        "shiftAutoStopHours": "Auto-close shifts after (hours)",
+        "shiftAutoStopHoursHint": "A forgotten shift closes at this bound and stays provisional until confirmed."
+      }
     },
     "export": {
       "title": "Export",
@@ -840,7 +866,8 @@
       "backlog": "Backlog",
       "timeline": "Timeline",
       "files": "Files",
-      "team": "Team"
+      "team": "Team",
+      "time": "Time"
     },
     "overview": {
       "details": "Details",
@@ -1005,6 +1032,146 @@
     "portalState": {
       "on": "On",
       "off": "Off"
+    },
+    "time": {
+      "noPermission": "You do not have permission to see this project's time.",
+      "range": "{from} – {to}",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "thisMonth": "This month",
+      "reportsLink": "Reports",
+      "noRows": "No time in this range.",
+      "unassigned": "Project level",
+      "tiles": {
+        "logged": "Logged",
+        "billable": "Billable",
+        "value": "Value",
+        "nonBillable": "Non-billable",
+        "estimateRemaining": "Estimate remaining"
+      },
+      "columns": {
+        "member": "Member",
+        "hours": "Hours",
+        "billable": "Billable",
+        "value": "Value",
+        "task": "Task",
+        "epic": "Epic",
+        "agreement": "Agreement",
+        "workType": "Work type"
+      },
+      "byMember": {
+        "title": "By member and week"
+      },
+      "byItem": {
+        "title": "By task"
+      },
+      "byEpic": {
+        "title": "By epic"
+      },
+      "byAgreement": {
+        "title": "By agreement"
+      },
+      "byWorkType": {
+        "title": "By work type"
+      },
+      "budget": {
+        "title": "Budget",
+        "description": "{kind} budget · {period}",
+        "burn": "{used} of {total} ({percent} %)",
+        "kinds": {
+          "HOURS": "Hours",
+          "MONEY": "Money"
+        },
+        "periods": {
+          "NONE": "whole project",
+          "WEEKLY": "per week",
+          "MONTHLY": "per month",
+          "QUARTERLY": "per quarter",
+          "YEARLY": "per year"
+        },
+        "newTitle": "Set a budget",
+        "editTitle": "Edit budget",
+        "formDescription": "One active budget per project. Thresholds alert once each when crossed.",
+        "kind": "Kind",
+        "amount": "Amount",
+        "period": "Period",
+        "periodAnchor": "Starts",
+        "periodAnchorHint": "First day of the first period",
+        "thresholds": "Alert at (%)",
+        "thresholdsHint": "e.g. 80, 100",
+        "includeNonBillable": "Count non-billable time",
+        "create": "Create budget",
+        "save": "Save",
+        "saved": "Budget saved.",
+        "archive": "Archive budget",
+        "archiveQuestion": "Archive this budget? Alerts stop; history stays.",
+        "archived": "Budget archived.",
+        "failed": "That did not work."
+      },
+      "reports": {
+        "noPermission": "You do not have permission to manage this project's time reports.",
+        "generateTitle": "New report",
+        "generateDescription": "A frozen, client-safe snapshot of a period. Internal tasks and agreements fold into \"Other work\"; no member is ever named.",
+        "fields": {
+          "title": "Title",
+          "titlePlaceholder": "e.g. August 2026",
+          "from": "From",
+          "to": "To",
+          "groupBy": "Group by",
+          "includeAmounts": "Include amounts",
+          "includeNonBillable": "Include non-billable"
+        },
+        "groupBy": {
+          "DAY": "Day",
+          "WORK_ITEM": "Task",
+          "EPIC": "Epic",
+          "SERVICE": "Agreement"
+        },
+        "generate": "Generate draft",
+        "generated": "Draft generated.",
+        "listTitle": "Reports",
+        "empty": {
+          "title": "No reports yet",
+          "body": "Generate a draft above, check the preview, then publish it to the portal."
+        },
+        "columns": {
+          "title": "Title",
+          "period": "Period",
+          "groupBy": "Grouped by",
+          "hours": "Hours",
+          "status": "Status"
+        },
+        "status": {
+          "DRAFT": "Draft",
+          "PUBLISHED": "Published",
+          "ARCHIVED": "Archived"
+        },
+        "actions": {
+          "preview": "Preview",
+          "publish": "Publish to portal",
+          "publishQuestion": "Publish this report? The client will see exactly this snapshot; it cannot be edited afterwards.",
+          "unpublish": "Unpublish",
+          "republish": "Publish again",
+          "archive": "Archive",
+          "delete": "Delete draft",
+          "deleteQuestion": "Delete this draft?"
+        },
+        "published": "Report published.",
+        "unpublished": "Report hidden from the portal.",
+        "archived": "Report archived.",
+        "deleted": "Draft deleted.",
+        "failed": "That did not work.",
+        "preview": {
+          "title": "Preview — {title}",
+          "description": "{from} – {to}",
+          "line": "Line",
+          "hours": "Hours",
+          "billable": "Billable",
+          "amount": "Amount",
+          "total": "Total",
+          "other": "Other work"
+        }
+      }
     }
   },
   "states": {
@@ -1249,5 +1416,185 @@
       "default": "Default — 36px rows",
       "compact": "Compact — 32px rows"
     }
+  },
+  "time": {
+    "title": "My time",
+    "noPermission": "You cannot track time in this workspace.",
+    "weekLabel": "Week {week} · {from} – {to}",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "thisWeek": "This week",
+    "newEntry": {
+      "title": "New entry",
+      "description": "A duration on a date, or a start and end time.",
+      "date": "Date",
+      "duration": "Duration",
+      "durationHint": "1h 30m · 90m · 1,5",
+      "start": "Start",
+      "end": "End",
+      "project": "Project",
+      "noProject": "No project (instant task)",
+      "task": "Task",
+      "noTask": "No task",
+      "agreement": "Agreement",
+      "defaultAgreement": "Project default",
+      "workType": "Work type",
+      "noWorkType": "—",
+      "note": "Note",
+      "notePlaceholder": "What was this time for?",
+      "billable": "Billable",
+      "add": "Add entry",
+      "durationPlaceholder": "1h 30m"
+    },
+    "toasts": {
+      "undone": "Undone — the previous timer is running again.",
+      "clockedIn": "Clocked in.",
+      "breakEnded": "Break ended.",
+      "entryCreated": "Entry added.",
+      "saved": "Saved.",
+      "entryDeleted": "Entry deleted.",
+      "shiftConfirmed": "Shift confirmed."
+    },
+    "errors": {
+      "invalidTime": "Enter start and end as HH:MM."
+    },
+    "notice": {
+      "description": "Version {version}. Please read it before you start a timer or clock in.",
+      "acknowledge": "I have read this",
+      "acknowledged": "Thank you — you can start tracking time.",
+      "failed": "Could not record your acknowledgment.",
+      "footnote": "This is information about how your working time is recorded; it is not a request for consent. Your employer can update it, and you will be asked to read the new version."
+    },
+    "shift": {
+      "title": "Today",
+      "description": "Shift − breaks − tracked = unallocated. Your own day only.",
+      "clockIn": "Clock in",
+      "clockOut": "Clock out",
+      "startBreak": "Start break",
+      "endBreak": "End break",
+      "breakStarted": "Break started.",
+      "breakStartedTimerStopped": "Break started — the running timer was stopped.",
+      "clockedOut": "Clocked out — {worked} worked.",
+      "failed": "That did not work.",
+      "provisional": "Auto-closed — please confirm",
+      "confirm": "Confirm",
+      "metrics": {
+        "shift": "Shift",
+        "breaks": "Breaks",
+        "tracked": "Tracked",
+        "unallocated": "Unallocated",
+        "over": "Over shift"
+      },
+      "status": {
+        "clockedIn": "Clocked in",
+        "onBreak": "On break",
+        "clockedOut": "Clocked out"
+      }
+    },
+    "quickStart": {
+      "title": "Start a timer",
+      "description": "Type what you are doing. Pick a project and task to bill it; plain text is an instant task.",
+      "noticeFirst": "Read and acknowledge the notice above first.",
+      "runningTitle": "Running",
+      "what": "What are you doing?",
+      "whatPlaceholder": "e.g. Design review",
+      "project": "Project",
+      "noProject": "No project (instant task)",
+      "task": "Task",
+      "noTask": "No task",
+      "agreement": "Agreement",
+      "defaultAgreement": "Project default",
+      "workType": "Work type",
+      "noWorkType": "—",
+      "billable": "Billable",
+      "billableDefault": "Billable (project default)",
+      "adhocNonBillable": "Instant tasks are not billable",
+      "start": "Start",
+      "stop": "Stop",
+      "started": "Timer started.",
+      "startedStopped": "Timer started — \"{label}\" was stopped.",
+      "stopped": "Stopped after {duration}.",
+      "undo": "Undo",
+      "failed": "Could not change the timer.",
+      "startAnother": "Start another",
+      "startAnotherHint": "Starting another timer stops this one — undo is in the toast."
+    },
+    "week": {
+      "title": "This week",
+      "total": "Total {total}",
+      "scrollLabel": "Time entries",
+      "columns": {
+        "time": "Time",
+        "what": "What",
+        "agreement": "Agreement",
+        "type": "Type",
+        "billable": "Billable",
+        "duration": "Duration",
+        "actions": "Actions"
+      },
+      "durationOnly": "Duration",
+      "adhoc": "Instant task",
+      "badges": {
+        "running": "Running",
+        "overlap": "Overlaps",
+        "review": "Check",
+        "locked": "Locked",
+        "lockedWhy": "On an invoice or in a closed period — cannot be changed."
+      },
+      "billable": {
+        "yes": "Billable",
+        "no": "Not billable"
+      },
+      "actions": {
+        "delete": "Delete",
+        "confirmDelete": "Delete this entry?",
+        "continue": "Continue (new timer)",
+        "continued": "Timer started from this entry."
+      },
+      "failed": "That did not work.",
+      "empty": {
+        "title": "No time this week",
+        "body": "Start a timer above or add an entry below.",
+        "action": "Start a timer"
+      },
+      "durationPlaceholder": "0m"
+    },
+    "team": {
+      "title": "Team time",
+      "noPermission": "You do not have permission to see the team's time.",
+      "weekLabel": "Week {week} · {from} – {to}",
+      "prevWeek": "Previous week",
+      "nextWeek": "Next week",
+      "thisWeek": "This week",
+      "hours": {
+        "title": "Hours by member and project",
+        "description": "Finished entries in the week, inside your scope. No presence, no live clocks.",
+        "empty": "No time this week",
+        "emptyBody": "Nothing in your scope for this week.",
+        "scrollLabel": "Team hours",
+        "columns": {
+          "member": "Member",
+          "project": "Project",
+          "hours": "Hours",
+          "billable": "Billable",
+          "value": "Value"
+        },
+        "internal": "Instant tasks",
+        "total": "Total"
+      },
+      "shifts": {
+        "title": "Shifts — worked per day",
+        "description": "Closed shifts only (span minus breaks). An open shift never appears here.",
+        "empty": "No closed shifts this week",
+        "emptyBody": "Shifts appear here once they are clocked out.",
+        "scrollLabel": "Shift day totals",
+        "columns": {
+          "member": "Member",
+          "total": "Week"
+        }
+      },
+      "goToMyTime": "Go to my time"
+    },
+    "newEntryButton": "New entry"
   }
 }

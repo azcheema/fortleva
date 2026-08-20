@@ -52,6 +52,19 @@ export async function updatePreferencesAction(formData: FormData): Promise<FormR
   };
   // Checkbox: the form carries a hidden marker so "unchecked" is a real value.
   if (has(formData, "showIsoWeekMarker")) patch.showIsoWeek = has(formData, "showIsoWeek");
+  // 2T time knobs (same marker convention; numbers are whole hours).
+  const time: NonNullable<PreferencePatch["time"]> = {};
+  for (const k of ["shiftsEnabled", "allowOverlap", "allowAdhocEntries", "allowEntriesWithoutItem"] as const) {
+    if (has(formData, `time.${k}Marker`)) time[k] = has(formData, `time.${k}`);
+  }
+  for (const k of ["autoStopHours", "nudgeHours", "shiftAutoStopHours"] as const) {
+    const raw = field(formData, `time.${k}`);
+    if (raw !== null && raw.trim() !== "") {
+      const n = Number(raw);
+      if (Number.isInteger(n)) time[k] = n;
+    }
+  }
+  if (Object.keys(time).length > 0) patch.time = time;
   const r = await runForm(PATH, async () => {
     await updatePreferences(ctx, patch);
     return tCommon("saved");

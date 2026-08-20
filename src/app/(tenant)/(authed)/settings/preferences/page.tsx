@@ -9,7 +9,7 @@ import { parseEntitlements } from "@/entitlements/resolver";
 import { requireTenantContext } from "@/members/tenant-context";
 import { getPreferences, type TenantPreferences } from "@/preferences/service";
 
-import { FormatPreferencesForm, ModuleToggles, RegionalPreferencesForm } from "./preference-forms";
+import { FormatPreferencesForm, ModuleToggles, RegionalPreferencesForm, TimePreferencesForm } from "./preference-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("nav");
@@ -72,6 +72,12 @@ export default async function PreferencesPage() {
         <SectionCard title={t("formats")} description={t("formatsDescription")}>
           <FormatPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
         </SectionCard>
+        {/* 2T: only when the time module is on for this tenant. */}
+        {entitled.time && prefs.modules.time ? (
+          <SectionCard title={t("timeTitle")} description={t("timeDescription")}>
+            <TimePreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
+          </SectionCard>
+        ) : null}
         <SectionCard title={t("modulesTitle")} description={t("modulesDescription")}>
           {/* ✦ code: shown to holders; a stale factor becomes step-up on the first flip. */}
           <ModuleToggles

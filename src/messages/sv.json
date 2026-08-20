@@ -79,7 +79,8 @@
     "clients": "Kunder",
     "projects": "Projekt",
     "export": "Export",
-    "design": "Design"
+    "design": "Design",
+    "time": "Tid"
   },
   "shell": {
     "palette": {
@@ -107,10 +108,17 @@
       "goFiles": "Filer",
       "goMembers": "Medlemmar",
       "goAccount": "Konto",
-      "then": "sedan"
+      "then": "sedan",
+      "goTime": "Tid"
     },
     "timer": {
-      "slot": "Tidtagare"
+      "slot": "Tidtagare",
+      "start": "Starta timer",
+      "startLabel": "Starta en timer",
+      "stop": "Stoppa timer",
+      "stopped": "Stoppad efter {duration}",
+      "stopFailed": "Timern kunde inte stoppas.",
+      "nudge": "Den här timern har gått länge."
     },
     "error": {
       "title": "Något gick fel",
@@ -466,7 +474,25 @@
       "regionalDescription": "Hur datum, veckor och språk visas för alla här. Varje fält sparas så snart det ändras.",
       "formats": "Format",
       "formatsDescription": "Hur timmar och belopp skrivs i hela produkten.",
-      "weekStartHint": "Kalendrar, veckonummer och veckosummor börjar på den här dagen."
+      "weekStartHint": "Kalendrar, veckonummer och veckosummor börjar på den här dagen.",
+      "timeTitle": "Tidsregistrering",
+      "timeDescription": "Hur timers, poster och arbetspass fungerar i den här arbetsytan.",
+      "time": {
+        "shiftsEnabled": "Arbetspass (stämpla in / ut)",
+        "shiftsEnabledHint": "Medlemmar kan stämpla ett pass med raster vid sidan av sina uppgiftstimers.",
+        "allowOverlap": "Tillåt överlappande poster",
+        "allowOverlapHint": "På: överlapp tillåts och flaggas. Av: en ny post som överlappar en annan avvisas.",
+        "allowAdhoc": "Poster utan projekt",
+        "allowAdhocHint": "Snabb tid med bara en beskrivning (aldrig fakturerbar förrän ett projekt kopplas).",
+        "allowEntriesWithoutItem": "Poster utan uppgift",
+        "allowEntriesWithoutItemHint": "Tid på ett projekt utan vald uppgift (en anteckning krävs).",
+        "autoStopHours": "Stoppa timers automatiskt efter (timmar)",
+        "autoStopHoursHint": "En bortglömd timer stoppas vid gränsen och flaggas för granskning.",
+        "nudgeHours": "Påminn efter (timmar)",
+        "nudgeHoursHint": "Timerpillret markerar en långkörande timer efter så här många timmar.",
+        "shiftAutoStopHours": "Avsluta pass automatiskt efter (timmar)",
+        "shiftAutoStopHoursHint": "Ett bortglömt pass stängs vid gränsen och är preliminärt tills det bekräftas."
+      }
     },
     "export": {
       "title": "Export",
@@ -840,7 +866,8 @@
       "backlog": "Backlogg",
       "timeline": "Tidslinje",
       "files": "Filer",
-      "team": "Team"
+      "team": "Team",
+      "time": "Tid"
     },
     "overview": {
       "details": "Detaljer",
@@ -1005,6 +1032,146 @@
     "portalState": {
       "on": "På",
       "off": "Av"
+    },
+    "time": {
+      "noPermission": "Du har inte behörighet att se projektets tid.",
+      "range": "{from} – {to}",
+      "prevMonth": "Föregående månad",
+      "nextMonth": "Nästa månad",
+      "thisMonth": "Den här månaden",
+      "reportsLink": "Rapporter",
+      "noRows": "Ingen tid i perioden.",
+      "unassigned": "Projektnivå",
+      "tiles": {
+        "logged": "Loggat",
+        "billable": "Fakturerbart",
+        "value": "Värde",
+        "nonBillable": "Ej fakturerbart",
+        "estimateRemaining": "Kvar av uppskattning"
+      },
+      "columns": {
+        "member": "Medlem",
+        "hours": "Timmar",
+        "billable": "Fakturerbart",
+        "value": "Värde",
+        "task": "Uppgift",
+        "epic": "Epic",
+        "agreement": "Avtal",
+        "workType": "Arbetstyp"
+      },
+      "byMember": {
+        "title": "Per medlem och vecka"
+      },
+      "byItem": {
+        "title": "Per uppgift"
+      },
+      "byEpic": {
+        "title": "Per epic"
+      },
+      "byAgreement": {
+        "title": "Per avtal"
+      },
+      "byWorkType": {
+        "title": "Per arbetstyp"
+      },
+      "budget": {
+        "title": "Budget",
+        "description": "{kind}-budget · {period}",
+        "burn": "{used} av {total} ({percent} %)",
+        "kinds": {
+          "HOURS": "Timmar",
+          "MONEY": "Pengar"
+        },
+        "periods": {
+          "NONE": "hela projektet",
+          "WEEKLY": "per vecka",
+          "MONTHLY": "per månad",
+          "QUARTERLY": "per kvartal",
+          "YEARLY": "per år"
+        },
+        "newTitle": "Sätt en budget",
+        "editTitle": "Redigera budget",
+        "formDescription": "En aktiv budget per projekt. Trösklarna larmar en gång var när de passeras.",
+        "kind": "Typ",
+        "amount": "Belopp",
+        "period": "Period",
+        "periodAnchor": "Börjar",
+        "periodAnchorHint": "Första dagen i den första perioden",
+        "thresholds": "Larma vid (%)",
+        "thresholdsHint": "t.ex. 80, 100",
+        "includeNonBillable": "Räkna ej fakturerbar tid",
+        "create": "Skapa budget",
+        "save": "Spara",
+        "saved": "Budgeten sparad.",
+        "archive": "Arkivera budget",
+        "archiveQuestion": "Arkivera budgeten? Larmen upphör; historiken finns kvar.",
+        "archived": "Budgeten arkiverad.",
+        "failed": "Det gick inte."
+      },
+      "reports": {
+        "noPermission": "Du har inte behörighet att hantera projektets tidrapporter.",
+        "generateTitle": "Ny rapport",
+        "generateDescription": "En fryst, kundsäker ögonblicksbild av en period. Interna uppgifter och avtal slås ihop till \"Övrigt arbete\"; ingen medlem namnges någonsin.",
+        "fields": {
+          "title": "Titel",
+          "titlePlaceholder": "t.ex. Augusti 2026",
+          "from": "Från",
+          "to": "Till",
+          "groupBy": "Gruppera efter",
+          "includeAmounts": "Ta med belopp",
+          "includeNonBillable": "Ta med ej fakturerbart"
+        },
+        "groupBy": {
+          "DAY": "Dag",
+          "WORK_ITEM": "Uppgift",
+          "EPIC": "Epic",
+          "SERVICE": "Avtal"
+        },
+        "generate": "Skapa utkast",
+        "generated": "Utkastet skapat.",
+        "listTitle": "Rapporter",
+        "empty": {
+          "title": "Inga rapporter än",
+          "body": "Skapa ett utkast ovan, kontrollera förhandsvisningen och publicera det sedan till portalen."
+        },
+        "columns": {
+          "title": "Titel",
+          "period": "Period",
+          "groupBy": "Grupperad efter",
+          "hours": "Timmar",
+          "status": "Status"
+        },
+        "status": {
+          "DRAFT": "Utkast",
+          "PUBLISHED": "Publicerad",
+          "ARCHIVED": "Arkiverad"
+        },
+        "actions": {
+          "preview": "Förhandsvisa",
+          "publish": "Publicera till portalen",
+          "publishQuestion": "Publicera rapporten? Kunden ser exakt den här ögonblicksbilden; den kan inte redigeras efteråt.",
+          "unpublish": "Avpublicera",
+          "republish": "Publicera igen",
+          "archive": "Arkivera",
+          "delete": "Ta bort utkast",
+          "deleteQuestion": "Ta bort utkastet?"
+        },
+        "published": "Rapporten publicerad.",
+        "unpublished": "Rapporten dold från portalen.",
+        "archived": "Rapporten arkiverad.",
+        "deleted": "Utkastet borttaget.",
+        "failed": "Det gick inte.",
+        "preview": {
+          "title": "Förhandsvisning — {title}",
+          "description": "{from} – {to}",
+          "line": "Rad",
+          "hours": "Timmar",
+          "billable": "Fakturerbart",
+          "amount": "Belopp",
+          "total": "Totalt",
+          "other": "Övrigt arbete"
+        }
+      }
     }
   },
   "states": {
@@ -1249,5 +1416,185 @@
       "default": "Standard — 36 px rader",
       "compact": "Kompakt — 32 px rader"
     }
+  },
+  "time": {
+    "title": "Min tid",
+    "noPermission": "Du kan inte registrera tid i den här arbetsytan.",
+    "weekLabel": "Vecka {week} · {from} – {to}",
+    "prevWeek": "Föregående vecka",
+    "nextWeek": "Nästa vecka",
+    "thisWeek": "Den här veckan",
+    "newEntry": {
+      "title": "Ny post",
+      "description": "En längd på ett datum, eller en start- och sluttid.",
+      "date": "Datum",
+      "duration": "Längd",
+      "durationHint": "1h 30m · 90m · 1,5",
+      "start": "Start",
+      "end": "Slut",
+      "project": "Projekt",
+      "noProject": "Inget projekt (snabbuppgift)",
+      "task": "Uppgift",
+      "noTask": "Ingen uppgift",
+      "agreement": "Avtal",
+      "defaultAgreement": "Projektets standard",
+      "workType": "Arbetstyp",
+      "noWorkType": "—",
+      "note": "Anteckning",
+      "notePlaceholder": "Vad gällde tiden?",
+      "billable": "Fakturerbar",
+      "add": "Lägg till",
+      "durationPlaceholder": "1h 30m"
+    },
+    "toasts": {
+      "undone": "Ångrat — den förra timern går igen.",
+      "clockedIn": "Instämplad.",
+      "breakEnded": "Rasten avslutad.",
+      "entryCreated": "Posten tillagd.",
+      "saved": "Sparat.",
+      "entryDeleted": "Posten borttagen.",
+      "shiftConfirmed": "Passet bekräftat."
+    },
+    "errors": {
+      "invalidTime": "Ange start och slut som HH:MM."
+    },
+    "notice": {
+      "description": "Version {version}. Läs den innan du startar en timer eller stämplar in.",
+      "acknowledge": "Jag har läst detta",
+      "acknowledged": "Tack — nu kan du börja registrera tid.",
+      "failed": "Din bekräftelse kunde inte sparas.",
+      "footnote": "Det här är information om hur din arbetstid registreras; det är inte en begäran om samtycke. Din arbetsgivare kan uppdatera den, och du blir då ombedd att läsa den nya versionen."
+    },
+    "shift": {
+      "title": "I dag",
+      "description": "Pass − raster − registrerad tid = ofördelad. Bara din egen dag.",
+      "clockIn": "Stämpla in",
+      "clockOut": "Stämpla ut",
+      "startBreak": "Börja rast",
+      "endBreak": "Avsluta rast",
+      "breakStarted": "Rasten har börjat.",
+      "breakStartedTimerStopped": "Rasten har börjat — den pågående timern stoppades.",
+      "clockedOut": "Utstämplad — {worked} arbetad tid.",
+      "failed": "Det gick inte.",
+      "provisional": "Stängt automatiskt — bekräfta",
+      "confirm": "Bekräfta",
+      "metrics": {
+        "shift": "Pass",
+        "breaks": "Raster",
+        "tracked": "Registrerat",
+        "unallocated": "Ofördelat",
+        "over": "Utöver passet"
+      },
+      "status": {
+        "clockedIn": "Instämplad",
+        "onBreak": "På rast",
+        "clockedOut": "Utstämplad"
+      }
+    },
+    "quickStart": {
+      "title": "Starta en timer",
+      "description": "Skriv vad du gör. Välj projekt och uppgift för att fakturera tiden; fri text blir en snabbuppgift.",
+      "noticeFirst": "Läs och bekräfta informationen ovan först.",
+      "runningTitle": "Pågår",
+      "what": "Vad gör du?",
+      "whatPlaceholder": "t.ex. Designgranskning",
+      "project": "Projekt",
+      "noProject": "Inget projekt (snabbuppgift)",
+      "task": "Uppgift",
+      "noTask": "Ingen uppgift",
+      "agreement": "Avtal",
+      "defaultAgreement": "Projektets standard",
+      "workType": "Arbetstyp",
+      "noWorkType": "—",
+      "billable": "Fakturerbar",
+      "billableDefault": "Fakturerbar (projektets standard)",
+      "adhocNonBillable": "Snabbuppgifter är inte fakturerbara",
+      "start": "Starta",
+      "stop": "Stoppa",
+      "started": "Timern startad.",
+      "startedStopped": "Timern startad — \"{label}\" stoppades.",
+      "stopped": "Stoppad efter {duration}.",
+      "undo": "Ångra",
+      "failed": "Timern kunde inte ändras.",
+      "startAnother": "Starta en till",
+      "startAnotherHint": "En ny timer stoppar den här — ångra finns i meddelandet."
+    },
+    "week": {
+      "title": "Den här veckan",
+      "total": "Totalt {total}",
+      "scrollLabel": "Tidsposter",
+      "columns": {
+        "time": "Tid",
+        "what": "Vad",
+        "agreement": "Avtal",
+        "type": "Typ",
+        "billable": "Fakturerbar",
+        "duration": "Längd",
+        "actions": "Åtgärder"
+      },
+      "durationOnly": "Längd",
+      "adhoc": "Snabbuppgift",
+      "badges": {
+        "running": "Pågår",
+        "overlap": "Överlappar",
+        "review": "Kontrollera",
+        "locked": "Låst",
+        "lockedWhy": "Ligger på en faktura eller i en stängd period — kan inte ändras."
+      },
+      "billable": {
+        "yes": "Fakturerbar",
+        "no": "Ej fakturerbar"
+      },
+      "actions": {
+        "delete": "Ta bort",
+        "confirmDelete": "Ta bort posten?",
+        "continue": "Fortsätt (ny timer)",
+        "continued": "Timer startad från den här posten."
+      },
+      "failed": "Det gick inte.",
+      "empty": {
+        "title": "Ingen tid den här veckan",
+        "body": "Starta en timer ovan eller lägg till en post nedan.",
+        "action": "Starta en timer"
+      },
+      "durationPlaceholder": "0m"
+    },
+    "team": {
+      "title": "Teamets tid",
+      "noPermission": "Du har inte behörighet att se teamets tid.",
+      "weekLabel": "Vecka {week} · {from} – {to}",
+      "prevWeek": "Föregående vecka",
+      "nextWeek": "Nästa vecka",
+      "thisWeek": "Den här veckan",
+      "hours": {
+        "title": "Timmar per medlem och projekt",
+        "description": "Avslutade poster under veckan, inom ditt område. Ingen närvaro, inga pågående klockor.",
+        "empty": "Ingen tid den här veckan",
+        "emptyBody": "Inget inom ditt område den här veckan.",
+        "scrollLabel": "Teamets timmar",
+        "columns": {
+          "member": "Medlem",
+          "project": "Projekt",
+          "hours": "Timmar",
+          "billable": "Fakturerbart",
+          "value": "Värde"
+        },
+        "internal": "Snabbuppgifter",
+        "total": "Totalt"
+      },
+      "shifts": {
+        "title": "Arbetspass — arbetad tid per dag",
+        "description": "Bara avslutade pass (tid minus raster). Ett pågående pass visas aldrig här.",
+        "empty": "Inga avslutade pass den här veckan",
+        "emptyBody": "Pass visas här när de stämplats ut.",
+        "scrollLabel": "Dagssummor för pass",
+        "columns": {
+          "member": "Medlem",
+          "total": "Vecka"
+        }
+      },
+      "goToMyTime": "Gå till min tid"
+    },
+    "newEntryButton": "Ny post"
   }
 }

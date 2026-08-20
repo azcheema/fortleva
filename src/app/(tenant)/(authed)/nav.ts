@@ -11,6 +11,7 @@ export type NavIcon =
   | "home"
   | "clients"
   | "projects"
+  | "time"
   | "files"
   | "members"
   | "settings"
@@ -27,6 +28,7 @@ export type NavEntry = {
     | "home"
     | "clients"
     | "projects"
+    | "time"
     | "files"
     | "members"
     | "settings"
@@ -66,6 +68,16 @@ export const NAV: readonly NavEntry[] = [
     icon: "projects",
     permission: "project:view",
     goKey: "P",
+    mobileTab: true,
+  },
+  // 2T (UI.md §3.1 "Time"; §3.3 the mobile Timer tab): hidden without time:track.
+  {
+    id: "time",
+    labelKey: "time",
+    href: "/time",
+    icon: "time",
+    permission: "time:track",
+    goKey: "T",
     mobileTab: true,
   },
   {

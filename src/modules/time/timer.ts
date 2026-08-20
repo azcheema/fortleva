@@ -40,6 +40,7 @@ export type TimerEntry = {
   billable: boolean;
   localDate: Date;
   timezone: string;
+  entryMode: "TIMER" | "MANUAL" | "DURATION";
   needsReview: boolean;
   reviewReason: string | null;
   project: { key: string; name: string } | null;
@@ -62,6 +63,7 @@ export const entrySelect = {
   billable: true,
   localDate: true,
   timezone: true,
+  entryMode: true,
   needsReview: true,
   reviewReason: true,
   project: { select: { key: true, name: true } },

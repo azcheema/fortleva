@@ -13,9 +13,12 @@ import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { LOCALES } from "@/i18n/config";
+import { Input } from "@/components/ui/input";
 import {
   CURRENCIES,
   DURATION_STYLES,
+  TIME_HOURS_MAX,
+  TIME_HOURS_MIN,
   TIMEZONES,
   TOGGLEABLE_MODULES,
   WEEK_STARTS,
@@ -219,5 +222,54 @@ export function ModuleToggles({
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * 2T — the time module's knobs (PLAN.md Phase 2T "Preferences";
+ * DATA_MODEL.md §6.15): shifts on/off, overlap policy (allow + flag by
+ * default; blocking is the opt-in), ad-hoc entries, entries without a
+ * task, the auto-stop and nudge bounds. Checkboxes carry a hidden marker
+ * so "unchecked" posts as a real value.
+ */
+export function TimePreferencesForm({ prefs, editable }: { prefs: TenantPreferences; editable: boolean }) {
+  const t = useTranslations("settings.preferences.time");
+  const ro = !editable;
+  const toggle = (name: keyof TenantPreferences["time"], checked: boolean, label: string, hint: string) => (
+    <div className="flex items-start gap-2">
+      <input type="hidden" name={`time.${name}Marker`} value="1" />
+      <NativeCheckbox id={`p-time-${name}`} name={`time.${name}`} defaultChecked={checked} disabled={ro} className="mt-0.5" />
+      <div className="flex flex-col">
+        <Label htmlFor={`p-time-${name}`}>{label}</Label>
+        <span className="text-xs text-muted-foreground">{hint}</span>
+      </div>
+    </div>
+  );
+  const hours = (name: keyof TenantPreferences["time"], value: number, label: string, hint: string) => (
+    <Field htmlFor={`p-time-${name}`} label={label} hint={hint}>
+      <Input
+        id={`p-time-${name}`}
+        name={`time.${name}`}
+        type="number"
+        inputMode="numeric"
+        min={TIME_HOURS_MIN}
+        max={TIME_HOURS_MAX}
+        step={1}
+        defaultValue={value}
+        disabled={ro}
+        className="max-w-[10ch]"
+      />
+    </Field>
+  );
+  return (
+    <AutoForm action={updatePreferencesAction} className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+      {toggle("shiftsEnabled", prefs.time.shiftsEnabled, t("shiftsEnabled"), t("shiftsEnabledHint"))}
+      {toggle("allowOverlap", prefs.time.allowOverlap, t("allowOverlap"), t("allowOverlapHint"))}
+      {toggle("allowAdhocEntries", prefs.time.allowAdhocEntries, t("allowAdhoc"), t("allowAdhocHint"))}
+      {toggle("allowEntriesWithoutItem", prefs.time.allowEntriesWithoutItem, t("allowEntriesWithoutItem"), t("allowEntriesWithoutItemHint"))}
+      {hours("autoStopHours", prefs.time.autoStopHours, t("autoStopHours"), t("autoStopHoursHint"))}
+      {hours("nudgeHours", prefs.time.nudgeHours, t("nudgeHours"), t("nudgeHoursHint"))}
+      {hours("shiftAutoStopHours", prefs.time.shiftAutoStopHours, t("shiftAutoStopHours"), t("shiftAutoStopHoursHint"))}
+    </AutoForm>
   );
 }

@@ -16,8 +16,10 @@ import { useTranslations } from "next-intl";
 import { useState, useSyncExternalStore, useTransition } from "react";
 
 import type { NavEntry } from "@/app/(tenant)/(authed)/nav";
+import type { TimerPillState } from "@/app/(tenant)/(authed)/time/actions";
 import { authClient } from "@/auth/client";
 import { KeyboardHint } from "@/components/semantic/keyboard-hint";
+import { clearPwaCaches } from "@/components/shell/pwa-register";
 import { ThemeToggle } from "@/components/semantic/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -103,6 +105,7 @@ export function AppShell({
   user,
   theme,
   onSwitchLocale,
+  timer = null,
   children,
 }: {
   nav: readonly NavEntry[];
@@ -118,6 +121,8 @@ export function AppShell({
   /** Preference the server rendered <html> with (src/lib/theme-server). */
   theme: ThemePreference;
   onSwitchLocale: (locale: string) => Promise<void>;
+  /** The time module's server snapshot for the pill (null = no pill). */
+  timer?: TimerPillState | null;
   children: React.ReactNode;
 }) {
   const t = useTranslations("nav");
@@ -149,6 +154,7 @@ export function AppShell({
   });
 
   const signOut = async () => {
+    await clearPwaCaches();
     await authClient.signOut();
     router.push("/login");
     router.refresh();
@@ -317,7 +323,7 @@ export function AppShell({
             ) : null}
           </div>
 
-          <TimerPillSlot className="ml-2 hidden md:block" />
+          <TimerPillSlot className="ml-2 hidden md:block" timer={timer} />
 
           <div className="ml-auto flex items-center gap-1">
             <Button
@@ -393,7 +399,7 @@ export function AppShell({
           </div>
         </header>
 
-        <TimerPillSlot className="md:hidden" />
+        <TimerPillSlot className="px-4 pt-2 md:hidden" timer={timer} />
 
         {/* 64px clears the 56px bar; the safe-area inset clears the home
             indicator underneath it on a notched phone. */}

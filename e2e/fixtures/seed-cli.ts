@@ -410,6 +410,24 @@ async function removeTenant(
   if (!slug.startsWith(SLUG_PREFIX)) {
     throw new Error(`refusing to remove non-throwaway tenant "${slug}"`);
   }
+  // 2T: time rows reference projects/members/tenant with RESTRICT; published
+  // reports and locked entries refuse deletion outside the maintenance GUCs.
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.time_maintenance', 'on', true)`;
+    await tx.$executeRaw`SELECT set_config('app.time_lock_bypass', 'on', true)`;
+    await tx.timeReport.deleteMany({ where: { tenantId } });
+    await tx.budgetAlert.deleteMany({ where: { tenantId } });
+    await tx.projectBudget.deleteMany({ where: { tenantId } });
+    await tx.timeEntry.deleteMany({ where: { tenantId } });
+    await tx.shiftBreak.deleteMany({ where: { tenantId } });
+    await tx.shift.deleteMany({ where: { tenantId } });
+    await tx.rateCard.deleteMany({ where: { tenantId } });
+    await tx.projectTimeSummary.deleteMany({ where: { tenantId } });
+    await tx.staffNoticeAcknowledgment.deleteMany({ where: { tenantId } });
+    await tx.staffNotice.deleteMany({ where: { tenantId } });
+    await tx.workType.deleteMany({ where: { tenantId } });
+    await tx.tenantKey.deleteMany({ where: { tenantId } });
+  });
   await db.fileVersion.deleteMany({ where: { tenantId } });
   await db.document.deleteMany({ where: { tenantId } });
   await db.fileObject.deleteMany({ where: { tenantId } });
