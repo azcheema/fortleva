@@ -34,6 +34,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **i18n**: no literal JSX strings (ESLint enforces); every key exists in **both** `src/messages/en.json` and `sv.json`, with idiomatic Swedish.
 - **UI**: design tokens and existing components only — no raw Tailwind colour utilities, hex literals, or arbitrary radii/shadows/heights. See `docs/UI.md`.
 - **Config**: no hostnames or cookie names outside `src/config`; no cookie ever carries a `Domain` attribute (INV-D1, CI-enforced).
+- **The PWA shell caches nothing tenant-scoped** (ARC-25): the service worker is network-only for navigations and `/api/*`, precaches only hashed static assets, and neither it nor the manifest is served on the ops host. Offline is v1.5 and needs its own security pass first.
 - **Nothing tenant-specific in schema or UI.** If only Naxdor needs it, it is a `TenantPreference`.
 
 ## Rules for automated agents

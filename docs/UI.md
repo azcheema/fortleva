@@ -71,7 +71,7 @@ Rail collapses to icons < 1280 px; project tabs become a horizontal scroller. `/
 
 ### 3.3 Mobile (< 768 px)
 
-Bottom tabs **Home / Board / Timer / Inbox / More**. Board is a single-column list grouped by state with state chips (tap chip → "Move to…" sheet). No touch drag (ARC-17). `More` = rail items not in tabs. Long-press on any task = action sheet (state, assignee, timer, visibility). Web Push opt-in arrives Phase 5.
+Bottom tabs **Home / Board / Timer / Inbox / More**. Board is a single-column list grouped by state with state chips (tap chip → "Move to…" sheet). No touch drag (ARC-17). `More` = rail items not in tabs. Long-press on any task = action sheet (state, assignee, timer, visibility). Web Push opt-in arrives Phase 5. *(2026-08-20, decision 15 / ARC-25)* **Installable from 2T:** the member app ships a manifest (`display: standalone`, `start_url: /home`, maskable icon, `theme_color`/`background_color` = the `--background` token per theme) and a pass-through service worker — **no offline, no install-only screens, no "open in app" banners** beyond the browser's own prompt. Installed and browser tabs render the same UI; `display-mode: standalone` may adjust chrome only (safe-area insets, no duplicated back affordance), never anything a permission or visibility rule touches. The portal gets its own manifest at Phase 3 (CP3); the ops host none.
 
 ---
 
