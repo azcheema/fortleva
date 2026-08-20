@@ -17,13 +17,24 @@ export type TenantDb = Omit<
 >;
 
 /**
- * Interactive-transaction budget. 5 s is right next to the database
+ * Interactive-transaction budgets. 5 s is right next to the database
  * (Vercel Frankfurt ↔ Neon EU); a caller 100 ms away per round trip —
  * the GitHub-hosted runner in the US — blows it on ordinary multi-
- * statement work, so CI widens it through DB_TX_TIMEOUT_MS. Callers
- * with a known longer critical section still pass `timeoutMs`.
+ * statement work, so CI widens it through DB_TX_TIMEOUT_MS. Every
+ * budget scales by the same LINK FACTOR: the default, a caller's
+ * explicit `timeoutMs` (stated for the fast path — LOCKED_TX 15 s was
+ * 223 ms short on CI for 8 serialised starts), and Prisma's `maxWait`
+ * (2 s to acquire a connection — 25 parallel transactions exhaust it on
+ * the slow link). Factor 1 wherever the variable is unset.
  */
-const DEFAULT_TX_TIMEOUT_MS = Number(process.env["DB_TX_TIMEOUT_MS"]) || 5000;
+const BASE_TX_TIMEOUT_MS = 5000;
+const BASE_TX_MAX_WAIT_MS = 2000;
+const DEFAULT_TX_TIMEOUT_MS = Number(process.env["DB_TX_TIMEOUT_MS"]) || BASE_TX_TIMEOUT_MS;
+const LINK_FACTOR = DEFAULT_TX_TIMEOUT_MS / BASE_TX_TIMEOUT_MS;
+const txOptions = (timeoutMs?: number): { timeout: number; maxWait: number } => ({
+  timeout: timeoutMs ? Math.round(timeoutMs * LINK_FACTOR) : DEFAULT_TX_TIMEOUT_MS,
+  maxWait: Math.round(BASE_TX_MAX_WAIT_MS * LINK_FACTOR),
+});
 
 export async function withTenant<T>(
   tenantId: string,
@@ -55,7 +66,7 @@ export async function withTenant<T>(
                  set_config('app.principal_id', ${principalId}, true)`;
         return fn(tx as unknown as TenantDb);
       },
-      { timeout: opts?.timeoutMs ?? DEFAULT_TX_TIMEOUT_MS },
+      txOptions(opts?.timeoutMs),
     ),
   );
 }
@@ -111,7 +122,7 @@ export async function withPlatform<T>(
       await tx.auditEvent.create({ data: auditData });
       return value;
     },
-    { timeout: opts?.timeoutMs ?? DEFAULT_TX_TIMEOUT_MS },
+    txOptions(opts?.timeoutMs),
   );
 
   // A READ ONLY transaction cannot hold its own audit row; every
