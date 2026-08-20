@@ -28,9 +28,18 @@ declare global {
   var __fortlevaPlatformClient: PrismaClient | undefined;
 }
 
+/**
+ * Columns no read returns unless a call site opts back in explicitly
+ * (DATA_MODEL.md §6.15): the COST rate ciphertext is salary-grade data —
+ * only src/modules/time/rates.ts passes `omit: { amountCiphertext: false }`,
+ * behind rate:view_cost ✦ + requireRecentMfa.
+ */
+const GLOBAL_OMIT = { rateCard: { amountCiphertext: true } } as const;
+
 const buildRuntimeClient = () =>
   new PrismaClient({
     adapter: new PrismaPg({ connectionString: runtimeUrl() }),
+    omit: GLOBAL_OMIT,
   }).$extends(whereInjection);
 
 /** Pooled, app_runtime (no BYPASSRLS). All tenant/portal work. */
@@ -41,6 +50,7 @@ export const runtimeClient = (globalThis.__fortlevaRuntimeClient ??= buildRuntim
 export const getPlatformClient = (): PrismaClient =>
   (globalThis.__fortlevaPlatformClient ??= new PrismaClient({
     adapter: new PrismaPg({ connectionString: platformUrl() }),
+    omit: GLOBAL_OMIT,
   }));
 
 export type RuntimeClient = typeof runtimeClient;

@@ -33,6 +33,9 @@ export type ExportModelSpec = {
 export const EXPORT_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   tenant: ["bankgiro", "plusgiro", "iban", "bic", "databaseUrl"],
   tenantKey: ["wrappedDek"],
+  // 2T: the COST rate ciphertext is salary-grade personal data (SECURITY.md
+  // §9.7.4) — never leaves in an export; the client omits it globally too.
+  rateCard: ["amountCiphertext"],
 };
 
 /**

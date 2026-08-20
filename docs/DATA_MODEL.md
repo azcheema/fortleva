@@ -3113,7 +3113,11 @@ enum TimeReportGroupBy {
 ///     may change, else RAISE;
 ///   TRIGGER time_report_no_delete_published BEFORE DELETE: RAISE when
 ///     published_at IS NOT NULL (drafts hard-delete; published are
-///     archive-only).
+///     archive-only) — unless the TRANSACTION-LOCAL GUC
+///     app.time_maintenance = 'on' (2026-08-20 follow-up migration:
+///     tenant offboarding / retention deletion / test teardown only —
+///     mirrors app.audit_maintenance; never set by a tenant-plane
+///     service).
 /// Publish = status → PUBLISHED + visibility → CLIENT_VISIBLE in ONE
 /// audited tx; unpublish = visibility → INTERNAL (status stays
 /// PUBLISHED; republish allowed). Portal capability: portal.hours.view

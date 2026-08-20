@@ -141,6 +141,47 @@ export const AUDIT_EVENTS = {
   "project_template.applied": TENANT,
   "notification.preference_changed": TENANT,
   "search.index_rebuilt": TENANT,
+  // Time (Phase 2T — DATA_MODEL.md §6.15; metadata NEVER carries a cost
+  // amount, SECURITY.md §9.7.4)
+  "timer.started": TENANT,
+  "timer.stopped": TENANT,
+  "timer.auto_stopped": TENANT,
+  "time_entry.created": TENANT, // manual / duration entries
+  "time_entry.updated": TENANT, // own edit of an editable timestamp — founder: "editable, audited"
+  "time_entry.edited_by_other": TENANT,
+  "time_entry.deleted": TENANT,
+  "time_entry.locked": TENANT,
+  "time_entry.unlocked": TENANT,
+  "time_entry.repriced": TENANT,
+  "time.exported": TENANT,
+  "rate_card.created": TENANT,
+  "rate_card.closed": TENANT,
+  "rate_card.cost_revealed": TENANT, // aggregate, once per session
+  "budget.created": TENANT,
+  "budget.changed": TENANT,
+  "budget.alert_sent": TENANT,
+  "staff_notice.published": TENANT,
+  "staff_notice.acknowledged": TENANT,
+  // D1 shifts
+  "shift.started": TENANT,
+  "shift.stopped": TENANT,
+  "shift.auto_stopped": TENANT,
+  "shift.updated": TENANT, // own correction (e.g. confirming a provisional auto-stop)
+  "shift.edited_by_other": TENANT,
+  "shift.deleted": TENANT,
+  "shift.break_started": TENANT,
+  "shift.break_stopped": TENANT,
+  // D3 published time reports
+  "time_report.created": TENANT,
+  "time_report.updated": TENANT,
+  "time_report.published": TENANT,
+  "time_report.unpublished": TENANT,
+  "time_report.archived": TENANT,
+  "time_report.deleted": TENANT,
+  // D5 work types
+  "work_type.created": TENANT,
+  "work_type.updated": TENANT,
+  "work_type.archived": TENANT,
   // System jobs: ONE summary event per run (TENANCY §12 amendment)
   "job.run": PLATFORM,
   // Platform plane

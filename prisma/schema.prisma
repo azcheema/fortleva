@@ -243,6 +243,18 @@ model Tenant {
   subscriptions           Subscription[]
   notificationPreferences NotificationPreference[]
   emailOutbox             EmailOutbox[]
+  // 2T (time):
+  timeEntries                TimeEntry[]
+  rateCards                  RateCard[]
+  projectBudgets             ProjectBudget[]
+  budgetAlerts               BudgetAlert[]
+  projectTimeSummaries       ProjectTimeSummary[]
+  staffNotices               StaffNotice[]
+  staffNoticeAcknowledgments StaffNoticeAcknowledgment[]
+  shifts                     Shift[]
+  shiftBreaks                ShiftBreak[]
+  timeReports                TimeReport[]
+  workTypes                  WorkType[]
 
   @@map("tenant")
 }
@@ -355,6 +367,12 @@ model Member {
   workItemCollaborations WorkItemCollaborator[]
   workItemSubscriptions  WorkItemSubscriber[]
   subscriptions          Subscription[]
+  // 2T:
+  timeEntries                TimeEntry[]
+  rateCards                  RateCard[]
+  shifts                     Shift[]
+  shiftBreaks                ShiftBreak[]
+  staffNoticeAcknowledgments StaffNoticeAcknowledgment[]
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id]) // composite-FK target
@@ -530,6 +548,11 @@ model Client {
   workItemActivities WorkItemActivity[]
   comments           Comment[]
   notifications      Notification[]
+  // 2T:
+  timeEntries          TimeEntry[]
+  projectBudgets       ProjectBudget[]
+  projectTimeSummaries ProjectTimeSummary[]
+  timeReports          TimeReport[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -681,6 +704,7 @@ model Project {
   autoArchiveMonths  Int?             @map("auto_archive_months")
   autoStartParent    Boolean          @default(false) @map("auto_start_parent")
   autoCompleteParent Boolean          @default(false) @map("auto_complete_parent")
+  defaultServiceId   String?          @map("default_service_id") // 2T (D4): seeds TimeEntry.serviceId; the per-entry picker overrides
   archivedAt         DateTime?        @map("archived_at") @db.Timestamptz(6)
   createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -698,6 +722,13 @@ model Project {
   workItemActivities WorkItemActivity[]
   labels             Label[]
   comments           Comment[]
+  // 2T:
+  defaultService Service?             @relation("ProjectDefaultService", fields: [tenantId, defaultServiceId], references: [tenantId, id], onDelete: Restrict)
+  timeEntries    TimeEntry[]
+  rateCards      RateCard[]
+  budgets        ProjectBudget[]
+  timeSummaries  ProjectTimeSummary[]
+  timeReports    TimeReport[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -837,6 +868,10 @@ model Service {
   tenant  Tenant   @relation(fields: [tenantId], references: [id])
   client  Client   @relation(fields: [tenantId, clientId], references: [tenantId, id])
   project Project? @relation(fields: [tenantId, projectId], references: [tenantId, id])
+  // 2T (D4 — the Service IS the agreement):
+  defaultForProjects Project[]   @relation("ProjectDefaultService")
+  rateCards          RateCard[]
+  timeEntries        TimeEntry[]
 
   @@unique([tenantId, id]) // composite-FK target (InvoiceLine.serviceId)
   @@index([tenantId, clientId, status])
@@ -1228,6 +1263,7 @@ model WorkItem {
   labels          WorkItemLabel[]
   collaborators   WorkItemCollaborator[]
   subscribers     WorkItemSubscriber[]
+  timeEntries     TimeEntry[] // 2T
 
   @@unique([tenantId, projectId, number]) // human key ACME-12
   @@unique([tenantId, projectId, rank]) // one position per item (retry-with-jitter)
@@ -1638,4 +1674,509 @@ model EmailSuppression {
   createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@map("email_suppression")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// TIME (Phase 2T) — DATA_MODEL.md §6.15 as amended 2026-08-20 (D1–D6);
+// module `time` (src/modules/time). Posture (SECURITY.md §9.7): self-
+// reported tidsredovisning only — no IP, device, location or activity
+// column exists on any table here, by rule. TimeEntry/Shift/RateCard/
+// budgets/notice/work types are class A (the portal never reads them);
+// ProjectTimeSummary and TimeReport are the ONLY portal time surfaces
+// (class B projectScoped; member-free by construction). Every CHECK,
+// partial unique and trigger named in §6.15 lives in the hand-written
+// migration; comments here state only what the service relies on.
+// ───────────────────────────────────────────────────────────────────
+
+enum TimeEntryMode {
+  TIMER
+  MANUAL
+  DURATION
+
+  @@map("time_entry_mode")
+}
+
+enum TimeEntrySource {
+  TIMER
+  MANUAL
+  IMPORT
+
+  @@map("time_entry_source")
+}
+
+/// Which tier resolved the bill rate at WRITE time (never at read).
+enum RateSource {
+  SERVICE // the explicitly picked agreement's card (D4) — outranks ambient tiers
+  PROJECT_MEMBER
+  PROJECT
+  MEMBER
+  TENANT
+  MANUAL
+  NONE
+
+  @@map("rate_source")
+}
+
+/// Why an entry is frozen. Invoicing sets INVOICED / INVOICE_DRAFT in
+/// Phase 4; LOCK_DATE and APPROVED are reserved values.
+enum TimeLockReason {
+  INVOICED
+  INVOICE_DRAFT
+  LOCK_DATE
+  APPROVED
+  BILLED_EXTERNAL
+  WRITTEN_OFF
+
+  @@map("time_lock_reason")
+}
+
+enum TimeReviewReason {
+  AUTO_STOPPED
+  OVERLAP_TRUNCATED
+  STOP_BEFORE_START
+  SKEW_CLAMPED
+
+  @@map("time_review_reason")
+}
+
+enum RateKind {
+  BILL // what the client pays — the founder's "cost per hour for the project"
+  COST // internal cost (salary-derived) — encrypted, finance-only
+
+  @@map("rate_kind")
+}
+
+enum RateScope {
+  TENANT
+  MEMBER
+  PROJECT
+  PROJECT_MEMBER
+  SERVICE // the agreement's own BILL rate (D4); COST never uses it (CHECK)
+
+  @@map("rate_scope")
+}
+
+enum BudgetKind {
+  HOURS
+  MONEY
+
+  @@map("budget_kind")
+}
+
+enum BillingModel {
+  T_AND_M
+  FIXED_FEE
+  RETAINER
+  NON_BILLABLE
+
+  @@map("billing_model")
+}
+
+enum BudgetPeriod {
+  NONE
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+
+  @@map("budget_period")
+}
+
+enum BudgetStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("budget_status")
+}
+
+enum TimeReportStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("time_report_status")
+}
+
+enum TimeReportGroupBy {
+  DAY
+  WORK_ITEM
+  EPIC
+  SERVICE
+
+  @@map("time_report_group_by")
+}
+
+/// One row per (member, interval); NULL stoppedAt = RUNNING (partial
+/// unique `time_entry_one_running` = one running timer per member, DB-
+/// enforced). clientId/projectId are nullable AS A PAIR (D2 ad-hoc
+/// "instant task": description-only, forced non-billable by CHECK).
+/// billRate is a plaintext SNAPSHOT resolved at write; cost is
+/// costRateCardId ONLY (never the amount). lockedReason ⇒ the lock
+/// trigger refuses UPDATE/DELETE unless app.time_lock_bypass = 'on'
+/// (transaction-local, invoicing only, always audited). Class A — no
+/// visibility column, never portal-reachable. The service writes
+/// whole-second timestamps; durationSeconds = floor(epoch diff) (CHECK).
+model TimeEntry {
+  id                 String            @id @default(uuid(7))
+  tenantId           String            @map("tenant_id")
+  clientId           String?           @map("client_id") // denormalised from project; NULL = ad-hoc (pair-null with projectId)
+  projectId          String?           @map("project_id")
+  serviceId          String?           @map("service_id") // the chosen agreement (D4)
+  workTypeId         String?           @map("work_type_id") // analytics dimension (D5), never rate-bearing
+  workItemId         String?           @map("work_item_id") // NULL = project-level (description required)
+  memberId           String            @map("member_id")
+  description        String?
+  startedAt          DateTime          @map("started_at") @db.Timestamptz(6)
+  stoppedAt          DateTime?         @map("stopped_at") @db.Timestamptz(6) // NULL = running
+  durationSeconds    Int?              @map("duration_seconds") // CHECK-tied to stoppedAt; raw, never rounded
+  timezone           String            @db.VarChar(64) // IANA at write (Member.timezone → tenant)
+  localDate          DateTime          @map("local_date") @db.Date // start date in `timezone`
+  entryMode          TimeEntryMode     @map("entry_mode")
+  source             TimeEntrySource   @default(TIMER)
+  billable           Boolean
+  billRate           Decimal?          @map("bill_rate") @db.Decimal(12, 2) // plaintext snapshot; NULL when non-billable
+  currency           String?           @db.Char(3)
+  rateSource         RateSource        @default(NONE) @map("rate_source")
+  billRateCardId     String?           @map("bill_rate_card_id")
+  costRateCardId     String?           @map("cost_rate_card_id") // id ONLY — never the amount
+  lockedReason       TimeLockReason?   @map("locked_reason")
+  lockedAt           DateTime?         @map("locked_at") @db.Timestamptz(6)
+  invoiceLineId      String?           @map("invoice_line_id") // Phase 4
+  retainerPeriodId   String?           @map("retainer_period_id") // Phase 4
+  billedExternallyAt DateTime?         @map("billed_externally_at") @db.Timestamptz(6)
+  writtenOffAt       DateTime?         @map("written_off_at") @db.Timestamptz(6)
+  needsReview        Boolean           @default(false) @map("needs_review")
+  reviewReason       TimeReviewReason? @map("review_reason")
+  clientEventId      String?           @map("client_event_id") // offline queue (v1.5; reserved)
+  clientStartedAt    DateTime?         @map("client_started_at") @db.Timestamptz(6)
+  skewMs             Int?              @map("skew_ms")
+  createdByMemberId  String?           @map("created_by_member_id") // ≠ memberId ⇒ time_entry.edited_by_other
+  deletedAt          DateTime?         @map("deleted_at") @db.Timestamptz(6) // soft delete; excluded from the running index
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  client       Client?   @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict)
+  project      Project?  @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict)
+  service      Service?  @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+  workType     WorkType? @relation(fields: [tenantId, workTypeId], references: [tenantId, id], onDelete: Restrict)
+  workItem     WorkItem? @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Restrict)
+  member       Member    @relation(fields: [tenantId, memberId], references: [tenantId, id])
+  billRateCard RateCard? @relation("TimeEntryBillRateCard", fields: [tenantId, billRateCardId], references: [tenantId, id], onDelete: Restrict)
+  costRateCard RateCard? @relation("TimeEntryCostRateCard", fields: [tenantId, costRateCardId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, memberId, clientEventId]) // offline idempotency (NULLs distinct)
+  @@index([tenantId, memberId, startedAt(sort: Desc)]) // My Time
+  @@index([tenantId, projectId, startedAt]) // project time tab, summary recompute
+  @@index([tenantId, workItemId]) // Σ spent on a card
+  @@index([tenantId, serviceId]) // per-agreement rollups + consumption strip
+  @@index([tenantId, workTypeId]) // per-type rollups
+  @@index([tenantId, localDate, memberId]) // week grid, team view
+  @@index([tenantId, costRateCardId]) // cost aggregation GROUP BY
+  @@index([tenantId, billRateCardId]) // reprice scope
+  @@index([tenantId, invoiceLineId]) // Phase 4
+  @@map("time_entry")
+}
+
+/// IMMUTABLE ROWS (trigger: only effectiveTo may change, NULL → date):
+/// a change = close the old row + insert a new one, so a card id is a
+/// stable snapshot TimeEntry rows point at forever. amount (BILL) is
+/// plaintext; amountCiphertext (COST) is v2-encrypted with AAD
+/// `tenantId:rate_card:<id>:amount` and omitted from every client read
+/// (src/db/client.ts) — rates.ts opts back in behind rate:view_cost ✦ +
+/// recent MFA. No-overlap per (tenant, kind, scope, member, project,
+/// service) is an EXCLUDE constraint (btree_gist, verified on Neon).
+model RateCard {
+  id                String    @id @default(uuid(7))
+  tenantId          String    @map("tenant_id")
+  kind              RateKind
+  scope             RateScope
+  memberId          String?   @map("member_id") // MEMBER / PROJECT_MEMBER
+  projectId         String?   @map("project_id") // PROJECT / PROJECT_MEMBER
+  serviceId         String?   @map("service_id") // SERVICE (D4)
+  amount            Decimal?  @db.Decimal(12, 2) // BILL only, plaintext
+  amountCiphertext  String?   @map("amount_ciphertext") // COST only — v2 ENCRYPTED, AAD-bound, omitted
+  currency          String    @db.Char(3)
+  effectiveFrom     DateTime  @map("effective_from") @db.Date
+  effectiveTo       DateTime? @map("effective_to") @db.Date // NULL = open; the ONLY mutable column
+  createdByMemberId String?   @map("created_by_member_id")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  member      Member?     @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Restrict)
+  project     Project?    @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict)
+  service     Service?    @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+  billEntries TimeEntry[] @relation("TimeEntryBillRateCard")
+  costEntries TimeEntry[] @relation("TimeEntryCostRateCard")
+
+  @@unique([tenantId, id])
+  @@index([tenantId, kind, scope, projectId, memberId, effectiveFrom]) // resolution lookup
+  @@index([tenantId, serviceId, kind]) // agreement-rate lookup
+  @@index([tenantId, memberId, kind])
+  @@map("rate_card")
+}
+
+/// Hours-or-money budget with once-per-threshold alerts; one ACTIVE per
+/// project (partial unique). RETAINER here is intent + a cap — the
+/// hour-bank ledger is Phase 4. Class A: budget figures reach the
+/// portal only through ProjectTimeSummary when the mode allows.
+model ProjectBudget {
+  id                 String       @id @default(uuid(7))
+  tenantId           String       @map("tenant_id")
+  clientId           String       @map("client_id")
+  projectId          String       @map("project_id")
+  kind               BudgetKind
+  billingModel       BillingModel @default(T_AND_M) @map("billing_model")
+  amount             Decimal      @db.Decimal(12, 2) // decimal hours or money
+  currency           String?      @db.Char(3) // MONEY: = Project.billingCurrency
+  period             BudgetPeriod @default(NONE)
+  periodAnchor       DateTime?    @map("period_anchor") @db.Date
+  includeNonBillable Boolean      @default(false) @map("include_non_billable")
+  thresholds         Int[]        @default([80, 100]) // percentages, sorted by the app
+  notifyMemberIds    String[]     @default([]) @map("notify_member_ids")
+  status             BudgetStatus @default(ACTIVE)
+  createdByMemberId  String?      @map("created_by_member_id")
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id])
+  client  Client        @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project Project       @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  alerts  BudgetAlert[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, projectId, status])
+  @@map("project_budget")
+}
+
+/// Once per (budget, period, threshold): the unique IS the dedupe — the
+/// hourly budget job INSERTs and a conflict means "already sent".
+model BudgetAlert {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  budgetId  String   @map("budget_id")
+  periodKey String   @map("period_key") // "ALL" | "2026-W34" | "2026-08" | …
+  threshold Int
+  sentAt    DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id])
+  budget ProjectBudget @relation(fields: [tenantId, budgetId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, budgetId, periodKey, threshold])
+  @@map("budget_alert")
+}
+
+/// THE ONLY LIVE PORTAL TIME SURFACE — a physical class-B table (a view
+/// under FORCE RLS returns 0 rows to a contact), one row per (project,
+/// month), NO MEMBER ID COLUMN BY CONSTRUCTION. RECOMPUTED (never delta-
+/// upserted) for the touched (project, month) in the same transaction
+/// as every time_entry write (`INSERT … ON CONFLICT DO UPDATE`).
+/// visibility is trigger-DERIVED from Project.hoursSharingMode
+/// (CLIENT_VISIBLE iff ≠ NONE); billableAmount is nulled by the same
+/// trigger unless the mode is BILLABLE_AMOUNT; portalEnabled is the
+/// usual projectScoped stamp. The portal reads it under the contact
+/// principal via RLS — never through a system bypass.
+model ProjectTimeSummary {
+  id                 String     @id @default(uuid(7))
+  tenantId           String     @map("tenant_id")
+  clientId           String     @map("client_id")
+  projectId          String     @map("project_id")
+  periodMonth        DateTime   @map("period_month") @db.Date // first day of month
+  billableSeconds    Int        @default(0) @map("billable_seconds")
+  nonBillableSeconds Int        @default(0) @map("non_billable_seconds")
+  billableAmount     Decimal?   @map("billable_amount") @db.Decimal(12, 2) // only when hoursSharingMode = BILLABLE_AMOUNT
+  budgetSeconds      Int?       @map("budget_seconds") // from the ACTIVE HOURS budget, when shared
+  budgetAmount       Decimal?   @map("budget_amount") @db.Decimal(12, 2) // from the ACTIVE MONEY budget, when shared
+  currency           String?    @db.Char(3)
+  visibility         Visibility @default(INTERNAL) // trigger-derived from Project.hoursSharingMode
+  portalEnabled      Boolean    @default(false) @map("portal_enabled") // trigger-maintained
+  computedAt         DateTime   @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  client  Client  @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, projectId, periodMonth])
+  @@index([tenantId, clientId, visibility])
+  @@map("project_time_summary")
+}
+
+/// What the tenant tells its staff before time tracking starts (Art. 13
+/// GDPR; MBL 19 §; NY/CT/DE by jurisdictionTags). Versioned & immutable
+/// in effect (a republish = new version); one row per locale per
+/// version. Timers AND clock-in refuse to start until the member has
+/// acknowledged the current version. sv/en text is seeded per tenant.
+model StaffNotice {
+  id                  String    @id @default(uuid(7))
+  tenantId            String    @map("tenant_id")
+  version             Int
+  locale              String // "sv" | "en"
+  title               String
+  body                String // markdown
+  purposes            String[] // ["billing","planning","profitability","working_time"]
+  jurisdictionTags    String[]  @map("jurisdiction_tags") // ["SE","US-NY",…]
+  publishedAt         DateTime? @map("published_at") @db.Timestamptz(6)
+  publishedByMemberId String?   @map("published_by_member_id") // NULL = seeded
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant          Tenant                      @relation(fields: [tenantId], references: [id])
+  acknowledgments StaffNoticeAcknowledgment[]
+
+  @@unique([tenantId, version, locale])
+  @@unique([tenantId, id])
+  @@map("staff_notice")
+}
+
+/// One per (member, notice version): evidence of the information duty
+/// (notice, NOT consent — SECURITY.md §9.7.1). Pseudonymised, not
+/// deleted, on erasure.
+model StaffNoticeAcknowledgment {
+  id             String   @id @default(uuid(7))
+  tenantId       String   @map("tenant_id")
+  memberId       String   @map("member_id")
+  noticeId       String   @map("notice_id")
+  noticeVersion  Int      @map("notice_version")
+  locale         String // which rendering was shown
+  acknowledgedAt DateTime @default(now()) @map("acknowledged_at") @db.Timestamptz(6)
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id])
+  member Member      @relation(fields: [tenantId, memberId], references: [tenantId, id])
+  notice StaffNotice @relation(fields: [tenantId, noticeId], references: [tenantId, id])
+
+  @@unique([tenantId, memberId, noticeId, noticeVersion])
+  @@index([tenantId, memberId])
+  @@map("staff_notice_acknowledgment")
+}
+
+/// Self-reported attendance (D1): clock-in/out with breaks as rows. One
+/// open shift per member (partial unique `shift_one_open`); workedSeconds
+/// = span − Σ breaks, service-maintained and property-tested; the
+/// shrink guard refuses an edit that would orphan a break. NO live
+/// presence: team surfaces aggregate CLOSED rows only for other
+/// members, and no helper selects an open flag for another member
+/// (SECURITY.md §9.7 never-list). Reuses the time:* codes.
+model Shift {
+  id                String            @id @default(uuid(7))
+  tenantId          String            @map("tenant_id")
+  memberId          String            @map("member_id")
+  startedAt         DateTime          @map("started_at") @db.Timestamptz(6)
+  stoppedAt         DateTime?         @map("stopped_at") @db.Timestamptz(6) // NULL = open
+  workedSeconds     Int?              @map("worked_seconds") // service-maintained = span − Σ breaks
+  timezone          String            @db.VarChar(64)
+  localDate         DateTime          @map("local_date") @db.Date // start date in `timezone`
+  note              String?
+  needsReview       Boolean           @default(false) @map("needs_review")
+  reviewReason      TimeReviewReason? @map("review_reason") // AUTO_STOPPED — visibly provisional until confirmed
+  createdByMemberId String?           @map("created_by_member_id") // ≠ memberId ⇒ shift.edited_by_other
+  deletedAt         DateTime?         @map("deleted_at") @db.Timestamptz(6) // soft delete; excluded from the open index
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id])
+  member Member       @relation(fields: [tenantId, memberId], references: [tenantId, id])
+  breaks ShiftBreak[]
+
+  @@unique([tenantId, id]) // composite-FK target (ShiftBreak)
+  @@index([tenantId, memberId, startedAt(sort: Desc)])
+  @@index([tenantId, localDate, memberId]) // day grids, team totals, statement export
+  @@map("shift")
+}
+
+/// A break ROW inside a shift (rows, not pause events). Hard delete. One
+/// open break per shift (partial unique); bounds enforced by trigger
+/// (inside the parent shift; memberId stamped from the shift). A
+/// recorded break = rast (unpaid) in v1 — stated in the staff notice.
+model ShiftBreak {
+  id                String    @id @default(uuid(7))
+  tenantId          String    @map("tenant_id")
+  shiftId           String    @map("shift_id")
+  memberId          String    @map("member_id") // denormalised (stamped by trigger) — break totals per member/day without a join
+  startedAt         DateTime  @map("started_at") @db.Timestamptz(6)
+  stoppedAt         DateTime? @map("stopped_at") @db.Timestamptz(6) // NULL = open
+  durationSeconds   Int?      @map("duration_seconds") // CHECK-tied, as on TimeEntry
+  note              String?
+  createdByMemberId String?   @map("created_by_member_id")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  shift  Shift  @relation(fields: [tenantId, shiftId], references: [tenantId, id], onDelete: Cascade)
+  member Member @relation(fields: [tenantId, memberId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, shiftId])
+  @@index([tenantId, memberId, startedAt])
+  @@map("shift_break")
+}
+
+/// An EXPLICITLY published, IMMUTABLE client time report (D3). The
+/// snapshot is client-safe by construction: the generator never selects
+/// member_id, and lines carry an entity's name only when that entity is
+/// CLIENT_VISIBLE — INTERNAL ones fold into "Other work" at generation.
+/// portal_gate is FOUR-term (client AND CLIENT_VISIBLE AND portal_enabled
+/// AND status = 'PUBLISHED'); once publishedAt is set only status
+/// (PUBLISHED → ARCHIVED), visibility and the stamped/updated columns may
+/// change (trigger), and the row can no longer be deleted. Publish =
+/// status + visibility + publishedAt in ONE audited tx; unpublish =
+/// visibility → INTERNAL.
+model TimeReport {
+  id                  String            @id @default(uuid(7))
+  tenantId            String            @map("tenant_id")
+  clientId            String            @map("client_id")
+  projectId           String            @map("project_id")
+  title               String
+  periodStart         DateTime          @map("period_start") @db.Date
+  periodEnd           DateTime          @map("period_end") @db.Date
+  groupBy             TimeReportGroupBy @default(DAY) @map("group_by")
+  includeAmounts      Boolean           @default(false) @map("include_amounts")
+  includeNonBillable  Boolean           @default(false) @map("include_non_billable")
+  snapshot            Json // lines + totals; NEVER a member key; INTERNAL names folded
+  totalSeconds        Int               @default(0) @map("total_seconds")
+  billableSeconds     Int               @default(0) @map("billable_seconds")
+  billableAmount      Decimal?          @map("billable_amount") @db.Decimal(12, 2) // only when includeAmounts
+  currency            String?           @db.Char(3) // = Project.billingCurrency at generation
+  status              TimeReportStatus  @default(DRAFT)
+  visibility          Visibility        @default(INTERNAL) // publish flips to CLIENT_VISIBLE; app-written
+  portalEnabled       Boolean           @default(false) @map("portal_enabled") // trigger-maintained
+  generatedAt         DateTime          @default(now()) @map("generated_at") @db.Timestamptz(6)
+  publishedAt         DateTime?         @map("published_at") @db.Timestamptz(6)
+  publishedByMemberId String?           @map("published_by_member_id")
+  createdByMemberId   String?           @map("created_by_member_id")
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  client  Client  @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, projectId, periodStart])
+  @@index([tenantId, clientId, visibility])
+  @@map("time_report")
+}
+
+/// Tenant-editable time category (D5) — a LOOKUP TABLE, not an enum, and
+/// NOT rate-bearing (differentiated pricing = a second agreement).
+/// defaultBillable (nullable) seeds TimeEntry.billable: explicit choice →
+/// workType.defaultBillable → project.defaultBillable. Seeded per tenant
+/// in the tenant's default locale; names unique among LIVE rows
+/// (partial unique); archived types stay on history, leave pickers.
+model WorkType {
+  id                String    @id @default(uuid(7))
+  tenantId          String    @map("tenant_id")
+  name              String
+  sortOrder         Int       @default(0) @map("sort_order")
+  defaultBillable   Boolean?  @map("default_billable") // NULL = inherit project.defaultBillable
+  archivedAt        DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdByMemberId String?   @map("created_by_member_id")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id])
+  entries TimeEntry[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, archivedAt, sortOrder]) // picker: live rows in order
+  @@map("work_type")
 }

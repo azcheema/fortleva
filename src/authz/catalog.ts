@@ -148,6 +148,24 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("project_update:publish", "work", "Publish (freezes seq + snapshots), archive", CM),
   p("project_update:change_visibility", "work", "Flip update visibility — audited", CMA),
   p("project_template:manage", "work", "Create/edit/delete ProjectTemplates; save project as template", CMA),
+  // ── Phase 2T (module `time`, +16; catalog 80 → 96; TEMPLATE_VERSION 3
+  // 2026-08-20 per AUTHZ.md §3.2.1 as amended by decision 14) ──────
+  p("time:track", "time", "Start/stop own timer; create/edit/delete/split own unlocked entries; clock own shift in/out, record own breaks", CMAE),
+  p("time:view_team", "time", "See other members' entries and totals within scope; per-member shift/worked/break day totals — closed rows only, never live presence", CM),
+  p("time:edit_any", "time", "Edit other members' unlocked entries, shifts and breaks (audited edited_by_other)", CM),
+  p("time:delete_any", "time", "Delete other members' unlocked entries and shifts", CM),
+  p("time:manage_locks", "time", "Set lock date; lock/unlock entries (app.time_lock_bypass, always audited)", CA),
+  p("time:reprice", "time", "Run the reprice command (FROM_DATE or ALL_UNBILLED) on unlocked entries — audited", CA),
+  p("time:export", "time", "CSV export of entries/rollups — cost columns never by default", CMA),
+  p("rate:view_bill", "time", "See BILL rate cards, billRate snapshots and billable amounts", CM),
+  p("rate:manage_bill", "time", "Create/close BILL RateCard rows (immutable rows; close + insert)", CA),
+  p("rate:view_cost", "time", "Decrypt COST cards; margin/profit views (step-up)", C, true),
+  p("rate:manage_cost", "time", "Create/close COST RateCard rows (step-up)", C, true),
+  p("budget:view", "time", "See ProjectBudget and burn", CM),
+  p("budget:manage", "time", "Create/edit budgets, thresholds, notify list", CMA),
+  p("time_report:manage", "time", "Create/generate/edit/archive TimeReport drafts", CM),
+  p("time_report:publish", "time", "Publish/unpublish a TimeReport to the portal — immutable snapshot, audited", CM),
+  p("work_type:manage", "time", "Create/edit/archive tenant WorkType rows", CMA),
 ];
 
 export type RoleTemplate = {
@@ -183,8 +201,9 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
 
 /** Current template generation (Role.templateVersion) — bump on any
  * template change so B3 additive propagation knows what to reconcile.
- * v2 (2026-08-20): +17 `work` codes; issue:* unseeded (deprecated). */
-export const TEMPLATE_VERSION = 2;
+ * v2 (2026-08-20): +17 `work` codes; issue:* unseeded (deprecated).
+ * v3 (2026-08-20): +16 `time` codes (2T; rate:view_cost / rate:manage_cost ✦). */
+export const TEMPLATE_VERSION = 3;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

@@ -61,7 +61,7 @@ beforeAll(async () => {
   await db.project.createMany({
     data: [
       { id: P, tenantId: T, clientId: acme, key: "ACME", name: "Acme site" },
-      { id: PB, tenantId: T, clientId: beta, key: "BETA", name: "Beta site", portalEnabled: true },
+      { id: PB, tenantId: T, clientId: beta, key: "BETA", name: "Beta site", portalEnabled: true, hoursSharingMode: "HOURS" },
     ],
   });
   for (const [projectId, clientId] of [
@@ -115,6 +115,19 @@ beforeAll(async () => {
         { tenantId: T, clientId, projectId, workItemId: wiInternal, field: "title", visibility: "INTERNAL" },
       ],
     });
+    // 2T rows: project_time_summary (visibility DERIVED from the project's
+    // hoursSharingMode — P is NONE ⇒ INTERNAL, PB is HOURS ⇒ CLIENT_VISIBLE;
+    // the app-supplied value is overwritten) and time_report (one PUBLISHED
+    // + CLIENT_VISIBLE, one DRAFT + INTERNAL — the 4-term gate under test).
+    await db.projectTimeSummary.create({
+      data: { tenantId: T, clientId, projectId, periodMonth: new Date("2026-08-01T00:00:00Z"), billableSeconds: 3600, visibility: "CLIENT_VISIBLE" },
+    });
+    await db.timeReport.createMany({
+      data: [
+        { tenantId: T, clientId, projectId, title: "August", periodStart: new Date("2026-08-01T00:00:00Z"), periodEnd: new Date("2026-08-31T00:00:00Z"), snapshot: { lines: [] }, status: "PUBLISHED", visibility: "CLIENT_VISIBLE", publishedAt: new Date() },
+        { tenantId: T, clientId, projectId, title: "Draft", periodStart: new Date("2026-09-01T00:00:00Z"), periodEnd: new Date("2026-09-30T00:00:00Z"), snapshot: { lines: [] }, status: "DRAFT", visibility: "INTERNAL" },
+      ],
+    });
     // clientId/projectId deliberately omitted: comment_denorm_guard
     // derives them from the subject — that derivation is under test.
     await db.comment.createMany({
@@ -129,6 +142,12 @@ beforeAll(async () => {
 afterAll(async () => {
   const db = getPlatformClient();
   await db.$transaction(async (tx) => {
+    // Published time reports refuse DELETE (archive-only) unless the
+    // transaction-local maintenance GUC is on — the tenant-teardown path
+    // (mirrors app.audit_maintenance in members/dbtest-fixture.ts).
+    await tx.$executeRaw`SELECT set_config('app.time_maintenance', 'on', true)`;
+    await tx.timeReport.deleteMany({ where: { tenantId: T } });
+    await tx.projectTimeSummary.deleteMany({ where: { tenantId: T } });
     await tx.comment.deleteMany({ where: { tenantId: T } });
     await tx.workItemActivity.deleteMany({ where: { tenantId: T } });
     await tx.workItem.deleteMany({ where: { tenantId: T } });
@@ -196,6 +215,8 @@ describe("portalEnabled=false ⇒ zero project rows for the contact", () => {
         work_item: 1, // CLIENT_VISIBLE only (2W)
         work_item_activity: 1,
         comment: 1,
+        project_time_summary: 1, // PB shares hours (HOURS) ⇒ derived CLIENT_VISIBLE (2T)
+        time_report: 1, // PUBLISHED + CLIENT_VISIBLE only (2T, 4-term gate)
       });
     });
   });
@@ -228,6 +249,8 @@ describe("flipping portalEnabled=true exposes only CLIENT_VISIBLE / SHIPPED rows
         work_item: 1, // CLIENT_VISIBLE only (2W)
         work_item_activity: 1,
         comment: 1,
+        project_time_summary: 0, // P does not share hours (NONE) ⇒ derived INTERNAL even with the portal on
+        time_report: 1, // the PUBLISHED one; the DRAFT stays invisible
       });
       expect((await tx.milestone.findMany()).map((m) => m.name)).toEqual(["Design"]);
       expect((await tx.projectVersion.findMany()).map((v) => v.version)).toEqual(["1.0"]);

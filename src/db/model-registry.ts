@@ -51,6 +51,18 @@ export const MODEL_CLASSES = {
     "subscription",
     "notificationPreference",
     "emailOutbox",
+    // 2T — time (DATA_MODEL.md §6.15):
+    "timeEntry",
+    "rateCard",
+    "projectBudget",
+    "budgetAlert",
+    "projectTimeSummary",
+    "staffNotice",
+    "staffNoticeAcknowledgment",
+    "shift",
+    "shiftBreak",
+    "timeReport",
+    "workType",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -112,6 +124,17 @@ export const RLS_CLASSES = {
     "subscription",
     "notificationPreference",
     "emailOutbox",
+    // 2T (never portal-reachable; the never-list is enforced by
+    // absence of columns AND by portal_deny here):
+    "timeEntry",
+    "rateCard",
+    "projectBudget",
+    "budgetAlert",
+    "staffNotice",
+    "staffNoticeAcknowledgment",
+    "shift",
+    "shiftBreak",
+    "workType",
   ],
   B_clientScoped: ["client", "contact"],
   B_projectScoped: [
@@ -125,6 +148,11 @@ export const RLS_CLASSES = {
     "workItem",
     "workItemActivity",
     "comment",
+    // 2T — the ONLY portal time surfaces (member-free by construction):
+    // project_time_summary (visibility derived from hoursSharingMode)
+    // and time_report (4-term gate: + status = PUBLISHED).
+    "projectTimeSummary",
+    "timeReport",
   ],
   // Receiver-bound rows: tenant_isolation + a RESTRICTIVE principal_scope
   // policy binding SELECT/UPDATE to the receiver (member => own MEMBER

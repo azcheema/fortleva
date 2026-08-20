@@ -8,9 +8,9 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 80 codes, all unique (63 v1 + 17 work @ 2W — bumped deliberately 2026-08-20)", () => {
-    expect(PERMISSIONS).toHaveLength(80);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(80);
+  it("holds exactly 96 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T — bumped deliberately 2026-08-20)", () => {
+    expect(PERMISSIONS).toHaveLength(96);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(96);
   });
 
   it("the deprecated set is exactly issue:* — unseeded everywhere, rows kept (first §3.1 deprecation)", () => {
@@ -51,6 +51,9 @@ describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
         "role:edit",
         "settings:manage_modules",
         "tenant:export",
+        // 2T — cost rates are salary-grade data (AUTHZ.md §7.5, SECURITY.md §9.7.4)
+        "rate:view_cost",
+        "rate:manage_cost",
       ].sort(),
     );
   });
