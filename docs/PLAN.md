@@ -12,6 +12,8 @@
 
 **State:** HEAD `9fea80f` on `main` (unpushed), working tree clean, every check green — `pnpm typecheck`, `pnpm exec eslint src e2e --max-warnings 0`, unit **590 pass / 1 skipped**, db **195 pass** (20 files), `next build`, e2e **24 pass** full run (+ the two new specs re-run green). Phases 0 → 1 → 1b → 2 → 2W core slice are code complete; **Phase 2T is code complete for its core** (one-way-door migration, every service, the member surfaces, the project Time tab + reports + budgets, the PWA shell) with a short list of surfaces still open (item 4 below).
 
+**First action next session:** check CI run [32378425410](https://github.com/azcheema/fortleva/actions/runs/32378425410) — the first run after the repo went **public** on 2026-08-20 (it was private and billing-locked; pushes now go to `origin/main`, CI runs on every push). Typecheck/lint/unit had passed; the db suite and the Playwright job were still running at hand-off. If the e2e job is red, suspect its 25-minute budget (the visual spec + the two new time/pwa specs run in one worker, ~15 min locally) before suspecting product code.
+
 **Read in this order before writing code:**
 1. this file (§0, the §3 phase table, then the phase section you are building);
 2. `docs/research/2026-08-16-work-management-plan.md` §3 "spec pins" (in-repo copy of the approved plan) — the decisions that resolve every ambiguity for 2W/2T/3/3V. **They are settled; do not re-litigate them.**
