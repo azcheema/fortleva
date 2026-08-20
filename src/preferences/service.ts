@@ -10,9 +10,13 @@ import { fail } from "@/lib/domain-error";
 import {
   CURRENCIES,
   DURATION_STYLES,
+  FINANCE_PREF_KEYS,
   materializePreferences,
   moduleKey,
   PREF_KEYS,
+  TIME_HOURS_MAX,
+  TIME_HOURS_MIN,
+  TIME_PREF_KEYS,
   TIMEZONES,
   TOGGLEABLE_MODULES,
   WEEK_STARTS,
@@ -70,6 +74,19 @@ const patchSchema = z
     showIsoWeek: z.boolean(),
     durationStyle: z.enum(DURATION_STYLES),
     currencyDefault: z.enum(CURRENCIES),
+    // 2T (numbers are whole hours within the form's bounds)
+    time: z
+      .object({
+        autoStopHours: z.number().int().min(TIME_HOURS_MIN).max(TIME_HOURS_MAX),
+        nudgeHours: z.number().int().min(TIME_HOURS_MIN).max(TIME_HOURS_MAX),
+        allowOverlap: z.boolean(),
+        allowEntriesWithoutItem: z.boolean(),
+        allowAdhocEntries: z.boolean(),
+        shiftsEnabled: z.boolean(),
+        shiftAutoStopHours: z.number().int().min(TIME_HOURS_MIN).max(TIME_HOURS_MAX),
+      })
+      .partial(),
+    finance: z.object({ costRatesEnabled: z.boolean() }).partial(),
   })
   .partial();
 
@@ -79,7 +96,7 @@ async function upsertPreference(
   tx: TenantDb,
   ctx: PreferenceCtx,
   key: string,
-  value: string | boolean,
+  value: string | boolean | number,
 ): Promise<boolean> {
   const existing = await tx.tenantPreference.findFirst({ where: { key }, select: { id: true, value: true } });
   if (existing && existing.value === value) return false;
@@ -138,6 +155,16 @@ export async function updatePreferences(
     }
     for (const [field, key] of Object.entries(PREF_KEYS) as [keyof typeof PREF_KEYS, string][]) {
       const value = patch[field];
+      if (value === undefined) continue;
+      if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
+    }
+    for (const [field, key] of Object.entries(TIME_PREF_KEYS) as [keyof typeof TIME_PREF_KEYS, string][]) {
+      const value = patch.time?.[field];
+      if (value === undefined) continue;
+      if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
+    }
+    for (const [field, key] of Object.entries(FINANCE_PREF_KEYS) as [keyof typeof FINANCE_PREF_KEYS, string][]) {
+      const value = patch.finance?.[field];
       if (value === undefined) continue;
       if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
     }

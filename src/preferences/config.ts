@@ -72,6 +72,8 @@ export type TenantPreferences = {
   currencyDefault: (typeof CURRENCIES)[number];
   /** Tenant's own toggle per module (absent row ⇒ true). */
   modules: Record<ToggleableModule, boolean>;
+  time: TimePreferences;
+  finance: FinancePreferences;
 };
 
 export const PREF_KEYS = {
@@ -82,7 +84,55 @@ export const PREF_KEYS = {
   currencyDefault: "finance.currencyDefault",
 } as const;
 
-const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale"> = {
+/** Time module (2T — PLAN.md Phase 2T "Preferences"; DATA_MODEL.md §6.15). */
+export type TimePreferences = {
+  /** Running entry auto-stops at this bound (hours); lazy + cron, deterministic. */
+  autoStopHours: number;
+  /** In-app nudge after this many hours running. */
+  nudgeHours: number;
+  /** D6 amendment 2026-08-20: allow + flag by default; blocking is the tenant opt-in. */
+  allowOverlap: boolean;
+  /** Project-level entries (no task) with a required note. */
+  allowEntriesWithoutItem: boolean;
+  /** D2 instant tasks: project-less, description-only, forced non-billable. */
+  allowAdhocEntries: boolean;
+  /** D1 shifts: clock-in/out + breaks. */
+  shiftsEnabled: boolean;
+  /** Open shift auto-stops at this bound (hours). */
+  shiftAutoStopHours: number;
+};
+export const TIME_PREF_KEYS: Readonly<Record<keyof TimePreferences, string>> = {
+  autoStopHours: "time.autoStopHours",
+  nudgeHours: "time.nudgeHours",
+  allowOverlap: "time.allowOverlap",
+  allowEntriesWithoutItem: "time.allowEntriesWithoutItem",
+  allowAdhocEntries: "time.allowAdhocEntries",
+  shiftsEnabled: "time.shiftsEnabled",
+  shiftAutoStopHours: "time.shiftAutoStopHours",
+};
+export const TIME_DEFAULTS: TimePreferences = {
+  autoStopHours: 12,
+  nudgeHours: 8,
+  allowOverlap: true,
+  allowEntriesWithoutItem: true,
+  allowAdhocEntries: true,
+  shiftsEnabled: true,
+  shiftAutoStopHours: 14,
+};
+/** Hour bounds the preference form and the parser both enforce. */
+export const TIME_HOURS_MIN = 1;
+export const TIME_HOURS_MAX = 48;
+
+export type FinancePreferences = {
+  /** The optional encrypted internal-cost layer (CEO/finance ✦). */
+  costRatesEnabled: boolean;
+};
+export const FINANCE_PREF_KEYS: Readonly<Record<keyof FinancePreferences, string>> = {
+  costRatesEnabled: "finance.costRates.enabled",
+};
+export const FINANCE_DEFAULTS: FinancePreferences = { costRatesEnabled: false };
+
+const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance"> = {
   timezone: "Europe/Stockholm",
   weekStart: "MONDAY",
   showIsoWeek: true,
@@ -104,6 +154,14 @@ export function materializePreferences(
     TOGGLEABLE_MODULES.map((m) => [m, map.get(moduleKey(m)) !== false]),
   ) as Record<ToggleableModule, boolean>;
   const iso = map.get(PREF_KEYS.showIsoWeek);
+  const bool = (key: string, dflt: boolean): boolean => {
+    const v = map.get(key);
+    return typeof v === "boolean" ? v : dflt;
+  };
+  const hours = (key: string, dflt: number): number => {
+    const v = map.get(key);
+    return typeof v === "number" && Number.isFinite(v) && v >= TIME_HOURS_MIN && v <= TIME_HOURS_MAX ? v : dflt;
+  };
   return {
     defaultLocale: (LOCALES as readonly string[]).includes(defaultLocale)
       ? (defaultLocale as AppLocale)
@@ -114,5 +172,15 @@ export function materializePreferences(
     durationStyle: pick(PREF_KEYS.durationStyle, DURATION_STYLES, DEFAULTS.durationStyle),
     currencyDefault: pick(PREF_KEYS.currencyDefault, CURRENCIES, DEFAULTS.currencyDefault),
     modules,
+    time: {
+      autoStopHours: hours(TIME_PREF_KEYS.autoStopHours, TIME_DEFAULTS.autoStopHours),
+      nudgeHours: hours(TIME_PREF_KEYS.nudgeHours, TIME_DEFAULTS.nudgeHours),
+      allowOverlap: bool(TIME_PREF_KEYS.allowOverlap, TIME_DEFAULTS.allowOverlap),
+      allowEntriesWithoutItem: bool(TIME_PREF_KEYS.allowEntriesWithoutItem, TIME_DEFAULTS.allowEntriesWithoutItem),
+      allowAdhocEntries: bool(TIME_PREF_KEYS.allowAdhocEntries, TIME_DEFAULTS.allowAdhocEntries),
+      shiftsEnabled: bool(TIME_PREF_KEYS.shiftsEnabled, TIME_DEFAULTS.shiftsEnabled),
+      shiftAutoStopHours: hours(TIME_PREF_KEYS.shiftAutoStopHours, TIME_DEFAULTS.shiftAutoStopHours),
+    },
+    finance: { costRatesEnabled: bool(FINANCE_PREF_KEYS.costRatesEnabled, FINANCE_DEFAULTS.costRatesEnabled) },
   };
 }
