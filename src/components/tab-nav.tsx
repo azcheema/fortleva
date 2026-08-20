@@ -7,7 +7,13 @@ import { useEffect, useRef } from "react";
 
 import { cn } from "@/lib/utils";
 
-export type TabLink = { href: string; label: string; exact?: boolean };
+export type TabLink = {
+  href: string;
+  label: string;
+  exact?: boolean;
+  /** Sibling routes this tab also owns (a sub-view living outside its path prefix). */
+  also?: string[];
+};
 
 /**
  * URL-addressable tabs (UI.md §3.1: every view is a link). Rendered as
@@ -50,7 +56,8 @@ export function TabNav({ tabs, className }: { tabs: TabLink[]; className?: strin
       className={cn("-mb-px flex gap-1 overflow-x-auto border-b border-border", className)}
     >
       {tabs.map((tab) => {
-        const active = tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+        const owns = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+        const active = tab.exact ? pathname === tab.href : owns(tab.href) || (tab.also ?? []).some(owns);
         return (
           <Link
             key={tab.href}

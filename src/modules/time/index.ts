@@ -96,6 +96,7 @@ export {
   type RollupLine,
   type TeamRollupLine,
 } from "./rollup";
+export { projectMoney, type MoneyLine, type MoneyTotals, type ProjectMoney } from "./money";
 export {
   archiveReport,
   deleteReport,

@@ -94,9 +94,16 @@ const stops = (seed: E2ESeed): Stop[] => {
     { name: "project-board", path: `${project}/board` },
     { name: "project-backlog", path: `${project}/backlog` },
     { name: "project-timeline", path: `${project}/timeline` },
+    // 2T: the Time tab (rollups, budget) and the Money tab (value; cost
+    // stays behind the tenant's cost layer, which the fixture leaves off).
+    { name: "project-time", path: `${project}/time` },
+    { name: "project-money", path: `${project}/money` },
     { name: "project-files", path: `${project}/files` },
     { name: "project-team", path: `${project}/team` },
     { name: "files", path: "/files" },
+    // 2T: My time (week grid, shift strip) and the team view.
+    { name: "time", path: "/time" },
+    { name: "time-team", path: "/time/team" },
     { name: "members", path: "/members" },
     { name: "settings-roles", path: "/settings/roles" },
     { name: "settings-preferences", path: "/settings/preferences" },

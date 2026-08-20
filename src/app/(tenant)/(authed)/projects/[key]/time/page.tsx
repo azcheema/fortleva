@@ -1,4 +1,4 @@
-import { ChevronLeftIcon, ChevronRightIcon, FileTextIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, CoinsIcon, FileTextIcon } from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -144,6 +144,15 @@ export default async function ProjectTimePage({
               {t("reportsLink")}
             </Link>
           </Button>
+          {/* The finance sub-view (UI.md §3.1): value for rate:view_bill holders — exactly when amounts are non-null here. */}
+          {rollup.totals.amount !== null ? (
+            <Button asChild variant="outline" size="sm" data-testid="time-money-link">
+              <Link href={`/projects/${project.key}/money?from=${range.from}&to=${range.to}`}>
+                <CoinsIcon aria-hidden="true" />
+                {t("moneyLink")}
+              </Link>
+            </Button>
+          ) : null}
         </div>
       </div>
 

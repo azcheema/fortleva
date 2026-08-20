@@ -1040,6 +1040,7 @@
       "nextMonth": "Next month",
       "thisMonth": "This month",
       "reportsLink": "Reports",
+      "moneyLink": "Money",
       "noRows": "No time in this range.",
       "unassigned": "Project level",
       "tiles": {
@@ -1172,6 +1173,36 @@
           "other": "Other work"
         }
       }
+    },
+    "money": {
+      "noPermission": "You do not have permission to see this project's money.",
+      "description": "Value is billable hours × the bill rate snapshotted on each entry. Internal cost and margin are the finance half: they need a fresh second factor, and every reveal is audited.",
+      "timeLink": "Time",
+      "tiles": {
+        "billableHours": "Billable hours",
+        "effectiveRate": "≈ {rate}/h",
+        "value": "Value",
+        "cost": "Internal cost",
+        "margin": "Margin",
+        "hidden": "hidden",
+        "budget": "Money budget",
+        "budgetUsed": "{percent} % used"
+      },
+      "reveal": "Reveal internal cost and margin",
+      "revealHint": "Needs a fresh second factor; every reveal is audited.",
+      "hide": "Hide cost",
+      "revealed": "Internal cost and margin are shown in this view. The reveal has been audited.",
+      "uncosted": "{hours} of the logged time has no cost rate behind it — cost and margin are understated.",
+      "currencyMismatch": "Some cost rates are in another currency than the project; cost and margin are not computed.",
+      "columns": {
+        "value": "Value",
+        "cost": "Internal cost",
+        "margin": "Margin"
+      },
+      "byMember": "By member",
+      "byEpic": "By epic",
+      "byItem": "By task",
+      "byAgreement": "By agreement"
     }
   },
   "states": {

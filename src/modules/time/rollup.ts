@@ -44,7 +44,7 @@ export type ProjectRollup = {
   costBuckets: { costRateCardId: string | null; seconds: number }[];
 };
 
-type EntryRow = {
+export type EntryRow = {
   memberId: string;
   memberName: string;
   workItemId: string | null;
@@ -62,9 +62,11 @@ type EntryRow = {
   durationSeconds: number;
   billable: boolean;
   billRate: { toString(): string } | null;
+  currency: string | null;
 };
 
-async function loadProjectEntries(tx: TenantDb, tenantId: string, projectId: string, range: Range): Promise<EntryRow[]> {
+/** Closed entries of one project in a local-date range, with the labels every money/rollup view groups by. Shared with money.ts. */
+export async function loadProjectEntries(tx: TenantDb, tenantId: string, projectId: string, range: Range): Promise<EntryRow[]> {
   const rows = await tx.timeEntry.findMany({
     where: { tenantId, projectId, deletedAt: null, stoppedAt: { not: null }, localDate: rangeWhere(range) },
     select: {
@@ -77,6 +79,7 @@ async function loadProjectEntries(tx: TenantDb, tenantId: string, projectId: str
       durationSeconds: true,
       billable: true,
       billRate: true,
+      currency: true,
       member: { select: { user: { select: { name: true } } } },
       workItem: {
         select: {
@@ -119,6 +122,7 @@ async function loadProjectEntries(tx: TenantDb, tenantId: string, projectId: str
       durationSeconds: r.durationSeconds ?? 0,
       billable: r.billable,
       billRate: r.billRate,
+      currency: r.currency,
     };
   });
 }

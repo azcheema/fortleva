@@ -1040,6 +1040,7 @@
       "nextMonth": "Nästa månad",
       "thisMonth": "Den här månaden",
       "reportsLink": "Rapporter",
+      "moneyLink": "Ekonomi",
       "noRows": "Ingen tid i perioden.",
       "unassigned": "Projektnivå",
       "tiles": {
@@ -1172,6 +1173,36 @@
           "other": "Övrigt arbete"
         }
       }
+    },
+    "money": {
+      "noPermission": "Du har inte behörighet att se projektets ekonomi.",
+      "description": "Värde är fakturerbara timmar × det timpris som frystes på varje rad. Intern kostnad och marginal är ekonomihalvan: de kräver en färsk andra faktor, och varje visning loggas.",
+      "timeLink": "Tid",
+      "tiles": {
+        "billableHours": "Fakturerbara timmar",
+        "effectiveRate": "≈ {rate}/h",
+        "value": "Värde",
+        "cost": "Intern kostnad",
+        "margin": "Marginal",
+        "hidden": "dold",
+        "budget": "Pengabudget",
+        "budgetUsed": "{percent} % använt"
+      },
+      "reveal": "Visa intern kostnad och marginal",
+      "revealHint": "Kräver en färsk andra faktor; varje visning loggas.",
+      "hide": "Dölj kostnad",
+      "revealed": "Intern kostnad och marginal visas i den här vyn. Visningen har loggats.",
+      "uncosted": "{hours} av den loggade tiden saknar kostnadssats — kostnad och marginal är underskattade.",
+      "currencyMismatch": "Vissa kostnadssatser är i en annan valuta än projektet; kostnad och marginal beräknas inte.",
+      "columns": {
+        "value": "Värde",
+        "cost": "Intern kostnad",
+        "margin": "Marginal"
+      },
+      "byMember": "Per medlem",
+      "byEpic": "Per epic",
+      "byItem": "Per uppgift",
+      "byAgreement": "Per avtal"
     }
   },
   "states": {

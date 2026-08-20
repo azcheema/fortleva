@@ -46,7 +46,9 @@ export default async function ProjectLayout({
   const project = await loadProject(key);
   const t = await getTranslations("projects");
   const base = `/projects/${project.key}`;
-  // 2T: the Time tab (rollups, budget, reports) is a team surface.
+  // 2T: the Time tab (rollups, budget, reports) is a team surface. The
+  // finance-gated Money page is a sub-view of it (UI.md §3.1) at its
+  // pinned route /projects/[key]/money, so the tab stays lit there.
   const { membership, actor } = await requireTenantContext();
   const canViewTime = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
     isAuthorized(tx, actor, "time:view_team"),
@@ -57,7 +59,7 @@ export default async function ProjectLayout({
     { href: `${base}/board`, label: t("tabs.board") },
     { href: `${base}/backlog`, label: t("tabs.backlog") },
     { href: `${base}/timeline`, label: t("tabs.timeline") },
-    ...(canViewTime ? [{ href: `${base}/time`, label: t("tabs.time") }] : []),
+    ...(canViewTime ? [{ href: `${base}/time`, label: t("tabs.time"), also: [`${base}/money`] }] : []),
     ...(project.caps.viewDocuments ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),
     { href: `${base}/team`, label: t("tabs.team") },
   ];
