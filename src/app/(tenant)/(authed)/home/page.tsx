@@ -57,7 +57,7 @@ export default async function HomePage() {
   if (tracks) {
     const [totals, timer] = await Promise.all([
       myTimeTotals(ctx, { from: week.from, to: week.to, today }),
-      getCurrentTimerOnce(ctx.tenantId, ctx.actor.memberId),
+      getCurrentTimerOnce(ctx.tenantId, ctx.actor.memberId, Boolean(ctx.actor.impersonated)),
     ]);
     strip = {
       weekSeconds: totals.weekSeconds,

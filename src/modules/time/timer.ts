@@ -302,10 +302,14 @@ export async function getCurrentTimer(ctx: TimeCtx): Promise<CurrentTimer> {
  * pill and /home reads it for its strip in the SAME render — keyed by
  * primitives (a cache keyed on the ctx object would miss: every caller
  * builds its own), so both surfaces share one transaction and one
- * `serverNow`. The actor is rebuilt from the member id: a read, no ✦.
+ * `serverNow`. The actor is rebuilt from the member id AND its authz
+ * posture: an impersonating platform actor is read-only (AUTHZ.md §7) and
+ * `time:track` is not a view verb, so the posture must be part of the key
+ * or the shared snapshot would serve what `authorize` denies. No ✦.
  */
-export const getCurrentTimerOnce = cache((tenantId: string, memberId: string): Promise<CurrentTimer> =>
-  getCurrentTimer({ tenantId, actor: { memberId } }),
+export const getCurrentTimerOnce = cache(
+  (tenantId: string, memberId: string, impersonated: boolean): Promise<CurrentTimer> =>
+    getCurrentTimer({ tenantId, actor: impersonated ? { memberId, impersonated: true } : { memberId } }),
 );
 
 /** time:track — one-click continue: a NEW timer copying the entry's target (D6). */

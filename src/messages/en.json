@@ -162,8 +162,7 @@
       "running": "Running",
       "runningLabel": "Timer running on {label}",
       "timer": "Timer",
-      "start": "Start a timer",
-      "open": "Open My time"
+      "start": "Start a timer"
     },
     "tiles": {
       "assigned": "Assigned to you",

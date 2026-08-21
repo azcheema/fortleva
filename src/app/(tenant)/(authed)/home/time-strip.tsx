@@ -1,6 +1,6 @@
 "use client";
 
-import { PlayIcon, TimerIcon } from "lucide-react";
+import { PlayIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -64,19 +64,9 @@ export function HomeTimeStrip(props: HomeTimeStripProps) {
     };
   }, [router]);
 
+  // No "Open My time" header verb: the rail item sits 200 px to the left and both tiles already link to /time.
   return (
-    <SectionCard
-      title={t("title")}
-      description={props.weekLabel}
-      actions={
-        <Button asChild variant="outline" size="sm">
-          <Link href="/time" data-testid="home-time-open">
-            <TimerIcon aria-hidden="true" />
-            {t("open")}
-          </Link>
-        </Button>
-      }
-    >
+    <SectionCard title={t("title")} description={props.weekLabel}>
       <LiveTiles {...props} />
       {props.running ? (
         <p className="mt-3 truncate text-xs text-muted-foreground" title={props.running.label}>

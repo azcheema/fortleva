@@ -162,8 +162,7 @@
       "running": "Pågår",
       "runningLabel": "Timer igång på {label}",
       "timer": "Timer",
-      "start": "Starta en timer",
-      "open": "Öppna Min tid"
+      "start": "Starta en timer"
     },
     "tiles": {
       "assigned": "Tilldelat dig",

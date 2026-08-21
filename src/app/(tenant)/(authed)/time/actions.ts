@@ -62,7 +62,7 @@ export async function getTimerStateAction(): Promise<TimerPillState | null> {
   try {
     const ctx = await ctxOf();
     // Once per request: the layout (pill) and /home (strip) share this snapshot.
-    const c = await getCurrentTimerOnce(ctx.tenantId, ctx.actor.memberId);
+    const c = await getCurrentTimerOnce(ctx.tenantId, ctx.actor.memberId, Boolean(ctx.actor.impersonated));
     return {
       running: c.running
         ? {
