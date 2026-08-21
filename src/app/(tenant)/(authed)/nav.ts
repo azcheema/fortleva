@@ -17,6 +17,8 @@ export type NavIcon =
   | "settings"
   | "roles"
   | "preferences"
+  | "rates"
+  | "timeSettings"
   | "export"
   | "design"
   | "account";
@@ -34,6 +36,8 @@ export type NavEntry = {
     | "settings"
     | "roles"
     | "preferences"
+    | "rates"
+    | "timeSettings"
     | "export"
     | "design"
     | "account";
@@ -108,6 +112,22 @@ export const NAV: readonly NavEntry[] = [
         labelKey: "preferences",
         href: "/settings/preferences",
         icon: "preferences",
+        permission: "settings:view",
+      },
+      // 2T (UI.md §3.1 "Settings"): bill-rate cards need rate:view_bill;
+      // the time-tracking page (staff notice, work types) is a settings page.
+      {
+        id: "rates",
+        labelKey: "rates",
+        href: "/settings/rates",
+        icon: "rates",
+        permission: "rate:view_bill",
+      },
+      {
+        id: "timeSettings",
+        labelKey: "timeSettings",
+        href: "/settings/time",
+        icon: "timeSettings",
         permission: "settings:view",
       },
       {

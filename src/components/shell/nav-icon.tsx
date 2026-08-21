@@ -1,6 +1,7 @@
 import {
   ArchiveIcon,
   Building2Icon,
+  CoinsIcon,
   FolderIcon,
   FolderKanbanIcon,
   HouseIcon,
@@ -27,6 +28,9 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   settings: SettingsIcon,
   roles: KeyRoundIcon,
   preferences: SlidersHorizontalIcon,
+  rates: CoinsIcon,
+  // Same glyph as the rail's Time entry: one icon per concept.
+  timeSettings: TimerIcon,
   export: ArchiveIcon,
   design: PaletteIcon,
   account: UserRoundIcon,

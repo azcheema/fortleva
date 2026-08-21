@@ -251,11 +251,21 @@ export function ServicesList({
   services,
   canEdit,
   canDelete,
+  rates,
+  usage,
 }: {
   clientId: string;
   services: ServiceRow[];
   canEdit: boolean;
   canDelete: boolean;
+  /**
+   * 2T (Agreements tab): the agreement's open BILL rate, FORMATTED ON THE
+   * SERVER ("1 200,00 kr/h"), null = no card; absent = the viewer lacks
+   * rate:view_bill and the column does not exist (UI.md rule 14).
+   */
+  rates?: Record<string, string | null>;
+  /** 2T: hours on the agreement this month, formatted on the server. */
+  usage?: Record<string, string>;
 }) {
   const t = useTranslations("clients.services");
   const tCommon = useTranslations("common");
@@ -318,6 +328,10 @@ export function ServicesList({
             <TableHead priority="medium">{t("columns.billing")}</TableHead>
             <TableHead priority="low">{t("columns.scope")}</TableHead>
             <TableHead className="text-right">{t("columns.price")}</TableHead>
+            {/* Phones keep name · price · status · ⋯; the rate still shows there in the
+                rate-card table beneath, so these two columns wait for a wider screen. */}
+            {rates ? <TableHead priority="medium" className="text-right">{t("columns.rate")}</TableHead> : null}
+            {usage ? <TableHead priority="low" className="text-right">{t("columns.thisMonth")}</TableHead> : null}
             <TableHead priority="low">{t("columns.renews")}</TableHead>
             <TableHead>{t("columns.status")}</TableHead>
             <TableHead className="text-right">
@@ -347,6 +361,16 @@ export function ServicesList({
                   )}
                 </TableCell>
                 <TableCell className="num text-right">{money(s) ?? "—"}</TableCell>
+                {rates ? (
+                  <TableCell priority="medium" className="num text-right" data-testid="agreement-rate">
+                    {rates[s.id] ?? <span className="text-muted-foreground">{"—"}</span>}
+                  </TableCell>
+                ) : null}
+                {usage ? (
+                  <TableCell priority="low" className="num text-right text-muted-foreground" data-testid="agreement-usage">
+                    {usage[s.id] ?? "—"}
+                  </TableCell>
+                ) : null}
                 <TableCell priority="low" className="num text-muted-foreground">
                   {s.renewsAt ? format.dateTime(s.renewsAt, { dateStyle: "medium" }) : "—"}
                 </TableCell>

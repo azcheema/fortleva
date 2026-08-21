@@ -80,7 +80,9 @@
     "projects": "Projects",
     "export": "Export",
     "design": "Design",
-    "time": "Time"
+    "time": "Time",
+    "rates": "Rates",
+    "timeSettings": "Time tracking"
   },
   "shell": {
     "palette": {
@@ -517,6 +519,161 @@
       "commitmentTitle": "Your data is yours",
       "generatingHint": "Building the archive. This can take a minute on a large workspace — you can leave the page.",
       "commitmentBody": "Everything this workspace holds can be exported at any time as an open, documented archive — that is our continuity commitment."
+    },
+    "rates": {
+      "title": "Rates",
+      "description": "Hourly bill rates by workspace, member, project or agreement — resolved when time is written and snapshotted on the entry. Internal cost rates stay behind two-factor confirmation.",
+      "noPermission": "You do not have permission to see rate cards.",
+      "bill": {
+        "title": "Bill rates",
+        "description": "What the client pays per hour. The most specific open card wins: agreement → member on project → project → member → workspace.",
+        "empty": "No bill rates yet",
+        "emptyBody": "Add a workspace default first; time written after that carries the rate.",
+        "add": "Add rate"
+      },
+      "cost": {
+        "title": "Internal cost rates",
+        "description": "Salary-derived and encrypted: listed and revealed only with a fresh two-factor confirmation, never shown to clients, never in exports by default.",
+        "empty": "No cost rates",
+        "emptyBody": "Add a member or workspace cost card to see margin on project money pages.",
+        "layerOn": "Cost layer on",
+        "layerOff": "Cost layer off",
+        "layerHint": "With the cost layer on, members holding the cost permission can reveal internal cost and margin on project money pages — each reveal needs a fresh second factor and is logged. Off, cost appears nowhere.",
+        "mfaRequired": "Cost rates are listed only after a fresh two-factor confirmation.",
+        "confirm": "Confirm with two-factor",
+        "reveal": "Reveal amounts",
+        "hide": "Hide amounts",
+        "hidden": "Hidden",
+        "revealed": "Amounts are revealed for this page view; the reveal has been logged.",
+        "add": "Add cost rate"
+      },
+      "columns": {
+        "appliesTo": "Applies to",
+        "scope": "Scope",
+        "rate": "Rate",
+        "from": "From",
+        "to": "To"
+      },
+      "scopes": {
+        "TENANT": "Workspace",
+        "MEMBER": "Member",
+        "PROJECT": "Project",
+        "PROJECT_MEMBER": "Member on project",
+        "SERVICE": "Agreement"
+      },
+      "workspaceDefault": "Workspace default",
+      "unknownMember": "Former member",
+      "unknownProject": "Project outside your scope",
+      "unknownService": "Agreement outside your scope",
+      "open": "Open",
+      "perHour": "/h",
+      "form": {
+        "title": "Add a bill rate",
+        "costTitle": "Add a cost rate",
+        "scope": "Applies to",
+        "member": "Member",
+        "project": "Project",
+        "agreement": "Agreement",
+        "amount": "Rate per hour",
+        "currency": "Currency",
+        "from": "Applies from",
+        "replace": "Close the current card for the same scope on this date (a rate change)",
+        "pinned": "Applies from this date; past entries are unchanged — use Reprice to correct history.",
+        "submit": "Add rate card",
+        "submitting": "Adding…",
+        "created": "Rate card added — applies from {date}; past entries unchanged; use Reprice to correct history."
+      },
+      "actions": {
+        "close": "Close card…",
+        "reprice": "Reprice entries…"
+      },
+      "closeForm": {
+        "title": "Close this card",
+        "date": "Last day",
+        "hint": "The card stops applying after this date. Entries already written keep their rate.",
+        "submit": "Close card",
+        "closed": "Card closed."
+      },
+      "repriceForm": {
+        "title": "Reprice entries on this card",
+        "hint": "Re-resolves the rate of unbilled entries that point at this card. Locked entries are skipped and counted.",
+        "mode": "Which entries",
+        "fromDate": "From a date",
+        "allUnbilled": "All unbilled entries",
+        "date": "From",
+        "submit": "Reprice",
+        "done": "Repriced {repriced} entries; {skipped} locked entries skipped."
+      }
+    },
+    "time": {
+      "title": "Time tracking",
+      "description": "The staff notice members read before tracking time, who has acknowledged it, and the work types they pick from.",
+      "noPermission": "You do not have permission to see time-tracking settings.",
+      "notice": {
+        "title": "Staff notice",
+        "description": "Version {version}, published {date}. Timers and clock-in refuse to start until a member has read the current version.",
+        "none": "No notice has been published yet.",
+        "purposes": "Purposes",
+        "purpose": {
+          "billing": "Billing",
+          "planning": "Planning",
+          "profitability": "Profitability",
+          "working_time": "Working-time records"
+        },
+        "acks": "Acknowledgments",
+        "acksSummary": "{acknowledged} of {total} members have read version {version}.",
+        "columns": {
+          "member": "Member",
+          "acknowledged": "Acknowledged"
+        },
+        "notYet": "Not yet",
+        "showText": "Show the current text",
+        "publish": {
+          "title": "Publish a new version",
+          "description": "Edit both languages, then publish. Every member must read the new version before their next timer or clock-in.",
+          "open": "Edit the text and publish a new version",
+          "titleField": "Title",
+          "bodyField": "Text",
+          "bodyHint": "Headings with ##, bullets with -, **bold**.",
+          "submit": "Publish new version",
+          "confirm": "Publish version {version}? Every member must acknowledge it again.",
+          "publishing": "Publishing…",
+          "published": "Version {version} published. Members will be asked to read it."
+        }
+      },
+      "workTypes": {
+        "title": "Work types",
+        "description": "The category a member picks on an entry — for analytics, never for rates. Archived types stay on history and leave the pickers.",
+        "columns": {
+          "name": "Name",
+          "defaultBillable": "Default billable"
+        },
+        "billable": {
+          "inherit": "Project default",
+          "yes": "Billable",
+          "no": "Not billable"
+        },
+        "archivedList": "Archived types ({count})",
+        "actions": {
+          "archive": "Archive",
+          "restore": "Restore"
+        },
+        "editName": "Edit name",
+        "editBillable": "Edit default billable",
+        "add": {
+          "title": "Add a work type",
+          "name": "Name",
+          "defaultBillable": "Default billable",
+          "submit": "Add work type",
+          "adding": "Adding…",
+          "added": "Added {name}."
+        },
+        "updated": "Work type updated.",
+        "archivedToast": "Work type archived.",
+        "restored": "Work type restored.",
+        "empty": "No work types",
+        "emptyBody": "Add the first work type; members pick it on entries."
+      }
     }
   },
   "files": {
@@ -678,7 +835,8 @@
       "overview": "Overview",
       "projects": "Projects",
       "contacts": "Contacts",
-      "files": "Files"
+      "files": "Files",
+      "agreements": "Agreements"
     },
     "overview": {
       "company": "Company",
@@ -806,12 +964,25 @@
         "scope": "Scope",
         "price": "Price ex. VAT",
         "renews": "Renews",
-        "status": "Status"
+        "status": "Status",
+        "rate": "Rate",
+        "thisMonth": "This month"
       }
     },
     "filters": {
       "archived": "Archived clients only",
       "clear": "Show active clients"
+    },
+    "agreements": {
+      "title": "Agreements",
+      "description": "What the client buys. An agreement can carry its own hourly bill rate, chosen when time is written; this month's hours are a sum, never a ledger.",
+      "rates": {
+        "title": "Agreement rates",
+        "description": "Bill rate cards scoped to this client's agreements. An agreement's card outranks project, member and workspace rates when time is written.",
+        "empty": "No agreement rates",
+        "emptyBody": "Add a rate card to an agreement; time on that agreement carries it.",
+        "add": "Add an agreement rate"
+      }
     }
   },
   "projects": {

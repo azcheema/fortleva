@@ -16,7 +16,7 @@ export async function generateMetadata({
   return { title: client.name };
 }
 
-/** /clients/[id] shell: name + status, tabs Overview · Projects · Contacts · Files (UI.md §3.1). */
+/** /clients/[id] shell: name + status, tabs Overview · Projects · Contacts · Files · Agreements (UI.md §3.1). */
 export default async function ClientLayout({
   params,
   children,
@@ -36,6 +36,9 @@ export default async function ClientLayout({
     ...(client.caps.viewDocuments || !client.direct
       ? [{ href: `${base}/files`, label: t("tabs.files") }]
       : []),
+    // 2T: Service rows presented as agreements, with their rate cards
+    // and this month's consumption (UI.md §3.1).
+    ...(client.caps.viewServices ? [{ href: `${base}/agreements`, label: t("tabs.agreements") }] : []),
   ];
 
   return (

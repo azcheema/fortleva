@@ -80,7 +80,9 @@
     "projects": "Projekt",
     "export": "Export",
     "design": "Design",
-    "time": "Tid"
+    "time": "Tid",
+    "rates": "Timpriser",
+    "timeSettings": "Tidsregistrering"
   },
   "shell": {
     "palette": {
@@ -517,6 +519,161 @@
       "commitmentTitle": "Er data är er",
       "generatingHint": "Arkivet byggs. Det kan ta en minut på en stor arbetsyta — du kan lämna sidan.",
       "commitmentBody": "Allt den här arbetsytan innehåller kan när som helst exporteras som ett öppet, dokumenterat arkiv — det är vårt kontinuitetslöfte."
+    },
+    "rates": {
+      "title": "Timpriser",
+      "description": "Timpriser per arbetsyta, medlem, projekt eller avtal — bestäms när tiden skrivs och sparas på posten. Interna kostnadssatser ligger bakom tvåfaktorsbekräftelse.",
+      "noPermission": "Du har inte behörighet att se priskort.",
+      "bill": {
+        "title": "Faktureringspriser",
+        "description": "Vad kunden betalar per timme. Det mest specifika öppna kortet vinner: avtal → medlem på projekt → projekt → medlem → arbetsyta.",
+        "empty": "Inga faktureringspriser ännu",
+        "emptyBody": "Lägg först till ett standardpris för arbetsytan; tid som skrivs därefter bär priset.",
+        "add": "Lägg till pris"
+      },
+      "cost": {
+        "title": "Interna kostnadssatser",
+        "description": "Härledda ur lön och krypterade: listas och visas bara efter en färsk tvåfaktorsbekräftelse, visas aldrig för kunder, aldrig i export som standard.",
+        "empty": "Inga kostnadssatser",
+        "emptyBody": "Lägg till ett kostnadskort för en medlem eller arbetsytan för att se marginal på projektens ekonomisidor.",
+        "layerOn": "Kostnadslager på",
+        "layerOff": "Kostnadslager av",
+        "layerHint": "Med kostnadslagret på kan medlemmar med kostnadsbehörigheten visa intern kostnad och marginal på projektens ekonomisidor — varje visning kräver en färsk andra faktor och loggas. Av betyder att kostnad inte syns någonstans.",
+        "mfaRequired": "Kostnadssatser listas bara efter en färsk tvåfaktorsbekräftelse.",
+        "confirm": "Bekräfta med tvåfaktor",
+        "reveal": "Visa belopp",
+        "hide": "Dölj belopp",
+        "hidden": "Dolt",
+        "revealed": "Beloppen visas för den här sidvisningen; visningen har loggats.",
+        "add": "Lägg till kostnadssats"
+      },
+      "columns": {
+        "appliesTo": "Gäller för",
+        "scope": "Nivå",
+        "rate": "Pris",
+        "from": "Från",
+        "to": "Till"
+      },
+      "scopes": {
+        "TENANT": "Arbetsyta",
+        "MEMBER": "Medlem",
+        "PROJECT": "Projekt",
+        "PROJECT_MEMBER": "Medlem på projekt",
+        "SERVICE": "Avtal"
+      },
+      "workspaceDefault": "Arbetsytans standard",
+      "unknownMember": "Tidigare medlem",
+      "unknownProject": "Projekt utanför din behörighet",
+      "unknownService": "Avtal utanför din behörighet",
+      "open": "Öppet",
+      "perHour": "/h",
+      "form": {
+        "title": "Lägg till ett faktureringspris",
+        "costTitle": "Lägg till en kostnadssats",
+        "scope": "Gäller för",
+        "member": "Medlem",
+        "project": "Projekt",
+        "agreement": "Avtal",
+        "amount": "Pris per timme",
+        "currency": "Valuta",
+        "from": "Gäller från",
+        "replace": "Stäng det nuvarande kortet på samma nivå detta datum (en prisändring)",
+        "pinned": "Gäller från detta datum; tidigare poster påverkas inte — använd Omprissätt för att rätta historiken.",
+        "submit": "Lägg till priskort",
+        "submitting": "Lägger till…",
+        "created": "Priskort tillagt — gäller från {date}; tidigare poster oförändrade; använd Omprissätt för att rätta historiken."
+      },
+      "actions": {
+        "close": "Stäng kort…",
+        "reprice": "Omprissätt poster…"
+      },
+      "closeForm": {
+        "title": "Stäng det här kortet",
+        "date": "Sista dag",
+        "hint": "Kortet slutar gälla efter detta datum. Redan skrivna poster behåller sitt pris.",
+        "submit": "Stäng kort",
+        "closed": "Kortet är stängt."
+      },
+      "repriceForm": {
+        "title": "Omprissätt poster på det här kortet",
+        "hint": "Räknar om priset på ofakturerade poster som pekar på kortet. Låsta poster hoppas över och räknas.",
+        "mode": "Vilka poster",
+        "fromDate": "Från ett datum",
+        "allUnbilled": "Alla ofakturerade poster",
+        "date": "Från",
+        "submit": "Omprissätt",
+        "done": "{repriced} poster omprissatta; {skipped} låsta poster hoppades över."
+      }
+    },
+    "time": {
+      "title": "Tidsregistrering",
+      "description": "Personalinformationen medlemmar läser innan de registrerar tid, vem som har bekräftat den och arbetstyperna de väljer bland.",
+      "noPermission": "Du har inte behörighet att se inställningarna för tidsregistrering.",
+      "notice": {
+        "title": "Personalinformation",
+        "description": "Version {version}, publicerad {date}. Timers och instämpling vägrar starta tills medlemmen har läst den aktuella versionen.",
+        "none": "Ingen information har publicerats ännu.",
+        "purposes": "Ändamål",
+        "purpose": {
+          "billing": "Fakturering",
+          "planning": "Planering",
+          "profitability": "Lönsamhet",
+          "working_time": "Arbetstidsregistrering"
+        },
+        "acks": "Bekräftelser",
+        "acksSummary": "{acknowledged} av {total} medlemmar har läst version {version}.",
+        "columns": {
+          "member": "Medlem",
+          "acknowledged": "Bekräftad"
+        },
+        "notYet": "Inte ännu",
+        "showText": "Visa den aktuella texten",
+        "publish": {
+          "title": "Publicera en ny version",
+          "description": "Redigera båda språken och publicera. Varje medlem måste läsa den nya versionen före nästa timer eller instämpling.",
+          "open": "Redigera texten och publicera en ny version",
+          "titleField": "Rubrik",
+          "bodyField": "Text",
+          "bodyHint": "Rubriker med ##, punkter med -, **fetstil**.",
+          "submit": "Publicera ny version",
+          "confirm": "Publicera version {version}? Varje medlem måste bekräfta den igen.",
+          "publishing": "Publicerar…",
+          "published": "Version {version} publicerad. Medlemmarna ombeds läsa den."
+        }
+      },
+      "workTypes": {
+        "title": "Arbetstyper",
+        "description": "Kategorin en medlem väljer på en post — för analys, aldrig för pris. Arkiverade typer finns kvar i historiken men försvinner ur väljarna.",
+        "columns": {
+          "name": "Namn",
+          "defaultBillable": "Fakturerbar som standard"
+        },
+        "billable": {
+          "inherit": "Projektets standard",
+          "yes": "Fakturerbar",
+          "no": "Ej fakturerbar"
+        },
+        "archivedList": "Arkiverade typer ({count})",
+        "actions": {
+          "archive": "Arkivera",
+          "restore": "Återställ"
+        },
+        "editName": "Redigera namn",
+        "editBillable": "Redigera standard för fakturerbar",
+        "add": {
+          "title": "Lägg till en arbetstyp",
+          "name": "Namn",
+          "defaultBillable": "Fakturerbar som standard",
+          "submit": "Lägg till arbetstyp",
+          "adding": "Lägger till…",
+          "added": "{name} tillagd."
+        },
+        "updated": "Arbetstypen är uppdaterad.",
+        "archivedToast": "Arbetstypen är arkiverad.",
+        "restored": "Arbetstypen är återställd.",
+        "empty": "Inga arbetstyper",
+        "emptyBody": "Lägg till den första arbetstypen; medlemmar väljer den på poster."
+      }
     }
   },
   "files": {
@@ -678,7 +835,8 @@
       "overview": "Översikt",
       "projects": "Projekt",
       "contacts": "Kontakter",
-      "files": "Filer"
+      "files": "Filer",
+      "agreements": "Avtal"
     },
     "overview": {
       "company": "Företag",
@@ -806,12 +964,25 @@
         "scope": "Omfattning",
         "price": "Pris exkl. moms",
         "renews": "Förnyas",
-        "status": "Status"
+        "status": "Status",
+        "rate": "Pris",
+        "thisMonth": "Denna månad"
       }
     },
     "filters": {
       "archived": "Endast arkiverade kunder",
       "clear": "Visa aktiva kunder"
+    },
+    "agreements": {
+      "title": "Avtal",
+      "description": "Vad kunden köper. Ett avtal kan ha ett eget timpris som väljs när tiden skrivs; månadens timmar är en summa, aldrig en logg.",
+      "rates": {
+        "title": "Avtalspriser",
+        "description": "Priskort knutna till kundens avtal. Ett avtals kort går före projekt-, medlems- och arbetsytepriser när tiden skrivs.",
+        "empty": "Inga avtalspriser",
+        "emptyBody": "Lägg till ett priskort på ett avtal; tid på avtalet bär priset.",
+        "add": "Lägg till ett avtalspris"
+      }
     }
   },
   "projects": {

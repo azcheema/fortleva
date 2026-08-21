@@ -55,6 +55,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Commands
 
-`pnpm dev` · `pnpm build` · `pnpm typecheck` · `pnpm exec eslint src e2e --max-warnings 0` · `pnpm test` (unit) · `pnpm test:db` (against Neon, sequential, ~3 min) · `pnpm test:e2e` (Playwright; `pnpm exec playwright test visual` regenerates 128 screenshots into `.design-shots/`).
+`pnpm dev` · `pnpm build` · `pnpm typecheck` · `pnpm exec eslint src e2e --max-warnings 0` · `pnpm test` (unit) · `pnpm test:db` (against Neon, sequential, ~3 min) · `pnpm test:e2e` (Playwright; `pnpm exec playwright test visual` regenerates 152 screenshots — 38 stops × light/dark × desktop/phone — into `.design-shots/`).
 
 Commit in small reviewable steps; end commit messages with the `Co-Authored-By:` trailer. Do not push unless asked.

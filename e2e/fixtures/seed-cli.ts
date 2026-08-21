@@ -119,6 +119,7 @@ async function provision(seedFile: string): Promise<void> {
   );
   const { createProject, updateProject } = await import("../../src/projects/service");
   const { createService } = await import("../../src/services/service");
+  const { createRateCard } = await import("../../src/modules/time");
   const { createMilestone } = await import("../../src/projects/milestones");
   const { commitUpload, createUpload } = await import("../../src/documents/service");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
@@ -280,7 +281,7 @@ async function provision(seedFile: string): Promise<void> {
     dueAt: new Date(Date.now() + 21 * day),
   });
 
-  await createService(ctx, {
+  const { id: maintenanceServiceId } = await createService(ctx, {
     clientId,
     name: "Förvaltning",
     description: "Löpande underhåll, säkerhetsuppdateringar och support.",
@@ -298,6 +299,20 @@ async function provision(seedFile: string): Promise<void> {
     kind: "ONE_TIME",
     priceExVat: "42000.00",
     currency: "SEK",
+  });
+
+  // 2T: two BILL rate cards — the workspace default and the agreement's
+  // own — so /settings/rates and the Agreements tab photograph with rows
+  // and e2e/settings.spec.ts has something to assert. BILL cards are
+  // rate:manage_bill (no ✦), so the owner's session could do the same.
+  await createRateCard(ctx, { kind: "BILL", scope: "TENANT", amount: "950", currency: "SEK", effectiveFrom: "2026-01-01" });
+  await createRateCard(ctx, {
+    kind: "BILL",
+    scope: "SERVICE",
+    serviceId: maintenanceServiceId,
+    amount: "1200",
+    currency: "SEK",
+    effectiveFrom: "2026-01-01",
   });
 
   // The invitation row is written directly rather than through

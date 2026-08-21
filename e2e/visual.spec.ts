@@ -89,6 +89,9 @@ const stops = (seed: E2ESeed): Stop[] => {
     { name: "client-projects", path: `${client}/projects` },
     { name: "client-contacts", path: `${client}/contacts` },
     { name: "client-files", path: `${client}/files` },
+    // 2T: agreements with their rate and this month's hours, plus the
+    // agreement-scoped rate cards.
+    { name: "client-agreements", path: `${client}/agreements` },
     { name: "projects", path: "/projects" },
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },
@@ -107,6 +110,10 @@ const stops = (seed: E2ESeed): Stop[] => {
     { name: "members", path: "/members" },
     { name: "settings-roles", path: "/settings/roles" },
     { name: "settings-preferences", path: "/settings/preferences" },
+    // 2T: bill cards + the ✦ cost section in its "confirm two-factor"
+    // state (the fixture owner has no factor); notice status + work types.
+    { name: "settings-rates", path: "/settings/rates" },
+    { name: "settings-time", path: "/settings/time" },
     { name: "settings-export", path: "/settings/export" },
     // Dev-only preview: it 404s under `next start` by design (nav.ts
     // devOnly + notFound() in the page), so both statuses are legal.

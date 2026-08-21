@@ -280,7 +280,8 @@ export async function createServiceAction(
     });
     return t("added", { name: name.trim() });
   });
-  if (r.ok) revalidatePath(path(clientId.data));
+  // "layout": services are rendered on the Agreements tab (2T), not the overview path.
+  if (r.ok) revalidatePath(path(clientId.data), "layout");
   return r;
 }
 
@@ -292,7 +293,7 @@ export async function endServiceAction(clientId: string, serviceId: string): Pro
     await endService(ctx, serviceId);
     return t("ended");
   });
-  if (r.ok) revalidatePath(path(clientId));
+  if (r.ok) revalidatePath(path(clientId), "layout");
   return r;
 }
 
@@ -304,6 +305,6 @@ export async function deleteServiceAction(clientId: string, serviceId: string): 
     await deleteService(ctx, serviceId);
     return t("deleted");
   });
-  if (r.ok) revalidatePath(path(clientId));
+  if (r.ok) revalidatePath(path(clientId), "layout");
   return r;
 }
