@@ -129,6 +129,14 @@ describe("lanes", () => {
     expect(cardsIn(items, "none", "all", "todo").map((i) => i.id)).toEqual(["e1", "t1", "t3", "t4", "t5"]);
   });
 
+  it("edgeAnchors never anchors on the optimistic create card (number 0)", () => {
+    const withTemp = [...items, item("temp-1", { number: 0 })];
+    expect(edgeAnchors(withTemp, "none", "all", "todo", "t1")).toEqual({
+      top: { beforeId: "e1" },
+      bottom: { afterId: "t5" }, // not temp-1, which is last in the list
+    });
+  });
+
   it("edgeAnchors: top = before the first card, bottom = after the last (moved item excluded); an empty column = keep the position (self anchor)", () => {
     expect(edgeAnchors(items, "none", "all", "todo", "t1")).toEqual({
       top: { beforeId: "e1" },

@@ -176,7 +176,9 @@ export function edgeAnchors(
   stateId: string,
   itemId: string,
 ): { top: Pick<Move, "beforeId" | "afterId">; bottom: Pick<Move, "beforeId" | "afterId"> } {
-  const cards = cardsIn(items, groupBy, laneKey, stateId).filter((c) => c.id !== itemId);
+  // `number === 0` is the optimistic create card: it has no row yet, so
+  // it can never be an anchor the server understands.
+  const cards = cardsIn(items, groupBy, laneKey, stateId).filter((c) => c.id !== itemId && c.number > 0);
   const first = cards[0];
   const last = cards.at(-1);
   return {

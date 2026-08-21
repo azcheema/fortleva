@@ -3,6 +3,7 @@ import { assertInScope, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
+import { fail } from "@/lib/domain-error";
 import { ranksBetween } from "@/lib/rank";
 import { writeActivity } from "./activity";
 
@@ -78,12 +79,17 @@ export async function transitionState(
 ): Promise<void> {
   if (state.projectId !== item.projectId) deny("NOT_FOUND");
   if (state.id === item.stateId) return;
+  // Entering TRIAGE means triageStatus too (the §6.14 CHECK
+  // `work_item_triage_has_status` enforces it), which is the `work_item:triage`
+  // verb's job — a plain state change into it would reach the database and
+  // come back as a raw constraint error. Leaving triage is an ordinary move.
+  if (state.category === "TRIAGE") fail("INVALID_INPUT", "triage entry is not a state change");
 
   const to = state.category;
   const startedAt =
     to === "IN_PROGRESS" && !item.startedAt
       ? new Date()
-      : to === "BACKLOG" || to === "TODO" || to === "TRIAGE"
+      : to === "BACKLOG" || to === "TODO" // TRIAGE cannot reach here (refused above)
         ? null
         : item.startedAt;
   const completedAt = to === "DONE" ? (item.completedAt ?? new Date()) : null;

@@ -17,8 +17,11 @@ export const rankBetween = (a: string | null, b: string | null): string =>
 export const ranksBetween = (a: string | null, b: string | null, n: number): string[] =>
   generateNKeysBetween(a, b, n);
 
-/** Rebalance threshold (plan §3.1): keys longer than this get rewritten
- * by a maintenance pass — never on the hot path. */
+/** Rebalance threshold (plan §3.1): a key longer than this triggers a
+ * rewrite of the whole list. Today that happens INLINE, in the same
+ * transaction as the move that produced it (`ordering.ts`), because no
+ * maintenance job exists yet — `rebalanceProjectRanks` is the entry point
+ * a sweep would call. */
 export const RANK_REBALANCE_LENGTH = 50;
 
 /** Byte-order comparison — the same order `COLLATE "C"` gives. */

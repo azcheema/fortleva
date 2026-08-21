@@ -201,9 +201,10 @@ export async function deleteItemAction(itemId: string, projectKey: string): Prom
 }
 
 /**
- * Board: title-only create straight into a column (UI rule 2). Returns
- * the created id + number so the board can swap its optimistic card
- * for the real key without waiting for the refresh.
+ * Board: title-only create straight into a column (UI rule 2). The id +
+ * number come back for a caller that wants them; the board itself keeps
+ * its optimistic card until the revalidated page replaces it, which is
+ * the same round trip.
  */
 export async function createItemInStateAction(
   projectId: string,

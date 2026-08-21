@@ -1189,9 +1189,7 @@
       "card": {
         "checklist": "{done} of {total} checklist items",
         "assignee": "Assigned to {name}",
-        "unassigned": "Unassigned",
         "estimate": "Estimate {hours}",
-        "clientVisible": "Client can see",
         "label": "{key}: {title}"
       },
       "moveTo": "Move to…",
@@ -1206,17 +1204,15 @@
       "create": {
         "button": "New task",
         "placeholder": "Task title — Enter creates",
-        "label": "New task title in {state}"
+        "label": "New task title in {state}",
+        "failed": "The task was not created. Your title is still here — try again."
       },
       "empty": {
         "title": "No tasks yet",
         "body": "Columns are states, position is priority. Create the first task in a column — or press C.",
         "bodyReadOnly": "Tasks will appear here once someone creates them.",
-        "action": "New task"
-      },
-      "shortcuts": {
-        "move": "S",
-        "create": "C"
+        "action": "New task",
+        "ungroup": "Show all tasks"
       }
     },
     "backlog": {

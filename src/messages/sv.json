@@ -1189,9 +1189,7 @@
       "card": {
         "checklist": "{done} av {total} punkter i checklistan",
         "assignee": "Ansvarig: {name}",
-        "unassigned": "Ingen ansvarig",
         "estimate": "Estimat {hours}",
-        "clientVisible": "Kunden kan se",
         "label": "{key}: {title}"
       },
       "moveTo": "Flytta till…",
@@ -1206,17 +1204,15 @@
       "create": {
         "button": "Ny uppgift",
         "placeholder": "Uppgiftens titel — Enter skapar",
-        "label": "Ny uppgifts titel i {state}"
+        "label": "Titel för ny uppgift i {state}",
+        "failed": "Uppgiften skapades inte. Din titel finns kvar — försök igen."
       },
       "empty": {
         "title": "Inga uppgifter ännu",
         "body": "Kolumner är statusar, position är prioritet. Skapa den första uppgiften i en kolumn — eller tryck C.",
         "bodyReadOnly": "Uppgifter visas här när någon har skapat dem.",
-        "action": "Ny uppgift"
-      },
-      "shortcuts": {
-        "move": "S",
-        "create": "C"
+        "action": "Ny uppgift",
+        "ungroup": "Visa alla uppgifter"
       }
     },
     "backlog": {

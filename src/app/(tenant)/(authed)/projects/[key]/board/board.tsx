@@ -1,6 +1,9 @@
 "use client";
 
-import { autoScrollWindowForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
+import {
+  autoScrollForElements,
+  autoScrollWindowForElements,
+} from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
 import {
   attachClosestEdge,
   extractClosestEdge,
@@ -13,11 +16,13 @@ import {
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { KanbanSquareIcon, ListChecksIcon, PlusIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useOptimistic,
   useRef,
@@ -164,8 +169,11 @@ export function Board({
           return;
         }
         if (isColumnData(target.data)) {
+          // A card that has not been given its number yet (the optimistic
+          // create) is not a legal anchor — the server takes ids, and its
+          // id is a temporary one no row carries.
           const cards = cardsIn(current, groupBy, target.data.laneKey, target.data.stateId).filter(
-            (c) => c.id !== from.itemId,
+            (c) => c.id !== from.itemId && c.number > 0,
           );
           // Dropped on the body of its own, otherwise empty column: nothing to do.
           if (target.data.stateId === from.stateId && cards.length === 0) return;
@@ -182,11 +190,21 @@ export function Board({
     });
   }, [canEdit, groupBy, runMove]);
 
-  // Columns grow with the page (no inner scroll box), so the page itself
-  // auto-scrolls while a card is dragged near an edge.
+  // Auto-scroll while dragging near an edge (UI.md §7.1): the page for
+  // the vertical axis, and the board REGION for the horizontal one — six
+  // columns need more than the 1392 px `Page width="wide"` allows, so
+  // without the second registration the far column cannot be reached by
+  // drag on any monitor.
+  const regionRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!canEdit) return;
-    return autoScrollWindowForElements({ canScroll: ({ source }) => isCardData(source.data) });
+    const region = regionRef.current;
+    const canScroll = ({ source }: { source: { data: Record<string | symbol, unknown> } }) =>
+      isCardData(source.data);
+    return combine(
+      autoScrollWindowForElements({ canScroll }),
+      ...(region ? [autoScrollForElements({ element: region, canScroll })] : []),
+    );
   }, [canEdit]);
 
   // ── freshness (ARC-18): poll while visible, check on focus ────────
@@ -200,11 +218,28 @@ export function Board({
   }, [isPending]);
   useEffect(() => {
     let disposed = false;
+    let denials = 0;
+    let id = 0;
     const check = async () => {
       if (disposed || pendingRef.current || document.visibilityState !== "visible") return;
       try {
         const res = await fetch(`/api/version?scope=project:${projectId}`, { cache: "no-store" });
+        // A 404 is the route's ONE denial answer — "you may no longer see
+        // this project" (it collapses every AuthzError into it). Refresh
+        // once: a real revocation lands on the in-shell 404, which
+        // unmounts this board entirely. A transport-level 404 (an
+        // extension, an edge blip) leaves the board mounted, so polling
+        // continues — and only a THIRD consecutive denial stops the timer,
+        // because a board that has quietly given up on freshness is worse
+        // than one that keeps asking.
+        if (res.status === 404) {
+          denials += 1;
+          if (denials === 1) router.refresh();
+          if (denials >= 3) window.clearInterval(id);
+          return;
+        }
         if (!res.ok) return;
+        denials = 0;
         const body = (await res.json()) as { version?: string };
         if (!disposed && body.version && body.version !== versionRef.current) {
           versionRef.current = body.version;
@@ -214,7 +249,7 @@ export function Board({
         // offline / aborted: the next tick tries again
       }
     };
-    const id = window.setInterval(check, POLL_MS);
+    id = window.setInterval(check, POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") void check();
     };
@@ -275,10 +310,12 @@ export function Board({
     switch (e.key) {
       case "ArrowDown":
       case "j":
+      case "J":
         step(cell[at + 1]);
         return;
       case "ArrowUp":
       case "k":
+      case "K":
         step(cell[at - 1]);
         return;
       case "ArrowRight":
@@ -296,7 +333,9 @@ export function Board({
       }
       case "s":
       case "S":
-        if (canEdit) {
+        // Never on a card that has no number yet (the optimistic create),
+        // and never while a `G …` go-to sequence is armed (the shell owns it).
+        if (canEdit && item.number > 0 && !isGoSequencePending()) {
           e.preventDefault();
           setPicker(item);
         }
@@ -333,7 +372,7 @@ export function Board({
 
   return (
     <>
-      {items.length === 0 && canCreate && defaultState ? (
+      {items.length === 0 && data.caps.canCreate ? (
         <SectionCard>
           <EmptyState
             variant="empty"
@@ -341,14 +380,26 @@ export function Board({
             title={t("empty.title")}
             body={t("empty.body")}
             action={
-              <Button size="sm" onClick={() => setCreatingIn(defaultState.id)} data-testid="board-empty-create">
-                {t("empty.action")}
-              </Button>
+              // Creating happens in a column, and a grouped view has no
+              // column to create in — there the verb is "leave the
+              // grouping", never a dead end (§5.8).
+              canCreate && defaultState ? (
+                <Button size="sm" onClick={() => setCreatingIn(defaultState.id)} data-testid="board-empty-create">
+                  {t("empty.action")}
+                </Button>
+              ) : (
+                <Button asChild size="sm">
+                  <Link href={`/projects/${projectKey}/board`} data-testid="board-empty-ungroup">
+                    {t("empty.ungroup")}
+                  </Link>
+                </Button>
+              )
             }
           />
         </SectionCard>
       ) : null}
       <div
+        ref={regionRef}
         data-testid="board"
         data-slot="board"
         role="region"
@@ -397,7 +448,9 @@ export function Board({
             }
           }}
           itemKey={`${projectKey}-${picker.number}`}
-          states={columns}
+          // Entering TRIAGE is its own verb (`work_item:triage`), so it is
+          // not a move target — the same rule the drag follows.
+          states={columns.filter((s) => s.category !== "TRIAGE")}
           currentStateId={picker.stateId}
           onChoose={onPickerChoose}
         />
@@ -453,6 +506,7 @@ function BoardLane(props: {
   // priorities, whose lanes are fixed; member/epic lanes exist only with items.
   return (
     <section data-testid="board-lane" data-lane={lane.key} aria-label={laneTitle ?? undefined} className="flex flex-col gap-2">
+      {laneTitle === null ? <h2 className="sr-only">{t("scrollLabel")}</h2> : null}
       {laneTitle !== null ? (
         <header className="flex items-center gap-2 px-1">
           {lane.kind === "member" ? <MemberAvatar id={lane.memberId} name={lane.name} size="sm" /> : null}
@@ -511,11 +565,16 @@ function BoardColumn(props: {
   const spec = STATUS_MAP.stateCategory[state.category as StatusValue<"stateCategory">];
   const overWip = state.wipLimit !== null && totals.count > state.wipLimit;
   const ref = useRef<HTMLDivElement>(null);
+  const headingId = useId();
   const [isOver, setIsOver] = useState(false);
+  // Entering TRIAGE is `work_item:triage` with a triageStatus, not a state
+  // change (the DB CHECK refuses it) — so the column is not a drop target;
+  // leaving it is an ordinary move.
+  const droppable = props.canEdit && state.category !== "TRIAGE";
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || !props.canEdit) return;
+    if (!el || !droppable) return;
     const data: ColumnData = { type: "column", stateId: state.id, laneKey: lane.key };
     return dropTargetForElements({
       element: el,
@@ -526,7 +585,7 @@ function BoardColumn(props: {
       onDragLeave: () => setIsOver(false),
       onDrop: () => setIsOver(false),
     });
-  }, [props.canEdit, state.id, lane.key]);
+  }, [droppable, state.id, lane.key]);
 
   return (
     <div
@@ -542,7 +601,9 @@ function BoardColumn(props: {
     >
       <header className="flex h-9 items-center gap-2 border-b border-border px-3">
         <StatusIcon name={spec.icon} className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <h3 className="truncate text-sm font-medium">{state.name}</h3>
+        <h3 id={headingId} className="truncate text-sm font-medium">
+          {state.name}
+        </h3>
         <span
           className={cn("num ml-auto text-xs", overWip ? "font-semibold text-(--tone-caution-fg)" : "text-muted-foreground")}
           title={overWip ? t("column.wipOver", { limit: state.wipLimit ?? 0 }) : undefined}
@@ -550,17 +611,18 @@ function BoardColumn(props: {
           {totals.count}
         </span>
         {totals.estimateMinutes > 0 ? (
-          <span className="num text-xs text-muted-foreground" aria-label={t("column.estimate", { hours: formatDurationHm(props.locale, totals.estimateMinutes) })}>
+          <span role="img" className="num text-xs text-muted-foreground" aria-label={t("column.estimate", { hours: formatDurationHm(props.locale, totals.estimateMinutes) })}>
             {formatDurationHm(props.locale, totals.estimateMinutes)}
           </span>
         ) : null}
       </header>
-      <div role="list" className="flex flex-col gap-2 p-2">
+      <div role="list" aria-labelledby={headingId} className="flex flex-col gap-2 p-2">
         {cards.map((item) => (
           <BoardCard
             key={item.id}
             item={item}
             laneKey={lane.key}
+            droppable={droppable}
             projectKey={props.projectKey}
             locale={props.locale}
             canEdit={props.canEdit}
@@ -572,7 +634,11 @@ function BoardColumn(props: {
             onMutate={props.onMutate}
           />
         ))}
-        {props.canCreate ? (
+      </div>
+      {/* Outside the role="list": a button is not a list item, and
+          aria-required-children would be violated by putting it inside. */}
+      {props.canCreate && droppable ? (
+        <div className="px-2 pb-2">
           <ColumnCreate
             state={state}
             projectId={props.projectId}
@@ -584,8 +650,8 @@ function BoardColumn(props: {
             startTransition={props.startTransition}
             onMutate={props.onMutate}
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -599,6 +665,7 @@ function BoardCard({
   locale,
   canEdit,
   canDelete,
+  droppable,
   tabbable,
   onFocus,
   onOpenPicker,
@@ -611,6 +678,8 @@ function BoardCard({
   locale: string;
   canEdit: boolean;
   canDelete: boolean;
+  /** False in a TRIAGE column: entering triage is its own verb. */
+  droppable: boolean;
   tabbable: boolean;
   onFocus: () => void;
   onOpenPicker: () => void;
@@ -640,19 +709,27 @@ function BoardCard({
         onDragStart: () => setDragging(true),
         onDrop: () => setDragging(false),
       }),
+      // The card ACCEPTS ITSELF on purpose: a drop target that refuses is
+      // skipped by the library, which then hands the drop to the column
+      // underneath — and a micro-drag that never left the card would be
+      // read as "move to the bottom of this column". Accepting means the
+      // monitor sees the card, recognises the identity and does nothing.
+      // A card with no number yet (the optimistic create) is never a
+      // target: the server takes ids, and its id is not one.
       dropTargetForElements({
         element: el,
         canDrop: ({ source }) =>
-          isCardData(source.data) && source.data.laneKey === laneKey && source.data.itemId !== item.id,
+          droppable && isCardData(source.data) && source.data.laneKey === laneKey && item.number > 0,
         getData: ({ input, element }) =>
           attachClosestEdge(data, { input, element, allowedEdges: ["top", "bottom"] }),
         getIsSticky: () => true,
-        onDrag: ({ self }) => setEdge(extractClosestEdge(self.data)),
+        onDrag: ({ self, source }) =>
+          setEdge(isCardData(source.data) && source.data.itemId === item.id ? null : extractClosestEdge(self.data)),
         onDragLeave: () => setEdge(null),
         onDrop: () => setEdge(null),
       }),
     );
-  }, [canEdit, item.id, item.stateId, item.number, laneKey]);
+  }, [canEdit, droppable, item.id, item.stateId, item.number, laneKey]);
 
   const run = (fn: () => Promise<{ ok: boolean; message: string }>) =>
     startTransition(async () => {
@@ -662,11 +739,12 @@ function BoardCard({
       onMutate();
     });
 
+  // The board never lists archived items (listItems hides them), so there
+  // is no Restore here — archiving says where the item went, and the
+  // backlog's ?archived=1 view is where it comes back from.
   const actions: RowAction[] = [
     { key: "move", label: t("moveTo"), onSelect: onOpenPicker },
-    item.archivedAt
-      ? { key: "restore", label: tBacklog("actions.restore"), onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, false)) }
-      : { key: "archive", label: tBacklog("actions.archive"), onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, true)) },
+    { key: "archive", label: tBacklog("actions.archive"), onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, true)) },
     ...(canDelete
       ? [
           {
@@ -693,7 +771,11 @@ function BoardCard({
       aria-label={t("card.label", { key, title: item.title })}
       className={cn(
         "relative flex flex-col gap-1.5 rounded-md border border-border bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-        visibilityRowCue(item.visibility),
+        // The cue owns the left edge on a CLIENT_VISIBLE card; an INTERNAL
+        // one keeps a left edge of the SAME width in the border colour —
+        // `visibilityRowCue`'s transparent left is written for rows, which
+        // have no border there to erase.
+        item.visibility === "CLIENT_VISIBLE" ? visibilityRowCue(item.visibility) : "border-l-2 border-l-border",
         canEdit && item.number > 0 && "cursor-grab active:cursor-grabbing",
         dragging && "opacity-40",
         item.number === 0 && "text-muted-foreground",
@@ -719,7 +801,7 @@ function BoardCard({
       {item.checklistTotal > 0 || item.estimateMinutes !== null || item.assigneeMemberId ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {item.checklistTotal > 0 ? (
-            <span className="inline-flex items-center gap-1" aria-label={t("card.checklist", { done: item.checklistDone, total: item.checklistTotal })}>
+            <span role="img" className="inline-flex items-center gap-1" aria-label={t("card.checklist", { done: item.checklistDone, total: item.checklistTotal })}>
               <ListChecksIcon aria-hidden="true" className="size-3" />
               <span className="num">
                 {item.checklistDone}/{item.checklistTotal}
@@ -727,12 +809,12 @@ function BoardCard({
             </span>
           ) : null}
           {item.estimateMinutes !== null ? (
-            <span className="num" aria-label={t("card.estimate", { hours: formatDurationHm(locale, item.estimateMinutes) })}>
+            <span role="img" className="num" aria-label={t("card.estimate", { hours: formatDurationHm(locale, item.estimateMinutes) })}>
               {formatDurationHm(locale, item.estimateMinutes)}
             </span>
           ) : null}
           {item.assigneeMemberId ? (
-            <span className="ml-auto" aria-label={t("card.assignee", { name: item.assigneeName ?? "" })}>
+            <span role="img" className="ml-auto" aria-label={t("card.assignee", { name: item.assigneeName ?? "" })}>
               <MemberAvatar id={item.assigneeMemberId} name={item.assigneeName ?? ""} size="sm" />
             </span>
           ) : null}
@@ -774,12 +856,18 @@ function ColumnCreate({
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Escape leaves the field and hands focus back to the control that
+  // opened it (UI.md §5.11) — but ONLY Escape. A blur-close because the
+  // member clicked a card must leave that click's focus alone, or the
+  // board's single-key handlers go deaf on a card nobody is focused on.
+  // Same shape as InlineEdit / RowActions: a flag the button's callback
+  // ref consumes once, after it has actually rendered.
+  const returnFocus = useRef(false);
 
   const submit = () => {
     const value = title.trim();
     if (!value || busy) return;
     setBusy(true);
-    setTitle("");
     startTransition(async () => {
       applyOptimistic({
         type: "create",
@@ -806,11 +894,23 @@ function ColumnCreate({
       });
       const r = await createItemInStateAction(projectId, projectKey, state.id, value).catch(() => ({
         ok: false as const,
-        message: t("moveFailed"),
+        message: t("create.failed"),
       }));
-      if (!r.ok) toast.error(r.message);
       setBusy(false);
       inputRef.current?.focus();
+      if (!r.ok) {
+        // The title STAYS in the field — a failed action must never look
+        // like a revert, and retyping a lost title is the worst of both
+        // (AGENTS.md standing trap).
+        toast.error(r.message);
+        return;
+      }
+      // Clear only what was actually sent: a title typed while this one
+      // was in flight belongs to the member, not to the round trip. The
+      // comparison is on the TRIMMED value — `value` is trimmed, the field
+      // is not, and "Fix login " would otherwise stay put and read as a
+      // failure the member answers by creating the task twice.
+      setTitle((current) => (current.trim() === value ? "" : current));
       onMutate();
     });
   };
@@ -826,6 +926,7 @@ function ColumnCreate({
           e.preventDefault();
           submit();
         } else if (e.key === "Escape") {
+          returnFocus.current = true;
           setTitle("");
           setEditing(false);
         }
@@ -840,6 +941,12 @@ function ColumnCreate({
     />
   ) : (
     <button
+      ref={(node) => {
+        if (node && returnFocus.current) {
+          returnFocus.current = false;
+          node.focus();
+        }
+      }}
       type="button"
       id={isDefault ? "board-create" : undefined}
       data-testid="board-create"

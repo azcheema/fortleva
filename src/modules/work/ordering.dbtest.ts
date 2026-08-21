@@ -5,6 +5,7 @@ import { AuthzError } from "@/authz/errors";
 import { DomainError } from "@/lib/domain-error";
 import { setupTenant } from "@/members/dbtest-fixture";
 import {
+  changeItemVisibility,
   changeState,
   createItem,
   deleteItem,
@@ -27,18 +28,23 @@ let f: Awaited<ReturnType<typeof setupTenant>>;
 let clientId: string;
 let projectId: string;
 let otherProjectId: string;
+let pinProjectId: string;
 
 beforeAll(async () => {
   f = await setupTenant("ordering");
   clientId = randomUUID();
   projectId = randomUUID();
   otherProjectId = randomUUID();
+  pinProjectId = randomUUID();
   await f.platform.client.create({ data: { id: clientId, tenantId: f.tenantId, name: "Acme" } });
   await f.platform.project.create({
     data: { id: projectId, tenantId: f.tenantId, clientId, key: "ORD", name: "Ordering" },
   });
   await f.platform.project.create({
     data: { id: otherProjectId, tenantId: f.tenantId, clientId, key: "OTH", name: "Other" },
+  });
+  await f.platform.project.create({
+    data: { id: pinProjectId, tenantId: f.tenantId, clientId, key: "PIN", name: "Pinned property" },
   });
 }, 60_000);
 
@@ -228,6 +234,113 @@ describe("moveItem: anchors, finer points", () => {
     const audits = await f.audits("work_item.bulk_edited");
     expect(audits.filter((e) => e.targetId === otherProjectId)).toHaveLength(1);
   });
+});
+
+describe("moveItem: what the row and the record say afterwards (review 2026-08-21, third pass)", () => {
+  it("a drop's history row is CLIENT_VISIBLE only for a client-visible item, and the audit carries ids only", async () => {
+    const inProgress = await stateOf("IN_PROGRESS");
+    const done = await stateOf("DONE");
+
+    const internal = (await createItem(ownerCtx(), { projectId, title: "Internal item" })).id;
+    await moveItem(ownerCtx(), { itemId: internal, stateId: inProgress.id, afterId: internal });
+    const internalRows = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: internal, field: "stateCategory" },
+      select: { visibility: true },
+    });
+    expect(internalRows).toHaveLength(1);
+    expect(internalRows[0]!.visibility).toBe("INTERNAL");
+
+    // The product direction: a deliberately shared task's state changes
+    // are what the client's timeline is made of (PORTAL_SAFE_FIELDS).
+    const shared = (await createItem(ownerCtx(), { projectId, title: "Shared item" })).id;
+    await changeItemVisibility(ownerCtx(), shared, "CLIENT_VISIBLE");
+    await moveItem(ownerCtx(), { itemId: shared, stateId: done.id, afterId: shared });
+    const sharedRows = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: shared, field: "stateCategory" },
+      select: { visibility: true },
+    });
+    expect(sharedRows).toHaveLength(1);
+    expect(sharedRows[0]!.visibility).toBe("CLIENT_VISIBLE");
+
+    // Audit metadata is ids and enums — never a title (SECURITY.md §9).
+    const audit = (await f.audits("work_item.state_changed")).find((e) => e.targetId === shared);
+    expect(audit?.metadata).toMatchObject({ from: "TODO", to: "DONE", projectId });
+    expect(JSON.stringify(audit?.metadata)).not.toContain("Shared item");
+  });
+
+  it("a state change INTO triage is refused with a typed error, never a raw constraint failure", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Not for triage" });
+    const triage = await stateOf("TRIAGE");
+    await expect(moveItem(ownerCtx(), { itemId: id, stateId: triage.id })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    } satisfies Partial<DomainError>);
+    await expect(changeState(ownerCtx(), id, triage.id)).rejects.toBeInstanceOf(DomainError);
+    // Nothing was written on the way to the refusal.
+    const row = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+    expect(row.stateCategory).toBe("TODO");
+    expect(row.triageStatus).toBeNull();
+  });
+
+  it("the epic subtree the board's lanes rely on: depth and rootId come from the trigger, the type from the parent", async () => {
+    const epic = await createItem(ownerCtx(), { projectId, title: "Epic" });
+    await f.platform.workItem.update({ where: { id: epic.id }, data: { type: "EPIC" } });
+    const task = await createItem(ownerCtx(), { projectId, title: "Task of epic", parentId: epic.id });
+    const subtask = await createItem(ownerCtx(), { projectId, title: "Subtask", parentId: task.id });
+    const rows = await f.platform.workItem.findMany({
+      where: { tenantId: f.tenantId, id: { in: [epic.id, task.id, subtask.id] } },
+      select: { id: true, type: true, depth: true, rootId: true },
+    });
+    const by = (id: string) => rows.find((r) => r.id === id)!;
+    expect(by(task.id).type).toBe("TASK");
+    expect(by(subtask.id).type).toBe("SUBTASK");
+    expect(by(task.id).depth).toBe(1);
+    expect(by(subtask.id).depth).toBe(2);
+    // Every row of the subtree points at the epic — the lane key.
+    for (const id of [epic.id, task.id, subtask.id]) expect(by(id).rootId).toBe(epic.id);
+  });
+});
+
+describe("the pinned property test (ARC-17 rationale · PLAN 2W · TENANCY.md §12)", () => {
+  it("50 concurrent moves in one project never violate the rank unique and never lose an item", async () => {
+    // The pin is a PROPERTY, not a benchmark: whatever the interleaving,
+    // (tenant_id, project_id, rank) holds and every item is still in the
+    // order exactly once. All 50 aim at the same anchor — the worst case,
+    // because every one of them wants the same gap.
+    const anchor = (await createItem(ownerCtx(), { projectId: pinProjectId, title: "Pin anchor" })).id;
+    const movers: string[] = [];
+    for (let i = 0; i < 50; i++) {
+      movers.push((await createItem(ownerCtx(), { projectId: pinProjectId, title: `Pin ${i}` })).id);
+    }
+    const before = await order(pinProjectId);
+    expect(before).toHaveLength(51);
+
+    const results = await Promise.allSettled(
+      movers.map((itemId) => moveItem(ownerCtx(), { itemId, afterId: anchor })),
+    );
+    // A rejection may ONLY ever be the connection pool running out under
+    // 50 simultaneous transactions (with-tenant.ts records that 25 already
+    // did once on the CI link). Anything else — a unique violation that
+    // escaped the retry, a deadlock, a DomainError — fails the test: an
+    // allowlist, not a tolerance, so the property cannot pass vacuously on
+    // 49 failures.
+    const POOL_EXHAUSTED =
+      /Unable to start a transaction|Timed out fetching a new connection|connection pool|maxWait|too many clients/i;
+    const rejections = results
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map((r) => String(r.reason?.message ?? r.reason));
+    expect(rejections.filter((m) => !POOL_EXHAUSTED.test(m))).toEqual([]);
+
+    const after = await order(pinProjectId); // order() asserts rank uniqueness itself
+    expect(after).toHaveLength(51); // nothing lost, nothing duplicated
+    expect(new Set(after)).toEqual(new Set(before));
+    const settled = results
+      .map((r, i) => (r.status === "fulfilled" ? movers[i]! : null))
+      .filter((id): id is string => id !== null);
+    expect(settled).toHaveLength(movers.length - rejections.length);
+    expect(settled.length).toBeGreaterThan(0);
+    const at = after.indexOf(anchor);
+    for (const id of settled) expect(after.indexOf(id)).toBeGreaterThan(at);
+  }, 240_000);
 });
 
 describe("moveItem: concurrency", () => {
