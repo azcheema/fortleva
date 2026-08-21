@@ -19,6 +19,10 @@ jobs:
   check:
     name: Typecheck, lint, unit tests
     runs-on: ubuntu-latest
+    # Runs in ~1 min and touches no database. Bounded like every other job
+    # here: without this it inherits GitHub's 6-hour default, so one hung
+    # unit test would burn six hours of billable minutes.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -43,15 +47,38 @@ jobs:
     concurrency:
       group: isolation-db
       cancel-in-progress: false
-    # ~3 min next to the database; the GitHub runner is in the US and the
+    # ~3–4 min next to the database; the GitHub runner is in the US and the
     # shared dev database in the EU (~100 ms per round trip), so the same
-    # suite takes 25–35 min here and the 5 s transaction budget / 30 s
+    # suite takes 20–45+ min here and the 5 s transaction budget / 30 s
     # per-test guard that are right locally are too tight — both are
     # widened below. TODO(founder): an EU-located runner (a larger runner
     # with Azure private networking in an EU region, or an ephemeral
     # self-hosted one) brings this back to minutes — the database stays in
     # Frankfurt. Never the 6-hour default timeout.
-    timeout-minutes: 45
+    #
+    # This ceiling is a HANG GUARD and a VARIANCE budget — not a budget the
+    # suite must fit, and not a growth allowance. A hung test is caught by
+    # DBTEST_TIMEOUT_MS (120 s) long before this fires; what this must
+    # absorb is the link. Measured 2026-08-21: the SAME 22 dbtest files ran
+    # 23 min and 42 min on two runs two hours apart — every file 1.5–1.8×
+    # slower, fast and slow files alike, i.e. the runner↔database link, not
+    # the suite. Test growth is ~4 min per slice by comparison. Run
+    # 32491311123 was killed at 45 min in the slow regime with every test
+    # passing and ~3 min of work left. 90 ≈ 1.9× the worst full run
+    # observed. Cost of the raise: a genuinely hung job now holds the
+    # isolation-db concurrency group (and the "no local Playwright while CI
+    # runs" rule) for 90 min instead of 45; a ceiling costs nothing
+    # otherwise, since it only fires on overrun.
+    # When 90 is approached it will most likely be another bad-link day, not
+    # accumulated tests — do NOT raise it again. The two structural fixes
+    # solve DIFFERENT problems: the EU-located runner above fixes speed and
+    # variance (the dominant term); the ephemeral Neon branch per run
+    # (TODO(founder) NEON_API_KEY, above) fixes serialization — it would let
+    # isolation and e2e run in parallel, retire this concurrency group, and
+    # only then make sharding possible (a strategy.matrix inside THIS job
+    # would share one group and evict its own shards) or file parallelism
+    # (vitest.db.config.ts is sequential because the database is shared).
+    timeout-minutes: 90
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
