@@ -26,7 +26,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - **One DB seam.** All database access goes through `withTenant` / `withPlatform` / `withUser` from `@/db`. Never import `@/db/client` or the generated client outside `src/db` and `src/auth` (ESLint enforces it). `withPlatform` is importable only from `(platform)`, `jobs/`, `src/db` and tests.
 - **Every new Prisma model** is registered in `MODEL_CLASSES` *and* exactly one `RLS_CLASSES` subclass in `src/db/model-registry.ts`, and ships a **hand-written migration** granting `app_runtime` and applying `ENABLE`+`FORCE ROW LEVEL SECURITY` with `tenant_isolation` plus `portal_deny` (class A) or `portal_gate` (class B). Never run `prisma migrate reset` or `prisma db push`.
-- **Every mutation**: `requireAccess()` → `assertInScope()` → mutate → `audit.record()` **in the same transaction**. The action must already exist in `src/audit/catalog.ts`.
+- **Every mutation**: `requireAccess()` → `assertInScope()` → mutate → `audit.record()` **in the same transaction**. The action must already exist in `src/audit/catalog.ts`. *(One carve-out, 2026-08-21: a **rank-only reorder** — `moveItem` with no state change — writes neither an activity row nor an audit event, because rank is not a field anyone sees; the same rule as `updateItemFields`' routine edits. A move that also changes state audits `work_item.state_changed` as every state change does. Do not read this as licence to skip audit anywhere a person could see the change.)*
 - **Three namespaces, never mixed**: permission codes `resource:verb` (immutable forever — deprecate, never rename), audit actions `entity.verb`, portal capabilities `portal.area.verb`.
 - **Visibility is safety-critical.** `INTERNAL` is the default everywhere; the portal gate is `client_id = app.client_id AND visibility = 'CLIENT_VISIBLE' AND portal_enabled`, enforced in the database. `portal_enabled` is trigger-derived from the project — never write it on a child row. The worst bug this product can have is a client seeing internal data.
 - **Portal reads** run under the contact principal via RLS; contact-*caused writes* are brokered under `withTenant(tenantId, {type:'system'})` after `authorizePortal()`, and live in `modules/*/portal.ts`.
@@ -56,6 +56,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Commands
 
-`pnpm dev` · `pnpm build` · `pnpm typecheck` · `pnpm exec eslint src e2e --max-warnings 0` · `pnpm test` (unit) · `pnpm test:db` (against Neon, sequential, ~3 min) · `pnpm test:e2e` (Playwright; `pnpm exec playwright test visual` regenerates 152 screenshots — 38 stops × light/dark × desktop/phone — into `.design-shots/`).
+`pnpm dev` · `pnpm build` · `pnpm typecheck` · `pnpm exec eslint src e2e --max-warnings 0` · `pnpm test` (unit) · `pnpm test:db` (against Neon, sequential, ~3 min) · `pnpm test:e2e` (Playwright; `pnpm exec playwright test visual` regenerates 160 screenshots — 40 stops × light/dark × desktop/phone — into `.design-shots/`).
 
 Commit in small reviewable steps; end commit messages with the `Co-Authored-By:` trailer. Do not push unless asked.
