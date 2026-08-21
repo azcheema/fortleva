@@ -1168,8 +1168,56 @@
       "description": "Tilldelningar avgör vem som kan öppna projektet."
     },
     "board": {
-      "title": "Tavlan kommer med Arbete",
-      "description": "Tavlan — kolumner är statusar, position är prioritet — kommer i nästa fas."
+      "scrollLabel": "Tavla",
+      "group": {
+        "label": "Gruppera efter",
+        "none": "Ingen",
+        "assignee": "Ansvarig",
+        "priority": "Prioritet",
+        "epic": "Epik"
+      },
+      "lanes": {
+        "unassigned": "Ingen ansvarig",
+        "noEpic": "Utan epik",
+        "epicUntitled": "Epik"
+      },
+      "column": {
+        "tasks": "{count, plural, one {# uppgift} other {# uppgifter}}",
+        "estimate": "{hours} estimerat",
+        "wipOver": "Över WIP-gränsen på {limit}"
+      },
+      "card": {
+        "checklist": "{done} av {total} punkter i checklistan",
+        "assignee": "Ansvarig: {name}",
+        "unassigned": "Ingen ansvarig",
+        "estimate": "Estimat {hours}",
+        "clientVisible": "Kunden kan se",
+        "label": "{key}: {title}"
+      },
+      "moveTo": "Flytta till…",
+      "movePicker": {
+        "title": "Flytta {key}",
+        "search": "Status eller position",
+        "top": "Överst i {state}",
+        "bottom": "Underst i {state}",
+        "empty": "Ingen status matchar"
+      },
+      "moveFailed": "Flytten sparades inte. Tavlan visar aktuellt läge.",
+      "create": {
+        "button": "Ny uppgift",
+        "placeholder": "Uppgiftens titel — Enter skapar",
+        "label": "Ny uppgifts titel i {state}"
+      },
+      "empty": {
+        "title": "Inga uppgifter ännu",
+        "body": "Kolumner är statusar, position är prioritet. Skapa den första uppgiften i en kolumn — eller tryck C.",
+        "bodyReadOnly": "Uppgifter visas här när någon har skapat dem.",
+        "action": "Ny uppgift"
+      },
+      "shortcuts": {
+        "move": "S",
+        "create": "C"
+      }
     },
     "backlog": {
       "empty": {

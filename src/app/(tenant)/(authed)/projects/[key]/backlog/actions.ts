@@ -11,16 +11,19 @@ import {
   changeState,
   createItem,
   deleteItem,
+  moveItem,
   setItemArchived,
   updateItemFields,
+  type MovedItem,
   type WorkCtx,
 } from "@/modules/work";
-import { runForm, type FormResult } from "@/lib/server-actions";
+import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 
 /**
- * Thin server actions for the minimal task list (2W core slice):
- * parse → call the work service → revalidate. Tenant and member come
- * from requireTenantContext(), never from the form.
+ * Thin server actions for the project's work surfaces (the backlog
+ * list and the board share them): parse → call the work service →
+ * revalidate both routes. Tenant and member come from
+ * requireTenantContext(), never from the form.
  */
 
 const uuid = z.uuid();
@@ -32,9 +35,12 @@ const ctxOf = async (): Promise<WorkCtx> => {
 };
 
 const backlogPath = (key: string) => `/projects/${key}/backlog`;
+const boardPath = (key: string) => `/projects/${key}/board`;
 
+/** One order, one item set: whichever surface wrote, both re-render. */
 const revalidate = (key: string) => {
   revalidatePath(backlogPath(key));
+  revalidatePath(boardPath(key));
 };
 
 export async function createItemAction(
@@ -193,3 +199,73 @@ export async function deleteItemAction(itemId: string, projectKey: string): Prom
   if (r.ok) revalidate(key.data);
   return r;
 }
+
+/**
+ * Board: title-only create straight into a column (UI rule 2). Returns
+ * the created id + number so the board can swap its optimistic card
+ * for the real key without waiting for the refresh.
+ */
+export async function createItemInStateAction(
+  projectId: string,
+  projectKey: string,
+  stateId: string,
+  title: string,
+): Promise<ActionResult<{ id: string; number: number }>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.backlog");
+  const parsed = z
+    .object({
+      projectId: uuid,
+      projectKey: keyShape,
+      stateId: uuid,
+      title: z.string().trim().min(1).max(400),
+    })
+    .safeParse({ projectId, projectKey, stateId, title });
+  if (!parsed.success) return { ok: false, message: t("invalidTitle") };
+  const input = parsed.data;
+  const r = await runAction(boardPath(input.projectKey), () =>
+    createItem(ctx, { projectId: input.projectId, title: input.title, stateId: input.stateId }),
+  );
+  if (r.ok) revalidate(input.projectKey);
+  return r;
+}
+
+/**
+ * Board drop / "Move to…" (UI.md §7.1): the client sends ids — a target
+ * state and at most the neighbour it lands after/before — never a rank.
+ * The service computes the rank under lock and runs the state machine
+ * in the same transaction; the canonical row comes back so the
+ * optimistic card is replaced, not merged (§7.2).
+ */
+export async function moveItemAction(input: {
+  itemId: string;
+  projectKey: string;
+  stateId?: string;
+  afterId?: string | null;
+  beforeId?: string | null;
+}): Promise<ActionResult<MovedItem>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.board");
+  const parsed = z
+    .object({
+      itemId: uuid,
+      projectKey: keyShape,
+      stateId: uuid.optional(),
+      afterId: uuid.nullable().optional(),
+      beforeId: uuid.nullable().optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, message: t("moveFailed") };
+  const { itemId, projectKey, stateId, afterId, beforeId } = parsed.data;
+  const r = await runAction(boardPath(projectKey), () =>
+    moveItem(ctx, {
+      itemId,
+      ...(stateId ? { stateId } : {}),
+      afterId: afterId ?? null,
+      beforeId: beforeId ?? null,
+    }),
+  );
+  if (r.ok) revalidate(projectKey);
+  return r;
+}
+

@@ -120,6 +120,9 @@ async function provision(seedFile: string): Promise<void> {
   const { createProject, updateProject } = await import("../../src/projects/service");
   const { createService } = await import("../../src/services/service");
   const { createRateCard } = await import("../../src/modules/time");
+  const { assignItem, changeItemVisibility, changeState, createItem, updateItemFields } = await import(
+    "../../src/modules/work"
+  );
   const { createMilestone } = await import("../../src/projects/milestones");
   const { commitUpload, createUpload } = await import("../../src/documents/service");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
@@ -315,6 +318,51 @@ async function provision(seedFile: string): Promise<void> {
     effectiveFrom: "2026-01-01",
   });
 
+  // 2W: a handful of tasks on the main project so the board and the
+  // backlog photograph as a working project (cards in three columns,
+  // one assigned, one client-visible, estimates, a priority) and
+  // e2e/work.spec.ts has neighbours to drop between. Written through
+  // the services — numbering, rank, state machine, activity, audit —
+  // exactly as the owner's session would. The first create seeds the
+  // project's states lazily (ensureProjectStates); the rest read them.
+  const firstTask = await createItem(ctx, { projectId, title: "Sätt upp staging-miljö" });
+  await updateItemFields(ctx, firstTask.id, { priority: "HIGH", estimateMinutes: 120 });
+  await assignItem(ctx, firstTask.id, ownerMemberId);
+  const workStates = await db.workflowState.findMany({
+    where: { tenantId, projectId },
+    select: { id: true, category: true },
+  });
+  const stateIdOf = (category: string): string => {
+    const s = workStates.find((w) => w.category === category);
+    if (!s) throw new Error(`seed: no ${category} state on the project`);
+    return s.id;
+  };
+  const task = async (
+    title: string,
+    opts: {
+      category?: string;
+      priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+      hours?: number;
+      assign?: boolean;
+      clientVisible?: boolean;
+    },
+  ): Promise<void> => {
+    const { id } = await createItem(ctx, { projectId, title });
+    if (opts.priority || opts.hours) {
+      await updateItemFields(ctx, id, {
+        ...(opts.priority ? { priority: opts.priority } : {}),
+        ...(opts.hours ? { estimateMinutes: Math.round(opts.hours * 60) } : {}),
+      });
+    }
+    if (opts.assign) await assignItem(ctx, id, ownerMemberId);
+    if (opts.clientVisible) await changeItemVisibility(ctx, id, "CLIENT_VISIBLE");
+    if (opts.category) await changeState(ctx, id, stateIdOf(opts.category));
+  };
+  await task("Skriv kravspecifikation", { category: "IN_PROGRESS", hours: 4, clientVisible: true, assign: true });
+  await task("Designgranskning med kunden", { priority: "MEDIUM", hours: 1.5 });
+  await task("Migrera DNS till ny leverantör", { category: "DONE", hours: 1 });
+  await task("Tillgänglighetsgranskning", { category: "BACKLOG" });
+
   // The invitation row is written directly rather than through
   // createInvite(): the service also sends mail, and a fixture must not
   // leave an envelope in .dev-outbox behind. Same columns, same hash.
@@ -448,6 +496,11 @@ async function removeTenant(
   // budget threshold leaves notification + email_outbox rows behind.
   await db.comment.deleteMany({ where: { tenantId } }); // mentions cascade
   await db.label.deleteMany({ where: { tenantId } }); // work_item_label cascades
+  await db.workItemActivity.deleteMany({ where: { tenantId } });
+  await db.workItem.deleteMany({ where: { tenantId, parentId: { not: null } } });
+  await db.workItem.deleteMany({ where: { tenantId } });
+  await db.workflowState.deleteMany({ where: { tenantId } });
+  await db.tenantCounter.deleteMany({ where: { tenantId } }); // work_item:<project> numbering (RESTRICTs the tenant)
   await db.notification.deleteMany({ where: { tenantId } });
   await db.emailOutbox.deleteMany({ where: { tenantId } });
   await db.subscription.deleteMany({ where: { tenantId } });

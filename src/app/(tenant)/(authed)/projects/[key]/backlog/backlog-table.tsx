@@ -160,7 +160,7 @@ export function BacklogTable({
                     }}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell priority="medium">
                   <InlineEdit
                     kind="select"
                     name="stateId"
@@ -180,7 +180,7 @@ export function BacklogTable({
                     }}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell priority="low">
                   <InlineEdit
                     kind="select"
                     name="assigneeMemberId"
@@ -203,7 +203,7 @@ export function BacklogTable({
                     }}
                   />
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell priority="low" className="text-right">
                   <InlineEdit
                     kind="text"
                     name="estimateHours"
@@ -231,7 +231,7 @@ export function BacklogTable({
                     }}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell priority="medium">
                   <VisibilityInlineEdit
                     value={item.visibility}
                     density="table"

@@ -1168,8 +1168,56 @@
       "description": "Assignments decide who can open this project."
     },
     "board": {
-      "title": "The board arrives with Work",
-      "description": "The board — columns are states, position is priority — lands in the next phase."
+      "scrollLabel": "Board",
+      "group": {
+        "label": "Group by",
+        "none": "None",
+        "assignee": "Assignee",
+        "priority": "Priority",
+        "epic": "Epic"
+      },
+      "lanes": {
+        "unassigned": "Unassigned",
+        "noEpic": "No epic",
+        "epicUntitled": "Epic"
+      },
+      "column": {
+        "tasks": "{count, plural, one {# task} other {# tasks}}",
+        "estimate": "{hours} estimated",
+        "wipOver": "Over the WIP limit of {limit}"
+      },
+      "card": {
+        "checklist": "{done} of {total} checklist items",
+        "assignee": "Assigned to {name}",
+        "unassigned": "Unassigned",
+        "estimate": "Estimate {hours}",
+        "clientVisible": "Client can see",
+        "label": "{key}: {title}"
+      },
+      "moveTo": "Move to…",
+      "movePicker": {
+        "title": "Move {key}",
+        "search": "State or position",
+        "top": "Top of {state}",
+        "bottom": "Bottom of {state}",
+        "empty": "No matching state"
+      },
+      "moveFailed": "The move did not save. The board shows the current state.",
+      "create": {
+        "button": "New task",
+        "placeholder": "Task title — Enter creates",
+        "label": "New task title in {state}"
+      },
+      "empty": {
+        "title": "No tasks yet",
+        "body": "Columns are states, position is priority. Create the first task in a column — or press C.",
+        "bodyReadOnly": "Tasks will appear here once someone creates them.",
+        "action": "New task"
+      },
+      "shortcuts": {
+        "move": "S",
+        "create": "C"
+      }
     },
     "backlog": {
       "empty": {
