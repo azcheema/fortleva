@@ -4,6 +4,7 @@ import {
   dateColumn,
   floorToSecond,
   intervalsOverlap,
+  isZeroDurationText,
   isoDateOf,
   localDateString,
   monthStartOf,
@@ -41,6 +42,16 @@ describe("duration text → seconds (UI.md rule 9)", () => {
   it("accepts exactly 24 h and drops sub-minute remainders", () => {
     expect(parseDurationSeconds("24h")).toBe(86400);
     expect(parseDurationSeconds("1.001")).toBe(3600); // 3603.6 s → whole minutes → 3600
+  });
+
+  it("a typed zero is recognised apart (an anchored row may be emptied; a new entry of nothing may not)", () => {
+    for (const z of ["0", "0m", "0 min", "0h", "0,0", "0.0", "0:00", "00:00", " 0 "]) {
+      expect(parseDurationSeconds(z), z).toBeNull();
+      expect(isZeroDurationText(z), z).toBe(true);
+    }
+    for (const nz of ["", "1m", "0h 5m", "0:01", "10", "nonsense", "-0"]) {
+      expect(isZeroDurationText(nz), nz).toBe(false);
+    }
   });
 });
 

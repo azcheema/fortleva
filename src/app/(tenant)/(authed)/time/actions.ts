@@ -15,6 +15,7 @@ import {
   clockIn,
   clockOut,
   continueEntry,
+  copyWeek,
   createEntry,
   deleteEntry,
   getCurrentTimer,
@@ -42,6 +43,7 @@ import { labelOf } from "./label";
 
 const PATH = "/time";
 const uuid = z.uuid();
+const isoDate = z.string().refine(isIsoDate); // @/lib/week: shape AND a real date within 1970–2100
 
 const ctxOf = async (): Promise<TimeCtx> => {
   const { membership, actor } = await requireTenantContext();
@@ -278,6 +280,25 @@ export async function createEntryAction(formData: FormData): Promise<FormResult>
   }).catch((e: unknown) =>
     e instanceof Error && e.message === "INVALID_TIME" ? { ok: false as const, message: t("errors.invalidTime") } : Promise.reject(e),
   );
+  if (r.ok) revalidate();
+  return r;
+}
+
+/**
+ * Copy last week's rows into the grid week containing `weekFrom` (the
+ * viewed week) — empty durations by default; the sum only on the explicit
+ * "copy with durations". The service snaps `weekFrom` to the tenant's
+ * week start and decides what "last week" is; the client names no range.
+ */
+export async function copyLastWeekAction(input: {
+  weekFrom: string;
+  withDurations: boolean;
+}): Promise<ActionResult<{ created: number; alreadyPresent: number; unusable: number }>> {
+  const tCommon = await getTranslations("common");
+  const parsed = z.object({ weekFrom: isoDate, withDurations: z.boolean() }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: tCommon("invalidInput") };
+  const ctx = await ctxOf();
+  const r = await runAction(PATH, () => copyWeek(ctx, parsed.data));
   if (r.ok) revalidate();
   return r;
 }

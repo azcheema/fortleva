@@ -55,6 +55,28 @@ async function acknowledgeNoticeIfShown(page: Page): Promise<void> {
   }
 }
 
+/**
+ * A finished entry through the New-entry form (a duration on a date; the
+ * date defaults to today). The form resets itself only after the action
+ * succeeded — waiting for the empty note is the reliable "it landed"
+ * signal, since a success toast may still be up from a previous add.
+ */
+async function addEntry(page: Page, entry: { note: string; duration: string; date?: string }): Promise<void> {
+  if (entry.date) await page.locator("#ne-date").fill(entry.date);
+  await page.getByTestId("new-entry-duration").fill(entry.duration);
+  await page.getByTestId("new-entry-description").fill(entry.note);
+  await page.getByTestId("new-entry-submit").click();
+  await expect(page.getByTestId("new-entry-description")).toHaveValue("", { timeout: 15_000 * SLOW });
+}
+
+/** The viewed week's first day as the APP sees it (Europe/Stockholm, the tenant's week start) — from the week-CSV link, never the runner's clock. */
+async function viewedWeekFrom(page: Page): Promise<string> {
+  const href = await page.getByTestId("time-export-csv").getAttribute("href");
+  const from = new URL(href ?? "", "http://x").searchParams.get("from");
+  expect(from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  return from!;
+}
+
 async function stopIfRunning(page: Page): Promise<void> {
   const stop = stopButton(page);
   if (await stop.isVisible().catch(() => false)) {
@@ -136,6 +158,37 @@ test.describe("my time (owner)", () => {
     const row = page.getByTestId("time-entry-row").filter({ hasText: "E2E manual entry" });
     await expect(row.first()).toBeVisible({ timeout: 15_000 * SLOW });
     await expect(row.first()).toContainText("1h 30m");
+  });
+
+  test("copy last week copies rows, not hours — and 'copy with durations' only what is not there yet", async ({ page }) => {
+    // Last week's first day, as the APP sees it (never the runner's clock: Sunday 22:00 UTC is already Monday in Stockholm).
+    const weekFrom = await viewedWeekFrom(page);
+    const lastMonday = new Date(`${weekFrom}T00:00:00Z`);
+    lastMonday.setUTCDate(lastMonday.getUTCDate() - 7);
+    const sourceDate = lastMonday.toISOString().slice(0, 10);
+
+    // A row last week (the New-entry form takes a date): 30 min on an instant task.
+    await addEntry(page, { note: "E2E copy source", duration: "30m", date: sourceDate });
+    // The week card now offers to copy (last week has a row; this week's grid is asserted below, after the copy).
+    await expect(page.getByTestId("copy-last-week-rows")).toBeVisible({ timeout: 15_000 * SLOW });
+
+    // Primary: rows, not hours — the copy lands on this week's Monday with an EMPTY duration.
+    await page.getByTestId("copy-last-week-rows").click();
+    await expect(page.getByText(/copied from last week/).first()).toBeVisible({ timeout: 15_000 * SLOW });
+    const copied = page.getByTestId("time-entry-row").filter({ hasText: "E2E copy source" });
+    await expect(copied).toHaveCount(1, { timeout: 15_000 * SLOW });
+    await expect(copied.first()).toContainText("0m");
+    await expect(copied.first()).not.toContainText("30m");
+
+    // Secondary, behind the caret: with durations — copies only what is not there yet, never re-fills the empty row.
+    await addEntry(page, { note: "E2E copy source 2", duration: "45m", date: sourceDate });
+    await page.getByTestId("copy-last-week-more").click();
+    await page.getByTestId("copy-last-week-durations").click();
+    const second = page.getByTestId("time-entry-row").filter({ hasText: "E2E copy source 2" });
+    await expect(second).toHaveCount(1, { timeout: 15_000 * SLOW });
+    await expect(second.first()).toContainText("45m");
+    await expect(page.getByTestId("time-entry-row").filter({ hasText: "E2E copy source" }).filter({ hasNotText: "source 2" })).toHaveCount(1);
+    await expect(copied.filter({ hasNotText: "source 2" }).first()).toContainText("0m");
   });
 
   test("exports: the week's CSV (machine header, rates for the owner, never cost); the statement page and its CSV", async ({ page }) => {

@@ -132,6 +132,17 @@ export function parseDurationSeconds(input: string): number | null {
   return seconds;
 }
 
+/**
+ * "0", "0m", "0h", "0:00", "0,0" … — a typed zero. `parseDurationSeconds`
+ * refuses it (a NEW entry of nothing is a mistake), but an anchored
+ * DURATION row may be emptied back to 0 (the state copy-last-week
+ * creates: a row whose hours are still to be filled in).
+ */
+export const isZeroDurationText = (input: string): boolean =>
+  /^0+(?:[.,]0+)?(?: ?(?:h|hours?|tim(?:mar|me)?|m|min|minutes?|minuter))?$|^0{1,2}:00$/.test(
+    input.trim().toLowerCase().replace(/\s+/g, " "),
+  );
+
 /** Two half-open intervals intersect (a running interval is open-ended). */
 export const intervalsOverlap = (
   aStart: Date,

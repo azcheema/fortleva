@@ -1767,7 +1767,17 @@
         "body": "Starta en timer ovan eller lägg till en post nedan.",
         "action": "Starta en timer"
       },
-      "durationPlaceholder": "0m"
+      "durationPlaceholder": "0m",
+      "copy": {
+        "button": "Kopiera förra veckan",
+        "hint": "Kopierar förra veckans rader till den här veckan utan timmar — du fyller i dem själv.",
+        "more": "Fler sätt att kopiera",
+        "withDurations": "Kopiera med timmar",
+        "done": "{count, plural, =1 {1 rad kopierad} other {# rader kopierade}} från förra veckan{present, plural, =0 {} other {; # finns redan}}{unusable, plural, =0 {} other {; # går inte längre att använda}}.",
+        "nothingNew": "Inget att kopiera{present, plural, =0 {} other { — # finns redan}}{unusable, plural, =0 {} other {; # går inte längre att använda}}.",
+        "nothing": "Förra veckan har inga poster att kopiera.",
+        "failed": "Det gick inte att kopiera förra veckan."
+      }
     },
     "team": {
       "title": "Teamets tid",

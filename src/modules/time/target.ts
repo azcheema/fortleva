@@ -4,6 +4,7 @@ import { fail } from "@/lib/domain-error";
 import type { TenantPreferences } from "@/preferences/service";
 
 import type { TimeCtx } from "./ctx";
+import { cleanDescription } from "./description";
 import { resolveRateSnapshot, type RateSnapshot } from "./rates";
 
 /**
@@ -38,11 +39,6 @@ export type ResolvedTarget = {
   description: string | null;
   /** Project billing currency (or the tenant default) — the entry's currency when billable. */
   currency: string;
-};
-
-const cleanDescription = (d: string | null | undefined): string | null => {
-  const s = (d ?? "").trim();
-  return s === "" ? null : s;
 };
 
 export async function resolveTarget(

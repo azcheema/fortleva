@@ -49,11 +49,14 @@ export {
   type TimerEntry,
 } from "./timer";
 export {
+  copyWeek,
   createEntry,
   deleteEntry,
+  hasFinishedEntries,
   listMyEntries,
   listTeamEntries,
   updateEntry,
+  type CopyWeekResult,
   type CreateEntryInput,
   type EntryListRow,
   type EntryPatch,

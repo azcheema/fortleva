@@ -1767,7 +1767,17 @@
         "body": "Start a timer above or add an entry below.",
         "action": "Start a timer"
       },
-      "durationPlaceholder": "0m"
+      "durationPlaceholder": "0m",
+      "copy": {
+        "button": "Copy last week",
+        "hint": "Copies last week's rows into this week with empty durations — you fill in the hours.",
+        "more": "More ways to copy",
+        "withDurations": "Copy with durations",
+        "done": "{count, plural, =1 {1 row} other {# rows}} copied from last week{present, plural, =0 {} other {; # already here}}{unusable, plural, =0 {} other {; # no longer available}}.",
+        "nothingNew": "Nothing to copy{present, plural, =0 {} other { — # already here}}{unusable, plural, =0 {} other {; # no longer available}}.",
+        "nothing": "Last week has no entries to copy.",
+        "failed": "Could not copy last week."
+      }
     },
     "team": {
       "title": "Team time",

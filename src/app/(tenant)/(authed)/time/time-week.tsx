@@ -56,12 +56,15 @@ export function TimeWeek({
   dayLabels,
   entries,
   durationStyle,
+  actions,
 }: {
   days: string[];
   /** ISO date → server-formatted heading ("Thu 20 Aug"), built with @/lib/format. */
   dayLabels: Record<string, string>;
   entries: WeekEntryRow[];
   durationStyle: DurationStyle;
+  /** The card's header verbs (copy last week) — shown with rows and in the empty state alike. */
+  actions?: React.ReactNode;
 }) {
   const t = useTranslations("time.week");
   const tCommon = useTranslations("common");
@@ -85,7 +88,7 @@ export function TimeWeek({
 
   if (entries.length === 0) {
     return (
-      <SectionCard title={t("title")}>
+      <SectionCard title={t("title")} actions={actions}>
         <EmptyState
           variant="empty"
           icon={TimerIcon}
@@ -106,6 +109,7 @@ export function TimeWeek({
     <SectionCard
       title={t("title")}
       description={t("total", { total: fmt(weekTotal) })}
+      actions={actions}
       contentClassName="p-0"
     >
       <DataTable flush scrollLabel={t("scrollLabel")}>
@@ -145,7 +149,7 @@ export function TimeWeek({
                   </TableRow>
                   {rows.map((e) => {
                     const running = e.stoppedAt === null;
-                    const actions: RowAction[] = [
+                    const rowActions: RowAction[] = [
                       ...(e.locked
                         ? []
                         : [
@@ -241,7 +245,7 @@ export function TimeWeek({
                                 </Button>
                               )
                             }
-                            items={actions}
+                            items={rowActions}
                           />
                         </TableCell>
                       </TableRow>

@@ -15,6 +15,7 @@ import {
   getCurrentShift,
   getCurrentTimer,
   getNoticeStatus,
+  hasFinishedEntries,
   listMyEntries,
   listMyShifts,
   listWorkTypes,
@@ -22,6 +23,7 @@ import {
 } from "@/modules/time";
 import { listProjects } from "@/projects/service";
 
+import { CopyLastWeek } from "./copy-last-week";
 import { labelOf } from "./label";
 import { NewEntryForm } from "./new-entry-form";
 import { NoticeGate } from "./notice-gate";
@@ -73,9 +75,11 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     notice: Awaited<ReturnType<typeof getNoticeStatus>>;
     workTypes: Awaited<ReturnType<typeof listWorkTypes>>;
     projects: PickerProject[];
+    /** Last week (the seven days before the viewed week) has finished rows — copy-last-week has something to copy. */
+    lastWeekHasRows: boolean;
   } | null = null;
   try {
-    const [entries, shifts, timer, shift, notice, workTypes, groups, todayEntries, todayShifts] = await Promise.all([
+    const [entries, shifts, timer, shift, notice, workTypes, groups, todayEntries, todayShifts, lastWeek] = await Promise.all([
       listMyEntries(ctx, { from: week.from, to: week.to }),
       listMyShifts(ctx, { from: week.from, to: week.to }),
       getCurrentTimer(ctx),
@@ -85,6 +89,8 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
       listProjects(ctx),
       todayInWeek ? null : listMyEntries(ctx, { from: today, to: today }),
       todayInWeek ? null : listMyShifts(ctx, { from: today, to: today }),
+      // One existence probe, not a listing: "is there anything to copy" (the service decides the rest on click).
+      hasFinishedEntries(ctx, { from: addDays(week.from, -7), to: addDays(week.from, -1) }),
     ]);
     data = {
       entries,
@@ -95,6 +101,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
       shift,
       notice,
       workTypes,
+      lastWeekHasRows: lastWeek,
       projects: groups.flatMap((g) =>
         g.projects
           .filter((p) => p.status !== "ARCHIVED")
@@ -118,7 +125,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     );
   }
 
-  const { entries, timer, shift, notice, workTypes, projects, todayEntries, todayShifts } = data;
+  const { entries, timer, shift, notice, workTypes, projects, todayEntries, todayShifts, lastWeekHasRows } = data;
   const serverNow = timer.serverNow.toISOString();
   const noticeRequired = notice.required && !notice.acknowledged;
 
@@ -227,7 +234,14 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
           serverNow={serverNow}
           noticeRequired={noticeRequired}
         />
-        <TimeWeek days={week.days} dayLabels={dayLabels} entries={rows} durationStyle={prefs.durationStyle} />
+        {/* Copy last week (D6): only with something to copy and only past the notice gate — no verb before either. */}
+        <TimeWeek
+          days={week.days}
+          dayLabels={dayLabels}
+          entries={rows}
+          durationStyle={prefs.durationStyle}
+          actions={lastWeekHasRows && !noticeRequired ? <CopyLastWeek weekFrom={week.from} /> : undefined}
+        />
         {noticeRequired ? null : (
           <NewEntryForm today={today} projects={projects} workTypes={workTypes.map((w) => ({ id: w.id, name: w.name }))} />
         )}
