@@ -14,6 +14,12 @@ import { requireSeed, type E2ESeed } from "./fixtures/tenant";
  */
 
 let seed!: E2ESeed;
+/**
+ * The title this run created, so teardown can remove it EVEN IF the test
+ * failed — a failing run is exactly when a leftover row would poison the
+ * project the visual sweep photographs.
+ */
+let created: string | null = null;
 
 // A move is a server action plus a refresh of the whole board; on CI
 // (US runner, EU database) the same waits get three times the leash.
@@ -21,6 +27,19 @@ const SLOW = process.env["CI"] ? 3 : 1;
 
 test.beforeAll(() => {
   seed = requireSeed();
+});
+
+test.afterEach(async ({ page }) => {
+  if (!created) return;
+  const title = created;
+  created = null;
+  await page.goto(`/projects/${seed.projectKey}/board`);
+  const card = cardIn(page, title);
+  if ((await card.count()) === 0) return;
+  await card.getByRole("button", { name: /Actions for/ }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Yes" }).click();
+  await expect(cardIn(page, title)).toHaveCount(0, { timeout: 20_000 * SLOW });
 });
 
 const column = (page: Page, category: string): Locator =>
@@ -40,6 +59,7 @@ test.describe("project board (owner)", () => {
     // Title-only create at the foot of To do: at rest a button, then a
     // field; Enter creates and keeps the field open for the next title.
     const title = `Board task ${Date.now()}`;
+    created = title; // afterEach removes it, pass or fail
     await todo.getByTestId("board-create").click();
     const input = todo.getByTestId("board-create-input");
     await input.fill(title);
@@ -90,6 +110,11 @@ test.describe("project board (owner)", () => {
     await expect(page.getByTestId("board-group-assignee")).toHaveAttribute("aria-current", "page");
     const lane = page.locator('[data-testid="board-lane"][data-lane="unassigned"]');
     await expect(cardIn(lane, title)).toBeVisible();
+
+    // The row this test added is removed by afterEach, pass or fail: this
+    // project is the one the visual sweep photographs, and a leftover task
+    // would change tomorrow's screenshots (timeline.spec.ts states the
+    // doctrine; today only file ordering keeps it true).
   });
 });
 
@@ -108,15 +133,28 @@ test.describe("project board (employee)", () => {
     await page.goto(`/projects/${seed.completedProjectKey}/board`);
     await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
     await expect(page.getByTestId("board")).toHaveCount(0);
-    // The freshness poll carries no content: for a project in scope
-    // (the assigned client's) it is one opaque string, never a list.
-    // Probed from inside the page — Playwright's Node-side request does
-    // not carry the Secure member cookie over http://127.0.0.1.
-    const probe = await page.evaluate(async (projectId: string) => {
-      const res = await fetch(`/api/version?scope=project:${projectId}`, { cache: "no-store" });
-      return { status: res.status, body: (await res.json()) as { version?: string } };
-    }, seed.projectId);
-    expect(probe.status).toBe(200);
-    expect(typeof probe.body.version).toBe("string");
+    // The freshness poll carries no content, and it denies exactly the way
+    // the page does (AUTHZ.md §4): a project in scope answers with one
+    // opaque token; a project that is NOT this member's and a project that
+    // does not exist answer identically, so the poll cannot be used to ask
+    // whether a project exists. Probed from inside the page — Playwright's
+    // Node-side request does not carry the Secure member cookie over
+    // http://127.0.0.1.
+    const probe = async (projectId: string) =>
+      page.evaluate(async (id: string) => {
+        const res = await fetch(`/api/version?scope=project:${id}`, { cache: "no-store" });
+        return { status: res.status, body: await res.text() };
+      }, projectId);
+
+    const mine = await probe(seed.projectId);
+    expect(mine.status).toBe(200);
+    expect(typeof (JSON.parse(mine.body) as { version?: string }).version).toBe("string");
+
+    const notMine = await probe(seed.completedProjectId);
+    const missing = await probe("00000000-0000-4000-8000-000000000000");
+    expect(notMine.status).toBe(404);
+    expect(missing.status).toBe(404);
+    expect(notMine.body).toBe(missing.body);
+    expect(notMine.body).not.toContain(seed.completedProjectId);
   });
 });

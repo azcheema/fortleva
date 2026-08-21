@@ -80,6 +80,13 @@ export type E2ESeed = {
   readonly activeProjectKey: string;
   /** COMPLETED project — the third status badge in the list. */
   readonly completedProjectKey: string;
+  /**
+   * The same project's id. It belongs to the OTHER client, so it is out
+   * of the employee's scope — which is what makes it the control in the
+   * `/api/version` 404-parity probe (AUTHZ.md §4: a denial and a missing
+   * row must be indistinguishable).
+   */
+  readonly completedProjectId: string;
   /** Tenant-scoped document: no client, no project, INTERNAL by law. */
   readonly tenantDocId: string;
   /** Project-scoped CLIENT_VISIBLE document (project Files tab). */
@@ -262,7 +269,7 @@ async function provision(seedFile: string): Promise<void> {
     productionUrl: "https://example.invalid",
     scopeSummary: "Ny webbplats, tre språk, e-handel.",
   });
-  const { key: completedProjectKey } = await createProject(ctx, {
+  const { id: completedProjectId, key: completedProjectKey } = await createProject(ctx, {
     clientId: longClientId,
     key: `C${run.slice(0, 3).toUpperCase()}`,
     name: `Designsystem ${run}`,
@@ -441,6 +448,7 @@ async function provision(seedFile: string): Promise<void> {
     archivedClientId,
     activeProjectKey,
     completedProjectKey,
+    completedProjectId,
     tenantDocId: await document(`e2e-tenant-${run}.txt`, "INTERNAL", {}),
     projectDocId: await document(`e2e-projekt-${run}.txt`, "CLIENT_VISIBLE", { projectId }),
     inviteToken,
