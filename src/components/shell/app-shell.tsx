@@ -249,7 +249,7 @@ export function AppShell({
       {/* Desktop rail */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2 py-3 text-sidebar-foreground md:flex",
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-2 py-3 text-sidebar-foreground md:flex print:hidden",
           collapsed ? "w-(--rail-w-collapsed)" : "w-(--rail-w-collapsed) md:w-(--rail-w)",
         )}
       >
@@ -284,7 +284,7 @@ export function AppShell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-background/95 px-3 backdrop-blur md:px-4">
+        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-background/95 px-3 backdrop-blur md:px-4 print:hidden">
           {/* No hamburger here: §3.3 names `More` as the single sheet
               entry, and the same navigation offered at two opposite
               corners of a phone is duplication, not redundancy. */}
@@ -414,7 +414,7 @@ export function AppShell({
       <nav
         data-slot="tab-bar"
         aria-label={t("menu")}
-        className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-background pb-[env(safe-area-inset-bottom)] md:hidden print:hidden"
       >
         {tabs.map((e) => (
           <Link

@@ -1212,6 +1212,8 @@
       "thisMonth": "This month",
       "reportsLink": "Reports",
       "moneyLink": "Money",
+      "exportCsv": "Export CSV",
+      "exportCsvTitle": "Download this range's entries as CSV",
       "noRows": "No time in this range.",
       "unassigned": "Project level",
       "tiles": {
@@ -1349,6 +1351,9 @@
       "noPermission": "You do not have permission to see this project's money.",
       "description": "Value is billable hours × the bill rate snapshotted on each entry. Internal cost and margin are the finance half: they need a fresh second factor, and every reveal is audited.",
       "timeLink": "Time",
+      "exportCsv": "Export CSV",
+      "exportCsvCost": "Export CSV with cost",
+      "exportCsvCostHint": "Includes internal cost and margin — every export is audited.",
       "tiles": {
         "billableHours": "Billable hours",
         "effectiveRate": "≈ {rate}/h",
@@ -1795,11 +1800,64 @@
         "scrollLabel": "Shift day totals",
         "columns": {
           "member": "Member",
-          "total": "Week"
+          "total": "Week",
+          "statement": "Statement"
         }
       },
-      "goToMyTime": "Go to my time"
+      "goToMyTime": "Go to my time",
+      "export": "Export week (CSV)",
+      "exportTitle": "Download this week's entries in your scope as CSV",
+      "statementFor": "Working-time statement for {name}, {month} (CSV)"
     },
-    "newEntryButton": "New entry"
+    "newEntryButton": "New entry",
+    "export": {
+      "csvWeek": "Export week (CSV)",
+      "csvWeekTitle": "Download this week's entries as CSV"
+    },
+    "statement": {
+      "title": "Working-time statement",
+      "description": "Your own record per day: clock-in and clock-out, breaks, worked time and tracked task time — for one month. Download it as CSV or open the print view.",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "thisMonth": "This month",
+      "csv": "CSV",
+      "print": "Print view",
+      "printButton": "Print",
+      "back": "Back to my time",
+      "pageTitle": "Working-time statement",
+      "heading": "{name} — {month}",
+      "meta": {
+        "workspace": "Workspace",
+        "member": "Member",
+        "period": "Period",
+        "timezone": "Time zone",
+        "generated": "Generated",
+        "hoursPerDay": "Hours per day"
+      },
+      "columns": {
+        "date": "Date",
+        "shift": "Shift",
+        "breaks": "Breaks",
+        "worked": "Worked",
+        "tracked": "Tracked",
+        "unallocated": "Unallocated",
+        "flags": "Notes"
+      },
+      "flags": {
+        "provisional": "Auto-closed, unconfirmed",
+        "noBreak": "Over 5 h without a break"
+      },
+      "totals": {
+        "title": "Totals",
+        "shifts": "{count, plural, =1 {1 shift} other {# shifts}}",
+        "worked": "Worked",
+        "tracked": "Tracked",
+        "expected": "Expected (indicative)",
+        "expectedHint": "{hours} h × {days} weekdays — public holidays are not deducted.",
+        "delta": "Difference"
+      },
+      "empty": "No closed shifts in this month.",
+      "legal": "Self-reported clock-in, clock-out and breaks as recorded by the member. Provisional rows were closed automatically and have not been confirmed. No location, activity or presence data is recorded."
+    }
   }
 }

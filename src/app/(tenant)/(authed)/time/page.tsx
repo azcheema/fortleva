@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, FileTextIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
@@ -7,7 +7,7 @@ import { AuthzError } from "@/authz/errors";
 import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { resolveLocale, resolvePreferences, resolveTimeZone } from "@/i18n/resolve";
-import { localDateString } from "@/lib/duration";
+import { dateColumn, localDateString } from "@/lib/duration";
 import { dateFormat } from "@/lib/format";
 import { addDays, isIsoDate, weekContaining } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
@@ -183,6 +183,12 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
                 <ChevronRightIcon aria-hidden="true" />
               </Link>
             </Button>
+            {/* A download, not a navigation: a plain anchor to the CSV route (own rows, time:track). */}
+            <Button asChild variant="outline" size="icon-sm" aria-label={t("export.csvWeek")} title={t("export.csvWeekTitle")}>
+              <a href={`/time/export?kind=entries&from=${week.from}&to=${week.to}`} data-testid="time-export-csv">
+                <DownloadIcon aria-hidden="true" />
+              </a>
+            </Button>
             <Button asChild size="sm">
               <Link href="#new-entry">
                 <PlusIcon aria-hidden="true" />
@@ -225,6 +231,29 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
         {noticeRequired ? null : (
           <NewEntryForm today={today} projects={projects} workTypes={workTypes.map((w) => ({ id: w.id, name: w.name }))} />
         )}
+        {/* The member's own monthly working-time statement (D1; SECURITY.md §9.7.3 self-access): the month the viewed
+            week STARTS in — the same rule as /time/team — and only where shifts exist to state (time.shiftsEnabled). */}
+        {prefs.time.shiftsEnabled ? (
+          <SectionCard id="statement" title={t("statement.title")} description={t("statement.description")}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground" data-testid="statement-month">
+                {dateFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(dateColumn(`${week.from.slice(0, 7)}-01`))}
+              </span>
+              <Button asChild variant="outline" size="sm">
+                <a href={`/time/export?kind=statement&month=${week.from.slice(0, 7)}`} data-testid="statement-csv">
+                  <DownloadIcon aria-hidden="true" />
+                  {t("statement.csv")}
+                </a>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/time/statement?month=${week.from.slice(0, 7)}`} data-testid="statement-print-link">
+                  <FileTextIcon aria-hidden="true" />
+                  {t("statement.print")}
+                </Link>
+              </Button>
+            </div>
+          </SectionCard>
+        ) : null}
       </div>
     </Page>
   );

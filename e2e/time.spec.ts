@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+import { expect, test, type Download, type Page } from "@playwright/test";
 
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
@@ -30,6 +32,20 @@ const pill = (page: Page) => page.getByTestId("timer-pill").first();
 const idlePill = (page: Page) => page.getByTestId("timer-pill-idle").first();
 const stopButton = (page: Page) => page.getByTestId("timer-pill-stop").first();
 const elapsedClock = (page: Page) => page.getByTestId("timer-pill-elapsed").first();
+
+// Downloads are same-origin attachments from a route handler: click the
+// anchor, wait for the download event, read the file Playwright saved.
+const BOM = String.fromCharCode(0xfeff);
+async function download(page: Page, testId: string): Promise<{ name: string; text: string; header: string }> {
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 * SLOW }), page.getByTestId(testId).first().click()]);
+  const d: Download = dl;
+  const path = await d.path();
+  const raw = readFileSync(path, "utf8");
+  const text = raw.startsWith(BOM) ? raw.slice(1) : raw;
+  return { name: d.suggestedFilename(), text, header: text.split("\r\n")[0] ?? "" };
+}
+const ENTRY_HEADER =
+  "id,date,started_at,stopped_at,timezone,seconds,hours,member_id,member,client,project_key,project,task_key,task,agreement,work_type,billable,description,entry_mode,source,needs_review,locked_reason";
 
 async function acknowledgeNoticeIfShown(page: Page): Promise<void> {
   const ack = page.getByTestId("notice-acknowledge");
@@ -121,6 +137,102 @@ test.describe("my time (owner)", () => {
     await expect(row.first()).toBeVisible({ timeout: 15_000 * SLOW });
     await expect(row.first()).toContainText("1h 30m");
   });
+
+  test("exports: the week's CSV (machine header, rates for the owner, never cost); the statement page and its CSV", async ({ page }) => {
+    // Self-sufficient: an entry of its own, so the test holds under a -g filter too.
+    await page.getByTestId("new-entry-duration").fill("45m");
+    await page.getByTestId("new-entry-description").fill("E2E export entry");
+    await page.getByTestId("new-entry-submit").click();
+    await expect(page.getByTestId("time-entry-row").filter({ hasText: "E2E export entry" }).first()).toBeVisible({ timeout: 15_000 * SLOW });
+
+    const week = await download(page, "time-export-csv");
+    expect(week.name).toMatch(/^time-entries-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.csv$/);
+    // The owner holds rate:view_bill: the rate columns exist; cost never does.
+    expect(week.header).toBe(`${ENTRY_HEADER},rate,currency,amount`);
+    expect(week.text).not.toMatch(/cost/);
+    expect(week.text).toContain("E2E export entry");
+
+    // The statement card names the month and opens the print view; the CSV is the same data.
+    await expect(page.getByTestId("statement-month")).toBeVisible();
+    await page.getByTestId("statement-print-link").click();
+    await expect(page.getByRole("heading", { name: "Working-time statement", level: 1 })).toBeVisible();
+    // Every calendar day of the month is a row (28–31; the exact month is the app's Europe/Stockholm one, not the runner's clock).
+    const dayRows = await page.getByTestId("statement-day").count();
+    expect(dayRows).toBeGreaterThanOrEqual(28);
+    expect(dayRows).toBeLessThanOrEqual(31);
+    await expect(page.getByTestId("statement-total")).toBeVisible();
+    await expect(page.getByTestId("statement-print")).toBeVisible();
+    const statement = await download(page, "statement-csv");
+    expect(statement.name).toMatch(/^working-time-.+-\d{4}-\d{2}\.csv$/);
+    expect(statement.header).toBe(
+      "date,shift_start,shift_end,shift_start_utc,shift_end_utc,timezone,span_seconds,break_seconds,worked_seconds,worked_hours,provisional,no_break_over_5h,note,tracked_seconds,tracked_hours,unallocated_seconds",
+    );
+    expect(statement.text.trimEnd().split("\r\n").pop()).toMatch(/^TOTAL,/);
+
+    // The route itself, probed from inside the page (a same-origin fetch carries the Secure session cookie and
+    // Sec-Fetch-Site: same-origin — Playwright's Node-side request context would drop the cookie over http):
+    // an attachment, never cached (ARC-25); 400 on a bad range / month with nothing echoed back.
+    const probe = (url: string) =>
+      page.evaluate(async (u) => {
+        const r = await fetch(u, { credentials: "same-origin", redirect: "manual" });
+        return {
+          status: r.status,
+          contentType: r.headers.get("content-type"),
+          disposition: r.headers.get("content-disposition"),
+          cache: r.headers.get("cache-control"),
+          body: await r.text(),
+        };
+      }, url);
+    const ok = await probe(`/time/export?kind=statement&month=${new Date().toISOString().slice(0, 7)}`);
+    expect(ok.status).toBe(200);
+    expect(ok.contentType).toContain("text/csv");
+    expect(ok.disposition).toMatch(/^attachment; filename="working-time-/);
+    expect(ok.cache).toContain("no-store");
+    for (const bad of ["/time/export?kind=entries&from=2026-13-01&to=2026-08-31", "/time/export?kind=entries&from=0001-01-01&to=9999-12-31", "/time/export?kind=statement&month=0099-12"]) {
+      const res = await probe(bad);
+      expect(res.status, bad).toBe(400);
+      expect(res.body).not.toContain("9999");
+    }
+  });
+
+  test("team, project and money exports: the week's team CSV and a member's statement CSV; the project's entries CSV; the money rollup CSV without cost", async ({ page }) => {
+    // Self-sufficient: the team shifts table lists members with a CLOSED shift this week — make sure the owner has one.
+    const clockIn = page.getByTestId("shift-clock-in");
+    if (await clockIn.isVisible().catch(() => false)) {
+      await clockIn.click();
+      await expect(page.getByText("Clocked in", { exact: true })).toBeVisible({ timeout: 15_000 * SLOW });
+    }
+    await page.getByTestId("shift-clock-out").click();
+    await expect(page.getByText("Clocked out", { exact: true })).toBeVisible({ timeout: 15_000 * SLOW });
+
+    await page.goto("/time/team");
+    await expect(page.getByRole("heading", { name: "Team time", level: 1 })).toBeVisible();
+    const team = await download(page, "team-export-csv");
+    expect(team.name).toMatch(/^time-entries-team-/);
+    expect(team.header).toBe(`${ENTRY_HEADER},rate,currency,amount`);
+    // The shift test above clocked the owner out today: the shifts table has a row, and its one verb is the statement CSV.
+    const memberStatement = await download(page, "team-statement-csv");
+    expect(memberStatement.name).toMatch(/^working-time-/);
+    expect(memberStatement.header).toBe(
+      "date,shift_start,shift_end,shift_start_utc,shift_end_utc,timezone,span_seconds,break_seconds,worked_seconds,worked_hours,provisional,no_break_over_5h,note,tracked_seconds,tracked_hours,unallocated_seconds",
+    );
+
+    await page.goto(`/projects/${seed.projectKey}/time`);
+    const project = await download(page, "project-time-export-csv");
+    expect(project.name).toMatch(new RegExp(`^time-entries-${seed.projectKey}-`));
+    expect(project.header).toBe(`${ENTRY_HEADER},rate,currency,amount`);
+    expect(project.text).toContain("E2E project work");
+
+    await page.getByTestId("time-money-link").click();
+    await expect(page.getByTestId("money-tiles")).toBeVisible({ timeout: 15_000 * SLOW });
+    // The cost layer is off on the fixture: the rollup CSV carries amounts and no cost columns.
+    const rollup = await download(page, "money-export-csv");
+    expect(rollup.name).toMatch(new RegExp(`^time-rollup-${seed.projectKey}-.*\\.csv$`));
+    expect(rollup.name).not.toContain("with-cost");
+    expect(rollup.header).toBe("dimension,key,label,seconds,hours,billable_seconds,billable_hours,amount,currency");
+    expect(rollup.text).not.toMatch(/cost|margin/);
+    expect(rollup.text).toMatch(/\r\ntotal,total,/);
+  });
 });
 
 test.describe("as the employee", () => {
@@ -134,10 +246,16 @@ test.describe("as the employee", () => {
     await page.waitForURL("**/home", { timeout: 30_000 });
   });
 
-  test("may track own time but cannot see the team view", async ({ page }) => {
+  test("may track own time and export it — without rate columns — but cannot see the team view", async ({ page }) => {
     await page.goto("/time");
     await expect(page.getByRole("heading", { name: "My time" })).toBeVisible();
+    // Self-access (SECURITY.md §9.7.3): own rows and own statement need only time:track; no rate:view_bill ⇒ no rate columns.
+    const week = await download(page, "time-export-csv");
+    expect(week.header).toBe(ENTRY_HEADER);
+    const statement = await download(page, "statement-csv");
+    expect(statement.header).toMatch(/^date,shift_start,.*,tracked_seconds,tracked_hours,unallocated_seconds$/);
     await page.goto("/time/team");
     await expect(page.getByText("You do not have permission to see the team's time.")).toBeVisible();
+    await expect(page.getByTestId("team-export-csv")).toHaveCount(0);
   });
 });

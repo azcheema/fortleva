@@ -1,6 +1,6 @@
 "use client";
 
-import { TimerIcon } from "lucide-react";
+import { FileTextIcon, TimerIcon } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 
@@ -43,6 +43,9 @@ export function TeamTable({
   shifts,
   durationStyle,
   currencyDefault,
+  canExport,
+  statementMonth,
+  statementMonthLabel,
   days,
   dayLabels,
 }: {
@@ -51,6 +54,11 @@ export function TeamTable({
   durationStyle: DurationStyle;
   /** The tenant's finance.currencyDefault — the fallback for ad-hoc lines; never a literal. */
   currencyDefault: string;
+  /** time:export held — the per-member working-time statement CSV shows in the shifts table. */
+  canExport: boolean;
+  /** "YYYY-MM" of the viewed week's first day, and its server-formatted label ("August 2026"). */
+  statementMonth: string;
+  statementMonthLabel: string;
   days: string[];
   /** ISO date → server-formatted heading ("Thu 20"). */
   dayLabels: Record<string, string>;
@@ -184,6 +192,11 @@ export function TeamTable({
                     </TableHead>
                   ))}
                   <TableHead className="num text-right">{t("shifts.columns.total")}</TableHead>
+                  {canExport ? (
+                    <TableHead className="w-0 text-right">
+                      <span className="sr-only">{t("shifts.columns.statement")}</span>
+                    </TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -202,6 +215,16 @@ export function TeamTable({
                         );
                       })}
                       <TableCell className="num text-right font-semibold">{fmt(total)}</TableCell>
+                      {canExport ? (
+                        <TableCell className="text-right">
+                          {/* The row's one everyday verb (UI.md §10.15 #8): the member's monthly statement as a CSV download — a plain anchor, not a navigation. */}
+                          <Button asChild variant="ghost" size="icon-sm" aria-label={t("statementFor", { name: m.name, month: statementMonthLabel })}>
+                            <a href={`/time/export?kind=statement&member=${m.id}&month=${statementMonth}`} data-testid="team-statement-csv">
+                              <FileTextIcon aria-hidden="true" />
+                            </a>
+                          </Button>
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   );
                 })}

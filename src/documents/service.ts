@@ -4,6 +4,7 @@ import { assertInScope, scopeWhere, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { fail } from "@/lib/domain-error";
 import { withTenant, type TenantDb } from "@/db";
+import { attachmentDisposition } from "@/lib/http-download";
 import { newId } from "@/lib/ids";
 import { getStorage } from "@/storage";
 
@@ -49,16 +50,6 @@ const memberPrincipal = (ctx: DocumentCtx) =>
 
 const storageKeyFor = (tenantId: string, fileObjectId: string): string =>
   `${tenantId}/${fileObjectId}`;
-
-/** RFC 6266 attachment disposition with an ASCII fallback + UTF-8 name. */
-export const attachmentDisposition = (filename: string): string => {
-  const ascii = filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
-  const utf8 = encodeURIComponent(filename).replace(
-    /['()*]/g,
-    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
-};
 
 // ── Quota ────────────────────────────────────────────────────────────
 

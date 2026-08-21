@@ -1212,6 +1212,8 @@
       "thisMonth": "Den här månaden",
       "reportsLink": "Rapporter",
       "moneyLink": "Ekonomi",
+      "exportCsv": "Exportera CSV",
+      "exportCsvTitle": "Ladda ner periodens poster som CSV",
       "noRows": "Ingen tid i perioden.",
       "unassigned": "Projektnivå",
       "tiles": {
@@ -1349,6 +1351,9 @@
       "noPermission": "Du har inte behörighet att se projektets ekonomi.",
       "description": "Värde är fakturerbara timmar × det timpris som frystes på varje rad. Intern kostnad och marginal är ekonomihalvan: de kräver en färsk andra faktor, och varje visning loggas.",
       "timeLink": "Tid",
+      "exportCsv": "Exportera CSV",
+      "exportCsvCost": "Exportera CSV med kostnad",
+      "exportCsvCostHint": "Inkluderar intern kostnad och marginal — varje export loggas.",
       "tiles": {
         "billableHours": "Fakturerbara timmar",
         "effectiveRate": "≈ {rate}/h",
@@ -1795,11 +1800,64 @@
         "scrollLabel": "Dagssummor för pass",
         "columns": {
           "member": "Medlem",
-          "total": "Vecka"
+          "total": "Vecka",
+          "statement": "Rapport"
         }
       },
-      "goToMyTime": "Gå till min tid"
+      "goToMyTime": "Gå till min tid",
+      "export": "Exportera veckan (CSV)",
+      "exportTitle": "Ladda ner veckans poster inom ditt område som CSV",
+      "statementFor": "Arbetstidsrapport för {name}, {month} (CSV)"
     },
-    "newEntryButton": "Ny post"
+    "newEntryButton": "Ny post",
+    "export": {
+      "csvWeek": "Exportera veckan (CSV)",
+      "csvWeekTitle": "Ladda ner veckans poster som CSV"
+    },
+    "statement": {
+      "title": "Arbetstidsrapport",
+      "description": "Din egen redovisning per dag: in- och utstämpling, raster, arbetad tid och registrerad uppgiftstid — för en månad. Ladda ner som CSV eller öppna utskriftsvyn.",
+      "prevMonth": "Föregående månad",
+      "nextMonth": "Nästa månad",
+      "thisMonth": "Denna månad",
+      "csv": "CSV",
+      "print": "Utskriftsvy",
+      "printButton": "Skriv ut",
+      "back": "Tillbaka till min tid",
+      "pageTitle": "Arbetstidsrapport",
+      "heading": "{name} — {month}",
+      "meta": {
+        "workspace": "Arbetsyta",
+        "member": "Medarbetare",
+        "period": "Period",
+        "timezone": "Tidszon",
+        "generated": "Skapad",
+        "hoursPerDay": "Timmar per dag"
+      },
+      "columns": {
+        "date": "Datum",
+        "shift": "Pass",
+        "breaks": "Raster",
+        "worked": "Arbetad",
+        "tracked": "Registrerad",
+        "unallocated": "Ofördelad",
+        "flags": "Anmärkning"
+      },
+      "flags": {
+        "provisional": "Autoavslutat, ej bekräftat",
+        "noBreak": "Över 5 h utan rast"
+      },
+      "totals": {
+        "title": "Summa",
+        "shifts": "{count, plural, =1 {1 pass} other {# pass}}",
+        "worked": "Arbetad",
+        "tracked": "Registrerad",
+        "expected": "Förväntad (vägledande)",
+        "expectedHint": "{hours} h × {days} vardagar — helgdagar är inte avdragna.",
+        "delta": "Differens"
+      },
+      "empty": "Inga avslutade pass denna månad.",
+      "legal": "Självrapporterad in- och utstämpling samt raster så som medarbetaren registrerat dem. Preliminära rader avslutades automatiskt och har inte bekräftats. Ingen plats-, aktivitets- eller närvarodata registreras."
+    }
   }
 }

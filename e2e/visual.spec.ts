@@ -107,6 +107,8 @@ const stops = (seed: E2ESeed): Stop[] => {
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
     { name: "time-team", path: "/time/team" },
+    // 2T D1: the member's own monthly working-time statement — the page IS the print layout.
+    { name: "time-statement", path: "/time/statement" },
     { name: "members", path: "/members" },
     { name: "settings-roles", path: "/settings/roles" },
     { name: "settings-preferences", path: "/settings/preferences" },

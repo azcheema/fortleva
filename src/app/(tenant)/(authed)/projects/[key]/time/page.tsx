@@ -1,4 +1,4 @@
-import { ChevronLeftIcon, ChevronRightIcon, CoinsIcon, FileTextIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, CoinsIcon, DownloadIcon, FileTextIcon } from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -62,10 +62,12 @@ export default async function ProjectTimePage({
   } catch (e) {
     if (!(e instanceof AuthzError)) throw e;
   }
+  // Held, not exercised: the controls show for holders; the route / action re-checks on use.
+  let canExport = false;
   if (rollup) {
-    canManageBudget = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
+    [canManageBudget, canExport] = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
       const { isAuthorized } = await import("@/authz/authorize");
-      return isAuthorized(tx, actor, "budget:manage");
+      return Promise.all([isAuthorized(tx, actor, "budget:manage"), isAuthorized(tx, actor, "time:export")]);
     });
   }
 
@@ -124,7 +126,8 @@ export default async function ProjectTimePage({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{t("range", { from: range.from, to: range.to })}</p>
-        <div className="flex items-center gap-2">
+        {/* Six controls: they must wrap on a 390 px phone (the visual sweep's overflow audit caught the unwrapped row). */}
+        <div className="flex flex-wrap items-center gap-2">
           <Button asChild variant="outline" size="icon-sm" aria-label={t("prevMonth")}>
             <Link href={`/projects/${project.key}/time?from=${prevMonth.from}&to=${prevMonth.to}`}>
               <ChevronLeftIcon aria-hidden="true" />
@@ -151,6 +154,15 @@ export default async function ProjectTimePage({
                 <CoinsIcon aria-hidden="true" />
                 {t("moneyLink")}
               </Link>
+            </Button>
+          ) : null}
+          {canExport ? (
+            // A download, not a navigation: a plain anchor to the CSV route (raw hours; rate/amount columns with rate:view_bill; never cost).
+            <Button asChild variant="outline" size="sm" title={t("exportCsvTitle")}>
+              <a href={`/projects/${project.key}/time/export?from=${range.from}&to=${range.to}`} data-testid="project-time-export-csv">
+                <DownloadIcon aria-hidden="true" />
+                {t("exportCsv")}
+              </a>
             </Button>
           ) : null}
         </div>

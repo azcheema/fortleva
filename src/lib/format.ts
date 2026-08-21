@@ -39,9 +39,9 @@ export function numberFormat(locale: string, options: Intl.NumberFormatOptions =
 export const formatNumber = (locale: string, value: number, options?: Intl.NumberFormatOptions) =>
   numberFormat(locale, options).format(value);
 
-/** Ungrouped, dot-decimal: for CSV, URLs, fixtures — never for display. */
+/** Ungrouped, dot-decimal: for CSV, URLs, fixtures — never for display. Memoised like every other formatter (exports call it per row). */
 export const machineNumber = (value: number): string =>
-  new Intl.NumberFormat("en-US", { useGrouping: false, maximumFractionDigits: 6 }).format(value);
+  numberFormat("en-US", { useGrouping: false, maximumFractionDigits: 6 }).format(value);
 
 export function formatMoney(locale: string, amount: number, currency: string): string {
   const isSwedish = locale.startsWith("sv");

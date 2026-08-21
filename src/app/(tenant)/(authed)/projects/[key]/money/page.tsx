@@ -1,7 +1,8 @@
-import { ChevronLeftIcon, ChevronRightIcon, ClockIcon, EyeOffIcon, ShieldCheckIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, ClockIcon, DownloadIcon, EyeOffIcon, ShieldCheckIcon } from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { isAuthorized } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { handleAuthzRedirect } from "@/authz/redirects";
 import { Callout, DataTable, EmptyState, MetricTile, SectionCard } from "@/components/semantic";
@@ -45,8 +46,9 @@ export default async function ProjectMoneyPage({
   const locale = await getLocale();
   const timezone = await resolveTimeZone();
   const sp = await searchParams;
-  const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
-    readPreferences(tx, membership.tenantId),
+  // Held, not exercised: the export control shows for time:export holders; the route re-checks on use.
+  const [prefs, canExport] = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
+    Promise.all([readPreferences(tx, membership.tenantId), isAuthorized(tx, actor, "time:export")]),
   );
   const today = localDateString(new Date(), timezone);
   const month = monthContaining(today);
@@ -184,6 +186,23 @@ export default async function ProjectMoneyPage({
                 <EyeOffIcon aria-hidden="true" />
                 {t("hide")}
               </Link>
+            </Button>
+          ) : null}
+          {canExport ? (
+            // A download, not a navigation. The rollup CSV carries cost + margin ONLY in the revealed
+            // state (the route runs the same audited ✦ reveal again — every export is audited).
+            <Button asChild variant="outline" size="sm" title={revealed ? t("exportCsvCostHint") : undefined} data-testid="money-export-csv">
+              <a href={`/projects/${project.key}/time/export?kind=rollup&from=${range.from}&to=${range.to}${revealed ? "&cost=1" : ""}`}>
+                <DownloadIcon aria-hidden="true" />
+                {revealed ? (
+                  <>
+                    <span aria-hidden="true">{"✦"}</span>
+                    {t("exportCsvCost")}
+                  </>
+                ) : (
+                  t("exportCsv")
+                )}
+              </a>
             </Button>
           ) : null}
         </div>
