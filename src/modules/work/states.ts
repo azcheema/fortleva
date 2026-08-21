@@ -56,14 +56,58 @@ export async function ensureProjectStates(
   });
 }
 
+type StateRow = NonNullable<Awaited<ReturnType<TenantDb["workflowState"]["findFirst"]>>>;
+type ItemRow = NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>;
+
 /**
- * The state machine (§6.14): invoked from EVERY entry point. Syncs
- * stateCategory (belt: the trigger does too), stamps startedAt on the
- * first IN_PROGRESS, completedAt on DONE, clears both on regression,
- * writes the portal-safe activity row and dual-writes the audit event.
- * Parent rollup automation (autoStartParent/autoCompleteParent) lands
- * with the board work.
+ * The state machine (§6.14), as ONE transaction step so every entry
+ * point — inline select, board drop, "Move to…", palette, bulk, triage,
+ * import — runs the same code: syncs stateCategory (belt: the trigger
+ * does too), stamps startedAt on the first IN_PROGRESS, completedAt on
+ * DONE, clears both on regression, writes the portal-safe activity row
+ * and dual-writes the audit event. The caller has already authorised
+ * and scoped the item; `state` must belong to the item's project.
+ * Parent rollup automation (autoStartParent/autoCompleteParent) is a
+ * later slice.
  */
+export async function transitionState(
+  tx: TenantDb,
+  ctx: WorkCtx,
+  item: ItemRow,
+  state: StateRow,
+): Promise<void> {
+  if (state.projectId !== item.projectId) deny("NOT_FOUND");
+  if (state.id === item.stateId) return;
+
+  const to = state.category;
+  const startedAt =
+    to === "IN_PROGRESS" && !item.startedAt
+      ? new Date()
+      : to === "BACKLOG" || to === "TODO" || to === "TRIAGE"
+        ? null
+        : item.startedAt;
+  const completedAt = to === "DONE" ? (item.completedAt ?? new Date()) : null;
+
+  await tx.workItem.update({
+    where: { id: item.id },
+    data: { stateId: state.id, stateCategory: to, startedAt, completedAt },
+  });
+  await writeActivity(tx, ctx, item, {
+    field: "stateCategory",
+    oldValue: item.stateCategory,
+    newValue: to,
+    oldRef: item.stateId,
+    newRef: state.id,
+  });
+  await record(tx, {
+    action: "work_item.state_changed",
+    targetType: "WorkItem",
+    targetId: item.id,
+    metadata: { from: item.stateCategory, to, projectId: item.projectId },
+  });
+}
+
+/** The inline state change (the backlog's select): one item, one state. */
 export async function changeState(
   ctx: WorkCtx,
   itemId: string,
@@ -80,33 +124,6 @@ export async function changeState(
       where: { tenantId: ctx.tenantId, id: stateId, projectId: item!.projectId },
     });
     if (!state) deny("NOT_FOUND");
-    if (state!.id === item!.stateId) return;
-
-    const to = state!.category;
-    const startedAt =
-      to === "IN_PROGRESS" && !item!.startedAt
-        ? new Date()
-        : to === "BACKLOG" || to === "TODO" || to === "TRIAGE"
-          ? null
-          : item!.startedAt;
-    const completedAt = to === "DONE" ? (item!.completedAt ?? new Date()) : null;
-
-    await tx.workItem.update({
-      where: { id: item!.id },
-      data: { stateId: state!.id, stateCategory: to, startedAt, completedAt },
-    });
-    await writeActivity(tx, ctx, item!, {
-      field: "stateCategory",
-      oldValue: item!.stateCategory,
-      newValue: to,
-      oldRef: item!.stateId,
-      newRef: state!.id,
-    });
-    await record(tx, {
-      action: "work_item.state_changed",
-      targetType: "WorkItem",
-      targetId: item!.id,
-      metadata: { from: item!.stateCategory, to, projectId: item!.projectId },
-    });
+    await transitionState(tx, ctx, item!, state!);
   });
 }

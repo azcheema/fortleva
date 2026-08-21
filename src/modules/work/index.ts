@@ -8,10 +8,12 @@ export {
   createItem,
   deleteItem,
   listItems,
+  projectWorkVersion,
   setItemArchived,
   updateItemFields,
   type ItemList,
   type ItemListEntry,
   type WorkCtx,
 } from "./items";
+export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from "./ordering";
 export { changeState, ensureProjectStates } from "./states";

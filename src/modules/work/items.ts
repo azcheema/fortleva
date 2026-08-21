@@ -5,10 +5,10 @@ import { assertInScope, isAuthorized } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { nextCounter, withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
-import { rankBetween } from "@/lib/rank";
 import { emit } from "@/notify/emit";
 import { writeActivity } from "./activity";
-import { ensureProjectStates, type WorkCtx } from "./states";
+import { bottomRank, lockProjectRanks } from "./rank-lock";
+import { ensureProjectStates, transitionState, type WorkCtx } from "./states";
 
 /**
  * WorkItem CRUD for the 2W core slice (title-only create, list, inline
@@ -25,7 +25,8 @@ const principalOf = (ctx: WorkCtx) => ({ type: "member", id: ctx.actor.memberId 
 
 type ItemRow = NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>;
 
-async function loadInScope(tx: TenantDb, ctx: WorkCtx, itemId: string): Promise<ItemRow> {
+/** Load a live item and assert the actor's scope on its project (module-internal; not in the barrel). */
+export async function loadItemInScope(tx: TenantDb, ctx: WorkCtx, itemId: string): Promise<ItemRow> {
   const item = await tx.workItem.findFirst({
     where: { tenantId: ctx.tenantId, id: itemId, deletedAt: null },
   });
@@ -48,6 +49,9 @@ export type ItemListEntry = {
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
   assigneeMemberId: string | null;
   assigneeName: string | null;
+  /** Hierarchy (§3.1): the root of the subtree (itself at depth 0) — the board's group-by-epic lane. */
+  rootId: string;
+  parentId: string | null;
   archivedAt: Date | null;
   checklistTotal: number;
   checklistDone: number;
@@ -55,7 +59,7 @@ export type ItemListEntry = {
 
 export type ItemList = {
   items: ItemListEntry[];
-  states: { id: string; name: string; category: string; isHidden: boolean }[];
+  states: { id: string; name: string; category: string; isHidden: boolean; isDefault: boolean; wipLimit: number | null }[];
   members: { id: string; name: string }[];
   caps: { canCreate: boolean; canEdit: boolean; canChangeVisibility: boolean; canDelete: boolean };
 };
@@ -94,6 +98,8 @@ export async function listItems(
             targetDate: true,
             visibility: true,
             assigneeMemberId: true,
+            rootId: true,
+            parentId: true,
             archivedAt: true,
             checklistTotal: true,
             checklistDone: true,
@@ -104,7 +110,7 @@ export async function listItems(
         tx.workflowState.findMany({
           where: { tenantId: ctx.tenantId, projectId },
           orderBy: { rank: "asc" },
-          select: { id: true, name: true, category: true, isHidden: true },
+          select: { id: true, name: true, category: true, isHidden: true, isDefault: true, wipLimit: true },
         }),
         tx.member.findMany({
           where: { tenantId: ctx.tenantId, status: "ACTIVE" },
@@ -132,6 +138,8 @@ export async function listItems(
         visibility: i.visibility,
         assigneeMemberId: i.assigneeMemberId,
         assigneeName: i.assigneeMember?.user.name ?? null,
+        rootId: i.rootId,
+        parentId: i.parentId,
         archivedAt: i.archivedAt,
         checklistTotal: i.checklistTotal,
         checklistDone: i.checklistDone,
@@ -143,12 +151,13 @@ export async function listItems(
   });
 }
 
-/** Title-only create (UI rule 2): lands in the default state at the
+/** Title-only create (UI rule 2): lands in the default state — or the
+ * given state of the same project (a board column's "+") — at the
  * bottom of the list; visibility defaults from the parent (INTERNAL at
  * the root — the worst-bug guard). Returns the human key. */
 export async function createItem(
   ctx: WorkCtx,
-  input: { projectId: string; title: string; parentId?: string },
+  input: { projectId: string; title: string; parentId?: string; stateId?: string },
 ): Promise<{ id: string; number: number }> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:create");
@@ -163,6 +172,17 @@ export async function createItem(
       where: { tenantId: ctx.tenantId, projectId: input.projectId, isDefault: true },
     });
     if (!defaultState) deny("NOT_FOUND", "project has no default state");
+    // A column's "+": the target state must be this project's; the row
+    // is created in the default state and then TRANSITIONED by the state
+    // machine, so startedAt/completedAt and the history row are exactly
+    // what a drag into that column would have produced.
+    const targetState =
+      input.stateId && input.stateId !== defaultState!.id
+        ? await tx.workflowState.findFirst({
+            where: { tenantId: ctx.tenantId, projectId: input.projectId, id: input.stateId },
+          })
+        : null;
+    if (input.stateId && input.stateId !== defaultState!.id && !targetState) deny("NOT_FOUND");
 
     let parent: ItemRow | null = null;
     if (input.parentId) {
@@ -176,17 +196,14 @@ export async function createItem(
     const number = await nextCounter(tx, `work_item:${input.projectId}`);
     const id = randomUUID();
 
-    // Bottom rank. Two creates in one project cannot race on the
-    // (tenantId, projectId, rank) unique: nextCounter() above took the
-    // tenant_counter row lock for this project, which serialises them
-    // until commit (the 'numbering + rank under concurrency' dbtest). A
-    // retry loop inside the transaction could not work anyway — after a
-    // unique violation Postgres aborts the transaction (25P02).
-    const last = await tx.workItem.findFirst({
-      where: { tenantId: ctx.tenantId, projectId: input.projectId, deletedAt: null },
-      orderBy: { rank: "desc" },
-      select: { rank: true },
-    });
+    // Bottom rank under the project's rank lock (rank-lock.ts): creates
+    // serialise with each other (nextCounter() above already took the
+    // tenant_counter row lock) AND with moves to the bottom, which hold
+    // the same advisory lock — without it a create and a "bottom" drop
+    // could mint the same key, and a create has no retry. The last row
+    // may be soft-deleted: it still owns its slot under the unique index.
+    await lockProjectRanks(tx, input.projectId);
+    const rank = await bottomRank(tx, ctx.tenantId, input.projectId);
     await tx.workItem.create({
       data: {
         id,
@@ -200,7 +217,7 @@ export async function createItem(
         stateCategory: defaultState!.category,
         parentId: input.parentId ?? null,
         rootId: id, // parent_guard derives the real root/depth
-        rank: rankBetween(last?.rank ?? null, null),
+        rank,
         visibility,
         createdByMemberId: ctx.actor.memberId,
       },
@@ -213,6 +230,7 @@ export async function createItem(
       targetId: id,
       metadata: { number, projectId: input.projectId, type },
     });
+    if (targetState) await transitionState(tx, ctx, created!, targetState);
     return { id, number };
   });
 }
@@ -230,7 +248,7 @@ export async function updateItemFields(
 ): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
-    const item = await loadInScope(tx, ctx, itemId);
+    const item = await loadItemInScope(tx, ctx, itemId);
     const data: Record<string, unknown> = {};
     const changes: { field: string; oldValue: string | null; newValue: string | null }[] = [];
     if (patch.title !== undefined && patch.title !== item.title) {
@@ -271,7 +289,7 @@ export async function assignItem(
 ): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
-    const item = await loadInScope(tx, ctx, itemId);
+    const item = await loadItemInScope(tx, ctx, itemId);
     if (item.assigneeMemberId === memberId) return;
     if (memberId) {
       const member = await tx.member.findFirst({
@@ -318,7 +336,7 @@ export async function changeItemVisibility(
 ): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:change_visibility");
-    const item = await loadInScope(tx, ctx, itemId);
+    const item = await loadItemInScope(tx, ctx, itemId);
     if (item.visibility === visibility) return;
     await tx.workItem.update({ where: { id: item.id }, data: { visibility } });
     await writeActivity(
@@ -349,7 +367,7 @@ export async function setItemArchived(
 ): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
-    const item = await loadInScope(tx, ctx, itemId);
+    const item = await loadItemInScope(tx, ctx, itemId);
     if (Boolean(item.archivedAt) === archived) return;
     await tx.workItem.update({
       where: { id: item.id },
@@ -368,7 +386,7 @@ export async function setItemArchived(
 export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:delete");
-    const item = await loadInScope(tx, ctx, itemId);
+    const item = await loadItemInScope(tx, ctx, itemId);
     const children = await tx.workItem.count({
       where: { tenantId: ctx.tenantId, parentId: item.id, deletedAt: null },
     });
@@ -382,3 +400,32 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
     });
   });
 }
+
+/**
+ * Freshness token for the board / backlog poll (ARC-18): changes
+ * whenever an item of the project is written (soft deletes bump
+ * updatedAt; ranks, states, assignments, archives all do) or a state is
+ * renamed/reordered. A counter, not a list — the poll is cheap and
+ * carries no content. Requires the same view permission + scope as the
+ * list itself, so polling cannot probe a project the member cannot see.
+ */
+export async function projectWorkVersion(ctx: WorkCtx, projectId: string): Promise<string> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:view");
+    await assertInScope(tx, ctx.actor, { projectId });
+    const [items, states] = await Promise.all([
+      tx.workItem.aggregate({
+        where: { tenantId: ctx.tenantId, projectId },
+        _max: { updatedAt: true },
+        _count: { _all: true },
+      }),
+      tx.workflowState.aggregate({
+        where: { tenantId: ctx.tenantId, projectId },
+        _max: { updatedAt: true },
+      }),
+    ]);
+    const stamp = (d: Date | null) => (d ? d.getTime().toString(36) : "0");
+    return `${stamp(items._max.updatedAt)}.${items._count._all}.${stamp(states._max.updatedAt)}`;
+  });
+}
+
