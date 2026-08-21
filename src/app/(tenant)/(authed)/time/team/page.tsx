@@ -6,14 +6,12 @@ import { getTranslations } from "next-intl/server";
 import { AuthzError } from "@/authz/errors";
 import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { withTenant } from "@/db";
-import { resolveLocale, resolveTimeZone } from "@/i18n/resolve";
+import { resolveLocale, resolvePreferences, resolveTimeZone } from "@/i18n/resolve";
 import { localDateString } from "@/lib/duration";
 import { dateFormat } from "@/lib/format";
 import { addDays, isIsoDate, weekContaining } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listTeamShiftTotals, teamRollup } from "@/modules/time";
-import { readPreferences } from "@/preferences/service";
 
 import { TeamTable } from "./team-table";
 
@@ -37,9 +35,7 @@ export default async function TimeTeamPage({ searchParams }: { searchParams: Pro
   const timezone = await resolveTimeZone();
   const locale = await resolveLocale();
   const sp = await searchParams;
-  const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
-    readPreferences(tx, membership.tenantId),
-  );
+  const prefs = (await resolvePreferences())!; // one read per request, shared with resolveTimeZone
   const today = localDateString(new Date(), timezone);
   const week = weekContaining(isIsoDate(sp.w) ? sp.w : today, prefs.weekStart);
 
@@ -95,6 +91,7 @@ export default async function TimeTeamPage({ searchParams }: { searchParams: Pro
           lines={data.lines.map((l) => ({ ...l }))}
           shifts={data.shifts.map((s) => ({ ...s, localDate: s.localDate.toISOString().slice(0, 10) }))}
           durationStyle={prefs.durationStyle}
+          currencyDefault={prefs.currencyDefault}
           days={week.days}
           dayLabels={Object.fromEntries(
             week.days.map((d) => [d, dateFormat(locale, { weekday: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`))]),

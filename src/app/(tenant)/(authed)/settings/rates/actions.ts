@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { z } from "zod";
 
+import { safeNextPath } from "@/authz/redirects";
 import { field, has, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
+import { isIsoDate } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import { closeRateCard, createRateCard, repriceRateCard, type TimeCtx } from "@/modules/time";
 import { CURRENCIES, updatePreferences } from "@/preferences/service";
@@ -20,7 +22,7 @@ import { CURRENCIES, updatePreferences } from "@/preferences/service";
 
 const PATH = "/settings/rates";
 const uuid = z.uuid();
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const isoDate = z.string().refine(isIsoDate); // @/lib/week: shape AND a real date
 
 const ctxOf = async (): Promise<TimeCtx> => {
   const { membership, actor } = await requireTenantContext();
@@ -31,10 +33,9 @@ const ctxOf = async (): Promise<TimeCtx> => {
  * The form's returnTo: the client's Agreements tab posts the same
  * action, so a step-up redirect must land back on the page that asked.
  */
-const returnToOf = (fd: FormData): string => {
-  const raw = field(fd, "returnTo");
-  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : PATH;
-};
+const returnToOf = (fd: FormData): string => safeReturnTo(field(fd, "returnTo"));
+/** The same rule as every MFA redirect (safeNextPath): in-app paths only, never protocol-relative. */
+const safeReturnTo = (raw: string | null | undefined): string => safeNextPath(raw, PATH);
 
 const revalidate = (returnTo: string) => {
   revalidatePath(PATH);
@@ -104,7 +105,7 @@ export async function closeRateCardAction(raw: { id: string; effectiveTo: string
   const parsed = closeSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, message: tCommon("invalidInput") };
   const ctx = await ctxOf();
-  const returnTo = parsed.data.returnTo && parsed.data.returnTo.startsWith("/") ? parsed.data.returnTo : PATH;
+  const returnTo = safeReturnTo(parsed.data.returnTo);
   const r = await runForm(returnTo, async () => {
     await closeRateCard(ctx, parsed.data.id, parsed.data.effectiveTo);
     return t("closeForm.closed");
@@ -126,7 +127,7 @@ export async function repriceRateCardAction(
   if (!parsed.success) return { ok: false, message: tCommon("invalidInput") };
   const ctx = await ctxOf();
   const input = parsed.data;
-  const returnTo = input.returnTo && input.returnTo.startsWith("/") ? input.returnTo : PATH;
+  const returnTo = safeReturnTo(input.returnTo);
   const r = await runAction(returnTo, () =>
     repriceRateCard(ctx, {
       rateCardId: input.id,

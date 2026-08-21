@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDuration, formatMoney, type DurationStyle } from "@/lib/format";
+import { formatDurationSeconds, formatMoney, type DurationStyle } from "@/lib/format";
 import type { FormResult } from "@/lib/server-actions";
 import type { ReportSnapshot, ReportView } from "@/modules/time";
 
@@ -64,7 +64,7 @@ export function ReportsPanel({
       router.refresh();
     });
 
-  const fmt = (seconds: number) => formatDuration(locale, seconds / 60, durationStyle);
+  const fmt = (seconds: number) => formatDurationSeconds(locale, seconds, durationStyle);
   const open = reports.find((r) => r.id === openId) ?? null;
 
   return (

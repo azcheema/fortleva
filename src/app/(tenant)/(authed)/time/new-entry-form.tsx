@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Field, FormMessage, SectionCard } from "@/components/semantic";
@@ -20,9 +20,13 @@ import type { PickerOption, PickerProject } from "./quick-start";
  * "New entry" (`N` on /time; UI.md rule 9): a finished entry typed in —
  * either a duration ("1h 30m" / "90m" / "1,5") on a date, or a start
  * and end time on a date (past midnight = one row on the start date).
- * A real <form action>: a create form WANTS the reset React performs
- * after the action (the trap applies to controls that mirror server
- * state, not to an empty form). Errors stay on screen as a FormMessage.
+ *
+ * Submitted from onSubmit in a transition, NOT as a `<form action>`:
+ * React 19 resets a form action's uncontrolled fields when the action
+ * settles — on failure too — which wiped a typo'd duration, the note and
+ * every select (the standing trap, PLAN.md §0). Here the form is reset
+ * by hand, only after success. Billable is tri-state like the quick
+ * start: indeterminate = the work type's / project's default decides.
  */
 export function NewEntryForm({
   today,
@@ -35,11 +39,10 @@ export function NewEntryForm({
 }) {
   const t = useTranslations("time.newEntry");
   const router = useRouter();
-  const [state, action, pending] = useActionState<FormResult | null, FormData>(
-    async (_prev, fd) => createEntryAction(fd),
-    null,
-  );
+  const [pending, start] = useTransition();
+  const [failure, setFailure] = useState<FormResult | null>(null);
   const [projectId, setProjectId] = useState("");
+  const [billable, setBillable] = useState<"" | "yes" | "no">("");
   const [options, setOptions] = useState<{ items: PickerOption[]; services: PickerOption[] }>({ items: [], services: [] });
   const optionsRequest = useRef(0);
 
@@ -54,20 +57,36 @@ export function NewEntryForm({
     void pickerOptionsAction(next, project.clientId).then((r) => {
       if (optionsRequest.current !== token) return;
       if (r.ok) setOptions({ items: r.value.items.map((i) => ({ id: i.id, name: i.label })), services: r.value.services });
+      else toast.error(r.message);
     });
   };
 
-  useEffect(() => {
-    if (state?.ok) {
-      toast.success(state.message);
+  const submit = (form: HTMLFormElement) =>
+    start(async () => {
+      const r = await createEntryAction(new FormData(form)).catch(() => ({ ok: false, message: t("failed") }));
+      if (!r.ok) {
+        setFailure(r);
+        return;
+      }
+      setFailure(null);
+      form.reset();
+      setProjectId("");
+      setBillable("");
+      setOptions({ items: [], services: [] });
+      toast.success(r.message);
       notifyTimerChanged();
       router.refresh();
-    }
-  }, [state, router]);
+    });
 
   return (
     <SectionCard id="new-entry" title={t("title")} description={t("description")} className="scroll-mt-16">
-      <form action={action} className="grid grid-cols-1 items-end gap-3 md:grid-cols-6">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit(e.currentTarget);
+        }}
+        className="grid grid-cols-1 items-end gap-3 md:grid-cols-6"
+      >
         <Field htmlFor="ne-date" label={t("date")}>
           <Input id="ne-date" name="date" type="date" defaultValue={today} required />
         </Field>
@@ -124,16 +143,25 @@ export function NewEntryForm({
           <Input id="ne-description" name="description" placeholder={t("notePlaceholder")} autoComplete="off" data-testid="new-entry-description" />
         </Field>
         <div className="flex items-center gap-3 md:col-span-2">
-          <input type="hidden" name="billableMarker" value="1" />
+          {/* "" ⇒ the default decides; "1" / "0" ⇒ explicit (the action maps it to null / true / false). */}
+          <input type="hidden" name="billable" value={billable === "" ? "" : billable === "yes" ? "1" : "0"} />
           <label className="flex items-center gap-2 text-sm">
-            <NativeCheckbox name="billable" defaultChecked disabled={!projectId} />
-            {t("billable")}
+            <NativeCheckbox
+              checked={billable === "yes"}
+              ref={(el) => {
+                if (el) el.indeterminate = billable === "";
+              }}
+              onChange={(e) => setBillable(e.target.checked ? "yes" : "no")}
+              disabled={!projectId}
+              aria-label={t("billable")}
+            />
+            {projectId ? (billable === "" ? t("billableDefault") : t("billable")) : t("adhocNonBillable")}
           </label>
           <Button type="submit" size="sm" disabled={pending} className="ml-auto" data-testid="new-entry-submit">
             {t("add")}
           </Button>
         </div>
-        <FormMessage state={state?.ok ? null : state} className="md:col-span-6" />
+        <FormMessage state={failure} className="md:col-span-6" />
       </form>
     </SectionCard>
   );

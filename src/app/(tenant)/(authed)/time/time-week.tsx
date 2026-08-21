@@ -12,7 +12,7 @@ import { notifyTimerChanged } from "@/components/shell/timer-pill";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDuration, formatDurationHm, type DurationStyle } from "@/lib/format";
+import { formatDurationSeconds, formatDurationHm, type DurationStyle } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { continueEntryAction, deleteEntryAction, updateEntryAction } from "./actions";
@@ -78,7 +78,7 @@ export function TimeWeek({
       router.refresh();
     });
 
-  const fmt = (seconds: number) => formatDuration(locale, seconds / 60, durationStyle);
+  const fmt = (seconds: number) => formatDurationSeconds(locale, seconds, durationStyle);
   const byDay = new Map<string, WeekEntryRow[]>();
   for (const e of entries) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]);
   const weekTotal = entries.reduce((s, e) => s + (e.durationSeconds ?? 0), 0);

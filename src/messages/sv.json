@@ -1645,6 +1645,9 @@
       "note": "Anteckning",
       "notePlaceholder": "Vad gällde tiden?",
       "billable": "Fakturerbar",
+      "billableDefault": "Fakturerbar (projektets standard)",
+      "adhocNonBillable": "Snabbuppgifter är inte fakturerbara",
+      "failed": "Kunde inte lägga till posten.",
       "add": "Lägg till",
       "durationPlaceholder": "1h 30m"
     },

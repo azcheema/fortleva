@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { resolveTimeZone } from "@/i18n/resolve";
 import { localDateString } from "@/lib/duration";
-import { formatDuration, formatMoney } from "@/lib/format";
+import { formatDurationSeconds, formatMoney } from "@/lib/format";
 import { monthContaining } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import { agreementConsumption, listBillRateCards, type RateCardView } from "@/modules/time";
@@ -62,7 +62,7 @@ export default async function ClientAgreementsPage({ params }: { params: Promise
     services.map(async (s) => {
       try {
         const c = await agreementConsumption(ctx, s.id, month);
-        if (c.seconds > 0) usage[s.id] = formatDuration(locale, c.seconds / 60, prefs.durationStyle);
+        if (c.seconds > 0) usage[s.id] = formatDurationSeconds(locale, c.seconds, prefs.durationStyle);
       } catch (e) {
         if (!(e instanceof AuthzError)) throw e;
       }
@@ -144,11 +144,12 @@ export default async function ClientAgreementsPage({ params }: { params: Promise
             canDelete={client.caps.deleteServices}
             rates={rates}
             usage={usage}
+            defaultCurrency={prefs.currencyDefault}
           />
         )}
         {canAddService ? (
           <div id="new-service" className="scroll-mt-16 border-t border-border p-4">
-            <CreateServiceForm clientId={client.id} projects={client.projects.map((p) => ({ id: p.id, key: p.key, name: p.name }))} />
+            <CreateServiceForm clientId={client.id} projects={client.projects.map((p) => ({ id: p.id, key: p.key, name: p.name }))} defaultCurrency={prefs.currencyDefault} />
           </div>
         ) : null}
       </SectionCard>

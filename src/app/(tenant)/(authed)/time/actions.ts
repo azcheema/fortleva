@@ -7,7 +7,7 @@ import { z } from "zod";
 import { AuthzError } from "@/authz/errors";
 import { resolveTimeZone } from "@/i18n/resolve";
 import { addSeconds, localDateString, startOfLocalDay } from "@/lib/duration";
-import { field, has, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
+import { field, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { isIsoDate } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
@@ -247,7 +247,9 @@ export async function createEntryAction(formData: FormData): Promise<FormResult>
     serviceId: field(formData, "serviceId") || null,
     workTypeId: field(formData, "workTypeId") || null,
     description: field(formData, "description") || null,
-    billable: has(formData, "billableMarker") ? has(formData, "billable") : null,
+    // Tri-state like the quick start: "" ⇒ null ⇒ the work type's / project's
+    // default decides (resolveTarget); "1" / "0" ⇒ an explicit choice.
+    billable: field(formData, "billable") === "1" ? true : field(formData, "billable") === "0" ? false : null,
   };
   for (const k of ["projectId", "workItemId", "serviceId", "workTypeId"] as const) {
     if (target[k] !== null && !uuid.safeParse(target[k]).success) return { ok: false, message: tCommon("invalidInput") };
@@ -257,6 +259,9 @@ export async function createEntryAction(formData: FormData): Promise<FormResult>
   const end = (field(formData, "end") ?? "").trim();
   const timeZone = await resolveTimeZone();
   const r = await runForm(PATH, async () => {
+    // A half-filled pair is a time error, not a silent fall-through to
+    // the duration path (the clock the member typed would be dropped).
+    if ((start && !end) || (!start && end)) throw new Error("INVALID_TIME");
     if (start && end) {
       const ms = hhmm.exec(start);
       const me = hhmm.exec(end);
@@ -277,6 +282,21 @@ export async function createEntryAction(formData: FormData): Promise<FormResult>
   return r;
 }
 
+/**
+ * Only the fields the grid edits inline. Server-action arguments are
+ * client-supplied: a move (projectId / workItemId / start / end) is not
+ * admitted here — it would need its own UI and its own scope story.
+ */
+const entryPatchSchema = z
+  .object({
+    durationText: z.string().max(40).optional(),
+    description: z.string().max(1000).nullable().optional(),
+    billable: z.boolean().optional(),
+    serviceId: uuid.nullable().optional(),
+    workTypeId: uuid.nullable().optional(),
+  })
+  .strict();
+
 export async function updateEntryAction(
   entryId: string,
   patch: { durationText?: string; description?: string | null; billable?: boolean; serviceId?: string | null; workTypeId?: string | null },
@@ -284,10 +304,11 @@ export async function updateEntryAction(
   const t = await getTranslations("time");
   const tCommon = await getTranslations("common");
   const id = uuid.safeParse(entryId);
-  if (!id.success) return { ok: false, message: tCommon("invalidInput") };
+  const parsed = entryPatchSchema.safeParse(patch);
+  if (!id.success || !parsed.success) return { ok: false, message: tCommon("invalidInput") };
   const ctx = await ctxOf();
   const r = await runForm(PATH, async () => {
-    await updateEntry(ctx, id.data, patch);
+    await updateEntry(ctx, id.data, parsed.data);
     return t("toasts.saved");
   });
   if (r.ok) revalidate();

@@ -7,7 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { DataTable, EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDuration, formatMoney, type DurationStyle } from "@/lib/format";
+import { formatDurationSeconds, formatMoney, type DurationStyle } from "@/lib/format";
 
 export type TeamLine = {
   memberId: string;
@@ -18,6 +18,7 @@ export type TeamLine = {
   seconds: number;
   billableSeconds: number;
   amount: string | null;
+  currency: string | null;
   hoursPerDay: number | null;
 };
 
@@ -41,28 +42,38 @@ export function TeamTable({
   lines,
   shifts,
   durationStyle,
+  currencyDefault,
   days,
   dayLabels,
 }: {
   lines: TeamLine[];
   shifts: TeamShiftDay[];
   durationStyle: DurationStyle;
+  /** The tenant's finance.currencyDefault — the fallback for ad-hoc lines; never a literal. */
+  currencyDefault: string;
   days: string[];
   /** ISO date → server-formatted heading ("Thu 20"). */
   dayLabels: Record<string, string>;
 }) {
   const t = useTranslations("time.team");
   const locale = useLocale();
-  const fmt = (seconds: number) => formatDuration(locale, seconds / 60, durationStyle);
+  const fmt = (seconds: number) => formatDurationSeconds(locale, seconds, durationStyle);
   const hasAmounts = lines.some((l) => l.amount !== null);
 
-  // Per-member totals for the footer-ish rows.
-  const byMember = new Map<string, { name: string; seconds: number; billable: number; amount: number }>();
+  // Per-member totals for the footer-ish rows. Money sums only within
+  // ONE currency: a member billed in SEK on one project and EUR on
+  // another gets no total (shown as —), never a blended number.
+  const currencyOf = (l: TeamLine) => l.currency ?? currencyDefault;
+  const byMember = new Map<string, { name: string; seconds: number; billable: number; amount: number; currency: string | null; mixed: boolean }>();
   for (const l of lines) {
-    const m = byMember.get(l.memberId) ?? { name: l.memberName, seconds: 0, billable: 0, amount: 0 };
+    const m = byMember.get(l.memberId) ?? { name: l.memberName, seconds: 0, billable: 0, amount: 0, currency: null, mixed: false };
     m.seconds += l.seconds;
     m.billable += l.billableSeconds;
-    m.amount += l.amount ? Number(l.amount) : 0;
+    if (l.amount) {
+      m.amount += Number(l.amount);
+      if (m.currency === null) m.currency = currencyOf(l);
+      else if (m.currency !== currencyOf(l)) m.mixed = true;
+    }
     byMember.set(l.memberId, m);
   }
 
@@ -121,7 +132,7 @@ export function TeamTable({
                     <TableCell priority="medium" className="num text-right text-muted-foreground">{fmt(l.billableSeconds)}</TableCell>
                     {hasAmounts ? (
                       <TableCell priority="low" className="num text-right text-muted-foreground">
-                        {l.amount ? formatMoney(locale, Number(l.amount), "SEK") : "—"}
+                        {l.amount ? formatMoney(locale, Number(l.amount), currencyOf(l)) : "—"}
                       </TableCell>
                     ) : null}
                   </TableRow>
@@ -133,7 +144,9 @@ export function TeamTable({
                     <TableCell className="num text-right font-semibold">{fmt(m.seconds)}</TableCell>
                     <TableCell priority="medium" className="num text-right">{fmt(m.billable)}</TableCell>
                     {hasAmounts ? (
-                      <TableCell priority="low" className="num text-right">{formatMoney(locale, m.amount, "SEK")}</TableCell>
+                      <TableCell priority="low" className="num text-right">
+                        {m.currency !== null && !m.mixed ? formatMoney(locale, m.amount, m.currency) : "—"}
+                      </TableCell>
                     ) : null}
                   </TableRow>
                 ))}

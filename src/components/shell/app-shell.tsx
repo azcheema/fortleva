@@ -105,7 +105,7 @@ export function AppShell({
   user,
   theme,
   onSwitchLocale,
-  timer = null,
+  timer,
   children,
 }: {
   nav: readonly NavEntry[];
@@ -121,8 +121,10 @@ export function AppShell({
   /** Preference the server rendered <html> with (src/lib/theme-server). */
   theme: ThemePreference;
   onSwitchLocale: (locale: string) => Promise<void>;
-  /** The time module's server snapshot for the pill (null = no pill). */
-  timer?: TimerPillState | null;
+  /** The time module's server snapshot for the pill — REQUIRED (null = no
+   * time:track / module off): state a shared component mirrors is never a
+   * default (PLAN.md standing trap), so a new layout cannot silently lose it. */
+  timer: TimerPillState | null;
   children: React.ReactNode;
 }) {
   const t = useTranslations("nav");

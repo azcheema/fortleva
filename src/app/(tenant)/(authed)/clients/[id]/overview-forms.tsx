@@ -253,11 +253,14 @@ export function ServicesList({
   canDelete,
   rates,
   usage,
+  defaultCurrency,
 }: {
   clientId: string;
   services: ServiceRow[];
   canEdit: boolean;
   canDelete: boolean;
+  /** The tenant's finance.currencyDefault — a row without its own currency is shown in it; never a literal. */
+  defaultCurrency: string;
   /**
    * 2T (Agreements tab): the agreement's open BILL rate, FORMATTED ON THE
    * SERVER ("1 200,00 kr/h"), null = no card; absent = the viewer lacks
@@ -285,7 +288,7 @@ export function ServicesList({
     if (!row.priceExVat) return null;
     const amount = Number(row.priceExVat);
     if (!Number.isFinite(amount)) return row.priceExVat;
-    return formatMoney(locale, amount, row.currency ?? "SEK");
+    return formatMoney(locale, amount, row.currency ?? defaultCurrency);
   };
 
   /**
@@ -397,9 +400,12 @@ export function ServicesList({
 export function CreateServiceForm({
   clientId,
   projects,
+  defaultCurrency,
 }: {
   clientId: string;
   projects: { id: string; key: string; name: string }[];
+  /** The tenant's finance.currencyDefault seeds the currency field. */
+  defaultCurrency: string;
 }) {
   const t = useTranslations("clients.services");
   const [kind, setKind] = useState<"ONE_TIME" | "RECURRING">("RECURRING");
@@ -460,7 +466,7 @@ export function CreateServiceForm({
           id="s-currency"
           name="currency"
           maxLength={3}
-          defaultValue="SEK"
+          defaultValue={defaultCurrency}
           className="font-mono uppercase"
           disabled={pending}
         />

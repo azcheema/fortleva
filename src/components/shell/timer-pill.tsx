@@ -4,7 +4,7 @@ import { SquareIcon, TimerIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore, useTransition } from "react";
 import { toast } from "sonner";
 
 import { getTimerStateAction, stopTimerAction, type TimerPillState } from "@/app/(tenant)/(authed)/time/actions";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { formatDurationClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { isEditableTarget } from "./use-hotkeys";
+import { isEditableTarget, isGoSequencePending } from "./use-hotkeys";
 
 /** Other surfaces dispatch this after they start/stop a timer so the pill re-syncs. */
 export const TIMER_EVENT = "flv:timer";
@@ -21,35 +21,94 @@ export const notifyTimerChanged = (): void => {
 };
 
 /**
+ * One timer, two mount points. The shell renders the pill in the desktop
+ * header AND in the mobile strip (CSS shows one); both instances read
+ * this module store, and only the FIRST mounted instance (the owner)
+ * runs the 1 Hz tick, the focus/visibility/event re-sync, the `T` hotkey
+ * and the tab-title clock — the review found two instances each syncing
+ * twice per event and the hotkey stopping the timer twice ("No timer is
+ * running" toast after every `T`).
+ */
+type Snapshot = {
+  state: TimerPillState | null;
+  /** Browser clock minus server clock, measured when a snapshot arrives. */
+  skew: number;
+  /** Browser "now" the elapsed time is computed from (ticks once a second). */
+  now: number;
+};
+
+let snapshot: Snapshot | null = null;
+let mounted = 0;
+const listeners = new Set<() => void>();
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => {
+    listeners.delete(l);
+  };
+};
+const publish = (next: Snapshot) => {
+  snapshot = next;
+  for (const l of listeners) l();
+};
+
+const CLOCK_PREFIX = /^\d+:\d\d:\d\d · /;
+
+/**
  * The persistent timer pill (UI.md §3.2, rule 9; PLAN.md 2T screens):
  * task title, elapsed time ticking once a second from the SERVER start
- * instant (skew-corrected: the server's "now" is compared with the
- * browser's at mount), mirrored into the tab title, one tap to stop.
+ * instant (skew-corrected), mirrored into the tab title, one tap to stop.
  * `T` anywhere outside an input stops the running timer or jumps to
- * /time. The layout passes the server snapshot as the INITIAL state only
- * (the "prop carrying server state goes stale" trap): the pill re-reads
- * its state on focus/visibility and after every timer event.
+ * /time — unless a `G` go-to sequence is armed. The layout passes the
+ * server snapshot as the INITIAL state only (the "prop carrying server
+ * state goes stale" trap): the pill re-reads its state on focus /
+ * visibility and after every timer event.
  */
 export function TimerPill({ initial, className }: { initial: TimerPillState | null; className?: string }) {
   const t = useTranslations("shell.timer");
   const locale = useLocale();
   const router = useRouter();
-  const [state, setState] = useState<TimerPillState | null>(initial);
-  const [now, setNow] = useState(() => Date.now());
-  // Browser clock minus server clock, measured when a snapshot arrives.
-  const [skew, setSkew] = useState(() => (initial ? Date.now() - Date.parse(initial.serverNow) : 0));
   const [pending, startTransition] = useTransition();
+  const owner = useRef(false);
   const baseTitle = useRef<string | null>(null);
+
+  // Server and first client render agree: elapsed AT the server's "now".
+  const serverSnapshot = useMemo<Snapshot>(
+    () => ({ state: initial, skew: 0, now: initial ? Date.parse(initial.serverNow) : 0 }),
+    [initial],
+  );
+  const snap = useSyncExternalStore(
+    subscribe,
+    () => snapshot ?? serverSnapshot,
+    () => serverSnapshot,
+  );
 
   const sync = useCallback(async () => {
     const next = await getTimerStateAction().catch(() => null);
-    if (next) {
-      setSkew(Date.now() - Date.parse(next.serverNow));
-      setState(next);
-    }
+    if (next) publish({ state: next, skew: Date.now() - Date.parse(next.serverNow), now: Date.now() });
   }, []);
 
+  // Ownership: the first mounted instance owns the side effects. Declared
+  // first so the effects below (same commit) see the flag; mount-only, so
+  // a layout refresh never re-elects.
   useEffect(() => {
+    mounted += 1;
+    owner.current = mounted === 1;
+    return () => {
+      mounted -= 1;
+      if (mounted === 0) snapshot = null;
+      owner.current = false;
+    };
+  }, []);
+
+  // A fresh server snapshot (first mount, or the layout re-rendered after
+  // a refresh) is authoritative: the owner publishes it for both instances.
+  useEffect(() => {
+    if (!owner.current || !initial) return;
+    publish({ state: initial, skew: Date.now() - Date.parse(initial.serverNow), now: Date.now() });
+  }, [initial]);
+
+  useEffect(() => {
+    if (!owner.current) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") void sync();
     };
@@ -63,10 +122,11 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
     };
   }, [sync]);
 
-  const running = state?.running ?? null;
+  const running = snap.state?.running ?? null;
 
-  // 1 Hz tick, isolated to this component; the tab title follows.
+  // 1 Hz tick (owner only); the tab title follows and is restored on stop.
   useEffect(() => {
+    if (!owner.current) return;
     if (!running) {
       if (baseTitle.current !== null) {
         document.title = baseTitle.current;
@@ -74,17 +134,23 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
       }
       return;
     }
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    const id = window.setInterval(() => {
+      if (snapshot) publish({ ...snapshot, now: Date.now() });
+    }, 1000);
     return () => window.clearInterval(id);
   }, [running]);
 
-  const elapsed = running ? Math.max(0, Math.floor((now - skew - Date.parse(running.startedAt)) / 1000)) : 0;
+  const elapsed = running ? Math.max(0, Math.floor((snap.now - snap.skew - Date.parse(running.startedAt)) / 1000)) : 0;
   const clock = formatDurationClock(locale, elapsed);
 
   useEffect(() => {
-    if (!running) return;
-    if (baseTitle.current === null) baseTitle.current = document.title.replace(/^\d+:\d\d:\d\d · /, "");
-    document.title = `${clock} · ${baseTitle.current}`;
+    if (!owner.current || !running) return;
+    // A client-side navigation replaced the title underneath us: re-read
+    // it whenever it no longer starts with our clock, so the tab never
+    // sticks on the page where the timer was first seen.
+    const current = document.title;
+    if (!CLOCK_PREFIX.test(current)) baseTitle.current = current;
+    if (baseTitle.current !== null) document.title = `${clock} · ${baseTitle.current}`;
   }, [clock, running]);
 
   const stop = useCallback(() => {
@@ -97,11 +163,14 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
     });
   }, [locale, router, sync, t]);
 
-  // `T`: stop the running timer, else go to /time (UI.md §6).
+  // `T`: stop the running timer, else go to /time (UI.md §6) — owner only,
+  // and never as the second key of `G T` (the shell's go-to).
   useEffect(() => {
+    if (!owner.current) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isEditableTarget(e.target)) return;
       if (e.key.toLowerCase() !== "t") return;
+      if (isGoSequencePending()) return;
       e.preventDefault();
       if (running) stop();
       else router.push("/time#quick-start");
@@ -110,7 +179,7 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
     return () => window.removeEventListener("keydown", onKey);
   }, [running, router, stop]);
 
-  if (!state) return null;
+  if (!snap.state) return null;
 
   if (!running) {
     return (
@@ -130,8 +199,8 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
       data-slot="timer-pill"
       data-testid="timer-pill"
       className={cn(
-        "flex max-w-[28rem] items-center gap-2 rounded-full border border-border bg-card py-0.5 pr-0.5 pl-3 text-sm",
-        state.nudge && "border-(--tone-warning-border)",
+        "flex max-w-md items-center gap-2 rounded-full border border-border bg-card py-0.5 pr-0.5 pl-3 text-sm",
+        snap.state.nudge && "border-(--tone-warning-border)",
         className,
       )}
     >
@@ -142,7 +211,7 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
       <span className="num shrink-0 tabular-nums" aria-live="off" data-testid="timer-pill-elapsed">
         {clock}
       </span>
-      {state.nudge ? <span className="sr-only">{t("nudge")}</span> : null}
+      {snap.state.nudge ? <span className="sr-only">{t("nudge")}</span> : null}
       <Button
         type="button"
         size="icon-sm"

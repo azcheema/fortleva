@@ -20,6 +20,15 @@ export type HotkeyHandlers = {
 
 const SEQUENCE_WINDOW_MS = 900;
 
+/**
+ * The armed `G` sequence is module state, not per-hook: another window
+ * keydown listener (the timer pill's bare `T`) registers BEFORE the
+ * shell's and therefore cannot see this hook's preventDefault — it asks
+ * here instead, so `G T` navigates and never stops a running timer.
+ */
+let pendingGoTimer: number | null = null;
+export const isGoSequencePending = (): boolean => pendingGoTimer !== null;
+
 export const isEditableTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -33,7 +42,6 @@ export const isApplePlatform = (): boolean =>
 
 export function useGlobalHotkeys(handlers: HotkeyHandlers): void {
   const ref = useRef(handlers);
-  const pendingGo = useRef<number | null>(null);
 
   useEffect(() => {
     ref.current = handlers;
@@ -41,9 +49,9 @@ export function useGlobalHotkeys(handlers: HotkeyHandlers): void {
 
   useEffect(() => {
     const clearPending = () => {
-      if (pendingGo.current !== null) {
-        window.clearTimeout(pendingGo.current);
-        pendingGo.current = null;
+      if (pendingGoTimer !== null) {
+        window.clearTimeout(pendingGoTimer);
+        pendingGoTimer = null;
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
@@ -58,7 +66,7 @@ export function useGlobalHotkeys(handlers: HotkeyHandlers): void {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isEditableTarget(e.target)) return;
 
-      if (pendingGo.current !== null) {
+      if (pendingGoTimer !== null) {
         clearPending();
         const key = e.key.toUpperCase();
         if (h.goKeys.includes(key)) {
@@ -73,7 +81,7 @@ export function useGlobalHotkeys(handlers: HotkeyHandlers): void {
         return;
       }
       if (e.key.toLowerCase() === "g") {
-        pendingGo.current = window.setTimeout(clearPending, SEQUENCE_WINDOW_MS);
+        pendingGoTimer = window.setTimeout(clearPending, SEQUENCE_WINDOW_MS);
       }
     };
     window.addEventListener("keydown", onKeyDown);

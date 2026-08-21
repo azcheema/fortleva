@@ -1645,6 +1645,9 @@
       "note": "Note",
       "notePlaceholder": "What was this time for?",
       "billable": "Billable",
+      "billableDefault": "Billable (project default)",
+      "adhocNonBillable": "Instant tasks are not billable",
+      "failed": "Could not add the entry.",
       "add": "Add entry",
       "durationPlaceholder": "1h 30m"
     },

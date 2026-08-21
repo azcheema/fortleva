@@ -1,5 +1,7 @@
 "use client";
 
+import { MODULES } from "@/authz/catalog";
+
 import { CheckIcon, MinusIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -35,18 +37,9 @@ export type PermissionGroup = {
   permissions: { code: string; description: string; requiresMfa: boolean }[];
 };
 
-const MODULE_KEYS = [
-  "core",
-  "invoicing",
-  "contracts",
-  "reports",
-  "issues",
-  "documentation",
-  "continuity_box",
-  "portal",
-] as const;
-type ModuleKey = (typeof MODULE_KEYS)[number];
-const isModuleKey = (m: string): m is ModuleKey => (MODULE_KEYS as readonly string[]).includes(m);
+/** Every catalog module has a heading key in both locales (roles.modules.*); derived, never re-listed. */
+type ModuleKey = (typeof MODULES)[number];
+const isModuleKey = (m: string): m is ModuleKey => (MODULES as readonly string[]).includes(m);
 
 /** `client:view` reads faster as a quiet namespace plus a loud verb. */
 function PermissionCode({ code, granted }: { code: string; granted: boolean }) {

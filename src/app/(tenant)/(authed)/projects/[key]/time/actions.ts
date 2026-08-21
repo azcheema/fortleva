@@ -117,18 +117,23 @@ export async function saveBudgetAction(formData: FormData): Promise<FormResult> 
     .split(/[,\s]+/)
     .map((s) => Number(s))
     .filter((n) => Number.isFinite(n) && n > 0);
-  if (!projectId.success || !key.success || (kind !== "HOURS" && kind !== "MONEY") || amount === "") {
-    return { ok: false, message: tCommon("invalidInput") };
+  // An EDIT posts no `kind` / `period`: the card pins them as disabled
+  // controls once a budget exists, and a disabled control is not
+  // submitted — so they are required on the create branch only.
+  const existingId = uuid.safeParse(field(formData, "budgetId"));
+  const createKind = kind === "HOURS" || kind === "MONEY" ? kind : null;
+  if (!projectId.success || !key.success || amount === "") return { ok: false, message: tCommon("invalidInput") };
+  if (!existingId.success) {
+    if (!createKind) return { ok: false, message: tCommon("invalidInput") };
+    if (!["NONE", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"].includes(period)) return { ok: false, message: tCommon("invalidInput") };
   }
-  if (!["NONE", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"].includes(period)) return { ok: false, message: tCommon("invalidInput") };
-  const existingId = field(formData, "budgetId");
   const r = await runForm(timePath(key.data), async () => {
-    if (existingId && uuid.safeParse(existingId).success) {
-      await updateBudget(ctx, existingId, { amount, thresholds, includeNonBillable: has(formData, "includeNonBillable") });
+    if (existingId.success) {
+      await updateBudget(ctx, existingId.data, { amount, thresholds, includeNonBillable: has(formData, "includeNonBillable") });
     } else {
       await createBudget(ctx, {
         projectId: projectId.data,
-        kind,
+        kind: createKind!,
         amount,
         period: period as "NONE" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY",
         periodAnchor: period === "NONE" ? null : (field(formData, "periodAnchor") || null),

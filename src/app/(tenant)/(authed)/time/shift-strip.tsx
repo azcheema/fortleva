@@ -10,7 +10,7 @@ import { MetricTile, SectionCard } from "@/components/semantic";
 import { notifyTimerChanged } from "@/components/shell/timer-pill";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDuration, type DurationStyle } from "@/lib/format";
+import { formatDurationSeconds, type DurationStyle } from "@/lib/format";
 
 import { clockInAction, clockOutAction, confirmShiftAction, startBreakAction, stopBreakAction } from "./actions";
 
@@ -82,7 +82,7 @@ export function ShiftStrip({
   const breakSeconds = closedBreaks + openBreaks;
   const trackedSeconds = trackedTodaySeconds + runningSeconds;
   const unallocated = shiftSeconds - breakSeconds - trackedSeconds;
-  const fmt = (seconds: number) => formatDuration(locale, seconds / 60, durationStyle);
+  const fmt = (seconds: number) => formatDurationSeconds(locale, seconds, durationStyle);
 
   const run = (fn: () => Promise<{ ok: boolean; message: string }>, after?: () => void) =>
     start(async () => {

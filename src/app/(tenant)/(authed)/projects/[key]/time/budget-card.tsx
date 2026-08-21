@@ -78,6 +78,8 @@ export function BudgetCard({
         <input type="hidden" name="projectId" value={projectId} />
         <input type="hidden" name="projectKey" value={projectKey} />
         {budget ? <input type="hidden" name="budgetId" value={budget.id} /> : null}
+        {/* A disabled control posts nothing: the pinned kind travels as a hidden field (belt; the action does not require it on edit). */}
+        {budget ? <input type="hidden" name="kind" value={budget.kind} /> : null}
         <Field htmlFor="b-kind" label={t("kind")}>
           <NativeSelect id="b-kind" name="kind" defaultValue={budget?.kind ?? "HOURS"} disabled={budget !== null}>
             <option value="HOURS">{t("kinds.HOURS")}</option>

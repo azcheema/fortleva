@@ -6,8 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { AuthzError } from "@/authz/errors";
 import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { withTenant } from "@/db";
-import { resolveLocale, resolveTimeZone } from "@/i18n/resolve";
+import { resolveLocale, resolvePreferences, resolveTimeZone } from "@/i18n/resolve";
 import { localDateString } from "@/lib/duration";
 import { dateFormat } from "@/lib/format";
 import { addDays, isIsoDate, weekContaining } from "@/lib/week";
@@ -21,7 +20,6 @@ import {
   listWorkTypes,
   type EntryListRow,
 } from "@/modules/time";
-import { readPreferences } from "@/preferences/service";
 import { listProjects } from "@/projects/service";
 
 import { labelOf } from "./label";
@@ -55,16 +53,21 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
   const clock = dateFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone: timezone, hourCycle: "h23" });
   const sp = await searchParams;
 
-  const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
-    readPreferences(tx, membership.tenantId),
-  );
+  const prefs = (await resolvePreferences())!; // one read per request, shared with resolveTimeZone
   const today = localDateString(new Date(), timezone);
   const anchor = isIsoDate(sp.w) ? sp.w : today;
   const week = weekContaining(anchor, prefs.weekStart);
+  // The shift strip is always TODAY; when the viewed week does not
+  // contain today its rows are fetched separately (the week lists
+  // would otherwise show Tracked 0:00 and drop today's closed shifts).
+  const todayInWeek = week.days.includes(today);
 
   let data: {
     entries: EntryListRow[];
     shifts: Awaited<ReturnType<typeof listMyShifts>>;
+    /** Today's rows — the week lists when the week contains today, else their own fetch. */
+    todayEntries: EntryListRow[];
+    todayShifts: Awaited<ReturnType<typeof listMyShifts>>;
     timer: Awaited<ReturnType<typeof getCurrentTimer>>;
     shift: Awaited<ReturnType<typeof getCurrentShift>>;
     notice: Awaited<ReturnType<typeof getNoticeStatus>>;
@@ -72,7 +75,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     projects: PickerProject[];
   } | null = null;
   try {
-    const [entries, shifts, timer, shift, notice, workTypes, groups] = await Promise.all([
+    const [entries, shifts, timer, shift, notice, workTypes, groups, todayEntries, todayShifts] = await Promise.all([
       listMyEntries(ctx, { from: week.from, to: week.to }),
       listMyShifts(ctx, { from: week.from, to: week.to }),
       getCurrentTimer(ctx),
@@ -80,10 +83,14 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
       getNoticeStatus(ctx, locale),
       listWorkTypes(ctx),
       listProjects(ctx),
+      todayInWeek ? null : listMyEntries(ctx, { from: today, to: today }),
+      todayInWeek ? null : listMyShifts(ctx, { from: today, to: today }),
     ]);
     data = {
       entries,
       shifts,
+      todayEntries: todayEntries ?? entries,
+      todayShifts: todayShifts ?? shifts,
       timer,
       shift,
       notice,
@@ -111,7 +118,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     );
   }
 
-  const { entries, shifts, timer, shift, notice, workTypes, projects } = data;
+  const { entries, timer, shift, notice, workTypes, projects, todayEntries, todayShifts } = data;
   const serverNow = timer.serverNow.toISOString();
   const noticeRequired = notice.required && !notice.acknowledged;
 
@@ -137,7 +144,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     week.days.map((d) => [d, dateFormat(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`))]),
   );
 
-  const toShift = (s: (typeof shifts)[number]): ShiftStripShift => ({
+  const toShift = (s: (typeof todayShifts)[number]): ShiftStripShift => ({
     id: s.id,
     startedAt: s.startedAt.toISOString(),
     stoppedAt: s.stoppedAt?.toISOString() ?? null,
@@ -145,10 +152,10 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     needsReview: s.needsReview,
     breaks: s.breaks.map((b) => ({ id: b.id, startedAt: b.startedAt.toISOString(), stoppedAt: b.stoppedAt?.toISOString() ?? null })),
   });
-  const shiftsToday = shifts
+  const shiftsToday = todayShifts
     .filter((s) => s.localDate.toISOString().slice(0, 10) === today && s.stoppedAt !== null)
     .map(toShift);
-  const trackedToday = entries
+  const trackedToday = todayEntries
     .filter((e) => e.localDate.toISOString().slice(0, 10) === today && e.stoppedAt !== null)
     .reduce((s, e) => s + (e.durationSeconds ?? 0), 0);
 

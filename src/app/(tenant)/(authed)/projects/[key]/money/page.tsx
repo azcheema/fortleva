@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { withTenant } from "@/db";
 import { resolveTimeZone } from "@/i18n/resolve";
 import { localDateString } from "@/lib/duration";
-import { formatDuration, formatMoney, formatPercent } from "@/lib/format";
+import { formatDurationSeconds, formatMoney, formatPercent } from "@/lib/format";
 import { isIsoDate, monthContaining } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import { getProjectBudget, projectMoney, type MoneyLine } from "@/modules/time";
@@ -80,7 +80,7 @@ export default async function ProjectMoneyPage({
     );
   }
 
-  const fmt = (seconds: number) => formatDuration(locale, seconds / 60, prefs.durationStyle);
+  const fmt = (seconds: number) => formatDurationSeconds(locale, seconds, prefs.durationStyle);
   const amount = (value: string | null) =>
     value !== null && money.currency ? formatMoney(locale, Number(value), money.currency) : value;
   const pct = (p: number | null) => (p === null ? null : formatPercent(locale, p / 100, 1));

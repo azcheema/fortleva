@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { withTenant } from "@/db";
 import { resolveTimeZone } from "@/i18n/resolve";
 import { localDateString } from "@/lib/duration";
-import { formatDuration, formatMoney } from "@/lib/format";
+import { formatDurationSeconds, formatMoney } from "@/lib/format";
 import { isIsoDate, monthContaining } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import { getProjectBudget, projectRollup, type RollupLine } from "@/modules/time";
@@ -77,7 +77,7 @@ export default async function ProjectTimePage({
     );
   }
 
-  const fmt = (seconds: number) => formatDuration(locale, seconds / 60, prefs.durationStyle);
+  const fmt = (seconds: number) => formatDurationSeconds(locale, seconds, prefs.durationStyle);
   const money = (amount: string | null) =>
     amount !== null && rollup.currency ? formatMoney(locale, Number(amount), rollup.currency) : null;
   const weeks = [...new Set(rollup.byMember.flatMap((m) => Object.keys(m.weeks)))].sort();

@@ -111,6 +111,10 @@ export function formatDurationDecimal(locale: string, minutes: number): string {
 
 export type DurationStyle = "hm" | "clock" | "decimal";
 
+/** The 2T module stores seconds; one adapter instead of a `seconds / 60` closure per view. */
+export const formatDurationSeconds = (locale: string, seconds: number, style: DurationStyle): string =>
+  formatDuration(locale, seconds / 60, style);
+
 export function formatDuration(locale: string, minutes: number, style: DurationStyle): string {
   if (style === "clock") return formatDurationClock(locale, minutes * 60);
   if (style === "decimal") return formatDurationDecimal(locale, minutes);
