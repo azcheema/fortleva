@@ -10,6 +10,7 @@ import {
   changeState,
   createItem,
   listItems,
+  updateItemFields,
 } from "./index";
 
 /**
@@ -361,5 +362,41 @@ describe("notify.emit: assignment fan-out with dedupe", () => {
     );
     expect(mine).toBe(1);
     expect(theirs).toBe(0); // principal_scope binds SELECT to the receiver
+  });
+});
+
+describe("review 2026-08-21 — history follows the item behind the gate", () => {
+  it("downgrading an item flips its CLIENT_VISIBLE activity rows to INTERNAL; a CLIENT_VISIBLE activity row on an INTERNAL item is refused at the database", async () => {
+    await f.platform.project.update({ where: { id: projectId }, data: { portalEnabled: true } });
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Shared then private" });
+    await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
+    await updateItemFields(ownerCtx(), id, { title: "Shared, renamed" }); // title is portal-safe ⇒ CLIENT_VISIBLE history
+    const visibleBefore = await f.platform.workItemActivity.count({ where: { tenantId: f.tenantId, workItemId: id, visibility: "CLIENT_VISIBLE" } });
+    expect(visibleBefore).toBeGreaterThan(0);
+    await withTenant(f.tenantId, { type: "contact", id: contact.id, clientId }, async (tx) => {
+      expect(await tx.workItemActivity.count({ where: { workItemId: id } })).toBe(visibleBefore);
+    });
+
+    await changeItemVisibility(ownerCtx(), id, "INTERNAL");
+    expect(await f.platform.workItemActivity.count({ where: { tenantId: f.tenantId, workItemId: id, visibility: "CLIENT_VISIBLE" } })).toBe(0);
+    await withTenant(f.tenantId, { type: "contact", id: contact.id, clientId }, async (tx) => {
+      expect(await tx.workItemActivity.count({ where: { workItemId: id } })).toBe(0);
+    });
+
+    // The guard: no writer — not even the owner role — can stamp a visible history row on a private item.
+    await expect(
+      f.platform.workItemActivity.create({
+        data: { tenantId: f.tenantId, clientId, projectId, workItemId: id, field: "title", visibility: "CLIENT_VISIBLE" },
+      }),
+    ).rejects.toThrow(/cannot be CLIENT_VISIBLE on an item the client cannot see/);
+    // And client_id / project_id are derived from the item, not trusted from the writer.
+    const other = randomUUID();
+    await f.platform.client.create({ data: { id: other, tenantId: f.tenantId, name: "Other" } });
+    const row = await f.platform.workItemActivity.create({
+      data: { tenantId: f.tenantId, clientId: other, projectId, workItemId: id, field: "title", visibility: "INTERNAL" },
+    });
+    expect(row.clientId).toBe(clientId);
+    await f.platform.workItemActivity.delete({ where: { id: row.id } });
+    await f.platform.client.delete({ where: { id: other } });
   });
 });

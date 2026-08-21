@@ -2271,7 +2271,17 @@ enum WorkItemSource {
 ///     visibility: OLD = CLIENT_VISIBLE AND NEW = INTERNAL AND EXISTS any
 ///     child work_item / comment(subject) / document(attached WORK_ITEM)
 ///     with visibility = 'CLIENT_VISIBLE' ⇒ RAISE (the bulk action
-///     flips children first, in the same tx, deepest first).
+///     flips children first, in the same tx, deepest first). History
+///     FOLLOWS the item (review 2026-08-21): the same trigger flips the
+///     item's CLIENT_VISIBLE work_item_activity rows to INTERNAL — they
+///     are tenant-owned, refusing would make every downgrade after a
+///     safe-field edit impossible, and the portal_gate on activity keys
+///     on the row's own visibility.
+///   TRIGGER work_item_activity_denorm_guard BEFORE INSERT OR UPDATE OF
+///     visibility, work_item_id, client_id, project_id: derives
+///     client_id / project_id from the item (never trusted from the
+///     writer) and RAISEs on CLIENT_VISIBLE when the item is not
+///     CLIENT_VISIBLE — the comment_denorm_guard twin for history rows.
 ///   TRIGGER work_item_state_sync BEFORE INSERT OR UPDATE OF state_id:
 ///     NEW.state_category := (SELECT category FROM workflow_state WHERE
 ///     id = NEW.state_id AND tenant_id = NEW.tenant_id AND project_id =
@@ -2894,8 +2904,14 @@ model BudgetAlert {
 /// NONE (trigger on project.hours_sharing_mode fans out like
 /// portal_enabled); billableAmount populated only when mode =
 /// BILLABLE_AMOUNT; budget columns copied from the ACTIVE budget when the
-/// mode allows. Portal reads it under the contact principal via RLS —
-/// no system-principal bypass in any portal read path.
+/// mode allows — and FAIL-CLOSED AT THE DATABASE (review 2026-08-21):
+/// the per-row stamp nulls budget_amount unless BILLABLE_AMOUNT and
+/// budget_seconds when NONE; the hours-sharing fan-out re-derives all
+/// four shared columns (same expressions as recomputeProjectMonth) the
+/// moment the mode changes; a budget insert/archive/amount change
+/// restamps the budget columns (project_budget_summary_fanout). Portal
+/// reads it under the contact principal via RLS — no system-principal
+/// bypass in any portal read path.
 /// scope=client  rls=B (projectScoped: client_id, visibility, portal_enabled)  ret=R2  enc=none
 model ProjectTimeSummary {
   id                 String     @id @default(uuid(7))
@@ -4033,7 +4049,7 @@ Rules (in order of authority):
 | `CredentialShareLink` | `tokenHash` (global) | one link per token; the atomic view-once UPDATE keys on it |
 | `ExpirationReminderSent` | `(tenantId, subjectType, subjectId, offsetDays)` PK | reminder dedupe |
 | `NotificationPreference` | `(tenantId, receiverType, receiverId)` | one preference row per principal |
-| `EmailOutbox` | `idempotencyKey` (global) | exactly-once email — the constraint is the guarantee (same pattern as `StripeWebhookEvent`) |
+| `EmailOutbox` | `idempotencyKey` (global) | exactly-once **enqueue** — the constraint is the guarantee (same pattern as `StripeWebhookEvent`); **delivery is at-least-once**: the drain sends outside the database transaction and finalises per row, and a `SENDING` lease older than 10 min is reclaimed (review 2026-08-21) |
 | `EmailSuppression` | `email` PK (global) | one suppression per address, across all tenants |
 | `PushSubscription` | `endpoint` (global) | one row per browser subscription |
 | `search_index` | `(tenantId, entityType, entityId)` | one index row per source row — the trigger upsert target |

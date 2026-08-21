@@ -1083,6 +1083,13 @@ $fn$;
 -- Neon project by scripts/neon-spike.ts (2026-08-20, 5/5 PASS).
 -- ════════════════════════════════════════════════════════════════════
 
+-- unaccent is a cluster-level extension the spike installed by hand on
+-- the Neon project; declared here (idempotent, review 2026-08-21) so a
+-- from-scratch `migrate deploy` — a new region, a local Postgres, a
+-- restore — is self-contained. btree_gin / btree_gist are declared the
+-- same way in their migrations.
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 CREATE TEXT SEARCH CONFIGURATION fortleva_sv ( COPY = swedish );
 ALTER TEXT SEARCH CONFIGURATION fortleva_sv
   ALTER MAPPING FOR hword, hword_part, word WITH unaccent, swedish_stem;
