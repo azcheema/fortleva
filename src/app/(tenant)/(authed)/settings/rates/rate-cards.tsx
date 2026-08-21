@@ -16,6 +16,7 @@ import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import type { RateKind, RateScope } from "@/modules/time";
 
 import {
@@ -180,10 +181,13 @@ export function RateCardTable({
               const actions = actionsFor(row);
               return (
                 <TableRow key={row.id} data-testid="rate-card-row" data-open={row.open ? "1" : "0"}>
-                  <TableCell className={row.open ? "font-medium" : "text-muted-foreground"}>
-                    {/* A block, not the cell: max-width on a td is ignored in auto table layout.
-                        Phones truncate the label so the row's verbs stay inside the table's box. */}
-                    <span className="block max-w-40 truncate sm:max-w-none" title={row.appliesTo}>
+                  <TableCell className={cn("w-full max-w-0", row.open ? "font-medium" : "text-muted-foreground")}>
+                    {/* The label column takes whatever width the fixed columns leave and truncates
+                        there — `max-w-0` removes the cell's own min-content from the auto layout,
+                        `w-full` hands it the remainder — so a long "Agreement · Client" label can
+                        never push the row's verbs past the table's box (CI caught 2 px of exactly
+                        that on the 720 px settings page; the phone case is the same rule). */}
+                    <span className="block truncate" title={row.appliesTo}>
                       {row.appliesTo}
                     </span>
                   </TableCell>
