@@ -170,7 +170,11 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isEditableTarget(e.target)) return;
       if (e.key.toLowerCase() !== "t") return;
-      if (isGoSequencePending()) return;
+      // `G T` must never reach here: when this listener runs FIRST the
+      // sequence is still armed (isGoSequencePending); when it runs after
+      // the shell (the effect re-registers on every running change) the
+      // shell has already consumed the key and prevented its default.
+      if (e.defaultPrevented || isGoSequencePending()) return;
       e.preventDefault();
       if (running) stop();
       else router.push("/time#quick-start");

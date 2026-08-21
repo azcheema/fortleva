@@ -455,7 +455,6 @@ async function removeTenant(
   await db.workflowPreset.deleteMany({ where: { tenantId } });
   await db.projectTemplate.deleteMany({ where: { tenantId } });
   await db.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
-  await db.$executeRaw;
   await db.fileVersion.deleteMany({ where: { tenantId } });
   await db.document.deleteMany({ where: { tenantId } });
   await db.fileObject.deleteMany({ where: { tenantId } });
