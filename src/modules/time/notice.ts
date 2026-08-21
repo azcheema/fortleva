@@ -319,3 +319,43 @@ export async function listNoticeAcknowledgments(
     };
   });
 }
+
+export type NoticeTexts = {
+  version: number | null;
+  publishedAt: Date | null;
+  purposes: string[];
+  jurisdictionTags: string[];
+  /** One row per locale of the current version, locale-sorted. */
+  texts: { id: string; locale: string; title: string; body: string }[];
+};
+
+/**
+ * settings:view — every locale of the CURRENT version (for /settings/time:
+ * the admin reads and republishes all locales at once). The lazy seed
+ * runs first so a tenant that has never started a timer still sees
+ * version 1 rather than an empty editor.
+ */
+export async function getCurrentNoticeTexts(ctx: TimeCtx): Promise<NoticeTexts> {
+  await ensureTimeDefaults(ctx.tenantId);
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "settings:view");
+    const latest = await tx.staffNotice.findFirst({
+      where: { tenantId: ctx.tenantId, publishedAt: { not: null } },
+      orderBy: { version: "desc" },
+      select: { version: true, publishedAt: true, purposes: true, jurisdictionTags: true },
+    });
+    if (!latest) return { version: null, publishedAt: null, purposes: [], jurisdictionTags: [], texts: [] };
+    const rows = await tx.staffNotice.findMany({
+      where: { tenantId: ctx.tenantId, version: latest.version, publishedAt: { not: null } },
+      orderBy: { locale: "asc" },
+      select: { id: true, locale: true, title: true, body: true },
+    });
+    return {
+      version: latest.version,
+      publishedAt: latest.publishedAt,
+      purposes: latest.purposes,
+      jurisdictionTags: latest.jurisdictionTags,
+      texts: rows,
+    };
+  });
+}

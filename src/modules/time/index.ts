@@ -8,10 +8,12 @@ export {
   STAFF_NOTICE_PURPOSES,
   STAFF_NOTICE_SEED,
   acknowledgeNotice,
+  getCurrentNoticeTexts,
   getNoticeStatus,
   listNoticeAcknowledgments,
   publishNotice,
   type NoticeStatus,
+  type NoticeTexts,
   type NoticeView,
 } from "./notice";
 export {

@@ -66,10 +66,20 @@ const TOKENS: readonly (readonly [string, DomainErrorCode])[] = [
 
 export function mapDbError(e: unknown): never {
   const message = e instanceof Error ? e.message : String(e);
-  const meta = (e as { meta?: { target?: unknown } } | null)?.meta?.target;
-  const target = Array.isArray(meta) ? meta.join(",") : typeof meta === "string" ? meta : "";
+  // Prisma 7 + the pg adapter: for a hand-written partial unique the
+  // top-level message says "Unique constraint failed on the (not
+  // available)" and `meta.target` is absent — the constraint name is
+  // only in meta.driverAdapterError.cause.originalMessage. Scan the whole
+  // meta rather than one field, so every token above is found wherever
+  // the adapter happens to put it.
+  let meta = "";
+  try {
+    meta = JSON.stringify((e as { meta?: unknown } | null)?.meta ?? "");
+  } catch {
+    meta = "";
+  }
   for (const [token, code] of TOKENS) {
-    if (message.includes(token) || target.includes(token)) throw new DomainError(code);
+    if (message.includes(token) || meta.includes(token)) throw new DomainError(code);
   }
   throw e;
 }
