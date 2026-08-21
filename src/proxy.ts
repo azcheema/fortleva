@@ -15,7 +15,9 @@ const PORTAL_PREFIX = "/portal";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
-const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", "/api/health", "/manifest.webmanifest", "/sw.js"]);
+// /api/jobs/run authenticates itself (JOBS_RUN_TOKEN header): a cron has
+// no member cookie, so the presence gate must not redirect it to /login.
+const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", "/api/health", "/api/jobs/run", "/manifest.webmanifest", "/sw.js"]);
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;

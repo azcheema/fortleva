@@ -443,6 +443,19 @@ async function removeTenant(
     await tx.workType.deleteMany({ where: { tenantId } });
     await tx.tenantKey.deleteMany({ where: { tenantId } });
   });
+  // 2W: tenant-scoped rows that RESTRICT the tenant (and comment/label,
+  // which RESTRICT the project) — a spec that assigns a task or crosses a
+  // budget threshold leaves notification + email_outbox rows behind.
+  await db.comment.deleteMany({ where: { tenantId } }); // mentions cascade
+  await db.label.deleteMany({ where: { tenantId } }); // work_item_label cascades
+  await db.notification.deleteMany({ where: { tenantId } });
+  await db.emailOutbox.deleteMany({ where: { tenantId } });
+  await db.subscription.deleteMany({ where: { tenantId } });
+  await db.notificationPreference.deleteMany({ where: { tenantId } });
+  await db.workflowPreset.deleteMany({ where: { tenantId } });
+  await db.projectTemplate.deleteMany({ where: { tenantId } });
+  await db.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
+  await db.$executeRaw;
   await db.fileVersion.deleteMany({ where: { tenantId } });
   await db.document.deleteMany({ where: { tenantId } });
   await db.fileObject.deleteMany({ where: { tenantId } });

@@ -61,12 +61,22 @@ export const monthStartOf = (isoDate: string): string => `${isoDate.slice(0, 7)}
 export function startOfLocalDay(isoDate: string, timeZone: string): Date {
   // Guess UTC midnight, then correct by the zone's offset at that instant
   // (one more pass handles a DST transition at midnight itself).
-  let guess = new Date(`${isoDate}T00:00:00.000Z`);
+  const utcMidnight = Date.parse(`${isoDate}T00:00:00.000Z`);
+  let guess = new Date(utcMidnight);
   for (let i = 0; i < 2; i += 1) {
     const offsetMinutes = zoneOffsetMinutes(guess, timeZone);
-    const corrected = new Date(Date.parse(`${isoDate}T00:00:00.000Z`) - offsetMinutes * 60_000);
+    const corrected = new Date(utcMidnight - offsetMinutes * 60_000);
     if (corrected.getTime() === guess.getTime()) break;
     guess = corrected;
+  }
+  // A zone whose spring-forward gap sits AT local midnight (Santiago,
+  // Havana, Azores…) has no 00:00 on that date: the passes above oscillate
+  // and end on 23:00 of the day before. The day then starts at the first
+  // instant that reads as isoDate — the post-gap offset applied once more.
+  if (localDateString(guess, timeZone) < isoDate) {
+    const before = zoneOffsetMinutes(guess, timeZone);
+    const after = zoneOffsetMinutes(new Date(guess.getTime() + 3 * 3_600_000), timeZone);
+    guess = new Date(guess.getTime() + (after - before) * 60_000); // skip the gap
   }
   return guess;
 }

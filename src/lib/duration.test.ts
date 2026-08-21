@@ -75,6 +75,11 @@ describe("local dates (DST-safe, Intl-based)", () => {
     expect(startOfLocalDay("2026-01-20", "Europe/Stockholm").toISOString()).toBe("2026-01-19T23:00:00.000Z");
     // The DST fall-back day (2026-10-25) still starts at 00:00 CEST
     expect(startOfLocalDay("2026-10-25", "Europe/Stockholm").toISOString()).toBe("2026-10-24T22:00:00.000Z");
+    // Spring-forward gap AT local midnight (Santiago: 2026-09-06 00:00 → 01:00):
+    // the day has no 00:00 and starts at 01:00 local — never on the day before.
+    expect(startOfLocalDay("2026-09-06", "America/Santiago").toISOString()).toBe("2026-09-06T04:00:00.000Z");
+    expect(localDateString(startOfLocalDay("2026-09-06", "America/Santiago"), "America/Santiago")).toBe("2026-09-06");
+    expect(localDateString(startOfLocalDay("2026-03-08", "America/Havana"), "America/Havana")).toBe("2026-03-08");
     expect(zoneOffsetMinutes(new Date("2026-08-20T12:00:00Z"), "Europe/Stockholm")).toBe(120);
     expect(zoneOffsetMinutes(new Date("2026-01-20T12:00:00Z"), "America/New_York")).toBe(-300);
   });

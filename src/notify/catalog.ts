@@ -59,4 +59,4 @@ export type NotificationKind = keyof typeof KINDS;
 export const NOTIFICATION_KINDS: Readonly<Record<NotificationKind, NotificationKindSpec>> = KINDS;
 
 export const isNotificationKind = (kind: string): kind is NotificationKind =>
-  kind in NOTIFICATION_KINDS;
+  Object.hasOwn(NOTIFICATION_KINDS, kind); // own keys only —  admits "constructor"
