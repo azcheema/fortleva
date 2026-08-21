@@ -43,6 +43,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **Never print, log or commit** passwords, tokens or cookies.
 - **Verify by code, tests and `pnpm build`** — and check **exit codes**, not just output (a piped `tail` once hid a failing test).
 - Re-audit any data-safety claim independently before repeating it.
+- **Independent review before every phase-slice commit** (founder rule, 2026-08-21): run `/code-review` — and `/security-review` whenever the diff touches RLS policies, visibility, the portal, migrations or server actions — through a **fresh agent that has not seen the implementation reasoning**, then fix or explicitly disposition every finding (PLAN §0 records the dispositions). A self-review by the implementing agent is not a review. The first such pass over `83df6ce..2ad8e36` found 36 real items the implementing sessions had missed (PLAN §0 / log 2026-08-21).
 
 ## Standing traps (each cost a real bug — details in `docs/PLAN.md` §0)
 
