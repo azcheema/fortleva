@@ -8,13 +8,14 @@ import { AuthzError } from "@/authz/errors";
 import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
-import { resolveLocale, resolvePreferences, resolveTimeZone } from "@/i18n/resolve";
-import { dateColumn, localDateString } from "@/lib/duration";
+import { resolveLocale } from "@/i18n/resolve";
+import { dateColumn } from "@/lib/duration";
 import { dateFormat } from "@/lib/format";
-import { addDays, isIsoDate, weekContaining } from "@/lib/week";
+import { addDays } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listTeamShiftTotals, teamRollup } from "@/modules/time";
 
+import { resolveWeekContext } from "../week-context";
 import { TeamTable } from "./team-table";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -34,12 +35,10 @@ export default async function TimeTeamPage({ searchParams }: { searchParams: Pro
   const ctx = { tenantId: membership.tenantId, actor };
   const t = await getTranslations("time.team");
   const tCommon = await getTranslations("common");
-  const timezone = await resolveTimeZone();
   const locale = await resolveLocale();
   const sp = await searchParams;
-  const prefs = (await resolvePreferences())!; // one read per request, shared with resolveTimeZone
-  const today = localDateString(new Date(), timezone);
-  const week = weekContaining(isIsoDate(sp.w) ? sp.w : today, prefs.weekStart);
+  // The viewed week — the one helper every week page uses (time/week-context.ts).
+  const { prefs, week, weekLabel } = await resolveWeekContext(sp.w);
 
   let data: { lines: Awaited<ReturnType<typeof teamRollup>>; shifts: Awaited<ReturnType<typeof listTeamShiftTotals>> } | null = null;
   // time:export (CMA): the week's CSV and the per-member statement CSV — held, so the controls show; the route re-checks.
@@ -76,7 +75,7 @@ export default async function TimeTeamPage({ searchParams }: { searchParams: Pro
     <Page width="wide">
       <PageHeader
         title={t("title")}
-        description={t("weekLabel", { week: week.isoWeek, from: week.from, to: week.to })}
+        description={weekLabel}
         actions={
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="icon-sm" aria-label={t("prevWeek")}>

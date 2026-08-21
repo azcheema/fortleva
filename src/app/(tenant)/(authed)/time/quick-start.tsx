@@ -3,21 +3,24 @@
 import { PlayIcon, SquareIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Field, SectionCard } from "@/components/semantic";
 import { notifyTimerChanged } from "@/components/shell/timer-pill";
+import { useServerNow } from "@/components/shell/use-server-now";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
+import { secondsSince } from "@/lib/duration";
 import { formatDurationClock } from "@/lib/format";
 
-import { pickerOptionsAction, startTimerAction, stopTimerAction, undoStartAction } from "./actions";
+import { startTimerAction, stopTimerAction, undoStartAction } from "./actions";
+import type { PickerOption, PickerProject } from "./picker-types";
+import { useProjectPickerOptions } from "./use-project-picker-options";
 
-export type PickerProject = { id: string; key: string; name: string; clientId: string; clientName: string };
-export type PickerOption = { id: string; name: string };
+export type { PickerOption, PickerProject } from "./picker-types";
 
 export type RunningView = {
   id: string;
@@ -59,8 +62,7 @@ export function QuickStart({
   const [serviceId, setServiceId] = useState("");
   const [workTypeId, setWorkTypeId] = useState("");
   const [billable, setBillable] = useState<"" | "yes" | "no">("");
-  const [options, setOptions] = useState<{ items: PickerOption[]; services: PickerOption[] }>({ items: [], services: [] });
-  const optionsRequest = useRef(0);
+  const { options, load } = useProjectPickerOptions(projects);
 
   // Task + agreement options follow the project (lazy; ids only). Done in
   // the change handler — the dependent selects reset with the project.
@@ -68,17 +70,7 @@ export function QuickStart({
     setProjectId(next);
     setWorkItemId("");
     setServiceId("");
-    const token = ++optionsRequest.current;
-    const project = projects.find((p) => p.id === next);
-    if (!next || !project) {
-      setOptions({ items: [], services: [] });
-      return;
-    }
-    void pickerOptionsAction(next, project.clientId).then((r) => {
-      if (optionsRequest.current !== token) return;
-      if (r.ok) setOptions({ items: r.value.items.map((i) => ({ id: i.id, name: i.label })), services: r.value.services });
-      else toast.error(r.message);
-    });
+    load(next);
   };
 
   const startTimer = () =>
@@ -236,13 +228,7 @@ export function QuickStart({
 
 function RunningClock({ startedAt, serverNow }: { startedAt: string; serverNow: string }) {
   const locale = useLocale();
-  const [skew] = useState(() => Date.now() - Date.parse(serverNow));
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-  const elapsed = Math.max(0, Math.floor((now - skew - Date.parse(startedAt)) / 1000));
+  const elapsed = secondsSince(startedAt, useServerNow(serverNow, true));
   return (
     <p className="num text-3xl font-semibold tabular-nums" data-testid="quick-start-elapsed">
       {formatDurationClock(locale, elapsed)}

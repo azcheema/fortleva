@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cache } from "react";
 
 import { record } from "@/audit/record";
 import { withTenant, type TenantDb } from "@/db";
@@ -295,6 +296,17 @@ export async function getCurrentTimer(ctx: TimeCtx): Promise<CurrentTimer> {
     };
   });
 }
+
+/**
+ * The same snapshot, once per request: the authed layout reads it for the
+ * pill and /home reads it for its strip in the SAME render — keyed by
+ * primitives (a cache keyed on the ctx object would miss: every caller
+ * builds its own), so both surfaces share one transaction and one
+ * `serverNow`. The actor is rebuilt from the member id: a read, no ✦.
+ */
+export const getCurrentTimerOnce = cache((tenantId: string, memberId: string): Promise<CurrentTimer> =>
+  getCurrentTimer({ tenantId, actor: { memberId } }),
+);
 
 /** time:track — one-click continue: a NEW timer copying the entry's target (D6). */
 export async function continueEntry(

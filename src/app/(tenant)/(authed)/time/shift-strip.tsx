@@ -3,13 +3,15 @@
 import { CoffeeIcon, LogInIcon, LogOutIcon, PlayIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useState, useTransition } from "react";
+import { useTransition } from "react";
 import { toast } from "sonner";
 
 import { MetricTile, SectionCard } from "@/components/semantic";
 import { notifyTimerChanged } from "@/components/shell/timer-pill";
+import { useServerNow } from "@/components/shell/use-server-now";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { secondsSince } from "@/lib/duration";
 import { formatDurationSeconds, type DurationStyle } from "@/lib/format";
 
 import { clockInAction, clockOutAction, confirmShiftAction, startBreakAction, stopBreakAction } from "./actions";
@@ -54,18 +56,10 @@ export function ShiftStrip({
   const locale = useLocale();
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [now, setNow] = useState(() => Date.now());
-  const [skew] = useState(() => Date.now() - Date.parse(serverNow));
   const live = openShift !== null || runningStartedAt !== null;
-
-  useEffect(() => {
-    if (!live) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [live]);
+  const nowSrv = useServerNow(serverNow, live);
 
   const at = (iso: string) => Date.parse(iso);
-  const nowSrv = now - skew;
   const sec = (ms: number) => Math.max(0, Math.floor(ms / 1000));
 
   const closedSpan = shiftsToday.reduce((s, sh) => s + sec(at(sh.stoppedAt ?? sh.startedAt) - at(sh.startedAt)), 0);
@@ -73,10 +67,10 @@ export function ShiftStrip({
     (s, sh) => s + sh.breaks.reduce((b, br) => b + sec(at(br.stoppedAt ?? sh.stoppedAt ?? sh.startedAt) - at(br.startedAt)), 0),
     0,
   );
-  const openSpan = openShift ? sec(nowSrv - at(openShift.startedAt)) : 0;
+  const openSpan = openShift ? secondsSince(openShift.startedAt, nowSrv) : 0;
   const openBreaks = openShift ? openShift.breaks.reduce((b, br) => b + sec((br.stoppedAt ? at(br.stoppedAt) : nowSrv) - at(br.startedAt)), 0) : 0;
   const onBreak = openShift?.breaks.some((b) => b.stoppedAt === null) ?? false;
-  const runningSeconds = runningStartedAt ? sec(nowSrv - at(runningStartedAt)) : 0;
+  const runningSeconds = runningStartedAt ? secondsSince(runningStartedAt, nowSrv) : 0;
 
   const shiftSeconds = closedSpan + openSpan;
   const breakSeconds = closedBreaks + openBreaks;

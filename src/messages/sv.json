@@ -49,6 +49,7 @@
       "replace": "Byt fil"
     },
     "actionsFor": "Åtgärder för {name}",
+    "loadFailed": "Det gick inte att läsa in alternativen — kontrollera uppkopplingen och försök igen.",
     "moreActions": "Fler åtgärder",
     "table": "Tabell",
     "edit": "Redigera",
@@ -154,6 +155,16 @@
     "workspace": "Arbetsyta: {name}",
     "queue": "Din kö",
     "queueDescription": "Arbete som är tilldelat dig, över alla kunder och projekt.",
+    "time": {
+      "title": "Din tid",
+      "week": "Den här veckan",
+      "today": "I dag",
+      "running": "Pågår",
+      "runningLabel": "Timer igång på {label}",
+      "timer": "Timer",
+      "start": "Starta en timer",
+      "open": "Öppna Min tid"
+    },
     "tiles": {
       "assigned": "Tilldelat dig",
       "waiting": "Väntar på kund",
@@ -1782,7 +1793,6 @@
     "team": {
       "title": "Teamets tid",
       "noPermission": "Du har inte behörighet att se teamets tid.",
-      "weekLabel": "Vecka {week} · {from} – {to}",
       "prevWeek": "Föregående vecka",
       "nextWeek": "Nästa vecka",
       "thisWeek": "Den här veckan",

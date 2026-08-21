@@ -6,10 +6,10 @@ import { getTranslations } from "next-intl/server";
 import { AuthzError } from "@/authz/errors";
 import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { resolveLocale, resolvePreferences, resolveTimeZone } from "@/i18n/resolve";
-import { dateColumn, localDateString } from "@/lib/duration";
+import { resolveLocale } from "@/i18n/resolve";
+import { dateColumn } from "@/lib/duration";
 import { dateFormat } from "@/lib/format";
-import { addDays, isIsoDate, weekContaining } from "@/lib/week";
+import { addDays } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   getCurrentShift,
@@ -30,6 +30,7 @@ import { NoticeGate } from "./notice-gate";
 import { QuickStart, type PickerProject } from "./quick-start";
 import { ShiftStrip, type ShiftStripShift } from "./shift-strip";
 import { TimeWeek, type WeekEntryRow } from "./time-week";
+import { resolveWeekContext } from "./week-context";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("nav");
@@ -49,16 +50,12 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
   const t = await getTranslations("time");
   const tCommon = await getTranslations("common");
   const locale = await resolveLocale();
-  const timezone = await resolveTimeZone();
+  const sp = await searchParams;
+  // The viewed week, today and the zone — the one helper every week page uses (time/week-context.ts).
+  const { prefs, timezone, today, week, weekLabel } = await resolveWeekContext(sp.w);
   // Clock labels are formatted HERE, once, with the memoised server
   // formatter — never in the client grid (see TimeWeek's note on ICU).
   const clock = dateFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone: timezone, hourCycle: "h23" });
-  const sp = await searchParams;
-
-  const prefs = (await resolvePreferences())!; // one read per request, shared with resolveTimeZone
-  const today = localDateString(new Date(), timezone);
-  const anchor = isIsoDate(sp.w) ? sp.w : today;
-  const week = weekContaining(anchor, prefs.weekStart);
   // The shift strip is always TODAY; when the viewed week does not
   // contain today its rows are fetched separately (the week lists
   // would otherwise show Tracked 0:00 and drop today's closed shifts).
@@ -166,7 +163,6 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     .filter((e) => e.localDate.toISOString().slice(0, 10) === today && e.stoppedAt !== null)
     .reduce((s, e) => s + (e.durationSeconds ?? 0), 0);
 
-  const weekLabel = t("weekLabel", { week: week.isoWeek, from: week.from, to: week.to });
   const prev = `/time?w=${addDays(week.from, -7)}`;
   const next = `/time?w=${addDays(week.from, 7)}`;
 

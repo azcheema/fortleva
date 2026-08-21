@@ -49,6 +49,7 @@
       "replace": "Replace file"
     },
     "actionsFor": "Actions for {name}",
+    "loadFailed": "Could not load the options — check your connection and try again.",
     "moreActions": "More actions",
     "table": "Table",
     "edit": "Edit",
@@ -154,6 +155,16 @@
     "workspace": "Workspace: {name}",
     "queue": "Your queue",
     "queueDescription": "Work assigned to you, across every client and project.",
+    "time": {
+      "title": "Your time",
+      "week": "This week",
+      "today": "Today",
+      "running": "Running",
+      "runningLabel": "Timer running on {label}",
+      "timer": "Timer",
+      "start": "Start a timer",
+      "open": "Open My time"
+    },
     "tiles": {
       "assigned": "Assigned to you",
       "waiting": "Waiting on client",
@@ -1782,7 +1793,6 @@
     "team": {
       "title": "Team time",
       "noPermission": "You do not have permission to see the team's time.",
-      "weekLabel": "Week {week} · {from} – {to}",
       "prevWeek": "Previous week",
       "nextWeek": "Next week",
       "thisWeek": "This week",

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { getTimerStateAction, stopTimerAction, type TimerPillState } from "@/app/(tenant)/(authed)/time/actions";
 import { Button } from "@/components/ui/button";
+import { secondsSince } from "@/lib/duration";
 import { formatDurationClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -140,7 +141,7 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
     return () => window.clearInterval(id);
   }, [running]);
 
-  const elapsed = running ? Math.max(0, Math.floor((snap.now - snap.skew - Date.parse(running.startedAt)) / 1000)) : 0;
+  const elapsed = running ? secondsSince(running.startedAt, snap.now - snap.skew) : 0;
   const clock = formatDurationClock(locale, elapsed);
 
   useEffect(() => {

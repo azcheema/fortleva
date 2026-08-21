@@ -476,20 +476,73 @@ export type CopyWeekResult = {
   unusable: number;
 };
 
+/** "The member's OWN finished rows with a local date in [from, to]" — one spelling for every own aggregate. */
+const ownFinishedWhere = (ctx: TimeCtx, from: string, to: string) =>
+  ({
+    tenantId: ctx.tenantId,
+    memberId: ctx.actor.memberId,
+    deletedAt: null,
+    stoppedAt: { not: null },
+    localDate: { gte: dateColumn(from), lte: dateColumn(to) },
+  }) as const;
+
+/**
+ * "May this member track time here at all?" — the one answer the home
+ * page (and any other surface that merely decorates itself with the time
+ * module) branches on BEFORE calling a time service: no exception-driven
+ * control flow, and no module bootstrap for a member or tenant the
+ * module is not on for. Permission AND entitlement, exactly what
+ * `requireAccess` decides.
+ */
+export async function canTrackTime(ctx: TimeCtx): Promise<boolean> {
+  try {
+    await withTenant(ctx.tenantId, principalOf(ctx), (tx) => requireAccess(tx, ctx.tenantId, ctx.actor, "time:track"));
+    return true;
+  } catch (e) {
+    if (e instanceof AuthzError) return false;
+    throw e;
+  }
+}
+
+export type MyTimeTotals = {
+  /** Σ of the member's own FINISHED seconds in the week range. */
+  weekSeconds: number;
+  /** Σ of the member's own FINISHED seconds on `today`. */
+  todaySeconds: number;
+};
+
+/**
+ * time:track — the /home strip's two numbers (UI.md rule 8 "this-week
+ * hours (own)"): the member's OWN finished seconds this week and today,
+ * from one grouped query over the week. The running entry is not summed
+ * here — the client adds it live from the server instant — and nothing
+ * is seeded or settled: this is a read of what is already there (the
+ * settle runs with `getCurrentTimer`, which the strip fetches alongside).
+ */
+export async function myTimeTotals(ctx: TimeCtx, range: { from: string; to: string; today: string }): Promise<MyTimeTotals> {
+  if (![range.from, range.to, range.today].every(isIsoDate) || range.from > range.to || range.today < range.from || range.today > range.to) {
+    fail("INVALID_INPUT", "range");
+  }
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
+    const days = await tx.timeEntry.groupBy({
+      by: ["localDate"],
+      where: ownFinishedWhere(ctx, range.from, range.to),
+      _sum: { durationSeconds: true },
+    });
+    const today = dateColumn(range.today).getTime();
+    return {
+      weekSeconds: days.reduce((s, d) => s + (d._sum.durationSeconds ?? 0), 0),
+      todaySeconds: days.find((d) => d.localDate.getTime() === today)?._sum.durationSeconds ?? 0,
+    };
+  });
+}
+
 /** time:track — does the member have any finished row of their own in [from, to]? (The page's "is there anything to copy".) */
 export async function hasFinishedEntries(ctx: TimeCtx, range: { from: string; to: string }): Promise<boolean> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
-    const row = await tx.timeEntry.findFirst({
-      where: {
-        tenantId: ctx.tenantId,
-        memberId: ctx.actor.memberId,
-        deletedAt: null,
-        stoppedAt: { not: null },
-        localDate: { gte: dateColumn(range.from), lte: dateColumn(range.to) },
-      },
-      select: { id: true },
-    });
+    const row = await tx.timeEntry.findFirst({ where: ownFinishedWhere(ctx, range.from, range.to), select: { id: true } });
     return row !== null;
   });
 }

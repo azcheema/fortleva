@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Field, FormMessage, SectionCard } from "@/components/semantic";
@@ -13,8 +13,9 @@ import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import type { FormResult } from "@/lib/server-actions";
 
-import { createEntryAction, pickerOptionsAction } from "./actions";
+import { createEntryAction } from "./actions";
 import type { PickerOption, PickerProject } from "./quick-start";
+import { useProjectPickerOptions } from "./use-project-picker-options";
 
 /**
  * "New entry" (`N` on /time; UI.md rule 9): a finished entry typed in —
@@ -43,22 +44,11 @@ export function NewEntryForm({
   const [failure, setFailure] = useState<FormResult | null>(null);
   const [projectId, setProjectId] = useState("");
   const [billable, setBillable] = useState<"" | "yes" | "no">("");
-  const [options, setOptions] = useState<{ items: PickerOption[]; services: PickerOption[] }>({ items: [], services: [] });
-  const optionsRequest = useRef(0);
+  const { options, load } = useProjectPickerOptions(projects);
 
   const chooseProject = (next: string) => {
     setProjectId(next);
-    const token = ++optionsRequest.current;
-    const project = projects.find((p) => p.id === next);
-    if (!next || !project) {
-      setOptions({ items: [], services: [] });
-      return;
-    }
-    void pickerOptionsAction(next, project.clientId).then((r) => {
-      if (optionsRequest.current !== token) return;
-      if (r.ok) setOptions({ items: r.value.items.map((i) => ({ id: i.id, name: i.label })), services: r.value.services });
-      else toast.error(r.message);
-    });
+    load(next);
   };
 
   const submit = (form: HTMLFormElement) =>
@@ -70,9 +60,8 @@ export function NewEntryForm({
       }
       setFailure(null);
       form.reset();
-      setProjectId("");
+      chooseProject("");
       setBillable("");
-      setOptions({ items: [], services: [] });
       toast.success(r.message);
       notifyTimerChanged();
       router.refresh();

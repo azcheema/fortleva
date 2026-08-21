@@ -26,6 +26,9 @@ export const secondsBetween = (start: Date, stop: Date): number =>
   Math.max(0, Math.floor((floorToSecond(stop).getTime() - floorToSecond(start).getTime()) / SECOND_MS));
 
 export const addSeconds = (d: Date, seconds: number): Date => new Date(d.getTime() + seconds * SECOND_MS);
+/** Whole seconds from a server ISO instant to a "now" in ms (a skew-corrected browser clock), never negative — the live clocks' arithmetic. */
+export const secondsSince = (startedAtIso: string, nowMs: number): number =>
+  Math.max(0, Math.floor((nowMs - Date.parse(startedAtIso)) / SECOND_MS));
 export const addHours = (d: Date, hours: number): Date => addSeconds(d, Math.round(hours * 3600));
 
 /** ISO calendar date ("YYYY-MM-DD") of an instant in an IANA zone. */

@@ -191,6 +191,36 @@ test.describe("my time (owner)", () => {
     await expect(copied.filter({ hasNotText: "source 2" }).first()).toContainText("0m");
   });
 
+  test("/home shows this week's and today's own hours, and the running timer ticking into them", async ({ page }) => {
+    // Self-sufficient: a finished entry today (25 m), then a running timer started from the strip's own affordance.
+    await addEntry(page, { note: "E2E home strip", duration: "25m" });
+    await page.goto("/home");
+    await expect(page.getByTestId("home-time-strip")).toBeVisible({ timeout: 15_000 * SLOW });
+    // Both tiles carry a real duration that INCLUDES the entry: today ≥ 25 m (whole minutes: "25m" … "59m", or hours), and the week too.
+    const atLeast25m = /^(?:(?:2[5-9]|[3-5]\d)m|\d+h(?: \d+m)?)$/;
+    await expect(page.getByTestId("home-time-today")).toHaveText(atLeast25m);
+    await expect(page.getByTestId("home-time-week")).toHaveText(atLeast25m);
+    const todayBefore = await page.getByTestId("home-time-today").textContent();
+
+    // The idle slot's verb really leads to the quick start; start there, come back.
+    await page.getByTestId("home-time-start").click();
+    await expect(page).toHaveURL(/\/time#quick-start$/);
+    await page.getByTestId("quick-start-description").fill("E2E home running");
+    await page.getByTestId("quick-start-start").click();
+    await expect(pill(page)).toContainText("E2E home running", { timeout: 15_000 * SLOW });
+    await page.goto("/home");
+    const running = page.getByTestId("home-time-running");
+    await expect(running).toBeVisible({ timeout: 15_000 * SLOW });
+    await expect(page.getByText(/Timer running on E2E home running/)).toBeVisible();
+    // The Running tile ticks, and the running minutes flow INTO today (started today ⇒ counted today, as the stopped row will be).
+    const before = await running.textContent();
+    await expect(running).not.toHaveText(before ?? "", { timeout: 5_000 * SLOW });
+    await expect
+      .poll(async () => page.getByTestId("home-time-today").textContent(), { timeout: 90_000 * SLOW })
+      .not.toBe(todayBefore);
+    await stopIfRunning(page);
+  });
+
   test("exports: the week's CSV (machine header, rates for the owner, never cost); the statement page and its CSV", async ({ page }) => {
     // Self-sufficient: an entry of its own, so the test holds under a -g filter too.
     await page.getByTestId("new-entry-duration").fill("45m");

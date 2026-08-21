@@ -42,6 +42,7 @@ export {
   UNDO_WINDOW_SECONDS,
   continueEntry,
   getCurrentTimer,
+  getCurrentTimerOnce,
   startTimer,
   stopTimer,
   undoStart,
@@ -49,17 +50,20 @@ export {
   type TimerEntry,
 } from "./timer";
 export {
+  canTrackTime,
   copyWeek,
   createEntry,
   deleteEntry,
   hasFinishedEntries,
   listMyEntries,
   listTeamEntries,
+  myTimeTotals,
   updateEntry,
   type CopyWeekResult,
   type CreateEntryInput,
   type EntryListRow,
   type EntryPatch,
+  type MyTimeTotals,
 } from "./entries";
 export {
   clockIn,

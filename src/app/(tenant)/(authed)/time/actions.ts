@@ -18,7 +18,7 @@ import {
   copyWeek,
   createEntry,
   deleteEntry,
-  getCurrentTimer,
+  getCurrentTimerOnce,
   startBreak,
   startTimer,
   stopBreak,
@@ -61,7 +61,8 @@ export type TimerPillState = {
 export async function getTimerStateAction(): Promise<TimerPillState | null> {
   try {
     const ctx = await ctxOf();
-    const c = await getCurrentTimer(ctx);
+    // Once per request: the layout (pill) and /home (strip) share this snapshot.
+    const c = await getCurrentTimerOnce(ctx.tenantId, ctx.actor.memberId);
     return {
       running: c.running
         ? {
