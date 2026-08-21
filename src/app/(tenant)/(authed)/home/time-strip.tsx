@@ -4,10 +4,10 @@ import { PlayIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { MetricTile, SectionCard } from "@/components/semantic";
-import { TIMER_EVENT } from "@/components/shell/timer-pill";
+import { TIMER_EVENT, useTimerEvents } from "@/components/shell/timer-pill";
 import { useServerNow } from "@/components/shell/use-server-now";
 import { Button } from "@/components/ui/button";
 import { secondsSince } from "@/lib/duration";
@@ -18,53 +18,65 @@ export type HomeTimeStripProps = {
   weekSeconds: number;
   todaySeconds: number;
   /**
-   * The running entry, if any: its server start instant, its local START
-   * date — the date its seconds will land on when it stops (a midnight-
-   * spanning row stays ONE row on its start date) — and its label.
+   * The running entry, if any: its server start instant, its label, and
+   * where its seconds will land when it stops — decided on the server by
+   * the row's START local date (a midnight-spanning row stays ONE row on
+   * its start date), so the live number goes exactly where the stopped
+   * row will.
    */
-  running: { startedAt: string; localDate: string; label: string } | null;
+  running: { startedAt: string; label: string; countsToday: boolean; countsThisWeek: boolean } | null;
   serverNow: string;
-  /** The member's today and the grid week, as local ISO dates. */
-  today: string;
-  weekFrom: string;
-  weekTo: string;
   durationStyle: DurationStyle;
   /** "Week 34 · 2026-08-17 – 2026-08-23", formatted by the page. */
   weekLabel: string;
 };
 
+/** A tab that was away shorter than this is not stale enough to re-render the landing page for. */
+const STALE_AFTER_MS = 60_000;
+
 /**
  * "Your time" on /home (UI.md rule 8: "timer slot, this-week hours —
  * own"): two numbers that change and the timer slot, in one card. The
  * finished seconds come from the server; a running timer's elapsed is
- * added LIVE and counted exactly where the stopped row will land — into
- * "today" iff it started today, into "this week" iff it started inside
- * the week — so the tiles never jump when the member presses Stop. Own
- * hours only — never a colleague's (the never-list).
+ * added LIVE and counted where the stopped row will land, so the tiles
+ * never jump when the member presses Stop. Own hours only — never a
+ * colleague's (the never-list). No header verb: the rail item and both
+ * tiles already lead to /time.
  *
  * The card is static; only `LiveTiles` ticks. The page's snapshot can go
  * stale (a timer started or stopped in another tab, the 12 h auto-stop):
- * like the pill, the strip re-reads on a timer event and when the tab
- * becomes visible again — by refreshing the page's server data.
+ * the strip shares the pill's triggers (`useTimerEvents`) and refreshes
+ * the page's server data — on a timer event at once, on a tab return
+ * only after a real absence, so alt-tabbing does not re-render /home.
  */
 export function HomeTimeStrip(props: HomeTimeStripProps) {
   const t = useTranslations("home.time");
   const router = useRouter();
+  const awaySince = useRef<number | null>(null);
 
+  // Remember when the tab went away; the return side is the shared trigger below.
   useEffect(() => {
-    const refresh = () => router.refresh();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") refresh();
+    const onHide = () => {
+      if (document.visibilityState === "hidden") awaySince.current = Date.now();
     };
-    window.addEventListener(TIMER_EVENT, refresh);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.removeEventListener(TIMER_EVENT, refresh);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [router]);
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, []);
 
-  // No "Open My time" header verb: the rail item sits 200 px to the left and both tiles already link to /time.
+  const onTimerEvent = useCallback(
+    (e: Event) => {
+      if (e.type === TIMER_EVENT) {
+        router.refresh();
+        return;
+      }
+      const since = awaySince.current;
+      awaySince.current = null;
+      if (since !== null && Date.now() - since > STALE_AFTER_MS) router.refresh();
+    },
+    [router],
+  );
+  useTimerEvents(onTimerEvent);
+
   return (
     <SectionCard title={t("title")} description={props.weekLabel}>
       <LiveTiles {...props} />
@@ -78,14 +90,14 @@ export function HomeTimeStrip(props: HomeTimeStripProps) {
 }
 
 /** The three tiles — the only part that re-renders once a second while a timer runs. */
-function LiveTiles({ weekSeconds, todaySeconds, running, serverNow, today, weekFrom, weekTo, durationStyle }: HomeTimeStripProps) {
+function LiveTiles({ weekSeconds, todaySeconds, running, serverNow, durationStyle }: HomeTimeStripProps) {
   const t = useTranslations("home.time");
   const locale = useLocale();
   const nowSrv = useServerNow(serverNow, running !== null);
 
   const elapsed = running ? secondsSince(running.startedAt, nowSrv) : 0;
-  const liveToday = running && running.localDate === today ? elapsed : 0;
-  const liveWeek = running && running.localDate >= weekFrom && running.localDate <= weekTo ? elapsed : 0;
+  const liveToday = running?.countsToday ? elapsed : 0;
+  const liveWeek = running?.countsThisWeek ? elapsed : 0;
   const fmt = (seconds: number) => formatDurationSeconds(locale, seconds, durationStyle);
 
   return (

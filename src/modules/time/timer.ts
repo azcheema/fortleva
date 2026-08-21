@@ -303,7 +303,7 @@ export async function getCurrentTimer(ctx: TimeCtx): Promise<CurrentTimer> {
  * primitives (a cache keyed on the ctx object would miss: every caller
  * builds its own), so both surfaces share one transaction and one
  * `serverNow`. The actor is rebuilt from the member id AND its authz
- * posture: an impersonating platform actor is read-only (AUTHZ.md §7) and
+ * posture: an impersonating platform actor is read-only (AUTHZ.md §9) and
  * `time:track` is not a view verb, so the posture must be part of the key
  * or the shared snapshot would serve what `authorize` denies. No ✦.
  */

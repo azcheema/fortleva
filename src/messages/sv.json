@@ -787,6 +787,7 @@
     "OVERLAP_BLOCKED": "Det här överlappar en annan av dina poster, och överlappande poster är inte tillåtna här.",
     "ENTRY_LOCKED": "Posten är låst (den ligger på en faktura eller i en stängd period) och kan inte ändras.",
     "INVALID_DURATION": "Ange en tid som 1h 30m, 90m eller 1,5 — högst 24 timmar, och slutet efter starten.",
+    "SPLIT_TOO_SHORT": "Första delen måste vara kortare än helheten och lämna minst en minut till den andra.",
     "SERVICE_CLIENT_MISMATCH": "Det avtalet tillhör en annan kund eller ett annat projekt.",
     "RATE_OVERLAP": "Ett priskort täcker redan den perioden — stäng det först eller välj ett senare startdatum.",
     "RATE_CARD_IMMUTABLE": "Priskort kan inte redigeras — stäng det här och lägg till ett nytt.",
@@ -1673,7 +1674,8 @@
       "entryCreated": "Posten tillagd.",
       "saved": "Sparat.",
       "entryDeleted": "Posten borttagen.",
-      "shiftConfirmed": "Passet bekräftat."
+      "shiftConfirmed": "Passet bekräftat.",
+      "split": "Posten delad i två."
     },
     "errors": {
       "invalidTime": "Ange start och slut som HH:MM."
@@ -1769,7 +1771,8 @@
         "delete": "Ta bort",
         "confirmDelete": "Ta bort posten?",
         "continue": "Fortsätt (ny timer)",
-        "continued": "Timer startad från den här posten."
+        "continued": "Timer startad från den här posten.",
+        "split": "Dela…"
       },
       "failed": "Det gick inte.",
       "empty": {
@@ -1787,6 +1790,11 @@
         "nothingNew": "Inget att kopiera{present, plural, =0 {} other { — # finns redan}}{unusable, plural, =0 {} other {; # går inte längre att använda}}.",
         "nothing": "Förra veckan har inga poster att kopiera.",
         "failed": "Det gick inte att kopiera förra veckan."
+      },
+      "split": {
+        "first": "Dela {name} — första delen",
+        "hint": "Första delens längd; resten (totalt {total}) blir en ny rad med samma uppgift och timpris.",
+        "submit": "Dela"
       }
     },
     "team": {

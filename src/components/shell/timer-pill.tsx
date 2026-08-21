@@ -22,6 +22,30 @@ export const notifyTimerChanged = (): void => {
 };
 
 /**
+ * "Something about the timer may have changed": a timer event from another
+ * surface, the window regaining focus, the tab becoming visible. The pill
+ * re-syncs its snapshot on these; the home strip refreshes its server data
+ * — one subscription, one list of triggers. `enabled` lets the pill's
+ * second mount stay quiet (only the owner syncs).
+ */
+export function useTimerEvents(onChange: (e: Event) => void, enabled = true): void {
+  useEffect(() => {
+    if (!enabled) return;
+    const onVisible = (e: Event) => {
+      if (document.visibilityState === "visible") onChange(e);
+    };
+    window.addEventListener(TIMER_EVENT, onChange);
+    window.addEventListener("focus", onChange);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener(TIMER_EVENT, onChange);
+      window.removeEventListener("focus", onChange);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [onChange, enabled]);
+}
+
+/**
  * One timer, two mount points. The shell renders the pill in the desktop
  * header AND in the mobile strip (CSS shows one); both instances read
  * this module store, and only the FIRST mounted instance (the owner)
@@ -108,20 +132,11 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
     publish({ state: initial, skew: Date.now() - Date.parse(initial.serverNow), now: Date.now() });
   }, [initial]);
 
-  useEffect(() => {
-    if (!owner.current) return;
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void sync();
-    };
-    window.addEventListener(TIMER_EVENT, sync);
-    window.addEventListener("focus", sync);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.removeEventListener(TIMER_EVENT, sync);
-      window.removeEventListener("focus", sync);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+  // Re-sync on every "the timer may have changed" trigger — owner only (the ref is read in the handler, never in render).
+  const onTimerEvent = useCallback(() => {
+    if (owner.current) void sync();
   }, [sync]);
+  useTimerEvents(onTimerEvent);
 
   const running = snap.state?.running ?? null;
 

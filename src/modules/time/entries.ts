@@ -10,6 +10,7 @@ import {
   dateColumn,
   floorToSecond,
   intervalsOverlap,
+  isValidSplit,
   isZeroDurationText,
   isoDateOf,
   localDateColumn,
@@ -26,6 +27,7 @@ import { ensureTimeDefaults } from "./bootstrap";
 import { copyDayKey, copyRowKey, planWeekCopy, type CopyRowTarget } from "./copy-plan";
 import { LOCKED_TX, guarded, idsOnly, lockMember, principalOf, resolveZone, type TimeCtx } from "./ctx";
 import { assertNoticeAcknowledged } from "./notice";
+import type { RateSnapshot } from "./rates";
 import { settleMemberOnce } from "./settle";
 import { recomputeTouched, type SummaryTouch } from "./summary";
 import { resolveTarget, snapshotFor, type EntryTargetInput, type ResolvedTarget } from "./target";
@@ -60,6 +62,8 @@ export type CreateEntryInput = EntryTargetInput & {
 };
 
 type EntryMode = "TIMER" | "MANUAL" | "DURATION";
+/** The provisional-row reasons (the `TimeReviewReason` enum, spelled here so no generated type crosses the seam). */
+type ReviewReason = "AUTO_STOPPED" | "OVERLAP_TRUNCATED" | "STOP_BEFORE_START" | "SKEW_CLAMPED";
 
 /**
  * Overlap (D6 "allow + flag", blocking = tenant opt-in) is a property of
@@ -109,9 +113,12 @@ const rowsOverlap = (
 
 /**
  * Insert ONE finished row for a resolved target (the shared tail of
- * createEntry and copyWeek): rate snapshot for the local date, the
- * source/mode columns, the creating member. The caller holds the member
- * lock, has authorised, and records the audit row (the action differs).
+ * createEntry, copyWeek and split): the rate snapshot for the local date
+ * — or a snapshot the caller carries over verbatim (split keeps the
+ * original's, it never reprices) — the source/mode columns, the creating
+ * member. The caller holds the member lock, has authorised, and records
+ * the audit row (the action differs). The one place a finished row's
+ * column list is spelled out.
  */
 async function writeFinishedEntry(
   tx: TenantDb,
@@ -122,15 +129,23 @@ async function writeFinishedEntry(
     target: ResolvedTarget;
     startedAt: Date;
     stoppedAt: Date;
-    mode: "MANUAL" | "DURATION";
+    mode: EntryMode;
+    source?: "TIMER" | "MANUAL" | "IMPORT";
     timezone: string;
+    /** Carry this snapshot instead of resolving one (a split's second half). */
+    snapshot?: RateSnapshot;
+    /** Attribute to this local date instead of the start's (an anchored half). */
+    localDate?: Date;
+    /** Carry a provisional flag (the unconfirmed remainder of an auto-stopped row). */
+    review?: { needsReview: boolean; reviewReason: ReviewReason | null };
   },
 ): Promise<TimerEntry> {
-  const localDate = localDateColumn(input.startedAt, input.timezone);
-  const snap = await snapshotFor(tx, input.tenantId, input.memberId, input.target, localDate);
+  const localDate = input.localDate ?? localDateColumn(input.startedAt, input.timezone);
+  const snap = input.snapshot ?? (await snapshotFor(tx, input.tenantId, input.memberId, input.target, localDate));
   return tx.timeEntry.create({
     data: {
       id: randomUUID(),
+      ...(input.review ? { needsReview: input.review.needsReview, reviewReason: input.review.reviewReason } : {}),
       tenantId: input.tenantId,
       clientId: input.target.clientId,
       projectId: input.target.projectId,
@@ -145,7 +160,7 @@ async function writeFinishedEntry(
       timezone: input.timezone,
       localDate,
       entryMode: input.mode,
-      source: "MANUAL",
+      source: input.source ?? "MANUAL",
       billable: input.target.billable,
       billRate: snap.billRate,
       currency: snap.billRate !== null ? snap.currency : null,
@@ -379,6 +394,167 @@ export async function deleteEntry(ctx: TimeCtx, entryId: string): Promise<void> 
   );
 }
 
+/**
+ * time:track (own) / time:edit_any (another member's) — split ONE finished,
+ * unlocked entry into two at the first part's length (UI.md rule 9 "edit
+ * own past, split"): the first keeps the row and its id (so anything
+ * pointing at it still does), the second is a NEW row with the same
+ * target, mode, source, billable choice and rate snapshot — a split
+ * re-homes nothing, and reprices only where the module's own rule says
+ * an edit would: a positioned second half that starts past local
+ * midnight is a new local date and takes that date's rate; otherwise the
+ * snapshot is carried verbatim. What the member wants different on the
+ * second half they change afterwards, as an ordinary edit. A positioned
+ * row (timer / manual) splits at the clock instant; an anchored DURATION
+ * row stays anchored — both halves start at the day's 00:00 with their
+ * own lengths. Reads before the member lock, a re-read under it (a split
+ * mints time: a concurrent edit must not inflate it); both halves audited.
+ */
+export async function splitEntry(
+  ctx: TimeCtx,
+  entryId: string,
+  input: { first: string },
+): Promise<{ first: TimerEntry; second: TimerEntry }> {
+  // The first part's length as typed ("45m", "1h 15m", "1,5") — whole minutes, like every duration.
+  const firstSeconds = parseDurationSeconds(input.first) ?? fail("INVALID_DURATION");
+  return withTenant(
+    ctx.tenantId,
+    principalOf(ctx),
+    async (tx) =>
+    guarded(async () => {
+      const rowSelect = {
+        id: true,
+        memberId: true,
+        projectId: true,
+        workItemId: true,
+        serviceId: true,
+        workTypeId: true,
+        billable: true,
+        description: true,
+        startedAt: true,
+        stoppedAt: true,
+        durationSeconds: true,
+        timezone: true,
+        localDate: true,
+        entryMode: true,
+        source: true,
+        needsReview: true,
+        reviewReason: true,
+        lockedReason: true,
+        billRate: true,
+        currency: true,
+        rateSource: true,
+        billRateCardId: true,
+        costRateCardId: true,
+      } as const;
+      const load = () => tx.timeEntry.findFirst({ where: { tenantId: ctx.tenantId, id: entryId, deletedAt: null }, select: rowSelect });
+      const seen = (await load()) ?? fail("INVALID_INPUT", "unknown entry");
+      const forOther = seen.memberId !== ctx.actor.memberId;
+      await requireAccess(tx, ctx.tenantId, ctx.actor, forOther ? "time:edit_any" : "time:track");
+      // The SOURCE project must be in scope (AUTHZ.md §4) — and the target must still be writable at all (an archived
+      // project or work type, ad-hoc switched off): a split mints a row, so it passes the same gate every new row does.
+      if (seen.projectId) await assertInScope(tx, ctx.actor, { projectId: seen.projectId });
+      const { prefs } = await resolveZone(tx, ctx.tenantId, seen.memberId);
+      const target = await resolveTarget(
+        tx,
+        ctx,
+        { projectId: seen.projectId, workItemId: seen.workItemId, serviceId: seen.serviceId, workTypeId: seen.workTypeId, billable: seen.billable, description: seen.description },
+        prefs,
+      );
+
+      // Every read above ran before the member lock; under it the row is read AGAIN, because a split mints time: a
+      // concurrent split, edit or delete of the same row (two tabs) must not inflate or resurrect it.
+      await lockMember(tx, ctx.tenantId, seen.memberId);
+      const existing = (await load()) ?? fail("INVALID_INPUT", "unknown entry");
+      if (existing.lockedReason) fail("ENTRY_LOCKED");
+      const stoppedAt = existing.stoppedAt ?? fail("INVALID_INPUT", "a running entry cannot be split");
+      const durationSeconds = existing.durationSeconds ?? fail("INVALID_INPUT", "a running entry cannot be split");
+      // Any change since the pre-lock read — the interval OR the target the split was resolved for — means the
+      // split was prepared for a row that no longer exists in that shape: refuse, never write a half of each.
+      const unchanged =
+        existing.startedAt.getTime() === seen.startedAt.getTime() &&
+        durationSeconds === seen.durationSeconds &&
+        existing.projectId === seen.projectId &&
+        existing.workItemId === seen.workItemId &&
+        existing.serviceId === seen.serviceId &&
+        existing.workTypeId === seen.workTypeId &&
+        existing.billable === seen.billable &&
+        existing.description === seen.description &&
+        existing.entryMode === seen.entryMode;
+      if (!unchanged) fail("INVALID_INPUT", "the entry changed while the split was being prepared");
+      if (!isValidSplit(durationSeconds, firstSeconds)) fail("SPLIT_TOO_SHORT");
+
+      const anchored = existing.entryMode === "DURATION";
+      const secondSeconds = durationSeconds - firstSeconds;
+      const firstStop = addSeconds(existing.startedAt, firstSeconds);
+      const secondStart = anchored ? existing.startedAt : firstStop;
+      const secondStop = anchored ? addSeconds(existing.startedAt, secondSeconds) : stoppedAt;
+      // The start-date rule: an anchored half stays on its day; a positioned half that starts past midnight is that day's.
+      const secondLocalDate = anchored ? existing.localDate : localDateColumn(secondStart, existing.timezone);
+      const sameDay = secondLocalDate.getTime() === existing.localDate.getTime();
+
+      // The first half's length is the member's explicit choice — an edit, which confirms it (as updateEntry does);
+      // the remainder stays provisional if the row was (see below).
+      const first = await tx.timeEntry.update({
+        where: { id: existing.id },
+        data: { stoppedAt: firstStop, durationSeconds: firstSeconds, needsReview: false, reviewReason: null },
+        select: entrySelect,
+      });
+      const second = await writeFinishedEntry(tx, {
+        tenantId: ctx.tenantId,
+        memberId: existing.memberId,
+        createdByMemberId: ctx.actor.memberId,
+        target,
+        startedAt: secondStart,
+        stoppedAt: secondStop,
+        mode: existing.entryMode,
+        source: existing.source,
+        timezone: existing.timezone,
+        localDate: secondLocalDate,
+        // The same snapshot on both halves — a split never reprices — unless the second half lands on ANOTHER local
+        // date, where the module's rule (rates re-resolve on a change of local date, as an edit would) applies.
+        snapshot: sameDay
+          ? {
+              billRate: existing.billRate?.toString() ?? null,
+              currency: existing.currency,
+              rateSource: existing.rateSource as RateSnapshot["rateSource"],
+              billRateCardId: existing.billRateCardId,
+              costRateCardId: existing.costRateCardId,
+            }
+          : undefined,
+        // The remainder of a provisional (auto-stopped) row stays provisional: the member shaped the first half, the
+        // tail is still the auto-stop's guess and must not become clean time. An ordinary edit of it confirms it, as before.
+        review: existing.needsReview ? { needsReview: true, reviewReason: existing.reviewReason } : undefined,
+      });
+      await recomputeTouched(tx, ctx.tenantId, [
+        { projectId: first.projectId, localDate: first.localDate },
+        { projectId: second.projectId, localDate: second.localDate },
+      ]);
+      await record(tx, {
+        action: forOther ? "time_entry.edited_by_other" : "time_entry.updated",
+        targetType: "TimeEntry",
+        targetId: first.id,
+        metadata: idsOnly({ memberId: forOther ? existing.memberId : undefined, fields: "split", secondId: second.id, durationSeconds: firstSeconds, projectId: first.projectId }),
+      });
+      await record(tx, {
+        action: forOther ? "time_entry.edited_by_other" : "time_entry.created",
+        targetType: "TimeEntry",
+        targetId: second.id,
+        metadata: idsOnly({
+          mode: existing.entryMode,
+          splitFrom: first.id,
+          memberId: forOther ? existing.memberId : undefined,
+          projectId: second.projectId,
+          workItemId: second.workItemId,
+          durationSeconds: secondSeconds,
+        }),
+      });
+      return { first, second };
+    }),
+    LOCKED_TX,
+  );
+}
+
 export type EntryListRow = TimerEntry & {
   /** Intersects another of the same member's entries (computed; D6 "allow + flag"). */
   overlaps: boolean;
@@ -410,7 +586,8 @@ export async function listMyEntries(
         deletedAt: null,
         localDate: { gte: dateColumn(range.from), lte: dateColumn(range.to) },
       },
-      orderBy: { startedAt: "asc" },
+      // Two anchored halves of a split share a start instant: the id keeps their order stable across refreshes.
+      orderBy: [{ startedAt: "asc" }, { id: "asc" }],
       select: { ...entrySelect, rateSource: true, billRate: true, currency: true, lockedReason: true },
     });
     return rows.map((r, i) => ({

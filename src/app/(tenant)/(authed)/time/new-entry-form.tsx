@@ -14,7 +14,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import type { FormResult } from "@/lib/server-actions";
 
 import { createEntryAction } from "./actions";
-import type { PickerOption, PickerProject } from "./quick-start";
+import type { PickerOption, PickerProject } from "./picker-types";
 import { useProjectPickerOptions } from "./use-project-picker-options";
 
 /**

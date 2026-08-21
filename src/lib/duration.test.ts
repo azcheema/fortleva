@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canSplitSeconds,
   dateColumn,
   floorToSecond,
   intervalsOverlap,
+  isValidSplit,
   isZeroDurationText,
   isoDateOf,
   localDateString,
@@ -42,6 +44,18 @@ describe("duration text → seconds (UI.md rule 9)", () => {
   it("accepts exactly 24 h and drops sub-minute remainders", () => {
     expect(parseDurationSeconds("24h")).toBe(86400);
     expect(parseDurationSeconds("1.001")).toBe(3600); // 3603.6 s → whole minutes → 3600
+  });
+
+  it("a split needs two whole-minute halves — the menu rule and the service's refusal through one helper", () => {
+    expect(canSplitSeconds(null)).toBe(false);
+    expect(canSplitSeconds(119)).toBe(false);
+    expect(canSplitSeconds(120)).toBe(true);
+    expect(isValidSplit(120, 60)).toBe(true);
+    expect(isValidSplit(3600, 2700)).toBe(true);
+    expect(isValidSplit(120, 61)).toBe(false); // 59 s left
+    expect(isValidSplit(3600, 3600)).toBe(false); // nothing left
+    expect(isValidSplit(3600, 59)).toBe(false); // first half under a minute
+    expect(isValidSplit(3600, 90.5)).toBe(false); // not whole seconds
   });
 
   it("a typed zero is recognised apart (an anchored row may be emptied; a new entry of nothing may not)", () => {

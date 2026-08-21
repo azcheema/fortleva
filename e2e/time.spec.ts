@@ -191,6 +191,28 @@ test.describe("my time (owner)", () => {
     await expect(copied.filter({ hasNotText: "source 2" }).first()).toContainText("0m");
   });
 
+  test("split: a finished entry becomes two rows with the same target — the first keeps its row, the second is new", async ({ page }, testInfo) => {
+    // A note unique per attempt: a CI retry must not meet the rows a first attempt already split.
+    const note = `E2E split me ${testInfo.retry}-${Date.now().toString(36)}`;
+    await addEntry(page, { note, duration: "1h" });
+    const rows = page.getByTestId("time-entry-row").filter({ hasText: note });
+    await expect(rows).toHaveCount(1, { timeout: 15_000 * SLOW });
+    // The row's menu → Split… → the in-place form under the table, default half (30m); type 20m.
+    await rows.first().getByRole("button", { name: /Actions for/ }).click();
+    await page.getByRole("menuitem", { name: "Split…" }).click();
+    const form = page.getByTestId("split-form");
+    await expect(form).toBeVisible();
+    await expect(page.getByTestId("split-first")).toHaveValue("30m");
+    await page.getByTestId("split-first").fill("20m");
+    await page.getByTestId("split-submit").click();
+    await expect(page.getByText("Entry split in two.").first()).toBeVisible({ timeout: 15_000 * SLOW });
+    await expect(rows).toHaveCount(2, { timeout: 15_000 * SLOW });
+    const texts = await rows.allTextContents();
+    expect(texts.some((x) => /20m/.test(x))).toBe(true);
+    expect(texts.some((x) => /40m/.test(x))).toBe(true);
+    await expect(form).toHaveCount(0);
+  });
+
   test("/home shows this week's and today's own hours, and the running timer ticking into them", async ({ page }) => {
     // Self-sufficient: a finished entry today (25 m), then a running timer started from the strip's own affordance.
     await addEntry(page, { note: "E2E home strip", duration: "25m" });

@@ -92,6 +92,14 @@ export function formatDurationHm(locale: string, minutes: number): string {
   return mins ? `${h} ${unitFormat(locale, "minute").format(mins)}` : h;
 }
 
+/**
+ * A duration as the TEXT of an editable field: the English h/m spelling,
+ * because `parseDurationSeconds` reads it back regardless of the viewer's
+ * locale and style (a Swedish decimal viewer still edits "1h 30m"). One
+ * helper for every duration input, so the round-trip rule lives once.
+ */
+export const durationInputText = (seconds: number): string => formatDurationHm("en", seconds / 60);
+
 /** A running timer: "0:07:05". Re-rendered once per second, never animated. */
 export function formatDurationClock(locale: string, seconds: number): string {
   const total = Math.max(0, Math.round(seconds));

@@ -58,6 +58,7 @@ export {
   listMyEntries,
   listTeamEntries,
   myTimeTotals,
+  splitEntry,
   updateEntry,
   type CopyWeekResult,
   type CreateEntryInput,

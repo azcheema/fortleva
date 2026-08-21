@@ -4,18 +4,20 @@ import { PlayIcon, TimerIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { Fragment, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { DataTable, EmptyState, InlineEdit, RowActions, SectionCard, type RowAction } from "@/components/semantic";
+import { DataTable, EmptyState, Field, InlineEdit, RowActions, SectionCard, type RowAction } from "@/components/semantic";
 import { notifyTimerChanged } from "@/components/shell/timer-pill";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDurationSeconds, formatDurationHm, type DurationStyle } from "@/lib/format";
+import { canSplitSeconds } from "@/lib/duration";
+import { durationInputText, formatDurationSeconds, type DurationStyle } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { continueEntryAction, deleteEntryAction, updateEntryAction } from "./actions";
+import { continueEntryAction, deleteEntryAction, splitEntryAction, updateEntryAction } from "./actions";
 
 export type WeekEntryRow = {
   id: string;
@@ -79,6 +81,20 @@ export function TimeWeek({
       else toast.success(r.message);
       notifyTimerChanged();
       router.refresh();
+    });
+
+  // "Split…" from a row's menu is answered by ONE in-place form under the
+  // table (the settings-rates precedent). Only the row's ID is state: the
+  // form always shows the CURRENT row (a refresh that changed or removed
+  // it is reflected, never a frozen snapshot), and the form owns its own
+  // text so typing does not re-render the grid.
+  const [splittingId, setSplittingId] = useState<string | null>(null);
+  const splitting = splittingId ? (entries.find((e) => e.id === splittingId) ?? null) : null;
+  const submitSplit = (id: string, first: string) =>
+    run(async () => {
+      const r = await splitEntryAction(id, first);
+      if (r.ok) setSplittingId(null);
+      return r;
     });
 
   const fmt = (seconds: number) => formatDurationSeconds(locale, seconds, durationStyle);
@@ -150,6 +166,10 @@ export function TimeWeek({
                   {rows.map((e) => {
                     const running = e.stoppedAt === null;
                     const rowActions: RowAction[] = [
+                      // Split: a finished, unlocked row long enough for two whole-minute halves (the service's rule, one helper).
+                      ...(e.locked || running || !canSplitSeconds(e.durationSeconds)
+                        ? []
+                        : [{ key: "split", label: t("actions.split"), onSelect: () => setSplittingId(e.id) }]),
                       ...(e.locked
                         ? []
                         : [
@@ -208,7 +228,7 @@ export function TimeWeek({
                             <InlineEdit
                               kind="text"
                               name={`duration-${e.id}`}
-                              value={formatDurationHm("en", (e.durationSeconds ?? 0) / 60)}
+                              value={durationInputText(e.durationSeconds ?? 0)}
                               display={<span className="num">{fmt(e.durationSeconds ?? 0)}</span>}
                               label={t("columns.duration")}
                               placeholder={t("durationPlaceholder")}
@@ -257,6 +277,62 @@ export function TimeWeek({
           </TableBody>
         </Table>
       </DataTable>
+      {splitting ? (
+        <SplitForm
+          key={`${splitting.id}:${splitting.durationSeconds ?? 0}`}
+          row={splitting}
+          total={fmt(splitting.durationSeconds ?? 0)}
+          pending={pending}
+          onSubmit={(first) => submitSplit(splitting.id, first)}
+          onCancel={() => setSplittingId(null)}
+        />
+      ) : null}
     </SectionCard>
+  );
+}
+
+/**
+ * The split question, under the table: the first part's length (default
+ * half — as input text, the spelling the parser reads back), Split /
+ * Cancel. Owns its text so keystrokes re-render only this form; re-keyed
+ * by the row and its length, so a refresh that changed the row re-seeds
+ * it. No focus grab: the row menu hands focus back to its ⋯ trigger on
+ * close (the settings-rates precedent), and Tab reaches the field.
+ */
+function SplitForm({
+  row,
+  total,
+  pending,
+  onSubmit,
+  onCancel,
+}: {
+  row: WeekEntryRow;
+  total: string;
+  pending: boolean;
+  onSubmit: (first: string) => void;
+  onCancel: () => void;
+}) {
+  const t = useTranslations("time.week");
+  const tCommon = useTranslations("common");
+  const [first, setFirst] = useState(() => durationInputText(Math.max(60, Math.floor((row.durationSeconds ?? 0) / 120) * 60)));
+  return (
+    <form
+      className="flex flex-wrap items-end gap-3 border-t border-border p-4"
+      data-testid="split-form"
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        onSubmit(first);
+      }}
+    >
+      <Field htmlFor="split-first" label={t("split.first", { name: row.label || t("adhoc") })} hint={t("split.hint", { total })}>
+        <Input id="split-first" value={first} onChange={(ev) => setFirst(ev.target.value)} autoComplete="off" className="w-[12ch]" data-testid="split-first" />
+      </Field>
+      <Button type="submit" size="sm" disabled={pending || first.trim() === ""} data-testid="split-submit">
+        {t("split.submit")}
+      </Button>
+      <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
+        {tCommon("cancel")}
+      </Button>
+    </form>
   );
 }

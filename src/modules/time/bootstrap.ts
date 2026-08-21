@@ -23,16 +23,13 @@ export async function ensureTimeDefaults(tenantId: string): Promise<void> {
     p = withTenant(tenantId, { type: "system" }, async (tx) => {
       await ensureStaffNotice(tx, tenantId);
       await ensureWorkTypes(tx, tenantId);
-    }).then(
-      () => {
+    })
+      .then(() => {
         seeded.add(tenantId);
+      })
+      .finally(() => {
         seeding.delete(tenantId);
-      },
-      (e: unknown) => {
-        seeding.delete(tenantId);
-        throw e;
-      },
-    );
+      });
     seeding.set(tenantId, p);
   }
   return p;

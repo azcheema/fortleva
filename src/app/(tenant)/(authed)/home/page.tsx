@@ -63,17 +63,18 @@ export default async function HomePage() {
       weekSeconds: totals.weekSeconds,
       todaySeconds: totals.todaySeconds,
       running: timer.running
-        ? {
-            startedAt: timer.running.startedAt.toISOString(),
+        ? (() => {
             // The row's START date decides where its seconds land when it stops — the strip counts it the same way live.
-            localDate: timer.running.localDate.toISOString().slice(0, 10),
-            label: labelOf(timer.running),
-          }
+            const startDate = timer.running.localDate.toISOString().slice(0, 10);
+            return {
+              startedAt: timer.running.startedAt.toISOString(),
+              label: labelOf(timer.running),
+              countsToday: startDate === today,
+              countsThisWeek: startDate >= week.from && startDate <= week.to,
+            };
+          })()
         : null,
       serverNow: timer.serverNow.toISOString(),
-      today,
-      weekFrom: week.from,
-      weekTo: week.to,
       durationStyle: prefs.durationStyle,
       weekLabel,
     };

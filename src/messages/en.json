@@ -787,6 +787,7 @@
     "OVERLAP_BLOCKED": "This overlaps another of your entries, and overlapping entries are not allowed here.",
     "ENTRY_LOCKED": "This entry is locked (it is on an invoice or a closed period) and cannot be changed.",
     "INVALID_DURATION": "Enter a duration like 1h 30m, 90m or 1,5 — at most 24 hours, and the end after the start.",
+    "SPLIT_TOO_SHORT": "The first part must be shorter than the whole and leave the second part at least a minute.",
     "SERVICE_CLIENT_MISMATCH": "That agreement belongs to another client or project.",
     "RATE_OVERLAP": "A rate card already covers that period — close it first or pick a later start date.",
     "RATE_CARD_IMMUTABLE": "Rate cards cannot be edited — close this one and add a new card.",
@@ -1673,7 +1674,8 @@
       "entryCreated": "Entry added.",
       "saved": "Saved.",
       "entryDeleted": "Entry deleted.",
-      "shiftConfirmed": "Shift confirmed."
+      "shiftConfirmed": "Shift confirmed.",
+      "split": "Entry split in two."
     },
     "errors": {
       "invalidTime": "Enter start and end as HH:MM."
@@ -1769,7 +1771,8 @@
         "delete": "Delete",
         "confirmDelete": "Delete this entry?",
         "continue": "Continue (new timer)",
-        "continued": "Timer started from this entry."
+        "continued": "Timer started from this entry.",
+        "split": "Split…"
       },
       "failed": "That did not work.",
       "empty": {
@@ -1787,6 +1790,11 @@
         "nothingNew": "Nothing to copy{present, plural, =0 {} other { — # already here}}{unusable, plural, =0 {} other {; # no longer available}}.",
         "nothing": "Last week has no entries to copy.",
         "failed": "Could not copy last week."
+      },
+      "split": {
+        "first": "Split {name} — first part",
+        "hint": "The first part's length; the rest ({total} in all) becomes a new row with the same task and rate.",
+        "submit": "Split"
       }
     },
     "team": {

@@ -20,8 +20,6 @@ import { startTimerAction, stopTimerAction, undoStartAction } from "./actions";
 import type { PickerOption, PickerProject } from "./picker-types";
 import { useProjectPickerOptions } from "./use-project-picker-options";
 
-export type { PickerOption, PickerProject } from "./picker-types";
-
 export type RunningView = {
   id: string;
   label: string;

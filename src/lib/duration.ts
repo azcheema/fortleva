@@ -103,6 +103,15 @@ export function zoneOffsetMinutes(instant: Date, timeZone: string): number {
 
 export const MAX_ENTRY_SECONDS = 24 * 3600;
 
+/** A split leaves BOTH halves at least a whole minute — the grid's inline editor can reproduce nothing shorter. */
+export const MIN_SPLIT_HALF_SECONDS = 60;
+/** May a finished row of `durationSeconds` be split at all? (The UI's menu rule and the service's refusal agree through this.) */
+export const canSplitSeconds = (durationSeconds: number | null): boolean =>
+  durationSeconds !== null && durationSeconds >= 2 * MIN_SPLIT_HALF_SECONDS;
+/** Is `firstSeconds` a valid split point of `durationSeconds` — both halves ≥ a minute? */
+export const isValidSplit = (durationSeconds: number, firstSeconds: number): boolean =>
+  Number.isInteger(firstSeconds) && firstSeconds >= MIN_SPLIT_HALF_SECONDS && durationSeconds - firstSeconds >= MIN_SPLIT_HALF_SECONDS;
+
 /**
  * Duration text → seconds, or null when unparseable / non-positive /
  * over 24 h. Accepted: `1h 30m`, `1h30m`, `1 h 30 min`, `2h`, `90m`,

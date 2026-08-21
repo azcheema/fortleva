@@ -19,6 +19,7 @@ import {
   createEntry,
   deleteEntry,
   getCurrentTimerOnce,
+  splitEntry,
   startBreak,
   startTimer,
   stopBreak,
@@ -346,6 +347,26 @@ export async function deleteEntryAction(entryId: string): Promise<FormResult> {
   const r = await runForm(PATH, async () => {
     await deleteEntry(ctx, id.data);
     return t("toasts.entryDeleted");
+  });
+  if (r.ok) revalidate();
+  return r;
+}
+
+/**
+ * Split a finished entry: the first part keeps the row, the second is a new
+ * row with the same target and snapshot. `first` is the first part's length
+ * as typed ("45m", "1h 15m", "1,5") — whole minutes, like every duration.
+ */
+export async function splitEntryAction(entryId: string, first: string): Promise<FormResult> {
+  const [t, tCommon] = await Promise.all([getTranslations("time"), getTranslations("common")]);
+  const id = uuid.safeParse(entryId);
+  const text = z.string().max(40).safeParse(first);
+  if (!id.success || !text.success) return { ok: false, message: tCommon("invalidInput") };
+  const ctx = await ctxOf();
+  // The service parses the duration text (INVALID_DURATION / SPLIT_TOO_SHORT map to their messages like every other).
+  const r = await runForm(PATH, async () => {
+    await splitEntry(ctx, id.data, { first: text.data });
+    return t("toasts.split");
   });
   if (r.ok) revalidate();
   return r;
