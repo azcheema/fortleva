@@ -637,7 +637,10 @@ function BoardColumn(props: {
       </div>
       {/* Outside the role="list": a button is not a list item, and
           aria-required-children would be violated by putting it inside. */}
-      {props.canCreate && droppable ? (
+      {/* Creating is `work_item:create`; TRIAGE is the one column a task
+          cannot be created into (it needs a triageStatus). Deliberately NOT
+          gated on `droppable`, which also folds in `work_item:edit`. */}
+      {props.canCreate && state.category !== "TRIAGE" ? (
         <div className="px-2 pb-2">
           <ColumnCreate
             state={state}
