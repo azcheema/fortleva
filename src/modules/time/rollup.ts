@@ -4,7 +4,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { dateColumn, isoDateOf } from "@/lib/duration";
 import { fail } from "@/lib/domain-error";
 
-import { principalOf, type TimeCtx } from "./ctx";
+import { billAmountOf, money, principalOf, sumBillAmount, type TimeCtx } from "./ctx";
 
 /**
  * Rollups (DATA_MODEL.md §6.15; plan §3.3): flat SUMs over time_entry by
@@ -127,9 +127,7 @@ export async function loadProjectEntries(tx: TenantDb, tenantId: string, project
   });
 }
 
-const amountOf = (rows: EntryRow[]): number =>
-  rows.reduce((sum, r) => sum + (r.billable && r.billRate ? (r.durationSeconds / 3600) * Number(r.billRate.toString()) : 0), 0);
-const money = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
+const amountOf = (rows: EntryRow[]): number => sumBillAmount(rows);
 
 function group<K extends string | null>(
   rows: EntryRow[],
@@ -232,6 +230,8 @@ export type TeamRollupLine = {
   seconds: number;
   billableSeconds: number;
   amount: string | null;
+  /** The project's billing currency (ad-hoc rows: null) — amounts are never summed across currencies. */
+  currency: string | null;
   /** Σ hours vs the member's hoursPerDay × working days in range — display only. */
   hoursPerDay: number | null;
 };
@@ -257,7 +257,7 @@ export async function teamRollup(ctx: TimeCtx, range: Range): Promise<TeamRollup
         billable: true,
         billRate: true,
         member: { select: { hoursPerDay: true, user: { select: { name: true } } } },
-        project: { select: { key: true, name: true } },
+        project: { select: { key: true, name: true, billingCurrency: true } },
       },
     });
     const buckets = new Map<string, TeamRollupLine & { _amount: number }>();
@@ -274,14 +274,13 @@ export async function teamRollup(ctx: TimeCtx, range: Range): Promise<TeamRollup
           seconds: 0,
           billableSeconds: 0,
           amount: null,
+          currency: r.project?.billingCurrency ?? null,
           hoursPerDay: r.member.hoursPerDay ? Number(r.member.hoursPerDay.toString()) : null,
           _amount: 0,
         } as TeamRollupLine & { _amount: number });
       b.seconds += r.durationSeconds ?? 0;
-      if (r.billable) {
-        b.billableSeconds += r.durationSeconds ?? 0;
-        if (r.billRate) b._amount += ((r.durationSeconds ?? 0) / 3600) * Number(r.billRate.toString());
-      }
+      if (r.billable) b.billableSeconds += r.durationSeconds ?? 0;
+      b._amount += billAmountOf(r);
       buckets.set(k, b);
     }
     return [...buckets.values()]
@@ -312,10 +311,7 @@ export async function agreementConsumption(
     });
     const seconds = rows.reduce((s, r) => s + (r.durationSeconds ?? 0), 0);
     const billableSeconds = rows.filter((r) => r.billable).reduce((s, r) => s + (r.durationSeconds ?? 0), 0);
-    const amount = rows.reduce(
-      (s, r) => s + (r.billable && r.billRate ? ((r.durationSeconds ?? 0) / 3600) * Number(r.billRate.toString()) : 0),
-      0,
-    );
+    const amount = sumBillAmount(rows);
     return { serviceId, seconds, billableSeconds, amount: canSeeMoney ? money(amount) : null, hours: hours2(seconds) };
   });
 }

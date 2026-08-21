@@ -186,14 +186,32 @@ export async function noticeStatusFor(
   };
 }
 
+/**
+ * The boolean only — two id-sized queries, no notice bodies. The pill,
+ * the gate and every timer/shift write ask this; the rendered notice
+ * (noticeStatusFor) is for the page that shows it.
+ */
+export async function noticeRequiredFor(tx: TenantDb, tenantId: string, memberId: string): Promise<boolean> {
+  const latest = await tx.staffNotice.findFirst({
+    where: { tenantId, publishedAt: { not: null } },
+    orderBy: { version: "desc" },
+    select: { version: true },
+  });
+  if (!latest) return false;
+  const ack = await tx.staffNoticeAcknowledgment.findFirst({
+    where: { tenantId, memberId, noticeVersion: latest.version },
+    select: { id: true },
+  });
+  return ack === null;
+}
+
 /** The gate: timers and clock-in call this first (DomainError NOTICE_UNACKNOWLEDGED). */
 export async function assertNoticeAcknowledged(
   tx: TenantDb,
   tenantId: string,
   memberId: string,
 ): Promise<void> {
-  const status = await noticeStatusFor(tx, tenantId, memberId);
-  if (status.required && !status.acknowledged) fail("NOTICE_UNACKNOWLEDGED");
+  if (await noticeRequiredFor(tx, tenantId, memberId)) fail("NOTICE_UNACKNOWLEDGED");
 }
 
 /** time:track — what the timer UI shows before the first start. */

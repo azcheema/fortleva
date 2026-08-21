@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { record } from "@/audit/record";
-import { isAuthorized, scopeWhere } from "@/authz/authorize";
+import { assertInScope, isAuthorized, scopeWhere } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import {
@@ -20,7 +20,7 @@ import { fail } from "@/lib/domain-error";
 import { ensureTimeDefaults } from "./bootstrap";
 import { guarded, idsOnly, lockMember, principalOf, resolveZone, type TimeCtx } from "./ctx";
 import { assertNoticeAcknowledged } from "./notice";
-import { settleMember } from "./settle";
+import { settleMemberOnce } from "./settle";
 import { recomputeTouched } from "./summary";
 import { resolveTarget, snapshotFor, type EntryTargetInput } from "./target";
 import { entrySelect, type TimerEntry } from "./timer";
@@ -186,6 +186,11 @@ export async function updateEntry(ctx: TimeCtx, entryId: string, patch: EntryPat
       if (!existing) fail("INVALID_INPUT", "unknown entry");
       const forOther = existing!.memberId !== ctx.actor.memberId;
       await requireAccess(tx, ctx.tenantId, ctx.actor, forOther ? "time:edit_any" : "time:track");
+      // The SOURCE project must be in scope too (AUTHZ.md §4: a move
+      // asserts source AND destination — resolveTarget covers the latter).
+      // time:edit_any is a scoped code: a client-A lead cannot re-home a
+      // client-B entry by id. RLS bounds the tenant, not the scope.
+      if (existing!.projectId) await assertInScope(tx, ctx.actor, { projectId: existing!.projectId });
       if (existing!.lockedReason) fail("ENTRY_LOCKED");
       await lockMember(tx, ctx.tenantId, existing!.memberId);
       const { timezone, prefs } = await resolveZone(tx, ctx.tenantId, existing!.memberId);
@@ -271,20 +276,24 @@ export async function deleteEntry(ctx: TimeCtx, entryId: string): Promise<void> 
     guarded(async () => {
       const existing = await tx.timeEntry.findFirst({
         where: { tenantId: ctx.tenantId, id: entryId, deletedAt: null },
-        select: { id: true, memberId: true, lockedReason: true, projectId: true, localDate: true, stoppedAt: true },
+        select: { id: true, memberId: true, lockedReason: true, projectId: true, localDate: true, startedAt: true, stoppedAt: true },
       });
       if (!existing) fail("INVALID_INPUT", "unknown entry");
       const forOther = existing!.memberId !== ctx.actor.memberId;
       await requireAccess(tx, ctx.tenantId, ctx.actor, forOther ? "time:delete_any" : "time:track");
+      // time:delete_any is a scoped code (AUTHZ.md §4): the entry's project must be in scope.
+      if (existing!.projectId) await assertInScope(tx, ctx.actor, { projectId: existing!.projectId });
       if (existing!.lockedReason) fail("ENTRY_LOCKED");
       await lockMember(tx, ctx.tenantId, existing!.memberId);
       const now = floorToSecond(new Date());
-      // A running entry is stopped as it is deleted so the row stays CHECK-consistent.
+      // A running entry is stopped as it is deleted so the row stays
+      // CHECK-consistent: time_entry_duration_exact requires
+      // duration_seconds = floor(stopped_at − started_at), never 0.
       await tx.timeEntry.update({
         where: { id: existing!.id },
         data: existing!.stoppedAt
           ? { deletedAt: now }
-          : { deletedAt: now, stoppedAt: now, durationSeconds: 0 },
+          : { deletedAt: now, stoppedAt: now, durationSeconds: secondsBetween(existing!.startedAt, now) },
       });
       await recomputeTouched(tx, ctx.tenantId, [{ projectId: existing!.projectId, localDate: existing!.localDate }]);
       await record(tx, {
@@ -317,7 +326,7 @@ export async function listMyEntries(
   range: { from: string; to: string },
 ): Promise<EntryListRow[]> {
   await ensureTimeDefaults(ctx.tenantId);
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
     const canSeeRates = await isAuthorized(tx, ctx.actor, "rate:view_bill");

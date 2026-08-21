@@ -8,8 +8,8 @@ import { fail } from "@/lib/domain-error";
 
 import { ensureTimeDefaults } from "./bootstrap";
 import { LOCKED_TX, guarded, idsOnly, lockMember, principalOf, resolveZone, type TimeCtx } from "./ctx";
-import { assertNoticeAcknowledged, noticeStatusFor } from "./notice";
-import { settleMember } from "./settle";
+import { assertNoticeAcknowledged, noticeRequiredFor } from "./notice";
+import { settleMemberOnce } from "./settle";
 import { recomputeTouched } from "./summary";
 import { resolveTarget, snapshotFor, type EntryTargetInput } from "./target";
 
@@ -137,7 +137,7 @@ export async function startTimer(
   input: EntryTargetInput,
 ): Promise<{ started: TimerEntry; stopped: TimerEntry | null }> {
   await ensureTimeDefaults(ctx.tenantId);
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(
     ctx.tenantId,
     principalOf(ctx),
@@ -207,7 +207,7 @@ export async function stopTimer(
   ctx: TimeCtx,
   patch?: { description?: string | null; billable?: boolean; workTypeId?: string | null; serviceId?: string | null },
 ): Promise<TimerEntry> {
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(
     ctx.tenantId,
     principalOf(ctx),
@@ -272,15 +272,15 @@ export type CurrentTimer = {
 /** time:track — the pill's state (lazy auto-stop applied first). */
 export async function getCurrentTimer(ctx: TimeCtx): Promise<CurrentTimer> {
   await ensureTimeDefaults(ctx.tenantId);
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
-    const [running, notice, { prefs }] = await Promise.all([
+    const [running, noticeRequired, { prefs }] = await Promise.all([
       tx.timeEntry.findFirst({
         where: { tenantId: ctx.tenantId, memberId: ctx.actor.memberId, stoppedAt: null, deletedAt: null },
         select: entrySelect,
       }),
-      noticeStatusFor(tx, ctx.tenantId, ctx.actor.memberId),
+      noticeRequiredFor(tx, ctx.tenantId, ctx.actor.memberId), // the boolean, not the bodies
       resolveZone(tx, ctx.tenantId, ctx.actor.memberId),
     ]);
     const serverNow = new Date();
@@ -289,7 +289,7 @@ export async function getCurrentTimer(ctx: TimeCtx): Promise<CurrentTimer> {
     return {
       running,
       nudge,
-      noticeRequired: notice.required && !notice.acknowledged,
+      noticeRequired,
       elapsedSeconds,
       serverNow,
     };
@@ -346,6 +346,10 @@ export async function undoStart(ctx: TimeCtx, input: { startedId: string; resume
       });
       if (!started || !resume || !resume.stoppedAt) fail("INVALID_INPUT", "nothing to undo");
       if (secondsBetween(started!.startedAt, now) > UNDO_WINDOW_SECONDS) fail("INVALID_INPUT", "undo window passed");
+      // The resume target must be the entry THIS start auto-stopped: startTimer
+      // stops the previous one and starts the new one at the same instant, so
+      // a crafted pair (any old finished entry) is refused here, not reopened.
+      if (resume!.stoppedAt!.getTime() !== started!.startedAt.getTime()) fail("INVALID_INPUT", "not the auto-stopped entry");
       // Hard-delete the mistaken start (seconds old, never invoiced), then reopen.
       await tx.timeEntry.delete({ where: { id: started!.id } });
       await tx.timeEntry.update({

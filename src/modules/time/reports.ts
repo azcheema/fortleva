@@ -5,7 +5,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { dateColumn, isoDateOf } from "@/lib/duration";
 import { fail } from "@/lib/domain-error";
 
-import { guarded, idsOnly, principalOf, type TimeCtx } from "./ctx";
+import { billAmountOf, guarded, idsOnly, money, principalOf, sumBillAmount, type TimeCtx } from "./ctx";
 
 /**
  * TimeReport (D3; DATA_MODEL.md §6.15): an EXPLICITLY published, IMMUTABLE
@@ -84,7 +84,6 @@ const select = {
   snapshot: true,
 } as const;
 
-const money = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
 
 /** Strip every amount key (internal reader without rate:view_bill). */
 const stripAmounts = (s: ReportSnapshot): ReportSnapshot => ({
@@ -196,10 +195,8 @@ async function buildSnapshot(
   const add = (key: string, make: () => ReportLine, r: (typeof rows)[number]) => {
     const acc = buckets.get(key) ?? { line: make(), amount: 0 };
     acc.line.seconds += r.durationSeconds ?? 0;
-    if (r.billable) {
-      acc.line.billableSeconds += r.durationSeconds ?? 0;
-      if (r.billRate) acc.amount += ((r.durationSeconds ?? 0) / 3600) * Number(r.billRate.toString());
-    }
+    if (r.billable) acc.line.billableSeconds += r.durationSeconds ?? 0;
+    acc.amount += billAmountOf(r);
     buckets.set(key, acc);
   };
   const other = (): ReportLine => ({ kind: "other", seconds: 0, billableSeconds: 0 });
@@ -247,10 +244,7 @@ async function buildSnapshot(
     .map(([, acc]) => (args.includeAmounts ? { ...acc.line, amount: money(acc.amount) } : acc.line));
   const totalSeconds = rows.reduce((s, r) => s + (r.durationSeconds ?? 0), 0);
   const billableSeconds = rows.filter((r) => r.billable).reduce((s, r) => s + (r.durationSeconds ?? 0), 0);
-  const totalAmount = rows.reduce(
-    (s, r) => s + (r.billable && r.billRate ? ((r.durationSeconds ?? 0) / 3600) * Number(r.billRate.toString()) : 0),
-    0,
-  );
+  const totalAmount = sumBillAmount(rows);
   return {
     version: 1,
     groupBy: args.groupBy,

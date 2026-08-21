@@ -5,7 +5,6 @@ import { assertInScope, isAuthorized } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { nextCounter, withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
-import { isUniqueViolation } from "@/lib/domain-error";
 import { rankBetween } from "@/lib/rank";
 import { emit } from "@/notify/emit";
 import { writeActivity } from "./activity";
@@ -177,39 +176,35 @@ export async function createItem(
     const number = await nextCounter(tx, `work_item:${input.projectId}`);
     const id = randomUUID();
 
-    // Bottom rank with retry — two concurrent creates race on the
-    // (tenantId, projectId, rank) unique; the loser re-reads and jitters.
-    for (let attempt = 0; ; attempt += 1) {
-      const last = await tx.workItem.findFirst({
-        where: { tenantId: ctx.tenantId, projectId: input.projectId, deletedAt: null },
-        orderBy: { rank: "desc" },
-        select: { rank: true },
-      });
-      try {
-        await tx.workItem.create({
-          data: {
-            id,
-            tenantId: ctx.tenantId,
-            clientId: project!.clientId,
-            projectId: input.projectId,
-            number,
-            type,
-            title: input.title,
-            stateId: defaultState!.id,
-            stateCategory: defaultState!.category,
-            parentId: input.parentId ?? null,
-            rootId: id, // parent_guard derives the real root/depth
-            rank: rankBetween(last?.rank ?? null, null),
-            visibility,
-            createdByMemberId: ctx.actor.memberId,
-          },
-        });
-        break;
-      } catch (e) {
-        if (!isUniqueViolation(e) || attempt >= 5) throw e;
-        await new Promise((r) => setTimeout(r, Math.random() * 40));
-      }
-    }
+    // Bottom rank. Two creates in one project cannot race on the
+    // (tenantId, projectId, rank) unique: nextCounter() above took the
+    // tenant_counter row lock for this project, which serialises them
+    // until commit (the 'numbering + rank under concurrency' dbtest). A
+    // retry loop inside the transaction could not work anyway — after a
+    // unique violation Postgres aborts the transaction (25P02).
+    const last = await tx.workItem.findFirst({
+      where: { tenantId: ctx.tenantId, projectId: input.projectId, deletedAt: null },
+      orderBy: { rank: "desc" },
+      select: { rank: true },
+    });
+    await tx.workItem.create({
+      data: {
+        id,
+        tenantId: ctx.tenantId,
+        clientId: project!.clientId,
+        projectId: input.projectId,
+        number,
+        type,
+        title: input.title,
+        stateId: defaultState!.id,
+        stateCategory: defaultState!.category,
+        parentId: input.parentId ?? null,
+        rootId: id, // parent_guard derives the real root/depth
+        rank: rankBetween(last?.rank ?? null, null),
+        visibility,
+        createdByMemberId: ctx.actor.memberId,
+      },
+    });
     const created = await tx.workItem.findFirst({ where: { tenantId: ctx.tenantId, id } });
     await writeActivity(tx, ctx, created!, { field: "created", forceInternal: true });
     await record(tx, {

@@ -4,13 +4,17 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthzError } from "@/authz/errors";
 import { withTenant } from "@/db";
 import { DomainError } from "@/lib/domain-error";
-import { setupTenant } from "@/members/dbtest-fixture";
+import { actorFor, setupTenant } from "@/members/dbtest-fixture";
+import { createRole, setRolePermissions } from "@/members/roles";
 import { createItem } from "@/modules/work";
+import { setHoursSharingMode } from "@/projects/service";
 
 import {
   acknowledgeNotice,
+  archiveBudget,
   clockIn,
   clockOut,
+  createBudget,
   createEntry,
   createRateCard,
   deleteEntry,
@@ -666,5 +670,121 @@ describe("lazy settle (deterministic, idempotent, audits SYSTEM)", () => {
     expect(closed?.workedSeconds).toBe(14 * 3600);
     expect(closed?.reviewReason).toBe("AUTO_STOPPED");
     expect((await f.audits("shift.auto_stopped"))[0]?.actorType).toBe("SYSTEM");
+  });
+});
+
+describe("review fixes 2026-08-21 — scoped *_any codes, running delete, undo binding, concurrent settle", () => {
+  it("a custom role with time:edit_any/time:delete_any but no client:view_all is scoped: it cannot delete or re-home another client's entry", async () => {
+    const run = randomUUID().slice(0, 8);
+    const { roleId } = await createRole({ tenantId: f.tenantId, actor: f.seats.owner.actor, name: `Client A lead ${run}` });
+    await setRolePermissions({
+      tenantId: f.tenantId,
+      actor: f.seats.owner.actor,
+      roleId,
+      codes: ["time:track", "time:view_team", "time:edit_any", "time:delete_any"],
+    });
+    const userId = randomUUID();
+    const email = `lead-time-${run}@test.invalid`;
+    await f.platform.user.create({ data: { id: userId, name: email, email } });
+    const lead = await f.platform.member.create({ data: { tenantId: f.tenantId, userId } });
+    await f.platform.memberRole.create({ data: { tenantId: f.tenantId, memberId: lead.id, roleId } });
+    await f.platform.memberClient.create({ data: { tenantId: f.tenantId, memberId: lead.id, clientId: acme } });
+    const leadCtx = { tenantId: f.tenantId, actor: actorFor(lead.id) };
+    try {
+      const onBeta = await createEntry(ownerCtx(), { projectId: betaProject, description: "Beta work", durationText: "1h", localDate: "2026-08-17" });
+      const onAcme = await createEntry(ownerCtx(), { projectId: acmeProject, description: "Acme work", durationText: "1h", localDate: "2026-08-17" });
+      // Out of scope ⇒ NOT_FOUND on both the delete and the re-home (source project is asserted).
+      expect(await authzReason(deleteEntry(leadCtx, onBeta.id))).toBe("NOT_FOUND");
+      expect(await authzReason(updateEntry(leadCtx, onBeta.id, { projectId: acmeProject }))).toBe("NOT_FOUND");
+      const untouched = await f.platform.timeEntry.findUniqueOrThrow({ where: { id: onBeta.id } });
+      expect(untouched.deletedAt).toBeNull();
+      expect(untouched.projectId).toBe(betaProject);
+      // In scope the codes work as intended.
+      const edited = await updateEntry(leadCtx, onAcme.id, { durationText: "2h" });
+      expect(edited.durationSeconds).toBe(7200);
+      await deleteEntry(leadCtx, onAcme.id);
+      expect((await f.platform.timeEntry.findUniqueOrThrow({ where: { id: onAcme.id } })).deletedAt).not.toBeNull();
+      await deleteEntry(ownerCtx(), onBeta.id);
+    } finally {
+      await f.platform.memberRole.deleteMany({ where: { tenantId: f.tenantId, memberId: lead.id } });
+      await f.platform.member.delete({ where: { id: lead.id } });
+      await f.platform.user.delete({ where: { id: userId } });
+    }
+  });
+
+  it("deleting a RUNNING entry stops it CHECK-consistently and the timer is gone", async () => {
+    await stopTimer(ownerCtx()).catch(() => undefined);
+    const { started } = await startTimer(ownerCtx(), { workItemId: taskId });
+    await deleteEntry(ownerCtx(), started.id);
+    const row = await f.platform.timeEntry.findUniqueOrThrow({ where: { id: started.id } });
+    expect(row.deletedAt).not.toBeNull();
+    expect(row.stoppedAt).not.toBeNull();
+    expect(row.durationSeconds).toBe(Math.floor((row.stoppedAt!.getTime() - row.startedAt.getTime()) / 1000));
+    expect((await getCurrentTimer(ownerCtx())).running).toBeNull();
+  });
+
+  it("undoStart refuses a resume target that is not the entry the start auto-stopped", async () => {
+    const old = await createEntry(ownerCtx(), { projectId: acmeProject, description: "Old finished", durationText: "1h", localDate: "2026-08-16" });
+    const { started } = await startTimer(ownerCtx(), { workItemId: taskId });
+    expect(await domainCode(undoStart(ownerCtx(), { startedId: started.id, resumeId: old.id }))).toBe("INVALID_INPUT");
+    expect((await getCurrentTimer(ownerCtx())).running?.id).toBe(started.id);
+    expect((await f.platform.timeEntry.findUniqueOrThrow({ where: { id: old.id } })).stoppedAt).not.toBeNull();
+    await stopTimer(ownerCtx());
+    await deleteEntry(ownerCtx(), old.id);
+  });
+
+  it("four concurrent settles of one capped timer write ONE stop and ONE audit row", async () => {
+    const { started } = await startTimer(ownerCtx(), { workItemId: taskId });
+    const startedAt = hoursAgo(13);
+    startedAt.setMilliseconds(0);
+    await f.platform.timeEntry.update({ where: { id: started.id }, data: { startedAt, localDate: new Date(startedAt.toISOString().slice(0, 10)) } });
+    const results = await Promise.all([1, 2, 3, 4].map(() => settleMember(f.tenantId, f.seats.owner.memberId)));
+    expect(results.reduce((s, r) => s + r.autoStoppedEntries, 0)).toBe(1);
+    const audits = (await f.audits("timer.auto_stopped")).filter((a) => a.targetId === started.id);
+    expect(audits).toHaveLength(1);
+    const row = await f.platform.timeEntry.findUniqueOrThrow({ where: { id: started.id } });
+    expect(row.stoppedAt?.getTime()).toBe(startedAt.getTime() + 12 * 3600_000);
+  });
+});
+
+describe("review 2026-08-21 — the summary's shared budget columns are fail-closed at the database", () => {
+  it("leaving BILLABLE_AMOUNT nulls budget_amount immediately (no entry write needed); coming back restores it; archiving the budget clears it", async () => {
+    const projectCtx = ownerCtx();
+    await f.platform.project.update({ where: { id: acmeProject }, data: { hoursSharingMode: "BILLABLE_AMOUNT", portalEnabled: true } });
+    const budget = await createBudget(ownerCtx(), { projectId: acmeProject, kind: "MONEY", amount: "50000", currency: "SEK" });
+    const entry = await createEntry(ownerCtx(), { projectId: acmeProject, description: "Budgeted", durationText: "1h", localDate: "2026-07-14" });
+    const month = new Date("2026-07-01T00:00:00Z");
+    const rowOf = () =>
+      f.platform.projectTimeSummary.findFirstOrThrow({ where: { tenantId: f.tenantId, projectId: acmeProject, periodMonth: month } });
+    expect(Number((await rowOf()).budgetAmount)).toBe(50000);
+
+    // The owner switches to HOURS precisely to stop sharing money: the
+    // trigger nulls the amount in the same statement — the contact sees
+    // the row (HOURS is shareable) but no money.
+    await setHoursSharingMode(projectCtx, acmeProject, "HOURS");
+    const hours = await rowOf();
+    expect(hours.visibility).toBe("CLIENT_VISIBLE");
+    expect(hours.budgetAmount).toBeNull();
+    expect(hours.billableAmount).toBeNull();
+    await withTenant(f.tenantId, { type: "contact", id: contact.id, clientId: acme }, async (tx) => {
+      const seen = await tx.projectTimeSummary.findFirst({ where: { projectId: acmeProject, periodMonth: month } });
+      expect(seen).not.toBeNull();
+      expect(seen?.budgetAmount).toBeNull();
+    });
+
+    // Back to BILLABLE_AMOUNT: the budget reappears without an entry write.
+    await setHoursSharingMode(projectCtx, acmeProject, "BILLABLE_AMOUNT");
+    expect(Number((await rowOf()).budgetAmount)).toBe(50000);
+
+    // A budget change restamps too (no entry write in between).
+    await archiveBudget(ownerCtx(), budget.id);
+    expect((await rowOf()).budgetAmount).toBeNull();
+
+    // NONE hides the row and clears the hours budget as well.
+    await setHoursSharingMode(projectCtx, acmeProject, "NONE");
+    const none = await rowOf();
+    expect(none.visibility).toBe("INTERNAL");
+    expect(none.budgetSeconds).toBeNull();
+    await deleteEntry(ownerCtx(), entry.id);
   });
 });

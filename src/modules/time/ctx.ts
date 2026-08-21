@@ -93,6 +93,25 @@ export async function guarded<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Money math, in ONE place (review 2026-08-21): the Money tab, the
+ * rollups and the published report snapshots must agree to the cent, so
+ * the bill-amount fold and the 2-dp formatter live here and nowhere
+ * else. Amounts accumulate as raw floats per row and round ONCE at the
+ * end — change that here, and it changes everywhere.
+ */
+export const money = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
+
+/** Σ hours × bill-rate snapshot of ONE row — billable rows with a rate only, else 0. */
+export const billAmountOf = (r: {
+  readonly billable: boolean;
+  readonly billRate: { toString(): string } | null;
+  readonly durationSeconds: number | null;
+}): number => (r.billable && r.billRate ? ((r.durationSeconds ?? 0) / 3600) * Number(r.billRate.toString()) : 0);
+
+export const sumBillAmount = (rows: readonly Parameters<typeof billAmountOf>[0][]): number =>
+  rows.reduce((sum, r) => sum + billAmountOf(r), 0);
+
 /** Metadata helper: ids only — never names, never amounts (SECURITY.md §9.7.4). */
 export const idsOnly = (o: Record<string, string | number | boolean | null | undefined>) =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null)) as Record<

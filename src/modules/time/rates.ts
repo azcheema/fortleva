@@ -61,38 +61,29 @@ type Candidate = {
   currency: string;
 };
 
+const candidateSelect = {
+  id: true,
+  kind: true,
+  scope: true,
+  memberId: true,
+  projectId: true,
+  serviceId: true,
+  amount: true,
+  currency: true,
+} as const;
+
+type DatedCandidate = Candidate & { effectiveFrom: Date; effectiveTo: Date | null };
+
 /**
- * Resolve the snapshot for one entry write. `localDate` is the entry's
- * local start date (rates are dated by the day the work happened).
+ * The tier walk over cards already filtered to the entry's local date —
+ * pure, so a reprice can run it in memory over the tenant's cards once
+ * instead of one findMany per entry. SERVICE → PROJECT_MEMBER → PROJECT →
+ * MEMBER → TENANT for BILL; MEMBER → TENANT for COST (plan §3.3).
  */
-export async function resolveRateSnapshot(
-  tx: TenantDb,
-  args: {
-    tenantId: string;
-    memberId: string;
-    projectId: string | null;
-    serviceId: string | null;
-    localDate: Date;
-    billable: boolean;
-  },
-): Promise<RateSnapshot> {
-  const cards: Candidate[] = await tx.rateCard.findMany({
-    where: {
-      tenantId: args.tenantId,
-      effectiveFrom: { lte: args.localDate },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: args.localDate } }],
-    },
-    select: {
-      id: true,
-      kind: true,
-      scope: true,
-      memberId: true,
-      projectId: true,
-      serviceId: true,
-      amount: true,
-      currency: true,
-    },
-  });
+export function pickSnapshot(
+  cards: readonly Candidate[],
+  args: { memberId: string; projectId: string | null; serviceId: string | null; billable: boolean },
+): RateSnapshot {
   const pick = (kind: RateKind, scope: RateScope, match: (c: Candidate) => boolean) =>
     cards.find((c) => c.kind === kind && c.scope === scope && match(c)) ?? null;
 
@@ -121,6 +112,32 @@ export async function resolveRateSnapshot(
     billRateCardId: card.id,
     costRateCardId: cost?.id ?? null,
   };
+}
+
+/**
+ * Resolve the snapshot for one entry write. `localDate` is the entry's
+ * local start date (rates are dated by the day the work happened).
+ */
+export async function resolveRateSnapshot(
+  tx: TenantDb,
+  args: {
+    tenantId: string;
+    memberId: string;
+    projectId: string | null;
+    serviceId: string | null;
+    localDate: Date;
+    billable: boolean;
+  },
+): Promise<RateSnapshot> {
+  const cards: Candidate[] = await tx.rateCard.findMany({
+    where: {
+      tenantId: args.tenantId,
+      effectiveFrom: { lte: args.localDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: args.localDate } }],
+    },
+    select: candidateSelect,
+  });
+  return pickSnapshot(cards, args);
 }
 
 export type RateCardView = {
@@ -487,21 +504,34 @@ export async function repriceRateCard(
         let repriced = 0;
         let skippedLocked = 0;
         const touches: { projectId: string | null; localDate: Date }[] = [];
+        // The tenant's cards ONCE (not one findMany per entry), the tier
+        // pick in memory, and one updateMany per distinct resulting
+        // snapshot — a 5 000-entry reprice is a handful of statements, not
+        // ten thousand round trips inside one transaction.
+        const allCards: DatedCandidate[] = await tx.rateCard.findMany({
+          where: { tenantId: ctx.tenantId },
+          select: { ...candidateSelect, effectiveFrom: true, effectiveTo: true },
+        });
+        const groups = new Map<string, { snap: RateSnapshot; ids: string[] }>();
         for (const e of entries) {
           if (e.lockedReason) {
             skippedLocked += 1;
             continue;
           }
-          const snap = await resolveRateSnapshot(tx, {
-            tenantId: ctx.tenantId,
-            memberId: e.memberId,
-            projectId: e.projectId,
-            serviceId: e.serviceId,
-            localDate: e.localDate,
-            billable: e.billable,
-          });
-          await tx.timeEntry.update({
-            where: { id: e.id },
+          const snap = pickSnapshot(
+            allCards.filter((c) => c.effectiveFrom <= e.localDate && (c.effectiveTo === null || c.effectiveTo > e.localDate)),
+            { memberId: e.memberId, projectId: e.projectId, serviceId: e.serviceId, billable: e.billable },
+          );
+          const key = JSON.stringify(snap);
+          const g = groups.get(key) ?? { snap, ids: [] };
+          g.ids.push(e.id);
+          groups.set(key, g);
+          touches.push({ projectId: e.projectId, localDate: e.localDate });
+          repriced += 1;
+        }
+        for (const { snap, ids } of groups.values()) {
+          await tx.timeEntry.updateMany({
+            where: { id: { in: ids } },
             data: {
               billRate: snap.billRate,
               currency: snap.billRate !== null ? snap.currency : null,
@@ -510,8 +540,6 @@ export async function repriceRateCard(
               costRateCardId: snap.costRateCardId,
             },
           });
-          touches.push({ projectId: e.projectId, localDate: e.localDate });
-          repriced += 1;
         }
         await recomputeTouched(tx, ctx.tenantId, touches);
         await record(tx, {

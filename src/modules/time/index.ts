@@ -72,7 +72,7 @@ export {
   type ShiftRow,
   type TeamDayTotal,
 } from "./shifts";
-export { settleMember, settleTenant, type SettleResult } from "./settle";
+export { settleMember, settleMemberOnce, settleTenant, type SettleResult } from "./settle";
 export { recomputeProjectMonth } from "./summary";
 export type { EntryTargetInput, ResolvedTarget } from "./target";
 export {

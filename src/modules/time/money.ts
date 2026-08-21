@@ -4,9 +4,20 @@ import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { readPreferences } from "@/preferences/service";
 
-import { principalOf, type TimeCtx } from "./ctx";
+import { billAmountOf, money, principalOf, type TimeCtx } from "./ctx";
 import { revealCostRates } from "./rates";
 import { loadProjectEntries, type EntryRow, type Range } from "./rollup";
+
+const REVEAL_BATCH = 50;
+
+/** revealCostRates in ≤50-card batches (its cap), merged; each batch is its own audited reveal. */
+async function revealCostRatesChunked(ctx: TimeCtx, cardIds: readonly string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < cardIds.length; i += REVEAL_BATCH) {
+    Object.assign(out, await revealCostRates(ctx, cardIds.slice(i, i + REVEAL_BATCH)));
+  }
+  return out;
+}
 
 /**
  * The project money page (PLAN.md 2T screens; DATA_MODEL.md §6.15 "Who
@@ -73,7 +84,6 @@ export type ProjectMoney = {
   byAgreement: MoneyLine[];
 };
 
-const money = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
 const hours = (seconds: number): number => seconds / 3600;
 
 type CostTable = Readonly<Record<string, string>> | null;
@@ -86,10 +96,8 @@ function sumLine(rows: EntryRow[], costOf: CostTable): Omit<MoneyLine, "key" | "
   let uncosted = 0;
   for (const r of rows) {
     seconds += r.durationSeconds;
-    if (r.billable) {
-      billableSeconds += r.durationSeconds;
-      if (r.billRate) value += hours(r.durationSeconds) * Number(r.billRate.toString());
-    }
+    if (r.billable) billableSeconds += r.durationSeconds;
+    value += billAmountOf(r);
     if (costOf) {
       const rate = r.costRateCardId ? costOf[r.costRateCardId] : undefined;
       if (rate !== undefined) cost += hours(r.durationSeconds) * Number(rate);
@@ -165,7 +173,10 @@ export async function projectMoney(
   });
 
   // The ✦ half runs as its own audited transaction (rate:view_cost + fresh factor; ids only in the audit row).
-  const costOf: CostTable = opts.revealCost && loaded.canRevealCost ? await revealCostRates(ctx, loaded.cardIds) : null;
+  // revealCostRates caps one reveal at 50 cards; a long range on a large
+  // project (one COST card per member per revision) degrades to more
+  // reveals — each audited — never to an error.
+  const costOf: CostTable = opts.revealCost && loaded.canRevealCost ? await revealCostRatesChunked(ctx, loaded.cardIds) : null;
   const costRevealed = costOf !== null;
   const currencyMismatch =
     costRevealed && loaded.currency !== null

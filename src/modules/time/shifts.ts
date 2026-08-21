@@ -9,7 +9,7 @@ import { fail } from "@/lib/domain-error";
 import { ensureTimeDefaults } from "./bootstrap";
 import { LOCKED_TX, guarded, lockMember, principalOf, resolveZone, type TimeCtx } from "./ctx";
 import { assertNoticeAcknowledged } from "./notice";
-import { settleMember } from "./settle";
+import { settleMemberOnce } from "./settle";
 import { stopRunningEntry, type TimerEntry } from "./timer";
 import { breakSecondsOf, workedSecondsOf } from "./worked";
 
@@ -83,7 +83,7 @@ async function requireShiftsEnabled(prefs: { time: { shiftsEnabled: boolean } })
 /** time:track — clock in. */
 export async function clockIn(ctx: TimeCtx, input?: { note?: string | null }): Promise<ShiftRow> {
   await ensureTimeDefaults(ctx.tenantId);
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(
     ctx.tenantId,
     principalOf(ctx),
@@ -124,7 +124,7 @@ export async function clockIn(ctx: TimeCtx, input?: { note?: string | null }): P
 export async function clockOut(
   ctx: TimeCtx,
 ): Promise<{ shift: ShiftRow; stoppedTimer: TimerEntry | null }> {
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(
     ctx.tenantId,
     principalOf(ctx),
@@ -173,7 +173,7 @@ export async function startBreak(
   ctx: TimeCtx,
   input?: { note?: string | null },
 ): Promise<{ shift: ShiftRow; stoppedTimer: TimerEntry | null }> {
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(
     ctx.tenantId,
     principalOf(ctx),
@@ -213,7 +213,7 @@ export async function startBreak(
 
 /** time:track — end the open break. */
 export async function stopBreak(ctx: TimeCtx): Promise<ShiftRow> {
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(
     ctx.tenantId,
     principalOf(ctx),
@@ -253,7 +253,7 @@ export type CurrentShift = {
 /** time:track — the member's OWN open shift (the one place a live shift is read). */
 export async function getCurrentShift(ctx: TimeCtx): Promise<CurrentShift> {
   await ensureTimeDefaults(ctx.tenantId);
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
     const [shift, { prefs }] = await Promise.all([
@@ -271,7 +271,7 @@ export async function getCurrentShift(ctx: TimeCtx): Promise<CurrentShift> {
 
 /** time:track — own shifts (open or closed) in [from, to] by local date. */
 export async function listMyShifts(ctx: TimeCtx, range: { from: string; to: string }): Promise<ShiftRow[]> {
-  await settleMember(ctx.tenantId, ctx.actor.memberId);
+  await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
     return tx.shift.findMany({
