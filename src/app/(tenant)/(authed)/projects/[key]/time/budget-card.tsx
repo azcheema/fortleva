@@ -74,7 +74,11 @@ export function BudgetCard({
         ) : null
       }
     >
-      <form action={action} className="grid grid-cols-2 items-end gap-3 md:grid-cols-6">
+      {/* items-START, not items-end: only three of the five fields carry a hint, and
+          bottom-alignment pushed the hint-less controls (kind, period) a hint-height
+          below the rest. Tops aligned, the controls sit on one line and the hints hang
+          under them. The action cell has no label, so it keeps the old bottom edge. */}
+      <form action={action} className="grid grid-cols-2 items-start gap-3 md:grid-cols-6">
         <input type="hidden" name="projectId" value={projectId} />
         <input type="hidden" name="projectKey" value={projectKey} />
         {budget ? <input type="hidden" name="budgetId" value={budget.id} /> : null}
@@ -104,7 +108,7 @@ export function BudgetCard({
         <Field htmlFor="b-thresholds" label={t("thresholds")} hint={t("thresholdsHint")}>
           <Input id="b-thresholds" name="thresholds" defaultValue={(budget?.thresholds ?? [80, 100]).join(", ")} />
         </Field>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 self-end">
           <label className="flex items-center gap-2 text-sm">
             <NativeCheckbox name="includeNonBillable" defaultChecked={budget?.includeNonBillable ?? false} />
             {t("includeNonBillable")}
