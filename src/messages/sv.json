@@ -769,6 +769,7 @@
     "ARCHIVED": "Posten är arkiverad — återställ den först.",
     "CLIENT_MISMATCH": "Projektet tillhör inte den kunden.",
     "INVALID_INPUT": "Ogiltig inmatning.",
+    "APPROVAL_REQUIRED": "Endast en person med godkännanderätt kan flytta en uppgift till den här statusen.",
     "NOT_FOUND": "Hittades inte.",
     "FORBIDDEN": "Du har inte behörighet att göra det.",
     "NOT_ENTITLED": "Ingår inte i din plan.",

@@ -28,6 +28,8 @@ import type { FormResult } from "@/lib/server-actions";
 import type { ItemList } from "@/modules/work";
 import { cn } from "@/lib/utils";
 
+import { canEnterState } from "../board/board-model";
+
 import {
   assignItemAction,
   createItemAction,
@@ -83,8 +85,12 @@ export function BacklogTable({
   const t = useTranslations("projects.backlog");
   const tCommon = useTranslations("common");
   const { run } = useRun(t("actionFailed"));
+  // The same one rule as every board surface (2W-R): TRIAGE and — for a
+  // non-approver — a gated state are not offered; an item ALREADY in a
+  // filtered state keeps it via the current-value fallback below, so it
+  // stays displayable and reopenable.
   const stateOptions = data.states
-    .filter((s) => !s.isHidden)
+    .filter((s) => !s.isHidden && canEnterState(s, data.caps.canApprove))
     .map((s) => ({ value: s.id, label: s.name }));
   const assigneeOptions = [
     { value: "", label: t("unassigned") },

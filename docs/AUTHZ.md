@@ -146,6 +146,7 @@ Same columns and seeding legend as the v1 table. "Scoped" now means filtered by 
 | `work_item:delete` | work | Hard-delete work items (subtree) | C M | scoped | 2W |
 | `work_item:change_visibility` | work | Flip `INTERNAL` ↔ `CLIENT_VISIBLE` incl. bulk "make private with N children" — audited, the worst-bug surface | C M A | scoped | 2W |
 | `work_item:triage` | work | Accept / Decline / Duplicate / Snooze a `REQUEST` out of `TRIAGE` | C M E | scoped | 2W |
+| `work_item:approve` | work | Move a task into an approval-gated state (the seeded Done) — supplements `work_item:edit`, never replaces it; enforced in `transitionState` so every entry point gates; leaving a gated state (reopening) is free | C M A | scoped | 2W-R (TV4, 2026-08-31) |
 | `workflow:manage` | work | Edit a project's `WorkflowState`s and tenant `WorkflowPreset`s (category immutable) | C M A | scoped (states) / — (presets) | 2W |
 | `label:manage` | work | Create/rename/delete tenant labels | C M A | — | 2W |
 | `comment:create` | work | Comment on any commentable subject; edit/delete **own** comments | C M A E | scoped | 2W |

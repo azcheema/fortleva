@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyMove,
+  canEnterState,
   cardsIn,
   edgeAnchors,
   epicIdsOf,
@@ -12,13 +13,14 @@ import {
   type BoardState,
 } from "./board-model";
 
-const state = (id: string, category: string, isHidden = false): BoardState => ({
+const state = (id: string, category: string, isHidden = false, requiresApproval = false): BoardState => ({
   id,
   name: id,
   category,
   isHidden,
   isDefault: category === "TODO",
   wipLimit: null,
+  requiresApproval,
 });
 
 const item = (id: string, over: Partial<BoardItem> = {}): BoardItem => ({
@@ -146,5 +148,17 @@ describe("lanes", () => {
       top: { afterId: "t2" },
       bottom: { afterId: "t2" },
     });
+  });
+
+  it("canEnterState (2W-R): TRIAGE never, a gated state only for an approver, everything else always", () => {
+    const triage = state("triage", "TRIAGE", true);
+    const done = state("done", "DONE", false, true);
+    const progress = state("prog", "IN_PROGRESS");
+    expect(canEnterState(triage, true)).toBe(false);
+    expect(canEnterState(triage, false)).toBe(false);
+    expect(canEnterState(done, false)).toBe(false);
+    expect(canEnterState(done, true)).toBe(true);
+    expect(canEnterState(progress, false)).toBe(true);
+    expect(canEnterState(progress, true)).toBe(true);
   });
 });

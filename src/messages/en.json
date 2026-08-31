@@ -769,6 +769,7 @@
     "ARCHIVED": "This record is archived — restore it first.",
     "CLIENT_MISMATCH": "The project does not belong to that client.",
     "INVALID_INPUT": "Invalid input.",
+    "APPROVAL_REQUIRED": "Only an approver can move a task into this state.",
     "NOT_FOUND": "Not found.",
     "FORBIDDEN": "You do not have permission to do that.",
     "NOT_ENTITLED": "Not included in your plan.",

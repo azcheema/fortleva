@@ -52,6 +52,7 @@ import type { ItemList } from "@/modules/work";
 import { createItemInStateAction, deleteItemAction, moveItemAction, setItemArchivedAction } from "../backlog/actions";
 import {
   applyMove,
+  canEnterState,
   cardsIn,
   columnTotals,
   edgeAnchors,
@@ -130,6 +131,7 @@ export function Board({
   const columns = useMemo(() => visibleColumns(data.states, items), [data.states, items]);
   const lanes = useMemo(() => lanesFor(groupBy, items, data.members), [groupBy, items, data.members]);
   const canEdit = data.caps.canEdit;
+  const canApprove = data.caps.canApprove;
 
   // ── the one mutation path ─────────────────────────────────────────
   const runMove = useCallback(
@@ -424,6 +426,7 @@ export function Board({
               canEdit={canEdit}
               canDelete={data.caps.canDelete}
               canCreate={canCreate}
+              canApprove={canApprove}
               tabbableId={tabbableId}
               defaultStateId={defaultState?.id ?? null}
               creatingIn={creatingIn}
@@ -448,9 +451,10 @@ export function Board({
             }
           }}
           itemKey={`${projectKey}-${picker.number}`}
-          // Entering TRIAGE is its own verb (`work_item:triage`), so it is
-          // not a move target — the same rule the drag follows.
-          states={columns.filter((s) => s.category !== "TRIAGE")}
+          // Entering TRIAGE is its own verb (`work_item:triage`), and a
+          // gated state (Done) takes an approver — the same rule the
+          // drag follows; `transitionState` is the belt.
+          states={columns.filter((s) => canEnterState(s, canApprove))}
           currentStateId={picker.stateId}
           onChoose={onPickerChoose}
         />
@@ -473,6 +477,7 @@ function BoardLane(props: {
   canEdit: boolean;
   canDelete: boolean;
   canCreate: boolean;
+  canApprove: boolean;
   tabbableId: string | null;
   defaultStateId: string | null;
   creatingIn: string | null;
@@ -548,6 +553,7 @@ function BoardColumn(props: {
   canEdit: boolean;
   canDelete: boolean;
   canCreate: boolean;
+  canApprove: boolean;
   tabbableId: string | null;
   defaultStateId: string | null;
   creatingIn: string | null;
@@ -568,9 +574,10 @@ function BoardColumn(props: {
   const headingId = useId();
   const [isOver, setIsOver] = useState(false);
   // Entering TRIAGE is `work_item:triage` with a triageStatus, not a state
-  // change (the DB CHECK refuses it) — so the column is not a drop target;
-  // leaving it is an ordinary move.
-  const droppable = props.canEdit && state.category !== "TRIAGE";
+  // change (the DB CHECK refuses it), and a gated state (Done) takes an
+  // approver — so neither is a drop target for this member; leaving
+  // either is an ordinary move. `transitionState` is the belt.
+  const droppable = props.canEdit && canEnterState(state, props.canApprove);
 
   useEffect(() => {
     const el = ref.current;
@@ -637,10 +644,12 @@ function BoardColumn(props: {
       </div>
       {/* Outside the role="list": a button is not a list item, and
           aria-required-children would be violated by putting it inside. */}
-      {/* Creating is `work_item:create`; TRIAGE is the one column a task
-          cannot be created into (it needs a triageStatus). Deliberately NOT
-          gated on `droppable`, which also folds in `work_item:edit`. */}
-      {props.canCreate && state.category !== "TRIAGE" ? (
+      {/* Creating is `work_item:create`; TRIAGE cannot be created into
+          (it needs a triageStatus) and a gated column takes an approver —
+          createItem(stateId) runs the same transitionState gate.
+          Deliberately NOT gated on `droppable`, which also folds in
+          `work_item:edit`. */}
+      {props.canCreate && canEnterState(state, props.canApprove) ? (
         <div className="px-2 pb-2">
           <ColumnCreate
             state={state}

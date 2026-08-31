@@ -218,6 +218,7 @@ Rules: single keys are inert while an input has focus; `⌘` = `Ctrl` on Windows
 ### 7.1 Drag and drop (ARC-17)
 - Desktop only, `@atlaskit/pragmatic-drag-and-drop`. Drop indicator line between cards, edge auto-scroll, dragged card ghost at reduced opacity, column highlights on hover.
 - Board drop = state change + rank change in one Server Action; backlog drop = rank change; group-by view drop = property change + rank.
+- A gated state (`requiresApproval` — the seeded Done, 2W-R) is not a drop/create/picker target for a non-approver, the same rule as TRIAGE (`canEnterState` in board-model, one rule for every surface); `transitionState` refuses server-side regardless.
 - Keyboard/mobile twin: "Move to…" (`⌘K` action, item menu, mobile long-press) → picker of state/position ("Top of To do", "After ACME-9", "Bottom").
 - Rank is server-computed (fractional-indexing, neighbours locked). The client sends `{ itemId, stateId?, beforeId?, afterId? }`, never a rank string; rank never appears in the DOM.
 - Multi-select drag moves the selection preserving relative order.

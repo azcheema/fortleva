@@ -10,6 +10,7 @@ import {
   changeState,
   createItem,
   listItems,
+  moveItem,
   updateItemFields,
 } from "./index";
 
@@ -82,13 +83,19 @@ describe("numbering + rank under concurrency", () => {
     expect(new Set(rows.map((r) => r.rank)).size).toBe(rows.length);
   });
 
-  it("lazy state seeding created the default six exactly once", async () => {
+  it("lazy state seeding created the default seven exactly once — Done gated, In review not (2W-R)", async () => {
     const states = await f.platform.workflowState.findMany({
       where: { tenantId: f.tenantId, projectId },
+      orderBy: { rank: "asc" },
     });
-    expect(states).toHaveLength(6);
+    expect(states).toHaveLength(7);
     expect(states.filter((s) => s.isDefault)).toHaveLength(1);
     expect(states.find((s) => s.category === "TRIAGE")?.isHidden).toBe(true);
+    const inProgress = states.filter((s) => s.category === "IN_PROGRESS");
+    expect(inProgress).toHaveLength(2); // "In progress" then "In review", by rank
+    expect(inProgress.every((s) => !s.requiresApproval)).toBe(true);
+    expect(states.find((s) => s.category === "DONE")?.requiresApproval).toBe(true);
+    expect(states.filter((s) => s.requiresApproval)).toHaveLength(1);
   });
 });
 
@@ -97,6 +104,7 @@ describe("state machine", () => {
     const { id } = await createItem(ownerCtx(), { projectId, title: "State walk" });
     const states = await f.platform.workflowState.findMany({
       where: { tenantId: f.tenantId, projectId },
+      orderBy: { rank: "asc" }, // two IN_PROGRESS states since 2W-R — first by rank
     });
     const byCat = (c: string) => states.find((s) => s.category === c)!.id;
 
@@ -398,5 +406,65 @@ describe("review 2026-08-21 — history follows the item behind the gate", () =>
     expect(row.clientId).toBe(clientId);
     await f.platform.workItemActivity.delete({ where: { id: row.id } });
     await f.platform.client.delete({ where: { id: other } });
+  });
+});
+
+describe("the approval gate (2W-R)", () => {
+  it("an employee cannot enter Done by any path; an approver can; reopening is free; caps agree", async () => {
+    // Scope the employee to the project's client (idempotent — the
+    // scoping suite above may already have done it).
+    await f.platform.memberClient.createMany({
+      data: [{ tenantId: f.tenantId, memberId: f.seats.employee.memberId, clientId }],
+      skipDuplicates: true,
+    });
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Gate walk" });
+    const states = await f.platform.workflowState.findMany({
+      where: { tenantId: f.tenantId, projectId },
+      orderBy: { rank: "asc" },
+    });
+    const inProgress = states.filter((s) => s.category === "IN_PROGRESS");
+    const review = inProgress.at(-1)!; // "In review" — the last IN_PROGRESS by rank
+    const done = states.find((s) => s.category === "DONE")!;
+
+    // The employee works the item up to review…
+    await changeState(employeeCtx(), id, review.id);
+    // …but not into the gated Done — inline path, board path, or a
+    // create straight into the column. transitionState is ONE gate.
+    await expect(changeState(employeeCtx(), id, done.id)).rejects.toThrow(/APPROVAL_REQUIRED/);
+    await expect(moveItem(employeeCtx(), { itemId: id, stateId: done.id })).rejects.toThrow(
+      /APPROVAL_REQUIRED/,
+    );
+    await expect(
+      createItem(employeeCtx(), { projectId, title: "Sneaks into Done", stateId: done.id }),
+    ).rejects.toThrow(/APPROVAL_REQUIRED/);
+    // Nothing moved, nothing was created.
+    const item = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+    expect(item.stateId).toBe(review.id);
+    expect(
+      await f.platform.workItem.count({
+        where: { tenantId: f.tenantId, projectId, title: "Sneaks into Done" },
+      }),
+    ).toBe(0);
+
+    // The approver completes it; the audit row marks the privileged leg.
+    await changeState(ownerCtx(), id, done.id);
+    const audits = await f.audits("work_item.state_changed");
+    expect(
+      audits.some((a) => (a.metadata as { approval?: boolean } | null)?.approval === true),
+    ).toBe(true);
+
+    // Reopening is free — the gate never traps an item — and the
+    // Done → In review leg clears completedAt while keeping startedAt
+    // (the review flow's most common reopen; the review pass found this
+    // stamp leg unpinned by any test).
+    await changeState(employeeCtx(), id, review.id);
+    const reopened = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+    expect(reopened.stateId).toBe(review.id);
+    expect(reopened.completedAt).toBeNull();
+    expect(reopened.startedAt).not.toBeNull();
+
+    // caps tell the UI the same story the service enforces.
+    expect((await listItems(employeeCtx(), projectId)).caps.canApprove).toBe(false);
+    expect((await listItems(ownerCtx(), projectId)).caps.canApprove).toBe(true);
   });
 });

@@ -1110,6 +1110,7 @@ model WorkflowState {
   isDefault        Boolean       @default(false) @map("is_default") // where new items land (exactly one per project — service)
   isHidden         Boolean       @default(false) @map("is_hidden") // TRIAGE hidden until it has items
   wipLimit         Int?          @map("wip_limit") // stored; soft warning only in v1
+  requiresApproval Boolean       @default(false) @map("requires_approval") // entering needs work_item:approve ON TOP of work_item:edit (2W-R; seeded true on Done)
   definitionOfDone String?       @map("definition_of_done") // v1.5 UI; column reserved
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)

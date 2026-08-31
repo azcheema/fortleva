@@ -25,6 +25,19 @@ export const isGroupBy = (v: string | undefined | null): v is GroupBy =>
 export const visibleColumns = (states: readonly BoardState[], items: readonly BoardItem[]): BoardState[] =>
   states.filter((s) => !s.isHidden || items.some((i) => i.stateId === s.id));
 
+/**
+ * Whether a state is a legal move/create target for this member: TRIAGE
+ * never is (entering it is the `work_item:triage` verb), and a
+ * `requiresApproval` state (the seeded Done, 2W-R) only for an approver.
+ * ONE rule for every surface — column drops, card drops, the move
+ * picker, the backlog select, column create; hiding the target is UX,
+ * `transitionState` is the belt.
+ */
+export const canEnterState = (
+  s: Pick<BoardState, "category" | "requiresApproval">,
+  canApprove: boolean,
+): boolean => s.category !== "TRIAGE" && (canApprove || !s.requiresApproval);
+
 export type Lane =
   | { key: "all"; kind: "all" }
   | { key: string; kind: "member"; memberId: string; name: string }

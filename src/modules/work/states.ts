@@ -1,5 +1,5 @@
 import { record } from "@/audit/record";
-import { assertInScope, type MemberActor } from "@/authz/authorize";
+import { assertInScope, isAuthorized, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
@@ -19,17 +19,22 @@ import { writeActivity } from "./activity";
 export type WorkCtx = { readonly tenantId: string; readonly actor: MemberActor };
 
 const DEFAULT_STATE_NAMES: Record<"en" | "sv", readonly string[]> = {
-  en: ["Backlog", "To do", "In progress", "Done", "Cancelled", "Triage"],
-  sv: ["Backlogg", "Att göra", "Pågår", "Klar", "Avbruten", "Triage"],
+  en: ["Backlog", "To do", "In progress", "In review", "Done", "Cancelled", "Triage"],
+  sv: ["Backlogg", "Att göra", "Pågår", "Granskning", "Klar", "Avbruten", "Triage"],
 };
 
+// "In review" is a tenant-named state in the IN_PROGRESS category (the
+// category set is pinned closed; the portal reads categories only —
+// exactly ADO's mapping of In Review). Done carries the approval gate:
+// entering it needs work_item:approve on top of work_item:edit (2W-R).
 const DEFAULT_STATE_SHAPE = [
-  { category: "BACKLOG", isDefault: false, isHidden: false },
-  { category: "TODO", isDefault: true, isHidden: false },
-  { category: "IN_PROGRESS", isDefault: false, isHidden: false },
-  { category: "DONE", isDefault: false, isHidden: false },
-  { category: "CANCELLED", isDefault: false, isHidden: false },
-  { category: "TRIAGE", isDefault: false, isHidden: true }, // shown only when it has items
+  { category: "BACKLOG", isDefault: false, isHidden: false, requiresApproval: false },
+  { category: "TODO", isDefault: true, isHidden: false, requiresApproval: false },
+  { category: "IN_PROGRESS", isDefault: false, isHidden: false, requiresApproval: false },
+  { category: "IN_PROGRESS", isDefault: false, isHidden: false, requiresApproval: false }, // In review
+  { category: "DONE", isDefault: false, isHidden: false, requiresApproval: true },
+  { category: "CANCELLED", isDefault: false, isHidden: false, requiresApproval: false },
+  { category: "TRIAGE", isDefault: false, isHidden: true, requiresApproval: false }, // shown only when it has items
 ] as const;
 
 /** Idempotent + race-safe (skipDuplicates on the name unique). */
@@ -52,6 +57,7 @@ export async function ensureProjectStates(
       rank: ranks[i]!,
       isDefault: s.isDefault,
       isHidden: s.isHidden,
+      requiresApproval: s.requiresApproval,
     })),
     skipDuplicates: true,
   });
@@ -84,6 +90,15 @@ export async function transitionState(
   // verb's job — a plain state change into it would reach the database and
   // come back as a raw constraint error. Leaving triage is an ordinary move.
   if (state.category === "TRIAGE") fail("INVALID_INPUT", "triage entry is not a state change");
+  // The 2W-R review gate: entering a requiresApproval state (the seeded
+  // Done) needs work_item:approve ON TOP of the work_item:edit every
+  // caller has already passed. Leaving a gated state (reopening) is
+  // free — the gate can never trap an item. isAuthorized, not a second
+  // requireAccess: the module gates ran with work_item:edit in this
+  // same transaction; only the permission differs.
+  if (state.requiresApproval && !(await isAuthorized(tx, ctx.actor, "work_item:approve"))) {
+    fail("APPROVAL_REQUIRED", "entering this state requires work_item:approve");
+  }
 
   const to = state.category;
   const startedAt =
@@ -109,7 +124,14 @@ export async function transitionState(
     action: "work_item.state_changed",
     targetType: "WorkItem",
     targetId: item.id,
-    metadata: { from: item.stateCategory, to, projectId: item.projectId },
+    // `approval: true` marks the privileged leg — categories only, never
+    // state names or titles (the audit-metadata pin).
+    metadata: {
+      from: item.stateCategory,
+      to,
+      projectId: item.projectId,
+      ...(state.requiresApproval ? { approval: true } : {}),
+    },
   });
 }
 

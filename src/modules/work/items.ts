@@ -59,9 +59,9 @@ export type ItemListEntry = {
 
 export type ItemList = {
   items: ItemListEntry[];
-  states: { id: string; name: string; category: string; isHidden: boolean; isDefault: boolean; wipLimit: number | null }[];
+  states: { id: string; name: string; category: string; isHidden: boolean; isDefault: boolean; wipLimit: number | null; requiresApproval: boolean }[];
   members: { id: string; name: string }[];
-  caps: { canCreate: boolean; canEdit: boolean; canChangeVisibility: boolean; canDelete: boolean };
+  caps: { canCreate: boolean; canEdit: boolean; canChangeVisibility: boolean; canDelete: boolean; canApprove: boolean };
 };
 
 /** The minimal ordered list (UI: Backlog tab). Done/cancelled included —
@@ -76,7 +76,7 @@ export async function listItems(
     await assertInScope(tx, ctx.actor, { projectId });
     await ensureProjectStates(tx, ctx.tenantId, projectId);
 
-    const [items, states, members, canCreate, canEdit, canChangeVisibility, canDelete] =
+    const [items, states, members, canCreate, canEdit, canChangeVisibility, canDelete, canApprove] =
       await Promise.all([
         tx.workItem.findMany({
           where: {
@@ -110,7 +110,7 @@ export async function listItems(
         tx.workflowState.findMany({
           where: { tenantId: ctx.tenantId, projectId },
           orderBy: { rank: "asc" },
-          select: { id: true, name: true, category: true, isHidden: true, isDefault: true, wipLimit: true },
+          select: { id: true, name: true, category: true, isHidden: true, isDefault: true, wipLimit: true, requiresApproval: true },
         }),
         tx.member.findMany({
           where: { tenantId: ctx.tenantId, status: "ACTIVE" },
@@ -121,6 +121,7 @@ export async function listItems(
         isAuthorized(tx, ctx.actor, "work_item:edit"),
         isAuthorized(tx, ctx.actor, "work_item:change_visibility"),
         isAuthorized(tx, ctx.actor, "work_item:delete"),
+        isAuthorized(tx, ctx.actor, "work_item:approve"),
       ]);
 
     return {
@@ -146,7 +147,7 @@ export async function listItems(
       })),
       states,
       members: members.map((m) => ({ id: m.id, name: m.user.name })),
-      caps: { canCreate, canEdit, canChangeVisibility, canDelete },
+      caps: { canCreate, canEdit, canChangeVisibility, canDelete, canApprove },
     };
   });
 }

@@ -338,6 +338,10 @@ async function provision(seedFile: string): Promise<void> {
   const workStates = await db.workflowState.findMany({
     where: { tenantId, projectId },
     select: { id: true, category: true },
+    // Rank order makes stateIdOf deterministic now that IN_PROGRESS has
+    // two states (Pågår + Granskning, 2W-R): `find` takes the first by
+    // rank — "Pågår" — exactly the column the specs drag into.
+    orderBy: { rank: "asc" },
   });
   const stateIdOf = (category: string): string => {
     const s = workStates.find((w) => w.category === category);

@@ -42,8 +42,11 @@ test.afterEach(async ({ page }) => {
   await expect(cardIn(page, title)).toHaveCount(0, { timeout: 20_000 * SLOW });
 });
 
+// `.first()` = the first column of that category in DOM (= rank) order:
+// IN_PROGRESS has two states since 2W-R ("Pågår" then "Granskning"), and
+// a bare two-element locator fails Playwright's strict mode.
 const column = (page: Page, category: string): Locator =>
-  page.locator(`[data-testid="board-column"][data-state-category="${category}"]`);
+  page.locator(`[data-testid="board-column"][data-state-category="${category}"]`).first();
 const cardIn = (scope: Locator | Page, title: string): Locator =>
   scope.locator('[data-testid="board-card"]', { hasText: title });
 
@@ -127,6 +130,25 @@ test.describe("project board (employee)", () => {
     await page.locator("#password").fill(seed.employeePassword);
     await page.locator('form button[type="submit"]').click();
     await page.waitForURL("**/home", { timeout: 30_000 });
+  });
+
+  test("the approval gate (2W-R): Done offers a non-approver neither a create field nor a picker target", async ({ page }) => {
+    await page.goto(`/projects/${seed.projectKey}/board`);
+    await expect(page.getByTestId("board")).toBeVisible();
+    const done = column(page, "DONE");
+    await expect(done).toBeVisible();
+    // The employee can create — but not into the gated column.
+    await expect(column(page, "TODO").getByTestId("board-create")).toBeVisible();
+    await expect(done.getByTestId("board-create")).toHaveCount(0);
+    // The keyboard twin agrees: `S` offers In review, never Done.
+    const anyCard = page.locator('[data-testid="board-card"]').first();
+    await anyCard.focus();
+    await page.keyboard.press("s");
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("move-top-IN_PROGRESS").first()).toBeVisible();
+    await expect(dialog.getByTestId("move-top-DONE")).toHaveCount(0);
+    await page.keyboard.press("Escape");
   });
 
   test("a project outside the employee's scope has no board — the in-shell 404, not a forbidden screen", async ({ page }) => {

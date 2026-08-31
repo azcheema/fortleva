@@ -14,6 +14,7 @@ export type DomainErrorCode =
   | "ARCHIVED" // mutation on an archived client/project
   | "CLIENT_MISMATCH" // projectId does not belong to clientId
   | "INVALID_INPUT"
+  | "APPROVAL_REQUIRED" // entering a requiresApproval WorkflowState without work_item:approve (2W-R)
   // Time (2T — DATA_MODEL.md §6.15; trigger tokens map 1:1 in src/modules/time/ctx.ts)
   | "NOTICE_UNACKNOWLEDGED" // staff notice not acknowledged — timers and clock-in refuse
   | "TIMER_ALREADY_RUNNING" // one running timer per member (partial unique)

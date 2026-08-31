@@ -2128,11 +2128,18 @@ enum StateCategory {
 
 /// WorkflowState — per-project named states (tenant text, not i18n).
 /// Copied from a WorkflowPreset at project creation; default preset =
-/// Backlog / To do / In progress / Done / Cancelled + hidden Triage.
+/// Backlog / To do / In progress / In review / Done / Cancelled + hidden
+/// Triage (2026-08-31, 2W-R: "In review" is an IN_PROGRESS-category
+/// state — the ADO mapping; the portal keeps seeing categories only).
 /// App invariants (states.ts): exactly one isDefault per project (the
 /// state new items land in), >= 1 DONE-category and >= 1 CANCELLED-
 /// category state, exactly one TRIAGE state. Deleting a state requires a
 /// target state for its items (same category or explicit remap).
+/// APPROVAL GATE (2W-R): entering a `requiresApproval` state needs
+/// `work_item:approve` IN ADDITION to `work_item:edit`, enforced inside
+/// `transitionState` so every entry point (select, drag, picker,
+/// create-into-column, future bulk) gates; leaving a gated state
+/// (reopening) is free. The seeded Done carries the flag.
 /// CLASS A: the portal never joins this table — it reads
 /// WorkItem.stateCategory only (P10). Therefore no visibility column.
 /// SQL: `rank text COLLATE "C"`; trigger workflow_state_category_immutable
@@ -2150,6 +2157,7 @@ model WorkflowState {
   isDefault        Boolean       @default(false)    // where new items land (exactly one per project)
   isHidden         Boolean       @default(false)    // TRIAGE state hidden until it has items
   wipLimit         Int?                             // stored, enforced v1.5 (soft warning only in v1)
+  requiresApproval Boolean       @default(false)    // 2W-R: entering needs work_item:approve on top of work_item:edit
   definitionOfDone String?                          // v1.5 UI; column reserved
   createdAt        DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime      @updatedAt @db.Timestamptz(6)

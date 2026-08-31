@@ -137,6 +137,8 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("work_item:delete", "work", "Hard-delete work items (subtree)", CM),
   p("work_item:change_visibility", "work", "Flip INTERNAL/CLIENT_VISIBLE incl. bulk make-private — audited, the worst-bug surface", CMA),
   p("work_item:triage", "work", "Accept / Decline / Duplicate / Snooze a REQUEST out of TRIAGE", CME),
+  // ── 2W-R (+1; catalog 96 → 97; TEMPLATE_VERSION 4, 2026-08-31) ───
+  p("work_item:approve", "work", "Move a task into an approval-gated state (the seeded Done) — supplements work_item:edit, never replaces it", CMA),
   p("workflow:manage", "work", "Edit a project's WorkflowStates and tenant WorkflowPresets (category immutable)", CMA),
   p("label:manage", "work", "Create/rename/delete tenant labels", CMA),
   p("comment:create", "work", "Comment on any commentable subject; edit/delete own comments", CMAE),
@@ -202,8 +204,9 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
 /** Current template generation (Role.templateVersion) — bump on any
  * template change so B3 additive propagation knows what to reconcile.
  * v2 (2026-08-20): +17 `work` codes; issue:* unseeded (deprecated).
- * v3 (2026-08-20): +16 `time` codes (2T; rate:view_cost / rate:manage_cost ✦). */
-export const TEMPLATE_VERSION = 3;
+ * v3 (2026-08-20): +16 `time` codes (2T; rate:view_cost / rate:manage_cost ✦).
+ * v4 (2026-08-31): +1 `work` code (work_item:approve — the 2W-R review gate). */
+export const TEMPLATE_VERSION = 4;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));
