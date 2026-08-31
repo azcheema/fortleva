@@ -1192,7 +1192,8 @@
         "checklist": "{done} of {total} checklist items",
         "assignee": "Assigned to {name}",
         "estimate": "Estimate {hours}",
-        "label": "{key}: {title}"
+        "label": "{key}: {title}",
+        "open": "Open"
       },
       "moveTo": "Move to…",
       "movePicker": {
@@ -1260,7 +1261,8 @@
       },
       "priorityLabel": "Priority",
       "dueLabel": "Due date",
-      "duePlaceholder": "Set date"
+      "duePlaceholder": "Set date",
+      "attachments": "{count, plural, one {# attachment} other {# attachments}}"
     },
     "portalState": {
       "on": "On",
@@ -1441,6 +1443,22 @@
       "byEpic": "By epic",
       "byItem": "By task",
       "byAgreement": "By agreement"
+    },
+    "item": {
+      "description": "Task details and attachments",
+      "properties": {
+        "state": "State",
+        "assignee": "Assignee",
+        "estimate": "Estimate"
+      },
+      "attachments": {
+        "title": "Attachments",
+        "empty": "No files on this task yet",
+        "emptyDescription": "Attach the delivered work — it stays private to your team unless you say otherwise.",
+        "emptyDescriptionVisible": "Attach the delivered work — this task is visible to the client, so new files start visible too.",
+        "followsItem": "Follows {key} — files on a private task stay private to your team",
+        "noAccess": "You cannot view files"
+      }
     }
   },
   "states": {

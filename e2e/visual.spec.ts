@@ -96,6 +96,9 @@ const stops = (seed: E2ESeed): Stop[] => {
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },
     { name: "project-backlog", path: `${project}/backlog` },
+    // 2W-B: the item side-peek over the backlog (empty attachments +
+    // the anchored upload form on the seeded first task).
+    { name: "project-item-peek", path: `${project}/backlog?item=${seed.projectKey}-1` },
     { name: "project-timeline", path: `${project}/timeline` },
     // 2T: the Time tab (rollups, budget) and the Money tab (value; cost
     // stays behind the tenant's cost layer, which the fixture leaves off).

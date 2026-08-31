@@ -5,12 +5,16 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
+import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listItems, projectWorkVersion } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 import { cn } from "@/lib/utils";
 
 import { loadProject } from "../data";
+import { ItemPeek } from "../item-peek/item-peek";
+import { PeekShell } from "../item-peek/peek-shell";
+import { peekItemNumber } from "../item-peek/peek-param";
 import { Board } from "./board";
 import { GROUP_BYS, isGroupBy, type GroupBy } from "./board-model";
 
@@ -28,9 +32,9 @@ export default async function ProjectBoardPage({
   searchParams,
 }: {
   params: Promise<{ key: string }>;
-  searchParams: Promise<{ group?: string }>;
+  searchParams: Promise<{ group?: string; item?: string; error?: string }>;
 }) {
-  const [{ key }, { group }] = await Promise.all([params, searchParams]);
+  const [{ key }, { group, item, error }] = await Promise.all([params, searchParams]);
   const project = await loadProject(key);
   const { membership, actor } = await requireTenantContext();
   const ctx = { tenantId: membership.tenantId, actor };
@@ -49,6 +53,19 @@ export default async function ProjectBoardPage({
     ),
   ]);
   const empty = data.items.length === 0;
+
+  // The side-peek (2W-B) — same URL contract as the backlog's.
+  const boardBase = `/projects/${project.key}/board`;
+  const listHref = groupBy === "none" ? boardBase : `${boardBase}?group=${groupBy}`;
+  const peekNumber = peekItemNumber(item, project.key);
+  const peekItem = peekNumber === null ? undefined : data.items.find((i) => i.number === peekNumber);
+  let peekDocuments: DocumentListItem[] = [];
+  if (peekItem && project.caps.viewDocuments) {
+    peekDocuments = await listDocuments(
+      { tenantId: membership.tenantId, actor },
+      { attachedToWorkItemId: peekItem.id },
+    );
+  }
 
   if (empty && !data.caps.canCreate) {
     return (
@@ -93,7 +110,26 @@ export default async function ProjectBoardPage({
         groupBy={groupBy}
         version={version}
         durationStyle={prefs.durationStyle}
+        peekOpen={Boolean(peekItem)}
       />
+      {peekItem ? (
+        <PeekShell returnHref={listHref}>
+          <ItemPeek
+            item={peekItem}
+            itemKey={`${project.key}-${peekItem.number}`}
+            documents={peekDocuments}
+            caps={{
+              viewDocuments: project.caps.viewDocuments,
+              uploadDocuments: project.caps.uploadDocuments && project.status !== "ARCHIVED",
+              deleteDocuments: project.caps.deleteDocuments,
+              changeDocumentVisibility: project.caps.changeDocumentVisibility,
+            }}
+            returnTo={`${listHref}${listHref.includes("?") ? "&" : "?"}item=${project.key}-${peekItem.number}`}
+            durationStyle={prefs.durationStyle}
+            error={error}
+          />
+        </PeekShell>
+      ) : null}
     </div>
   );
 }

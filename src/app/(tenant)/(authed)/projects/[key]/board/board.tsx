@@ -17,7 +17,7 @@ import {
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { KanbanSquareIcon, ListChecksIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   useCallback,
@@ -103,6 +103,7 @@ export function Board({
   groupBy,
   version,
   durationStyle,
+  peekOpen,
 }: {
   projectId: string;
   projectKey: string;
@@ -113,6 +114,11 @@ export function Board({
   version: string;
   /** The tenant's `ui.durationStyle` — REQUIRED (standing trap). */
   durationStyle: DurationStyle;
+  /** True while the item peek (`?item=`) is open over the board: the
+   * window-level `C` must not create behind the sheet's scrim (2W-B
+   * review — the region-scoped keys are already inert, focus being
+   * trapped in the sheet). */
+  peekOpen: boolean;
 }) {
   const t = useTranslations("projects.board");
   const router = useRouter();
@@ -356,7 +362,7 @@ export function Board({
   // the shell's bubble listener clears the armed `G` on the second key,
   // so a bubble listener here would see `G C` as a plain `C`.
   useEffect(() => {
-    if (!canCreate || !defaultState) return;
+    if (!canCreate || !defaultState || peekOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key.toLowerCase() !== "c" || isEditableTarget(e.target) || isGoSequencePending()) return;
@@ -365,7 +371,7 @@ export function Board({
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true });
-  }, [canCreate, defaultState]);
+  }, [canCreate, defaultState, peekOpen]);
 
   const onPickerChoose = (choice: { stateId: string; edge: "top" | "bottom" }) => {
     if (!picker) return;
@@ -714,6 +720,8 @@ function BoardCard({
   const [dragging, setDragging] = useState(false);
   const [edge, setEdge] = useState<Edge | null>(null);
   const key = `${projectKey}-${item.number > 0 ? item.number : "…"}`;
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const done = item.stateCategory === "DONE" || item.stateCategory === "CANCELLED";
 
   useEffect(() => {
@@ -764,6 +772,22 @@ function BoardCard({
   // is no Restore here — archiving says where the item went, and the
   // backlog's ?archived=1 view is where it comes back from.
   const actions: RowAction[] = [
+    // A real row (the optimistic create has no number yet) opens as the
+    // peek — the same `?item=` link the backlog's key cell is (2W-B);
+    // useSearchParams keeps the group-by view.
+    ...(item.number > 0
+      ? [
+          {
+            key: "open",
+            label: t("card.open"),
+            onSelect: () => {
+              const params = new URLSearchParams(searchParams.toString());
+              params.set("item", key);
+              router.push(`/projects/${projectKey}/board?${params.toString()}`);
+            },
+          },
+        ]
+      : []),
     { key: "move", label: t("moveTo"), onSelect: onOpenPicker },
     { key: "archive", label: tBacklog("actions.archive"), onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, true)) },
     ...(canDelete

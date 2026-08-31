@@ -52,14 +52,23 @@ type Phase =
 export function UploadForm({
   target = {},
   visibilityEnabled = false,
+  defaultVisibility = "INTERNAL",
+  visibilityHint,
 }: {
   target?: Omit<UploadTarget, "visibility">;
   visibilityEnabled?: boolean;
+  /** Where the select starts (and resets to after a success). An
+   * ANCHORED upload passes its work item's visibility so the §10
+   * inheritance is what the member actually sees pre-selected; every
+   * existing caller keeps the safe INTERNAL default. */
+  defaultVisibility?: "INTERNAL" | "CLIENT_VISIBLE";
+  /** Overrides the disabled-select hint (e.g. "Follows ACME-12"). */
+  visibilityHint?: string;
 }) {
   const t = useTranslations("files");
   const tVis = useTranslations("visibility");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
-  const [visibility, setVisibility] = useState<"INTERNAL" | "CLIENT_VISIBLE">("INTERNAL");
+  const [visibility, setVisibility] = useState<"INTERNAL" | "CLIENT_VISIBLE">(defaultVisibility);
   const [chosen, setChosen] = useState<ChosenFile | null>(null);
   const [, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -102,7 +111,7 @@ export function UploadForm({
     toast.success(t("upload.done", { name: file.name }));
     if (inputRef.current) inputRef.current.value = "";
     setChosen(null);
-    setVisibility("INTERNAL");
+    setVisibility(defaultVisibility);
     startTransition(() => router.refresh());
   };
 
@@ -129,7 +138,7 @@ export function UploadForm({
       <Field
         label={tVis("label")}
         htmlFor="upload-visibility"
-        hint={!visibilityEnabled ? t("visibility.hint") : undefined}
+        hint={!visibilityEnabled ? (visibilityHint ?? t("visibility.hint")) : undefined}
       >
         {/* SAFETY-CRITICAL: the control wears the warm fill while it is set
             to CLIENT_VISIBLE, so the choice is legible before submitting

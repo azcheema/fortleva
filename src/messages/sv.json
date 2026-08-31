@@ -1192,7 +1192,8 @@
         "checklist": "{done} av {total} punkter i checklistan",
         "assignee": "Ansvarig: {name}",
         "estimate": "Estimat {hours}",
-        "label": "{key}: {title}"
+        "label": "{key}: {title}",
+        "open": "Öppna"
       },
       "moveTo": "Flytta till…",
       "movePicker": {
@@ -1260,7 +1261,8 @@
       },
       "priorityLabel": "Prioritet",
       "dueLabel": "Förfallodatum",
-      "duePlaceholder": "Ange datum"
+      "duePlaceholder": "Ange datum",
+      "attachments": "{count, plural, one {# bilaga} other {# bilagor}}"
     },
     "portalState": {
       "on": "På",
@@ -1441,6 +1443,22 @@
       "byEpic": "Per epic",
       "byItem": "Per uppgift",
       "byAgreement": "Per avtal"
+    },
+    "item": {
+      "description": "Uppgiftens detaljer och bilagor",
+      "properties": {
+        "state": "Status",
+        "assignee": "Ansvarig",
+        "estimate": "Estimat"
+      },
+      "attachments": {
+        "title": "Bilagor",
+        "empty": "Inga filer på den här uppgiften ännu",
+        "emptyDescription": "Bifoga det levererade arbetet — det förblir internt om du inte väljer något annat.",
+        "emptyDescriptionVisible": "Bifoga det levererade arbetet — uppgiften är synlig för kunden, så nya filer börjar också synliga.",
+        "followsItem": "Följer {key} — filer på en intern uppgift förblir interna",
+        "noAccess": "Du kan inte se filer"
+      }
     }
   },
   "states": {

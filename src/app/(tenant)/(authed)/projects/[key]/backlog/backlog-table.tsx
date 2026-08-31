@@ -1,6 +1,7 @@
 "use client";
 
-import { PlusIcon } from "lucide-react";
+import { PaperclipIcon, PlusIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useRef, useState, useTransition } from "react";
@@ -73,6 +74,7 @@ export function BacklogTable({
   locale,
   data,
   durationStyle,
+  listHref,
 }: {
   projectId: string;
   projectKey: string;
@@ -81,6 +83,9 @@ export function BacklogTable({
   /** The tenant's `ui.durationStyle` — REQUIRED (standing trap: state a
    * shared component must reflect is never a default). */
   durationStyle: DurationStyle;
+  /** The list's own URL (archived toggle included) — the peek links
+   * append `item=` to it so closing the peek lands back here. */
+  listHref: string;
 }) {
   const t = useTranslations("projects.backlog");
   const tCommon = useTranslations("common");
@@ -152,7 +157,28 @@ export function BacklogTable({
             return (
               <TableRow key={item.id} className={cn(visibilityRowCue(item.visibility))}>
                 <TableCell className="num-id text-muted-foreground">
-                  {projectKey}-{item.number}
+                  {/* The key IS the link to the item's peek (UI.md §5.4:
+                      every peek is a link); the paperclip says the task
+                      carries delivered files without opening it. */}
+                  <span className="flex items-center gap-1.5">
+                    <Link
+                      className="underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      href={`${listHref}${listHref.includes("?") ? "&" : "?"}item=${projectKey}-${item.number}`}
+                    >
+                      {projectKey}-{item.number}
+                    </Link>
+                    {item.attachmentCount > 0 ? (
+                      <span
+                        data-testid="attachment-count"
+                        className="num inline-flex items-center gap-0.5 text-xs"
+                        title={t("attachments", { count: item.attachmentCount })}
+                      >
+                        <PaperclipIcon aria-hidden="true" className="size-3" />
+                        <span className="sr-only">{t("attachments", { count: item.attachmentCount })}</span>
+                        {item.attachmentCount}
+                      </span>
+                    ) : null}
+                  </span>
                 </TableCell>
                 <TableCell className="min-w-56">
                   <InlineEdit

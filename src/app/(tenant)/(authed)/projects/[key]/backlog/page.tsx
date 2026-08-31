@@ -5,11 +5,15 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
+import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listItems } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../data";
+import { ItemPeek } from "../item-peek/item-peek";
+import { PeekShell } from "../item-peek/peek-shell";
+import { peekItemNumber } from "../item-peek/peek-param";
 import { BacklogTable } from "./backlog-table";
 
 /**
@@ -24,9 +28,9 @@ export default async function ProjectBacklogPage({
   searchParams,
 }: {
   params: Promise<{ key: string }>;
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{ archived?: string; item?: string; error?: string }>;
 }) {
-  const [{ key }, { archived }] = await Promise.all([params, searchParams]);
+  const [{ key }, { archived, item, error }] = await Promise.all([params, searchParams]);
   const project = await loadProject(key);
   const { membership, actor } = await requireTenantContext();
   const includeArchived = archived === "1";
@@ -41,6 +45,20 @@ export default async function ProjectBacklogPage({
   const t = await getTranslations("projects.backlog");
   const tProjects = await getTranslations("projects");
   const locale = await getLocale();
+
+  // The side-peek (2W-B): `?item=KEY-123` resolves against the loaded
+  // list — an unknown number or a foreign key is silently no peek.
+  const base = `/projects/${project.key}/backlog`;
+  const listHref = includeArchived ? `${base}?archived=1` : base;
+  const peekNumber = peekItemNumber(item, project.key);
+  const peekItem = peekNumber === null ? undefined : data.items.find((i) => i.number === peekNumber);
+  let peekDocuments: DocumentListItem[] = [];
+  if (peekItem && project.caps.viewDocuments) {
+    peekDocuments = await listDocuments(
+      { tenantId: membership.tenantId, actor },
+      { attachedToWorkItemId: peekItem.id },
+    );
+  }
 
   const empty = data.items.length === 0 && !includeArchived;
 
@@ -73,6 +91,7 @@ export default async function ProjectBacklogPage({
             locale={locale}
             data={data}
             durationStyle={prefs.durationStyle}
+            listHref={listHref}
           />
           <p className="text-xs">
             <Link
@@ -84,6 +103,24 @@ export default async function ProjectBacklogPage({
           </p>
         </>
       )}
+      {peekItem ? (
+        <PeekShell returnHref={listHref}>
+          <ItemPeek
+            item={peekItem}
+            itemKey={`${project.key}-${peekItem.number}`}
+            documents={peekDocuments}
+            caps={{
+              viewDocuments: project.caps.viewDocuments,
+              uploadDocuments: project.caps.uploadDocuments && project.status !== "ARCHIVED",
+              deleteDocuments: project.caps.deleteDocuments,
+              changeDocumentVisibility: project.caps.changeDocumentVisibility,
+            }}
+            returnTo={`${listHref}${includeArchived ? "&" : "?"}item=${project.key}-${peekItem.number}`}
+            durationStyle={prefs.durationStyle}
+            error={error}
+          />
+        </PeekShell>
+      ) : null}
     </div>
   );
 }
