@@ -4,8 +4,10 @@ import { getLocale, getTranslations } from "next-intl/server";
 
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listItems } from "@/modules/work";
+import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../data";
 import { BacklogTable } from "./backlog-table";
@@ -32,6 +34,9 @@ export default async function ProjectBacklogPage({
     { tenantId: membership.tenantId, actor },
     project.id,
     { includeArchived },
+  );
+  const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
+    readPreferences(tx, membership.tenantId),
   );
   const t = await getTranslations("projects.backlog");
   const tProjects = await getTranslations("projects");
@@ -62,7 +67,13 @@ export default async function ProjectBacklogPage({
               />
             </SectionCard>
           ) : null}
-          <BacklogTable projectId={project.id} projectKey={project.key} locale={locale} data={data} />
+          <BacklogTable
+            projectId={project.id}
+            projectKey={project.key}
+            locale={locale}
+            data={data}
+            durationStyle={prefs.durationStyle}
+          />
           <p className="text-xs">
             <Link
               className="text-muted-foreground underline-offset-2 hover:underline"

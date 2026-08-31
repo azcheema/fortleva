@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   DataTable,
   InlineEdit,
+  PriorityIndicator,
   RowActions,
   VisibilityInlineEdit,
   visibilityRowCue,
@@ -23,7 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDurationHm } from "@/lib/format";
+import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
+import { PRIORITIES, type Priority } from "@/lib/enum-map";
+import { durationInputText, formatDate, formatDuration, type DurationStyle } from "@/lib/format";
 import type { FormResult } from "@/lib/server-actions";
 import type { ItemList } from "@/modules/work";
 import { cn } from "@/lib/utils";
@@ -36,7 +39,9 @@ import {
   deleteItemAction,
   renameItemAction,
   setItemArchivedAction,
+  setItemDueDateAction,
   setItemEstimateAction,
+  setItemPriorityAction,
   setItemStateAction,
   setItemVisibilityAction,
 } from "./actions";
@@ -62,28 +67,24 @@ const useRun = (locale: string) => {
   return { pending, run };
 };
 
-/** Hours in, minutes out: accepts "2", "1,5", "1.5". */
-const parseHours = (raw: string): number | null | undefined => {
-  const s = raw.trim();
-  if (s === "") return null;
-  const n = Number(s.replace(",", "."));
-  if (!Number.isFinite(n) || n < 0 || n > 10_000) return undefined;
-  return Math.round(n * 60);
-};
-
 export function BacklogTable({
   projectId,
   projectKey,
   locale,
   data,
+  durationStyle,
 }: {
   projectId: string;
   projectKey: string;
   locale: string;
   data: ItemList;
+  /** The tenant's `ui.durationStyle` — REQUIRED (standing trap: state a
+   * shared component must reflect is never a default). */
+  durationStyle: DurationStyle;
 }) {
   const t = useTranslations("projects.backlog");
   const tCommon = useTranslations("common");
+  const tPriority = useTranslations("states.priority");
   const { run } = useRun(t("actionFailed"));
   // The same one rule as every board surface (2W-R): TRIAGE and — for a
   // non-approver — a gated state are not offered; an item ALREADY in a
@@ -96,6 +97,12 @@ export function BacklogTable({
     { value: "", label: t("unassigned") },
     ...data.members.map((m) => ({ value: m.id, label: m.name })),
   ];
+  // "" means NONE so the resting cell shows the muted placeholder, the
+  // same convention as the assignee's "" = unassigned.
+  const priorityOptions = PRIORITIES.map((p) => ({
+    value: p === "NONE" ? "" : p,
+    label: tPriority(p),
+  }));
 
   return (
     <DataTable flush scrollLabel={t("scrollLabel")}>
@@ -105,8 +112,10 @@ export function BacklogTable({
             <TableHead className="w-[10ch]">{t("columns.key")}</TableHead>
             <TableHead>{t("columns.title")}</TableHead>
             <TableHead priority="medium" className="w-[14ch]">{t("columns.state")}</TableHead>
+            <TableHead priority="low" className="w-[13ch]">{t("columns.priority")}</TableHead>
             <TableHead priority="low" className="w-[16ch]">{t("columns.assignee")}</TableHead>
             <TableHead priority="low" className="w-[9ch] text-right">{t("columns.estimate")}</TableHead>
+            <TableHead priority="low" className="w-[12ch]">{t("columns.due")}</TableHead>
             <TableHead priority="medium" className="w-[13ch]">{t("columns.visibility")}</TableHead>
             <TableHead className="w-0 text-right">
               <span className="sr-only">{t("columns.actions")}</span>
@@ -186,6 +195,30 @@ export function BacklogTable({
                     }}
                   />
                 </TableCell>
+                <TableCell priority="low" data-testid="backlog-priority">
+                  <InlineEdit
+                    kind="select"
+                    name="priority"
+                    density="table"
+                    fit
+                    value={item.priority === "NONE" ? "" : item.priority}
+                    label={t("priorityLabel")}
+                    placeholder={tPriority("NONE")}
+                    options={priorityOptions}
+                    readOnly={!data.caps.canEdit}
+                    hiddenInput={false}
+                    display={
+                      item.priority !== "NONE" ? (
+                        <PriorityIndicator value={item.priority as Priority} showLabel />
+                      ) : null
+                    }
+                    onCommit={(next) => {
+                      const chosen = next === "" ? "NONE" : next;
+                      if (chosen !== item.priority)
+                        run(() => setItemPriorityAction(item.id, projectKey, chosen));
+                    }}
+                  />
+                </TableCell>
                 <TableCell priority="low">
                   <InlineEdit
                     kind="select"
@@ -209,31 +242,68 @@ export function BacklogTable({
                     }}
                   />
                 </TableCell>
-                <TableCell priority="low" className="text-right">
+                <TableCell priority="low" className="text-right" data-testid="backlog-estimate">
                   <InlineEdit
                     kind="text"
-                    name="estimateHours"
+                    name="estimate"
                     density="table"
                     fit
                     align="end"
-                    value={item.estimateMinutes != null ? String(item.estimateMinutes / 60) : ""}
+                    // The edit seed is the locale-blind "1h 30m" the parser
+                    // reads back in every style (format.ts round-trip rule).
+                    value={item.estimateMinutes != null ? durationInputText(item.estimateMinutes * 60) : ""}
                     label={t("estimateLabel")}
                     placeholder={t("estimatePlaceholder")}
                     readOnly={!data.caps.canEdit}
                     hiddenInput={false}
                     display={
                       item.estimateMinutes != null ? (
-                        <span className="num text-sm">{formatDurationHm(locale, item.estimateMinutes)}</span>
+                        <span className="num text-sm">{formatDuration(locale, item.estimateMinutes, durationStyle)}</span>
                       ) : null
                     }
                     onCommit={(next) => {
-                      const minutes = parseHours(next);
+                      const minutes = parseEstimateMinutes(next);
                       if (minutes === undefined) {
                         toast.error(t("invalidEstimate"));
                         return;
                       }
                       if (minutes !== item.estimateMinutes)
                         run(() => setItemEstimateAction(item.id, projectKey, minutes));
+                    }}
+                  />
+                </TableCell>
+                <TableCell priority="low" data-testid="backlog-due">
+                  <InlineEdit
+                    kind="date"
+                    name="dueDate"
+                    density="table"
+                    fit
+                    value={item.targetDate ? isoDateOf(item.targetDate) : ""}
+                    label={t("dueLabel")}
+                    placeholder={t("duePlaceholder")}
+                    readOnly={!data.caps.canEdit}
+                    hiddenInput={false}
+                    // The browser refuses what isIsoDate would (year range),
+                    // so a typo year never sits in the cell looking saved.
+                    inputProps={{ min: "1970-01-01", max: "2100-12-31" }}
+                    display={
+                      item.targetDate ? (
+                        <span className="num text-sm">
+                          {/* @db.Date = UTC midnight: format in UTC or the
+                              day shifts west of UTC (review HIGH). */}
+                          {formatDate(locale, item.targetDate, {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                            timeZone: "UTC",
+                          })}
+                        </span>
+                      ) : null
+                    }
+                    onCommit={(next) => {
+                      const current = item.targetDate ? isoDateOf(item.targetDate) : "";
+                      if (next !== current)
+                        run(() => setItemDueDateAction(item.id, projectKey, next === "" ? null : next));
                     }}
                   />
                 </TableCell>
@@ -308,7 +378,7 @@ function CreateRow({ projectId, projectKey }: { projectId: string; projectKey: s
       <TableCell className="text-muted-foreground" aria-hidden="true">
         <PlusIcon className="size-3.5" />
       </TableCell>
-      <TableCell colSpan={6}>
+      <TableCell colSpan={8}>
         {editing ? (
           <Input
             ref={inputRef}

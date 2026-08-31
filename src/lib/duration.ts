@@ -113,13 +113,15 @@ export const isValidSplit = (durationSeconds: number, firstSeconds: number): boo
   Number.isInteger(firstSeconds) && firstSeconds >= MIN_SPLIT_HALF_SECONDS && durationSeconds - firstSeconds >= MIN_SPLIT_HALF_SECONDS;
 
 /**
- * Duration text → seconds, or null when unparseable / non-positive /
- * over 24 h. Accepted: `1h 30m`, `1h30m`, `1 h 30 min`, `2h`, `90m`,
- * `45 min`, `1:30` (h:mm), `1,5` / `1.5` / `2` (HOURS — decimal comma
- * or point). Whole minutes only (seconds are dropped) so what the
- * member typed is what the grid shows.
+ * The shared duration GRAMMAR: text → whole-minute seconds, or null
+ * when the text matches no accepted form. Accepted: `1h 30m`, `1h30m`,
+ * `1 h 30 min`, `2h`, `90m`, `45 min`, `1:30` (h:mm), `1,5` / `1.5` /
+ * `2` (HOURS — decimal comma or point), Swedish unit words. Carries NO
+ * policy (positivity, caps) — each caller applies its own, which is why
+ * time entries and work-item estimates share one grammar without
+ * sharing the 24 h entry ceiling.
  */
-export function parseDurationSeconds(input: string): number | null {
+function durationTextSeconds(input: string): number | null {
   const s = input.trim().toLowerCase().replace(/\s+/g, " ");
   if (s === "") return null;
   let seconds: number | null = null;
@@ -139,9 +141,39 @@ export function parseDurationSeconds(input: string): number | null {
     }
   }
   if (seconds === null || !Number.isFinite(seconds)) return null;
-  seconds = Math.floor(seconds / 60) * 60;
-  if (seconds <= 0 || seconds > MAX_ENTRY_SECONDS) return null;
+  return Math.floor(seconds / 60) * 60;
+}
+
+/**
+ * Duration text → seconds for a TIME ENTRY, or null when unparseable /
+ * non-positive / over 24 h (UI.md rule 9). Whole minutes only (seconds
+ * are dropped) so what the member typed is what the grid shows.
+ */
+export function parseDurationSeconds(input: string): number | null {
+  const seconds = durationTextSeconds(input);
+  if (seconds === null || seconds <= 0 || seconds > MAX_ENTRY_SECONDS) return null;
   return seconds;
+}
+
+/** One ceiling for estimates, shared by the zod schema and the parser
+ * so the two can never drift: 600 000 min = 10 000 h. */
+export const MAX_ESTIMATE_MINUTES = 600_000;
+
+/**
+ * Estimate text → whole MINUTES (UI.md §5.2: `2h`, `1,5`, `90m` — the
+ * same grammar as time entries, without the 24 h entry ceiling: an
+ * epic's `40h` is legal). "" and a typed zero → null (CLEAR — a zero
+ * estimate and no estimate say the same thing); unparseable or outside
+ * (0, MAX_ESTIMATE_MINUTES] → undefined (refused; the caller toasts
+ * and the field keeps the member's text).
+ */
+export function parseEstimateMinutes(input: string): number | null | undefined {
+  if (input.trim() === "" || isZeroDurationText(input)) return null;
+  const seconds = durationTextSeconds(input);
+  if (seconds === null) return undefined;
+  const minutes = seconds / 60;
+  if (minutes <= 0 || minutes > MAX_ESTIMATE_MINUTES) return undefined;
+  return minutes;
 }
 
 /**

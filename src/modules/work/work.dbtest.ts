@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { AuthzError } from "@/authz/errors";
 import { withTenant } from "@/db";
+import { dateColumn } from "@/lib/duration";
 import { setupTenant } from "@/members/dbtest-fixture";
 import {
   assignItem,
@@ -466,5 +467,23 @@ describe("the approval gate (2W-R)", () => {
     // caps tell the UI the same story the service enforces.
     expect((await listItems(employeeCtx(), projectId)).caps.canApprove).toBe(false);
     expect((await listItems(ownerCtx(), projectId)).caps.canApprove).toBe(true);
+  });
+});
+
+describe("planning-field activity visibility (2W-G — targetDate's first UI exposure)", () => {
+  it("priority activity stays INTERNAL while targetDate follows a CLIENT_VISIBLE item", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Groomed task" });
+    await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
+    await updateItemFields(ownerCtx(), id, {
+      priority: "HIGH",
+      targetDate: dateColumn("2026-09-15"),
+    });
+    const rows = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: { in: ["priority", "targetDate"] } },
+    });
+    // The PORTAL_SAFE_FIELDS split (activity.ts): estimate/priority are
+    // internal facts; the due date is part of the client-facing plan.
+    expect(rows.find((r) => r.field === "priority")?.visibility).toBe("INTERNAL");
+    expect(rows.find((r) => r.field === "targetDate")?.visibility).toBe("CLIENT_VISIBLE");
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_ESTIMATE_MINUTES,
   canSplitSeconds,
   dateColumn,
   floorToSecond,
@@ -11,6 +12,7 @@ import {
   localDateString,
   monthStartOf,
   parseDurationSeconds,
+  parseEstimateMinutes,
   secondsBetween,
   startOfLocalDay,
   zoneOffsetMinutes,
@@ -118,5 +120,41 @@ describe("interval overlap (D6 allow + flag)", () => {
     expect(intervalsOverlap(t("09:00"), null, t("12:00"), t("13:00"))).toBe(true);
     expect(intervalsOverlap(t("12:00"), t("13:00"), t("09:00"), null)).toBe(true);
     expect(intervalsOverlap(t("08:00"), t("09:00"), t("09:00"), null)).toBe(false);
+  });
+});
+
+describe("parseEstimateMinutes (UI.md §5.2 — the shared grammar without the entry ceiling)", () => {
+  it("accepts the pinned forms as minutes", () => {
+    expect(parseEstimateMinutes("2h")).toBe(120);
+    expect(parseEstimateMinutes("1,5")).toBe(90);
+    expect(parseEstimateMinutes("1.5")).toBe(90);
+    expect(parseEstimateMinutes("90m")).toBe(90);
+    expect(parseEstimateMinutes("1h 30m")).toBe(90);
+    expect(parseEstimateMinutes("2")).toBe(120);
+    expect(parseEstimateMinutes("1:30")).toBe(90);
+    expect(parseEstimateMinutes("45 min")).toBe(45);
+    expect(parseEstimateMinutes("2 timmar")).toBe(120);
+  });
+
+  it("has no 24 h ceiling — an epic's 40h is legal, up to the shared max", () => {
+    expect(parseEstimateMinutes("40h")).toBe(2400);
+    expect(parseEstimateMinutes("10000h")).toBe(MAX_ESTIMATE_MINUTES);
+  });
+
+  it("empty and zero mean CLEAR (null); junk and out-of-range mean REFUSED (undefined)", () => {
+    expect(parseEstimateMinutes("")).toBeNull();
+    expect(parseEstimateMinutes("  ")).toBeNull();
+    expect(parseEstimateMinutes("0")).toBeNull();
+    expect(parseEstimateMinutes("0h")).toBeNull();
+    expect(parseEstimateMinutes("0:00")).toBeNull();
+    expect(parseEstimateMinutes("abc")).toBeUndefined();
+    expect(parseEstimateMinutes("-1")).toBeUndefined();
+    expect(parseEstimateMinutes("90s")).toBeUndefined();
+    expect(parseEstimateMinutes("10001h")).toBeUndefined();
+  });
+
+  it("round-trips the edit seed the backlog shows (durationInputText is 'en', the grammar is locale-blind)", () => {
+    expect(parseEstimateMinutes("1h 30m")).toBe(90);
+    expect(parseEstimateMinutes("2h")).toBe(120);
   });
 });

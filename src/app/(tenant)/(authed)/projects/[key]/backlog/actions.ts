@@ -17,7 +17,10 @@ import {
   type MovedItem,
   type WorkCtx,
 } from "@/modules/work";
+import { MAX_ESTIMATE_MINUTES, dateColumn } from "@/lib/duration";
+import { PRIORITIES } from "@/lib/enum-map";
 import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
+import { isIsoDate } from "@/lib/week";
 
 /**
  * Thin server actions for the project's work surfaces (the backlog
@@ -136,12 +139,56 @@ export async function setItemEstimateAction(
   const t = await getTranslations("projects.backlog");
   const id = uuid.safeParse(itemId);
   const key = keyShape.safeParse(projectKey);
-  const minutes = z.number().int().min(0).max(600_000).nullable().safeParse(estimateMinutes);
+  const minutes = z.number().int().min(0).max(MAX_ESTIMATE_MINUTES).nullable().safeParse(estimateMinutes);
   if (!id.success || !key.success || !minutes.success) {
     return { ok: false, message: t("invalidEstimate") };
   }
   const r = await runForm(backlogPath(key.data), async () => {
     await updateItemFields(ctx, id.data, { estimateMinutes: minutes.data });
+    return t("saved");
+  });
+  if (r.ok) revalidate(key.data);
+  return r;
+}
+
+export async function setItemPriorityAction(
+  itemId: string,
+  projectKey: string,
+  priority: string,
+): Promise<FormResult> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.backlog");
+  const id = uuid.safeParse(itemId);
+  const key = keyShape.safeParse(projectKey);
+  const parsed = z.enum(PRIORITIES).safeParse(priority);
+  if (!id.success || !key.success || !parsed.success) {
+    return { ok: false, message: t("invalidTitle") };
+  }
+  const r = await runForm(backlogPath(key.data), async () => {
+    await updateItemFields(ctx, id.data, { priority: parsed.data });
+    return t("saved");
+  });
+  if (r.ok) revalidate(key.data);
+  return r;
+}
+
+export async function setItemDueDateAction(
+  itemId: string,
+  projectKey: string,
+  /** ISO date ("2026-09-15") or null to clear. */
+  dueDate: string | null,
+): Promise<FormResult> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.backlog");
+  const id = uuid.safeParse(itemId);
+  const key = keyShape.safeParse(projectKey);
+  if (!id.success || !key.success || (dueDate !== null && !isIsoDate(dueDate))) {
+    return { ok: false, message: t("invalidTitle") };
+  }
+  const r = await runForm(backlogPath(key.data), async () => {
+    // `dateColumn` = UTC midnight, matching the `@db.Date` column and
+    // updateItemFields' own `toISOString().slice(0, 10)` diff.
+    await updateItemFields(ctx, id.data, { targetDate: dueDate === null ? null : dateColumn(dueDate) });
     return t("saved");
   });
   if (r.ok) revalidate(key.data);

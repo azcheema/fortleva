@@ -1227,8 +1227,10 @@
         "key": "Nyckel",
         "title": "Titel",
         "state": "Status",
+        "priority": "Prioritet",
         "assignee": "Ansvarig",
         "estimate": "Estimat",
+        "due": "Förfaller",
         "visibility": "Synlighet",
         "actions": "Åtgärder"
       },
@@ -1239,10 +1241,10 @@
       "stateLabel": "Status",
       "assigneeLabel": "Ansvarig",
       "unassigned": "Ingen ansvarig",
-      "estimateLabel": "Estimat (timmar)",
+      "estimateLabel": "Estimat",
       "estimatePlaceholder": "Lägg till",
       "invalidTitle": "Det gick inte att spara.",
-      "invalidEstimate": "Estimat anges i timmar, t.ex. 2 eller 1,5.",
+      "invalidEstimate": "Estimat anges som 2h, 1,5 eller 90m.",
       "saved": "Sparat",
       "actionFailed": "Ändringen sparades inte. Listan visar aktuellt läge.",
       "archivedToast": "Uppgiften arkiverad",
@@ -1254,7 +1256,10 @@
         "restore": "Återställ",
         "delete": "Ta bort",
         "confirmDelete": "Ta bort uppgiften?"
-      }
+      },
+      "priorityLabel": "Prioritet",
+      "dueLabel": "Förfallodatum",
+      "duePlaceholder": "Ange datum"
     },
     "portalState": {
       "on": "På",

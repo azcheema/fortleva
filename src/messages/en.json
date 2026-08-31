@@ -1227,8 +1227,10 @@
         "key": "Key",
         "title": "Title",
         "state": "State",
+        "priority": "Priority",
         "assignee": "Assignee",
         "estimate": "Estimate",
+        "due": "Due",
         "visibility": "Visibility",
         "actions": "Actions"
       },
@@ -1239,10 +1241,10 @@
       "stateLabel": "State",
       "assigneeLabel": "Assignee",
       "unassigned": "Unassigned",
-      "estimateLabel": "Estimate (hours)",
+      "estimateLabel": "Estimate",
       "estimatePlaceholder": "Add",
       "invalidTitle": "That could not be saved.",
-      "invalidEstimate": "Estimates are hours, like 2 or 1.5.",
+      "invalidEstimate": "Estimates look like 2h, 1.5 or 90m.",
       "saved": "Saved",
       "actionFailed": "The change did not save. The list shows the current state.",
       "archivedToast": "Task archived",
@@ -1254,7 +1256,10 @@
         "restore": "Restore",
         "delete": "Delete",
         "confirmDelete": "Delete this task?"
-      }
+      },
+      "priorityLabel": "Priority",
+      "dueLabel": "Due date",
+      "duePlaceholder": "Set date"
     },
     "portalState": {
       "on": "On",

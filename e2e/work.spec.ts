@@ -119,6 +119,61 @@ test.describe("project board (owner)", () => {
     // would change tomorrow's screenshots (timeline.spec.ts states the
     // doctrine; today only file ordering keeps it true).
   });
+
+  test("grooming (2W-G): priority, due date and an estimate set inline from the backlog", async ({ page }) => {
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const title = `Groom task ${Date.now()}`;
+    created = title; // afterEach removes it via the board, pass or fail
+
+    // Create through the backlog's create row (rest = a button, then a field).
+    await page.locator("#new-task").getByRole("button").click();
+    const createInput = page.locator("#new-task input");
+    await createInput.fill(title);
+    await createInput.press("Enter");
+    const row = page.locator('[data-slot="table-row"]', { hasText: title });
+    await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+    await createInput.press("Escape");
+
+    // Priority: rest → select → HIGH commits on change.
+    await row.getByTestId("backlog-priority").getByRole("button").click();
+    await row.getByTestId("backlog-priority").locator("select").selectOption("HIGH");
+    await expect(row.locator('[data-slot="priority-indicator"]')).toHaveAttribute(
+      "data-value",
+      "HIGH",
+      { timeout: 20_000 * SLOW },
+    );
+
+    // Due date: the ISO value is locale-blind on both ends. The display
+    // span appears only after the server round trip — the sync point
+    // before any navigation (the priority step's indicator plays the
+    // same role above).
+    await row.getByTestId("backlog-due").getByRole("button").click();
+    const dueInput = row.getByTestId("backlog-due").locator("input");
+    await dueInput.fill("2026-09-15");
+    await dueInput.press("Enter");
+    await expect(row.getByTestId("backlog-due")).toContainText("2026", { timeout: 20_000 * SLOW });
+
+    // Estimate: the pinned grammar — "90m" in, and the edit seed reads
+    // back as the locale-blind "1h 30m" text (normalization proof).
+    await row.getByTestId("backlog-estimate").getByRole("button").click();
+    const estimateInput = row.getByTestId("backlog-estimate").locator("input");
+    await estimateInput.fill("90m");
+    await estimateInput.press("Enter");
+    await expect(row.getByTestId("backlog-estimate")).toContainText("30", {
+      timeout: 20_000 * SLOW,
+    });
+
+    // Everything survives a full reload.
+    await page.reload();
+    const fresh = page.locator('[data-slot="table-row"]', { hasText: title });
+    await expect(fresh.locator('[data-slot="priority-indicator"]')).toHaveAttribute("data-value", "HIGH");
+    await fresh.getByTestId("backlog-estimate").getByRole("button").click();
+    await expect(fresh.getByTestId("backlog-estimate").locator("input")).toHaveValue("1h 30m");
+    await page.keyboard.press("Escape");
+    await fresh.getByTestId("backlog-due").getByRole("button").click();
+    await expect(fresh.getByTestId("backlog-due").locator("input")).toHaveValue("2026-09-15");
+    await page.keyboard.press("Escape");
+  });
 });
 
 test.describe("project board (employee)", () => {

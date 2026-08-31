@@ -4,8 +4,10 @@ import { getLocale, getTranslations } from "next-intl/server";
 
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listItems, projectWorkVersion } from "@/modules/work";
+import { readPreferences } from "@/preferences/service";
 import { cn } from "@/lib/utils";
 
 import { loadProject } from "../data";
@@ -38,10 +40,13 @@ export default async function ProjectBoardPage({
   // so the 12 s poll sees a difference and refreshes — the other order
   // would let the board sit stale until the next write.
   const version = await projectWorkVersion(ctx, project.id);
-  const [data, t, locale] = await Promise.all([
+  const [data, t, locale, prefs] = await Promise.all([
     listItems(ctx, project.id),
     getTranslations("projects.board"),
     getLocale(),
+    withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
+      readPreferences(tx, membership.tenantId),
+    ),
   ]);
   const empty = data.items.length === 0;
 
@@ -87,6 +92,7 @@ export default async function ProjectBoardPage({
         data={data}
         groupBy={groupBy}
         version={version}
+        durationStyle={prefs.durationStyle}
       />
     </div>
   );

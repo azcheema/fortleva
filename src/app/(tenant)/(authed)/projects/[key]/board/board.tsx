@@ -45,7 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge";
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
-import { formatDurationHm } from "@/lib/format";
+import { formatDuration, type DurationStyle } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ItemList } from "@/modules/work";
 
@@ -102,6 +102,7 @@ export function Board({
   data,
   groupBy,
   version,
+  durationStyle,
 }: {
   projectId: string;
   projectKey: string;
@@ -110,6 +111,8 @@ export function Board({
   groupBy: GroupBy;
   /** The freshness token the page rendered with (ARC-18). */
   version: string;
+  /** The tenant's `ui.durationStyle` — REQUIRED (standing trap). */
+  durationStyle: DurationStyle;
 }) {
   const t = useTranslations("projects.board");
   const router = useRouter();
@@ -427,6 +430,7 @@ export function Board({
               canDelete={data.caps.canDelete}
               canCreate={canCreate}
               canApprove={canApprove}
+              durationStyle={durationStyle}
               tabbableId={tabbableId}
               defaultStateId={defaultState?.id ?? null}
               creatingIn={creatingIn}
@@ -478,6 +482,7 @@ function BoardLane(props: {
   canDelete: boolean;
   canCreate: boolean;
   canApprove: boolean;
+  durationStyle: DurationStyle;
   tabbableId: string | null;
   defaultStateId: string | null;
   creatingIn: string | null;
@@ -554,6 +559,7 @@ function BoardColumn(props: {
   canDelete: boolean;
   canCreate: boolean;
   canApprove: boolean;
+  durationStyle: DurationStyle;
   tabbableId: string | null;
   defaultStateId: string | null;
   creatingIn: string | null;
@@ -618,8 +624,8 @@ function BoardColumn(props: {
           {totals.count}
         </span>
         {totals.estimateMinutes > 0 ? (
-          <span role="img" className="num text-xs text-muted-foreground" aria-label={t("column.estimate", { hours: formatDurationHm(props.locale, totals.estimateMinutes) })}>
-            {formatDurationHm(props.locale, totals.estimateMinutes)}
+          <span role="img" className="num text-xs text-muted-foreground" aria-label={t("column.estimate", { hours: formatDuration(props.locale, totals.estimateMinutes, props.durationStyle) })}>
+            {formatDuration(props.locale, totals.estimateMinutes, props.durationStyle)}
           </span>
         ) : null}
       </header>
@@ -632,6 +638,7 @@ function BoardColumn(props: {
             droppable={droppable}
             projectKey={props.projectKey}
             locale={props.locale}
+            durationStyle={props.durationStyle}
             canEdit={props.canEdit}
             canDelete={props.canDelete}
             tabbable={props.tabbableId === item.id}
@@ -675,6 +682,7 @@ function BoardCard({
   laneKey,
   projectKey,
   locale,
+  durationStyle,
   canEdit,
   canDelete,
   droppable,
@@ -688,6 +696,7 @@ function BoardCard({
   laneKey: string;
   projectKey: string;
   locale: string;
+  durationStyle: DurationStyle;
   canEdit: boolean;
   canDelete: boolean;
   /** False in a TRIAGE column: entering triage is its own verb. */
@@ -821,8 +830,8 @@ function BoardCard({
             </span>
           ) : null}
           {item.estimateMinutes !== null ? (
-            <span role="img" className="num" aria-label={t("card.estimate", { hours: formatDurationHm(locale, item.estimateMinutes) })}>
-              {formatDurationHm(locale, item.estimateMinutes)}
+            <span role="img" className="num" aria-label={t("card.estimate", { hours: formatDuration(locale, item.estimateMinutes, durationStyle) })}>
+              {formatDuration(locale, item.estimateMinutes, durationStyle)}
             </span>
           ) : null}
           {item.assigneeMemberId ? (
