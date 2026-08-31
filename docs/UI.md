@@ -187,7 +187,9 @@ Fields that are empty, and matrices nobody has asked for yet, wait behind one 28
 
 ---
 
-## 6. Keyboard map (registry: `react-hotkeys-hook` scopes `global`, `item`, `inbox`, `triage`; shown in `?` and tooltips)
+## 6. Keyboard map (scopes `global`, `item`, `inbox`, `triage`; shown in `?` and tooltips)
+
+*Registry — target state, not current code (decided 2026-08-31): `react-hotkeys-hook` becomes the scope registry when the `item` / `inbox` / `triage` scopes land as real surfaces; today the package is not a dependency and the shell hand-rolls the `global` scope in `src/components/shell/use-hotkeys.ts`, whose header pins that a scoped registry can replace its internals without touching callers. Until then the `?` overlay is not scope-aware (board follow-up (ι) stays deferred with it).*
 
 | Scope | Key | Action |
 |---|---|---|

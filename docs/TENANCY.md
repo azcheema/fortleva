@@ -79,7 +79,7 @@ No single mechanism is trusted. Each layer independently catches the failure of 
 
 Plus **structural enforcement** that is not a "layer" but schema fact: composite FKs and tenant-scoped uniques (§8) make many cross-tenant writes a constraint violation regardless of code.
 
-**The one-seam rule:** no code path reaches the database except through `withTenant()` (or `withPlatform()`, §12). The base Prisma client is module-private; an ESLint `no-restricted-imports` rule blocks importing it anywhere else. This is the same "the interface is the insurance" principle AUTHZ.md applies to `authorize()`.
+**The one-seam rule:** no code path reaches the database except through `withTenant()` (or `withPlatform()`, §12). The base Prisma client is module-private to `src/db`, with `src/auth` as the one sanctioned direct consumer (§6.3 — AUTH-class tables are touched only by the auth service path; carve-out ratified by the founder 2026-08-31, aligning this sentence with AGENTS.md and the code). Two belts pin it: an ESLint `no-restricted-imports` rule, and `src/db/raw-client-boundary.test.ts`, which reads the files themselves — so neither a file-level disable comment nor a dynamic `import()` hides from both. This is the same "the interface is the insurance" principle AUTHZ.md applies to `authorize()`.
 
 ---
 
