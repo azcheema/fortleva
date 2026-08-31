@@ -32,6 +32,7 @@ export class DocumentError extends Error {
   constructor(
     readonly code:
       | "CLIENT_REQUIRED" // CLIENT_VISIBLE without a client — the schema CHECK's twin
+      | "ANCHOR_INTERNAL" // CLIENT_VISIBLE attachment on an item the client cannot see (2W-A; the trigger's twin)
       | "UPLOAD_MISSING" // commit: no bytes at the key
       | "UPLOAD_SIZE_MISMATCH" // commit: HEAD size ≠ presigned size
       | "NOT_PENDING", // commit: object already committed/deleted
@@ -41,6 +42,23 @@ export class DocumentError extends Error {
     this.name = "DocumentError";
   }
 }
+
+/** The one anchor type shipped so far (2W-A); the enum has more, each
+ * arriving with its own slice. */
+export type AttachAnchor = { type: "WORK_ITEM"; id: string };
+
+/** Both-or-neither, refused loudly at the seam (zod refines the action
+ * layer; a half-anchor reaching here is a programmer error). */
+const anchorOf = (input: {
+  attachedToType?: "WORK_ITEM";
+  attachedToId?: string;
+}): AttachAnchor | null => {
+  if (!input.attachedToType && !input.attachedToId) return null;
+  if (!input.attachedToType || !input.attachedToId) {
+    throw new Error("attachedToType and attachedToId come together");
+  }
+  return { type: input.attachedToType, id: input.attachedToId };
+};
 
 const PUT_EXPIRES_SEC = 15 * 60;
 const GET_EXPIRES_SEC = 60;
@@ -90,6 +108,10 @@ export type CreateUploadInput = {
   clientId?: string | null;
   projectId?: string | null;
   visibility?: Visibility;
+  /** 2W-A: anchor the document to a work item. clientId/projectId are
+   * then DERIVED from the item — passing different ones is refused. */
+  attachedToType?: "WORK_ITEM";
+  attachedToId?: string;
 };
 
 export type CreateUploadResult = {
@@ -104,27 +126,55 @@ export type CreateUploadResult = {
  * Attachment target (Phase 2): a project document must sit in the
  * actor's project scope (and clientId, if given, must be the project's
  * client — else derived from it); a client-level document needs DIRECT
- * client scope. Resolved inside the transaction, before any row/presign.
+ * client scope. An ANCHORED document (2W-A) derives BOTH columns from
+ * its work item — the anchor never authorizes anything (§10), but the
+ * authorization columns must agree with it, so a caller passing
+ * different ones is refused rather than silently corrected (the
+ * `document_anchor_guard` trigger is the belt). Resolved inside the
+ * transaction, before any row/presign.
  */
 async function resolveTarget(
   tx: TenantDb,
   actor: MemberActor,
   clientId: string | null | undefined,
   projectId: string | null | undefined,
-): Promise<{ clientId: string | null; projectId: string | null }> {
+  anchor?: AttachAnchor | null,
+): Promise<{ clientId: string | null; projectId: string | null; parentVisibility: Visibility | null }> {
+  if (anchor) {
+    const item = await tx.workItem.findFirst({
+      where: { id: anchor.id, deletedAt: null },
+      select: { clientId: true, projectId: true, visibility: true },
+    });
+    if (!item) deny("NOT_FOUND");
+    await assertInScope(tx, actor, { projectId: item!.projectId });
+    if (clientId && clientId !== item!.clientId) fail("CLIENT_MISMATCH");
+    if (projectId && projectId !== item!.projectId) fail("CLIENT_MISMATCH");
+    return { clientId: item!.clientId, projectId: item!.projectId, parentVisibility: item!.visibility };
+  }
   if (projectId) {
     await assertInScope(tx, actor, { projectId });
     const p = await tx.project.findFirst({ where: { id: projectId }, select: { clientId: true } });
     if (!p) deny("NOT_FOUND");
     if (clientId && clientId !== p!.clientId) fail("CLIENT_MISMATCH");
-    return { clientId: p!.clientId, projectId };
+    return { clientId: p!.clientId, projectId, parentVisibility: null };
   }
   if (clientId) {
     await assertInScope(tx, actor, { clientId });
-    return { clientId, projectId: null };
+    return { clientId, projectId: null, parentVisibility: null };
   }
-  return { clientId: null, projectId: null };
+  return { clientId: null, projectId: null, parentVisibility: null };
 }
+
+/** The child ≤ parent rule at the seam (2W-A): a CLIENT_VISIBLE
+ * attachment needs a CLIENT_VISIBLE item; the trigger is the belt. */
+const assertAnchorVisibility = (
+  visibility: Visibility,
+  parentVisibility: Visibility | null,
+): void => {
+  if (visibility === "CLIENT_VISIBLE" && parentVisibility === "INTERNAL") {
+    throw new DocumentError("ANCHOR_INTERNAL", "the item is not client-visible");
+  }
+};
 
 /** Member-plane scope gate for an existing document row (NOT_FOUND outside scope). */
 async function assertDocumentInScope(
@@ -154,7 +204,9 @@ export async function createUpload(
   input: CreateUploadInput,
 ): Promise<CreateUploadResult> {
   const { contentType } = validateUpload(input);
-  assertVisibilityTarget(input.visibility ?? "INTERNAL", input.clientId ?? input.projectId);
+  const anchor = anchorOf(input);
+  // Anchored: the client comes from the item, checked inside the tx.
+  if (!anchor) assertVisibilityTarget(input.visibility ?? "INTERNAL", input.clientId ?? input.projectId);
   if (!/^[0-9a-f]{64}$/i.test(input.sha256)) {
     throw new Error("createUpload: sha256 must be 64 hex chars");
   }
@@ -164,7 +216,8 @@ export async function createUpload(
 
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:upload");
-    await resolveTarget(tx, ctx.actor, input.clientId, input.projectId);
+    const target = await resolveTarget(tx, ctx.actor, input.clientId, input.projectId, anchor);
+    if (anchor && input.visibility) assertAnchorVisibility(input.visibility, target.parentVisibility);
     await enforceStorageQuota(tx, ctx.tenantId, input.sizeBytes);
     await tx.fileObject.create({
       data: {
@@ -275,8 +328,13 @@ export type CommitUploadInput = {
   name?: string;
   clientId?: string | null;
   projectId?: string | null;
-  /** INTERNAL is the default everywhere (§5); CLIENT_VISIBLE needs clientId. */
+  /** INTERNAL is the default everywhere (§5); CLIENT_VISIBLE needs
+   * clientId. An ANCHORED document with no explicit choice inherits its
+   * work item's visibility (DATA_MODEL §10). */
   visibility?: Visibility;
+  /** 2W-A: see CreateUploadInput. */
+  attachedToType?: "WORK_ITEM";
+  attachedToId?: string;
 };
 
 /** Step 2 (new document): COMMITTED + Document + FileVersion 1. */
@@ -284,12 +342,15 @@ export async function commitUpload(
   ctx: DocumentCtx,
   input: CommitUploadInput,
 ): Promise<{ documentId: string }> {
-  const visibility = input.visibility ?? "INTERNAL";
-  assertVisibilityTarget(visibility, input.clientId ?? input.projectId);
+  const anchor = anchorOf(input);
+  if (!anchor) assertVisibilityTarget(input.visibility ?? "INTERNAL", input.clientId ?? input.projectId);
   const documentId = newId();
 
   await commitFileObject(ctx, input.fileObjectId, async (tx, obj) => {
-    const target = await resolveTarget(tx, ctx.actor, input.clientId, input.projectId);
+    const target = await resolveTarget(tx, ctx.actor, input.clientId, input.projectId, anchor);
+    // Defaulted from the parent AT CREATION (§10); its own column after.
+    const visibility = input.visibility ?? target.parentVisibility ?? "INTERNAL";
+    if (anchor) assertAnchorVisibility(visibility, target.parentVisibility);
     const name = (input.name ?? obj.originalFilename ?? "untitled").trim() || "untitled";
     await tx.document.create({
       data: {
@@ -299,6 +360,8 @@ export async function commitUpload(
         projectId: target.projectId,
         name,
         visibility,
+        attachedToType: anchor?.type ?? null,
+        attachedToId: anchor?.id ?? null,
         createdByMemberId: ctx.actor.memberId,
         versions: {
           create: {
@@ -319,6 +382,7 @@ export async function commitUpload(
         fileObjectId: obj.id,
         clientId: target.clientId,
         projectId: target.projectId,
+        ...(anchor ? { attachedToType: anchor.type, attachedToId: anchor.id } : {}),
       },
     });
   });
@@ -380,6 +444,9 @@ export type DocumentFilter = {
   clientId?: string;
   /** Documents of one project. */
   projectId?: string;
+  /** Documents anchored to one work item (2W-A). The anchor never
+   * authorizes — the row's own clientId/projectId compose the scope. */
+  attachedToWorkItemId?: string;
 };
 
 /**
@@ -398,11 +465,13 @@ export async function listDocuments(
       clientField: "clientId",
       projectField: "projectId",
     });
-    const where = filter.projectId
-      ? { projectId: filter.projectId, ...scope }
-      : filter.clientId
-        ? { clientId: filter.clientId, projectId: null, ...scope }
-        : { OR: [{ clientId: null }, { clientId: { not: null }, ...scope }] };
+    const where = filter.attachedToWorkItemId
+      ? { attachedToType: "WORK_ITEM" as const, attachedToId: filter.attachedToWorkItemId, ...scope }
+      : filter.projectId
+        ? { projectId: filter.projectId, ...scope }
+        : filter.clientId
+          ? { clientId: filter.clientId, projectId: null, ...scope }
+          : { OR: [{ clientId: null }, { clientId: { not: null }, ...scope }] };
     const rows = await tx.document.findMany({
       where: { deletedAt: null, ...where },
       orderBy: { updatedAt: "desc" },
@@ -546,12 +615,29 @@ export async function changeVisibility(
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:change_visibility");
     const doc = await tx.document.findFirst({
       where: { id: documentId, deletedAt: null },
-      select: { id: true, clientId: true, projectId: true, visibility: true },
+      select: {
+        id: true,
+        clientId: true,
+        projectId: true,
+        visibility: true,
+        attachedToType: true,
+        attachedToId: true,
+      },
     });
     if (!doc) deny("NOT_FOUND");
     await assertDocumentInScope(tx, ctx.actor, doc!);
     assertVisibilityTarget(visibility, doc!.clientId);
     if (doc!.visibility === visibility) return;
+    // 2W-A: flipping an ATTACHMENT visible needs a visible parent — the
+    // typed refusal here, the trigger as the belt (a raw P0001 would
+    // rethrow past the action's message mapping).
+    if (visibility === "CLIENT_VISIBLE" && doc!.attachedToType === "WORK_ITEM" && doc!.attachedToId) {
+      const item = await tx.workItem.findFirst({
+        where: { id: doc!.attachedToId, deletedAt: null },
+        select: { visibility: true },
+      });
+      assertAnchorVisibility(visibility, item?.visibility ?? "INTERNAL");
+    }
     await tx.document.update({ where: { id: doc!.id }, data: { visibility } });
     await record(tx, {
       action: "document.visibility_changed",

@@ -55,6 +55,8 @@ export type ItemListEntry = {
   archivedAt: Date | null;
   checklistTotal: number;
   checklistDone: number;
+  /** Live documents anchored to this item (2W-A) — the backlog's paperclip. */
+  attachmentCount: number;
 };
 
 export type ItemList = {
@@ -124,6 +126,19 @@ export async function listItems(
         isAuthorized(tx, ctx.actor, "work_item:approve"),
       ]);
 
+    // One grouped count over the anchor index — never a per-row query.
+    const attachmentCounts = await tx.document.groupBy({
+      by: ["attachedToId"],
+      where: {
+        tenantId: ctx.tenantId,
+        attachedToType: "WORK_ITEM",
+        attachedToId: { in: items.map((i) => i.id) },
+        deletedAt: null,
+      },
+      _count: { _all: true },
+    });
+    const attachmentsById = new Map(attachmentCounts.map((c) => [c.attachedToId, c._count._all]));
+
     return {
       items: items.map((i) => ({
         id: i.id,
@@ -144,6 +159,7 @@ export async function listItems(
         archivedAt: i.archivedAt,
         checklistTotal: i.checklistTotal,
         checklistDone: i.checklistDone,
+        attachmentCount: attachmentsById.get(i.id) ?? 0,
       })),
       states,
       members: members.map((m) => ({ id: m.id, name: m.user.name })),
@@ -393,6 +409,34 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
     });
     if (children > 0) deny("FORBIDDEN", "delete children first");
     await tx.workItem.update({ where: { id: item.id }, data: { deletedAt: new Date() } });
+    // Attachments live the life of their parent (DATA_MODEL §4): the
+    // item's soft delete takes its anchored documents with it — else a
+    // CLIENT_VISIBLE attachment would outlive the task on the portal
+    // with the make-private lever refused by the anchor guard (2W-A
+    // review). Each gets its own document.deleted audit row, ids only.
+    const attached = await tx.document.findMany({
+      where: {
+        tenantId: ctx.tenantId,
+        attachedToType: "WORK_ITEM",
+        attachedToId: item.id,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (attached.length > 0) {
+      await tx.document.updateMany({
+        where: { id: { in: attached.map((d) => d.id) } },
+        data: { deletedAt: new Date() },
+      });
+      for (const d of attached) {
+        await record(tx, {
+          action: "document.deleted",
+          targetType: "Document",
+          targetId: d.id,
+          metadata: { reason: "work_item_deleted", workItemId: item.id },
+        });
+      }
+    }
     await record(tx, {
       action: "work_item.deleted",
       targetType: "WorkItem",

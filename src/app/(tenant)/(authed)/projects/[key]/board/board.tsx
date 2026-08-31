@@ -911,6 +911,7 @@ function ColumnCreate({
           archivedAt: null,
           checklistTotal: 0,
           checklistDone: 0,
+          attachmentCount: 0,
         },
       });
       const r = await createItemInStateAction(projectId, projectKey, state.id, value).catch(() => ({

@@ -42,6 +42,7 @@ const item = (id: string, over: Partial<BoardItem> = {}): BoardItem => ({
   archivedAt: null,
   checklistTotal: 0,
   checklistDone: 0,
+  attachmentCount: 0,
   ...over,
 });
 

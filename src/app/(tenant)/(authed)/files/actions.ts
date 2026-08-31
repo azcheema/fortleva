@@ -66,6 +66,8 @@ const messageOf = (t: Translate, e: unknown): string | null => {
         return t("notPending");
       case "CLIENT_REQUIRED":
         return t("clientRequired");
+      case "ANCHOR_INTERNAL":
+        return t("anchorInternal");
     }
   }
   return null;
@@ -92,12 +94,26 @@ const SAFE_PATH = /^\/(?![/\\])/;
  * service; CLIENT_VISIBLE needs a client. `returnTo` is the page to
  * revalidate / bounce back to.
  */
-const targetSchema = z.object({
-  clientId: z.uuid().optional(),
-  projectId: z.uuid().optional(),
-  visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]).default("INTERNAL"),
-  returnTo: z.string().regex(SAFE_PATH).default("/files"),
-});
+const targetSchema = z
+  .object({
+    clientId: z.uuid().optional(),
+    projectId: z.uuid().optional(),
+    // No default: an ANCHORED upload with no explicit choice inherits
+    // its work item's visibility in the service (DATA_MODEL §10); the
+    // service defaults every un-anchored path to INTERNAL as before.
+    visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]).optional(),
+    returnTo: z.string().regex(SAFE_PATH).default("/files"),
+    // 2W-A: anchor to a work item — the anchor implies client + project
+    // (derived from the item; the service refuses a disagreement).
+    attachedToType: z.literal("WORK_ITEM").optional(),
+    attachedToId: z.uuid().optional(),
+  })
+  .refine((v) => (v.attachedToType === undefined) === (v.attachedToId === undefined), {
+    message: "attachedToType and attachedToId come together",
+  })
+  .refine((v) => v.attachedToId === undefined || (v.clientId === undefined && v.projectId === undefined), {
+    message: "an anchored upload derives client and project from the item",
+  });
 export type UploadTarget = z.input<typeof targetSchema>;
 
 const presignSchema = z.object({
@@ -118,11 +134,11 @@ export async function presignUploadAction(
     const t = await getTranslations("files.errors");
     return { ok: false, message: t("invalidRequest") };
   }
-  const { clientId, projectId, visibility, returnTo } = target.data;
+  const { clientId, projectId, visibility, returnTo, attachedToType, attachedToId } = target.data;
   return guard(returnTo, () =>
     createUpload(
       { tenantId: membership.tenantId, actor },
-      { ...parsed.data, clientId, projectId, visibility },
+      { ...parsed.data, clientId, projectId, visibility, attachedToType, attachedToId },
     ),
   );
 }
@@ -137,11 +153,11 @@ export async function commitUploadAction(
     const t = await getTranslations("files.errors");
     return { ok: false, message: t("invalidRequest") };
   }
-  const { clientId, projectId, visibility, returnTo } = target.data;
+  const { clientId, projectId, visibility, returnTo, attachedToType, attachedToId } = target.data;
   const result = await guard(returnTo, () =>
     commitUpload(
       { tenantId: membership.tenantId, actor },
-      { fileObjectId, clientId, projectId, visibility },
+      { fileObjectId, clientId, projectId, visibility, attachedToType, attachedToId },
     ),
   );
   if (result.ok) revalidatePath(returnTo);

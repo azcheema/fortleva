@@ -11,6 +11,7 @@ import { withTenant } from "@/db";
 import { AuthzError } from "@/authz/errors";
 import { createClient } from "@/clients/service";
 import { provisionTenant } from "@/members/provisioning";
+import { changeItemVisibility, createItem, deleteItem, listItems } from "@/modules/work";
 import { expirePendingUploads } from "@/jobs/expire-pending-uploads";
 import { LocalDiskTransport, setStorage } from "@/storage";
 
@@ -421,5 +422,250 @@ describe("reconciliation: expirePendingUploads", () => {
     ]);
     expect(s.status).toBe("DELETED");
     expect(f.status).toBe("PENDING");
+  });
+});
+
+describe("work-item attachments (2W-A ship gates)", () => {
+  const att = { clientId: randomUUID(), projectId: randomUUID(), contactId: randomUUID() };
+  let internalItemId: string;
+  let visibleItemId: string;
+
+  const uploadAttached = async (name: string, itemId: string, visibility?: "INTERNAL" | "CLIENT_VISIBLE") => {
+    const body = new TextEncoder().encode(`attach ${name}\n`);
+    const presign = await createUpload(ctx, {
+      name,
+      contentType: "text/plain",
+      sizeBytes: body.byteLength,
+      sha256: sha(body),
+      visibility,
+      attachedToType: "WORK_ITEM",
+      attachedToId: itemId,
+    });
+    await putBytes(presign.uploadUrl, { ...presign.headers }, body);
+    const { documentId } = await commitUpload(ctx, {
+      fileObjectId: presign.fileObjectId,
+      visibility,
+      attachedToType: "WORK_ITEM",
+      attachedToId: itemId,
+    });
+    return documentId;
+  };
+
+  beforeAll(async () => {
+    const p = platform();
+    await p.client.create({ data: { id: att.clientId, tenantId, name: "Attach client" } });
+    await p.project.create({
+      data: {
+        id: att.projectId,
+        tenantId,
+        clientId: att.clientId,
+        key: "ATT",
+        name: "Attachment project",
+        portalEnabled: true,
+      },
+    });
+    await p.contact.create({
+      data: {
+        id: att.contactId,
+        tenantId,
+        clientId: att.clientId,
+        name: "Attach Carol",
+        email: `attach-${run}@test.invalid`,
+      },
+    });
+    internalItemId = (await createItem(ctx, { projectId: att.projectId, title: "Internal feature" })).id;
+    visibleItemId = (await createItem(ctx, { projectId: att.projectId, title: "Visible feature" })).id;
+    await changeItemVisibility(ctx, visibleItemId, "CLIENT_VISIBLE");
+  }, 60_000);
+
+  afterAll(async () => {
+    const p = platform();
+    await p.fileVersion.deleteMany({ where: { tenantId } });
+    await p.document.deleteMany({ where: { tenantId } });
+    await p.fileObject.deleteMany({ where: { tenantId } });
+    await p.workItemActivity.deleteMany({ where: { tenantId } });
+    await p.workItem.deleteMany({ where: { tenantId } });
+    await p.workflowState.deleteMany({ where: { tenantId } });
+    await p.contact.deleteMany({ where: { tenantId } });
+    await p.project.deleteMany({ where: { tenantId } });
+    await p.tenantCounter.deleteMany({ where: { tenantId } });
+  }, 60_000);
+
+  it("an anchored upload derives client + project from the item, records the anchor, and the paperclip counts it", async () => {
+    const documentId = await uploadAttached("spec.txt", internalItemId);
+    const doc = await platform().document.findUniqueOrThrow({ where: { id: documentId } });
+    expect(doc.clientId).toBe(att.clientId);
+    expect(doc.projectId).toBe(att.projectId);
+    expect(doc.attachedToType).toBe("WORK_ITEM");
+    expect(doc.attachedToId).toBe(internalItemId);
+    // Visibility inherited from the INTERNAL parent (no explicit choice).
+    expect(doc.visibility).toBe("INTERNAL");
+    const audit = await platform().auditEvent.findFirst({
+      where: { tenantId, targetId: documentId, action: "document.created" },
+    });
+    expect(audit?.metadata).toMatchObject({ attachedToType: "WORK_ITEM", attachedToId: internalItemId });
+    const list = await listDocuments(ctx, { attachedToWorkItemId: internalItemId });
+    expect(list.map((d) => d.id)).toContain(documentId);
+    const items = await listItems(ctx, att.projectId);
+    expect(items.items.find((i) => i.id === internalItemId)?.attachmentCount).toBe(1);
+  });
+
+  let inheritedVisibleId: string;
+  it("visibility inherits CLIENT_VISIBLE from a visible parent", async () => {
+    inheritedVisibleId = await uploadAttached("delivered.txt", visibleItemId);
+    const doc = await platform().document.findUniqueOrThrow({ where: { id: inheritedVisibleId } });
+    expect(doc.visibility).toBe("CLIENT_VISIBLE");
+  });
+
+  it("a CLIENT_VISIBLE attachment on an INTERNAL item is refused at the seam AND by the trigger", async () => {
+    // Service seam: presign refuses before any row.
+    await expect(
+      createUpload(ctx, {
+        name: "leak.txt",
+        contentType: "text/plain",
+        sizeBytes: 5,
+        sha256: sha("leak"),
+        visibility: "CLIENT_VISIBLE",
+        attachedToType: "WORK_ITEM",
+        attachedToId: internalItemId,
+      }),
+    ).rejects.toMatchObject({ code: "ANCHOR_INTERNAL" });
+    // Raw write past the service: the DB refuses (the belt).
+    await expect(
+      platform().document.create({
+        data: {
+          id: randomUUID(),
+          tenantId,
+          clientId: att.clientId,
+          projectId: att.projectId,
+          name: "raw-leak.txt",
+          visibility: "CLIENT_VISIBLE",
+          attachedToType: "WORK_ITEM",
+          attachedToId: internalItemId,
+        },
+      }),
+    ).rejects.toThrow(/cannot be CLIENT_VISIBLE on an item/);
+    // And mismatched authorization columns are refused, never rewritten.
+    await expect(
+      platform().document.create({
+        data: {
+          id: randomUUID(),
+          tenantId,
+          clientId: att.clientId,
+          projectId: null,
+          name: "wrong-project.txt",
+          visibility: "INTERNAL",
+          attachedToType: "WORK_ITEM",
+          attachedToId: internalItemId,
+        },
+      }),
+    ).rejects.toThrow(/must carry its work item/);
+  });
+
+  it("a visible attachment blocks the item's downgrade until soft-deleted; an INTERNAL item locks its attachments", async () => {
+    // Guard against the order-coupling failure mode: if the inherit test
+    // did not run, softDeleteDocument(undefined) would silently soft-
+    // delete an ARBITRARY document (Prisma drops undefined filters).
+    expect(inheritedVisibleId).toBeDefined();
+    const onVisible = await uploadAttached("to-flip.txt", visibleItemId, "CLIENT_VISIBLE");
+    // The item cannot go INTERNAL while a visible attachment lives...
+    await expect(changeItemVisibility(ctx, visibleItemId, "INTERNAL")).rejects.toThrow(
+      /client-visible children exist/,
+    );
+    // ...soft-deleted attachments no longer block it (the deleted_at
+    // fix) — the earlier test's inherited-visible attachment included.
+    await softDeleteDocument(ctx, onVisible);
+    await softDeleteDocument(ctx, inheritedVisibleId);
+    await changeItemVisibility(ctx, visibleItemId, "INTERNAL");
+    // ...and with the item INTERNAL, a surviving attachment cannot be
+    // flipped visible either — the TYPED refusal at the seam (the raw
+    // trigger belt is pinned by the raw-insert test above).
+    const stillAttached = await uploadAttached("stays.txt", visibleItemId);
+    await expect(changeVisibility(ctx, stillAttached, "CLIENT_VISIBLE")).rejects.toMatchObject({
+      code: "ANCHOR_INTERNAL",
+    });
+    // Restore for the portal test below.
+    await changeItemVisibility(ctx, visibleItemId, "CLIENT_VISIBLE");
+  });
+
+  it("the contact principal never sees an attachment on an INTERNAL item — and existence does not leak", async () => {
+    const hidden = await uploadAttached("internal-only.txt", internalItemId);
+    const shown = await uploadAttached("client-copy.txt", visibleItemId, "CLIENT_VISIBLE");
+    const contactPrincipal = { type: "contact", id: att.contactId, clientId: att.clientId } as const;
+    await withTenant(tenantId, contactPrincipal, async (tx) => {
+      const visibleIds = (await tx.document.findMany({ select: { id: true } })).map((d) => d.id);
+      expect(visibleIds).toContain(shown);
+      expect(visibleIds).not.toContain(hidden);
+      // BOTH downloads deny identically: the hidden one at the document
+      // gate, the visible one at the class-A file layer (portal_deny —
+      // a contact NEVER queries files directly; portal downloads are
+      // brokered in Phase 3). Same error either way ⇒ no existence leak.
+      await expect(resolveDownload(tx, hidden)).rejects.toMatchObject({ reason: "NOT_FOUND" });
+      await expect(resolveDownload(tx, shown)).rejects.toMatchObject({ reason: "NOT_FOUND" });
+    });
+  });
+
+  it("an anchor to a missing item is NOT_FOUND at presign — no PENDING row is written", async () => {
+    const before = await platform().fileObject.count({ where: { tenantId, status: "PENDING" } });
+    await expect(
+      createUpload(ctx, {
+        name: "orphan.txt",
+        contentType: "text/plain",
+        sizeBytes: 5,
+        sha256: sha("o"),
+        attachedToType: "WORK_ITEM",
+        attachedToId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ reason: "NOT_FOUND" });
+    expect(await platform().fileObject.count({ where: { tenantId, status: "PENDING" } })).toBe(before);
+  });
+
+  it("an explicit clientId/projectId disagreeing with the anchor is CLIENT_MISMATCH", async () => {
+    await expect(
+      createUpload(ctx, {
+        name: "mismatch.txt",
+        contentType: "text/plain",
+        sizeBytes: 5,
+        sha256: sha("m"),
+        projectId: randomUUID(),
+        attachedToType: "WORK_ITEM",
+        attachedToId: internalItemId,
+      }),
+    ).rejects.toMatchObject({ code: "CLIENT_MISMATCH" });
+  });
+
+  it("flipping an anchored doc visible under an INTERNAL item is the typed ANCHOR_INTERNAL at the seam", async () => {
+    const doc = await uploadAttached("seam-flip.txt", internalItemId);
+    await expect(changeVisibility(ctx, doc, "CLIENT_VISIBLE")).rejects.toMatchObject({
+      code: "ANCHOR_INTERNAL",
+    });
+  });
+
+  it("deleting the item takes its attachments with it (DATA_MODEL §4 — life of the parent), audited", async () => {
+    const { id: itemId } = await createItem(ctx, { projectId: att.projectId, title: "Doomed feature" });
+    await changeItemVisibility(ctx, itemId, "CLIENT_VISIBLE");
+    const doc = await uploadAttached("goes-with-it.txt", itemId, "CLIENT_VISIBLE");
+    await deleteItem(ctx, itemId);
+    const row = await platform().document.findUniqueOrThrow({ where: { id: doc } });
+    expect(row.deletedAt).not.toBeNull();
+    const audit = await platform().auditEvent.findFirst({
+      where: { tenantId, targetId: doc, action: "document.deleted" },
+    });
+    expect(audit?.metadata).toMatchObject({ reason: "work_item_deleted", workItemId: itemId });
+  });
+
+  it("a dangling anchor never blocks the restrict lever, and never permits the widen one (guard v2)", async () => {
+    const { id: itemId } = await createItem(ctx, { projectId: att.projectId, title: "Swept feature" });
+    await changeItemVisibility(ctx, itemId, "CLIENT_VISIBLE");
+    const doc = await uploadAttached("orphaned.txt", itemId, "CLIENT_VISIBLE");
+    // Simulate the maintenance state guard v2 exists for: the item soft-
+    // deleted RAW (no service cascade — legacy/sweep shape).
+    await platform().workItem.update({ where: { id: itemId }, data: { deletedAt: new Date() } });
+    // The safety-positive flip works…
+    await platform().document.update({ where: { id: doc }, data: { visibility: "INTERNAL" } });
+    // …the widening one is still refused.
+    await expect(
+      platform().document.update({ where: { id: doc }, data: { visibility: "CLIENT_VISIBLE" } }),
+    ).rejects.toThrow(/work item not found/);
   });
 });
