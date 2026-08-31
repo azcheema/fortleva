@@ -25,9 +25,17 @@ const eslintConfig = defineConfig([
         {
           patterns: [
             {
-              group: ["@/generated/prisma/client", "**/generated/prisma/client"],
+              // Every entry point: internal/class exports the raw client
+              // constructor, so the single `client` group was evadable
+              // (2026-08-31 review, HIGH).
+              group: [
+                "@/generated/prisma",
+                "@/generated/prisma/**",
+                "**/generated/prisma",
+                "**/generated/prisma/**",
+              ],
               message:
-                "Import the data layer through '@/db' (withTenant/withPlatform) — TENANCY.md one-seam rule. Types are fine via '@/generated/prisma/models'.",
+                "Import the data layer through '@/db' (withTenant/withPlatform) — TENANCY.md one-seam rule. Type-only imports are fine.",
               allowTypeImports: true,
             },
             {
@@ -73,9 +81,17 @@ const eslintConfig = defineConfig([
           ],
           patterns: [
             {
-              group: ["@/generated/prisma/client", "**/generated/prisma/client"],
+              // Every entry point: internal/class exports the raw client
+              // constructor, so the single `client` group was evadable
+              // (2026-08-31 review, HIGH).
+              group: [
+                "@/generated/prisma",
+                "@/generated/prisma/**",
+                "**/generated/prisma",
+                "**/generated/prisma/**",
+              ],
               message:
-                "Import the data layer through '@/db' (withTenant/withPlatform) — TENANCY.md one-seam rule. Types are fine via '@/generated/prisma/models'.",
+                "Import the data layer through '@/db' (withTenant/withPlatform) — TENANCY.md one-seam rule. Type-only imports are fine.",
               allowTypeImports: true,
             },
             {
