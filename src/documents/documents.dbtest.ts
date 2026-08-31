@@ -86,6 +86,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // beforeAll threw before tenantId was assigned (e.g. an unseeded
+  // catalog): there is nothing tenant-scoped to clean, and running the
+  // deletes would hand Prisma undefined filters it silently DROPS —
+  // the 2026-08-31 dev-DB wipe. The platform client's undefined-where
+  // guard is the belt; this is the per-hook belt.
+  if (tenantId === undefined) return;
   const p = platform();
   await p.fileVersion.deleteMany({ where: { tenantId } });
   await p.document.deleteMany({ where: { tenantId } });

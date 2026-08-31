@@ -2,6 +2,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "@/generated/prisma/client";
 
+import { undefinedWhereGuard } from "./undefined-where-guard";
 import { whereInjection } from "./where-injection";
 
 /**
@@ -46,11 +47,14 @@ const buildRuntimeClient = () =>
 export const runtimeClient = (globalThis.__fortlevaRuntimeClient ??= buildRuntimeClient());
 
 /** Pooled, app_platform (BYPASSRLS — deliberate, audited). Loaded only
- * by platform-plane code paths through withPlatform(). */
+ * by platform-plane code paths through withPlatform(). The
+ * undefined-where guard (see its module for the 2026-08-31 incident)
+ * keeps the runtime API identical, so the cast back to PrismaClient is
+ * the same shape-preserving cast withTenant() itself makes. */
 export const getPlatformClient = (): PrismaClient =>
   (globalThis.__fortlevaPlatformClient ??= new PrismaClient({
     adapter: new PrismaPg({ connectionString: platformUrl() }),
     omit: GLOBAL_OMIT,
-  }));
+  }).$extends(undefinedWhereGuard) as unknown as PrismaClient);
 
 export type RuntimeClient = typeof runtimeClient;
