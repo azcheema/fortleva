@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { AuthzError } from "@/authz/errors";
@@ -227,6 +229,122 @@ describe("stage names follow the viewer's language until renamed (§6.14, 2026-0
         },
       }),
     ).rejects.toThrow(/seed_key/);
+  });
+
+  it("the MIGRATION'S OWN backfill keys pre-2026-09-01 rows correctly — run against real rows, not an empty table", async () => {
+    // CI applies this migration to an EMPTY database, so its backfill
+    // touches ZERO rows there and its correctness against real data is
+    // otherwise never exercised. This runs the migration's ACTUAL
+    // statement — read out of the .sql file, so it cannot drift from
+    // what shipped — over a project shaped like a pre-migration one.
+    const sql = readFileSync(
+      join(process.cwd(), "prisma/migrations/20260901180000_workflow_state_seed_key/migration.sql"),
+      "utf8",
+    );
+    const backfill = sql.slice(sql.indexOf("WITH canonical AS"));
+    const statement = backfill.slice(0, backfill.indexOf(";") + 1);
+    expect(statement).toContain("row_number()");
+
+    // A canonical seven-state project as it looked BEFORE this slice:
+    // every state named, none keyed. Names are deliberately English —
+    // the naxdor case, where a hand-rename is byte-identical to the seed
+    // table, so a name-matching backfill could not tell them apart.
+    const legacyProject = randomUUID();
+    await f.platform.project.create({
+      data: { id: legacyProject, tenantId: f.tenantId, clientId, key: "LEG", name: "Legacy" },
+    });
+    const legacy = [
+      { name: "Backlog", category: "BACKLOG", rank: "a0" },
+      { name: "To do", category: "TODO", rank: "a1" },
+      { name: "In progress", category: "IN_PROGRESS", rank: "a2" },
+      { name: "In review", category: "IN_PROGRESS", rank: "a3" },
+      { name: "Done", category: "DONE", rank: "a4" },
+      { name: "Cancelled", category: "CANCELLED", rank: "a5" },
+      { name: "Triage", category: "TRIAGE", rank: "a6" },
+    ] as const;
+    // A NON-canonical project too: the backfill must skip it entirely
+    // rather than mis-key it positionally.
+    const oddProject = randomUUID();
+    await f.platform.project.create({
+      data: { id: oddProject, tenantId: f.tenantId, clientId, key: "ODD", name: "Odd" },
+    });
+
+    try {
+      await f.platform.workflowState.createMany({
+        data: legacy.map((s) => ({
+          tenantId: f.tenantId,
+          projectId: legacyProject,
+          name: s.name,
+          category: s.category,
+          rank: s.rank,
+        })),
+      });
+      await f.platform.workflowState.create({
+        data: {
+          tenantId: f.tenantId,
+          projectId: oddProject,
+          name: "Only state",
+          category: "TODO",
+          rank: "a0",
+        },
+      });
+
+      await f.platform.$executeRawUnsafe(statement);
+
+      const keyed = await f.platform.workflowState.findMany({
+        where: { tenantId: f.tenantId, projectId: legacyProject },
+        orderBy: { rank: "asc" },
+        select: { name: true, seedKey: true },
+      });
+      // Positional, and the two IN_PROGRESS states are told apart by rank
+      // order — the whole reason the key is (category, rank-order).
+      expect(keyed.map((s) => s.seedKey)).toEqual([
+        "BACKLOG",
+        "TODO",
+        "IN_PROGRESS",
+        "IN_REVIEW",
+        "DONE",
+        "CANCELLED",
+        "TRIAGE",
+      ]);
+      // IDENTITY ONLY: not one name may be touched, or a tenant loses
+      // wording it chose (naxdor's English renames, most of all).
+      expect(keyed.map((s) => s.name)).toEqual(legacy.map((s) => s.name));
+
+      const odd = await f.platform.workflowState.findMany({
+        where: { tenantId: f.tenantId, projectId: oddProject },
+        select: { name: true, seedKey: true },
+      });
+      expect(odd).toEqual([{ name: "Only state", seedKey: null }]);
+
+      // The statement is deliberately UNSCOPED — a migration has to be —
+      // so pin the blast radius rather than assume it: a project that is
+      // ALREADY keyed comes out identical, because the positional key
+      // recomputes the same values. That is what makes it idempotent,
+      // and it is the reason running it twice is safe.
+      const shared = await f.platform.workflowState.findMany({
+        where: { tenantId: f.tenantId, projectId },
+        orderBy: { rank: "asc" },
+        select: { name: true, seedKey: true },
+      });
+      expect(shared.map((s) => s.seedKey)).toEqual([
+        "BACKLOG",
+        "TODO",
+        "IN_PROGRESS",
+        "IN_REVIEW",
+        "DONE",
+        "CANCELLED",
+        "TRIAGE",
+      ]);
+      expect(shared.every((s) => s.name === null)).toBe(true);
+    } finally {
+      await f.platform.workflowState.deleteMany({
+        where: { tenantId: f.tenantId, projectId: { in: [legacyProject, oddProject] } },
+      });
+      await f.platform.project.deleteMany({
+        where: { tenantId: f.tenantId, id: { in: [legacyProject, oddProject] } },
+      });
+    }
   });
 
   it("lets a tenant add its own state, which carries a name and no seed key", async () => {
