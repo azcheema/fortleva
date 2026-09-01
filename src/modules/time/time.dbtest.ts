@@ -562,9 +562,33 @@ describe("entries — duration, midnight, edit, lock trigger, summary == SUM, de
     const after = await f.platform.projectTimeSummary.findFirst({ where: { id: summary!.id } });
     expect(after?.visibility).toBe("CLIENT_VISIBLE");
     expect(after?.portalEnabled).toBe(true);
+    // The expected set is EVERY summary this project owns — derived
+    // from the project's mode, not from the column the policy reads.
+    // Both fan-outs are project-wide with no month predicate
+    // (`project_hours_sharing_fanout` and `project_portal_enabled_fanout`,
+    // 20260820220000), so with HOURS + portalEnabled every month of
+    // acmeProject MUST be visible to its contact. Filtering by
+    // `visibility` here instead would be circular — asserting the RLS
+    // predicate agrees with the same column it reads — and would absorb
+    // a future bug that marked an extra month visible.
+    //
+    // Why not the row COUNT this used to assert: the timer tests above
+    // stamp `localDate` from NOW (timer.ts), while every other entry in
+    // this fixture is pinned to August 2026. So from 2026-09-01 the
+    // project owns two summary months PERMANENTLY — not on the 1st, but
+    // on every day after it. `toEqual([summary.id])` was green for the
+    // eleven days between authoring and 2026-08-31 and red thereafter;
+    // reproduced against Neon AND the container, so it was never the
+    // database. The NONE round-trip below is what pins the derivation.
+    const derived = await f.platform.projectTimeSummary.findMany({
+      where: { tenantId: f.tenantId, projectId: acmeProject },
+      select: { id: true },
+    });
+    expect(derived.length).toBeGreaterThan(0);
     await withTenant(f.tenantId, { type: "contact", id: contact.id, clientId: acme }, async (tx) => {
       const rows = await tx.projectTimeSummary.findMany();
-      expect(rows.map((r) => r.id)).toEqual([summary!.id]);
+      expect(rows.map((r) => r.id).sort()).toEqual(derived.map((d) => d.id).sort());
+      expect(rows.map((r) => r.id)).toContain(summary!.id);
       expect(Object.keys(rows[0]!)).not.toContain("memberId");
       expect(await tx.timeEntry.count()).toBe(0);
     });

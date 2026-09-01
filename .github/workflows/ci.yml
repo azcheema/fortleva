@@ -77,16 +77,18 @@ jobs:
     # so there is nothing left to serialise. The workflow-level group
     # above still supersedes an older run of the same ref.
     #
-    # 60, down from 90, and deliberately NOT down to the ~7–14 min this
-    # job is expected to take: 52 minutes is the only figure anyone has
-    # MEASURED for it, and a ceiling below the last measurement turns an
-    # unexpectedly slow first run into a lost run rather than a slow one.
-    # This is a HANG GUARD, and it costs nothing unless it fires. The
-    # per-test guard beneath it is vitest.db.config.ts's 30 s default —
-    # DBTEST_TIMEOUT_MS is no longer set here (see the env note below).
-    # Bring this down to ~2× the real number once the first green
-    # container run has produced one, and correct PLAN §0 with it.
-    timeout-minutes: 60
+    # 20, and this one is MEASURED rather than derived. Run 33535869577
+    # (the first container run): the whole job took 1 m 47 s, of which
+    # `pnpm test:db` was 52.26 SECONDS for 26 files and 265 tests — the
+    # same suite took 51 MINUTES against the EU database. 20 leaves ~11×
+    # headroom for a cold pnpm cache and a slow runner while still
+    # capping the bill. It is a HANG GUARD and costs nothing unless it
+    # fires. Note what it does NOT rest on: vitest.db.config.ts's 30 s
+    # per-test default bounds a single HUNG test, not the suite
+    # (265 x 30 s is 2.2 hours), so a broad slowdown surfaces as THIS
+    # ceiling firing — read the per-file timings off the run rather than
+    # assuming a hang.
+    timeout-minutes: 20
     services:
       # The database under test, on this runner. `postgres:18` pins the
       # MAJOR version, which is load-bearing: uuidv7() is a PG18 built-in
@@ -230,10 +232,12 @@ jobs:
     # one db job instead of two. Do not decouple them to gain wall clock
     # — it makes every red push cost both.
     needs: [check, isolation]
-    # 90, down from 120. Same reasoning as the isolation ceiling: 62
-    # minutes is the only MEASURED figure for this job, so the ceiling
-    # stays above it even though the container should bring it far
-    # lower. The 22–35 min estimate is DERIVED; in particular the cold
+    # 90, down from 120, and it stays high because 62 minutes is still
+    # the only MEASURED figure for THIS job — the first container run
+    # never reached it (isolation went red and this job was skipped).
+    # Do not read the isolation ceiling's 20 as a precedent: that one
+    # dropped below its old measurement only because a NEW measurement
+    # replaced it. Do the same here after the first green e2e run. The 22–35 min estimate is DERIVED; in particular the cold
     # `pnpm build` that runs inside this job (playwright.config.ts owns
     # the server) has never been measured ON A RUNNER —
     # playwright.config.ts records ~25 s install-warm on a developer's
