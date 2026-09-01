@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
-import { listItems, projectWorkVersion } from "@/modules/work";
+import { listItems, projectWorkVersion, resolveStateNames } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 import { cn } from "@/lib/utils";
 
@@ -44,14 +44,21 @@ export default async function ProjectBoardPage({
   // so the 12 s poll sees a difference and refreshes — the other order
   // would let the board sit stale until the next write.
   const version = await projectWorkVersion(ctx, project.id);
-  const [data, t, locale, prefs] = await Promise.all([
+  const [rawData, t, tStates, locale, prefs] = await Promise.all([
     listItems(ctx, project.id),
     getTranslations("projects.board"),
+    getTranslations("projects.states.seed"),
     getLocale(),
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
       readPreferences(tx, membership.tenantId),
     ),
   ]);
+  // Stage names resolve HERE, once, at the server boundary — every
+  // surface below (columns, cards, the move picker, the side-peek) then
+  // receives plain strings. A state still wearing its seeded default
+  // renders in the VIEWER's language; a renamed one renders its tenant
+  // text, forever (DATA_MODEL §6.14).
+  const data = resolveStateNames(rawData, (seedKey) => tStates(seedKey));
   const empty = data.items.length === 0;
 
   // The side-peek (2W-B) — same URL contract as the backlog's.

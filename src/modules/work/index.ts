@@ -9,11 +9,14 @@ export {
   deleteItem,
   listItems,
   projectWorkVersion,
+  resolveStateNames,
   setItemArchived,
   updateItemFields,
   type ItemList,
   type ItemListEntry,
+  type ResolvedItemList,
   type WorkCtx,
+  type WorkflowStateEntry,
 } from "./items";
 export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from "./ordering";
 export { changeState, ensureProjectStates } from "./states";

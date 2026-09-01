@@ -47,7 +47,7 @@ import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
 import { formatDuration, type DurationStyle } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { ItemList } from "@/modules/work";
+import type { ItemList, ResolvedItemList } from "@/modules/work";
 
 import { createItemInStateAction, deleteItemAction, moveItemAction, setItemArchivedAction } from "../backlog/actions";
 import {
@@ -108,7 +108,7 @@ export function Board({
   projectId: string;
   projectKey: string;
   locale: string;
-  data: ItemList;
+  data: ResolvedItemList;
   groupBy: GroupBy;
   /** The freshness token the page rendered with (ARC-18). */
   version: string;

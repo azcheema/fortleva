@@ -1459,6 +1459,17 @@
         "followsItem": "Följer {key} — filer på en intern uppgift förblir interna",
         "noAccess": "Du kan inte se filer"
       }
+    },
+    "states": {
+      "seed": {
+        "BACKLOG": "Backlogg",
+        "TODO": "Att göra",
+        "IN_PROGRESS": "Pågår",
+        "IN_REVIEW": "Granskning",
+        "DONE": "Klar",
+        "CANCELLED": "Avbruten",
+        "TRIAGE": "Triage"
+      }
     }
   },
   "states": {

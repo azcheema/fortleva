@@ -1096,14 +1096,44 @@ enum StateCategory {
   @@map("state_category")
 }
 
-/// Per-project named states (tenant text, never i18n). Copied from a
-/// WorkflowPreset at project creation. Class A — the portal never
-/// joins this table; it reads WorkItem.stateCategory only (P10).
+/// Which seeded default a state STARTED as — the durable identity that
+/// survives the fact that a name can be renamed (DATA_MODEL §6.14,
+/// amended 2026-09-01). NULL means a state the tenant created itself.
+/// NOT derivable from StateCategory: seven keys against six categories,
+/// because the IN_PROGRESS category carries TWO seeded defaults (In
+/// progress, then In review — 2W-R) while every other carries one.
+enum StateSeedKey {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  CANCELLED
+  TRIAGE
+
+  @@map("state_seed_key")
+}
+
+/// Per-project named states. NAMING, amended 2026-09-01 (DATA_MODEL
+/// §6.14 is the authority): translate-until-renamed. A seeded state
+/// stores NO name and renders its `seedKey` through i18n in the VIEWER's
+/// language; writing a name makes it plain tenant text, forever. The
+/// live seeding path is the LAZY ensureProjectStates (states.ts), not a
+/// preset copy. Class A — the portal never joins this table; it reads
+/// WorkItem.stateCategory only (P10).
 model WorkflowState {
   id               String        @id @default(uuid(7))
   tenantId         String        @map("tenant_id")
   projectId        String        @map("project_id")
-  name             String
+  /// NULL = still wearing its seeded default, so it renders through i18n
+  /// in the VIEWER's language (resolve with `seedKey`). Any non-NULL
+  /// value is plain TENANT TEXT and is never translated again — writing
+  /// a name IS the rename. One-way is enforced by the WRITE PATH, not by
+  /// the schema — `SET name = NULL` returns a state to translate-mode, so
+  /// the future state editor must refuse to clear a name. Existing
+  /// projects keep their stored names until opted in. (§6.14, 2026-09-01.)
+  name             String?
+  seedKey          StateSeedKey? @map("seed_key")
   color            String?
   category         StateCategory // IMMUTABLE after insert (trigger)
   rank             String // text COLLATE "C" (migration SQL) — column order
@@ -1119,7 +1149,8 @@ model WorkflowState {
   project   Project    @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
   workItems WorkItem[]
 
-  @@unique([tenantId, projectId, name])
+  @@unique([tenantId, projectId, name]) // NULLs do not collide — untouched seeds are all NULL
+  @@unique([tenantId, projectId, seedKey]) // one of each default per project; also what makes the lazy seed's skipDuplicates race-safe now that names are NULL
   @@unique([tenantId, projectId, rank])
   @@unique([tenantId, id]) // composite-FK target (WorkItem.stateId)
   @@index([tenantId, projectId, category])

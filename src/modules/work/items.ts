@@ -9,6 +9,8 @@ import { emit } from "@/notify/emit";
 import { writeActivity } from "./activity";
 import { bottomRank, lockProjectRanks } from "./rank-lock";
 import { ensureProjectStates, transitionState, type WorkCtx } from "./states";
+import type { StateSeedKey } from "@/lib/enum-map";
+import { stateLabel } from "@/lib/state-label";
 
 /**
  * WorkItem CRUD for the 2W core slice (title-only create, list, inline
@@ -42,7 +44,15 @@ export type ItemListEntry = {
   type: string;
   stateId: string;
   stateCategory: string;
-  stateName: string;
+  /**
+   * RAW state name — `null` when the state still wears its seeded
+   * default, in which case `stateSeedKey` is what renders, in the
+   * VIEWER's language (DATA_MODEL §6.14). Resolve the pair with
+   * `stateLabel()` at the server-page boundary; this module has no
+   * locale, because it also runs in dbtests and in a server action.
+   */
+  stateName: string | null;
+  stateSeedKey: StateSeedKey | null;
   priority: string;
   estimateMinutes: number | null;
   targetDate: Date | null;
@@ -59,12 +69,61 @@ export type ItemListEntry = {
   attachmentCount: number;
 };
 
+export type WorkflowStateEntry = {
+  id: string;
+  /** RAW — `null` while the state still wears its seeded default; see `ItemListEntry.stateName`. */
+  name: string | null;
+  seedKey: StateSeedKey | null;
+  category: string;
+  isHidden: boolean;
+  isDefault: boolean;
+  wipLimit: number | null;
+  requiresApproval: boolean;
+};
+
 export type ItemList = {
   items: ItemListEntry[];
-  states: { id: string; name: string; category: string; isHidden: boolean; isDefault: boolean; wipLimit: number | null; requiresApproval: boolean }[];
+  states: WorkflowStateEntry[];
   members: { id: string; name: string }[];
   caps: { canCreate: boolean; canEdit: boolean; canChangeVisibility: boolean; canDelete: boolean; canApprove: boolean };
 };
+
+/**
+ * `ItemList` after a SERVER PAGE has resolved every state name into the
+ * viewer's language (DATA_MODEL §6.14). This is what every client
+ * component takes: the nullable pair never reaches the UI, so no
+ * component has to know the translate-until-renamed rule exists.
+ */
+export type ResolvedItemList = Omit<ItemList, "items" | "states"> & {
+  items: (Omit<ItemListEntry, "stateName" | "stateSeedKey"> & { stateName: string })[];
+  states: (Omit<WorkflowStateEntry, "name" | "seedKey"> & { name: string })[];
+};
+
+/**
+ * Resolve both name-bearing shapes in one pass, at the page boundary.
+ * Takes the translator as a plain function so this module still imports
+ * no next-intl — it also runs in dbtests and in a server action, where
+ * there is no request locale to resolve against.
+ */
+export function resolveStateNames(
+  data: ItemList,
+  t: (key: StateSeedKey) => string,
+): ResolvedItemList {
+  return {
+    ...data,
+    // The raw pair is STRIPPED, not merely overwritten: a resolved list
+    // is one no client component can mis-read. Nothing downstream has to
+    // know the translate-until-renamed rule exists.
+    items: data.items.map(({ stateName, stateSeedKey, ...item }) => ({
+      ...item,
+      stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t),
+    })),
+    states: data.states.map(({ name, seedKey, ...state }) => ({
+      ...state,
+      name: stateLabel({ name, seedKey }, t),
+    })),
+  };
+}
 
 /** The minimal ordered list (UI: Backlog tab). Done/cancelled included —
  * the slice list is small; hide-done toggles arrive with the full UX. */
@@ -105,14 +164,14 @@ export async function listItems(
             archivedAt: true,
             checklistTotal: true,
             checklistDone: true,
-            state: { select: { name: true } },
+            state: { select: { name: true, seedKey: true } },
             assigneeMember: { select: { user: { select: { name: true } } } },
           },
         }),
         tx.workflowState.findMany({
           where: { tenantId: ctx.tenantId, projectId },
           orderBy: { rank: "asc" },
-          select: { id: true, name: true, category: true, isHidden: true, isDefault: true, wipLimit: true, requiresApproval: true },
+          select: { id: true, name: true, seedKey: true, category: true, isHidden: true, isDefault: true, wipLimit: true, requiresApproval: true },
         }),
         tx.member.findMany({
           where: { tenantId: ctx.tenantId, status: "ACTIVE" },
@@ -147,7 +206,12 @@ export async function listItems(
         type: i.type,
         stateId: i.stateId,
         stateCategory: i.stateCategory,
+        // RAW, not display text: NULL means the state still wears its
+        // seeded default and must render in the VIEWER's language. The
+        // server page resolves the pair with stateLabel() before any
+        // client component sees it — this module has no locale.
         stateName: i.state.name,
+        stateSeedKey: i.state.seedKey,
         priority: i.priority,
         estimateMinutes: i.estimateMinutes,
         targetDate: i.targetDate,

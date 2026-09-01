@@ -8,7 +8,7 @@ import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet
 import { VisibilityBadge } from "@/components/visibility-badge";
 import type { DocumentListItem } from "@/documents/service";
 import { formatDuration, type DurationStyle } from "@/lib/format";
-import type { ItemList } from "@/modules/work";
+import type { ResolvedItemList } from "@/modules/work";
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
@@ -31,7 +31,7 @@ export async function ItemPeek({
   durationStyle,
   error,
 }: {
-  item: ItemList["items"][number];
+  item: ResolvedItemList["items"][number];
   /** "ACME-12" — the human key the header shows. */
   itemKey: string;
   documents: DocumentListItem[];

@@ -1,5 +1,5 @@
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
-import type { ItemList, ItemListEntry } from "@/modules/work";
+import type { ResolvedItemList } from "@/modules/work";
 
 /**
  * The board's pure model (no React, no DOM): which columns show, how
@@ -12,9 +12,9 @@ import type { ItemList, ItemListEntry } from "@/modules/work";
  * it back after/before its anchor" — exactly the server's rule.
  */
 
-export type BoardItem = ItemListEntry;
-export type BoardState = ItemList["states"][number];
-export type BoardMember = ItemList["members"][number];
+export type BoardItem = ResolvedItemList["items"][number];
+export type BoardState = ResolvedItemList["states"][number];
+export type BoardMember = ResolvedItemList["members"][number];
 
 export const GROUP_BYS = ["none", "assignee", "priority", "epic"] as const;
 export type GroupBy = (typeof GROUP_BYS)[number];

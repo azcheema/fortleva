@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
-import { listItems } from "@/modules/work";
+import { listItems, resolveStateNames } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../data";
@@ -34,11 +34,18 @@ export default async function ProjectBacklogPage({
   const project = await loadProject(key);
   const { membership, actor } = await requireTenantContext();
   const includeArchived = archived === "1";
-  const data = await listItems(
+  const rawData = await listItems(
     { tenantId: membership.tenantId, actor },
     project.id,
     { includeArchived },
   );
+  const tStates = await getTranslations("projects.states.seed");
+  // Stage names resolve HERE, once, at the server boundary — every
+  // surface below (columns, cards, the move picker, the side-peek) then
+  // receives plain strings. A state still wearing its seeded default
+  // renders in the VIEWER's language; a renamed one renders its tenant
+  // text, forever (DATA_MODEL §6.14).
+  const data = resolveStateNames(rawData, (seedKey) => tStates(seedKey));
   const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
     readPreferences(tx, membership.tenantId),
   );

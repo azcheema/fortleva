@@ -43,8 +43,10 @@ test.afterEach(async ({ page }) => {
 });
 
 // `.first()` = the first column of that category in DOM (= rank) order:
-// IN_PROGRESS has two states since 2W-R ("Pågår" then "Granskning"), and
-// a bare two-element locator fails Playwright's strict mode.
+// IN_PROGRESS has two states since 2W-R (In progress, then In review),
+// and a bare two-element locator fails Playwright's strict mode. The
+// category attribute is the anchor on purpose — never the label, which
+// since 2026-09-01 follows the VIEWER's language for an untouched seed.
 const column = (page: Page, category: string): Locator =>
   page.locator(`[data-testid="board-column"][data-state-category="${category}"]`).first();
 const cardIn = (scope: Locator | Page, title: string): Locator =>
@@ -97,11 +99,20 @@ test.describe("project board (owner)", () => {
     const key = (await cardIn(done, title).getAttribute("data-item-key")) ?? "";
     await expect(done.locator('[data-testid="board-card"]').first()).toHaveAttribute("data-item-key", key);
 
-    // One list, two surfaces: the backlog row shows the same state — by
-    // the tenant's own name for it (the e2e tenant is Swedish: "Klar"),
-    // read from the column header rather than assumed.
+    // The WORDS, not just "some string". This is the founder-visible
+    // half of the 2026-09-01 stage-name change: the fixture's project is
+    // seeded fresh, so its states carry no stored name and render
+    // through i18n in the VIEWER's language. English here comes from
+    // `User.locale = "en"` on the seeded principals
+    // (e2e/fixtures/seed-cli.ts) — NOT from Playwright's browser locale,
+    // which src/i18n/resolve.ts only reaches third, after the User row
+    // and the tenant default (the seeded tenant is `sv`). Asserting the
+    // exact label is what would catch a raw enum reaching the screen, or
+    // the resolution silently falling back to the tenant's language.
     const doneName = (await done.locator("h3").textContent())?.trim() ?? "";
-    expect(doneName).not.toBe("");
+    expect(doneName).toBe("Done");
+
+    // One list, two surfaces: the backlog row must agree with it.
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const row = page.locator('[data-slot="table-row"]', { hasText: title });
     await expect(row).toBeVisible();

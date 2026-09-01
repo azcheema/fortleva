@@ -12,32 +12,42 @@ import { writeActivity } from "./activity";
  * categories. The default set is seeded LAZILY per project (first work
  * read/write touches it) — core never imports the work module, so
  * project creation cannot seed it (ARC-16 import direction), and lazy
- * seeding also self-heals projects that predate 2W. Names are seeded
- * locale-aware from Tenant.defaultLocale, tenant text thereafter.
+ * seeding also self-heals projects that predate 2W. Seeded states carry
+ * NO name (2026-09-01): they render their `seedKey` through i18n in the
+ * VIEWER's language, and the first rename makes a state plain tenant
+ * text forever (DATA_MODEL §6.14). Tenant.defaultLocale is no longer
+ * read here — there is no seed-time language left to choose.
  */
 
 export type WorkCtx = { readonly tenantId: string; readonly actor: MemberActor };
-
-const DEFAULT_STATE_NAMES: Record<"en" | "sv", readonly string[]> = {
-  en: ["Backlog", "To do", "In progress", "In review", "Done", "Cancelled", "Triage"],
-  sv: ["Backlogg", "Att göra", "Pågår", "Granskning", "Klar", "Avbruten", "Triage"],
-};
 
 // "In review" is a tenant-named state in the IN_PROGRESS category (the
 // category set is pinned closed; the portal reads categories only —
 // exactly ADO's mapping of In Review). Done carries the approval gate:
 // entering it needs work_item:approve on top of work_item:edit (2W-R).
+//
+// Seeded states are created with **no name at all** (2026-09-01): a NULL
+// name means "still wearing its default", so the UI renders `seedKey`
+// through i18n in the VIEWER's language — an English account no longer
+// reads a Swedish tenant's board in Swedish. The first rename writes a
+// name and the state becomes plain tenant text forever, which is why
+// this file no longer needs Tenant.defaultLocale: there is no seed-time
+// language left to choose. Existing projects are untouched; their names
+// are already non-NULL and therefore already tenant text.
 const DEFAULT_STATE_SHAPE = [
-  { category: "BACKLOG", isDefault: false, isHidden: false, requiresApproval: false },
-  { category: "TODO", isDefault: true, isHidden: false, requiresApproval: false },
-  { category: "IN_PROGRESS", isDefault: false, isHidden: false, requiresApproval: false },
-  { category: "IN_PROGRESS", isDefault: false, isHidden: false, requiresApproval: false }, // In review
-  { category: "DONE", isDefault: false, isHidden: false, requiresApproval: true },
-  { category: "CANCELLED", isDefault: false, isHidden: false, requiresApproval: false },
-  { category: "TRIAGE", isDefault: false, isHidden: true, requiresApproval: false }, // shown only when it has items
+  { seedKey: "BACKLOG", category: "BACKLOG", isDefault: false, isHidden: false, requiresApproval: false },
+  { seedKey: "TODO", category: "TODO", isDefault: true, isHidden: false, requiresApproval: false },
+  { seedKey: "IN_PROGRESS", category: "IN_PROGRESS", isDefault: false, isHidden: false, requiresApproval: false },
+  { seedKey: "IN_REVIEW", category: "IN_PROGRESS", isDefault: false, isHidden: false, requiresApproval: false },
+  { seedKey: "DONE", category: "DONE", isDefault: false, isHidden: false, requiresApproval: true },
+  { seedKey: "CANCELLED", category: "CANCELLED", isDefault: false, isHidden: false, requiresApproval: false },
+  { seedKey: "TRIAGE", category: "TRIAGE", isDefault: false, isHidden: true, requiresApproval: false }, // shown only when it has items
 ] as const;
 
-/** Idempotent + race-safe (skipDuplicates on the name unique). */
+/** Idempotent + race-safe: `skipDuplicates` dedupes on the (tenant,
+ * project, seedKey) unique. It relied on the NAME unique until
+ * 2026-09-01, which stopped working the day seeded names became NULL —
+ * NULLs do not collide. The deterministic rank unique is the second net. */
 export async function ensureProjectStates(
   tx: TenantDb,
   tenantId: string,
@@ -45,14 +55,17 @@ export async function ensureProjectStates(
 ): Promise<void> {
   const existing = await tx.workflowState.count({ where: { tenantId, projectId } });
   if (existing > 0) return;
-  const tenant = await tx.tenant.findFirst({ where: { id: tenantId }, select: { defaultLocale: true } });
-  const names = DEFAULT_STATE_NAMES[tenant?.defaultLocale === "sv" ? "sv" : "en"];
   const ranks = ranksBetween(null, null, DEFAULT_STATE_SHAPE.length);
   await tx.workflowState.createMany({
+    // `skipDuplicates` deduped on the (tenant, project, NAME) unique
+    // until names became NULL — and NULLs do not collide. The
+    // (tenant, project, SEED_KEY) unique added with this column is what
+    // keeps two concurrent lazy seeds from writing fourteen states.
     data: DEFAULT_STATE_SHAPE.map((s, i) => ({
       tenantId,
       projectId,
-      name: names[i]!,
+      name: null,
+      seedKey: s.seedKey,
       category: s.category,
       rank: ranks[i]!,
       isDefault: s.isDefault,

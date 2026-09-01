@@ -134,6 +134,142 @@ describe("state machine", () => {
   });
 });
 
+describe("stage names follow the viewer's language until renamed (§6.14, 2026-09-01)", () => {
+  it("seeds the seven defaults with NO name and a durable seed key, in board order", async () => {
+    // A NULL name is the whole mechanism: it is what tells the UI this
+    // state is still wearing its default and must render in the
+    // VIEWER's locale. If seeding ever writes a name again, every
+    // account silently goes back to reading the tenant's language.
+    const states = await f.platform.workflowState.findMany({
+      where: { tenantId: f.tenantId, projectId },
+      orderBy: { rank: "asc" },
+      select: { name: true, seedKey: true, category: true },
+    });
+    expect(states.map((s) => s.seedKey)).toEqual([
+      "BACKLOG",
+      "TODO",
+      "IN_PROGRESS",
+      "IN_REVIEW",
+      "DONE",
+      "CANCELLED",
+      "TRIAGE",
+    ]);
+    expect(states.every((s) => s.name === null)).toBe(true);
+    // Seven keys, six categories — the two IN_PROGRESS states are
+    // distinguishable ONLY by seed key, which is why this column is not
+    // just a mirror of `category`.
+    expect(states.filter((s) => s.category === "IN_PROGRESS").map((s) => s.seedKey)).toEqual([
+      "IN_PROGRESS",
+      "IN_REVIEW",
+    ]);
+  });
+
+  it("hands listItems the raw pair, never a resolved string — the service has no locale", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Unnamed state" });
+    const data = await listItems(ownerCtx(), projectId);
+    const entry = data.items.find((i) => i.id === id)!;
+    expect(entry.stateName).toBeNull();
+    expect(entry.stateSeedKey).toBe("TODO");
+    expect(data.states.every((s) => s.name === null && s.seedKey !== null)).toBe(true);
+  });
+
+  it("a rename is a ONE-WAY DOOR: writing a name makes the state tenant text, and re-seeding never undoes it", async () => {
+    const todo = await f.platform.workflowState.findFirstOrThrow({
+      where: { tenantId: f.tenantId, projectId, seedKey: "TODO" },
+    });
+    // finally, not a trailing statement: this renames a state on the
+    // SHARED fixture project, and a failure below would leave it named
+    // for every later test in this file.
+    try {
+      await f.platform.workflowState.update({
+        where: { id: todo.id },
+        data: { name: "Redo att göra" },
+      });
+
+      // ensureProjectStates runs on every work read; it must not resurrect
+      // the default over a name the tenant chose.
+      await listItems(ownerCtx(), projectId);
+      const after = await f.platform.workflowState.findUniqueOrThrow({ where: { id: todo.id } });
+      expect(after.name).toBe("Redo att göra");
+      expect(after.seedKey).toBe("TODO"); // identity survives the rename
+    } finally {
+      await f.platform.workflowState.update({ where: { id: todo.id }, data: { name: null } });
+    }
+  });
+
+  it("the database refuses a state that is neither named nor seeded", async () => {
+    await expect(
+      f.platform.workflowState.create({
+        data: {
+          tenantId: f.tenantId,
+          projectId,
+          name: null,
+          seedKey: null,
+          category: "BACKLOG",
+          rank: "zzz1",
+        },
+      }),
+    ).rejects.toThrow(/workflow_state_name_or_seed_key/);
+  });
+
+  it("the database refuses two of the same default in one project", async () => {
+    // This unique is also what makes the lazy seed's `skipDuplicates`
+    // race-safe now that seeded names are NULL and no longer collide.
+    await expect(
+      f.platform.workflowState.create({
+        data: {
+          tenantId: f.tenantId,
+          projectId,
+          name: null,
+          seedKey: "DONE",
+          category: "DONE",
+          rank: "zzz2",
+        },
+      }),
+    ).rejects.toThrow(/seed_key/);
+  });
+
+  it("lets a tenant add its own state, which carries a name and no seed key", async () => {
+    // These land at ranks zzz3/zzz4, i.e. AFTER every seeded a* rank, so
+    // a leak would make "Blocked" the last IN_PROGRESS state — which is
+    // exactly what the 2W-R approval-gate test below picks as "In
+    // review". It would still pass, while testing the wrong column.
+    // Hence finally, on the shared fixture project.
+    const ids: string[] = [];
+    try {
+      const own = await f.platform.workflowState.create({
+        data: {
+          tenantId: f.tenantId,
+          projectId,
+          name: "Waiting on client",
+          seedKey: null,
+          category: "IN_PROGRESS",
+          rank: "zzz3",
+        },
+      });
+      ids.push(own.id);
+      expect(own.seedKey).toBeNull();
+      // A second one must be allowed — NULL seed keys do not collide.
+      const another = await f.platform.workflowState.create({
+        data: {
+          tenantId: f.tenantId,
+          projectId,
+          name: "Blocked",
+          seedKey: null,
+          category: "IN_PROGRESS",
+          rank: "zzz4",
+        },
+      });
+      ids.push(another.id);
+      expect(another.seedKey).toBeNull();
+    } finally {
+      await f.platform.workflowState.deleteMany({
+        where: { tenantId: f.tenantId, id: { in: ids } },
+      });
+    }
+  });
+});
+
 describe("§6.14 triggers (raw writes against the DB)", () => {
   it("a state's category is immutable", async () => {
     const state = await f.platform.workflowState.findFirstOrThrow({

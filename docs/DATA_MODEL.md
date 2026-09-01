@@ -2126,7 +2126,39 @@ enum StateCategory {
   TRIAGE
 }
 
-/// WorkflowState — per-project named states (tenant text, not i18n).
+/// WorkflowState — per-project named states.
+/// NAMING, AMENDED 2026-09-01 (founder decision 2026-08-31; the pin used
+/// to read "tenant text, not i18n" flat): **translate-until-renamed**.
+/// A seeded state is created with `name = NULL` and a durable `seedKey`,
+/// and renders through i18n IN THE VIEWER'S LANGUAGE — an English
+/// account no longer reads a Swedish tenant's board in Swedish. Writing
+/// a name IS the rename: any non-NULL name is plain TENANT TEXT and is
+/// never translated again. That makes "renamed ⇒ tenant text forever"
+/// STRUCTURALLY true, which is why there is no boolean and no trigger.
+/// The original pin still holds for every name a tenant ever typed; it
+/// is amended ONLY for untouched seed names. Seven seedKeys against six
+/// categories, for one narrow reason: the IN_PROGRESS category carries
+/// TWO seeded defaults (In progress, then In review — 2W-R) while every
+/// other carries one, so a seed key is not derivable from a category.
+/// SCOPE: migration 20260901180000 backfills `seedKey` for canonical
+/// projects — identity only — and touches NO name, so nothing on any
+/// board changed on deploy. Existing projects therefore have the
+/// identity but not yet the behaviour: they keep rendering their stored
+/// names to every viewer. Opting one in is a single statement over
+/// `seedKey`, but it discards names tenants typed, so it is a founder
+/// decision (PLAN §0) rather than something a deploy does.
+/// The "forever" half is enforced by the WRITE PATH, not the schema:
+/// `SET name = NULL` returns a state to translate-mode, so the state
+/// editor must refuse to clear a name (and to store a blank one).
+/// CHECK workflow_state_name_or_seed_key: a row must carry at least one.
+/// UNIQUE (tenantId, projectId, seedKey): one of each default per
+/// project — and it is also what keeps the lazy seed's `skipDuplicates`
+/// race-safe, since NULL names no longer collide.
+/// OPEN, for the future state editor: the `name` unique cannot see a
+/// clash between a RENAMED state and another state's untouched seed
+/// LABEL (one side is NULL), so a tenant could produce two columns
+/// reading "Done" for an English viewer. No rename UI exists today
+/// (`workflow:manage` has zero call sites); guard it in that slice.
 /// Copied from a WorkflowPreset at project creation; default preset =
 /// Backlog / To do / In progress / In review / Done / Cancelled + hidden
 /// Triage (2026-08-31, 2W-R: "In review" is an IN_PROGRESS-category
@@ -2150,7 +2182,8 @@ model WorkflowState {
   id               String        @id @default(uuid(7))
   tenantId         String
   projectId        String
-  name             String
+  name             String?                          // NULL = still wearing its seed ⇒ render seedKey in the VIEWER's locale
+  seedKey          StateSeedKey?                    // which default this started as; NULL = tenant-created
   color            String?                          // hex, UI hint
   category         StateCategory                    // IMMUTABLE after insert (trigger)
   rank             String                           // text COLLATE "C" — column order on the board
@@ -2162,7 +2195,8 @@ model WorkflowState {
   createdAt        DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime      @updatedAt @db.Timestamptz(6)
 
-  @@unique([tenantId, projectId, name])
+  @@unique([tenantId, projectId, name])            // NULLs do not collide — untouched seeds are all NULL
+  @@unique([tenantId, projectId, seedKey])         // one of each default; also the lazy seed's race guard
   @@unique([tenantId, projectId, rank])
   @@unique([tenantId, id])                        // composite-FK target (WorkItem.stateId)
   @@index([tenantId, projectId, category])
@@ -4035,7 +4069,7 @@ Rules (in order of authority):
 | `Project` | `(tenantId, key)` | the human prefix (`ACME`) is unique per tenant |
 | `WorkItem` | `(tenantId, projectId, number)` | human key `ACME-12`; monotonic per project via `counters.next()` |
 | `WorkItem` | `(tenantId, projectId, rank)` | **one position per item** — the single order behind backlog and board; collisions retried with jitter |
-| `WorkflowState` | `(tenantId, projectId, name)`, `(tenantId, projectId, rank)` | no duplicate state names; one column position |
+| `WorkflowState` | `(tenantId, projectId, name)`, `(tenantId, projectId, seedKey)`, `(tenantId, projectId, rank)` | one column position; one of each seeded default. *Amended 2026-09-01: "no duplicate state names" is now narrower than it reads — seeded states store NULL and Postgres treats NULLs as distinct, so the name unique constrains only rows a tenant has explicitly named. The seedKey unique is what stops two of the same default, and what makes the lazy seed's `skipDuplicates` race-safe now that names no longer collide. The gap it leaves — a RENAMED state colliding with another state's untouched seed LABEL — is unreachable today and is pinned as the state editor's job in §6.14.* |
 | `Milestone` | `(tenantId, projectId, rank)` | one position per milestone |
 | `Label` | `(tenantId, projectId, name)` | no duplicate label names (tenant-wide when projectId NULL — app also checks) |
 | `WorkflowPreset`, `ProjectTemplate`, `RoundingRule` | `(tenantId, name)` | named tenant assets |

@@ -160,6 +160,28 @@ export type StatusValue<D extends StatusDomain> = keyof (typeof STATUS_MAP)[D] &
 export const PRIORITIES = ["NONE", "LOW", "MEDIUM", "HIGH", "URGENT"] as const;
 export type Priority = (typeof PRIORITIES)[number];
 
+/**
+ * Which seeded default a workflow state started as (DATA_MODEL §6.14).
+ * SEVEN keys against six `StateCategory` values, for one narrow reason:
+ * the IN_PROGRESS category carries TWO seeded defaults (In progress,
+ * then In review — 2W-R), while every other category carries exactly
+ * one. So a seed key cannot be derived from a category. Do NOT render these
+ * through the `states.stateCategory` messages — that catalogue has no
+ * IN_REVIEW and its Swedish differs from the seed's ("Klart"/"Avbrutet"
+ * vs "Klar"/"Avbruten"), so reusing it would silently change what
+ * Swedish tenants read. `states.seed.*` is this list's own namespace.
+ */
+export const STATE_SEED_KEYS = [
+  "BACKLOG",
+  "TODO",
+  "IN_PROGRESS",
+  "IN_REVIEW",
+  "DONE",
+  "CANCELLED",
+  "TRIAGE",
+] as const;
+export type StateSeedKey = (typeof STATE_SEED_KEYS)[number];
+
 /** Project health, as its own union until the Phase 6 enum exists. */
 export const PROJECT_HEALTHS = ["ON_TRACK", "AT_RISK", "OFF_TRACK", "ON_HOLD", "COMPLETE"] as const;
 export type ProjectHealth = (typeof PROJECT_HEALTHS)[number];

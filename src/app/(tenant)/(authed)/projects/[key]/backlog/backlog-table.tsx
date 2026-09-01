@@ -29,7 +29,7 @@ import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { durationInputText, formatDate, formatDuration, type DurationStyle } from "@/lib/format";
 import type { FormResult } from "@/lib/server-actions";
-import type { ItemList } from "@/modules/work";
+import type { ResolvedItemList } from "@/modules/work";
 import { cn } from "@/lib/utils";
 
 import { canEnterState } from "../board/board-model";
@@ -79,7 +79,7 @@ export function BacklogTable({
   projectId: string;
   projectKey: string;
   locale: string;
-  data: ItemList;
+  data: ResolvedItemList;
   /** The tenant's `ui.durationStyle` — REQUIRED (standing trap: state a
    * shared component must reflect is never a default). */
   durationStyle: DurationStyle;
