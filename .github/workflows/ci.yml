@@ -77,10 +77,10 @@ jobs:
     # so there is nothing left to serialise. The workflow-level group
     # above still supersedes an older run of the same ref.
     #
-    # 20, and this one is MEASURED rather than derived. Run 33535869577
-    # (the first container run): the whole job took 1 m 47 s, of which
+    # 15, MEASURED twice. Runs 33535869577 and 33538511920 (the first
+    # green one) put this job at 1 m 47 s and 2 m 01 s, of which
     # `pnpm test:db` was 52.26 SECONDS for 26 files and 265 tests — the
-    # same suite took 51 MINUTES against the EU database. 20 leaves ~11×
+    # same suite took 51 MINUTES against the EU database. 15 leaves ~7×
     # headroom for a cold pnpm cache and a slow runner while still
     # capping the bill. It is a HANG GUARD and costs nothing unless it
     # fires. Note what it does NOT rest on: vitest.db.config.ts's 30 s
@@ -88,7 +88,7 @@ jobs:
     # (265 x 30 s is 2.2 hours), so a broad slowdown surfaces as THIS
     # ceiling firing — read the per-file timings off the run rather than
     # assuming a hang.
-    timeout-minutes: 20
+    timeout-minutes: 15
     services:
       # The database under test, on this runner. `postgres:18` pins the
       # MAJOR version, which is load-bearing: uuidv7() is a PG18 built-in
@@ -232,12 +232,16 @@ jobs:
     # one db job instead of two. Do not decouple them to gain wall clock
     # — it makes every red push cost both.
     needs: [check, isolation]
-    # 90, down from 120, and it stays high because 62 minutes is still
-    # the only MEASURED figure for THIS job — the first container run
-    # never reached it (isolation went red and this job was skipped).
-    # Do not read the isolation ceiling's 20 as a precedent: that one
-    # dropped below its old measurement only because a NEW measurement
-    # replaced it. Do the same here after the first green e2e run. The 22–35 min estimate is DERIVED; in particular the cold
+    # 30, down from 120, and MEASURED: run 33538511920 put this job at
+    # 8 m 18 s against 62 MINUTES on the EU database. That breaks down as
+    # ~2 min of setup, a cold `pnpm build` of ~81 s (44 s to compile —
+    # a figure that previously existed nowhere in this repo), and 45
+    # tests plus 4 visual walks in 6.4 min on ONE worker. 30 is ~3.6x
+    # headroom. The in-suite budgets above it (playwright.config.ts's
+    # CI branches, visual.spec.ts's per-walk 600 s) are now generous by
+    # roughly an order of magnitude; they are HANG guards that cost
+    # nothing on a passing run, so they are left alone deliberately —
+    # tightening them buys nothing and risks flake. The 22–35 min estimate is DERIVED; in particular the cold
     # `pnpm build` that runs inside this job (playwright.config.ts owns
     # the server) has never been measured ON A RUNNER —
     # playwright.config.ts records ~25 s install-warm on a developer's
@@ -251,7 +255,7 @@ jobs:
     # every-walk-retries path, not an expectation. This is a HANG GUARD
     # and a bill cap; when it fires, the run is already wrong, and the
     # artifact step below is written so a kill still hands back traces.
-    timeout-minutes: 90
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:18
