@@ -260,6 +260,54 @@ describe("portal principal (contact) is denied everywhere in Phase 1", () => {
 });
 
 describe("posture assertions", () => {
+  /**
+   * The suite must be CONNECTED as the restricted role, not merely
+   * running alongside a role that happens to bear its name. Everything
+   * below asserts properties OF app_runtime, read through the platform
+   * client — and every one of those assertions passes just as happily on
+   * a connection that is really the owner. That is exactly how a local
+   * Postgres false-passes RLS, which is the reason TENANCY.md §11 gave
+   * for refusing one. Since 2026-09-01 CI runs against a service
+   * container whose OWNER is a superuser, so this assertion is what
+   * makes the container's green mean what the ephemeral branch's would
+   * have meant. It is cheap, and it fails loudly on the one mistake that
+   * would otherwise turn this whole file into theatre.
+   */
+  it("is connected AS app_runtime, and the platform seam AS app_platform", async () => {
+    const runtime = await runtimeClient.$queryRaw<{ role: string }[]>`SELECT current_user AS role`;
+    expect(runtime[0]?.role).toBe("app_runtime");
+
+    const platform = await getPlatformClient().$queryRaw<
+      { role: string }[]
+    >`SELECT current_user AS role`;
+    expect(platform[0]?.role).toBe("app_platform");
+  });
+
+  /**
+   * The database this suite runs against must SORT like production's.
+   * Read off the deployed database on 2026-09-01: PostgreSQL 18.6,
+   * datcollate/datctype `C.UTF-8`, datlocprovider `b` (the builtin
+   * provider). CI now runs against a `postgres:18` service container,
+   * and that image's own initdb default is `en_US.utf8` under libc —
+   * which orders text differently, so every ORDER BY on a name or a
+   * title would answer one way here and another in production. ci.yml
+   * pins the container's locale to match; this asserts it, because a
+   * promise in a YAML comment is not a check and nobody owns it.
+   * (The `rank` columns are COLLATE "C" by migration and were never at
+   * risk — it is every other text column that was.)
+   */
+  it("sorts like production: C.UTF-8 under the builtin locale provider", async () => {
+    const db = await getPlatformClient().$queryRaw<
+      { datcollate: string; datctype: string; datlocprovider: string }[]
+    >`SELECT datcollate, datctype, datlocprovider::text
+        FROM pg_database WHERE datname = current_database()`;
+    expect(db[0]).toMatchObject({
+      datcollate: "C.UTF-8",
+      datctype: "C.UTF-8",
+      datlocprovider: "b",
+    });
+  });
+
   it("app_runtime cannot bypass RLS; every tenant table is FORCED", async () => {
     const platform = getPlatformClient();
     const role = await platform.$queryRaw<

@@ -3,13 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
-    # A full run costs ~115 BILLABLE minutes (measured 2026-09-01:
+    # A full run cost ~115 BILLABLE minutes while both db jobs talked to
+    # the shared EU database from a US runner (measured 2026-09-01:
     # check 1 + isolation 52 + e2e 62), and the allowance is account-wide
-    # — 2,000 min/month on Free. A push that changes only prose cannot
-    # change what CI verifies, so it must not start one. This replaces
-    # the `[skip ci]` convention with something that cannot be
-    # forgotten; the convention itself still works and stays documented
-    # in PLAN §0 for the rare docs commit that also touches source.
+    # — 2,000 min/month on Free. The service containers below remove the
+    # link; this stays because a push that changes only prose cannot
+    # change what CI verifies, so it must not start a run at all. It
+    # replaces the `[skip ci]` convention with something that cannot be
+    # forgotten and, unlike the commit-message directive, cannot swallow
+    # a source commit riding in the same push.
     # NOTE: paths-ignore skips only when EVERY changed file matches, so a
     # push mixing docs and source still runs in full — which is correct.
     paths-ignore:
@@ -24,14 +26,15 @@ on:
   workflow_dispatch:
 
 # One live run per ref: a newer push supersedes the older run outright.
-# Without this, consecutive pushes evicted each other's *pending* jobs
-# from the shared `isolation-db` group below (GitHub keeps at most one
-# pending job per group and cancels the previous one — `cancel-in-
-# progress: false` only protects the running job), so the db suite and
-# the browser harness each got cancelled once per push pair.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# No job here needs more than read access; uploading an artifact does
+# not require token write. Declared rather than inherited, so a change
+# to the repository default cannot widen what CI can do.
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -63,59 +66,137 @@ jobs:
     name: Cross-tenant isolation suite
     runs-on: ubuntu-latest
     # A commit that cannot typecheck teaches us nothing about tenant
-    # isolation, and this job costs ~50 BILLABLE minutes against the
-    # remote database. Gating on the 1-minute check job makes a broken
-    # push cost 1 minute instead of 52. It adds ~1 minute of WALL CLOCK
-    # and zero billable minutes — queued time is not billed — so the
-    # trade is free. (The e2e job already needed both.)
+    # isolation. Gating on the 1-minute check job makes a broken push
+    # cost 1 minute instead of a full db run. It adds ~1 minute of WALL
+    # CLOCK and zero billable minutes — queued time is not billed — so
+    # the trade is free. (The e2e job already needed both.)
     needs: [check]
-    # Shared dev database for now — serialize runs. TODO(founder):
-    # provide NEON_API_KEY to switch to an ephemeral Neon branch per
-    # run (TENANCY.md §11 target infrastructure).
-    concurrency:
-      group: isolation-db
-      cancel-in-progress: false
-    # ~3–4 min next to the database; the GitHub runner is in the US and the
-    # shared dev database in the EU (~100 ms per round trip), so the same
-    # suite takes 20–45+ min here and the 5 s transaction budget / 30 s
-    # per-test guard that are right locally are too tight — both are
-    # widened below. TODO(founder): an EU-located runner (a larger runner
-    # with Azure private networking in an EU region, or an ephemeral
-    # self-hosted one) brings this back to minutes — the database stays in
-    # Frankfurt. Never the 6-hour default timeout.
+    # NO `concurrency` group any more. The `isolation-db` group existed
+    # only because this job and the e2e job shared ONE dev database and
+    # could not run at once; each job now brings its own (see `services`),
+    # so there is nothing left to serialise. The workflow-level group
+    # above still supersedes an older run of the same ref.
     #
-    # This ceiling is a HANG GUARD and a VARIANCE budget — not a budget the
-    # suite must fit, and not a growth allowance. A hung test is caught by
-    # DBTEST_TIMEOUT_MS (120 s) long before this fires; what this must
-    # absorb is the link. Measured 2026-08-21: the SAME 22 dbtest files ran
-    # 23 min and 42 min on two runs two hours apart — every file 1.5–1.8×
-    # slower, fast and slow files alike, i.e. the runner↔database link, not
-    # the suite. Test growth is ~4 min per slice by comparison. Run
-    # 32491311123 was killed at 45 min in the slow regime with every test
-    # passing and ~3 min of work left. 90 ≈ 1.9× the worst full run
-    # observed. Cost of the raise: a genuinely hung job now holds the
-    # isolation-db concurrency group (and the "no local Playwright while CI
-    # runs" rule) for 90 min instead of 45; a ceiling costs nothing
-    # otherwise, since it only fires on overrun.
-    # When 90 is approached it will most likely be another bad-link day, not
-    # accumulated tests — do NOT raise it again. The two structural fixes
-    # solve DIFFERENT problems: the EU-located runner above fixes speed and
-    # variance (the dominant term); the ephemeral Neon branch per run
-    # (TODO(founder) NEON_API_KEY, above) fixes serialization — it would let
-    # isolation and e2e run in parallel, retire this concurrency group, and
-    # only then make sharding possible (a strategy.matrix inside THIS job
-    # would share one group and evict its own shards) or file parallelism
-    # (vitest.db.config.ts is sequential because the database is shared).
-    timeout-minutes: 90
+    # 60, down from 90, and deliberately NOT down to the ~7–14 min this
+    # job is expected to take: 52 minutes is the only figure anyone has
+    # MEASURED for it, and a ceiling below the last measurement turns an
+    # unexpectedly slow first run into a lost run rather than a slow one.
+    # This is a HANG GUARD, and it costs nothing unless it fires. The
+    # per-test guard beneath it is vitest.db.config.ts's 30 s default —
+    # DBTEST_TIMEOUT_MS is no longer set here (see the env note below).
+    # Bring this down to ~2× the real number once the first green
+    # container run has produced one, and correct PLAN §0 with it.
+    timeout-minutes: 60
+    services:
+      # The database under test, on this runner. `postgres:18` pins the
+      # MAJOR version, which is load-bearing: uuidv7() is a PG18 built-in
+      # and phase2w_work_core/migration.sql uses it as a column DEFAULT,
+      # so 17 fails outright at `migrate deploy`. The patch level floats,
+      # as the managed database's does. Every extension the migrations
+      # create (btree_gin, btree_gist, unaccent) ships with this image.
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: fortleva
+          POSTGRES_USER: fortleva_owner
+          # No password anywhere in this pipeline. That is safe because
+          # of `runs-on: ubuntu-latest` and nothing else: the container
+          # is reachable only from an ephemeral GitHub-hosted VM that is
+          # destroyed with the job, and it holds nothing but the
+          # permission catalog and the suite's own fixtures. IF `runs-on`
+          # EVER BECOMES A SELF-HOSTED RUNNER — PLAN §0 keeps an EU
+          # runner as the fallback option — this must become a password
+          # and an `ALTER ROLE … PASSWORD` step, because a published
+          # 5432 on a persistent machine is a different proposition.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          # Matches the real database, read off it on 2026-09-01:
+          # `PostgreSQL 18.6`, datcollate/datctype `C.UTF-8`,
+          # datlocprovider `b` (the builtin provider, PG17+). The image's
+          # own default is en_US.utf8 under libc, which sorts text
+          # DIFFERENTLY — every ORDER BY on a name or title would have
+          # been answered one way in CI and another in production. The
+          # rank columns are already COLLATE "C" by migration and were
+          # never at risk; everything else was. `--locale` is set as well
+          # as `--builtin-locale`: without it initdb takes LC_COLLATE and
+          # LC_CTYPE from the image's LANG (en_US.utf8), which would
+          # leave datcollate/datctype disagreeing with what was measured.
+          # NOT left as a remembered check: isolation.dbtest.ts's posture
+          # block ASSERTS datcollate/datctype/datlocprovider, so the
+          # container proves this rather than this comment claiming it.
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C.UTF-8"
+        ports:
+          - 5432:5432
+        # The first database step must not race the server's boot.
+        options: >-
+          --health-cmd "pg_isready -U fortleva_owner -d fortleva"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
-      PLATFORM_DATABASE_URL: ${{ secrets.PLATFORM_DATABASE_URL }}
-      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
-      FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+      # The two APP roles are exactly production's, created by the same
+      # `security_foundations` migration and carrying the same
+      # attributes: `app_runtime` LOGIN + NOBYPASSRLS (the suite), and
+      # `app_platform` LOGIN + BYPASSRLS (the audited bypass). They exist
+      # only once `migrate deploy` has run, which is why nothing connects
+      # as them before that step.
+      #
+      # The OWNER role is NOT production's. Here it is the image's
+      # bootstrap SUPERUSER; in production it is `app_migrate`, which
+      # TENANCY.md §9.2 records as "subject to FORCE RLS on DML". That
+      # matters for the two steps that use DIRECT_URL — `migrate deploy`
+      # and the seed — because their writes bypass RLS here and do not
+      # there. It cannot be closed by creating a lesser owner: the
+      # migration itself runs `ALTER ROLE app_platform BYPASSRLS`, which
+      # requires a superuser. Recorded, not hidden; `neon-smoke.yml` is
+      # where a seed path gets exercised under the real owner.
+      #
+      # TENANCY.md §11 used to say "never localhost-only", and its reason
+      # was that a LOCAL role is typically owner/superuser, so RLS
+      # false-passes. That reason is answered rather than ignored: the
+      # suite connects as app_runtime and isolation.dbtest.ts asserts
+      # `current_user`, so a run that silently fell back to the owner
+      # fails instead of passing. §11 is amended to match.
+      #
+      # No longer read by any automatic run: the DATABASE_URL /
+      # DIRECT_URL / PLATFORM_DATABASE_URL secrets, which point at the
+      # dev database holding real tenant data. They still exist, because
+      # the manual `neon-smoke.yml` uses them.
+      DATABASE_URL: postgres://app_runtime@127.0.0.1:5432/fortleva
+      DIRECT_URL: postgres://fortleva_owner@127.0.0.1:5432/fortleva
+      PLATFORM_DATABASE_URL: postgres://app_platform@127.0.0.1:5432/fortleva
+      # Throwaway, and deliberately committed rather than held as
+      # secrets: they protect an ephemeral database that holds only
+      # fixtures, and every fixture encrypts and decrypts within one run.
+      # The production values must NOT be here — FIELD_ENCRYPTION_KEY is
+      # the root key over salary-grade rate ciphertext (SECURITY.md §6),
+      # and CI has no business holding it. SECURITY.md §11's "nothing in
+      # the repo" secrets clause carries the carve-out for these two.
+      BETTER_AUTH_SECRET: fortleva-ci-throwaway-auth-secret
+      FIELD_ENCRYPTION_KEY: Zm9ydGxldmEtY2ktdGhyb3dhd2F5LWtleS0zMmJ5dGU=
       FIELD_ENCRYPTION_KEY_ID: k1
-      DB_TX_TIMEOUT_MS: "20000"
-      DBTEST_TIMEOUT_MS: "120000"
+      # DB_TX_TIMEOUT_MS and DBTEST_TIMEOUT_MS are deliberately UNSET.
+      # They widened every transaction budget by a LINK FACTOR of 4
+      # (with-tenant.ts) because a caller 100 ms away blew the 5 s budget
+      # on ordinary multi-statement work. The container is ~0.1 ms away,
+      # so CI now runs the DEFAULT production transaction budgets: 5 s
+      # per transaction and 2 s maxWait (src/db/with-tenant.ts's
+      # BASE_TX_* are the shipped runtime values). That is a coverage
+      # gain — those defaults were never exercised by CI before.
+      #
+      # DBTEST_TIMEOUT_MS is a different animal and no production budget
+      # at all: unsetting it drops vitest's per-test HANG GUARD from
+      # 120 s to the 30 s default, on a smaller machine, with no
+      # measurement behind it. Raise it back if the first run says so.
+      #
+      # Two per-call overrides in the DB SUITE remain deliberate and are
+      # NOT link compensation: counters.dbtest.ts's `timeoutMs: 20_000`
+      # (25 parallel transactions need headroom to queue through a pool
+      # of 10) and ordering.dbtest.ts's 240 s test timeout for its
+      # 50-concurrent property. STILL OUTSTANDING, and named so it is
+      # not mistaken for done: four e2e specs (attachments, settings,
+      # time, work) each carry `const SLOW = process.env["CI"] ? 3 : 1`,
+      # which IS pure link compensation for a link that no longer
+      # exists. Bring them down once the first green run gives numbers.
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -125,6 +206,17 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prisma generate
+      # Against an EMPTY database, every run — so `migrate deploy` is now
+      # verified from scratch on every push, which no run had ever done
+      # (the shared database was migrated once, by hand).
+      #
+      # THE OTHER SIDE OF THAT, stated because it is a real loss: the
+      # migrations that carry DML — the review-stage backfill, the
+      # review_guards statements, the phase2 core-domain data step — now
+      # touch ZERO ROWS here, so a bad join or a unique violation that
+      # only real data would provoke is invisible to this job. Before
+      # pushing a migration that contains DML, dispatch `neon-smoke.yml`,
+      # which applies it against the populated database.
       - run: pnpm exec prisma migrate deploy
       - run: pnpm exec tsx prisma/seed.ts
       - run: pnpm test:db
@@ -132,33 +224,61 @@ jobs:
   e2e:
     name: Browser harness (Playwright)
     runs-on: ubuntu-latest
-    # Only after the cheap checks pass: this job provisions a real
-    # tenant in the shared dev database and downloads a browser.
-    # It also waits for the isolation suite, so that within one run the
-    # two db-touching jobs are serialised by the DAG and never both sit
-    # in the `isolation-db` group (where the second would evict the first).
+    # Only after the cheap checks pass. It still waits for `isolation`,
+    # and that ordering is a COST control, not a data one: a red
+    # isolation run skips this job entirely, so a failing push pays for
+    # one db job instead of two. Do not decouple them to gain wall clock
+    # — it makes every red push cost both.
     needs: [check, isolation]
-    # Same shared dev database as the isolation suite — the two must
-    # never run at once. The group is the cross-ref guard (a PR run vs a
-    # `main` run); TENANCY.md §11 ephemeral-branch TODO applies here too.
-    concurrency:
-      group: isolation-db
-      cancel-in-progress: false
-    # The suite is ~15 min next to the database; on this link the first
-    # full run was still going at 60 min (every assertion waits on the
-    # database, and a failure retries). 120 is a ceiling, not a target —
-    # an EU-located runner (PLAN §0) is the real fix.
-    timeout-minutes: 120
+    # 90, down from 120. Same reasoning as the isolation ceiling: 62
+    # minutes is the only MEASURED figure for this job, so the ceiling
+    # stays above it even though the container should bring it far
+    # lower. The 22–35 min estimate is DERIVED; in particular the cold
+    # `pnpm build` that runs inside this job (playwright.config.ts owns
+    # the server) has never been measured ON A RUNNER —
+    # playwright.config.ts records ~25 s install-warm on a developer's
+    # machine, which is a different thing.
+    #
+    # NO CEILING HERE "FITS" THE SUITE, and it is honest to say so
+    # rather than to imply one does. The visual sweep is four walks
+    # (2 themes × 2 devices) at 600 s each, and `retries: 1` doubles the
+    # worst case to 80 minutes for that file alone, before the other
+    # ~44 tests, the build and ~5 min of setup. That is a pathological
+    # every-walk-retries path, not an expectation. This is a HANG GUARD
+    # and a bill cap; when it fires, the run is already wrong, and the
+    # artifact step below is written so a kill still hands back traces.
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: fortleva
+          POSTGRES_USER: fortleva_owner
+          # See the isolation job for why `trust` is safe here and what
+          # must change if `runs-on` ever stops being ephemeral.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C.UTF-8"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fortleva_owner -d fortleva"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
-      PLATFORM_DATABASE_URL: ${{ secrets.PLATFORM_DATABASE_URL }}
-      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
-      FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+      # Same three roles and the same throwaway keys as the isolation
+      # job; the comments there are the authority, including the caveat
+      # that the OWNER role here is a bootstrap superuser and production's
+      # is not. The `next start` under test connects as app_runtime,
+      # exactly as production does.
+      DATABASE_URL: postgres://app_runtime@127.0.0.1:5432/fortleva
+      DIRECT_URL: postgres://fortleva_owner@127.0.0.1:5432/fortleva
+      PLATFORM_DATABASE_URL: postgres://app_platform@127.0.0.1:5432/fortleva
+      BETTER_AUTH_SECRET: fortleva-ci-throwaway-auth-secret
+      FIELD_ENCRYPTION_KEY: Zm9ydGxldmEtY2ktdGhyb3dhd2F5LWtleS0zMmJ5dGU=
       FIELD_ENCRYPTION_KEY_ID: k1
-      # The `next start` under test is as far from the database as the
-      # isolation job is (see above).
-      DB_TX_TIMEOUT_MS: "20000"
+      # DB_TX_TIMEOUT_MS unset for the same reason as above: the app
+      # under test is now as near its database as production is.
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -170,6 +290,9 @@ jobs:
       - run: pnpm exec prisma generate
       - run: pnpm exec prisma migrate deploy
       # provisionTenant refuses to run without the permission catalog.
+      # Not a duplicate of the isolation job's seed: that one seeded a
+      # different, now-destroyed database. Removing it re-opens the
+      # failure mode that destroyed real data on 2026-08-31.
       - run: pnpm exec tsx prisma/seed.ts
       # The cache key must describe the BROWSER, not the dependency tree:
       # keyed on pnpm-lock.yaml (as it was until 2026-09-01) every
@@ -187,25 +310,48 @@ jobs:
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
-        id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
       # Chromium only (~700 MB): the harness exists to catch DOM and
       # mount-time behaviour, not to certify browser coverage.
+      # `--with-deps` stays unconditional even on a cache hit: the OS
+      # packages are NOT in that cache, and trading ~30 s of apt for the
+      # chance of a browser that cannot launch would risk a whole run to
+      # save a rounding error.
       - run: pnpm exec playwright install --with-deps chromium
       # playwright.config.ts owns the server: `pnpm build && pnpm start`
       # with APP_URL pinned to the harness origin (Better Auth refuses a
       # foreign origin, INV-D2). Fixtures live in a throwaway tenant
       # (slug "e2e-…") that global-teardown removes.
       - run: pnpm test:e2e
+      # The container takes the fixture with it when the job ends, so
+      # this no longer protects a shared database — it keeps the teardown
+      # PATH exercised in CI so it cannot rot before the day it matters
+      # locally, and it costs seconds.
       - name: Ensure the throwaway tenant is gone
         if: always()
         run: pnpm exec tsx e2e/fixtures/seed-cli.ts teardown .auth/seed.json
+      # Two conditions and two paths, and both halves matter.
+      #
+      # `failure() || cancelled()`, not `failure()`: exceeding
+      # `timeout-minutes` CANCELS the job, so a bare `failure()` skips
+      # this step on the one run that most needs evidence.
+      #
+      # `test-results/` as well as `playwright-report/`, because the
+      # HTML report does not exist yet when that happens: the html
+      # reporter builds it in `onEnd` (playwright/lib/runner/index.js —
+      # `onEnd` wipes the output folder and only then runs HtmlBuilder),
+      # which a killed run never reaches. `test-results/` is Playwright's
+      # default outputDir, and `trace: retain-on-failure` +
+      # `screenshot: only-on-failure` write into it as each test
+      # finishes — so it is the only thing that survives a ceiling kill.
       - name: Upload Playwright report
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7

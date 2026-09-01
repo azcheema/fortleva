@@ -18,14 +18,21 @@ export type TenantDb = Omit<
 
 /**
  * Interactive-transaction budgets. 5 s is right next to the database
- * (Vercel Frankfurt ↔ Neon EU); a caller 100 ms away per round trip —
- * the GitHub-hosted runner in the US — blows it on ordinary multi-
- * statement work, so CI widens it through DB_TX_TIMEOUT_MS. Every
- * budget scales by the same LINK FACTOR: the default, a caller's
- * explicit `timeoutMs` (stated for the fast path — LOCKED_TX 15 s was
- * 223 ms short on CI for 8 serialised starts), and Prisma's `maxWait`
- * (2 s to acquire a connection — 25 parallel transactions exhaust it on
- * the slow link). Factor 1 wherever the variable is unset.
+ * (Vercel Frankfurt ↔ Neon EU); a caller 100 ms away per round trip
+ * blows it on ordinary multi-statement work, so DB_TX_TIMEOUT_MS widens
+ * it. Every budget scales by the same LINK FACTOR: the default, a
+ * caller's explicit `timeoutMs` (stated for the fast path — LOCKED_TX
+ * 15 s was 223 ms short for 8 serialised starts across that link), and
+ * Prisma's `maxWait` (2 s to acquire a connection — 25 parallel
+ * transactions exhaust it on the slow link). Factor 1 wherever the
+ * variable is unset.
+ *
+ * WHO SETS IT (amended 2026-09-01): nothing in the ordinary CI pipeline
+ * any more. Both db jobs run against a Postgres service container on
+ * the runner (~0.1 ms), so they exercise these DEFAULTS — the first
+ * time the shipped budgets have been under test at all. The widened
+ * factor-4 values survive only in `.github/workflows/neon-smoke.yml`,
+ * the manual job that still crosses the Atlantic to the real Neon.
  */
 const BASE_TX_TIMEOUT_MS = 5000;
 const BASE_TX_MAX_WAIT_MS = 2000;

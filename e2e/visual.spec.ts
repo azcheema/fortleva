@@ -229,6 +229,31 @@ async function settle(page: Page): Promise<void> {
       // Self-hosted fonts: a shot taken before they swap measures the
       // fallback's metrics, not the design's.
       await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      // Finish every FINITE animation before anything measures the page.
+      // This used to happen BY ACCIDENT: visit() took a full-page shot
+      // with `animations: "disabled"`, which finishes finite animations,
+      // so the audit always ran against settled geometry. The shot is no
+      // longer taken under CI, and the design system outlasts the wait
+      // below — `--dur-slow` is 320 ms (globals.css) and the item-peek
+      // stop mounts a Sheet that is full-width at 390 px, so one still
+      // sliding in would be measured mid-flight and reported as
+      // horizontal overflow. Explicit here, so BOTH paths settle the
+      // same way and a CI-only red cannot appear from this.
+      //
+      // NOT identical to Playwright's `animations: "disabled"`, and the
+      // difference is deliberate: that mode CANCELS infinite animations
+      // and replays them afterwards, while finish() throws on them and
+      // we leave them running. That matches what the audit always saw —
+      // Playwright had already resumed them by the time it ran.
+      await page.evaluate(() => {
+        for (const animation of document.getAnimations()) {
+          try {
+            animation.finish();
+          } catch {
+            /* infinite animations cannot finish; leave them running */
+          }
+        }
+      });
       await page.waitForTimeout(150);
       return;
     } catch (e) {
@@ -254,7 +279,20 @@ async function visit(
   await settle(page);
 
   const shot = `${stop.name}__${theme}__${device}.png`;
-  await page.screenshot({ path: join(SHOTS, shot), fullPage: true, animations: "disabled" });
+  // The shots are a HUMAN artefact — 164 full-page PNGs for the craft
+  // review. Nothing asserts on them: this repo has no committed
+  // baselines and no toHaveScreenshot anywhere, and ci.yml uploads only
+  // playwright-report/, so under CI they were rendered, encoded and then
+  // discarded unread. The pass/fail signal is the audit below and the
+  // expect.soft assertions that read it; both are untouched, and the
+  // filename still travels in the finding so a report reads the same.
+  // What this call ALSO did — finish every running animation, via
+  // `animations: "disabled"` — settle() now does explicitly for both
+  // paths, because that side effect was load-bearing for the audit and
+  // nothing said so.
+  if (!process.env["CI"]) {
+    await page.screenshot({ path: join(SHOTS, shot), fullPage: true, animations: "disabled" });
+  }
 
   const audit = await page.evaluate(auditPage);
   const status = response?.status() ?? null;
@@ -400,10 +438,17 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // ~35 stops × 3 navigations. Five minutes next to the database; on
-        // CI (US runner, EU database — ~10 s a stop on a slow evening) the
-        // same walk needs three times that.
-        test.setTimeout(process.env["CI"] ? 900_000 : 300_000);
+        // 41 stops × 3 navigations, five minutes next to the database.
+        // The CI branch was 900 s, sized when the runner was in the US
+        // and the database in the EU (~10 s a stop on a slow evening).
+        // Since 2026-09-01 CI runs against a service container on the
+        // runner, so the link is gone and only the smaller machine is
+        // left: 600 s is 2× the local budget. Note this is a per-ATTEMPT
+        // budget and CI sets `retries: 1`, so four walks can cost twice
+        // this in the worst case — ci.yml's ceiling comment does the
+        // arithmetic. DERIVED, like every other number in this change —
+        // read the real per-walk time off the first green run.
+        test.setTimeout(process.env["CI"] ? 600_000 : 300_000);
         const seed = requireSeed();
         const all = stops(seed);
         const findings: Finding[] = [];

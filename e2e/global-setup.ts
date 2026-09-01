@@ -33,8 +33,11 @@ export default async function globalSetup(): Promise<void> {
   // that dies mid-suite) orphans its tenant. Sweep anything older than
   // 90 minutes before provisioning; a concurrent run is never in range.
   // 90 min, not 15: the age guard is what keeps a CONCURRENT run's tenant
-  // out of range, and a run on the CI link (US runner, EU database) takes
-  // 30+ min — a local run's sweep once deleted a live CI fixture mid-run.
+  // out of range — a local run's sweep once deleted a live CI fixture
+  // mid-run. The CI e2e job stopped being in range on 2026-09-01 (it has
+  // its own service container now); what is still in range is another
+  // LOCAL run and a dispatched `neon-smoke.yml`, whose ceiling is 75 min
+  // — which is why the guard stays at 90 rather than dropping.
   const swept = await sweepStaleE2ETenants(90);
   if (swept > 0) console.log(`[e2e] swept ${swept} orphaned throwaway tenant(s)`);
   const { password, tenantSlug } = await provisionE2ETenant();

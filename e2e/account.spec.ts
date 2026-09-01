@@ -44,20 +44,30 @@ test.describe("account display name", () => {
     await page.goto("/account");
     const original = (await nameTrigger(page).innerText()).trim();
 
-    await editName(page, "Ansar Cheema");
+    // A FIXTURE name, deliberately. This spec writes what it types into
+    // the database and, on a failing run, into the uploaded Playwright
+    // report — which is no place for a real person's name, least of all
+    // the founder's.
+    await editName(page, "Testa Testsson");
     // Enter must COMMIT: the control leaves edit mode.
     await expect(page.locator('input[name="name"]')).toHaveCount(0);
 
     // Persisted, not merely optimistic: a full reload re-reads the
     // identity from the database through Better Auth.
     await page.reload();
-    await expect(nameTrigger(page)).toContainText("Ansar Cheema");
+    await expect(nameTrigger(page)).toContainText("Testa Testsson");
 
     // Reached the identity the rest of the app reads (header avatar
     // initials come from the session user, not from this page).
     await page.goto("/home");
-    // The app bar, not a card header: initials come from the session user.
-    await expect(page.locator("header").first()).toContainText(/AC/i);
+    // The AVATAR, matched WHOLE — not a substring of the app bar. A
+    // regex over the header's text is a trap: the bar renders "Command
+    // palette" (app-shell.tsx, messages `shell.palette.title`), so a
+    // two-initial pattern like /TT/i matches "pale**tt**e" and the
+    // assertion passes even when the session never learned the new name.
+    // toHaveText on the fallback slot is an exact, whole-element match
+    // no other copy in the bar can satisfy.
+    await expect(page.locator('header [data-slot="avatar-fallback"]').first()).toHaveText("TT");
 
     // Put it back so the fixture stays as the other specs expect it.
     await page.goto("/account");

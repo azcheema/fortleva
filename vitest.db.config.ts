@@ -9,9 +9,12 @@ loadEnv({ path: ".env" });
 // app_runtime role (TENANCY.md §11 — a local owner/superuser role
 // false-passes RLS). Sequential: shared database state.
 //
-// 30 s per test is a hang guard next to the database; the GitHub runner
-// is ~100 ms from the EU Neon per round trip and needs more (ci.yml sets
-// DBTEST_TIMEOUT_MS; the tx budget is DB_TX_TIMEOUT_MS in src/db).
+// 30 s per test is a hang guard next to the database. A caller ~100 ms
+// away needs more, which is what DBTEST_TIMEOUT_MS is for (the matching
+// transaction budget is DB_TX_TIMEOUT_MS in src/db). Since 2026-09-01
+// ci.yml sets NEITHER — both db jobs run against a Postgres service
+// container on the runner, so this 30 s default is the guard there too;
+// only the manual neon-smoke.yml workflow still widens them.
 const TIMEOUT_MS = Number(process.env["DBTEST_TIMEOUT_MS"]) || 30_000;
 
 export default defineConfig({

@@ -44,9 +44,16 @@ export default defineConfig({
   // client is ESM, so it cannot run inside the CJS test worker). Three
   // of those plus two full reloads exceeded a 60 s budget on a warm
   // machine, which would have flaked in CI rather than failed honestly.
-  // CI runs against the EU database from a US runner (~100 ms per query,
-  // a page is dozens of queries): the same assertions need a longer
-  // leash there. The local budgets stay honest.
+  // The CI budgets were sized when CI ran against the EU database from a
+  // US runner (~100 ms per query, a page is dozens of queries). Since
+  // 2026-09-01 the e2e job brings its own Postgres container, so that
+  // reason is gone and these two are almost certainly oversized — they
+  // are left as HANG GUARDS rather than tuned blind, because no
+  // measurement of the containerised job exists yet. Bring them toward
+  // the local values once the first green run gives real numbers; the
+  // per-walk visual budget was already cut by a third (900 s → 600 s)
+  // in the same change.
+  // The local budgets stay honest.
   timeout: process.env["CI"] ? 300_000 : 120_000,
   expect: { timeout: process.env["CI"] ? 30_000 : 10_000 },
   use: {

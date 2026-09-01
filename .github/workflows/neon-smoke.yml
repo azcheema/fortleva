@@ -1,0 +1,142 @@
+name: Neon fidelity smoke
+
+# MANUAL ONLY, and only from `main`. Never on push, never on a schedule.
+#
+# The main pipeline (ci.yml) runs both database jobs against a Postgres
+# service container on the runner. That removes the US↔EU link that made
+# a full run cost ~115 billable minutes, and it means the automatic
+# pipeline holds no credential to any real database. What a container
+# cannot speak for is the part of production that is not
+# Postgres-the-engine but Neon-the-deployment:
+#
+#   • the POOLER. TENANCY.md §4.2 forbids relying on session state — no
+#     session-level SET, no LISTEN/NOTIFY, no SQL-level PREPARE —
+#     because a pooled connection is not the same backend twice. A stock
+#     container happily permits all three, so it can never catch a
+#     regression that introduces one. The codebase violates the rule
+#     nowhere today: every set_config is is_local = true, and both
+#     advisory locks are pg_advisory_xact_lock (transaction-scoped,
+#     which is what transaction pooling supports).
+#   • migrations that carry DML. Against the container every backfill
+#     runs on an EMPTY database and touches zero rows, so a bad join or
+#     a unique violation that only real data provokes is invisible
+#     there. DISPATCH THIS JOB BEFORE PUSHING ANY MIGRATION WITH DML.
+#   • the seed and migration path under the REAL owner role, which is
+#     `app_migrate` (subject to FORCE RLS on DML) rather than the
+#     container's bootstrap superuser.
+#
+# WHAT IT DOES NOT BUY, stated so nobody assumes it: the exact 2 s
+# `maxWait` ceiling. This job runs over the same ~100 ms link the whole
+# cost problem came from, so DB_TX_TIMEOUT_MS below is still 4× — which
+# makes maxWait 8 s. It proves pooler SEMANTICS, not production's
+# numbers. Nothing in either pipeline exercises the real budgets against
+# the real pooler; only a co-located runner would.
+#
+# THIS JOB WRITES TO THE SHARED DEV DATABASE — the permission-catalog
+# upsert and its template propagation touch every tenant in it, naxdor
+# included, and `migrate deploy` applies any migration pending ON `main`.
+# That is why it is manual, why it is pinned to `main`, and why the main
+# pipeline no longer does either of those things against a real database.
+#
+# COORDINATION: do not run `pnpm test:db` or `pnpm test:e2e` locally
+# while this job is in flight. Local suites still use the dev database
+# (CI's no longer does), and the fixture sweeper is age-based — a local
+# run once deleted a live CI fixture mid-run. The concurrency group
+# below only stops a second smoke run, not a person.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two manual triggers must not race each other on one shared database.
+concurrency:
+  group: neon-dev-db
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: The files a container cannot speak for
+    runs-on: ubuntu-latest
+    # 75, not 45. The same argument ci.yml's ceilings now follow: the
+    # only measured figure for this suite over this link is 52 minutes
+    # for 26 files, and the six chosen here are among the heaviest. A
+    # ceiling below the measurement turns a slow run into a LOST run —
+    # and this is the one job whose database is real, so a kill leaves
+    # throwaway tenants (and time.dbtest.ts's TenantKey rows, wrapped
+    # under a throwaway root key no deployment holds) behind in it.
+    # AFTER ANY KILLED RUN, sweep by hand:
+    #   select slug from "Tenant" where slug like 'time-%' or slug like
+    #   'counters-%' or slug like 'ordering-%' or slug like 'scope-%';
+    timeout-minutes: 75
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      PLATFORM_DATABASE_URL: ${{ secrets.PLATFORM_DATABASE_URL }}
+      # THROWAWAY, deliberately — the same literals ci.yml commits, not
+      # the production secrets. Every file below creates its own
+      # throwaway tenant and encrypts and decrypts within the run
+      # (time.dbtest.ts mints a tenant DEK for its COST card), so a
+      # self-consistent key is all that is needed. The production root
+      # key stays out of CI entirely: it is the key over salary-grade
+      # rate ciphertext, and no job here has any business holding it.
+      BETTER_AUTH_SECRET: fortleva-ci-throwaway-auth-secret
+      FIELD_ENCRYPTION_KEY: Zm9ydGxldmEtY2ktdGhyb3dhd2F5LWtleS0zMmJ5dGU=
+      FIELD_ENCRYPTION_KEY_ID: k1
+      # The link is real here, so the LINK FACTOR is back: a caller
+      # ~100 ms away blows the production 5 s transaction budget on
+      # ordinary multi-statement work (with-tenant.ts). See the header
+      # for what that costs in fidelity.
+      DB_TX_TIMEOUT_MS: "20000"
+      DBTEST_TIMEOUT_MS: "120000"
+    steps:
+      # A FAILING FIRST STEP, not a job-level `if:`. `workflow_dispatch`
+      # lets the dispatcher pick ANY ref, and this job applies migrations
+      # to the real database on the owner connection — there is no down
+      # migration in prisma/migrations and AGENTS.md forbids
+      # `migrate reset`, so one applied from an unreviewed branch has no
+      # way back. A job-level `if:` would skip the job and report the RUN
+      # AS GREEN, which is worse than refusing: the moment someone
+      # dispatches this is right before pushing a migration, from a
+      # branch, and a tick that proves nothing is exactly the wrong
+      # answer then. Fail loudly instead.
+      - name: Refuse a ref other than main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "neon-smoke touches the real dev database and runs only from main."
+          echo "Dispatched ref was: ${{ github.ref }}"
+          exit 1
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - run: pnpm exec prisma migrate deploy
+      # Required: every dbtest fixture refuses to start without the
+      # catalog, and a cleanup hook that runs after a failed beforeAll is
+      # what destroyed real data on 2026-08-31.
+      - run: pnpm exec tsx prisma/seed.ts
+      # Chosen for what they prove ABOUT THE DEPLOYMENT, not for coverage
+      # (the container runs all 26 files on every push that reaches CI
+      #  — note `paths-ignore` means a docs-only push reaches none):
+      #   isolation    — the RLS posture under the real pooled role
+      #   portal-gate  — the class-B gate, likewise
+      #   with-user    — the GUC path, the one that would break first if
+      #                  a pooled connection stopped being one backend
+      #   counters     — 25 parallel transactions; pool behaviour
+      #   ordering     — 50 concurrent moves, and the work rank
+      #                  pg_advisory_xact_lock under the pooler
+      #   time         — the other advisory lock (tenant:member), plus
+      #                  one-running-timer and the COST/DEK crypto path
+      - name: Real-Neon subset
+        run: >-
+          pnpm exec vitest run --config vitest.db.config.ts
+          src/db/isolation.dbtest.ts
+          src/db/portal-gate.dbtest.ts
+          src/db/with-user.dbtest.ts
+          src/db/counters.dbtest.ts
+          src/modules/work/ordering.dbtest.ts
+          src/modules/time/time.dbtest.ts
