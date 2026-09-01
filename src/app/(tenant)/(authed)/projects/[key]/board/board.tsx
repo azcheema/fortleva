@@ -47,9 +47,6 @@ import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
 import { formatDuration, type DurationStyle } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { ItemList, ResolvedItemList } from "@/modules/work";
-
-import { createItemInStateAction, deleteItemAction, moveItemAction, setItemArchivedAction } from "../backlog/actions";
 import {
   applyMove,
   canEnterState,
@@ -60,12 +57,15 @@ import {
   laneKeyOf,
   lanesFor,
   visibleColumns,
-  type BoardItem,
-  type BoardState,
   type GroupBy,
   type Lane,
   type Move,
-} from "./board-model";
+  type WorkItem,
+  type WorkState,
+} from "@/lib/work-view";
+import type { ItemList, ResolvedItemList } from "@/modules/work";
+
+import { createItemInStateAction, deleteItemAction, moveItemAction, setItemArchivedAction } from "../backlog/actions";
 import { MovePicker } from "./move-picker";
 
 /**
@@ -91,7 +91,7 @@ type ColumnData = { type: "column"; stateId: string; laneKey: string };
 const isCardData = (d: Record<string | symbol, unknown>): d is CardData => d["type"] === "card";
 const isColumnData = (d: Record<string | symbol, unknown>): d is ColumnData => d["type"] === "column";
 
-type OptimisticAction = { type: "move"; move: Move } | { type: "create"; item: BoardItem };
+type OptimisticAction = { type: "move"; move: Move } | { type: "create"; item: WorkItem };
 
 const POLL_MS = 12_000;
 
@@ -125,7 +125,7 @@ export function Board({
   const [isPending, startTransition] = useTransition();
   const [items, applyOptimistic] = useOptimistic(
     data.items,
-    (current: BoardItem[], action: OptimisticAction): BoardItem[] =>
+    (current: WorkItem[], action: OptimisticAction): WorkItem[] =>
       action.type === "move"
         ? applyMove(current, action.move, data.states)
         : [...current, action.item],
@@ -276,7 +276,7 @@ export function Board({
 
   // ── keyboard: roving focus across cells, S = move, C = create ─────
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [picker, setPicker] = useState<BoardItem | null>(null);
+  const [picker, setPicker] = useState<WorkItem | null>(null);
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
   const epicIds = useMemo(() => epicIdsOf(items), [items]);
   const firstCardId = items.find((i) => !(groupBy === "epic" && i.type === "EPIC"))?.id ?? null;
@@ -312,7 +312,7 @@ export function Board({
     const cell = cardsIn(items, groupBy, laneKey, item.stateId);
     const at = cell.findIndex((c) => c.id === item.id);
     const col = columns.findIndex((c) => c.id === item.stateId);
-    const step = (to: BoardItem | undefined) => {
+    const step = (to: WorkItem | undefined) => {
       if (to) {
         e.preventDefault();
         focusCard(to.id);
@@ -479,8 +479,8 @@ function BoardLane(props: {
   lane: Lane;
   groupBy: GroupBy;
   locale: string;
-  columns: BoardState[];
-  items: BoardItem[];
+  columns: WorkState[];
+  items: WorkItem[];
   members: ItemList["members"];
   projectId: string;
   projectKey: string;
@@ -494,7 +494,7 @@ function BoardLane(props: {
   creatingIn: string | null;
   setCreatingIn: (stateId: string | null) => void;
   onFocusCard: (id: string) => void;
-  onOpenPicker: (item: BoardItem) => void;
+  onOpenPicker: (item: WorkItem) => void;
   applyOptimistic: (a: OptimisticAction) => void;
   startTransition: (fn: () => Promise<void>) => void;
   onMutate: () => void;
@@ -554,11 +554,11 @@ function BoardLane(props: {
 // ── a column cell: header + cards + create ───────────────────────────
 
 function BoardColumn(props: {
-  state: BoardState;
+  state: WorkState;
   lane: Lane;
   groupBy: GroupBy;
   locale: string;
-  items: BoardItem[];
+  items: WorkItem[];
   projectId: string;
   projectKey: string;
   canEdit: boolean;
@@ -571,7 +571,7 @@ function BoardColumn(props: {
   creatingIn: string | null;
   setCreatingIn: (stateId: string | null) => void;
   onFocusCard: (id: string) => void;
-  onOpenPicker: (item: BoardItem) => void;
+  onOpenPicker: (item: WorkItem) => void;
   applyOptimistic: (a: OptimisticAction) => void;
   startTransition: (fn: () => Promise<void>) => void;
   onMutate: () => void;
@@ -698,7 +698,7 @@ function BoardCard({
   startTransition,
   onMutate,
 }: {
-  item: BoardItem;
+  item: WorkItem;
   laneKey: string;
   projectKey: string;
   locale: string;
@@ -887,7 +887,7 @@ function ColumnCreate({
   startTransition,
   onMutate,
 }: {
-  state: BoardState;
+  state: WorkState;
   projectId: string;
   projectKey: string;
   isDefault: boolean;

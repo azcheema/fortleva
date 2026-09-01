@@ -218,7 +218,7 @@ Rules: single keys are inert while an input has focus; `⌘` = `Ctrl` on Windows
 ### 7.1 Drag and drop (ARC-17)
 - Desktop only, `@atlaskit/pragmatic-drag-and-drop`. Drop indicator line between cards, edge auto-scroll, dragged card ghost at reduced opacity, column highlights on hover.
 - Board drop = state change + rank change in one Server Action; backlog drop = rank change; group-by view drop = property change + rank.
-- A gated state (`requiresApproval` — the seeded Done, 2W-R) is not a drop/create/picker target for a non-approver, the same rule as TRIAGE (`canEnterState` in board-model, one rule for every surface); `transitionState` refuses server-side regardless.
+- A gated state (`requiresApproval` — the seeded Done, 2W-R) is not a drop/create/picker target for a non-approver, the same rule as TRIAGE (`canEnterState` in `src/lib/work-view`, one rule for every surface); `transitionState` refuses server-side regardless.
 - Keyboard/mobile twin: "Move to…" (`⌘K` action, item menu, mobile long-press) → picker of state/position ("Top of To do", "After ACME-9", "Bottom").
 - Rank is server-computed (fractional-indexing, neighbours locked). The client sends `{ itemId, stateId?, beforeId?, afterId? }`, never a rank string; rank never appears in the DOM.
 - Multi-select drag moves the selection preserving relative order.
@@ -518,9 +518,9 @@ Justified standing exceptions, all inside `src/components/**`, none of them a co
 
 Set B added the pairs those screens actually paint: **every** tone (including `quiet`) as plain text and as a rule mark on card / canvas / muted / **accent** / popover; `--input` and `--ring` on `--accent`, because a control inside a table row is read on the HOVER surface and not on the resting one; `--destructive` as an outline; the internal chip's label and hairline on a hovered row; and the client-visible row cue at ≥3:1 on all five surfaces **plus** ΔE_OK ≥ 0.15 against the row it marks under all four vision types. Three tokens moved to satisfy those rows — dark `--input` 0.535 → 0.590, `--tone-quiet-line` → `var(--input)`, and the new `--vis-client-cue` — because the fix for a failing row is the token, never the threshold.
 
-**No visual change ships on a screenshot of one page.** Every change to a token, a component or a screen is verified with the browser visual sweep — `pnpm test:e2e` (`e2e/visual.spec.ts`, `RUNBOOK.md` §7): 41 stops × light/dark × 1440×900 and 390×844 = 164 shots, each stop audited in the page for exactly one `h1`, text that composites to its own backdrop, untranslated message keys, horizontal overflow at phone width, broken images, and console/network errors. The shots land in `.design-shots/` (git-ignored) and are reviewed in both themes before the commit. A contrast table that passes proves the palette; only the sweep proves the pages.
+**No visual change ships on a screenshot of one page.** Every change to a token, a component or a screen is verified with the browser visual sweep — `pnpm test:e2e` (`e2e/visual.spec.ts`, `RUNBOOK.md` §7): 42 stops × light/dark × 1440×900 and 390×844 = 168 shots, each stop audited in the page for exactly one `h1`, text that composites to its own backdrop, untranslated message keys, horizontal overflow at phone width, broken images, and console/network errors. The shots land in `.design-shots/` (git-ignored) and are reviewed in both themes before the commit. A contrast table that passes proves the palette; only the sweep proves the pages.
 
-**The craft audit** (`e2e/audit.ts`, run at all 164 stop/theme/device combinations — 41 stops × light/dark × desktop/phone) is the half of this document a screenshot cannot hold open. Each of these must be empty on every stop, or the run fails:
+**The craft audit** (`e2e/audit.ts`, run at all 168 stop/theme/device combinations — 42 stops × light/dark × desktop/phone) is the half of this document a screenshot cannot hold open. Each of these must be empty on every stop, or the run fails:
 
 | it asserts | because |
 |---|---|

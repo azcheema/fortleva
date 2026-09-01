@@ -1218,6 +1218,47 @@
         "ungroup": "Show all tasks"
       }
     },
+    "workView": {
+      "filters": {
+        "label": "Filter and grouping",
+        "state": "Status",
+        "stateHeading": "Show these statuses",
+        "assignee": "Assignee",
+        "assigneeHeading": "Show these assignees",
+        "unassigned": "No assignee",
+        "priority": "Priority",
+        "priorityHeading": "Show these priorities",
+        "hideDone": "Hide finished",
+        "clear": "Clear {count, plural, one {# filter} other {# filters}}"
+      },
+      "group": {
+        "label": "Group",
+        "heading": "Group the list by",
+        "none": "No grouping",
+        "assignee": "Assignee",
+        "priority": "Priority",
+        "epic": "Phase"
+      },
+      "lanes": {
+        "unassigned": "No assignee",
+        "noEpic": "Outside a phase",
+        "epicUntitled": "Phase"
+      },
+      "rollup": {
+        "count": "{total, plural, one {# task} other {# tasks}}",
+        "countFiltered": "{shown} of {total} shown",
+        "done": "{done} finished"
+      },
+      "summary": {
+        "all": "{total, plural, one {# task} other {# tasks}}",
+        "filtered": "{shown} of {total} tasks"
+      },
+      "empty": {
+        "filteredTitle": "No tasks match these filters",
+        "filteredBody": "The work is still here — the filters above are hiding it.",
+        "filteredAction": "Clear the filters"
+      }
+    },
     "backlog": {
       "empty": {
         "title": "No tasks yet",

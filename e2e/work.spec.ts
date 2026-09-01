@@ -185,6 +185,86 @@ test.describe("project board (owner)", () => {
     await expect(fresh.getByTestId("backlog-due").locator("input")).toHaveValue("2026-09-15");
     await page.keyboard.press("Escape");
   });
+
+  test("2W-F: the view lives in the URL — chips, hide-done, grouping, and a peek that keeps them", async ({ page }) => {
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const title = `Filter task ${Date.now()}`;
+    created = title; // afterEach removes it via the board, pass or fail
+
+    // The chips are ALWAYS visible above the list — never behind a
+    // drawer or a disclosure (UI.md §5.3: hidden filters are the top
+    // complaint in the corpus this product was designed against).
+    const bar = page.getByTestId("work-filter-bar");
+    await expect(bar).toBeVisible();
+    const summary = page.getByTestId("work-filter-summary");
+    await expect(summary).toBeVisible();
+
+    await page.locator("#new-task").getByRole("button").click();
+    const createInput = page.locator("#new-task input");
+    await createInput.fill(title);
+    await createInput.press("Enter");
+    const row = page.locator('[data-slot="table-row"]', { hasText: title });
+    await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+    await createInput.press("Escape");
+
+    // Put it in a terminal category so hide-done has something to hide.
+    // The owner is an approver, so the gated Done state is offered.
+    await row.getByTestId("backlog-state").getByRole("button").click();
+    await row.getByTestId("backlog-state").locator("select").selectOption({ label: "Done" });
+    await expect(row).toContainText("Done", { timeout: 20_000 * SLOW });
+
+    // Hide finished: the row goes, and the view is a LINK — a reload
+    // restores exactly what was on screen, which is the whole point of
+    // keeping the view in the URL rather than in component state.
+    await page.getByTestId("work-filter-hide-done").click();
+    await expect(row).toHaveCount(0);
+    await expect(page).toHaveURL(/hideDone=true/);
+    await expect(page.getByTestId("work-filter-hide-done")).toHaveAttribute("aria-pressed", "true");
+    await page.reload();
+    await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toHaveCount(0);
+    await expect(page.getByTestId("work-filter-hide-done")).toHaveAttribute("aria-pressed", "true");
+
+    // Clearing brings the work back — and takes the param with it, so a
+    // view at rest is addressable as the bare path (`clearOnDefault`).
+    await page.getByTestId("work-filter-clear").click();
+    await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/projects/${seed.projectKey}/backlog$`));
+
+    // A filter that matches nothing is the THIRD empty state (UI.md
+    // §5.8): things exist, none match, and the verb is to clear it —
+    // never "create the first task", which would lie about the list.
+    await page.getByTestId("work-filter-state").click();
+    const doneOption = page.getByRole("menuitemcheckbox", { name: "Done" });
+    await doneOption.click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toBeVisible();
+    await page.getByTestId("work-filter-hide-done").click();
+    await expect(page.locator('[data-variant="filtered"]')).toBeVisible();
+    await page.getByTestId("backlog-filtered-clear").click();
+    await expect(page.locator('[data-variant="filtered"]')).toHaveCount(0);
+
+    // Grouping is a view, not a filter: it survives a Clear and shows
+    // header rows the ungrouped list does not have.
+    await page.goto(`/projects/${seed.projectKey}/backlog?group=assignee`);
+    await expect(page.getByTestId("backlog-group").first()).toBeVisible();
+
+    // THE REGRESSION GUARD for the double-'?': open an item's peek while
+    // a filter is on. The link must carry both, with ONE question mark,
+    // and closing the peek must land back on the FILTERED list — the old
+    // hand-built `${listHref}${archived ? "&" : "?"}item=` produced
+    // `?group=assignee?item=…` the moment a second param existed.
+    const grouped = page.locator('[data-slot="table-row"]', { hasText: title });
+    await grouped.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) }).click();
+    await expect(page.getByTestId("item-peek")).toBeVisible();
+    const peeked = new URL(page.url());
+    expect(peeked.search.match(/\?/g)).toHaveLength(1);
+    expect(peeked.searchParams.get("group")).toBe("assignee");
+    expect(peeked.searchParams.get("item")).toMatch(new RegExp(`^${seed.projectKey}-\\d+$`));
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("item-peek")).toHaveCount(0);
+    await expect(page).toHaveURL(/group=assignee/);
+    await expect(page).not.toHaveURL(/item=/);
+  });
 });
 
 test.describe("project board (employee)", () => {

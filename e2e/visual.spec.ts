@@ -96,6 +96,12 @@ const stops = (seed: E2ESeed): Stop[] => {
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },
     { name: "project-backlog", path: `${project}/backlog` },
+    // 2W-F: the same list with the view turned on — two ACTIVE chips,
+    // the Clear control they reveal, and the group header rows. The
+    // resting stop above photographs the bar at rest, so between them
+    // both states of the new chrome are audited (and a chip row that
+    // wrapped or overflowed at 390 px would fail here, not in review).
+    { name: "project-backlog-grouped", path: `${project}/backlog?group=assignee&hideDone=true` },
     // 2W-B: the item side-peek over the backlog (empty attachments +
     // the anchored upload form on the seeded first task).
     { name: "project-item-peek", path: `${project}/backlog?item=${seed.projectKey}-1` },
@@ -438,7 +444,7 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // 41 stops × 3 navigations, five minutes next to the database.
+        // 42 stops × 3 navigations, five minutes next to the database.
         // The CI branch was 900 s, sized when the runner was in the US
         // and the database in the EU (~10 s a stop on a slow evening).
         // Since 2026-09-01 CI runs against a service container on the

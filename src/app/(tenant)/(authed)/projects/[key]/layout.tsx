@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 
 import { isAuthorized } from "@/authz/authorize";
 import { Callout, EntityTile, Page, PageHeader, StatusBadge } from "@/components/semantic";
@@ -124,7 +125,16 @@ export default async function ProjectLayout({
         </Callout>
       ) : null}
       <TabNav tabs={tabs} className="mt-4" />
-      <div className="mt-6">{children}</div>
+      {/* The work surfaces keep their view in the URL (UI.md rule 6),
+          and nuqs needs its adapter above every useQueryStates. It is
+          mounted HERE rather than at the root because the adapter
+          patches history globally: the board and the backlog are the
+          only surfaces that use it today, and the portal and ops planes
+          should not inherit a patch they never asked for. It moves up
+          the tree when /home and /search join. */}
+      <NuqsAdapter>
+        <div className="mt-6">{children}</div>
+      </NuqsAdapter>
     </Page>
   );
 }

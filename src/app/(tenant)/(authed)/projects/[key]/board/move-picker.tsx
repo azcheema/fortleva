@@ -14,8 +14,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { STATUS_MAP, type StatusValue } from "@/lib/enum-map";
-
-import type { BoardState } from "./board-model";
+import type { WorkState } from "@/lib/work-view";
 
 /**
  * "Move to…" — the keyboard and mobile twin of the drag (UI.md §7.1,
@@ -38,7 +37,7 @@ export function MovePicker({
   onOpenChange: (open: boolean) => void;
   /** Human key of the item being moved (ACME-12). */
   itemKey: string;
-  states: readonly BoardState[];
+  states: readonly WorkState[];
   currentStateId: string;
   onChoose: (choice: MoveChoice) => void;
 }) {

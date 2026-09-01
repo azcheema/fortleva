@@ -12,11 +12,12 @@ import { readPreferences } from "@/preferences/service";
 import { cn } from "@/lib/utils";
 
 import { loadProject } from "../data";
+import { GROUP_BYS, isGroupBy, listHrefOf, peekHrefOf, workViewHref, type GroupBy } from "@/lib/work-view";
+
 import { ItemPeek } from "../item-peek/item-peek";
 import { PeekShell } from "../item-peek/peek-shell";
 import { peekItemNumber } from "../item-peek/peek-param";
 import { Board } from "./board";
-import { GROUP_BYS, isGroupBy, type GroupBy } from "./board-model";
 
 /**
  * /projects/[key]/board (PLAN 2W; UI.md rule 5): columns = the project's
@@ -32,9 +33,12 @@ export default async function ProjectBoardPage({
   searchParams,
 }: {
   params: Promise<{ key: string }>;
-  searchParams: Promise<{ group?: string; item?: string; error?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [{ key }, { group, item, error }] = await Promise.all([params, searchParams]);
+  const [{ key }, query] = await Promise.all([params, searchParams]);
+  const group = typeof query["group"] === "string" ? query["group"] : undefined;
+  const item = typeof query["item"] === "string" ? query["item"] : undefined;
+  const error = typeof query["error"] === "string" ? query["error"] : undefined;
   const project = await loadProject(key);
   const { membership, actor } = await requireTenantContext();
   const ctx = { tenantId: membership.tenantId, actor };
@@ -63,7 +67,9 @@ export default async function ProjectBoardPage({
 
   // The side-peek (2W-B) — same URL contract as the backlog's.
   const boardBase = `/projects/${project.key}/board`;
-  const listHref = groupBy === "none" ? boardBase : `${boardBase}?group=${groupBy}`;
+  // One serializer for both work surfaces: it preserves whatever the
+  // member had chosen and puts exactly one `?` in the URL.
+  const listHref = listHrefOf(boardBase, query);
   const peekNumber = peekItemNumber(item, project.key);
   const peekItem = peekNumber === null ? undefined : data.items.find((i) => i.number === peekNumber);
   let peekDocuments: DocumentListItem[] = [];
@@ -99,7 +105,11 @@ export default async function ProjectBoardPage({
               className={cn(current && "font-semibold")}
             >
               <Link
-                href={g === "none" ? base : `${base}?group=${g}`}
+                href={workViewHref(base, query, {
+                  group: g === "none" ? null : g,
+                  item: null,
+                  error: null,
+                })}
                 aria-current={current ? "page" : undefined}
                 data-testid={`board-group-${g}`}
               >
@@ -131,7 +141,7 @@ export default async function ProjectBoardPage({
               deleteDocuments: project.caps.deleteDocuments,
               changeDocumentVisibility: project.caps.changeDocumentVisibility,
             }}
-            returnTo={`${listHref}${listHref.includes("?") ? "&" : "?"}item=${project.key}-${peekItem.number}`}
+            returnTo={peekHrefOf(boardBase, query, `${project.key}-${peekItem.number}`)}
             durationStyle={prefs.durationStyle}
             error={error}
           />

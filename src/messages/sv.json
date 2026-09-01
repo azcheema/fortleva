@@ -1218,6 +1218,47 @@
         "ungroup": "Visa alla uppgifter"
       }
     },
+    "workView": {
+      "filters": {
+        "label": "Filter och gruppering",
+        "state": "Status",
+        "stateHeading": "Visa dessa statusar",
+        "assignee": "Ansvarig",
+        "assigneeHeading": "Visa dessa ansvariga",
+        "unassigned": "Ingen ansvarig",
+        "priority": "Prioritet",
+        "priorityHeading": "Visa dessa prioriteter",
+        "hideDone": "Dölj avslutade",
+        "clear": "Rensa {count, plural, one {# filter} other {# filter}}"
+      },
+      "group": {
+        "label": "Gruppera",
+        "heading": "Gruppera listan efter",
+        "none": "Ingen gruppering",
+        "assignee": "Ansvarig",
+        "priority": "Prioritet",
+        "epic": "Fas"
+      },
+      "lanes": {
+        "unassigned": "Ingen ansvarig",
+        "noEpic": "Utanför en fas",
+        "epicUntitled": "Fas"
+      },
+      "rollup": {
+        "count": "{total, plural, one {# uppgift} other {# uppgifter}}",
+        "countFiltered": "{shown} av {total} visas",
+        "done": "{done} avslutade"
+      },
+      "summary": {
+        "all": "{total, plural, one {# uppgift} other {# uppgifter}}",
+        "filtered": "{shown} av {total} uppgifter"
+      },
+      "empty": {
+        "filteredTitle": "Inga uppgifter matchar filtren",
+        "filteredBody": "Arbetet finns kvar — filtren ovan döljer det.",
+        "filteredAction": "Rensa filtren"
+      }
+    },
     "backlog": {
       "empty": {
         "title": "Inga uppgifter ännu",
