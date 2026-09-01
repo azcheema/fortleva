@@ -3,7 +3,25 @@ name: CI
 on:
   push:
     branches: [main]
+    # A full run costs ~115 BILLABLE minutes (measured 2026-09-01:
+    # check 1 + isolation 52 + e2e 62), and the allowance is account-wide
+    # — 2,000 min/month on Free. A push that changes only prose cannot
+    # change what CI verifies, so it must not start one. This replaces
+    # the `[skip ci]` convention with something that cannot be
+    # forgotten; the convention itself still works and stays documented
+    # in PLAN §0 for the rare docs commit that also touches source.
+    # NOTE: paths-ignore skips only when EVERY changed file matches, so a
+    # push mixing docs and source still runs in full — which is correct.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  # The manual escape hatch: re-run the pipeline against any ref without
+  # inventing a no-op source commit to trigger it.
+  workflow_dispatch:
 
 # One live run per ref: a newer push supersedes the older run outright.
 # Without this, consecutive pushes evicted each other's *pending* jobs
@@ -33,7 +51,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prisma generate
       - run: pnpm typecheck
-      - run: pnpm exec eslint src --max-warnings 0
+      # `src e2e`, matching the command AGENTS.md pins. CI linted only
+      # `src` until 2026-09-01, so a lint error in the Playwright specs
+      # reached main unchallenged; the extra path costs ~2 seconds.
+      - run: pnpm exec eslint src e2e --max-warnings 0
       - run: pnpm test
       # INV-D1 is inside pnpm test (inv-d1.test.ts) — the ARC-11
       # CI-enforced cookie assertion. Do not remove.
@@ -41,6 +62,13 @@ jobs:
   isolation:
     name: Cross-tenant isolation suite
     runs-on: ubuntu-latest
+    # A commit that cannot typecheck teaches us nothing about tenant
+    # isolation, and this job costs ~50 BILLABLE minutes against the
+    # remote database. Gating on the 1-minute check job makes a broken
+    # push cost 1 minute instead of 52. It adds ~1 minute of WALL CLOCK
+    # and zero billable minutes — queued time is not billed — so the
+    # trade is free. (The e2e job already needed both.)
+    needs: [check]
     # Shared dev database for now — serialize runs. TODO(founder):
     # provide NEON_API_KEY to switch to an ephemeral Neon branch per
     # run (TENANCY.md §11 target infrastructure).
@@ -143,12 +171,26 @@ jobs:
       - run: pnpm exec prisma migrate deploy
       # provisionTenant refuses to run without the permission catalog.
       - run: pnpm exec tsx prisma/seed.ts
+      # The cache key must describe the BROWSER, not the dependency tree:
+      # keyed on pnpm-lock.yaml (as it was until 2026-09-01) every
+      # unrelated dependency bump threw away ~700 MB of Chromium and
+      # re-downloaded it. Resolving the version needs node_modules, so
+      # this step sits after install — but still BEFORE the install of
+      # the browser itself, which is what matters: a cache restores at
+      # its own step position, so moving it below `playwright install`
+      # would download the browser every run while faithfully writing a
+      # cache nothing ever reads. No restore-keys on purpose: a
+      # near-miss would restore some OTHER version's browsers, which
+      # `playwright install` then has to supersede anyway.
+      - name: Resolve the Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
       # Chromium only (~700 MB): the harness exists to catch DOM and
       # mount-time behaviour, not to certify browser coverage.
       - run: pnpm exec playwright install --with-deps chromium
