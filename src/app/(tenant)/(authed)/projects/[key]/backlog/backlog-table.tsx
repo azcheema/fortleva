@@ -681,7 +681,18 @@ export function BacklogTable({
                       ) : null}
                     </span>
                   </TableCell>
-                  <TableCell className="min-w-56">
+                  {/* The floor only binds at PHONE width — on desktop the
+                      title takes whatever the other columns leave — and
+                      224px no longer fits there. At 390px the surviving
+                      columns are select · key · title · actions, and once
+                      the selection bar makes the page tall enough to gain
+                      a vertical scrollbar the content column loses ~15px:
+                      the row's verbs then sat 6px past the table's own
+                      box, which is the defect `craft.offscreenRowActions`
+                      exists to catch and which the new
+                      `project-backlog-selection` stop caught on its first
+                      CI run. 160px leaves real headroom. */}
+                  <TableCell className="min-w-40">
                     <InlineEdit
                       kind="text"
                       name="title"
