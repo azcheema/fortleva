@@ -65,9 +65,13 @@ jobs:
     # and this is the one job whose database is real, so a kill leaves
     # throwaway tenants (and time.dbtest.ts's TenantKey rows, wrapped
     # under a throwaway root key no deployment holds) behind in it.
-    # AFTER ANY KILLED RUN, sweep by hand:
-    #   select slug from "Tenant" where slug like 'time-%' or slug like
-    #   'counters-%' or slug like 'ordering-%' or slug like 'scope-%';
+    # AFTER ANY KILLED RUN, sweep with the command that knows the whole
+    # list — this note used to name four prefixes by hand and one of them
+    # ('counters-') is not a prefix any fixture produces:
+    #   pnpm exec tsx e2e/fixtures/seed-cli.ts sweep-dbtests 90
+    # It goes through removeTenant, so it refuses anything that is not on
+    # the allow-list or that holds a member with a real email address,
+    # and it exits non-zero if any tenant was refused.
     timeout-minutes: 75
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}

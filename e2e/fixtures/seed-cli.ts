@@ -9,16 +9,26 @@
  * workers.
  *
  * DATA SAFETY (see e2e/fixtures/tenant.ts for the full contract):
- * everything is created inside a tenant this file provisions, slug
- * "e2e-" + random suffix, and `teardown` refuses any tenant whose slug
- * is not "e2e-"-prefixed. The owner password arrives in an env var,
- * lives in memory, and is never written or printed.
+ * everything the BROWSER harness creates lives inside a tenant this file
+ * provisions, slug "e2e-" + random suffix. The owner password arrives in
+ * an env var, lives in memory, and is never written or printed.
+ *
+ * `removeTenant` — which `teardown`, `sweep` and `sweep-dbtests` all go
+ * through — carries TWO guards, and it is worth being precise about
+ * them because one of them used to be the only one: the slug must match
+ * the "e2e-" prefix OR the explicit DBTEST_PREFIXES allow-list below,
+ * AND the tenant must hold no member whose email is outside
+ * "@test.invalid". The second is the guard that actually matters: a slug
+ * is a naming convention, a real address is evidence.
  *
  * Usage: tsx e2e/fixtures/seed-cli.ts <provision|teardown> <seedFile>
  *        tsx e2e/fixtures/seed-cli.ts visibility <documentId>
  *        tsx e2e/fixtures/seed-cli.ts set-visibility <documentId> <value>
  *        tsx e2e/fixtures/seed-cli.ts milestone <milestoneId>
+ *        tsx e2e/fixtures/seed-cli.ts big-project <tenantId> [size]
+ *        tsx e2e/fixtures/seed-cli.ts drop-project <projectId>
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
+ *        tsx e2e/fixtures/seed-cli.ts sweep-dbtests [maxAgeMinutes]
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -32,6 +42,65 @@ loadEnv({ path: ".env" });
 
 const SLUG_PREFIX = "e2e-";
 const EMAIL_DOMAIN = "@test.invalid";
+
+/**
+ * The vitest DB suite's throwaway tenant prefixes. Unlike the browser
+ * harness, that suite has never swept its own: a crashed `beforeAll`, or
+ * a run killed on a timeout, leaves the tenant behind, and fifteen had
+ * accumulated on the shared dev database by 2026-09-02 — the oldest
+ * three weeks old.
+ *
+ * An EXPLICIT list, never a wildcard, because it is one of the two
+ * guards standing between a cleanup command and a real tenant.
+ *
+ * IT COMES FROM TWO MECHANISMS, and the first version of this list got
+ * that wrong by reading dbtest FILE NAMES instead — it invented
+ * `attach-`/`counters-`, which no fixture produces, and missed sixteen
+ * real ones, so a sweep would have reported success while leaving most
+ * orphans behind. Regenerate it with BOTH of these:
+ *
+ *   grep -rhoE 'setupTenant\("[^"]+"' src --include=*.ts
+ *   grep -rhoE 'slug: *[`"][^`"$]*'    src --include=*.ts
+ *
+ * The first is `setupTenant(label)` (src/members/dbtest-fixture.ts builds
+ * `${label}-${run}`); the second is the handful of suites that create a
+ * tenant directly.
+ */
+const DBTEST_PREFIXES = [
+  "admin-",
+  "bulk-",
+  "clients-",
+  "copy-",
+  "ctr-a-",
+  "ctr-b-",
+  "docs-",
+  "enc-a-",
+  "enc-b-",
+  "exp-a-",
+  "exp-b-",
+  "export-",
+  "gate-",
+  "iso-a-",
+  "iso-b-",
+  "members-",
+  "mfa-",
+  "money-",
+  "ordering-",
+  "prefs-",
+  "projects-",
+  "reports-",
+  "roles-",
+  "scope-",
+  "split-",
+  "tadmin-",
+  "time-",
+  "totals-",
+  "work-",
+  "wu-",
+] as const;
+
+const isThrowawaySlug = (slug: string): boolean =>
+  slug.startsWith(SLUG_PREFIX) || DBTEST_PREFIXES.some((p) => slug.startsWith(p));
 /** Single-line, machine-readable result channel (stdout also carries logs). */
 const MARKER = "__E2E_RESULT__";
 
@@ -484,8 +553,21 @@ async function removeTenant(
   tenantId: string,
   slug: string,
 ): Promise<void> {
-  if (!slug.startsWith(SLUG_PREFIX)) {
+  if (!isThrowawaySlug(slug)) {
     throw new Error(`refusing to remove non-throwaway tenant "${slug}"`);
+  }
+  // The BELT, and the one that actually matters: a slug is a naming
+  // convention, but a member with a real address is evidence. Even if a
+  // prefix above were ever wrong, a tenant holding one non-synthetic
+  // user is refused outright.
+  const outsider = await db.member.findFirst({
+    where: { tenantId, user: { email: { not: { endsWith: EMAIL_DOMAIN } } } },
+    select: { user: { select: { email: true } } },
+  });
+  if (outsider) {
+    throw new Error(
+      `refusing to remove tenant "${slug}": it has a real member (${outsider.user.email})`,
+    );
   }
   // 2T: time rows reference projects/members/tenant with RESTRICT; published
   // reports and locked entries refuse deletion outside the maintenance GUCs.
@@ -521,6 +603,11 @@ async function removeTenant(
   await db.notificationPreference.deleteMany({ where: { tenantId } });
   await db.workflowPreset.deleteMany({ where: { tenantId } });
   await db.projectTemplate.deleteMany({ where: { tenantId } });
+  // RESTRICTs the tenant. The browser fixture never writes one, so this
+  // was missing until a dbtest tenant that HAD set a preference (the
+  // 2T exports suite flips `hoursSharingMode`) refused to delete on
+  // 2026-09-02 with a 23001 on `tenant_preference_tenant_id_fkey`.
+  await db.tenantPreference.deleteMany({ where: { tenantId } });
   await db.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
   await db.fileVersion.deleteMany({ where: { tenantId } });
   await db.document.deleteMany({ where: { tenantId } });
@@ -579,6 +666,50 @@ async function sweep(maxAgeMinutesRaw: string | undefined): Promise<void> {
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"swept":${stale.length}}
 `);
+}
+
+/**
+ * Remove the vitest DB suite's abandoned tenants. Manual, and age-gated
+ * so it cannot take a tenant a run is still using — a local suite once
+ * deleted a live CI fixture, which is why the age guard exists at all.
+ *
+ * Exits NON-ZERO if any tenant was refused. The deletes are not one
+ * transaction, so a refusal can mean a half-emptied tenant, and a
+ * cleanup that half-worked must not look the same as one that worked.
+ */
+async function sweepDbtests(maxAgeMinutesRaw: string | undefined): Promise<void> {
+  const parsed = Number(maxAgeMinutesRaw ?? 90);
+  // A floor, not just a NaN check: "" parses to 0, which would set the
+  // cutoff to NOW and sweep a tenant a concurrent run is still using.
+  const maxAgeMinutes = Number.isFinite(parsed) && parsed >= 30 ? parsed : 90;
+  const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000);
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  // Narrowed in SQL, like `sweep` — never "every tenant, filtered in JS".
+  const stale = await db.tenant.findMany({
+    where: {
+      createdAt: { lt: cutoff },
+      OR: DBTEST_PREFIXES.map((prefix) => ({ slug: { startsWith: prefix } })),
+    },
+    select: { id: true, slug: true },
+  });
+  const removed: string[] = [];
+  const refused: string[] = [];
+  for (const t of stale) {
+    try {
+      // removeTenant carries both guards: the prefix allow-list and the
+      // real-member belt. Nothing here re-implements them.
+      await removeTenant(db, t.id, t.slug);
+      removed.push(t.slug);
+    } catch (e) {
+      refused.push(`${t.slug}: ${(e as Error).message}`);
+    }
+  }
+  await db.$disconnect();
+  process.stdout.write(
+    `${MARKER}${JSON.stringify({ maxAgeMinutes, removed, refused })}\n`,
+  );
+  if (refused.length > 0) process.exitCode = 1;
 }
 
 async function teardown(seedFile: string): Promise<void> {
@@ -805,6 +936,7 @@ const main = async (): Promise<void> => {
   if (command === "big-project") return bigProject(argument!, process.argv[4]);
   if (command === "drop-project") return dropProject(argument!);
   if (command === "sweep") return sweep(argument);
+  if (command === "sweep-dbtests") return sweepDbtests(argument);
   throw new Error(`unknown command "${command ?? ""}"`);
 };
 

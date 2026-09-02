@@ -16,7 +16,13 @@ export type { E2ESeed };
  *     "e2e-" + a random suffix; no other tenant is ever touched, and
  *     "naxdor" is never so much as read;
  *   • teardown runs from global-teardown.ts on success AND on failure,
- *     and refuses to delete a tenant whose slug is not "e2e-"-prefixed;
+ *     and goes through `removeTenant`, which refuses any tenant that is
+ *     neither "e2e-"-prefixed nor on seed-cli's explicit DBTEST_PREFIXES
+ *     allow-list, and refuses ANY tenant holding a member whose email is
+ *     outside "@test.invalid" — the guard that does the real work
+ *     (widened 2026-09-02 so the vitest suite's orphans can be swept
+ *     too; before that the browser harness cleaned up and the DB suite
+ *     never did);
  *   • the owner password is generated per run, handed to the fixture
  *     worker in an env var, and never written to a file or printed.
  *
