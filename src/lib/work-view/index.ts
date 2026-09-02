@@ -50,3 +50,17 @@ export {
   type RawSearchParams,
   type WorkViewParams,
 } from "./params";
+
+export {
+  EMPTY_SPAN,
+  INITIAL_ROWS,
+  OVERSCAN,
+  VIRTUALISE_ABOVE,
+  growTo,
+  initialWindow,
+  sameWindow,
+  wholeList,
+  windowOf,
+  type RowWindow,
+  type WindowInput,
+} from "./window";

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { createBigProject, dropProject, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
  * The project board in a browser (PLAN.md 2W "Demo"; UI.md rule 5, §7.1,
@@ -417,6 +417,143 @@ test.describe("project board (owner)", () => {
     for (const title of titles) {
       await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toBeVisible();
     }
+  });
+});
+
+/**
+ * 2W-F slice 3 — THE ONLY PLACE THE WINDOWED PATH EVER RUNS.
+ *
+ * Virtualisation is inert at or below 200 rows, so the standing fixture
+ * (five tasks) and all 43 visual stops exercise the unwindowed path.
+ * Without this describe block the feature would ship having never
+ * executed once. The project is made and dropped here, so no other spec
+ * and no screenshot ever sees it.
+ */
+test.describe("a backlog past the virtualisation threshold", () => {
+  const SIZE = 250;
+  let big: { projectId: string; key: string; size: number };
+
+  test.beforeAll(async () => {
+    big = await createBigProject(seed.tenantId, SIZE);
+  });
+
+  test.afterAll(async () => {
+    if (big) await dropProject(big.projectId);
+  });
+
+  test("renders a window, not the list — and every row is still reachable, editable and countable", async ({ page }) => {
+    await page.goto(`/projects/${big.key}/backlog`);
+    const rows = page.locator('[data-testid="backlog-row"]');
+    await expect(rows.first()).toBeVisible();
+
+    // THE POINT: the DOM holds a fraction of the list.
+    const mounted = await rows.count();
+    expect(mounted).toBeGreaterThan(0);
+    expect(mounted).toBeLessThan(SIZE);
+
+    // The page is nevertheless its FULL height — the spacers pay for
+    // what is not mounted, so the scrollbar tells the truth and the
+    // position never jumps when the window refines.
+    await expect(page.getByTestId("backlog-pad-bottom")).toBeAttached();
+    const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    expect(pageHeight).toBeGreaterThan(SIZE * 30);
+
+    // The count above the table reports the WHOLE list, not the window.
+    await expect(page.getByTestId("work-filter-summary")).toContainText(String(SIZE));
+
+    // The first rows are mounted, the last are not.
+    await expect(page.locator('[data-testid="backlog-row"]', { hasText: "Row 0001" })).toBeVisible();
+    await expect(page.locator('[data-testid="backlog-row"]', { hasText: `Row ${String(SIZE).padStart(4, "0")}` })).toHaveCount(0);
+
+    // Scroll to the end: the far rows mount, the near ones are released,
+    // and the top spacer appears in their place.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(
+      page.locator('[data-testid="backlog-row"]', { hasText: `Row ${String(SIZE).padStart(4, "0")}` }),
+    ).toBeVisible({ timeout: 20_000 * SLOW });
+    await expect(page.getByTestId("backlog-pad-top")).toBeAttached();
+    await expect(page.locator('[data-testid="backlog-row"]', { hasText: "Row 0001" })).toHaveCount(0);
+
+    // A row deep in the list is fully live, not a read-only placeholder:
+    // rename the last one and see it survive a reload.
+    //
+    // The row is pinned by its id FIRST. An <InlineEdit> swaps the
+    // display text for an <input>, so the title stops being text content
+    // the moment the editor opens — a `hasText` locator would stop
+    // matching the very row it just opened, and wait for it forever.
+    const lastId = await page
+      .locator('[data-testid="backlog-row"]', { hasText: `Row ${String(SIZE).padStart(4, "0")}` })
+      .getAttribute("data-item-id");
+    expect(lastId).toBeTruthy();
+    const last = page.locator(`[data-testid="backlog-row"][data-item-id="${lastId}"]`);
+    const renamed = `Renamed ${Date.now()}`;
+    await last.getByRole("button", { name: new RegExp(`Row ${String(SIZE).padStart(4, "0")}`) }).first().click();
+    const field = last.locator("input").first();
+    await field.fill(renamed);
+    await field.press("Enter");
+    await expect(
+      page.locator('[data-testid="backlog-row"]', { hasText: renamed }),
+    ).toBeVisible({ timeout: 20_000 * SLOW });
+    await page.reload();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(
+      page.locator('[data-testid="backlog-row"]', { hasText: renamed }),
+    ).toBeVisible({ timeout: 20_000 * SLOW });
+
+    // Put it back. These three tests share one project (it is made once
+    // in beforeAll), so a mutation left behind here is a mutation the
+    // next test inherits — which is exactly how this test first broke
+    // its sibling: the sibling looked for "Row 0250" and found a row
+    // this one had renamed.
+    await last.getByRole("button", { name: new RegExp(renamed) }).first().click();
+    const restore = last.locator("input").first();
+    await restore.fill(`Row ${String(SIZE).padStart(4, "0")}`);
+    await restore.press("Enter");
+    await expect(
+      page.locator('[data-testid="backlog-row"]', { hasText: `Row ${String(SIZE).padStart(4, "0")}` }),
+    ).toBeVisible({ timeout: 20_000 * SLOW });
+  });
+
+  test("the whole list is still selectable and countable, though most of it is not in the DOM", async ({ page }) => {
+    await page.goto(`/projects/${big.key}/backlog`);
+    await expect(page.locator('[data-testid="backlog-row"]').first()).toBeVisible();
+
+    // Select-all reads the LIST, not the window — and is capped at what
+    // one bulk action can carry, which is the cap the toast names.
+    await page.getByTestId("backlog-select-all").click();
+    await expect(page.getByTestId("bulk-count")).toContainText("50");
+
+    // The bar acts on rows that are not mounted at all.
+    await page.getByTestId("bulk-priority").click();
+    await page.getByRole("menuitem", { name: "Low" }).click();
+    await expect(page.getByTestId("bulk-bar")).toHaveCount(0, { timeout: 20_000 * SLOW });
+    await expect(
+      page.locator('[data-testid="backlog-row"]').first().locator('[data-slot="priority-indicator"]'),
+    ).toHaveAttribute("data-value", "LOW", { timeout: 20_000 * SLOW });
+  });
+
+  test("a filter that empties the list, then clears, does not strand the rows it hid", async ({ page }) => {
+    // The bug this pins: with the window kept in component state, a
+    // filter down to a handful of rows and back out left a stale window
+    // with no bottom spacer — the page could not scroll, so no scroll
+    // event could fire, and the rest of the list was unreachable for
+    // good. Deriving the window in render is what makes this pass.
+    await page.goto(`/projects/${big.key}/backlog?hideDone=true&priority=URGENT`);
+    await expect(page.locator('[data-variant="filtered"]')).toBeVisible();
+    await expect(page.locator('[data-testid="backlog-row"]')).toHaveCount(0);
+
+    await page.getByTestId("backlog-filtered-clear").click();
+    await expect(page.locator('[data-testid="backlog-row"]').first()).toBeVisible();
+    // Full height again, and the far end still reachable. Asserted on
+    // POSITION rather than on a title: `aria-rowindex` is the row's place
+    // in the WHOLE list (set only while windowed), so this cannot be
+    // broken by a sibling test renaming something, and it checks the
+    // windowing metadata at the same time.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    // ARIA counts the header as row 1, so the last task of 250 is 251.
+    await expect(
+      page.locator(`[data-testid="backlog-row"][aria-rowindex="${SIZE + 1}"]`),
+    ).toBeVisible({ timeout: 20_000 * SLOW });
   });
 });
 

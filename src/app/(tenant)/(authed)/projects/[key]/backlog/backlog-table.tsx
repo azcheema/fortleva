@@ -17,12 +17,21 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useQueryStates } from "nuqs";
-import { useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { toast } from "sonner";
 
 import {
   DataTable,
   EmptyState,
+  ROW_HEIGHT,
   InlineEdit,
   MemberAvatar,
   PriorityIndicator,
@@ -50,16 +59,23 @@ import { durationInputText, formatDate, formatDuration, type DurationStyle } fro
 import type { FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
 import {
+  EMPTY_SPAN,
   MAX_BULK_ITEMS,
+  VIRTUALISE_ABOVE,
   allRowAnchors,
   applyMove,
   canEnterState,
   epicIdsOf,
   filtersOf,
+  growTo,
   hasActiveFilters,
+  initialWindow,
   laneKeyOf,
   peekHrefOf,
   visibleColumns,
+  sameWindow,
+  wholeList,
+  windowOf,
   workView,
   workViewHref,
   workViewParsers,
@@ -67,6 +83,7 @@ import {
   type Move,
   type Rollup,
   type RowAnchors,
+  type RowWindow,
   type WorkItem,
 } from "@/lib/work-view";
 import type { ResolvedItemList } from "@/modules/work";
@@ -140,6 +157,14 @@ const SPAN_AFTER_KEY = COLUMN_COUNT - 2;
  */
 const NO_ANCHORS: RowAnchors = { up: null, down: null, top: null, bottom: null };
 
+/**
+ * How far outside the live window a focused row is still kept mounted.
+ * Generous enough that ordinary interaction — open an editor, scroll a
+ * screen, come back — never loses a keystroke, small enough that the
+ * worst case mounts fifty extra rows rather than the whole list.
+ */
+const FOCUS_MARGIN = 50;
+
 type RowData = { type: "backlog-row"; itemId: string; laneKey: string };
 const isRowData = (d: Record<string | symbol, unknown>): d is RowData =>
   d["type"] === "backlog-row";
@@ -158,6 +183,56 @@ const isRowData = (d: Record<string | symbol, unknown>): d is RowData =>
  * every indicator is pixel-identical.
  */
 type DropAt = { above: string } | { belowLast: string };
+
+/**
+ * What the window is derived FROM. The measurement lives in state; the
+ * window itself never does — see the long note at the call site.
+ */
+type Measured = {
+  scrollTop: number;
+  listTop: number;
+  viewportHeight: number;
+  rowHeight: number;
+};
+
+const sameMeasured = (a: Measured | null, b: Measured): boolean =>
+  a !== null &&
+  a.scrollTop === b.scrollTop &&
+  a.listTop === b.listTop &&
+  a.viewportHeight === b.viewportHeight &&
+  a.rowHeight === b.rowHeight;
+
+/**
+ * The empty space standing in for rows that are not mounted.
+ *
+ * A RAW `<tr>` with no `data-slot`, deliberately: `craft.rowPitch`
+ * selects `[data-slot=table-row]` and asserts every match measures one
+ * `--row-h`, which a 7000px spacer plainly does not. It is invisible to
+ * that check by construction rather than by an exemption someone could
+ * later remove.
+ *
+ * `padding: 0` is an inline style so it beats `<DataTable>`'s
+ * `[&_td]:py-0.5`. Measured, because the reason is not the obvious one:
+ * with `box-sizing: border-box` the 4px of padding is absorbed INSIDE a
+ * `height` property, so at 180px the padded and unpadded spacers are
+ * both 180.000px. The guard bites only when the ask is smaller than the
+ * padding — at a 2px ask it is 4px against 2px — which is exactly what
+ * happens at the very top and bottom of the list.
+ *
+ * NEVER RENDERED AT ZERO. A zero-height spacer between two bordered
+ * rows still measures 0.5px, because `border-collapse` splits the
+ * inter-row rule into both boxes; and a trailing zero-height spacer
+ * steals `:last-child` from the real last row, which then keeps the
+ * bottom hairline `[&_tr:last-child]:border-b-0` exists to remove. The
+ * caller renders it only when it stands for at least one row.
+ */
+function Spacer({ height, testId }: { height: number; testId: string }) {
+  return (
+    <tr aria-hidden="true" data-testid={testId} style={{ height }}>
+      <td colSpan={COLUMN_COUNT} style={{ padding: 0 }} />
+    </tr>
+  );
+}
 
 const sameDropAt = (a: DropAt | null, b: DropAt | null): boolean => {
   if (a === null || b === null) return a === b;
@@ -184,6 +259,7 @@ function DragRow({
   canDrag,
   className,
   onEdge,
+  rowIndex,
   children,
 }: {
   itemId: string;
@@ -191,6 +267,9 @@ function DragRow({
   canDrag: boolean;
   className?: string;
   onEdge: (itemId: string, edge: Edge | null) => void;
+  /** 1-based position in the WHOLE list — set only while windowed, so a
+   * screen reader is not told "row 3 of 40" in a list of four hundred. */
+  rowIndex?: number | undefined;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLTableRowElement>(null);
@@ -236,6 +315,7 @@ function DragRow({
       ref={ref}
       data-testid="backlog-row"
       data-item-id={itemId}
+      aria-rowindex={rowIndex}
       // Opacity, never a transform: a transformed row would become the
       // containing block for the drop line and move it off the row.
       className={cn(className, canDrag && "cursor-grab active:cursor-grabbing", dragging && "opacity-40")}
@@ -374,6 +454,146 @@ export function BacklogTable({
   // can see — while re-showing them brings them back.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
 
+  // ── the window (2W-F slice 3) ───────────────────────────────────
+  //
+  // THE MEASUREMENT LIVES IN STATE; THE WINDOW NEVER DOES. That is not
+  // style — a window kept in state goes stale and cannot recover. Its
+  // `count` is `rows.length`, which moves with NO scroll event and NO
+  // remount: the filter chips are shallow, `useOptimistic` rewrites the
+  // list, and every mutation calls `router.refresh()`. Mount under a
+  // filter showing five rows, then clear it: a stale window would render
+  // five rows with no bottom spacer, the page would not be tall enough
+  // to scroll, no scroll event could ever fire, and the other 395 rows
+  // would be unreachable for good. Deriving in render means every render
+  // uses THIS render's count.
+  //
+  // ONLY WHEN UNGROUPED. `workView` interleaves group headers and items
+  // in one flat array, so a window can open in the middle of a group and
+  // leave its header off screen — the member would read unlabelled rows
+  // while the row menu offers "Move to top of" a group they cannot see.
+  // A grouped list is also short by construction. Not worth the rope.
+  const count = rows.length;
+  const windowable = params.group === "none";
+  /** True only when rows are actually being held back from the DOM. */
+  const windowed = windowable && count > VIRTUALISE_ABOVE;
+  const [measured, setMeasured] = useState<Measured | null>(null);
+  // The span a drag has covered. Non-null means a drag is in flight, and
+  // the window may then only GROW: if the source row unmounts, pdnd
+  // never fires `dragend`, its `isActive` latch stays set (refusing the
+  // next drag) and the auto-scroll scheduler keeps scrolling the page
+  // after the mouse is released.
+  const [dragSpan, setDragSpan] = useState<{ start: number; end: number } | null>(null);
+  // The row that holds focus. An open <InlineEdit> keeps the member's
+  // typed text in local state and commits on blur — and Chromium fires
+  // NO blur when the focused element is removed from the DOM, so
+  // scrolling an open editor out of the window would discard what they
+  // typed with no commit, no toast and no revert message. Keeping its
+  // row mounted is the fix; it costs one row.
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+
+  const live: RowWindow = !windowable
+    ? wholeList(count)
+    : measured === null
+      ? initialWindow(count, parseFloat(ROW_HEIGHT.default))
+      : windowOf({ ...measured, count });
+  const rowHeight = measured?.rowHeight ?? parseFloat(ROW_HEIGHT.default);
+  const focusedIndex = focusedRowId
+    ? rows.findIndex((r) => r.kind === "item" && r.item.id === focusedRowId)
+    : -1;
+  // The focus pin is BOUNDED, and that is not a detail. `growTo` unions a
+  // SPAN, so pinning a row far from the viewport would mount everything
+  // in between — click a control, scroll to the other end of a 3000-row
+  // backlog, and one render mounts 2950 rows. Within the margin the open
+  // editor is kept alive, which is what protects the member's typed text
+  // (Chromium fires no blur when a focused element is removed, so the
+  // text would vanish with no commit and no toast). Beyond it the edit is
+  // abandoned — the same outcome as clicking elsewhere, and a bounded
+  // loss is better than an unbounded mount.
+  const pinned =
+    focusedIndex >= 0 &&
+    focusedIndex >= live.start - FOCUS_MARGIN &&
+    focusedIndex < live.end + FOCUS_MARGIN;
+  const win = !windowable
+    ? live
+    : growTo(
+        growTo(live, dragSpan ?? EMPTY_SPAN, count, rowHeight),
+        pinned ? { start: focusedIndex, end: focusedIndex + 1 } : EMPTY_SPAN,
+        count,
+        rowHeight,
+      );
+
+  /**
+   * Read the page's geometry. Legal HERE and nowhere else: a ref read
+   * during render is an error, and so is setState in an effect body —
+   * but both are fine inside a callback the browser invokes.
+   */
+  // The window as last rendered, for the callbacks that outlive a
+  // render. A ref WRITE in an effect is legal; a ref READ during render
+  // is not, which is why the window itself is still derived above.
+  const winRef = useRef(win);
+  useEffect(() => {
+    winRef.current = win;
+  }, [win]);
+
+  const measure = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    // Measure a real row rather than trusting the token: a browser at
+    // 110% zoom renders 36px as 39.6, and an arithmetic window built on
+    // the wrong height drifts further the longer the list.
+    const firstRow = el.querySelector<HTMLElement>("[data-slot=table-row]");
+    const measuredRow = firstRow?.getBoundingClientRect().height ?? 0;
+    const next: Measured = {
+      scrollTop: window.scrollY,
+      listTop: rect.top + window.scrollY,
+      viewportHeight: window.innerHeight,
+      rowHeight: measuredRow > 0 ? measuredRow : parseFloat(ROW_HEIGHT.default),
+    };
+    // Bail on the derived WINDOW, not the raw measurement: scrollTop
+    // changes on every frame, so comparing measurements would re-render
+    // the whole table continuously. Scrolling within one row must cost
+    // nothing.
+    setMeasured((prev) => {
+      if (prev === null) return next;
+      if (sameMeasured(prev, next)) return prev;
+      return sameWindow(windowOf({ ...prev, count }), windowOf({ ...next, count })) ? prev : next;
+    });
+    setDragSpan((prev) => {
+      if (prev === null) return prev;
+      const w = windowOf({ ...next, count });
+      const start = Math.min(prev.start, w.start);
+      const end = Math.max(prev.end, w.end);
+      return start === prev.start && end === prev.end ? prev : { start, end };
+    });
+  }, [count]);
+
+  // BEFORE PAINT, not after. Nothing else measures on load — no scroll
+  // or resize event fires on mount — so browser scroll restoration (a
+  // back-navigation) or the `#new-task` hash would otherwise land the
+  // member deep in the list looking at blank spacer until they happened
+  // to scroll. A layout effect also re-runs when `count` changes, which
+  // is what keeps `listTop` right when the filter bar grows a Clear
+  // control and pushes the table down with no scroll and no resize.
+  useLayoutEffect(() => {
+    if (windowed) measure();
+  }, [measure, windowed]);
+
+  useEffect(() => {
+    // `windowed`, not `windowable`: below the threshold the whole list is
+    // rendered anyway, so listening would re-render every backlog in the
+    // product on every scroll event for no benefit at all.
+    if (!windowed) return;
+    const onScroll = () => measure();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [measure, windowed]);
+
   // Hoisted: epicIdsOf allocates a Set over every item, so computing it
   // inside the row map would be O(n^2) allocations on every render.
   const epicIds = epicIdsOf(items);
@@ -427,7 +647,19 @@ export function BacklogTable({
     return combine(
       monitorForElements({
         canMonitor: ({ source }) => isRowData(source.data),
+        // The window may only grow from here until the drop, whatever the
+        // scroll does. EMPTY_SPAN widens nothing, so a drag that never
+        // scrolls behaves exactly as if this were not here.
+        // Seeded with the window AS IT IS NOW, not EMPTY_SPAN: the
+        // union below only ever sees the NEW window, so a single large
+        // scroll during a drag would otherwise drop the source row —
+        // and a source row that unmounts means no `dragend`, a latch
+        // that refuses every later drag, and auto-scroll that never
+        // stops.
+        onDragStart: () =>
+          setDragSpan({ start: winRef.current.start, end: winRef.current.end }),
         onDrop: ({ source, location }) => {
+          setDragSpan(null);
           setDropAt(null);
           const target = location.current.dropTargets[0];
           if (!target || !isRowData(source.data) || !isRowData(target.data)) return;
@@ -512,9 +744,28 @@ export function BacklogTable({
         rollup={rollup}
       />
       <DataTable flush scrollLabel={t("scrollLabel")}>
-        <Table>
+        <Table
+          // NO `table-fixed`, and the reason is measured rather than
+          // theoretical. Fixed layout would make the `w-0` on the select
+          // and actions headers AUTHORITATIVE instead of a min-content
+          // floor, collapsing the actions column so the row's verbs
+          // overflow the table's right edge — the same defect
+          // `craft.offscreenRowActions` caught at phone width, except up
+          // here no stop would ever photograph it. Column widths may
+          // therefore shift a little as long titles scroll into the
+          // window; that is the lesser evil, and it is reversible if it
+          // ever reads badly.
+          //
+          // The list is longer than the DOM, so it must say so. ARIA
+          // counts the HEADER as row 1, hence the +1 on both.
+          // Header + every task + the create row, which is always
+          // rendered and is a row a screen reader can land on.
+          {...(windowed
+            ? { "aria-rowcount": count + 1 + (data.caps.canCreate ? 1 : 0) }
+            : {})}
+        >
           <TableHeader>
-            <TableRow>
+            <TableRow {...(windowed ? { "aria-rowindex": 1 } : {})}>
               {/* PHONE-DROPPED, and measured rather than guessed. Cells are
                   `whitespace-nowrap`, so the title column's min-content is
                   the whole title and the table is already at its natural
@@ -575,12 +826,40 @@ export function BacklogTable({
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {rows.map((row) => {
+          <TableBody
+            ref={bodyRef}
+            // Which row holds focus, so the window can keep it mounted.
+            // Capture phase: focus lands on a control inside the cell,
+            // not on the row, and only the capture pass sees it on the
+            // way down.
+            onFocusCapture={(e) => {
+              const row = (e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");
+              const id = row?.dataset["itemId"] ?? null;
+              setFocusedRowId((prev) => (prev === id ? prev : id));
+            }}
+            // Released when focus leaves the table. Without this the row
+            // is pinned for ever, and because the window only ever grows
+            // to reach it, one focused row at the far end eventually
+            // mounts the entire list — the opposite of the point.
+            onBlurCapture={(e) => {
+              const next = e.relatedTarget as Node | null;
+              if (!next || !e.currentTarget.contains(next)) setFocusedRowId(null);
+            }}
+            // Chrome's scroll anchoring reacts to a mutating spacer by
+            // adjusting scrollTop, which fires another scroll event,
+            // which recomputes the window: a feedback loop that only
+            // needs one pixel of row-height error to start.
+            style={{ overflowAnchor: "none" }}
+          >
+            {win.padTop > 0 ? <Spacer height={win.padTop} testId="backlog-pad-top" /> : null}
+            {rows.slice(win.start, win.end).map((row, offset) => {
+              // 1-based, and the header is row 1 — so the first task is 2.
+              const rowIndex = win.start + offset + 2;
               if (row.kind === "group") {
                 return (
                   <GroupRow
                     key={`g:${row.key}`}
+                    rowIndex={windowed ? rowIndex : undefined}
                     lane={row.lane}
                     rollup={row.rollup}
                     locale={locale}
@@ -654,6 +933,7 @@ export function BacklogTable({
                   canDrag={data.caps.canEdit && item.number > 0}
                   onEdge={onEdge}
                   className={cn("relative", visibilityRowCue(item.visibility))}
+                  rowIndex={windowed ? rowIndex : undefined}
                 >
                   <TableCell priority="medium">
                     {data.caps.canEdit ? (
@@ -877,8 +1157,20 @@ export function BacklogTable({
                 the way to add work would be the dead end §5.8 forbids.
                 A task created here may not match the filter — the
                 summary count above says so immediately. */}
+            {/* BEFORE the create row, so `[&_tr:last-child]:border-b-0`
+                keeps landing on the create row exactly as it does today.
+                And never at zero height: a zero-height spacer still
+                measures half a pixel (border-collapse splits the
+                inter-row rule) and, for a member who cannot create, would
+                take `:last-child` from the last real row and hand it back
+                the hairline that rule exists to remove. */}
+            {win.padBottom > 0 ? <Spacer height={win.padBottom} testId="backlog-pad-bottom" /> : null}
             {data.caps.canCreate ? (
-              <CreateRow projectId={projectId} projectKey={projectKey} />
+              <CreateRow
+                projectId={projectId}
+                projectKey={projectKey}
+                rowIndex={windowed ? count + 2 : undefined}
+              />
             ) : null}
           </TableBody>
         </Table>
@@ -962,12 +1254,14 @@ function GroupRow({
   locale,
   durationStyle,
   projectKey,
+  rowIndex,
 }: {
   lane: Lane;
   rollup: Rollup;
   locale: string;
   durationStyle: DurationStyle;
   projectKey: string;
+  rowIndex?: number | undefined;
 }) {
   const t = useTranslations("projects.workView");
   const tPriority = useTranslations("states.priority");
@@ -983,7 +1277,12 @@ function GroupRow({
             : t("lanes.noEpic");
 
   return (
-    <TableRow data-testid="backlog-group" data-lane={lane.key} className="bg-muted/40">
+    <TableRow
+      data-testid="backlog-group"
+      data-lane={lane.key}
+      aria-rowindex={rowIndex}
+      className="bg-muted/40"
+    >
       <TableCell colSpan={COLUMN_COUNT}>
         <span className="flex items-center gap-2">
           {lane.kind === "member" ? <MemberAvatar id={lane.memberId} name={lane.name} size="sm" /> : null}
@@ -1022,7 +1321,15 @@ function GroupRow({
  * for the next title; Escape or an empty blur returns to rest.
  * Deliberately not a <form action> — we clear the value on success,
  * React never resets it mid-flight. */
-function CreateRow({ projectId, projectKey }: { projectId: string; projectKey: string }) {
+function CreateRow({
+  projectId,
+  projectKey,
+  rowIndex,
+}: {
+  projectId: string;
+  projectKey: string;
+  rowIndex?: number | undefined;
+}) {
   const t = useTranslations("projects.backlog");
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -1049,7 +1356,7 @@ function CreateRow({ projectId, projectKey }: { projectId: string; projectKey: s
   };
 
   return (
-    <TableRow id="new-task" className="scroll-mt-16">
+    <TableRow id="new-task" aria-rowindex={rowIndex} className="scroll-mt-16">
       {/* The select column has no meaning for a row that does not exist
           yet, but the cell must still be there or every cell after it
           shifts one column left — and it must carry the SAME priority as

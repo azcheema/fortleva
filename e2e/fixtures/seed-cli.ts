@@ -660,6 +660,128 @@ async function milestone(milestoneId: string): Promise<void> {
   );
 }
 
+/**
+ * A project with more rows than the virtualisation threshold, created
+ * and dropped by the ONE spec that needs it.
+ *
+ * It exists because virtualisation is inert at or below 200 rows, so the
+ * ordinary fixture (five tasks) and all 43 visual stops exercise the
+ * UNWINDOWED path and could never catch a defect in the windowed one.
+ * Without this the feature would ship having never run.
+ *
+ * DELIBERATELY NOT THROUGH THE SERVICES, and this is the one place in
+ * the harness that takes that liberty. `createItem` is one transaction
+ * per row with a counter lock and a rank lock; 250 of them is minutes,
+ * on every CI run, forever. This is a single `createMany` with
+ * pre-computed fractional ranks — the same keys `ranksBetween` would
+ * have produced — because what the spec is testing is the RENDERER, not
+ * the write path, which `work.dbtest.ts` and `ordering.dbtest.ts`
+ * already cover exhaustively. It lives in the throwaway `e2e-` tenant
+ * and is deleted by the same command that made it.
+ */
+async function bigProject(tenantId: string, sizeArg: string | undefined): Promise<void> {
+  const size = Number(sizeArg ?? "250");
+  if (!Number.isInteger(size) || size < 1 || size > 1000) {
+    throw new Error(`big-project size must be 1..1000, got "${sizeArg ?? ""}"`);
+  }
+  const { getPlatformClient } = await import("../../src/db/client");
+  const { ranksBetween } = await import("../../src/lib/rank");
+  const db = getPlatformClient();
+
+  const client = await db.client.findFirstOrThrow({
+    where: { tenantId },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const owner = await db.member.findFirstOrThrow({
+    where: { tenantId },
+    select: { id: true },
+    orderBy: { joinedAt: "asc" },
+  });
+  const projectId = randomUUID();
+  const key = "BIG";
+  await db.project.create({
+    data: { id: projectId, tenantId, clientId: client.id, key, name: "Big backlog" },
+  });
+
+  // The states this project needs, seeded the way ensureProjectStates
+  // would: no name, a durable seed key (DATA_MODEL §6.14).
+  const shape = [
+    { seedKey: "BACKLOG", category: "BACKLOG" },
+    { seedKey: "TODO", category: "TODO", isDefault: true },
+    { seedKey: "IN_PROGRESS", category: "IN_PROGRESS" },
+    { seedKey: "IN_REVIEW", category: "IN_PROGRESS" },
+    { seedKey: "DONE", category: "DONE", requiresApproval: true },
+    { seedKey: "CANCELLED", category: "CANCELLED" },
+    { seedKey: "TRIAGE", category: "TRIAGE", isHidden: true },
+  ] as const;
+  const stateRanks = ranksBetween(null, null, shape.length);
+  const stateIds = shape.map(() => randomUUID());
+  await db.workflowState.createMany({
+    data: shape.map((st, i) => ({
+      id: stateIds[i]!,
+      tenantId,
+      projectId,
+      seedKey: st.seedKey,
+      category: st.category,
+      rank: stateRanks[i]!,
+      isDefault: "isDefault" in st ? st.isDefault : false,
+      isHidden: "isHidden" in st ? st.isHidden : false,
+      requiresApproval: "requiresApproval" in st ? st.requiresApproval : false,
+    })),
+  });
+  const todo = stateIds[1]!;
+
+  const ranks = ranksBetween(null, null, size);
+  const ids = Array.from({ length: size }, () => randomUUID());
+  await db.workItem.createMany({
+    data: ids.map((id, i) => ({
+      id,
+      tenantId,
+      clientId: client.id,
+      projectId,
+      number: i + 1,
+      type: "TASK" as const,
+      // The index is IN the title so a spec can assert which slice of the
+      // list is mounted without counting DOM nodes.
+      title: `Row ${String(i + 1).padStart(4, "0")}`,
+      stateId: todo,
+      stateCategory: "TODO" as const,
+      rootId: id,
+      rank: ranks[i]!,
+      visibility: "INTERNAL" as const,
+      createdByMemberId: owner.id,
+    })),
+  });
+  // The counter must agree, or a later create through the real service
+  // would mint a duplicate number.
+  await db.tenantCounter.upsert({
+    where: { tenantId_key: { tenantId, key: `work_item:${projectId}` } },
+    create: { tenantId, key: `work_item:${projectId}`, value: size },
+    update: { value: size },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ projectId, key, size })}\n`);
+}
+
+/** Remove the big project and everything under it. */
+async function dropProject(projectId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  const project = await db.project.findUnique({ where: { id: projectId }, select: { tenantId: true } });
+  if (project) {
+    await db.workItemActivity.deleteMany({ where: { projectId } });
+    await db.workItem.deleteMany({ where: { projectId } });
+    await db.workflowState.deleteMany({ where: { projectId } });
+    await db.tenantCounter.deleteMany({
+      where: { tenantId: project.tenantId, key: `work_item:${projectId}` },
+    });
+    await db.project.delete({ where: { id: projectId } });
+  }
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ dropped: Boolean(project) })}\n`);
+}
+
 /** The DB half of the visibility assertions. */
 async function visibility(documentId: string): Promise<void> {
   const { getPlatformClient } = await import("../../src/db/client");
@@ -680,6 +802,8 @@ const main = async (): Promise<void> => {
   if (command === "visibility") return visibility(argument!);
   if (command === "set-visibility") return setVisibility(argument!, process.argv[4]!);
   if (command === "milestone") return milestone(argument!);
+  if (command === "big-project") return bigProject(argument!, process.argv[4]);
+  if (command === "drop-project") return dropProject(argument!);
   if (command === "sweep") return sweep(argument);
   throw new Error(`unknown command "${command ?? ""}"`);
 };

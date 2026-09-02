@@ -105,6 +105,22 @@ export async function readMilestone(milestoneId: string): Promise<MilestoneRecor
   return runCli<MilestoneRecord>(["milestone", milestoneId]);
 }
 
+/**
+ * Make a project with more rows than the virtualisation threshold. Used
+ * by exactly one spec, which drops it again — it is not part of the
+ * standing fixture, so no other spec and no visual stop ever sees it.
+ */
+export async function createBigProject(
+  tenantId: string,
+  size = 250,
+): Promise<{ projectId: string; key: string; size: number }> {
+  return runCli(["big-project", tenantId, String(size)]);
+}
+
+export async function dropProject(projectId: string): Promise<void> {
+  await runCli(["drop-project", projectId]);
+}
+
 export function readSeed(): E2ESeed | null {
   if (!existsSync(SEED_FILE)) return null;
   return JSON.parse(readFileSync(SEED_FILE, "utf8")) as E2ESeed;
