@@ -219,4 +219,49 @@ test.describe("document visibility", () => {
     await expect(rowFor(page, seed.internalDocName)).toBeVisible();
     expect(await documentVisibility(seed.internalDocId)).not.toBeNull();
   });
+
+  /**
+   * THE CUE MUST SURVIVE THE LAST ROW — the guard `UI.md` §10.4 has
+   * always claimed and, until this test, did not have.
+   *
+   * The standing trap: `[&_tr:last-child]:border-0` on a table body
+   * zeroes ALL FOUR border widths, including the `border-left` that
+   * `visibilityRowCue()` paints — so the last client-visible row of
+   * every table in the product silently lost its safety marking while
+   * the legend beside it asserted it in words. `TableBody` therefore
+   * carries `border-b-0`, and nothing had been checking.
+   *
+   * Nothing else can catch it. The craft audit's `rowPitch` measures row
+   * HEIGHT, which a missing left border does not change, so a regression
+   * here is invisible to all 168 stops. This is the only tripwire.
+   *
+   * It asserts the reserved width on EVERY row rather than only the
+   * client-visible one, because `visibilityRowCue` deliberately reserves
+   * the same 2px on an INTERNAL row (in `transparent`) so rows do not
+   * jump — and it is exactly that reservation that `border-0` destroys.
+   */
+  test("the client-visible row cue survives, including on the last row of a table", async ({ page }) => {
+    await page.goto("/files");
+    const rows = page.locator("tbody tr");
+    await expect(rows.first()).toBeVisible();
+
+    const widths = await rows.evaluateAll((els) =>
+      els.map((el) => window.getComputedStyle(el).borderLeftWidth),
+    );
+    expect(widths.length).toBeGreaterThan(1);
+    // Including the last — the row the trap ate.
+    expect(new Set(widths)).toEqual(new Set(["2px"]));
+
+    // And the cue is a real colour on a client-visible row, not merely a
+    // reserved gap: the two states must differ on this channel.
+    const clientRow = rowFor(page, seed.clientVisibleDocName);
+    await expect(clientRow).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+    const cue = await clientRow.evaluate((el) => window.getComputedStyle(el).borderLeftColor);
+    const internalCue = await rowFor(page, seed.internalDocName).evaluate(
+      (el) => window.getComputedStyle(el).borderLeftColor,
+    );
+    expect(cue).not.toBe(internalCue);
+    // `transparent` computes to an alpha-0 colour; the cue must not be one.
+    expect(cue).not.toMatch(/,\s*0\)$/);
+  });
 });

@@ -346,6 +346,129 @@ const replaceAt = (items: readonly WorkItem[], idx: number, next: WorkItem): Wor
   items.map((i, k) => (k === idx ? next : i));
 
 /**
+ * The four anchors a LIST offers: nudge one place, or jump to an end.
+ * `null` means the verb does not apply and must not be rendered (an
+ * item already at the top has no "Move up"), which is the timeline's
+ * precedent — "an item that cannot act is left out rather than rendered
+ * permanently inert".
+ */
+export type RowAnchors = {
+  up: Pick<Move, "beforeId"> | null;
+  down: Pick<Move, "afterId"> | null;
+  top: Pick<Move, "beforeId"> | null;
+  bottom: Pick<Move, "afterId"> | null;
+};
+
+/**
+ * Anchors for a rank-only move inside the RENDERED list.
+ *
+ * It takes `rows` — what is actually on screen — and not the project
+ * list, and that is the whole point. Under a filter the visible list is
+ * a SUBSEQUENCE of the project order, so anchoring on the neighbour in
+ * `items` would swap the task with a row nobody can see: the screen
+ * would not change, the member would click again, and the project order
+ * would drift silently. Anchoring on the neighbour the member can
+ * actually see means "after B" lands directly after B whatever is
+ * hidden between them, which is exactly how the server resolves it
+ * (`moveItem` locks the anchor's true neighbour and mints a key between
+ * the two).
+ *
+ * Scoped to the item's OWN GROUP for the same reason a drag is: leaving
+ * the group would be a property change, which a rank-only move cannot
+ * express. At a group's edge the verb is simply absent rather than
+ * quietly anchoring on the next group's row — which would change the
+ * rank while moving nothing on screen.
+ *
+ * `edgeAnchors` cannot serve here: it is STATE-scoped (it goes through
+ * `cardsIn`, whose first filter is `stateId`), so its "top" means the
+ * top of a board column, not of a list group.
+ */
+export function rowAnchors(rows: readonly WorkRow[], itemId: string): RowAnchors {
+  const at = rows.findIndex((r) => r.kind === "item" && r.item.id === itemId);
+  if (at === -1) return { up: null, down: null, top: null, bottom: null };
+
+  // The item rows of this item's group, in rendered order. A group
+  // header bounds the walk in both directions; ungrouped, the whole list
+  // is one group and the walk simply runs to the ends.
+  const group: WorkItem[] = [];
+  for (let i = at; i >= 0; i--) {
+    const row = rows[i]!;
+    if (row.kind === "group") break;
+    group.unshift(row.item);
+  }
+  for (let i = at + 1; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (row.kind === "group") break;
+    group.push(row.item);
+  }
+
+  // The optimistic create row has no database row yet, so it can never
+  // be an anchor the server understands — the same guard `edgeAnchors`
+  // applies. It is dropped from the neighbour list rather than merely
+  // skipped, so "up" from below it reaches a real row.
+  const anchorable = group.filter((i) => i.number > 0 || i.id === itemId);
+  const idx = anchorable.findIndex((i) => i.id === itemId);
+  const prev = idx > 0 ? anchorable[idx - 1] : undefined;
+  const next = idx >= 0 ? anchorable[idx + 1] : undefined;
+  const first = anchorable[0];
+  const last = anchorable.at(-1);
+
+  return {
+    up: prev ? { beforeId: prev.id } : null,
+    down: next ? { afterId: next.id } : null,
+    // "Top" and "bottom" collapse into the nudge when the item is second
+    // or second-to-last; that duplication is the timeline's behaviour too
+    // and is preferable to a menu whose items move around.
+    top: first && first.id !== itemId ? { beforeId: first.id } : null,
+    bottom: last && last.id !== itemId ? { afterId: last.id } : null,
+  };
+}
+
+/**
+ * Every rendered row's anchors, in ONE pass over the list.
+ *
+ * `rowAnchors` is O(n) per call, so asking it once per row while
+ * rendering is O(n^2) — and the row map re-runs on every pointer move
+ * during a drag, because the drop indicator is component state. This
+ * walks the groups once and hands back a lookup instead.
+ */
+export function allRowAnchors(rows: readonly WorkRow[]): Map<string, RowAnchors> {
+  const out = new Map<string, RowAnchors>();
+  let group: WorkItem[] = [];
+  const flush = () => {
+    const anchorable = group.filter((i) => i.number > 0);
+    for (const item of group) {
+      // An un-persisted row is not an anchor for anyone, but it still
+      // needs its own entry — it can be moved before it is saved, and it
+      // must keep its RENDERED position while doing so. Appending it
+      // instead inverts its own anchors (its neighbours end up on the
+      // wrong sides), which is what `rowAnchors` does correctly by
+      // filtering the group in place. The re-filter costs a pass, but
+      // only for the at-most-one row that is mid-create.
+      const list = item.number > 0 ? anchorable : group.filter((i) => i.number > 0 || i.id === item.id);
+      const idx = list.findIndex((i) => i.id === item.id);
+      const prev = idx > 0 ? list[idx - 1] : undefined;
+      const next = idx >= 0 ? list[idx + 1] : undefined;
+      const first = list[0];
+      const last = list.at(-1);
+      out.set(item.id, {
+        up: prev ? { beforeId: prev.id } : null,
+        down: next ? { afterId: next.id } : null,
+        top: first && first.id !== item.id ? { beforeId: first.id } : null,
+        bottom: last && last.id !== item.id ? { afterId: last.id } : null,
+      });
+    }
+    group = [];
+  };
+  for (const row of rows) {
+    if (row.kind === "group") flush();
+    else group.push(row.item);
+  }
+  flush();
+  return out;
+}
+
+/**
  * Anchors for "Top of X" / "Bottom of X" inside one lane. An EMPTY
  * column has no top or bottom: the item keeps its place in the project
  * order and only the state changes — expressed as the self anchor the

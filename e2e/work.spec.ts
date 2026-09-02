@@ -265,6 +265,75 @@ test.describe("project board (owner)", () => {
     await expect(page).toHaveURL(/group=assignee/);
     await expect(page).not.toHaveURL(/item=/);
   });
+
+  test("2W-F: the backlog reorders — by the row menu and by drag — and the order sticks", async ({ page }) => {
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const title = `Reorder task ${Date.now()}`;
+    created = title; // afterEach removes it via the board, pass or fail
+
+    await page.locator("#new-task").getByRole("button").click();
+    const createInput = page.locator("#new-task input");
+    await createInput.fill(title);
+    await createInput.press("Enter");
+    const row = page.locator('[data-testid="backlog-row"]', { hasText: title });
+    await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+    await createInput.press("Escape");
+
+    // Everything below moves only THIS task, which afterEach then deletes,
+    // so the project order the visual sweep photographs is left as found.
+    const ids = () => page.locator('[data-testid="backlog-row"]').evaluateAll(
+      (rows) => rows.map((r) => r.getAttribute("data-item-id") ?? ""),
+    );
+    const mine = (await row.getAttribute("data-item-id")) ?? "";
+    expect(mine).not.toBe("");
+    // A title-only create lands at the BOTTOM of the project order.
+    expect((await ids()).at(-1)).toBe(mine);
+
+    // The keyboard/touch twin (UI.md §7.1 wants one; §5.12 puts it in the
+    // menu). At the bottom there is no "Move down" to offer — a verb that
+    // cannot act is left out, not rendered inert.
+    await row.getByRole("button", { name: /Actions for/ }).click();
+    // Prove the menu is actually OPEN before asserting what it lacks: a
+    // toHaveCount(0) against a portal that has not rendered yet passes
+    // whether or not the guard works, which is the vacuous-assertion
+    // shape a previous review caught on this suite.
+    await expect(page.getByRole("menuitem", { name: "Move to top" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Move down" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Move to bottom" })).toHaveCount(0);
+    await page.getByRole("menuitem", { name: "Move to top" }).click();
+    await expect
+      .poll(async () => (await ids())[0], { timeout: 20_000 * SLOW })
+      .toBe(mine);
+
+    // It is a rank change, not a state change, so it survives a reload —
+    // the server wrote a real rank, not an optimistic guess.
+    await page.reload();
+    expect((await ids())[0]).toBe(mine);
+
+    // And now the top row has no "Move up" either.
+    const first = page.locator('[data-testid="backlog-row"]').first();
+    await first.getByRole("button", { name: /Actions for/ }).click();
+    await expect(page.getByRole("menuitem", { name: "Move down" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Move up" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Move to top" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    // Drag (desktop): onto the LOWER half of the last row, which the
+    // hitbox reads as "after it".
+    const before = await ids();
+    const lastId = before.at(-1)!;
+    const target = page.locator(`[data-testid="backlog-row"][data-item-id="${lastId}"]`);
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    await page
+      .locator(`[data-testid="backlog-row"][data-item-id="${mine}"]`)
+      .dragTo(target, { targetPosition: { x: Math.round(box!.width / 2), y: box!.height - 2 } });
+    await expect
+      .poll(async () => (await ids()).at(-1), { timeout: 20_000 * SLOW })
+      .toBe(mine);
+    await page.reload();
+    expect((await ids()).at(-1)).toBe(mine);
+  });
 });
 
 test.describe("project board (employee)", () => {

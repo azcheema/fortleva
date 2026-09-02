@@ -1,11 +1,23 @@
 "use client";
 
+import { autoScrollWindowForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
+import {
+  attachClosestEdge,
+  extractClosestEdge,
+  type Edge,
+} from "@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge";
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
+import {
+  draggable,
+  dropTargetForElements,
+  monitorForElements,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { PaperclipIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useQueryStates } from "nuqs";
-import { useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -36,15 +48,23 @@ import { durationInputText, formatDate, formatDuration, type DurationStyle } fro
 import type { FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
 import {
+  allRowAnchors,
+  applyMove,
   canEnterState,
+  epicIdsOf,
   filtersOf,
+  hasActiveFilters,
+  laneKeyOf,
   peekHrefOf,
   visibleColumns,
   workView,
   workViewHref,
   workViewParsers,
   type Lane,
+  type Move,
   type Rollup,
+  type RowAnchors,
+  type WorkItem,
 } from "@/lib/work-view";
 import type { ResolvedItemList } from "@/modules/work";
 
@@ -56,6 +76,7 @@ import {
   setItemArchivedAction,
   setItemDueDateAction,
   setItemEstimateAction,
+  moveItemAction,
   setItemPriorityAction,
   setItemStateAction,
   setItemVisibilityAction,
@@ -96,6 +117,146 @@ const useRun = (locale: string) => {
 /** Every data column except the key — what a group header spans. */
 const SPAN_AFTER_KEY = 8;
 
+/**
+ * Drag payload. `laneKey` rides along so a drop can refuse to cross a
+ * group: a rank-only move has no way to express the property change
+ * that leaving a group would be (`MoveInput` carries no property
+ * field), so the same rule the board applies to lanes applies here.
+ */
+const NO_ANCHORS: RowAnchors = { up: null, down: null, top: null, bottom: null };
+
+type RowData = { type: "backlog-row"; itemId: string; laneKey: string };
+const isRowData = (d: Record<string | symbol, unknown>): d is RowData =>
+  d["type"] === "backlog-row";
+
+/**
+ * Where the drop will land, as ONE normalised convention: the id of the
+ * visible row the item will come to rest ABOVE, or `null` for the end of
+ * the list.
+ *
+ * Normalising matters for more than tidiness. A line drawn at the bottom
+ * of row N and a line drawn at the top of row N+1 describe the same
+ * insertion point, but they paint about 3 px apart, because the rows
+ * share one collapsed rule and only the top-aligned line paints over it.
+ * Whichever row `attachClosestEdge` happens to report would then decide
+ * how the indicator looks. Resolving to "above which row" first means
+ * every indicator is pixel-identical.
+ */
+type DropAt = { above: string } | { belowLast: string };
+
+const sameDropAt = (a: DropAt | null, b: DropAt | null): boolean => {
+  if (a === null || b === null) return a === b;
+  if ("above" in a) return "above" in b && a.above === b.above;
+  return "belowLast" in b && a.belowLast === b.belowLast;
+};
+
+/**
+ * A row that can be picked up and dropped on.
+ *
+ * It exists only to own the ref and the two registrations — the cells
+ * stay in the list above, so the drag is additive to a row that already
+ * worked. `getIsSticky` is deliberately NOT set: a table body has no
+ * gaps between rows, so there is no dead space for stickiness to
+ * rescue, and without it a release over a refused row (another group,
+ * a group header, the create row) leaves `dropTargets` empty and the
+ * monitor's early return makes the drop a true no-op. With stickiness
+ * the same release would silently fall back to the last accepted row
+ * and reorder something the member was no longer pointing at.
+ */
+function DragRow({
+  itemId,
+  laneKey,
+  canDrag,
+  className,
+  onEdge,
+  children,
+}: {
+  itemId: string;
+  laneKey: string;
+  canDrag: boolean;
+  className?: string;
+  onEdge: (itemId: string, edge: Edge | null) => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLTableRowElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !canDrag) return;
+    const data: RowData = { type: "backlog-row", itemId, laneKey };
+    // Desktop only (UI.md §7.1). A coarse pointer gets the row menu's
+    // Move verbs instead, which is the twin the rule asks for.
+    const finePointer = window.matchMedia("(pointer: fine)").matches;
+    return combine(
+      draggable({
+        element: el,
+        canDrag: () => finePointer,
+        getInitialData: () => data,
+        onDragStart: () => setDragging(true),
+        onDrop: () => setDragging(false),
+      }),
+      dropTargetForElements({
+        element: el,
+        // Same group only: a rank-only move cannot express the property
+        // change that leaving a group would be.
+        canDrop: ({ source }) => isRowData(source.data) && source.data.laneKey === laneKey,
+        getData: ({ input, element }) =>
+          attachClosestEdge(data, { input, element, allowedEdges: ["top", "bottom"] }),
+        onDrag: ({ self, source }) =>
+          onEdge(
+            itemId,
+            isRowData(source.data) && source.data.itemId === itemId
+              ? null
+              : extractClosestEdge(self.data),
+          ),
+        onDragLeave: () => onEdge(itemId, null),
+        onDrop: () => onEdge(itemId, null),
+      }),
+    );
+  }, [canDrag, itemId, laneKey, onEdge]);
+
+  return (
+    <TableRow
+      ref={ref}
+      data-testid="backlog-row"
+      data-item-id={itemId}
+      // Opacity, never a transform: a transformed row would become the
+      // containing block for the drop line and move it off the row.
+      className={cn(className, canDrag && "cursor-grab active:cursor-grabbing", dragging && "opacity-40")}
+    >
+      {children}
+    </TableRow>
+  );
+}
+
+/**
+ * The 2px insertion line. It lives INSIDE a cell — a bare <span> under a
+ * <tr> is foster-parented out of the table by the HTML parser — but
+ * `inset-x-0` resolves against the ROW, which `position: relative` makes
+ * the containing block, so it spans the full width from whichever cell
+ * hosts it. It starts inside the row's 2px left border, so it can never
+ * paint over `visibilityRowCue`'s client-visible mark: the two colours
+ * measure 1.0002:1 against each other, so an overlap would erase a
+ * safety-critical marking with something indistinguishable from it.
+ *
+ * Do not add `transform`, `filter`, `backdrop-filter`, `will-change` or
+ * `contain: paint` to the row or this cell — any of them re-parents the
+ * containing block and the line silently moves.
+ */
+function DropLine({ edge }: { edge: "top" | "bottom" }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="backlog-drop-line"
+      className={cn(
+        "pointer-events-none absolute inset-x-0 h-0.5 rounded-full bg-primary",
+        edge === "top" ? "top-0" : "bottom-0",
+      )}
+    />
+  );
+}
+
 export function BacklogTable({
   projectId,
   projectKey,
@@ -123,6 +284,7 @@ export function BacklogTable({
   const tCommon = useTranslations("common");
   const tProjects = useTranslations("projects");
   const tPriority = useTranslations("states.priority");
+  const router = useRouter();
   const { run } = useRun(t("actionFailed"));
   const searchParams = useSearchParams();
   const [params, setParams] = useQueryStates(workViewParsers, {
@@ -131,15 +293,41 @@ export function BacklogTable({
   });
 
   const filters = filtersOf(params);
+  const [isPending, startTransition] = useTransition();
+  // The optimistic list is the FULL project order — never the filtered
+  // rows. `applyMove` splices against real neighbours, and rewriting a
+  // subsequence would lose the places of everything the filter hides.
+  const [items, applyOptimistic] = useOptimistic(
+    data.items,
+    (current: WorkItem[], move: Move): WorkItem[] => applyMove(current, move, data.states),
+  );
   // Rows and summary from ONE call: computed separately they drifted,
   // because an epic is a header rather than a row under epic grouping.
-  const { rows, rollup } = workView(data.items, params.group, data.members, filters);
+  const { rows, rollup } = workView(items, params.group, data.members, filters);
   const peekHref = (number: number) =>
     peekHrefOf(basePath, searchParams, `${projectKey}-${number}`);
   // The archived toggle is a REAL navigation (it changes what the server
   // loads), but its href must still be built from the LIVE url: the
   // filters are shallow, so a server-rendered href would carry the query
   // as it was before the first chip was clicked and silently drop them.
+  const runMove = useCallback(
+    (move: Move) => {
+      startTransition(async () => {
+        applyOptimistic(move);
+        // `surface: "backlog"` is the step-up return address, not a path:
+        // without it a move that hits MFA_REQUIRED lands the member on
+        // the board, which is not the page they were working on.
+        const r = await moveItemAction({ ...move, projectKey, surface: "backlog" }).catch(() => ({
+          ok: false as const,
+          message: tView("move.failed"),
+        }));
+        if (!r.ok) toast.error(r.message);
+        router.refresh();
+      });
+    },
+    [applyOptimistic, projectKey, router, tView],
+  );
+
   const archivedHref = workViewHref(basePath, searchParams, {
     archived: includeArchived ? null : "1",
     item: null,
@@ -164,13 +352,92 @@ export function BacklogTable({
     label: tPriority(p),
   }));
 
+  // Hoisted: epicIdsOf allocates a Set over every item, so computing it
+  // inside the row map would be O(n^2) allocations on every render.
+  const epicIds = epicIdsOf(items);
+
+  // Which row the indicator sits above (`null` = no drop in progress).
+  const [dropAt, setDropAt] = useState<DropAt | null>(null);
+  // One O(n) pass for every row's move anchors. Asking `rowAnchors` per
+  // row is O(n^2), and the row map re-runs on every pointer move of a
+  // drag — the same cost the `epicIdsOf` hoist above avoids.
+  // No useMemo: `rows` is built fresh in this render, so the compiler
+  // refuses it as a dependency ("may be modified later") — and the React
+  // Compiler already memoises this for us.
+  const anchorsById = allRowAnchors(rows);
+  const anchorsRef = useRef(anchorsById);
+  useEffect(() => {
+    anchorsRef.current = anchorsById;
+  }, [anchorsById]);
+  // Resolve "which half of row R" into the one convention the indicator
+  // renders: the row the item will land ABOVE. Both halves of the same
+  // seam therefore produce the same pixel, whichever row the hitbox
+  // happened to report.
+  // The monitor and this callback outlive a render, so they read the
+  // anchors through a ref rather than closing over the array.
+  const onEdge = useCallback((anchorId: string, edge: Edge | null) => {
+    // Always compare before setting: `onDrag` fires on every pointer
+    // move, and a fresh object each time would re-render the whole table
+    // — and redo every row's work — dozens of times per drag.
+    const next = ((): DropAt | null => {
+      if (!edge) return null;
+      if (edge === "top") return { above: anchorId };
+      // A bottom edge means "after this row". Normalising it to "above
+      // the NEXT row" is what makes both halves of one seam paint the
+      // same pixel — but the next row must be the next row IN THE SAME
+      // GROUP. Reading it off the flattened list would put the line under
+      // the next group's header, promising a drop that a same-group
+      // `canDrop` then refuses: the indicator and the outcome would
+      // disagree. At a group's last row there is no next row, so the line
+      // goes below the anchor itself.
+      const down = anchorsRef.current.get(anchorId)?.down;
+      return down?.afterId ? { above: down.afterId } : { belowLast: anchorId };
+    })();
+    setDropAt((current) => (sameDropAt(current, next) ? current : next));
+  }, []);
+
+  // One monitor for the whole list. `canMonitor` keeps it deaf to every
+  // other drag on the page — without it this handler fires for anything
+  // draggable anywhere in the shell.
+  const canEdit = data.caps.canEdit;
+  useEffect(() => {
+    if (!canEdit) return;
+    return combine(
+      monitorForElements({
+        canMonitor: ({ source }) => isRowData(source.data),
+        onDrop: ({ source, location }) => {
+          setDropAt(null);
+          const target = location.current.dropTargets[0];
+          if (!target || !isRowData(source.data) || !isRowData(target.data)) return;
+          if (target.data.itemId === source.data.itemId) return;
+          const edge = extractClosestEdge(target.data);
+          // The board's rule, unchanged: the anchor is the row the
+          // pointer was over, the side is which half it was on. The
+          // server resolves it against the LIVE project order under a
+          // lock, so "directly after B" means the same thing whether or
+          // not a filtered-out row sits between B and what follows it.
+          runMove({
+            itemId: source.data.itemId,
+            ...(edge === "top"
+              ? { beforeId: target.data.itemId }
+              : { afterId: target.data.itemId }),
+          });
+        },
+      }),
+      // Vertical scrolling is the page's; the DataTable box scrolls
+      // sideways only, so the window registration is the one that matters.
+      autoScrollWindowForElements({ canScroll: ({ source }) => isRowData(source.data) }),
+    );
+  }, [canEdit, runMove]);
+
+
   // Things exist, none match: the third empty state (UI.md §5.8), never
   // conflated with "nothing yet" — the verb is to clear the filter, and
   // offering "create the first task" here would be a lie about the list.
   const filteredEmpty = rollup.total > 0 && rollup.shown === 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" aria-busy={isPending || undefined}>
       <WorkFilterBar
         states={visibleColumns(data.states, data.items)}
         members={data.members}
@@ -209,7 +476,35 @@ export function BacklogTable({
               }
               const item = row.item;
               const done = item.stateCategory === "DONE" || item.stateCategory === "CANCELLED";
+              // The keyboard and touch twin of the drag (UI.md §7.1 asks
+              // for one; §5.12 says reorder verbs live in the menu, never
+              // behind hover, because a hover-only control is unreachable
+              // by touch and invisible to a keyboard user). A verb whose
+              // anchor is null is LEFT OUT rather than rendered inert —
+              // the timeline's precedent for the same problem.
+              const anchors = anchorsById.get(item.id) ?? NO_ANCHORS;
+              // Under a filter or a grouping the ends are the ends of what
+              // is ON SCREEN, so the wording says "here" rather than
+              // promising the top of a list the member cannot see.
+              const scoped = params.group !== "none" || hasActiveFilters(filters);
+              const moveActions: RowAction[] = data.caps.canEdit
+                ? [
+                    ...(anchors.up
+                      ? [{ key: "move-up", label: tView("move.up"), onSelect: () => runMove({ itemId: item.id, ...anchors.up }) }]
+                      : []),
+                    ...(anchors.down
+                      ? [{ key: "move-down", label: tView("move.down"), onSelect: () => runMove({ itemId: item.id, ...anchors.down }) }]
+                      : []),
+                    ...(anchors.top
+                      ? [{ key: "move-top", label: scoped ? tView("move.topScoped") : tView("move.top"), onSelect: () => runMove({ itemId: item.id, ...anchors.top }) }]
+                      : []),
+                    ...(anchors.bottom
+                      ? [{ key: "move-bottom", label: scoped ? tView("move.bottomScoped") : tView("move.bottom"), onSelect: () => runMove({ itemId: item.id, ...anchors.bottom }) }]
+                      : []),
+                  ]
+                : [];
               const actions: RowAction[] = [
+                ...moveActions,
                 item.archivedAt
                   ? {
                       key: "restore",
@@ -233,9 +528,25 @@ export function BacklogTable({
                     ]
                   : []),
               ];
+              const laneKey = laneKeyOf(item, params.group, epicIds);
               return (
-                <TableRow key={item.id} className={cn(visibilityRowCue(item.visibility))}>
+                <DragRow
+                  key={item.id}
+                  itemId={item.id}
+                  laneKey={laneKey}
+                  // A row with no number yet is the optimistic create: the
+                  // server takes ids, and its id is not one.
+                  canDrag={data.caps.canEdit && item.number > 0}
+                  onEdge={onEdge}
+                  className={cn("relative", visibilityRowCue(item.visibility))}
+                >
                   <TableCell className="num-id text-muted-foreground">
+                    {dropAt && "above" in dropAt && dropAt.above === item.id ? (
+                      <DropLine edge="top" />
+                    ) : null}
+                    {dropAt && "belowLast" in dropAt && dropAt.belowLast === item.id ? (
+                      <DropLine edge="bottom" />
+                    ) : null}
                     {/* The key IS the link to the item's peek (UI.md §5.4:
                         every peek is a link); the paperclip says the task
                         carries delivered files without opening it. */}
@@ -433,7 +744,7 @@ export function BacklogTable({
                       />
                     ) : null}
                   </TableCell>
-                </TableRow>
+                </DragRow>
               );
             })}
             {/* The create row stays at the foot of the list even under a

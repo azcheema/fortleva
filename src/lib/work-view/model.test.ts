@@ -5,6 +5,7 @@ import {
   NO_FILTERS,
   UNASSIGNED,
   activeFilterCount,
+  allRowAnchors,
   applyMove,
   canEnterState,
   cardsIn,
@@ -15,6 +16,7 @@ import {
   isDone,
   laneKeyOf,
   lanesFor,
+  rowAnchors,
   visibleColumns,
   workView,
   type WorkFilters,
@@ -323,5 +325,132 @@ describe("workView — the flattened, grouped list and the count that describes 
     const view = workView(items, "epic", members, NO_FILTERS);
     expect(view.rollup.total).toBe(3); // t1, t2, t3 — never the epic
     expect(workView(items, "none", members, NO_FILTERS).rollup.total).toBe(4);
+  });
+});
+
+
+describe("rowAnchors — a rank-only move anchors on what the member can SEE", () => {
+  const members = [{ id: "m1", name: "Anna" }];
+  const items = [
+    item("a", { number: 1 }),
+    item("b", { number: 2 }),
+    item("c", { number: 3 }),
+    item("d", { number: 4 }),
+  ];
+  const rowsOf = (filters = NO_FILTERS, groupBy: "none" | "assignee" = "none") =>
+    workView(items, groupBy, members, filters).rows;
+
+  it("up/down are the neighbouring rows; top/bottom are the ends", () => {
+    const rows = rowsOf();
+    expect(rowAnchors(rows, "b")).toEqual({
+      up: { beforeId: "a" },
+      down: { afterId: "c" },
+      top: { beforeId: "a" },
+      bottom: { afterId: "d" },
+    });
+  });
+
+  it("the first row has no up and no top; the last has no down and no bottom", () => {
+    const rows = rowsOf();
+    const first = rowAnchors(rows, "a");
+    expect(first.up).toBeNull();
+    expect(first.top).toBeNull();
+    expect(first.down).toEqual({ afterId: "b" });
+    const last = rowAnchors(rows, "d");
+    expect(last.down).toBeNull();
+    expect(last.bottom).toBeNull();
+    expect(last.up).toEqual({ beforeId: "c" });
+  });
+
+  it("THE FILTERED-SUBSEQUENCE RULE: the anchor is the visible neighbour, never the hidden one", () => {
+    // Hide `b`. From `c`, "up" must anchor on `a` — the row the member
+    // can see — not on `b`. Anchoring on a hidden row would change the
+    // rank while the screen stayed identical, so the member would click
+    // again and the project order would drift silently.
+    const hidden = [...items];
+    hidden[1] = item("b", { number: 2, stateId: "done", stateCategory: "DONE" });
+    const rows = workView(hidden, "none", members, { ...NO_FILTERS, hideDone: true }).rows;
+    expect(rows.filter((r) => r.kind === "item").map((r) => (r.kind === "item" ? r.item.id : ""))).toEqual([
+      "a",
+      "c",
+      "d",
+    ]);
+    expect(rowAnchors(rows, "c").up).toEqual({ beforeId: "a" });
+    expect(rowAnchors(rows, "a").down).toEqual({ afterId: "c" });
+  });
+
+  it("anchors never leave the item's own GROUP — a rank-only move cannot change a property", () => {
+    const grouped = [
+      item("a", { number: 1, assigneeMemberId: "m1", assigneeName: "Anna" }),
+      item("b", { number: 2, assigneeMemberId: "m1", assigneeName: "Anna" }),
+      item("c", { number: 3 }),
+      item("d", { number: 4 }),
+    ];
+    const rows = workView(grouped, "assignee", members, NO_FILTERS).rows;
+    // Anna's group is [a, b]; the unassigned group is [c, d].
+    const lastOfFirstGroup = rowAnchors(rows, "b");
+    expect(lastOfFirstGroup.down).toBeNull();
+    expect(lastOfFirstGroup.bottom).toBeNull();
+    expect(lastOfFirstGroup.up).toEqual({ beforeId: "a" });
+    const firstOfSecondGroup = rowAnchors(rows, "c");
+    expect(firstOfSecondGroup.up).toBeNull();
+    expect(firstOfSecondGroup.top).toBeNull();
+    expect(firstOfSecondGroup.down).toEqual({ afterId: "d" });
+  });
+
+  it("the optimistic create row (number 0) is never an anchor, and does not hide the real row behind it", () => {
+    const withTemp = [...items, item("temp-1", { number: 0 })];
+    const rows = workView(withTemp, "none", members, NO_FILTERS).rows;
+    // `d`'s "down" would be temp-1; there is no real row after it.
+    expect(rowAnchors(rows, "d").down).toBeNull();
+    expect(rowAnchors(rows, "d").bottom).toBeNull();
+    // And the temp row itself anchors on real rows above it.
+    expect(rowAnchors(rows, "temp-1").up).toEqual({ beforeId: "d" });
+  });
+
+  it("an unknown id yields no verbs at all rather than a wrong anchor", () => {
+    expect(rowAnchors(rowsOf(), "nope")).toEqual({ up: null, down: null, top: null, bottom: null });
+  });
+
+  it("a one-row group offers nothing — every verb would be a no-op", () => {
+    const rows = workView([item("only", { number: 1 })], "none", members, NO_FILTERS).rows;
+    expect(rowAnchors(rows, "only")).toEqual({ up: null, down: null, top: null, bottom: null });
+  });
+
+  it("every anchor it returns is a REAL id present in the rendered rows", () => {
+    const rows = rowsOf();
+    const ids = new Set(rows.flatMap((r) => (r.kind === "item" ? [r.item.id] : [])));
+    for (const id of ids) {
+      const a = rowAnchors(rows, id);
+      for (const target of [a.up?.beforeId, a.down?.afterId, a.top?.beforeId, a.bottom?.afterId]) {
+        if (!target) continue;
+        expect(ids.has(target)).toBe(true);
+        expect(target).not.toBe(id);
+      }
+    }
+  });
+  it("allRowAnchors agrees with rowAnchors for every row, in every grouping — one pass, same answers", () => {
+    const grouped = [
+      item("a", { number: 1, assigneeMemberId: "m1", assigneeName: "Anna" }),
+      item("b", { number: 2, assigneeMemberId: "m1", assigneeName: "Anna" }),
+      item("c", { number: 3 }),
+      item("d", { number: 4 }),
+    ];
+    // The un-persisted row is placed in the MIDDLE, not last: appending
+    // it is exactly the bug this test exists to catch, and last is the
+    // one position where a wrong implementation still agrees.
+    const withTemp = [grouped[0]!, item("t", { number: 0 }), ...grouped.slice(1)];
+    for (const groupBy of GROUP_BYS) {
+      const rows = workView(withTemp, groupBy, members, NO_FILTERS).rows;
+      const batch = allRowAnchors(rows);
+      for (const row of rows) {
+        if (row.kind !== "item") continue;
+        expect(batch.get(row.item.id), `${groupBy}/${row.item.id}`).toEqual(
+          rowAnchors(rows, row.item.id),
+        );
+      }
+      // Every rendered row has an entry, and nothing else does.
+      expect(batch.size).toBe(rows.filter((r) => r.kind === "item").length);
+    }
   });
 });

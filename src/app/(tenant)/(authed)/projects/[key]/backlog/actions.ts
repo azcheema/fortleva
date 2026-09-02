@@ -288,24 +288,46 @@ export async function createItemInStateAction(
 export async function moveItemAction(input: {
   itemId: string;
   projectKey: string;
+  /**
+   * Which surface asked. It is ONLY the return address: `runAction`'s
+   * first argument is what `handleAuthzRedirect` sends a member back to
+   * after a step-up, and this action hardcoded the board — so a move
+   * that hit MFA_REQUIRED from the backlog returned the member to a
+   * different page than the one they were working on. It is validated
+   * as an enum and never used to build a path from caller-supplied
+   * text.
+   */
+  surface?: "board" | "backlog";
   stateId?: string;
   afterId?: string | null;
   beforeId?: string | null;
 }): Promise<ActionResult<MovedItem>> {
   const ctx = await ctxOf();
-  const t = await getTranslations("projects.board");
+  // The refusal has to name the surface the member is looking at: the
+  // board's string ends "the board shows the current state", which is
+  // the wrong sentence to show someone reordering a list.
+  const [tBoard, tView] = await Promise.all([
+    getTranslations("projects.board"),
+    getTranslations("projects.workView"),
+  ]);
+  const invalid = () => ({
+    ok: false as const,
+    message: input.surface === "backlog" ? tView("move.failed") : tBoard("moveFailed"),
+  });
   const parsed = z
     .object({
       itemId: uuid,
       projectKey: keyShape,
+      surface: z.enum(["board", "backlog"]).default("board"),
       stateId: uuid.optional(),
       afterId: uuid.nullable().optional(),
       beforeId: uuid.nullable().optional(),
     })
     .safeParse(input);
-  if (!parsed.success) return { ok: false, message: t("moveFailed") };
-  const { itemId, projectKey, stateId, afterId, beforeId } = parsed.data;
-  const r = await runAction(boardPath(projectKey), () =>
+  if (!parsed.success) return invalid();
+  const { itemId, projectKey, surface, stateId, afterId, beforeId } = parsed.data;
+  const returnTo = surface === "backlog" ? backlogPath(projectKey) : boardPath(projectKey);
+  const r = await runAction(returnTo, () =>
     moveItem(ctx, {
       itemId,
       ...(stateId ? { stateId } : {}),

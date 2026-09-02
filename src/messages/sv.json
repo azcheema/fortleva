@@ -1244,6 +1244,15 @@
         "noEpic": "Utanför en fas",
         "epicUntitled": "Fas"
       },
+      "move": {
+        "up": "Flytta upp",
+        "down": "Flytta ner",
+        "top": "Flytta överst",
+        "bottom": "Flytta underst",
+        "topScoped": "Flytta överst bland visade",
+        "bottomScoped": "Flytta underst bland visade",
+        "failed": "Flytten sparades inte. Listan visar aktuell ordning."
+      },
       "rollup": {
         "count": "{total, plural, one {# uppgift} other {# uppgifter}}",
         "countFiltered": "{shown} av {total} visas",

@@ -1244,6 +1244,15 @@
         "noEpic": "Outside a phase",
         "epicUntitled": "Phase"
       },
+      "move": {
+        "up": "Move up",
+        "down": "Move down",
+        "top": "Move to top",
+        "bottom": "Move to bottom",
+        "topScoped": "Move to top of what's shown",
+        "bottomScoped": "Move to bottom of what's shown",
+        "failed": "The move did not save. The list shows the current order."
+      },
       "rollup": {
         "count": "{total, plural, one {# task} other {# tasks}}",
         "countFiltered": "{shown} of {total} shown",
