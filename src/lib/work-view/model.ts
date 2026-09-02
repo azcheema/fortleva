@@ -58,6 +58,25 @@ export const canEnterState = (
 export const isDone = (item: Pick<WorkItem, "stateCategory">): boolean =>
   item.stateCategory === "DONE" || item.stateCategory === "CANCELLED";
 
+/**
+ * The most rows one selection-bar action may touch.
+ *
+ * It is DERIVED, not chosen. `bulkChangeState` runs each item through
+ * `transitionState`, which costs FOUR round trips per item inside ONE
+ * transaction: the `work_item:approve` resolution (uncached, so it is a
+ * real query every time), the update, the activity row and the audit
+ * row. `src/db/with-tenant.ts` sizes its 60 s budget for a link around
+ * 100 ms, so 200 items would be ~800 statements — well past the ceiling,
+ * where the whole batch aborts and nothing is written at all. 50 items
+ * is ~200 statements ≈ 20 s, comfortably inside it, and a selection
+ * larger than a screenful is a filter's job rather than a checkbox's.
+ *
+ * It lives HERE rather than beside the service because the selection bar
+ * has to honour it too — `@/modules/work` reaches the database, so a
+ * client component may only import types from it.
+ */
+export const MAX_BULK_ITEMS = 50;
+
 // ── filters ──────────────────────────────────────────────────────────
 
 /** The unassigned bucket's stable token in the URL and in the filter. */

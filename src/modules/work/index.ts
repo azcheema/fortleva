@@ -18,5 +18,11 @@ export {
   type WorkCtx,
   type WorkflowStateEntry,
 } from "./items";
+export {
+  bulkChangeState,
+  bulkSetArchived,
+  bulkSetPriority,
+  type BulkResult,
+} from "./bulk";
 export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from "./ordering";
 export { changeState, ensureProjectStates } from "./states";

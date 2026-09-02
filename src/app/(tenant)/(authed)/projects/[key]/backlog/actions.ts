@@ -7,6 +7,9 @@ import { z } from "zod";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   assignItem,
+  bulkChangeState,
+  bulkSetArchived,
+  bulkSetPriority,
   changeItemVisibility,
   changeState,
   createItem,
@@ -14,12 +17,14 @@ import {
   moveItem,
   setItemArchived,
   updateItemFields,
+  type BulkResult,
   type MovedItem,
   type WorkCtx,
 } from "@/modules/work";
 import { MAX_ESTIMATE_MINUTES, dateColumn } from "@/lib/duration";
 import { PRIORITIES } from "@/lib/enum-map";
 import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
+import { MAX_BULK_ITEMS } from "@/lib/work-view";
 import { isIsoDate } from "@/lib/week";
 
 /**
@@ -339,3 +344,67 @@ export async function moveItemAction(input: {
   return r;
 }
 
+/**
+ * The selection bar's three verbs (2W-F slice 4). Each parses, calls the
+ * one bulk service and revalidates both work surfaces; the service owns
+ * the transaction, the gates and the audit rows.
+ *
+ * The id list is validated as UUIDs and capped HERE as well as in the
+ * service — the cap is a contract, not a performance guess, and a
+ * server action is a public entry point.
+ */
+const bulkShape = z.object({
+  itemIds: z.array(uuid).min(1).max(MAX_BULK_ITEMS),
+  projectKey: keyShape,
+});
+
+export async function bulkChangeStateAction(
+  itemIds: string[],
+  projectKey: string,
+  stateId: string,
+): Promise<ActionResult<BulkResult>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.workView");
+  const parsed = bulkShape.extend({ stateId: uuid }).safeParse({ itemIds, projectKey, stateId });
+  if (!parsed.success) return { ok: false, message: t("bulk.failed") };
+  const input = parsed.data;
+  const r = await runAction(backlogPath(input.projectKey), () =>
+    bulkChangeState(ctx, input.itemIds, input.stateId),
+  );
+  if (r.ok) revalidate(input.projectKey);
+  return r;
+}
+
+export async function bulkSetPriorityAction(
+  itemIds: string[],
+  projectKey: string,
+  priority: string,
+): Promise<ActionResult<BulkResult>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.workView");
+  const parsed = bulkShape.extend({ priority: z.enum(PRIORITIES) }).safeParse({ itemIds, projectKey, priority });
+  if (!parsed.success) return { ok: false, message: t("bulk.failed") };
+  const input = parsed.data;
+  const r = await runAction(backlogPath(input.projectKey), () =>
+    bulkSetPriority(ctx, input.itemIds, input.priority),
+  );
+  if (r.ok) revalidate(input.projectKey);
+  return r;
+}
+
+export async function bulkSetArchivedAction(
+  itemIds: string[],
+  projectKey: string,
+  archived: boolean,
+): Promise<ActionResult<BulkResult>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.workView");
+  const parsed = bulkShape.extend({ archived: z.boolean() }).safeParse({ itemIds, projectKey, archived });
+  if (!parsed.success) return { ok: false, message: t("bulk.failed") };
+  const input = parsed.data;
+  const r = await runAction(backlogPath(input.projectKey), () =>
+    bulkSetArchived(ctx, input.itemIds, input.archived),
+  );
+  if (r.ok) revalidate(input.projectKey);
+  return r;
+}

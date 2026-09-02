@@ -15,11 +15,13 @@ import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 let seed!: E2ESeed;
 /**
- * The title this run created, so teardown can remove it EVEN IF the test
+ * The titles this run created, so teardown removes them EVEN IF the test
  * failed — a failing run is exactly when a leftover row would poison the
- * project the visual sweep photographs.
+ * project the visual sweep photographs. A list, not one title: the bulk
+ * tests create several, and a cleanup that only handles the happy path
+ * is the defect a previous review already caught on this suite.
  */
-let created: string | null = null;
+let created: string[] = [];
 
 // A move is a server action plus a refresh of the whole board; on CI
 // (US runner, EU database) the same waits get three times the leash.
@@ -30,16 +32,23 @@ test.beforeAll(() => {
 });
 
 test.afterEach(async ({ page }) => {
-  if (!created) return;
-  const title = created;
-  created = null;
-  await page.goto(`/projects/${seed.projectKey}/board`);
-  const card = cardIn(page, title);
-  if ((await card.count()) === 0) return;
-  await card.getByRole("button", { name: /Actions for/ }).click();
-  await page.getByRole("menuitem", { name: "Delete" }).click();
-  await page.getByRole("button", { name: "Yes" }).click();
-  await expect(cardIn(page, title)).toHaveCount(0, { timeout: 20_000 * SLOW });
+  const titles = created;
+  created = [];
+  if (titles.length === 0) return;
+  // Archived rows are not on the board, so the sweep runs with the
+  // backlog's archived view open — every task this file made is
+  // reachable there whatever state the test left it in.
+  await page.goto(`/projects/${seed.projectKey}/backlog?archived=1`);
+  for (const title of titles) {
+    const row = page.locator('[data-slot="table-row"]', { hasText: title });
+    if ((await row.count()) === 0) continue;
+    await row.first().getByRole("button", { name: /Actions for/ }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page.getByRole("button", { name: "Yes" }).click();
+    await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toHaveCount(0, {
+      timeout: 20_000 * SLOW,
+    });
+  }
 });
 
 // `.first()` = the first column of that category in DOM (= rank) order:
@@ -64,7 +73,7 @@ test.describe("project board (owner)", () => {
     // Title-only create at the foot of To do: at rest a button, then a
     // field; Enter creates and keeps the field open for the next title.
     const title = `Board task ${Date.now()}`;
-    created = title; // afterEach removes it, pass or fail
+    created.push(title); // afterEach removes it, pass or fail
     await todo.getByTestId("board-create").click();
     const input = todo.getByTestId("board-create-input");
     await input.fill(title);
@@ -134,7 +143,7 @@ test.describe("project board (owner)", () => {
   test("grooming (2W-G): priority, due date and an estimate set inline from the backlog", async ({ page }) => {
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const title = `Groom task ${Date.now()}`;
-    created = title; // afterEach removes it via the board, pass or fail
+    created.push(title); // afterEach removes it, pass or fail
 
     // Create through the backlog's create row (rest = a button, then a field).
     await page.locator("#new-task").getByRole("button").click();
@@ -189,7 +198,7 @@ test.describe("project board (owner)", () => {
   test("2W-F: the view lives in the URL — chips, hide-done, grouping, and a peek that keeps them", async ({ page }) => {
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const title = `Filter task ${Date.now()}`;
-    created = title; // afterEach removes it via the board, pass or fail
+    created.push(title); // afterEach removes it, pass or fail
 
     // The chips are ALWAYS visible above the list — never behind a
     // drawer or a disclosure (UI.md §5.3: hidden filters are the top
@@ -269,7 +278,7 @@ test.describe("project board (owner)", () => {
   test("2W-F: the backlog reorders — by the row menu and by drag — and the order sticks", async ({ page }) => {
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const title = `Reorder task ${Date.now()}`;
-    created = title; // afterEach removes it via the board, pass or fail
+    created.push(title); // afterEach removes it, pass or fail
 
     await page.locator("#new-task").getByRole("button").click();
     const createInput = page.locator("#new-task input");
@@ -333,6 +342,81 @@ test.describe("project board (owner)", () => {
       .toBe(mine);
     await page.reload();
     expect((await ids()).at(-1)).toBe(mine);
+  });
+
+  test("2W-F: the selection bar edits several tasks at once, and says how many it changed", async ({ page }) => {
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const stamp = Date.now();
+    const titles = [`Bulk one ${stamp}`, `Bulk two ${stamp}`];
+    for (const title of titles) {
+      created.push(title);
+      await page.locator("#new-task").getByRole("button").click();
+      const input = page.locator("#new-task input");
+      await input.fill(title);
+      await input.press("Enter");
+      await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toBeVisible({
+        timeout: 20_000 * SLOW,
+      });
+      await input.press("Escape");
+    }
+
+    // No selection, no bar: it appears on the first checkbox and not before.
+    await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
+    const rowsFor = (title: string) => page.locator('[data-testid="backlog-row"]', { hasText: title });
+    for (const title of titles) {
+      await rowsFor(title).getByTestId("backlog-select-row").click();
+    }
+    const bar = page.getByTestId("bulk-bar");
+    await expect(bar).toBeVisible();
+    await expect(page.getByTestId("bulk-count")).toContainText("2");
+
+    // One verb, both rows.
+    await page.getByTestId("bulk-priority").click();
+    await page.getByRole("menuitem", { name: "Urgent" }).click();
+    for (const title of titles) {
+      await expect(
+        rowsFor(title).locator('[data-slot="priority-indicator"]'),
+      ).toHaveAttribute("data-value", "URGENT", { timeout: 20_000 * SLOW });
+    }
+    // Acting clears the selection, so the bar goes with it.
+    await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
+
+    // It really wrote: a reload shows the same two.
+    await page.reload();
+    for (const title of titles) {
+      await expect(rowsFor(title).locator('[data-slot="priority-indicator"]')).toHaveAttribute(
+        "data-value",
+        "URGENT",
+      );
+    }
+
+    // Select-all takes every row that is SHOWN, so it selects MORE than
+    // the two this test made — which is exactly why no destructive verb
+    // runs while it is on. This project is the one the visual sweep
+    // photographs, and `afterEach` can only clean up what this test
+    // created; archiving a stranger's row would leave it archived.
+    const shown = await page.locator('[data-testid="backlog-row"]').count();
+    expect(shown).toBeGreaterThan(titles.length);
+    await page.getByTestId("backlog-select-all").click();
+    await expect(page.getByTestId("bulk-count")).toContainText(String(shown));
+    // Clicking it again clears, rather than selecting all a second time.
+    await page.getByTestId("backlog-select-all").click();
+    await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
+
+    // Archive ONLY the two rows this test owns.
+    for (const title of titles) {
+      await rowsFor(title).getByTestId("backlog-select-row").click();
+    }
+    await expect(page.getByTestId("bulk-count")).toContainText("2");
+    await page.getByTestId("bulk-archive").click();
+    for (const title of titles) {
+      await expect(rowsFor(title)).toHaveCount(0, { timeout: 20_000 * SLOW });
+    }
+    // And they are archived, not deleted — the archived view still has them.
+    await page.goto(`/projects/${seed.projectKey}/backlog?archived=1`);
+    for (const title of titles) {
+      await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toBeVisible();
+    }
   });
 });
 

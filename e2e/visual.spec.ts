@@ -102,6 +102,19 @@ const stops = (seed: E2ESeed): Stop[] => {
     // both states of the new chrome are audited (and a chip row that
     // wrapped or overflowed at 390 px would fail here, not in review).
     { name: "project-backlog-grouped", path: `${project}/backlog?group=assignee&hideDone=true` },
+    {
+      // 2W-F slice 4: the selection bar, which only exists once a row is
+      // ticked — so the audit reaches it through `drive`. This is the one
+      // stop that photographs a STICKY element, and the phone walk is the
+      // point of it: the bar has to clear the shell's fixed h-14 tab bar
+      // and the safe-area inset without covering the rows it acts on.
+      name: "project-backlog-selection",
+      path: `${project}/backlog`,
+      drive: async (page) => {
+        await page.locator('[data-testid="backlog-select-row"]').first().click();
+        await expect(page.getByTestId("bulk-bar")).toBeVisible({ timeout: 20_000 });
+      },
+    },
     // 2W-B: the item side-peek over the backlog (empty attachments +
     // the anchored upload form on the seeded first task).
     { name: "project-item-peek", path: `${project}/backlog?item=${seed.projectKey}-1` },
@@ -285,7 +298,7 @@ async function visit(
   await settle(page);
 
   const shot = `${stop.name}__${theme}__${device}.png`;
-  // The shots are a HUMAN artefact — 164 full-page PNGs for the craft
+  // The shots are a HUMAN artefact — 172 full-page PNGs for the craft
   // review. Nothing asserts on them: this repo has no committed
   // baselines and no toHaveScreenshot anywhere, and ci.yml uploads only
   // playwright-report/, so under CI they were rendered, encoded and then
@@ -444,7 +457,7 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // 42 stops × 3 navigations, five minutes next to the database.
+        // 43 stops × 3 navigations, five minutes next to the database.
         // The CI branch was 900 s, sized when the runner was in the US
         // and the database in the EU (~10 s a stop on a slow evening).
         // Since 2026-09-01 CI runs against a service container on the

@@ -1253,6 +1253,23 @@
         "bottomScoped": "Flytta underst bland visade",
         "failed": "Flytten sparades inte. Listan visar aktuell ordning."
       },
+      "bulk": {
+        "label": "Markerade uppgifter",
+        "count": "{count, plural, one {# uppgift markerad} other {# uppgifter markerade}}",
+        "selectRow": "Markera {key}",
+        "selectAll": "Markera alla visade uppgifter",
+        "clear": "Avmarkera alla",
+        "capped": "Endast de första {max} uppgifterna markerades — fler än så kan inte ändras i en åtgärd.",
+        "state": "Status",
+        "statePlaceholder": "Ange status",
+        "priority": "Prioritet",
+        "priorityPlaceholder": "Ange prioritet",
+        "archive": "Arkivera",
+        "restore": "Återställ",
+        "done": "{changed, plural, one {# uppgift uppdaterad} other {# uppgifter uppdaterade}}",
+        "noneChanged": "Inget att ändra — uppgifterna hade redan det värdet.",
+        "failed": "Ändringen sparades inte. Listan visar aktuellt läge."
+      },
       "rollup": {
         "count": "{total, plural, one {# uppgift} other {# uppgifter}}",
         "countFiltered": "{shown} av {total} visas",

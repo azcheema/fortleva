@@ -32,6 +32,7 @@ import {
   type RowAction,
 } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -41,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { BulkBar } from "@/components/work-view/bulk-bar";
 import { WorkFilterBar } from "@/components/work-view/filter-bar";
 import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
@@ -48,6 +50,7 @@ import { durationInputText, formatDate, formatDuration, type DurationStyle } fro
 import type { FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
 import {
+  MAX_BULK_ITEMS,
   allRowAnchors,
   applyMove,
   canEnterState,
@@ -70,13 +73,16 @@ import type { ResolvedItemList } from "@/modules/work";
 
 import {
   assignItemAction,
+  bulkChangeStateAction,
+  bulkSetArchivedAction,
+  bulkSetPriorityAction,
   createItemAction,
   deleteItemAction,
   renameItemAction,
   setItemArchivedAction,
+  moveItemAction,
   setItemDueDateAction,
   setItemEstimateAction,
-  moveItemAction,
   setItemPriorityAction,
   setItemStateAction,
   setItemVisibilityAction,
@@ -96,9 +102,9 @@ import {
  * prop would drop the member's filters on the way back. Reading
  * `useSearchParams()` is the standing trap's own prescription.
  *
- * Virtualisation, rank drag and the multiselect bulk bar are the next
- * slices; the row model they need (`workRows`) is already the shape
- * this renders.
+ * Rank drag (slice 2) and the selection bar (slice 4) are here; what is
+ * still to come is virtualisation, which stays inert at or below
+ * `VIRTUALISE_ABOVE` rows so it cannot disturb any of this.
  */
 
 const useRun = (locale: string) => {
@@ -114,8 +120,17 @@ const useRun = (locale: string) => {
   return { pending, run };
 };
 
-/** Every data column except the key — what a group header spans. */
-const SPAN_AFTER_KEY = 8;
+/**
+ * The table's columns: select · key · title · state · priority ·
+ * assignee · estimate · due · visibility · actions. Derived constants
+ * rather than literals, because a group header spans all of them and the
+ * create row spans all but its own two — and a `colSpan` that disagrees
+ * with the header is invisible on desktop and wrong on a phone, where
+ * column priority hides cells (the fixed-colSpan trap, PLAN §0).
+ */
+const COLUMN_COUNT = 10;
+/** What the create row's title cell spans: everything after select + plus-icon. */
+const SPAN_AFTER_KEY = COLUMN_COUNT - 2;
 
 /**
  * Drag payload. `laneKey` rides along so a drop can refuse to cross a
@@ -352,6 +367,13 @@ export function BacklogTable({
     label: tPriority(p),
   }));
 
+  // The selection is stored as ids and INTERSECTED with what is on
+  // screen at every use, never pruned in an effect (which the compiler
+  // forbids). So filtering rows away silently removes them from the
+  // selection's reach — a bulk verb can only ever touch what the member
+  // can see — while re-showing them brings them back.
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+
   // Hoisted: epicIdsOf allocates a Set over every item, so computing it
   // inside the row map would be O(n^2) allocations on every render.
   const epicIds = epicIdsOf(items);
@@ -431,6 +453,52 @@ export function BacklogTable({
   }, [canEdit, runMove]);
 
 
+  const shownItems = rows.flatMap((r) => (r.kind === "item" ? [r.item] : []));
+  const selected = shownItems.filter((i) => selectedIds.has(i.id));
+
+  const atCap = selected.length >= MAX_BULK_ITEMS;
+
+  const toggleRow = (id: string, on: boolean) => {
+    if (on && atCap && !selectedIds.has(id)) {
+      // The cap binds the hand-ticked path too, or the 51st checkbox
+      // silently arms a verb that can only fail with a generic toast.
+      toast.info(tView("bulk.capped", { max: MAX_BULK_ITEMS }));
+      return;
+    }
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  /** Select-all's target: what is shown, up to the cap. */
+  const selectAllTarget = shownItems.slice(0, MAX_BULK_ITEMS);
+  // "Checked" means every row select-all COULD take is taken — with more
+  // rows on screen than the cap, requiring all of them would leave the
+  // box permanently unchecked and turn its second click into another
+  // select-all instead of a clear.
+  const allShownSelected =
+    selectAllTarget.length > 0 && selectAllTarget.every((i) => selectedIds.has(i.id));
+
+  const runBulk = (fn: () => Promise<{ ok: boolean; message?: string; value?: { changed: number } }>) => {
+    startTransition(async () => {
+      const r = await fn().catch(() => ({ ok: false as const, message: tView("bulk.failed") }));
+      if (!r.ok) {
+        toast.error(r.message ?? tView("bulk.failed"));
+        return;
+      }
+      const changed = r.value?.changed ?? 0;
+      // A verb that changed nothing must SAY so — a silent success on a
+      // selection that already had the value reads as a failed click.
+      if (changed === 0) toast.info(tView("bulk.noneChanged"));
+      else toast.success(tView("bulk.done", { changed }));
+      setSelectedIds(new Set());
+      router.refresh();
+    });
+  };
+
   // Things exist, none match: the third empty state (UI.md §5.8), never
   // conflated with "nothing yet" — the verb is to clear the filter, and
   // offering "create the first task" here would be a lie about the list.
@@ -447,6 +515,39 @@ export function BacklogTable({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-0">
+                {data.caps.canEdit ? (
+                  <Checkbox
+                    checked={allShownSelected}
+                    aria-label={tView("bulk.selectAll")}
+                    data-testid="backlog-select-all"
+                    onCheckedChange={(on) => {
+                      // Both directions touch only the rows on SCREEN, so
+                      // a selection made under another filter survives —
+                      // the persistence model this component documents.
+                      const shownIds = new Set(shownItems.map((i) => i.id));
+                      if (on !== true) {
+                        setSelectedIds((current) =>
+                          new Set([...current].filter((id) => !shownIds.has(id))),
+                        );
+                        return;
+                      }
+                      // Never select more than one action can carry: the
+                      // service refuses a larger batch, so an uncapped
+                      // select-all would make every verb fail with a
+                      // generic toast and no clue why.
+                      setSelectedIds((current) => {
+                        const next = new Set(current);
+                        for (const i of selectAllTarget) next.add(i.id);
+                        return next;
+                      });
+                      if (selectAllTarget.length < shownItems.length) {
+                        toast.info(tView("bulk.capped", { max: MAX_BULK_ITEMS }));
+                      }
+                    }}
+                  />
+                ) : null}
+              </TableHead>
               <TableHead className="w-[10ch]">{t("columns.key")}</TableHead>
               <TableHead>{t("columns.title")}</TableHead>
               <TableHead priority="medium" className="w-[14ch]">{t("columns.state")}</TableHead>
@@ -540,6 +641,16 @@ export function BacklogTable({
                   onEdge={onEdge}
                   className={cn("relative", visibilityRowCue(item.visibility))}
                 >
+                  <TableCell>
+                    {data.caps.canEdit ? (
+                      <Checkbox
+                        checked={selectedIds.has(item.id)}
+                        aria-label={tView("bulk.selectRow", { key: `${projectKey}-${item.number}` })}
+                        data-testid="backlog-select-row"
+                        onCheckedChange={(on) => toggleRow(item.id, on === true)}
+                      />
+                    ) : null}
+                  </TableCell>
                   <TableCell className="num-id text-muted-foreground">
                     {dropAt && "above" in dropAt && dropAt.above === item.id ? (
                       <DropLine edge="top" />
@@ -758,6 +869,37 @@ export function BacklogTable({
           </TableBody>
         </Table>
       </DataTable>
+      {/* The live region is always mounted, and empty until there is a
+          selection. A `role="status"` that appears WITH its text is not
+          announced — only later changes to it are — so a region born
+          inside the bar would stay silent on the very first tick, which
+          is the one that matters. */}
+      <span role="status" aria-live="polite" className="sr-only" data-testid="bulk-live">
+        {selected.length > 0 ? tView("bulk.count", { count: selected.length }) : ""}
+      </span>
+      {selected.length > 0 ? (
+        <BulkBar
+          count={selected.length}
+          // The one rule again (2W-R): a gated state is not a bulk target
+          // for a non-approver either — `bulkChangeState` refuses it
+          // server-side regardless, but offering it would be a lie.
+          states={data.states.filter(
+            (st) => !st.isHidden && canEnterState(st, data.caps.canApprove),
+          )}
+          anyArchived={selected.some((i) => i.archivedAt !== null)}
+          pending={isPending}
+          onState={(stateId) =>
+            runBulk(() => bulkChangeStateAction(selected.map((i) => i.id), projectKey, stateId))
+          }
+          onPriority={(priority) =>
+            runBulk(() => bulkSetPriorityAction(selected.map((i) => i.id), projectKey, priority))
+          }
+          onArchived={(archived) =>
+            runBulk(() => bulkSetArchivedAction(selected.map((i) => i.id), projectKey, archived))
+          }
+          onClear={() => setSelectedIds(new Set())}
+        />
+      ) : null}
       <p className="text-xs">
         <Link
           className="text-muted-foreground underline-offset-2 hover:underline"
@@ -828,7 +970,7 @@ function GroupRow({
 
   return (
     <TableRow data-testid="backlog-group" data-lane={lane.key} className="bg-muted/40">
-      <TableCell colSpan={SPAN_AFTER_KEY + 1}>
+      <TableCell colSpan={COLUMN_COUNT}>
         <span className="flex items-center gap-2">
           {lane.kind === "member" ? <MemberAvatar id={lane.memberId} name={lane.name} size="sm" /> : null}
           {lane.kind === "priority" ? <PriorityIndicator value={lane.priority} /> : null}
@@ -894,6 +1036,10 @@ function CreateRow({ projectId, projectKey }: { projectId: string; projectKey: s
 
   return (
     <TableRow id="new-task" className="scroll-mt-16">
+      {/* The select column has no meaning for a row that does not exist
+          yet, but the cell must still be there or every cell after it
+          shifts one column left. */}
+      <TableCell aria-hidden="true" />
       <TableCell className="text-muted-foreground" aria-hidden="true">
         <PlusIcon className="size-3.5" />
       </TableCell>

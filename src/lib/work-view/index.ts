@@ -7,6 +7,7 @@
  */
 export {
   GROUP_BYS,
+  MAX_BULK_ITEMS,
   NO_FILTERS,
   UNASSIGNED,
   activeFilterCount,

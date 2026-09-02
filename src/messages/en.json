@@ -1253,6 +1253,23 @@
         "bottomScoped": "Move to bottom of what's shown",
         "failed": "The move did not save. The list shows the current order."
       },
+      "bulk": {
+        "label": "Selected tasks",
+        "count": "{count, plural, one {# task selected} other {# tasks selected}}",
+        "selectRow": "Select {key}",
+        "selectAll": "Select every task shown",
+        "clear": "Clear selection",
+        "capped": "Only the first {max} tasks were selected — that is the most one action can change at a time.",
+        "state": "Status",
+        "statePlaceholder": "Set status",
+        "priority": "Priority",
+        "priorityPlaceholder": "Set priority",
+        "archive": "Archive",
+        "restore": "Restore",
+        "done": "{changed, plural, one {# task updated} other {# tasks updated}}",
+        "noneChanged": "Nothing to change — those tasks already had that value.",
+        "failed": "The change did not save. The list shows the current state."
+      },
       "rollup": {
         "count": "{total, plural, one {# task} other {# tasks}}",
         "countFiltered": "{shown} of {total} shown",
