@@ -260,12 +260,26 @@ describe("the selection's own rules", () => {
     expect(r).toEqual({ changed: 2, skipped: 0 });
   });
 
-  it("DENY-DEFAULT: a member with no scope on the project cannot bulk-edit it, and writes nothing", async () => {
-    const ids = await makeItems(2, "Scope");
-    // The manager has no client assignment, so the project is out of scope.
+  it("SCOPE, BOTH DIRECTIONS: `client:view_all` reaches every project; a scope-limited member reaches only their own", async () => {
+    const foreign = await makeItems(2, "Scope foreign", foreignProjectId);
+
+    // The manager holds `client:view_all` — granted to owner/manager/admin
+    // (`src/authz/catalog.ts`, the CMA row) — so `resolveScope` answers
+    // `all` and a project with no assignment is still legitimately
+    // theirs to edit. This half exists because the first version of this
+    // test assumed the opposite and failed on CI: an unassigned seat is
+    // NOT automatically an out-of-scope one.
     const managerCtx = { tenantId: f.tenantId, actor: f.seats.manager.actor };
-    await expect(bulkSetPriority(managerCtx, ids, "URGENT")).rejects.toBeInstanceOf(AuthzError);
-    expect((await itemsById(ids)).every((i) => i.priority === "NONE")).toBe(true);
+    await expect(bulkSetPriority(managerCtx, foreign, "URGENT")).resolves.toEqual({
+      changed: 2,
+      skipped: 0,
+    });
+
+    // The employee holds no override and is assigned to `clientId` only,
+    // so the very same ids are not theirs — and the refusal is NOT_FOUND,
+    // never FORBIDDEN, so the answer does not confirm the rows exist.
+    await expect(bulkSetPriority(employeeCtx(), foreign, "LOW")).rejects.toBeInstanceOf(AuthzError);
+    expect((await itemsById(foreign)).every((i) => i.priority === "URGENT")).toBe(true);
   });
 
   it("NO EXISTENCE ORACLE: an out-of-scope id answers exactly like a nonexistent one", async () => {
