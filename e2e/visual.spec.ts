@@ -105,13 +105,21 @@ const stops = (seed: E2ESeed): Stop[] => {
     {
       // 2W-F slice 4: the selection bar, which only exists once a row is
       // ticked — so the audit reaches it through `drive`. This is the one
-      // stop that photographs a STICKY element, and the phone walk is the
-      // point of it: the bar has to clear the shell's fixed h-14 tab bar
-      // and the safe-area inset without covering the rows it acts on.
+      // stop that photographs a STICKY element. The DESKTOP walk is what
+      // audits the bar; on a phone the select column is dropped, so the
+      // bar is unreachable there and the stop degrades to a second look
+      // at the list rather than failing.
       name: "project-backlog-selection",
       path: `${project}/backlog`,
       drive: async (page) => {
-        await page.locator('[data-testid="backlog-select-row"]').first().click();
+        // The select column is phone-dropped (`priority="medium"`), so at
+        // 390px there is nothing to tick and this stop simply re-audits
+        // the list. `.first()` keeps the visibility probe on ONE element —
+        // never `isVisible()` on a multi-match locator, where a strict
+        // violation is swallowed as "not visible".
+        const box = page.locator('[data-testid="backlog-select-row"]').first();
+        if (!(await box.isVisible())) return;
+        await box.click();
         await expect(page.getByTestId("bulk-bar")).toBeVisible({ timeout: 20_000 });
       },
     },

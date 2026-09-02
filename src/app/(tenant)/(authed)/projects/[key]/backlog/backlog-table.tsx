@@ -515,7 +515,21 @@ export function BacklogTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-0">
+              {/* PHONE-DROPPED, and measured rather than guessed. Cells are
+                  `whitespace-nowrap`, so the title column's min-content is
+                  the whole title and the table is already at its natural
+                  width at 390px — where the surviving columns are select ·
+                  key · title · actions. Adding ~32px of checkbox put the
+                  row's verbs 6px past the table's own box on every backlog
+                  stop, which is `craft.offscreenRowActions` catching
+                  exactly the defect it was written for (a row's verbs
+                  behind a horizontal scroll the page never advertises).
+                  Column priority is the system's answer to a table that
+                  does not fit, and selection is the one column here that a
+                  phone can do without: the row menu still carries every
+                  single-item verb. `medium` = from `sm` up, the same tier
+                  as state and visibility. */}
+              <TableHead priority="medium" className="w-0">
                 {data.caps.canEdit ? (
                   <Checkbox
                     checked={allShownSelected}
@@ -641,7 +655,7 @@ export function BacklogTable({
                   onEdge={onEdge}
                   className={cn("relative", visibilityRowCue(item.visibility))}
                 >
-                  <TableCell>
+                  <TableCell priority="medium">
                     {data.caps.canEdit ? (
                       <Checkbox
                         checked={selectedIds.has(item.id)}
@@ -681,18 +695,7 @@ export function BacklogTable({
                       ) : null}
                     </span>
                   </TableCell>
-                  {/* The floor only binds at PHONE width — on desktop the
-                      title takes whatever the other columns leave — and
-                      224px no longer fits there. At 390px the surviving
-                      columns are select · key · title · actions, and once
-                      the selection bar makes the page tall enough to gain
-                      a vertical scrollbar the content column loses ~15px:
-                      the row's verbs then sat 6px past the table's own
-                      box, which is the defect `craft.offscreenRowActions`
-                      exists to catch and which the new
-                      `project-backlog-selection` stop caught on its first
-                      CI run. 160px leaves real headroom. */}
-                  <TableCell className="min-w-40">
+                  <TableCell className="min-w-56">
                     <InlineEdit
                       kind="text"
                       name="title"
@@ -1049,8 +1052,10 @@ function CreateRow({ projectId, projectKey }: { projectId: string; projectKey: s
     <TableRow id="new-task" className="scroll-mt-16">
       {/* The select column has no meaning for a row that does not exist
           yet, but the cell must still be there or every cell after it
-          shifts one column left. */}
-      <TableCell aria-hidden="true" />
+          shifts one column left — and it must carry the SAME priority as
+          the column it stands in, or it survives on a phone where its
+          header does not. */}
+      <TableCell priority="medium" aria-hidden="true" />
       <TableCell className="text-muted-foreground" aria-hidden="true">
         <PlusIcon className="size-3.5" />
       </TableCell>
