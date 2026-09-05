@@ -23,6 +23,7 @@ import { SNOOZE_PRESETS, snoozeUntil } from "@/lib/snooze";
 import type { ActionResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
 import type { NotificationKind } from "@/notify/catalog";
+import { GENERIC_COPY_KEY, KIND_MESSAGE_KEY } from "@/notify/kind-copy";
 import type { InboxFilter } from "@/notify/inbox";
 
 import {
@@ -60,19 +61,6 @@ const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps>> = {
   "comment.mentioned": AtSignIcon,
   "work_item.commented": MessageSquareIcon,
   "budget.threshold_reached": GaugeIcon,
-};
-
-/**
- * Kind → message key. An explicit map rather than an interpolated key,
- * so adding a kind to the catalog without copy for it is a TYPE error
- * here — the same discipline `src/notify/templates.ts` uses for the
- * email subjects.
- */
-const KIND_KEY: Record<NotificationKind, string> = {
-  "work_item.assigned": "assigned",
-  "comment.mentioned": "mentioned",
-  "work_item.commented": "commented",
-  "budget.threshold_reached": "budgetThreshold",
 };
 
 export type InboxRowView = {
@@ -162,7 +150,7 @@ export function InboxList({
       for (const preset of SNOOZE_PRESETS) {
         items.push({
           key: `snooze-${preset}`,
-          label: t(`row.snooze.${preset}` as "row.snooze.tomorrow"),
+          label: t(`row.snooze.${preset}`),
           onSelect: () =>
             run({ ids: [r.id], read: false }, () =>
               // The instant comes from the BROWSER's clock: see
@@ -222,9 +210,12 @@ export function InboxList({
       >
         {shown.map((r) => {
           const Icon = r.kind ? KIND_ICON[r.kind] : BellIcon;
-          const label = r.kind
-            ? t(`kind.${KIND_KEY[r.kind]}` as "kind.assigned")
-            : t("kind.generic");
+          // The key map and its catalogue coverage live in
+          // `@/notify/kind-copy` — a kind added without copy in BOTH
+          // languages fails `kind-copy.test.ts`, not a member's page.
+          const label = t(
+            `kind.${r.kind ? KIND_MESSAGE_KEY[r.kind] : GENERIC_COPY_KEY}`,
+          );
           const created = Date.parse(r.createdAt);
           return (
             <li
@@ -331,8 +322,8 @@ function Empty({ filter }: { filter: InboxFilter }) {
     <div className="mt-4">
       <EmptyState
         variant="filtered"
-        title={t(`empty.${filter}.title` as "empty.unread.title")}
-        body={t(`empty.${filter}.body` as "empty.unread.body")}
+        title={t(`empty.${filter}.title`)}
+        body={t(`empty.${filter}.body`)}
         action={all}
       />
     </div>

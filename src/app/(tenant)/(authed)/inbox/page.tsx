@@ -47,7 +47,7 @@ export default async function InboxPage({
 
   const tabs: TabLink[] = INBOX_FILTERS.map((f) => ({
     href: f === "unread" ? "/inbox" : `/inbox?filter=${f}`,
-    label: t(`tabs.${f}` as "tabs.unread"),
+    label: t(`tabs.${f}`),
     active: f === filter,
   }));
 

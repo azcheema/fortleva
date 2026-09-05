@@ -153,39 +153,56 @@ test.describe("client agreements tab (owner)", () => {
  * behind.
  */
 test.describe("notification settings", () => {
-  const level = (page: import("@playwright/test").Page) => page.locator("#n-email-level");
-  const weekly = (page: import("@playwright/test").Page) => page.locator("#n-weekly");
+  type P = import("@playwright/test").Page;
+  const level = (page: P) => page.locator("#n-email-level");
+  const weekly = (page: P) => page.locator("#n-weekly");
+
+  /**
+   * `<AutoForm>` saves in a React transition with no navigation, so a
+   * `page.reload()` fired straight after a `selectOption` CANCELS the
+   * in-flight action and the page comes back with the old value — which
+   * is exactly how this suite first went red.
+   *
+   * Waiting on the "Saved" tick would not fix it either: that live
+   * region is per form, so the email form's tick can satisfy an
+   * assertion while the CHECKBOX form's save is still in flight. Both
+   * halves therefore confirm the same way — reload until the stored
+   * value comes back changed. The reload is the assertion: what it
+   * reads is the database, not the DOM the click left behind.
+   */
+  const savedLevel = async (page: P, value: string) => {
+    await level(page).selectOption(value);
+    await expect
+      .poll(
+        async () => {
+          await page.reload();
+          return level(page).inputValue();
+        },
+        { timeout: 20_000 * SLOW },
+      )
+      .toBe(value);
+  };
+  const savedWeekly = async (page: P, on: boolean) => {
+    await weekly(page).setChecked(on);
+    await expect
+      .poll(
+        async () => {
+          await page.reload();
+          return weekly(page).isChecked();
+        },
+        { timeout: 20_000 * SLOW },
+      )
+      .toBe(on);
+  };
 
   test.afterEach(async ({ page }) => {
     // Restore the defaults, pass or fail: the owner's preference row
     // decides whether later specs get assignment mail, and a leftover
     // NONE would make a future test pass for the wrong reason.
-    //
-    // Each save is awaited by RELOADING and reading the stored value
-    // back — not by watching for "Saved", which is a per-form live
-    // region: the email form's tick would have satisfied the assertion
-    // while the checkbox's own save was still in flight and was then
-    // cancelled at page teardown, leaving the fixture opted in to
-    // weekly mail. The two forms save independently, so each is
-    // confirmed independently.
     await page.goto("/settings/notifications");
-    if (await weekly(page).isChecked()) {
-      await weekly(page).uncheck();
-      await expect
-        .poll(async () => {
-          await page.reload();
-          return weekly(page).isChecked();
-        }, { timeout: 20_000 * SLOW })
-        .toBe(false);
-    }
+    if (await weekly(page).isChecked()) await savedWeekly(page, false);
     if ((await level(page).inputValue()) !== "PARTICIPATING") {
-      await level(page).selectOption("PARTICIPATING");
-      await expect
-        .poll(async () => {
-          await page.reload();
-          return level(page).inputValue();
-        }, { timeout: 20_000 * SLOW })
-        .toBe("PARTICIPATING");
+      await savedLevel(page, "PARTICIPATING");
     }
   });
 
@@ -198,19 +215,26 @@ test.describe("notification settings", () => {
     await expect(level(page)).toHaveValue("PARTICIPATING");
     await expect(weekly(page)).not.toBeChecked();
 
-    await level(page).selectOption("NONE");
-    await page.reload();
-    await expect(level(page)).toHaveValue("NONE");
+    await savedLevel(page, "NONE");
 
     // Opting in while email is off is not an error — it is two settings
     // of the member's own that disagree, and the page says which wins.
+    // The note is local state, so it appears on the click rather than
+    // after the save.
     await weekly(page).check();
     await expect(page.getByText("this reminder will not be sent", { exact: false })).toBeVisible();
-    await page.reload();
-    await expect(weekly(page)).toBeChecked();
+    await expect
+      .poll(
+        async () => {
+          await page.reload();
+          return weekly(page).isChecked();
+        },
+        { timeout: 20_000 * SLOW },
+      )
+      .toBe(true);
+    // Neither form clobbered the other.
     await expect(level(page)).toHaveValue("NONE");
   });
-
 });
 
 test.describe("as the employee", () => {

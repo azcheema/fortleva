@@ -32,7 +32,7 @@ export function EmailLevelForm({ prefs }: { prefs: MemberNotificationPreferences
         <NativeSelect id="n-email-level" name="emailLevel" defaultValue={prefs.emailLevel}>
           {EMAIL_LEVELS.map((level) => (
             <option key={level} value={level}>
-              {t(`email.levels.${level}` as "email.levels.ALL")}
+              {t(`email.levels.${level}`)}
             </option>
           ))}
         </NativeSelect>
