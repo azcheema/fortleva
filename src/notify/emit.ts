@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
-
 import type { TenantDb } from "@/db";
-import { NOTIFICATION_KINDS, type NotificationKind } from "./catalog";
+import { newId } from "@/lib/ids";
+import { NOTIFICATION_KINDS, emailAllowed, isEmailLevel, type NotificationKind } from "./catalog";
 
 /**
  * notify.emit — THE one fan-out seam (§6.18): called inside the same
@@ -17,10 +16,20 @@ import { NOTIFICATION_KINDS, type NotificationKind } from "./catalog";
  *   SELECT to the receiver, so INSERT..RETURNING for another receiver
  *   would be rejected (principal_scope; see the migration).
  * - The actor never notifies themself.
+ * - Row ids are UUIDv7 (`newId()`), because the inbox pages on them.
  * - dedupeKey collapses repeats while an unread row with the same key
  *   exists for the receiver.
- * - Suppressed addresses and emailLevel=NONE receivers get no outbox
- *   row (the worker re-checks suppression at send).
+ * - Suppressed addresses get no outbox row (the worker re-checks
+ *   suppression at send).
+ * - `NotificationPreference.emailLevel` is honoured per RECEIVER and
+ *   per KIND through the catalog's level ladder: each emailing kind
+ *   names the weakest level that still gets it, so MENTIONS mails a
+ *   mention and not an assignment. A receiver with no preference row
+ *   gets the schema default, PARTICIPATING — the same answer the column
+ *   would give, so an unwritten row and a written default are the same
+ *   thing here. The IN-APP row is never gated: an assignment you cannot
+ *   see is work you never find out about, and the inbox is the surface
+ *   the emails are only a pointer to.
  */
 
 export type EmitInput = {
@@ -52,7 +61,12 @@ export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Pr
   const byMember = new Map<string, string>(); // receiverId → inserted notification id
   for (const receiverId of receivers) {
     const row = {
-      id: randomUUID(),
+      // UUIDv7, like every other service that must know an id before
+      // insert — NOT randomUUID(). The id is the inbox's pagination key
+      // (src/notify/inbox.ts): v7 carries the creation millisecond, so
+      // it is a total order that survives the round trip through a JS
+      // Date, which `created_at` at microsecond precision does not.
+      id: newId(),
       tenantId,
       receiverType: "MEMBER" as const,
       receiverId,
@@ -75,8 +89,8 @@ export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Pr
   }
   if (targets.length === 0 || spec.class !== "INSTANT") return;
 
-  // Email enqueue: resolve address + locale per member, honour
-  // emailLevel=NONE and the global suppression list.
+  // Email enqueue: resolve address + locale per member, honour the
+  // receiver's emailLevel for THIS kind, and the global suppression list.
   const members = await tx.member.findMany({
     where: { tenantId, id: { in: targets } },
     select: { id: true, user: { select: { email: true, locale: true } } },
@@ -85,9 +99,14 @@ export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Pr
     where: { tenantId, receiverType: "MEMBER", receiverId: { in: targets } },
     select: { receiverId: true, emailLevel: true },
   });
-  const noEmail = new Set(prefs.filter((p) => p.emailLevel === "NONE").map((p) => p.receiverId));
+  // The schema default, restated here because "no row" and "a row with
+  // the default" must answer identically — a member who has never
+  // opened the settings page has not chosen silence.
+  const levelOf = new Map(
+    prefs.map((p) => [p.receiverId, isEmailLevel(p.emailLevel) ? p.emailLevel : "PARTICIPATING"]),
+  );
   const emails = members
-    .filter((m) => !noEmail.has(m.id) && m.user.email)
+    .filter((m) => m.user.email && emailAllowed(levelOf.get(m.id) ?? "PARTICIPATING", input.kind))
     .map((m) => ({ memberId: m.id, email: m.user.email.toLowerCase(), locale: m.user.locale ?? "en" }));
   if (emails.length === 0) return;
 

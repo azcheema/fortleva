@@ -5,6 +5,8 @@ import {
   FolderIcon,
   FolderKanbanIcon,
   HouseIcon,
+  BellIcon,
+  InboxIcon,
   KeyRoundIcon,
   PaletteIcon,
   SettingsIcon,
@@ -20,6 +22,7 @@ import type { NavIcon as NavIconName } from "@/app/(tenant)/(authed)/nav";
 /** One icon per concept, reused everywhere (UI.md §10). */
 const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   home: HouseIcon,
+  inbox: InboxIcon,
   clients: Building2Icon,
   projects: FolderKanbanIcon,
   time: TimerIcon,
@@ -31,6 +34,9 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   rates: CoinsIcon,
   // Same glyph as the rail's Time entry: one icon per concept.
   timeSettings: TimerIcon,
+  // A bell is "reach me", the inbox tray is "what reached me": two
+  // concepts, two glyphs.
+  notifications: BellIcon,
   export: ArchiveIcon,
   design: PaletteIcon,
   account: UserRoundIcon,

@@ -82,6 +82,11 @@ const stops = (seed: E2ESeed): Stop[] => {
 
     // ── the member plane ────────────────────────────────────────────
     { name: "home", path: "/home" },
+    // 2W notifications: the standing fixture holds exactly one real
+    // notification (the employee assigned a task to the owner), so this
+    // stop photographs a row that resolved its subject AND the rail
+    // badge that every other stop now carries too.
+    { name: "inbox", path: "/inbox" },
     { name: "dashboard", path: "/dashboard" },
     { name: "clients", path: "/clients" },
     { name: "clients-archived", path: "/clients?archived=1" },
@@ -146,6 +151,9 @@ const stops = (seed: E2ESeed): Stop[] => {
     // state (the fixture owner has no factor); notice status + work types.
     { name: "settings-rates", path: "/settings/rates" },
     { name: "settings-time", path: "/settings/time" },
+    // 2W/2T: the member's own notification settings — the one Settings
+    // page with no permission gate.
+    { name: "settings-notifications", path: "/settings/notifications" },
     { name: "settings-export", path: "/settings/export" },
     // Dev-only preview: it 404s under `next start` by design (nav.ts
     // devOnly + notFound() in the page), so both statuses are legal.
@@ -306,7 +314,7 @@ async function visit(
   await settle(page);
 
   const shot = `${stop.name}__${theme}__${device}.png`;
-  // The shots are a HUMAN artefact — 172 full-page PNGs for the craft
+  // The shots are a HUMAN artefact — 180 full-page PNGs for the craft
   // review. Nothing asserts on them: this repo has no committed
   // baselines and no toHaveScreenshot anywhere, and ci.yml uploads only
   // playwright-report/, so under CI they were rendered, encoded and then
@@ -465,7 +473,7 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // 43 stops × 3 navigations, five minutes next to the database.
+        // 45 stops × 3 navigations, five minutes next to the database.
         // The CI branch was 900 s, sized when the runner was in the US
         // and the database in the EU (~10 s a stop on a slow evening).
         // Since 2026-09-01 CI runs against a service container on the

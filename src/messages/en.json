@@ -83,7 +83,9 @@
     "design": "Design",
     "time": "Time",
     "rates": "Rates",
-    "timeSettings": "Time tracking"
+    "timeSettings": "Time tracking",
+    "inbox": "Inbox",
+    "notifications": "Notifications"
   },
   "shell": {
     "palette": {
@@ -136,7 +138,8 @@
       "description": "There is nothing at this address, or you do not have access to it.",
       "home": "Go to Home",
       "signIn": "Sign in"
-    }
+    },
+    "unreadCount": "{count, plural, =1 {1 unread} other {# unread}}"
   },
   "home": {
     "title": "My Work",
@@ -169,6 +172,61 @@
       "waiting": "Waiting on client",
       "due": "Due this week",
       "pending": "—"
+    }
+  },
+  "inbox": {
+    "title": "Inbox",
+    "description": "What happened to your work — assignments, mentions and budget alerts.",
+    "markAllRead": "Mark all as read",
+    "older": "Older",
+    "failed": "That did not go through — try again.",
+    "unreadLabel": "unread",
+    "subjectUnavailable": "No longer available to you",
+    "snoozedUntil": "Snoozed until {date}",
+    "tabs": {
+      "unread": "Unread",
+      "all": "All",
+      "snoozed": "Snoozed",
+      "archived": "Archived"
+    },
+    "kind": {
+      "assigned": "A task was assigned to you",
+      "mentioned": "You were mentioned",
+      "commented": "New comment on a task you follow",
+      "budgetThreshold": "A project budget reached a threshold",
+      "generic": "Something happened"
+    },
+    "row": {
+      "markRead": "Mark as read",
+      "markUnread": "Mark as unread",
+      "archive": "Archive",
+      "restore": "Move back to inbox",
+      "unsnooze": "Un-snooze",
+      "snooze": {
+        "inThreeHours": "Snooze for 3 hours",
+        "tomorrow": "Snooze until tomorrow morning",
+        "nextWeek": "Snooze until next Monday"
+      }
+    },
+    "empty": {
+      "seeAll": "See all notifications",
+      "unread": {
+        "title": "You are all caught up",
+        "body": "Nothing unread. New notifications land here."
+      },
+      "all": {
+        "title": "No notifications yet",
+        "body": "Fortleva tells you here when a task is assigned to you or a budget crosses a threshold.",
+        "action": "Go to your work"
+      },
+      "snoozed": {
+        "title": "Nothing snoozed",
+        "body": "Snoozed notifications wait here until the time you picked."
+      },
+      "archived": {
+        "title": "Nothing archived",
+        "body": "Notifications you archive are kept here."
+      }
     }
   },
   "dashboard": {
@@ -683,6 +741,30 @@
         "restored": "Work type restored.",
         "empty": "No work types",
         "emptyBody": "Add the first work type; members pick it on entries."
+      }
+    },
+    "notifications": {
+      "title": "Notifications",
+      "description": "How Fortleva reaches you. These settings are yours alone — nobody else can change them.",
+      "email": {
+        "title": "Email",
+        "description": "Emails carry a link, never your data — you always read the details signed in.",
+        "label": "Send me email about",
+        "hint": "Choose how much reaches your inbox by mail.",
+        "inAppNote": "Whatever you choose, everything still appears in your Fortleva inbox. Email is the nudge; the inbox is the record.",
+        "levels": {
+          "ALL": "Everything",
+          "PARTICIPATING": "Work involving me — assignments and mentions",
+          "MENTIONS": "Only when someone mentions me",
+          "NONE": "Nothing — no email at all"
+        }
+      },
+      "weekly": {
+        "title": "Weekly time reminder",
+        "description": "A nudge to yourself, sent to nobody else.",
+        "label": "Remind me once a week to check my tracked time",
+        "hint": "Monday morning, in your own time zone. The email is one sentence and a link — it contains no hours and no task names.",
+        "emailOff": "Email is switched off above, so this reminder will not be sent. Choose any other email setting to receive it."
       }
     }
   },

@@ -13,6 +13,14 @@ export type TabLink = {
   exact?: boolean;
   /** Sibling routes this tab also owns (a sub-view living outside its path prefix). */
   also?: string[];
+  /**
+   * Overrides the pathname comparison. Tabs that differ only by a query
+   * param (`/inbox?filter=archived`) all share one pathname, so the
+   * server — which already parsed the param to build the page — says
+   * which one is current instead of this component guessing. Omitted,
+   * the pathname rules above decide, exactly as before.
+   */
+  active?: boolean;
 };
 
 /**
@@ -57,7 +65,9 @@ export function TabNav({ tabs, className }: { tabs: TabLink[]; className?: strin
     >
       {tabs.map((tab) => {
         const owns = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-        const active = tab.exact ? pathname === tab.href : owns(tab.href) || (tab.also ?? []).some(owns);
+        const active =
+          tab.active ??
+          (tab.exact ? pathname === tab.href : owns(tab.href) || (tab.also ?? []).some(owns));
         return (
           <Link
             key={tab.href}

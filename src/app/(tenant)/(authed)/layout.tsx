@@ -7,6 +7,7 @@ import { PwaRegister } from "@/components/shell/pwa-register";
 import { withTenant } from "@/db";
 import { getThemePreference } from "@/lib/theme-server";
 import { getActiveMembership, mfaStateOf } from "@/members/tenant-context";
+import { countUnreadIn } from "@/notify/inbox";
 
 import { switchLocaleAction } from "./account/actions";
 import { NAV, visibleNav, type NavEntry } from "./nav";
@@ -39,18 +40,26 @@ export default async function AuthedLayout({ children }: { children: React.React
 
   let nav: NavEntry[];
   let timer: TimerPillState | null = null;
+  // The rail's unread badge (UI.md §3.1). One indexed count per render,
+  // under the member principal — `principal_scope` already binds it to
+  // this member's own rows, so there is nothing here to get wrong.
+  let unreadInbox = 0;
   if (membership) {
     const actor = { memberId: membership.memberId, mfa: mfaStateOf(session) };
     const gated = [...new Set(collectPermissions(NAV))];
-    const held = await withTenant(
+    const { held, unread } = await withTenant(
       membership.tenantId,
       { type: "member", id: membership.memberId },
       async (tx) => {
-        const results = await Promise.all(gated.map((code) => isAuthorized(tx, actor, code)));
-        return new Set(gated.filter((_, i) => results[i]));
+        const [results, unread] = await Promise.all([
+          Promise.all(gated.map((code) => isAuthorized(tx, actor, code))),
+          countUnreadIn(tx, { tenantId: membership.tenantId, actor }),
+        ]);
+        return { held: new Set(gated.filter((_, i) => results[i])), unread };
       },
     );
     nav = visibleNav(NAV, (code) => held.has(code));
+    unreadInbox = unread;
     // The pill's initial snapshot (2T): only for members who may track time.
     if (held.has("time:track")) timer = await getTimerStateAction();
   } else {
@@ -65,6 +74,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       theme={theme}
       onSwitchLocale={switchLocaleAction}
       timer={timer}
+      unreadInbox={unreadInbox}
     >
       <PwaRegister />
       {children}

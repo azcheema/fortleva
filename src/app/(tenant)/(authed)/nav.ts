@@ -9,6 +9,8 @@
  */
 export type NavIcon =
   | "home"
+  | "inbox"
+  | "notifications"
   | "clients"
   | "projects"
   | "time"
@@ -28,6 +30,8 @@ export type NavEntry = {
   /** Key under the `nav` message namespace. */
   labelKey:
     | "home"
+    | "inbox"
+    | "notifications"
     | "clients"
     | "projects"
     | "time"
@@ -47,6 +51,10 @@ export type NavEntry = {
   permission?: string;
   /** Two-key "go to" sequence shown in the ? overlay and the palette (UI.md §6). */
   goKey?: string;
+  /** Renders the unread badge (UI.md §3.1 "Inbox — core; unread badge").
+   * Exactly one entry carries it; the shell reads the count off its own
+   * required prop rather than guessing from the href. */
+  badge?: "inboxUnread";
   /** Shown as a bottom tab on mobile (Home / Projects / Clients / More until 2W — UI.md §3.3). */
   mobileTab?: boolean;
   /** Development-only entry (the design preview): dropped in production. */
@@ -84,6 +92,14 @@ export const NAV: readonly NavEntry[] = [
     goKey: "T",
     mobileTab: true,
   },
+  // 2W notifications core (UI.md §3.1, between Time and Files): NEVER
+  // permission-gated — "notifications core, never entitlement-gated"
+  // (DATA_MODEL.md §6.18), and the only rows an inbox can hold are the
+  // member's own. Not a mobile tab: §3.3's target bar is Home / Board /
+  // Timer / Inbox / More, and adding a fifth tab to today's four would
+  // reshape the phone bar rather than fill a slot in it — on a phone
+  // Inbox lives in `More`, badge and all, until that bar is rebuilt.
+  { id: "inbox", labelKey: "inbox", href: "/inbox", icon: "inbox", goKey: "I", badge: "inboxUnread" },
   {
     id: "files",
     labelKey: "files",
@@ -129,6 +145,17 @@ export const NAV: readonly NavEntry[] = [
         href: "/settings/time",
         icon: "timeSettings",
         permission: "settings:view",
+      },
+      // No permission: every other Settings page administers the
+      // WORKSPACE and is hidden without its code; this one administers
+      // one person's own mail, and no seat in this product decides on
+      // someone else's behalf whether they are emailed (UI.md §3.1
+      // lists `notifications` among the settings pages).
+      {
+        id: "notifications",
+        labelKey: "notifications",
+        href: "/settings/notifications",
+        icon: "notifications",
       },
       {
         id: "export",

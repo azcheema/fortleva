@@ -106,6 +106,7 @@ export function AppShell({
   theme,
   onSwitchLocale,
   timer,
+  unreadInbox,
   children,
 }: {
   nav: readonly NavEntry[];
@@ -125,6 +126,10 @@ export function AppShell({
    * time:track / module off): state a shared component mirrors is never a
    * default (PLAN.md standing trap), so a new layout cannot silently lose it. */
   timer: TimerPillState | null;
+  /** Unread notifications for THIS member — REQUIRED (0 = none), for the
+   * same reason `timer` is: state a shared component must reflect is a
+   * prop, never a default, or a new layout silently loses the badge. */
+  unreadInbox: number;
   children: React.ReactNode;
 }) {
   const t = useTranslations("nav");
@@ -181,6 +186,12 @@ export function AppShell({
   // "More" owns every route none of the four tabs does (UI.md §3.3).
   const tabOwnsRoute = tabs.some((e) => isActive(pathname, e.href));
 
+  /** The count a badged entry shows, or null when it shows none — a
+   * zero badge is noise, and only entries that declare `badge` in the
+   * registry can carry one at all. */
+  const badgeCount = (entry: NavEntry): number | null =>
+    entry.badge === "inboxUnread" && unreadInbox > 0 ? unreadInbox : null;
+
   const railLink = (entry: NavEntry, depth = 0) => {
     const active = isActive(pathname, entry.href);
     const label = t(entry.labelKey);
@@ -204,6 +215,28 @@ export function AppShell({
           )}
         />
         <span className={cn("truncate", labelClass)}>{label}</span>
+        {badgeCount(entry) === null ? null : (
+          <>
+            {/* Collapsed there is no label and so no room for a count:
+                the same fact becomes a dot on the icon. Either way the
+                number is in the accessible name, so the rail never
+                announces "Inbox" alone while it is not empty. */}
+            {collapsed ? (
+              <span
+                aria-hidden="true"
+                className="absolute top-1 right-1 size-1.5 rounded-full bg-primary"
+              />
+            ) : (
+              <span
+                aria-hidden="true"
+                className="ml-auto hidden shrink-0 rounded-full bg-primary px-1.5 text-2xs leading-4 font-medium text-primary-foreground tabular-nums md:inline"
+              >
+                {badgeCount(entry)}
+              </span>
+            )}
+            <span className="sr-only">{tShell("unreadCount", { count: badgeCount(entry)! })}</span>
+          </>
+        )}
       </Link>
     );
     return (
@@ -237,6 +270,17 @@ export function AppShell({
       >
         <NavIcon name={entry.icon} className="size-4" />
         {t(entry.labelKey)}
+        {badgeCount(entry) === null ? null : (
+          <>
+            <span
+              aria-hidden="true"
+              className="ml-auto shrink-0 rounded-full bg-primary px-1.5 text-2xs leading-4 font-medium text-primary-foreground tabular-nums"
+            >
+              {badgeCount(entry)}
+            </span>
+            <span className="sr-only">{tShell("unreadCount", { count: badgeCount(entry)! })}</span>
+          </>
+        )}
       </Link>
       {entry.children ? (
         <ul className="flex flex-col gap-0.5">{entry.children.map((c) => sheetLink(c, depth + 1))}</ul>

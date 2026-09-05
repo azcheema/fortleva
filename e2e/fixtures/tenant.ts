@@ -127,6 +127,27 @@ export async function dropProject(projectId: string): Promise<void> {
   await runCli(["drop-project", projectId]);
 }
 
+export type NotificationRecord = {
+  id: string;
+  kind: string;
+  read: boolean;
+  archived: boolean;
+  snoozed: boolean;
+};
+
+/** The stored notification rows — inbox state is a fact in the
+ * database, so the spec asserts on it rather than on a toast. */
+export async function readNotifications(tenantId: string): Promise<NotificationRecord[]> {
+  return runCli(["notifications", tenantId]);
+}
+
+/** Hand the standing fixture's notification back unread: the rail badge
+ * is part of every screenshot the visual sweep takes. */
+export async function resetNotifications(tenantId: string): Promise<number> {
+  const { reset } = await runCli<{ reset: number }>(["reset-notifications", tenantId]);
+  return reset;
+}
+
 export function readSeed(): E2ESeed | null {
   if (!existsSync(SEED_FILE)) return null;
   return JSON.parse(readFileSync(SEED_FILE, "utf8")) as E2ESeed;

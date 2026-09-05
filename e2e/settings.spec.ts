@@ -145,6 +145,74 @@ test.describe("client agreements tab (owner)", () => {
   });
 });
 
+/**
+ * `/settings/notifications` — the one Settings page that is NOT gated,
+ * because it administers one person's own mail rather than the
+ * workspace. Both halves of it are asserted through a full reload, so
+ * what is checked is the stored row and not the DOM the click left
+ * behind.
+ */
+test.describe("notification settings", () => {
+  const level = (page: import("@playwright/test").Page) => page.locator("#n-email-level");
+  const weekly = (page: import("@playwright/test").Page) => page.locator("#n-weekly");
+
+  test.afterEach(async ({ page }) => {
+    // Restore the defaults, pass or fail: the owner's preference row
+    // decides whether later specs get assignment mail, and a leftover
+    // NONE would make a future test pass for the wrong reason.
+    //
+    // Each save is awaited by RELOADING and reading the stored value
+    // back — not by watching for "Saved", which is a per-form live
+    // region: the email form's tick would have satisfied the assertion
+    // while the checkbox's own save was still in flight and was then
+    // cancelled at page teardown, leaving the fixture opted in to
+    // weekly mail. The two forms save independently, so each is
+    // confirmed independently.
+    await page.goto("/settings/notifications");
+    if (await weekly(page).isChecked()) {
+      await weekly(page).uncheck();
+      await expect
+        .poll(async () => {
+          await page.reload();
+          return weekly(page).isChecked();
+        }, { timeout: 20_000 * SLOW })
+        .toBe(false);
+    }
+    if ((await level(page).inputValue()) !== "PARTICIPATING") {
+      await level(page).selectOption("PARTICIPATING");
+      await expect
+        .poll(async () => {
+          await page.reload();
+          return level(page).inputValue();
+        }, { timeout: 20_000 * SLOW })
+        .toBe("PARTICIPATING");
+    }
+  });
+
+  test("the email level and the weekly reminder both survive a reload, and NONE says the reminder will not arrive", async ({
+    page,
+  }) => {
+    await page.goto("/settings/notifications");
+    await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
+    // The default is the schema's, with no row written yet.
+    await expect(level(page)).toHaveValue("PARTICIPATING");
+    await expect(weekly(page)).not.toBeChecked();
+
+    await level(page).selectOption("NONE");
+    await page.reload();
+    await expect(level(page)).toHaveValue("NONE");
+
+    // Opting in while email is off is not an error — it is two settings
+    // of the member's own that disagree, and the page says which wins.
+    await weekly(page).check();
+    await expect(page.getByText("this reminder will not be sent", { exact: false })).toBeVisible();
+    await page.reload();
+    await expect(weekly(page)).toBeChecked();
+    await expect(level(page)).toHaveValue("NONE");
+  });
+
+});
+
 test.describe("as the employee", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -169,5 +237,13 @@ test.describe("as the employee", () => {
     await expect(page.getByTestId("agreement-rate")).toHaveCount(0);
     await expect(page.getByTestId("rate-card-row")).toHaveCount(0);
     await expect(page.getByText("1,200.00")).toHaveCount(0);
+  });
+
+  test("but DOES reach /settings/notifications — that page is nobody else's to administer", async ({
+    page,
+  }) => {
+    await page.goto("/settings/notifications");
+    await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
+    await expect(page.locator("#n-email-level")).toHaveValue("PARTICIPATING");
   });
 });

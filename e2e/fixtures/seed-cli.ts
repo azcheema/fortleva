@@ -27,6 +27,8 @@
  *        tsx e2e/fixtures/seed-cli.ts milestone <milestoneId>
  *        tsx e2e/fixtures/seed-cli.ts big-project <tenantId> [size]
  *        tsx e2e/fixtures/seed-cli.ts drop-project <projectId>
+ *        tsx e2e/fixtures/seed-cli.ts notifications <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts reset-notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
  *        tsx e2e/fixtures/seed-cli.ts sweep-dbtests [maxAgeMinutes]
  */
@@ -80,6 +82,7 @@ const DBTEST_PREFIXES = [
   "exp-b-",
   "export-",
   "gate-",
+  "inbox-",
   "iso-a-",
   "iso-b-",
   "members-",
@@ -87,6 +90,7 @@ const DBTEST_PREFIXES = [
   "money-",
   "ordering-",
   "prefs-",
+  "prefs-notify-",
   "projects-",
   "reports-",
   "roles-",
@@ -428,7 +432,7 @@ async function provision(seedFile: string): Promise<void> {
       assign?: boolean;
       clientVisible?: boolean;
     },
-  ): Promise<void> => {
+  ): Promise<string> => {
     const { id } = await createItem(ctx, { projectId, title });
     if (opts.priority || opts.hours) {
       await updateItemFields(ctx, id, {
@@ -439,9 +443,12 @@ async function provision(seedFile: string): Promise<void> {
     if (opts.assign) await assignItem(ctx, id, ownerMemberId);
     if (opts.clientVisible) await changeItemVisibility(ctx, id, "CLIENT_VISIBLE");
     if (opts.category) await changeState(ctx, id, stateIdOf(opts.category));
+    return id;
   };
   await task("Skriv kravspecifikation", { category: "IN_PROGRESS", hours: 4, clientVisible: true, assign: true });
-  await task("Designgranskning med kunden", { priority: "MEDIUM", hours: 1.5 });
+  // Kept: the employee assigns this one to the owner below, which is
+  // what puts a real notification in the owner's inbox.
+  const reviewTaskId = await task("Designgranskning med kunden", { priority: "MEDIUM", hours: 1.5 });
   await task("Migrera DNS till ny leverantör", { category: "DONE", hours: 1 });
   await task("Tillgänglighetsgranskning", { category: "BACKLOG" });
 
@@ -497,6 +504,20 @@ async function provision(seedFile: string): Promise<void> {
     memberId: employeeMember.id,
     clientId,
   });
+
+  // 2W notifications: the one notification in the standing fixture, and
+  // it is PRODUCED rather than inserted — the employee (who now holds
+  // the client) assigns a task to the owner, so `notify.emit` runs
+  // inside the same transaction the assignment does, exactly as it will
+  // in production. That is what gives /inbox a row and the rail its
+  // badge for e2e/inbox.spec.ts and the visual sweep. It also enqueues
+  // one EmailOutbox row, which teardown removes; no worker runs here,
+  // so nothing is ever sent and .dev-outbox stays empty.
+  await assignItem(
+    { tenantId, actor: { memberId: employeeMember.id, mfa: { enrolled: false, verifiedAt: null } } },
+    reviewTaskId,
+    ownerMemberId,
+  );
 
   const clientVisibleDocName = `e2e-shared-${run}.txt`;
   const internalDocName = `e2e-private-${run}.txt`;
@@ -738,6 +759,73 @@ async function teardown(seedFile: string): Promise<void> {
 }
 
 /**
+ * Refuse to touch anything but a throwaway tenant. `setVisibility` and
+ * `removeTenant` both carry this check; the notification helpers below
+ * write and read whole-tenant, so they need it more, not less — a stale
+ * `.seed` or a hand-typed id must not be able to blank a real tenant's
+ * inbox state.
+ */
+async function assertThrowawayTenant(db: PlatformDb, tenantId: string): Promise<void> {
+  const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+  if (!tenant) throw new Error(`no such tenant ${tenantId}`);
+  if (!isThrowawaySlug(tenant.slug)) {
+    throw new Error(`refusing to touch non-throwaway tenant "${tenant.slug}"`);
+  }
+}
+
+/**
+ * The tenant's notification rows, as the database holds them.
+ *
+ * e2e/inbox.spec.ts asserts on THESE and not on a toast: the one
+ * assertion in this suite whose timing depends on render scheduling
+ * rather than a server answer is the one that has flaked twice
+ * (PLAN.md §0). Read-state is a stored fact, so read the stored fact.
+ */
+async function notifications(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertThrowawayTenant(db, tenantId);
+  const rows = await db.notification.findMany({
+    where: { tenantId },
+    select: { id: true, kind: true, readAt: true, archivedAt: true, snoozedTill: true },
+    orderBy: { createdAt: "desc" },
+  });
+  await db.$disconnect();
+  process.stdout.write(
+    `${MARKER}${JSON.stringify(
+      rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        read: r.readAt !== null,
+        archived: r.archivedAt !== null,
+        snoozed: r.snoozedTill !== null,
+      })),
+    )}
+`,
+  );
+}
+
+/**
+ * Put every notification back to unread, un-archived and un-snoozed.
+ * The standing fixture's one notification is what the rail badge and
+ * the visual sweep photograph, so a spec that reads or files it must
+ * hand it back exactly as it found it — the same doctrine work.spec.ts
+ * follows for the row it drops into the photographed project.
+ */
+async function resetNotifications(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertThrowawayTenant(db, tenantId);
+  const { count } = await db.notification.updateMany({
+    where: { tenantId },
+    data: { readAt: null, archivedAt: null, snoozedTill: null },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"reset":${count}}
+`);
+}
+
+/**
  * Put a seeded document back to a known visibility so each spec starts
  * from the same fixture, whatever the previous one changed or left
  * behind after a failure. Throwaway tenant only, like everything here.
@@ -935,6 +1023,8 @@ const main = async (): Promise<void> => {
   if (command === "milestone") return milestone(argument!);
   if (command === "big-project") return bigProject(argument!, process.argv[4]);
   if (command === "drop-project") return dropProject(argument!);
+  if (command === "notifications") return notifications(argument!);
+  if (command === "reset-notifications") return resetNotifications(argument!);
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);
   throw new Error(`unknown command "${command ?? ""}"`);

@@ -1,7 +1,7 @@
 import { withPlatform } from "@/db";
 import { send } from "@/mailer";
 import { isNotificationKind, NOTIFICATION_KINDS } from "@/notify/catalog";
-import { renderEmail } from "@/notify/templates";
+import { isEmailTemplate, renderEmail } from "@/notify/templates";
 
 /**
  * The outbox drain (ARC-21; §6.18): claims due rows with FOR UPDATE SKIP
@@ -64,16 +64,20 @@ export async function drainOutbox(
         RETURNING id, kind, locale, to_email, params, notification_ids, attempts`;
       const toSend: Prepared[] = [];
       for (const row of claimed) {
-        if (!isNotificationKind(row.kind)) {
+        // TEMPLATE key, not notification kind (see notify/templates.ts):
+        // outbox rows exist that no fan-out produced — the 2T weekly
+        // self-reminder — and treating those as unknown killed them.
+        if (!isEmailTemplate(row.kind)) {
           await tx.emailOutbox.update({ where: { id: row.id }, data: { status: "DEAD", lastError: "unknown kind", lockedAt: null } });
           out.dead += 1;
           continue;
         }
         const kind = row.kind;
-        const spec = NOTIFICATION_KINDS[kind];
         // Debounce cancellation: an assignment read within the window is
-        // SKIPPED, not sent (§6.18).
-        if (spec.email?.cancelledIfRead && row.notification_ids.length > 0) {
+        // SKIPPED, not sent (§6.18). Only a fan-out kind has one — a row
+        // with no notification behind it has nothing that could be read.
+        const spec = isNotificationKind(kind) ? NOTIFICATION_KINDS[kind] : null;
+        if (spec?.email?.cancelledIfRead && row.notification_ids.length > 0) {
           const unread = await tx.notification.count({ where: { id: { in: row.notification_ids }, readAt: null } });
           if (unread === 0) {
             await tx.emailOutbox.update({ where: { id: row.id }, data: { status: "SKIPPED", lockedAt: null } });

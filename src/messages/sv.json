@@ -83,7 +83,9 @@
     "design": "Design",
     "time": "Tid",
     "rates": "Timpriser",
-    "timeSettings": "Tidsregistrering"
+    "timeSettings": "Tidsregistrering",
+    "inbox": "Inkorg",
+    "notifications": "Aviseringar"
   },
   "shell": {
     "palette": {
@@ -136,7 +138,8 @@
       "description": "Det finns inget på den här adressen, eller så saknar du åtkomst till den.",
       "home": "Gå till Hem",
       "signIn": "Logga in"
-    }
+    },
+    "unreadCount": "{count, plural, =1 {1 oläst} other {# olästa}}"
   },
   "home": {
     "title": "Mitt arbete",
@@ -169,6 +172,61 @@
       "waiting": "Väntar på kund",
       "due": "Förfaller denna vecka",
       "pending": "—"
+    }
+  },
+  "inbox": {
+    "title": "Inkorg",
+    "description": "Vad som hänt i ditt arbete – tilldelningar, omnämnanden och budgetvarningar.",
+    "markAllRead": "Markera allt som läst",
+    "older": "Äldre",
+    "failed": "Det gick inte – försök igen.",
+    "unreadLabel": "oläst",
+    "subjectUnavailable": "Inte längre tillgängligt för dig",
+    "snoozedUntil": "Snoozad till {date}",
+    "tabs": {
+      "unread": "Olästa",
+      "all": "Alla",
+      "snoozed": "Snoozade",
+      "archived": "Arkiverade"
+    },
+    "kind": {
+      "assigned": "En uppgift tilldelades dig",
+      "mentioned": "Du omnämndes",
+      "commented": "Ny kommentar på en uppgift du följer",
+      "budgetThreshold": "En projektbudget har nått en tröskel",
+      "generic": "Något har hänt"
+    },
+    "row": {
+      "markRead": "Markera som läst",
+      "markUnread": "Markera som oläst",
+      "archive": "Arkivera",
+      "restore": "Flytta tillbaka till inkorgen",
+      "unsnooze": "Avbryt snooze",
+      "snooze": {
+        "inThreeHours": "Snooza i 3 timmar",
+        "tomorrow": "Snooza till i morgon bitti",
+        "nextWeek": "Snooza till nästa måndag"
+      }
+    },
+    "empty": {
+      "seeAll": "Visa alla aviseringar",
+      "unread": {
+        "title": "Du är ikapp",
+        "body": "Inget oläst. Nya aviseringar hamnar här."
+      },
+      "all": {
+        "title": "Inga aviseringar än",
+        "body": "Här berättar Fortleva när en uppgift tilldelas dig eller när en budget passerar en tröskel.",
+        "action": "Till ditt arbete"
+      },
+      "snoozed": {
+        "title": "Inget snoozat",
+        "body": "Snoozade aviseringar väntar här till den tid du valt."
+      },
+      "archived": {
+        "title": "Inget arkiverat",
+        "body": "Aviseringar du arkiverar sparas här."
+      }
     }
   },
   "dashboard": {
@@ -683,6 +741,30 @@
         "restored": "Arbetstypen är återställd.",
         "empty": "Inga arbetstyper",
         "emptyBody": "Lägg till den första arbetstypen; medlemmar väljer den på poster."
+      }
+    },
+    "notifications": {
+      "title": "Aviseringar",
+      "description": "Hur Fortleva når dig. De här inställningarna är bara dina – ingen annan kan ändra dem.",
+      "email": {
+        "title": "E-post",
+        "description": "E-posten innehåller en länk, aldrig dina uppgifter – detaljerna läser du alltid inloggad.",
+        "label": "Skicka e-post till mig om",
+        "hint": "Välj hur mycket som når din e-post.",
+        "inAppNote": "Oavsett vad du väljer visas allt i din inkorg i Fortleva. E-posten är påminnelsen, inkorgen är noteringen.",
+        "levels": {
+          "ALL": "Allt",
+          "PARTICIPATING": "Arbete som rör mig – tilldelningar och omnämnanden",
+          "MENTIONS": "Bara när någon nämner mig",
+          "NONE": "Inget – ingen e-post alls"
+        }
+      },
+      "weekly": {
+        "title": "Veckopåminnelse om tid",
+        "description": "En påminnelse till dig själv, som ingen annan får.",
+        "label": "Påminn mig en gång i veckan om att se över min tidrapportering",
+        "hint": "Måndag morgon, i din egen tidszon. E-posten är en mening och en länk – den innehåller varken timmar eller uppgiftsnamn.",
+        "emailOff": "E-post är avstängd ovan, så påminnelsen skickas inte. Välj någon annan e-postinställning för att få den."
       }
     }
   },
