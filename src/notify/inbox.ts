@@ -122,6 +122,19 @@ const decodeCursor = (raw: string | null | undefined): string | null => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
 };
 
+/**
+ * Does this param actually put the reader past the first page?
+ *
+ * The page needs the same answer the QUERY gets, and "a `cursor` param
+ * exists" is not it: `?cursor=` and `?cursor=garbage` are both rejected
+ * above and answered with the first page, so treating them as paged
+ * would tell a member who is genuinely caught up that there is
+ * "nothing further back" — the same lie the past-the-end state exists
+ * to remove, pointed the other way. One function, both callers.
+ */
+export const isInboxCursor = (raw: string | null | undefined): boolean =>
+  decodeCursor(raw) !== null;
+
 /** Rows that belong in front of the member right now: unread, not
  * archived, and not parked by a snooze that has yet to expire. */
 const liveUnread = (now: Date) => ({

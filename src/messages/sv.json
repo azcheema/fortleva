@@ -226,6 +226,11 @@
       "archived": {
         "title": "Inget arkiverat",
         "body": "Aviseringar du arkiverar sparas här."
+      },
+      "pastEnd": {
+        "title": "Slut på listan",
+        "body": "Den här sidan har inga aviseringar kvar — de kan ha lästs eller arkiverats sedan länken skapades.",
+        "action": "Till de senaste"
       }
     }
   },

@@ -226,6 +226,11 @@
       "archived": {
         "title": "Nothing archived",
         "body": "Notifications you archive are kept here."
+      },
+      "pastEnd": {
+        "title": "Nothing further back",
+        "body": "This page has no notifications left on it — they may have been read or archived since the link was made.",
+        "action": "Back to the newest"
       }
     }
   },

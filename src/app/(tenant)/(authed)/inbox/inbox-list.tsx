@@ -81,12 +81,15 @@ export function InboxList({
   filter,
   rows,
   nextHref,
+  paged,
   serverNow,
 }: {
   filter: InboxFilter;
   rows: readonly InboxRowView[];
   /** The next keyset page, or null at the end of the bucket. */
   nextHref: string | null;
+  /** True when a cursor was in the URL — this is not the first page. */
+  paged: boolean;
   /** The instant the page rendered — the reference every relative time
    * on this page is measured from, so server and client agree. */
   serverNow: string;
@@ -177,7 +180,7 @@ export function InboxList({
     return items;
   };
 
-  if (shown.length === 0) return <Empty filter={filter} />;
+  if (shown.length === 0) return <Empty filter={filter} paged={paged} />;
 
   return (
     <div className="mt-4">
@@ -293,14 +296,40 @@ export function InboxList({
  * nothing in it, which is `filtered`, and whose verb is the bucket next
  * to it (UI.md §5.8: nothing-yet, no-matches and not-for-you are three
  * different states with three different next actions).
+ *
+ * A PAGE PAST THE END IS A FIFTH STATE, and it is the one that would
+ * lie. "Older" is rendered from the cursor the page was BUILT with, so
+ * anything that happens between that render and the click can empty it:
+ * marking the rest read in another tab, an archive, a snooze — and,
+ * less often, a cursor URL that was bookmarked or shared and whose rows
+ * have since been filed. It is a plain race, not an exotic one.
+ * Rendering "No notifications yet" there tells a member with a full
+ * inbox that they have none. The verb is to go back to the newest.
  */
-function Empty({ filter }: { filter: InboxFilter }) {
+function Empty({ filter, paged }: { filter: InboxFilter; paged: boolean }) {
   const t = useTranslations("inbox");
   const all = (
     <Button asChild size="sm" variant="outline">
       <Link href="/inbox?filter=all">{t("empty.seeAll")}</Link>
     </Button>
   );
+  if (paged) {
+    const first = filter === "unread" ? "/inbox" : `/inbox?filter=${filter}`;
+    return (
+      <div className="mt-4">
+        <EmptyState
+          variant="filtered"
+          title={t("empty.pastEnd.title")}
+          body={t("empty.pastEnd.body")}
+          action={
+            <Button asChild size="sm" variant="outline">
+              <Link href={first}>{t("empty.pastEnd.action")}</Link>
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
   if (filter === "all") {
     return (
       <div className="mt-4">

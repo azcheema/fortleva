@@ -4,7 +4,13 @@ import { getTranslations } from "next-intl/server";
 import { Page, PageHeader } from "@/components/semantic";
 import { TabNav, type TabLink } from "@/components/tab-nav";
 import { requireTenantContext } from "@/members/tenant-context";
-import { INBOX_FILTERS, isInboxFilter, listInbox, type InboxFilter } from "@/notify/inbox";
+import {
+  INBOX_FILTERS,
+  isInboxCursor,
+  isInboxFilter,
+  listInbox,
+  type InboxFilter,
+} from "@/notify/inbox";
 
 import { InboxList } from "./inbox-list";
 
@@ -57,6 +63,12 @@ export default async function InboxPage({
       <TabNav tabs={tabs} className="mt-4" />
       <InboxList
         filter={filter}
+        // A page BEYOND the first is a different empty state from the
+        // bucket being empty (see `Empty` in inbox-list.tsx). The same
+        // predicate the query uses decides it, so a malformed cursor —
+        // which `listInbox` answers with the first page — is not
+        // mistaken for one.
+        paged={isInboxCursor(cursor)}
         rows={page.rows.map((r) => ({
           id: r.id,
           kind: r.kind,

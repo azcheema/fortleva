@@ -17,7 +17,7 @@ import { readNotifications, requireSeed, resetNotifications, type E2ESeed } from
  * fixture reads it back.
  *
  * The notification is put back unread after every test, pass or fail:
- * the rail badge is in all 176 screenshots the visual sweep takes, and
+ * the rail badge is in all 180 screenshots the visual sweep takes, and
  * a run that left it read would silently change tomorrow's shots.
  */
 
@@ -148,5 +148,34 @@ test.describe("inbox (owner)", () => {
     await empty.getByRole("link", { name: "See all notifications" }).click();
     await expect(page).toHaveURL(/\/inbox\?filter=all/);
     await expect(page.getByTestId("inbox-row")).toHaveCount(1);
+  });
+
+  test("a page past the end does not claim the inbox is empty", async ({ page }) => {
+    // The keyset walks `id` descending, so the all-zero UUID is a cursor
+    // nothing can sort below — a stale or shared link, deterministically.
+    // The nothing-yet copy here would tell a member with a full inbox
+    // that they have none.
+    await page.goto("/inbox?cursor=00000000-0000-0000-0000-000000000000");
+    const empty = page.locator('[data-slot="empty-state"]');
+    await expect(empty).toHaveAttribute("data-variant", "filtered");
+    await expect(empty).toContainText("Nothing further back");
+    await empty.getByRole("link", { name: "Back to the newest" }).click();
+    await expect(page).toHaveURL(/\/inbox$/);
+    await expect(page.getByTestId("inbox-row")).toHaveCount(1);
+  });
+
+  test("a MALFORMED cursor is the first page, and says so in the bucket's own words", async ({
+    page,
+  }) => {
+    // The mirror of the test above, and the lie it would tell pointed
+    // the other way: `listInbox` answers a cursor it cannot parse with
+    // the FIRST page, so an empty bucket reached that way is empty
+    // because it is empty — not because the reader paged past the end.
+    for (const cursor of ["", "garbage", "0000"]) {
+      await page.goto(`/inbox?filter=archived&cursor=${cursor}`);
+      const empty = page.locator('[data-slot="empty-state"]');
+      await expect(empty, cursor).toContainText("Nothing archived");
+      await expect(empty, cursor).not.toContainText("Nothing further back");
+    }
   });
 });
