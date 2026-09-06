@@ -95,6 +95,7 @@ const DBTEST_PREFIXES = [
   "reports-",
   "roles-",
   "scope-",
+  "search-",
   "split-",
   "tadmin-",
   "time-",
