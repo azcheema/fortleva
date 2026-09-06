@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -486,6 +486,14 @@ describe("work-item attachments (2W-A ship gates)", () => {
 
   afterAll(async () => {
     const p = platform();
+    // FIRST, and by tenant: this block inserts a search_index row whose
+    // entity_id matches no document, so no feed trigger can ever remove
+    // it — deleting the source rows below cleans up everything EXCEPT
+    // that one, and search_index has no FK to tenant either, so the
+    // tenant teardown would leave it behind unattributable. Same class
+    // as the orphaned dbtest tenants swept in a73cd12.
+    // `e2e/fixtures/seed-cli.ts` does exactly this for the same reason.
+    await p.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
     await p.fileVersion.deleteMany({ where: { tenantId } });
     await p.document.deleteMany({ where: { tenantId } });
     await p.fileObject.deleteMany({ where: { tenantId } });
@@ -592,6 +600,155 @@ describe("work-item attachments (2W-A ship gates)", () => {
     });
     // Restore for the portal test below.
     await changeItemVisibility(ctx, visibleItemId, "CLIENT_VISIBLE");
+  });
+
+  it("A SOFT-DELETED DOCUMENT LEAVES THE SEARCH INDEX — and does not become the newest hit", async () => {
+    // `search_feed_document` used to branch on `TG_OP = 'DELETE'` alone,
+    // while the work_item and comment feeds branch on
+    // `TG_OP = 'DELETE' OR NEW.deleted_at IS NOT NULL`. Documents are
+    // ONLY ever soft-deleted (`softDeleteDocument` is the sole path), so
+    // the delete arrived as an UPDATE, the trigger took the upsert path,
+    // and the index row SURVIVED — with a refreshed `updated_at`, which
+    // on a CLIENT_VISIBLE document inside `portal_gate` made a deleted
+    // file the most recent thing a contact could find.
+    //
+    // Nothing queries search_index yet, so this was unreachable rather
+    // than exploitable. It is asserted here because the row is wrong in
+    // the database NOW, and the moment /search ships it is a leak.
+    const name = `soft-deleted-${run}.txt`;
+    const documentId = await uploadAttached(name, visibleItemId, "CLIENT_VISIBLE");
+
+    // Counted under the platform client, deliberately: this asserts the
+    // ROW's existence, not what any principal can see through the gate.
+    // `count(*)::int` because an uncast count comes back a BigInt.
+    const indexRows = async () => {
+      const rows = await platform().$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM search_index
+         WHERE tenant_id = ${tenantId} AND entity_type = 'DOCUMENT' AND entity_id = ${documentId}`;
+      return rows[0]?.n ?? -1;
+    };
+
+    // It is indexed while it exists…
+    expect(await indexRows()).toBe(1);
+
+    await softDeleteDocument(ctx, documentId);
+
+    // …and gone once it does not.
+    expect(await indexRows()).toBe(0);
+  });
+
+  it("THE MIGRATION'S OWN SWEEP evicts the rows the old trigger left — run against real rows, not an empty table", async () => {
+    // CI applies this migration to an EMPTY database, so both DELETEs
+    // touch zero rows there and their correctness is otherwise never
+    // exercised — the trap PLAN §0 already records for the seed_key
+    // backfill. This runs the migration's ACTUAL statements, read out of
+    // the .sql file so they cannot drift from what shipped, over the two
+    // shapes of orphan the old trigger could leave.
+    const sql = readFileSync(
+      join(process.cwd(), "prisma/migrations/20260906150000_search_feed_soft_delete/migration.sql"),
+      "utf8",
+    );
+    // Anchored on the `si` ALIAS, which appears only in the two DML
+    // statements. The obvious `indexOf("DELETE FROM search_index")`
+    // finds the TRIGGER BODY's delete first — a statement referencing
+    // NEW/OLD, which outside a trigger raises "missing FROM-clause entry
+    // for table new" — and splitting on ";" then drops both real sweeps,
+    // because after trimming they begin with their comment blocks. A
+    // test that ran the wrong statement would have proved nothing while
+    // looking rigorous.
+    const sweeps = sql
+      .split(";")
+      .map((part) => part.trim())
+      .filter((part) => part.includes("DELETE FROM search_index si"))
+      .map((part) => `${part.slice(part.indexOf("DELETE FROM search_index si"))};`);
+    expect(sweeps).toHaveLength(2);
+    expect(sweeps[0]).toContain("deleted_at IS NOT NULL");
+    expect(sweeps[1]).toContain("NOT EXISTS");
+    // Neither may carry a trigger-only reference.
+    for (const statement of sweeps) expect(statement).not.toMatch(/NEW\.|OLD\./);
+
+    const p = platform();
+    // Orphan A: a document that IS soft-deleted, with an index row —
+    // exactly what the old trigger produced on every delete.
+    const softDeletedName = `sweep-soft-${run}.txt`;
+    const softDeletedId = await uploadAttached(softDeletedName, visibleItemId, "CLIENT_VISIBLE");
+    await softDeleteDocument(ctx, softDeletedId);
+    // Put the row back to recreate the pre-migration state this sweep
+    // exists to clean up. ON CONFLICT DO NOTHING because whether it is
+    // still there depends on which side of the trigger fix the database
+    // is on — with the fix it was just removed, without it the old
+    // trigger left it and the insert would collide. What this test
+    // asserts is the SWEEP, so all it needs is that a row exists.
+    await p.$executeRawUnsafe(
+      `INSERT INTO search_index
+         (id, tenant_id, entity_type, entity_id, client_id, project_id,
+          visibility, portal_enabled, title, lang)
+       VALUES ($1, $2, 'DOCUMENT', $3, $4, $5, 'CLIENT_VISIBLE', true, $6, 'public.fortleva_sv')
+       ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING`,
+      randomUUID(),
+      tenantId,
+      softDeletedId,
+      att.clientId,
+      att.projectId,
+      softDeletedName,
+    );
+    // Orphan B: an index row whose document does not exist at all — what
+    // a hard-delete sweep would leave behind, since the table has no FK.
+    const ghostId = randomUUID();
+    await p.$executeRawUnsafe(
+      `INSERT INTO search_index
+         (id, tenant_id, entity_type, entity_id, client_id, project_id,
+          visibility, portal_enabled, title, lang)
+       VALUES ($1, $2, 'DOCUMENT', $3, $4, $5, 'CLIENT_VISIBLE', true, 'ghost', 'public.fortleva_sv')
+       ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING`,
+      randomUUID(),
+      tenantId,
+      ghostId,
+      att.clientId,
+      att.projectId,
+    );
+
+    const rowsFor = async (entityId: string) => {
+      const rows = await p.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM search_index
+         WHERE tenant_id = ${tenantId} AND entity_type = 'DOCUMENT' AND entity_id = ${entityId}`;
+      return rows[0]?.n ?? -1;
+    };
+    // A live document's row, which the sweep must NOT touch.
+    const keptName = `sweep-kept-${run}.txt`;
+    const keptId = await uploadAttached(keptName, visibleItemId, "CLIENT_VISIBLE");
+
+    expect(await rowsFor(softDeletedId)).toBe(1);
+    expect(await rowsFor(ghostId)).toBe(1);
+    expect(await rowsFor(keptId)).toBe(1);
+
+    // THE STATEMENTS ARE DELIBERATELY UNSCOPED — a migration has to be —
+    // so the blast radius is pinned rather than assumed, which a DELETE
+    // needs more than the seed_key backfill's UPDATE did. Every row of
+    // every OTHER entity type, in every tenant, must come through
+    // untouched: both predicates are pinned to entity_type = 'DOCUMENT',
+    // and this is what proves it rather than reading it.
+    //
+    // Running them here does perform the migration's own cleanup early
+    // on this database. That is harmless by construction: the only rows
+    // either statement can remove are ones whose document is soft
+    // deleted or absent, which is precisely the defect being repaired.
+    const otherTypes = async () => {
+      const rows = await p.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM search_index WHERE entity_type <> 'DOCUMENT'`;
+      return rows[0]?.n ?? -1;
+    };
+    const othersBefore = await otherTypes();
+
+    for (const statement of sweeps) await p.$executeRawUnsafe(statement);
+
+    expect(await otherTypes()).toBe(othersBefore);
+
+    expect(await rowsFor(softDeletedId)).toBe(0);
+    expect(await rowsFor(ghostId)).toBe(0);
+    // The live one survives — a sweep that took it would be worse than
+    // the leak it fixes.
+    expect(await rowsFor(keptId)).toBe(1);
   });
 
   it("the contact principal never sees an attachment on an INTERNAL item — and existence does not leak", async () => {
