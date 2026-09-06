@@ -1,15 +1,25 @@
 "use client";
 
-import { KeyboardIcon, LanguagesIcon, LogOutIcon } from "lucide-react";
+import {
+  Building2Icon,
+  FileTextIcon,
+  FolderKanbanIcon,
+  KeyboardIcon,
+  LanguagesIcon,
+  LogOutIcon,
+  MessageSquareIcon,
+  SquareCheckIcon,
+  UserRoundIcon,
+  type LucideProps,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { NavEntry } from "@/app/(tenant)/(authed)/nav";
 import {
   Command,
   CommandDialog,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -18,6 +28,8 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { LOCALES } from "@/i18n/config";
+import { paletteSearchAction, type PaletteHit } from "@/app/(tenant)/(authed)/search/actions";
+import type { SearchEntityType } from "@/search/shape";
 
 import { NavIcon } from "./nav-icon";
 
@@ -26,10 +38,53 @@ export const flatNav = (entries: readonly NavEntry[]): NavEntry[] =>
   entries.flatMap((e) => (e.children ? flatNav(e.children) : [e]));
 
 /**
- * ⌘K palette (UI.md §3.2, rule 7): every action reachable from here.
- * Phase 1b rows: navigation, switch language, keyboard shortcuts, sign
- * out. Entity search arrives with the search module.
+ * ⌘K palette (UI.md §3.2, rule 7): every action reachable from here —
+ * navigation, entity search, switch language, keyboard shortcuts, sign
+ * out.
+ *
+ * `shouldFilter={false}`, AND THAT IS NOT A DETAIL. cmdk's default both
+ * filters items by fuzzy score and RE-SORTS the DOM by it. Entity rows
+ * arrive ranked by `ts_rank_cd` and then recency — the server's answer
+ * to "what did they mean" — and a ranking something else re-sorts is
+ * not a ranking. Turning it off means this component owns matching for
+ * the NAV rows too, which `matchesNav` below does with a subsequence
+ * test so "prj" still reaches Projects.
+ *
+ * Every entity row's `value` is `type:id`. cmdk tracks selection as a
+ * single string and marks EVERY item whose value equals it, so two rows
+ * sharing a value both light up and Enter fires whichever is first in
+ * the DOM.
  */
+
+/** One glyph per type, the same set `/search` uses. */
+const ENTITY_ICON: Record<SearchEntityType, React.ComponentType<LucideProps>> = {
+  WORK_ITEM: SquareCheckIcon,
+  COMMENT: MessageSquareIcon,
+  DOCUMENT: FileTextIcon,
+  PROJECT: FolderKanbanIcon,
+  CLIENT: Building2Icon,
+  CONTACT: UserRoundIcon,
+};
+
+/**
+ * Subsequence match, case- and accent-insensitive: "prj" reaches
+ * Projects, "ins" reaches Settings > Notifications. This replaces
+ * cmdk's own scorer, which `shouldFilter={false}` switched off — a
+ * plain `includes` would have been a downgrade nobody asked for.
+ */
+function matchesNav(haystack: string, needle: string): boolean {
+  const norm = (v: string) =>
+    v.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const h = norm(haystack);
+  const n = norm(needle);
+  if (n.length === 0) return true;
+  let i = 0;
+  for (const ch of h) {
+    if (ch === n[i]) i += 1;
+    if (i === n.length) return true;
+  }
+  return false;
+}
 export function CommandPalette({
   open,
   onOpenChange,
@@ -57,6 +112,125 @@ export function CommandPalette({
     fn();
   };
 
+  const [query, setQuery] = useState("");
+  // The rows AND the query they answer. cmdk keeps mounted items until
+  // they are replaced, so without this a result row for the PREVIOUS
+  // query stays on screen — and selectable — through the next 200 ms of
+  // typing.
+  const [answered, setAnswered] = useState<{ q: string; rows: PaletteHit[] }>({ q: "", rows: [] });
+  // SELECTION IS CONTROLLED, and it has to be. cmdk moves its highlight
+  // on a SEARCH change only; item registration re-selects nothing when
+  // something is already selected. Entity rows mount 200 ms after the
+  // last keystroke, so the highlight stays wherever the query left it —
+  // and if the query matched exactly one action row, that is "Sign out".
+  // Typing `logg` on a Swedish tenant matched only `Logga ut`; Enter
+  // signed the member out while they waited for results.
+  const [selected, setSelected] = useState("");
+  const timer = useRef<number | undefined>(undefined);
+  // Monotonic, so a slow answer to an OLD query can never overwrite a
+  // fast answer to a NEW one — the classic type-ahead defect, and the
+  // reason this is a counter rather than an AbortController: the action
+  // is a server function, not a fetch we can cancel.
+  const issued = useRef(0);
+
+  // Whether the palette is open, readable from an async callback. A ref
+  // written in an EFFECT (allowed) rather than during render (not): a
+  // timer already scheduled must not fire a search into a palette
+  // nobody is looking at, and then repopulate it after the reset below
+  // has already cleared it.
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+    // Invalidate anything in flight AS the palette closes. The ticket
+    // alone was not enough: nothing bumped it on close, so a result
+    // that resolved between the reset render and this effect — or after
+    // a fast close-then-reopen — landed rows under an empty box, and
+    // clicking one navigated somewhere nobody asked to go.
+    if (!open) {
+      issued.current += 1;
+      // AND cancel the armed timer. Bumping the ticket does nothing to a
+      // timer that has not fired: its callback mints a NEW ticket, and
+      // its only other guard is `openRef`, which is true again the
+      // moment the palette reopens — so a close-then-reopen inside the
+      // debounce window landed the previous query's rows under an empty
+      // input.
+      window.clearTimeout(timer.current);
+    }
+  }, [open]);
+
+  // RESET DURING RENDER, not in an effect: React's documented
+  // "adjusting state when a prop changes", which `use-server-now.ts`
+  // already uses here — and which the set-state-in-effect lint rule
+  // exists to push you towards. The palette is not unmounted when it
+  // closes, so without this, reopening shows the previous search's rows
+  // beneath a box that reads empty. It also cannot be done in
+  // `onOpenChange`: the ⌘K hotkey toggles `open` in the shell directly,
+  // never through that handler.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (!open) {
+      setQuery("");
+      setAnswered({ q: "", rows: [] });
+      setSelected("");
+    }
+  }
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const onQueryChange = (next: string) => {
+    setQuery(next);
+    window.clearTimeout(timer.current);
+    const trimmed = next.trim();
+    if (trimmed.length === 0) {
+      issued.current += 1;
+      setAnswered({ q: "", rows: [] });
+      return;
+    }
+    timer.current = window.setTimeout(() => {
+      if (!openRef.current) return; // closed since it was scheduled
+      const ticket = ++issued.current;
+      void paletteSearchAction(trimmed)
+        .then((rows) => {
+          if (ticket !== issued.current || !openRef.current) return;
+          setAnswered({ q: trimmed, rows });
+          // Put the highlight on the first result the moment it exists,
+          // which is the one thing cmdk will not do for us.
+          if (rows[0]) setSelected(rows[0].value);
+        })
+        // A failed search must not blank the navigation rows underneath
+        // it: the palette is how someone gets somewhere.
+        .catch(() => {
+          if (ticket === issued.current && openRef.current) setAnswered({ q: trimmed, rows: [] });
+        });
+    }, 200);
+  };
+
+  // Rows are shown only while they answer the query on screen.
+  const hits = answered.q === query.trim() ? answered.rows : [];
+
+  const navRows = flatNav(nav).filter((entry) =>
+    matchesNav(`${tNav(entry.labelKey)} ${entry.href}`, query),
+  );
+
+  // THE ACTION ROWS FILTER TOO, and that is a correctness fix rather
+  // than tidiness. cmdk moves its highlight to the first item on every
+  // SEARCH change, and the entity rows arrive 200 ms later — so with an
+  // unfiltered Actions group, typing a query that matched no nav row
+  // left the highlight sitting on "Switch language", and Enter changed
+  // the member's language instead of opening the result they were
+  // waiting for.
+  const actionRows = {
+    locales: LOCALES.filter((l) => l !== locale).filter((l) =>
+      matchesNav(`${t("switchLanguage")} ${tCommon(`languageName.${l}`)}`, query),
+    ),
+    shortcuts: matchesNav(t("shortcuts"), query),
+    signOut: matchesNav(t("signOut"), query),
+  };
+  const hasActions =
+    actionRows.locales.length > 0 || actionRows.shortcuts || actionRows.signOut;
+  const nothing = navRows.length === 0 && hits.length === 0 && !hasActions;
+
   return (
     <CommandDialog
       open={open}
@@ -66,18 +240,66 @@ export function CommandPalette({
     >
       {/* The cmdk root. `CommandDialog` deliberately does not render one
           (see command.tsx): `shouldFilter` both filters and RE-SORTS by
-          fuzzy score, so the surface has to choose. For this navigation
-          list the default is right; when server-ranked entity rows land
-          here they will need `shouldFilter={false}`, because a
-          `ts_rank_cd` order that cmdk re-sorts is not a ranking.
+          fuzzy score, so the surface has to choose — and this one has
+          server-ranked entity rows, whose `ts_rank_cd` order cmdk must
+          not touch. Every group below therefore does its own matching.
           `label` names the combobox — without it cmdk renders an empty
           <label> and the input falls back to its placeholder. */}
-      <Command label={t("title")}>
-        <CommandInput placeholder={t("placeholder")} autoFocus />
+      <Command
+        label={t("title")}
+        shouldFilter={false}
+        value={selected}
+        onValueChange={setSelected}
+      >
+        <CommandInput
+          placeholder={t("placeholder")}
+          autoFocus
+          value={query}
+          onValueChange={onQueryChange}
+        />
         <CommandList>
-          <CommandEmpty>{t("empty")}</CommandEmpty>
+          {/* NOT `CommandEmpty`: with `shouldFilter={false}` cmdk sets
+              its filtered count to the number of MOUNTED items, so its
+              own Empty never renders and the string was unreachable. */}
+          {nothing ? (
+            <div
+              role="presentation"
+              className="px-3 py-6 text-center text-sm text-muted-foreground"
+            >
+              {t("empty")}
+            </div>
+          ) : null}
+          {hits.length > 0 ? (
+            <>
+              <CommandGroup heading={t("results")}>
+                {hits.map((hit) => {
+                  const Icon = ENTITY_ICON[hit.entityType];
+                  return (
+                    <CommandItem
+                      key={hit.value}
+                      value={hit.value}
+                      onSelect={() => run(() => startTransition(() => router.push(hit.href)))}
+                    >
+                      <Icon aria-hidden="true" />
+                      {/* min-w-0 flex-1, not bare `truncate`: a nowrap
+                          flex child defaults to min-width:auto and
+                          overflows instead of ellipsing, pushing the
+                          subtitle out of the row. A COMMENT title is
+                          140 characters. */}
+                      <span className="min-w-0 flex-1 truncate">{hit.title}</span>
+                      {hit.subtitle ? (
+                        <CommandShortcut>{hit.subtitle}</CommandShortcut>
+                      ) : null}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+              <CommandSeparator />
+            </>
+          ) : null}
+          {navRows.length > 0 ? (
           <CommandGroup heading={t("navigate")}>
-            {flatNav(nav).map((entry) => {
+            {navRows.map((entry) => {
               const goLabel = entry.goKey ? `G ${entry.goKey}` : null;
               return (
                 <CommandItem
@@ -92,32 +314,39 @@ export function CommandPalette({
               );
             })}
           </CommandGroup>
-          <CommandSeparator />
-          <CommandGroup heading={t("actions")}>
-            {LOCALES.filter((l) => l !== locale).map((l) => (
-              <CommandItem
-                key={l}
-                value={`${t("switchLanguage")} ${tCommon(`languageName.${l}`)}`}
-                onSelect={() => run(() => onSwitchLocale(l))}
-              >
-                <LanguagesIcon />
-                <span>
-                  {t("switchLanguage")}
-                  {": "}
-                  {tCommon(`languageName.${l}`)}
-                </span>
-              </CommandItem>
-            ))}
-            <CommandItem value={t("shortcuts")} onSelect={() => run(onShowShortcuts)}>
-              <KeyboardIcon />
-              <span>{t("shortcuts")}</span>
-              <CommandShortcut>{"?"}</CommandShortcut>
-            </CommandItem>
-            <CommandItem value={t("signOut")} onSelect={() => run(onSignOut)}>
-              <LogOutIcon />
-              <span>{t("signOut")}</span>
-            </CommandItem>
-          </CommandGroup>
+          ) : null}
+          {navRows.length > 0 && hasActions ? <CommandSeparator /> : null}
+          {hasActions ? (
+            <CommandGroup heading={t("actions")}>
+              {actionRows.locales.map((l) => (
+                <CommandItem
+                  key={l}
+                  value={`${t("switchLanguage")} ${tCommon(`languageName.${l}`)}`}
+                  onSelect={() => run(() => onSwitchLocale(l))}
+                >
+                  <LanguagesIcon />
+                  <span>
+                    {t("switchLanguage")}
+                    {": "}
+                    {tCommon(`languageName.${l}`)}
+                  </span>
+                </CommandItem>
+              ))}
+              {actionRows.shortcuts ? (
+                <CommandItem value={t("shortcuts")} onSelect={() => run(onShowShortcuts)}>
+                  <KeyboardIcon />
+                  <span>{t("shortcuts")}</span>
+                  <CommandShortcut>{"?"}</CommandShortcut>
+                </CommandItem>
+              ) : null}
+              {actionRows.signOut ? (
+                <CommandItem value={t("signOut")} onSelect={() => run(onSignOut)}>
+                  <LogOutIcon />
+                  <span>{t("signOut")}</span>
+                </CommandItem>
+              ) : null}
+            </CommandGroup>
+          ) : null}
         </CommandList>
       </Command>
     </CommandDialog>

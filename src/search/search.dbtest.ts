@@ -69,6 +69,10 @@ afterAll(async () => {
   // FK, so deleting the sources below reaches most of them, and nothing
   // reaches a row whose source is already gone.
   await db.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${f.tenantId}`;
+  // comment RESTRICTs project (comment_tenant_id_project_id_fkey), so it
+  // goes before the work items and the project — the same shape as the
+  // tenant_preference gap that once made a teardown fail with a 23001.
+  await db.comment.deleteMany({ where: { tenantId: f.tenantId } });
   await db.workItemActivity.deleteMany({ where: { tenantId: f.tenantId } });
   await db.workItem.deleteMany({ where: { tenantId: f.tenantId, parentId: { not: null } } });
   await db.workItem.deleteMany({ where: { tenantId: f.tenantId } });
@@ -283,6 +287,87 @@ describe("search — the query itself", () => {
     const found = await hits(ownerCtx(), crowd);
     expect(found.length).toBe(PER_TYPE_LIMIT);
     expect(found.every((h) => h.entityType === "WORK_ITEM")).toBe(true);
+  });
+
+  it("every hit carries an address built from the LIVE source, not parsed out of a label", async () => {
+    // The index has neither the project key nor the item number as a
+    // field — only baked into `subtitle` as "SRCH-12". Parsing an
+    // address back out of a label is how a project rename silently
+    // breaks every link, so the hydrate that re-reads the source for
+    // freshness returns the address too.
+    const title = `Addressable ${token}`;
+    const item = await createItem(ownerCtx(), { projectId, title });
+    const hit = (await hits(ownerCtx(), token)).find((h) => h.entityId === item.id);
+    expect(hit?.href).toBe(`/projects/SRCH/backlog?item=SRCH-${item.number}`);
+
+    // A CLIENT row addresses its card; a PROJECT row its overview.
+    const named = `Addressableclient${token}`;
+    await f.platform.client.update({ where: { id: clientId }, data: { name: named } });
+    try {
+      const client = (await hits(ownerCtx(), named)).find((h) => h.entityType === "CLIENT");
+      expect(client?.href).toBe(`/clients/${clientId}`);
+    } finally {
+      await f.platform.client.update({ where: { id: clientId }, data: { name: "Search Co" } });
+    }
+  });
+
+  it("A COMMENT IS FINDABLE ON ITS OWN, even when its task's title matches nothing", async () => {
+    // The defect this pins: the hydrate built its work-item lookup from
+    // the work-item HITS only, so a comment whose parent task did not
+    // also match the same query resolved to no address and was dropped
+    // — silently making comments unsearchable while the page, the
+    // palette and both message catalogues all promised them.
+    const word = `kommentarord${token}`;
+    const item = await createItem(ownerCtx(), { projectId, title: "Ett helt annat namn" });
+    await f.platform.comment.create({
+      data: {
+        tenantId: f.tenantId,
+        subjectType: "WORK_ITEM",
+        subjectId: item.id,
+        clientId,
+        projectId,
+        authorMemberId: f.seats.owner.memberId,
+        body: {},
+        bodyText: `${word} står i kommentaren`,
+      },
+    });
+
+    const found = (await hits(ownerCtx(), word)).find((h) => h.entityType === "COMMENT");
+    expect(found).toBeDefined();
+    // And it addresses the task it was written on.
+    expect(found!.href).toBe(`/projects/SRCH/backlog?item=SRCH-${item.number}`);
+  });
+
+  it("AN ARCHIVED TASK'S ADDRESS ASKS FOR ARCHIVED ROWS — or the link opens a backlog that hides it", async () => {
+    // Archived rows stay in the index by design (the work_item feed says
+    // so), but the backlog resolves `?item=` against a list that drops
+    // them unless asked. Without the flag the row opens a page with no
+    // peek and no explanation.
+    const title = `Arkiverad ${token}`;
+    const item = await createItem(ownerCtx(), { projectId, title });
+    await f.platform.workItem.update({
+      where: { id: item.id },
+      data: { archivedAt: new Date() },
+    });
+    const hit = (await hits(ownerCtx(), token)).find((h) => h.entityId === item.id);
+    expect(hit?.href).toBe(`/projects/SRCH/backlog?item=SRCH-${item.number}&archived=1`);
+  });
+
+  it("A RENAMED PROJECT KEY still addresses correctly — the index keeps the dead key, the hit does not", async () => {
+    // The index row's subtitle is frozen at feed time, so after a key
+    // change it reads "SRCH-12" forever. The href must follow the live
+    // project, which is the whole reason the address is not parsed from
+    // the subtitle.
+    const title = `Renamed ${token}`;
+    const item = await createItem(ownerCtx(), { projectId, title });
+    await f.platform.project.update({ where: { id: projectId }, data: { key: "SRCH2" } });
+    try {
+      const hit = (await hits(ownerCtx(), token)).find((h) => h.entityId === item.id);
+      expect(hit?.subtitle).toBe(`SRCH-${item.number}`); // the stale label
+      expect(hit?.href).toBe(`/projects/SRCH2/backlog?item=SRCH2-${item.number}`); // the live address
+    } finally {
+      await f.platform.project.update({ where: { id: projectId }, data: { key: "SRCH" } });
+    }
   });
 
   it("SELECT never names the tsvector or the regconfig — both raise in the driver", async () => {

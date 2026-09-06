@@ -85,7 +85,8 @@
     "rates": "Timpriser",
     "timeSettings": "Tidsregistrering",
     "inbox": "Inkorg",
-    "notifications": "Aviseringar"
+    "notifications": "Aviseringar",
+    "search": "Sök"
   },
   "shell": {
     "palette": {
@@ -98,7 +99,8 @@
       "switchLanguage": "Byt språk",
       "shortcuts": "Kortkommandon",
       "signOut": "Logga ut",
-      "open": "Öppna kommandopaletten"
+      "open": "Öppna kommandopaletten",
+      "results": "Resultat"
     },
     "shortcuts": {
       "title": "Kortkommandon",
@@ -232,6 +234,33 @@
         "body": "Den här sidan har inga aviseringar kvar — de kan ha lästs eller arkiverats sedan länken skapades.",
         "action": "Till de senaste"
       }
+    }
+  },
+  "search": {
+    "title": "Sök",
+    "description": "Allt du redan kan öppna, på ett ställe – uppgifter, kommentarer, filer, projekt, kunder och kontakter.",
+    "label": "Sök i arbetsytan",
+    "placeholder": "Sök uppgifter, filer, kunder…",
+    "searching": "Söker",
+    "types": {
+      "workItem": "Uppgifter",
+      "comment": "Kommentarer",
+      "document": "Filer",
+      "project": "Projekt",
+      "client": "Kunder",
+      "contact": "Kontakter"
+    },
+    "idle": {
+      "title": "Skriv för att söka",
+      "body": "Resultaten omfattar bara det du redan har tillgång till."
+    },
+    "vague": {
+      "title": "Sökningen behöver ett ord att utgå från",
+      "body": "Mycket vanliga ord ignoreras vid sökning. Prova ett namn, en rubrik eller en del av en."
+    },
+    "none": {
+      "title": "Inget matchade",
+      "body": "Ingen uppgift, fil, projekt, kund eller kontakt som du kan se matchar det."
     }
   },
   "dashboard": {

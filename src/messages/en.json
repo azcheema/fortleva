@@ -85,7 +85,8 @@
     "rates": "Rates",
     "timeSettings": "Time tracking",
     "inbox": "Inbox",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "search": "Search"
   },
   "shell": {
     "palette": {
@@ -98,7 +99,8 @@
       "switchLanguage": "Switch language",
       "shortcuts": "Keyboard shortcuts",
       "signOut": "Sign out",
-      "open": "Open command palette"
+      "open": "Open command palette",
+      "results": "Results"
     },
     "shortcuts": {
       "title": "Keyboard shortcuts",
@@ -232,6 +234,33 @@
         "body": "This page has no notifications left on it — they may have been read or archived since the link was made.",
         "action": "Back to the newest"
       }
+    }
+  },
+  "search": {
+    "title": "Search",
+    "description": "Everything you can already open, in one place — tasks, comments, files, projects, clients and contacts.",
+    "label": "Search the workspace",
+    "placeholder": "Search tasks, files, clients…",
+    "searching": "Searching",
+    "types": {
+      "workItem": "Tasks",
+      "comment": "Comments",
+      "document": "Files",
+      "project": "Projects",
+      "client": "Clients",
+      "contact": "Contacts"
+    },
+    "idle": {
+      "title": "Type to search",
+      "body": "Results cover only what you already have access to."
+    },
+    "vague": {
+      "title": "That needs a word to go on",
+      "body": "Very common words are ignored when searching. Try a name, a title or part of one."
+    },
+    "none": {
+      "title": "Nothing matched",
+      "body": "No task, file, project, client or contact you can see matches that."
     }
   },
   "dashboard": {

@@ -7,6 +7,7 @@ import {
   HouseIcon,
   BellIcon,
   InboxIcon,
+  SearchIcon,
   KeyRoundIcon,
   PaletteIcon,
   SettingsIcon,
@@ -23,6 +24,7 @@ import type { NavIcon as NavIconName } from "@/app/(tenant)/(authed)/nav";
 const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   home: HouseIcon,
   inbox: InboxIcon,
+  search: SearchIcon,
   clients: Building2Icon,
   projects: FolderKanbanIcon,
   time: TimerIcon,

@@ -56,3 +56,73 @@ test("the ⌘K hotkey opens the palette, and it renders its items", async ({ pag
   await expect(dialog).toBeVisible();
   expect(errors, `page errors after reopening the palette: ${errors.join(" | ")}`).toEqual([]);
 });
+
+test("typing finds an entity, and the nav rows still filter without cmdk's scorer", async ({
+  page,
+}) => {
+  // `shouldFilter={false}` switched cmdk's own matching off, because it
+  // re-sorts by fuzzy score and the entity rows arrive ranked by
+  // ts_rank_cd. That made nav matching this component's job, so both
+  // halves are asserted here.
+  await page.goto("/home");
+  await page.keyboard.press("ControlOrMeta+k");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+
+  // A subsequence, not a substring: "prj" must still reach Projects.
+  await dialog.getByRole("combobox").fill("prj");
+  await expect(dialog.getByRole("option", { name: /Projects/ })).toBeVisible();
+
+  // An entity row, from the server, debounced.
+  await dialog.getByRole("combobox").fill("Designgranskning");
+  const hit = dialog.getByRole("option").filter({ hasText: "Designgranskning" });
+  await expect(hit.first()).toBeVisible({ timeout: 20_000 });
+
+  // Selecting it navigates to the address the server resolved.
+  await hit.first().click();
+  await expect(page).toHaveURL(/\/projects\/.+\/backlog\?item=/);
+});
+
+test("ENTER OPENS THE RESULT, never the action row the query happened to match", async ({
+  page,
+}) => {
+  // The bug this pins: cmdk moves its highlight on a SEARCH change only,
+  // and entity rows mount 200 ms later — so the highlight stayed on
+  // whatever the keystroke had selected. A query matching exactly one
+  // ACTION row therefore left "Sign out" (sv: "Logga ut") selected, and
+  // Enter signed the member out while they waited for results.
+  await page.goto("/home");
+  await page.keyboard.press("ControlOrMeta+k");
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox").fill("Designgranskning");
+
+  const hit = dialog.getByRole("option").filter({ hasText: "Designgranskning" });
+  await expect(hit.first()).toBeVisible({ timeout: 20_000 });
+  // The result takes the highlight the moment it exists.
+  await expect(hit.first()).toHaveAttribute("aria-selected", "true");
+
+  await page.keyboard.press("Enter");
+  // Still signed in, and on the task — not on /login.
+  await expect(page).toHaveURL(/\/projects\/.+\/backlog\?item=/);
+});
+
+test("closing the palette forgets the query — reopening never shows the last search", async ({
+  page,
+}) => {
+  await page.goto("/home");
+  await page.keyboard.press("ControlOrMeta+k");
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox").fill("Designgranskning");
+  await expect(dialog.getByRole("option").filter({ hasText: "Designgranskning" }).first()).toBeVisible({
+    timeout: 20_000,
+  });
+
+  // ⌘K toggles it shut, which does NOT go through onOpenChange — the
+  // reason the reset is a render-time adjustment rather than a handler.
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("combobox")).toHaveValue("");
+  await expect(dialog.getByRole("option").filter({ hasText: "Designgranskning" })).toHaveCount(0);
+});

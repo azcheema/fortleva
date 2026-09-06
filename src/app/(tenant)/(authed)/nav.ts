@@ -10,6 +10,7 @@
 export type NavIcon =
   | "home"
   | "inbox"
+  | "search"
   | "notifications"
   | "clients"
   | "projects"
@@ -31,6 +32,7 @@ export type NavEntry = {
   labelKey:
     | "home"
     | "inbox"
+    | "search"
     | "notifications"
     | "clients"
     | "projects"
@@ -92,6 +94,11 @@ export const NAV: readonly NavEntry[] = [
     goKey: "T",
     mobileTab: true,
   },
+  // 2W search (UI.md §3.1). No permission gate on the ENTRY: the page
+  // itself gates every result type through `requireAccess`, so a member
+  // who may read nothing simply gets nothing — and hiding the entry
+  // would be the one case where the rail lies about what exists.
+  { id: "search", labelKey: "search", href: "/search", icon: "search", goKey: "S" },
   // 2W notifications core (UI.md §3.1, between Time and Files): NEVER
   // permission-gated — "notifications core, never entitlement-gated"
   // (DATA_MODEL.md §6.18), and the only rows an inbox can hold are the

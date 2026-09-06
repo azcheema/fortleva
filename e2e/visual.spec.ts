@@ -100,6 +100,10 @@ const stops = (seed: E2ESeed): Stop[] => {
     // stop photographs a row that resolved its subject AND the rail
     // badge that every other stop now carries too.
     { name: "inbox", path: "/inbox" },
+    // 2W search: with a query, so the stop photographs RESULTS rather
+    // than the idle state — grouped headings, the row rail and the
+    // state icon are what the craft audit needs to see.
+    { name: "search", path: "/search?q=Designgranskning" },
     { name: "dashboard", path: "/dashboard" },
     { name: "clients", path: "/clients" },
     { name: "clients-archived", path: "/clients?archived=1" },
@@ -327,7 +331,7 @@ async function visit(
   await settle(page);
 
   const shot = `${stop.name}__${theme}__${device}.png`;
-  // The shots are a HUMAN artefact — 184 full-page PNGs for the craft
+  // The shots are a HUMAN artefact — 188 full-page PNGs for the craft
   // review. Nothing asserts on them: this repo has no committed
   // baselines and no toHaveScreenshot anywhere, and ci.yml uploads only
   // playwright-report/, so under CI they were rendered, encoded and then
@@ -486,7 +490,7 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // 46 stops × 3 navigations, five minutes next to the database.
+        // 47 stops × 3 navigations, five minutes next to the database.
         // The CI branch was 900 s, sized when the runner was in the US
         // and the database in the EU (~10 s a stop on a slow evening).
         // Since 2026-09-01 CI runs against a service container on the
