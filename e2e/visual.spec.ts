@@ -82,6 +82,19 @@ const stops = (seed: E2ESeed): Stop[] => {
 
     // ── the member plane ────────────────────────────────────────────
     { name: "home", path: "/home" },
+    {
+      // Global chrome (UI.md §3.2) that held none of the design shots
+      // until now — and the stop that would have caught the palette
+      // shipping broken, since every walk asserts `trace.pageErrors`.
+      // `drive` is how a stop reaches state that only exists after an
+      // interaction, exactly as `project-backlog-selection` does.
+      name: "palette",
+      path: "/home",
+      drive: async (page) => {
+        await page.keyboard.press("ControlOrMeta+k");
+        await expect(page.getByRole("dialog")).toBeVisible({ timeout: 20_000 });
+      },
+    },
     // 2W notifications: the standing fixture holds exactly one real
     // notification (the employee assigned a task to the owner), so this
     // stop photographs a row that resolved its subject AND the rail
@@ -314,7 +327,7 @@ async function visit(
   await settle(page);
 
   const shot = `${stop.name}__${theme}__${device}.png`;
-  // The shots are a HUMAN artefact — 180 full-page PNGs for the craft
+  // The shots are a HUMAN artefact — 184 full-page PNGs for the craft
   // review. Nothing asserts on them: this repo has no committed
   // baselines and no toHaveScreenshot anywhere, and ci.yml uploads only
   // playwright-report/, so under CI they were rendered, encoded and then
@@ -473,7 +486,7 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // 45 stops × 3 navigations, five minutes next to the database.
+        // 46 stops × 3 navigations, five minutes next to the database.
         // The CI branch was 900 s, sized when the runner was in the US
         // and the database in the EU (~10 s a stop on a slow evening).
         // Since 2026-09-01 CI runs against a service container on the

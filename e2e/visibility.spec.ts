@@ -181,15 +181,101 @@ test.describe("document visibility", () => {
       await route.continue();
     });
 
-    await triggerIn(row).click();
-    await selectIn(row).selectOption("INTERNAL");
-
-    const toast = page.locator("[data-sonner-toast]");
-    await expect(toast).toBeVisible();
-    await expect(toast).not.toBeEmpty();
-    // and the cell falls back to the truth, not to a guess
+    // THE SAFETY PROPERTY IS ASSERTED FIRST. If the toast assertion
+    // below times out, these two never run, and the failure report then
+    // says nothing about the thing that actually matters — whether the
+    // cell and the database still agree. They do not depend on the
+    // toast, so they go above it (PLAN §0's prescription for this test).
     await expectShows(rowFor(page, seed.clientVisibleDocName), "CLIENT_VISIBLE");
     expect(await documentVisibility(seed.clientVisibleDocId)).toBe("CLIENT_VISIBLE");
+
+    // RECORD the toast rather than poll for it, and record WHEN.
+    //
+    // This test has flaked in CI on 2026-08-21, 2026-09-02 and
+    // 2026-09-06 (run 34027077878), always on the toast. The old
+    // assertion polled a locator, which can only see the toast while it
+    // is on screen — sonner dismisses after 4.2 s (TOAST_LIFETIME 4000
+    // + TIME_BEFORE_UNMOUNT 200; the Toaster passes no `duration`).
+    //
+    // THE ROOT CAUSE IS NOT ESTABLISHED, and this recorder exists to
+    // establish it rather than to paper over it. A dismissal race is a
+    // WEAK explanation: Playwright's retry backoff settles at 500 ms, so
+    // a 30 s expect budget samples ~60 times, and every one of them
+    // would have to miss a window that opened once. The likelier reading
+    // is that the toast sometimes does not arrive at all — which on THIS
+    // control would be a product defect, because the component's own
+    // header says it must never revert quietly.
+    //
+    // So the sweep runs in the page, at 25 ms, appending to an array
+    // that is never cleared: monotonic, immune to dismissal, and — via
+    // the timestamp — able to tell "late" from "never" the next time it
+    // fails. It cannot miss a toast that lives 4 s; if any call site
+    // ever passes a shorter `duration`, revisit this interval.
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __toasts?: { at: number; text: string; type: string | null }[];
+        __sweeps?: number;
+        __sweeper?: number;
+      };
+      w.__toasts = [];
+      w.__sweeps = 0;
+      w.__sweeper = window.setInterval(() => {
+        w.__sweeps = (w.__sweeps ?? 0) + 1;
+        for (const el of document.querySelectorAll("[data-sonner-toast]")) {
+          const text = (el.textContent ?? "").trim();
+          if (!w.__toasts!.some((t) => t.text === text)) {
+            w.__toasts!.push({
+              at: Math.round(performance.now()),
+              text,
+              type: el.getAttribute("data-type"),
+            });
+          }
+        }
+      }, 25);
+    });
+
+    await triggerIn(row).click();
+    // The clock starts HERE, not at install: `started` used to be taken
+    // before these two calls, so the reported latency folded in two
+    // Playwright round trips and over-stated it. What is being judged is
+    // action -> toast.
+    const started = await page.evaluate(() => Math.round(performance.now()));
+    await selectIn(row).selectOption("INTERNAL");
+
+    // `?? []` and `?? -1`: a navigation would leave a fresh document with
+    // no recorder, and a throwing poll callback ABORTS the poll rather
+    // than retrying — the report would then be a raw TypeError instead of
+    // the diagnosis below.
+    const seen = () =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __toasts?: { at: number; text: string; type: string | null }[] })
+            .__toasts ?? [],
+      );
+    const sweeps = () =>
+      page.evaluate(() => (window as unknown as { __sweeps?: number }).__sweeps ?? -1);
+
+    // The exact string the failure path produces (files.errors.visibilityFailed).
+    // Asserting the TEXT is what makes this test its own name: a future
+    // change that reported success on a failed flip would otherwise keep
+    // it green while the product told the user the opposite of the truth.
+    const expected = "Could not change visibility";
+    await expect
+      .poll(async () => (await seen()).some((t) => t.text.includes(expected)))
+      .toBe(true);
+
+    const toasts = await seen();
+    // Timing and type, logged on every run: a green run that reports the
+    // toast arriving at 9 s is a finding, not a pass to shrug at.
+    console.log(
+      `[toast] ${toasts.length} recorded after ${(await sweeps()) * 25} ms of sweeping; ` +
+        toasts.map((t) => `${t.at - started}ms type=${t.type ?? "-"}`).join(", "),
+    );
+    expect(toasts.some((t) => t.type === "error")).toBe(true);
+    await page.evaluate(() => {
+      const w = window as unknown as { __sweeper?: number };
+      if (w.__sweeper !== undefined) window.clearInterval(w.__sweeper);
+    });
   });
 
   /**

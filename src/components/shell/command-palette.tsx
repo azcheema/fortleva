@@ -7,6 +7,7 @@ import { useTransition } from "react";
 
 import type { NavEntry } from "@/app/(tenant)/(authed)/nav";
 import {
+  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -63,52 +64,62 @@ export function CommandPalette({
       title={t("title")}
       description={t("description")}
     >
-      <CommandInput placeholder={t("placeholder")} autoFocus />
-      <CommandList>
-        <CommandEmpty>{t("empty")}</CommandEmpty>
-        <CommandGroup heading={t("navigate")}>
-          {flatNav(nav).map((entry) => {
-            const goLabel = entry.goKey ? `G ${entry.goKey}` : null;
-            return (
-            <CommandItem
-              key={entry.id}
-              value={`${tNav(entry.labelKey)} ${entry.href}`}
-              onSelect={() => run(() => startTransition(() => router.push(entry.href)))}
-            >
-              <NavIcon name={entry.icon} />
-              <span>{tNav(entry.labelKey)}</span>
-              {goLabel ? <CommandShortcut>{goLabel}</CommandShortcut> : null}
+      {/* The cmdk root. `CommandDialog` deliberately does not render one
+          (see command.tsx): `shouldFilter` both filters and RE-SORTS by
+          fuzzy score, so the surface has to choose. For this navigation
+          list the default is right; when server-ranked entity rows land
+          here they will need `shouldFilter={false}`, because a
+          `ts_rank_cd` order that cmdk re-sorts is not a ranking.
+          `label` names the combobox — without it cmdk renders an empty
+          <label> and the input falls back to its placeholder. */}
+      <Command label={t("title")}>
+        <CommandInput placeholder={t("placeholder")} autoFocus />
+        <CommandList>
+          <CommandEmpty>{t("empty")}</CommandEmpty>
+          <CommandGroup heading={t("navigate")}>
+            {flatNav(nav).map((entry) => {
+              const goLabel = entry.goKey ? `G ${entry.goKey}` : null;
+              return (
+                <CommandItem
+                  key={entry.id}
+                  value={`${tNav(entry.labelKey)} ${entry.href}`}
+                  onSelect={() => run(() => startTransition(() => router.push(entry.href)))}
+                >
+                  <NavIcon name={entry.icon} />
+                  <span>{tNav(entry.labelKey)}</span>
+                  {goLabel ? <CommandShortcut>{goLabel}</CommandShortcut> : null}
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+          <CommandSeparator />
+          <CommandGroup heading={t("actions")}>
+            {LOCALES.filter((l) => l !== locale).map((l) => (
+              <CommandItem
+                key={l}
+                value={`${t("switchLanguage")} ${tCommon(`languageName.${l}`)}`}
+                onSelect={() => run(() => onSwitchLocale(l))}
+              >
+                <LanguagesIcon />
+                <span>
+                  {t("switchLanguage")}
+                  {": "}
+                  {tCommon(`languageName.${l}`)}
+                </span>
+              </CommandItem>
+            ))}
+            <CommandItem value={t("shortcuts")} onSelect={() => run(onShowShortcuts)}>
+              <KeyboardIcon />
+              <span>{t("shortcuts")}</span>
+              <CommandShortcut>{"?"}</CommandShortcut>
             </CommandItem>
-            );
-          })}
-        </CommandGroup>
-        <CommandSeparator />
-        <CommandGroup heading={t("actions")}>
-          {LOCALES.filter((l) => l !== locale).map((l) => (
-            <CommandItem
-              key={l}
-              value={`${t("switchLanguage")} ${tCommon(`languageName.${l}`)}`}
-              onSelect={() => run(() => onSwitchLocale(l))}
-            >
-              <LanguagesIcon />
-              <span>
-                {t("switchLanguage")}
-                {": "}
-                {tCommon(`languageName.${l}`)}
-              </span>
+            <CommandItem value={t("signOut")} onSelect={() => run(onSignOut)}>
+              <LogOutIcon />
+              <span>{t("signOut")}</span>
             </CommandItem>
-          ))}
-          <CommandItem value={t("shortcuts")} onSelect={() => run(onShowShortcuts)}>
-            <KeyboardIcon />
-            <span>{t("shortcuts")}</span>
-            <CommandShortcut>{"?"}</CommandShortcut>
-          </CommandItem>
-          <CommandItem value={t("signOut")} onSelect={() => run(onSignOut)}>
-            <LogOutIcon />
-            <span>{t("signOut")}</span>
-          </CommandItem>
-        </CommandGroup>
-      </CommandList>
+          </CommandGroup>
+        </CommandList>
+      </Command>
     </CommandDialog>
   );
 }

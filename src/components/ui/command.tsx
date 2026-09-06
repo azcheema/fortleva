@@ -46,10 +46,6 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
       <DialogContent
         className={cn(
           "top-1/3 translate-y-0 overflow-hidden rounded-xl p-0 shadow-(--shadow-2) sm:max-w-lg",
@@ -57,6 +53,27 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
+        {/* The sr-only header lives INSIDE DialogContent. Radix labels
+            the dialog by a context counter rather than by subtree, so it
+            was labelled correctly either way — but DialogHeader is a
+            plain div while only DialogContent is mounted-on-open, so
+            outside it put two hidden-but-accessible nodes (an <h2> and a
+            <p>) on every authed page whether the palette was open or
+            not. Inside, their lifetime is the dialog's.
+
+            THE cmdk ROOT IS THE CALLER'S. It is not rendered here on
+            purpose: <Command> owns `shouldFilter`, which both filters
+            AND re-sorts its items by fuzzy score — right for a
+            navigation list, wrong for server-ranked results — so the
+            surface that knows which it is must choose. Both callers
+            render their own; command-palette.tsx forgot to, and the
+            palette threw `Cannot read properties of undefined (reading
+            'subscribe')` from cmdk's useSyncExternalStore the instant it
+            opened. e2e/palette.spec.ts is the guard. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
         {children}
       </DialogContent>
     </Dialog>
