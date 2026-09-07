@@ -209,8 +209,9 @@ describe("search — the hydrate belt", () => {
     // §6.19's second belt. The feed removes the row on a soft delete, so
     // this simulates the failure the belt exists for: an index row that
     // outlives its source, which is exactly what search_feed_document
-    // did until 2026-09-06 and what nothing prevents for a COMMENT whose
-    // work item is deleted.
+    // did until 2026-09-06, and what a COMMENT on a deleted task did
+    // until the cascade of 2026-09-07. Rows that predate either fix, and
+    // hand-run maintenance paths, are what the belt still covers.
     const title = `Stale ${token}`;
     const item = await createItem(ownerCtx(), { projectId, title });
     expect(await titles(ownerCtx(), token)).toContain(title);

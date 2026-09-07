@@ -1,4 +1,10 @@
-import { record } from "@/audit/record";
+import { record, recordMany } from "@/audit/record";
+import {
+  softDeleteCommentsOn,
+  type CascadeReason,
+  type CascadeSubject,
+  type WorkItemDeletedReason,
+} from "@/comments/cascade";
 import { requireAccess, parseEntitlements } from "@/entitlements/resolver";
 import { assertInScope, scopeWhere, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
@@ -659,7 +665,83 @@ export async function softDeleteDocument(ctx: DocumentCtx, documentId: string): 
     });
     if (!doc) deny("NOT_FOUND");
     await assertDocumentInScope(tx, ctx.actor, doc!);
-    await tx.document.update({ where: { id: doc!.id }, data: { deletedAt: new Date() } });
-    await record(tx, { action: "document.deleted", targetType: "Document", targetId: doc!.id });
+    const taken = await softDeleteDocumentsInTx(tx, ctx.tenantId, [doc!.id], new Date());
+    // Another transaction deleted it between the read above and here:
+    // their cascade owns it. NOT_FOUND, the same answer `deleteItem`
+    // gives for the same race — a delete that reports success while
+    // writing no audit row would be the odd one out.
+    if (taken.length === 0) deny("NOT_FOUND");
   });
+}
+
+/**
+ * The transaction-level soft delete both deleters share: the member's
+ * own `softDeleteDocument` above, and `deleteItem`'s attachment cascade
+ * in the work module (attachments live the life of their parent,
+ * DATA_MODEL §10). The caller has already gated and scoped; this only
+ * mutates and records.
+ *
+ * The row and its versions stay. Its COMMENTS go with it — on the
+ * document and on each of its versions (`comments/cascade.ts`) — because
+ * a comment's index row carries its body and nothing else would remove
+ * it. One `document.deleted` per document, ids only; `why` is the
+ * cascade reason when a work item's delete brought us here.
+ *
+ * The caller stamps ONE `deletedAt` for its whole cascade set, so the
+ * whole deletion reads as one event to an export and to the retention
+ * sweep's cutoff. It is NOT an undo key: a timestamp cannot tell this
+ * cascade's comments from another delete in the same millisecond, and
+ * the per-comment audit row is the record that can (comments/cascade.ts).
+ *
+ * Returns the ids it actually stamped — empty when another transaction
+ * got there first, which is the caller's to interpret.
+ */
+export async function softDeleteDocumentsInTx(
+  tx: TenantDb,
+  tenantId: string,
+  documentIds: readonly string[],
+  deletedAt: Date,
+  why?: WorkItemDeletedReason,
+): Promise<string[]> {
+  if (documentIds.length === 0) return [];
+  // THE UPDATE IS THE SELECT, for the same reason the comment cascade
+  // uses one: a `document.deleted` row must name a document THIS
+  // transaction actually stamped. A concurrent delete of the same
+  // attachment takes its row and its comments; auditing it here as well
+  // would put two actors on one deletion, and a later undo would trust
+  // whichever it read.
+  const taken = await tx.document.updateManyAndReturn({
+    where: { tenantId, id: { in: [...documentIds] }, deletedAt: null },
+    data: { deletedAt },
+    select: { id: true },
+  });
+  if (taken.length === 0) return [];
+  const ids = taken.map((d) => d.id);
+  const versions = await tx.fileVersion.findMany({
+    where: { tenantId, documentId: { in: ids } },
+    select: { id: true, documentId: true },
+  });
+  await recordMany(
+    tx,
+    ids.map((id) => ({
+      action: "document.deleted" as const,
+      targetType: "Document",
+      targetId: id,
+      ...(why ? { metadata: why } : {}),
+    })),
+  );
+  // ONE cascade call for every document and every version, each subject
+  // carrying the document it belongs to, so the per-document metadata
+  // survives without a statement per document.
+  const reasonFor = (documentId: string): CascadeReason => ({
+    reason: "document_deleted",
+    documentId,
+    ...(why ? { workItemId: why.workItemId } : {}),
+  });
+  const subjects: CascadeSubject[] = [
+    ...ids.map((id) => ({ type: "DOCUMENT" as const, id, why: reasonFor(id) })),
+    ...versions.map((v) => ({ type: "FILE_VERSION" as const, id: v.id, why: reasonFor(v.documentId) })),
+  ];
+  await softDeleteCommentsOn(tx, tenantId, subjects, deletedAt);
+  return ids;
 }

@@ -2535,6 +2535,15 @@ enum CommentSubjectType {
 ///   tables checks this table).
 /// Mentions are extracted on save into Mention rows (ids only). Reactions:
 /// not in v1 (§11).
+/// A comment lives the life of its subject (§10; 2026-09-07): the
+/// subject's soft delete cascades to every live comment on it — and, for
+/// a document, on its versions — under the SUBJECT's delete permission
+/// (`src/comments/cascade.ts`), one `comment.deleted {reason,
+/// workItemId|documentId}` per comment, ids only, one `deletedAt` for the
+/// whole set. Soft delete is an application filter, never an RLS term:
+/// every projection selects `deletedAt: null`. The 30-day hard delete
+/// must remove comments by (subjectType, subjectId) itself — no FK will —
+/// and an undo restores only comments whose audit row names the subject.
 /// scope=client (clientId nullable only for tenant-internal DOCUMENT subjects)  rls=B (projectScoped when projectId set, else clientScoped; contact INSERT allowed by WITH CHECK)  ret=R2  enc=none
 /// audit: comment.deleted | comment.visibility_changed | portal.comment_created
 model Comment {

@@ -12,6 +12,7 @@ import {
   changeItemVisibility,
   changeState,
   createItem,
+  deleteItem,
   listItems,
   moveItem,
   updateItemFields,
@@ -739,5 +740,98 @@ describe("planning-field activity visibility (2W-G — targetDate's first UI exp
     // internal facts; the due date is part of the client-facing plan.
     expect(rows.find((r) => r.field === "priority")?.visibility).toBe("INTERNAL");
     expect(rows.find((r) => r.field === "targetDate")?.visibility).toBe("CLIENT_VISIBLE");
+  });
+});
+
+describe("deleteItem cascades to the thread (comments/cascade.ts)", () => {
+  /**
+   * A comment's index row carries its body (`title = left(body_text,
+   * 140)`) and `Comment.subjectId` has no FK, so until 2026-09-07 a
+   * task's soft delete left its whole thread alive and findable. The
+   * cascade takes every LIVE comment on the subject with ONE stamp, one
+   * `comment.deleted {reason, workItemId}` each — and nothing else: the
+   * control on a live item and the already-deleted comment both prove
+   * the WHERE is exactly as wide as the subject.
+   */
+  const token = `kaskad${randomUUID().slice(0, 8).replace(/-/g, "")}`;
+  const indexRows = async (ids: string[]): Promise<number> => {
+    const r = await f.platform.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM search_index
+       WHERE tenant_id = ${f.tenantId} AND entity_type = 'COMMENT' AND entity_id = ANY(${ids}::text[])`;
+    // An unfiltered count() always returns exactly one row.
+    return r[0]!.n;
+  };
+  const comment = (subjectId: string, bodyText: string, extra: { parentId?: string; deletedAt?: Date } = {}) =>
+    f.platform.comment.create({
+      data: {
+        tenantId: f.tenantId,
+        subjectType: "WORK_ITEM",
+        subjectId,
+        authorMemberId: f.seats.owner.memberId,
+        body: {},
+        bodyText,
+        ...extra,
+      },
+      select: { id: true, deletedAt: true },
+    });
+
+  it("soft-deletes every live comment and reply on the item with one stamp, audits each with ids only, and touches nothing else", async () => {
+    const doomed = await createItem(ownerCtx(), { projectId, title: "Doomed thread" });
+    const survivor = await createItem(ownerCtx(), { projectId, title: "Surviving thread" });
+    const root = await comment(doomed.id, `${token} root body`);
+    const reply = await comment(doomed.id, `${token} reply body`, { parentId: root.id });
+    const already = await comment(doomed.id, `${token} already gone`, {
+      deletedAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    const control = await comment(survivor.id, `${token} control body`);
+    const all = [root.id, reply.id, already.id, control.id];
+
+    // Positive before-state: the feed indexed the live ones, not the
+    // pre-deleted one — so "no index row afterwards" means something.
+    expect(await indexRows([root.id, reply.id])).toBe(2);
+    expect(await indexRows([already.id])).toBe(0);
+    expect(await indexRows([control.id])).toBe(1);
+
+    await deleteItem(ownerCtx(), doomed.id);
+
+    const item = await f.platform.workItem.findUniqueOrThrow({
+      where: { id: doomed.id },
+      select: { deletedAt: true },
+    });
+    expect(item.deletedAt).not.toBeNull();
+    const stamps = new Map(
+      (await f.platform.comment.findMany({ where: { id: { in: all } }, select: { id: true, deletedAt: true } })).map(
+        (c) => [c.id, c.deletedAt],
+      ),
+    );
+    // The thread carries the item's own stamp.
+    expect(stamps.get(root.id)).toEqual(item.deletedAt);
+    expect(stamps.get(reply.id)).toEqual(item.deletedAt);
+    // Already deleted: untouched.
+    expect(stamps.get(already.id)).toEqual(already.deletedAt);
+    // The control on a live item: alive and still indexed.
+    expect(stamps.get(control.id)).toBeNull();
+    expect(await indexRows([control.id])).toBe(1);
+    // The feed removed the cascaded rows.
+    expect(await indexRows([root.id, reply.id])).toBe(0);
+
+    // Exactly the two live comments are audited — the already-deleted
+    // one gets no second row under a reason it never had.
+    const audits = await f.platform.auditEvent.findMany({
+      where: { tenantId: f.tenantId, action: "comment.deleted", targetId: { in: all } },
+    });
+    expect(audits.map((a) => a.targetId).sort()).toEqual([root.id, reply.id].sort());
+    for (const a of audits) {
+      expect(a.targetType).toBe("Comment");
+      expect(a.actorId).toBe(f.seats.owner.memberId);
+      expect(a.metadata).toEqual({ reason: "work_item_deleted", workItemId: doomed.id });
+      expect(JSON.stringify(a.metadata)).not.toContain(token);
+    }
+    // And the item's own event still lands.
+    expect(
+      await f.platform.auditEvent.count({
+        where: { tenantId: f.tenantId, action: "work_item.deleted", targetId: doomed.id },
+      }),
+    ).toBe(1);
   });
 });

@@ -134,7 +134,7 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("work_item:view", "work", "View Tasks/Epics/Subtasks incl. activity, labels, collaborators, subtree", CMAE),
   p("work_item:create", "work", "Create work items of any kind (portal REQUEST intake is brokered)", CMAE),
   p("work_item:edit", "work", "Edit fields, state, rank, assignee, parent, milestone, archive/restore — scope-checked", CMAE),
-  p("work_item:delete", "work", "Hard-delete work items (subtree)", CM),
+  p("work_item:delete", "work", "Delete a work item (soft; no live children) with its attachments and comments", CM),
   p("work_item:change_visibility", "work", "Flip INTERNAL/CLIENT_VISIBLE incl. bulk make-private — audited, the worst-bug surface", CMA),
   p("work_item:triage", "work", "Accept / Decline / Duplicate / Snooze a REQUEST out of TRIAGE", CME),
   // ── 2W-R (+1; catalog 96 → 97; TEMPLATE_VERSION 4, 2026-08-31) ───

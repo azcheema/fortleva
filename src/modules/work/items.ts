@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { record } from "@/audit/record";
 import { assertInScope, isAuthorized } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
+import { softDeleteCommentsOn } from "@/comments/cascade";
 import { nextCounter, withTenant, type TenantDb } from "@/db";
+import { softDeleteDocumentsInTx } from "@/documents/service";
 import { requireAccess } from "@/entitlements/resolver";
 import { emit } from "@/notify/emit";
 import { writeActivity } from "./activity";
@@ -472,12 +474,29 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
       where: { tenantId: ctx.tenantId, parentId: item.id, deletedAt: null },
     });
     if (children > 0) deny("FORBIDDEN", "delete children first");
-    await tx.workItem.update({ where: { id: item.id }, data: { deletedAt: new Date() } });
-    // Attachments live the life of their parent (DATA_MODEL §4): the
+    // ONE stamp for the item and everything that goes with it, so the
+    // whole deletion reads as a single event to an export and to the
+    // retention sweep. What a future undo restores by is the audit
+    // trail, not this timestamp (comments/cascade.ts).
+    const deletedAt = new Date();
+    // Guarded on `deletedAt: null`, not just the id: the scope check
+    // above read the row in an earlier statement, and a concurrent
+    // delete committing in between owns the cascade. Without the guard
+    // this would restamp the item while its attachments and thread kept
+    // the first stamp — breaking the one-stamp promise — and audit a
+    // second `work_item.deleted` naming this actor for someone else's
+    // deletion.
+    const { count } = await tx.workItem.updateMany({
+      where: { id: item.id, deletedAt: null },
+      data: { deletedAt },
+    });
+    if (count === 0) deny("NOT_FOUND");
+    // Attachments live the life of their parent (DATA_MODEL §10): the
     // item's soft delete takes its anchored documents with it — else a
     // CLIENT_VISIBLE attachment would outlive the task on the portal
     // with the make-private lever refused by the anchor guard (2W-A
-    // review). Each gets its own document.deleted audit row, ids only.
+    // review). Each gets its own document.deleted audit row, ids only,
+    // and takes its own comments with it (documents/service.ts).
     const attached = await tx.document.findMany({
       where: {
         tenantId: ctx.tenantId,
@@ -487,20 +506,11 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
       },
       select: { id: true },
     });
-    if (attached.length > 0) {
-      await tx.document.updateMany({
-        where: { id: { in: attached.map((d) => d.id) } },
-        data: { deletedAt: new Date() },
-      });
-      for (const d of attached) {
-        await record(tx, {
-          action: "document.deleted",
-          targetType: "Document",
-          targetId: d.id,
-          metadata: { reason: "work_item_deleted", workItemId: item.id },
-        });
-      }
-    }
+    const why = { reason: "work_item_deleted", workItemId: item.id } as const;
+    await softDeleteDocumentsInTx(tx, ctx.tenantId, attached.map((d) => d.id), deletedAt, why);
+    // And so does the thread (comments/cascade.ts): a comment's index
+    // row carries its body, and nothing else would ever remove it.
+    await softDeleteCommentsOn(tx, ctx.tenantId, [{ type: "WORK_ITEM", id: item.id, why }], deletedAt);
     await record(tx, {
       action: "work_item.deleted",
       targetType: "WorkItem",

@@ -353,10 +353,13 @@ async function runSearch(
  * foreign keys either, so nothing removes a row whose source vanishes by a
  * path the feed does not see.
  *
- * The known live gap this closes: a COMMENT is not soft-deleted when its
- * work item is, and nothing cascades to it, so a comment's index row —
- * whose title IS the first 140 characters of its body — outlives the task
- * it was written on.
+ * The gap it was written for — a COMMENT outliving the task it was
+ * written on, with an index row whose title IS the first 140 characters
+ * of its body — is closed at the source since 2026-09-07: `deleteItem`
+ * and the document delete both cascade to comments
+ * (`comments/cascade.ts`). The belt stays for rows that predate the
+ * cascade and for hand-run maintenance paths, which is what a belt is
+ * for.
  *
  * Batched per type, never per row, and only for the types that can go
  * stale: PROJECT, CLIENT and CONTACT have no soft delete. A hit whose
@@ -413,8 +416,8 @@ async function hydrate(
 
   const itemById = new Map<string, LiveItem>(liveItems.map((i) => [i.id, i]));
 
-  // A comment survives only if ITS SUBJECT does. Nothing cascades a work
-  // item's soft delete to its comments, so this is where that shows up.
+  // A comment survives only if ITS SUBJECT does — the cascade takes the
+  // ordinary case at delete time, and this catches whatever it did not.
   //
   // The parent is selected in FULL, not just its id, because a comment's
   // ADDRESS is its parent's address — and building `itemById` from the
@@ -445,9 +448,22 @@ async function hydrate(
 
   const live: Record<SearchEntityType, Set<string> | null> = {
     WORK_ITEM: new Set(liveItems.map((i) => i.id)),
+    // Liveness is checked for WORK_ITEM parents only. Comments on other
+    // subjects (DOCUMENT, FILE_VERSION) have no address yet, so they are
+    // dropped HERE, deliberately — not left to fall out of addressOf.
+    // Whoever gives them an address adds the document liveness read
+    // beside this one, or the belt for them is gone.
+    //
+    // KNOWN COST, unreachable today: `search_index` carries no subject
+    // type, so the SQL cannot exclude these rows and they still take
+    // slots under the per-type cap — enough of them would push an
+    // openable task comment out of an answer that then shows nothing.
+    // No comment can be written outside a dbtest yet; the comment
+    // service is where this has to be settled, by addressing document
+    // comments rather than by widening the cap.
     COMMENT: new Set(
       liveComments
-        .filter((c) => c.subjectType !== "WORK_ITEM" || liveParents.has(c.subjectId))
+        .filter((c) => c.subjectType === "WORK_ITEM" && liveParents.has(c.subjectId))
         .map((c) => c.id),
     ),
     DOCUMENT: new Set(liveDocuments.map((d) => d.id)),

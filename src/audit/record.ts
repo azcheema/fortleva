@@ -23,18 +23,41 @@ export type AuditInput = {
 };
 
 export async function record(tx: TenantDb, input: AuditInput): Promise<void> {
-  if (!isAuditAction(input.action)) {
-    throw new Error(`audit.record: unknown action "${String(input.action)}" — add it to the catalog`);
+  await recordMany(tx, [input]);
+}
+
+/**
+ * The same trail, written in ONE statement.
+ *
+ * A cascade audits per row — one `comment.deleted` per comment, one
+ * `document.deleted` per attachment — because a row nobody can trace to
+ * its target is not a trail. Calling `record()` in a loop makes that N
+ * round trips inside the caller's transaction, each re-reading the
+ * request context, so a long thread would push an ordinary delete
+ * toward its budget. The validation, the principal and the request
+ * context are identical across the batch by construction: they come
+ * from the one transaction context all of these rows belong to.
+ *
+ * Every input is checked BEFORE anything is written, so a batch with one
+ * bad action writes nothing rather than half a trail.
+ */
+export async function recordMany(tx: TenantDb, inputs: readonly AuditInput[]): Promise<void> {
+  if (inputs.length === 0) return;
+  for (const input of inputs) {
+    if (!isAuditAction(input.action)) {
+      throw new Error(`audit.record: unknown action "${String(input.action)}" — add it to the catalog`);
+    }
   }
   const ctx = tenantContextStorage.getStore();
   if (!ctx) {
     throw new Error("audit.record: no tenant context — use withPlatform for platform events");
   }
-  const spec = AUDIT_EVENTS[input.action];
-  if (spec.visibility === "PLATFORM") {
-    throw new Error(
-      `audit.record: "${input.action}" is a PLATFORM event — emit it through withPlatform, not from tenant context`,
-    );
+  for (const input of inputs) {
+    if (AUDIT_EVENTS[input.action].visibility === "PLATFORM") {
+      throw new Error(
+        `audit.record: "${input.action}" is a PLATFORM event — emit it through withPlatform, not from tenant context`,
+      );
+    }
   }
   // requestId/ip/userAgent from the ALS store or the Next request scope
   // (DATA_MODEL.md §3); NULL outside any request (jobs, tests).
@@ -49,8 +72,8 @@ export async function record(tx: TenantDb, input: AuditInput): Promise<void> {
           ? "PLATFORM_ADMIN"
           : "SYSTEM";
 
-  await tx.auditEvent.create({
-    data: {
+  await tx.auditEvent.createMany({
+    data: inputs.map((input) => ({
       tenantId: ctx.tenantId,
       actorType,
       actorId: "id" in ctx.principal ? ctx.principal.id : null,
@@ -64,7 +87,7 @@ export async function record(tx: TenantDb, input: AuditInput): Promise<void> {
       userAgent: req?.userAgent ?? null,
       // Tenant-plane emitters write TENANT rows; a PLATFORM-visibility
       // action recorded from tenant context is a catalog misuse.
-      visibility: spec.visibility,
-    },
+      visibility: AUDIT_EVENTS[input.action].visibility,
+    })),
   });
 }

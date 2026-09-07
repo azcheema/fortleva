@@ -93,6 +93,12 @@ afterAll(async () => {
   // guard is the belt; this is the per-hook belt.
   if (tenantId === undefined) return;
   const p = platform();
+  // search_index by tenant first (no FK — nothing below reaches a row
+  // whose source is gone), then comments: a soft-deleted comment is
+  // still a row, and comment.tenant_id RESTRICTs the tenant delete.
+  // Mentions cascade from comments.
+  await p.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
+  await p.comment.deleteMany({ where: { tenantId } });
   await p.fileVersion.deleteMany({ where: { tenantId } });
   await p.document.deleteMany({ where: { tenantId } });
   await p.fileObject.deleteMany({ where: { tenantId } });
@@ -328,13 +334,46 @@ describe("presign → PUT → commit", () => {
     });
   });
 
-  it("softDelete hides the document from the list and download, audited", async () => {
+  it("softDelete hides the document from the list and download, audited — and takes a comment on its version with it", async () => {
+    // Order-coupling guard: an undefined documentId would make Prisma
+    // drop the filter below and pick SOME version.
+    expect(documentId).toBeDefined();
+    const version = await platform().fileVersion.findFirstOrThrow({
+      where: { tenantId, documentId },
+      orderBy: { versionNumber: "desc" },
+    });
+    expect(version.documentId).toBe(documentId);
+    // A comment on a FILE_VERSION of a tenant-internal document: the
+    // denorm guard copies NULL client/project from the document.
+    const onVersion = await platform().comment.create({
+      data: {
+        tenantId,
+        subjectType: "FILE_VERSION",
+        subjectId: version.id,
+        authorMemberId: ctx.actor.memberId,
+        body: {},
+        bodyText: "a note on version two",
+      },
+      select: { id: true },
+    });
+
     await softDeleteDocument(ctx, documentId);
     expect((await listDocuments(ctx)).some((d) => d.id === documentId)).toBe(false);
     await expect(getDownloadUrl(ctx, documentId)).rejects.toMatchObject({ reason: "NOT_FOUND" });
     expect(await auditActions(documentId)).toContain("document.deleted");
     // soft: rows remain
-    expect(await platform().document.count({ where: { id: documentId } })).toBe(1);
+    const row = await platform().document.findUniqueOrThrow({ where: { id: documentId } });
+    expect(row.deletedAt).not.toBeNull();
+
+    // The version's comment went with the document, on the SAME stamp,
+    // audited with the reason and the document's id — nothing else.
+    const comment = await platform().comment.findUniqueOrThrow({ where: { id: onVersion.id } });
+    expect(comment.deletedAt).toEqual(row.deletedAt);
+    const audit = await platform().auditEvent.findFirst({
+      where: { tenantId, targetId: onVersion.id, action: "comment.deleted" },
+    });
+    expect(audit?.targetType).toBe("Comment");
+    expect(audit?.metadata).toEqual({ reason: "document_deleted", documentId });
   });
 });
 
@@ -494,6 +533,9 @@ describe("work-item attachments (2W-A ship gates)", () => {
     // as the orphaned dbtest tenants swept in a73cd12.
     // `e2e/fixtures/seed-cli.ts` does exactly this for the same reason.
     await p.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
+    // Comments RESTRICT both the project and the client; the cascade
+    // only soft-deletes them, so the rows are still here.
+    await p.comment.deleteMany({ where: { tenantId } });
     await p.fileVersion.deleteMany({ where: { tenantId } });
     await p.document.deleteMany({ where: { tenantId } });
     await p.fileObject.deleteMany({ where: { tenantId } });
@@ -804,17 +846,61 @@ describe("work-item attachments (2W-A ship gates)", () => {
     });
   });
 
-  it("deleting the item takes its attachments with it (DATA_MODEL §4 — life of the parent), audited", async () => {
+  it("deleting the item takes its attachments with it (DATA_MODEL §10 — life of the parent), audited — and every comment on the item, the attachment and its version", async () => {
     const { id: itemId } = await createItem(ctx, { projectId: att.projectId, title: "Doomed feature" });
     await changeItemVisibility(ctx, itemId, "CLIENT_VISIBLE");
     const doc = await uploadAttached("goes-with-it.txt", itemId, "CLIENT_VISIBLE");
+    const version = await platform().fileVersion.findFirstOrThrow({ where: { tenantId, documentId: doc } });
+    const comment = (
+      subjectType: "WORK_ITEM" | "DOCUMENT" | "FILE_VERSION",
+      subjectId: string,
+      bodyText: string,
+    ) =>
+      platform().comment.create({
+        data: { tenantId, subjectType, subjectId, authorMemberId: ctx.actor.memberId, body: {}, bodyText },
+        select: { id: true },
+      });
+    const onItem = await comment("WORK_ITEM", itemId, "on the item");
+    const onDoc = await comment("DOCUMENT", doc, "on the attachment");
+    const onVersion = await comment("FILE_VERSION", version.id, "on the version");
+    // The negative control: a comment on a LIVE item must be untouched,
+    // or an over-broad cascade would pass every assertion below.
+    const control = await comment("WORK_ITEM", visibleItemId, "on another item");
+
     await deleteItem(ctx, itemId);
+
     const row = await platform().document.findUniqueOrThrow({ where: { id: doc } });
     expect(row.deletedAt).not.toBeNull();
     const audit = await platform().auditEvent.findFirst({
       where: { tenantId, targetId: doc, action: "document.deleted" },
     });
     expect(audit?.metadata).toMatchObject({ reason: "work_item_deleted", workItemId: itemId });
+
+    // All three comments carry the ONE stamp the cascade used; the
+    // control is alive.
+    const ids = [onItem.id, onDoc.id, onVersion.id, control.id];
+    const stamps = new Map(
+      (await platform().comment.findMany({ where: { id: { in: ids } }, select: { id: true, deletedAt: true } })).map(
+        (c) => [c.id, c.deletedAt],
+      ),
+    );
+    for (const id of [onItem.id, onDoc.id, onVersion.id]) expect(stamps.get(id)).toEqual(row.deletedAt);
+    expect(stamps.get(control.id)).toBeNull();
+
+    // One comment.deleted each, naming the reason and the subject —
+    // and, for the attachment's comments, the item that started it.
+    const metaOf = new Map(
+      (
+        await platform().auditEvent.findMany({
+          where: { tenantId, action: "comment.deleted", targetId: { in: ids } },
+          select: { targetId: true, metadata: true },
+        })
+      ).map((a) => [a.targetId, a.metadata]),
+    );
+    expect(metaOf.size).toBe(3);
+    expect(metaOf.get(onItem.id)).toEqual({ reason: "work_item_deleted", workItemId: itemId });
+    expect(metaOf.get(onDoc.id)).toEqual({ reason: "document_deleted", documentId: doc, workItemId: itemId });
+    expect(metaOf.get(onVersion.id)).toEqual({ reason: "document_deleted", documentId: doc, workItemId: itemId });
   });
 
   it("a dangling anchor never blocks the restrict lever, and never permits the widen one (guard v2)", async () => {

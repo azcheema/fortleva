@@ -13,6 +13,13 @@ import { Prisma } from "@/generated/prisma/client";
  * a member FK aborted each hook. The platform client (BYPASSRLS — no
  * RLS backstop) now fails LOUDLY instead. No caller anywhere performs a
  * deliberate unfiltered bulk write, so `where` is simply required.
+ *
+ * THE HOOKS ARE KEYED BY OPERATION NAME, so an operation nobody listed
+ * here is simply not guarded. `…AndReturn` are separate names, not
+ * aliases — `updateManyAndReturn` takes the same optional `where` and
+ * does the same unfiltered damage — which is why it is listed below and
+ * pinned by the test. The create forms are deliberately absent: they
+ * carry no `where` at all, so guarding them would throw on every call.
  */
 export const assertNoUndefinedWhere = (where: unknown, path = "where"): void => {
   if (where === undefined) {
@@ -31,16 +38,24 @@ export const assertNoUndefinedWhere = (where: unknown, path = "where"): void => 
   }
 };
 
+/** Every bulk write that takes a `where`. The hooks below are BUILT
+ * from this list rather than written out beside it, so a name added
+ * here cannot be forgotten there — which is exactly how
+ * `updateManyAndReturn` nearly shipped unguarded. */
+export const GUARDED_BULK_OPS = ["deleteMany", "updateMany", "updateManyAndReturn"] as const;
+
 export const undefinedWhereGuard = Prisma.defineExtension({
   name: "undefined-where-guard",
   query: {
     $allModels: {
-      deleteMany({ args, query }) {
-        assertNoUndefinedWhere(args.where);
-        return query(args);
-      },
-      updateMany({ args, query }) {
-        assertNoUndefinedWhere(args.where);
+      // One catch-all that TESTS the operation name, rather than a hook
+      // per name: a hook Prisma never calls because nobody wrote it is
+      // indistinguishable from a guard that passed. Same shape as the
+      // sibling belt in where-injection.ts.
+      $allOperations({ operation, args, query }) {
+        if ((GUARDED_BULK_OPS as readonly string[]).includes(operation)) {
+          assertNoUndefinedWhere((args as { where?: unknown }).where);
+        }
         return query(args);
       },
     },

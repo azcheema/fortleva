@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertNoUndefinedWhere } from "./undefined-where-guard";
+import { assertNoUndefinedWhere, GUARDED_BULK_OPS } from "./undefined-where-guard";
 
 /**
  * The 2026-08-31 incident pin: Prisma silently drops `undefined` where
@@ -19,6 +19,18 @@ describe("assertNoUndefinedWhere (the unfiltered-bulk-write belt)", () => {
     );
     expect(() => assertNoUndefinedWhere({ id: "x", nested: { or: [{ a: undefined }] } })).toThrow(
       /where\.nested\.or\.0\.a is undefined/,
+    );
+  });
+
+  it("guards every bulk write that takes a where — an unlisted operation name is the whole failure mode", () => {
+    // Prisma keys its hooks by operation NAME, so an operation nobody
+    // listed is silently unguarded. `updateManyAndReturn` is a separate
+    // name from `updateMany`, takes the same optional `where`, and does
+    // the same unfiltered damage; it nearly shipped outside this belt.
+    // The list is pinned here and the extension is built FROM it, so
+    // adding a name is the only edit a future bulk operation needs.
+    expect([...GUARDED_BULK_OPS].sort()).toEqual(
+      ["deleteMany", "updateMany", "updateManyAndReturn"].sort(),
     );
   });
 

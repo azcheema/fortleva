@@ -21,7 +21,12 @@ const READ_OPS = new Set([
   "groupBy",
 ]);
 const UNIQUE_OPS = new Set(["findUnique", "findUniqueOrThrow"]);
-const FILTERED_WRITE_OPS = new Set(["updateMany", "deleteMany"]);
+// `…AndReturn` are separate operation names, not aliases: a Prisma
+// upgrade that adds one silently drops it out of this belt, so both
+// live here beside the plain forms (2026-09-07, the first
+// `updateManyAndReturn` caller).
+const FILTERED_WRITE_OPS = new Set(["updateMany", "deleteMany", "updateManyAndReturn"]);
+const CREATE_MANY_OPS = new Set(["createMany", "createManyAndReturn"]);
 
 type AnyArgs = Record<string, unknown> & { where?: Record<string, unknown>; data?: unknown };
 
@@ -58,7 +63,7 @@ export const whereInjection = Prisma.defineExtension({
             a.where = { ...a.where, tenantId: ctx.tenantId } as AnyArgs["where"];
           } else if (operation === "create") {
             a.data = stamp(a.data as object, ctx.tenantId);
-          } else if (operation === "createMany") {
+          } else if (CREATE_MANY_OPS.has(operation)) {
             const d = a.data;
             if (Array.isArray(d)) {
               a.data = d.map((row: object) => stamp(row, ctx.tenantId));

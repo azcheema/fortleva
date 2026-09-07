@@ -143,7 +143,7 @@ Same columns and seeding legend as the v1 table. "Scoped" now means filtered by 
 | `work_item:view` | work | View Tasks/Epics/Subtasks incl. activity, labels, collaborators, subtree | C M A E | scoped | 2W |
 | `work_item:create` | work | Create work items of any `kind` (portal `REQUEST` intake is brokered, §8) | C M A E | scoped | 2W |
 | `work_item:edit` | work | Edit fields, state, rank, assignee, parent, milestone, archive/restore — **scope-checked** | C M A E | scoped | 2W |
-| `work_item:delete` | work | Hard-delete work items (subtree) | C M | scoped | 2W |
+| `work_item:delete` | work | Delete a work item (soft; no live children) with its attachments and comments *(reworded 2026-09-07 — the code has always soft-deleted, one item at a time)* | C M | scoped | 2W |
 | `work_item:change_visibility` | work | Flip `INTERNAL` ↔ `CLIENT_VISIBLE` incl. bulk "make private with N children" — audited, the worst-bug surface | C M A | scoped | 2W |
 | `work_item:triage` | work | Accept / Decline / Duplicate / Snooze a `REQUEST` out of `TRIAGE` | C M E | scoped | 2W |
 | `work_item:approve` | work | Move a task into an approval-gated state (the seeded Done) — supplements `work_item:edit`, never replaces it; enforced in `transitionState` so every entry point gates; leaving a gated state (reopening) is free | C M A | scoped | 2W-R (TV4, 2026-08-31) |
@@ -250,6 +250,7 @@ Roles answer *what* a member may do; assignments answer *on which clients*. Sett
   - `MemberProject(memberId, projectId)` ⇒ scope over that single project and its child records, plus read of the parent client's card (name, contacts — not its other projects, not its other invoices). The freelancer case: brought in for one project, sees one project.
   - Effective scope = union of both, or everything if `client:view_all` is held.
 - **Permission ∧ scope.** `authorize()` requires both: `invoice:view` without assignment to client X ⇒ cannot see X's invoices; assignment to X without `invoice:view` ⇒ still cannot. Role and relationship are independent axes, exactly as the brief demands.
+- **A subject's delete cascades to its comments** *(added 2026-09-07)*. `work_item:delete` and `document:delete` soft-delete every comment on the subject (and on a document's versions) with **no `comment:delete` check** — a deleted subject has no thread; `comment:delete` governs removing one comment from a *live* subject. Same rule as the attachment cascade under `work_item:delete`, and the first that runs from a broader seed (`document:delete` C M A) to a narrower one (`comment:delete` C M): an Admin who deletes a document removes its comments too, each with its own `comment.deleted {reason, subject id}` row naming that Admin. Helper: `src/comments/cascade.ts`.
 
 **List queries** must never post-filter. The second entry point of the seam:
 
