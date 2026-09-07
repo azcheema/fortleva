@@ -505,7 +505,7 @@ Tenants with staff in the US (and any future US tenant) get a **one-page electro
 | CredentialShareLink | TTL ≤ 7 d; consumed/expired rows kept 90 d for audit correlation, then deleted | — | Deleted | Recipient email hashed at expiry |
 | ClientAsset / ExpirationReminderSent | Life of client relationship; box auto-fill reads it at seal time | Included in export | Deleted | — |
 | TenantKey | Life of tenancy; RETIRED keys kept until no ciphertext references them | — | **Destroyed at day 90** — the cryptographic erasure of every vault/cost ciphertext | — |
-| search_index | Derived; rebuilt on demand (`search.index_rebuilt`); no independent retention | Follows source rows | Deleted | Follows source rows |
+| search_index | Derived; `lang` restamped in the locale-change transaction (`search.index_rebuilt`) — no on-demand full rebuild exists *(2026-09-07)*; no independent retention | Follows source rows | Deleted | Follows source rows |
 | ContinuityBox / ContinuityOpenRequest | Life of client relationship; quarterly reseal ritual | Contact change forces reseal | **Survives lapse and offboarding sealed for a defined window — proposed 12 months** (final number in `OPEN_QUESTIONS.md`), then destroyed with notice | Sealed blob is ciphertext; erasure = destroy blob + shares |
 | Sessions / Invitations | TTL-bound (§3.6; invites ≤ 72 h) | Revoked | Deleted | — |
 

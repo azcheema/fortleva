@@ -64,6 +64,11 @@ export async function setupTenant(label: string) {
   };
 
   const cleanup = async () => {
+    // search_index has NO foreign key to anything, so a row whose source
+    // is already gone is unreachable by every delete below and would
+    // outlive the tenant unattributable. Swept here, by tenant, so no
+    // dbtest that feeds the index has to remember (a73cd12's class).
+    await platform.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
     await platform.memberInvite.deleteMany({ where: { tenantId } });
     await platform.memberRole.deleteMany({ where: { tenantId } });
     await platform.rolePermission.deleteMany({ where: { tenantId } });

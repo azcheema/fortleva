@@ -172,14 +172,15 @@ export async function search(ctx: SearchCtx, raw: string): Promise<SearchOutcome
     // nothing. Folding the check into the main WHERE would collapse the
     // two into "no results" and tell a member searching "the" that their
     // workspace holds nothing about it.
-    // ASKED OVER EVERY CONFIG THE TENANT ACTUALLY HAS, not just the one
-    // its locale says today. The match below uses each ROW's `lang`
-    // precisely because a locale change strands rows on the old config —
-    // and a probe that used only the new one would call a term a stop
-    // word and report "empty query" for exactly the rows that stranding
-    // left findable. `search_lang` is the fallback for a tenant with no
-    // rows yet, where there is no config to sample.
-    // ASKED OVER THE CONFIGS THIS TENANT ACTUALLY HAS, and no others.
+    // ASKED OVER THE CONFIGS THIS TENANT ACTUALLY HOLDS, and no others.
+    // Rows are restamped when the locale changes (search/rebuild.ts),
+    // but a row fed by a transaction that read the old locale and
+    // committed after the restamp keeps the old config, and so does any
+    // row written by a path that bypasses the settings write. The match
+    // below uses each ROW's `lang` for the same reason; a probe that
+    // asked only today's config would call a term a stop word and
+    // report "empty query" for exactly the rows still findable through
+    // the other one.
     //
     // A review proposed asking both configs directly instead, on the
     // grounds that the set is closed (`fortleva_sv` | `fortleva_en`) and
@@ -190,9 +191,7 @@ export async function search(ctx: SearchCtx, raw: string): Promise<SearchOutcome
     // word to go on". The whole point of this probe is that distinction.
     //
     // The DISTINCT scan is therefore the price of the answer being
-    // right, and it is also what keeps the probe agreeing with the
-    // per-row match after a locale change strands rows on the old
-    // config. `search_lang` is the fallback for a tenant with no rows
+    // right. `search_lang` is the fallback for a tenant with no rows
     // yet, where there is no config to sample.
     const parsed = await tx.$queryRaw<{ lexemes: number }[]>`
       SELECT GREATEST(
@@ -282,11 +281,11 @@ async function runSearch(
   const types = [...allowed];
 
   // THE CONFIG COMES FROM THE ROW (`si.lang`), not from a literal and
-  // not from one sampled row. Every row of a tenant is stamped from the
-  // same `search_lang(tenant)` today, so the two agree — but a tenant
-  // that changes its locale leaves already-indexed rows on the old
-  // config with no rebuild job to fix them, and matching per row keeps
-  // those rows findable in the language they were indexed in.
+  // not from one sampled row. A locale change restamps the tenant's rows
+  // in the same transaction (search/rebuild.ts), so they normally all
+  // agree — but a row fed concurrently with that change, or by a path
+  // that bypassed it, keeps the config it was stemmed in, and matching
+  // per row keeps it findable in that language rather than in none.
   //
   // The tsquery is built ONCE per row in a LATERAL rather than three
   // times inline (WHERE, rank, and the window's ORDER BY): each build

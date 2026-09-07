@@ -6,6 +6,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { LOCALES } from "@/i18n/config";
 import { fail } from "@/lib/domain-error";
+import { restampSearchLang } from "@/search/rebuild";
 
 import {
   CURRENCIES,
@@ -37,7 +38,10 @@ export * from "./config";
  * Gates: settings:view reads, settings:edit writes, settings:manage_modules
  * (✦) flips module toggles. Every write audits preference.changed {key}
  * — keys only, never values (none are secrets, but the log stays small
- * and uniform).
+ * and uniform). The one write with a second effect is the locale: it
+ * also restamps the search index (search/rebuild.ts), whose own event
+ * carries the two locale keys and a row count — enum values, still no
+ * text.
  */
 
 export type PreferenceCtx = {
@@ -151,6 +155,15 @@ export async function updatePreferences(
           metadata: { key: "locale.default" },
         });
         changed.push("locale.default");
+        // The search index is stemmed per row in the language it was fed
+        // in. Restamped HERE, in the same transaction, so a workspace that
+        // switches language is not left searching yesterday's rows with
+        // today's stemmer (search/rebuild.ts carries the cost argument).
+        await restampSearchLang(tx, {
+          tenantId: ctx.tenantId,
+          from: t.defaultLocale,
+          to: patch.defaultLocale,
+        });
       }
     }
     for (const [field, key] of Object.entries(PREF_KEYS) as [keyof typeof PREF_KEYS, string][]) {
