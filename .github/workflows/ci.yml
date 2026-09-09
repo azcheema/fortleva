@@ -37,40 +37,17 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: Typecheck, lint, unit tests
-    runs-on: ubuntu-latest
-    # Runs in ~1 min and touches no database. Bounded like every other job
-    # here: without this it inherits GitHub's 6-hour default, so one hung
-    # unit test would burn six hours of billable minutes.
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec prisma generate
-      - run: pnpm typecheck
-      # `src e2e`, matching the command AGENTS.md pins. CI linted only
-      # `src` until 2026-09-01, so a lint error in the Playwright specs
-      # reached main unchallenged; the extra path costs ~2 seconds.
-      - run: pnpm exec eslint src e2e --max-warnings 0
-      - run: pnpm test
-      # INV-D1 is inside pnpm test (inv-d1.test.ts) — the ARC-11
-      # CI-enforced cookie assertion. Do not remove.
-
   isolation:
     name: Cross-tenant isolation suite
     runs-on: ubuntu-latest
-    # A commit that cannot typecheck teaches us nothing about tenant
-    # isolation. Gating on the 1-minute check job makes a broken push
-    # cost 1 minute instead of a full db run. It adds ~1 minute of WALL
-    # CLOCK and zero billable minutes — queued time is not billed — so
-    # the trade is free. (The e2e job already needed both.)
-    needs: [check]
+    # NO `needs:` any more. The `check` job this gated on was MERGED
+    # INTO THIS ONE on 2026-09-09 (the step below carries the arithmetic).
+    # What that edge bought — a commit that cannot typecheck never paying
+    # for a full db run — is preserved by ORDER rather than by a job
+    # boundary: typecheck/lint/unit run before `migrate deploy`, so a
+    # broken push still stops before the database is touched. It is now
+    # cheaper still, because that short-circuit no longer costs a second
+    # job's checkout, install and per-job round-up.
     # NO `concurrency` group any more. The `isolation-db` group existed
     # only because this job and the e2e job shared ONE dev database and
     # could not run at once; each job now brings its own (see `services`),
@@ -88,7 +65,13 @@ jobs:
     # (265 x 30 s is 2.2 hours), so a broad slowdown surfaces as THIS
     # ceiling firing — read the per-file timings off the run rather than
     # assuming a hang.
-    timeout-minutes: 15
+    #
+    # RAISED 15 → 20 on 2026-09-09, when typecheck + eslint + unit tests
+    # moved in (~64 s, serial). The measured job was 138 s; 20 keeps ~6x
+    # headroom over 138 + 64. Still a HANG GUARD and a bill cap that
+    # costs nothing unless it fires — not a budget any green run is
+    # expected to approach.
+    timeout-minutes: 20
     services:
       # The database under test, on this runner. `postgres:18` pins the
       # MAJOR version, which is load-bearing: uuidv7() is a PG18 built-in
@@ -208,6 +191,71 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prisma generate
+      # Typecheck, lint and unit tests, MOVED HERE from the deleted
+      # `check` job on 2026-09-09. Two jobs paid checkout + pnpm setup +
+      # install + prisma generate twice (~34 s), and GitHub rounds EVERY
+      # JOB UP to a whole minute independently — so 94 s and 138 s billed
+      # as 5 minutes for 232 s of work. Merged and run serially that is
+      # 232 - 34 = ~198 s, which bills as 4 — one minute per run, ~65 a
+      # month at the current pace.
+      #
+      # POSITION IS LOAD-BEARING: before `migrate deploy`, so a commit
+      # that cannot typecheck never reaches the database steps. That is
+      # the short-circuit the old `needs: [check]` edge existed for.
+      #
+      # SERIAL, as three ordinary steps, and that is a REVERSED DECISION
+      # worth recording so it is not re-tried. Running the three
+      # concurrently under one `run:` block looked like another ~36 s,
+      # and it was rejected on review for three independent reasons:
+      #
+      #  1. THIS REPO IS PRIVATE, so `ubuntu-latest` is 2 vCPU / 7 GB,
+      #     not the 4 cores public repos get. Three Node processes plus
+      #     a postgres:18 container on 7 GB is a plausible OOM, and an
+      #     OOM surfaces as a red run with a truncated log and no real
+      #     error in it — far more expensive than the minute it saves.
+      #  2. Capturing each command's output to a file to keep the logs
+      #     attributable means that when `timeout-minutes` fires it
+      #     CANCELS the job, the replay branches never run, and the logs
+      #     die with the runner — an empty step log on exactly the run
+      #     that most needs evidence. (Same reason the artifact step
+      #     below is `failure() || cancelled()` rather than `failure()`.)
+      #  3. It destroys fail-fast: a type error that costs ~24 s here
+      #     would instead wait out all three commands, inside a job that
+      #     has already provisioned Postgres.
+      #
+      # Serial keeps every one of those properties. The merge itself is
+      # where the saving is, and it is unaffected.
+      #
+      # POSITION: before `migrate deploy` — see above.
+      #
+      # PER-STEP CEILINGS, because the deleted `check` job's own
+      # `timeout-minutes: 10` went with it and these would otherwise
+      # inherit this job's 20 — a hang in the cheap checks would burn 20
+      # billable minutes instead of 10. Per-step is tighter than the old
+      # per-job bound: each command is capped near 10x its MEASURED time
+      # on this runner (24 s / 26 s / 14 s on run 34155378723, which was
+      # a private-repo 2-vCPU runner, so these are not 4-core numbers).
+      # Hang guards; they cost nothing on a green run.
+      - run: pnpm typecheck
+        timeout-minutes: 5
+      # `src e2e`, matching the command AGENTS.md pins. CI linted only
+      # `src` until 2026-09-01, so a lint error in the Playwright specs
+      # reached main unchallenged; the extra path costs ~2 seconds.
+      - run: pnpm exec eslint src e2e --max-warnings 0
+        timeout-minutes: 5
+      # INV-D1 is inside pnpm test (inv-d1.test.ts) — the ARC-11
+      # CI-enforced cookie assertion. Do not remove.
+      #
+      # These now inherit this job's DATABASE_URL / DIRECT_URL /
+      # PLATFORM_DATABASE_URL / FIELD_ENCRYPTION_KEY, which the old
+      # `check` job did not have. Checked rather than assumed: the suite
+      # was run locally with all three URLs pointed at an unreachable
+      # host and CI=true, and passed identically (44 files, 757 tests),
+      # so no unit test opens a connection. The failure mode would also
+      # be loud rather than silent — this step runs BEFORE
+      # `migrate deploy`, so the `app_runtime` role does not exist yet.
+      - run: pnpm test
+        timeout-minutes: 3
       # Against an EMPTY database, every run — so `migrate deploy` is now
       # verified from scratch on every push, which no run had ever done
       # (the shared database was migrated once, by hand).
@@ -226,12 +274,13 @@ jobs:
   e2e:
     name: Browser harness (Playwright)
     runs-on: ubuntu-latest
-    # Only after the cheap checks pass. It still waits for `isolation`,
-    # and that ordering is a COST control, not a data one: a red
+    # Only after the cheap checks pass — they now live INSIDE the
+    # isolation job (merged 2026-09-09), which is why this needs one job
+    # and not two. The ordering is a COST control, not a data one: a red
     # isolation run skips this job entirely, so a failing push pays for
     # one db job instead of two. Do not decouple them to gain wall clock
     # — it makes every red push cost both.
-    needs: [check, isolation]
+    needs: [isolation]
     # 30, down from 120, and MEASURED: run 33538511920 put this job at
     # 8 m 18 s against 62 MINUTES on the EU database. That breaks down as
     # ~2 min of setup, a cold `pnpm build` of ~81 s (44 s to compile —
@@ -287,6 +336,19 @@ jobs:
       FIELD_ENCRYPTION_KEY_ID: k1
       # DB_TX_TIMEOUT_MS unset for the same reason as above: the app
       # under test is now as near its database as production is.
+      #
+      # THE ONLY PLACE THIS IS EVER SET. next.config.ts reads it to skip
+      # `next build`'s type pass (28 s, measured), and it is declared
+      # here rather than keyed on `CI` or `GITHUB_ACTIONS` inside the
+      # config so that the bypass cannot escape this job: the build that
+      # runs here — playwright.config.ts's `pnpm build && pnpm start` —
+      # is the only one preceded by `pnpm typecheck` over the same
+      # tsconfig project, in the isolation job this one `needs:`. Any
+      # other build, in this repo or a workflow added later, typechecks.
+      # Playwright spreads process.env into webServer.env, so it reaches
+      # the build. If the isolation job's typecheck step or the `needs:`
+      # edge goes, DELETE THIS LINE in the same commit.
+      NEXT_SKIP_TYPECHECK: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -328,10 +390,39 @@ jobs:
       # chance of a browser that cannot launch would risk a whole run to
       # save a rounding error.
       - run: pnpm exec playwright install --with-deps chromium
+      # next@16.3.0 turns `turbopackFileSystemCacheForBuild` ON BY
+      # DEFAULT and writes `.next/cache/turbopack`. Until this step
+      # existed CI wrote that cache every run and NEVER READ IT — the
+      # shipped doc is explicit that "builds only get faster when that
+      # directory is restored before each build", and that an environment
+      # which never preserves it should turn the cache OFF rather than
+      # pay to write it (node_modules/next/dist/docs/01-app/
+      # 03-api-reference/05-config/01-next-config-js/
+      # turbopackFileSystemCache.md).
+      #
+      # Keyed on the commit so every run writes a fresh entry, with
+      # restore-keys falling back to the newest cache for the SAME
+      # lockfile — a warm start that never restores a cache built against
+      # different dependencies.
+      #
+      # ESTIMATE, NOT MEASUREMENT, and flagged as such: compile was 44 s
+      # of a 75 s `next build` on run 34155378723, and a warm Turbopack
+      # cache should put it at 15-25 s against ~5-10 s of cache upload.
+      # If the next runs say it does not pay for itself, take the doc's
+      # OTHER branch instead — `turbopackFileSystemCacheForBuild: false`
+      # under CI, which reclaims the write cost for free.
+      - name: Restore the Next/Turbopack build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
       # playwright.config.ts owns the server: `pnpm build && pnpm start`
       # with APP_URL pinned to the harness origin (Better Auth refuses a
       # foreign origin, INV-D2). Fixtures live in a throwaway tenant
-      # (slug "e2e-…") that global-teardown removes.
+      # (slug "e2e-…") that global-teardown removes. That build is what
+      # the cache step above exists to warm.
       - run: pnpm test:e2e
       # The container takes the fixture with it when the job ends, so
       # this no longer protects a shared database — it keeps the teardown
