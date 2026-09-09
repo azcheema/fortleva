@@ -3,17 +3,18 @@
    §6.3: AUTH-class tables are touched only by the auth service path;
    RLS portal_deny still governs them). */
 import { betterAuth } from "better-auth";
+import { createAuthMiddleware } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware } from "better-auth/api";
-import { admin, twoFactor } from "better-auth/plugins";
+import { twoFactor } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 
 import { absoluteUrl, appUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
 import { send } from "@/mailer";
-import { allow, clientIp, type RateLimitBucket } from "@/ratelimit";
 
 import { auditPlugin, memberDatabaseHooks, onPasswordResetHook } from "./audit-hooks";
+import { guardFactorMutations } from "./factor-guard";
+import { enforceAuthRateLimit } from "./rate-limit-hook";
 
 /**
  * Member-plane Better Auth instance (SECURITY.md §3): identity,
@@ -33,6 +34,23 @@ import { auditPlugin, memberDatabaseHooks, onPasswordResetHook } from "./audit-h
  * MEMBER, mfaVerifiedAt would never be returned). input:false — never
  * settable from a client body; hooks set them server-side.
  */
+/**
+ * User columns beyond Better Auth's core set, declared to BOTH
+ * instances. Declaring them is not decoration: Better Auth copies only
+ * the keys present in an instance's own table schema out of the row
+ * (@better-auth/core .../adapter/factory.mjs), so a field missing here
+ * reads as `undefined` no matter what the database holds. The platform
+ * instance omitted this block entirely until 2026-09-09 and
+ * `platformRole` was invisible there — which denied every console
+ * session. Shared so that cannot recur on one plane only.
+ */
+export const USER_ADDITIONAL_FIELDS = {
+  locale: { type: "string", required: false },
+  // Authoritative platform-plane flag (AUTHZ.md §9); the admin
+  // plugin's `role` column is a mirror, never read by authorization.
+  platformRole: { type: "string", required: false, input: false },
+} as const;
+
 export const SESSION_ADDITIONAL_FIELDS = {
   plane: { type: "string", required: false, input: false },
   activeTenantId: { type: "string", required: false, input: false },
@@ -41,14 +59,6 @@ export const SESSION_ADDITIONAL_FIELDS = {
   // requireTenantContext() → authorize() for ✦ codes.
   mfaVerifiedAt: { type: "date", required: false, input: false },
 } as const;
-
-/** Better Auth endpoint path → rate-limit bucket. */
-const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
-  "/sign-in/email": "auth.sign_in",
-  "/sign-up/email": "auth.sign_up",
-  "/two-factor/verify-totp": "auth.step_up",
-  "/two-factor/verify-backup-code": "auth.step_up",
-};
 
 export const auth = betterAuth({
   baseURL: appUrl.origin,
@@ -72,12 +82,7 @@ export const auth = betterAuth({
     },
   },
   user: {
-    additionalFields: {
-      locale: { type: "string", required: false },
-      // Authoritative platform-plane flag (AUTHZ.md §9); the admin
-      // plugin's `role` column is a mirror, never read by authorization.
-      platformRole: { type: "string", required: false, input: false },
-    },
+    additionalFields: USER_ADDITIONAL_FIELDS,
     changeEmail: {
       enabled: true,
       sendChangeEmailVerification: async ({ newEmail, url }: { newEmail: string; url: string }) => {
@@ -122,14 +127,19 @@ export const auth = betterAuth({
   hooks: {
     // Per-IP limits on the credential endpoints (SECURITY.md §3.7) on
     // top of Better Auth's built-in limiter; no-op until Upstash env
-    // exists (src/ratelimit). 429 before any handler runs.
+    // exists (src/ratelimit). 429 before any handler runs. Moved to
+    // ./rate-limit-hook on 2026-09-09 so the PLATFORM instance uses the
+    // same function rather than a copy that can drift — it had none.
+    //
+    // The factor guard runs here TOO, and that is not belt-and-braces:
+    // `TwoFactor.userId` is @unique, so a SUPERADMIN has ONE factor row
+    // and this plane's /two-factor/disable deletes the very row the
+    // console gate depends on. Guarding only the platform instance would
+    // leave the weak plane able to strip the strong plane's credential.
+    // See ./factor-guard.
     before: createAuthMiddleware(async (ctx) => {
-      const bucket = RATE_LIMITED_PATHS[ctx.path];
-      if (!bucket) return;
-      const ip = clientIp(ctx.headers ?? new Headers());
-      if (!(await allow(bucket, ip))) {
-        throw new APIError("TOO_MANY_REQUESTS", { message: "Too many attempts. Try again later." });
-      }
+      await enforceAuthRateLimit(ctx, "member");
+      await guardFactorMutations(ctx, "member");
     }),
   },
   plugins: [
@@ -137,7 +147,28 @@ export const auth = betterAuth({
       issuer: "Fortleva",
       totpOptions: { digits: 6, period: 30 },
     }),
-    admin(), // impersonation + ban machinery for the platform plane
+    // admin() REMOVED 2026-09-09, and it must not come back without the
+    // controls below. It mounted /api/auth/admin/* on the MEMBER plane
+    // — the plane with 7-day rolling, sameSite=lax sessions and no MFA
+    // requirement — and both instances share one `account` row. So
+    // `/admin/set-user-password`, guarded by nothing but a session
+    // (`adminMiddleware`, not the library's own
+    // `sensitiveSessionMiddleware`) and `hasPermission` on the admin
+    // plugin's `role` column, could rewrite the SUPERADMIN's credential:
+    // the WEAK plane's session rewriting the STRONG plane's password.
+    // `/admin/impersonate-user` was mounted there too, minting sessions
+    // that land with `plane` at its Prisma default of MEMBER while
+    // nothing in src/ ever derives `actor.impersonated` from
+    // `Session.impersonatedBy` — so authorize.ts's read-only
+    // impersonation mask could never fire on them.
+    //
+    // Nothing in src/ reads `role`, `banned`, `banReason`, `banExpires`
+    // or `Session.impersonatedBy`; the columns stay in the Prisma schema
+    // and auth.dbtest.ts still asserts `impersonatedBy` is null through
+    // Prisma. When impersonation is actually built, it needs the
+    // read-only mask wired to a real actor flag, dual-identity audit
+    // rows, and to live on the ops plane behind requirePlatformAdmin() —
+    // not a plugin re-registered here.
     // After twoFactor on purpose: its after-hooks must observe the
     // FINAL newSession (null while a 2FA challenge is pending).
     auditPlugin(),

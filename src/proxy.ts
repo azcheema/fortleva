@@ -11,6 +11,27 @@ import { planeForHost, sessionCookieName } from "@/config";
  */
 
 const OPS_PREFIX = "/ops";
+/**
+ * The platform plane's auth API. It belongs to the OPS host exactly as
+ * `/ops` does, and until 2026-09-09 it belonged to neither.
+ *
+ * It matched no pass-through, so on the app host it fell through to the
+ * generic branch below, whose only gate is the PRESENCE of a member
+ * cookie — a value any scripted client can invent. The whole console
+ * credential surface (sign-in, two-factor enable/verify, forget-password)
+ * was therefore operable from the tenant origin, minting
+ * `__Host-flv.platform` in a second, unmonitored namespace and defeating
+ * every host-level control placed on ops. Better Auth's `trustedOrigins`
+ * does not close it: its origin check stops a real browser, but a
+ * scripted caller chooses its own Origin header.
+ *
+ * And on a REAL ops host the platform branch below swept it under
+ * `/ops`, redirecting `/api/platform-auth/*` to
+ * `/ops/api/platform-auth/*` — a route that does not exist. So the
+ * console's auth API answered on the host that must not serve it, and
+ * 404'd on the host that must. The two halves hid each other.
+ */
+const PLATFORM_API_PREFIX = "/api/platform-auth";
 const PORTAL_PREFIX = "/portal";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
@@ -24,10 +45,35 @@ export function proxy(request: NextRequest): NextResponse {
   const host = request.headers.get("host") ?? "";
   const plane = planeForHost(host);
 
-  // Auth endpoints pass through untouched on both hosts. The dev-only
-  // storage stand-in is authorized by its own signed URL, like R2.
+  // The MEMBER auth API is host-scoped too, and this is not symmetry for
+  // its own sake. Cookie SIGNATURES do not bind the cookie's NAME:
+  // better-call signs the value alone (`signCookieValue(value, secret)`),
+  // both instances derive from one BETTER_AUTH_SECRET, and both resolve
+  // challenges against one `verification` table. So a
+  // `better-auth.two_factor` value minted by the member instance replays
+  // verbatim as `flv-ops.two_factor` at
+  // `/api/platform-auth/two-factor/verify-totp` — which would stamp a
+  // PLATFORM session `mfaVerifiedAt`, the artifact the console gate
+  // treats as proof of a factor. `cookiePrefix` alone does NOT close
+  // that, contrary to an earlier comment in src/auth/platform.ts; what
+  // closes it is denying the member instance any way to mint a challenge
+  // on the ops host in the first place.
+  //
+  // The dev-only storage stand-in is authorized by its own signed URL,
+  // like R2, and is likewise app-plane only.
   if (pathname.startsWith("/api/auth") || pathname.startsWith("/api/dev-storage")) {
-    return NextResponse.next();
+    return plane === "platform"
+      ? NextResponse.rewrite(new URL("/404", request.url))
+      : NextResponse.next();
+  }
+
+  // The PLATFORM auth API is host-scoped exactly like the console it
+  // serves. Checked BEFORE the platform branch below, so the ops host
+  // does not sweep it under /ops and 404 its own sign-in.
+  if (pathname.startsWith(PLATFORM_API_PREFIX)) {
+    return plane === "platform"
+      ? NextResponse.next()
+      : NextResponse.rewrite(new URL("/404", request.url));
   }
 
   if (plane === "platform") {
@@ -37,8 +83,15 @@ export function proxy(request: NextRequest): NextResponse {
       url.pathname = `${OPS_PREFIX}${pathname === "/" ? "" : pathname}`;
       return NextResponse.redirect(url);
     }
-  } else if (pathname.startsWith(OPS_PREFIX) && !PUBLIC_PATHS.has(pathname)) {
-    // The app host never serves the console (separate host by decision 9).
+  } else if (pathname.startsWith(OPS_PREFIX)) {
+    // The app host never serves the console (separate host by decision 9)
+    // — INCLUDING `/ops/login`, which used to be exempted here because it
+    // is in PUBLIC_PATHS. That exemption gave the console a second front
+    // door on the tenant origin: a login page with no console behind it
+    // (`/ops` already 404s here), whose only purpose was to put the
+    // platform credential form somewhere the ops host's controls do not
+    // reach. PUBLIC_PATHS still lists it, because on the OPS host the
+    // cookie gate below must not redirect the login page to itself.
     return NextResponse.rewrite(new URL("/404", request.url));
   }
 

@@ -31,7 +31,13 @@ async function main() {
         email: FOUNDER_EMAIL,
         emailVerified: true,
         platformRole: "SUPERADMIN",
-        role: "admin", // Better Auth admin-plugin mirror, never read by authz
+        // NO `role: "admin"`. It was the admin plugin's mirror column and
+        // was never read by authorization — but it WAS read by that
+        // plugin's own `hasPermission`, whose `adminRoles` defaults to
+        // ["admin"], which made this row the one account that could call
+        // /admin/set-user-password and rewrite its own SUPERADMIN
+        // credential from the member plane. The plugin is gone
+        // (src/auth/index.ts); the grant goes with it.
         locale: "en",
       },
     });
@@ -45,10 +51,20 @@ async function main() {
     });
     console.log(`Founder user created: ${FOUNDER_EMAIL}`);
   } else {
+    // UNCONDITIONAL, and that is the point: `role: null` REVOKES the
+    // admin-plugin grant, and the row that most needs revoking is the
+    // founder's — which is ALREADY SUPERADMIN, so nesting this inside
+    // the promote-if-needed branch below meant it never fired on the one
+    // row it was written for. Dropping `role` from the create path alone
+    // would likewise have left tenant zero carrying "admin" forever:
+    // exactly the row the admin plugin's `hasPermission` read, and the
+    // reason /admin/set-user-password could rewrite the SUPERADMIN
+    // credential from the member plane.
+    await platform.user.update({ where: { id: user.id }, data: { role: null } });
     if (user.platformRole !== "SUPERADMIN") {
       await platform.user.update({
         where: { id: user.id },
-        data: { platformRole: "SUPERADMIN", role: "admin" },
+        data: { platformRole: "SUPERADMIN" },
       });
       console.log("Founder platformRole set to SUPERADMIN");
     }
