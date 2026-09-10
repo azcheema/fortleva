@@ -60,7 +60,16 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
       setError(err?.message ?? t("startFailed"));
       return;
     }
-    const qrDataUrl = await QRCode.toDataURL(data.totpURI, { width: 220 });
+    // The row already exists server-side, so a QR failure must still
+    // hand over the URI and the codes rather than throwing out of the
+    // handler and discarding the only copy of both. Same guard the ops
+    // enrolment carries.
+    let qrDataUrl = "";
+    try {
+      qrDataUrl = await QRCode.toDataURL(data.totpURI, { width: 220 });
+    } catch {
+      setError(t("qrFailed"));
+    }
     setStage({
       step: "scan",
       qrDataUrl,
@@ -92,10 +101,12 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
           <TimelineItem node={<span className="text-2xs font-semibold">{1}</span>}>
             <div className="flex flex-col gap-3">
               <p className="text-sm font-medium">{t("scan")}</p>
-              <div className="w-fit rounded-card border border-border bg-card p-3">
-                {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
-                <img src={stage.qrDataUrl} alt={t("qrAlt")} width={220} height={220} />
-              </div>
+              {stage.qrDataUrl ? (
+                <div className="w-fit rounded-card border border-border bg-card p-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
+                  <img src={stage.qrDataUrl} alt={t("qrAlt")} width={220} height={220} />
+                </div>
+              ) : null}
               <Disclosure label={t("cantScan")} className="-ml-2.5">
                 <code className="num-id block break-all font-mono text-xs text-muted-foreground">
                   {stage.totpUri}
@@ -140,7 +151,24 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
   }
 
   if (stage.step === "done") {
-    return <FormMessage state={{ ok: true, message: t("done") }} />;
+    // The codes are carried into this stage and were, until 2026-09-10,
+    // silently dropped here: the success message replaced the only copy
+    // the user would ever be shown. Nothing in this product could
+    // reissue them, so a reader who had not transcribed them from the
+    // previous screen had simply lost them. Keep them on screen.
+    return (
+      <div className="flex flex-col gap-4">
+        <FormMessage state={{ ok: true, message: t("done") }} />
+        <Callout tone="info" title={t("backupTitle")}>
+          <p className="text-sm">{t("backupKeep")}</p>
+          <ul className="num-id mt-2 grid grid-cols-2 gap-x-6 font-mono text-xs">
+            {stage.backupCodes.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+        </Callout>
+      </div>
+    );
   }
 
   return (

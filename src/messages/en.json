@@ -396,7 +396,9 @@
       "badgeOn": "Enabled",
       "badgeOff": "Not enrolled",
       "activeSummary": "A code from your authenticator app is required at every sign-in.",
-      "confirmPasswordHint": "We ask for it once, to prove the account is yours."
+      "confirmPasswordHint": "We ask for it once, to prove the account is yours.",
+      "backupKeep": "Keep these somewhere safe. They are not shown again.",
+      "qrFailed": "Could not draw the QR code. Enter the key below in your authenticator app instead."
     },
     "stepUp": {
       "title": "Confirm it's you",
@@ -432,6 +434,24 @@
       "placeholder": "Add your name",
       "saved": "Name updated.",
       "invalid": "Enter a name of 1 to 80 characters."
+    },
+    "backupCodes": {
+      "reissue": "Reissue backup codes",
+      "lostHint": "Backup codes are shown once. If you no longer have yours, issue a new set.",
+      "replaceTitle": "This replaces your current codes",
+      "replaceHint": "Any codes you already hold stop working immediately. The new set is shown once.",
+      "codeLabel": "Current code from your authenticator app",
+      "passwordLabel": "Your password",
+      "confirm": "Issue new codes",
+      "cancel": "Cancel",
+      "working": "Verifying…",
+      "enterBoth": "Enter the six-digit code from your authenticator and your password.",
+      "mismatch": "That code didn't match. Try the next one your app shows.",
+      "tooManyAttempts": "Too many attempts. Try again shortly.",
+      "failed": "Could not issue new codes. Check your password and try again.",
+      "newTitle": "Your new backup codes",
+      "newHint": "This is the only time they are shown. Store them somewhere you can reach without this app.",
+      "codeHint": "Six digits from your authenticator app. A backup code will not work here — entering one would spend it."
     }
   },
   "members": {

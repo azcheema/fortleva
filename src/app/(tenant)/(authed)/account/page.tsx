@@ -14,6 +14,7 @@ import { ChangePasswordForm } from "./change-password-form";
 import { LocaleForm } from "./locale-form";
 import { NameForm } from "./name-form";
 import { TimezoneForm } from "./timezone-form";
+import { BackupCodes } from "./backup-codes";
 import { TotpEnrollment } from "./totp-enrollment";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -90,6 +91,7 @@ export default async function AccountPage({
         </Callout>
       ) : null}
       <TotpEnrollment enabled={twoFactorEnabled} />
+      <BackupCodes enabled={twoFactorEnabled} />
     </SectionCard>
   );
 

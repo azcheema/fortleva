@@ -19,7 +19,7 @@ import { auth } from "./index";
 
 export type StepUpResult =
   | { ok: true; verifiedAt: Date; method: "totp" | "backup_code" }
-  | { ok: false; reason: "no_session" | "not_enrolled" | "invalid_code" };
+  | { ok: false; reason: "no_session" | "not_enrolled" | "invalid_code" | "rate_limited" };
 
 const isTotpShape = (code: string): boolean => /^\d{6}$/.test(code);
 
@@ -41,7 +41,18 @@ export async function verifyStepUpWithHeaders(
       await auth.api.verifyBackupCode({ body: { code: trimmed }, headers });
     }
   } catch (e) {
-    if (e instanceof APIError) return { ok: false, reason: "invalid_code" };
+    if (e instanceof APIError) {
+      // A 429 from the per-IP limiter in front of the verify endpoints is
+      // NOT a wrong code, and reporting it as one is actively harmful:
+      // the caller is told to "try the next code your app shows", so they
+      // retry, burn their per-user budget too, and end up locked out of
+      // the remedy they came for.
+      const status = (e as { status?: number | string }).status;
+      if (status === 429 || status === "TOO_MANY_REQUESTS") {
+        return { ok: false, reason: "rate_limited" };
+      }
+      return { ok: false, reason: "invalid_code" };
+    }
     throw e;
   }
 

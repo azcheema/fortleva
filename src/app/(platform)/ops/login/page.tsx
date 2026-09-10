@@ -185,13 +185,13 @@ function OpsLoginInner() {
     } finally {
       setBusy(false);
       setCode("");
-      // Carry the codes forward. They are shown once and can NEVER be
-      // reissued: guardFactorMutations permanently refuses
-      // /two-factor/generate-backup-codes and a second /two-factor/enable
-      // for a SUPERADMIN, so codes not transcribed before Activate would
-      // be recoverable only by database surgery. Dropping them here would
-      // make the higher-privilege plane less forgiving than the member
-      // one, which keeps them on its own done stage.
+      // Carry the codes forward. They are shown ONCE here: a second
+      // /two-factor/enable is refused for a SUPERADMIN, so this screen is
+      // the only copy this flow will ever produce. They can be reissued
+      // later from /account, but only on proof of the current factor —
+      // which is no help to someone who never wrote these down and then
+      // loses the authenticator. Dropping them here would also make the
+      // higher-privilege plane less forgiving than the member one.
       setStage({ step: "enrolled", backupCodes: stage.backupCodes });
     }
   }
@@ -294,6 +294,21 @@ function OpsLoginInner() {
           </Field>
           <Button type="submit" size="lg" className="mt-2 w-full" disabled={busy}>
             {busy ? t("login.verifying") : t("login.verify")}
+          </Button>
+          {/* Better Auth expires the 2FA challenge after a few attempts,
+              and this stage cannot re-enter sign-in on its own — without
+              this control the operator is stranded on a code form whose
+              challenge cookie is gone, recoverable only by knowing to
+              reload. Same escape hatch the enrol stage carries. */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            className="w-full"
+            onClick={startOver}
+            disabled={busy}
+          >
+            {t("ops.signInAgain")}
           </Button>
         </form>
       ) : null}

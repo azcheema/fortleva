@@ -69,6 +69,19 @@ export const onLoginFailed = (userId: string, reason: string) =>
 export const onMfaChanged = (userId: string, enabled: boolean) =>
   recordForUserMemberships(userId, enabled ? "auth.mfa_enabled" : "auth.mfa_disabled");
 
+/**
+ * Backup codes replaced. Not covered by `onMfaChanged`: that keys on
+ * `user.twoFactorEnabled`, which a reissue does not touch — so without
+ * this, swapping a SUPERADMIN's entire recovery set left no trace.
+ *
+ * Inherits this helper's known limit, stated rather than discovered
+ * later: the fan-out is per ACTIVE MEMBERSHIP, so a platform principal
+ * with no active tenant membership writes NO row. Platform-plane
+ * auditing is owed separately (PLAN §0).
+ */
+export const onBackupCodesReissued = (userId: string) =>
+  recordForUserMemberships(userId, "auth.backup_codes_reissued");
+
 export const onPasswordChanged = (userId: string, via: "change" | "reset") =>
   recordForUserMemberships(userId, "auth.password_changed", { metadata: { via } });
 

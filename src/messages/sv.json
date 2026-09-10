@@ -396,7 +396,9 @@
       "badgeOn": "Aktiverad",
       "badgeOff": "Inte registrerad",
       "activeSummary": "En kod från din autentiseringsapp krävs vid varje inloggning.",
-      "confirmPasswordHint": "Vi frågar en gång, för att styrka att kontot är ditt."
+      "confirmPasswordHint": "Vi frågar en gång, för att styrka att kontot är ditt.",
+      "backupKeep": "Spara dessa på ett säkert ställe. De visas inte igen.",
+      "qrFailed": "Kunde inte rita QR-koden. Ange nyckeln nedan i din autentiseringsapp i stället."
     },
     "stepUp": {
       "title": "Bekräfta att det är du",
@@ -432,6 +434,24 @@
       "placeholder": "Lägg till ditt namn",
       "saved": "Namnet uppdaterades.",
       "invalid": "Ange ett namn på 1 till 80 tecken."
+    },
+    "backupCodes": {
+      "reissue": "Utfärda nya reservkoder",
+      "lostHint": "Reservkoder visas en gång. Om du inte har kvar dina kan du utfärda en ny uppsättning.",
+      "replaceTitle": "Detta ersätter dina nuvarande koder",
+      "replaceHint": "Koder du redan har slutar fungera direkt. Den nya uppsättningen visas en gång.",
+      "codeLabel": "Aktuell kod från din autentiseringsapp",
+      "passwordLabel": "Ditt lösenord",
+      "confirm": "Utfärda nya koder",
+      "cancel": "Avbryt",
+      "working": "Verifierar…",
+      "enterBoth": "Ange den sexsiffriga koden från din autentiseringsapp och ditt lösenord.",
+      "mismatch": "Koden stämde inte. Prova nästa kod som appen visar.",
+      "tooManyAttempts": "För många försök. Försök igen om en stund.",
+      "failed": "Kunde inte utfärda nya koder. Kontrollera lösenordet och försök igen.",
+      "newTitle": "Dina nya reservkoder",
+      "newHint": "Det här är enda gången de visas. Förvara dem någonstans du når utan den här appen.",
+      "codeHint": "Sex siffror från din autentiseringsapp. En reservkod fungerar inte här — den skulle förbrukas."
     }
   },
   "members": {

@@ -24,6 +24,10 @@ export const AUDIT_EVENTS = {
   "auth.login_failed": TENANT,
   "auth.mfa_enabled": TENANT,
   "auth.mfa_disabled": TENANT,
+  // Replacing the whole recovery set is as consequential as enrolling
+  // the factor, and touches only `two_factor.backup_codes` — which the
+  // twoFactorEnabled-keyed hooks above cannot see.
+  "auth.backup_codes_reissued": TENANT,
   "auth.password_changed": TENANT,
   "auth.email_changed": TENANT,
   // Impersonation — both identities, always, visible to the tenant
