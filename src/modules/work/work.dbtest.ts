@@ -449,9 +449,9 @@ describe("§6.14 triggers (raw writes against the DB)", () => {
         visibility: "CLIENT_VISIBLE",
       },
     });
-    await expect(changeItemVisibility(ownerCtx(), id, "INTERNAL")).rejects.toThrow(
-      /client-visible children/,
-    );
+    await expect(changeItemVisibility(ownerCtx(), id, "INTERNAL")).rejects.toMatchObject({
+      code: "HAS_VISIBLE_CHILDREN",
+    });
     await f.platform.comment.delete({ where: { id: comment.id } });
     await changeItemVisibility(ownerCtx(), id, "INTERNAL");
     const row = await f.platform.workItem.findUniqueOrThrow({ where: { id } });

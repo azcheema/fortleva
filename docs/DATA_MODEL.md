@@ -2309,7 +2309,23 @@ enum WorkItemSource {
 ///     SUBTASK); NEW.depth := parent.depth + 1 (0 when NULL); NEW.root_id
 ///     := parent.root_id (self when NULL); acyclic (walk <= 2 hops — depth
 ///     bound makes this O(1)); NEW.visibility = 'CLIENT_VISIBLE' ⇒
-///     parent.visibility = 'CLIENT_VISIBLE'.
+///     parent.visibility = 'CLIENT_VISIBLE'. 2026-09-11 (20260911200000):
+///     the parent is read FOR SHARE when the write could break child ≤
+///     parent — an insert, a changed parent_id, or a row CLIENT_VISIBLE
+///     after the write — so a visible child and a concurrent downgrade of
+///     its parent serialise instead of both passing blind (write-skew);
+///     a child going or staying INTERNAL reads it unlocked and never
+///     waits. A NEW parent must be live. Each RAISE leads with a stable
+///     token (WORK_TREE_*); src/modules/work/db-errors.ts maps the ones a
+///     service can reach to DomainErrors and leaves the rest unmapped.
+///     The lock makes a subtask insert or raise a writer of two rows, so
+///     every work service that locks more than one work_item row of a
+///     project (create, move/rebalance, bulk edits, a subtask's raise, a
+///     future restore) serialises on the project's rank advisory lock
+///     first — none of them locks in tree order, so none could be
+///     ordered. src/modules/work/rank-lock.ts lists the older lockers
+///     outside that queue (the portal fan-out, copyWeek's foreign-key
+///     locks, deleteItem's cascade).
 ///   TRIGGER work_item_visibility_downgrade_guard BEFORE UPDATE OF
 ///     visibility: OLD = CLIENT_VISIBLE AND NEW = INTERNAL AND EXISTS any
 ///     child work_item / comment(subject) / document(attached WORK_ITEM)
@@ -2319,7 +2335,16 @@ enum WorkItemSource {
 ///     item's CLIENT_VISIBLE work_item_activity rows to INTERNAL — they
 ///     are tenant-owned, refusing would make every downgrade after a
 ///     safe-field edit impossible, and the portal_gate on activity keys
-///     on the row's own visibility.
+///     on the row's own visibility. Soft-deleted children do not block
+///     the downgrade (soft delete is an application filter).
+///   TRIGGER work_item_restore_guard / comment_restore_guard /
+///     document_restore_guard BEFORE UPDATE OF deleted_at WHEN a restore
+///     (deleted_at NOT NULL → NULL), 2026-09-11: the restored row needs a
+///     LIVE parent / subject / anchor (read FOR SHARE); given one, a
+///     CLIENT_VISIBLE row also needs it client-visible and an INTERNAL
+///     row is always accepted — so a row that died under a shared item
+///     cannot come back into view after the item went private. A soft
+///     delete never fires them.
 ///   TRIGGER work_item_activity_denorm_guard BEFORE INSERT OR UPDATE OF
 ///     visibility, work_item_id, client_id, project_id: derives
 ///     client_id / project_id from the item (never trusted from the
@@ -2533,7 +2558,13 @@ enum CommentSubjectType {
 ///   SHIPPED; FileVersion: its Document CLIENT_VISIBLE); parent comment
 ///   (thread) must share subject and tenant; downgrade of a subject is
 ///   refused while a CLIENT_VISIBLE comment exists (guard on the subject
-///   tables checks this table).
+///   tables checks this table). OPEN (2026-09-11, a standing trap in PLAN
+///   §0): the shipped function (comment_denorm_guard) reads the subject
+///   WITHOUT a lock and without a liveness check — the write-skew that
+///   work_item_parent_guard and document_anchor_guard close with FOR
+///   SHARE is still open for comments. The first comment writer must add
+///   both before it ships. Restores are already guarded
+///   (comment_restore_guard, §6.14).
 /// Mentions are extracted on save into Mention rows (ids only). Reactions:
 /// not in v1 (§11).
 /// A comment lives the life of its subject (§10; 2026-09-07): the

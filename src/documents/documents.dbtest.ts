@@ -625,9 +625,9 @@ describe("work-item attachments (2W-A ship gates)", () => {
     expect(inheritedVisibleId).toBeDefined();
     const onVisible = await uploadAttached("to-flip.txt", visibleItemId, "CLIENT_VISIBLE");
     // The item cannot go INTERNAL while a visible attachment lives...
-    await expect(changeItemVisibility(ctx, visibleItemId, "INTERNAL")).rejects.toThrow(
-      /client-visible children exist/,
-    );
+    await expect(changeItemVisibility(ctx, visibleItemId, "INTERNAL")).rejects.toMatchObject({
+      code: "HAS_VISIBLE_CHILDREN",
+    });
     // ...soft-deleted attachments no longer block it (the deleted_at
     // fix) — the earlier test's inherited-visible attachment included.
     await softDeleteDocument(ctx, onVisible);

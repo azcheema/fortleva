@@ -7,8 +7,10 @@ import { softDeleteCommentsOn } from "@/comments/cascade";
 import { nextCounter, withTenant, type TenantDb } from "@/db";
 import { softDeleteDocumentsInTx } from "@/documents/service";
 import { requireAccess } from "@/entitlements/resolver";
+import { fail } from "@/lib/domain-error";
 import { emit } from "@/notify/emit";
 import { writeActivity } from "./activity";
+import { guarded } from "./db-errors";
 import { bottomRank, lockProjectRanks } from "./rank-lock";
 import { ensureProjectStates, transitionState, type WorkCtx } from "./states";
 import type { StateSeedKey } from "@/lib/enum-map";
@@ -28,6 +30,17 @@ export type { WorkCtx } from "./states";
 const principalOf = (ctx: WorkCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
 
 type ItemRow = NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>;
+
+/**
+ * Share-lock a parent row, so a read that follows is the parent the
+ * insert will be checked against: it cannot be deleted or made private
+ * in between (the tree trigger takes the same lock at the insert, where
+ * it is then re-entrant). Only ever taken under the project's rank lock
+ * — see createItem for why the position is load-bearing.
+ */
+async function shareLockParent(tx: TenantDb, tenantId: string, parentId: string): Promise<void> {
+  await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${parentId} FOR SHARE`;
+}
 
 /** Load a live item and assert the actor's scope on its project (module-internal; not in the barrel). */
 export async function loadItemInScope(tx: TenantDb, ctx: WorkCtx, itemId: string): Promise<ItemRow> {
@@ -237,12 +250,13 @@ export async function listItems(
 /** Title-only create (UI rule 2): lands in the default state — or the
  * given state of the same project (a board column's "+") — at the
  * bottom of the list; visibility defaults from the parent (INTERNAL at
- * the root — the worst-bug guard). Returns the human key. */
+ * the root — the worst-bug guard). Returns the human key. The tree
+ * trigger has the last word on nesting, translated by `guarded`. */
 export async function createItem(
   ctx: WorkCtx,
   input: { projectId: string; title: string; parentId?: string; stateId?: string },
 ): Promise<{ id: string; number: number }> {
-  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => guarded(async () => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:create");
     await assertInScope(tx, ctx.actor, { projectId: input.projectId });
     const project = await tx.project.findFirst({
@@ -267,15 +281,6 @@ export async function createItem(
         : null;
     if (input.stateId && input.stateId !== defaultState!.id && !targetState) deny("NOT_FOUND");
 
-    let parent: ItemRow | null = null;
-    if (input.parentId) {
-      parent = await tx.workItem.findFirst({
-        where: { tenantId: ctx.tenantId, id: input.parentId, projectId: input.projectId, deletedAt: null },
-      });
-      if (!parent) deny("NOT_FOUND");
-    }
-    const type = parent ? (parent.type === "EPIC" ? "TASK" : "SUBTASK") : "TASK";
-    const visibility = parent?.visibility ?? "INTERNAL";
     const number = await nextCounter(tx, `work_item:${input.projectId}`);
     const id = randomUUID();
 
@@ -286,6 +291,25 @@ export async function createItem(
     // could mint the same key, and a create has no retry. The last row
     // may be soft-deleted: it still owns its slot under the unique index.
     await lockProjectRanks(tx, input.projectId);
+
+    // The parent: share-locked, THEN read, so it cannot be deleted or
+    // made private between the read and the insert. AFTER the counter
+    // and the rank lock, never before: taken first, two quick subtasks
+    // under the project's last row deadlock (both hold the parent
+    // shared; one then wants the counter, the other that row FOR
+    // UPDATE) — pinned by tree-guards.dbtest.ts. Under the rank lock no
+    // other QUEUED writer of this project holds rows (rank-lock.ts, which
+    // also lists the lockers outside the queue).
+    let parent: ItemRow | null = null;
+    if (input.parentId) {
+      await shareLockParent(tx, ctx.tenantId, input.parentId);
+      parent = await tx.workItem.findFirst({
+        where: { tenantId: ctx.tenantId, id: input.parentId, projectId: input.projectId, deletedAt: null },
+      });
+      if (!parent) deny("NOT_FOUND");
+    }
+    const type = parent ? (parent.type === "EPIC" ? "TASK" : "SUBTASK") : "TASK";
+    const visibility = parent?.visibility ?? "INTERNAL";
     const rank = await bottomRank(tx, ctx.tenantId, input.projectId);
     await tx.workItem.create({
       data: {
@@ -315,7 +339,7 @@ export async function createItem(
     });
     if (targetState) await transitionState(tx, ctx, created!, targetState);
     return { id, number };
-  });
+  }));
 }
 
 /** Inline property edits (routine — activity, never audit). */
@@ -411,16 +435,31 @@ export async function assignItem(
 }
 
 /** Visibility flip — audited; the DB triggers enforce child ≤ parent
- * and refuse downgrades that would orphan client-visible children. */
+ * and refuse downgrades that would orphan client-visible children —
+ * both refusals reach the caller as typed DomainErrors (`guarded`). */
 export async function changeItemVisibility(
   ctx: WorkCtx,
   itemId: string,
   visibility: "INTERNAL" | "CLIENT_VISIBLE",
 ): Promise<void> {
-  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => guarded(async () => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:change_visibility");
-    const item = await loadItemInScope(tx, ctx, itemId);
+    let item = await loadItemInScope(tx, ctx, itemId);
     if (item.visibility === visibility) return;
+    // A subtask's raise is the one flip the tree trigger locks the
+    // parent for, which makes it a writer of TWO rows — so it queues on
+    // the project's rank lock first, like every queued writer
+    // (rank-lock.ts), and re-reads the item after the wait (moveItem's
+    // pattern): it may have been deleted or changed meanwhile. A flip to
+    // INTERNAL writes one row and takes neither lock, so it never waits
+    // on the queue or on its parent — only on whoever holds its own row,
+    // which includes an in-flight subtask create or raise under it (that
+    // wait IS the write-skew fix). It is the safety lever.
+    if (visibility === "CLIENT_VISIBLE" && item.parentId) {
+      await lockProjectRanks(tx, item.projectId);
+      item = await loadItemInScope(tx, ctx, itemId);
+      if (item.visibility === visibility) return;
+    }
     await tx.workItem.update({ where: { id: item.id }, data: { visibility } });
     await writeActivity(
       tx,
@@ -439,7 +478,7 @@ export async function changeItemVisibility(
       targetId: item.id,
       metadata: { from: item.visibility, to: visibility, projectId: item.projectId },
     });
-  });
+  }));
 }
 
 /** Explicit archive / restore — never silent (UI rule 12). */
@@ -470,10 +509,6 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:delete");
     const item = await loadItemInScope(tx, ctx, itemId);
-    const children = await tx.workItem.count({
-      where: { tenantId: ctx.tenantId, parentId: item.id, deletedAt: null },
-    });
-    if (children > 0) deny("FORBIDDEN", "delete children first");
     // ONE stamp for the item and everything that goes with it, so the
     // whole deletion reads as a single event to an export and to the
     // retention sweep. What a future undo restores by is the audit
@@ -491,6 +526,16 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
       data: { deletedAt },
     });
     if (count === 0) deny("NOT_FOUND");
+    // Live children refuse the delete — counted AFTER the update above
+    // holds the row, never before. A subtask insert share-locks its
+    // parent (work_item_parent_guard), so an insert still in flight made
+    // that update wait, and this count's fresh snapshot now sees the
+    // child it committed. Counted first, it read 0 and the parent was
+    // deleted with a live child under it. The throw rolls the stamp back.
+    const children = await tx.workItem.count({
+      where: { tenantId: ctx.tenantId, parentId: item.id, deletedAt: null },
+    });
+    if (children > 0) fail("HAS_CHILDREN");
     // Attachments live the life of their parent (DATA_MODEL §10): the
     // item's soft delete takes its anchored documents with it — else a
     // CLIENT_VISIBLE attachment would outlive the task on the portal

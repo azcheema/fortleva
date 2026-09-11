@@ -15,6 +15,11 @@ export type DomainErrorCode =
   | "CLIENT_MISMATCH" // projectId does not belong to clientId
   | "INVALID_INPUT"
   | "APPROVAL_REQUIRED" // entering a requiresApproval WorkflowState without work_item:approve (2W-R)
+  // Work tree (2W — trigger tokens map 1:1 in src/modules/work/db-errors.ts)
+  | "HAS_VISIBLE_CHILDREN" // make-private refused while client-visible subtasks/comments/attachments live
+  | "PARENT_NOT_VISIBLE" // a child cannot be client-visible under an internal parent
+  | "CANNOT_NEST" // parent type must be strictly higher (EPIC > TASK > SUBTASK)
+  | "HAS_CHILDREN" // delete refused while live subtasks exist
   // Time (2T — DATA_MODEL.md §6.15; trigger tokens map 1:1 in src/modules/time/ctx.ts)
   | "NOTICE_UNACKNOWLEDGED" // staff notice not acknowledged — timers and clock-in refuse
   | "TIMER_ALREADY_RUNNING" // one running timer per member (partial unique)

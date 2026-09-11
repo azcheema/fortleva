@@ -13,6 +13,32 @@ import { rankBetween } from "@/lib/rank";
  * 30-day window, so a key generated as if they were gone would collide
  * (2026-08-21 review) — they are simply invisible rows that still
  * occupy a position. Only an ANCHOR the client names must be live.
+ *
+ * SECOND JOB (2026-09-11): the project's row-lock queue. Every WORK
+ * service that locks more than one work_item row of a project takes this
+ * lock before its first row lock — create (a subtask's parent, then the
+ * bottom row), move and rebalance (anchors, neighbours, every rank), the
+ * bulk edits (the whole selection) and a subtask's raise to
+ * CLIENT_VISIBLE (its own row, then the parent the tree trigger
+ * share-locks) — and re-reads, after the wait, whatever it read before
+ * it (moveItem's pattern). None of them locks rows in tree order — a
+ * move goes by rank in either direction, a bulk edit by scan order — so
+ * no order could be imposed; queued, no two of them ever hold rows at
+ * once, and a writer of ONE work_item row cannot close a cycle among
+ * work_item rows with them. A new multi-row writer MUST take it.
+ *
+ * KNOWN LOCKERS OUTSIDE THE QUEUE, all older than it, and nothing
+ * retries a deadlock (40P01) yet — PLAN §0. Able to deadlock WITH a
+ * queued writer: the portal toggle's fan-out (every row of the project,
+ * scan order), and inserts that REFERENCE several work items in one
+ * transaction (copyWeek — each time_entry's foreign key takes FOR KEY
+ * SHARE on its item, in date order, and a rank UPDATE is a key update).
+ * Able to deadlock with EACH OTHER, never with the queue: deleteItem,
+ * which locks its item and then the item's attachments and comments,
+ * against an attachment's visibility flip, which locks the attachment
+ * and then the item through document_anchor_guard — deleteItem writes
+ * only deleted_at, so it never takes a second work_item row and no
+ * queued writer ever locks a document or comment row.
  */
 
 export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise<void> {

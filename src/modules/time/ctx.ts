@@ -1,6 +1,6 @@
 import type { MemberActor } from "@/authz/authorize";
 import type { TenantDb } from "@/db";
-import { DomainError, type DomainErrorCode } from "@/lib/domain-error";
+import { dbErrorMapper, type DbErrorTokens } from "@/lib/db-error-map";
 import { readPreferences, type TenantPreferences } from "@/preferences/service";
 
 /**
@@ -45,12 +45,11 @@ export async function resolveZone(
 }
 
 /**
- * Database-raised invariants → DomainError. The 2T migration's triggers
- * RAISE with a stable leading token; partial uniques and the EXCLUDE
- * surface as Prisma P2002 / raw errors whose message names the index.
- * Anything else is rethrown untouched (a bug, not a business rule).
+ * Database-raised invariants → DomainError (src/lib/db-error-map.ts). The
+ * 2T migration's triggers RAISE with a stable leading token; partial
+ * uniques and the EXCLUDE surface as errors whose message names the index.
  */
-const TOKENS: readonly (readonly [string, DomainErrorCode])[] = [
+const TOKENS: DbErrorTokens = [
   ["ENTRY_LOCKED", "ENTRY_LOCKED"],
   ["SERVICE_CLIENT_MISMATCH", "SERVICE_CLIENT_MISMATCH"],
   ["RATE_CARD_IMMUTABLE", "RATE_CARD_IMMUTABLE"],
@@ -64,34 +63,7 @@ const TOKENS: readonly (readonly [string, DomainErrorCode])[] = [
   ["work_type_name_live", "WORK_TYPE_TAKEN"],
 ];
 
-export function mapDbError(e: unknown): never {
-  const message = e instanceof Error ? e.message : String(e);
-  // Prisma 7 + the pg adapter: for a hand-written partial unique the
-  // top-level message says "Unique constraint failed on the (not
-  // available)" and `meta.target` is absent — the constraint name is
-  // only in meta.driverAdapterError.cause.originalMessage. Scan the whole
-  // meta rather than one field, so every token above is found wherever
-  // the adapter happens to put it.
-  let meta = "";
-  try {
-    meta = JSON.stringify((e as { meta?: unknown } | null)?.meta ?? "");
-  } catch {
-    meta = "";
-  }
-  for (const [token, code] of TOKENS) {
-    if (message.includes(token) || meta.includes(token)) throw new DomainError(code);
-  }
-  throw e;
-}
-
-/** Run a transaction body and translate DB-raised invariants. */
-export async function guarded<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    return mapDbError(e);
-  }
-}
+export const { mapDbError, guarded } = dbErrorMapper(TOKENS);
 
 /**
  * Money math, in ONE place (review 2026-08-21): the Money tab, the
