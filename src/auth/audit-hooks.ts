@@ -369,11 +369,27 @@ export const auditPlugin = (sink: AuthAuditSink): BetterAuthPlugin => ({
             // consumeVerificationValue() and expires the cookie BEFORE
             // throwing, so by the time this hook runs the verification row
             // is gone and the lookup below finds nothing to attribute it
-            // to. The grind itself is still visible: the five INVALID_CODE
-            // attempts that precede the burn are each recorded. What is
-            // missing is only the row marking the moment the challenge
-            // died. Capturing it needs an attribution that survives
-            // consumption — tracked in PLAN §0, not silently assumed away.
+            // to.
+            //
+            // THIS IS DELIBERATE, NOT OUTSTANDING. Measured on the console
+            // 2026-09-11: FIVE invalid-code attempts each write a row, and
+            // only the burn that follows them is silent — so the grind is
+            // fully visible and "the challenge was ground to death" is
+            // derivable from five consecutive rows for one user inside a
+            // challenge lifetime. A sixth row would restate what the first
+            // five prove.
+            //
+            // THE OBVIOUS FIX DOES NOT WORK, so do not re-propose it: park
+            // the user id from a `hooks.before` and read it here. Better
+            // Auth hands a before-hook a SPREAD COPY of the context
+            // (`hook.handler({...context, returnHeaders: true})`,
+            // api/dispatch.mjs), so a WeakMap keyed on `ctx` would key an
+            // object that dies with that hook call; and if ANY before-hook
+            // returns a context modification the whole context is replaced
+            // by `defuReplaceArrays` before the after-hooks run. There is
+            // no identity to key on. Weigh that against the cost of being
+            // wrong: a before-hook that throws is a 500 BEFORE the handler
+            // runs, on the plane with no second way in.
             if (typeof status !== "number" || status < 400 || status >= 500) return;
 
             // SIGN-IN failures, attributed from the pending challenge,
