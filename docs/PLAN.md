@@ -10,7 +10,9 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
-**THE CI SLICE'S MEASURED RESULT: NET ZERO, and the honest number is worth more than the predicted one (2026-09-11).** Run `34619114519` on `40ef1c6`, the first with the merged job layout, billed **15 minutes — exactly what the three-job layout billed before it.** Per job, against pre-change run `34155378723`:
+**SUPERSEDED BY THE NEXT RUN — READ THIS FIRST. The CI slice saves FOUR minutes per run, not zero and not the one predicted.** Run `34623441685` on `cb87e14`, the second with `.next/cache` and therefore the first with a WARM one: isolation 197 s → 4, **e2e 414 s → 7**, **total 11 billable against the 15 the three-job layout billed.** The full arc for e2e is 586 s (pre-change) → 650 s (cold cache, paying to save with nothing to restore) → **414 s (warm)**. So the cache needed exactly one run to populate, as `ci.yml`'s comment hedged, and the `turbopackFileSystemCacheForBuild: false` fallback is NOT needed. At ~65 runs/month that is ~260 minutes saved. **The lesson is the method, not the number: one run is not a trend, and the paragraph below — written after run one — drew the opposite conclusion from real data that was simply too early.** Left standing rather than deleted, because the reasoning in it is right and only its conclusion expired.
+
+**RUN ONE SAID NET ZERO (2026-09-11, superseded above).** Run `34619114519` on `40ef1c6`, the first with the merged job layout, billed **15 minutes — exactly what the three-job layout billed before it.** Per job, against pre-change run `34155378723`:
 
 | | before | after |
 |---|---|---|
