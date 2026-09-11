@@ -10,6 +10,19 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
+**THE CI SLICE'S MEASURED RESULT: NET ZERO, and the honest number is worth more than the predicted one (2026-09-11).** Run `34619114519` on `40ef1c6`, the first with the merged job layout, billed **15 minutes — exactly what the three-job layout billed before it.** Per job, against pre-change run `34155378723`:
+
+| | before | after |
+|---|---|---|
+| `check` | 94 s → 2 | *(merged away)* |
+| `isolation` | 138 s → 3 | **202 s → 4** |
+| `e2e` | 586 s → 10 | **650 s → 11** |
+| total | **15** | **15** |
+
+**The merge worked exactly as designed** — 232 s billing as 5 became 202 s billing as 4 — **and e2e gave the minute straight back**, 586 → 650 s, crossing a rounding boundary. Part of that is expected on a FIRST run: `.next/cache` had nothing to restore and still paid to save. But the typecheck skip should have returned ~28 s, so 64 s of regression is not fully explained by the cache write, and something else moved too. **RE-MEASURE BEFORE CONCLUDING** — one run is not a trend, and the saving claimed in commit `74e4beb` has not appeared. If a warm-cache run does not put e2e back under 600 s, take the branch `ci.yml` already names: `turbopackFileSystemCacheForBuild: false` under CI, which reclaims the write cost for free. The job merge is banked either way.
+
+**`paths-ignore` DOES NOT SKIP A COMMENT-ONLY EDIT TO A `.ts` FILE.** It skips only when EVERY changed path matches `docs/**` or `**/*.md`. Commit `cb87e14` said "docs and comments only, so paths-ignore skips the pipeline" and was wrong — it touched `src/auth/audit-hooks.ts` and cost a full run. Split comment edits into their own commit only if you are willing to pay for them, or batch them with real work.
+
 **VERIFIED BY RUNNING IT (2026-09-11, founder, local) — THE CONSOLE OPENED AND LEFT A ROW.** `OPS_URL=http://ops.localhost:3000` beside `APP_URL=http://localhost:3000` in `.env.local`; the console rendered at `http://ops.localhost:3000` after password + the EXISTING authenticator code (no enrolment prompt, as predicted — one `two_factor` row serves both planes). **This retires the "none of the platform half is verified by running it" caveat below.** Confirmed in one sign-in: `user.additionalFields` (the fix without which `platformRole` read `undefined` and every session was denied), `platformGateDecision` admitting on enrolled + stamped, the proxy host-scoping in both directions, `/api/platform-auth/*` reachable on the ops host and 404 on the app host, and — the uncertain one — the `__Host-flv.platform` Secure cookie being accepted over plain http on a `*.localhost` subdomain (a potentially-trustworthy origin; it works, so no HTTPS is needed for local console work).
 
 **The audit row, read back from the database:** `platform.login_succeeded` · `actor_type=PLATFORM_ADMIN` with `actor_id` set · `tenant_id` NULL · `visibility=PLATFORM` · `{"method":"totp","superadmin":true}`. **Every other platform-plane row in the dev database is a `platform.system_job` from invite-preview lookups** — that contrast IS the gap this slice closed, visible in the data: before today the only platform rows were `withPlatform` describing its own invocations, and nothing recorded who reached the console.
