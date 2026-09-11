@@ -345,7 +345,7 @@
       "enrolledBody": "Din andra faktor är aktiv. Logga in igen med din nya kod för att öppna konsolen.",
       "signInAgain": "Logga in igen",
       "qrFailed": "Kunde inte rita QR-koden. Ange nyckeln nedan i din autentiseringsapp i stället.",
-      "backupLastChance": "Det här är sista gången koderna visas, och de kan inte utfärdas på nytt. Förvara dem någonstans du når utan den här konsolen."
+      "backupLastChance": "Det här är sista gången koderna visas här. Om du tappar bort dem kan nya utfärdas från din kontosida — men bara med en kod från din autentiseringsapp, så var rädd om den."
     },
     "portal": {
       "title": "Kundportal",

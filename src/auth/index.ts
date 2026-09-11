@@ -12,7 +12,7 @@ import { absoluteUrl, appUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
 import { send } from "@/mailer";
 
-import { auditPlugin, memberDatabaseHooks, onPasswordResetHook } from "./audit-hooks";
+import { auditPlugin, memberAuditSink, memberDatabaseHooks, onPasswordResetHook } from "./audit-hooks";
 import { guardFactorMutations } from "./factor-guard";
 import { enforceAuthRateLimit } from "./rate-limit-hook";
 
@@ -171,7 +171,7 @@ export const auth = betterAuth({
     // not a plugin re-registered here.
     // After twoFactor on purpose: its after-hooks must observe the
     // FINAL newSession (null while a 2FA challenge is pending).
-    auditPlugin(),
+    auditPlugin(memberAuditSink),
     // passkey: moved to a separate package in better-auth 1.6.26; the
     // Passkey table is ready — wire @better-auth/passkey when enabled.
     nextCookies(), // must be last (Better Auth docs)

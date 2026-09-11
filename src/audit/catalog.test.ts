@@ -25,6 +25,36 @@ describe("audit event catalog (DATA_MODEL.md §3.1)", () => {
     expect(AUDIT_EVENTS["plan.changed"].mirroredToTenant).toBe(true);
   });
 
+  it("every platform.* action is PLATFORM-visibility", () => {
+    // The namespace and the visibility must not drift apart: a
+    // `platform.*` action marked TENANT would be refused by
+    // platformAuditRow() and accepted by record(), so it would end up
+    // filed inside a tenant that can never read it. Pinned as a rule
+    // rather than per-action, so it covers the ones added next.
+    for (const [action, spec] of Object.entries(AUDIT_EVENTS)) {
+      if (action.startsWith("platform.")) {
+        expect(spec.visibility, `${action} must be PLATFORM`).toBe("PLATFORM");
+      }
+    }
+  });
+
+  it("the platform-plane auth events exist and are not mirrored", () => {
+    // The console recorded nothing at all until 2026-09-11. Mirroring is
+    // declared in the catalog type but implemented nowhere, so these must
+    // stay unmirrored or platformAuditRow() will refuse them outright.
+    for (const action of [
+      "platform.login_succeeded",
+      "platform.login_failed",
+      "platform.mfa_verification_failed",
+      "platform.mfa_enabled",
+      "platform.mfa_disabled",
+      "platform.password_changed",
+      "platform.email_changed",
+    ] as const) {
+      expect(AUDIT_EVENTS[action]).toEqual({ visibility: "PLATFORM" });
+    }
+  });
+
   it("isAuditAction rejects unknown actions (record() fails closed)", () => {
     expect(isAuditAction("invoice.issued")).toBe(true);
     expect(isAuditAction("invoice:issued")).toBe(false);

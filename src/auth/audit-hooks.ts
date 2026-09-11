@@ -140,6 +140,55 @@ export const isFreshFactorPath = (path: string | undefined): boolean =>
   path !== undefined && FRESH_FACTOR_PATHS.has(path);
 
 /**
+ * WHERE AN AUTH EVENT GOES — the one thing that differs between the two
+ * planes, isolated so everything else can be shared.
+ *
+ * The member plane fans an event out to every ACTIVE membership of the
+ * user, one TENANT row per tenant, actor = that tenant's Member. The
+ * platform plane writes ONE row with no tenant at all
+ * (src/auth/platform-audit-hooks.ts). Those are genuinely different
+ * destinations, but the hook plumbing that decides WHEN to emit — which
+ * endpoint, which changed column, which Better Auth quirk — is
+ * identical, and a second copy of it is the thing most likely to drift:
+ * the console went un-audited for months precisely because its instance
+ * was configured by hand beside a member instance that was not.
+ *
+ * So the plumbing below takes a sink, and each plane supplies one.
+ */
+export interface AuthAuditSink {
+  /**
+   * `user` is the session's user row when the caller has it. The member
+   * sink ignores it; the platform sink reads `platformRole` off it, so a
+   * console sign-in records whether the person actually held authority.
+   * Optional because not every call site has the row — and a sink must
+   * degrade to a row without the flag rather than to no row at all.
+   */
+  loginSucceeded(
+    userId: string,
+    method: LoginMethod,
+    user?: Readonly<Record<string, unknown>> | undefined,
+  ): Promise<unknown>;
+  loginFailed(userId: string, reason: string): Promise<unknown>;
+  mfaVerificationFailed(
+    userId: string,
+    opts: { method: LoginMethod; reason: string; stage: "sign_in" | "step_up" },
+  ): Promise<unknown>;
+  mfaChanged(userId: string, enabled: boolean): Promise<unknown>;
+  emailChanged(userId: string): Promise<unknown>;
+  passwordChanged(userId: string, via: "change" | "reset"): Promise<unknown>;
+}
+
+/** The member plane's sink: fan out to the user's ACTIVE memberships. */
+export const memberAuditSink: AuthAuditSink = {
+  loginSucceeded: onLoginSucceeded,
+  loginFailed: onLoginFailed,
+  mfaVerificationFailed: onMfaVerificationFailed,
+  mfaChanged: onMfaChanged,
+  emailChanged: onEmailChanged,
+  passwordChanged: onPasswordChanged,
+};
+
+/**
  * update.before and update.after of one Better Auth write receive the
  * SAME endpoint context object; the before-hook parks the changed keys
  * there so the after-hook (which only sees the full row) knows what
@@ -162,16 +211,19 @@ const take = (store: WeakMap<object, Set<string>>, ctx: object | null): Set<stri
   return set;
 };
 
-/** Row-level hooks for the member instance. */
-export const memberDatabaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]> = {
-  session: {
-    create: {
-      before: async (session, ctx) => {
-        if (!isFreshFactorPath(ctx?.path)) return;
-        return { data: { ...session, mfaVerifiedAt: new Date() } };
-      },
-    },
-  },
+/**
+ * The user/account row hooks, for either plane.
+ *
+ * Deliberately does NOT include `session.create`. That hook carries the
+ * plane stamp, and on the platform instance it also writes
+ * `plane: "PLATFORM"` — the value `getPlatformSession()` checks. Folding
+ * it into a shared factory would put the console's admission rule behind
+ * a parameter, and getting that parameter wrong locks the operator out of
+ * the only administrative plane. Each instance keeps its own literal.
+ */
+export const auditRowHooks = (
+  sink: AuthAuditSink,
+): NonNullable<BetterAuthOptions["databaseHooks"]> => ({
   user: {
     update: {
       before: async (data, ctx) => {
@@ -182,10 +234,10 @@ export const memberDatabaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]
         if (!user?.id) return;
         if (keys.has("twoFactorEnabled")) {
           const enabled = (user as { twoFactorEnabled?: boolean }).twoFactorEnabled === true;
-          await guarded("mfa_changed", () => onMfaChanged(user.id, enabled));
+          await guarded("mfa_changed", () => sink.mfaChanged(user.id, enabled));
         }
         if (keys.has("email")) {
-          await guarded("email_changed", () => onEmailChanged(user.id));
+          await guarded("email_changed", () => sink.emailChanged(user.id));
         }
       },
     },
@@ -203,17 +255,34 @@ export const memberDatabaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]
         if (typeof row !== "object" || !row?.userId) return;
         const userId = row.userId;
         if (keys.has("password")) {
-          await guarded("password_changed", () => onPasswordChanged(userId, "change"));
+          await guarded("password_changed", () => sink.passwordChanged(userId, "change"));
         }
       },
     },
   },
+});
+
+/** Row-level hooks for the member instance. */
+export const memberDatabaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]> = {
+  session: {
+    create: {
+      before: async (session, ctx) => {
+        if (!isFreshFactorPath(ctx?.path)) return;
+        return { data: { ...session, mfaVerifiedAt: new Date() } };
+      },
+    },
+  },
+  ...auditRowHooks(memberAuditSink),
 };
 
 /** emailAndPassword.onPasswordReset — the token-based reset path. */
-export const onPasswordResetHook = async ({ user }: { user: { id: string } }): Promise<void> => {
-  await guarded("password_reset", () => onPasswordChanged(user.id, "reset"));
-};
+export const passwordResetHookFor =
+  (sink: AuthAuditSink) =>
+  async ({ user }: { user: { id: string } }): Promise<void> => {
+    await guarded("password_reset", () => sink.passwordChanged(user.id, "reset"));
+  };
+
+export const onPasswordResetHook = passwordResetHookFor(memberAuditSink);
 
 const SIGN_IN_PATH = "/sign-in/email";
 /** The twoFactor plugin's challenge cookie (plugins/two-factor/constant, pinned 1.6.26). */
@@ -222,7 +291,7 @@ const TWO_FACTOR_COOKIE = "two_factor";
 /**
  * Endpoint after-hooks. Must be listed AFTER twoFactor in `plugins`.
  */
-export const auditPlugin = (): BetterAuthPlugin => ({
+export const auditPlugin = (sink: AuthAuditSink): BetterAuthPlugin => ({
   id: "fortleva-audit",
   hooks: {
     after: [
@@ -234,7 +303,7 @@ export const auditPlugin = (): BetterAuthPlugin => ({
             const fresh = ctx.context.newSession;
             if (fresh) {
               // No 2FA, or a trusted device: sign-in is complete here.
-              await onLoginSucceeded(fresh.user.id, "password");
+              await sink.loginSucceeded(fresh.user.id, "password", fresh.user);
               return;
             }
             const returned = ctx.context.returned as
@@ -249,7 +318,7 @@ export const auditPlugin = (): BetterAuthPlugin => ({
             const found = await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase());
             if (!found) return;
             const reason = (returned?.body?.code ?? `http_${status}`).toLowerCase();
-            await onLoginFailed(found.user.id, reason);
+            await sink.loginFailed(found.user.id, reason);
           }),
         ),
       },
@@ -274,7 +343,7 @@ export const auditPlugin = (): BetterAuthPlugin => ({
             const fresh = ctx.context.newSession;
             if (fresh) {
               if (!challenge) return; // enrol-time verify
-              await onLoginSucceeded(fresh.user.id, method);
+              await sink.loginSucceeded(fresh.user.id, method, fresh.user);
               return;
             }
 
@@ -286,15 +355,25 @@ export const auditPlugin = (): BetterAuthPlugin => ({
               | undefined;
             const status = returned?.statusCode;
             // ANY 4xx, not just 401/403. Better Auth throttles this
-            // endpoint itself, and BOTH of its throttling outcomes fall
-            // outside the narrower filter: 400
-            // TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE after five tries against
-            // one challenge, and 429 ACCOUNT_TEMPORARILY_LOCKED after ten
-            // consecutive failures. Dropping those meant the trail went
-            // silent at exactly the moment a code grind SUCCEEDED in
-            // locking an account out of its own sign-in — the scenario
-            // this event exists for. A pending-2FA sign-in returns 200 and
-            // is already excluded by the `fresh` check above, not here.
+            // endpoint itself and its outcomes fall outside the narrower
+            // filter: 400 TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE after five
+            // tries against one challenge, 429 ACCOUNT_TEMPORARILY_LOCKED
+            // after ten consecutive failures. A pending-2FA sign-in
+            // returns 200 and is excluded by the `fresh` check above, not
+            // here.
+            //
+            // ONE OF THOSE TWO IS STILL NOT CAPTURED, and the honest
+            // version is worth more than the tidy one: the 429 lockout IS
+            // recorded (it throws before the challenge is touched), but
+            // the 400 challenge-burn is NOT — `beginAttempt()` calls
+            // consumeVerificationValue() and expires the cookie BEFORE
+            // throwing, so by the time this hook runs the verification row
+            // is gone and the lookup below finds nothing to attribute it
+            // to. The grind itself is still visible: the five INVALID_CODE
+            // attempts that precede the burn are each recorded. What is
+            // missing is only the row marking the moment the challenge
+            // died. Capturing it needs an attribution that survives
+            // consumption — tracked in PLAN §0, not silently assumed away.
             if (typeof status !== "number" || status < 400 || status >= 500) return;
 
             // SIGN-IN failures, attributed from the pending challenge,
@@ -324,7 +403,7 @@ export const auditPlugin = (): BetterAuthPlugin => ({
             // and inventing a target would be worse than the silence.
             if (!userId) return;
             const reason = (returned?.body?.code ?? `http_${status}`).toLowerCase();
-            await onMfaVerificationFailed(userId, { method, reason, stage: "sign_in" });
+            await sink.mfaVerificationFailed(userId, { method, reason, stage: "sign_in" });
           }),
         ),
       },

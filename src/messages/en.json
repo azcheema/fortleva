@@ -345,7 +345,7 @@
       "enrolledBody": "Your second factor is active. Sign in again with your new code to open the console.",
       "signInAgain": "Sign in again",
       "qrFailed": "Could not draw the QR code. Enter the key below in your authenticator app instead.",
-      "backupLastChance": "This is the last time these codes are shown, and they cannot be reissued. Store them somewhere you can reach without this console."
+      "backupLastChance": "This is the last time these codes are shown here. If you lose them, new ones can be issued from your account page — but only with a code from your authenticator, so keep that safe."
     },
     "portal": {
       "title": "Client portal",

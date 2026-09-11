@@ -212,6 +212,28 @@ export const AUDIT_EVENTS = {
   "entitlements.changed": PLATFORM_MIRRORED,
   "plan.changed": PLATFORM_MIRRORED,
   "flag.changed": PLATFORM,
+  // PLATFORM-PLANE AUTH (2026-09-11). The console instance recorded
+  // NOTHING until now — no auditPlugin, and databaseHooks carrying only
+  // the session stamp — so sign-ins, failures and second-factor changes
+  // on the plane that reaches `app_platform` (BYPASSRLS, cross-tenant)
+  // left no trace at all.
+  //
+  // They are `platform.*` rather than `auth.*` because they are a
+  // different KIND of row, not the same row with a null tenant: the
+  // actor id lives in the global `user` namespace rather than a tenant's
+  // `member` namespace, there is no tenant to file them under, and the
+  // audience is the platform operator and never a tenant. Writing them
+  // as `auth.*` would also route them through recordForUserMemberships,
+  // which fans out per ACTIVE MEMBERSHIP — and a platform admin with no
+  // tenant membership has none, so the fan-out writes zero rows and
+  // reports success. That silence is the bug being fixed.
+  "platform.login_succeeded": PLATFORM,
+  "platform.login_failed": PLATFORM,
+  "platform.mfa_verification_failed": PLATFORM,
+  "platform.mfa_enabled": PLATFORM,
+  "platform.mfa_disabled": PLATFORM,
+  "platform.password_changed": PLATFORM,
+  "platform.email_changed": PLATFORM,
   "platform.tenant_access": PLATFORM_MIRRORED,
   "platform.system_job": PLATFORM,
   // Test-only event (used by the isolation and audit suites)

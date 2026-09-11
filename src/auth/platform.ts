@@ -10,7 +10,8 @@ import { opsUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
 import { send } from "@/mailer";
 
-import { isFreshFactorPath, onPasswordResetHook } from "./audit-hooks";
+import { auditPlugin, auditRowHooks, isFreshFactorPath, passwordResetHookFor } from "./audit-hooks";
+import { platformAuditSink } from "./platform-audit-hooks";
 import { guardFactorMutations } from "./factor-guard";
 import { SESSION_ADDITIONAL_FIELDS, USER_ADDITIONAL_FIELDS } from "./index";
 import { enforceAuthRateLimit } from "./rate-limit-hook";
@@ -88,6 +89,13 @@ export const platformAuth = betterAuth({
   // declaration so the two planes cannot drift.
   user: { additionalFields: USER_ADDITIONAL_FIELDS },
   databaseHooks: {
+    // `session.create` stays a LITERAL here rather than coming from a
+    // shared factory: it writes `plane: "PLATFORM"`, the value
+    // getPlatformSession() checks, so putting the console's admission
+    // rule behind a parameter is how the operator gets locked out of the
+    // only administrative plane. The user/account hooks below ARE shared
+    // — they carry no plane semantics, only "what changed".
+    ...auditRowHooks(platformAuditSink),
     session: {
       create: {
         // plane stamp + the same step-up freshness rule as the member
@@ -121,7 +129,7 @@ export const platformAuth = betterAuth({
     // evict the attacker. Without the second, the reset writes no audit
     // row at all.
     revokeSessionsOnPasswordReset: true,
-    onPasswordReset: onPasswordResetHook,
+    onPasswordReset: passwordResetHookFor(platformAuditSink),
     sendResetPassword: async ({ user, url }) => {
       await send({
         to: user.email,
@@ -158,6 +166,14 @@ export const platformAuth = betterAuth({
   // mirror. The member instance's registration is a separate question,
   // tracked with the impersonation work — do not add it back here to
   // make the two instances "symmetric": the asymmetry is the control.
-  plugins: [twoFactor({ issuer: "Fortleva Ops" }), nextCookies()],
+  // auditPlugin AFTER twoFactor on purpose, same as the member instance:
+  // its after-hooks must observe the FINAL newSession, which is null
+  // while a 2FA challenge is pending and set only when sign-in really
+  // completed. Listed before nextCookies, which only serialises cookies.
+  plugins: [
+    twoFactor({ issuer: "Fortleva Ops" }),
+    auditPlugin(platformAuditSink),
+    nextCookies(),
+  ],
   trustedOrigins: [opsUrl.origin],
 });

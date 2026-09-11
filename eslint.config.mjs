@@ -66,6 +66,10 @@ const eslintConfig = defineConfig([
       "src/**/dbtest-fixture.ts",
       "src/members/invites.ts",
       "src/members/provisioning.ts",
+      // The single permitted importer of recordPlatformEvent, which is
+      // the only way to write an audit row with tenant_id NULL. Keep in
+      // step with PLATFORM_SEAM_ALLOWED_FILES in belt two.
+      "src/auth/platform-audit-hooks.ts",
     ],
     rules: {
       "no-restricted-imports": [
@@ -74,9 +78,9 @@ const eslintConfig = defineConfig([
           paths: [
             {
               name: "@/db",
-              importNames: ["withPlatform"],
+              importNames: ["withPlatform", "recordPlatformEvent"],
               message:
-                "withPlatform() is platform-plane only (ARC-16): src/app/(platform)/**, src/jobs/**, src/db/**, tests, prisma/seed. Tenant-plane code uses withTenant().",
+                "withPlatform() and recordPlatformEvent() are platform-plane only (ARC-16): src/app/(platform)/**, src/jobs/**, src/db/**, tests, prisma/seed, plus the grandfathered files in this block's ignores. Tenant-plane code uses withTenant() and record().",
             },
           ],
           patterns: [
@@ -100,7 +104,7 @@ const eslintConfig = defineConfig([
             },
             {
               group: ["@/db/with-tenant", "**/db/with-tenant"],
-              importNames: ["withPlatform"],
+              importNames: ["withPlatform", "recordPlatformEvent"],
               message: "withPlatform() is platform-plane only (ARC-16) — and always via '@/db'.",
             },
           ],

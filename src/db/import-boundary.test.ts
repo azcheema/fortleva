@@ -33,6 +33,14 @@ export const PLATFORM_SEAM_ALLOWED_FILES = [
   "members/provisioning.ts",
   "members/dbtest-fixture.ts",
   // audit/record.ts only MENTIONS withPlatform in error messages — no import.
+  //
+  // The PLATFORM AUDIT WRITER's single permitted importer. recordPlatformEvent
+  // reaches app_platform (it is the only way to insert an audit row with
+  // tenant_id NULL), so it is seam-grade and listed in SEAM_NAMES below.
+  // One file may hold it, and that file does nothing but adapt the shared
+  // auth hooks to it. If a second appears, decide deliberately whether the
+  // plane really needs another writer before widening this list.
+  "auth/platform-audit-hooks.ts",
 ] as const;
 
 const isTest = (rel: string): boolean => /\.(test|dbtest)\.[cm]?[jt]sx?$/.test(rel);
@@ -41,7 +49,7 @@ const isAllowed = (rel: string): boolean =>
   PLATFORM_SEAM_ALLOWED_PREFIXES.some((p) => rel.startsWith(p)) ||
   (PLATFORM_SEAM_ALLOWED_FILES as readonly string[]).includes(rel);
 
-const SEAM_NAMES = new Set(["withPlatform", "getPlatformClient"]);
+const SEAM_NAMES = new Set(["withPlatform", "getPlatformClient", "recordPlatformEvent"]);
 
 /** The modules a namespace/dynamic/require grab reaches the seam through:
  * `@/db` (re-exports withPlatform), `db/with-tenant` (defines it), and
@@ -82,6 +90,10 @@ describe("ARC-16 import boundary: withPlatform / getPlatformClient", () => {
       "members/invites.ts",
       "members/provisioning.ts",
       "members/dbtest-fixture.ts",
+      // Added 2026-09-11 with the platform-plane audit trail: the single
+      // permitted importer of recordPlatformEvent, which is the only way
+      // to write an audit row with tenant_id NULL.
+      "auth/platform-audit-hooks.ts",
     ]);
   });
 
