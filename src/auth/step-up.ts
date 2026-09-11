@@ -4,6 +4,7 @@ import { APIError } from "better-auth/api";
 
 import { runtimeClient } from "@/db/client";
 
+import { onMfaVerificationFailed } from "./audit-hooks";
 import { auth } from "./index";
 
 /**
@@ -50,6 +51,30 @@ export async function verifyStepUpWithHeaders(
       const status = (e as { status?: number | string }).status;
       if (status === 429 || status === "TOO_MANY_REQUESTS") {
         return { ok: false, reason: "rate_limited" };
+      }
+      // The STEP-UP half of the failure trail. It is emitted here rather
+      // than in the plugin's after-hook because only this layer knows who
+      // it was: verifyTwoFactor resolves the session into a local and
+      // never puts it on the request context, so the hook cannot name the
+      // member. Never allowed to change the outcome — a failed audit must
+      // not turn a wrong code into a thrown request.
+      //
+      // The REASON comes off the error, not from the branch. Not every
+      // APIError here is a wrong code: TOTP_NOT_ENABLED and
+      // BACKUP_CODES_NOT_ENABLED (400) are the half-applied
+      // database-recovery state src/auth/factor-guard.ts documents — a
+      // two_factor row deleted without clearing user.two_factor_enabled.
+      // Filing that as code guessing sends a reader hunting an attacker
+      // when the fact is a broken enrolment.
+      const code = (e as { body?: { code?: string } }).body?.code;
+      try {
+        await onMfaVerificationFailed(session.user.id, {
+          method,
+          reason: (code ?? "invalid_code").toLowerCase(),
+          stage: "step_up",
+        });
+      } catch (auditError) {
+        console.error("[auth-audit] step_up_failed failed", auditError);
       }
       return { ok: false, reason: "invalid_code" };
     }

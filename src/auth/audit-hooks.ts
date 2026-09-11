@@ -48,7 +48,23 @@ export async function recordForUserMemberships(
   return memberships.length;
 }
 
-/** Never let an audit failure break sign-in/sign-up; log loudly instead. */
+/**
+ * Never let an audit failure break sign-in/sign-up; log loudly instead.
+ *
+ * WRAP THE WHOLE HANDLER BODY WITH THIS, never just the emitter call.
+ * That distinction was a real defect until 2026-09-11 and it is worth
+ * spelling out, because the broken version read as safe: the after-hooks
+ * below did `internalAdapter.findUserByEmail(…)` and, worse,
+ * `ctx.getSignedCookie(…)` OUTSIDE the wrapper, and Better Auth's
+ * `runAfterHooks` turns anything an after-hook throws into the RESPONSE —
+ * an APIError replaces an already-successful one, anything else becomes a
+ * 500. The session row and cookie are written by then, so the user is
+ * signed in and told they are not. The cookie read runs on every
+ * successful two-factor sign-in, and it verifies a signature against a
+ * shared secret: a malformed cookie, a rotated secret or a name collision
+ * was enough. On the platform console, where a second factor is
+ * mandatory, that is the only way in.
+ */
 const guarded = async (label: string, fn: () => Promise<unknown>): Promise<void> => {
   try {
     await fn();
@@ -68,6 +84,25 @@ export const onLoginFailed = (userId: string, reason: string) =>
 
 export const onMfaChanged = (userId: string, enabled: boolean) =>
   recordForUserMemberships(userId, enabled ? "auth.mfa_enabled" : "auth.mfa_disabled");
+
+/**
+ * A second factor was presented and rejected.
+ *
+ * `stage` decides the actor, and the distinction is real rather than
+ * cosmetic: at SIGN-IN nobody has authenticated — the caller holds the
+ * password and is attempting the factor — so the actor is SYSTEM, exactly
+ * as for `auth.login_failed`. At STEP-UP the session is already
+ * authenticated and the member is the actor; what failed was a
+ * re-verification.
+ */
+export const onMfaVerificationFailed = (
+  userId: string,
+  opts: { method: LoginMethod; reason: string; stage: "sign_in" | "step_up" },
+) =>
+  recordForUserMemberships(userId, "auth.mfa_verification_failed", {
+    actor: opts.stage === "sign_in" ? "system" : "member",
+    metadata: { method: opts.method, reason: opts.reason, stage: opts.stage },
+  });
 
 /**
  * Backup codes replaced. Not covered by `onMfaChanged`: that keys on
@@ -193,45 +228,105 @@ export const auditPlugin = (): BetterAuthPlugin => ({
     after: [
       {
         matcher: (ctx) => ctx.path === SIGN_IN_PATH,
-        handler: createAuthMiddleware(async (ctx) => {
-          const fresh = ctx.context.newSession;
-          if (fresh) {
-            // No 2FA, or a trusted device: sign-in is complete here.
-            await guarded("login_succeeded", () => onLoginSucceeded(fresh.user.id, "password"));
-            return;
-          }
-          const returned = ctx.context.returned as
-            | { statusCode?: number; body?: { code?: string } }
-            | undefined;
-          const status = returned?.statusCode;
-          if (status !== 401 && status !== 403) return; // pending 2FA (200) or other
-          const email = (ctx.body as { email?: string } | undefined)?.email;
-          if (typeof email !== "string") return;
-          // Existence never reaches the client — this only decides
-          // whether there is a member row to attach the failure to.
-          const found = await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase());
-          if (!found) return;
-          const reason = (returned?.body?.code ?? `http_${status}`).toLowerCase();
-          await guarded("login_failed", () => onLoginFailed(found.user.id, reason));
-        }),
+        // The ENTIRE body is guarded, including the adapter read below.
+        handler: createAuthMiddleware(async (ctx) =>
+          guarded("sign_in", async () => {
+            const fresh = ctx.context.newSession;
+            if (fresh) {
+              // No 2FA, or a trusted device: sign-in is complete here.
+              await onLoginSucceeded(fresh.user.id, "password");
+              return;
+            }
+            const returned = ctx.context.returned as
+              | { statusCode?: number; body?: { code?: string } }
+              | undefined;
+            const status = returned?.statusCode;
+            if (status !== 401 && status !== 403) return; // pending 2FA (200) or other
+            const email = (ctx.body as { email?: string } | undefined)?.email;
+            if (typeof email !== "string") return;
+            // Existence never reaches the client — this only decides
+            // whether there is a member row to attach the failure to.
+            const found = await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase());
+            if (!found) return;
+            const reason = (returned?.body?.code ?? `http_${status}`).toLowerCase();
+            await onLoginFailed(found.user.id, reason);
+          }),
+        ),
       },
       {
         matcher: (ctx) => isFreshFactorPath(ctx.path),
-        handler: createAuthMiddleware(async (ctx) => {
-          const fresh = ctx.context.newSession;
-          if (!fresh) return; // step-up verify on an existing session, or invalid code
-          // Sign-in completion carries the plugin's challenge cookie; the
-          // enrol-time verify (already signed in) does not — that one is
-          // recorded as auth.mfa_enabled by the user.update hook instead.
-          const challenge = await ctx.getSignedCookie(
-            ctx.context.createAuthCookie(TWO_FACTOR_COOKIE).name,
-            ctx.context.secret,
-          );
-          if (!challenge) return;
-          const method: LoginMethod =
-            ctx.path === "/two-factor/verify-totp" ? "totp" : "backup_code";
-          await guarded("login_succeeded", () => onLoginSucceeded(fresh.user.id, method));
-        }),
+        // The ENTIRE body is guarded. The getSignedCookie below verifies a
+        // signature against the shared secret and runs on EVERY successful
+        // two-factor sign-in; unguarded, a malformed cookie turned a
+        // completed sign-in into an error response.
+        handler: createAuthMiddleware(async (ctx) =>
+          guarded("factor_verify", async () => {
+            const method: LoginMethod =
+              ctx.path === "/two-factor/verify-totp" ? "totp" : "backup_code";
+            // Sign-in completion carries the plugin's challenge cookie; the
+            // enrol-time verify (already signed in) does not — that one is
+            // recorded as auth.mfa_enabled by the user.update hook instead.
+            const challenge = await ctx.getSignedCookie(
+              ctx.context.createAuthCookie(TWO_FACTOR_COOKIE).name,
+              ctx.context.secret,
+            );
+
+            const fresh = ctx.context.newSession;
+            if (fresh) {
+              if (!challenge) return; // enrol-time verify
+              await onLoginSucceeded(fresh.user.id, method);
+              return;
+            }
+
+            // NO NEW SESSION: the code was rejected (or this is a step-up
+            // on an existing session that failed). Until 2026-09-11 this
+            // branch did not exist and the whole class went unrecorded.
+            const returned = ctx.context.returned as
+              | { statusCode?: number; body?: { code?: string } }
+              | undefined;
+            const status = returned?.statusCode;
+            // ANY 4xx, not just 401/403. Better Auth throttles this
+            // endpoint itself, and BOTH of its throttling outcomes fall
+            // outside the narrower filter: 400
+            // TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE after five tries against
+            // one challenge, and 429 ACCOUNT_TEMPORARILY_LOCKED after ten
+            // consecutive failures. Dropping those meant the trail went
+            // silent at exactly the moment a code grind SUCCEEDED in
+            // locking an account out of its own sign-in — the scenario
+            // this event exists for. A pending-2FA sign-in returns 200 and
+            // is already excluded by the `fresh` check above, not here.
+            if (typeof status !== "number" || status < 400 || status >= 500) return;
+
+            // SIGN-IN failures, attributed from the pending challenge,
+            // whose verification row holds the user id — the same row the
+            // plugin consumes on success (verify-two-factor.mjs), and one
+            // a FAILED code does not consume. `ctx.context.session` is not
+            // an option: verifyTwoFactor resolves the session into a LOCAL
+            // via getSessionFromCtx and never puts it on the context, so
+            // reading it would silently attribute nothing. Step-up
+            // failures are recorded in ./step-up instead, which holds the
+            // session and can name the member.
+            //
+            // KNOWN IMPRECISION, chosen deliberately. verifyTwoFactor
+            // ignores the challenge cookie whenever a session exists, so a
+            // step-up failure in a browser that ALSO holds a live
+            // challenge (a sign-in begun and abandoned in another tab,
+            // inside the 600 s lifetime) writes a second row here, staged
+            // `sign_in`, against the challenge's user. The alternative was
+            // to skip whenever a session cookie is present — rejected,
+            // because a caller chooses its own cookies, so that would let
+            // anyone SUPPRESS this row by attaching a junk session cookie.
+            // A rare duplicate is worth more than a suppressible trail.
+            if (!challenge) return;
+            const pending = await ctx.context.internalAdapter.findVerificationValue(challenge);
+            const userId = (pending as { value?: string } | undefined)?.value;
+            // A replayed or expired challenge: nothing to file it against,
+            // and inventing a target would be worse than the silence.
+            if (!userId) return;
+            const reason = (returned?.body?.code ?? `http_${status}`).toLowerCase();
+            await onMfaVerificationFailed(userId, { method, reason, stage: "sign_in" });
+          }),
+        ),
       },
     ],
   },

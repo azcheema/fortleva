@@ -124,7 +124,7 @@ One event model, one capture mechanism, two audiences (brief §9):
 
 | Domain | Events |
 |---|---|
-| Auth | `auth.login_succeeded`, `auth.login_failed`, `auth.mfa_enabled`, `auth.mfa_disabled`, `auth.password_changed`, `auth.email_changed` [TENANT] |
+| Auth | `auth.login_succeeded`, `auth.login_failed`, `auth.mfa_enabled`, `auth.mfa_disabled`, `auth.mfa_verification_failed`, `auth.backup_codes_reissued`, `auth.password_changed`, `auth.email_changed` [TENANT] |
 | Impersonation | `impersonation.started`, `impersonation.ended` — both identities, always [TENANT] (visible to the tenant in their own log, §7) |
 | Membership & authz | `member.invited`, `member.joined`, `member.suspended`, `member.removed`, `role.created`, `role.updated`, `role.deleted`, `permission.granted`, `permission.revoked`, `assignment.client_added/removed`, `assignment.project_added/removed` [TENANT] |
 | Contacts & portal | `contact.created`, `contact.invited`, `contact.activated`, `contact.suspended`, `contact.access_revoked` [TENANT] |
@@ -341,7 +341,7 @@ model Verification {
 /// MFA mandatory for platform admins and tenant owner-equivalent roles
 /// (§9) — enforced in policy (AUTHZ.md), stored here.
 /// scope=global-identity  rls=AUTH  ret=R2  enc=secret,backupCodes
-/// audit: auth.mfa_enabled | auth.mfa_disabled
+/// audit: auth.mfa_enabled | auth.mfa_disabled | auth.mfa_verification_failed | auth.backup_codes_reissued
 model TwoFactor {
   id          String @id @default(uuid(7))
   userId      String @unique

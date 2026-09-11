@@ -14,9 +14,17 @@ type EventSpec = {
   readonly mirroredToTenant?: true;
 };
 
-const TENANT: EventSpec = { visibility: "TENANT" };
-const PLATFORM: EventSpec = { visibility: "PLATFORM" };
-const PLATFORM_MIRRORED: EventSpec = { visibility: "PLATFORM", mirroredToTenant: true };
+// `as const satisfies` rather than `: EventSpec`, which WIDENS: annotated,
+// every lookup types as the full union, so `AUDIT_EVENTS[a].visibility`
+// could not be narrowed and a mistake like recording a PLATFORM action
+// from tenant context stayed a runtime-only check. Satisfied instead, the
+// literal survives and the compiler can carry its weight.
+const TENANT = { visibility: "TENANT" } as const satisfies EventSpec;
+const PLATFORM = { visibility: "PLATFORM" } as const satisfies EventSpec;
+const PLATFORM_MIRRORED = {
+  visibility: "PLATFORM",
+  mirroredToTenant: true,
+} as const satisfies EventSpec;
 
 export const AUDIT_EVENTS = {
   // Auth
@@ -24,6 +32,15 @@ export const AUDIT_EVENTS = {
   "auth.login_failed": TENANT,
   "auth.mfa_enabled": TENANT,
   "auth.mfa_disabled": TENANT,
+  // A WRONG SECOND FACTOR, which until 2026-09-11 was recorded nowhere.
+  // It is the highest-signal auth failure there is: at the code prompt
+  // the caller has ALREADY PASSED the password, so this is the row that
+  // separates "someone is guessing" from "someone is inside". Better
+  // Auth also ships a lockout on these endpoints, so an attacker who
+  // knows an address can grind codes until that account's second factor
+  // locks — denying the account its own sign-in with, until now, no
+  // trace anywhere.
+  "auth.mfa_verification_failed": TENANT,
   // Replacing the whole recovery set is as consequential as enrolling
   // the factor, and touches only `two_factor.backup_codes` — which the
   // twoFactorEnabled-keyed hooks above cannot see.

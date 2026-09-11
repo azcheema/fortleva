@@ -101,6 +101,7 @@ export async function reissueBackupCodesAction(
 
   // 2. The endpoint asks for the password itself; a wrong one lands here
   //    as a thrown APIError rather than a rejected promise value.
+  let codes: string[];
   try {
     // The marker is what lets guardFactorMutations tell this call apart
     // from a request to the same endpoint. It is opened HERE, after the
@@ -111,13 +112,7 @@ export async function reissueBackupCodesAction(
         headers: requestHeaders,
       }),
     );
-    const codes = (result as { backupCodes?: string[] }).backupCodes ?? [];
-    if (codes.length === 0) return { ok: false, message: t("failed") };
-    // After the mutation, never before: an audit row for a reissue that
-    // did not happen is worse than none. Failures here are logged by the
-    // helper and must not swallow the codes — they are on screen once.
-    await onBackupCodesReissued(session.user.id);
-    return { ok: true, codes };
+    codes = (result as { backupCodes?: string[] }).backupCodes ?? [];
   } catch {
     // Deliberately one message for both "wrong password" and any other
     // refusal: this form has already proven a second factor, so telling
@@ -125,4 +120,20 @@ export async function reissueBackupCodesAction(
     // give. Never log the password or the codes.
     return { ok: false, message: t("failed") };
   }
+  if (codes.length === 0) return { ok: false, message: t("failed") };
+
+  // PAST THIS LINE THE NEW CODES EXIST AND THE OLD ONES ARE DEAD, so
+  // nothing may stop them reaching the screen — they are shown once and
+  // cannot be reissued without another live factor. The audit call used
+  // to sit inside the try above, un-guarded, which meant a hiccup in the
+  // membership fan-out returned "could not issue new codes" AFTER Better
+  // Auth had already committed the new set: the caller would be left
+  // holding neither. A missing audit row is a real cost; it is not worth
+  // locking someone out of their own account to avoid.
+  try {
+    await onBackupCodesReissued(session.user.id);
+  } catch (e) {
+    console.error("[auth-audit] backup_codes_reissued failed", e);
+  }
+  return { ok: true, codes };
 }

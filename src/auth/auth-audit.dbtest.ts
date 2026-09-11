@@ -271,6 +271,40 @@ describe("wired hooks on the real Better Auth paths", () => {
     expect((again!.session as { mfaVerifiedAt?: Date }).mfaVerifiedAt).toBeInstanceOf(Date);
   });
 
+  it("a wrong step-up code writes mfa_verification_failed, attributed to the member", async () => {
+    // The highest-signal auth failure there is: at the code prompt the
+    // caller has already passed the password. It was recorded nowhere
+    // until 2026-09-11. Emitted from src/auth/step-up.ts rather than the
+    // plugin's after-hook, because only that layer knows WHO — better
+    // auth's verifyTwoFactor resolves the session into a local and never
+    // puts it on the request context.
+    const before = (await auditRows("auth.mfa_verification_failed")).length;
+
+    const bad = await verifyStepUpWithHeaders("000000", withCookie(cookie));
+    expect(bad).toEqual({ ok: false, reason: "invalid_code" });
+
+    const rows = await auditRows("auth.mfa_verification_failed");
+    expect(rows).toHaveLength(before + 1);
+    const row = rows.at(-1)!;
+    // A step-up failure comes from a session that HAS authenticated, so
+    // the member is the actor — unlike auth.login_failed, which is SYSTEM
+    // because nobody had.
+    expect(row.actorType).toBe("MEMBER");
+    expect(row.actorId).not.toBeNull();
+    expect(row.metadata).toEqual({ method: "totp", reason: "invalid_code", stage: "step_up" });
+    expect(row.visibility).toBe("TENANT");
+  });
+
+  it("a failed step-up does not also count as a login", async () => {
+    // The two trails must stay separable: a wrong code is not a sign-in
+    // attempt, and conflating them would hide the one that matters.
+    const logins = (await auditRows("auth.login_succeeded")).length;
+    const failures = (await auditRows("auth.login_failed")).length;
+    await verifyStepUpWithHeaders("000000", withCookie(cookie));
+    expect(await auditRows("auth.login_succeeded")).toHaveLength(logins);
+    expect(await auditRows("auth.login_failed")).toHaveLength(failures);
+  });
+
   it("verifyStepUp without a session → no_session", async () => {
     expect(await verifyStepUpWithHeaders("123456", new Headers())).toEqual({
       ok: false,

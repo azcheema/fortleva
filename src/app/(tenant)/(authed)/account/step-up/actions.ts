@@ -45,6 +45,11 @@ export async function verifyStepUpAction(
   if (!result.ok) {
     if (result.reason === "no_session") redirect("/login");
     if (result.reason === "not_enrolled") redirect(enrolUrl(next));
+    // A 429 from the per-IP limiter is not a wrong code. Reporting it as
+    // one tells a member on a shared egress IP that a CORRECT code was
+    // wrong, so they retry and burn the per-user budget too — turning a
+    // shared-IP inconvenience into their own lockout.
+    if (result.reason === "rate_limited") return { ok: false, message: t("tooManyAttempts") };
     return { ok: false, message: t("mismatch") };
   }
   redirect(next);
