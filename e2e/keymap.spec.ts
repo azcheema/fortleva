@@ -71,7 +71,7 @@ test.describe("the scope registry", () => {
     await expect(picker(page).locator('[data-slot="command-input"]')).toBeFocused();
   });
 
-  test("Escape closes the picker and LEAVES the peek open", async ({ page }) => {
+  test("the Escape ladder: the picker first, the peek second", async ({ page }) => {
     // The slice's own Escape contract, and there is no hand-written
     // handler behind it: Radix dismisses the highest layer, which is the
     // picker, and the peek beneath it survives untouched.
@@ -89,17 +89,24 @@ test.describe("the scope registry", () => {
     await expect(page.getByTestId("item-state")).toBeFocused();
     await page.keyboard.press("s");
     await expect(picker(page)).toBeVisible();
+
+    // The second rung. Closing the peek is a server navigation
+    // (`PeekShell` pushes the list URL), so it takes seconds, not
+    // frames — poll for it. A fixed wait here reads as "Escape is
+    // broken on the board", which is precisely the false conclusion an
+    // earlier diagnostic of mine drew from a 1.5 s sleep.
+    await page.keyboard.press("Escape");
+    await expect(picker(page)).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("item-peek")).toHaveCount(0, { timeout: 30_000 * SLOW });
+    await expect(page).not.toHaveURL(/item=/);
+    await expect(page).toHaveURL(/group=assignee/);
   });
 
-  test("the full Escape ladder, on the backlog: picker, then peek", async ({ page }) => {
-    // The SECOND rung is asserted here rather than on the board because
-    // of a PRE-EXISTING defect this slice discovered and did not cause:
-    // on the board, Escape does not close the item peek at all —
-    // reproduced on `f216963` with this slice stashed, opening the peek
-    // both from the row menu and from a bare `?item=` URL. It works on
-    // the backlog, which is what `work.spec.ts` has always pinned. See
-    // PLAN §0; fixing it is its own slice, because it is a change to
-    // shipped board behaviour.
+  test("the same ladder on the backlog peek, which is a different mount", async ({ page }) => {
+    // The board's peek and the backlog's are two mounts of one panel;
+    // the ladder is asserted on both so a change to either surface's
+    // layering cannot pass on the strength of the other.
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     // The key cell is the link (2W-B). Located on the page rather than
     // inside "the first row", which need not be an item row.
@@ -117,7 +124,8 @@ test.describe("the scope registry", () => {
     await expect(page.getByTestId("item-peek")).toBeVisible();
 
     await page.keyboard.press("Escape");
-    await expect(page.getByTestId("item-peek")).toHaveCount(0);
+    // A server navigation, as above — poll, do not sleep.
+    await expect(page.getByTestId("item-peek")).toHaveCount(0, { timeout: 30_000 * SLOW });
     await expect(page).not.toHaveURL(/item=/);
   });
 
