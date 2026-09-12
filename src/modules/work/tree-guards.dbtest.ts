@@ -3,7 +3,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { withTenant, type TenantDb } from "@/db";
 import { setupTenant } from "@/members/dbtest-fixture";
-import { bulkSetArchived, bulkSetPriority, changeItemVisibility, createItem, deleteItem } from "./index";
+import {
+  bulkSetArchived,
+  bulkSetPriority,
+  changeItemVisibility,
+  changeState,
+  createItem,
+  deleteItem,
+  moveItem,
+  updateItemFields,
+} from "./index";
 import { lockProjectRanks } from "./rank-lock";
 
 /**
@@ -613,5 +622,139 @@ describe("a row deleted under a shared item cannot be restored into view once th
     await f.platform.workItem.update({ where: { id: child }, data: { deletedAt: null } });
     const row = await f.platform.workItem.findUniqueOrThrow({ where: { id: child } });
     expect(row.deletedAt).toBeNull();
+  });
+});
+
+/**
+ * The schema belts of 20260912120000_work_schema_belts: the search feed
+ * fires only for the columns it reads, a history row cannot be
+ * CLIENT_VISIBLE about a field the portal never shows, the checklist
+ * counters cannot lie, and a milestone stays inside its project.
+ */
+describe("schema belts", () => {
+  /** The index row's own columns — never `SELECT *`: tsvector and regconfig do not deserialize. */
+  const indexRow = async (entityId: string) => {
+    const rows = await f.platform.$queryRaw<
+      { updated_at: Date; title: string; state_category: string | null; body_text: string | null }[]
+    >`SELECT updated_at, title, state_category, body_text FROM search_index
+       WHERE tenant_id = ${f.tenantId} AND entity_type = 'WORK_ITEM' AND entity_id = ${entityId}`;
+    return rows[0]!;
+  };
+
+  it("a rank-only move leaves the index alone; a title, a state and a description all re-feed it", async () => {
+    const anchor = await createItem(ownerCtx(), { projectId, title: "Feed anchor" });
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Feed subject" });
+    const before = await indexRow(id);
+    expect(before.title).toBe("Feed subject");
+
+    // Rank only: the feed reads no rank, so it must not fire — this is
+    // what stops a drag re-tokenising a 100k-character description.
+    await moveItem(ownerCtx(), { itemId: id, beforeId: anchor.id });
+    expect((await indexRow(id)).updated_at).toEqual(before.updated_at);
+
+    // …while every column it DOES read re-feeds the row.
+    await updateItemFields(ownerCtx(), id, { title: "Feed subject, renamed" });
+    const renamed = await indexRow(id);
+    expect(renamed.title).toBe("Feed subject, renamed");
+    expect(renamed.updated_at.getTime()).toBeGreaterThan(before.updated_at.getTime());
+
+    const inProgress = await f.platform.workflowState.findFirstOrThrow({
+      where: { tenantId: f.tenantId, projectId, category: "IN_PROGRESS" },
+      orderBy: { rank: "asc" },
+    });
+    await changeState(ownerCtx(), id, inProgress.id);
+    expect((await indexRow(id)).state_category).toBe("IN_PROGRESS");
+
+    await f.platform.workItem.update({ where: { id }, data: { descriptionText: "beskrivning i flödet" } });
+    expect((await indexRow(id)).body_text).toBe("beskrivning i flödet");
+  });
+
+  it("a history row can only be client-visible about a portal-safe field", async () => {
+    const item = await visibleTask("History subject");
+    const base = { tenantId: f.tenantId, clientId, projectId, workItemId: item };
+    // Positive control: `title` is on the pinned list.
+    const ok = await f.platform.workItemActivity.create({
+      data: { ...base, field: "title", visibility: "CLIENT_VISIBLE" },
+    });
+    expect(ok.visibility).toBe("CLIENT_VISIBLE");
+    // …and `priority` is not, on the same visible item.
+    await expect(
+      f.platform.workItemActivity.create({
+        data: { ...base, field: "priority", visibility: "CLIENT_VISIBLE" },
+      }),
+    ).rejects.toThrow(/work_item_activity_portal_safe_field/);
+    // The same row is fine while it stays INTERNAL.
+    await f.platform.workItemActivity.create({
+      data: { ...base, field: "priority", visibility: "INTERNAL" },
+    });
+  });
+
+  it("a move WITHIN a category writes internal history; a move that changes the category does not", async () => {
+    const item = await visibleTask("Category walk");
+    const states = await f.platform.workflowState.findMany({
+      where: { tenantId: f.tenantId, projectId },
+      orderBy: { rank: "asc" },
+    });
+    const inProgress = states.filter((s) => s.category === "IN_PROGRESS");
+    expect(inProgress.length).toBe(2); // In progress, then In review
+
+    // TODO → IN_PROGRESS: the client is shown the category, so the row is theirs.
+    await changeState(ownerCtx(), item, inProgress[0]!.id);
+    const crossing = await f.platform.workItemActivity.findFirstOrThrow({
+      where: { tenantId: f.tenantId, workItemId: item, field: "stateCategory" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(crossing.visibility).toBe("CLIENT_VISIBLE");
+
+    // In progress → In review: same category, and the row carries two
+    // workflow-state ids the portal must never show.
+    await changeState(ownerCtx(), item, inProgress[1]!.id);
+    const within = await f.platform.workItemActivity.findFirstOrThrow({
+      where: { tenantId: f.tenantId, workItemId: item, field: "stateCategory" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(within.visibility).toBe("INTERNAL");
+    await withTenant(f.tenantId, contact(), async (tx) => {
+      expect(await tx.workItemActivity.count({ where: { workItemId: item, id: within.id } })).toBe(0);
+    });
+  });
+
+  it("the checklist counters cannot go negative or past the total", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Checklist bounds" });
+    await expect(
+      f.platform.workItem.update({ where: { id }, data: { checklistTotal: 2, checklistDone: 3 } }),
+    ).rejects.toThrow(/work_item_checklist_bounds/);
+    await expect(
+      f.platform.workItem.update({ where: { id }, data: { checklistDone: -1 } }),
+    ).rejects.toThrow(/work_item_checklist_bounds/);
+    // Positive control: a real count is accepted.
+    const ok = await f.platform.workItem.update({
+      where: { id },
+      data: { checklistTotal: 3, checklistDone: 2 },
+    });
+    expect(ok.checklistDone).toBe(2);
+  });
+
+  it("a milestone must belong to the item's own project", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Milestone subject" });
+    const mine = await f.platform.milestone.create({
+      data: { tenantId: f.tenantId, clientId, projectId, name: "Launch", rank: "a1" },
+    });
+    // A milestone of ANOTHER project of the same tenant: the composite FK
+    // binds only the tenant, so nothing else would have refused it.
+    const otherProjectId = randomUUID();
+    await f.platform.project.create({
+      data: { id: otherProjectId, tenantId: f.tenantId, clientId, key: "MILE", name: "Other site" },
+    });
+    const theirs = await f.platform.milestone.create({
+      data: { tenantId: f.tenantId, clientId, projectId: otherProjectId, name: "Their launch", rank: "a1" },
+    });
+    await expect(
+      f.platform.workItem.update({ where: { id }, data: { milestoneId: theirs.id } }),
+    ).rejects.toThrow(/WORK_MILESTONE_PROJECT/);
+    // Positive control: this project's own milestone is accepted.
+    const ok = await f.platform.workItem.update({ where: { id }, data: { milestoneId: mine.id } });
+    expect(ok.milestoneId).toBe(mine.id);
+    await f.platform.workItem.update({ where: { id }, data: { milestoneId: null } });
   });
 });

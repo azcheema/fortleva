@@ -19,6 +19,21 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "billRate",
   "cost",
   "assigneeMemberId",
+  // 2W (2026-09-12): the work tables. The portal sees state CATEGORIES,
+  // never a tenant's own state names or ids; no priority, no estimate,
+  // no label, and no member id on a history row or a comment — the
+  // portal never names a member in v1.
+  "stateId",
+  "stateName",
+  "priority",
+  "estimateMinutes",
+  "remainingMinutes",
+  "labelId",
+  "actorMemberId",
+  "authorMemberId",
+  "createdByMemberId",
+  "oldRef",
+  "newRef",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -45,6 +60,17 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "billRate",
       "cost",
       "assigneeMemberId",
+      "stateId",
+      "stateName",
+      "priority",
+      "estimateMinutes",
+      "remainingMinutes",
+      "labelId",
+      "actorMemberId",
+      "authorMemberId",
+      "createdByMemberId",
+      "oldRef",
+      "newRef",
     ]);
   });
 

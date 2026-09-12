@@ -594,12 +594,12 @@ export async function changeItemVisibility(
       tx,
       ctx,
       { ...item, visibility },
-      {
-        field: "visibility",
-        oldValue: item.visibility,
-        newValue: visibility,
-        forceInternal: visibility !== "CLIENT_VISIBLE",
-      },
+      // No `forceInternal`: `visibility` is not on the portal-safe list
+      // (activity.ts) and since 20260912120000 the database refuses it
+      // there, so this row is INTERNAL either way. The flag used to be
+      // passed here as if a share flip could be client-visible; it never
+      // could, and a client learns what changed from the STATE row.
+      { field: "visibility", oldValue: item.visibility, newValue: visibility },
     );
     await record(tx, {
       action: "work_item.visibility_changed",

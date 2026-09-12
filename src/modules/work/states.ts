@@ -132,6 +132,11 @@ export async function transitionState(
     newValue: to,
     oldRef: item.stateId,
     newRef: state.id,
+    // A move WITHIN a category (In progress → In review) changes nothing
+    // a client is shown — the portal sees categories, never state names
+    // — while the row carries two workflow-state ids. Portal-safe is
+    // about the FIELD and the CHANGE, not the field alone.
+    forceInternal: item.stateCategory === to,
   });
   await record(tx, {
     action: "work_item.state_changed",

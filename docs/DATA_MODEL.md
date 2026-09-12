@@ -2303,6 +2303,15 @@ enum WorkItemSource {
 ///   CHECK (kind <> 'REQUEST' OR source IN ('PORTAL','EMAIL','IN_APP'))
 ///   CHECK (triage_status IS NOT NULL OR state_category <> 'TRIAGE') — an
 ///     item in TRIAGE always carries a triage status
+///   CHECK (checklist_total >= 0 AND checklist_done >= 0
+///     AND checklist_done <= checklist_total) — the panel's "n of m"
+///     (20260912120000)
+///   TRIGGER work_item_milestone_guard BEFORE INSERT OR UPDATE OF
+///     milestone_id, project_id (20260912120000): the milestone must
+///     belong to the item's OWN project — the composite FK binds only the
+///     tenant, and a milestone carries its own visibility, so a borrowed
+///     one would file the task under a heading its client never shares.
+///     Token WORK_MILESTONE_PROJECT, unmapped until the M-key slice.
 ///   TRIGGER work_item_parent_guard BEFORE INSERT OR UPDATE OF parent_id,
 ///     project_id, type, visibility: parent must exist in the same tenant
 ///     AND same project; parent.type strictly higher (EPIC > TASK >
@@ -2332,7 +2341,13 @@ enum WorkItemSource {
 ///     with visibility = 'CLIENT_VISIBLE' ⇒ RAISE (the bulk action
 ///     flips children first, in the same tx, deepest first). History
 ///     FOLLOWS the item (review 2026-08-21): the same trigger flips the
-///     item's CLIENT_VISIBLE work_item_activity rows to INTERNAL — they
+///     item's CLIENT_VISIBLE work_item_activity rows to INTERNAL (the
+///     portal-safe field list is a CHECK on that table since
+///     20260912120000: a row may be CLIENT_VISIBLE only about
+///     stateCategory, title, targetDate, milestoneId or
+///     assigneeContactId, and a move WITHIN a category writes an
+///     INTERNAL row because the portal is shown categories, never state
+///     names) — they
 ///     are tenant-owned, refusing would make every downgrade after a
 ///     safe-field edit impossible, and the portal_gate on activity keys
 ///     on the row's own visibility. Soft-deleted children do not block
@@ -2437,10 +2452,17 @@ model WorkItem {
 /// labels) live only here. Cycle/lead time (Phase 6) is computed from
 /// state rows here.
 /// visibility: INTERNAL unless the field is in the PORTAL-SAFE LIST —
-/// {stateCategory, title, targetDate, milestoneId, assigneeContactId,
-/// visibility(→CLIENT_VISIBLE only)} — and the item is CLIENT_VISIBLE at
-/// write time; the service decides, the row carries it, portal_gate
-/// enforces it. Labels, links, estimates, priority, assigneeMemberId,
+/// {stateCategory, title, targetDate, milestoneId, assigneeContactId} —
+/// and the item is CLIENT_VISIBLE at write time; the service decides,
+/// the row carries it, `work_item_activity_portal_safe_field` (a CHECK
+/// since 20260912120000) refuses anything else, and portal_gate
+/// enforces the rest. *(The list once carried a sixth member,
+/// `visibility(→CLIENT_VISIBLE only)`; the code never implemented it —
+/// `PORTAL_SAFE_FIELDS` has always held five — so a share flip has
+/// always written an INTERNAL row, and the CHECK now pins that. A
+/// client is told what changed by the STATE row, not by a row saying
+/// their own access changed.)* A move WITHIN a category writes an
+/// INTERNAL row: the portal is shown categories, never state names. Labels, links, estimates, priority, assigneeMemberId,
 /// INTERNAL comments never produce a CLIENT_VISIBLE activity row.
 /// oldValue/newValue are display text; oldRef/newRef are ids for
 /// re-rendering (a member id here is INTERNAL by construction).
@@ -4048,7 +4070,7 @@ ALTER TABLE search_index FORCE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON search_index TO app_runtime;   -- writes come only from triggers/services in the same tx
 ```
 
-**Feed.** `AFTER INSERT OR UPDATE OR DELETE` triggers on `work_item`, `comment`, `project_update`, `document`, `project`, `client`, `contact`, `credential_item` (name/username/url/tags only), `client_asset` upsert/delete their row **in the same transaction** (visibility, client_id, project_id, portal_enabled copied from the source row — the index row can never be more visible than its source). `lang` = the tenant's config at write; a tenant locale change **restamps every row's `lang` in the same transaction** *(2026-09-07 — `src/search/rebuild.ts`; the STORED tsvector recomputes with it)* and audits `search.index_rebuilt {reason: 'locale_changed', from, to, rows}` when any row changed. There is **no forced full re-feed**: the feed triggers are the only projection path, and a row fed concurrently with the change can keep the old config, which is why the reader matches on each row's `lang` and probes every config the tenant holds. Query = `search @@ websearch_to_tsquery(lang, $q)` ranked by `ts_rank_cd`, per-type capped `UNION`, then hydrated by id under the caller's principal (so a stale index row cannot leak a since-hidden fact — the hydrate under RLS is the second belt). ⌘K palette: recents → `KEY-123` jump → per-type results → actions.
+**Feed.** `AFTER INSERT OR UPDATE OR DELETE` triggers on `work_item`, `comment`, `project_update`, `document`, `project`, `client`, `contact`, `credential_item` (name/username/url/tags only), `client_asset` upsert/delete their row **in the same transaction**. *(2026-09-12, 20260912120000: `work_item`'s trigger fires on `UPDATE OF` the columns the function READS — client/project, visibility, portal_enabled, title, number, description_text, state_category, assignee_member_id, `deleted_at` (the eviction) and `state_id`, which is in the list only because `state_category` is derived by a BEFORE trigger and an `UPDATE OF` list is matched against the columns the STATEMENT sets. Before it, every write re-fed the row: a drag across the board writes `rank` alone and was re-tokenising the whole description. The other feeds are UNCHANGED and still fire on every update — and `search_feed_comment` re-tokenises the WHOLE body each time (`search_feed_project` its scope summary), including the portal fan-out's `UPDATE comment SET portal_enabled` over every comment of a project. Their column lists are a later slice, and want doing before comments carry real volume.)* (visibility, client_id, project_id, portal_enabled copied from the source row — the index row can never be more visible than its source). `lang` = the tenant's config at write; a tenant locale change **restamps every row's `lang` in the same transaction** *(2026-09-07 — `src/search/rebuild.ts`; the STORED tsvector recomputes with it)* and audits `search.index_rebuilt {reason: 'locale_changed', from, to, rows}` when any row changed. There is **no forced full re-feed**: the feed triggers are the only projection path, and a row fed concurrently with the change can keep the old config, which is why the reader matches on each row's `lang` and probes every config the tenant holds. Query = `search @@ websearch_to_tsquery(lang, $q)` ranked by `ts_rank_cd`, per-type capped `UNION`, then hydrated by id under the caller's principal (so a stale index row cannot leak a since-hidden fact — the hydrate under RLS is the second belt). ⌘K palette: recents → `KEY-123` jump → per-type results → actions.
 
 **Tests.** Forbidden-columns grep on `search/portal.ts`; **lexeme probe** — an INTERNAL body word never matches under a contact principal; portal_gate + `portal_enabled=false` ⇒ 0 rows; posture test (projectScoped rows carry all three columns).
 

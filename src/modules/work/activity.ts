@@ -35,7 +35,12 @@ export async function writeActivity(
     readonly newValue?: string | null;
     readonly oldRef?: string | null;
     readonly newRef?: string | null;
-    /** visibility flips: only the flip TO CLIENT_VISIBLE is portal-safe. */
+    /**
+     * Hold a row INTERNAL even though its field is on the list: a move
+     * WITHIN a state category tells the portal nothing (it is shown
+     * categories, never state names) while carrying two state ids.
+     * A field that is NOT on the list is INTERNAL without this.
+     */
     readonly forceInternal?: boolean;
   },
 ): Promise<void> {
