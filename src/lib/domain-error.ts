@@ -20,6 +20,8 @@ export type DomainErrorCode =
   | "PARENT_NOT_VISIBLE" // a child cannot be client-visible under an internal parent
   | "CANNOT_NEST" // parent type must be strictly higher (EPIC > TASK > SUBTASK)
   | "HAS_CHILDREN" // delete refused while live subtasks exist
+  | "DESCRIPTION_TOO_LARGE" // the description's JSON or its extracted text is past its cap
+  | "STALE_DESCRIPTION" // someone else saved this description while this editor held it
   // Time (2T — DATA_MODEL.md §6.15; trigger tokens map 1:1 in src/modules/time/ctx.ts)
   | "NOTICE_UNACKNOWLEDGED" // staff notice not acknowledged — timers and clock-in refuse
   | "TIMER_ALREADY_RUNNING" // one running timer per member (partial unique)

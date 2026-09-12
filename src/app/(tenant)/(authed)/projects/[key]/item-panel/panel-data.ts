@@ -27,12 +27,12 @@ export async function loadPanelItem(
   number: number,
   returnTo: string,
   t: (key: StateSeedKey) => string,
-): Promise<ResolvedItemDetail | null> {
+): Promise<{ item: ResolvedItemDetail; canEdit: boolean } | null> {
   try {
-    const { item } = await getItemDetail(ctx, projectId, number);
+    const { item, canEdit } = await getItemDetail(ctx, projectId, number);
     // The state pair resolves HERE, at the server boundary, exactly as
     // the list surfaces do it (DATA_MODEL §6.14).
-    return resolveItemDetailState(item, t);
+    return { item: resolveItemDetailState(item, t), canEdit };
   } catch (e) {
     handleAuthzRedirect(e, returnTo); // MFA step-up, if a ✦ code ever gates a read
     if (e instanceof AuthzError) return null;

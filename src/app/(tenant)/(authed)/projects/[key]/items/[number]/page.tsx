@@ -51,8 +51,9 @@ export default async function ProjectItemPage({
   const ctx = { tenantId: membership.tenantId, actor };
   const self = `/projects/${project.key}/items/${n}`;
   const tStates = await getTranslations("projects.states.seed");
-  const item = await loadPanelItem(ctx, project.id, n!, self, (seedKey) => tStates(seedKey));
-  if (!item) notFound();
+  const panel = await loadPanelItem(ctx, project.id, n!, self, (seedKey) => tStates(seedKey));
+  if (!panel) notFound();
+  const { item, canEdit } = panel;
 
   const [documents, prefs] = await Promise.all([
     project.caps.viewDocuments
@@ -67,6 +68,7 @@ export default async function ProjectItemPage({
     <ItemPanel
       variant="page"
       item={item}
+      canEdit={canEdit}
       itemKey={`${project.key}-${item.number}`}
       projectKey={project.key}
       documents={documents}

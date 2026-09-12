@@ -12,6 +12,7 @@ import type { ResolvedItemDetail } from "@/modules/work";
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
+import { DescriptionField } from "./description-field";
 
 /**
  * ONE item panel, rendered in two places (UI.md §5.4): the side-peek
@@ -42,6 +43,7 @@ export async function ItemPanel({
   error,
   variant,
   fullPageHref,
+  canEdit,
 }: {
   item: ResolvedItemDetail;
   /** "ACME-12" — the human key the header shows. */
@@ -60,6 +62,8 @@ export async function ItemPanel({
   variant: "peek" | "page";
   /** Peek only: the link out to the full page. */
   fullPageHref?: string;
+  /** `work_item:edit` — whether the description is editable here. */
+  canEdit: boolean;
 }) {
   const t = await getTranslations("projects.item");
   const tBacklog = await getTranslations("projects.backlog");
@@ -93,7 +97,7 @@ export async function ItemPanel({
     <>
       <span className="num-id text-xs text-muted-foreground">{itemKey}</span>
       {title}
-      {variant === "peek" ? <SheetDescription className="sr-only">{t("description")}</SheetDescription> : null}
+      {variant === "peek" ? <SheetDescription className="sr-only">{t("sheetDescription")}</SheetDescription> : null}
       <div className="flex flex-wrap items-center gap-2">
         <VisibilityBadge visibility={item.visibility} />
         {item.archivedAt ? <span className="text-xs text-muted-foreground">{tCommon("archived")}</span> : null}
@@ -174,6 +178,21 @@ export async function ItemPanel({
           </SectionCard>
         </div>
       )}
+
+      <div className={variant === "peek" ? "px-4 pb-4" : "pb-4"}>
+        <DescriptionField
+          // Keyed by the ITEM, so a panel reused for a different task
+          // remounts the editor instead of rebinding the save to the new
+          // task while the old task's text is still on screen.
+          key={item.id}
+          itemId={item.id}
+          projectKey={projectKey}
+          doc={item.description}
+          token={item.descriptionToken}
+          visibility={item.visibility}
+          editable={canEdit}
+        />
+      </div>
 
       <div className={variant === "peek" ? "px-4 pb-4" : ""}>
         {error ? (

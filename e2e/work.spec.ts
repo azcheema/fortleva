@@ -323,6 +323,90 @@ test.describe("project board (owner)", () => {
     await expect(page.getByRole("heading", { level: 2, name: title })).toBeVisible();
   });
 
+  test("2W-F: the description saves itself, twice, and the checklist counts what it stores", async ({ page }) => {
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const title = `Described task ${Date.now()}`;
+    created.push(title); // afterEach removes it, pass or fail
+
+    await page.locator("#new-task").getByRole("button").click();
+    const createInput = page.locator("#new-task input");
+    await createInput.fill(title);
+    await createInput.press("Enter");
+    const row = page.locator('[data-slot="table-row"]', { hasText: title });
+    await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+    await row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) }).click();
+    await page.getByTestId("item-full-page").click();
+    await page.waitForURL(new RegExp(`/projects/${seed.projectKey}/items/\\d+$`), { timeout: 20_000 * SLOW });
+    const itemUrl = page.url();
+
+    const editor = () => page.getByTestId("description-editor");
+    await expect(editor()).toBeVisible();
+    // Wait on the autosave's own round trip rather than on the status
+    // text beside it. The POST is the event that certainly happened; the
+    // label is state that a later re-render can move on from. It is still
+    // asserted once below, because "Saved" appearing at all is the only
+    // proof the member is ever told the field is safe.
+    const saveLands = () =>
+      page.waitForResponse((r) => r.request().method() === "POST" && r.url().startsWith(itemUrl), {
+        timeout: 20_000 * SLOW,
+      });
+
+    // Blur commits immediately, so nothing here waits on the 2 s idle timer.
+    let landed = saveLands();
+    await editor().click();
+    await page.keyboard.type("The stack is behind the shed.");
+    await editor().blur();
+    await landed;
+    await expect(page.getByTestId("description").getByText("Saved", { exact: true })).toBeVisible({
+      timeout: 20_000 * SLOW,
+    });
+
+    // THE REGRESSION GUARD, and the reason this test exists. A save hands
+    // the editor the token its NEXT save must present, and that token has
+    // to be a hash of what POSTGRES stored rather than of what the server
+    // sent: jsonb re-orders object keys, so a token taken from the
+    // outgoing document matches nothing a later read computes, and the
+    // SECOND save of every editing session is refused as stale. One save
+    // proves nothing here — two do, and the reload proves the second one
+    // reached a column.
+    landed = saveLands();
+    await editor().click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(" Key is with Ana.");
+    await editor().blur();
+    await landed;
+    // A refusal is a toast, never a silent revert.
+    await expect(page.getByText(/Someone else saved this description/)).toHaveCount(0);
+
+    await page.reload();
+    await expect(editor()).toContainText("The stack is behind the shed.");
+    await expect(editor()).toContainText("Key is with Ana.");
+
+    // The checklist lives IN the description and is counted by the
+    // server, so the properties rail reads back what the document says.
+    landed = saveLands();
+    await editor().click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("[ ] buy sealant");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("bleed the radiator");
+    await editor().blur();
+    await landed;
+    // The refusal path is a toast, never a silent revert — and an
+    // INVALID_INPUT here is how the attrs-serialisation bug showed up.
+    await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+
+    await page.reload();
+    // Which half failed, if it fails: the document, or the counters the
+    // server derives from it.
+    await expect(editor()).toContainText("buy sealant");
+    await expect(page.getByTestId("item-properties")).toContainText("0 of 2 done");
+    // And the checkbox is named in the workspace's language, not in
+    // Tiptap's built-in English.
+    await expect(page.getByRole("checkbox", { name: /buy sealant/ })).toBeVisible();
+  });
+
   test("2W-F: the backlog reorders — by the row menu and by drag — and the order sticks", async ({ page }) => {
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const title = `Reorder task ${Date.now()}`;

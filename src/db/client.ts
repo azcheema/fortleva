@@ -34,6 +34,15 @@ declare global {
  * (DATA_MODEL.md §6.15): the COST rate ciphertext is salary-grade data —
  * only src/modules/time/rates.ts passes `omit: { amountCiphertext: false }`,
  * behind rate:view_cost ✦ + requireRecentMfa.
+ *
+ * `work_item.description` does NOT belong here, though it is tempting:
+ * it is large, and the hot paths that read a whole row never look at it.
+ * But the tenant export reads every model with a select-less
+ * `findMany({})` (src/export/service.ts), so a global omit would quietly
+ * drop every task description out of the member's own data export while
+ * every test still passed. Size is handled where it is created instead —
+ * the two full-row reads narrow themselves (src/modules/work/ordering.ts,
+ * states.ts).
  */
 const GLOBAL_OMIT = { rateCard: { amountCiphertext: true } } as const;
 

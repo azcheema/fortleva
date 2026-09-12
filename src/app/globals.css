@@ -671,3 +671,108 @@
 :where(.dark) .entity-tint {
   background-color: color-mix(in oklab, var(--entity) 28%, transparent);
 }
+
+/* ── Rich text (ARC-19) ───────────────────────────────────────────────
+   The task description's editable surface and its read-only twin. Tokens
+   only, and deliberately small: a description is prose inside a panel,
+   not a document — the type scale, the rhythm and the rule colour are
+   the product's, so a pasted heading cannot introduce a size the rest of
+   the app does not have. */
+.prose-body :where(p, ul, ol, blockquote, pre, h1, h2, h3) {
+  margin-block: 0.5rem;
+}
+.prose-body :where(p, ul, ol, blockquote, pre, h1, h2, h3):first-child {
+  margin-block-start: 0;
+}
+.prose-body :where(p, ul, ol, blockquote, pre, h1, h2, h3):last-child {
+  margin-block-end: 0;
+}
+.prose-body :where(h1) {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.prose-body :where(h2) {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.prose-body :where(h3) {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.prose-body :where(ul, ol) {
+  padding-inline-start: 1.25rem;
+}
+.prose-body :where(ul) {
+  list-style: disc;
+}
+.prose-body :where(ol) {
+  list-style: decimal;
+}
+.prose-body :where(blockquote) {
+  border-inline-start: 2px solid var(--border);
+  padding-inline-start: 0.75rem;
+  color: var(--muted-foreground);
+}
+.prose-body :where(code) {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background-color: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 0.0625rem 0.25rem;
+}
+.prose-body :where(pre) {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background-color: var(--muted);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  overflow-x: auto;
+}
+.prose-body :where(pre) :where(code) {
+  background: none;
+  padding: 0;
+}
+.prose-body :where(a) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* The checklist: a list that carries controls, so it loses the marker
+   and lays each item out as [checkbox, text]. */
+.prose-body :where(ul[data-type="taskList"]) {
+  list-style: none;
+  padding-inline-start: 0;
+}
+.prose-body :where(ul[data-type="taskList"] li) {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.prose-body :where(ul[data-type="taskList"] li > label) {
+  margin-block-start: 0.125rem;
+}
+/* The checkbox is a native control Tiptap renders itself, so it is the
+   one input in the product the component layer never sees. Give it the
+   product's accent and focus ring rather than the browser's. */
+.prose-body :where(ul[data-type="taskList"] li input[type="checkbox"]) {
+  accent-color: var(--primary);
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  cursor: pointer;
+}
+.prose-body :where(ul[data-type="taskList"] li input[type="checkbox"]:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.prose-body :where(ul[data-type="taskList"] li > div) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* ProseMirror's own placeholder hook: an empty first paragraph shows the
+   prompt instead of an empty box nobody knows they can type in. */
+.prose-body :where(p.is-editor-empty:first-child)::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  float: inline-start;
+  height: 0;
+  pointer-events: none;
+}

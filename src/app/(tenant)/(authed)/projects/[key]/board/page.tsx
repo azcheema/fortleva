@@ -88,7 +88,7 @@ export default async function ProjectBoardPage({
   if (peekItem && project.caps.viewDocuments) {
     peekDocuments = await listDocuments(
       { tenantId: membership.tenantId, actor },
-      { attachedToWorkItemId: peekItem.id },
+      { attachedToWorkItemId: peekItem.item.id },
     );
   }
 
@@ -145,8 +145,9 @@ export default async function ProjectBoardPage({
         <PeekShell returnHref={listHref}>
           <ItemPanel
             variant="peek"
-            item={peekItem}
-            itemKey={`${project.key}-${peekItem.number}`}
+            item={peekItem.item}
+            canEdit={peekItem.canEdit}
+            itemKey={`${project.key}-${peekItem.item.number}`}
             projectKey={project.key}
             documents={peekDocuments}
             caps={{
@@ -155,8 +156,8 @@ export default async function ProjectBoardPage({
               deleteDocuments: project.caps.deleteDocuments,
               changeDocumentVisibility: project.caps.changeDocumentVisibility,
             }}
-            returnTo={peekHrefOf(boardBase, query, `${project.key}-${peekItem.number}`)}
-            fullPageHref={`/projects/${project.key}/items/${peekItem.number}`}
+            returnTo={peekHrefOf(boardBase, query, `${project.key}-${peekItem.item.number}`)}
+            fullPageHref={`/projects/${project.key}/items/${peekItem.item.number}`}
             durationStyle={prefs.durationStyle}
             error={error}
           />

@@ -77,7 +77,18 @@ export async function ensureProjectStates(
 }
 
 type StateRow = NonNullable<Awaited<ReturnType<TenantDb["workflowState"]["findFirst"]>>>;
-type ItemRow = NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>;
+/**
+ * A whole work_item row MINUS the description pair. Those two columns
+ * are a ProseMirror document and its extracted text — up to 512 KB and
+ * 100 KB once the description editor ships — and nothing on the state
+ * machine's path, or the board drag's, reads either. They were always
+ * NULL before, so a select-less read cost nothing; now it would move the
+ * whole document to re-rank a card.
+ */
+type ItemRow = Omit<
+  NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>,
+  "description" | "descriptionText"
+>;
 
 /**
  * The state machine (§6.14), as ONE transaction step so every entry
@@ -163,6 +174,7 @@ export async function changeState(
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
     const item = await tx.workItem.findFirst({
       where: { tenantId: ctx.tenantId, id: itemId, deletedAt: null },
+      omit: { description: true, descriptionText: true },
     });
     if (!item) deny("NOT_FOUND");
     await assertInScope(tx, ctx.actor, { projectId: item!.projectId });

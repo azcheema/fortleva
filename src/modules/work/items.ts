@@ -10,6 +10,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { emit } from "@/notify/emit";
 import { writeActivity } from "./activity";
+import { descriptionToken } from "./description-token";
 import { guarded } from "./db-errors";
 import { bottomRank, lockProjectRanks } from "./rank-lock";
 import { ensureProjectStates, transitionState, type WorkCtx } from "./states";
@@ -269,16 +270,23 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority"> & {
   parent: { id: string; number: number; title: string } | null;
   /** Name only; the picker (and the same-project guard) arrive with the M key. */
   milestone: { id: string; name: string; visibility: "INTERNAL" | "CLIENT_VISIBLE" } | null;
+  /** The stored ProseMirror document (ARC-19) — null when there is none. */
+  description: unknown;
+  /**
+   * What the editor sends back with its next save. NOT `updatedAt`: a
+   * rank move bumps that, and the panel would refuse a save because a
+   * colleague dragged the card (description.ts).
+   */
+  descriptionToken: string;
 };
 
 /**
- * No caps here yet, deliberately: every `isAuthorized` resolves the
- * member's permissions with its own query, and this slice's panel is
- * read-only — five caps per render that nobody reads is five wasted
- * round trips. The slices that add editing (the PropertyPicker, `V`)
- * bring back exactly the ones they use.
+ * ONE cap, not five: each `isAuthorized` resolves the member's
+ * permissions with its own query, so the panel asks for exactly what it
+ * renders — today, whether the description is editable. The slices that
+ * add the PropertyPicker and `V` add theirs when they use them.
  */
-export type ItemDetailResult = { item: ItemDetail };
+export type ItemDetailResult = { item: ItemDetail; canEdit: boolean };
 
 /** `ItemDetail` with the state pair resolved — see `ResolvedItemList`. */
 export type ResolvedItemDetail = Omit<ItemDetail, "stateName" | "stateSeedKey"> & { stateName: string };
@@ -322,6 +330,9 @@ export async function getItemDetail(
         archivedAt: true,
         checklistTotal: true,
         checklistDone: true,
+        // The panel is the only surface that loads the document; the list
+        // reads must never select it (a board is 200 descriptions).
+        description: true,
         state: { select: { name: true, seedKey: true } },
         assigneeMember: { select: { user: { select: { name: true } } } },
         parent: { select: { id: true, number: true, title: true, deletedAt: true } },
@@ -329,14 +340,17 @@ export async function getItemDetail(
       },
     });
     if (!row) deny("NOT_FOUND");
-    const attachmentCount = await tx.document.count({
-      where: {
-        tenantId: ctx.tenantId,
-        attachedToType: "WORK_ITEM",
-        attachedToId: row!.id,
-        deletedAt: null,
-      },
-    });
+    const [attachmentCount, canEdit] = await Promise.all([
+      tx.document.count({
+        where: {
+          tenantId: ctx.tenantId,
+          attachedToType: "WORK_ITEM",
+          attachedToId: row!.id,
+          deletedAt: null,
+        },
+      }),
+      isAuthorized(tx, ctx.actor, "work_item:edit"),
+    ]);
     const item = row!;
     return {
       item: {
@@ -371,7 +385,10 @@ export async function getItemDetail(
             ? { id: item.parent.id, number: item.parent.number, title: item.parent.title }
             : null,
         milestone: item.milestone,
+        description: item.description ?? null,
+        descriptionToken: descriptionToken(item.description ?? null),
       },
+      canEdit,
     };
   });
 }
@@ -458,7 +475,7 @@ export async function createItem(
         createdByMemberId: ctx.actor.memberId,
       },
     });
-    const created = await tx.workItem.findFirst({ where: { tenantId: ctx.tenantId, id } });
+    const created = await tx.workItem.findFirst({ where: { tenantId: ctx.tenantId, id }, omit: { description: true, descriptionText: true } });
     await writeActivity(tx, ctx, created!, { field: "created", forceInternal: true });
     await record(tx, {
       action: "work_item.created",

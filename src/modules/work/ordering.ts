@@ -84,6 +84,7 @@ export async function moveItem(ctx: WorkCtx, input: MoveInput): Promise<MovedIte
       await lockProjectRanks(tx, projectId);
       const item = await tx.workItem.findFirst({
         where: { tenantId: ctx.tenantId, id: probe.id, deletedAt: null },
+        omit: { description: true, descriptionText: true }, // see ItemRow (states.ts)
       });
       if (!item) deny("NOT_FOUND");
 

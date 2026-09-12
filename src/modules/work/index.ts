@@ -31,3 +31,5 @@ export {
 } from "./bulk";
 export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from "./ordering";
 export { changeState, ensureProjectStates } from "./states";
+export { updateItemDescription, type DescriptionSaved } from "./description";
+export { descriptionToken } from "./description-token";

@@ -931,6 +931,8 @@
     "PARENT_NOT_VISIBLE": "Its parent task is private to your team, so this one can’t be shown to the client. Share the parent first.",
     "CANNOT_NEST": "A subtask can’t have subtasks of its own.",
     "HAS_CHILDREN": "This task has subtasks. Delete them first.",
+    "DESCRIPTION_TOO_LARGE": "This description is too long to save. Shorten it, or attach the detail as a file.",
+    "STALE_DESCRIPTION": "Someone else saved this description while you were editing. Copy your text, reload the page, and paste it back.",
     "NOT_FOUND": "Not found.",
     "FORBIDDEN": "You do not have permission to do that.",
     "NOT_ENTITLED": "Not included in your plan.",
@@ -1672,7 +1674,7 @@
       "byAgreement": "By agreement"
     },
     "item": {
-      "description": "Task details and attachments",
+      "sheetDescription": "Task details and attachments",
       "properties": {
         "state": "State",
         "assignee": "Assignee",
@@ -1685,6 +1687,26 @@
         "milestone": "Milestone",
         "checklist": "Checklist",
         "checklistValue": "{done} of {total} done"
+      },
+      "description": {
+        "label": "Description",
+        "placeholder": "What needs doing, and anything the next person needs to know.",
+        "toolbar": "Text formatting",
+        "saving": "Saving…",
+        "saved": "Saved",
+        "notSaved": "Not saved",
+        "saveFailed": "Couldn’t save your description. Your text is still here — try again.",
+        "checkboxLabel": "Checklist item: {text}",
+        "checkboxEmpty": "empty",
+        "format": {
+          "bold": "Bold",
+          "italic": "Italic",
+          "strike": "Strikethrough",
+          "code": "Code",
+          "bulletList": "Bulleted list",
+          "orderedList": "Numbered list",
+          "taskList": "Checklist"
+        }
       },
       "openFullPage": "Open full page",
       "attachments": {

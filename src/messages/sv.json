@@ -931,6 +931,8 @@
     "PARENT_NOT_VISIBLE": "Den överordnade uppgiften är privat för teamet, så den här kan inte visas för kunden. Dela den överordnade uppgiften först.",
     "CANNOT_NEST": "En deluppgift kan inte ha egna deluppgifter.",
     "HAS_CHILDREN": "Uppgiften har deluppgifter. Ta bort dem först.",
+    "DESCRIPTION_TOO_LARGE": "Beskrivningen är för lång för att sparas. Korta ner den, eller bifoga detaljerna som en fil.",
+    "STALE_DESCRIPTION": "Någon annan sparade beskrivningen medan du redigerade. Kopiera din text, ladda om sidan och klistra in den igen.",
     "NOT_FOUND": "Hittades inte.",
     "FORBIDDEN": "Du har inte behörighet att göra det.",
     "NOT_ENTITLED": "Ingår inte i din plan.",
@@ -1672,7 +1674,7 @@
       "byAgreement": "Per avtal"
     },
     "item": {
-      "description": "Uppgiftens detaljer och bilagor",
+      "sheetDescription": "Uppgiftens detaljer och bilagor",
       "properties": {
         "state": "Status",
         "assignee": "Ansvarig",
@@ -1685,6 +1687,26 @@
         "milestone": "Milstolpe",
         "checklist": "Checklista",
         "checklistValue": "{done} av {total} klara"
+      },
+      "description": {
+        "label": "Beskrivning",
+        "placeholder": "Vad som ska göras, och det nästa person behöver veta.",
+        "toolbar": "Textformatering",
+        "saving": "Sparar…",
+        "saved": "Sparat",
+        "notSaved": "Inte sparat",
+        "saveFailed": "Beskrivningen kunde inte sparas. Texten finns kvar — försök igen.",
+        "checkboxLabel": "Checklistpunkt: {text}",
+        "checkboxEmpty": "tom",
+        "format": {
+          "bold": "Fet",
+          "italic": "Kursiv",
+          "strike": "Genomstruken",
+          "code": "Kod",
+          "bulletList": "Punktlista",
+          "orderedList": "Numrerad lista",
+          "taskList": "Checklista"
+        }
       },
       "openFullPage": "Öppna hela sidan",
       "attachments": {
