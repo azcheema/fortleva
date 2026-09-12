@@ -14,9 +14,10 @@ import { cn } from "@/lib/utils";
 import { loadProject } from "../data";
 import { GROUP_BYS, isGroupBy, listHrefOf, peekHrefOf, workViewHref, type GroupBy } from "@/lib/work-view";
 
-import { ItemPeek } from "../item-peek/item-peek";
-import { PeekShell } from "../item-peek/peek-shell";
-import { peekItemNumber } from "../item-peek/peek-param";
+import { ItemPanel } from "../item-panel/item-panel";
+import { loadPanelItem } from "../item-panel/panel-data";
+import { PeekShell } from "../item-panel/peek-shell";
+import { peekItemNumber } from "../item-panel/peek-param";
 import { Board } from "./board";
 
 /**
@@ -48,10 +49,24 @@ export default async function ProjectBoardPage({
   // so the 12 s poll sees a difference and refreshes — the other order
   // would let the board sit stale until the next write.
   const version = await projectWorkVersion(ctx, project.id);
-  const [rawData, t, tStates, locale, prefs] = await Promise.all([
+  // The state translator is resolved first so the panel read can run
+  // BESIDE the list rather than after it — a peek is one page load, not
+  // three serial transactions. The BACKLOG deliberately does NOT do this
+  // (see its page): fetching concurrently there made the virtualised
+  // list's window jump back to the top after an inline edit's refresh.
+  // The board renders no window, and its suite is green on this shape.
+  const tStates = await getTranslations("projects.states.seed");
+  const peekNumber = peekItemNumber(item, project.key);
+  const listHref = listHrefOf(`/projects/${project.key}/board`, query);
+  const [rawData, peekItem, t, locale, prefs] = await Promise.all([
     listItems(ctx, project.id),
+    // ONE scope-checked read, never a lookup in the list: the board
+    // drops archived items, so an archived one could be addressed and
+    // not open (panel-data.ts).
+    peekNumber === null
+      ? Promise.resolve(null)
+      : loadPanelItem(ctx, project.id, peekNumber, listHref, (seedKey) => tStates(seedKey)),
     getTranslations("projects.board"),
-    getTranslations("projects.states.seed"),
     getLocale(),
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
       readPreferences(tx, membership.tenantId),
@@ -65,13 +80,10 @@ export default async function ProjectBoardPage({
   const data = resolveStateNames(rawData, (seedKey) => tStates(seedKey));
   const empty = data.items.length === 0;
 
-  // The side-peek (2W-B) — same URL contract as the backlog's.
+  // The side-peek (2W-B) — same URL contract as the backlog's. One
+  // serializer for both work surfaces: it preserves whatever the member
+  // had chosen and puts exactly one `?` in the URL (`listHref` above).
   const boardBase = `/projects/${project.key}/board`;
-  // One serializer for both work surfaces: it preserves whatever the
-  // member had chosen and puts exactly one `?` in the URL.
-  const listHref = listHrefOf(boardBase, query);
-  const peekNumber = peekItemNumber(item, project.key);
-  const peekItem = peekNumber === null ? undefined : data.items.find((i) => i.number === peekNumber);
   let peekDocuments: DocumentListItem[] = [];
   if (peekItem && project.caps.viewDocuments) {
     peekDocuments = await listDocuments(
@@ -131,9 +143,11 @@ export default async function ProjectBoardPage({
       />
       {peekItem ? (
         <PeekShell returnHref={listHref}>
-          <ItemPeek
+          <ItemPanel
+            variant="peek"
             item={peekItem}
             itemKey={`${project.key}-${peekItem.number}`}
+            projectKey={project.key}
             documents={peekDocuments}
             caps={{
               viewDocuments: project.caps.viewDocuments,
@@ -142,6 +156,7 @@ export default async function ProjectBoardPage({
               changeDocumentVisibility: project.caps.changeDocumentVisibility,
             }}
             returnTo={peekHrefOf(boardBase, query, `${project.key}-${peekItem.number}`)}
+            fullPageHref={`/projects/${project.key}/items/${peekItem.number}`}
             durationStyle={prefs.durationStyle}
             error={error}
           />

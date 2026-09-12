@@ -247,6 +247,135 @@ export async function listItems(
   });
 }
 
+/**
+ * ONE item, by its human number, for the item panel (peek and full
+ * page). The panel does NOT read its item out of a list any more: a list
+ * is filtered (the board drops archived items, the backlog drops them
+ * unless asked), so an item could be addressed and not found for reasons
+ * that had nothing to do with permission. Archived items ARE returned —
+ * a soft-deleted one never is.
+ */
+export type ItemDetail = Omit<ItemListEntry, "type" | "priority"> & {
+  // Closed unions, not the list's open strings: the panel interpolates
+  // them straight into message keys (`states.workItemType.${type}`),
+  // which next-intl can only type against the catalogue when the value
+  // is closed — a cast there would silence the check instead.
+  type: "EPIC" | "TASK" | "SUBTASK";
+  kind: "TASK" | "BUG" | "REQUEST";
+  priority: "NONE" | "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  depth: number;
+  startDate: Date | null;
+  /** "Follows ACME-12" — null at the root, and null when the parent is soft-deleted. */
+  parent: { id: string; number: number; title: string } | null;
+  /** Name only; the picker (and the same-project guard) arrive with the M key. */
+  milestone: { id: string; name: string; visibility: "INTERNAL" | "CLIENT_VISIBLE" } | null;
+};
+
+/**
+ * No caps here yet, deliberately: every `isAuthorized` resolves the
+ * member's permissions with its own query, and this slice's panel is
+ * read-only — five caps per render that nobody reads is five wasted
+ * round trips. The slices that add editing (the PropertyPicker, `V`)
+ * bring back exactly the ones they use.
+ */
+export type ItemDetailResult = { item: ItemDetail };
+
+/** `ItemDetail` with the state pair resolved — see `ResolvedItemList`. */
+export type ResolvedItemDetail = Omit<ItemDetail, "stateName" | "stateSeedKey"> & { stateName: string };
+
+/** The detail twin of `resolveStateNames`: strips the raw pair at the page boundary. */
+export function resolveItemDetailState(
+  item: ItemDetail,
+  t: (key: StateSeedKey) => string,
+): ResolvedItemDetail {
+  const { stateName, stateSeedKey, ...rest } = item;
+  return { ...rest, stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t) };
+}
+
+export async function getItemDetail(
+  ctx: WorkCtx,
+  projectId: string,
+  number: number,
+): Promise<ItemDetailResult> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:view");
+    await assertInScope(tx, ctx.actor, { projectId });
+    const row = await tx.workItem.findFirst({
+      where: { tenantId: ctx.tenantId, projectId, number, deletedAt: null },
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        type: true,
+        kind: true,
+        depth: true,
+        stateId: true,
+        stateCategory: true,
+        priority: true,
+        estimateMinutes: true,
+        startDate: true,
+        targetDate: true,
+        visibility: true,
+        assigneeMemberId: true,
+        rootId: true,
+        parentId: true,
+        archivedAt: true,
+        checklistTotal: true,
+        checklistDone: true,
+        state: { select: { name: true, seedKey: true } },
+        assigneeMember: { select: { user: { select: { name: true } } } },
+        parent: { select: { id: true, number: true, title: true, deletedAt: true } },
+        milestone: { select: { id: true, name: true, visibility: true } },
+      },
+    });
+    if (!row) deny("NOT_FOUND");
+    const attachmentCount = await tx.document.count({
+      where: {
+        tenantId: ctx.tenantId,
+        attachedToType: "WORK_ITEM",
+        attachedToId: row!.id,
+        deletedAt: null,
+      },
+    });
+    const item = row!;
+    return {
+      item: {
+        id: item.id,
+        number: item.number,
+        title: item.title,
+        type: item.type,
+        kind: item.kind,
+        depth: item.depth,
+        stateId: item.stateId,
+        stateCategory: item.stateCategory,
+        // RAW pair, resolved by the page (resolveItemDetailState).
+        stateName: item.state.name,
+        stateSeedKey: item.state.seedKey,
+        priority: item.priority,
+        estimateMinutes: item.estimateMinutes,
+        startDate: item.startDate,
+        targetDate: item.targetDate,
+        visibility: item.visibility,
+        assigneeMemberId: item.assigneeMemberId,
+        assigneeName: item.assigneeMember?.user.name ?? null,
+        rootId: item.rootId,
+        parentId: item.parentId,
+        archivedAt: item.archivedAt,
+        checklistTotal: item.checklistTotal,
+        checklistDone: item.checklistDone,
+        attachmentCount,
+        // A parent that was soft-deleted is no reference to show: the
+        // panel would link a key that 404s.
+        parent:
+          item.parent && item.parent.deletedAt === null
+            ? { id: item.parent.id, number: item.parent.number, title: item.parent.title }
+            : null,
+        milestone: item.milestone,
+      },
+    };
+  });
+}
+
 /** Title-only create (UI rule 2): lands in the default state — or the
  * given state of the same project (a board column's "+") — at the
  * bottom of the list; visibility defaults from the parent (INTERNAL at

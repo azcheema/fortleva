@@ -12,9 +12,10 @@ import { listItems, resolveStateNames } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../data";
-import { ItemPeek } from "../item-peek/item-peek";
-import { PeekShell } from "../item-peek/peek-shell";
-import { peekItemNumber } from "../item-peek/peek-param";
+import { ItemPanel } from "../item-panel/item-panel";
+import { loadPanelItem } from "../item-panel/panel-data";
+import { PeekShell } from "../item-panel/peek-shell";
+import { peekItemNumber } from "../item-panel/peek-param";
 import { BacklogTable } from "./backlog-table";
 
 /**
@@ -43,26 +44,7 @@ export default async function ProjectBacklogPage({
   const project = await loadProject(key);
   const { membership, actor } = await requireTenantContext();
   const includeArchived = archived === "1";
-  const rawData = await listItems(
-    { tenantId: membership.tenantId, actor },
-    project.id,
-    { includeArchived },
-  );
-  const tStates = await getTranslations("projects.states.seed");
-  // Stage names resolve HERE, once, at the server boundary — every
-  // surface below (columns, cards, the move picker, the side-peek) then
-  // receives plain strings. A state still wearing its seeded default
-  // renders in the VIEWER's language; a renamed one renders its tenant
-  // text, forever (DATA_MODEL §6.14).
-  const data = resolveStateNames(rawData, (seedKey) => tStates(seedKey));
-  const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
-    readPreferences(tx, membership.tenantId),
-  );
-  const t = await getTranslations("projects.backlog");
-  const locale = await getLocale();
-
-  // The side-peek (2W-B): `?item=KEY-123` resolves against the loaded
-  // list — an unknown number or a foreign key is silently no peek.
+  const ctx = { tenantId: membership.tenantId, actor };
   const base = `/projects/${project.key}/backlog`;
   // Every href on this surface goes through the one serializer: it
   // preserves whatever the member had chosen and puts exactly one `?`
@@ -70,7 +52,34 @@ export default async function ProjectBacklogPage({
   // this replaces was correct only while one other param could exist.
   const listHref = listHrefOf(base, query);
   const peekNumber = peekItemNumber(item, project.key);
-  const peekItem = peekNumber === null ? undefined : data.items.find((i) => i.number === peekNumber);
+  // Sequential, deliberately (2026-09-12): fetching the list, the
+  // preferences and the panel read CONCURRENTLY made the virtualised
+  // backlog's window reset to the top after an inline edit's refresh —
+  // reproducible in `work.spec.ts`, and one saved round trip is not
+  // worth a list that jumps under the member's hands.
+  const rawData = await listItems(ctx, project.id, { includeArchived });
+  const tStates = await getTranslations("projects.states.seed");
+  // ONE scope-checked read, never a lookup in the list: the list is
+  // filtered (archived items need `?archived=1`), so an item could be
+  // addressed and not open for a reason that is not permission
+  // (panel-data.ts).
+  const peekItem =
+    peekNumber === null
+      ? null
+      : await loadPanelItem(ctx, project.id, peekNumber, listHref, (seedKey) => tStates(seedKey));
+  const prefs = await withTenant(
+    membership.tenantId,
+    { type: "member", id: membership.memberId },
+    (tx) => readPreferences(tx, membership.tenantId),
+  );
+  const t = await getTranslations("projects.backlog");
+  const locale = await getLocale();
+  // Stage names resolve HERE, once, at the server boundary — every
+  // surface below (columns, cards, the move picker, the side-peek) then
+  // receives plain strings. A state still wearing its seeded default
+  // renders in the VIEWER's language; a renamed one renders its tenant
+  // text, forever (DATA_MODEL §6.14).
+  const data = resolveStateNames(rawData, (seedKey) => tStates(seedKey));
   let peekDocuments: DocumentListItem[] = [];
   if (peekItem && project.caps.viewDocuments) {
     peekDocuments = await listDocuments(
@@ -117,9 +126,11 @@ export default async function ProjectBacklogPage({
       )}
       {peekItem ? (
         <PeekShell returnHref={listHref}>
-          <ItemPeek
+          <ItemPanel
+            variant="peek"
             item={peekItem}
             itemKey={`${project.key}-${peekItem.number}`}
+            projectKey={project.key}
             documents={peekDocuments}
             caps={{
               viewDocuments: project.caps.viewDocuments,
@@ -128,6 +139,7 @@ export default async function ProjectBacklogPage({
               changeDocumentVisibility: project.caps.changeDocumentVisibility,
             }}
             returnTo={peekHrefOf(base, query, `${project.key}-${peekItem.number}`)}
+            fullPageHref={`/projects/${project.key}/items/${peekItem.number}`}
             durationStyle={prefs.durationStyle}
             error={error}
           />

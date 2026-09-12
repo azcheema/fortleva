@@ -1676,8 +1676,17 @@
       "properties": {
         "state": "Status",
         "assignee": "Ansvarig",
-        "estimate": "Estimat"
+        "type": "Typ",
+        "priority": "Prioritet",
+        "estimate": "Estimat",
+        "startDate": "Startdatum",
+        "dueDate": "Förfallodatum",
+        "parent": "Del av",
+        "milestone": "Milstolpe",
+        "checklist": "Checklista",
+        "checklistValue": "{done} av {total} klara"
       },
+      "openFullPage": "Öppna hela sidan",
       "attachments": {
         "title": "Bilagor",
         "empty": "Inga filer på den här uppgiften ännu",

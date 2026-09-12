@@ -275,6 +275,54 @@ test.describe("project board (owner)", () => {
     await expect(page).not.toHaveURL(/item=/);
   });
 
+  test("2W-P: the item panel is ONE component in two places, and an archived item still opens", async ({ page }) => {
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const title = `Panel task ${Date.now()}`;
+    created.push(title); // afterEach removes it, pass or fail
+
+    await page.locator("#new-task").getByRole("button").click();
+    const createInput = page.locator("#new-task input");
+    await createInput.fill(title);
+    await createInput.press("Enter");
+    const row = page.locator('[data-slot="table-row"]', { hasText: title });
+    await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+
+    // Peek → full page: the same panel, the same properties.
+    await row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) }).click();
+    const peek = page.getByTestId("item-peek");
+    await expect(peek).toBeVisible();
+    await expect(peek.getByTestId("item-properties")).toBeVisible();
+    await peek.getByTestId("item-full-page").click();
+    await page.waitForURL(new RegExp(`/projects/${seed.projectKey}/items/\\d+$`), { timeout: 20_000 * SLOW });
+    const itemUrl = page.url();
+    const number = itemUrl.split("/").pop()!;
+    await expect(page.getByRole("heading", { level: 2, name: title })).toBeVisible();
+    await expect(page.getByTestId("item-properties")).toBeVisible();
+    // The project shell is still around it — the panel is a tab-level
+    // page, not a screen of its own — and the strip says WHERE you are:
+    // an item page is a Backlog sub-view, so that tab is current. A strip
+    // with nothing current reads as "this page has no tabs".
+    await expect(page.getByRole("link", { name: "Backlog" })).toHaveAttribute("aria-current", "page");
+
+    // THE REGRESSION GUARD for reading the panel's item out of a list:
+    // the board never loads archived rows, so before the scoped single
+    // read an archived item could be addressed and simply not open.
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    await page
+      .locator('[data-slot="table-row"]', { hasText: title })
+      .getByTestId("backlog-select-row")
+      .click();
+    await page.getByTestId("bulk-archive").click();
+    await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toHaveCount(0, {
+      timeout: 20_000 * SLOW,
+    });
+    await page.goto(`/projects/${seed.projectKey}/board?item=${seed.projectKey}-${number}`);
+    await expect(page.getByTestId("item-peek")).toBeVisible({ timeout: 20_000 * SLOW });
+    await expect(page.getByTestId("item-peek")).toContainText(title);
+    await page.goto(itemUrl);
+    await expect(page.getByRole("heading", { level: 2, name: title })).toBeVisible();
+  });
+
   test("2W-F: the backlog reorders — by the row menu and by drag — and the order sticks", async ({ page }) => {
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const title = `Reorder task ${Date.now()}`;
@@ -585,6 +633,19 @@ test.describe("project board (employee)", () => {
     await expect(dialog.getByTestId("move-top-IN_PROGRESS").first()).toBeVisible();
     await expect(dialog.getByTestId("move-top-DONE")).toHaveCount(0);
     await page.keyboard.press("Escape");
+  });
+
+  test("the item page obeys scope: the assigned project's item renders, and everything else is the same 404", async ({ page }) => {
+    // Control first, so the denials below are scoping and not a broken page.
+    await page.goto(`/projects/${seed.projectKey}/items/1`);
+    await expect(page.getByTestId("item-properties")).toBeVisible();
+    // An item of a project this employee is not assigned to…
+    await page.goto(`/projects/${seed.completedProjectKey}/items/1`);
+    await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+    await expect(page.getByTestId("item-properties")).toHaveCount(0);
+    // …and a number that exists nowhere answer identically (AUTHZ §4).
+    await page.goto(`/projects/${seed.projectKey}/items/999999`);
+    await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
   });
 
   test("a project outside the employee's scope has no board — the in-shell 404, not a forbidden screen", async ({ page }) => {

@@ -58,7 +58,13 @@ export default async function ProjectLayout({
   const tabs = [
     { href: base, label: t("tabs.overview"), exact: true },
     { href: `${base}/board`, label: t("tabs.board") },
-    { href: `${base}/backlog`, label: t("tabs.backlog") },
+    // A single item's page is a Backlog sub-view, the way /money is a
+    // sub-view of Time: the backlog is the project's full list of items
+    // (archived ones included), and an item page reached from search or
+    // the inbox has no board context to return to. Without this the
+    // strip renders with NOTHING current, which reads as "this page has
+    // no tabs".
+    { href: `${base}/backlog`, label: t("tabs.backlog"), also: [`${base}/items`] },
     { href: `${base}/timeline`, label: t("tabs.timeline") },
     ...(canViewTime ? [{ href: `${base}/time`, label: t("tabs.time"), also: [`${base}/money`] }] : []),
     ...(project.caps.viewDocuments ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),

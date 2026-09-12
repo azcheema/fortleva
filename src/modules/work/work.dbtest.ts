@@ -13,8 +13,10 @@ import {
   changeState,
   createItem,
   deleteItem,
+  getItemDetail,
   listItems,
   moveItem,
+  setItemArchived,
   updateItemFields,
 } from "./index";
 
@@ -468,6 +470,60 @@ describe("deny-default scoping", () => {
     const list = await listItems(employeeCtx(), projectId);
     expect(list.items.length).toBeGreaterThan(0);
     expect(list.caps.canDelete).toBe(false); // employee lacks work_item:delete
+  });
+});
+
+/**
+ * The panel's one read. Its denial is NOT covered by the browser test —
+ * there `loadProject` 404s first, so the item-level scope check would
+ * pass a deleted `assertInScope` unnoticed (2026-09-12 review). This
+ * block puts the seam under test directly. It runs AFTER the scoping
+ * block above, which is what assigns the employee to this client.
+ */
+describe("getItemDetail — the panel's one scoped read", () => {
+  it("returns an archived item, refuses a soft-deleted one, and shows no soft-deleted parent", async () => {
+    const parent = await createItem(ownerCtx(), { projectId, title: "Detail parent" });
+    const child = await createItem(ownerCtx(), { projectId, title: "Detail child", parentId: parent.id });
+
+    const { item } = await getItemDetail(ownerCtx(), projectId, child.number);
+    expect(item.id).toBe(child.id);
+    expect(item.type).toBe("SUBTASK");
+    expect(item.parent).toMatchObject({ number: parent.number, title: "Detail parent" });
+
+    // The board's list has no archived rows; the panel must still open one.
+    await setItemArchived(ownerCtx(), child.id, true);
+    expect((await getItemDetail(ownerCtx(), projectId, child.number)).item.archivedAt).not.toBeNull();
+    await setItemArchived(ownerCtx(), child.id, false);
+
+    // A soft-deleted parent is no reference to show — the panel would
+    // link a key that 404s — and the parent itself is gone from it.
+    await f.platform.workItem.update({ where: { id: parent.id }, data: { deletedAt: new Date() } });
+    expect((await getItemDetail(ownerCtx(), projectId, child.number)).item.parent).toBeNull();
+    await expect(getItemDetail(ownerCtx(), projectId, parent.number)).rejects.toThrow(AuthzError);
+    await f.platform.workItem.update({ where: { id: parent.id }, data: { deletedAt: null } });
+  });
+
+  it("a project the member is not assigned to answers exactly as a number that exists nowhere", async () => {
+    const otherClientId = randomUUID();
+    const otherProjectId = randomUUID();
+    await f.platform.client.create({
+      data: { id: otherClientId, tenantId: f.tenantId, name: "Other Co" },
+    });
+    await f.platform.project.create({
+      data: { id: otherProjectId, tenantId: f.tenantId, clientId: otherClientId, key: "OTHER", name: "Other site" },
+    });
+    const strangers = await createItem(ownerCtx(), { projectId: otherProjectId, title: "Not the employee's" });
+
+    // Positive control FIRST: in the project they hold, the same call resolves.
+    const mine = await createItem(ownerCtx(), { projectId, title: "The employee's own project" });
+    expect((await getItemDetail(employeeCtx(), projectId, mine.number)).item.id).toBe(mine.id);
+
+    // The other client's project: an AuthzError, the same shape a
+    // number that exists nowhere gets (AUTHZ §4 — existence never leaks).
+    await expect(getItemDetail(employeeCtx(), otherProjectId, strangers.number)).rejects.toThrow(AuthzError);
+    await expect(getItemDetail(employeeCtx(), projectId, 999_999)).rejects.toThrow(AuthzError);
+    // And a number of THIS project cannot be read through another project's id.
+    await expect(getItemDetail(ownerCtx(), otherProjectId, mine.number)).rejects.toThrow(AuthzError);
   });
 });
 

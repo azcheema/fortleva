@@ -56,6 +56,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Commands
 
-`pnpm dev` · `pnpm build` · `pnpm typecheck` · `pnpm exec eslint src e2e --max-warnings 0` · `pnpm test` (unit) · `pnpm test:db` (against Neon, sequential, **~16 min** — measured 2026-09-06 at 29 files / 322 tests, 945 s; it was ~14 min at 27/288 on 2026-09-02, and the "~3 min" before that dated from ~20 files and is what makes a short timeout kill a healthy run. It grows with the file count: budget for it, do not re-derive it) · `pnpm test:e2e` (Playwright; `pnpm exec playwright test visual` regenerates 188 screenshots — 47 stops × light/dark × desktop/phone, written locally only (CI skips the file write) — into `.design-shots/`).
+`pnpm dev` · `pnpm build` · `pnpm typecheck` · `pnpm exec eslint src e2e --max-warnings 0` · `pnpm test` (unit) · `pnpm test:db` (against Neon, sequential, **~16 min** — measured 2026-09-06 at 29 files / 322 tests, 945 s; it was ~14 min at 27/288 on 2026-09-02, and the "~3 min" before that dated from ~20 files and is what makes a short timeout kill a healthy run. It grows with the file count: budget for it, do not re-derive it) · `pnpm test:e2e` (Playwright; `pnpm exec playwright test visual` regenerates 192 screenshots — 48 stops × light/dark × desktop/phone, written locally only (CI skips the file write) — into `.design-shots/`).
 
 Commit in small reviewable steps; end commit messages with the `Co-Authored-By:` trailer. Do not push unless asked.

@@ -52,7 +52,8 @@ export type CraftAudit = {
    */
   tabBarCurrent: number | null;
   /** The current tab's box, and the strip's, at this viewport. */
-  tabStrip: { current: number; visible: boolean } | null;
+  /** `null` = this route has no tab strip. `hasCurrent: false` = it has one that marks nothing. */
+  tabStrip: { hasCurrent: boolean; current: number; visible: boolean } | null;
 };
 
 export type PageAudit = {
@@ -326,19 +327,26 @@ export function auditPage(): PageAudit {
   // The current tab must be ON SCREEN inside its own strip — at 390px
   // the project Team tab used to sit past the right edge, which reads as
   // "this page has no tabs".
+  // A strip with NO current tab is the same defect seen from the other
+  // side, and reporting `null` for it made the assertion vacuous: the
+  // item page shipped with seven unlit tabs through a green sweep
+  // (2026-09-12 review). Null now means "no strip on this route" and
+  // nothing else.
   const strip = document.querySelector("[data-slot=tab-strip]");
   const current = strip?.querySelector('[aria-current="page"]') ?? null;
-  const tabStrip =
-    strip && current
+  const tabStrip = !strip
+    ? null
+    : current
       ? (() => {
           const s = strip.getBoundingClientRect();
           const c = current.getBoundingClientRect();
           return {
+            hasCurrent: true,
             current: Math.round(c.left - s.left),
             visible: c.left >= s.left - 1 && c.right <= s.right + 1,
           };
         })()
-      : null;
+      : { hasCurrent: false, current: -1, visible: false };
 
   // ── images and icons ──────────────────────────────────────────────
   const imgs = Array.from(document.images);

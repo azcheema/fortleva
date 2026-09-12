@@ -1676,8 +1676,17 @@
       "properties": {
         "state": "State",
         "assignee": "Assignee",
-        "estimate": "Estimate"
+        "type": "Type",
+        "priority": "Priority",
+        "estimate": "Estimate",
+        "startDate": "Start date",
+        "dueDate": "Due date",
+        "parent": "Part of",
+        "milestone": "Milestone",
+        "checklist": "Checklist",
+        "checklistValue": "{done} of {total} done"
       },
+      "openFullPage": "Open full page",
       "attachments": {
         "title": "Attachments",
         "empty": "No files on this task yet",

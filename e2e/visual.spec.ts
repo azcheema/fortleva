@@ -148,6 +148,9 @@ const stops = (seed: E2ESeed): Stop[] => {
     // 2W-B: the item side-peek over the backlog (empty attachments +
     // the anchored upload form on the seeded first task).
     { name: "project-item-peek", path: `${project}/backlog?item=${seed.projectKey}-1` },
+    // The same panel as a page (2W-P): the shot that shows the two
+    // surfaces cannot drift apart.
+    { name: "project-item-page", path: `${project}/items/1` },
     { name: "project-timeline", path: `${project}/timeline` },
     // 2T: the Time tab (rollups, budget) and the Money tab (value; cost
     // stays behind the tenant's cost layer, which the fixture leaves off).
@@ -331,7 +334,7 @@ async function visit(
   await settle(page);
 
   const shot = `${stop.name}__${theme}__${device}.png`;
-  // The shots are a HUMAN artefact — 188 full-page PNGs for the craft
+  // The shots are a HUMAN artefact — 192 full-page PNGs for the craft
   // review. Nothing asserts on them: this repo has no committed
   // baselines and no toHaveScreenshot anywhere, and ci.yml uploads only
   // playwright-report/, so under CI they were rendered, encoded and then
@@ -446,9 +449,14 @@ async function visit(
     expect.soft(craft.tabBarCurrent, `${at}: aria-current entries in the tab bar`).toBe(1);
   }
 
-  // The current tab is on screen inside its own strip.
+  // A strip marks exactly where you are, and that mark is on screen.
   if (craft.tabStrip) {
-    expect.soft(craft.tabStrip.visible, `${at}: current tab is outside the tab strip`).toBe(true);
+    expect
+      .soft(craft.tabStrip.hasCurrent, `${at}: the tab strip marks no current tab`)
+      .toBe(true);
+    if (craft.tabStrip.hasCurrent) {
+      expect.soft(craft.tabStrip.visible, `${at}: current tab is outside the tab strip`).toBe(true);
+    }
   }
 
   // §10.7 — a WORKSPACE-level page's h1 is the page noun, not
@@ -490,7 +498,7 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // 47 stops × 3 navigations, five minutes next to the database.
+        // 48 stops × 3 navigations, five minutes next to the database.
         // The CI branch was 900 s, sized when the runner was in the US
         // and the database in the EU (~10 s a stop on a slow evening).
         // Since 2026-09-01 CI runs against a service container on the
