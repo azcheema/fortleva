@@ -40,12 +40,13 @@ import {
   StatusIcon,
   type RowAction,
 } from "@/components/semantic";
-import { isEditableTarget, isGoSequencePending } from "@/components/shell/use-hotkeys";
+import { isGoSequencePending, useScopeKeys } from "@/components/shell/use-hotkeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge";
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
 import { formatDuration, type DurationStyle } from "@/lib/format";
+import type { KeyBinding } from "@/lib/keymap";
 import { cn } from "@/lib/utils";
 import {
   applyMove,
@@ -356,22 +357,41 @@ export function Board({
     }
   };
 
-  // `C` anywhere on the page (UI.md §6 global): a new task in context —
-  // the default column's title field. Inert in inputs, behind ⌘/Ctrl,
-  // and while a `G …` go-to sequence is armed. Capture phase on purpose:
-  // the shell's bubble listener clears the armed `G` on the second key,
-  // so a bubble listener here would see `G C` as a plain `C`.
-  useEffect(() => {
-    if (!canCreate || !defaultState || peekOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key.toLowerCase() !== "c" || isEditableTarget(e.target) || isGoSequencePending()) return;
-      e.preventDefault();
-      setCreatingIn(defaultState.id);
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () => window.removeEventListener("keydown", onKey, { capture: true });
-  }, [canCreate, defaultState, peekOpen]);
+  // The board's region keys (UI.md §6). `C` is the only one the registry
+  // RUNS — the capture-phase window listener it replaces existed solely
+  // so it could see an armed `G` before the shell's bubble listener
+  // cleared it, and one dispatcher consults the sequence once, ahead of
+  // every scope.
+  //
+  // `S` and the roving `↑↓←→ J K` stay in `onBoardKeyDown` and register
+  // as `run: null` — advertised here, handled there. They need the
+  // FOCUSED CARD, which only a handler on the event target can know:
+  // migrating them to a window listener over `focusedId` (never cleared
+  // on blur) or `document.activeElement.closest()` (true in strictly
+  // more situations) would silently WIDEN a shipped key. Dispatch skips
+  // a `run: null` binding rather than swallowing it, so the arrow row
+  // never eats page scroll.
+  const boardKeys = useMemo<KeyBinding[]>(
+    () => [
+      {
+        key: "c",
+        label: t("keys.create"),
+        // The peek is a sibling of this component, not a descendant, so
+        // nothing about the sheet makes a window listener inert — `C`
+        // used to create cards behind the scrim. `peekOpen` stays the
+        // explicit gate; it is now an `enabled` value rather than an
+        // effect guard.
+        enabled: Boolean(canCreate && defaultState && !peekOpen),
+        run: () => {
+          if (defaultState) setCreatingIn(defaultState.id);
+        },
+      },
+      { key: "s", label: t("keys.move"), enabled: canEdit, run: null },
+      { key: "j", label: t("keys.navigate"), enabled: true, run: null, hint: ["J", "K"] },
+    ],
+    [canCreate, defaultState, peekOpen, canEdit, t],
+  );
+  useScopeKeys("board", boardKeys);
 
   const onPickerChoose = (choice: { stateId: string; edge: "top" | "bottom" }) => {
     if (!picker) return;

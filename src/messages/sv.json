@@ -100,23 +100,26 @@
       "shortcuts": "Kortkommandon",
       "signOut": "Logga ut",
       "open": "Öppna kommandopaletten",
-      "results": "Resultat"
+      "results": "Resultat",
+      "onThisPage": "På den här sidan"
     },
     "shortcuts": {
       "title": "Kortkommandon",
-      "description": "Tangenter som fungerar på den här sidan. Enskilda tangenter är inaktiva när ett fält har fokus.",
+      "description": "Tangenter som fungerar på den här sidan. Enkla tangenter är inaktiva när ett fält, en meny eller en väljare har fokus.",
       "open": "Visa kortkommandon",
-      "global": "Globalt",
       "navigation": "Gå till",
       "palette": "Kommandopalett",
       "overlay": "Den här översikten",
       "close": "Stäng palett / översikt",
-      "goHome": "Hem",
-      "goFiles": "Filer",
-      "goMembers": "Medlemmar",
-      "goAccount": "Konto",
       "then": "sedan",
-      "goTime": "Tid"
+      "scopes": {
+        "global": "Globalt",
+        "board": "Tavla",
+        "inbox": "Inkorg",
+        "triage": "Sortering",
+        "item": "Uppgift"
+      },
+      "always": "Alltid tillgängliga"
     },
     "timer": {
       "slot": "Tidtagare",
@@ -125,7 +128,8 @@
       "stop": "Stoppa timer",
       "stopped": "Stoppad efter {duration}",
       "stopFailed": "Timern kunde inte stoppas.",
-      "nudge": "Den här timern har gått länge."
+      "nudge": "Den här timern har gått länge.",
+      "keyLabel": "Starta eller stoppa tidtagningen"
     },
     "error": {
       "title": "Något gick fel",
@@ -1378,6 +1382,11 @@
         "bodyReadOnly": "Uppgifter visas här när någon har skapat dem.",
         "action": "Ny uppgift",
         "ungroup": "Visa alla uppgifter"
+      },
+      "keys": {
+        "create": "Ny uppgift",
+        "move": "Flytta till…",
+        "navigate": "Flytta mellan kort"
       }
     },
     "workView": {
@@ -1716,6 +1725,16 @@
         "emptyDescriptionVisible": "Bifoga det levererade arbetet — uppgiften är synlig för kunden, så nya filer börjar också synliga.",
         "followsItem": "Följer {key} — filer på en intern uppgift förblir interna",
         "noAccess": "Du kan inte se filer"
+      },
+      "state": {
+        "trigger": "Status: {state}",
+        "search": "Sök status…",
+        "empty": "Ingen status matchar.",
+        "failed": "Statusen sparades inte. Panelen visar den nuvarande statusen.",
+        "changed": "Statusen ändrades till {state}"
+      },
+      "keys": {
+        "state": "Ändra status"
       }
     },
     "states": {

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { VisibilityBadge, type VisibilityValue } from "@/components/visibility-badge";
+import { restBoxClass } from "@/lib/control-classes";
 import {
   inlineEditInitial,
   inlineEditReducer,
@@ -214,12 +215,9 @@ function InlineEditControl({
     );
   }
 
-  const box = cn(
-    "flex min-w-0 items-center gap-1.5 rounded-md border bg-clip-padding px-2.5 text-sm",
-    fit ? "w-fit max-w-full" : "w-full",
-    density === "table" ? "h-7" : "h-8",
-    align === "end" && "justify-end text-right",
-  );
+  // Shared with PropertyPicker (§5.11's other Mandate-1 control) from a
+  // directive-free module — see the note in control-classes.ts.
+  const box = restBoxClass({ density, fit, align });
 
   const control =
     kind === "multiline" ? (

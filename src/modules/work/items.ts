@@ -110,10 +110,33 @@ export type ItemList = {
  * component takes: the nullable pair never reaches the UI, so no
  * component has to know the translate-until-renamed rule exists.
  */
+/**
+ * A workflow state after a SERVER PAGE has resolved its name.
+ *
+ * `ResolvedItemList.states` already WAS exactly this shape, spelled as
+ * an inline `Omit`; naming it is what lets a states-ONLY read (the item
+ * panel's) type honestly, with no cast and no second model. `WorkState`
+ * in `work-view/model.ts` still derives from `ResolvedItemList`, so
+ * every existing consumer is untouched.
+ */
+export type ResolvedWorkflowState = Omit<WorkflowStateEntry, "name" | "seedKey"> & {
+  name: string;
+};
+
 export type ResolvedItemList = Omit<ItemList, "items" | "states"> & {
   items: (Omit<ItemListEntry, "stateName" | "stateSeedKey"> & { stateName: string })[];
-  states: (Omit<WorkflowStateEntry, "name" | "seedKey"> & { name: string })[];
+  states: ResolvedWorkflowState[];
 };
+
+/** The ONE state-resolving pass, shared by the list and the panel reads. */
+export const resolveStates = (
+  states: readonly WorkflowStateEntry[],
+  t: (key: StateSeedKey) => string,
+): ResolvedWorkflowState[] =>
+  states.map(({ name, seedKey, ...state }) => ({
+    ...state,
+    name: stateLabel({ name, seedKey }, t),
+  }));
 
 /**
  * Resolve both name-bearing shapes in one pass, at the page boundary.
@@ -134,10 +157,7 @@ export function resolveStateNames(
       ...item,
       stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t),
     })),
-    states: data.states.map(({ name, seedKey, ...state }) => ({
-      ...state,
-      name: stateLabel({ name, seedKey }, t),
-    })),
+    states: resolveStates(data.states, t),
   };
 }
 
@@ -281,23 +301,46 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority"> & {
 };
 
 /**
- * ONE cap, not five: each `isAuthorized` resolves the member's
- * permissions with its own query, so the panel asks for exactly what it
- * renders — today, whether the description is editable. The slices that
- * add the PropertyPicker and `V` add theirs when they use them.
+ * Exactly what the panel renders, and nothing it does not: each
+ * `isAuthorized` resolves the member's permissions with its own query,
+ * so a cap nobody reads is a query nobody needed (the slice-2 review
+ * dropped five of those). `canApprove` joins `canEdit` here because the
+ * State picker cannot be drawn without it — `enterableStates` needs it
+ * to decide whether the gated Done is a target — and `states` because
+ * the panel must not depend on a list the caller happens to have
+ * loaded.
+ *
+ * FLAT rather than nested under `caps`: the shape has one consumer and
+ * three existing assertions, and nesting would churn them for nothing.
  */
-export type ItemDetailResult = { item: ItemDetail; canEdit: boolean };
+export type ItemDetailResult = {
+  item: ItemDetail;
+  /** RAW pair, by rank — the module has no locale. */
+  states: WorkflowStateEntry[];
+  canEdit: boolean;
+  canApprove: boolean;
+};
 
 /** `ItemDetail` with the state pair resolved — see `ResolvedItemList`. */
 export type ResolvedItemDetail = Omit<ItemDetail, "stateName" | "stateSeedKey"> & { stateName: string };
 
-/** The detail twin of `resolveStateNames`: strips the raw pair at the page boundary. */
-export function resolveItemDetailState(
-  item: ItemDetail,
+/** `ItemDetailResult` after the page boundary has resolved every name. */
+export type ResolvedItemDetailResult = Omit<ItemDetailResult, "item" | "states"> & {
+  item: ResolvedItemDetail;
+  states: ResolvedWorkflowState[];
+};
+
+/** The detail twin of `resolveStateNames`: strips every raw pair at the page boundary. */
+export function resolveItemDetail(
+  result: ItemDetailResult,
   t: (key: StateSeedKey) => string,
-): ResolvedItemDetail {
-  const { stateName, stateSeedKey, ...rest } = item;
-  return { ...rest, stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t) };
+): ResolvedItemDetailResult {
+  const { stateName, stateSeedKey, ...rest } = result.item;
+  return {
+    ...result,
+    item: { ...rest, stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t) },
+    states: resolveStates(result.states, t),
+  };
 }
 
 export async function getItemDetail(
@@ -340,7 +383,16 @@ export async function getItemDetail(
       },
     });
     if (!row) deny("NOT_FOUND");
-    const [attachmentCount, canEdit] = await Promise.all([
+    // All four in parallel, inside the transaction `requireAccess` +
+    // `assertInScope` already opened.
+    //
+    // `ensureProjectStates` is deliberately NOT called here: `createItem`
+    // seeds a project's states, so an EXISTING item implies existing
+    // states, and turning the panel's only GET into a write would also
+    // owe a Phase-3 answer for the contact principal. If the read ever
+    // does come back empty, the panel degrades to plain text rather
+    // than rendering a picker with nothing in it.
+    const [attachmentCount, canEdit, canApprove, states] = await Promise.all([
       tx.document.count({
         where: {
           tenantId: ctx.tenantId,
@@ -350,6 +402,14 @@ export async function getItemDetail(
         },
       }),
       isAuthorized(tx, ctx.actor, "work_item:edit"),
+      isAuthorized(tx, ctx.actor, "work_item:approve"),
+      tx.workflowState.findMany({
+        where: { tenantId: ctx.tenantId, projectId },
+        orderBy: { rank: "asc" },
+        // IDENTICAL to listItems' select above, so the board's states and
+        // the panel's cannot drift into two shapes.
+        select: { id: true, name: true, seedKey: true, category: true, isHidden: true, isDefault: true, wipLimit: true, requiresApproval: true },
+      }),
     ]);
     const item = row!;
     return {
@@ -388,7 +448,9 @@ export async function getItemDetail(
         description: item.description ?? null,
         descriptionToken: descriptionToken(item.description ?? null),
       },
+      states,
       canEdit,
+      canApprove,
     };
   });
 }

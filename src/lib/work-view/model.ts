@@ -50,6 +50,31 @@ export const canEnterState = (
 ): boolean => s.category !== "TRIAGE" && (canApprove || !s.requiresApproval);
 
 /**
+ * The states a member may actually move THIS item into, in the input's
+ * rank order — PLUS the item's current state, always, even when that is
+ * TRIAGE or a gated Done under a non-approver.
+ *
+ * The current state is unconditional because a picker that cannot show
+ * what the item IS is broken: §5.2's "TRIAGE hidden unless the item is
+ * in triage" is this clause, not a second condition, and it also closes
+ * the residue the 2W-R review accepted (a non-approver looking at a
+ * Done item could see no current-state marker anywhere). Selecting it
+ * is a client-side no-op, and `transitionState` is the belt regardless
+ * — hiding a target is UX, never the guard.
+ *
+ * ONE rule for every surface (UI.md §7.1), which is why it lives here
+ * beside `canEnterState` rather than in the picker.
+ */
+export const enterableStates = (
+  states: readonly WorkState[],
+  canApprove: boolean,
+  currentStateId: string,
+): WorkState[] =>
+  states.filter(
+    (s) => s.id === currentStateId || (canEnterState(s, canApprove) && !s.isHidden),
+  );
+
+/**
  * "Done" for every surface that offers to hide it: the two TERMINAL
  * categories, not the seeded Done state. A tenant with two done-ish
  * states, or one that renamed Done, still gets the same answer — which

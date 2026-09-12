@@ -127,9 +127,11 @@ export default async function ProjectBacklogPage({
       {peekItem ? (
         <PeekShell returnHref={listHref}>
           <ItemPanel
-            variant="peek"
+            surface="backlog"
             item={peekItem.item}
             canEdit={peekItem.canEdit}
+            states={peekItem.states}
+            canApprove={peekItem.canApprove}
             itemKey={`${project.key}-${peekItem.item.number}`}
             projectKey={project.key}
             documents={peekDocuments}

@@ -10,8 +10,9 @@ export {
   getItemDetail,
   listItems,
   projectWorkVersion,
-  resolveItemDetailState,
+  resolveItemDetail,
   resolveStateNames,
+  resolveStates,
   setItemArchived,
   updateItemFields,
   type ItemDetail,
@@ -19,7 +20,9 @@ export {
   type ItemList,
   type ItemListEntry,
   type ResolvedItemDetail,
+  type ResolvedItemDetailResult,
   type ResolvedItemList,
+  type ResolvedWorkflowState,
   type WorkCtx,
   type WorkflowStateEntry,
 } from "./items";
@@ -30,6 +33,6 @@ export {
   type BulkResult,
 } from "./bulk";
 export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from "./ordering";
-export { changeState, ensureProjectStates } from "./states";
+export { changeState, ensureProjectStates, type StateChange } from "./states";
 export { updateItemDescription, type DescriptionSaved } from "./description";
 export { descriptionToken } from "./description-token";

@@ -53,7 +53,7 @@ export default async function ProjectItemPage({
   const tStates = await getTranslations("projects.states.seed");
   const panel = await loadPanelItem(ctx, project.id, n!, self, (seedKey) => tStates(seedKey));
   if (!panel) notFound();
-  const { item, canEdit } = panel;
+  const { item, states, canEdit, canApprove } = panel;
 
   const [documents, prefs] = await Promise.all([
     project.caps.viewDocuments
@@ -66,9 +66,11 @@ export default async function ProjectItemPage({
 
   return (
     <ItemPanel
-      variant="page"
+      surface="page"
       item={item}
       canEdit={canEdit}
+      states={states}
+      canApprove={canApprove}
       itemKey={`${project.key}-${item.number}`}
       projectKey={project.key}
       documents={documents}

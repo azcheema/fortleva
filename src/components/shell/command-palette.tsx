@@ -14,12 +14,14 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 
 import type { NavEntry } from "@/app/(tenant)/(authed)/nav";
+import { KeyboardHint } from "@/components/semantic/keyboard-hint";
 import {
   Command,
   CommandDialog,
+  CommandEmptyState,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -28,6 +30,9 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { LOCALES } from "@/i18n/config";
+import { overlaySections } from "@/lib/keymap";
+import { emptyScopes, runScopeBinding, scopeSnapshot, subscribeScopes } from "./use-hotkeys";
+import { matchesQuery } from "@/lib/text-match";
 import { paletteSearchAction, type PaletteHit } from "@/app/(tenant)/(authed)/search/actions";
 import type { SearchEntityType } from "@/search/shape";
 
@@ -47,8 +52,9 @@ export const flatNav = (entries: readonly NavEntry[]): NavEntry[] =>
  * arrive ranked by `ts_rank_cd` and then recency — the server's answer
  * to "what did they mean" — and a ranking something else re-sorts is
  * not a ranking. Turning it off means this component owns matching for
- * the NAV rows too, which `matchesNav` below does with a subsequence
- * test so "prj" still reaches Projects.
+ * the NAV rows too, which `matchesQuery` (`@/lib/text-match`, shared
+ * with the property pickers) does with a subsequence test so "prj"
+ * still reaches Projects.
  *
  * Every entity row's `value` is `type:id`. cmdk tracks selection as a
  * single string and marks EVERY item whose value equals it, so two rows
@@ -66,25 +72,6 @@ const ENTITY_ICON: Record<SearchEntityType, React.ComponentType<LucideProps>> = 
   CONTACT: UserRoundIcon,
 };
 
-/**
- * Subsequence match, case- and accent-insensitive: "prj" reaches
- * Projects, "ins" reaches Settings > Notifications. This replaces
- * cmdk's own scorer, which `shouldFilter={false}` switched off — a
- * plain `includes` would have been a downgrade nobody asked for.
- */
-function matchesNav(haystack: string, needle: string): boolean {
-  const norm = (v: string) =>
-    v.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  const h = norm(haystack);
-  const n = norm(needle);
-  if (n.length === 0) return true;
-  let i = 0;
-  for (const ch of h) {
-    if (ch === n[i]) i += 1;
-    if (i === n.length) return true;
-  }
-  return false;
-}
 export function CommandPalette({
   open,
   onOpenChange,
@@ -111,6 +98,10 @@ export function CommandPalette({
     onOpenChange(false);
     fn();
   };
+
+  // The live keyboard registry — the same snapshot the `?` overlay and
+  // the dispatcher read.
+  const scopes = useSyncExternalStore(subscribeScopes, scopeSnapshot, emptyScopes);
 
   const [query, setQuery] = useState("");
   // The rows AND the query they answer. cmdk keeps mounted items until
@@ -210,7 +201,7 @@ export function CommandPalette({
   const hits = answered.q === query.trim() ? answered.rows : [];
 
   const navRows = flatNav(nav).filter((entry) =>
-    matchesNav(`${tNav(entry.labelKey)} ${entry.href}`, query),
+    matchesQuery(`${tNav(entry.labelKey)} ${entry.href}`, query),
   );
 
   // THE ACTION ROWS FILTER TOO, and that is a correctness fix rather
@@ -222,14 +213,37 @@ export function CommandPalette({
   // waiting for.
   const actionRows = {
     locales: LOCALES.filter((l) => l !== locale).filter((l) =>
-      matchesNav(`${t("switchLanguage")} ${tCommon(`languageName.${l}`)}`, query),
+      matchesQuery(`${t("switchLanguage")} ${tCommon(`languageName.${l}`)}`, query),
     ),
-    shortcuts: matchesNav(t("shortcuts"), query),
-    signOut: matchesNav(t("signOut"), query),
+    shortcuts: matchesQuery(t("shortcuts"), query),
+    signOut: matchesQuery(t("signOut"), query),
   };
   const hasActions =
     actionRows.locales.length > 0 || actionRows.shortcuts || actionRows.signOut;
-  const nothing = navRows.length === 0 && hits.length === 0 && !hasActions;
+
+  // Rule 7's other half: a single key owes the palette an entry as well
+  // as an overlay row. These come from the same live registry snapshot
+  // the `?` overlay renders, so a surface ships a key by adding ONE
+  // `useScopeKeys` call and gets both for free — which is precisely what
+  // the bulk bar and the inbox list were waiting for.
+  //
+  // Every scope, `global` included. Excluding `global` wholesale was
+  // wrong on its own stated grounds: it claimed those keys "already have
+  // palette rows", but the timer's `T` had neither a row nor an opt-out,
+  // so its verb was reachable by the bare key alone — the exact rule-7
+  // gap this group exists to close. A binding that genuinely duplicates
+  // an existing row opts out where it is declared, with
+  // `palette: false`, as `?` does.
+  const pageRows = overlaySections(scopes)
+    .flatMap((s) =>
+      s.bindings
+        .filter((b) => b.run !== null && b.palette !== false)
+        .map((b) => ({ ...b, scope: s.scope })),
+    )
+    .filter((b) => matchesQuery(b.label, query));
+
+  const nothing =
+    navRows.length === 0 && hits.length === 0 && !hasActions && pageRows.length === 0;
 
   return (
     <CommandDialog
@@ -248,6 +262,9 @@ export function CommandPalette({
       <Command
         label={t("title")}
         shouldFilter={false}
+        // cmdk defaults this TRUE, and its Ctrl+k means "previous item"
+        // — which shadows the global ⌘K on Windows and Linux.
+        vimBindings={false}
         value={selected}
         onValueChange={setSelected}
       >
@@ -261,14 +278,7 @@ export function CommandPalette({
           {/* NOT `CommandEmpty`: with `shouldFilter={false}` cmdk sets
               its filtered count to the number of MOUNTED items, so its
               own Empty never renders and the string was unreachable. */}
-          {nothing ? (
-            <div
-              role="presentation"
-              className="px-3 py-6 text-center text-sm text-muted-foreground"
-            >
-              {t("empty")}
-            </div>
-          ) : null}
+          {nothing ? <CommandEmptyState>{t("empty")}</CommandEmptyState> : null}
           {hits.length > 0 ? (
             <>
               <CommandGroup heading={t("results")}>
@@ -293,6 +303,47 @@ export function CommandPalette({
                     </CommandItem>
                   );
                 })}
+              </CommandGroup>
+              <CommandSeparator />
+            </>
+          ) : null}
+          {pageRows.length > 0 ? (
+            <>
+              <CommandGroup heading={t("onThisPage")}>
+                {pageRows.map((b) => (
+                  <CommandItem
+                    // `value` is an ID, never the label: cmdk tracks
+                    // selection as one string and marks EVERY item whose
+                    // value matches, so two rows sharing one both light
+                    // up and Enter fires whichever is first in the DOM.
+                    key={`${b.scope}:${b.key}`}
+                    value={`page:${b.scope}:${b.key}`}
+                    onSelect={() =>
+                      run(() =>
+                        // One frame later: Radix Dialog restores focus to
+                        // its trigger as it closes, which would otherwise
+                        // steal the focus a picker takes when it opens.
+                        //
+                        // Through `runScopeBinding`, NOT the `run` on this
+                        // row: the row came from the version-cached
+                        // snapshot, whose closures are deliberately
+                        // allowed to be a commit old (`signatureOf`
+                        // cannot see a closure). The keydown path has
+                        // always re-read the live entry; this is the same
+                        // read, so a key and its palette row cannot do
+                        // two different things.
+                        requestAnimationFrame(() =>
+                          runScopeBinding(b.entry, b.index, new KeyboardEvent("keydown")),
+                        ),
+                      )
+                    }
+                  >
+                    <span className="min-w-0 flex-1 truncate">{b.label}</span>
+                    <CommandShortcut>
+                      <KeyboardHint keys={b.hint ?? [b.key.toUpperCase()]} />
+                    </CommandShortcut>
+                  </CommandItem>
+                ))}
               </CommandGroup>
               <CommandSeparator />
             </>

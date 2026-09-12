@@ -117,6 +117,19 @@ Popover with type-ahead list; single key opens it when the item is focused; Esc 
 | `T` | Timer | start/stop on this item | 2T |
 | `X` | Select | toggles multi-select for the bulk bar | |
 
+**The shipped `<PropertyPicker>` contract (2026-09-12, slice 5 — `src/components/semantic/property-picker.tsx`).** `S` is the first one; `P E D V M L` reuse it unchanged. Settled, do not re-litigate:
+
+- `open` / `onOpenChange` / `value` are **required controlled props** — the property's single key must be able to open it, so the state cannot live inside the component.
+- A **modal** Popover. The item peek's overlay mounts `RemoveScroll` with `shards`, which preventDefaults every wheel event outside the lock, so a non-modal popover inside the peek would have a list a mouse could not scroll.
+- `shouldFilter={false}` with the picker owning matching (`matchesQuery`, shared with the palette), because cmdk's scorer also **re-sorts** and a state picker's group order is the project's `WorkflowState.rank`. With filtering off cmdk's own `CommandEmpty` can never fire — hence `CommandEmptyState`.
+- `vimBindings={false}` (cmdk's Ctrl+k means "previous item" and shadows the global ⌘K on Windows/Linux) and `disablePointerSelection` (an idle cursor must not silently re-highlight the row Enter then commits).
+- A `CommandItem`'s `value` is an **id, never a label**: cmdk tracks selection as one string, so two rows sharing a value both light up and Enter fires whichever is first in the DOM.
+- The focus ring is `-outline-offset-2`, **negative** — the peek is `overflow-y-auto` and clips a positive one. Never `forceMount` inside the sheet (`hideOthers` would leave the node permanently `aria-hidden`).
+- **No tooltip on the trigger**, deliberately: Radix opens a tooltip on focus and returns focus to the trigger when the picker closes, so the tooltip would be open the moment the popover shuts and would eat the member's next Escape. The key is advertised by the `?` overlay, the ⌘K row and `aria-keyshortcuts`.
+- Options are filtered to legal targets by `enterableStates` (`@/lib/work-view`), which **always includes the item's current state**, non-selectable when it is not a legal target — a picker that cannot show what the item IS is broken for an item in TRIAGE or in a gated Done under a non-approver.
+
+`MovePicker` remains the §7.1 move twin (state **×** position) and is deliberately not folded into this; re-evaluate once `P E D` have exercised the API.
+
 ### 5.3 `<WorkItemView>`
 Config: `{ filters, groupBy, orderBy, layout: 'LIST' | 'BOARD', display: { estimate, labels, key, checklist, assignee, dueDate, timer } }`. Filter chips are always visible above the view (Planner's hidden filters are a top complaint); URL state via `nuqs` (`?state=…&assignee=…&group=…&layout=board`), so every view is a link. Virtualised at ~200 rows. Bulk bar appears on `X`/checkbox. The portal instance is the same component with a fixed config and a Contact principal — it renders category chips, never state names.
 
@@ -165,6 +178,8 @@ Forms outside `/settings/*` and auth do not have Save; settings forms auto-save 
 
 **Not for**: a preferences page (a control panel *is* its switches, §5.10) or a writing surface (`ClientNotesForm`, `internalNotes`, `scopeSummary` keep their textarea). Inline edit is for *labelled properties*.
 
+`<PropertyPicker>` (§5.2) is Mandate 1's sibling for a **work-item** property: its rest state is likewise the value as text and the popover is the editor, so a `<button>` trigger inside a `<dl>` or a table row is the sanctioned control there. The shared resting box lives in `src/lib/control-classes.ts` — a **directive-free** module, because a `"use client"` module's exported constant interpolated into a server component's `className` becomes a throwing client reference.
+
 ### 5.12 `<RowActions>` — the row's verbs live in a menu (FOUNDER MANDATE 2)
 
 A solid `--destructive` button repeated on every row of every table is the highest-chroma object on most pages and outranks the row it serves.
@@ -190,9 +205,13 @@ Fields that are empty, and matrices nobody has asked for yet, wait behind one 28
 
 ---
 
-## 6. Keyboard map (scopes `global`, `item`, `inbox`, `triage`; shown in `?` and tooltips)
+## 6. Keyboard map (scopes `global`, `board`, `inbox`, `triage`, `item`, `modal`; shown in `?` and the ⌘K palette)
 
-*Registry — target state, not current code (decided 2026-08-31): `react-hotkeys-hook` becomes the scope registry when the `item` / `inbox` / `triage` scopes land as real surfaces; today the package is not a dependency and the shell hand-rolls the `global` scope in `src/components/shell/use-hotkeys.ts`, whose header pins that a scoped registry can replace its internals without touching callers. Until then the `?` overlay is not scope-aware (board follow-up (ι) stays deferred with it).*
+*Registry — **SHIPPED 2026-09-12** (panel slice 5), superseding the 2026-08-31 note that named `react-hotkeys-hook`. It is **hand-rolled**: `src/lib/keymap.ts` holds the pure decision (`decide()`), `src/components/shell/use-hotkeys.ts` holds the scope store and the ONE `window` keydown listener, and a surface registers keys with `useScopeKeys(scope, bindings)`. `react-hotkeys-hook` is **not** a dependency and will not become one — ARC-24 records the four specific reasons. The `?` overlay and the palette's "On this page" group are now PROJECTIONS of the live registry, so board follow-up (ι) is closed.*
+
+*The scope set is the union of this section's original list and ARC-24's, plus `modal`. Precedence is a **table** (`SCOPE_ORDER`: global 0 · board/inbox/triage 10 · item 20 · modal 100), never mount order — React runs child effects before parents', so a push-ordered stack would put the shell's `global` above the panel's `item` and invert shadowing. `board` ships region keys today; `inbox` and `triage` are declared and empty, so their slices are a registration rather than a redesign; `modal` is the honest name for a layer that owns the keyboard while it is open.*
+
+*Dispatch order, once, so nobody re-derives it: `defaultPrevented` → ⌘K → any other modifier → an editable target → a menu/listbox/popover/command layer → **an armed `G` consuming exactly the next key in every scope** → scopes highest-order first → `g` arms. That last-but-one step is how `G S`, `G C` and `G T` coexist with bare `S`, `C` and `T`: they are two events in time, not two meanings of one key. A binding with `run: null` is documentation-only (advertised, handled by a React-tree handler that needs the focused element); a binding that is declared but `enabled: false` **swallows** its key rather than letting a lower scope have it.*
 
 | Scope | Key | Action |
 |---|---|---|
@@ -201,18 +220,23 @@ Fields that are empty, and matrices nobody has asked for yet, wait behind one 28
 | global | `?` | Keymap overlay |
 | global | `G H` · `G P` · `G B` · `G L` · `G T` · `G I` · `G V` | Go to Home · Projects · Board (current project) · Backlog · Time · Inbox · Vault |
 | global | `T` | Start/stop timer on focused item, else open timer pill |
+| board | `C` | New task in the default column — inert while the item peek is open |
+| board | `S` | "Move to…" (state × position, §7.1) on the focused card |
+| board | `↑ ↓ ← →` / `J K` | Move focus between cards and columns |
 | global | `N` | New time entry (2T; on `/time` and item) |
 | global | `Esc` | Close peek/picker/palette |
-| item | `S A L P E D V M X` | §5.2 |
+| item | `S` | State picker (§5.2) — **shipped 2026-09-12**; `A L P E D V M X` follow in their slices |
 | item | `⌘⇧O` | Convert focused checklist item → subtask |
 | item | `⌘Enter` | Create-and-open (in create field) |
 | item | `⌘⇧Enter` | Create-another with same properties |
 | item | `⌘Enter` (composer) | Post comment |
 | item | `↑ ↓` / `J K` | Move focus in list/column; `← →` across columns |
-| inbox | `J K` · `E` · `U` · `S` | Next/prev · archive · mark unread · snooze — **not shipped 2026-09-06**, the same disposition the selection bar took: a single key owes rule 7 a ⌘K entry and a row in this overlay, and neither is possible until the scope registry lands. The verbs are on-screen menu items; `G I` ships because it is a nav `goKey`. |
+| inbox | `J K` · `E` · `U` · `S` | Next/prev · archive · mark unread · snooze — still unshipped, but the **stated blocker is gone**: since 2026-09-12 a surface ships a key by adding one `useScopeKeys` call and gets the overlay row AND the ⌘K entry for free. What remains is the product question of what each verb should do on that surface. The same is true of the selection bar's `X`. |
 | triage | `A` · `D` · `U` · `S` | Accept · Decline · Duplicate-of… · Snooze |
 
-Rules: single keys are inert while an input has focus; `⌘` = `Ctrl` on Windows/Linux and the overlay renders the right glyph; no key is bound that a browser or screen reader needs (`⌘L`, `⌘F`, `Tab`).
+Rules: single keys are inert while an input has focus **or while focus is inside a menu, listbox, select, popover or command list**; `⌘` = `Ctrl` on Windows/Linux and the overlay renders the right glyph; no key is bound that a browser or screen reader needs (`⌘L`, `⌘F`, `Tab`).
+
+**`Esc` is never a registry binding, in any phase.** It belongs to Radix's dismissable layers, which handle it on `ownerDocument` at *capture* while `defaultPrevented` is still false — a hand-written bubble handler cannot beat one, and a capture-phase registry handler would break the pinned peek-close contract in `e2e/work.spec.ts`. A component that needs to own Escape wants a Radix layer or an `exclusive` scope, not a key binding. *(An `exclusive` scope stops the dispatcher's walk whether or not it binds anything, so a component that registers one conditionally must gate `exclusive` on being open — `modal` is the top of `SCOPE_ORDER`, so a permanently-exclusive empty scope silently kills every key in the app.)*
 
 ---
 
@@ -228,7 +252,7 @@ Rules: single keys are inert while an input has focus; `⌘` = `Ctrl` on Windows
 
 ### 7.2 Optimistic updates (ARC-18)
 - Pattern: `useOptimistic` for the affected slice → Server Action → `router.refresh()`; on error, revert and show a toast with the server reason (i18n key) and Undo/Retry when applicable.
-- Every mutation returns the canonical row(s) so the optimistic state is replaced, not merged.
+- Every mutation returns the canonical row(s) so the optimistic state is replaced, not merged. *(Clarified 2026-09-12: this governs the **server action's** result, not internal transaction steps. `transitionState` now returns the row its `UPDATE` was already fetching and discarding — a `select` was added at the same time, so a 512 KB ProseMirror description stops being read back on every board drop, bulk change and import — and `setPanelStateAction` carries it out with an explicit `changed` flag. Where `revalidatePath` cannot reach a dynamic segment, `router.refresh()` is the replacement mechanism: re-rendering the server component IS the replacement.)* **Deferred, with its reason:** §7.2's stale-conflict revert ("Updated by <chip> — refreshed") is not implemented for the item panel — it has no freshness poll and `transitionState` has no compare-and-set token, and inventing a second concurrency mechanism beside `updateItemDescription`'s would be worse than naming the gap.
 - Freshness: version poll every 12 s while visible + refresh on window focus; no WebSockets/sync engine in v1. A stale-conflict (row `updatedAt` newer than the client saw) reverts with "Updated by <chip> — refreshed".
 - Never block the UI on audit/notify side effects — they are inside the same tx server-side (TENANCY recipe), invisible to the client.
 
@@ -419,6 +443,7 @@ Never `transition-all` — enumerate the properties. Loading: under 200ms render
 | `EmptyState {variant}` | `empty` vs `filtered` vs `forbidden` — three variants, never conflated. `empty` **requires** `icon` + `action` (§5.8) |
 | `InlineEdit {kind,name,value,label}` | **every editable record property** (§5.11). Never a bare `<Input>` for a value that should read as text |
 | `VisibilityInlineEdit` | the safety-critical one: rest state IS the badge (§10.4) |
+| `PropertyPicker {open,value,options,onSelect}` | **every work-item property** (§5.2). Never an `InlineEdit` — that is for free text and record properties |
 | `RowActions {label,primary,items}` | **every** per-row verb (§5.12). No destructive `<Button>` in a row, ever |
 | `FileDropField` | the only file input in the product (§5.13) |
 | `Disclosure {label}` | the one 28px progressive-disclosure trigger (§5.14) |

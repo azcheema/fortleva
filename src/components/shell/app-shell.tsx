@@ -153,7 +153,12 @@ export function AppShell({
   useGlobalHotkeys({
     goKeys: [...goTargets.keys()],
     onPalette: () => setPaletteOpen((o) => !o),
-    onOverlay: () => setOverlayOpen(true),
+    // A TOGGLE, like the palette beside it. It was `setOverlayOpen(true)`,
+    // so `?` could open the overlay and never close it — the asymmetry
+    // showed up the moment the overlay started registering its own
+    // exclusive scope and `?` became an ordinary binding.
+    onOverlay: () => setOverlayOpen((o) => !o),
+    overlayLabel: tShell("shortcuts.overlay"),
     onGo: (key) => {
       const href = goTargets.get(key);
       if (href) startTransition(() => router.push(href));

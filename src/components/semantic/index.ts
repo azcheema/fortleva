@@ -16,6 +16,7 @@ export { MemberAvatar } from "./member-avatar";
 export { MetricTile } from "./metric-tile";
 export { PageState, type PageStateProps } from "./page-state";
 export { PriorityIndicator } from "./priority-indicator";
+export { PropertyPicker, type PickerOption } from "./property-picker";
 export { ProgressMeter } from "./progress-meter";
 export { RowActions, type RowAction, type RowActionsProps } from "./row-actions";
 export { SectionCard } from "./section-card";

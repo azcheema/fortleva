@@ -137,6 +137,72 @@ describe("state machine", () => {
     });
     expect(activity).toHaveLength(3);
   });
+
+  it("returns a row that equals a fresh read of every field it carries", async () => {
+    // UI.md §7.2: a mutation returns the row, so an optimistic slice is
+    // REPLACED rather than merged. Before this slice `transitionState`
+    // returned void and there was nothing to replace it with.
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Canonical row" });
+    const states = await f.platform.workflowState.findMany({
+      where: { tenantId: f.tenantId, projectId },
+      orderBy: { rank: "asc" },
+    });
+    const progress = states.find((s) => s.category === "IN_PROGRESS")!;
+
+    const change = await changeState(ownerCtx(), id, progress.id);
+    const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+
+    expect(change.changed).toBe(true);
+    expect(change.itemId).toBe(id);
+    expect(change.stateId).toBe(fresh.stateId);
+    // `stateCategory` is derived by a BEFORE trigger. Be honest about
+    // what this proves: on the happy path the value the service computes
+    // and the value the trigger derives AGREE, so this assertion cannot
+    // by itself distinguish `RETURNING` from an echo of the input. It is
+    // here because it is the field a caller most wants to trust, and the
+    // trigger's independent behaviour is covered where it can actually
+    // be isolated (`tree-guards.dbtest.ts`). The load-bearing assertions
+    // for THIS test are the two stamps below, which the service reads
+    // back rather than computes on a regression.
+    expect(change.stateCategory).toBe(fresh.stateCategory);
+    expect(change.startedAt).toEqual(fresh.startedAt);
+    expect(change.completedAt).toEqual(fresh.completedAt);
+    // The name pair comes back RAW: this module has no locale, and a
+    // seeded state carries a null name plus its seedKey (2026-09-01).
+    expect(change.stateName).toBe(progress.name);
+    expect(change.stateSeedKey).toBe(progress.seedKey);
+  });
+
+  it("a move to the state the item is ALREADY in writes nothing at all and says so", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "No-op move" });
+    const states = await f.platform.workflowState.findMany({
+      where: { tenantId: f.tenantId, projectId },
+      orderBy: { rank: "asc" },
+    });
+    const review = states.find((s) => s.seedKey === "IN_REVIEW")!;
+    await changeState(ownerCtx(), id, review.id);
+
+    const countRows = async () => ({
+      activity: await f.platform.workItemActivity.count({
+        where: { tenantId: f.tenantId, workItemId: id, field: "stateCategory" },
+      }),
+      audit: (await f.audits("work_item.state_changed")).length,
+    });
+    const before = await countRows();
+    const beforeRow = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+
+    const again = await changeState(ownerCtx(), id, review.id);
+
+    expect(again.changed).toBe(false);
+    // Still the truth about where the item IS, so a caller can render it.
+    expect(again.stateId).toBe(review.id);
+    expect(again.stateCategory).toBe(beforeRow.stateCategory);
+    // ZERO new rows: a "saved" for a write that did not happen is a lie,
+    // and `updatedAt` untouched keeps it off every other board's poll.
+    expect(await countRows()).toEqual(before);
+    const afterRow = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+    expect(afterRow.updatedAt).toEqual(beforeRow.updatedAt);
+  });
 });
 
 describe("stage names follow the viewer's language until renamed (§6.14, 2026-09-01)", () => {
@@ -524,6 +590,38 @@ describe("getItemDetail — the panel's one scoped read", () => {
     await expect(getItemDetail(employeeCtx(), projectId, 999_999)).rejects.toThrow(AuthzError);
     // And a number of THIS project cannot be read through another project's id.
     await expect(getItemDetail(ownerCtx(), otherProjectId, mine.number)).rejects.toThrow(AuthzError);
+  });
+
+  it("carries the project's states by rank and the caps the State picker needs", async () => {
+    const { number } = await createItem(ownerCtx(), { projectId, title: "Picker data" });
+    const { states, canEdit, canApprove } = await getItemDetail(ownerCtx(), projectId, number);
+
+    // By RANK, not by name or insertion — the picker's group order is
+    // the project's order and nothing downstream re-sorts it.
+    const ranked = await f.platform.workflowState.findMany({
+      where: { tenantId: f.tenantId, projectId },
+      orderBy: { rank: "asc" },
+      select: { id: true },
+    });
+    expect(states.map((s) => s.id)).toEqual(ranked.map((s) => s.id));
+
+    // The RAW pair, resolved at the page boundary and never here.
+    const seeded = states.find((s) => s.seedKey === "DONE")!;
+    expect(seeded.name).toBeNull();
+    expect(seeded.requiresApproval).toBe(true);
+
+    expect(canEdit).toBe(true);
+    expect(canApprove).toBe(true);
+  });
+
+  it("an employee gets canApprove false — which is what keeps the gated Done out of their picker", async () => {
+    const { number } = await createItem(ownerCtx(), { projectId, title: "Employee caps" });
+    const r = await getItemDetail(employeeCtx(), projectId, number);
+    expect(r.canEdit).toBe(true);
+    expect(r.canApprove).toBe(false);
+    // The states themselves are not filtered server-side: hiding the
+    // target is UX (`enterableStates`), and `transitionState` is the belt.
+    expect(r.states.some((s) => s.requiresApproval)).toBe(true);
   });
 });
 

@@ -2,8 +2,8 @@ import { AuthzError } from "@/authz/errors";
 import { handleAuthzRedirect } from "@/authz/redirects";
 import {
   getItemDetail,
-  resolveItemDetailState,
-  type ResolvedItemDetail,
+  resolveItemDetail,
+  type ResolvedItemDetailResult,
   type WorkCtx,
 } from "@/modules/work";
 import type { StateSeedKey } from "@/lib/enum-map";
@@ -27,12 +27,18 @@ export async function loadPanelItem(
   number: number,
   returnTo: string,
   t: (key: StateSeedKey) => string,
-): Promise<{ item: ResolvedItemDetail; canEdit: boolean } | null> {
+): Promise<ResolvedItemDetailResult | null> {
   try {
-    const { item, canEdit } = await getItemDetail(ctx, projectId, number);
-    // The state pair resolves HERE, at the server boundary, exactly as
+    // The project's states come from HERE, not from the board's or the
+    // backlog's `listItems` result, even where the caller has one. The
+    // duplicate read is the accepted cost of the principle above: the
+    // panel's content must depend on permission, never on the query the
+    // surface happened to run — and on the full page there is no list
+    // at all.
+    const result = await getItemDetail(ctx, projectId, number);
+    // Every state pair resolves HERE, at the server boundary, exactly as
     // the list surfaces do it (DATA_MODEL §6.14).
-    return { item: resolveItemDetailState(item, t), canEdit };
+    return resolveItemDetail(result, t);
   } catch (e) {
     handleAuthzRedirect(e, returnTo); // MFA step-up, if a ✦ code ever gates a read
     if (e instanceof AuthzError) return null;

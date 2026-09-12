@@ -91,6 +91,29 @@ type ItemRow = Omit<
 >;
 
 /**
+ * What a state change WAS, once it happened — the canonical row every
+ * caller needs and nobody could have (UI.md §7.2: a mutation returns
+ * the row, so an optimistic slice is REPLACED rather than merged).
+ *
+ * The name pair is RAW: this module runs in dbtests and in server
+ * actions and has no locale, so resolving one here would be a lie in
+ * the viewer's language.
+ */
+export type StateChange = {
+  itemId: string;
+  stateId: string;
+  stateCategory: StateRow["category"];
+  startedAt: Date | null;
+  completedAt: Date | null;
+  stateName: string | null;
+  stateSeedKey: StateRow["seedKey"];
+  /** False when the item was ALREADY there: no row, no activity row and
+   *  no audit event were written, and the caller must not claim a save. */
+  changed: boolean;
+};
+
+
+/**
  * The state machine (§6.14), as ONE transaction step so every entry
  * point — inline select, board drop, "Move to…", palette, bulk, triage,
  * import — runs the same code: syncs stateCategory (belt: the trigger
@@ -106,9 +129,23 @@ export async function transitionState(
   ctx: WorkCtx,
   item: ItemRow,
   state: StateRow,
-): Promise<void> {
+): Promise<StateChange> {
   if (state.projectId !== item.projectId) deny("NOT_FOUND");
-  if (state.id === item.stateId) return;
+  // Already there: no row, no activity, no audit — and the caller is
+  // TOLD so, rather than being handed a "saved" it can only report as a
+  // lie. Built from the item, because nothing was written.
+  if (state.id === item.stateId) {
+    return {
+      itemId: item.id,
+      stateId: item.stateId,
+      stateCategory: item.stateCategory,
+      startedAt: item.startedAt,
+      completedAt: item.completedAt,
+      stateName: state.name,
+      stateSeedKey: state.seedKey,
+      changed: false,
+    };
+  }
   // Entering TRIAGE means triageStatus too (the §6.14 CHECK
   // `work_item_triage_has_status` enforces it), which is the `work_item:triage`
   // verb's job — a plain state change into it would reach the database and
@@ -133,9 +170,23 @@ export async function transitionState(
         : item.startedAt;
   const completedAt = to === "DONE" ? (item.completedAt ?? new Date()) : null;
 
-  await tx.workItem.update({
+  // `select` for the same reason `ItemRow` above carries its omit: a
+  // select-less `update` returns the WHOLE row, the 512 KB ProseMirror
+  // description included, and this path runs on every board drop, every
+  // bulk change, every import and every create-into-a-column. The
+  // result was previously discarded, so narrowing it is free — and
+  // `stateCategory` comes back AFTER the BEFORE trigger has derived it,
+  // which is the value the caller actually wants.
+  const row = await tx.workItem.update({
     where: { id: item.id },
     data: { stateId: state.id, stateCategory: to, startedAt, completedAt },
+    select: {
+      id: true,
+      stateId: true,
+      stateCategory: true,
+      startedAt: true,
+      completedAt: true,
+    },
   });
   await writeActivity(tx, ctx, item, {
     field: "stateCategory",
@@ -162,6 +213,17 @@ export async function transitionState(
       ...(state.requiresApproval ? { approval: true } : {}),
     },
   });
+
+  return {
+    itemId: row.id,
+    stateId: row.stateId,
+    stateCategory: row.stateCategory,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    stateName: state.name,
+    stateSeedKey: state.seedKey,
+    changed: true,
+  };
 }
 
 /** The inline state change (the backlog's select): one item, one state. */
@@ -169,8 +231,8 @@ export async function changeState(
   ctx: WorkCtx,
   itemId: string,
   stateId: string,
-): Promise<void> {
-  await withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
+): Promise<StateChange> {
+  return withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
     const item = await tx.workItem.findFirst({
       where: { tenantId: ctx.tenantId, id: itemId, deletedAt: null },
@@ -182,6 +244,6 @@ export async function changeState(
       where: { tenantId: ctx.tenantId, id: stateId, projectId: item!.projectId },
     });
     if (!state) deny("NOT_FOUND");
-    await transitionState(tx, ctx, item!, state!);
+    return transitionState(tx, ctx, item!, state!);
   });
 }

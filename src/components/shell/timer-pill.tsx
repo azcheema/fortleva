@@ -13,7 +13,7 @@ import { secondsSince } from "@/lib/duration";
 import { formatDurationClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { isEditableTarget, isGoSequencePending } from "./use-hotkeys";
+import { useScopeKeys } from "./use-hotkeys";
 
 /** Other surfaces dispatch this after they start/stop a timer so the pill re-syncs. */
 export const TIMER_EVENT = "flv:timer";
@@ -179,25 +179,30 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
     });
   }, [locale, router, sync, t]);
 
-  // `T`: stop the running timer, else go to /time (UI.md §6) — owner only,
-  // and never as the second key of `G T` (the shell's go-to).
-  useEffect(() => {
-    if (!owner.current) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || isEditableTarget(e.target)) return;
-      if (e.key.toLowerCase() !== "t") return;
-      // `G T` must never reach here: when this listener runs FIRST the
-      // sequence is still armed (isGoSequencePending); when it runs after
-      // the shell (the effect re-registers on every running change) the
-      // shell has already consumed the key and prevented its default.
-      if (e.defaultPrevented || isGoSequencePending()) return;
-      e.preventDefault();
-      if (running) stop();
-      else router.push("/time#quick-start");
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [running, router, stop]);
+  // `T`: stop the running timer, else go to /time (UI.md §6).
+  //
+  // Registered, not listened for. The old window listener needed BOTH an
+  // `isGoSequencePending()` check and a `defaultPrevented` check because
+  // it re-registered on every start/stop and so kept changing places with
+  // the shell's listener in the dispatch order; with one dispatcher the
+  // `G` sequence is consulted once, ahead of every scope, and both guards
+  // are gone. The key-owner election goes with them: two pill instances
+  // both register, dispatch returns after the FIRST match, so `stop()`
+  // still fires once. `owner.current` keeps its other jobs (the 1 Hz
+  // tick, the sync) untouched.
+  //
+  // ABOVE the early return below — a hook may not sit under a conditional.
+  useScopeKeys("global", [
+    {
+      key: "t",
+      label: t("keyLabel"),
+      enabled: snap.state !== null,
+      run: () => {
+        if (running) stop();
+        else router.push("/time#quick-start");
+      },
+    },
+  ]);
 
   if (!snap.state) return null;
 

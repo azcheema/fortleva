@@ -17,6 +17,7 @@ export {
   cardsIn,
   columnTotals,
   edgeAnchors,
+  enterableStates,
   epicIdsOf,
   filterItems,
   hasActiveFilters,

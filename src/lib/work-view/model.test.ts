@@ -10,6 +10,7 @@ import {
   canEnterState,
   cardsIn,
   edgeAnchors,
+  enterableStates,
   epicIdsOf,
   filterItems,
   hasActiveFilters,
@@ -173,6 +174,58 @@ describe("lanes", () => {
     expect(canEnterState(done, true)).toBe(true);
     expect(canEnterState(progress, false)).toBe(true);
     expect(canEnterState(progress, true)).toBe(true);
+  });
+
+  describe("enterableStates (the §5.2 picker's option list)", () => {
+    const backlog = state("backlog", "BACKLOG");
+    const progress = state("prog", "IN_PROGRESS");
+    const review = state("review", "IN_PROGRESS");
+    const done = state("done", "DONE", false, true);
+    const triage = state("triage", "TRIAGE", true);
+    // Deliberately NOT in rank order alphabetically — the function must
+    // preserve the caller's order, which is the project's rank order.
+    const all = [backlog, progress, review, done, triage];
+
+    it("an approver gets every enterable state, in the input's order, TRIAGE excluded", () => {
+      expect(enterableStates(all, true, "prog").map((s) => s.id)).toEqual([
+        "backlog",
+        "prog",
+        "review",
+        "done",
+      ]);
+    });
+
+    it("a non-approver does not get the gated state", () => {
+      expect(enterableStates(all, false, "prog").map((s) => s.id)).toEqual([
+        "backlog",
+        "prog",
+        "review",
+      ]);
+    });
+
+    it("the CURRENT state is always present, even when it is gated and the member cannot approve", () => {
+      // The 2W-R residue: without this the picker could not show a
+      // non-approver what a Done item actually is.
+      expect(enterableStates(all, false, "done").map((s) => s.id)).toContain("done");
+    });
+
+    it("the CURRENT state is always present, even when it is TRIAGE", () => {
+      // §5.2: "TRIAGE hidden unless the item is in triage" is this
+      // clause — entering triage stays refused by transitionState.
+      const shown = enterableStates(all, true, "triage").map((s) => s.id);
+      expect(shown).toContain("triage");
+      expect(enterableStates(all, true, "prog").map((s) => s.id)).not.toContain("triage");
+    });
+
+    it("a hidden state is excluded unless it is the current one", () => {
+      const hiddenDone = state("hidden", "DONE", true);
+      const withHidden = [progress, hiddenDone];
+      expect(enterableStates(withHidden, true, "prog").map((s) => s.id)).toEqual(["prog"]);
+      expect(enterableStates(withHidden, true, "hidden").map((s) => s.id)).toEqual([
+        "prog",
+        "hidden",
+      ]);
+    });
   });
 });
 

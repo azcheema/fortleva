@@ -100,23 +100,26 @@
       "shortcuts": "Keyboard shortcuts",
       "signOut": "Sign out",
       "open": "Open command palette",
-      "results": "Results"
+      "results": "Results",
+      "onThisPage": "On this page"
     },
     "shortcuts": {
       "title": "Keyboard shortcuts",
-      "description": "Keys available on this page. Single keys are inert while an input has focus.",
+      "description": "Keys available on this page. Single keys are inert while an input, menu or picker has focus.",
       "open": "Show keyboard shortcuts",
-      "global": "Global",
       "navigation": "Go to",
       "palette": "Command palette",
       "overlay": "This overlay",
       "close": "Close palette / overlay",
-      "goHome": "Home",
-      "goFiles": "Files",
-      "goMembers": "Members",
-      "goAccount": "Account",
       "then": "then",
-      "goTime": "Time"
+      "scopes": {
+        "global": "Global",
+        "board": "Board",
+        "inbox": "Inbox",
+        "triage": "Triage",
+        "item": "Task"
+      },
+      "always": "Always available"
     },
     "timer": {
       "slot": "Timer",
@@ -125,7 +128,8 @@
       "stop": "Stop timer",
       "stopped": "Stopped after {duration}",
       "stopFailed": "Could not stop the timer.",
-      "nudge": "This timer has been running for a long time."
+      "nudge": "This timer has been running for a long time.",
+      "keyLabel": "Start or stop the timer"
     },
     "error": {
       "title": "Something went wrong",
@@ -1378,6 +1382,11 @@
         "bodyReadOnly": "Tasks will appear here once someone creates them.",
         "action": "New task",
         "ungroup": "Show all tasks"
+      },
+      "keys": {
+        "create": "New task",
+        "move": "Move to…",
+        "navigate": "Move between cards"
       }
     },
     "workView": {
@@ -1716,6 +1725,16 @@
         "emptyDescriptionVisible": "Attach the delivered work — this task is visible to the client, so new files start visible too.",
         "followsItem": "Follows {key} — files on a private task stay private to your team",
         "noAccess": "You cannot view files"
+      },
+      "state": {
+        "trigger": "State: {state}",
+        "search": "Search states…",
+        "empty": "No matching state.",
+        "failed": "The state did not save. The panel shows the current state.",
+        "changed": "State changed to {state}"
+      },
+      "keys": {
+        "state": "Change state"
       }
     },
     "states": {

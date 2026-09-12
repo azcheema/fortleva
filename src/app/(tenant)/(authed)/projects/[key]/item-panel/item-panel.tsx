@@ -8,11 +8,12 @@ import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet
 import { VisibilityBadge } from "@/components/visibility-badge";
 import type { DocumentListItem } from "@/documents/service";
 import { formatDate, formatDuration, type DurationStyle } from "@/lib/format";
-import type { ResolvedItemDetail } from "@/modules/work";
+import type { ResolvedItemDetail, ResolvedWorkflowState } from "@/modules/work";
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
 import { DescriptionField } from "./description-field";
+import { StateField } from "./state-field";
 
 /**
  * ONE item panel, rendered in two places (UI.md §5.4): the side-peek
@@ -20,9 +21,10 @@ import { DescriptionField } from "./description-field";
  * Everything below the header is identical by construction — a second
  * copy is how the two drift apart.
  *
- * This slice is still read-first: header, the property rail, attachments.
- * The description editor, subtasks, comments, the Activity tab and the
- * single keys grow onto this shell in the slices after it.
+ * Read-first: every property is its value as text until you edit it
+ * (Mandate 1). State is the first one with a `<PropertyPicker>` behind
+ * it (§5.2 `S`); the rest of the rail, subtasks, comments and the
+ * Activity tab grow onto this shell in the slices after it.
  */
 
 export type ItemPanelCaps = {
@@ -41,9 +43,11 @@ export async function ItemPanel({
   returnTo,
   durationStyle,
   error,
-  variant,
+  surface,
   fullPageHref,
   canEdit,
+  states,
+  canApprove,
 }: {
   item: ResolvedItemDetail;
   /** "ACME-12" — the human key the header shows. */
@@ -58,13 +62,25 @@ export async function ItemPanel({
    * contract) — the panel must show it, or a failure looks like nothing
    * happened (the standing rule). */
   error?: string;
-  /** The sheet owns the dialog title; the page owns the document's h1. */
-  variant: "peek" | "page";
+  /**
+   * WHICH surface this is, not merely how it looks. The state picker's
+   * MFA step-up return address is derived from it, so "the page
+   * rendered with the backlog's return address" — the exact class of
+   * bug `setItemStateAction`'s hardcoded path is — cannot be expressed.
+   * The look follows from it (`variant`, below).
+   */
+  surface: "board" | "backlog" | "page";
   /** Peek only: the link out to the full page. */
   fullPageHref?: string;
-  /** `work_item:edit` — whether the description is editable here. */
+  /** `work_item:edit` — whether the description and the properties are editable here. */
   canEdit: boolean;
+  /** The project's states, by rank, names already resolved. */
+  states: ResolvedWorkflowState[];
+  /** `work_item:approve` — whether a gated state is a legal target. */
+  canApprove: boolean;
 }) {
+  // The sheet owns the dialog title; the page owns the document's h1.
+  const variant = surface === "page" ? "page" : "peek";
   const t = await getTranslations("projects.item");
   const tBacklog = await getTranslations("projects.backlog");
   const tStates = await getTranslations("states");
@@ -113,12 +129,31 @@ export async function ItemPanel({
     </>
   );
 
-  // Read-first property list (UI.md §10.15 pattern 7) — read-only in
-  // this slice; editing arrives with the PropertyPicker.
+  // Read-first property list (UI.md §10.15 pattern 7). State is the
+  // first editable one (§5.2 `S`); the rest arrive as more
+  // `<PropertyPicker>` islands in the slices after this.
   const rail = (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm" data-testid="item-properties">
         <dt className="text-muted-foreground">{t("properties.state")}</dt>
-        <dd>{item.stateName}</dd>
+        <dd>
+          <StateField
+            // Keyed by the ITEM: `PeekShell` never remounts between
+            // items, so without this an optimistic state — or an open
+            // popover — would survive a navigation from one task to
+            // the next.
+            key={item.id}
+            itemId={item.id}
+            itemNumber={item.number}
+            projectKey={projectKey}
+            surface={surface}
+            stateId={item.stateId}
+            stateName={item.stateName}
+            stateCategory={item.stateCategory}
+            states={states}
+            canEdit={canEdit}
+            canApprove={canApprove}
+          />
+        </dd>
         <dt className="text-muted-foreground">{t("properties.assignee")}</dt>
         <dd>{item.assigneeName ?? tBacklog("unassigned")}</dd>
         <dt className="text-muted-foreground">{t("properties.type")}</dt>

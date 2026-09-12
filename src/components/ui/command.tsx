@@ -132,6 +132,25 @@ function CommandEmpty({
   )
 }
 
+/**
+ * The empty row for callers that own their own filtering.
+ *
+ * `CommandEmpty` cannot fire with `shouldFilter={false}` — cmdk sets its
+ * filtered count to the number of MOUNTED items, so the string is
+ * unreachable. Every such caller therefore had to hand-write this div;
+ * this is that div, once, so the next picker does not make a third copy.
+ */
+function CommandEmptyState({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="command-empty-state"
+      role="presentation"
+      className={cn("px-3 py-6 text-center text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  )
+}
+
 function CommandGroup({
   className,
   ...props
@@ -200,6 +219,7 @@ export {
   CommandInput,
   CommandList,
   CommandEmpty,
+  CommandEmptyState,
   CommandGroup,
   CommandItem,
   CommandShortcut,
