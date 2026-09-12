@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
@@ -47,6 +47,26 @@ async function openFirstPeek(page: Page): Promise<void> {
 }
 
 const picker = (page: Page) => page.locator('[data-slot="popover-content"]');
+
+/**
+ * Press a key until it takes, then stop.
+ *
+ * `useScopeKeys` registers in an EFFECT, so a keypress fired the instant
+ * a surface finishes rendering can land before that surface's keys
+ * exist — on CI, where hydration is slower than the keystroke, this was
+ * the difference between green and flaky (run 34713766519). The guard
+ * matters as much as the retry: `?` toggles and `c` types into the field
+ * it opened, so pressing blindly a second time would undo the first.
+ *
+ * It still fails if the binding is genuinely dead — it just stops
+ * calling a race a regression.
+ */
+async function pressUntil(page: Page, key: string, target: Locator): Promise<void> {
+  await expect(async () => {
+    if ((await target.count()) === 0) await page.keyboard.press(key);
+    await expect(target.first()).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 30_000 });
+}
 
 test.describe("the scope registry", () => {
   test("`G S` navigates even with the item scope's bare `S` mounted — and then `S` opens the picker", async ({
@@ -171,7 +191,7 @@ test.describe("the scope registry", () => {
     await expect(page.getByTestId("board")).toBeVisible();
 
     // `C` still creates in context.
-    await page.keyboard.press("c");
+    await pressUntil(page, "c", page.getByTestId("board-create-input"));
     await expect(page.getByTestId("board-create-input").first()).toBeFocused();
     await page.keyboard.press("Escape");
 
@@ -204,9 +224,10 @@ test.describe("the `?` overlay and the palette", () => {
     await page.goto(`/projects/${seed.projectKey}/board`);
     await expect(page.getByTestId("board")).toBeVisible();
 
-    await page.keyboard.press("?");
+    // The BOARD section only exists once the board's scope has
+    // registered, so this press races hydration exactly as `c` does.
     const overlay = page.getByRole("dialog", { name: /shortcut/i });
-    await expect(overlay).toBeVisible();
+    await pressUntil(page, "?", overlay);
     // The board section, with keys that used to ship un-advertised.
     await expect(overlay.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
 
@@ -220,9 +241,8 @@ test.describe("the `?` overlay and the palette", () => {
 
     // Not on a surface that has no board scope.
     await page.goto("/home");
-    await page.keyboard.press("?");
     const home = page.getByRole("dialog", { name: /shortcut/i });
-    await expect(home).toBeVisible();
+    await pressUntil(page, "?", home);
     await expect(home.getByRole("heading", { name: "Board", exact: true })).toHaveCount(0);
   });
 
