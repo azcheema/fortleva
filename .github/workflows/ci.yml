@@ -208,10 +208,12 @@ jobs:
       # concurrently under one `run:` block looked like another ~36 s,
       # and it was rejected on review for three independent reasons:
       #
-      #  1. THIS REPO IS PRIVATE, so `ubuntu-latest` is 2 vCPU / 7 GB,
-      #     not the 4 cores public repos get. Three Node processes plus
-      #     a postgres:18 container on 7 GB is a plausible OOM, and an
-      #     OOM surfaces as a red run with a truncated log and no real
+      #  1. (NO LONGER TRUE since 2026-09-13, when the repository was
+      #     made public — PLAN §0; reasons 2 and 3 still stand alone.)
+      #     While the repo was private, `ubuntu-latest` was 2 vCPU /
+      #     7 GB, not the 4 cores public repos get. Three Node processes
+      #     plus a postgres:18 container on 7 GB is a plausible OOM, and
+      #     an OOM surfaces as a red run with a truncated log and no real
       #     error in it — far more expensive than the minute it saves.
       #  2. Capturing each command's output to a file to keep the logs
       #     attributable means that when `timeout-minutes` fires it

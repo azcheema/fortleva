@@ -110,6 +110,24 @@ jobs:
           echo "neon-smoke touches the real dev database and runs only from main."
           echo "Dispatched ref was: ${{ github.ref }}"
           exit 1
+      # THE REPOSITORY IS PUBLIC (founder decision 2026-09-13), so every
+      # line of this job's log is world-readable. GitHub masks a secret
+      # only as its WHOLE string, never the host inside it, and
+      # `prisma migrate deploy` prints the datasource host outright
+      # ("Datasource db … at ep-….neon.tech") — thirty-one run logs did,
+      # and were deleted before the repository was published. Registered
+      # as masks here, before anything connects, so they print as ***
+      # from the first line on. The endpoint id alone (`ep-…`) is masked
+      # too: it names the pooled host and the direct one.
+      - name: Mask the database hosts
+        run: |
+          for url in "$DATABASE_URL" "$DIRECT_URL" "$PLATFORM_DATABASE_URL"; do
+            [ -n "$url" ] || continue
+            host="${url##*@}"
+            host="${host%%[:/?]*}"
+            echo "::add-mask::$host"
+            echo "::add-mask::${host%%.*}"
+          done
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4

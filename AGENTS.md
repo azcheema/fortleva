@@ -39,6 +39,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Rules for automated agents
 
+- **The repository is PUBLIC** (founder decision, 2026-09-13 — PLAN §0). Every commit, every doc and every GitHub Actions log line is world-readable. GitHub masks a secret only as its whole string, never a value derived from it: register a host, endpoint id or other derived value with `::add-mask::` before anything can print it (`neon-smoke.yml` does, because Prisma prints the datasource host). Never attach a self-hosted runner to this repository.
 - **Never create users, members, roles, sessions or credentials**, and never write to the database, outside a throwaway tenant your own test provisions and tears down (slug prefixed `e2e-`). Never touch the `naxdor` tenant. An agent once created an owner-level account in tenant zero to render a page; it had to be revoked.
 - **Never print, log or commit** passwords, tokens or cookies.
 - **Verify by code, tests and `pnpm build`** — and check **exit codes**, not just output (a piped `tail` once hid a failing test).
