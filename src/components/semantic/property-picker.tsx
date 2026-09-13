@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckIcon } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -188,7 +189,8 @@ export type PickerOption<V extends string> = {
   keywords?: string;
   /** Translated heading. Options keep ARRAY order inside a group. */
   group?: string;
-  /** Trailing slot — the current-value check, a count, a hint. */
+  /** Trailing slot — a count, a hint, D's resolved dates. The current row's
+   *  check is the picker's own (drawn beside `labels.current`), never `meta`. */
   meta?: React.ReactNode;
   /** Non-selectable: shown for context, refused as a target. */
   disabled?: boolean;
@@ -450,11 +452,18 @@ function PickerBody<V extends string>({
                 >
                   {option.icon}
                   <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                  {/* The words for the aria-hidden check. A SIBLING of
-                      the label, both flex items, so the option's name
-                      reads "1h 30m (current)" with the space between. */}
-                  {labels.current && option.value === value ? (
-                    <span className="sr-only">{labels.current}</span>
+                  {/* The current row's check is the PICKER's (slice 7),
+                      drawn from the one comparison that also emits the
+                      sr-only words for it, so the two can never disagree
+                      — no island hands it a check through `meta`. The
+                      words are a SIBLING of the label, both flex items,
+                      so the option's name reads "1h 30m (current)" with
+                      the space between. */}
+                  {option.value === value ? (
+                    <>
+                      {labels.current ? <span className="sr-only">{labels.current}</span> : null}
+                      <CheckIcon className="size-3.5" aria-hidden="true" />
+                    </>
                   ) : null}
                   {option.meta}
                 </CommandItem>

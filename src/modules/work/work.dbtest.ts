@@ -9,6 +9,8 @@ import { dateColumn } from "@/lib/duration";
 import { setupTenant } from "@/members/dbtest-fixture";
 import {
   assignItem,
+  bulkChangeState,
+  bulkSetPriority,
   changeItemVisibility,
   changeState,
   createItem,
@@ -18,7 +20,6 @@ import {
   moveItem,
   setItemArchived,
   updateItemFields,
-  type StateChange,
 } from "./index";
 import { transitionState } from "./states";
 
@@ -344,6 +345,50 @@ async function waitForWaiterOn(xid: string): Promise<void> {
 }
 
 /**
+ * The race itself, ONCE for every writer under test: the colleague's
+ * `body` runs and holds its row locks; `writer` is started and must be
+ * SEEN waiting on the colleague's transaction before the colleague is
+ * released — that ordering is what makes an unlocked implementation read
+ * the row version the colleague is about to replace. Returns what the
+ * colleague's body returned and the writer's promise, still pending, for
+ * the test to await and assert on; the colleague is released and
+ * committed before this returns, whether the probe passed or threw.
+ */
+async function raceBehind<T, W>(
+  body: (tx: TenantDb) => Promise<T>,
+  writer: () => Promise<W>,
+): Promise<{ held: T; result: Promise<W> }> {
+  const colleague = holdOpen(body);
+  try {
+    const { result: held, xid } = await colleague.isReady;
+    const result = writer();
+    result.catch(() => undefined); // awaited by the test — never an unhandled rejection meanwhile
+    // The probe races the writer itself: a writer that refuses or returns
+    // BEFORE it waits — a scope refusal, a bad id, or an unlocked read
+    // that calls the write a no-op (the make-private race below; in the
+    // other races an unlocked implementation still blocks at its UPDATE
+    // and is caught by the assertions that follow) — surfaces as its own
+    // error, or as "finished without waiting", at once, not as a
+    // ten-second probe timeout that hides the cause.
+    await Promise.race([
+      waitForWaiterOn(xid),
+      result.then(
+        () => {
+          throw new Error("the writer finished without waiting on the colleague — the race was not exercised");
+        },
+        (e: unknown) => {
+          throw e;
+        },
+      ),
+    ]);
+    return { held, result };
+  } finally {
+    colleague.release();
+    await colleague.done;
+  }
+}
+
+/**
  * The diff is taken under the row lock (review 2026-09-13). Read
  * unlocked, an edit that WAITED on another at its UPDATE still diffed
  * against the row as it was before the other committed, so its `changed`
@@ -358,20 +403,11 @@ describe("updateItemFields diffs the row version it replaces (review 2026-09-13)
     await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
     await updateItemFields(ownerCtx(), id, { targetDate: dateColumn("2026-09-15") });
 
-    const colleague = holdOpen((tx) =>
-      tx.workItem.update({ where: { id }, data: { targetDate: dateColumn("2026-09-18") }, select: { id: true } }),
+    // On the ROW the colleague wrote — its transaction — and never on the rank lock.
+    const { result: editing } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { targetDate: dateColumn("2026-09-18") }, select: { id: true } }),
+      () => updateItemFields(ownerCtx(), id, { targetDate: dateColumn("2026-09-20") }),
     );
-    let editing: Promise<unknown> = Promise.resolve(null);
-    try {
-      const { xid } = await colleague.isReady;
-      editing = updateItemFields(ownerCtx(), id, { targetDate: dateColumn("2026-09-20") });
-      editing.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
-      // On the ROW the colleague wrote — its transaction — and never on the rank lock.
-      await waitForWaiterOn(xid);
-    } finally {
-      colleague.release();
-      await colleague.done;
-    }
 
     expect(await editing).toMatchObject({ id, targetDate: dateColumn("2026-09-20"), changed: true });
     const history = await f.platform.workItemActivity.findMany({
@@ -386,21 +422,10 @@ describe("updateItemFields diffs the row version it replaces (review 2026-09-13)
 
   it("an edit that waited on an IDENTICAL one finds nothing to write: changed false, no history, updatedAt untouched", async () => {
     const { id } = await createItem(ownerCtx(), { projectId, title: "Two HIGHs at once" });
-    const colleagueWrote: { updatedAt?: Date } = {};
-    const colleague = holdOpen(async (tx) => {
-      const r = await tx.workItem.update({ where: { id }, data: { priority: "HIGH" }, select: { updatedAt: true } });
-      colleagueWrote.updatedAt = r.updatedAt;
-    });
-    let editing: Promise<unknown> = Promise.resolve(null);
-    try {
-      const { xid } = await colleague.isReady;
-      editing = updateItemFields(ownerCtx(), id, { priority: "HIGH" });
-      editing.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
-      await waitForWaiterOn(xid);
-    } finally {
-      colleague.release();
-      await colleague.done;
-    }
+    const { held: colleagueWrote, result: editing } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { priority: "HIGH" }, select: { updatedAt: true } }),
+      () => updateItemFields(ownerCtx(), id, { priority: "HIGH" }),
+    );
 
     // Still the truth about the item: HIGH, as the colleague left it.
     expect(await editing).toMatchObject({ id, priority: "HIGH", changed: false });
@@ -410,7 +435,6 @@ describe("updateItemFields diffs the row version it replaces (review 2026-09-13)
     // No second UPDATE: the stamp is still the colleague's, so no board's
     // poll (ARC-18) fires for a write that changed nothing.
     const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id }, select: { updatedAt: true } });
-    expect(colleagueWrote.updatedAt).toBeDefined();
     expect(fresh.updatedAt).toEqual(colleagueWrote.updatedAt);
   });
 });
@@ -439,40 +463,31 @@ describe("changeState diffs the row version it replaces (review 2026-09-13)", ()
 
     // The colleague's pick runs the state machine itself, so it writes the
     // history row and the audit event the waiting pick must not repeat.
-    const colleague = holdOpen(async (tx) => {
-      const item = await tx.workItem.findFirst({
-        where: { tenantId: f.tenantId, id },
-        omit: { description: true, descriptionText: true },
-      });
-      if (!item) throw new Error("the colleague could not read the item");
-      return transitionState(tx, ownerCtx(), item, done);
-    });
-    let first: StateChange | undefined;
-    let picking: Promise<StateChange | null> = Promise.resolve(null);
-    try {
-      const held = await colleague.isReady;
-      first = held.result;
-      picking = changeState(ownerCtx(), id, done.id);
-      picking.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
-      await waitForWaiterOn(held.xid);
-    } finally {
-      colleague.release();
-      await colleague.done;
-    }
+    const { held: first, result: picking } = await raceBehind(
+      async (tx) => {
+        const item = await tx.workItem.findFirst({
+          where: { tenantId: f.tenantId, id },
+          omit: { description: true, descriptionText: true },
+        });
+        if (!item) throw new Error("the colleague could not read the item");
+        return transitionState(tx, ownerCtx(), item, done);
+      },
+      () => changeState(ownerCtx(), id, done.id),
+    );
 
-    expect(first?.changed).toBe(true);
-    expect(first?.completedAt).toBeInstanceOf(Date);
+    expect(first.changed).toBe(true);
+    expect(first.completedAt).toBeInstanceOf(Date);
     const second = await picking;
     // Still the truth about the item: Done, stamped when the colleague moved it.
     expect(second).toMatchObject({ itemId: id, stateId: done.id, stateCategory: "DONE", changed: false });
-    expect(second?.completedAt).toEqual(first?.completedAt);
+    expect(second.completedAt).toEqual(first.completedAt);
     expect(await stateAudits(id)).toHaveLength(1);
     expect(
       await f.platform.workItemActivity.count({ where: { tenantId: f.tenantId, workItemId: id, field: "stateCategory" } }),
     ).toBe(1);
     // Read unlocked, the waiting pick saw completedAt null and stamped its own.
     const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id }, select: { completedAt: true } });
-    expect(fresh.completedAt).toEqual(first?.completedAt);
+    expect(fresh.completedAt).toEqual(first.completedAt);
   });
 
   it("a pick that waited on a colleague's Done records DONE as where it came from, never To do", async () => {
@@ -483,23 +498,15 @@ describe("changeState diffs the row version it replaces (review 2026-09-13)", ()
     const done = states.find((s) => s.category === "DONE")!;
     const progress = states.find((s) => s.category === "IN_PROGRESS")!; // "In progress", first by rank
 
-    const colleague = holdOpen((tx) =>
-      tx.workItem.update({
-        where: { id },
-        data: { stateId: done.id, stateCategory: "DONE", completedAt: new Date() },
-        select: { id: true },
-      }),
+    const { result: picking } = await raceBehind(
+      (tx) =>
+        tx.workItem.update({
+          where: { id },
+          data: { stateId: done.id, stateCategory: "DONE", completedAt: new Date() },
+          select: { id: true },
+        }),
+      () => changeState(ownerCtx(), id, progress.id),
     );
-    let picking: Promise<StateChange | null> = Promise.resolve(null);
-    try {
-      const { xid } = await colleague.isReady;
-      picking = changeState(ownerCtx(), id, progress.id);
-      picking.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
-      await waitForWaiterOn(xid);
-    } finally {
-      colleague.release();
-      await colleague.done;
-    }
 
     expect(await picking).toMatchObject({
       itemId: id,
@@ -528,19 +535,10 @@ describe("changeState diffs the row version it replaces (review 2026-09-13)", ()
     await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
     const progress = (await statesByRank()).find((s) => s.category === "IN_PROGRESS")!;
 
-    const colleague = holdOpen((tx) =>
-      tx.workItem.update({ where: { id }, data: { visibility: "INTERNAL" }, select: { id: true } }),
+    const { result: picking } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { visibility: "INTERNAL" }, select: { id: true } }),
+      () => changeState(ownerCtx(), id, progress.id),
     );
-    let picking: Promise<StateChange | null> = Promise.resolve(null);
-    try {
-      const { xid } = await colleague.isReady;
-      picking = changeState(ownerCtx(), id, progress.id);
-      picking.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
-      await waitForWaiterOn(xid);
-    } finally {
-      colleague.release();
-      await colleague.done;
-    }
 
     // Read unlocked, the pick still believed the item shared, wrote its
     // history CLIENT_VISIBLE, and work_item_activity_denorm_guard refused
@@ -551,6 +549,247 @@ describe("changeState diffs the row version it replaces (review 2026-09-13)", ()
       select: { newValue: true, visibility: true },
     });
     expect(history).toEqual([{ newValue: "IN_PROGRESS", visibility: "INTERNAL" }]);
+  });
+});
+
+/**
+ * Slice 7 carried the row lock to every writer that still diffed an
+ * unlocked read (slice 6's disposition 2, PLAN §0): the three single-row
+ * writers below, then the multi-row ones, which lock the rows they diff
+ * under the project's queue lock. The harness is the one above; each
+ * test fails on the unlocked read.
+ */
+describe("assignItem diffs the row version it replaces (slice 7)", () => {
+  const assigneeHistory = (id: string) =>
+    f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "assignee" },
+      select: { oldRef: true, newRef: true, visibility: true },
+    });
+
+  it("an assignment that waited on an IDENTICAL one writes nothing: changed false, no history, no notification", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Two assignments at once" });
+    const employee = f.seats.employee.memberId;
+    const { result: assigning } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { assigneeMemberId: employee }, select: { id: true } }),
+      () => assignItem(ownerCtx(), id, employee),
+    );
+
+    // Still the truth about the item: the employee's, as the colleague left it.
+    expect(await assigning).toMatchObject({ id, assigneeMemberId: employee, changed: false });
+    expect(await assigneeHistory(id)).toEqual([]);
+    // Read unlocked, the wait ended in a second UPDATE, a history row from
+    // "nobody", and a notification — with a debounced email behind it —
+    // for a member who already held the task.
+    expect(
+      await f.platform.notification.count({
+        where: { tenantId: f.tenantId, kind: "work_item.assigned", entityId: id },
+      }),
+    ).toBe(0);
+  });
+
+  it("an assignment that waited on a colleague's records THEIR assignee as where it came from, never nobody", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Reassigned mid-wait" });
+    const manager = f.seats.manager.memberId;
+    // The waiting assignment is to the OWNER — the actor — whom `emit`
+    // never notifies: the fan-out describe below counts this tenant's
+    // assignment notifications and outbox rows by KIND, and an
+    // assignment to anyone else here would be one more of each there.
+    const owner = f.seats.owner.memberId;
+    const { result: assigning } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { assigneeMemberId: manager }, select: { id: true } }),
+      () => assignItem(ownerCtx(), id, owner),
+    );
+
+    expect(await assigning).toMatchObject({ id, assigneeMemberId: owner, changed: true });
+    // The colleague's raw write leaves no row of its own, so the waiting
+    // assignment's row must start where that commit left the item — read
+    // unlocked, it said "from nobody".
+    expect(await assigneeHistory(id)).toEqual([{ oldRef: manager, newRef: owner, visibility: "INTERNAL" }]);
+  });
+});
+
+describe("changeItemVisibility diffs the row version it replaces (slice 7)", () => {
+  const visibilityAudits = (id: string) =>
+    f.platform.auditEvent.findMany({
+      where: { tenantId: f.tenantId, targetId: id, action: "work_item.visibility_changed" },
+      select: { metadata: true },
+    });
+  const visibilityHistory = (id: string) =>
+    f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "visibility" },
+      select: { oldValue: true, newValue: true, visibility: true },
+    });
+
+  it("a share that waited on an IDENTICAL share writes nothing: changed false, no history, no audit event", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Two shares at once" });
+    const { result: sharing } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { visibility: "CLIENT_VISIBLE" }, select: { id: true } }),
+      () => changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE"),
+    );
+
+    expect(await sharing).toMatchObject({ id, visibility: "CLIENT_VISIBLE", changed: false });
+    expect(await visibilityHistory(id)).toEqual([]);
+    // Read unlocked, the audit trail said "INTERNAL → CLIENT_VISIBLE" for
+    // a transition this transaction never made.
+    expect(await visibilityAudits(id)).toEqual([]);
+  });
+
+  it("a make-private that waited on a colleague's share still makes it private — read unlocked it was a no-op that left the task shared", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Shared under a make-private" });
+    // An unlocked read never waits here: it reads INTERNAL, calls the
+    // flip a no-op and returns — so the harness's wait probe is itself
+    // the assertion.
+    const { result: hiding } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { visibility: "CLIENT_VISIBLE" }, select: { id: true } }),
+      () => changeItemVisibility(ownerCtx(), id, "INTERNAL"),
+    );
+
+    // The member asked for private and got it. This is the worst-bug
+    // direction, and exactly the one an unlocked diff got wrong: the
+    // colleague's share stood, and the member was told nothing.
+    expect(await hiding).toMatchObject({ id, visibility: "INTERNAL", changed: true });
+    const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id }, select: { visibility: true } });
+    expect(fresh.visibility).toBe("INTERNAL");
+    expect(await visibilityHistory(id)).toEqual([
+      { oldValue: "CLIENT_VISIBLE", newValue: "INTERNAL", visibility: "INTERNAL" },
+    ]);
+    const audits = await visibilityAudits(id);
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.metadata).toMatchObject({ from: "CLIENT_VISIBLE", to: "INTERNAL" });
+  });
+});
+
+describe("setItemArchived diffs the row version it replaces (slice 7)", () => {
+  const archiveAudits = (id: string) =>
+    f.platform.auditEvent.count({ where: { tenantId: f.tenantId, targetId: id, action: "work_item.archived" } });
+
+  it("the positive control: an archive writes once and audits once, a repeat is a no-op, a restore writes and audits again", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Archive positive control" });
+    const archived = await setItemArchived(ownerCtx(), id, true);
+    expect(archived).toMatchObject({ id, changed: true });
+    expect(archived.archivedAt).toBeInstanceOf(Date);
+    expect(await archiveAudits(id)).toBe(1);
+    // Already archived: nothing written, nothing audited, the stamp stands
+    // — and the caller is told so.
+    expect(await setItemArchived(ownerCtx(), id, true)).toEqual({ id, archivedAt: archived.archivedAt, changed: false });
+    expect(await archiveAudits(id)).toBe(1);
+    expect(await setItemArchived(ownerCtx(), id, false)).toEqual({ id, archivedAt: null, changed: true });
+    expect(await archiveAudits(id)).toBe(2);
+  });
+
+  it("an archive that waited on an identical one restamps nothing and audits nothing", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Two archives at once" });
+    const stamp = new Date(Date.now() - 60_000);
+    const { result: archiving } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { archivedAt: stamp }, select: { id: true } }),
+      () => setItemArchived(ownerCtx(), id, true),
+    );
+
+    // Read unlocked, the wait ended in a second stamp — "archived now", a
+    // minute after it was — and a second `work_item.archived`. The answer
+    // names the colleague's stamp and says nothing was written.
+    expect(await archiving).toEqual({ id, archivedAt: stamp, changed: false });
+    const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id }, select: { archivedAt: true } });
+    expect(fresh.archivedAt).toEqual(stamp);
+    expect(await archiveAudits(id)).toBe(0);
+  });
+});
+
+/**
+ * The multi-row writers lock the rows they diff (bulk.ts `loadSelection`,
+ * ordering.ts `moveItem`) — under the project's queue lock, which
+ * serialises them against each other but never against a single-row
+ * writer, whose commit can land between an unlocked read and the UPDATE.
+ */
+describe("the multi-row writers diff the row versions they replace (slice 7)", () => {
+  const statesByRank = () =>
+    f.platform.workflowState.findMany({ where: { tenantId: f.tenantId, projectId }, orderBy: { rank: "asc" } });
+  const stateAudits = (id: string) =>
+    f.platform.auditEvent.count({
+      where: { tenantId: f.tenantId, targetId: id, action: "work_item.state_changed" },
+    });
+  const priorityHistory = (id: string) =>
+    f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "priority" },
+      select: { oldValue: true, newValue: true },
+    });
+
+  it("bulkSetPriority: a row a colleague had just set is skipped, not re-written with history from a value it never held", async () => {
+    const a = await createItem(ownerCtx(), { projectId, title: "Bulk priority A" });
+    const b = await createItem(ownerCtx(), { projectId, title: "Bulk priority B" });
+    // Waits on A's row — the colleague's transaction — with the rank lock free.
+    const { result: bulk } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id: a.id }, data: { priority: "HIGH" }, select: { id: true } }),
+      () => bulkSetPriority(ownerCtx(), [a.id, b.id], "HIGH"),
+    );
+
+    // Read unlocked, both counted as changed and A got "NONE → HIGH" for
+    // a value its UPDATE never replaced.
+    expect(await bulk).toEqual({ changed: 1, skipped: 1 });
+    expect(await priorityHistory(a.id)).toEqual([]);
+    expect(await priorityHistory(b.id)).toEqual([{ oldValue: "NONE", newValue: "HIGH" }]);
+  });
+
+  it("bulkChangeState: a row a colleague had just moved to Done is skipped — one audit event, and its completedAt stands", async () => {
+    const a = await createItem(ownerCtx(), { projectId, title: "Bulk state A" });
+    const b = await createItem(ownerCtx(), { projectId, title: "Bulk state B" });
+    const done = (await statesByRank()).find((s) => s.category === "DONE")!;
+    // The colleague's move runs the state machine itself, so it writes
+    // the history row and the audit event the waiting bulk must not repeat.
+    const { held: first, result: bulk } = await raceBehind(
+      async (tx) => {
+        const item = await tx.workItem.findFirst({
+          where: { tenantId: f.tenantId, id: a.id },
+          omit: { description: true, descriptionText: true },
+        });
+        if (!item) throw new Error("the colleague could not read the item");
+        return transitionState(tx, ownerCtx(), item, done);
+      },
+      () => bulkChangeState(ownerCtx(), [a.id, b.id], done.id),
+    );
+
+    expect(await bulk).toEqual({ changed: 1, skipped: 1 });
+    // A: the colleague's event and nothing more — read unlocked, a second
+    // one, a second history row, and a restamped completedAt.
+    expect(await stateAudits(a.id)).toBe(1);
+    expect(await stateAudits(b.id)).toBe(1);
+    const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id: a.id }, select: { completedAt: true } });
+    expect(first.completedAt).toBeInstanceOf(Date);
+    expect(fresh.completedAt).toEqual(first.completedAt);
+  });
+
+  it("moveItem: a state leg that waited on a colleague's Done records DONE as where it came from, never To do", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Moved mid-wait" });
+    const states = await statesByRank();
+    const done = states.find((s) => s.category === "DONE")!;
+    const progress = states.find((s) => s.category === "IN_PROGRESS")!;
+    // The item as its own anchor: a state-only move that keeps its
+    // position. It waits on its own row (FOR UPDATE, the rank UPDATE's
+    // mode) — the colleague's transaction — never on the rank lock.
+    const { result: moving } = await raceBehind(
+      (tx) =>
+        tx.workItem.update({
+          where: { id },
+          data: { stateId: done.id, stateCategory: "DONE", completedAt: new Date() },
+          select: { id: true },
+        }),
+      () => moveItem(ownerCtx(), { itemId: id, stateId: progress.id, afterId: id }),
+    );
+
+    expect(await moving).toMatchObject({ id, stateId: progress.id, stateCategory: "IN_PROGRESS" });
+    const history = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "stateCategory" },
+      select: { oldValue: true, newValue: true },
+    });
+    // The colleague's raw write leaves no row of its own; read unlocked,
+    // the move said "TODO → IN_PROGRESS", and so did its audit.
+    expect(history).toEqual([{ oldValue: "DONE", newValue: "IN_PROGRESS" }]);
+    const audits = await f.platform.auditEvent.findMany({
+      where: { tenantId: f.tenantId, targetId: id, action: "work_item.state_changed" },
+      select: { metadata: true },
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.metadata).toMatchObject({ from: "DONE", to: "IN_PROGRESS" });
   });
 });
 
@@ -941,9 +1180,13 @@ describe("getItemDetail — the panel's one scoped read", () => {
     await expect(getItemDetail(ownerCtx(), otherProjectId, mine.number)).rejects.toThrow(AuthzError);
   });
 
-  it("carries the project's states by rank and the caps the State picker needs", async () => {
+  it("carries the project's states by rank, the caps the pickers need, and the members the A picker lists", async () => {
     const { number } = await createItem(ownerCtx(), { projectId, title: "Picker data" });
-    const { states, canEdit, canApprove } = await getItemDetail(ownerCtx(), projectId, number);
+    const { states, canEdit, canApprove, canChangeVisibility, members } = await getItemDetail(
+      ownerCtx(),
+      projectId,
+      number,
+    );
 
     // By RANK, not by name or insertion — the picker's group order is
     // the project's order and nothing downstream re-sorts it.
@@ -961,13 +1204,22 @@ describe("getItemDetail — the panel's one scoped read", () => {
 
     expect(canEdit).toBe(true);
     expect(canApprove).toBe(true);
+    expect(canChangeVisibility).toBe(true);
+
+    // The A picker's rows: every ACTIVE member, the owner first (joined
+    // first), each with a name to show — the same read listItems makes.
+    const ids = members.map((m) => m.id);
+    expect(ids[0]).toBe(f.seats.owner.memberId);
+    expect(ids).toEqual(expect.arrayContaining([f.seats.manager.memberId, f.seats.employee.memberId]));
+    expect(members.every((m) => m.name.length > 0)).toBe(true);
   });
 
-  it("an employee gets canApprove false — which is what keeps the gated Done out of their picker", async () => {
+  it("an employee gets canApprove and canChangeVisibility false — the gated Done and the V picker stay out of reach", async () => {
     const { number } = await createItem(ownerCtx(), { projectId, title: "Employee caps" });
     const r = await getItemDetail(employeeCtx(), projectId, number);
     expect(r.canEdit).toBe(true);
     expect(r.canApprove).toBe(false);
+    expect(r.canChangeVisibility).toBe(false);
     // The states themselves are not filtered server-side: hiding the
     // target is UX (`enterableStates`), and `transitionState` is the belt.
     expect(r.states.some((s) => s.requiresApproval)).toBe(true);

@@ -5,8 +5,8 @@ import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail, isUniqueViolation } from "@/lib/domain-error";
 import { RANK_REBALANCE_LENGTH, rankBetween, ranksBetween } from "@/lib/rank";
-import { loadItemInScope } from "./items";
 import { lockLiveRow, lockPredecessor, lockProjectRanks, lockSuccessor } from "./rank-lock";
+import { loadItemInScope } from "./rows";
 import { transitionState, type WorkCtx } from "./states";
 
 /**
@@ -76,17 +76,21 @@ export async function moveItem(ctx: WorkCtx, input: MoveInput): Promise<MovedIte
   return retryOnRankCollision(() =>
     withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
       await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
-      // Scope first (the project comes from the row), then the project
-      // lock, then a FRESH read of the item — a snapshot a concurrent
-      // writer changed while we waited for the lock is never used.
-      const probe = await loadItemInScope(tx, ctx, input.itemId);
+      // THE ONE ORDER of a queued writer (rank-lock.ts): an unlocked probe
+      // for the project (the queue key), the queue lock, then the item's
+      // own row LOCKED, read and scope-checked again — so the state leg
+      // below diffs the row version its UPDATE replaces. The queue lock
+      // serialises multi-row writers only: changeState and the other
+      // single-row writers never take it, so one could commit between an
+      // unlocked read and this transaction's UPDATE, and the state leg
+      // then reported, audited and wrote history for a transition from a
+      // state the row had already left (slice 7, PLAN §0). FOR UPDATE, the
+      // rank UPDATE's own mode, so the lock never upgrades under it; a row
+      // gone meanwhile is NOT_FOUND from the read.
+      const probe = await loadItemInScope(tx, ctx, input.itemId, { lock: false });
       const projectId = probe.projectId;
       await lockProjectRanks(tx, projectId);
-      const item = await tx.workItem.findFirst({
-        where: { tenantId: ctx.tenantId, id: probe.id, deletedAt: null },
-        omit: { description: true, descriptionText: true }, // see ItemRow (states.ts)
-      });
-      if (!item) deny("NOT_FOUND");
+      const item = await loadItemInScope(tx, ctx, probe.id, { lock: "UPDATE" });
 
       const state = input.stateId
         ? await tx.workflowState.findFirst({
@@ -97,10 +101,10 @@ export async function moveItem(ctx: WorkCtx, input: MoveInput): Promise<MovedIte
 
       // Anchors: the item itself is no anchor ("after yourself" = stay,
       // not "bottom"); the item as the ONLY anchor keeps the position.
-      const afterId = input.afterId && input.afterId !== item!.id ? input.afterId : null;
-      const beforeId = input.beforeId && input.beforeId !== item!.id ? input.beforeId : null;
+      const afterId = input.afterId && input.afterId !== item.id ? input.afterId : null;
+      const beforeId = input.beforeId && input.beforeId !== item.id ? input.beforeId : null;
       const selfAnchored =
-        !afterId && !beforeId && (input.afterId === item!.id || input.beforeId === item!.id);
+        !afterId && !beforeId && (input.afterId === item.id || input.beforeId === item.id);
 
       let lower: string | null = null;
       let upper: string | null = null;
@@ -109,25 +113,27 @@ export async function moveItem(ctx: WorkCtx, input: MoveInput): Promise<MovedIte
           const anchor = await lockLiveRow(tx, ctx.tenantId, projectId, afterId);
           if (!anchor) fail("INVALID_INPUT", "after anchor is not a live item of this project");
           lower = anchor!.rank;
-          upper = (await lockSuccessor(tx, ctx.tenantId, projectId, lower, item!.id))?.rank ?? null;
+          upper = (await lockSuccessor(tx, ctx.tenantId, projectId, lower, item.id))?.rank ?? null;
         } else if (beforeId) {
           const anchor = await lockLiveRow(tx, ctx.tenantId, projectId, beforeId);
           if (!anchor) fail("INVALID_INPUT", "before anchor is not a live item of this project");
           upper = anchor!.rank;
-          lower = (await lockPredecessor(tx, ctx.tenantId, projectId, upper, item!.id))?.rank ?? null;
+          lower = (await lockPredecessor(tx, ctx.tenantId, projectId, upper, item.id))?.rank ?? null;
         } else {
-          lower = (await lockPredecessor(tx, ctx.tenantId, projectId, null, item!.id))?.rank ?? null;
+          lower = (await lockPredecessor(tx, ctx.tenantId, projectId, null, item.id))?.rank ?? null;
         }
       }
 
       // Already the only row in that gap → the position is unchanged.
       const inPlace =
         selfAnchored ||
-        ((lower === null || item!.rank > lower) && (upper === null || item!.rank < upper));
+        ((lower === null || item.rank > lower) && (upper === null || item.rank < upper));
       let rebalanced = false;
       if (!inPlace) {
         const rank = rankBetween(lower, upper);
-        await tx.workItem.update({ where: { id: item!.id }, data: { rank } });
+        // `select`, never omitted: a select-less update returns the WHOLE
+        // row, the 512 KB description included, under both locks.
+        await tx.workItem.update({ where: { id: item.id }, data: { rank }, select: { id: true } });
         if (rank.length > RANK_REBALANCE_LENGTH) {
           await rebalanceRanks(tx, ctx, projectId);
           rebalanced = true;
@@ -136,7 +142,7 @@ export async function moveItem(ctx: WorkCtx, input: MoveInput): Promise<MovedIte
 
       if (state) await transitionState(tx, ctx, item!, state);
       const after = await tx.workItem.findFirstOrThrow({
-        where: { id: item!.id },
+        where: { id: item.id },
         select: { id: true, number: true, stateId: true, stateCategory: true },
       });
       return { ...after, rebalanced };

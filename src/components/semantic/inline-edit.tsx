@@ -7,7 +7,12 @@ import { useReducer, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { VisibilityBadge, type VisibilityValue } from "@/components/visibility-badge";
+import {
+  VISIBILITY_VALUES,
+  VisibilityBadge,
+  visibilityLabelKey,
+  type VisibilityValue,
+} from "@/components/visibility-badge";
 import { restBoxClass } from "@/lib/control-classes";
 import {
   inlineEditInitial,
@@ -367,10 +372,12 @@ export function VisibilityInlineEdit({
   className?: string;
 }) {
   const t = useTranslations("visibility");
-  const options: InlineEditOption[] = [
-    { value: "INTERNAL", label: t("internal") },
-    { value: "CLIENT_VISIBLE", label: t("clientVisible") },
-  ];
+  // The badge's own token order and words, so this control and the item
+  // panel's `V` picker cannot offer the pair differently.
+  const options: InlineEditOption[] = VISIBILITY_VALUES.map((v) => ({
+    value: v,
+    label: t(visibilityLabelKey(v)),
+  }));
 
   return (
     <InlineEdit

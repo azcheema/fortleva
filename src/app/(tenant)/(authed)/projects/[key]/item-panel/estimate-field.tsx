@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -63,7 +62,7 @@ export function EstimateField({
   const [open, setOpen] = useState(false);
   const fmt = (minutes: number) => formatDuration(locale, minutes, durationStyle);
 
-  const { shown, announced, commit } = usePanelCommit<ShownEstimate, EstimateCommitted>({
+  const { shown, status, commit } = usePanelCommit<ShownEstimate, EstimateCommitted>({
     canonical: { minutes: estimateMinutes, label: estimateLabel },
     same: (a, b) => a.minutes === b.minutes,
     adopt: (c) => ({
@@ -81,15 +80,13 @@ export function EstimateField({
 
   if (!canEdit) return <span className="num">{shown.label ?? "—"}</span>;
 
-  const check = <CheckIcon className="size-3.5" aria-hidden="true" />;
   const options: PickerOption<string>[] =
     shown.minutes === null
-      ? [{ value: "none", label: t("estimate.none"), meta: check, testId: "item-estimate-none" }]
+      ? [{ value: "none", label: t("estimate.none"), testId: "item-estimate-none" }]
       : [
           {
             value: `${shown.minutes}`,
             label: shown.label ?? fmt(shown.minutes),
-            meta: check,
             testId: "item-estimate-current",
           },
           { value: "clear", label: t("estimate.clear"), testId: "item-estimate-clear" },
@@ -154,9 +151,7 @@ export function EstimateField({
           {shown.label ?? "—"}
         </span>
       </PropertyPicker>
-      <span role="status" aria-live="polite" className="sr-only">
-        {announced}
-      </span>
+      {status}
     </>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -50,7 +49,7 @@ export function PriorityField({
   const tPriority = useTranslations("states.priority");
   const [open, setOpen] = useState(false);
 
-  const { shown, announced, commit } = usePanelCommit<Priority, PriorityCommitted>({
+  const { shown, status, commit } = usePanelCommit<Priority, PriorityCommitted>({
     canonical: priority,
     same: (a, b) => a === b,
     adopt: (c) => c.priority,
@@ -70,7 +69,6 @@ export function PriorityField({
     value: v,
     label: tPriority(v),
     icon: <PriorityGlyph value={v} />,
-    meta: v === shown ? <CheckIcon className="size-3.5" aria-hidden="true" /> : undefined,
     testId: `item-priority-${v}`,
   }));
 
@@ -107,9 +105,7 @@ export function PriorityField({
         {/* The label branch: no Tooltip inside a trigger (§5.2). */}
         <PriorityIndicator value={shown} showLabel />
       </PropertyPicker>
-      <span role="status" aria-live="polite" className="sr-only">
-        {announced}
-      </span>
+      {status}
     </>
   );
 }

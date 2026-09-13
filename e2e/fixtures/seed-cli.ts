@@ -760,17 +760,37 @@ async function teardown(seedFile: string): Promise<void> {
 }
 
 /**
- * Refuse to touch anything but a throwaway tenant. `setVisibility` and
- * `removeTenant` both carry this check; the notification helpers below
+ * Refuse to touch anything but a throwaway tenant — an `e2e-` slug OR one
+ * of the vitest suites' prefixes, the wider rule the sweeps need to clean
+ * the DB suite's orphans (`removeTenant` applies the same slug rule
+ * inline, plus its member-email belt). The notification helpers below
  * write and read whole-tenant, so they need it more, not less — a stale
  * `.seed` or a hand-typed id must not be able to blank a real tenant's
- * inbox state.
+ * inbox state. A command a spec aims at a row or a tenant of ITS OWN
+ * fixture uses the stricter `assertE2ETenant` instead.
  */
 async function assertThrowawayTenant(db: PlatformDb, tenantId: string): Promise<void> {
   const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
   if (!tenant) throw new Error(`no such tenant ${tenantId}`);
   if (!isThrowawaySlug(tenant.slug)) {
     throw new Error(`refusing to touch non-throwaway tenant "${tenant.slug}"`);
+  }
+}
+
+/**
+ * The guard of a command that WRITES into the tenant the browser harness
+ * provisioned: an `e2e-` slug and nothing else — stricter than
+ * `assertThrowawayTenant`, which also admits the vitest suites' prefixes
+ * so the sweeps can clean their orphans. Every writing command a spec
+ * can aim at a row or a tenant takes it before its first write:
+ * `set-visibility`, `client-visible-comment`, `big-project` (a
+ * caller-supplied tenant id) and `drop-project` (a caller-supplied
+ * project id, checked through its tenant).
+ */
+async function assertE2ETenant(db: PlatformDb, tenantId: string): Promise<void> {
+  const tenant = await db.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { slug: true } });
+  if (!tenant.slug.startsWith(SLUG_PREFIX)) {
+    throw new Error(`refusing to write outside a throwaway tenant ("${tenant.slug}")`);
   }
 }
 
@@ -841,17 +861,49 @@ async function setVisibility(documentId: string, value: string): Promise<void> {
     where: { id: documentId },
     select: { tenantId: true },
   });
-  const tenant = await db.tenant.findUniqueOrThrow({
-    where: { id: doc.tenantId },
-    select: { slug: true },
-  });
-  if (!tenant.slug.startsWith(SLUG_PREFIX)) {
-    throw new Error(`refusing to write outside a throwaway tenant ("${tenant.slug}")`);
-  }
+  await assertE2ETenant(db, doc.tenantId);
   await db.document.update({ where: { id: documentId }, data: { visibility: value } });
   await db.$disconnect();
   process.stdout.write(`${MARKER}${JSON.stringify({ visibility: value })}
 `);
+}
+
+/**
+ * A CLIENT_VISIBLE comment under one of the throwaway tenant's tasks —
+ * the child that makes `work_item_visibility_downgrade_guard` refuse to
+ * make the task private, which is the `V` picker's "explains" case.
+ * Written raw, as work.dbtest.ts writes it: no comment UI exists yet.
+ * The task is addressed by project id + number, which is what a spec
+ * can read off the peek's URL.
+ */
+async function clientVisibleComment(projectId: string, number: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  const item = await db.workItem.findFirstOrThrow({
+    where: { projectId, number: Number(number), deletedAt: null },
+    select: { id: true, tenantId: true },
+  });
+  // The writing commands' guard: an `e2e-` slug and nothing else.
+  await assertE2ETenant(db, item.tenantId);
+  const author = await db.member.findFirstOrThrow({
+    where: { tenantId: item.tenantId },
+    orderBy: { joinedAt: "asc" },
+    select: { id: true },
+  });
+  const comment = await db.comment.create({
+    data: {
+      tenantId: item.tenantId,
+      subjectType: "WORK_ITEM",
+      subjectId: item.id,
+      authorMemberId: author.id,
+      body: {},
+      bodyText: "visible reply",
+      visibility: "CLIENT_VISIBLE",
+    },
+    select: { id: true },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ commentId: comment.id })}\n`);
 }
 
 /**
@@ -907,6 +959,9 @@ async function bigProject(tenantId: string, sizeArg: string | undefined): Promis
   const { getPlatformClient } = await import("../../src/db/client");
   const { ranksBetween } = await import("../../src/lib/rank");
   const db = getPlatformClient();
+  // A caller-supplied TENANT id, and a thousand rows to plant under it:
+  // the guard first, before the first read even.
+  await assertE2ETenant(db, tenantId);
 
   const client = await db.client.findFirstOrThrow({
     where: { tenantId },
@@ -990,6 +1045,9 @@ async function dropProject(projectId: string): Promise<void> {
   const db = getPlatformClient();
   const project = await db.project.findUnique({ where: { id: projectId }, select: { tenantId: true } });
   if (project) {
+    // The project id came back from big-project, but nothing stops a spec
+    // from passing another: the tenant is checked before the deletes.
+    await assertE2ETenant(db, project.tenantId);
     await db.workItemActivity.deleteMany({ where: { projectId } });
     await db.workItem.deleteMany({ where: { projectId } });
     await db.workflowState.deleteMany({ where: { projectId } });
@@ -1021,6 +1079,7 @@ const main = async (): Promise<void> => {
   if (command === "teardown") return teardown(argument!);
   if (command === "visibility") return visibility(argument!);
   if (command === "set-visibility") return setVisibility(argument!, process.argv[4]!);
+  if (command === "client-visible-comment") return clientVisibleComment(argument!, process.argv[4]!);
   if (command === "milestone") return milestone(argument!);
   if (command === "big-project") return bigProject(argument!, process.argv[4]);
   if (command === "drop-project") return dropProject(argument!);

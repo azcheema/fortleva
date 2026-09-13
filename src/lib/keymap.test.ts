@@ -396,7 +396,7 @@ describe("the suppression selector", () => {
   });
 });
 
-describe("the rail's S P E D beside the board and the G sequence (slice 6)", () => {
+describe("the rail's S A P E D V beside the board and the G sequence (slices 6 and 7)", () => {
   /** Every live `G` target, read from the nav itself rather than restated here. */
   const flat = (entries: readonly NavEntry[]): NavEntry[] =>
     entries.flatMap((e) => (e.children ? flat(e.children) : [e]));
@@ -404,35 +404,48 @@ describe("the rail's S P E D beside the board and the G sequence (slice 6)", () 
     .map((e) => e.goKey)
     .filter((k): k is string => Boolean(k));
 
-  /** Four one-binding islands, registered in rail order — as the panel mounts them. */
+  /** Six one-binding islands, registered in rail order — as the panel mounts them (S A P E D V, slice 7). */
   const railEntries = (priorityEnabled = true) => [
     { scope: "item" as const, bindings: [binding({ key: "s", label: "Change state" })] },
+    { scope: "item" as const, bindings: [binding({ key: "a", label: "Assign" })] },
     { scope: "item" as const, bindings: [binding({ key: "p", label: "Change priority", enabled: priorityEnabled })] },
     { scope: "item" as const, bindings: [binding({ key: "e", label: "Set estimate" })] },
     { scope: "item" as const, bindings: [binding({ key: "d", label: "Set due date" })] },
+    { scope: "item" as const, bindings: [binding({ key: "v", label: "Change visibility" })] },
   ];
 
-  it("the nav really has a `G P`, and no `G E` or `G D`", () => {
-    // The two cases below mean something only while this holds.
+  it("the nav really has a `G P` and a `G A`, and no `G E`, `G D` or `G V` (the vault is 3V's)", () => {
+    // The cases below mean something only while this holds.
     expect(GO_KEYS).toContain("P");
+    expect(GO_KEYS).toContain("A");
     expect(GO_KEYS).not.toContain("E");
     expect(GO_KEYS).not.toContain("D");
+    expect(GO_KEYS).not.toContain("V");
   });
 
-  it("`G P` navigates with the item's bare `P` mounted", () => {
+  it("`G P` and `G A` navigate with the item's bare `P` and `A` mounted", () => {
     expect(decide(ev({ key: "p" }), scopes(...railEntries()), GO_KEYS, true)).toEqual({
       kind: "go",
       key: "P",
     });
+    // `G A` is the account page; the rail's `A` is the assignee. Two
+    // events in time, not two meanings of one key (UI.md §6).
+    expect(decide(ev({ key: "a" }), scopes(...railEntries()), GO_KEYS, true)).toEqual({
+      kind: "go",
+      key: "A",
+    });
   });
 
-  it("`G E` and `G D` are swallowed — never a bare `E` or `D`", () => {
+  it("`G E`, `G D` and `G V` are swallowed — never a bare `E`, `D` or `V`", () => {
     const rail = scopes(...railEntries());
     expect(decide(ev({ key: "e" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
     expect(decide(ev({ key: "d" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
+    expect(decide(ev({ key: "v" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
     // Un-armed, they are the rail's own bindings.
+    expect(decide(ev({ key: "a" }), rail, GO_KEYS, false).kind).toBe("binding");
     expect(decide(ev({ key: "e" }), rail, GO_KEYS, false).kind).toBe("binding");
     expect(decide(ev({ key: "d" }), rail, GO_KEYS, false).kind).toBe("binding");
+    expect(decide(ev({ key: "v" }), rail, GO_KEYS, false).kind).toBe("binding");
   });
 
   it("a disabled item `P` swallows the key rather than letting a lower scope have it", () => {
@@ -443,7 +456,7 @@ describe("the rail's S P E D beside the board and the G sequence (slice 6)", () 
     expect(decide(ev({ key: "p" }), rail, GO_KEYS, false)).toEqual({ kind: "swallow" });
   });
 
-  it("the overlay lists the Task section S P E D, and the board keeps only the key the item did not shadow", () => {
+  it("the overlay lists the Task section S A P E D V, and the board keeps only the key the item did not shadow", () => {
     const peek = scopes(
       {
         scope: "board",
@@ -456,7 +469,7 @@ describe("the rail's S P E D beside the board and the G sequence (slice 6)", () 
     );
     const sections = overlaySections(peek);
     expect(sections.map((s) => s.scope)).toEqual(["item", "board"]);
-    expect(sections[0]!.bindings.map((b) => b.key)).toEqual(["s", "p", "e", "d"]);
+    expect(sections[0]!.bindings.map((b) => b.key)).toEqual(["s", "a", "p", "e", "d", "v"]);
     expect(sections[1]!.bindings.map((b) => b.key)).toEqual(["j"]);
   });
 });

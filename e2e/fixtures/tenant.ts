@@ -97,6 +97,20 @@ export async function setDocumentVisibility(
   await runCli(["set-visibility", documentId, value]);
 }
 
+/**
+ * A CLIENT_VISIBLE comment under one of the fixture tenant's tasks, by
+ * project id + number: the child that makes the `V` picker's downgrade
+ * refuse and explain. Written raw — no comment UI exists yet.
+ */
+export async function addClientVisibleComment(projectId: string, number: number): Promise<string> {
+  const { commentId } = await runCli<{ commentId: string }>([
+    "client-visible-comment",
+    projectId,
+    String(number),
+  ]);
+  return commentId;
+}
+
 export type MilestoneRecord = {
   name: string;
   dueAt: string | null;

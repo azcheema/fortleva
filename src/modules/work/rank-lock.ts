@@ -28,6 +28,18 @@ import { rankBetween } from "@/lib/rank";
  * work_item rows with them. A new multi-row writer MUST take it.
  * (lockItemRow, below, is the lock a writer of ONE row takes instead.)
  *
+ * THE ONE ORDER, stated once (slice 7): a queued writer PROBES its item
+ * unlocked first (`loadItemInScope(…, { lock: false })`, rows.ts) —
+ * the queue key is the row's own projectId, and the queue must precede
+ * every row lock — then takes this lock, then its locked, scoped read of
+ * the same row, then the rest. A writer of one row that never queues
+ * skips the probe and the queue and takes its locked, scoped read at
+ * once; changeItemVisibility probes in every branch, because only the
+ * probe says whether this flip is a subtask's raise that must queue.
+ * Either way the diff is taken from a row read AFTER every wait, and a
+ * member the scope check refuses holds a row lock only until the
+ * rollback.
+ *
  * KNOWN LOCKERS OUTSIDE THE QUEUE, all older than it, and nothing
  * retries a deadlock (40P01) yet — PLAN §0. Able to deadlock WITH a
  * queued writer: the portal toggle's fan-out (every row of the project,
@@ -47,23 +59,49 @@ export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise
 }
 
 /**
- * Row-lock ONE item before it is read, in the mode its own UPDATE will
- * take: FOR NO KEY UPDATE, because no column a field edit or a state
- * change writes is in a unique index. A caller whose UPDATE writes
- * `rank` or `number` must not use this — that UPDATE takes FOR UPDATE,
- * and the lock would upgrade. Under READ COMMITTED a wait refreshes only
- * the statement that waited; the read AFTER this is a new statement, so
- * it sees whatever committed meanwhile, and a diff taken from it
- * describes the row version the UPDATE replaces.
- *
- * The lock of a writer of ONE work_item row (the header): never the rank
- * lock, never a second work_item row after it. The queued multi-row
- * writers lock by rank or scan order under the rank lock and do not use
- * it. It lives here rather than beside updateItemFields because
- * changeState needs it too, and items.ts imports states.ts.
+ * The mode a writer's own UPDATE will take on the row: FOR NO KEY UPDATE
+ * when no column it writes is in a unique index (a field edit, a state
+ * change, an assignment, a visibility flip, an archive), FOR UPDATE when
+ * it writes `rank` or `number` (a move). A lock taken in the weaker mode
+ * would UPGRADE under the stronger UPDATE — so the writer says which.
  */
-export async function lockItemRow(tx: TenantDb, tenantId: string, itemId: string): Promise<void> {
-  await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR NO KEY UPDATE`;
+export type RowLockMode = "NO KEY UPDATE" | "UPDATE";
+
+/**
+ * Row-lock ONE item before it is read (rows.ts `loadItemInScope` is the
+ * caller). Under READ COMMITTED a wait refreshes only the statement that
+ * waited; the read AFTER this is a new statement, so it sees whatever
+ * committed meanwhile, and a diff taken from it describes the row
+ * version the UPDATE replaces.
+ *
+ * FOR NO KEY UPDATE is the lock of a writer of ONE work_item row (the
+ * header): never the rank lock, never a second work_item row after it.
+ * FOR UPDATE is the move's, taken on its own row AFTER the queue lock and
+ * BEFORE its neighbours (slice 7, PLAN §0). Two consequences: a
+ * state-only move now waits on a FOR KEY SHARE holder of its row — a
+ * time entry being written against the item (the foreign key's lock,
+ * held to that transaction's commit) — where its NO KEY UPDATE never
+ * did, a wait of milliseconds, accepted; and the copyWeek cycle the
+ * header lists is NOT removed, only turned around: the move waits on its
+ * own row while holding no other, but once it holds that row and waits
+ * on a neighbour copyWeek already key-shares, copyWeek's next entry can
+ * wait on the moved item — the same known locker outside the queue, and
+ * nothing retries 40P01 yet. It lives here, with the queue lock, because
+ * the two are one story (THE ONE ORDER, above); rows.ts is its caller.
+ */
+export async function lockItemRow(
+  tx: TenantDb,
+  tenantId: string,
+  itemId: string,
+  mode: RowLockMode = "NO KEY UPDATE",
+): Promise<void> {
+  // Two statements rather than one interpolated clause: a lock mode is
+  // SQL syntax, and `$queryRaw` binds values, never keywords.
+  if (mode === "UPDATE") {
+    await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR UPDATE`;
+  } else {
+    await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR NO KEY UPDATE`;
+  }
 }
 
 export type Neighbour = { id: string; rank: string };

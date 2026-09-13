@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -76,7 +75,7 @@ export function DueDateField({
   const [today, setToday] = useState<string | null>(null);
   const day = (iso: string) => formatDay(locale, dateColumn(iso));
 
-  const { shown, announced, commit } = usePanelCommit<ShownDue, DueDateCommitted>({
+  const { shown, status, commit } = usePanelCommit<ShownDue, DueDateCommitted>({
     canonical: { iso: dueDate, label: dueLabel },
     same: (a, b) => a.iso === b.iso,
     adopt: (c) => ({ iso: c.targetDate, label: c.dueLabel }),
@@ -98,7 +97,6 @@ export function DueDateField({
 
   if (!canEdit) return <span className="num">{shown.label ?? "—"}</span>;
 
-  const check = <CheckIcon className="size-3.5" aria-hidden="true" />;
   const resolved = dateFormat(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
   // Empty only while closed: `openPicker` sets `today` in the same batch
   // that opens the popover, so the list never mounts without it.
@@ -107,11 +105,10 @@ export function DueDateField({
       ? []
       : [
           shown.iso === null
-            ? { value: "none", label: t("dueDate.none"), meta: check, testId: "item-due-none" }
+            ? { value: "none", label: t("dueDate.none"), testId: "item-due-none" }
             : {
                 value: shown.iso,
                 label: shown.label ?? day(shown.iso),
-                meta: check,
                 testId: "item-due-current",
               },
           ...DUE_TOKENS.map((token) => ({
@@ -194,9 +191,7 @@ export function DueDateField({
           {shown.label ?? "—"}
         </span>
       </PropertyPicker>
-      <span role="status" aria-live="polite" className="sr-only">
-        {announced}
-      </span>
+      {status}
     </>
   );
 }

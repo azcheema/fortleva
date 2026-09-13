@@ -30,4 +30,11 @@ export { EmptyState, type EmptyStateVariant, type StrictEmptyStateProps } from "
 export { FormMessage } from "../form-message";
 export { InlineConfirm } from "../inline-confirm";
 export { Page, PageHeader, type PageWidth } from "../page-header";
-export { VisibilityBadge, visibilityRowCue, type VisibilityValue } from "../visibility-badge";
+export {
+  VISIBILITY_VALUES,
+  VisibilityBadge,
+  VisibilityIcon,
+  visibilityLabelKey,
+  visibilityRowCue,
+  type VisibilityValue,
+} from "../visibility-badge";

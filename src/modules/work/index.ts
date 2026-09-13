@@ -15,6 +15,7 @@ export {
   resolveStates,
   setItemArchived,
   updateItemFields,
+  type AssignmentCommitted,
   type ItemDetail,
   type ItemDetailResult,
   type ItemFieldsCommitted,
@@ -24,6 +25,7 @@ export {
   type ResolvedItemDetailResult,
   type ResolvedItemList,
   type ResolvedWorkflowState,
+  type VisibilityCommitted,
   type WorkCtx,
   type WorkflowStateEntry,
 } from "./items";

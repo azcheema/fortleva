@@ -55,6 +55,7 @@ import { BulkBar } from "@/components/work-view/bulk-bar";
 import { WorkFilterBar } from "@/components/work-view/filter-bar";
 import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
+import { wroteSomething } from "@/lib/action-result";
 import { durationInputText, formatDay, formatDuration, type DurationStyle } from "@/lib/format";
 import type { ActionResult, FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
@@ -89,7 +90,6 @@ import {
 import type { ResolvedItemList } from "@/modules/work";
 
 import {
-  assignItemAction,
   bulkChangeStateAction,
   bulkSetArchivedAction,
   bulkSetPriorityAction,
@@ -98,6 +98,7 @@ import {
   renameItemAction,
   setItemArchivedAction,
   moveItemAction,
+  setItemAssigneeAction,
   setItemDueDateAction,
   setItemEstimateAction,
   setItemPriorityAction,
@@ -124,21 +125,28 @@ import {
  * `VIRTUALISE_ABOVE` rows so it cannot disturb any of this.
  */
 
+type RunResult = FormResult | ActionResult<unknown>;
+
 /**
  * Runs one row mutation in a transition. Accepts both result shapes: the
- * message-bearing `FormResult` (rename, assign, visibility…) and the
+ * message-bearing `FormResult` (rename, archive, delete…) and the six
  * property setters' `ActionResult`, whose success carries the canonical
- * row instead of a sentence — so only a `FormResult` can toast success.
- * The table re-renders from the server either way, on failure too.
+ * row instead of a sentence. The table re-renders from the server either
+ * way, on failure too. ONE toast policy for both: nothing on success
+ * unless asked — `serverMessage` toasts a `FormResult`'s own sentence,
+ * `success` toasts the caller's, and never for an `ActionResult` whose
+ * row says `changed: false` (claiming "saved" for a write that did not
+ * happen is the sentence use-panel-commit.tsx refuses too).
  */
 const useRun = (fallbackMessage: string) => {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const run = (fn: () => Promise<FormResult | ActionResult<unknown>>, quiet = true) =>
+  const run = (fn: () => Promise<RunResult>, opts: { serverMessage?: boolean; success?: string } = {}) =>
     start(async () => {
       const r = await fn().catch(() => ({ ok: false as const, message: fallbackMessage }));
       if (!r.ok) toast.error(r.message);
-      else if (!quiet && "message" in r) toast.success(r.message);
+      else if (opts.serverMessage && "message" in r) toast.success(r.message);
+      else if (opts.success && wroteSomething(r)) toast.success(opts.success);
       router.refresh();
     });
   return { pending, run };
@@ -910,12 +918,12 @@ export function BacklogTable({
                   ? {
                       key: "restore",
                       label: t("actions.restore"),
-                      onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, false), false),
+                      onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, false), { serverMessage: true }),
                     }
                   : {
                       key: "archive",
                       label: t("actions.archive"),
-                      onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, true), false),
+                      onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, true), { serverMessage: true }),
                     },
                 ...(data.caps.canDelete
                   ? [
@@ -924,7 +932,7 @@ export function BacklogTable({
                         label: t("actions.delete"),
                         tone: "danger" as const,
                         confirm: t("actions.confirmDelete"),
-                        onSelect: () => run(() => deleteItemAction(item.id, projectKey), false),
+                        onSelect: () => run(() => deleteItemAction(item.id, projectKey), { serverMessage: true }),
                       },
                     ]
                   : []),
@@ -1083,7 +1091,15 @@ export function BacklogTable({
                       }
                       onCommit={(next) => {
                         if (next !== (item.assigneeMemberId ?? ""))
-                          run(() => assignItemAction(item.id, projectKey, next));
+                          run(() =>
+                            setItemAssigneeAction({
+                              itemId: item.id,
+                              projectKey,
+                              itemNumber: item.number,
+                              surface: "backlog",
+                              memberId: next === "" ? null : next,
+                            }),
+                          );
                       }}
                     />
                   </TableCell>
@@ -1172,8 +1188,22 @@ export function BacklogTable({
                       readOnly={!data.caps.canChangeVisibility}
                       hiddenInput={false}
                       onCommit={(next) => {
-                        if (next !== item.visibility)
-                          run(() => setItemVisibilityAction(item.id, projectKey, next), false);
+                        if (next === item.visibility) return;
+                        // The badge at rest reads the SERVER prop, so the
+                        // chip never shows a visibility the row does not hold
+                        // (§10.4); the table still says "Saved" here, for a
+                        // write that happened.
+                        run(
+                          () =>
+                            setItemVisibilityAction({
+                              itemId: item.id,
+                              projectKey,
+                              itemNumber: item.number,
+                              surface: "backlog",
+                              visibility: next,
+                            }),
+                          { success: t("saved") },
+                        );
                       }}
                     />
                   </TableCell>

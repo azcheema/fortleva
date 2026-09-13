@@ -60,18 +60,24 @@ export async function openOwnTaskPeek(page: Page, seed: E2ESeed, title: string):
   await expect(page.getByTestId("item-peek")).toBeVisible();
 }
 
+/** A task a test created: its title, its human key ("ACME-12") and its number. */
+export type OwnTask = { title: string; key: string; number: number };
+
 /**
  * Create a task of the test's own through the backlog's create row and
  * open its peek. The title is recorded in `created` BEFORE the first
  * browser step, so an `afterEach` removes it even when creation fails
- * half-way.
+ * half-way. The key and number are read off the peek's URL here, once,
+ * beside the navigation that produced it — the peek IS its URL
+ * (`?item=KEY-N`), so a spec that needs to reopen the task elsewhere,
+ * or address it in the database, never scrapes the URL itself.
  */
 export async function createOwnTask(
   page: Page,
   seed: E2ESeed,
   prefix: string,
   created: string[],
-): Promise<string> {
+): Promise<OwnTask> {
   const title = `${prefix} ${Date.now()}`;
   created.push(title);
   await page.goto(`/projects/${seed.projectKey}/backlog`);
@@ -85,7 +91,10 @@ export async function createOwnTask(
   });
   await createInput.press("Escape");
   await openOwnTaskPeek(page, seed, title);
-  return title;
+  await expect(page).toHaveURL(/[?&]item=/);
+  const key = new URL(page.url()).searchParams.get("item") ?? "";
+  expect(key).toMatch(/^[A-Za-z][A-Za-z0-9]*-\d+$/);
+  return { title, key, number: Number(key.slice(key.lastIndexOf("-") + 1)) };
 }
 
 /**

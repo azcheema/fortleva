@@ -1701,6 +1701,7 @@
         "estimate": "Estimat",
         "startDate": "Startdatum",
         "dueDate": "Förfallodatum",
+        "visibility": "Synlighet",
         "parent": "Del av",
         "milestone": "Milstolpe",
         "checklist": "Checklista",
@@ -1779,11 +1780,31 @@
         "changed": "Förfallodatumet ändrades till {date}",
         "cleared": "Förfallodatumet togs bort"
       },
+      "assignee": {
+        "trigger": "Ansvarig: {name}",
+        "triggerEmpty": "Ansvarig: ingen",
+        "search": "Sök medlemmar…",
+        "empty": "Ingen medlem matchar.",
+        "none": "Ingen ansvarig",
+        "clear": "Ta bort ansvarig",
+        "failed": "Ansvarig sparades inte. Panelen visar den nuvarande ansvariga.",
+        "changed": "Tilldelad {name}",
+        "cleared": "Ansvarig togs bort"
+      },
+      "visibility": {
+        "trigger": "Synlighet: {visibility}",
+        "search": "Privat för teamet eller Kunden kan se",
+        "empty": "Ingen synlighet matchar.",
+        "failed": "Synligheten sparades inte. Panelen visar den nuvarande synligheten.",
+        "changed": "Synligheten ändrades till {visibility}"
+      },
       "keys": {
         "state": "Ändra status",
+        "assignee": "Tilldela",
         "priority": "Ändra prioritet",
         "estimate": "Ange estimat",
-        "dueDate": "Ange förfallodatum"
+        "dueDate": "Ange förfallodatum",
+        "visibility": "Ändra synlighet"
       }
     },
     "states": {

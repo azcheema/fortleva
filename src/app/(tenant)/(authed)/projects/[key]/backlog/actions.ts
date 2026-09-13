@@ -17,8 +17,10 @@ import {
   moveItem,
   setItemArchived,
   updateItemFields,
+  type AssignmentCommitted,
   type BulkResult,
   type MovedItem,
+  type VisibilityCommitted as WorkVisibilityCommitted,
   type WorkCtx,
 } from "@/modules/work";
 import { PROJECT_KEY_RE } from "@/projects/service";
@@ -97,7 +99,7 @@ export async function renameItemAction(
 }
 
 /* -------------------------------------------------------------- *
- * The four item PROPERTY setters — S, P, E, D (UI.md §5.2, §7.2).
+ * The six item PROPERTY setters — S, P, E, D, A, V (UI.md §5.2, §7.2).
  *
  * ONE action per property, shared by the backlog table's cells and the
  * item panel's pickers. Each takes an object input naming WHERE it was
@@ -135,6 +137,11 @@ const SetEstimate = Target.extend({
 const SetDueDate = Target.extend({
   targetDate: z.string().refine((s) => isIsoDate(s)).nullable(),
 });
+const SetAssignee = Target.extend({ memberId: uuid.nullable() });
+// CLOSED at the boundary: the two tokens and nothing else. The old
+// action coerced anything unrecognised to INTERNAL — safe, but a write
+// nobody asked for is still a write; a refusal writes nothing.
+const SetVisibility = Target.extend({ visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]) });
 
 /** The canonical state the picker replaces its optimistic slice with. */
 export type StateCommitted = {
@@ -154,12 +161,17 @@ export type DueDateCommitted = {
   dueLabel: string | null;
   changed: boolean;
 };
+/** The service's canonical rows minus the id the caller already holds — one contract, not a second copy of it. */
+export type AssigneeCommitted = Omit<AssignmentCommitted, "id">;
+export type VisibilityCommitted = Omit<WorkVisibilityCommitted, "id">;
 
 const FAILED = {
   state: "state.failed",
   priority: "priority.failed",
   estimate: "estimate.failed",
   dueDate: "dueDate.failed",
+  assignee: "assignee.failed",
+  visibility: "visibility.failed",
 } as const;
 
 /**
@@ -268,44 +280,49 @@ export async function setItemDueDateAction(
   return r;
 }
 
-export async function assignItemAction(
-  itemId: string,
-  projectKey: string,
-  memberId: string,
-): Promise<FormResult> {
+/**
+ * Assignee (`A`) — a member's id, or null to unassign. A routine edit:
+ * an INTERNAL activity row (`assignee` is not portal-safe), never audit;
+ * a real assignment notifies the member (debounced email). Members only:
+ * a contact assignee is Phase 3's, with the "make it client-visible?"
+ * warning that has to come with it (UI.md §5.2).
+ */
+export async function setItemAssigneeAction(
+  input: z.input<typeof SetAssignee>,
+): Promise<ActionResult<AssigneeCommitted>> {
   const ctx = await ctxOf();
-  const t = await getTranslations("projects.backlog");
-  const id = uuid.safeParse(itemId);
-  const key = keyShape.safeParse(projectKey);
-  const member = memberId === "" ? null : uuid.safeParse(memberId).data ?? null;
-  if (!id.success || !key.success || (memberId !== "" && member === null)) {
-    return { ok: false, message: t("invalidTitle") };
-  }
-  const r = await runForm(backlogPath(key.data), async () => {
-    await assignItem(ctx, id.data, member);
-    return t("saved");
+  const parsed = SetAssignee.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "assignee") };
+  const { itemId, projectKey, itemNumber, surface, memberId } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await assignItem(ctx, itemId, memberId);
+    return { assigneeMemberId: c.assigneeMemberId, assigneeName: c.assigneeName, changed: c.changed };
   });
-  if (r.ok) revalidate(key.data);
+  if (r.ok && r.value.changed) revalidate(projectKey);
   return r;
 }
 
+/**
+ * Visibility (`V`) — SAFETY-CRITICAL (UI.md §10.4), and never routine:
+ * an activity row and `work_item.visibility_changed` in the same
+ * transaction. A downgrade over a subtask, comment or file the client can
+ * still see is refused by the database and reaches the caller as the
+ * typed `HAS_VISIBLE_CHILDREN` sentence, which says what to make private
+ * first — the surface toasts it and keeps showing the value the row
+ * still holds.
+ */
 export async function setItemVisibilityAction(
-  itemId: string,
-  projectKey: string,
-  visibility: string,
-): Promise<FormResult> {
+  input: z.input<typeof SetVisibility>,
+): Promise<ActionResult<VisibilityCommitted>> {
   const ctx = await ctxOf();
-  const t = await getTranslations("projects.backlog");
-  const id = uuid.safeParse(itemId);
-  const key = keyShape.safeParse(projectKey);
-  if (!id.success || !key.success) return { ok: false, message: t("invalidTitle") };
-  // Anything unrecognised falls to INTERNAL — the worst-bug guard.
-  const next = visibility === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL";
-  const r = await runForm(backlogPath(key.data), async () => {
-    await changeItemVisibility(ctx, id.data, next);
-    return t("saved");
+  const parsed = SetVisibility.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "visibility") };
+  const { itemId, projectKey, itemNumber, surface, visibility } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await changeItemVisibility(ctx, itemId, visibility);
+    return { visibility: c.visibility, changed: c.changed };
   });
-  if (r.ok) revalidate(key.data);
+  if (r.ok && r.value.changed) revalidate(projectKey);
   return r;
 }
 
@@ -319,11 +336,15 @@ export async function setItemArchivedAction(
   const id = uuid.safeParse(itemId);
   const key = keyShape.safeParse(projectKey);
   if (!id.success || !key.success) return { ok: false, message: t("invalidTitle") };
+  let changed = false;
   const r = await runForm(backlogPath(key.data), async () => {
-    await setItemArchived(ctx, id.data, archived);
+    // The sentence names the item's STATE — archived, restored — which is
+    // true whether this call wrote it or a colleague's did a moment ago.
+    ({ changed } = await setItemArchived(ctx, id.data, archived));
     return archived ? t("archivedToast") : t("restoredToast");
   });
-  if (r.ok) revalidate(key.data);
+  // Nothing to re-render for a write that did not happen.
+  if (r.ok && changed) revalidate(key.data);
   return r;
 }
 

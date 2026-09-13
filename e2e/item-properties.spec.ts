@@ -8,17 +8,24 @@ import {
   picker,
   pressUntil,
 } from "./fixtures/keys";
-import { requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { addClientVisibleComment, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
- * THE ITEM RAIL'S P, E AND D, IN A REAL BROWSER (UI.md §5.2, §9).
+ * THE ITEM RAIL'S P, E, D, A AND V, IN A REAL BROWSER (UI.md §5.2, §9).
  *
  * `keymap.spec.ts` owns the keyboard contract and only reads; these
- * three pickers WRITE, so every test here creates the one task it
- * mutates and removes it in `afterEach`, pass or fail. Never a seeded
- * task: the visual sweep photographs this project.
+ * pickers WRITE, so every test here creates the one task it mutates and
+ * removes it in `afterEach`, pass or fail. Never a seeded task: the
+ * visual sweep photographs this project.
  *
  * What only a browser can see:
+ *  · V is never optimistic (§10.4): the chip still says "Client can see"
+ *    the instant the picker has closed on a pick of "Private to team"
+ *    that the database is about to refuse — and the refusal's sentence
+ *    is what the member reads, naming what to make private first;
+ *  · A's rows are the tenant's members, checked in place, with the
+ *    "Unassigned" row leading only while nothing is set and "Unassign"
+ *    trailing only while something is;
  *  · a bare Enter on open is a no-op for P, E and D — proven by COUNTING
  *    that property's POSTs across the next real commit. The value staying
  *    put proves nothing: a round trip that re-saves the same value, then
@@ -125,7 +132,14 @@ async function expectPaletteWithoutPageRows(page: Page): Promise<void> {
   // below cannot pass against a list that is not there yet.
   await expect(palette(page).getByRole("option", { name: /Projects/ }).first()).toBeVisible();
   await expect(palette(page).getByText("On this page")).toHaveCount(0);
-  for (const name of [/Change state/, /Change priority/, /Set estimate/, /Set due date/]) {
+  for (const name of [
+    /Change state/,
+    /^Assign/,
+    /Change priority/,
+    /Set estimate/,
+    /Set due date/,
+    /Change visibility/,
+  ]) {
     await expect(palette(page).getByRole("option", { name })).toHaveCount(0);
   }
 }
@@ -147,6 +161,10 @@ test("P: two commits, then a no-op that posts nothing", async ({ page }) => {
   await expect(trigger).toBeVisible();
 
   await pressUntil(page, "p", picker(page));
+  // ONE check in the list, on the current row, drawn by the picker itself
+  // beside its "(current)" words — never a second one, never none.
+  await expect(picker(page).locator("svg.lucide-check")).toHaveCount(1);
+  await expect(picker(page).getByTestId("item-priority-NONE").locator("svg.lucide-check")).toHaveCount(1);
   await picker(page).getByTestId("item-priority-HIGH").click();
   await expect(picker(page)).toHaveCount(0);
   await expect(shown).toHaveAttribute("data-value", "HIGH");
@@ -160,6 +178,9 @@ test("P: two commits, then a no-op that posts nothing", async ({ page }) => {
   await page.keyboard.press("p");
   await expect(searchField(page)).toBeFocused();
   await expect(picker(page).getByTestId("item-priority-HIGH")).toHaveAttribute("aria-selected", "true");
+  // The check moved with the value.
+  await expect(picker(page).locator("svg.lucide-check")).toHaveCount(1);
+  await expect(picker(page).getByTestId("item-priority-HIGH").locator("svg.lucide-check")).toHaveCount(1);
   await expect(searchField(page)).not.toHaveAttribute("aria-activedescendant");
   await page.keyboard.press("ArrowDown");
   await expectAnnounced(page, picker(page).getByTestId("item-priority-URGENT"));
@@ -186,6 +207,198 @@ test("P: two commits, then a no-op that posts nothing", async ({ page }) => {
   await page.reload();
   await expect(trigger).toBeVisible({ timeout: 20_000 * SLOW });
   await expect(shown).toHaveAttribute("data-value", "LOW");
+});
+
+test("A: assign by typing, reassign by steering, a bare Enter posts nothing, unassign, and the value survives a reload", async ({
+  page,
+}) => {
+  const assigneePosts = countPosts(page, "memberId");
+
+  await createOwnTask(page, seed, "Assignee picker", created);
+  const trigger = rail(page).getByTestId("item-assignee");
+  const value = trigger.locator("[data-value]");
+  await expect(trigger).toBeVisible();
+  await expect(value).toHaveAttribute("data-value", "");
+
+  // Unassigned: the checked "Unassigned" row is first and lit on open, so
+  // a bare Enter closes the picker having committed nothing.
+  await pressUntil(page, "a", picker(page));
+  await expect(picker(page).getByTestId("item-assignee-none")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  // Type-ahead narrows the members to one row, which cmdk lights.
+  await page.keyboard.press("a");
+  await expect(searchField(page)).toBeFocused();
+  await page.keyboard.type("Employee");
+  const employeeRow = picker(page).getByRole("option", { name: /E2E Employee/ });
+  await expect(employeeRow).toHaveAttribute("aria-selected", "true");
+  await expect(picker(page).getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(value).toHaveText("E2E Employee");
+  await settled(page, "item-assignee", "Assigned to");
+  expect(assigneePosts()).toBe(1);
+
+  // Set: the members keep their order (the owner joined first), the
+  // current member is checked in place and seeded, "Unassigned" is gone
+  // and "Unassign" trails under its OWN value. A bare Enter is a no-op.
+  await page.keyboard.press("a");
+  await expect(picker(page).getByTestId("item-assignee-1")).toHaveAttribute("aria-selected", "true");
+  await expect(picker(page).getByTestId("item-assignee-none")).toHaveCount(0);
+  await expect(picker(page).getByTestId("item-assignee-clear")).toHaveAttribute("data-value", "clear");
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(value).toHaveText("E2E Employee");
+  await expect(trigger).toBeFocused();
+
+  // Steering names the row it lands on; Enter commits it.
+  await page.keyboard.press("a");
+  await page.keyboard.press("ArrowUp");
+  await expectAnnounced(page, picker(page).getByTestId("item-assignee-0"));
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(value).toHaveText("E2E Owner");
+  await settled(page, "item-assignee", "Assigned to");
+  expect(assigneePosts()).toBe(2);
+
+  await page.reload();
+  await expect(trigger).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(value).toHaveText("E2E Owner");
+
+  // End reaches the clear row, last; Enter unassigns.
+  await pressUntil(page, "a", picker(page));
+  await expect(searchField(page)).toBeFocused();
+  await page.keyboard.press("End");
+  await expectAnnounced(page, picker(page).getByTestId("item-assignee-clear"));
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(value).toHaveAttribute("data-value", "");
+  await expect(said(page, "Assignee removed")).toHaveCount(1, { timeout: 20_000 * SLOW });
+  expect(assigneePosts()).toBe(3);
+});
+
+test("V: share, then a refused make-private that explains — and the chip is never optimistic", async ({ page }) => {
+  const visibilityPosts = countPosts(page, "visibility");
+
+  const task = await createOwnTask(page, seed, "Visibility picker", created);
+  const trigger = rail(page).getByTestId("item-visibility");
+  const chip = trigger.locator('[data-slot="visibility-badge"]');
+  await expect(chip).toHaveAttribute("data-visibility", "INTERNAL");
+
+  // Private, and "Private to team" is the first row: lit on open, a bare
+  // Enter closes the picker having committed nothing.
+  await pressUntil(page, "v", picker(page));
+  await expect(picker(page).getByTestId("item-visibility-INTERNAL")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await page.keyboard.press("v");
+  await picker(page).getByTestId("item-visibility-CLIENT_VISIBLE").click();
+  await expect(picker(page)).toHaveCount(0);
+  await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE", { timeout: 20_000 * SLOW });
+  await expect(said(page, "Visibility changed to Client can see")).toHaveCount(1, { timeout: 20_000 * SLOW });
+  expect(visibilityPosts()).toBe(1);
+
+  // Shared: the current row is second, seeded (lit) — a bare Enter is
+  // again a no-op, and the count after the next commit proves it.
+  await page.keyboard.press("v");
+  await expect(picker(page).getByTestId("item-visibility-CLIENT_VISIBLE")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  // A comment the client can see, under the task: the database now
+  // refuses to make the task private (work_item_visibility_downgrade_guard).
+  await addClientVisibleComment(seed.projectId, task.number);
+
+  await page.keyboard.press("v");
+  await picker(page).getByTestId("item-visibility-INTERNAL").click();
+  await expect(picker(page)).toHaveCount(0);
+  // NEVER optimistic: a one-shot read the instant the picker has closed.
+  // An optimistic slice would already read INTERNAL here, a chip saying
+  // "Private to team" over a task the client can still see.
+  expect(await chip.getAttribute("data-visibility")).toBe("CLIENT_VISIBLE");
+  // The refusal explains what to make private first, and the chip never moved.
+  await expect(page.getByText(/Make those private first, then the task/)).toBeVisible({
+    timeout: 20_000 * SLOW,
+  });
+  await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+  await expect(said(page, "Visibility changed to Private to team")).toHaveCount(0);
+  expect(visibilityPosts()).toBe(2);
+
+  await page.reload();
+  await expect(trigger).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+});
+
+test("V: a reversal picked while the first pick is in flight supersedes it — the task ends on the member's last word", async ({
+  page,
+}) => {
+  const visibilityPosts = countPosts(page, "visibility");
+
+  await createOwnTask(page, seed, "Visibility reversal", created);
+  const trigger = rail(page).getByTestId("item-visibility");
+  const chip = trigger.locator('[data-slot="visibility-badge"]');
+  await expect(chip).toHaveAttribute("data-visibility", "INTERNAL");
+
+  // Hold every visibility POST for a while, so the second pick is made
+  // while the first is still in flight — the window in which the old
+  // guard compared the reversal against the unchanged chip, called it a
+  // no-op, and let the share land as the member's last word. The hold is
+  // a FLAG, never an `unroute`: unrouting auto-continues a request a
+  // delayed handler still holds, and that handler's own `continue` then
+  // throws "Route is already handled", which ends the test mid-assertion
+  // (seen on the first run, 2026-09-13).
+  const holds = isActionPostWith("visibility");
+  let holding = true;
+  await page.route("**/*", async (route) => {
+    if (holding && holds(route.request())) await new Promise((r) => setTimeout(r, 1_500));
+    await route.continue();
+  });
+
+  await pressUntil(page, "v", picker(page));
+  await picker(page).getByTestId("item-visibility-CLIENT_VISIBLE").click();
+  await expect(picker(page)).toHaveCount(0);
+  // Never optimistic: still private on screen while the share is in flight.
+  expect(await chip.getAttribute("data-visibility")).toBe("INTERNAL");
+  // The reversal, before any answer: a second POST, not a dropped no-op.
+  await page.keyboard.press("v");
+  await picker(page).getByTestId("item-visibility-INTERNAL").click();
+  await expect(picker(page)).toHaveCount(0);
+  await expect.poll(() => visibilityPosts(), { timeout: 20_000 * SLOW }).toBe(2);
+  holding = false;
+
+  // The newest pick decides: the share landed and was superseded, the
+  // make-private landed last, and the task ends private — said so, shown
+  // so, and stored so.
+  await expect(said(page, "Visibility changed to Private to team")).toHaveCount(1, { timeout: 20_000 * SLOW });
+  await expect(chip).toHaveAttribute("data-visibility", "INTERNAL");
+  await page.reload();
+  await expect(trigger).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(chip).toHaveAttribute("data-visibility", "INTERNAL");
+});
+
+test("the backlog's visibility cell says Saved for a write that happened, and its badge follows the server", async ({
+  page,
+}) => {
+  const { title } = await createOwnTask(page, seed, "Backlog visibility cell", created);
+  // The cell sits behind the peek: the list URL without `?item=` closes it.
+  await page.goto(`/projects/${seed.projectKey}/backlog`);
+  const row = page.locator('[data-slot="table-row"]', { hasText: title });
+  await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+  const badge = row.locator('[data-slot="visibility-badge"]');
+  await expect(badge).toHaveAttribute("data-visibility", "INTERNAL");
+
+  // Rest → select → CLIENT_VISIBLE commits on change (§5.11); the table
+  // toasts "Saved" for the write, and the badge — never optimistic — shows
+  // the value once the server has it.
+  await row.locator('[data-slot="inline-edit"]').filter({ has: page.locator('[data-slot="visibility-badge"]') }).click();
+  await row.locator("select").selectOption("CLIENT_VISIBLE");
+  await expect(page.locator("[data-sonner-toast]", { hasText: "Saved" })).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(badge).toHaveAttribute("data-visibility", "CLIENT_VISIBLE", { timeout: 20_000 * SLOW });
 });
 
 test("E: typed text is the option, and a bare Enter posts nothing", async ({ page }) => {
@@ -303,11 +516,8 @@ test("E under a colleague's change: the new value is lit, a bare Enter posts not
 }) => {
   const estimatePosts = countPosts(page, "estimateMinutes");
 
-  await createOwnTask(page, seed, "Estimate refresh", created);
   // The peek IS its URL (`?item=KEY-N`), so both pages open it directly.
-  await expect(page).toHaveURL(/[?&]item=/);
-  const itemKey = new URL(page.url()).searchParams.get("item") ?? "";
-  expect(itemKey).toMatch(/^[A-Za-z][A-Za-z0-9]*-\d+$/);
+  const { key: itemKey } = await createOwnTask(page, seed, "Estimate refresh", created);
 
   // Watched from the BOARD's peek, the surface that polls.
   await page.goto(`/projects/${seed.projectKey}/board?item=${itemKey}`);
@@ -519,6 +729,13 @@ test("⌘K from inside the due-date picker offers no page rows, and Escape hands
   await palette(page).getByRole("option", { name: /shortcut/i }).click();
   const overlay = page.getByRole("dialog", { name: /shortcut/i });
   await expect(overlay).toBeVisible();
+  // The palette must be GONE before Escape, not merely fading: a Radix
+  // layer registers itself and its Escape listener in passive effects,
+  // which run after the overlay has painted, so an Escape pressed the
+  // instant the overlay is visible can still find the closing palette as
+  // the highest layer — it takes the key, and the overlay stays open
+  // (seen once on a loaded machine, 2026-09-13).
+  await expect(palette(page)).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(overlay).toHaveCount(0);
   await expect(calendar.locator(`button[data-date="${moved}"]`)).toBeFocused();
@@ -532,7 +749,7 @@ test("⌘K from inside the due-date picker offers no page rows, and Escape hands
 });
 
 test("D: the Escape ladder from a focused day, then the same picker on the full page", async ({ page }) => {
-  const title = await createOwnTask(page, seed, "Due ladder", created);
+  const { title } = await createOwnTask(page, seed, "Due ladder", created);
   const trigger = page.getByTestId("item-due");
   await expect(trigger).toBeVisible();
 

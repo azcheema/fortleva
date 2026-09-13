@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
@@ -58,7 +57,7 @@ export function StateField({
   const tCat = useTranslations("states.stateCategory");
   const [open, setOpen] = useState(false);
 
-  const { shown, announced, commit } = usePanelCommit<ShownState, StateCommitted>({
+  const { shown, status, commit } = usePanelCommit<ShownState, StateCommitted>({
     canonical: { stateId, stateName, stateCategory },
     same: (a, b) => a.stateId === b.stateId,
     adopt: (c) => ({ stateId: c.stateId, stateName: c.stateName, stateCategory: c.stateCategory }),
@@ -94,13 +93,11 @@ export function StateField({
         // a non-approver. A picker that cannot show what the item IS is
         // broken (§5.2, and the residue the 2W-R review accepted).
         disabled,
-        meta:
-          s.id === shown.stateId ? <CheckIcon className="size-3.5" aria-hidden="true" /> : undefined,
         // `item-state-IN_PROGRESS-2`: the category alone named both of the
         // seed's IN_PROGRESS states.
         testId: `item-state-${key}`,
       })),
-    [targets, shown.stateId, tCat],
+    [targets, tCat],
   );
 
   // Above the early return: a hook may not sit under a conditional. The
@@ -165,10 +162,7 @@ export function StateField({
         <StatusIcon name={spec.icon} className="size-3 shrink-0" aria-hidden="true" />
         <span className="min-w-0 truncate">{shown.stateName}</span>
       </PropertyPicker>
-      {/* ALWAYS mounted, and silent until a change has happened. */}
-      <span role="status" aria-live="polite" className="sr-only">
-        {announced}
-      </span>
+      {status}
     </>
   );
 }

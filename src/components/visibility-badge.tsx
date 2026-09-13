@@ -5,6 +5,26 @@ import { cn } from "@/lib/utils";
 
 export type VisibilityValue = "INTERNAL" | "CLIENT_VISIBLE";
 
+/** The two tokens, in the order every control lists them (§5.5). */
+export const VISIBILITY_VALUES = ["INTERNAL", "CLIENT_VISIBLE"] as const;
+
+/** The `visibility` namespace key that names a value — one place for both tokens' words. */
+export const visibilityLabelKey = (value: VisibilityValue): "internal" | "clientVisible" =>
+  value === "CLIENT_VISIBLE" ? "clientVisible" : "internal";
+
+/**
+ * The icon channel of §10.4 — eye, filled at 0.28, against lock, outline
+ * — defined ONCE, so the chip and every list that offers the two tokens
+ * (the item panel's `V` picker) show the same CVD-measured pair.
+ */
+export function VisibilityIcon({ value, className }: { value: VisibilityValue; className?: string }) {
+  return value === "CLIENT_VISIBLE" ? (
+    <EyeIcon aria-hidden="true" className={cn("size-3", className)} fill="currentColor" fillOpacity={0.28} />
+  ) : (
+    <LockIcon aria-hidden="true" className={cn("size-3", className)} />
+  );
+}
+
 /**
  * SAFETY-CRITICAL (DESIGN SPEC §2.4). The worst bug this product can
  * ship is a client seeing internal data, so the two states are pulled
@@ -40,7 +60,7 @@ export function VisibilityBadge({
   const t = useTranslations("visibility");
   const resolved: VisibilityValue = value ?? visibility ?? "INTERNAL";
   const isClientVisible = resolved === "CLIENT_VISIBLE";
-  const label = isClientVisible ? t("clientVisible") : t("internal");
+  const label = t(visibilityLabelKey(resolved));
 
   return (
     <span
@@ -56,11 +76,7 @@ export function VisibilityBadge({
         className,
       )}
     >
-      {isClientVisible ? (
-        <EyeIcon aria-hidden="true" className="size-3" fill="currentColor" fillOpacity={0.28} />
-      ) : (
-        <LockIcon aria-hidden="true" className="size-3" />
-      )}
+      <VisibilityIcon value={resolved} />
       <span>{label}</span>
     </span>
   );

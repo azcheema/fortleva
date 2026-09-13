@@ -56,7 +56,11 @@ export type BulkResult = {
   skipped: number;
 };
 
-type ItemRow = NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>;
+/** A selected row WITHOUT its description pair — see `ItemRow` in states.ts. */
+type ItemRow = Omit<
+  NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>,
+  "description" | "descriptionText"
+>;
 
 /**
  * Load the selection and gate it once: live items of ONE project the
@@ -95,7 +99,8 @@ async function loadSelection(tx: TenantDb, ctx: WorkCtx, itemIds: readonly strin
   if (itemIds.length > MAX_BULK_ITEMS) fail("INVALID_INPUT", "too many items selected");
   await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
   const scope = await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "projectId" });
-  const where = { ...scope, tenantId: ctx.tenantId, id: { in: [...new Set(itemIds)] }, deletedAt: null };
+  const ids = [...new Set(itemIds)];
+  const where = { ...scope, tenantId: ctx.tenantId, id: { in: ids }, deletedAt: null };
   const probe = await tx.workItem.findMany({ where, select: { projectId: true } });
   if (probe.length === 0) deny("NOT_FOUND");
   const projectIds = new Set(probe.map((i) => i.projectId));
@@ -105,11 +110,38 @@ async function loadSelection(tx: TenantDb, ctx: WorkCtx, itemIds: readonly strin
   // A bulk edit locks every selected row, in scan order: it queues on the
   // project's rank lock first, like every queued writer (rank-lock.ts), so
   // it never holds one of these rows while another queued writer holds
-  // the next. Then the FRESH read (moveItem's pattern): single-row
-  // writers take no rank lock, so an item deleted or edited while this
-  // waited must be seen as it is now — absent if it is gone.
+  // the next.
   await lockProjectRanks(tx, projectId);
-  const items = await tx.workItem.findMany({ where: { ...where, projectId } });
+  // Then the rows themselves, LOCKED BEFORE THEY ARE READ (slice 7, PLAN
+  // §0 — the fix updateItemFields and changeState took in slice 6). The
+  // diff each verb takes below — already that priority, already in that
+  // state, already archived — and every history row's old value must
+  // describe the version the UPDATE replaces, not one a single-row
+  // writer committed while this transaction waited at its UPDATE: read
+  // unlocked, a priority a colleague had just set counted as changed,
+  // got a history row from a value it never replaced, and a state a
+  // colleague had just entered was audited a second time. Single-row
+  // writers take no rank lock, so their commits land whenever they land;
+  // a wait here refreshes only this statement, and the read that follows
+  // is a new one, so it sees the row as it is now — absent if it is gone.
+  // FOR NO KEY UPDATE, the mode the three verbs' UPDATEs take (priority,
+  // the state columns, archived_at — nothing in a unique index), so
+  // nothing upgrades; scan order, as the UPDATE itself locked before, and
+  // still under the queue lock, so no other multi-row writer holds a row
+  // of this project meanwhile (rank-lock.ts). Only live rows of the ONE
+  // project the scope check passed, so an id outside it locks nothing.
+  await tx.$queryRaw`
+    SELECT 1 FROM work_item
+    WHERE tenant_id = ${ctx.tenantId} AND project_id = ${projectId}
+      AND id = ANY(${ids}::text[]) AND deleted_at IS NULL
+    FOR NO KEY UPDATE`;
+  const items = await tx.workItem.findMany({
+    where: { ...where, projectId },
+    // The three verbs diff priority, the state columns and archivedAt:
+    // never the document, which is up to 512 KB per row and would
+    // otherwise cross the wire fifty times under the queue lock.
+    omit: { description: true, descriptionText: true },
+  });
   if (items.length === 0) deny("NOT_FOUND");
   return items;
 }

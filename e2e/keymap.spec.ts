@@ -224,10 +224,10 @@ test.describe("the `?` overlay and the palette", () => {
     await expect(home.getByRole("heading", { name: "Board", exact: true })).toHaveCount(0);
   });
 
-  test("with the peek open, the Task section lists S P E D in rail order, and J or K is spoken as such", async ({
+  test("with the peek open, the Task section lists S A P E D V in rail order, and J or K is spoken as such", async ({
     page,
   }) => {
-    // Four islands register the item scope's keys, and the overlay must
+    // Six islands register the item scope's keys, and the overlay must
     // read them in the order the rail shows them — not backwards, which
     // is what a precedence-ordered walk alone would produce.
     await openFirstPeek(page);
@@ -240,9 +240,11 @@ test.describe("the `?` overlay and the palette", () => {
     await expect(section("Task")).toBeVisible();
     await expect(section("Task").locator("li > span:not([data-slot])")).toHaveText([
       "Change state",
+      "Assign",
       "Change priority",
       "Set estimate",
       "Set due date",
+      "Change visibility",
     ]);
 
     // `["J", "or", "K"]`: two keys and a separator whose word is there
@@ -266,7 +268,7 @@ test.describe("the `?` overlay and the palette", () => {
     await expect(palette.getByText("On this page")).toBeVisible();
     // Every rail picker, not just the first one, arrives as a palette row
     // without being registered twice.
-    for (const name of [/Change priority/, /Set estimate/, /Set due date/]) {
+    for (const name of [/^Assign/, /Change priority/, /Set estimate/, /Set due date/, /Change visibility/]) {
       await expect(palette.getByRole("option", { name })).toBeVisible();
     }
     await palette.getByRole("option", { name: /Change state/ }).click();

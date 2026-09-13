@@ -12,7 +12,8 @@ import { emit } from "@/notify/emit";
 import { writeActivity } from "./activity";
 import { descriptionToken } from "./description-token";
 import { guarded } from "./db-errors";
-import { bottomRank, lockItemRow, lockProjectRanks } from "./rank-lock";
+import { bottomRank, lockProjectRanks } from "./rank-lock";
+import { loadItemInScope, type ItemRow } from "./rows";
 import { ensureProjectStates, transitionState, type WorkCtx } from "./states";
 import type { StateSeedKey } from "@/lib/enum-map";
 import { stateLabel } from "@/lib/state-label";
@@ -31,37 +32,15 @@ export type { WorkCtx } from "./states";
 const principalOf = (ctx: WorkCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
 
 /**
- * A work item WITHOUT its description pair — what every mutation here
- * reads. The document can be 512 KB, and none of these writers touches
- * it (`states.ts` carries the same type for the same reason). An inline
- * `omit` at the read, never a global one: `src/export/service.ts` dumps
- * every model select-less and would silently lose the column.
- */
-type ItemRow = Omit<
-  NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>,
-  "description" | "descriptionText"
->;
-
-/**
  * Share-lock a parent row, so a read that follows is the parent the
  * insert will be checked against: it cannot be deleted or made private
  * in between (the tree trigger takes the same lock at the insert, where
  * it is then re-entrant). Only ever taken under the project's rank lock
- * — see createItem for why the position is load-bearing.
+ * — see createItem for why the position is load-bearing. (The module's
+ * read of one item for a writer — locked, then scoped — is rows.ts.)
  */
 async function shareLockParent(tx: TenantDb, tenantId: string, parentId: string): Promise<void> {
   await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${parentId} FOR SHARE`;
-}
-
-/** Load a live item and assert the actor's scope on its project (module-internal; not in the barrel). */
-export async function loadItemInScope(tx: TenantDb, ctx: WorkCtx, itemId: string): Promise<ItemRow> {
-  const item = await tx.workItem.findFirst({
-    where: { tenantId: ctx.tenantId, id: itemId, deletedAt: null },
-    omit: { description: true, descriptionText: true },
-  });
-  if (!item) deny("NOT_FOUND");
-  await assertInScope(tx, ctx.actor, { projectId: item!.projectId });
-  return item!;
 }
 
 export type ItemListEntry = {
@@ -220,11 +199,7 @@ export async function listItems(
           orderBy: { rank: "asc" },
           select: { id: true, name: true, seedKey: true, category: true, isHidden: true, isDefault: true, wipLimit: true, requiresApproval: true },
         }),
-        tx.member.findMany({
-          where: { tenantId: ctx.tenantId, status: "ACTIVE" },
-          select: { id: true, user: { select: { name: true } } },
-          orderBy: { joinedAt: "asc" },
-        }),
+        activeMembers(tx, ctx.tenantId),
         isAuthorized(tx, ctx.actor, "work_item:create"),
         isAuthorized(tx, ctx.actor, "work_item:edit"),
         isAuthorized(tx, ctx.actor, "work_item:change_visibility"),
@@ -273,10 +248,27 @@ export async function listItems(
         attachmentCount: attachmentsById.get(i.id) ?? 0,
       })),
       states,
-      members: members.map((m) => ({ id: m.id, name: m.user.name })),
+      members,
       caps: { canCreate, canEdit, canChangeVisibility, canDelete, canApprove },
     };
   });
+}
+
+/**
+ * Who can be assigned — the ONE read behind the backlog's assignee cell,
+ * the board's lanes and the panel's `A` picker, so the three offer the
+ * same people in the same order. ACTIVE members, by the day they joined;
+ * the id breaks a tie, because members provisioned in one transaction
+ * share a `joinedAt` and the picker's ordinal test ids must name one
+ * person on every surface.
+ */
+async function activeMembers(tx: TenantDb, tenantId: string): Promise<{ id: string; name: string }[]> {
+  const rows = await tx.member.findMany({
+    where: { tenantId, status: "ACTIVE" },
+    select: { id: true, user: { select: { name: true } } },
+    orderBy: [{ joinedAt: "asc" }, { id: "asc" }],
+  });
+  return rows.map((m) => ({ id: m.id, name: m.user.name }));
 }
 
 /**
@@ -319,7 +311,11 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority"> & {
  * State picker cannot be drawn without it — `enterableStates` needs it
  * to decide whether the gated Done is a target — and `states` because
  * the panel must not depend on a list the caller happens to have
- * loaded.
+ * loaded. `canChangeVisibility` and `members` (slice 7) are there for
+ * the same two reasons: the `V` picker is a control only for a member
+ * who holds `work_item:change_visibility`, and the `A` picker's rows
+ * are the tenant's members — read HERE, not borrowed from the board's
+ * or the backlog's list, which the full page does not have.
  *
  * FLAT rather than nested under `caps`: the shape has one consumer and
  * three existing assertions, and nesting would churn them for nothing.
@@ -330,6 +326,10 @@ export type ItemDetailResult = {
   states: WorkflowStateEntry[];
   canEdit: boolean;
   canApprove: boolean;
+  /** `work_item:change_visibility` — whether the `V` picker is a control here. */
+  canChangeVisibility: boolean;
+  /** The `A` picker's rows: ACTIVE members, in the order the list surfaces use. */
+  members: { id: string; name: string }[];
 };
 
 /** `ItemDetail` with the state pair resolved — see `ResolvedItemList`. */
@@ -403,7 +403,7 @@ export async function getItemDetail(
     // owe a Phase-3 answer for the contact principal. If the read ever
     // does come back empty, the panel degrades to plain text rather
     // than rendering a picker with nothing in it.
-    const [attachmentCount, canEdit, canApprove, states] = await Promise.all([
+    const [attachmentCount, canEdit, canApprove, canChangeVisibility, states] = await Promise.all([
       tx.document.count({
         where: {
           tenantId: ctx.tenantId,
@@ -414,6 +414,7 @@ export async function getItemDetail(
       }),
       isAuthorized(tx, ctx.actor, "work_item:edit"),
       isAuthorized(tx, ctx.actor, "work_item:approve"),
+      isAuthorized(tx, ctx.actor, "work_item:change_visibility"),
       tx.workflowState.findMany({
         where: { tenantId: ctx.tenantId, projectId },
         orderBy: { rank: "asc" },
@@ -422,6 +423,9 @@ export async function getItemDetail(
         select: { id: true, name: true, seedKey: true, category: true, isHidden: true, isDefault: true, wipLimit: true, requiresApproval: true },
       }),
     ]);
+    // The `A` picker's rows — read only for a member who can edit: a
+    // viewer's panel renders the assignee as text and never lists anyone.
+    const members = canEdit ? await activeMembers(tx, ctx.tenantId) : [];
     const item = row!;
     return {
       item: {
@@ -462,6 +466,8 @@ export async function getItemDetail(
       states,
       canEdit,
       canApprove,
+      canChangeVisibility,
+      members,
     };
   });
 }
@@ -595,21 +601,13 @@ export async function updateItemFields(
 ): Promise<ItemFieldsCommitted> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
-    // The row lock FIRST, then the read every diff below is taken from
-    // (lockItemRow, rank-lock.ts). Read unlocked, an edit that committed
+    // LOCKED, then read (rows.ts): every diff below is taken from the row
+    // version the UPDATE replaces. Read unlocked, an edit that committed
     // while this one waited at its UPDATE left `changed` and each history
-    // row's oldValue describing a row version the UPDATE never replaced:
-    // two LOW → HIGH edits both said changed, and a shared item's due-date
-    // history — a row the client reads — said "from the 15th" twice.
-    //
-    // No new deadlock (rank-lock.ts): this is the lock the transaction's
-    // own UPDATE takes on the same row, only taken earlier — ahead of the
-    // item read and the scope check, which lock nothing — so the order it
-    // acquires locks in is unchanged, and a no-op holds this one lock and
-    // takes no other. It is still a writer of ONE work_item row: never the
-    // rank lock, never a second row. A caller outside the project holds
-    // it only until assertInScope refuses and the transaction rolls back.
-    await lockItemRow(tx, ctx.tenantId, itemId);
+    // row's oldValue describing a version it never replaced: two LOW →
+    // HIGH edits both said changed, and a shared item's due-date history
+    // — a row the client reads — said "from the 15th" twice. A writer of
+    // ONE work_item row: never the rank lock, never a second row.
     const item = await loadItemInScope(tx, ctx, itemId);
     const data: Record<string, unknown> = {};
     const changes: { field: string; oldValue: string | null; newValue: string | null }[] = [];
@@ -661,26 +659,65 @@ export async function updateItemFields(
   });
 }
 
-/** Assign / unassign a member; assignment notifies (debounced email). */
+/**
+ * What an assignment left in the row — the canonical values the panel's
+ * `A` picker and the backlog's assignee cell replace their optimistic
+ * slice with (UI.md §7.2), read back through the UPDATE's own `select`.
+ */
+export type AssignmentCommitted = {
+  id: string;
+  assigneeMemberId: string | null;
+  /** The member's display name, resolved HERE so no caller joins it. */
+  assigneeName: string | null;
+  /**
+   * False when the item already had that assignee: no UPDATE, no
+   * activity, no notification. Compared UNDER THE ROW LOCK, against the
+   * version an UPDATE would replace — so an identical assignment that
+   * committed while this one waited makes it false too.
+   */
+  changed: boolean;
+};
+
+/**
+ * Assign / unassign a member; assignment notifies (debounced email). A
+ * routine edit: an INTERNAL activity row (`assignee` is not on the
+ * portal-safe list), never an audit event.
+ */
 export async function assignItem(
   ctx: WorkCtx,
   itemId: string,
   memberId: string | null,
-): Promise<void> {
-  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+): Promise<AssignmentCommitted> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
+    // LOCKED, then read (rows.ts; slice 7 carried updateItemFields' fix
+    // here). Read unlocked, an assignment that waited at its UPDATE on one
+    // that committed said `changed` for a no-op, wrote a history row whose
+    // oldRef named an assignee the UPDATE never replaced, and mailed a
+    // member who already held the task. A writer of ONE work_item row.
     const item = await loadItemInScope(tx, ctx, itemId);
-    if (item.assigneeMemberId === memberId) return;
-    if (memberId) {
-      const member = await tx.member.findFirst({
-        where: { tenantId: ctx.tenantId, id: memberId, status: "ACTIVE" },
-        select: { id: true },
-      });
-      if (!member) deny("NOT_FOUND");
+    // ONE read of the member serves both branches: the no-op answers with
+    // the name of whoever holds the task — deactivated or not, still a
+    // name to show — and only a REAL assignment insists on ACTIVE.
+    const member = memberId
+      ? await tx.member.findFirst({
+          where: { tenantId: ctx.tenantId, id: memberId },
+          select: { status: true, user: { select: { name: true } } },
+        })
+      : null;
+    const assigneeName = member?.user.name ?? null;
+    if (item.assigneeMemberId === memberId) {
+      // Nothing written, and the caller is TOLD so — from the row just
+      // read, which is the truth about the item right now.
+      return { id: item.id, assigneeMemberId: item.assigneeMemberId, assigneeName, changed: false };
     }
-    await tx.workItem.update({
+    if (memberId && member?.status !== "ACTIVE") deny("NOT_FOUND");
+    const row = await tx.workItem.update({
       where: { id: item.id },
       data: { assigneeMemberId: memberId, assigneeContactId: null },
+      // INLINE, and never omitted: a select-less update returns the
+      // WHOLE row, 512 KB description included. This is the RETURNING.
+      select: { id: true, assigneeMemberId: true },
     });
     await writeActivity(tx, ctx, item, {
       field: "assignee",
@@ -704,8 +741,25 @@ export async function assignItem(
         dedupeKey: `assigned:${item.id}`,
       });
     }
+    return { id: row.id, assigneeMemberId: row.assigneeMemberId, assigneeName, changed: true };
   });
 }
+
+/**
+ * What a visibility flip left in the row (UI.md §7.2) — the one property
+ * whose canonical answer a surface must show INSTEAD of its pick, never
+ * beside it (§10.4: never optimistic).
+ */
+export type VisibilityCommitted = {
+  id: string;
+  visibility: "INTERNAL" | "CLIENT_VISIBLE";
+  /**
+   * False when the item already had that visibility: no UPDATE, no
+   * activity, no audit event. Compared UNDER THE ROW LOCK, against the
+   * version an UPDATE would replace.
+   */
+  changed: boolean;
+};
 
 /** Visibility flip — audited; the DB triggers enforce child ≤ parent
  * and refuse downgrades that would orphan client-visible children —
@@ -714,59 +768,83 @@ export async function changeItemVisibility(
   ctx: WorkCtx,
   itemId: string,
   visibility: "INTERNAL" | "CLIENT_VISIBLE",
-): Promise<void> {
-  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => guarded(async () => {
+): Promise<VisibilityCommitted> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => guarded(async () => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:change_visibility");
-    let item = await loadItemInScope(tx, ctx, itemId);
-    if (item.visibility === visibility) return;
-    // A subtask's raise is the one flip the tree trigger locks the
-    // parent for, which makes it a writer of TWO rows — so it queues on
-    // the project's rank lock first, like every queued writer
-    // (rank-lock.ts), and re-reads the item after the wait (moveItem's
-    // pattern): it may have been deleted or changed meanwhile. A flip to
-    // INTERNAL writes one row and takes neither lock, so it never waits
-    // on the queue or on its parent — only on whoever holds its own row,
-    // which includes an in-flight subtask create or raise under it (that
-    // wait IS the write-skew fix). It is the safety lever.
-    if (visibility === "CLIENT_VISIBLE" && item.parentId) {
-      await lockProjectRanks(tx, item.projectId);
-      item = await loadItemInScope(tx, ctx, itemId);
-      if (item.visibility === visibility) return;
+    // A subtask's raise is the one flip the tree trigger locks the parent
+    // for, which makes it a writer of TWO rows — so it is a QUEUED writer
+    // (rank-lock.ts, THE ONE ORDER): an unlocked probe for its project and
+    // its parent, the queue lock, then the locked, scoped read. The probe
+    // can decide the plan because no service reparents: `parentId` is the
+    // one fact about the row a wait cannot change. A flip to INTERNAL, or
+    // a raise with no parent, writes one row and never takes the queue
+    // lock, so it never waits on the queue or on a parent — only on
+    // whoever holds its own row, which includes an in-flight subtask
+    // create or raise under it (that wait IS the write-skew fix). It is
+    // the safety lever.
+    const probe = await loadItemInScope(tx, ctx, itemId, { lock: false });
+    if (visibility === "CLIENT_VISIBLE" && probe.parentId) {
+      await lockProjectRanks(tx, probe.projectId);
     }
-    await tx.workItem.update({ where: { id: item.id }, data: { visibility } });
-    await writeActivity(
-      tx,
-      ctx,
-      { ...item, visibility },
-      // No `forceInternal`: `visibility` is not on the portal-safe list
-      // (activity.ts) and since 20260912120000 the database refuses it
-      // there, so this row is INTERNAL either way. The flag used to be
-      // passed here as if a share flip could be client-visible; it never
-      // could, and a client learns what changed from the STATE row.
-      { field: "visibility", oldValue: item.visibility, newValue: visibility },
-    );
+    // LOCKED, then read, then scope asserted again — the module's read
+    // for a writer (rows.ts), after every wait. Read unlocked, a flip
+    // that waited at its UPDATE on one that committed reported `changed`
+    // for a no-op and audited a transition the UPDATE never made (two
+    // raises at once both said "INTERNAL → CLIENT_VISIBLE"), and a
+    // make-private issued while a colleague's share was still uncommitted
+    // read INTERNAL, called itself a no-op and returned without ever
+    // waiting — leaving the task shared.
+    const item = await loadItemInScope(tx, ctx, probe.id);
+    if (item.visibility === visibility) return { id: item.id, visibility, changed: false };
+    const row = await tx.workItem.update({
+      where: { id: item.id },
+      data: { visibility },
+      // INLINE, never omitted (the 512 KB description). The RETURNING.
+      select: { id: true, visibility: true },
+    });
+    // No `forceInternal`: `visibility` is not on the portal-safe list
+    // (activity.ts) and since 20260912120000 the database refuses it
+    // there, so this row is INTERNAL either way — whatever the item's
+    // visibility before or after the flip. A client learns what changed
+    // from the STATE row.
+    await writeActivity(tx, ctx, item, {
+      field: "visibility",
+      oldValue: item.visibility,
+      newValue: row.visibility,
+    });
     await record(tx, {
       action: "work_item.visibility_changed",
       targetType: "WorkItem",
       targetId: item.id,
-      metadata: { from: item.visibility, to: visibility, projectId: item.projectId },
+      metadata: { from: item.visibility, to: row.visibility, projectId: item.projectId },
     });
+    return { id: row.id, visibility: row.visibility, changed: true };
   }));
 }
+
+/** What an archive / restore left in the row; `changed` false when it was already so — nothing written, nothing audited. */
+export type ArchiveCommitted = { id: string; archivedAt: Date | null; changed: boolean };
 
 /** Explicit archive / restore — never silent (UI rule 12). */
 export async function setItemArchived(
   ctx: WorkCtx,
   itemId: string,
   archived: boolean,
-): Promise<void> {
-  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+): Promise<ArchiveCommitted> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
+    // LOCKED, then read (rows.ts; slice 7). Read unlocked, an archive that
+    // waited on an identical one restamped archivedAt and audited a
+    // second `work_item.archived` for a change that had already happened.
     const item = await loadItemInScope(tx, ctx, itemId);
-    if (Boolean(item.archivedAt) === archived) return;
-    await tx.workItem.update({
+    if (Boolean(item.archivedAt) === archived) {
+      return { id: item.id, archivedAt: item.archivedAt, changed: false };
+    }
+    const row = await tx.workItem.update({
       where: { id: item.id },
       data: { archivedAt: archived ? new Date() : null },
+      // INLINE, never omitted (the 512 KB description). The RETURNING.
+      select: { id: true, archivedAt: true },
     });
     await record(tx, {
       action: "work_item.archived",
@@ -774,6 +852,7 @@ export async function setItemArchived(
       targetId: item.id,
       metadata: { archived, projectId: item.projectId },
     });
+    return { id: row.id, archivedAt: row.archivedAt, changed: true };
   });
 }
 
@@ -781,7 +860,9 @@ export async function setItemArchived(
 export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:delete");
-    const item = await loadItemInScope(tx, ctx, itemId);
+    // Unlocked, explicitly (rows.ts): the compare-and-set below IS this
+    // writer's guard — it diffs nothing from this read but the id.
+    const item = await loadItemInScope(tx, ctx, itemId, { lock: false });
     // ONE stamp for the item and everything that goes with it, so the
     // whole deletion reads as a single event to an export and to the
     // retention sweep. What a future undo restores by is the audit

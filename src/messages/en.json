@@ -1701,6 +1701,7 @@
         "estimate": "Estimate",
         "startDate": "Start date",
         "dueDate": "Due date",
+        "visibility": "Visibility",
         "parent": "Part of",
         "milestone": "Milestone",
         "checklist": "Checklist",
@@ -1779,11 +1780,31 @@
         "changed": "Due date changed to {date}",
         "cleared": "Due date removed"
       },
+      "assignee": {
+        "trigger": "Assignee: {name}",
+        "triggerEmpty": "Assignee: unassigned",
+        "search": "Search members…",
+        "empty": "No matching member.",
+        "none": "Unassigned",
+        "clear": "Unassign",
+        "failed": "The assignee did not save. The panel shows the current assignee.",
+        "changed": "Assigned to {name}",
+        "cleared": "Assignee removed"
+      },
+      "visibility": {
+        "trigger": "Visibility: {visibility}",
+        "search": "Private to team or Client can see",
+        "empty": "No matching visibility.",
+        "failed": "The visibility did not save. The panel shows the current visibility.",
+        "changed": "Visibility changed to {visibility}"
+      },
       "keys": {
         "state": "Change state",
+        "assignee": "Assign",
         "priority": "Change priority",
         "estimate": "Set estimate",
-        "dueDate": "Set due date"
+        "dueDate": "Set due date",
+        "visibility": "Change visibility"
       }
     },
     "states": {

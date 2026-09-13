@@ -5,7 +5,6 @@ import { getLocale, getTimeZone, getTranslations } from "next-intl/server";
 import { Callout, EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { VisibilityBadge } from "@/components/visibility-badge";
 import type { DocumentListItem } from "@/documents/service";
 import { isoDateOf } from "@/lib/duration";
 import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
@@ -14,11 +13,13 @@ import type { ResolvedItemDetail, ResolvedWorkflowState } from "@/modules/work";
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
+import { AssigneeField } from "./assignee-field";
 import { DescriptionField } from "./description-field";
 import { DueDateField } from "./due-date-field";
 import { EstimateField } from "./estimate-field";
 import { PriorityField } from "./priority-field";
 import { StateField } from "./state-field";
+import { VisibilityField } from "./visibility-field";
 
 /**
  * ONE item panel, rendered in two places (UI.md §5.4): the side-peek
@@ -27,10 +28,10 @@ import { StateField } from "./state-field";
  * copy is how the two drift apart.
  *
  * Read-first: every property is its value as text until you edit it
- * (Mandate 1). State, Priority, Estimate and Due date each have a
- * `<PropertyPicker>` island behind them (§5.2 `S P E D`); the rest of the
- * rail, subtasks, comments and the Activity tab grow onto this shell in
- * the slices after it.
+ * (Mandate 1). State, Assignee, Priority, Estimate, Due date and
+ * Visibility each have a `<PropertyPicker>` island behind them (§5.2
+ * `S A P E D V`); the rest of the rail, subtasks, comments and the
+ * Activity tab grow onto this shell in the slices after it.
  */
 
 export type ItemPanelCaps = {
@@ -56,6 +57,8 @@ export async function ItemPanel({
   canEdit,
   states,
   canApprove,
+  canChangeVisibility,
+  members,
 }: {
   item: ResolvedItemDetail;
   /** "ACME-12" — the human key the header shows. */
@@ -91,11 +94,14 @@ export async function ItemPanel({
   states: ResolvedWorkflowState[];
   /** `work_item:approve` — whether a gated state is a legal target. */
   canApprove: boolean;
+  /** `work_item:change_visibility` — whether the Visibility chip is a control (§10.4). */
+  canChangeVisibility: boolean;
+  /** The Assignee picker's rows — `getItemDetail`'s, so the full page has them too. */
+  members: readonly { id: string; name: string }[];
 }) {
   // The sheet owns the dialog title; the page owns the document's h1.
   const variant = surface === "page" ? "page" : "peek";
   const t = await getTranslations("projects.item");
-  const tBacklog = await getTranslations("projects.backlog");
   const tStates = await getTranslations("states");
   const tFiles = await getTranslations("files");
   const tCommon = await getTranslations("common");
@@ -122,32 +128,43 @@ export async function ItemPanel({
       <h2 className="text-lg font-semibold tracking-tight">{item.title}</h2>
     );
 
+  // The visibility chip left this row for the rail (slice 7): it is the
+  // `V` picker's own rest state there, and a chip that appears twice on
+  // one panel is a chip that can disagree with itself.
+  const archivedNote = item.archivedAt ? (
+    <span className="text-xs text-muted-foreground">{tCommon("archived")}</span>
+  ) : null;
+  const fullPageLink =
+    variant === "peek" && fullPageHref ? (
+      <Button asChild variant="ghost" size="sm" className="ms-auto">
+        <Link href={fullPageHref} data-testid="item-full-page">
+          <MaximizeIcon />
+          {t("openFullPage")}
+        </Link>
+      </Button>
+    ) : null;
+
   const header = (
     <>
       <span className="num-id text-xs text-muted-foreground">{itemKey}</span>
       {title}
       {variant === "peek" ? <SheetDescription className="sr-only">{t("sheetDescription")}</SheetDescription> : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <VisibilityBadge visibility={item.visibility} />
-        {item.archivedAt ? <span className="text-xs text-muted-foreground">{tCommon("archived")}</span> : null}
-        {variant === "peek" && fullPageHref ? (
-          <Button asChild variant="ghost" size="sm" className="ms-auto">
-            <Link href={fullPageHref} data-testid="item-full-page">
-              <MaximizeIcon />
-              {t("openFullPage")}
-            </Link>
-          </Button>
-        ) : null}
-      </div>
+      {archivedNote || fullPageLink ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {archivedNote}
+          {fullPageLink}
+        </div>
+      ) : null}
     </>
   );
 
-  // Read-first property list (UI.md §10.15 pattern 7). The four pickers
+  // Read-first property list (UI.md §10.15 pattern 7). The six pickers
   // are UNCONDITIONAL siblings in rail order, each keyed by the ITEM:
   // `PeekShell` never remounts between items, so without the key an
   // optimistic value — or an open popover — would survive a navigation
   // from one task to the next; and the `?` overlay lists a scope's keys
-  // in registration order, which is this DOM order (S P E D).
+  // in registration order, which is this DOM order (S A P E D V — the
+  // order §2 rule 3 spells the keys in).
   //
   // ONE row geometry for a trigger and for text: every label and every
   // value is at least the trigger's 32px (`restBoxClass`'s `h-8`), so a
@@ -181,7 +198,19 @@ export async function ItemPanel({
           />
         </dd>
         <dt className={railLabel}>{t("properties.assignee")}</dt>
-        <dd className={railText}>{item.assigneeName ?? tBacklog("unassigned")}</dd>
+        <dd className={railPicker}>
+          <AssigneeField
+            key={item.id}
+            itemId={item.id}
+            itemNumber={item.number}
+            projectKey={projectKey}
+            surface={surface}
+            assigneeMemberId={item.assigneeMemberId}
+            assigneeName={item.assigneeName}
+            members={members}
+            canEdit={canEdit}
+          />
+        </dd>
         <dt className={railLabel}>{t("properties.type")}</dt>
         <dd className={railText}>
           {tStates(`workItemType.${item.type}`)}
@@ -237,6 +266,18 @@ export async function ItemPanel({
             weekStart={weekStart}
             showIsoWeek={showIsoWeek}
             canEdit={canEdit}
+          />
+        </dd>
+        <dt className={railLabel}>{t("properties.visibility")}</dt>
+        <dd className={railPicker}>
+          <VisibilityField
+            key={item.id}
+            itemId={item.id}
+            itemNumber={item.number}
+            projectKey={projectKey}
+            surface={surface}
+            visibility={item.visibility}
+            canChangeVisibility={canChangeVisibility}
           />
         </dd>
         {item.parent && parentHref ? (
