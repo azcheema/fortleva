@@ -18,8 +18,11 @@ import {
   laneKeyOf,
   lanesFor,
   rowAnchors,
+  stateOrdinalKeys,
+  statePickerTargets,
   visibleColumns,
   workView,
+  type StatePickerTarget,
   type WorkFilters,
   type WorkItem,
   type WorkRow,
@@ -215,6 +218,79 @@ describe("lanes", () => {
       const shown = enterableStates(all, true, "triage").map((s) => s.id);
       expect(shown).toContain("triage");
       expect(enterableStates(all, true, "prog").map((s) => s.id)).not.toContain("triage");
+    });
+
+    describe("stateOrdinalKeys (unique state test ids)", () => {
+      // Seed-shaped, in rank order: two states share IN_PROGRESS.
+      const seed = [
+        state("backlog", "BACKLOG"),
+        state("todo", "TODO"),
+        progress,
+        review,
+        done,
+        state("cancelled", "CANCELLED"),
+        triage,
+      ];
+
+      it("numbers states 1-based within their category, in rank order", () => {
+        const keys = stateOrdinalKeys(seed);
+        expect(keys.get("prog")).toBe("IN_PROGRESS-1");
+        expect(keys.get("review")).toBe("IN_PROGRESS-2");
+        expect(keys.get("todo")).toBe("TODO-1");
+        // Reversed rank, reversed ordinals: the key follows the order given.
+        const flipped = stateOrdinalKeys([review, progress]);
+        expect(flipped.get("review")).toBe("IN_PROGRESS-1");
+        expect(flipped.get("prog")).toBe("IN_PROGRESS-2");
+      });
+
+      it("gives every state a key, and no two states the same key, with a custom state added", () => {
+        const shipped = state("shipped", "DONE");
+        const list = [...seed.slice(0, 5), shipped, ...seed.slice(5)];
+        const keys = stateOrdinalKeys(list);
+        expect(keys.size).toBe(list.length);
+        expect(new Set(keys.values()).size).toBe(list.length);
+        expect(keys.get("done")).toBe("DONE-1");
+        expect(keys.get("shipped")).toBe("DONE-2");
+      });
+
+      it("numbers every state it is given, a hidden or gated one included", () => {
+        // "Never depends on who is looking" is the CALLER's property —
+        // pinned on `statePickerTargets` below, where the call now lives.
+        const keys = stateOrdinalKeys(seed);
+        expect(keys.get("triage")).toBe("TRIAGE-1");
+        expect(keys.get("done")).toBe("DONE-1");
+      });
+    });
+
+    describe("statePickerTargets (the State picker's rows)", () => {
+      // A gated Done BEFORE a second, ungated DONE state: the one shape in
+      // which numbering the filtered targets would renumber a shared row.
+      const shipped = state("shipped", "DONE");
+      const list = [backlog, progress, review, done, shipped, state("cancelled", "CANCELLED"), triage];
+      const keyOf = (targets: readonly StatePickerTarget[], id: string) =>
+        targets.find((t) => t.state.id === id)?.key;
+
+      it("gives an approver and a non-approver the SAME key for every state both can see", () => {
+        const approver = statePickerTargets(list, true, "prog");
+        const employee = statePickerTargets(list, false, "prog");
+        expect(approver.map((t) => t.state.id)).toContain("done");
+        expect(employee.map((t) => t.state.id)).not.toContain("done");
+        expect(keyOf(approver, "shipped")).toBe("DONE-2");
+        expect(keyOf(employee, "shipped")).toBe("DONE-2");
+        for (const t of employee) expect(t.key).toBe(keyOf(approver, t.state.id));
+      });
+
+      it("is enterableStates in rank order, with only the current state ever disabled", () => {
+        const onDone = statePickerTargets(list, false, "done");
+        expect(onDone.map((t) => t.state.id)).toEqual(enterableStates(list, false, "done").map((s) => s.id));
+        expect(onDone.filter((t) => t.disabled).map((t) => t.state.id)).toEqual(["done"]);
+
+        const onTriage = statePickerTargets(list, true, "triage");
+        expect(onTriage.at(-1)).toMatchObject({ key: "TRIAGE-1", disabled: true });
+        expect(onTriage.filter((t) => t.disabled)).toHaveLength(1);
+
+        expect(statePickerTargets(list, true, "prog").some((t) => t.disabled)).toBe(false);
+      });
     });
 
     it("a hidden state is excluded unless it is the current one", () => {

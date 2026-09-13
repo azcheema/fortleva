@@ -17,6 +17,7 @@ export {
   updateItemFields,
   type ItemDetail,
   type ItemDetailResult,
+  type ItemFieldsCommitted,
   type ItemList,
   type ItemListEntry,
   type ResolvedItemDetail,

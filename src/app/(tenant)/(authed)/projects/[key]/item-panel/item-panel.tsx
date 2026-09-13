@@ -1,18 +1,23 @@
 import { MaximizeIcon, PaperclipIcon, XIcon } from "lucide-react";
 import Link from "next/link";
-import { getLocale, getTranslations } from "next-intl/server";
+import { getLocale, getTimeZone, getTranslations } from "next-intl/server";
 
 import { Callout, EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { VisibilityBadge } from "@/components/visibility-badge";
 import type { DocumentListItem } from "@/documents/service";
-import { formatDate, formatDuration, type DurationStyle } from "@/lib/format";
+import { isoDateOf } from "@/lib/duration";
+import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
+import type { WeekStart } from "@/lib/week";
 import type { ResolvedItemDetail, ResolvedWorkflowState } from "@/modules/work";
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
 import { DescriptionField } from "./description-field";
+import { DueDateField } from "./due-date-field";
+import { EstimateField } from "./estimate-field";
+import { PriorityField } from "./priority-field";
 import { StateField } from "./state-field";
 
 /**
@@ -22,9 +27,10 @@ import { StateField } from "./state-field";
  * copy is how the two drift apart.
  *
  * Read-first: every property is its value as text until you edit it
- * (Mandate 1). State is the first one with a `<PropertyPicker>` behind
- * it (§5.2 `S`); the rest of the rail, subtasks, comments and the
- * Activity tab grow onto this shell in the slices after it.
+ * (Mandate 1). State, Priority, Estimate and Due date each have a
+ * `<PropertyPicker>` island behind them (§5.2 `S P E D`); the rest of the
+ * rail, subtasks, comments and the Activity tab grow onto this shell in
+ * the slices after it.
  */
 
 export type ItemPanelCaps = {
@@ -42,6 +48,8 @@ export async function ItemPanel({
   caps,
   returnTo,
   durationStyle,
+  weekStart,
+  showIsoWeek,
   error,
   surface,
   fullPageHref,
@@ -58,15 +66,20 @@ export async function ItemPanel({
   /** This panel's own URL — actions revalidate/bounce back into it. */
   returnTo: string;
   durationStyle: DurationStyle;
+  /** REQUIRED — the tenant's `ui.weekStart`: the due-date calendar starts its weeks here. */
+  weekStart: WeekStart;
+  /** REQUIRED — the tenant's `ui.showIsoWeek`: the due-date calendar shows week numbers. */
+  showIsoWeek: boolean;
   /** A failed download/delete bounces back as `?error=` (the Files-tab
    * contract) — the panel must show it, or a failure looks like nothing
    * happened (the standing rule). */
   error?: string;
   /**
-   * WHICH surface this is, not merely how it looks. The state picker's
-   * MFA step-up return address is derived from it, so "the page
-   * rendered with the backlog's return address" — the exact class of
-   * bug `setItemStateAction`'s hardcoded path is — cannot be expressed.
+   * WHICH surface this is, not merely how it looks. The property
+   * pickers' MFA step-up return address is derived from it
+   * (`panelSurfaceOf` → `itemReturnTo`), so "the page rendered with the
+   * backlog's return address" — the bug the old hardcoded backlog path
+   * was — cannot be expressed.
    * The look follows from it (`variant`, below).
    */
   surface: "board" | "backlog" | "page";
@@ -87,11 +100,11 @@ export async function ItemPanel({
   const tFiles = await getTranslations("files");
   const tCommon = await getTranslations("common");
   const locale = await getLocale();
+  // The zone the request resolved (Member.timezone → tenant ui.timezone
+  // → Europe/Stockholm). The due-date picker's "today" is taken in it —
+  // never in the browser's zone, which is the wrong-day trap.
+  const timeZone = await getTimeZone();
   const internal = item.visibility === "INTERNAL";
-  // @db.Date columns are UTC midnight: format in UTC or the day shifts
-  // west of UTC (the backlog's review finding).
-  const day = (value: Date) =>
-    formatDate(locale, value, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
 
   // `parentKey` is built here because a template literal as a JSX CHILD
   // is what react/jsx-no-literals reports (props are exempt); the href
@@ -129,18 +142,31 @@ export async function ItemPanel({
     </>
   );
 
-  // Read-first property list (UI.md §10.15 pattern 7). State is the
-  // first editable one (§5.2 `S`); the rest arrive as more
-  // `<PropertyPicker>` islands in the slices after this.
+  // Read-first property list (UI.md §10.15 pattern 7). The four pickers
+  // are UNCONDITIONAL siblings in rail order, each keyed by the ITEM:
+  // `PeekShell` never remounts between items, so without the key an
+  // optimistic value — or an open popover — would survive a navigation
+  // from one task to the next; and the `?` overlay lists a scope's keys
+  // in registration order, which is this DOM order (S P E D).
+  //
+  // ONE row geometry for a trigger and for text: every label and every
+  // value is at least the trigger's 32px (`restBoxClass`'s `h-8`), so a
+  // label sits level with its value whichever kind the value is — mixing
+  // a 32px trigger with a 20px text line put each picker's label 6px
+  // above its value and gave the rail rows of two heights. A label and a
+  // TEXT value pad their one 20px line out to those 32px rather than
+  // centring in them, so a value that wraps (a long parent title) grows
+  // downward and stays level with its label on its FIRST line. A PICKER
+  // value is centred in the same 32px — which is also where a read-only
+  // island's plain text lands.
+  const railLabel = "min-h-8 py-1.5 text-muted-foreground";
+  const railText = "min-h-8 py-1.5";
+  const railPicker = "flex min-h-8 items-center";
   const rail = (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm" data-testid="item-properties">
-        <dt className="text-muted-foreground">{t("properties.state")}</dt>
-        <dd>
+        <dt className={railLabel}>{t("properties.state")}</dt>
+        <dd className={railPicker}>
           <StateField
-            // Keyed by the ITEM: `PeekShell` never remounts between
-            // items, so without this an optimistic state — or an open
-            // popover — would survive a navigation from one task to
-            // the next.
             key={item.id}
             itemId={item.id}
             itemNumber={item.number}
@@ -154,27 +180,69 @@ export async function ItemPanel({
             canApprove={canApprove}
           />
         </dd>
-        <dt className="text-muted-foreground">{t("properties.assignee")}</dt>
-        <dd>{item.assigneeName ?? tBacklog("unassigned")}</dd>
-        <dt className="text-muted-foreground">{t("properties.type")}</dt>
-        <dd>
+        <dt className={railLabel}>{t("properties.assignee")}</dt>
+        <dd className={railText}>{item.assigneeName ?? tBacklog("unassigned")}</dd>
+        <dt className={railLabel}>{t("properties.type")}</dt>
+        <dd className={railText}>
           {tStates(`workItemType.${item.type}`)}
           {item.kind !== "TASK" ? ` · ${tStates(`workItemKind.${item.kind}`)}` : ""}
         </dd>
-        <dt className="text-muted-foreground">{t("properties.priority")}</dt>
-        <dd>{tStates(`priority.${item.priority}`)}</dd>
-        <dt className="text-muted-foreground">{t("properties.estimate")}</dt>
-        <dd className="num">
-          {item.estimateMinutes != null ? formatDuration(locale, item.estimateMinutes, durationStyle) : "—"}
+        <dt className={railLabel}>{t("properties.priority")}</dt>
+        <dd className={railPicker}>
+          <PriorityField
+            key={item.id}
+            itemId={item.id}
+            itemNumber={item.number}
+            projectKey={projectKey}
+            surface={surface}
+            priority={item.priority}
+            canEdit={canEdit}
+          />
         </dd>
-        <dt className="text-muted-foreground">{t("properties.startDate")}</dt>
-        <dd className="num">{item.startDate ? day(item.startDate) : "—"}</dd>
-        <dt className="text-muted-foreground">{t("properties.dueDate")}</dt>
-        <dd className="num">{item.targetDate ? day(item.targetDate) : "—"}</dd>
+        <dt className={railLabel}>{t("properties.estimate")}</dt>
+        <dd className={railPicker}>
+          <EstimateField
+            key={item.id}
+            itemId={item.id}
+            itemNumber={item.number}
+            projectKey={projectKey}
+            surface={surface}
+            estimateMinutes={item.estimateMinutes}
+            // Formatted HERE with the helper the island formats with, so
+            // the trigger's first paint and its adopted value agree.
+            estimateLabel={
+              item.estimateMinutes != null ? formatDuration(locale, item.estimateMinutes, durationStyle) : null
+            }
+            durationStyle={durationStyle}
+            canEdit={canEdit}
+          />
+        </dd>
+        <dt className={railLabel}>{t("properties.startDate")}</dt>
+        {/* @db.Date columns are UTC midnight: `formatDay` formats in UTC,
+            or the day shifts west of UTC (the backlog's review finding). */}
+        <dd className={`${railText} num`}>{item.startDate ? formatDay(locale, item.startDate) : "—"}</dd>
+        <dt className={railLabel}>{t("properties.dueDate")}</dt>
+        <dd className={railPicker}>
+          <DueDateField
+            key={item.id}
+            itemId={item.id}
+            itemNumber={item.number}
+            projectKey={projectKey}
+            surface={surface}
+            dueDate={item.targetDate ? isoDateOf(item.targetDate) : null}
+            // The server's label, the same one the action returns, so it
+            // never flickers between Node's and the browser's ICU.
+            dueLabel={item.targetDate ? formatDay(locale, item.targetDate) : null}
+            timeZone={timeZone}
+            weekStart={weekStart}
+            showIsoWeek={showIsoWeek}
+            canEdit={canEdit}
+          />
+        </dd>
         {item.parent && parentHref ? (
           <>
-            <dt className="text-muted-foreground">{t("properties.parent")}</dt>
-            <dd>
+            <dt className={railLabel}>{t("properties.parent")}</dt>
+            <dd className={railText}>
               <Link href={parentHref} className="underline-offset-4 hover:underline" data-testid="item-parent-link">
                 <span className="num-id">{parentKey}</span> <span>{item.parent.title}</span>
               </Link>
@@ -183,14 +251,14 @@ export async function ItemPanel({
         ) : null}
         {item.milestone ? (
           <>
-            <dt className="text-muted-foreground">{t("properties.milestone")}</dt>
-            <dd>{item.milestone.name}</dd>
+            <dt className={railLabel}>{t("properties.milestone")}</dt>
+            <dd className={railText}>{item.milestone.name}</dd>
           </>
         ) : null}
         {item.checklistTotal > 0 ? (
           <>
-            <dt className="text-muted-foreground">{t("properties.checklist")}</dt>
-            <dd className="num">{t("properties.checklistValue", { done: item.checklistDone, total: item.checklistTotal })}</dd>
+            <dt className={railLabel}>{t("properties.checklist")}</dt>
+            <dd className={`${railText} num`}>{t("properties.checklistValue", { done: item.checklistDone, total: item.checklistTotal })}</dd>
           </>
         ) : null}
     </dl>

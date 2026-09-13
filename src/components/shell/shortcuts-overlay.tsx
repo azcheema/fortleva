@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useFocusReturn } from "@/components/ui/use-focus-return";
 import { overlaySections } from "@/lib/keymap";
 
 import { flatNav } from "./command-palette";
@@ -44,6 +45,12 @@ function Row({ keys, label }: { keys: readonly string[]; label: string }) {
  * deliberately never a registry binding. They get their OWN heading —
  * they are not the `global` scope, and heading both "Global" put the
  * same word on two different sections.
+ *
+ * Nothing opens it from a `DialogTrigger` (`?`, or the palette's
+ * "Keyboard shortcuts" row — which is offered even when the palette was
+ * opened from inside a picker), so it returns focus through
+ * `useFocusReturn`: without it, closing the overlay over an open picker
+ * left focus on <body> and every single key acted behind the picker.
  */
 export function ShortcutsOverlay({
   open,
@@ -60,6 +67,7 @@ export function ShortcutsOverlay({
   const sections = overlaySections(
     useSyncExternalStore(subscribeScopes, scopeSnapshot, emptyScopes),
   );
+  const focusReturn = useFocusReturn();
 
   // While the overlay is open it OWNS the keyboard: `?` closes it, and
   // nothing beneath it fires. Both halves are needed — its DialogContent
@@ -92,7 +100,7 @@ export function ShortcutsOverlay({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" {...focusReturn}>
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>{t("description")}</DialogDescription>

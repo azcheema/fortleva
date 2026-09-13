@@ -387,7 +387,7 @@ export function Board({
         },
       },
       { key: "s", label: t("keys.move"), enabled: canEdit, run: null },
-      { key: "j", label: t("keys.navigate"), enabled: true, run: null, hint: ["J", "K"] },
+      { key: "j", label: t("keys.navigate"), enabled: true, run: null, hint: ["J", "or", "K"] },
     ],
     [canCreate, defaultState, peekOpen, canEdit, t],
   );

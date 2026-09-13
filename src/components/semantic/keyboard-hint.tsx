@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/utils";
@@ -12,6 +13,13 @@ import { cn } from "@/lib/utils";
  *
  * useSyncExternalStore keeps the server render ("Ctrl") and the client
  * agreeing without an effect and without a hydration warning.
+ *
+ * Two words are SEPARATORS, not keys: "then" (a sequence, `G then P`)
+ * and "or" (alternatives, `J or K`). Each renders an `aria-hidden` glyph
+ * for the eye and a translated sr-only word for the ear — a bare "·" or
+ * "/" reads as nothing (or as "slash"), and without the word `J K` and
+ * `J or K` would sound identical. One pattern for both, because `then`
+ * already had a glyph.
  */
 const subscribe = () => () => {};
 const isApple = (): boolean =>
@@ -24,10 +32,11 @@ export function KeyboardHint({
   keys,
   className,
 }: {
-  /** e.g. ["mod", "K"] or ["G", "then", "P"] — "then" renders as a separator. */
+  /** e.g. ["mod", "K"], ["G", "then", "P"] or ["J", "or", "K"] — "then" and "or" render as separators. */
   keys: readonly string[];
   className?: string;
 }) {
+  const t = useTranslations("shell.shortcuts");
   const apple = useSyncExternalStore(subscribe, isApple, () => false);
 
   return (
@@ -36,8 +45,17 @@ export function KeyboardHint({
         const lower = key.toLowerCase();
         if (lower === "then") {
           return (
-            <span key={index} aria-hidden="true" className="text-2xs text-muted-foreground">
-              {"·"}
+            <span key={index} className="text-2xs text-muted-foreground">
+              <span aria-hidden="true">{"·"}</span>
+              <span className="sr-only">{t("then")}</span>
+            </span>
+          );
+        }
+        if (lower === "or") {
+          return (
+            <span key={index} className="text-2xs text-muted-foreground">
+              <span aria-hidden="true">{"/"}</span>
+              <span className="sr-only">{t("or")}</span>
             </span>
           );
         }

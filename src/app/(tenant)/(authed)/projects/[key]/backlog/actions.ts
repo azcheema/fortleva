@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { z } from "zod";
 
 import { requireTenantContext } from "@/members/tenant-context";
@@ -21,10 +21,13 @@ import {
   type MovedItem,
   type WorkCtx,
 } from "@/modules/work";
-import { MAX_ESTIMATE_MINUTES, dateColumn } from "@/lib/duration";
-import { PRIORITIES } from "@/lib/enum-map";
+import { PROJECT_KEY_RE } from "@/projects/service";
+import { MAX_ESTIMATE_MINUTES, dateColumn, isoDateOf } from "@/lib/duration";
+import { PRIORITIES, type Priority } from "@/lib/enum-map";
+import { formatDay } from "@/lib/format";
 import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
-import { MAX_BULK_ITEMS } from "@/lib/work-view";
+import { stateLabel } from "@/lib/state-label";
+import { ITEM_SURFACES, MAX_BULK_ITEMS, itemReturnTo } from "@/lib/work-view";
 import { isIsoDate } from "@/lib/week";
 
 /**
@@ -93,24 +96,175 @@ export async function renameItemAction(
   return r;
 }
 
+/* -------------------------------------------------------------- *
+ * The four item PROPERTY setters — S, P, E, D (UI.md §5.2, §7.2).
+ *
+ * ONE action per property, shared by the backlog table's cells and the
+ * item panel's pickers. Each takes an object input naming WHERE it was
+ * called from and returns the canonical row as an `ActionResult`, so
+ * an optimistic slice is REPLACED rather than merged, and a failure is
+ * a typed message a caller toasts — never a silent revert.
+ *
+ * `surface` decides only two things, both from a validated enum: the
+ * MFA step-up return address (`itemReturnTo`) and which sentence a
+ * refusal speaks — the table's "the list shows…" or the panel's "the
+ * panel shows…". It never builds a path from caller text.
+ *
+ * Revalidation happens only when the service reports `changed`: a
+ * no-op wrote nothing, so there is nothing to re-render and no reason
+ * to evict the member's prefetch cache. The item page is never
+ * revalidated by path — `revalidatePath('/projects/KEY/items/[number]')`
+ * mixes a resolved segment with a placeholder and matches nothing — the
+ * client's `router.refresh()` re-reads it.
+ * -------------------------------------------------------------- */
+
+const Target = z.object({
+  itemId: uuid,
+  // The projects service's own key rule, rather than a third copy of it.
+  projectKey: z.string().regex(PROJECT_KEY_RE),
+  itemNumber: z.number().int().min(1).max(999_999_999),
+  surface: z.enum(ITEM_SURFACES),
+});
+const SetState = Target.extend({ stateId: uuid });
+const SetPriority = Target.extend({ priority: z.enum(PRIORITIES) });
+// Min 1: the shared grammar maps a typed zero to null (CLEAR), so a 0
+// here is not something any caller means to send.
+const SetEstimate = Target.extend({
+  estimateMinutes: z.number().int().min(1).max(MAX_ESTIMATE_MINUTES).nullable(),
+});
+const SetDueDate = Target.extend({
+  targetDate: z.string().refine((s) => isIsoDate(s)).nullable(),
+});
+
+/** The canonical state the picker replaces its optimistic slice with. */
+export type StateCommitted = {
+  stateId: string;
+  stateCategory: string;
+  /** Resolved HERE: the work module has no locale, the action does. */
+  stateName: string;
+  /** False when the item was already in that state — nothing was written. */
+  changed: boolean;
+};
+export type PriorityCommitted = { priority: Priority; changed: boolean };
+export type EstimateCommitted = { estimateMinutes: number | null; changed: boolean };
+export type DueDateCommitted = {
+  /** ISO date, never a `Date` — the column is `@db.Date`. */
+  targetDate: string | null;
+  /** Formatted on the SERVER, so the adopted label cannot flicker between Node's and the browser's ICU. */
+  dueLabel: string | null;
+  changed: boolean;
+};
+
+const FAILED = {
+  state: "state.failed",
+  priority: "priority.failed",
+  estimate: "estimate.failed",
+  dueDate: "dueDate.failed",
+} as const;
+
+/**
+ * The refusal names the surface the member is looking at. Takes the RAW
+ * surface (`unknown`), because it also speaks for input that did not
+ * parse — and only an exact `"backlog"` picks the table's sentence.
+ */
+async function failureText(surface: unknown, prop: keyof typeof FAILED): Promise<string> {
+  if (surface === "backlog") return (await getTranslations("projects.backlog"))("actionFailed");
+  return (await getTranslations("projects.item"))(FAILED[prop]);
+}
+
+/** A server action receives whatever was posted — read `surface` without trusting the type. */
+const rawSurface = (input: unknown): unknown =>
+  typeof input === "object" && input !== null ? (input as { surface?: unknown }).surface : undefined;
+
+/**
+ * State (`S`). It calls `changeState`, never `moveItemAction`: that
+ * action with a `stateId` and no anchor resolves both anchors to null
+ * and re-ranks the item to the BOTTOM of the project. `changeState` has
+ * no rank parameter at all, so this path physically cannot re-rank —
+ * which is also why the rank-only audit carve-out is never in play. A
+ * state change is never a routine edit: `transitionState` writes the
+ * activity row and `work_item.state_changed` in the same transaction.
+ */
 export async function setItemStateAction(
-  itemId: string,
-  projectKey: string,
-  stateId: string,
-): Promise<FormResult> {
+  input: z.input<typeof SetState>,
+): Promise<ActionResult<StateCommitted>> {
   const ctx = await ctxOf();
-  const t = await getTranslations("projects.backlog");
-  const id = uuid.safeParse(itemId);
-  const state = uuid.safeParse(stateId);
-  const key = keyShape.safeParse(projectKey);
-  if (!id.success || !state.success || !key.success) {
-    return { ok: false, message: t("invalidTitle") };
-  }
-  const r = await runForm(backlogPath(key.data), async () => {
-    await changeState(ctx, id.data, state.data);
-    return t("saved");
+  const parsed = SetState.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "state") };
+  const { itemId, projectKey, itemNumber, surface, stateId } = parsed.data;
+  const tSeed = await getTranslations("projects.states.seed");
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await changeState(ctx, itemId, stateId);
+    return {
+      stateId: c.stateId,
+      stateCategory: c.stateCategory,
+      stateName: stateLabel({ name: c.stateName, seedKey: c.stateSeedKey }, (k) => tSeed(k)),
+      changed: c.changed,
+    };
   });
-  if (r.ok) revalidate(key.data);
+  if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/** Priority (`P`) — a routine edit: an INTERNAL activity row, never audit. */
+export async function setItemPriorityAction(
+  input: z.input<typeof SetPriority>,
+): Promise<ActionResult<PriorityCommitted>> {
+  const ctx = await ctxOf();
+  const parsed = SetPriority.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "priority") };
+  const { itemId, projectKey, itemNumber, surface, priority } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await updateItemFields(ctx, itemId, { priority });
+    return { priority: c.priority, changed: c.changed };
+  });
+  if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/** Estimate (`E`) — whole minutes, or null to clear. Routine: activity, never audit. */
+export async function setItemEstimateAction(
+  input: z.input<typeof SetEstimate>,
+): Promise<ActionResult<EstimateCommitted>> {
+  const ctx = await ctxOf();
+  const parsed = SetEstimate.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "estimate") };
+  const { itemId, projectKey, itemNumber, surface, estimateMinutes } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await updateItemFields(ctx, itemId, { estimateMinutes });
+    return { estimateMinutes: c.estimateMinutes, changed: c.changed };
+  });
+  if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * Due date (`D`) — an ISO date ("2026-09-15") or null to clear. Routine,
+ * so no audit; but `targetDate` IS on the portal-safe list (activity.ts),
+ * so on a client-visible item its activity row is CLIENT_VISIBLE.
+ */
+export async function setItemDueDateAction(
+  input: z.input<typeof SetDueDate>,
+): Promise<ActionResult<DueDateCommitted>> {
+  const ctx = await ctxOf();
+  const parsed = SetDueDate.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "dueDate") };
+  const { itemId, projectKey, itemNumber, surface, targetDate } = parsed.data;
+  const locale = await getLocale();
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    // `dateColumn` = UTC midnight, matching the `@db.Date` column and
+    // updateItemFields' own `toISOString().slice(0, 10)` diff. What comes
+    // back is what the column STORED, not what was sent.
+    const c = await updateItemFields(ctx, itemId, {
+      targetDate: targetDate === null ? null : dateColumn(targetDate),
+    });
+    return {
+      targetDate: c.targetDate ? isoDateOf(c.targetDate) : null,
+      dueLabel: c.targetDate ? formatDay(locale, c.targetDate) : null,
+      changed: c.changed,
+    };
+  });
+  if (r.ok && r.value.changed) revalidate(projectKey);
   return r;
 }
 
@@ -129,71 +283,6 @@ export async function assignItemAction(
   }
   const r = await runForm(backlogPath(key.data), async () => {
     await assignItem(ctx, id.data, member);
-    return t("saved");
-  });
-  if (r.ok) revalidate(key.data);
-  return r;
-}
-
-export async function setItemEstimateAction(
-  itemId: string,
-  projectKey: string,
-  estimateMinutes: number | null,
-): Promise<FormResult> {
-  const ctx = await ctxOf();
-  const t = await getTranslations("projects.backlog");
-  const id = uuid.safeParse(itemId);
-  const key = keyShape.safeParse(projectKey);
-  const minutes = z.number().int().min(0).max(MAX_ESTIMATE_MINUTES).nullable().safeParse(estimateMinutes);
-  if (!id.success || !key.success || !minutes.success) {
-    return { ok: false, message: t("invalidEstimate") };
-  }
-  const r = await runForm(backlogPath(key.data), async () => {
-    await updateItemFields(ctx, id.data, { estimateMinutes: minutes.data });
-    return t("saved");
-  });
-  if (r.ok) revalidate(key.data);
-  return r;
-}
-
-export async function setItemPriorityAction(
-  itemId: string,
-  projectKey: string,
-  priority: string,
-): Promise<FormResult> {
-  const ctx = await ctxOf();
-  const t = await getTranslations("projects.backlog");
-  const id = uuid.safeParse(itemId);
-  const key = keyShape.safeParse(projectKey);
-  const parsed = z.enum(PRIORITIES).safeParse(priority);
-  if (!id.success || !key.success || !parsed.success) {
-    return { ok: false, message: t("invalidTitle") };
-  }
-  const r = await runForm(backlogPath(key.data), async () => {
-    await updateItemFields(ctx, id.data, { priority: parsed.data });
-    return t("saved");
-  });
-  if (r.ok) revalidate(key.data);
-  return r;
-}
-
-export async function setItemDueDateAction(
-  itemId: string,
-  projectKey: string,
-  /** ISO date ("2026-09-15") or null to clear. */
-  dueDate: string | null,
-): Promise<FormResult> {
-  const ctx = await ctxOf();
-  const t = await getTranslations("projects.backlog");
-  const id = uuid.safeParse(itemId);
-  const key = keyShape.safeParse(projectKey);
-  if (!id.success || !key.success || (dueDate !== null && !isIsoDate(dueDate))) {
-    return { ok: false, message: t("invalidTitle") };
-  }
-  const r = await runForm(backlogPath(key.data), async () => {
-    // `dateColumn` = UTC midnight, matching the `@db.Date` column and
-    // updateItemFields' own `toISOString().slice(0, 10)` diff.
-    await updateItemFields(ctx, id.data, { targetDate: dueDate === null ? null : dateColumn(dueDate) });
     return t("saved");
   });
   if (r.ok) revalidate(key.data);

@@ -76,29 +76,41 @@ export const formatPercent = (locale: string, ratio: number, fractionDigits = 0)
  * byte-for-byte equal between Node and Chromium for en and sv.
  * -------------------------------------------------------------- */
 
-function unitFormat(locale: string, unit: "hour" | "minute") {
-  return memo(`u:${locale}:${unit}`, () =>
-    new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "narrow" }),
+function unitFormat(locale: string, unit: "hour" | "minute", grouping = true) {
+  return memo(grouping ? `u:${locale}:${unit}` : `u:${locale}:${unit}:ng`, () =>
+    new Intl.NumberFormat(locale, {
+      style: "unit",
+      unit,
+      unitDisplay: "narrow",
+      ...(grouping ? {} : { useGrouping: false }),
+    }),
   );
 }
 
-/** Lists and chips: "1h 30m" / "45m" / "2h" — never an empty string. */
-export function formatDurationHm(locale: string, minutes: number): string {
+function hmText(locale: string, minutes: number, grouping: boolean): string {
   const total = Math.max(0, Math.round(minutes));
   const hours = Math.floor(total / 60);
   const mins = total % 60;
-  if (!hours) return unitFormat(locale, "minute").format(mins);
-  const h = unitFormat(locale, "hour").format(hours);
-  return mins ? `${h} ${unitFormat(locale, "minute").format(mins)}` : h;
+  if (!hours) return unitFormat(locale, "minute", grouping).format(mins);
+  const h = unitFormat(locale, "hour", grouping).format(hours);
+  return mins ? `${h} ${unitFormat(locale, "minute", grouping).format(mins)}` : h;
 }
+
+/** Lists and chips: "1h 30m" / "45m" / "2h" — never an empty string. */
+export const formatDurationHm = (locale: string, minutes: number): string => hmText(locale, minutes, true);
 
 /**
  * A duration as the TEXT of an editable field: the English h/m spelling,
  * because `parseDurationSeconds` reads it back regardless of the viewer's
  * locale and style (a Swedish decimal viewer still edits "1h 30m"). One
  * helper for every duration input, so the round-trip rule lives once.
+ *
+ * UNGROUPED. The grammar reads a comma as a DECIMAL comma ("1,5" is an
+ * hour and a half), so a grouped "1,000h" seed parsed back as 1.000 h —
+ * 60 minutes — and a 1000 h epic became an hour on one untouched blur.
+ * The display format keeps its grouping; only the editable text drops it.
  */
-export const durationInputText = (seconds: number): string => formatDurationHm("en", seconds / 60);
+export const durationInputText = (seconds: number): string => hmText("en", seconds / 60, false);
 
 /** A running timer: "0:07:05". Re-rendered once per second, never animated. */
 export function formatDurationClock(locale: string, seconds: number): string {
@@ -168,3 +180,7 @@ export const formatDate = (
   value: Date | number,
   options: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric" },
 ): string => dateFormat(locale, options).format(value);
+
+/** A @db.Date (UTC midnight) as a day — always UTC, or the day shifts west of UTC. */
+export const formatDay = (locale: string, value: Date): string =>
+  formatDate(locale, value, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });

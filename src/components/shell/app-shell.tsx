@@ -40,6 +40,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useFocusReturn } from "@/components/ui/use-focus-return";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -143,16 +144,32 @@ export function AppShell({
   // server render (no storage) and the client agree without an effect.
   const collapsed = useSyncExternalStore(subscribeRail, readRail, () => false);
   const toggleRail = () => writeRail(!collapsed);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  // The palette's open state AND whether it may offer "On this page"
+  // rows (`paletteOffersPageRows` in `@/lib/keymap`), held in ONE state
+  // so ⌘K stays a functional toggle. `pageRows` is set when the palette
+  // OPENS and left alone on close. Resetting it on close would make the
+  // rows vanish mid fade-out whenever ⌘K closes the palette from its own
+  // input, and that input is a menu layer.
+  //
+  // A header button always opens it WITH page rows. Radix disables
+  // outside pointer events under every modal layer, and a non-modal one
+  // is dismissed by the same pointerdown, so a click can only come from
+  // the page itself.
+  const [palette, setPalette] = useState({ open: false, pageRows: true });
+  const openPalette = () => setPalette({ open: true, pageRows: true });
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // The More tab sets `sheetOpen` directly; there is no SheetTrigger, so
+  // Radix had nothing to return focus to and closing dropped it on <body>.
+  const sheetFocusReturn = useFocusReturn();
 
   const flat = flatNav(nav);
   const goTargets = new Map(flat.filter((e) => e.goKey).map((e) => [e.goKey!, e.href]));
 
   useGlobalHotkeys({
     goKeys: [...goTargets.keys()],
-    onPalette: () => setPaletteOpen((o) => !o),
+    onPalette: ({ pageRows }) =>
+      setPalette((p) => (p.open ? { ...p, open: false } : { open: true, pageRows })),
     // A TOGGLE, like the palette beside it. It was `setOverlayOpen(true)`,
     // so `?` could open the overlay and never close it — the asymmetry
     // showed up the moment the overlay started registering its own
@@ -247,7 +264,9 @@ export function AppShell({
     return (
       <li key={entry.id}>
         <Tooltip>
-          <TooltipTrigger asChild>{link}</TooltipTrigger>
+          <TooltipTrigger asChild>
+            {link}
+          </TooltipTrigger>
           <TooltipContent side="right" className={cn(!collapsed && "md:hidden")}>
             {label}
           </TooltipContent>
@@ -338,7 +357,7 @@ export function AppShell({
               entry, and the same navigation offered at two opposite
               corners of a phone is duplication, not redundancy. */}
           <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-            <SheetContent side="left" className="w-72 p-4">
+            <SheetContent side="left" className="w-72 p-4" {...sheetFocusReturn}>
               <SheetHeader className="p-0">
                 <SheetTitle>{tenantName ?? tCommon("appName")}</SheetTitle>
                 <SheetDescription>{t("signedInAs", { email: user.email })}</SheetDescription>
@@ -381,7 +400,7 @@ export function AppShell({
               variant="outline"
               size="sm"
               className="hidden gap-2 text-muted-foreground md:inline-flex"
-              onClick={() => setPaletteOpen(true)}
+              onClick={openPalette}
               aria-label={tShell("palette.open")}
             >
               <SearchIcon />
@@ -392,7 +411,7 @@ export function AppShell({
               variant="ghost"
               size="icon-sm"
               className="md:hidden"
-              onClick={() => setPaletteOpen(true)}
+              onClick={openPalette}
               aria-label={tShell("palette.open")}
             >
               <SearchIcon />
@@ -491,8 +510,9 @@ export function AppShell({
       </nav>
 
       <CommandPalette
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
+        open={palette.open}
+        onOpenChange={(open) => setPalette((p) => ({ ...p, open }))}
+        offerPageRows={palette.pageRows}
         nav={nav}
         onSignOut={signOut}
         onSwitchLocale={switchLocale}

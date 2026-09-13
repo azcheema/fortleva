@@ -27,6 +27,8 @@ export {
   lanesFor,
   matchesFilters,
   rowAnchors,
+  stateOrdinalKeys,
+  statePickerTargets,
   visibleColumns,
   workView,
   type GroupBy,
@@ -34,6 +36,7 @@ export {
   type Move,
   type Rollup,
   type RowAnchors,
+  type StatePickerTarget,
   type WorkFilters,
   type WorkItem,
   type WorkMember,
@@ -41,6 +44,8 @@ export {
   type WorkState,
   type WorkView,
 } from "./model";
+
+export { ITEM_SURFACES, itemReturnTo, panelSurfaceOf, type ItemSurface } from "./item-surface";
 
 export {
   filtersOf,

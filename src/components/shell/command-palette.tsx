@@ -79,9 +79,17 @@ export function CommandPalette({
   onSignOut,
   onSwitchLocale,
   onShowShortcuts,
+  offerPageRows,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Whether the "On this page" group may render. It is decided where the
+   * palette was OPENED (`paletteOffersPageRows` in `@/lib/keymap`), and it
+   * is REQUIRED, because a default here would be exactly the state a new
+   * caller silently loses.
+   */
+  offerPageRows: boolean;
   nav: readonly NavEntry[];
   onSignOut: () => void;
   onSwitchLocale: (locale: string) => void;
@@ -234,13 +242,22 @@ export function CommandPalette({
   // gap this group exists to close. A binding that genuinely duplicates
   // an existing row opts out where it is declared, with
   // `palette: false`, as `?` does.
-  const pageRows = overlaySections(scopes)
-    .flatMap((s) =>
-      s.bindings
-        .filter((b) => b.run !== null && b.palette !== false)
-        .map((b) => ({ ...b, scope: s.scope })),
-    )
-    .filter((b) => matchesQuery(b.label, query));
+  //
+  // NONE AT ALL when the palette was opened from where a single key is
+  // inert (`offerPageRows`). ⌘K is answered even inside an open picker,
+  // and a row there ran a DIFFERENT picker's key: "Change priority" from
+  // inside the due-date picker opened a second modal picker stacked on
+  // the first. After one Escape, focus sat on a rail trigger that the
+  // first picker was still hiding.
+  const pageRows = offerPageRows
+    ? overlaySections(scopes)
+        .flatMap((s) =>
+          s.bindings
+            .filter((b) => b.run !== null && b.palette !== false)
+            .map((b) => ({ ...b, scope: s.scope })),
+        )
+        .filter((b) => matchesQuery(b.label, query))
+    : [];
 
   const nothing =
     navRows.length === 0 && hits.length === 0 && !hasActions && pageRows.length === 0;
@@ -269,8 +286,11 @@ export function CommandPalette({
         onValueChange={setSelected}
       >
         <CommandInput
+          // No autofocus attribute: Radix's FocusScope focuses this, the
+          // first tabbable element, on its own. An attribute would
+          // pre-empt the open event that `CommandDialog` records the
+          // focus origin in, and closing would drop focus on <body>.
           placeholder={t("placeholder")}
-          autoFocus
           value={query}
           onValueChange={onQueryChange}
         />
@@ -320,9 +340,13 @@ export function CommandPalette({
                     value={`page:${b.scope}:${b.key}`}
                     onSelect={() =>
                       run(() =>
-                        // One frame later: Radix Dialog restores focus to
-                        // its trigger as it closes, which would otherwise
-                        // steal the focus a picker takes when it opens.
+                        // One frame later, so the picker mounts after the
+                        // palette has let go of the keyboard. The palette's
+                        // focus return cannot steal the picker's focus:
+                        // `CommandDialog` refocuses the element it was
+                        // opened from only if nothing has taken focus by
+                        // the time it closes, and the picker's search box
+                        // has.
                         //
                         // Through `runScopeBinding`, NOT the `run` on this
                         // row: the row came from the version-cached

@@ -26,6 +26,7 @@ import { rankBetween } from "@/lib/rank";
  * no order could be imposed; queued, no two of them ever hold rows at
  * once, and a writer of ONE work_item row cannot close a cycle among
  * work_item rows with them. A new multi-row writer MUST take it.
+ * (lockItemRow, below, is the lock a writer of ONE row takes instead.)
  *
  * KNOWN LOCKERS OUTSIDE THE QUEUE, all older than it, and nothing
  * retries a deadlock (40P01) yet — PLAN §0. Able to deadlock WITH a
@@ -43,6 +44,26 @@ import { rankBetween } from "@/lib/rank";
 
 export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`work_rank:${projectId}`}))`;
+}
+
+/**
+ * Row-lock ONE item before it is read, in the mode its own UPDATE will
+ * take: FOR NO KEY UPDATE, because no column a field edit or a state
+ * change writes is in a unique index. A caller whose UPDATE writes
+ * `rank` or `number` must not use this — that UPDATE takes FOR UPDATE,
+ * and the lock would upgrade. Under READ COMMITTED a wait refreshes only
+ * the statement that waited; the read AFTER this is a new statement, so
+ * it sees whatever committed meanwhile, and a diff taken from it
+ * describes the row version the UPDATE replaces.
+ *
+ * The lock of a writer of ONE work_item row (the header): never the rank
+ * lock, never a second work_item row after it. The queued multi-row
+ * writers lock by rank or scan order under the rank lock and do not use
+ * it. It lives here rather than beside updateItemFields because
+ * changeState needs it too, and items.ts imports states.ts.
+ */
+export async function lockItemRow(tx: TenantDb, tenantId: string, itemId: string): Promise<void> {
+  await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR NO KEY UPDATE`;
 }
 
 export type Neighbour = { id: string; rank: string };

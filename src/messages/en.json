@@ -59,7 +59,15 @@
       "title": "Danger zone"
     },
     "preview": "Preview",
-    "downloadName": "Download {name}"
+    "downloadName": "Download {name}",
+    "calendar": {
+      "previousMonth": "Previous month",
+      "nextMonth": "Next month",
+      "week": "Week",
+      "weekShort": "Wk",
+      "weekNumber": "Week {week}",
+      "daySelected": "{date}, selected"
+    }
   },
   "nav": {
     "home": "Home",
@@ -112,6 +120,7 @@
       "overlay": "This overlay",
       "close": "Close palette / overlay",
       "then": "then",
+      "or": "or",
       "scopes": {
         "global": "Global",
         "board": "Board",
@@ -1718,6 +1727,7 @@
         }
       },
       "openFullPage": "Open full page",
+      "currentValue": "(current)",
       "attachments": {
         "title": "Attachments",
         "empty": "No files on this task yet",
@@ -1733,8 +1743,47 @@
         "failed": "The state did not save. The panel shows the current state.",
         "changed": "State changed to {state}"
       },
+      "priority": {
+        "trigger": "Priority: {priority}",
+        "search": "Search priorities…",
+        "empty": "No matching priority.",
+        "failed": "The priority did not save. The panel shows the current priority.",
+        "changed": "Priority changed to {priority}"
+      },
+      "estimate": {
+        "trigger": "Estimate: {value}",
+        "triggerEmpty": "Estimate: not set",
+        "input": "Estimate — type 2h, 1.5 or 90m",
+        "search": "Type 2h, 1.5 or 90m",
+        "empty": "Estimates look like 2h, 1.5 or 90m.",
+        "none": "No estimate",
+        "set": "Set estimate to {value}",
+        "clear": "Remove estimate",
+        "failed": "The estimate did not save. The panel shows the current estimate.",
+        "changed": "Estimate changed to {value}",
+        "cleared": "Estimate removed"
+      },
+      "dueDate": {
+        "trigger": "Due date: {date}",
+        "triggerEmpty": "Due date: not set",
+        "input": "Due date — type a date, today, tomorrow or next week",
+        "search": "2026-09-15, today, tomorrow…",
+        "empty": "Dates look like 2026-09-15, between 1970 and 2100.",
+        "none": "No due date",
+        "today": "Today",
+        "tomorrow": "Tomorrow",
+        "nextWeek": "Next week",
+        "set": "Set due date to {date}",
+        "clear": "Remove due date",
+        "failed": "The due date did not save. The panel shows the current date.",
+        "changed": "Due date changed to {date}",
+        "cleared": "Due date removed"
+      },
       "keys": {
-        "state": "Change state"
+        "state": "Change state",
+        "priority": "Change priority",
+        "estimate": "Set estimate",
+        "dueDate": "Set due date"
       }
     },
     "states": {

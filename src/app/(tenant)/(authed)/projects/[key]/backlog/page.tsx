@@ -144,6 +144,8 @@ export default async function ProjectBacklogPage({
             returnTo={peekHrefOf(base, query, `${project.key}-${peekItem.item.number}`)}
             fullPageHref={`/projects/${project.key}/items/${peekItem.item.number}`}
             durationStyle={prefs.durationStyle}
+            weekStart={prefs.weekStart}
+            showIsoWeek={prefs.showIsoWeek}
             error={error}
           />
         </PeekShell>

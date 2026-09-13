@@ -55,8 +55,8 @@ import { BulkBar } from "@/components/work-view/bulk-bar";
 import { WorkFilterBar } from "@/components/work-view/filter-bar";
 import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
-import { durationInputText, formatDate, formatDuration, type DurationStyle } from "@/lib/format";
-import type { FormResult } from "@/lib/server-actions";
+import { durationInputText, formatDay, formatDuration, type DurationStyle } from "@/lib/format";
+import type { ActionResult, FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
 import {
   EMPTY_SPAN,
@@ -124,14 +124,21 @@ import {
  * `VIRTUALISE_ABOVE` rows so it cannot disturb any of this.
  */
 
-const useRun = (locale: string) => {
+/**
+ * Runs one row mutation in a transition. Accepts both result shapes: the
+ * message-bearing `FormResult` (rename, assign, visibility…) and the
+ * property setters' `ActionResult`, whose success carries the canonical
+ * row instead of a sentence — so only a `FormResult` can toast success.
+ * The table re-renders from the server either way, on failure too.
+ */
+const useRun = (fallbackMessage: string) => {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const run = (fn: () => Promise<FormResult>, quiet = true) =>
+  const run = (fn: () => Promise<FormResult | ActionResult<unknown>>, quiet = true) =>
     start(async () => {
-      const r = await fn().catch(() => ({ ok: false as const, message: locale }));
+      const r = await fn().catch(() => ({ ok: false as const, message: fallbackMessage }));
       if (!r.ok) toast.error(r.message);
-      else if (!quiet) toast.success(r.message);
+      else if (!quiet && "message" in r) toast.success(r.message);
       router.refresh();
     });
   return { pending, run };
@@ -1012,7 +1019,16 @@ export function BacklogTable({
                       hiddenInput={false}
                       display={<span className="text-sm">{item.stateName}</span>}
                       onCommit={(next) => {
-                        if (next !== item.stateId) run(() => setItemStateAction(item.id, projectKey, next));
+                        if (next !== item.stateId)
+                          run(() =>
+                            setItemStateAction({
+                              itemId: item.id,
+                              projectKey,
+                              itemNumber: item.number,
+                              surface: "backlog",
+                              stateId: next,
+                            }),
+                          );
                       }}
                     />
                   </TableCell>
@@ -1035,8 +1051,16 @@ export function BacklogTable({
                       }
                       onCommit={(next) => {
                         const chosen = next === "" ? "NONE" : next;
-                        if (chosen !== item.priority)
-                          run(() => setItemPriorityAction(item.id, projectKey, chosen));
+                        if (chosen !== item.priority && (PRIORITIES as readonly string[]).includes(chosen))
+                          run(() =>
+                            setItemPriorityAction({
+                              itemId: item.id,
+                              projectKey,
+                              itemNumber: item.number,
+                              surface: "backlog",
+                              priority: chosen as Priority,
+                            }),
+                          );
                       }}
                     />
                   </TableCell>
@@ -1089,7 +1113,15 @@ export function BacklogTable({
                           return;
                         }
                         if (minutes !== item.estimateMinutes)
-                          run(() => setItemEstimateAction(item.id, projectKey, minutes));
+                          run(() =>
+                            setItemEstimateAction({
+                              itemId: item.id,
+                              projectKey,
+                              itemNumber: item.number,
+                              surface: "backlog",
+                              estimateMinutes: minutes,
+                            }),
+                          );
                       }}
                     />
                   </TableCell>
@@ -1110,21 +1142,25 @@ export function BacklogTable({
                       display={
                         item.targetDate ? (
                           <span className="num text-sm">
-                            {/* @db.Date = UTC midnight: format in UTC or the
-                                day shifts west of UTC (review HIGH). */}
-                            {formatDate(locale, item.targetDate, {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                              timeZone: "UTC",
-                            })}
+                            {/* @db.Date = UTC midnight: formatDay formats in UTC,
+                                or the day shifts west of UTC (review HIGH). The
+                                same helper the action's `dueLabel` uses. */}
+                            {formatDay(locale, item.targetDate)}
                           </span>
                         ) : null
                       }
                       onCommit={(next) => {
                         const current = item.targetDate ? isoDateOf(item.targetDate) : "";
                         if (next !== current)
-                          run(() => setItemDueDateAction(item.id, projectKey, next === "" ? null : next));
+                          run(() =>
+                            setItemDueDateAction({
+                              itemId: item.id,
+                              projectKey,
+                              itemNumber: item.number,
+                              surface: "backlog",
+                              targetDate: next === "" ? null : next,
+                            }),
+                          );
                       }}
                     />
                   </TableCell>

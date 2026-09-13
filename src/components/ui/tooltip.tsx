@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
+import { isReturningFocus } from "@/components/ui/use-focus-return"
 import { cn } from "@/lib/utils"
 
 function TooltipProvider({
@@ -24,10 +25,30 @@ function Tooltip({
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
+/**
+ * A focus RETURN never opens the tooltip. Radix opens it on any focus a
+ * pointer did not cause, and a dialog closing (`useFocusReturn`) puts
+ * focus back on the element it was opened from — often a tooltip-wrapped
+ * button, such as a row's Download or the header's help button. The
+ * tooltip's layer then took the member's next Escape. Radix runs the
+ * caller's `onFocus` first and skips its own open once the event is
+ * default-prevented, so refusing that one event here covers every
+ * trigger in the app, not only the ones someone remembered.
+ */
 function TooltipTrigger({
+  onFocus,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      onFocus={(event) => {
+        onFocus?.(event)
+        if (isReturningFocus()) event.preventDefault()
+      }}
+      {...props}
+    />
+  )
 }
 
 /**

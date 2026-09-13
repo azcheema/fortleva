@@ -3,14 +3,18 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { NAV, type NavEntry } from "@/app/(tenant)/(authed)/nav";
+
 import {
   SCOPE_ORDER,
   SUPPRESS_SELECTOR,
   decide,
   overlaySections,
+  paletteOffersPageRows,
   signatureOf,
   type KeyBinding,
   type KeyScope,
+  type PaletteOrigin,
   type ScopeSnapshot,
 } from "./keymap";
 
@@ -217,6 +221,12 @@ describe("signatureOf", () => {
     expect(signatureOf([binding({ hint: ["J", "K"] })])).not.toBe(base);
     expect(signatureOf([binding({ palette: false })])).not.toBe(base);
   });
+
+  it("tells a sequence from alternatives — `J K` is not `J or K`", () => {
+    expect(signatureOf([binding({ key: "j", hint: ["J", "or", "K"] })])).not.toBe(
+      signatureOf([binding({ key: "j", hint: ["J", "K"] })]),
+    );
+  });
 });
 
 describe("overlaySections", () => {
@@ -261,6 +271,78 @@ describe("overlaySections", () => {
     const sections = overlaySections(panel);
     expect(sections).toHaveLength(1);
     expect(sections[0]!.bindings.map((b) => b.key)).toEqual(["s", "p"]);
+  });
+});
+
+describe("paletteOffersPageRows — decided where ⌘K was pressed", () => {
+  const rail = scopes(
+    { scope: "item", bindings: [binding({ key: "s", label: "Change state" })] },
+    { scope: "item", bindings: [binding({ key: "p", label: "Change priority" })] },
+  );
+  const cmdK = (over: Partial<Parameters<typeof decide>[0]> = {}) =>
+    ev({ key: "k", metaKey: true, ...over });
+  /** A keystroke's shape as the dispatcher hands it over: no dialog is leaving unless a case says so. */
+  const at = (
+    shape: ReturnType<typeof cmdK>,
+    leaving: PaletteOrigin["leaving"] = null,
+  ): PaletteOrigin => ({ ...shape, leaving });
+
+  it("offers the rows from the page, and from an editable field on it", () => {
+    expect(paletteOffersPageRows(at(cmdK()), rail)).toBe(true);
+    // The description editor: single keys are inert there because they
+    // TYPE, not because a layer is open. Nothing can stack.
+    expect(paletteOffersPageRows(at(cmdK({ inEditable: true })), rail)).toBe(true);
+  });
+
+  it("offers none from inside a menu layer, where ⌘K still opens the palette", () => {
+    // From inside the open due-date picker, "Change priority" opened a
+    // second modal picker on top of the first. ⌘K itself must keep
+    // working there; only the rows go.
+    const inPicker = cmdK({ inMenuLayer: true });
+    expect(decide(inPicker, rail, [], false)).toEqual({ kind: "palette" });
+    expect(paletteOffersPageRows(at(inPicker), rail)).toBe(false);
+  });
+
+  it("offers none under an exclusive scope, and a closed overlay's inert scope changes nothing", () => {
+    const overlayOpen = scopes(
+      { scope: "item", bindings: [binding({ key: "p", label: "Change priority" })] },
+      { scope: "modal", bindings: [binding({ key: "?" })], exclusive: true },
+    );
+    expect(paletteOffersPageRows(at(cmdK()), overlayOpen)).toBe(false);
+    const overlayClosed = scopes(
+      { scope: "item", bindings: [binding({ key: "p", label: "Change priority" })] },
+      { scope: "modal", bindings: [] },
+    );
+    expect(paletteOffersPageRows(at(cmdK()), overlayClosed)).toBe(true);
+  });
+
+  it("a ⌘K that lands in a dialog still fading out is judged by where that dialog hands focus back", () => {
+    // Radix keeps a closed dialog mounted, and its input focused, through
+    // the exit animation. A ⌘K double-tap landed in the closing palette's
+    // own list, a menu layer, and reopened the palette with no rows.
+    const inClosingPalette = cmdK({ inMenuLayer: true });
+    expect(decide(inClosingPalette, rail, [], false)).toEqual({ kind: "palette" });
+    // Opened from the page: nothing is left open, so the rows come back.
+    expect(
+      paletteOffersPageRows(at(inClosingPalette, { returnsIntoMenuLayer: false }), rail),
+    ).toBe(true);
+    // Opened from inside the due-date picker, which is STILL open. "The
+    // closing dialog is no layer" would offer "Change priority" here and
+    // stack a second picker on the first.
+    expect(
+      paletteOffersPageRows(at(inClosingPalette, { returnsIntoMenuLayer: true }), rail),
+    ).toBe(false);
+    // The `?` overlay's body is no menu layer, but closing over that
+    // picker it hands focus back into it all the same.
+    expect(paletteOffersPageRows(at(cmdK(), { returnsIntoMenuLayer: true }), rail)).toBe(false);
+    // …and a leaving dialog never outranks an exclusive scope still open.
+    const overlayOpen = scopes(
+      { scope: "item", bindings: [binding({ key: "p", label: "Change priority" })] },
+      { scope: "modal", bindings: [binding({ key: "?" })], exclusive: true },
+    );
+    expect(
+      paletteOffersPageRows(at(inClosingPalette, { returnsIntoMenuLayer: false }), overlayOpen),
+    ).toBe(false);
   });
 });
 
@@ -311,5 +393,136 @@ describe("the suppression selector", () => {
   it("does NOT suppress a dialog or a sheet — the item peek is one, and it must keep its keys", () => {
     expect(SUPPRESS_SELECTOR).not.toContain("dialog-content");
     expect(SUPPRESS_SELECTOR).not.toContain("sheet-content");
+  });
+});
+
+describe("the rail's S P E D beside the board and the G sequence (slice 6)", () => {
+  /** Every live `G` target, read from the nav itself rather than restated here. */
+  const flat = (entries: readonly NavEntry[]): NavEntry[] =>
+    entries.flatMap((e) => (e.children ? flat(e.children) : [e]));
+  const GO_KEYS = flat(NAV)
+    .map((e) => e.goKey)
+    .filter((k): k is string => Boolean(k));
+
+  /** Four one-binding islands, registered in rail order — as the panel mounts them. */
+  const railEntries = (priorityEnabled = true) => [
+    { scope: "item" as const, bindings: [binding({ key: "s", label: "Change state" })] },
+    { scope: "item" as const, bindings: [binding({ key: "p", label: "Change priority", enabled: priorityEnabled })] },
+    { scope: "item" as const, bindings: [binding({ key: "e", label: "Set estimate" })] },
+    { scope: "item" as const, bindings: [binding({ key: "d", label: "Set due date" })] },
+  ];
+
+  it("the nav really has a `G P`, and no `G E` or `G D`", () => {
+    // The two cases below mean something only while this holds.
+    expect(GO_KEYS).toContain("P");
+    expect(GO_KEYS).not.toContain("E");
+    expect(GO_KEYS).not.toContain("D");
+  });
+
+  it("`G P` navigates with the item's bare `P` mounted", () => {
+    expect(decide(ev({ key: "p" }), scopes(...railEntries()), GO_KEYS, true)).toEqual({
+      kind: "go",
+      key: "P",
+    });
+  });
+
+  it("`G E` and `G D` are swallowed — never a bare `E` or `D`", () => {
+    const rail = scopes(...railEntries());
+    expect(decide(ev({ key: "e" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
+    expect(decide(ev({ key: "d" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
+    // Un-armed, they are the rail's own bindings.
+    expect(decide(ev({ key: "e" }), rail, GO_KEYS, false).kind).toBe("binding");
+    expect(decide(ev({ key: "d" }), rail, GO_KEYS, false).kind).toBe("binding");
+  });
+
+  it("a disabled item `P` swallows the key rather than letting a lower scope have it", () => {
+    const rail = scopes(
+      ...railEntries(false),
+      { scope: "global", bindings: [binding({ key: "p", label: "Lower" })] },
+    );
+    expect(decide(ev({ key: "p" }), rail, GO_KEYS, false)).toEqual({ kind: "swallow" });
+  });
+
+  it("the overlay lists the Task section S P E D, and the board keeps only the key the item did not shadow", () => {
+    const peek = scopes(
+      {
+        scope: "board",
+        bindings: [
+          binding({ key: "s", label: "Move to…", run: null }),
+          binding({ key: "j", label: "Move between cards", run: null, hint: ["J", "or", "K"] }),
+        ],
+      },
+      ...railEntries(),
+    );
+    const sections = overlaySections(peek);
+    expect(sections.map((s) => s.scope)).toEqual(["item", "board"]);
+    expect(sections[0]!.bindings.map((b) => b.key)).toEqual(["s", "p", "e", "d"]);
+    expect(sections[1]!.bindings.map((b) => b.key)).toEqual(["j"]);
+  });
+});
+
+describe("cmdk's vim bindings are off by construction", () => {
+  /**
+   * cmdk defaults `vimBindings` to TRUE, and its Ctrl+K ("previous
+   * item") shadows the global ⌘K on Windows and Linux inside any list.
+   * The fix is one default in the one wrapper, which holds only while
+   * the wrapper IS the only way in. A scan of `<Command` tags would
+   * match the wrapper's own comments; the import is the real seam.
+   *
+   * Both patterns are written so this file's own source cannot match.
+   */
+  const root = process.cwd();
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return entry.name === "generated" ? [] : walk(path);
+      return /\.tsx?$/.test(entry.name) ? [path] : [];
+    });
+  const files = walk(join(root, "src")).map((path) => ({
+    path: path.slice(root.length + 1).replaceAll("\\", "/"),
+    text: readFileSync(path, "utf8"),
+  }));
+  const IMPORTS_CMDK = /(?:from|import)\s*\(?\s*["']cmdk(?:\/[^"']*)?["']/;
+  const VIM_ON = /vimBindings\s*=\s*\{\s*true\s*\}/;
+  const WRAPPER = "src/components/ui/command.tsx";
+
+  it("only the ui wrapper imports cmdk", () => {
+    expect(files.length).toBeGreaterThan(100);
+    expect(files.filter((f) => IMPORTS_CMDK.test(f.text)).map((f) => f.path)).toEqual([WRAPPER]);
+  });
+
+  it("the wrapper declares the false default", () => {
+    expect(files.find((f) => f.path === WRAPPER)?.text).toContain("vimBindings = false");
+  });
+
+  it("no caller turns them back on", () => {
+    expect(files.filter((f) => VIM_ON.test(f.text)).map((f) => f.path)).toEqual([]);
+  });
+
+  /**
+   * The command dialog wrapper puts focus back where it was opened from.
+   * It records that origin in Radix's `onOpenAutoFocus`, which is
+   * dispatched only while focus is still outside the content. React
+   * focuses an `autoFocus` child during commit, before that event, so it
+   * is never sent. Then nothing is recorded, closing drops focus on
+   * <body>, and every single key acts behind the layer still open
+   * underneath.
+   *
+   * Comments are stripped first, since the reason is worth writing down
+   * beside the element. The JSX pattern is written so this file's own
+   * source cannot match.
+   */
+  // A command dialog, or any dialog returning focus through the shared
+  // hook (the `?` overlay, the shell's More sheet) — the same
+  // `onOpenAutoFocus` capture either way.
+  const RENDERS_DIALOG = /<Command[D]ialog\b|\buse[F]ocusReturn\(/;
+  const AUTO_FOCUS = /\bauto[F]ocus\b/;
+  const code = (text: string) =>
+    text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  it("no file that renders a focus-returning dialog uses autoFocus", () => {
+    const users = files.filter((f) => RENDERS_DIALOG.test(f.text));
+    expect(users.length).toBeGreaterThan(0);
+    expect(users.filter((f) => AUTO_FOCUS.test(code(f.text))).map((f) => f.path)).toEqual([]);
   });
 });

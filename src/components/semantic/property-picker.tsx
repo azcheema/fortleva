@@ -12,7 +12,14 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { restBoxClass } from "@/lib/control-classes";
-import { matchesQuery } from "@/lib/text-match";
+import {
+  derivedRowValue,
+  highlightAfterChange,
+  highlightBasis,
+  highlightBasisChanged,
+  initialHighlight,
+  pickerRows,
+} from "@/lib/picker-rows";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,18 +45,34 @@ import { cn } from "@/lib/utils";
  *   `@radix-ui/react-dismissable-layer` in `.pnpm`; popover and dialog
  *   both symlink to it — which is what makes the Escape order below a
  *   fact rather than a hope).
- * · `p-0 overflow-hidden` on the content plus `rounded-none
- *   bg-transparent` on the Command root — `PopoverContent` already
- *   paints `rounded-card` + `p-3` + `bg-popover` and cmdk's root paints
- *   `rounded-xl` + `bg-popover` again, so nesting them un-tuned gives a
- *   12px radius inside a 10px one and 12px of dead padding. §10.8 says
- *   popovers are 10px, so the 12px loses.
+ * · `p-0 gap-0` on the content plus `rounded-none bg-transparent` on the
+ *   Command root — `PopoverContent` already paints `rounded-card` +
+ *   `p-3` + `gap-2.5` + `bg-popover` and cmdk's root paints `rounded-xl`
+ *   + `bg-popover` again, so nesting them un-tuned gives a 12px radius
+ *   inside a 10px one, 12px of dead padding, and 10px of air between the
+ *   list and a `footer`. §10.8 says popovers are 10px, so the 12px loses.
+ * · `max-h-(--radix-popover-content-available-height)`, with the CONTENT
+ *   as the scroller: `overflow-y-auto` clips to the 10px radius exactly
+ *   as `overflow-hidden` did. Radix flips a popover but never resizes it,
+ *   and the peek's RemoveScroll and this popover's own leave nothing else
+ *   that can scroll, so D's ~450px of list and calendar, opened from a
+ *   trigger ~330px down a 667px phone, ran off the bottom of the screen
+ *   with no way to reach the last weeks. `shrink-0` on the cmdk root
+ *   keeps the flex column from squeezing the input and the list instead
+ *   of scrolling; the list keeps its own `max-h-80`, so a long list still
+ *   wheel-scrolls by itself, nested inside.
  * · `shouldFilter={false}` with our own matching — cmdk's scorer also
  *   RE-SORTS, which would scramble a group order that means something
  *   (states are ordered by `WorkflowState.rank`). With filtering off,
- *   cmdk's own `CommandEmpty` can never fire, hence `CommandEmptyState`.
+ *   cmdk's own `CommandEmpty` can never fire, hence `CommandEmptyState`
+ *   — and, because a `role="status"` that appears together with its
+ *   text is never announced, an ALWAYS-mounted sr-only status beside
+ *   it that speaks the empty text for a query that matched nothing.
  * · `vimBindings={false}` — cmdk defaults it TRUE and its Ctrl+k means
- *   "previous item", shadowing the global ⌘K on Windows and Linux.
+ *   "previous item", shadowing the global ⌘K on Windows and Linux. The
+ *   `Command` wrapper now defaults it false for every caller
+ *   (`keymap.test.ts` pins that); it stays spelled out here, on the
+ *   surface whose bug it was.
  * · `disablePointerSelection` — otherwise merely moving the mouse
  *   across the list re-highlights a row, and Enter then commits a
  *   property change the member never aimed at. (The palette shipped the
@@ -64,6 +87,71 @@ import { cn } from "@/lib/utils";
  *   `prefers-reduced-motion` to `1ms`, deliberately not `animation:
  *   none` — with none, Radix exits never fire `animationend` and the
  *   layer stays mounted forever.
+ *
+ * TWO OPTIONAL SEAMS, and where each one must live:
+ *
+ * · `derive` builds ONE row from the typed text (E's `90m`, D's
+ *   `2031-03-14`). It renders first, ungrouped and unfiltered, so cmdk
+ *   selects it as the member types; a fixed option with the same value
+ *   is dropped, a disabled result counts as none, and the row's cmdk
+ *   value is a reserved one that still commits the plain value
+ *   (`picker-rows.ts` says why each of the three matters).
+ * · `footer` renders non-list content AFTER the cmdk root, inside the
+ *   popover (D's calendar). After, never inside: cmdk's root `onKeyDown`
+ *   owns Enter, ArrowUp, ArrowDown, Home and End (never ArrowLeft or
+ *   ArrowRight) for EVERY descendant, so a calendar inside `<Command>`
+ *   would commit the highlighted row when the member pressed Enter on a
+ *   day, and lose its week-to-week arrows. Inside the popover,
+ *   `[data-slot="popover-content"]` keeps every single key inert.
+ *   `footer` is handed `commit` — the exact select-and-close a row runs —
+ *   so there is one commit path, not two. It is a flex child of the
+ *   scrolling content, so its root must not shrink (no `overflow` of its
+ *   own, as `CalendarGrid`'s has none).
+ *
+ * WHAT A BARE ENTER COMMITS: never a value the member did not choose.
+ *
+ * · The highlight is SEEDED on open (`initialHighlight`): `""` when the
+ *   current row is the first enabled one, so cmdk lights it itself; the
+ *   current value when it is enabled but not first; `NO_HIGHLIGHT` —
+ *   nothing lit, Enter inert — when it is disabled. A property that can
+ *   be empty therefore lists its current state as the FIRST row (the
+ *   value with a check, or a checked "No …" row when unset) and its clear
+ *   row LAST, under a DIFFERENT value from the unset row, so no refresh
+ *   can turn a highlighted no-op into a clear.
+ * · It is SETTLED AGAIN whenever `value` or the options change while the
+ *   picker is open (`highlightAfterChange`), because the board's poll
+ *   refreshes the peek underneath it. A highlight the member STEERED
+ *   survives while its row is still theirs: still rendered, still
+ *   enabled, in the same group, and not the old value's row — or it is
+ *   the typed derived row. Anything else is RE-SEEDED (`reseedHighlight`)
+ *   and counts as un-steered again: a highlight left on the old value's
+ *   row wrote the member's Enter over a colleague's edit, and a `steered`
+ *   that outlived its row would let Enter commit the row cmdk lit in its
+ *   place. The query is not watched, so typing never re-seeds.
+ * · And Enter is REFUSED unless the highlight is the current value or the
+ *   member has steered since the seed, because cmdk can move the
+ *   selection on its own (see `onKeyDown` in `PickerBody`).
+ *
+ * WHAT IS ANNOUNCED — less than the seeds were designed for, and that
+ * was MEASURED in Chromium against cmdk 1.1.1, not read off its source.
+ * cmdk renders `aria-activedescendant` from `selectedItemId`, which it
+ * assigns only when its store's value changes. A row cmdk lights BY
+ * ITSELF — the `""` seed's first-row pick on open, a typed derived row,
+ * a re-pick after the lit row unmounts — gets that assignment inside
+ * cmdk's own layout flush, from a DOM that has not re-rendered yet, so
+ * the attribute stays unset or names the row lit before. A RE-SEED gets
+ * no assignment at all: it reaches cmdk only through the controlled
+ * `value`, which cmdk stores without touching the attribute, so after
+ * one the attribute keeps naming the last row the member steered to — or
+ * a node that has since left the DOM — until they steer again. Only the
+ * member's own ArrowUp/ArrowDown/Home/End or a click set it right. So
+ * no seed is announced until the member steers, and after a typed
+ * derived row the attribute can name the row that was lit before it: a
+ * RECORDED DEFECT (PLAN §0), whose fix is active-descendant wiring of
+ * our own. What Enter acts on is `aria-selected`, never the attribute,
+ * so none of this can change what is written. The current row also
+ * carries `labels.current` as sr-only words, because its check is
+ * aria-hidden and nothing else says which row it is.
  *
  * NO TOOLTIP ON THE TRIGGER, and that is a measured decision rather
  * than an omission. Radix opens a tooltip on FOCUS, and Radix returns
@@ -86,9 +174,12 @@ import { cn } from "@/lib/utils";
  */
 
 export type PickerOption<V extends string> = {
-  /** An id or enum token — NEVER a label. cmdk tracks selection as ONE
-   *  string and marks every item whose value matches, so two rows
-   *  sharing a value both light up and Enter fires the first in the DOM. */
+  /** An id or enum token — NEVER a label, never empty, never containing
+   *  whitespace (`pickerRows` throws: the picker's reserved cmdk values
+   *  contain a space, which is what keeps every option clear of them).
+   *  cmdk tracks selection as ONE string and marks every item whose value
+   *  matches, so two rows sharing a value both light up and Enter fires
+   *  the first in the DOM. */
   value: V;
   /** Already translated, or tenant text. The picker never translates. */
   label: string;
@@ -104,6 +195,21 @@ export type PickerOption<V extends string> = {
   testId?: string;
 };
 
+/** Translated by the caller; the picker owns no namespace. */
+type PickerLabels = {
+  trigger: string;
+  search: string;
+  empty: string;
+  /** Accessible name of the combobox and the listbox; defaults to `trigger`. */
+  input?: string;
+  /** Sr-only words on the fixed row whose value is the current one ("(current)").
+   *  The check in `meta` is aria-hidden, so without these nothing SAYS which row it is. */
+  current?: string;
+};
+
+/** The keys cmdk's root moves the selection with (`vimBindings` is off). */
+const STEERING_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End"]);
+
 export function PropertyPicker<V extends string>({
   open,
   onOpenChange,
@@ -117,19 +223,21 @@ export function PropertyPicker<V extends string>({
   align = "start",
   testId,
   className,
+  derive,
+  footer,
 }: {
   /** REQUIRED, both of them: the property's single key must be able to
    *  open this, so the state cannot live inside the component. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** REQUIRED. State a shared component must reflect is never a default. */
+  /** REQUIRED. State a shared component must reflect is never a default.
+   *  A change while the picker is open settles the highlight again (WHAT A BARE ENTER COMMITS). */
   value: V | null;
   options: readonly PickerOption<V>[];
   onSelect: (value: V) => void;
   /** The trigger's resting content — the value as text. */
   children: React.ReactNode;
-  /** Translated by the caller; the picker owns no namespace. */
-  labels: { trigger: string; search: string; empty: string };
+  labels: PickerLabels;
   /** The single key that opens this — `aria-keyshortcuts` for AT. */
   hintKey?: string;
   disabled?: boolean;
@@ -137,6 +245,15 @@ export function PropertyPicker<V extends string>({
   testId?: string;
   /** Merged after the rest box — e.g. a negative inset to sit flush in a `<dl>`. */
   className?: string;
+  /** ONE row built from the typed query (E: "90m"; D: "2031-03-14"). Never called for a blank query.
+   *  Rendered FIRST, ungrouped, never filtered, under a reserved cmdk value that still commits the
+   *  plain one; a fixed option with the same value is dropped. A `disabled` result is treated as null
+   *  (cmdk's first-row selection would skip it and Enter would commit the next row). Return null for
+   *  text that is not a value — the empty state speaks. */
+  derive?: (query: string) => PickerOption<V> | null;
+  /** Non-list content AFTER the cmdk root, inside the popover. `commit` is the exact select-and-close
+   *  a row runs. Its root must not shrink: the popover content is a scrolling flex column. */
+  footer?: (commit: (value: V) => void) => React.ReactNode;
 }) {
   const trigger = (
     <button
@@ -169,7 +286,7 @@ export function PropertyPicker<V extends string>({
       <PopoverContent
         align={align}
         collisionPadding={16}
-        className="w-64 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+        className="max-h-(--radix-popover-content-available-height) w-64 max-w-[calc(100vw-2rem)] gap-0 overflow-x-hidden overflow-y-auto p-0"
       >
         {/* The list's own state lives in a child that exists only while
             the popover is OPEN. Radix unmounts `PopoverContent` on close
@@ -185,6 +302,8 @@ export function PropertyPicker<V extends string>({
           onSelect={onSelect}
           onOpenChange={onOpenChange}
           labels={labels}
+          derive={derive}
+          footer={footer}
         />
       </PopoverContent>
     </Popover>
@@ -197,81 +316,160 @@ function PickerBody<V extends string>({
   onSelect,
   onOpenChange,
   labels,
+  derive,
+  footer,
 }: {
   options: readonly PickerOption<V>[];
   value: V | null;
   onSelect: (value: V) => void;
   onOpenChange: (open: boolean) => void;
-  labels: { trigger: string; search: string; empty: string };
+  labels: PickerLabels;
+  derive: ((query: string) => PickerOption<V> | null) | undefined;
+  footer: ((commit: (value: V) => void) => React.ReactNode) | undefined;
 }) {
   const [query, setQuery] = useState("");
-  // Seeded to the current value ONLY when that value is selectable.
-  // `StateField` deliberately lists the item's current state disabled
-  // when it is not a legal target (TRIAGE, or a gated Done under a
-  // non-approver) — and cmdk attaches its select listener only to
-  // ENABLED items, so highlighting a disabled one would mark it
-  // `aria-selected`, make it the input's `aria-activedescendant`, and
-  // leave Enter doing nothing at all.
-  const [highlight, setHighlight] = useState<string>(() => {
-    const current = options.find((o) => o.value === value);
-    if (current && !current.disabled) return current.value;
-    return options.find((o) => !o.disabled)?.value ?? "";
-  });
+  // The seed on open: `""`, the current value, or `NO_HIGHLIGHT` — see
+  // `initialHighlight` for what each one makes a bare Enter do.
+  const [highlight, setHighlight] = useState<string>(() => initialHighlight(options, value));
+  // Whether the member has STEERED since the last seed — a navigation
+  // key, or a keystroke in the search field. Read by `onKeyDown`.
+  const [steered, setSteered] = useState(false);
+  // What the highlight was last settled against: the value, and each
+  // option's fields that decide whether and where its row renders. Never
+  // the query — see `HighlightBasis`.
+  const [basis, setBasis] = useState(() => highlightBasis(options, value));
 
-  const shown = options.filter((o) => matchesQuery(`${o.label} ${o.keywords ?? ""}`, query));
+  // Grouped in FIRST-SEEN order, untouched within a group: the caller's
+  // array order is the meaning (states arrive by rank).
+  const rows = pickerRows(options, query, derive);
 
-  // Grouped in FIRST-SEEN order, and untouched within a group: the
-  // caller's array order is the meaning (states arrive by rank).
-  const groups: { heading: string | undefined; options: PickerOption<V>[] }[] = [];
-  for (const option of shown) {
-    const last = groups[groups.length - 1];
-    if (last && last.heading === option.group) last.options.push(option);
-    else groups.push({ heading: option.group, options: [option] });
+  // SETTLED DURING RENDER when the value or the options change under an
+  // open picker (React's "adjusting state when a prop changes", never an
+  // effect). The board polls and refreshes the peek underneath this list:
+  // a highlight left on the old value's row wrote a bare Enter over a
+  // colleague's change, and one discarded wholesale dropped a pick the
+  // change had nothing to do with. `highlightAfterChange` keeps a steered
+  // highlight whose row is still the member's, and re-seeds and
+  // un-steers everything else.
+  if (highlightBasisChanged(basis, options, value)) {
+    const next = highlightAfterChange(basis, { options, value, rows }, { highlight, steered });
+    setBasis(highlightBasis(options, value));
+    setHighlight(next.highlight);
+    setSteered(next.steered);
   }
 
+  const { derived, groups, empty } = rows;
+  const derivedValue = derived ? derivedRowValue(derived.value) : null;
+
+  // The ONE select-and-close: every row runs it, and `footer` is handed
+  // it, so a non-list body cannot grow a second commit path.
+  const commit = (next: V) => {
+    onSelect(next);
+    onOpenChange(false);
+  };
+
+  const name = labels.input ?? labels.trigger;
+
   return (
-        <Command
-          label={labels.trigger}
-          shouldFilter={false}
-          vimBindings={false}
-          disablePointerSelection
-          value={highlight}
-          onValueChange={setHighlight}
-          className="rounded-none bg-transparent"
-        >
-          <CommandInput placeholder={labels.search} value={query} onValueChange={setQuery} />
-          <CommandList>
-            {shown.length === 0 ? <CommandEmptyState>{labels.empty}</CommandEmptyState> : null}
-            {groups.map((group, i) => (
-              <CommandGroup key={group.heading ?? `:${i}`} heading={group.heading}>
-                {group.options.map((option) => (
-                  <CommandItem
-                    key={option.value}
-                    value={option.value}
-                    disabled={option.disabled}
-                    data-testid={option.testId}
-                    // `disablePointerSelection` stops cmdk moving the
-                    // SELECTION on hover — correctly, or an idle cursor
-                    // would change what Enter commits — but it also
-                    // leaves the rows inert under the pointer. A hover
-                    // surface restores the affordance without moving the
-                    // selection, and deliberately without the
-                    // `data-selected` left bar, so a mouse user can see
-                    // that the hovered row and the Enter target differ.
-                    className="hover:bg-accent hover:text-accent-foreground"
-                    onSelect={() => {
-                      onSelect(option.value);
-                      onOpenChange(false);
-                    }}
-                  >
-                    {option.icon}
-                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                    {option.meta}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            ))}
-          </CommandList>
-        </Command>
+    <>
+      <Command
+        label={name}
+        shouldFilter={false}
+        vimBindings={false}
+        disablePointerSelection
+        value={highlight}
+        onValueChange={setHighlight}
+        // THE BELT under every seed: a bare Enter commits only the current
+        // value (a no-op) or a row the member steered to. cmdk re-picks its
+        // first enabled row BY ITSELF when the lit row unmounts — which a
+        // refresh can do in the very commit that re-seeds — and in
+        // controlled mode it writes that pick into its own store before
+        // asking, so no `value` prop can take it back. A change that takes
+        // the lit row away is always settled as a re-seed, which clears
+        // `steered` in the same render, so that pick lands un-steered and
+        // Enter on it is refused unless it is the current value. This
+        // handler runs before cmdk's own switch, which skips a
+        // defaultPrevented event, so refusing Enter here refuses the
+        // dispatch itself. A click is never refused: it is aimed.
+        onKeyDown={(e) => {
+          if (STEERING_KEYS.has(e.key)) setSteered(true);
+          else if (e.key === "Enter" && !steered && highlight !== value) e.preventDefault();
+        }}
+        className="shrink-0 rounded-none bg-transparent"
+      >
+        <CommandInput
+          placeholder={labels.search}
+          value={query}
+          onValueChange={(next) => {
+            setQuery(next);
+            setSteered(true);
+          }}
+        />
+        {/* cmdk names the listbox "Suggestions" unless told otherwise. */}
+        <CommandList label={name}>
+          {empty ? <CommandEmptyState>{labels.empty}</CommandEmptyState> : null}
+          {derived && derivedValue ? (
+            // No highlight code: typing runs cmdk's `setState("search")`,
+            // which selects the first enabled DOM row — this one. Its cmdk
+            // value is RESERVED (`derivedRowValue`), so the selection
+            // string changes even when the text derives the value of the
+            // row that was lit, and `aria-selected` moves to it through a
+            // real selection change. It does NOT make
+            // `aria-activedescendant` follow — see WHAT IS ANNOUNCED
+            // above. It commits the plain value.
+            <CommandItem
+              key={derivedValue}
+              value={derivedValue}
+              data-testid={derived.testId}
+              className="hover:bg-accent hover:text-accent-foreground"
+              onSelect={() => commit(derived.value)}
+            >
+              {derived.icon}
+              <span className="min-w-0 flex-1 truncate">{derived.label}</span>
+              {derived.meta}
+            </CommandItem>
+          ) : null}
+          {groups.map((group, i) => (
+            <CommandGroup key={group.heading ?? `:${i}`} heading={group.heading}>
+              {group.options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  disabled={option.disabled}
+                  data-testid={option.testId}
+                  // `disablePointerSelection` stops cmdk moving the
+                  // SELECTION on hover — correctly, or an idle cursor
+                  // would change what Enter commits — but it also
+                  // leaves the rows inert under the pointer. A hover
+                  // surface restores the affordance without moving the
+                  // selection, and deliberately without the
+                  // `data-selected` left bar, so a mouse user can see
+                  // that the hovered row and the Enter target differ.
+                  className="hover:bg-accent hover:text-accent-foreground"
+                  onSelect={() => commit(option.value)}
+                >
+                  {option.icon}
+                  <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                  {/* The words for the aria-hidden check. A SIBLING of
+                      the label, both flex items, so the option's name
+                      reads "1h 30m (current)" with the space between. */}
+                  {labels.current && option.value === value ? (
+                    <span className="sr-only">{labels.current}</span>
+                  ) : null}
+                  {option.meta}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ))}
+        </CommandList>
+      </Command>
+      {/* ALWAYS mounted, so the text arriving is what gets announced. It
+          speaks only for a typed query that matched nothing: the visible
+          empty row is `role="presentation"` and silent. */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {empty && query.trim() !== "" ? labels.empty : ""}
+      </span>
+      {footer?.(commit)}
+    </>
   );
 }

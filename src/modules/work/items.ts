@@ -12,7 +12,7 @@ import { emit } from "@/notify/emit";
 import { writeActivity } from "./activity";
 import { descriptionToken } from "./description-token";
 import { guarded } from "./db-errors";
-import { bottomRank, lockProjectRanks } from "./rank-lock";
+import { bottomRank, lockItemRow, lockProjectRanks } from "./rank-lock";
 import { ensureProjectStates, transitionState, type WorkCtx } from "./states";
 import type { StateSeedKey } from "@/lib/enum-map";
 import { stateLabel } from "@/lib/state-label";
@@ -30,7 +30,17 @@ export type { WorkCtx } from "./states";
 
 const principalOf = (ctx: WorkCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
 
-type ItemRow = NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>;
+/**
+ * A work item WITHOUT its description pair — what every mutation here
+ * reads. The document can be 512 KB, and none of these writers touches
+ * it (`states.ts` carries the same type for the same reason). An inline
+ * `omit` at the read, never a global one: `src/export/service.ts` dumps
+ * every model select-less and would silently lose the column.
+ */
+type ItemRow = Omit<
+  NonNullable<Awaited<ReturnType<TenantDb["workItem"]["findFirst"]>>>,
+  "description" | "descriptionText"
+>;
 
 /**
  * Share-lock a parent row, so a read that follows is the parent the
@@ -47,6 +57,7 @@ async function shareLockParent(tx: TenantDb, tenantId: string, parentId: string)
 export async function loadItemInScope(tx: TenantDb, ctx: WorkCtx, itemId: string): Promise<ItemRow> {
   const item = await tx.workItem.findFirst({
     where: { tenantId: ctx.tenantId, id: itemId, deletedAt: null },
+    omit: { description: true, descriptionText: true },
   });
   if (!item) deny("NOT_FOUND");
   await assertInScope(tx, ctx.actor, { projectId: item!.projectId });
@@ -550,6 +561,27 @@ export async function createItem(
   }));
 }
 
+/**
+ * What an inline property edit left in the row — the canonical values
+ * an optimistic slice is REPLACED with (UI.md §7.2), read back through
+ * the UPDATE's own `select` (its RETURNING), never echoed from the patch.
+ */
+export type ItemFieldsCommitted = {
+  id: string;
+  title: string;
+  priority: "NONE" | "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  estimateMinutes: number | null;
+  /** As STORED: `@db.Date`, so UTC midnight of the day, whatever instant was sent. */
+  targetDate: Date | null;
+  /**
+   * False when every patched field already held its value: no UPDATE, no
+   * activity, `updatedAt` untouched. Compared UNDER THE ROW LOCK, against
+   * the version an UPDATE would replace — so an identical edit that
+   * committed while this one waited makes it false too.
+   */
+  changed: boolean;
+};
+
 /** Inline property edits (routine — activity, never audit). */
 export async function updateItemFields(
   ctx: WorkCtx,
@@ -560,9 +592,24 @@ export async function updateItemFields(
     estimateMinutes?: number | null;
     targetDate?: Date | null;
   },
-): Promise<void> {
-  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+): Promise<ItemFieldsCommitted> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
+    // The row lock FIRST, then the read every diff below is taken from
+    // (lockItemRow, rank-lock.ts). Read unlocked, an edit that committed
+    // while this one waited at its UPDATE left `changed` and each history
+    // row's oldValue describing a row version the UPDATE never replaced:
+    // two LOW → HIGH edits both said changed, and a shared item's due-date
+    // history — a row the client reads — said "from the 15th" twice.
+    //
+    // No new deadlock (rank-lock.ts): this is the lock the transaction's
+    // own UPDATE takes on the same row, only taken earlier — ahead of the
+    // item read and the scope check, which lock nothing — so the order it
+    // acquires locks in is unchanged, and a no-op holds this one lock and
+    // takes no other. It is still a writer of ONE work_item row: never the
+    // rank lock, never a second row. A caller outside the project holds
+    // it only until assertInScope refuses and the transaction rolls back.
+    await lockItemRow(tx, ctx.tenantId, itemId);
     const item = await loadItemInScope(tx, ctx, itemId);
     const data: Record<string, unknown> = {};
     const changes: { field: string; oldValue: string | null; newValue: string | null }[] = [];
@@ -590,9 +637,27 @@ export async function updateItemFields(
         changes.push({ field: "targetDate", oldValue: oldIso, newValue: newIso });
       }
     }
-    if (changes.length === 0) return;
-    await tx.workItem.update({ where: { id: item.id }, data });
+    if (changes.length === 0) {
+      // Nothing written, and the caller is TOLD so — built from the row
+      // just read, which is the truth about the item right now.
+      return {
+        id: item.id,
+        title: item.title,
+        priority: item.priority,
+        estimateMinutes: item.estimateMinutes,
+        targetDate: item.targetDate,
+        changed: false,
+      };
+    }
+    const row = await tx.workItem.update({
+      where: { id: item.id },
+      data,
+      // INLINE, and never omitted: a select-less update returns the
+      // WHOLE row, 512 KB description included. This is the RETURNING.
+      select: { id: true, title: true, priority: true, estimateMinutes: true, targetDate: true },
+    });
     for (const c of changes) await writeActivity(tx, ctx, item, c);
+    return { ...row, changed: true };
   });
 }
 

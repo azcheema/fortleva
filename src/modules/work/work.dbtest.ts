@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { AuthzError } from "@/authz/errors";
-import { withTenant } from "@/db";
+import { withTenant, type TenantDb } from "@/db";
 import { dateColumn } from "@/lib/duration";
 import { setupTenant } from "@/members/dbtest-fixture";
 import {
@@ -18,7 +18,9 @@ import {
   moveItem,
   setItemArchived,
   updateItemFields,
+  type StateChange,
 } from "./index";
+import { transitionState } from "./states";
 
 /**
  * 2W core-slice behaviour against the real database and the real
@@ -53,6 +55,9 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  // A failed beforeAll leaves `f` unassigned, and Prisma drops an
+  // undefined where-filter: every delete below would be unscoped.
+  if (!f?.tenantId) return;
   const db = f.platform;
   await db.notification.deleteMany({ where: { tenantId: f.tenantId } });
   await db.emailOutbox.deleteMany({ where: { tenantId: f.tenantId } });
@@ -202,6 +207,350 @@ describe("state machine", () => {
     expect(await countRows()).toEqual(before);
     const afterRow = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
     expect(afterRow.updatedAt).toEqual(beforeRow.updatedAt);
+  });
+});
+
+describe("updateItemFields returns the canonical row (panel slice 6, UI.md §7.2)", () => {
+  it("updateItemFields returns what the column stored, not what was sent", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Stored, not sent" });
+
+    const row = await updateItemFields(ownerCtx(), id, {
+      priority: "HIGH",
+      estimateMinutes: 90,
+      // An afternoon instant for a `@db.Date` column: the database keeps
+      // the DAY. An echo of the input would still say 13:45.
+      targetDate: new Date("2026-09-15T13:45:00.000Z"),
+    });
+    const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+
+    expect(row.changed).toBe(true);
+    expect(row.priority).toBe(fresh.priority);
+    expect(row.estimateMinutes).toBe(fresh.estimateMinutes);
+    // The load-bearing assertion: this is the RETURNING, not the patch.
+    expect(row.targetDate?.toISOString()).toBe("2026-09-15T00:00:00.000Z");
+    expect(row.targetDate).toEqual(fresh.targetDate);
+    // Exactly the select — never the 512 KB description, never the row.
+    expect(Object.keys(row).sort()).toEqual([
+      "changed",
+      "estimateMinutes",
+      "id",
+      "priority",
+      "targetDate",
+      "title",
+    ]);
+  });
+
+  it("a patch that changes nothing writes nothing and says so", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Nothing to write" });
+    await updateItemFields(ownerCtx(), id, {
+      priority: "HIGH",
+      estimateMinutes: 90,
+      targetDate: dateColumn("2026-09-15"),
+    });
+
+    const countRows = async () => ({
+      // The estimate's activity field is "estimate", not the column name (items.ts).
+      activity: await f.platform.workItemActivity.count({
+        where: { tenantId: f.tenantId, workItemId: id, field: { in: ["priority", "estimate", "targetDate"] } },
+      }),
+      // By target, not by action: `f.audits` filters by tenant + action only.
+      audit: await f.platform.auditEvent.count({ where: { tenantId: f.tenantId, targetId: id } }),
+    });
+    const before = await countRows();
+    const beforeRow = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+
+    const patches = [
+      { priority: "HIGH" as const },
+      { estimateMinutes: 90 },
+      // A different instant on the SAME day is the same stored value.
+      { targetDate: new Date("2026-09-15T22:00:00.000Z") },
+    ];
+    for (const patch of patches) {
+      const again = await updateItemFields(ownerCtx(), id, patch);
+      expect(again.changed).toBe(false);
+      // Still the truth about the item, so a caller can render it.
+      expect(again.priority).toBe("HIGH");
+      expect(again.estimateMinutes).toBe(90);
+      expect(again.targetDate?.toISOString()).toBe("2026-09-15T00:00:00.000Z");
+    }
+
+    expect(await countRows()).toEqual(before);
+    const afterRow = await f.platform.workItem.findUniqueOrThrow({ where: { id } });
+    expect(afterRow.updatedAt).toEqual(beforeRow.updatedAt);
+  });
+});
+
+/**
+ * The race harness for the two describes below (review 2026-09-13). A
+ * colleague's write is held open after it ran (tree-guards.dbtest.ts's
+ * pattern); the write under test must be SEEN waiting on it before the
+ * colleague is released, because that ordering is what makes an unlocked
+ * implementation read the row version the colleague is about to replace.
+ */
+
+/**
+ * A colleague's transaction: runs `body`, signals with what it returned
+ * and its transaction id, then holds its row locks open until released,
+ * and commits. A body that throws never signals, so the wait fails with
+ * its error instead of hanging the test.
+ */
+function holdOpen<T>(body: (tx: TenantDb) => Promise<T>) {
+  let ready!: (held: { result: T; xid: string }) => void;
+  let release!: () => void;
+  const signalled = new Promise<{ result: T; xid: string }>((r) => (ready = r));
+  const released = new Promise<void>((r) => (release = r));
+  const done = withTenant(
+    f.tenantId,
+    { type: "member", id: f.seats.owner.memberId },
+    async (tx) => {
+      const result = await body(tx);
+      // pg_locks shows the 32-bit xid; txid_current() carries the epoch above it.
+      const rows = await tx.$queryRaw<{ xid: string }[]>`SELECT (txid_current() % 4294967296)::text AS xid`;
+      const xid = rows[0]?.xid;
+      if (!xid) throw new Error("the colleague's transaction reported no id");
+      ready({ result, xid });
+      await released;
+    },
+    { timeoutMs: 20_000 },
+  );
+  const isReady = Promise.race([
+    signalled,
+    done.then((): never => {
+      throw new Error("the colleague committed without signalling");
+    }),
+  ]);
+  return { isReady, release, done };
+}
+
+/**
+ * Resolves once a transaction is blocked on the colleague's own
+ * transaction id — the lock a writer of a row the colleague wrote waits
+ * on — and throws if none ever is. Scoped to that id: the probe used to
+ * accept ANY ungranted lock in the cluster, so a waiter in another
+ * session on the shared dev database released the colleague before the
+ * write under test had read anything, and an unlocked implementation
+ * passed too. A wait on the project's rank lock is 'advisory', never this.
+ */
+async function waitForWaiterOn(xid: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const rows = await f.platform.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_locks
+       WHERE NOT granted AND locktype = 'transactionid' AND transactionid::text = ${xid}`;
+    if ((rows[0]?.n ?? 0) > 0) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error("nothing ever waited on the colleague's transaction — the race was not exercised");
+}
+
+/**
+ * The diff is taken under the row lock (review 2026-09-13). Read
+ * unlocked, an edit that WAITED on another at its UPDATE still diffed
+ * against the row as it was before the other committed, so its `changed`
+ * and its history described a version it never replaced. What the edit
+ * reports afterwards proves which version it read. Both fail on the
+ * unlocked read.
+ */
+describe("updateItemFields diffs the row version it replaces (review 2026-09-13)", () => {
+  it("an edit that waited sees what the other committed: the client-visible history says 18 → 20, never 15 → 20", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Two due dates at once" });
+    // Shared, so the due date's history is a row the client reads (PORTAL_SAFE_FIELDS).
+    await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
+    await updateItemFields(ownerCtx(), id, { targetDate: dateColumn("2026-09-15") });
+
+    const colleague = holdOpen((tx) =>
+      tx.workItem.update({ where: { id }, data: { targetDate: dateColumn("2026-09-18") }, select: { id: true } }),
+    );
+    let editing: Promise<unknown> = Promise.resolve(null);
+    try {
+      const { xid } = await colleague.isReady;
+      editing = updateItemFields(ownerCtx(), id, { targetDate: dateColumn("2026-09-20") });
+      editing.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
+      // On the ROW the colleague wrote — its transaction — and never on the rank lock.
+      await waitForWaiterOn(xid);
+    } finally {
+      colleague.release();
+      await colleague.done;
+    }
+
+    expect(await editing).toMatchObject({ id, targetDate: dateColumn("2026-09-20"), changed: true });
+    const history = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "targetDate", newValue: "2026-09-20" },
+      select: { oldValue: true, visibility: true },
+    });
+    // The colleague's raw write leaves no row of its own, so the waiting
+    // edit's row must start where that commit left the item — read
+    // unlocked, it said 2026-09-15.
+    expect(history).toEqual([{ oldValue: "2026-09-18", visibility: "CLIENT_VISIBLE" }]);
+  });
+
+  it("an edit that waited on an IDENTICAL one finds nothing to write: changed false, no history, updatedAt untouched", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Two HIGHs at once" });
+    const colleagueWrote: { updatedAt?: Date } = {};
+    const colleague = holdOpen(async (tx) => {
+      const r = await tx.workItem.update({ where: { id }, data: { priority: "HIGH" }, select: { updatedAt: true } });
+      colleagueWrote.updatedAt = r.updatedAt;
+    });
+    let editing: Promise<unknown> = Promise.resolve(null);
+    try {
+      const { xid } = await colleague.isReady;
+      editing = updateItemFields(ownerCtx(), id, { priority: "HIGH" });
+      editing.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
+      await waitForWaiterOn(xid);
+    } finally {
+      colleague.release();
+      await colleague.done;
+    }
+
+    // Still the truth about the item: HIGH, as the colleague left it.
+    expect(await editing).toMatchObject({ id, priority: "HIGH", changed: false });
+    expect(
+      await f.platform.workItemActivity.count({ where: { tenantId: f.tenantId, workItemId: id, field: "priority" } }),
+    ).toBe(0);
+    // No second UPDATE: the stamp is still the colleague's, so no board's
+    // poll (ARC-18) fires for a write that changed nothing.
+    const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id }, select: { updatedAt: true } });
+    expect(colleagueWrote.updatedAt).toBeDefined();
+    expect(fresh.updatedAt).toEqual(colleagueWrote.updatedAt);
+  });
+});
+
+/**
+ * changeState diffs under the same row lock (review 2026-09-13) — the
+ * service behind the panel's S picker and the backlog's state cell. Read
+ * unlocked, a pick that waited on another at its UPDATE reported, audited
+ * and wrote client-visible history for a row version it never replaced.
+ * Each test fails on the unlocked read.
+ */
+describe("changeState diffs the row version it replaces (review 2026-09-13)", () => {
+  const statesByRank = () =>
+    f.platform.workflowState.findMany({ where: { tenantId: f.tenantId, projectId }, orderBy: { rank: "asc" } });
+  const stateAudits = (id: string) =>
+    f.platform.auditEvent.findMany({
+      where: { tenantId: f.tenantId, targetId: id, action: "work_item.state_changed" },
+      select: { metadata: true },
+    });
+
+  it("two picks of Done at once: exactly one says changed, one audit event, one history row, and the first completedAt stands", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Two Dones at once" });
+    // Shared, so each pick's history row would be one the client reads.
+    await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
+    const done = (await statesByRank()).find((s) => s.category === "DONE")!;
+
+    // The colleague's pick runs the state machine itself, so it writes the
+    // history row and the audit event the waiting pick must not repeat.
+    const colleague = holdOpen(async (tx) => {
+      const item = await tx.workItem.findFirst({
+        where: { tenantId: f.tenantId, id },
+        omit: { description: true, descriptionText: true },
+      });
+      if (!item) throw new Error("the colleague could not read the item");
+      return transitionState(tx, ownerCtx(), item, done);
+    });
+    let first: StateChange | undefined;
+    let picking: Promise<StateChange | null> = Promise.resolve(null);
+    try {
+      const held = await colleague.isReady;
+      first = held.result;
+      picking = changeState(ownerCtx(), id, done.id);
+      picking.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
+      await waitForWaiterOn(held.xid);
+    } finally {
+      colleague.release();
+      await colleague.done;
+    }
+
+    expect(first?.changed).toBe(true);
+    expect(first?.completedAt).toBeInstanceOf(Date);
+    const second = await picking;
+    // Still the truth about the item: Done, stamped when the colleague moved it.
+    expect(second).toMatchObject({ itemId: id, stateId: done.id, stateCategory: "DONE", changed: false });
+    expect(second?.completedAt).toEqual(first?.completedAt);
+    expect(await stateAudits(id)).toHaveLength(1);
+    expect(
+      await f.platform.workItemActivity.count({ where: { tenantId: f.tenantId, workItemId: id, field: "stateCategory" } }),
+    ).toBe(1);
+    // Read unlocked, the waiting pick saw completedAt null and stamped its own.
+    const fresh = await f.platform.workItem.findUniqueOrThrow({ where: { id }, select: { completedAt: true } });
+    expect(fresh.completedAt).toEqual(first?.completedAt);
+  });
+
+  it("a pick that waited on a colleague's Done records DONE as where it came from, never To do", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Done, then In progress" });
+    // Shared, so the state history is a row the client reads (PORTAL_SAFE_FIELDS).
+    await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
+    const states = await statesByRank();
+    const done = states.find((s) => s.category === "DONE")!;
+    const progress = states.find((s) => s.category === "IN_PROGRESS")!; // "In progress", first by rank
+
+    const colleague = holdOpen((tx) =>
+      tx.workItem.update({
+        where: { id },
+        data: { stateId: done.id, stateCategory: "DONE", completedAt: new Date() },
+        select: { id: true },
+      }),
+    );
+    let picking: Promise<StateChange | null> = Promise.resolve(null);
+    try {
+      const { xid } = await colleague.isReady;
+      picking = changeState(ownerCtx(), id, progress.id);
+      picking.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
+      await waitForWaiterOn(xid);
+    } finally {
+      colleague.release();
+      await colleague.done;
+    }
+
+    expect(await picking).toMatchObject({
+      itemId: id,
+      stateId: progress.id,
+      stateCategory: "IN_PROGRESS",
+      completedAt: null,
+      changed: true,
+    });
+    const history = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "stateCategory" },
+      select: { oldValue: true, newValue: true, oldRef: true, visibility: true },
+    });
+    // The colleague's raw write leaves no row of its own, so the pick's
+    // row is the only one, and it must start where that commit left the
+    // item — read unlocked, it said TODO, and so did the audit.
+    expect(history).toEqual([
+      { oldValue: "DONE", newValue: "IN_PROGRESS", oldRef: done.id, visibility: "CLIENT_VISIBLE" },
+    ]);
+    const audits = await stateAudits(id);
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.metadata).toMatchObject({ from: "DONE", to: "IN_PROGRESS" });
+  });
+
+  it("a pick that waited on a downgrade writes its history INTERNAL instead of failing at the activity guard", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Made private mid-pick" });
+    await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
+    const progress = (await statesByRank()).find((s) => s.category === "IN_PROGRESS")!;
+
+    const colleague = holdOpen((tx) =>
+      tx.workItem.update({ where: { id }, data: { visibility: "INTERNAL" }, select: { id: true } }),
+    );
+    let picking: Promise<StateChange | null> = Promise.resolve(null);
+    try {
+      const { xid } = await colleague.isReady;
+      picking = changeState(ownerCtx(), id, progress.id);
+      picking.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
+      await waitForWaiterOn(xid);
+    } finally {
+      colleague.release();
+      await colleague.done;
+    }
+
+    // Read unlocked, the pick still believed the item shared, wrote its
+    // history CLIENT_VISIBLE, and work_item_activity_denorm_guard refused
+    // the whole state change with a raw trigger error.
+    expect(await picking).toMatchObject({ itemId: id, stateCategory: "IN_PROGRESS", changed: true });
+    const history = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "stateCategory" },
+      select: { newValue: true, visibility: true },
+    });
+    expect(history).toEqual([{ newValue: "IN_PROGRESS", visibility: "INTERNAL" }]);
   });
 });
 
@@ -880,20 +1229,27 @@ describe("the approval gate (2W-R)", () => {
 });
 
 describe("planning-field activity visibility (2W-G — targetDate's first UI exposure)", () => {
-  it("priority activity stays INTERNAL while targetDate follows a CLIENT_VISIBLE item", async () => {
+  it("priority and estimate activity stay INTERNAL while targetDate follows a CLIENT_VISIBLE item; none of it audits", async () => {
     const { id } = await createItem(ownerCtx(), { projectId, title: "Groomed task" });
     await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
+    // Counted AFTER the visibility flip, which IS audited: only the
+    // routine edit below must add nothing.
+    const auditBefore = await f.platform.auditEvent.count({ where: { tenantId: f.tenantId, targetId: id } });
     await updateItemFields(ownerCtx(), id, {
       priority: "HIGH",
+      estimateMinutes: 60,
       targetDate: dateColumn("2026-09-15"),
     });
     const rows = await f.platform.workItemActivity.findMany({
-      where: { tenantId: f.tenantId, workItemId: id, field: { in: ["priority", "targetDate"] } },
+      where: { tenantId: f.tenantId, workItemId: id, field: { in: ["priority", "estimate", "targetDate"] } },
     });
     // The PORTAL_SAFE_FIELDS split (activity.ts): estimate/priority are
     // internal facts; the due date is part of the client-facing plan.
     expect(rows.find((r) => r.field === "priority")?.visibility).toBe("INTERNAL");
+    expect(rows.find((r) => r.field === "estimate")?.visibility).toBe("INTERNAL");
     expect(rows.find((r) => r.field === "targetDate")?.visibility).toBe("CLIENT_VISIBLE");
+    // Routine edits write activity, never audit (AGENTS.md).
+    expect(await f.platform.auditEvent.count({ where: { tenantId: f.tenantId, targetId: id } })).toBe(auditBefore);
   });
 });
 

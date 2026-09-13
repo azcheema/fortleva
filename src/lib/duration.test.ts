@@ -17,6 +17,7 @@ import {
   startOfLocalDay,
   zoneOffsetMinutes,
 } from "./duration";
+import { durationInputText } from "./format";
 
 describe("duration text → seconds (UI.md rule 9)", () => {
   it.each([
@@ -157,4 +158,15 @@ describe("parseEstimateMinutes (UI.md §5.2 — the shared grammar without the e
     expect(parseEstimateMinutes("1h 30m")).toBe(90);
     expect(parseEstimateMinutes("2h")).toBe(120);
   });
+
+  // The seed is what the field SHOWS, so it must parse back to the value
+  // it came from. A grouped "1,000h" reads as 1.000 h = 60 minutes: the
+  // grammar takes the comma for a decimal comma, and one untouched
+  // blur would have rewritten a 1000 h epic to an hour.
+  it.each([59_940, 60_000, 90_090, MAX_ESTIMATE_MINUTES])(
+    "durationInputText seeds %d minutes as text that parses back to the same minutes",
+    (m) => {
+      expect(parseEstimateMinutes(durationInputText(m * 60))).toBe(m);
+    },
+  );
 });

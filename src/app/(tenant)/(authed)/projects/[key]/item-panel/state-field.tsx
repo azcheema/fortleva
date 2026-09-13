@@ -1,29 +1,29 @@
 "use client";
 
 import { CheckIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useMemo, useOptimistic, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 import { PropertyPicker, StatusIcon, type PickerOption } from "@/components/semantic";
 import { useScopeKeys } from "@/components/shell/use-hotkeys";
 import { STATUS_MAP, type StatusValue } from "@/lib/enum-map";
-import { canEnterState, enterableStates } from "@/lib/work-view";
+import { panelSurfaceOf, statePickerTargets } from "@/lib/work-view";
 import type { ResolvedWorkflowState } from "@/modules/work";
 
-import { setPanelStateAction } from "./actions";
+import { setItemStateAction, type StateCommitted } from "../backlog/actions";
+import { usePanelCommit } from "./use-panel-commit";
+
+type ShownState = { stateId: string; stateName: string; stateCategory: string };
 
 /**
  * The item panel's State property (UI.md §5.2 `S`) — the first
- * `<PropertyPicker>`, and the shape the rest of the rail's properties
- * take in the slices after it.
+ * `<PropertyPicker>`, and the shape `P E D` took after it.
  *
- * ONE island owns the trigger, the key and the mutation together, which
- * is what lets `P E D` be three more of exactly this with no further
- * coordination: the key binding sits beside the state it mutates, so
- * there is no registry entry to keep in sync with a handler somewhere
- * else.
+ * ONE island owns the trigger, the key and the mutation together: the
+ * key binding sits beside the state it mutates, so there is no registry
+ * entry to keep in sync with a handler somewhere else. What happens
+ * between the pick and the server's answer is `usePanelCommit`'s, shared
+ * by all four, so they cannot drift into four ideas of "saved".
  *
  * It renders inside a SERVER component on two surfaces (the peek sheet
  * and the full item page), so every fact it needs is a REQUIRED prop —
@@ -45,7 +45,7 @@ export function StateField({
   itemId: string;
   itemNumber: number;
   projectKey: string;
-  /** Decides the MFA step-up return address — see `setPanelStateAction`. */
+  /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
   surface: "board" | "backlog" | "page";
   stateId: string;
   stateName: string;
@@ -56,37 +56,29 @@ export function StateField({
 }) {
   const t = useTranslations("projects.item");
   const tCat = useTranslations("states.stateCategory");
-  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [, startTransition] = useTransition();
-  // The live region is ALWAYS mounted (a `role="status"` that appears
-  // together with its text is never announced — a finding this codebase
-  // has already paid for) but says NOTHING until a change has actually
-  // happened. Rendering the past-tense sentence at rest would leave
-  // "State changed to To do" standing in the accessibility tree of a
-  // task nobody has touched, on every peek open.
-  const [announced, setAnnounced] = useState("");
 
-  // `useOptimistic` unwinds by itself when the transition ends, which is
-  // why a failure below needs no manual revert — and why this is a
-  // transition rather than a `<form action>`: React 19 RESETS a form
-  // action at the start of every action, so a control inside one shows
-  // stale server state (the standing trap).
-  const [shown, setShown] = useOptimistic(
-    { stateId, stateName, stateCategory },
-    (_current, next: { stateId: string; stateName: string; stateCategory: string }) => next,
-  );
+  const { shown, announced, commit } = usePanelCommit<ShownState, StateCommitted>({
+    canonical: { stateId, stateName, stateCategory },
+    same: (a, b) => a.stateId === b.stateId,
+    adopt: (c) => ({ stateId: c.stateId, stateName: c.stateName, stateCategory: c.stateCategory }),
+    announce: (s) => t("state.changed", { state: s.stateName }),
+    failedMessage: t("state.failed"),
+  });
 
   // ONE rule for every surface — the board's drops, the backlog's select
   // and this picker all ask `@/lib/work-view`, never a local predicate.
+  // Each target arrives with its test-id key already numbered over ALL
+  // the project's states, so a row's id cannot depend on who is looking,
+  // and no call site can quietly number the filtered list instead.
   const targets = useMemo(
-    () => enterableStates(states, canApprove, stateId),
+    () => statePickerTargets(states, canApprove, stateId),
     [states, canApprove, stateId],
   );
 
   const options = useMemo<PickerOption<string>[]>(
     () =>
-      targets.map((s) => ({
+      targets.map(({ state: s, key, disabled }) => ({
         value: s.id,
         label: s.name,
         group: tCat(s.category as StatusValue<"stateCategory">),
@@ -101,12 +93,14 @@ export function StateField({
         // when it is not a legal target — TRIAGE, or a gated Done under
         // a non-approver. A picker that cannot show what the item IS is
         // broken (§5.2, and the residue the 2W-R review accepted).
-        disabled: !canEnterState(s, canApprove),
+        disabled,
         meta:
           s.id === shown.stateId ? <CheckIcon className="size-3.5" aria-hidden="true" /> : undefined,
-        testId: `item-state-${s.category}`,
+        // `item-state-IN_PROGRESS-2`: the category alone named both of the
+        // seed's IN_PROGRESS states.
+        testId: `item-state-${key}`,
       })),
-    [targets, canApprove, shown.stateId, tCat],
+    [targets, shown.stateId, tCat],
   );
 
   // Above the early return: a hook may not sit under a conditional. The
@@ -122,47 +116,22 @@ export function StateField({
     },
   ]);
 
-  const commit = (next: string) => {
+  const onSelect = (next: string) => {
     setOpen(false);
-    const target = targets.find((s) => s.id === next);
-    // A no-op costs no round trip and tells no lie: the server would
-    // also write nothing and return `changed: false`, but claiming
-    // "saved" for a write that did not happen starts on the client.
-    if (!target || next === shown.stateId) return;
-    startTransition(async () => {
-      setShown({ stateId: target.id, stateName: target.name, stateCategory: target.category });
-      const r = await setPanelStateAction({
+    const target = targets.find((x) => x.state.id === next);
+    // cmdk never selects a disabled row; this is the belt.
+    if (!target || target.disabled) return;
+    const s = target.state;
+    // `changeState`, never `moveItemAction`: this path cannot re-rank.
+    commit({ stateId: s.id, stateName: s.name, stateCategory: s.category }, () =>
+      setItemStateAction({
         itemId,
         stateId: next,
         projectKey,
         itemNumber,
-        surface,
-      }).catch(() => ({ ok: false as const, message: t("state.failed") }));
-      // A failure must never look like a revert: the optimistic value
-      // unwinds on its own, and the member is TOLD why.
-      if (!r.ok) {
-        toast.error(r.message);
-        return;
-      }
-      // `changed: false` does NOT mean "nothing to do" — it means the
-      // server disagreed with the props this panel rendered from,
-      // because someone else had already moved the item there. Returning
-      // early here let the optimistic value unwind to the STALE prop:
-      // the member's pick appeared to revert, with no toast and no
-      // refresh, and the panel stayed wrong until a full reload. That is
-      // the standing "a failure must never look like a revert" trap in
-      // its silent-success form, so both branches refresh.
-      setShown({
-        stateId: r.value.stateId,
-        stateName: r.value.stateName,
-        stateCategory: r.value.stateCategory,
-      });
-      setAnnounced(t("state.changed", { state: r.value.stateName }));
-      // The canonical row REPLACES the optimistic slice (§7.2) by
-      // re-rendering the server panel — which is also the only refresh
-      // the item page gets, its `revalidatePath` form being a no-op.
-      router.refresh();
-    });
+        surface: panelSurfaceOf(surface),
+      }),
+    );
   };
 
   // Honest degradation: without `work_item:edit` — or in the unreachable
@@ -179,7 +148,7 @@ export function StateField({
         onOpenChange={setOpen}
         value={shown.stateId}
         options={options}
-        onSelect={commit}
+        onSelect={onSelect}
         hintKey="S"
         testId="item-state"
         // The trigger carries the rest box's own `px-2.5`, which would
@@ -190,11 +159,13 @@ export function StateField({
           trigger: t("state.trigger", { state: shown.stateName }),
           search: t("state.search"),
           empty: t("state.empty"),
+          current: t("currentValue"),
         }}
       >
         <StatusIcon name={spec.icon} className="size-3 shrink-0" aria-hidden="true" />
         <span className="min-w-0 truncate">{shown.stateName}</span>
       </PropertyPicker>
+      {/* ALWAYS mounted, and silent until a change has happened. */}
       <span role="status" aria-live="polite" className="sr-only">
         {announced}
       </span>

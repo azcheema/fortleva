@@ -229,6 +229,66 @@ export const inMenuLayer = (target: EventTarget | null): boolean =>
   target instanceof Element && target.closest(SUPPRESS_SELECTOR) !== null;
 
 /**
+ * Where ⌘K was pressed, as `paletteOffersPageRows` needs it: the
+ * menu-layer answer `decide()` also reads, plus the one fact a dialog
+ * on its way out adds.
+ */
+export type PaletteOrigin = Pick<KeyEventShape, "inMenuLayer"> & {
+  /**
+   * `null` unless the target is inside a dialog still playing its exit
+   * animation. Radix keeps that content mounted, and its input focused,
+   * until that animation ends (`--dur-fast` for the palette). A ⌘K
+   * double-tap therefore landed in
+   * the closing palette's own list, which is a menu layer, and reopened
+   * it without its rows. Such a keystroke is judged by where that dialog
+   * hands focus BACK. `returnsIntoMenuLayer` is whether that element sits
+   * in a menu layer, and it is false when the dialog hands focus nowhere
+   * known.
+   *
+   * REQUIRED, and `null` is a real value. A dispatcher that forgot it
+   * would silently judge every such keystroke by the dialog that is
+   * leaving.
+   */
+  leaving: { returnsIntoMenuLayer: boolean } | null;
+};
+
+/**
+ * Whether ⌘K pressed HERE may offer the palette's "On this page" rows.
+ * It is decided once, when the palette opens, from the menu-layer answer
+ * `decide()` also reads (`PaletteOrigin`).
+ *
+ * Each such row runs a single key's binding, so it is offered only where
+ * that key could act. `decide()` answers ⌘K BEFORE the menu-layer guard,
+ * on purpose, so the palette works from inside a picker. That means it
+ * opens from places where every single key is deliberately inert, and a
+ * row there did what the key could not. "Change priority" chosen from
+ * inside the open due-date picker stacked a second modal picker on the
+ * first, and after one Escape focus sat on a rail trigger the first
+ * picker was still hiding.
+ *
+ * · Inside a menu layer (a picker, a menu, MovePicker's list): no rows.
+ * · Under an EXCLUSIVE scope: no rows. The `?` overlay owns the keyboard
+ *   while it is open, every key beneath it is dead, and a row would open
+ *   a picker over the overlay.
+ * · An editable target is NOT a reason. ⌘K from the description editor
+ *   is exactly where "Change state" should work, because no layer is
+ *   open there.
+ * · Inside a dialog on its way out, the menu-layer question is asked of
+ *   where that dialog hands focus back, not of the dialog itself. A
+ *   closing palette's list is about to be gone, so it cannot count as a
+ *   layer. The picker the palette was opened from is still open, so it
+ *   must count. Treating every closing dialog as "no layer" would bring
+ *   the rows back over that picker on a ⌘K double-tap.
+ */
+export const paletteOffersPageRows = (
+  from: PaletteOrigin,
+  scopes: readonly ScopeSnapshot[],
+): boolean => {
+  const inMenuLayer = from.leaving === null ? from.inMenuLayer : from.leaving.returnsIntoMenuLayer;
+  return !inMenuLayer && !scopes.some((s) => s.exclusive);
+};
+
+/**
  * The OVERLAY-VISIBLE shape of a binding list, as a comparable string.
  *
  * Built ONLY from render-stable, serialisable values. A `run` closure is

@@ -1,5 +1,6 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
+import { SLOW, createOwnTask, deleteOwnTasks, picker, pressUntil } from "./fixtures/keys";
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
@@ -24,12 +25,11 @@ import { requireSeed, type E2ESeed } from "./fixtures/tenant";
  *
  * Everything runs inside the throwaway `e2e-` tenant. Only the State
  * picker's own describe block mutates anything, and it creates and
- * removes the single task it drives — the rest of this file reads.
+ * removes the single task it drives — the rest of this file reads. The
+ * P, E and D pickers WRITE, so they live in `item-properties.spec.ts`.
  */
 
 let seed!: E2ESeed;
-
-const SLOW = process.env["CI"] ? 3 : 1;
 
 test.beforeAll(() => {
   seed = requireSeed();
@@ -44,28 +44,6 @@ async function openFirstPeek(page: Page): Promise<void> {
   await card.getByRole("button", { name: /Actions for/ }).click();
   await page.getByRole("menuitem", { name: /Open/ }).click();
   await expect(page.getByTestId("item-peek")).toBeVisible();
-}
-
-const picker = (page: Page) => page.locator('[data-slot="popover-content"]');
-
-/**
- * Press a key until it takes, then stop.
- *
- * `useScopeKeys` registers in an EFFECT, so a keypress fired the instant
- * a surface finishes rendering can land before that surface's keys
- * exist — on CI, where hydration is slower than the keystroke, this was
- * the difference between green and flaky (run 34713766519). The guard
- * matters as much as the retry: `?` toggles and `c` types into the field
- * it opened, so pressing blindly a second time would undo the first.
- *
- * It still fails if the binding is genuinely dead — it just stops
- * calling a race a regression.
- */
-async function pressUntil(page: Page, key: string, target: Locator): Promise<void> {
-  await expect(async () => {
-    if ((await target.count()) === 0) await page.keyboard.press(key);
-    await expect(target.first()).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 30_000 });
 }
 
 test.describe("the scope registry", () => {
@@ -246,6 +224,38 @@ test.describe("the `?` overlay and the palette", () => {
     await expect(home.getByRole("heading", { name: "Board", exact: true })).toHaveCount(0);
   });
 
+  test("with the peek open, the Task section lists S P E D in rail order, and J or K is spoken as such", async ({
+    page,
+  }) => {
+    // Four islands register the item scope's keys, and the overlay must
+    // read them in the order the rail shows them — not backwards, which
+    // is what a precedence-ordered walk alone would produce.
+    await openFirstPeek(page);
+    const overlay = page.getByRole("dialog", { name: /shortcut/i });
+    await pressUntil(page, "?", overlay);
+    const section = (name: string) =>
+      overlay.locator("section").filter({ has: page.getByRole("heading", { name, exact: true }) });
+
+    // Presence first: the section is there before its rows are counted.
+    await expect(section("Task")).toBeVisible();
+    await expect(section("Task").locator("li > span:not([data-slot])")).toHaveText([
+      "Change state",
+      "Change priority",
+      "Set estimate",
+      "Set due date",
+    ]);
+
+    // `["J", "or", "K"]`: two keys and a separator whose word is there
+    // for a screen reader, not a third key.
+    const navigate = section("Board").locator("li", { hasText: "Move between cards" });
+    await expect(navigate).toBeVisible();
+    await expect(navigate.locator("kbd")).toHaveCount(2);
+    await expect(navigate.locator('[data-slot="keyboard-hint"]')).toContainText("or");
+
+    await page.keyboard.press("?");
+    await expect(overlay).toHaveCount(0);
+  });
+
   test("rule 7: a single key also has a ⌘K entry, and choosing it does what the key does", async ({
     page,
   }) => {
@@ -254,84 +264,233 @@ test.describe("the `?` overlay and the palette", () => {
     const palette = page.getByRole("dialog", { name: /command palette/i });
     await expect(palette).toBeVisible();
     await expect(palette.getByText("On this page")).toBeVisible();
+    // Every rail picker, not just the first one, arrives as a palette row
+    // without being registered twice.
+    for (const name of [/Change priority/, /Set estimate/, /Set due date/]) {
+      await expect(palette.getByRole("option", { name })).toBeVisible();
+    }
     await palette.getByRole("option", { name: /Change state/ }).click();
     await expect(palette).toHaveCount(0);
     await expect(picker(page)).toBeVisible();
     await expect(picker(page).locator('[data-slot="command-input"]')).toBeFocused();
   });
+
+  test("Escape from the palette over Move to… hands focus back to the picker, and no key lands behind it", async ({
+    page,
+  }) => {
+    // Neither dialog has a DialogTrigger, so Radix returned focus to
+    // nothing and it fell to <body>, where every single key acts. The
+    // board's `C` then opened a create field behind the modal. Ctrl+K
+    // reaches the palette from inside the picker only because the
+    // `Command` wrapper turns cmdk's vim bindings off. Nothing is moved:
+    // the picker is closed with Escape.
+    await page.goto(`/projects/${seed.projectKey}/board`);
+    await expect(page.getByTestId("board")).toBeVisible();
+    const firstCard = page.locator('[data-testid="board-card"]').first();
+    await expect(firstCard).toBeVisible();
+    const cardId = (await firstCard.getAttribute("data-board-card")) ?? "";
+    expect(cardId).not.toBe("");
+    const card = page.locator(`[data-board-card="${cardId}"]`);
+
+    const movePicker = page.getByRole("dialog", { name: /^Move / });
+    const moveInput = movePicker.locator('[data-slot="command-input"]');
+    await card.focus();
+    // `S` is the board's own handler on the focused card, which exists
+    // only once the board has hydrated.
+    await pressUntil(page, "s", movePicker);
+    await expect(moveInput).toBeFocused();
+
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: /command palette/i });
+    await expect(palette).toBeVisible();
+    await expect(palette.getByRole("option").first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(palette).toHaveCount(0);
+    await expect(movePicker).toBeVisible();
+    await expect(moveInput).toBeFocused();
+
+    // The key lands in the picker's own field, which is the proof that
+    // nothing behind the modal received it.
+    await page.keyboard.press("c");
+    await expect(moveInput).toHaveValue("c");
+    await expect(page.getByTestId("board-create-input")).toHaveCount(0);
+
+    await page.keyboard.press("Escape");
+    await expect(movePicker).toHaveCount(0);
+    await expect(card).toBeFocused();
+  });
+});
+
+test.describe("focus goes back where it came from", () => {
+  // Radix returns focus to a dialog's TRIGGER. These dialogs have none, so
+  // without `useFocusReturn` each one dropped focus on <body>, where every
+  // single key acts. Nothing here mutates anything.
+
+  test("the phone's More sheet hands focus back to the More tab", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/home");
+    const more = page.locator('[data-slot="tab-bar"]').getByRole("button", { name: "More", exact: true });
+    const sheet = page.locator('[data-slot="sheet-content"]');
+    await expect(more).toBeVisible();
+
+    // The keyboard's way in: the tab focused, then Enter.
+    await pressUntil(page, "Enter", sheet, { from: more });
+    // Presence first: Radix has moved focus INTO the sheet, so the return
+    // asserted below is the hook's doing, not focus that never left.
+    await expect.poll(() => sheet.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+    await expect(more).toBeFocused();
+  });
+
+  test("closing the `?` overlay hands focus back to the help button and opens no tooltip", async ({ page }) => {
+    await page.goto("/home");
+    const url = page.url();
+    const help = page.getByRole("button", { name: "Show keyboard shortcuts", exact: true });
+    const overlay = page.getByRole("dialog", { name: /shortcut/i });
+    const tooltip = page.locator('[data-slot="tooltip-content"]');
+    await expect(help).toBeVisible();
+
+    // The keyboard, not a click. A click also HOVERS the button, and a hover
+    // opening the tooltip is correct behaviour this test must not mistake
+    // for the defect.
+    await pressUntil(page, "Enter", overlay, { from: help });
+    await expect.poll(() => overlay.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+
+    await page.keyboard.press("Escape");
+    await expect(overlay).toHaveCount(0);
+    // Presence first: focus is back on the button. That return must not
+    // open the tooltip. Radix opens one on any focus no pointer caused, and
+    // its layer then took the member's next Escape.
+    await expect(help).toBeFocused();
+    await expect(tooltip).toHaveCount(0);
+
+    // So the next Escape has nothing to close, and nothing else goes with it.
+    // (The count below only catches a tooltip still open once the Escape has
+    // been handled; one that opened late would take that Escape and close,
+    // and pass everything here — the check above is the one that counts.)
+    await page.keyboard.press("Escape");
+    await expect(help).toBeFocused();
+    await expect(page).toHaveURL(url);
+    await expect(tooltip).toHaveCount(0);
+
+    // The instrument works: a focus the member causes still opens the
+    // tooltip. So the absence above was the guard working, not a tooltip
+    // that never opens on focus.
+    await help.evaluate((el) => (el as HTMLElement).blur());
+    await help.focus();
+    await expect(tooltip).toBeVisible();
+  });
+
+  test("⌘K over the open `?` overlay: Escape closes the palette and puts focus back INSIDE the overlay", async ({
+    page,
+  }) => {
+    // A dialog opened over one that stays OPEN returns focus into it.
+    // Inheriting the overlay's own origin instead would hand focus to
+    // wherever the overlay came from (here <body>), behind a modal that is
+    // still open.
+    await page.goto("/home");
+    const overlay = page.getByRole("dialog", { name: /shortcut/i });
+    const palette = page.getByRole("dialog", { name: /command palette/i });
+    const focusInOverlay = () => overlay.evaluate((el) => el.contains(document.activeElement));
+
+    await pressUntil(page, "?", overlay);
+    await expect.poll(focusInOverlay).toBe(true);
+
+    // ⌘K is answered before any scope, the overlay's exclusive one included.
+    await page.keyboard.press("ControlOrMeta+k");
+    await expect(palette).toBeVisible();
+    await expect(palette.locator('[data-slot="command-input"]')).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(palette).toHaveCount(0);
+    // One layer per Escape: the overlay is still open, and has the focus back.
+    await expect(overlay).toBeVisible();
+    await expect.poll(focusInOverlay).toBe(true);
+
+    await page.keyboard.press("Escape");
+    await expect(overlay).toHaveCount(0);
+  });
 });
 
 test.describe("the State picker (owner)", () => {
   // This spec creates the ONE task it mutates, and removes it pass or
-  // fail. The rest of the file only reads. Driving the picker against
-  // the seeded fixture's first card would leave it in a different column
-  // for every later spec — including the visual sweep, which
-  // photographs this very project and would simply bake the moved card
-  // into 192 new shots without failing anything.
+  // fail (`e2e/fixtures/keys.ts`). The rest of the file only reads.
   let created: string[] = [];
 
   test.afterEach(async ({ page }) => {
     const titles = created;
     created = [];
-    for (const title of titles) {
-      await page.goto(`/projects/${seed.projectKey}/backlog?archived=1`);
-      const row = page.locator('[data-slot="table-row"]', { hasText: title });
-      if ((await row.count()) === 0) continue;
-      await row.first().getByRole("button", { name: /Actions for/ }).click();
-      await page.getByRole("menuitem", { name: "Delete" }).click();
-      await page.getByRole("button", { name: "Yes" }).click();
-      await expect(page.locator('[data-slot="table-row"]', { hasText: title })).toHaveCount(0, {
-        timeout: 20_000 * SLOW,
-      });
-    }
+    await deleteOwnTasks(page, seed, titles);
   });
 
-  test("commits from the peek and from the full page, and survives a reload", async ({ page }) => {
-    await page.goto(`/projects/${seed.projectKey}/backlog`);
-    const title = `Keymap picker ${Date.now()}`;
-    created.push(title);
-    // The backlog's create row: at rest a button, then a field (work.spec).
-    await page.locator("#new-task").getByRole("button").click();
-    const createInput = page.locator("#new-task input");
-    await createInput.fill(title);
-    await createInput.press("Enter");
-    const row = page.locator('[data-slot="table-row"]', { hasText: title });
-    await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
-    await createInput.press("Escape");
-    await row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) }).click();
-    await expect(page.getByTestId("item-peek")).toBeVisible();
+  test("commits from a typed filter and from a click, survives a reload, and opens on the full page", async ({
+    page,
+  }) => {
+    await createOwnTask(page, seed, "Keymap picker", created);
 
     const rail = page.getByTestId("item-properties");
-    const before = (await rail.getByTestId("item-state").textContent())?.trim() ?? "";
-
-    await page.keyboard.press("s");
-    await expect(picker(page)).toBeVisible();
-    // `.last()` of the IN_PROGRESS category is "In review" by rank — the
-    // seed has TWO states in that category, so the category-keyed test id
-    // is not unique (the same property `MovePicker` carries, recorded as
-    // a slice-6 follow-up). It is never the default and never gated.
-    await picker(page).getByTestId("item-state-IN_PROGRESS").last().click();
-    await expect(picker(page)).toHaveCount(0);
-
-    // AWAIT the server-derived text before navigating — a reload that
+    const state = rail.getByTestId("item-state");
+    const search = picker(page).locator('[data-slot="command-input"]');
+    // The rail's live region speaks only once the server has answered, so
+    // it is the sync point before the next step. The trigger is not: its
+    // optimistic text is there before the POST has left, and a reload that
     // races the POST is the exact failure the grooming slice shipped.
-    await expect(rail.getByTestId("item-state")).not.toHaveText(before, {
-      timeout: 20_000 * SLOW,
-    });
-    const after = (await rail.getByTestId("item-state").textContent())?.trim() ?? "";
+    const said = (name: string) => rail.locator('[role="status"]', { hasText: `State changed to ${name}` });
+    // "In review" and "In progress": the SECOND and FIRST states of the
+    // IN_PROGRESS category by rank. The test id carries a per-category
+    // ordinal over the project's full state list (`statePickerTargets`
+    // numbers it before filtering), so each names one row whoever is
+    // looking. Neither is ever the default, and neither is gated.
+    const inReview = picker(page).getByTestId("item-state-IN_PROGRESS-2");
+    const inProgress = picker(page).getByTestId("item-state-IN_PROGRESS-1");
+
+    // TYPE, then Enter. A keystroke in the search field is steering, so
+    // the one row the query leaves (lit by cmdk itself) is the member's
+    // pick, and the Enter guard, which refuses a highlight nobody steered
+    // to, must let it through.
+    await pressUntil(page, "s", picker(page));
+    await expect(search).toBeFocused();
+    await expect(inReview).toBeVisible();
+    // Names are read off the rows (an aria-hidden icon and the name; a row
+    // that is not the current one carries no "(current)"), and the query is
+    // the name's last word. The count below fails loudly if it matches more.
+    const reviewName = ((await inReview.textContent()) ?? "").trim();
+    expect(reviewName).not.toBe("");
+    await page.keyboard.type(reviewName.split(/\s+/).at(-1) ?? reviewName);
+    // Presence first: the row is lit, so the count runs against the
+    // filtered list rather than one that has not re-rendered yet.
+    await expect(inReview).toHaveAttribute("aria-selected", "true");
+    await expect(picker(page).locator("[cmdk-item]")).toHaveCount(1);
+    await page.keyboard.press("Enter");
+    await expect(picker(page)).toHaveCount(0);
+    await expect(said(reviewName)).toHaveCount(1, { timeout: 20_000 * SLOW });
+    await expect(state).toHaveText(reviewName);
+
+    // A CLICK, from the trigger Radix handed focus back to. A click is
+    // aimed, so nothing stands in its way.
+    await expect(state).toBeFocused();
+    await page.keyboard.press("s");
+    await expect(inProgress).toBeVisible();
+    const progressName = ((await inProgress.textContent()) ?? "").trim();
+    expect(progressName).not.toBe(reviewName);
+    await inProgress.click();
+    await expect(picker(page)).toHaveCount(0);
+    await expect(said(progressName)).toHaveCount(1, { timeout: 20_000 * SLOW });
 
     await page.reload();
-    await expect(page.getByTestId("item-properties").getByTestId("item-state")).toHaveText(after);
+    await expect(page.getByTestId("item-properties").getByTestId("item-state")).toHaveText(progressName, {
+      timeout: 20_000 * SLOW,
+    });
 
     // The same control on the full page, which has no poll and no list.
     await page.getByTestId("item-full-page").click();
     await page.waitForURL(/\/items\/\d+$/, { timeout: 20_000 * SLOW });
-    // The trigger being present is the sync point: `useScopeKeys`
-    // registers in an effect, so a keypress fired the instant the URL
-    // settles can land before the island has hydrated.
+    // `useScopeKeys` registers in an effect, so a keypress fired the
+    // instant the page renders can land before the island has hydrated.
     await expect(page.getByTestId("item-state")).toBeVisible();
-    await page.keyboard.press("s");
-    await expect(picker(page)).toBeVisible();
+    await pressUntil(page, "s", picker(page));
     await page.keyboard.press("Escape");
     await expect(picker(page)).toHaveCount(0);
   });
@@ -340,20 +499,75 @@ test.describe("the State picker (owner)", () => {
 test.describe("the State picker (employee)", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("no approval, no gated target — and the current state is still shown", async ({ page }) => {
+  /** The seeded task in the approval-gated Done (`e2e/fixtures/seed-cli.ts`). Read, never moved. */
+  const GATED_DONE_TITLE = "Migrera DNS till ny leverantör";
+
+  async function signInAsEmployee(page: Page): Promise<void> {
     await page.goto("/login");
     await page.locator("#email").fill(seed.employeeEmail);
     await page.locator("#password").fill(seed.employeePassword);
     await page.locator('form button[type="submit"]').click();
     await page.waitForURL("**/home", { timeout: 30_000 });
+  }
+
+  test("no approval, no gated target", async ({ page }) => {
+    await signInAsEmployee(page);
 
     await openFirstPeek(page);
-    await page.keyboard.press("s");
-    await expect(picker(page)).toBeVisible();
+    await pressUntil(page, "s", picker(page));
+    // Presence FIRST: the states they CAN reach are there. An absence
+    // assertion against a list that has not rendered yet passes vacuously.
+    await expect(picker(page).getByTestId("item-state-TODO-1")).toBeVisible();
     // The seeded Done carries requiresApproval, and an employee holds no
-    // work_item:approve — `enterableStates` keeps it out of the list.
-    await expect(picker(page).getByTestId("item-state-DONE")).toHaveCount(0);
-    // …while the states they CAN reach are there.
-    await expect(picker(page).getByTestId("item-state-TODO").first()).toBeVisible();
+    // work_item:approve — `statePickerTargets` keeps every DONE row out
+    // unless the item is already there.
+    await expect(picker(page).locator('[data-testid^="item-state-DONE-"]')).toHaveCount(0);
+  });
+
+  test("on a gated Done the current state is shown, disabled, and lights nothing for Enter to commit", async ({
+    page,
+  }) => {
+    // The disabled current row is SEEDED as "no highlight". Seeding `""`
+    // let cmdk light the first enabled row by itself, and a bare Enter
+    // then reopened a Done task nobody chose to reopen. No Enter is ever
+    // pressed here: a regression would move a SEEDED task, and the
+    // visual sweep photographs this project.
+    await signInAsEmployee(page);
+    await page.goto(`/projects/${seed.projectKey}/board`);
+    await expect(page.getByTestId("board")).toBeVisible();
+    const card = page.locator('[data-testid="board-card"]', { hasText: GATED_DONE_TITLE });
+    await expect(card).toBeVisible();
+    await card.getByRole("button", { name: /Actions for/ }).click();
+    await page.getByRole("menuitem", { name: /Open/ }).click();
+    await expect(page.getByTestId("item-peek")).toBeVisible();
+    await expect(page.getByTestId("item-state")).toHaveText(/Done/);
+
+    await pressUntil(page, "s", picker(page));
+    const combobox = picker(page).locator('[data-slot="command-input"]');
+    await expect(combobox).toBeFocused();
+
+    // Presence first: the list is there, with the item's own state in it,
+    // shown and refused.
+    const done = picker(page).getByTestId("item-state-DONE-1");
+    await expect(done).toBeVisible();
+    await expect(done).toHaveAttribute("aria-disabled", "true");
+    const firstEnabled = picker(page).getByTestId("item-state-BACKLOG-1");
+    await expect(firstEnabled).toBeVisible();
+
+    // Nothing lit, so nothing announced and nothing for Enter to dispatch.
+    await expect(picker(page).locator('[cmdk-item][aria-selected="true"]')).toHaveCount(0);
+    await expect(combobox).not.toHaveAttribute("aria-activedescendant");
+
+    // The first ArrowDown walks from "no row" to the first ENABLED row,
+    // and names it.
+    await page.keyboard.press("ArrowDown");
+    await expect(firstEnabled).toHaveAttribute("aria-selected", "true");
+    const id = await firstEnabled.getAttribute("id");
+    expect(id, "a cmdk row always carries an id").toBeTruthy();
+    await expect(combobox).toHaveAttribute("aria-activedescendant", id ?? "");
+
+    await page.keyboard.press("Escape");
+    await expect(picker(page)).toHaveCount(0);
+    await expect(page.getByTestId("item-state")).toHaveText(/Done/);
   });
 });

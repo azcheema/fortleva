@@ -11,15 +11,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useFocusReturn } from "@/components/ui/use-focus-return"
 import { SearchIcon } from "lucide-react"
 
+/**
+ * The cmdk root. `vimBindings` defaults to FALSE here, where cmdk
+ * defaults it TRUE: its Ctrl+J/K/N/P move the highlight, and Ctrl+K as
+ * "previous item" shadows the global ⌘K on Windows and Linux inside
+ * every list. This is the only file that imports cmdk, so one default
+ * here fixes it by construction for every caller, the next one
+ * included — `src/lib/keymap.test.ts` pins both halves.
+ */
 function Command({
   className,
+  vimBindings = false,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive>) {
   return (
     <CommandPrimitive
       data-slot="command"
+      vimBindings={vimBindings}
       className={cn(
         "flex size-full flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground",
         className
@@ -29,13 +40,45 @@ function Command({
   )
 }
 
-/** Sits at the top third, 12px radius, --shadow-2, no padding of its own. */
+/**
+ * Sits at the top third, 12px radius, --shadow-2, no padding of its own.
+ *
+ * FOCUS GOES BACK WHERE IT CAME FROM. No caller opens this from a
+ * `DialogTrigger`: the palette opens from ⌘K and two header buttons,
+ * MovePicker from a card's `S`. On close Radix calls `preventDefault()`
+ * and focuses the TRIGGER, and with no trigger that focuses nothing, so
+ * focus fell to <body>. No suppression guard covers <body>, so every
+ * single key then acted behind whatever layer was still open underneath.
+ * Two examples: ⌘K from a due-date day, Escape, `p` stacked a second
+ * picker on the first; Ctrl+K inside MovePicker, Escape, `c` opened a
+ * create field behind the modal.
+ *
+ * So the element that had focus when it OPENED — or, when it opened from
+ * inside another such dialog that was already closing, THAT dialog's
+ * origin (`useFocusReturn`) — is refocused when it closes, but only while
+ * that still makes sense:
+ *  · the element must still be in the document. A remounted one is
+ *    disconnected and skipped; the board hands focus to a moved card's
+ *    NEW node itself.
+ *  · focus must have nowhere better to be. Whatever has already taken it
+ *    by the time Radix asks keeps it: the board's card, or the picker a
+ *    palette row opened a frame later.
+ *
+ * It is captured in `onOpenAutoFocus`, which Radix dispatches only while
+ * focus is still OUTSIDE the content, so NO CHILD MAY USE `autoFocus`.
+ * React focuses such an element during commit, before Radix's mount
+ * effect runs, and the event is then never sent. FocusScope focuses the
+ * first tabbable element (the search box) without it.
+ * `src/lib/keymap.test.ts` pins that.
+ */
 function CommandDialog({
   title,
   description,
   children,
   className,
   showCloseButton = false,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   /** Screen-reader title/description — translated by the caller. */
@@ -43,7 +86,14 @@ function CommandDialog({
   description: string
   className?: string
   showCloseButton?: boolean
+  /** Runs after the focus origin is recorded. */
+  onOpenAutoFocus?: React.ComponentProps<typeof DialogContent>["onOpenAutoFocus"]
+  /** Runs FIRST; `preventDefault()` in it to place focus yourself. */
+  onCloseAutoFocus?: React.ComponentProps<typeof DialogContent>["onCloseAutoFocus"]
 }) {
+  // The rule lives in ONE hook, shared with the `?` overlay and the
+  // shell's More sheet — the other dialogs nothing opens from a trigger.
+  const focusReturn = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus })
   return (
     <Dialog {...props}>
       <DialogContent
@@ -52,6 +102,7 @@ function CommandDialog({
           className
         )}
         showCloseButton={showCloseButton}
+        {...focusReturn}
       >
         {/* The sr-only header lives INSIDE DialogContent. Radix labels
             the dialog by a context counter rather than by subtree, so it

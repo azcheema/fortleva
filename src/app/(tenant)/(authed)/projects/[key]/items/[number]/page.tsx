@@ -82,6 +82,8 @@ export default async function ProjectItemPage({
       }}
       returnTo={self}
       durationStyle={prefs.durationStyle}
+      weekStart={prefs.weekStart}
+      showIsoWeek={prefs.showIsoWeek}
       error={error}
     />
   );

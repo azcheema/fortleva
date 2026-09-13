@@ -3,6 +3,7 @@
  * how it looks. Screens import from here, never from src/components/ui
  * for anything that carries domain meaning.
  */
+export { CalendarGrid } from "./calendar-grid";
 export { Callout, type CalloutTone } from "./callout";
 export { DataTable, ROW_HEIGHT, type Density } from "./data-table";
 export { Disclosure } from "./disclosure";
@@ -15,7 +16,7 @@ export { KeyboardHint } from "./keyboard-hint";
 export { MemberAvatar } from "./member-avatar";
 export { MetricTile } from "./metric-tile";
 export { PageState, type PageStateProps } from "./page-state";
-export { PriorityIndicator } from "./priority-indicator";
+export { PriorityGlyph, PriorityIndicator } from "./priority-indicator";
 export { PropertyPicker, type PickerOption } from "./property-picker";
 export { ProgressMeter } from "./progress-meter";
 export { RowActions, type RowAction, type RowActionsProps } from "./row-actions";

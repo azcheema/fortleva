@@ -2,11 +2,13 @@
 
 import { useEffect, useRef } from "react";
 
+import { leavingDialogReturn } from "@/components/ui/use-focus-return";
 import {
   SCOPE_ORDER,
   decide,
   inMenuLayer,
   isEditableTarget,
+  paletteOffersPageRows,
   signatureOf,
   type KeyBinding,
   type KeyScope,
@@ -44,7 +46,16 @@ export { isEditableTarget } from "@/lib/keymap";
  * inside this closure would be untestable.
  */
 export type HotkeyHandlers = {
-  onPalette: () => void;
+  /**
+   * `pageRows` is `paletteOffersPageRows` for the keystroke that asked.
+   * It is false when ⌘K came from inside a menu layer or from under an
+   * exclusive scope, where an "On this page" row would stack a second
+   * layer on the open one. A ⌘K that lands inside a dialog still fading
+   * out is judged by where that dialog hands focus back
+   * (`leavingDialogReturn`). Only the dispatcher has the event target, so
+   * this is decided here.
+   */
+  onPalette: (from: { pageRows: boolean }) => void;
   onOverlay: () => void;
   onGo: (key: string) => void;
   /** Uppercase letters that complete a `G` sequence. */
@@ -230,26 +241,35 @@ export function useGlobalHotkeys(handlers: HotkeyHandlers): void {
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      const d = decide(
-        {
-          key: e.key,
-          metaKey: e.metaKey,
-          ctrlKey: e.ctrlKey,
-          altKey: e.altKey,
-          defaultPrevented: e.defaultPrevented,
-          inEditable: isEditableTarget(e.target),
-          inMenuLayer: inMenuLayer(e.target),
-        },
-        scopeSnapshot(),
-        ref.current.goKeys,
-        pendingGoTimer !== null,
-      );
+      const shape = {
+        key: e.key,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        defaultPrevented: e.defaultPrevented,
+        inEditable: isEditableTarget(e.target),
+        inMenuLayer: inMenuLayer(e.target),
+      };
+      const scopes = scopeSnapshot();
+      const d = decide(shape, scopes, ref.current.goKeys, pendingGoTimer !== null);
       switch (d.kind) {
-        case "palette":
+        case "palette": {
           e.preventDefault();
           clearPending();
-          ref.current.onPalette();
+          // A ⌘K pressed while a dialog fades out lands in that dialog's
+          // own input, and is judged by where the dialog hands focus back.
+          const leaving = e.target instanceof Element ? leavingDialogReturn(e.target) : null;
+          ref.current.onPalette({
+            pageRows: paletteOffersPageRows(
+              {
+                inMenuLayer: shape.inMenuLayer,
+                leaving: leaving && { returnsIntoMenuLayer: inMenuLayer(leaving.returnsTo) },
+              },
+              scopes,
+            ),
+          });
           return;
+        }
         case "go":
           e.preventDefault();
           clearPending();

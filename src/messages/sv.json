@@ -59,7 +59,15 @@
       "title": "Riskzon"
     },
     "preview": "Förhandsvisning",
-    "downloadName": "Ladda ner {name}"
+    "downloadName": "Ladda ner {name}",
+    "calendar": {
+      "previousMonth": "Föregående månad",
+      "nextMonth": "Nästa månad",
+      "week": "Vecka",
+      "weekShort": "v.",
+      "weekNumber": "Vecka {week}",
+      "daySelected": "{date}, valt"
+    }
   },
   "nav": {
     "home": "Hem",
@@ -112,6 +120,7 @@
       "overlay": "Den här översikten",
       "close": "Stäng palett / översikt",
       "then": "sedan",
+      "or": "eller",
       "scopes": {
         "global": "Globalt",
         "board": "Tavla",
@@ -1718,6 +1727,7 @@
         }
       },
       "openFullPage": "Öppna hela sidan",
+      "currentValue": "(nuvarande)",
       "attachments": {
         "title": "Bilagor",
         "empty": "Inga filer på den här uppgiften ännu",
@@ -1733,8 +1743,47 @@
         "failed": "Statusen sparades inte. Panelen visar den nuvarande statusen.",
         "changed": "Statusen ändrades till {state}"
       },
+      "priority": {
+        "trigger": "Prioritet: {priority}",
+        "search": "Sök prioritet…",
+        "empty": "Ingen prioritet matchar.",
+        "failed": "Prioriteten sparades inte. Panelen visar den nuvarande prioriteten.",
+        "changed": "Prioriteten ändrades till {priority}"
+      },
+      "estimate": {
+        "trigger": "Estimat: {value}",
+        "triggerEmpty": "Estimat: inte angivet",
+        "input": "Estimat — skriv 2h, 1,5 eller 90m",
+        "search": "Skriv 2h, 1,5 eller 90m",
+        "empty": "Estimat anges som 2h, 1,5 eller 90m.",
+        "none": "Inget estimat",
+        "set": "Sätt estimatet till {value}",
+        "clear": "Ta bort estimatet",
+        "failed": "Estimatet sparades inte. Panelen visar det nuvarande estimatet.",
+        "changed": "Estimatet ändrades till {value}",
+        "cleared": "Estimatet togs bort"
+      },
+      "dueDate": {
+        "trigger": "Förfallodatum: {date}",
+        "triggerEmpty": "Förfallodatum: inte angivet",
+        "input": "Förfallodatum — skriv ett datum, i dag, i morgon eller nästa vecka",
+        "search": "2026-09-15, i dag, i morgon…",
+        "empty": "Datum anges som 2026-09-15, mellan 1970 och 2100.",
+        "none": "Inget förfallodatum",
+        "today": "I dag",
+        "tomorrow": "I morgon",
+        "nextWeek": "Nästa vecka",
+        "set": "Sätt förfallodatum till {date}",
+        "clear": "Ta bort förfallodatumet",
+        "failed": "Förfallodatumet sparades inte. Panelen visar det nuvarande datumet.",
+        "changed": "Förfallodatumet ändrades till {date}",
+        "cleared": "Förfallodatumet togs bort"
+      },
       "keys": {
-        "state": "Ändra status"
+        "state": "Ändra status",
+        "priority": "Ändra prioritet",
+        "estimate": "Ange estimat",
+        "dueDate": "Ange förfallodatum"
       }
     },
     "states": {

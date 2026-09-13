@@ -19,6 +19,46 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
  */
 const BARS: Record<Priority, number> = { NONE: 0, LOW: 1, MEDIUM: 2, HIGH: 3, URGENT: 3 };
 
+/**
+ * The glyph ALONE — the bars, plus URGENT's "!" — for a place that
+ * already names the priority in text (a picker row's label). No label,
+ * no `role`, no tooltip, no `data-slot`: every node is `aria-hidden`
+ * decoration. `PriorityIndicator` renders exactly this inside its own
+ * span, so the two can never draw different glyphs.
+ */
+export function PriorityGlyph({ value }: { value: Priority }) {
+  const lit = BARS[value];
+  const urgent = value === "URGENT";
+
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-flex h-3 w-3 shrink-0 items-end justify-between gap-px",
+          urgent ? "text-(--tone-danger-line)" : "text-muted-foreground",
+        )}
+      >
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className={cn(
+              "w-[3px] rounded-[1px]",
+              value === "NONE" ? "h-px bg-current opacity-45" : i < lit ? "bg-current" : "bg-current opacity-25",
+              value !== "NONE" && (i === 0 ? "h-1.5" : i === 1 ? "h-2.5" : "h-3"),
+            )}
+          />
+        ))}
+      </span>
+      {urgent ? (
+        <span aria-hidden="true" className="text-2xs font-semibold text-(--tone-danger-line)">
+          {"!"}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 export function PriorityIndicator({
   value,
   showLabel = false,
@@ -30,29 +70,6 @@ export function PriorityIndicator({
 }) {
   const t = useTranslations("states.priority");
   const label = t(value);
-  const lit = BARS[value];
-  const urgent = value === "URGENT";
-
-  const glyph = (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "inline-flex h-3 w-3 shrink-0 items-end justify-between gap-px",
-        urgent ? "text-(--tone-danger-line)" : "text-muted-foreground",
-      )}
-    >
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className={cn(
-            "w-[3px] rounded-[1px]",
-            value === "NONE" ? "h-px bg-current opacity-45" : i < lit ? "bg-current" : "bg-current opacity-25",
-            value !== "NONE" && (i === 0 ? "h-1.5" : i === 1 ? "h-2.5" : "h-3"),
-          )}
-        />
-      ))}
-    </span>
-  );
 
   const body = (
     <span
@@ -62,12 +79,7 @@ export function PriorityIndicator({
       role={showLabel ? undefined : "img"}
       className={cn("inline-flex items-center gap-1.5 text-sm", className)}
     >
-      {glyph}
-      {urgent ? (
-        <span aria-hidden="true" className="text-2xs font-semibold text-(--tone-danger-line)">
-          {"!"}
-        </span>
-      ) : null}
+      <PriorityGlyph value={value} />
       {showLabel ? <span>{label}</span> : null}
     </span>
   );

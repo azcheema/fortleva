@@ -75,6 +75,56 @@ export const enterableStates = (
   );
 
 /**
+ * A UNIQUE key per state, for test ids: `${category}-${n}`, with `n`
+ * 1-based within the category over the FULL rank-ordered list. The
+ * seed's "In progress" is `IN_PROGRESS-1` and "In review" is
+ * `IN_PROGRESS-2`, where the category alone named both.
+ *
+ * Numbered over every state, never over `enterableStates`' targets: a
+ * key that depended on who is looking (an approver sees Done, an
+ * employee does not) would renumber every state after a filtered one.
+ * The state's NAME is never part of it: that is tenant text, and it
+ * changes on rename.
+ */
+export function stateOrdinalKeys(states: readonly { id: string; category: string }[]): Map<string, string> {
+  const counts = new Map<string, number>();
+  const keys = new Map<string, string>();
+  for (const s of states) {
+    const n = (counts.get(s.category) ?? 0) + 1;
+    counts.set(s.category, n);
+    keys.set(s.id, `${s.category}-${n}`);
+  }
+  return keys;
+}
+
+/** One row of the State picker: the state, its `stateOrdinalKeys` key, and whether it may be chosen. */
+export type StatePickerTarget = { state: WorkState; key: string; disabled: boolean };
+
+/**
+ * The State picker's rows: `enterableStates`' targets in the input's
+ * rank order, each with its test-id key and its disabled flag (only the
+ * current state can be disabled — TRIAGE, or a gated Done under a
+ * non-approver).
+ *
+ * The keys are numbered over the FULL list BEFORE the filter, inside this
+ * function. That keeps "a key never depends on who is looking" a property
+ * a unit test can pin, rather than a choice of argument at a call site
+ * that would type-check just as well handed the filtered targets.
+ */
+export function statePickerTargets(
+  states: readonly WorkState[],
+  canApprove: boolean,
+  currentStateId: string,
+): StatePickerTarget[] {
+  const keys = stateOrdinalKeys(states);
+  return enterableStates(states, canApprove, currentStateId).map((state) => ({
+    state,
+    key: keys.get(state.id)!,
+    disabled: !canEnterState(state, canApprove),
+  }));
+}
+
+/**
  * "Done" for every surface that offers to hide it: the two TERMINAL
  * categories, not the seeded Done state. A tenant with two done-ish
  * states, or one that renamed Done, still gets the same answer — which

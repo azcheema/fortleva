@@ -6,6 +6,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { ranksBetween } from "@/lib/rank";
 import { writeActivity } from "./activity";
+import { lockItemRow } from "./rank-lock";
 
 /**
  * Workflow states (DATA_MODEL §6.14): tenant-named states inside fixed
@@ -121,6 +122,10 @@ export type StateChange = {
  * DONE, clears both on regression, writes the portal-safe activity row
  * and dual-writes the audit event. The caller has already authorised
  * and scoped the item; `state` must belong to the item's project.
+ * Everything it reports and records — `changed`, the stamps, the history
+ * row's oldValue and visibility, the audit's `from` — is diffed against
+ * `item`, so it describes the row version the UPDATE replaces only when
+ * the caller read `item` under that row's lock (changeState does).
  * Parent rollup automation (autoStartParent/autoCompleteParent) is a
  * later slice.
  */
@@ -226,7 +231,7 @@ export async function transitionState(
   };
 }
 
-/** The inline state change (the backlog's select): one item, one state. */
+/** The inline state change (the backlog's state cell, the panel's `S` picker): one item, one state. */
 export async function changeState(
   ctx: WorkCtx,
   itemId: string,
@@ -234,6 +239,32 @@ export async function changeState(
 ): Promise<StateChange> {
   return withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
+    // The row lock FIRST, then the read transitionState diffs (lockItemRow
+    // — updateItemFields' fix, for the same race; review 2026-09-13). Read
+    // unlocked, a pick that waited at its UPDATE on one that committed
+    // described a row version it never replaced, in rows a client and an
+    // auditor read: two Done picks both said changed, wrote two
+    // client-visible history rows and two audit events, and the second
+    // restamped completedAt; an In progress picked over a colleague's Done
+    // recorded "To do → In progress"; and a history row took the item's
+    // visibility from before a downgrade, which the activity guard then
+    // refused as a raw trigger error.
+    //
+    // No new deadlock (rank-lock.ts). The UPDATE writes state_id,
+    // state_category, the two stamps and updated_at — no rank, no number,
+    // nothing in a unique index — so it takes this same FOR NO KEY UPDATE
+    // and never upgrades it. That lock was already the transaction's first
+    // on any row; it is only taken earlier, ahead of reads that lock
+    // nothing (the item, the scope, the state, the approval check), so the
+    // order is unchanged. work_item_parent_guard does not fire on this
+    // UPDATE (its column list is parent_id, type, visibility, project_id),
+    // so a state change never share-locks a parent. A CLIENT_VISIBLE
+    // subtask's raise or create that share-locks THIS row as its parent
+    // waits on it, as it waited on the UPDATE before, while this
+    // transaction waits on nothing that writer holds: no rank lock, no
+    // second work_item row. A no-op or a refusal holds this one lock and
+    // takes no other.
+    await lockItemRow(tx, ctx.tenantId, itemId);
     const item = await tx.workItem.findFirst({
       where: { tenantId: ctx.tenantId, id: itemId, deletedAt: null },
       omit: { description: true, descriptionText: true },
