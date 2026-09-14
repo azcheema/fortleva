@@ -565,6 +565,37 @@ test.describe("a backlog past the virtualisation threshold", () => {
   const SIZE = 250;
   let big: { projectId: string; key: string; size: number };
 
+  /**
+   * Scroll to the end UNTIL the target is visible — never once and then
+   * wait. A single `scrollTo` straight after a reload left the page at
+   * its TOP in CI (run 34907609420, both attempts: scrollY 0 after 60 s,
+   * the SSR page already at full height when the scroll fired, no
+   * console or page error recorded) while the same test passed six
+   * times locally, throttled to 8× included. What moved the scroll back
+   * is unproven (PLAN §0), so this retries the scroll — which is
+   * idempotent, unlike the key `fixtures/keys.ts`'s `pressUntil` guards —
+   * and RECORDS every retry as a test annotation: a scroll that had to
+   * be repeated is exactly the reset this cannot otherwise distinguish
+   * from a pass, and it must stay visible in the report. A window that
+   * never follows a scroll still fails here: a repeat `scrollTo` to the
+   * same offset scrolls nothing and dispatches no event.
+   */
+  const scrollToEndUntil = async (page: Page, target: Locator) => {
+    let attempts = 0;
+    await expect(async () => {
+      attempts += 1;
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await expect(target).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 * SLOW });
+    if (attempts > 1) {
+      const scrollY = await page.evaluate(() => Math.round(window.scrollY));
+      test.info().annotations.push({
+        type: "scroll-retried",
+        description: `scrollToEndUntil needed ${attempts} attempts (final scrollY ${scrollY})`,
+      });
+    }
+  };
+
   test.beforeAll(async () => {
     big = await createBigProject(seed.tenantId, SIZE);
   });
@@ -599,10 +630,10 @@ test.describe("a backlog past the virtualisation threshold", () => {
 
     // Scroll to the end: the far rows mount, the near ones are released,
     // and the top spacer appears in their place.
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await expect(
+    await scrollToEndUntil(
+      page,
       page.locator('[data-testid="backlog-row"]', { hasText: `Row ${String(SIZE).padStart(4, "0")}` }),
-    ).toBeVisible({ timeout: 20_000 * SLOW });
+    );
     await expect(page.getByTestId("backlog-pad-top")).toBeAttached();
     await expect(page.locator('[data-testid="backlog-row"]', { hasText: "Row 0001" })).toHaveCount(0);
 
@@ -627,10 +658,7 @@ test.describe("a backlog past the virtualisation threshold", () => {
       page.locator('[data-testid="backlog-row"]', { hasText: renamed }),
     ).toBeVisible({ timeout: 20_000 * SLOW });
     await page.reload();
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await expect(
-      page.locator('[data-testid="backlog-row"]', { hasText: renamed }),
-    ).toBeVisible({ timeout: 20_000 * SLOW });
+    await scrollToEndUntil(page, page.locator('[data-testid="backlog-row"]', { hasText: renamed }));
 
     // Put it back. These three tests share one project (it is made once
     // in beforeAll), so a mutation left behind here is a mutation the
@@ -681,11 +709,8 @@ test.describe("a backlog past the virtualisation threshold", () => {
     // in the WHOLE list (set only while windowed), so this cannot be
     // broken by a sibling test renaming something, and it checks the
     // windowing metadata at the same time.
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     // ARIA counts the header as row 1, so the last task of 250 is 251.
-    await expect(
-      page.locator(`[data-testid="backlog-row"][aria-rowindex="${SIZE + 1}"]`),
-    ).toBeVisible({ timeout: 20_000 * SLOW });
+    await scrollToEndUntil(page, page.locator(`[data-testid="backlog-row"][aria-rowindex="${SIZE + 1}"]`));
   });
 });
 
