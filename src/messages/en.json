@@ -1737,6 +1737,45 @@
         "followsItem": "Follows {key} — files on a private task stay private to your team",
         "noAccess": "You cannot view files"
       },
+      "subtasks": {
+        "title": {
+          "TASK": "Tasks",
+          "SUBTASK": "Subtasks"
+        },
+        "progress": "{done} of {total} done",
+        "empty": {
+          "TASK": {
+            "title": "No tasks in this epic yet",
+            "body": "Add the tasks this epic is made of — each one gets its own key, state and assignee."
+          },
+          "SUBTASK": {
+            "title": "No subtasks yet",
+            "body": "Break this task into the steps it takes — each one gets its own key, state and assignee."
+          }
+        },
+        "add": {
+          "TASK": "Add task",
+          "SUBTASK": "Add subtask"
+        },
+        "placeholder": {
+          "TASK": "Task title — Enter creates",
+          "SUBTASK": "Subtask title — Enter creates"
+        },
+        "adding": "Adding…",
+        "added": {
+          "TASK": "Task {key} added",
+          "SUBTASK": "Subtask {key} added"
+        },
+        "visibleHint": {
+          "TASK": "Follows {key} — this epic is visible to the client, so new tasks start visible too",
+          "SUBTASK": "Follows {key} — this task is visible to the client, so new subtasks start visible too"
+        },
+        "invalidTitle": "A title is 1 to {max} characters.",
+        "failed": {
+          "TASK": "The task was not created. Your title is still here — try again.",
+          "SUBTASK": "The subtask was not created. Your title is still here — try again."
+        }
+      },
       "state": {
         "trigger": "State: {state}",
         "search": "Search states…",

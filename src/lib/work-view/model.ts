@@ -152,6 +152,9 @@ export const isDone = (item: Pick<WorkItem, "stateCategory">): boolean =>
  */
 export const MAX_BULK_ITEMS = 50;
 
+/** A task title's length bound — the backlog row, the board column and the panel's subtask row all enforce it. */
+export const MAX_TITLE_LENGTH = 400;
+
 // ── filters ──────────────────────────────────────────────────────────
 
 /** The unassigned bucket's stable token in the URL and in the filter. */

@@ -1737,6 +1737,45 @@
         "followsItem": "Följer {key} — filer på en intern uppgift förblir interna",
         "noAccess": "Du kan inte se filer"
       },
+      "subtasks": {
+        "title": {
+          "TASK": "Uppgifter",
+          "SUBTASK": "Deluppgifter"
+        },
+        "progress": "{done} av {total} klara",
+        "empty": {
+          "TASK": {
+            "title": "Inga uppgifter i det här epicet ännu",
+            "body": "Lägg till uppgifterna som epicet består av — varje uppgift får egen nyckel, status och ansvarig."
+          },
+          "SUBTASK": {
+            "title": "Inga deluppgifter ännu",
+            "body": "Dela upp uppgiften i de steg den består av — varje steg får egen nyckel, status och ansvarig."
+          }
+        },
+        "add": {
+          "TASK": "Lägg till uppgift",
+          "SUBTASK": "Lägg till deluppgift"
+        },
+        "placeholder": {
+          "TASK": "Uppgiftens titel — Enter skapar",
+          "SUBTASK": "Deluppgiftens titel — Enter skapar"
+        },
+        "adding": "Lägger till…",
+        "added": {
+          "TASK": "Uppgift {key} tillagd",
+          "SUBTASK": "Deluppgift {key} tillagd"
+        },
+        "visibleHint": {
+          "TASK": "Följer {key} — epicet är synligt för kunden, så nya uppgifter börjar också synliga",
+          "SUBTASK": "Följer {key} — uppgiften är synlig för kunden, så nya deluppgifter börjar också synliga"
+        },
+        "invalidTitle": "En titel är 1 till {max} tecken.",
+        "failed": {
+          "TASK": "Uppgiften skapades inte. Din titel finns kvar — försök igen.",
+          "SUBTASK": "Deluppgiften skapades inte. Din titel finns kvar — försök igen."
+        }
+      },
       "state": {
         "trigger": "Status: {state}",
         "search": "Sök status…",

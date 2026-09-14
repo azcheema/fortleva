@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NO_FILTERS } from "./model";
-import { filtersOf, listHrefOf, peekHrefOf, workViewHref, workViewParsers } from "./params";
+import { filtersOf, listHrefOf, peekHrefOf, withItemParam, workViewHref, workViewParsers } from "./params";
 
 /**
  * The URL contract, pinned as a unit so a regression costs seconds
@@ -80,6 +80,13 @@ describe("workViewHref — one '?' per URL, always", () => {
     expect(query.getAll("item")).toEqual(["ACME-3"]);
     expect(query.get("archived")).toBe("1");
     expect(query.get("group")).toBe("epic");
+  });
+
+  it("withItemParam re-addresses a peek's own URL to a sibling: filters and repeats survive, the item and any error token do not", () => {
+    expect(withItemParam(`${base}?group=epic&item=ACME-3&error=x`, "ACME-9")).toBe(`${base}?group=epic&item=ACME-9`);
+    expect(withItemParam(`${base}?state=a&state=b&item=ACME-3`, "ACME-9")).toBe(`${base}?state=a&state=b&item=ACME-9`);
+    // No query at all: the bare path plus the item — one '?'.
+    expect(withItemParam(base, "ACME-9")).toBe(`${base}?item=ACME-9`);
   });
 
   it("a repeated param survives as a repeat, and a patch replaces rather than appends", () => {

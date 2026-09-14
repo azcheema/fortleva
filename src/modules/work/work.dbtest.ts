@@ -19,6 +19,7 @@ import {
   getItemDetail,
   listItems,
   moveItem,
+  resolveItemDetail,
   setItemArchived,
   updateItemFields,
 } from "./index";
@@ -1156,6 +1157,46 @@ describe("getItemDetail — the panel's one scoped read", () => {
     expect((await getItemDetail(ownerCtx(), projectId, child.number)).item.parent).toBeNull();
     await expect(getItemDetail(ownerCtx(), projectId, parent.number)).rejects.toThrow(AuthzError);
     await f.platform.workItem.update({ where: { id: parent.id }, data: { deletedAt: null } });
+  });
+
+  it("lists the item's live children by rank with the meter's counts; a subtask's own list is empty; canCreate is the create permission", async () => {
+    const states = await f.platform.workflowState.findMany({ where: { tenantId: f.tenantId, projectId } });
+    const byCat = (c: string) => states.find((s) => s.category === c)!.id;
+    const parent = await createItem(ownerCtx(), { projectId, title: "Subtasks parent" });
+    const a = await createItem(ownerCtx(), { projectId, title: "Sub a", parentId: parent.id });
+    const b = await createItem(ownerCtx(), { projectId, title: "Sub b", parentId: parent.id });
+    const c = await createItem(ownerCtx(), { projectId, title: "Sub c", parentId: parent.id });
+    const gone = await createItem(ownerCtx(), { projectId, title: "Sub gone", parentId: parent.id });
+    await changeState(ownerCtx(), c.id, byCat("DONE"));
+    await changeState(ownerCtx(), b.id, byCat("CANCELLED"));
+    await setItemArchived(ownerCtx(), c.id, true);
+    await f.platform.workItem.update({ where: { id: gone.id }, data: { deletedAt: new Date() } });
+
+    const detail = await getItemDetail(ownerCtx(), projectId, parent.number);
+    // Creation order IS rank order (each create takes the bottom rank);
+    // the soft-deleted child is gone, the archived one is listed.
+    expect(detail.subtasks.rows.map((r) => r.number)).toEqual([a.number, b.number, c.number]);
+    expect(detail.subtasks.rows.map((r) => r.stateCategory)).toEqual(["TODO", "CANCELLED", "DONE"]);
+    expect(detail.subtasks.rows[2]!.archivedAt).not.toBeNull();
+    // Progress is done over everything not cancelled (plan §3.1).
+    expect(detail.subtasks.done).toBe(1);
+    expect(detail.subtasks.total).toBe(2);
+    // A raw state pair, resolved at the page boundary like the item's own.
+    expect(detail.subtasks.rows[0]).toMatchObject({ stateName: null, stateSeedKey: "TODO", visibility: "INTERNAL" });
+    expect(resolveItemDetail(detail, (k) => `<${k}>`).subtasks.rows[0]!.stateName).toBe("<TODO>");
+    expect(detail.canCreate).toBe(true);
+
+    // A subtask has no children by construction: nothing is listed, and
+    // nothing is even read for it.
+    const leaf = await getItemDetail(ownerCtx(), projectId, a.number);
+    expect(leaf.item.type).toBe("SUBTASK");
+    expect(leaf.subtasks).toEqual({ rows: [], done: 0, total: 0 });
+
+    // The employee (assigned to this client above) holds work_item:create
+    // by the catalogue; the rows are the same rows.
+    const theirs = await getItemDetail(employeeCtx(), projectId, parent.number);
+    expect(theirs.canCreate).toBe(true);
+    expect(theirs.subtasks.rows).toHaveLength(3);
   });
 
   it("a project the member is not assigned to answers exactly as a number that exists nowhere", async () => {

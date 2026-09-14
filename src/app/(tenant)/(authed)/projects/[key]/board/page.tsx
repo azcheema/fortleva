@@ -152,7 +152,10 @@ export default async function ProjectBoardPage({
             canChangeVisibility={peekItem.canChangeVisibility}
             members={peekItem.members}
             activity={peekItem.activity}
+            canCreate={peekItem.canCreate}
+            subtasks={peekItem.subtasks}
             itemKey={`${project.key}-${peekItem.item.number}`}
+            projectId={project.id}
             projectKey={project.key}
             documents={peekDocuments}
             caps={{

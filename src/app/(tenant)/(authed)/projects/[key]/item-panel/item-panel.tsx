@@ -9,7 +9,9 @@ import type { DocumentListItem } from "@/documents/service";
 import { isoDateOf } from "@/lib/duration";
 import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
 import type { WeekStart } from "@/lib/week";
-import type { ItemActivityPage, ResolvedItemDetail, ResolvedWorkflowState } from "@/modules/work";
+import { childTypeOf } from "@/lib/enum-map";
+import { panelItemHref } from "@/lib/work-view";
+import type { ItemActivityPage, ResolvedItemDetail, ResolvedItemSubtasks, ResolvedWorkflowState } from "@/modules/work";
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
@@ -20,6 +22,7 @@ import { DueDateField } from "./due-date-field";
 import { EstimateField } from "./estimate-field";
 import { PriorityField } from "./priority-field";
 import { StateField } from "./state-field";
+import { SubtasksSection } from "./subtasks-section";
 import { VisibilityField } from "./visibility-field";
 
 /**
@@ -31,9 +34,10 @@ import { VisibilityField } from "./visibility-field";
  * Read-first: every property is its value as text until you edit it
  * (Mandate 1). State, Assignee, Priority, Estimate, Due date and
  * Visibility each have a `<PropertyPicker>` island behind them (§5.2
- * `S A P E D V`); the Activity section (slice 8) closes the panel; the
- * rest of the rail, subtasks and comments grow onto this shell in the
- * slices after it.
+ * `S A P E D V`); the Subtasks section (slice 9) sits between the
+ * description and the attachments; the Activity section (slice 8)
+ * closes the panel; the rest of the rail and comments grow onto this
+ * shell in the slices after it.
  */
 
 export type ItemPanelCaps = {
@@ -46,6 +50,7 @@ export type ItemPanelCaps = {
 export async function ItemPanel({
   item,
   itemKey,
+  projectId,
   projectKey,
   documents,
   caps,
@@ -62,10 +67,14 @@ export async function ItemPanel({
   canChangeVisibility,
   members,
   activity,
+  canCreate,
+  subtasks,
 }: {
   item: ResolvedItemDetail;
   /** "ACME-12" — the human key the header shows. */
   itemKey: string;
+  /** The project's id — the Subtasks section's create names it. */
+  projectId: string;
   projectKey: string;
   documents: DocumentListItem[];
   caps: ItemPanelCaps;
@@ -107,6 +116,10 @@ export async function ItemPanel({
   members: readonly { id: string; name: string }[];
   /** The Activity section's page — `getItemDetail`'s, behind the same scope check as the item; it carries its own cursor. */
   activity: ItemActivityPage;
+  /** `work_item:create` — whether the Subtasks section's add row is a control (§5.4). */
+  canCreate: boolean;
+  /** The Subtasks section's rows — `getItemDetail`'s, behind the same scope check as the item. */
+  subtasks: ResolvedItemSubtasks;
 }) {
   // The sheet owns the dialog title; the page owns the document's h1.
   const variant = surface === "page" ? "page" : "peek";
@@ -123,9 +136,11 @@ export async function ItemPanel({
 
   // `parentKey` is built here because a template literal as a JSX CHILD
   // is what react/jsx-no-literals reports (props are exempt); the href
-  // is hoisted only to keep the pair together.
+  // is hoisted only to keep the pair together. The link stays on THIS
+  // surface (slice 9, the subtask rows' rule): from a peek it is the
+  // parent's peek over the same list, from the page the parent's page.
   const parentKey = item.parent ? `${projectKey}-${item.parent.number}` : null;
-  const parentHref = item.parent ? `/projects/${projectKey}/items/${item.parent.number}` : null;
+  const parentHref = item.parent ? panelItemHref(surface, returnTo, projectKey, item.parent.number) : null;
 
   // h2, not h1: the project shell above already owns the page's single
   // h1 (its header), and the craft audit fails any stop with two — this
@@ -346,6 +361,24 @@ export async function ItemPanel({
           editable={canEdit}
         />
       </div>
+
+      {/* The lowest level has no children (`childTypeOf`): no section,
+          rather than an empty one offering a verb the database would
+          refuse. */}
+      {childTypeOf(item.type) !== null ? (
+        <div className={variant === "peek" ? "px-4 pb-4" : "pb-4"}>
+          <SubtasksSection
+            item={item}
+            itemKey={itemKey}
+            projectId={projectId}
+            projectKey={projectKey}
+            surface={surface}
+            returnTo={returnTo}
+            subtasks={subtasks}
+            canCreate={canCreate}
+          />
+        </div>
+      ) : null}
 
       <div className={variant === "peek" ? "px-4 pb-4" : ""}>
         {error ? (

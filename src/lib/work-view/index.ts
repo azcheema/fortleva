@@ -8,6 +8,7 @@
 export {
   GROUP_BYS,
   MAX_BULK_ITEMS,
+  MAX_TITLE_LENGTH,
   NO_FILTERS,
   UNASSIGNED,
   activeFilterCount,
@@ -50,7 +51,9 @@ export { ITEM_SURFACES, itemReturnTo, panelSurfaceOf, type ItemSurface } from ".
 export {
   filtersOf,
   listHrefOf,
+  panelItemHref,
   peekHrefOf,
+  withItemParam,
   workViewHref,
   workViewParsers,
   type RawSearchParams,

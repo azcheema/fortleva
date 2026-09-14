@@ -59,7 +59,7 @@ export default async function ProjectItemPage({
     activityBefore: before,
   });
   if (!panel) notFound();
-  const { item, states, canEdit, canApprove, canChangeVisibility, members, activity } = panel;
+  const { item, states, canEdit, canApprove, canChangeVisibility, members, activity, canCreate, subtasks } = panel;
 
   const [documents, prefs] = await Promise.all([
     project.caps.viewDocuments
@@ -80,7 +80,10 @@ export default async function ProjectItemPage({
       canChangeVisibility={canChangeVisibility}
       members={members}
       activity={activity}
+      canCreate={canCreate}
+      subtasks={subtasks}
       itemKey={`${project.key}-${item.number}`}
+      projectId={project.id}
       projectKey={project.key}
       documents={documents}
       caps={{

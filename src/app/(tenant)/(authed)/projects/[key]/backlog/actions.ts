@@ -29,7 +29,7 @@ import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { formatDay } from "@/lib/format";
 import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { stateLabel } from "@/lib/state-label";
-import { ITEM_SURFACES, MAX_BULK_ITEMS, itemReturnTo } from "@/lib/work-view";
+import { ITEM_SURFACES, MAX_BULK_ITEMS, MAX_TITLE_LENGTH, itemReturnTo } from "@/lib/work-view";
 import { isIsoDate } from "@/lib/week";
 
 /**
@@ -65,7 +65,7 @@ export async function createItemAction(
   const t = await getTranslations("projects.backlog");
   const id = uuid.safeParse(projectId);
   const key = keyShape.safeParse(projectKey);
-  const trimmed = title.trim().slice(0, 400);
+  const trimmed = title.trim().slice(0, MAX_TITLE_LENGTH);
   if (!id.success || !key.success || trimmed.length === 0) {
     return { ok: false, message: t("invalidTitle") };
   }
@@ -86,7 +86,7 @@ export async function renameItemAction(
   const t = await getTranslations("projects.backlog");
   const id = uuid.safeParse(itemId);
   const key = keyShape.safeParse(projectKey);
-  const trimmed = title.trim().slice(0, 400);
+  const trimmed = title.trim().slice(0, MAX_TITLE_LENGTH);
   if (!id.success || !key.success || trimmed.length === 0) {
     return { ok: false, message: t("invalidTitle") };
   }
@@ -381,7 +381,7 @@ export async function createItemInStateAction(
       projectId: uuid,
       projectKey: keyShape,
       stateId: uuid,
-      title: z.string().trim().min(1).max(400),
+      title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
     })
     .safeParse({ projectId, projectKey, stateId, title });
   if (!parsed.success) return { ok: false, message: t("invalidTitle") };

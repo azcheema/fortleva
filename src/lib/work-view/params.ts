@@ -118,3 +118,36 @@ export const listHrefOf = (base: string, raw: RawSearchParams): string =>
 /** The link that OPENS an item's peek over the current view. */
 export const peekHrefOf = (base: string, raw: RawSearchParams, itemKey: string): string =>
   workViewHref(base, raw, { item: itemKey, error: null });
+
+/**
+ * The peek's own URL re-addressed to ANOTHER item of the same project —
+ * how the panel links a subtask or the parent without leaving the view
+ * the member is in (UI.md §5.4: every peek is a link, and a link inside
+ * a peek over the board stays over the board). `href` is the peek's
+ * `returnTo` — its path plus whatever the member had chosen — so the
+ * filters and the grouping survive the hop and any stale error token
+ * does not. Query-less input (the item PAGE's own URL) is left alone by
+ * the caller, which links the page there instead.
+ */
+export function withItemParam(href: string, itemKey: string): string {
+  const url = new URL(href, "http://local");
+  return peekHrefOf(url.pathname, url.searchParams, itemKey);
+}
+
+/**
+ * A link INSIDE the item panel to another item of the same project —
+ * the rail's "Part of" and the Subtasks rows — stays on the panel's own
+ * surface: from a peek it re-addresses the peek (`withItemParam` over
+ * `returnTo`, the peek's own URL), from the full page it is the other
+ * item's page. One rule, one place; the two call sites cannot drift.
+ */
+export function panelItemHref(
+  surface: "board" | "backlog" | "page",
+  returnTo: string,
+  projectKey: string,
+  number: number,
+): string {
+  return surface === "page"
+    ? `/projects/${projectKey}/items/${number}`
+    : withItemParam(returnTo, `${projectKey}-${number}`);
+}

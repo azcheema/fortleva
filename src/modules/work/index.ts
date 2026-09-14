@@ -24,6 +24,8 @@ export {
   type ResolvedItemDetail,
   type ResolvedItemDetailResult,
   type ResolvedItemList,
+  type ResolvedItemSubtasks,
+  type ResolvedSubtaskEntry,
   type ResolvedWorkflowState,
   type VisibilityCommitted,
   type WorkCtx,
@@ -39,4 +41,6 @@ export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from 
 export { changeState, ensureProjectStates, type StateChange } from "./states";
 export { updateItemDescription, type DescriptionSaved } from "./description";
 export { ACTIVITY_PAGE_SIZE, type ActivityActor, type ActivityEntry, type ItemActivityPage } from "./activity";
+// Types only — `readItemSubtasks` stays off the barrel for the reason `readItemActivity` does (subtasks.ts).
+export { type ItemSubtasks, type SubtaskEntry } from "./subtasks";
 export { descriptionToken } from "./description-token";

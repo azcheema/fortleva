@@ -15,7 +15,8 @@ import { guarded } from "./db-errors";
 import { bottomRank, lockProjectRanks } from "./rank-lock";
 import { loadItemInScope, type ItemRow } from "./rows";
 import { ensureProjectStates, transitionState, type WorkCtx } from "./states";
-import type { StateSeedKey } from "@/lib/enum-map";
+import { readItemSubtasks, type ItemSubtasks, type SubtaskEntry } from "./subtasks";
+import { childTypeOf, type StateSeedKey } from "@/lib/enum-map";
 import { stateLabel } from "@/lib/state-label";
 
 /**
@@ -113,8 +114,25 @@ export type ResolvedWorkflowState = Omit<WorkflowStateEntry, "name" | "seedKey">
   name: string;
 };
 
+/** A row's RAW state pair (see `ItemListEntry.stateName`) — what `resolveRowState` strips. */
+type RawStateRow = { stateName: string | null; stateSeedKey: StateSeedKey | null };
+
+/** The row with its state pair resolved to display text — the ONE shape a client component sees. */
+export type ResolvedRow<T extends RawStateRow> = Omit<T, "stateName" | "stateSeedKey"> & { stateName: string };
+
+/**
+ * The ONE row-resolving pass (its twin for states is `resolveStates`):
+ * the raw pair is STRIPPED, not merely overwritten, so a resolved row
+ * is one no client component can mis-read, and nothing downstream has
+ * to know the translate-until-renamed rule exists.
+ */
+const resolveRowState = <T extends RawStateRow>(row: T, t: (key: StateSeedKey) => string): ResolvedRow<T> => {
+  const { stateName, stateSeedKey, ...rest } = row;
+  return { ...rest, stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t) };
+};
+
 export type ResolvedItemList = Omit<ItemList, "items" | "states"> & {
-  items: (Omit<ItemListEntry, "stateName" | "stateSeedKey"> & { stateName: string })[];
+  items: ResolvedRow<ItemListEntry>[];
   states: ResolvedWorkflowState[];
 };
 
@@ -140,13 +158,7 @@ export function resolveStateNames(
 ): ResolvedItemList {
   return {
     ...data,
-    // The raw pair is STRIPPED, not merely overwritten: a resolved list
-    // is one no client component can mis-read. Nothing downstream has to
-    // know the translate-until-renamed rule exists.
-    items: data.items.map(({ stateName, stateSeedKey, ...item }) => ({
-      ...item,
-      stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t),
-    })),
+    items: data.items.map((item) => resolveRowState(item, t)),
     states: resolveStates(data.states, t),
   };
 }
@@ -332,15 +344,26 @@ export type ItemDetailResult = {
   members: { id: string; name: string }[];
   /** The newest page of the item's history (slice 8) — or the page `activityBefore` asked for. */
   activity: ItemActivityPage;
+  /** `work_item:create` — whether the Subtasks section's add row is a control here (slice 9). */
+  canCreate: boolean;
+  /** The item's live children by rank, with the meter's counts (subtasks.ts) — empty for a SUBTASK, which has none by construction. */
+  subtasks: ItemSubtasks;
 };
 
 /** `ItemDetail` with the state pair resolved — see `ResolvedItemList`. */
-export type ResolvedItemDetail = Omit<ItemDetail, "stateName" | "stateSeedKey"> & { stateName: string };
+export type ResolvedItemDetail = ResolvedRow<ItemDetail>;
+
+/** A subtask row with its state pair resolved. */
+export type ResolvedSubtaskEntry = ResolvedRow<SubtaskEntry>;
+
+/** `ItemSubtasks` after the page boundary has resolved every state name. */
+export type ResolvedItemSubtasks = Omit<ItemSubtasks, "rows"> & { rows: ResolvedSubtaskEntry[] };
 
 /** `ItemDetailResult` after the page boundary has resolved every name. */
-export type ResolvedItemDetailResult = Omit<ItemDetailResult, "item" | "states"> & {
+export type ResolvedItemDetailResult = Omit<ItemDetailResult, "item" | "states" | "subtasks"> & {
   item: ResolvedItemDetail;
   states: ResolvedWorkflowState[];
+  subtasks: ResolvedItemSubtasks;
 };
 
 /** The detail twin of `resolveStateNames`: strips every raw pair at the page boundary. */
@@ -348,11 +371,11 @@ export function resolveItemDetail(
   result: ItemDetailResult,
   t: (key: StateSeedKey) => string,
 ): ResolvedItemDetailResult {
-  const { stateName, stateSeedKey, ...rest } = result.item;
   return {
     ...result,
-    item: { ...rest, stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t) },
+    item: resolveRowState(result.item, t),
     states: resolveStates(result.states, t),
+    subtasks: { ...result.subtasks, rows: result.subtasks.rows.map((row) => resolveRowState(row, t)) },
   };
 }
 
@@ -410,7 +433,7 @@ export async function getItemDetail(
     // owe a Phase-3 answer for the contact principal. If the read ever
     // does come back empty, the panel degrades to plain text rather
     // than rendering a picker with nothing in it.
-    const [attachmentCount, canEdit, canApprove, canChangeVisibility, states, activity] = await Promise.all([
+    const [attachmentCount, canEdit, canApprove, canChangeVisibility, canCreate, states, activity, subtasks] = await Promise.all([
       tx.document.count({
         where: {
           tenantId: ctx.tenantId,
@@ -422,6 +445,7 @@ export async function getItemDetail(
       isAuthorized(tx, ctx.actor, "work_item:edit"),
       isAuthorized(tx, ctx.actor, "work_item:approve"),
       isAuthorized(tx, ctx.actor, "work_item:change_visibility"),
+      isAuthorized(tx, ctx.actor, "work_item:create"),
       tx.workflowState.findMany({
         where: { tenantId: ctx.tenantId, projectId },
         orderBy: { rank: "asc" },
@@ -434,6 +458,12 @@ export async function getItemDetail(
       // — never a second entry point that could answer for an item this
       // read refused.
       readItemActivity(tx, ctx.tenantId, row!.id, row!.clientId, opts.activityBefore),
+      // The Subtasks section's rows (subtasks.ts), under the same rule. A
+      // level with no children (`childTypeOf`: a SUBTASK) is skipped
+      // rather than read to return nothing.
+      childTypeOf(row!.type) === null
+        ? Promise.resolve({ rows: [], done: 0, total: 0 } satisfies ItemSubtasks)
+        : readItemSubtasks(tx, ctx.tenantId, row!.id),
     ]);
     // The `A` picker's rows — read only for a member who can edit: a
     // viewer's panel renders the assignee as text and never lists anyone.
@@ -481,6 +511,8 @@ export async function getItemDetail(
       canChangeVisibility,
       members,
       activity,
+      canCreate,
+      subtasks,
     };
   });
 }
@@ -538,15 +570,21 @@ export async function createItem(
     // UPDATE) — pinned by tree-guards.dbtest.ts. Under the rank lock no
     // other QUEUED writer of this project holds rows (rank-lock.ts, which
     // also lists the lockers outside the queue).
-    let parent: ItemRow | null = null;
+    let parent: Pick<ItemRow, "type" | "visibility"> | null = null;
     if (input.parentId) {
       await shareLockParent(tx, ctx.tenantId, input.parentId);
       parent = await tx.workItem.findFirst({
         where: { tenantId: ctx.tenantId, id: input.parentId, projectId: input.projectId, deletedAt: null },
+        // The two fields the child takes from it, never the whole row
+        // (the standing trap: a select-less read ships the description).
+        select: { type: true, visibility: true },
       });
       if (!parent) deny("NOT_FOUND");
     }
-    const type = parent ? (parent.type === "EPIC" ? "TASK" : "SUBTASK") : "TASK";
+    // The tree trigger has the last word on nesting; `childTypeOf` is
+    // the same rule, and a parent it says has no children is its
+    // CANNOT_NEST.
+    const type = parent ? (childTypeOf(parent.type) ?? "SUBTASK") : "TASK";
     const visibility = parent?.visibility ?? "INTERNAL";
     const rank = await bottomRank(tx, ctx.tenantId, input.projectId);
     await tx.workItem.create({

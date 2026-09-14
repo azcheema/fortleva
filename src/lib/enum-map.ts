@@ -156,6 +156,18 @@ export const STATUS_MAP = {
 export type StatusDomain = keyof typeof STATUS_MAP;
 export type StatusValue<D extends StatusDomain> = keyof (typeof STATUS_MAP)[D] & string;
 
+/**
+ * The hierarchy (plan §3.1): Epic → Task → Subtask, three levels, and
+ * what a level's CHILDREN are — `null` for a Subtask, the lowest. The
+ * one place the rule is spelled: `createItem` derives a child's type
+ * from it, the panel decides from it whether an item has a Subtasks
+ * section at all, and the section keys its copy by it (an Epic's
+ * children are Tasks, so its button says "Add task"). The database
+ * trigger has the last word; this is the same rule, readable.
+ */
+export const childTypeOf = (type: StatusValue<"workItemType">): "TASK" | "SUBTASK" | null =>
+  type === "EPIC" ? "TASK" : type === "TASK" ? "SUBTASK" : null;
+
 /** Priority: geometry all the way up, hue only at URGENT. */
 export const PRIORITIES = ["NONE", "LOW", "MEDIUM", "HIGH", "URGENT"] as const;
 export type Priority = (typeof PRIORITIES)[number];

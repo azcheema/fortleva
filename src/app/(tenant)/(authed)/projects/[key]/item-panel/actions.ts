@@ -1,11 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
 import { requireTenantContext } from "@/members/tenant-context";
-import { updateItemDescription, type DescriptionSaved } from "@/modules/work";
+import { createItem, updateItemDescription, type DescriptionSaved } from "@/modules/work";
+import { PROJECT_KEY_RE } from "@/projects/service";
 import { runAction, type ActionResult } from "@/lib/server-actions";
+import { ITEM_SURFACES, MAX_TITLE_LENGTH, itemReturnTo } from "@/lib/work-view";
 
 /**
  * The item panel's server actions. Tenant and member come from
@@ -18,6 +21,13 @@ import { runAction, type ActionResult } from "@/lib/server-actions";
  * backlog table's own actions, shared by both surfaces
  * (`../backlog/actions.ts`), so the table and the panel cannot drift
  * into two validations of one field.
+ *
+ * `createSubtaskAction` IS here: it is the Subtasks section's own verb
+ * (slice 9), and the one create that names a parent. It goes through the
+ * same `createItem` as the backlog's row and the board's column "+", so
+ * a subtask lands exactly as any task does — numbered, at the bottom of
+ * the project's order, in the default state, its visibility defaulted
+ * from the parent — and the tree trigger has the last word on nesting.
  */
 
 const Save = z.object({
@@ -60,4 +70,47 @@ export async function saveDescriptionAction(input: {
     revalidatePath(`/projects/${key}/board`);
     return saved;
   });
+}
+
+const CreateSubtask = z.object({
+  parentId: z.uuid(),
+  /** The parent's number — only the MFA step-up return address needs it (`itemReturnTo`). */
+  parentNumber: z.number().int().min(1).max(999_999_999),
+  projectId: z.uuid(),
+  // The projects service's own key rule — `itemReturnTo` builds the
+  // step-up address on the strength of it.
+  projectKey: z.string().regex(PROJECT_KEY_RE),
+  surface: z.enum(ITEM_SURFACES),
+  title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
+});
+
+/**
+ * Title-only create under a parent (UI rule 2). Returns the new item's
+ * id and number; a refusal — a subtask under a subtask, a parent that is
+ * gone, a project out of scope — is a typed message the island toasts,
+ * never a silent nothing. Both list surfaces are revalidated: the new
+ * row is a backlog row and a board card the moment it exists. The
+ * parent binds the project: `createItem` reads it under the project the
+ * actor was just scoped to, so a mismatched pair is NOT_FOUND.
+ */
+export async function createSubtaskAction(
+  input: z.input<typeof CreateSubtask>,
+): Promise<ActionResult<{ id: string; number: number }>> {
+  const { membership, actor } = await requireTenantContext();
+  const parsed = CreateSubtask.safeParse(input);
+  if (!parsed.success) {
+    // The one refusal a shape check can produce for a member: the title
+    // is empty or too long. The identifiers are the panel's own props.
+    const t = await getTranslations("projects.item.subtasks");
+    return { ok: false, message: t("invalidTitle", { max: MAX_TITLE_LENGTH }) };
+  }
+  const p = parsed.data;
+  const r = await runAction(itemReturnTo(p.surface, p.projectKey, p.parentNumber), () =>
+    createItem({ tenantId: membership.tenantId, actor }, { projectId: p.projectId, title: p.title, parentId: p.parentId }),
+  );
+  if (r.ok) {
+    revalidatePath(`/projects/${p.projectKey}/backlog`);
+    revalidatePath(`/projects/${p.projectKey}/board`);
+  }
+  return r;
 }
