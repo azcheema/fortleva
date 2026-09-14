@@ -134,6 +134,7 @@ export default async function ProjectBacklogPage({
             canApprove={peekItem.canApprove}
             canChangeVisibility={peekItem.canChangeVisibility}
             members={peekItem.members}
+            activity={peekItem.activity}
             itemKey={`${project.key}-${peekItem.item.number}`}
             projectKey={project.key}
             documents={peekDocuments}

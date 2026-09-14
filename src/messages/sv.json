@@ -1805,6 +1805,33 @@
         "estimate": "Ange estimat",
         "dueDate": "Ange förfallodatum",
         "visibility": "Ändra synlighet"
+      },
+      "activity": {
+        "title": "Aktivitet",
+        "empty": "Ingen aktivitet på den här uppgiften ännu.",
+        "older": "Äldre aktivitet",
+        "latest": "Senaste aktiviteten",
+        "pastEnd": {
+          "title": "Ingen äldre aktivitet",
+          "body": "Allt före den här punkten har redan visats."
+        },
+        "system": "Systemet",
+        "created": "skapade uppgiften",
+        "descriptionEdited": "redigerade beskrivningen",
+        "titleChanged": "ändrade titeln från ”{from}” till ”{to}”",
+        "priorityChanged": "ändrade prioriteten från {from} till {to}",
+        "estimateSet": "satte estimatet till {to}",
+        "estimateChanged": "ändrade estimatet från {from} till {to}",
+        "estimateCleared": "tog bort estimatet ({from})",
+        "dueDateSet": "satte förfallodatumet till {to}",
+        "dueDateChanged": "flyttade förfallodatumet från {from} till {to}",
+        "dueDateCleared": "tog bort förfallodatumet ({from})",
+        "assigned": "tilldelade {to} uppgiften",
+        "reassigned": "flyttade ansvaret från {from} till {to}",
+        "unassigned": "tog bort {from} som ansvarig",
+        "stateChanged": "flyttade uppgiften från {from} till {to}",
+        "visibilityChanged": "ändrade synligheten till {to}",
+        "fieldChanged": "ändrade ”{field}”"
       }
     },
     "states": {

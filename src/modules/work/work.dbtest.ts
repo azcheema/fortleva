@@ -8,6 +8,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { dateColumn } from "@/lib/duration";
 import { setupTenant } from "@/members/dbtest-fixture";
 import {
+  ACTIVITY_PAGE_SIZE,
   assignItem,
   bulkChangeState,
   bulkSetPriority,
@@ -591,9 +592,9 @@ describe("assignItem diffs the row version it replaces (slice 7)", () => {
     const { id } = await createItem(ownerCtx(), { projectId, title: "Reassigned mid-wait" });
     const manager = f.seats.manager.memberId;
     // The waiting assignment is to the OWNER — the actor — whom `emit`
-    // never notifies: the fan-out describe below counts this tenant's
-    // assignment notifications and outbox rows by KIND, and an
-    // assignment to anyone else here would be one more of each there.
+    // never notifies, so this test leaves no mail behind (the fan-out
+    // describe below now sweeps the kind before it counts; a test that
+    // needs no sweeping is still the simpler one to reason about).
     const owner = f.seats.owner.memberId;
     const { result: assigning } = await raceBehind(
       (tx) => tx.workItem.update({ where: { id }, data: { assigneeMemberId: manager }, select: { id: true } }),
@@ -1226,6 +1227,174 @@ describe("getItemDetail — the panel's one scoped read", () => {
   });
 });
 
+describe("getItemDetail carries the item's history (panel slice 8)", () => {
+  const nameOf = async (memberId: string): Promise<string> =>
+    (
+      await f.platform.member.findUniqueOrThrow({
+        where: { id: memberId },
+        select: { user: { select: { name: true } } },
+      })
+    ).user.name;
+
+  it("newest first in write order, the writers' encodings, the actor and both assignee refs named, INTERNAL on a private task, no cursor under one page", async () => {
+    const { id, number } = await createItem(ownerCtx(), { projectId, title: "History" });
+    // THREE rows in ONE transaction, in the writer's field order: the
+    // display order rests on Prisma minting uuid(7) in sequence within a
+    // millisecond, and this is where that assumption is pinned. The
+    // values are the encodings activity-copy.ts parses — digits, an ISO
+    // day — pinned here against the real writer.
+    await updateItemFields(ownerCtx(), id, {
+      priority: "HIGH",
+      estimateMinutes: 90,
+      targetDate: new Date("2026-09-20T00:00:00.000Z"),
+    });
+    await assignItem(ownerCtx(), id, f.seats.manager.memberId);
+    await assignItem(ownerCtx(), id, f.seats.employee.memberId);
+    const doing = await f.platform.workflowState.findFirstOrThrow({
+      where: { tenantId: f.tenantId, projectId, category: "IN_PROGRESS" },
+      orderBy: { rank: "asc" },
+    });
+    await changeState(ownerCtx(), id, doing.id);
+
+    const { activity } = await getItemDetail(ownerCtx(), projectId, number);
+    expect(activity.rows.map((r) => r.field)).toEqual([
+      "stateCategory",
+      "assignee",
+      "assignee",
+      "targetDate",
+      "estimate",
+      "priority",
+      "created",
+    ]);
+    expect(activity.before).toBeNull();
+    expect(activity.nextCursor).toBeNull();
+    // The keyset's order IS the display order: ids strictly descending,
+    // the same-transaction trio included.
+    const ids = activity.rows.map((r) => r.id);
+    expect([...ids].sort().reverse()).toEqual(ids);
+
+    const owner = await nameOf(f.seats.owner.memberId);
+    for (const r of activity.rows) {
+      expect(r.actor).toEqual({ kind: "member", memberId: f.seats.owner.memberId, contactId: null, name: owner });
+      expect(r.visibility).toBe("INTERNAL");
+    }
+    const [state, reassign, assign, targetDate, estimate, priority] = activity.rows;
+    expect(state).toMatchObject({
+      oldValue: "TODO",
+      newValue: "IN_PROGRESS",
+      newRef: doing.id,
+      // Refs are named for the assignee field ONLY — a state ref is the
+      // page's to resolve, against the states it already holds.
+      oldRefName: null,
+      newRefName: null,
+    });
+    expect(state!.oldRef).toEqual(expect.any(String));
+    expect(reassign).toMatchObject({
+      oldRef: f.seats.manager.memberId,
+      newRef: f.seats.employee.memberId,
+      oldRefName: await nameOf(f.seats.manager.memberId),
+      newRefName: await nameOf(f.seats.employee.memberId),
+    });
+    expect(assign).toMatchObject({
+      oldRef: null,
+      newRef: f.seats.manager.memberId,
+      oldRefName: null,
+      newRefName: await nameOf(f.seats.manager.memberId),
+    });
+    expect(targetDate).toMatchObject({ oldValue: null, newValue: "2026-09-20", oldRef: null, newRef: null });
+    expect(estimate).toMatchObject({ oldValue: null, newValue: "90", oldRef: null, newRef: null });
+    expect(priority).toMatchObject({ oldValue: "NONE", newValue: "HIGH", oldRef: null, newRef: null });
+  });
+
+  it("pages by keyset on the row id without a gap or an overlap; a cursor that is not one of THIS item's rows is the newest page", async () => {
+    const { id, number } = await createItem(ownerCtx(), { projectId, title: "Long history" });
+    const other = await createItem(ownerCtx(), { projectId, title: "Somebody else's history" });
+    // ACTIVITY_PAGE_SIZE + 5 raw rows on top of the creation row: two
+    // pages, the second short. Raw, so the test costs one statement
+    // rather than 55 locked writes.
+    const extra = ACTIVITY_PAGE_SIZE + 5;
+    await f.platform.workItemActivity.createMany({
+      data: Array.from({ length: extra }, (_, i) => ({
+        tenantId: f.tenantId,
+        clientId,
+        projectId,
+        workItemId: id,
+        actorMemberId: f.seats.owner.memberId,
+        field: "priority",
+        oldValue: i % 2 ? "HIGH" : "LOW",
+        newValue: i % 2 ? "LOW" : "HIGH",
+        visibility: "INTERNAL" as const,
+      })),
+    });
+
+    const first = (await getItemDetail(ownerCtx(), projectId, number)).activity;
+    expect(first.rows).toHaveLength(ACTIVITY_PAGE_SIZE);
+    expect(first.before).toBeNull();
+    expect(first.nextCursor).toBe(first.rows.at(-1)!.id);
+
+    const second = (await getItemDetail(ownerCtx(), projectId, number, { activityBefore: first.nextCursor })).activity;
+    expect(second.before).toBe(first.nextCursor);
+    expect(second.rows).toHaveLength(extra + 1 - ACTIVITY_PAGE_SIZE);
+    expect(second.nextCursor).toBeNull();
+    expect(second.rows.at(-1)!.field).toBe("created");
+
+    const all = [...first.rows, ...second.rows].map((r) => r.id);
+    expect(new Set(all).size).toBe(extra + 1);
+    expect([...all].sort().reverse()).toEqual(all);
+
+    // The same row id in upper case IS that row: the parser lowercases,
+    // because the column compares byte-wise.
+    const upper = (await getItemDetail(ownerCtx(), projectId, number, { activityBefore: first.nextCursor!.toUpperCase() })).activity;
+    expect(upper.before).toBe(first.nextCursor);
+    expect(upper.rows.map((r) => r.id)).toEqual(second.rows.map((r) => r.id));
+
+    // Not one of THIS item's rows: the newest page, unpaged — never an
+    // error, never a 404, and never a filter. Garbage, an injection, a
+    // well-formed id that is no row, the item's own id, and a row of
+    // ANOTHER item — a bare `id <` bound would have filtered this item's
+    // history by that stranger and, for an older one, answered "no older
+    // activity" to a member looking at a full history.
+    const otherRow = await f.platform.workItemActivity.findFirstOrThrow({
+      where: { workItemId: other.id },
+      select: { id: true },
+    });
+    for (const cursor of ["", "abc", "not-a-uuid", `${first.nextCursor} OR 1=1`, randomUUID(), id, otherRow.id]) {
+      const page = (await getItemDetail(ownerCtx(), projectId, number, { activityBefore: cursor })).activity;
+      expect(page.before, cursor).toBeNull();
+      expect(page.rows.map((r) => r.id), cursor).toEqual(first.rows.map((r) => r.id));
+    }
+  });
+
+  it("a suspended member keeps their name, a contact actor has one, and an id that resolves to nobody has none", async () => {
+    const { id, number } = await createItem(ownerCtx(), { projectId, title: "Names" });
+    await assignItem(ownerCtx(), id, f.seats.employee.memberId);
+    const employee = await nameOf(f.seats.employee.memberId);
+    await f.platform.member.update({ where: { id: f.seats.employee.memberId }, data: { status: "SUSPENDED" } });
+    try {
+      const { activity } = await getItemDetail(ownerCtx(), projectId, number);
+      expect(activity.rows[0]).toMatchObject({ field: "assignee", newRef: f.seats.employee.memberId, newRefName: employee });
+    } finally {
+      await f.platform.member.update({ where: { id: f.seats.employee.memberId }, data: { status: "ACTIVE" } });
+    }
+
+    // Phase 3's contact-caused row, and the two kinds of nobody: an
+    // actor id that resolves to no member (the UI's "Unknown"), and a row
+    // with no actor at all (the system). Three round trips, so three ids
+    // in order.
+    const ghost = randomUUID();
+    const base = { tenantId: f.tenantId, clientId, projectId, workItemId: id, field: "title", oldValue: "a", newValue: "b", visibility: "INTERNAL" as const };
+    await f.platform.workItemActivity.create({ data: { ...base, actorContactId: contact.id } });
+    await f.platform.workItemActivity.create({ data: { ...base, actorMemberId: ghost } });
+    await f.platform.workItemActivity.create({ data: { ...base } });
+    const { activity } = await getItemDetail(ownerCtx(), projectId, number);
+    expect(activity.rows.slice(0, 3).map((r) => r.actor)).toEqual([
+      { kind: "system", memberId: null, contactId: null, name: null },
+      { kind: "member", memberId: ghost, contactId: null, name: null },
+      { kind: "contact", memberId: null, contactId: contact.id, name: "Client Carol" },
+    ]);
+  });
+});
+
 describe("contact comment census (the one direct contact INSERT)", () => {
   let visibleItemId: string;
 
@@ -1338,6 +1507,15 @@ describe("search: the lexeme probe", () => {
 });
 
 describe("notify.emit: assignment fan-out with dedupe", () => {
+  // This describe counts the tenant's assignment notifications and
+  // outbox rows BY KIND, so it starts from none: the describes above
+  // hand tasks over freely and leave their mail behind (the inbox
+  // suite's rule — sweep at the counter, not at every writer).
+  beforeAll(async () => {
+    await f.platform.emailOutbox.deleteMany({ where: { tenantId: f.tenantId, kind: "work_item.assigned" } });
+    await f.platform.notification.deleteMany({ where: { tenantId: f.tenantId, kind: "work_item.assigned" } });
+  });
+
   it("assigning creates one notification + one debounced outbox row; reassigning while unread collapses", async () => {
     const { id } = await createItem(ownerCtx(), { projectId, title: "Assigned work" });
     await assignItem(ownerCtx(), id, f.seats.employee.memberId);

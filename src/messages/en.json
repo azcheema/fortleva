@@ -1805,6 +1805,33 @@
         "estimate": "Set estimate",
         "dueDate": "Set due date",
         "visibility": "Change visibility"
+      },
+      "activity": {
+        "title": "Activity",
+        "empty": "No activity on this task yet.",
+        "older": "Older activity",
+        "latest": "Latest activity",
+        "pastEnd": {
+          "title": "No older activity",
+          "body": "Everything before this point has already been shown."
+        },
+        "system": "System",
+        "created": "created this task",
+        "descriptionEdited": "edited the description",
+        "titleChanged": "changed the title from “{from}” to “{to}”",
+        "priorityChanged": "changed the priority from {from} to {to}",
+        "estimateSet": "set the estimate to {to}",
+        "estimateChanged": "changed the estimate from {from} to {to}",
+        "estimateCleared": "removed the estimate ({from})",
+        "dueDateSet": "set the due date to {to}",
+        "dueDateChanged": "moved the due date from {from} to {to}",
+        "dueDateCleared": "removed the due date ({from})",
+        "assigned": "assigned this to {to}",
+        "reassigned": "reassigned this from {from} to {to}",
+        "unassigned": "unassigned {from}",
+        "stateChanged": "moved this from {from} to {to}",
+        "visibilityChanged": "changed the visibility to {to}",
+        "fieldChanged": "changed “{field}”"
       }
     },
     "states": {

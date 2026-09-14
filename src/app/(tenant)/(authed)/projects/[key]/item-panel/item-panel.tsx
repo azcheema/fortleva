@@ -9,10 +9,11 @@ import type { DocumentListItem } from "@/documents/service";
 import { isoDateOf } from "@/lib/duration";
 import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
 import type { WeekStart } from "@/lib/week";
-import type { ResolvedItemDetail, ResolvedWorkflowState } from "@/modules/work";
+import type { ItemActivityPage, ResolvedItemDetail, ResolvedWorkflowState } from "@/modules/work";
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
+import { ActivitySection } from "./activity-section";
 import { AssigneeField } from "./assignee-field";
 import { DescriptionField } from "./description-field";
 import { DueDateField } from "./due-date-field";
@@ -30,8 +31,9 @@ import { VisibilityField } from "./visibility-field";
  * Read-first: every property is its value as text until you edit it
  * (Mandate 1). State, Assignee, Priority, Estimate, Due date and
  * Visibility each have a `<PropertyPicker>` island behind them (§5.2
- * `S A P E D V`); the rest of the rail, subtasks, comments and the
- * Activity tab grow onto this shell in the slices after it.
+ * `S A P E D V`); the Activity section (slice 8) closes the panel; the
+ * rest of the rail, subtasks and comments grow onto this shell in the
+ * slices after it.
  */
 
 export type ItemPanelCaps = {
@@ -59,6 +61,7 @@ export async function ItemPanel({
   canApprove,
   canChangeVisibility,
   members,
+  activity,
 }: {
   item: ResolvedItemDetail;
   /** "ACME-12" — the human key the header shows. */
@@ -86,8 +89,12 @@ export async function ItemPanel({
    * The look follows from it (`variant`, below).
    */
   surface: "board" | "backlog" | "page";
-  /** Peek only: the link out to the full page. */
-  fullPageHref?: string;
+  /**
+   * The full item page — REQUIRED on every surface: the peek links out
+   * to it, and the Activity section's older pages live on it whichever
+   * surface renders the section (the page passes its own URL).
+   */
+  fullPageHref: string;
   /** `work_item:edit` — whether the description and the properties are editable here. */
   canEdit: boolean;
   /** The project's states, by rank, names already resolved. */
@@ -98,6 +105,8 @@ export async function ItemPanel({
   canChangeVisibility: boolean;
   /** The Assignee picker's rows — `getItemDetail`'s, so the full page has them too. */
   members: readonly { id: string; name: string }[];
+  /** The Activity section's page — `getItemDetail`'s, behind the same scope check as the item; it carries its own cursor. */
+  activity: ItemActivityPage;
 }) {
   // The sheet owns the dialog title; the page owns the document's h1.
   const variant = surface === "page" ? "page" : "peek";
@@ -135,7 +144,7 @@ export async function ItemPanel({
     <span className="text-xs text-muted-foreground">{tCommon("archived")}</span>
   ) : null;
   const fullPageLink =
-    variant === "peek" && fullPageHref ? (
+    variant === "peek" ? (
       <Button asChild variant="ghost" size="sm" className="ms-auto">
         <Link href={fullPageHref} data-testid="item-full-page">
           <MaximizeIcon />
@@ -393,6 +402,15 @@ export async function ItemPanel({
             </div>
           )}
         </SectionCard>
+      </div>
+
+      <div className={variant === "peek" ? "px-4 pb-4" : "pt-4"}>
+        <ActivitySection
+          activity={activity}
+          pageHref={fullPageHref}
+          states={states}
+          durationStyle={durationStyle}
+        />
       </div>
     </div>
   );

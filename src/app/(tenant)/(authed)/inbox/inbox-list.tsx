@@ -18,7 +18,7 @@ import { toast } from "sonner";
 
 import { EmptyState, RowActions, type RowAction } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { useServerNow } from "@/components/shell/use-server-now";
+import { RelativeTime } from "@/components/relative-time";
 import { SNOOZE_PRESETS, snoozeUntil } from "@/lib/snooze";
 import type { ActionResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
@@ -99,7 +99,6 @@ export function InboxList({
   const format = useFormatter();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const now = useServerNow(serverNow, false);
 
   const [shown, applyPatch] = useOptimistic(rows, (current: readonly InboxRowView[], p: Patch) => {
     const ids = new Set(p.ids);
@@ -219,7 +218,6 @@ export function InboxList({
           const label = t(
             `kind.${r.kind ? KIND_MESSAGE_KEY[r.kind] : GENERIC_COPY_KEY}`,
           );
-          const created = Date.parse(r.createdAt);
           return (
             <li
               key={r.id}
@@ -267,12 +265,11 @@ export function InboxList({
                 ) : null}
               </div>
 
-              <time
-                dateTime={r.createdAt}
+              <RelativeTime
+                at={r.createdAt}
+                now={serverNow}
                 className="mt-0.5 shrink-0 text-xs whitespace-nowrap text-muted-foreground"
-              >
-                {format.relativeTime(created, now)}
-              </time>
+              />
               <RowActions label={tCommon("actionsFor", { name: label })} items={menuFor(r)} />
             </li>
           );

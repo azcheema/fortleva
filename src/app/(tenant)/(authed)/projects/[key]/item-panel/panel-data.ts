@@ -27,6 +27,10 @@ export async function loadPanelItem(
   number: number,
   returnTo: string,
   t: (key: StateSeedKey) => string,
+  opts: {
+    /** The full page's `?before=` — the Activity page strictly older than that row. */
+    activityBefore?: string;
+  } = {},
 ): Promise<ResolvedItemDetailResult | null> {
   try {
     // The project's states come from HERE, not from the board's or the
@@ -35,7 +39,7 @@ export async function loadPanelItem(
     // panel's content must depend on permission, never on the query the
     // surface happened to run — and on the full page there is no list
     // at all.
-    const result = await getItemDetail(ctx, projectId, number);
+    const result = await getItemDetail(ctx, projectId, number, { activityBefore: opts.activityBefore });
     // Every state pair resolves HERE, at the server boundary, exactly as
     // the list surfaces do it (DATA_MODEL §6.14).
     return resolveItemDetail(result, t);

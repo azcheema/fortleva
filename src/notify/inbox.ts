@@ -2,6 +2,7 @@ import { isAuthorized, scopeWhere } from "@/authz/authorize";
 import type { MemberActor } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
 import { fail } from "@/lib/domain-error";
+import { idCursor } from "@/lib/id-cursor";
 
 import { isNotificationKind, type NotificationKind } from "./catalog";
 
@@ -115,12 +116,10 @@ export type InboxPage = {
  * by `isolation.dbtest.ts`), which for lowercase canonical hex is the
  * same order.
  */
-const decodeCursor = (raw: string | null | undefined): string | null => {
-  if (!raw) return null;
-  // Canonical UUID only: anything else is a stale or hand-made link and
-  // is answered with the first page rather than an error.
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
-};
+// Canonical UUID only (`idCursor`, the parser the item panel's Activity
+// section shares): anything else is a stale or hand-made link and is
+// answered with the first page rather than an error.
+const decodeCursor = idCursor;
 
 /**
  * Does this param actually put the reader past the first page?

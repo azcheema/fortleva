@@ -44,6 +44,10 @@ export default async function ProjectItemPage({
 }) {
   const [{ key, number }, query] = await Promise.all([params, searchParams]);
   const error = typeof query["error"] === "string" ? query["error"] : undefined;
+  // The Activity section's keyset cursor (UI.md §5.4): one of this
+  // task's row ids, or nothing — the service decides which, and a cursor
+  // that is not one is the newest page, never a 404.
+  const before = typeof query["before"] === "string" ? query["before"] : undefined;
   const n = itemNumber(number);
   if (n === null) notFound();
   const project = await loadProject(key);
@@ -51,9 +55,11 @@ export default async function ProjectItemPage({
   const ctx = { tenantId: membership.tenantId, actor };
   const self = `/projects/${project.key}/items/${n}`;
   const tStates = await getTranslations("projects.states.seed");
-  const panel = await loadPanelItem(ctx, project.id, n!, self, (seedKey) => tStates(seedKey));
+  const panel = await loadPanelItem(ctx, project.id, n!, self, (seedKey) => tStates(seedKey), {
+    activityBefore: before,
+  });
   if (!panel) notFound();
-  const { item, states, canEdit, canApprove, canChangeVisibility, members } = panel;
+  const { item, states, canEdit, canApprove, canChangeVisibility, members, activity } = panel;
 
   const [documents, prefs] = await Promise.all([
     project.caps.viewDocuments
@@ -73,6 +79,7 @@ export default async function ProjectItemPage({
       canApprove={canApprove}
       canChangeVisibility={canChangeVisibility}
       members={members}
+      activity={activity}
       itemKey={`${project.key}-${item.number}`}
       projectKey={project.key}
       documents={documents}
@@ -83,6 +90,7 @@ export default async function ProjectItemPage({
         changeDocumentVisibility: project.caps.changeDocumentVisibility,
       }}
       returnTo={self}
+      fullPageHref={self}
       durationStyle={prefs.durationStyle}
       weekStart={prefs.weekStart}
       showIsoWeek={prefs.showIsoWeek}

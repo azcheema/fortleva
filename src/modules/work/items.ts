@@ -9,7 +9,7 @@ import { softDeleteDocumentsInTx } from "@/documents/service";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { emit } from "@/notify/emit";
-import { writeActivity } from "./activity";
+import { readItemActivity, writeActivity, type ItemActivityPage } from "./activity";
 import { descriptionToken } from "./description-token";
 import { guarded } from "./db-errors";
 import { bottomRank, lockProjectRanks } from "./rank-lock";
@@ -330,6 +330,8 @@ export type ItemDetailResult = {
   canChangeVisibility: boolean;
   /** The `A` picker's rows: ACTIVE members, in the order the list surfaces use. */
   members: { id: string; name: string }[];
+  /** The newest page of the item's history (slice 8) — or the page `activityBefore` asked for. */
+  activity: ItemActivityPage;
 };
 
 /** `ItemDetail` with the state pair resolved — see `ResolvedItemList`. */
@@ -358,6 +360,10 @@ export async function getItemDetail(
   ctx: WorkCtx,
   projectId: string,
   number: number,
+  opts: {
+    /** One of the item's own activity row ids: the history page strictly older than it. Anything else is the newest page. */
+    activityBefore?: string | null;
+  } = {},
 ): Promise<ItemDetailResult> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:view");
@@ -366,6 +372,7 @@ export async function getItemDetail(
       where: { tenantId: ctx.tenantId, projectId, number, deletedAt: null },
       select: {
         id: true,
+        clientId: true,
         number: true,
         title: true,
         type: true,
@@ -394,7 +401,7 @@ export async function getItemDetail(
       },
     });
     if (!row) deny("NOT_FOUND");
-    // All four in parallel, inside the transaction `requireAccess` +
+    // All six in parallel, inside the transaction `requireAccess` +
     // `assertInScope` already opened.
     //
     // `ensureProjectStates` is deliberately NOT called here: `createItem`
@@ -403,7 +410,7 @@ export async function getItemDetail(
     // owe a Phase-3 answer for the contact principal. If the read ever
     // does come back empty, the panel degrades to plain text rather
     // than rendering a picker with nothing in it.
-    const [attachmentCount, canEdit, canApprove, canChangeVisibility, states] = await Promise.all([
+    const [attachmentCount, canEdit, canApprove, canChangeVisibility, states, activity] = await Promise.all([
       tx.document.count({
         where: {
           tenantId: ctx.tenantId,
@@ -422,6 +429,11 @@ export async function getItemDetail(
         // the panel's cannot drift into two shapes.
         select: { id: true, name: true, seedKey: true, category: true, isHidden: true, isDefault: true, wipLimit: true, requiresApproval: true },
       }),
+      // The Activity section's page (activity.ts): one bounded read, in
+      // the same transaction and behind the same scope check as the item
+      // — never a second entry point that could answer for an item this
+      // read refused.
+      readItemActivity(tx, ctx.tenantId, row!.id, row!.clientId, opts.activityBefore),
     ]);
     // The `A` picker's rows — read only for a member who can edit: a
     // viewer's panel renders the assignee as text and never lists anyone.
@@ -468,6 +480,7 @@ export async function getItemDetail(
       canApprove,
       canChangeVisibility,
       members,
+      activity,
     };
   });
 }
