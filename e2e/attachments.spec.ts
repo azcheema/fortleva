@@ -62,7 +62,10 @@ test("the backlog key opens the item peek; an INTERNAL task locks the upload's v
   const visibility = peek.locator("#upload-visibility");
   await expect(visibility).toBeDisabled();
   await expect(visibility).toHaveValue("INTERNAL");
-  await expect(peek.getByText(`Follows ${seed.projectKey}-1`, { exact: false })).toBeVisible();
+  // The UPLOAD's hint by its id: since slice 10 the comment composer's
+  // private-task hint says "Follows KEY-1" too, and a text locator that
+  // matched both is a strict-mode violation (CI run 34957615490).
+  await expect(peek.locator("#upload-visibility-hint")).toContainText(`Follows ${seed.projectKey}-1`);
 
   // Closing lands back on the clean list URL.
   await peek.getByRole("button", { name: "Close" }).click();
