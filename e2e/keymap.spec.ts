@@ -197,6 +197,118 @@ test.describe("the scope registry", () => {
   });
 });
 
+test.describe("the backlog's `X`", () => {
+  test("toggles the focused row's selection, is advertised, and types into a row's editor instead", async ({
+    page,
+  }) => {
+    // Selecting writes nothing, so this reads the SEEDED rows and creates
+    // none — and no bulk verb runs here (work.spec owns those).
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const row = page.locator('[data-testid="backlog-row"]').first();
+    await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+    const link = row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) });
+    const box = row.getByTestId("backlog-select-row");
+    const checked = row.locator('[data-testid="backlog-select-row"][data-state="checked"]');
+
+    // The handler is React's, attached at hydration, so the first press
+    // races it exactly as a registry key does. The guard matters as much:
+    // `X` TOGGLES, so a blind second press would undo the first.
+    await pressUntil(page, "x", checked, { from: link });
+    await expect(page.getByTestId("bulk-count")).toContainText("1");
+    await expect(page.getByTestId("bulk-live")).toHaveText("1 task selected");
+    // Selecting is not navigating: focus stays on the row.
+    await expect(link).toBeFocused();
+
+    // The overlay names it, under the backlog's own heading.
+    const overlay = page.getByRole("dialog", { name: /shortcut/i });
+    await page.keyboard.press("?");
+    const section = overlay
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Backlog", exact: true }) });
+    await expect(section.locator("li", { hasText: "Select or deselect task" }).locator("kbd")).toHaveText([
+      "X",
+    ]);
+    await page.keyboard.press("?");
+    await expect(overlay).toHaveCount(0);
+
+    // Again, and the bar leaves with the selection.
+    await link.focus();
+    await page.keyboard.press("x");
+    await expect(box).toHaveAttribute("data-state", "unchecked");
+    await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
+    // An emptied polite region is silent, so a member who empties the
+    // selection is told so in words.
+    await expect(page.getByTestId("bulk-live")).toHaveText("0 tasks selected");
+
+    // The row's inline delete question renders IN the row, so `X` from its
+    // Yes would find the row — and must not change the selection under an
+    // open destructive question. Left with Escape: nothing here ever
+    // clicks near Yes on a seeded task.
+    await row.getByRole("button", { name: /Actions for/ }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    const yes = row.getByRole("button", { name: "Yes" });
+    await expect(yes).toBeVisible();
+    await yes.focus();
+    await page.keyboard.press("x");
+    await expect(yes).toBeVisible();
+    await expect(box).toHaveAttribute("data-state", "unchecked");
+    await page.keyboard.press("Escape");
+    await expect(yes).toHaveCount(0);
+
+    // Inside a row's editor the key is the letter. The ESTIMATE cell, on
+    // purpose: a stray commit there fails the parser and writes nothing,
+    // where a title would rename a seeded task.
+    await row.getByTestId("backlog-estimate").getByRole("button").click();
+    const estimate = row.getByTestId("backlog-estimate").locator("input");
+    await expect(estimate).toBeFocused();
+    await page.keyboard.press("x");
+    await expect(estimate).toHaveValue(/x$/);
+    await expect(box).toHaveAttribute("data-state", "unchecked");
+    await page.keyboard.press("Escape");
+    await expect(estimate).toHaveCount(0);
+
+    // Below `sm` the select column drops and a row has no selected cue of
+    // its own, so `X` selects nothing and the overlay does not offer it.
+    // The same key on the same row works again once the column is back —
+    // the positive control that makes the absence mean the gate, not a
+    // dead key.
+    const overlayHeading = (name: string) => overlay.getByRole("heading", { name, exact: true });
+    await page.setViewportSize({ width: 600, height: 900 });
+    await expect(box).toBeHidden();
+    await link.focus();
+    await page.keyboard.press("x");
+    await page.keyboard.press("?");
+    // Presence first, in the same overlay, so the absence is not an
+    // overlay that has not rendered its sections yet.
+    await expect(overlayHeading("Global")).toBeVisible();
+    await expect(overlayHeading("Backlog")).toHaveCount(0);
+    await page.keyboard.press("?");
+    await expect(overlay).toHaveCount(0);
+    await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await link.focus();
+    await page.keyboard.press("x");
+    await expect(box).toHaveAttribute("data-state", "checked");
+    await page.keyboard.press("x");
+    await expect(box).toHaveAttribute("data-state", "unchecked");
+    // …and the overlay offers it again: the media query reported the way
+    // BACK, not only the way down.
+    await page.keyboard.press("?");
+    await expect(overlayHeading("Backlog")).toBeVisible();
+    await page.keyboard.press("?");
+    await expect(overlay).toHaveCount(0);
+
+    // Under the peek focus is trapped in the sheet, so `X` cannot act —
+    // and the overlay, which says what a key would do NOW, drops the row
+    // while it lists the Task section.
+    await link.click();
+    await expect(page.getByTestId("item-peek")).toBeVisible();
+    await pressUntil(page, "?", overlay);
+    await expect(overlayHeading("Task")).toBeVisible();
+    await expect(overlayHeading("Backlog")).toHaveCount(0);
+  });
+});
+
 test.describe("the `?` overlay and the palette", () => {
   test("is scope-aware, toggles, and owns the keyboard while open", async ({ page }) => {
     await page.goto(`/projects/${seed.projectKey}/board`);

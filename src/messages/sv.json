@@ -124,6 +124,7 @@
       "scopes": {
         "global": "Globalt",
         "board": "Tavla",
+        "backlog": "Backlogg",
         "inbox": "Inkorg",
         "triage": "Sortering",
         "item": "Uppgift"
@@ -1498,6 +1499,9 @@
       "estimatePlaceholder": "Lägg till",
       "invalidTitle": "Det gick inte att spara.",
       "invalidEstimate": "Estimat anges som 2h, 1,5 eller 90m.",
+      "keys": {
+        "select": "Markera eller avmarkera uppgift"
+      },
       "saved": "Sparat",
       "actionFailed": "Ändringen sparades inte. Listan visar aktuellt läge.",
       "archivedToast": "Uppgiften arkiverad",

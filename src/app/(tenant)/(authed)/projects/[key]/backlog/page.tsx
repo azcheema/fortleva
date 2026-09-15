@@ -121,6 +121,7 @@ export default async function ProjectBacklogPage({
             durationStyle={prefs.durationStyle}
             basePath={base}
             includeArchived={includeArchived}
+            peekOpen={Boolean(peekItem)}
           />
         </>
       )}

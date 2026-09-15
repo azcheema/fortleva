@@ -36,12 +36,13 @@
  * ARC-24 (global/item/board), plus `modal` — the honest name for a
  * layer that owns the keyboard while it is open.
  *
- * `backlog` is deliberately absent: that surface ships no region keys,
- * and an unused scope name is dead weight. `inbox` and `triage` are
- * declared and empty on purpose, so the slices that fill them are a
- * registration rather than a redesign.
+ * `backlog` arrived with that surface's first region key, `X` (panel
+ * slice 14, 2026-09-15) — until then it was absent, because an unused
+ * scope name is dead weight. `inbox` and `triage` are declared and empty
+ * on purpose, so the slices that fill them are a registration rather
+ * than a redesign.
  */
-export type KeyScope = "global" | "board" | "inbox" | "triage" | "item" | "modal";
+export type KeyScope = "global" | "board" | "backlog" | "inbox" | "triage" | "item" | "modal";
 
 /**
  * Precedence is THIS TABLE, never mount order. React runs child effects
@@ -49,12 +50,13 @@ export type KeyScope = "global" | "board" | "inbox" | "triage" | "item" | "modal
  * `global` scope ABOVE the panel's `item` scope and invert shadowing —
  * a thing that would work only by luck.
  *
- * `board`/`inbox`/`triage` are peers: they are region scopes on
- * different surfaces and never mount together.
+ * `board`/`backlog`/`inbox`/`triage` are peers: they are region scopes
+ * on different surfaces and never mount together.
  */
 export const SCOPE_ORDER: Record<KeyScope, number> = {
   global: 0,
   board: 10,
+  backlog: 10,
   inbox: 10,
   triage: 10,
   item: 20,
@@ -215,6 +217,44 @@ export const SUPPRESS_SELECTOR = [
   '[role="menu"]',
   '[role="listbox"]',
 ].join(",");
+
+/**
+ * Whether a React-tree handler should act on `key` for the element that
+ * holds focus — the backlog's `X` on its focused row.
+ *
+ * Such a key is registered `run: null` and handled on the event target,
+ * because only the target knows WHICH row (the board's `S` reason). That
+ * handler runs at document-bubble, BEFORE the window dispatcher, so none
+ * of `decide()`'s guards have run for it yet. This is those guards, in
+ * that order. A unit test pins it to `decide()` over every combination
+ * of the flags both read, which catches a change to one of THOSE guards;
+ * a guard `decide()` gains on a new event field or on scope state is not
+ * exercised there and must be mirrored here by hand. `exclusive` scopes
+ * are ignored on purpose: the only one is the `?` overlay, a modal dialog
+ * that traps focus, so no row's handler receives a key beneath it —
+ *
+ *  · `defaultPrevented`: something nearer the target already owns it;
+ *  · a ⌘/Ctrl/Alt chord is not the bare key (Shift is not a chord, as
+ *    in `decide()`);
+ *  · an editable target types the letter, and a menu layer owns its
+ *    keys — React bubbles a PORTALLED row menu's events through the
+ *    handler's tree, so the handler really does receive them;
+ *  · an armed `G` consumes exactly the next key, so `G X` is never `X`.
+ *
+ * Plus one guard `decide()` never needed: AUTO-REPEAT. A held key that
+ * TOGGLES flips on every repeat and lands wherever the member let go.
+ */
+export function focusedKeyApplies(
+  e: KeyEventShape & { repeat: boolean },
+  key: string,
+  goPending: boolean,
+): boolean {
+  if (e.defaultPrevented || e.repeat) return false;
+  if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  if (e.inEditable || e.inMenuLayer) return false;
+  if (goPending) return false;
+  return e.key.toLowerCase() === key.toLowerCase();
+}
 
 /** Single keys are inert while an editable element has focus (UI.md §6). */
 export const isEditableTarget = (target: EventTarget | null): boolean => {

@@ -68,11 +68,12 @@ const SEQUENCE_WINDOW_MS = 900;
 
 /**
  * The armed `G` sequence is module state because the dispatcher is a
- * module singleton. It has exactly ONE reader outside this file:
- * `board.tsx`'s `onBoardKeyDown`, a React-tree handler that runs at
- * document-bubble — before the dispatcher — and therefore has no other
- * way to see that a `G` is already armed. Everything else that used to
- * ask now simply registers a binding.
+ * module singleton. It has exactly TWO readers outside this file, both
+ * React-tree handlers that run at document-bubble — before the
+ * dispatcher — and so have no other way to see that a `G` is already
+ * armed: `board.tsx`'s `onBoardKeyDown`, and the backlog table body's
+ * `X` (which passes it into `focusedKeyApplies`). Everything else that used to ask
+ * now simply registers a binding.
  */
 let pendingGoTimer: number | null = null;
 export const isGoSequencePending = (): boolean => pendingGoTimer !== null;

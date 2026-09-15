@@ -124,6 +124,7 @@
       "scopes": {
         "global": "Global",
         "board": "Board",
+        "backlog": "Backlog",
         "inbox": "Inbox",
         "triage": "Triage",
         "item": "Task"
@@ -1498,6 +1499,9 @@
       "estimatePlaceholder": "Add",
       "invalidTitle": "That could not be saved.",
       "invalidEstimate": "Estimates look like 2h, 1.5 or 90m.",
+      "keys": {
+        "select": "Select or deselect task"
+      },
       "saved": "Saved",
       "actionFailed": "The change did not save. The list shows the current state.",
       "archivedToast": "Task archived",

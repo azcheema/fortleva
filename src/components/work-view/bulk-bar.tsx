@@ -25,13 +25,13 @@ import type { WorkState } from "@/lib/work-view";
  * exact height plus the safe-area inset, and sits at `z-20` so the tab
  * bar stays on top of it rather than the other way round.
  *
- * The verbs are BUTTONS, not single keys. A single-key binding would owe
- * UI.md rule 7 a ⌘K entry and a row in the `?` overlay, and neither is
- * possible yet: the palette has no registry for page-contextual actions,
- * and the overlay is not scope-aware (UI.md §6 records that deferral —
- * it arrives with `react-hotkeys-hook` and the `item` scope). Shipping a
- * key the overlay cannot advertise is exactly what rule 7 forbids, so
- * this slice ships none.
+ * The verbs are BUTTONS, not single keys. When this bar shipped (2W-F
+ * slice 4) no key was possible: the `?` overlay was not scope-aware and
+ * the palette had no page rows, so rule 7 could not be met. Both came
+ * with the keyboard registry (panel slice 5), and the SELECTION now has
+ * its key — `X` on a focused backlog row (panel slice 14, in
+ * `backlog-table.tsx`). The verbs still have none; which single key
+ * should archive a selection is a question nobody has asked yet.
  *
  * Three verbs, deliberately. Visibility, assignment and deletion are NOT
  * here: each needs machinery a loop cannot stand in for, and the reasons

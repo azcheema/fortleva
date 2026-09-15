@@ -9,6 +9,7 @@ import {
   SCOPE_ORDER,
   SUPPRESS_SELECTOR,
   decide,
+  focusedKeyApplies,
   overlaySections,
   paletteOffersPageRows,
   signatureOf,
@@ -550,5 +551,53 @@ describe("cmdk's vim bindings are off by construction", () => {
     const users = files.filter((f) => RENDERS_DIALOG.test(f.text));
     expect(users.length).toBeGreaterThan(0);
     expect(users.filter((f) => AUTO_FOCUS.test(code(f.text))).map((f) => f.path)).toEqual([]);
+  });
+});
+
+describe("focusedKeyApplies — a React-tree handler's copy of the dispatcher's guards", () => {
+  const shape = (over: Partial<Parameters<typeof focusedKeyApplies>[0]> = {}) => ({
+    ...ev({ key: "x" }),
+    repeat: false,
+    ...over,
+  });
+
+  it("agrees with decide() on every combination of the flags both read", () => {
+    // A run-bearing `x` is what the dispatcher WOULD run; the handler
+    // must act exactly where that binding would have. This cannot see a
+    // guard decide() gains on a NEW field or on scope state — those must
+    // be mirrored by hand (focusedKeyApplies says so).
+    const withX = scopes({ scope: "backlog", bindings: [binding({ key: "x" })] });
+    const flags = ["defaultPrevented", "metaKey", "ctrlKey", "altKey", "inEditable", "inMenuLayer"] as const;
+    for (let mask = 0; mask < 1 << (flags.length + 1); mask++) {
+      const over: Partial<Parameters<typeof decide>[0]> = {};
+      flags.forEach((flag, i) => {
+        over[flag] = Boolean(mask & (1 << i));
+      });
+      const goPending = Boolean(mask & (1 << flags.length));
+      const e = ev({ key: "x", ...over });
+      expect(focusedKeyApplies({ ...e, repeat: false }, "x", goPending)).toBe(
+        decide(e, withX, [], goPending).kind === "binding",
+      );
+    }
+  });
+
+  it("the bare key applies in either case, and no other key does", () => {
+    expect(focusedKeyApplies(shape(), "x", false)).toBe(true);
+    expect(focusedKeyApplies(shape({ key: "X" }), "x", false)).toBe(true);
+    expect(focusedKeyApplies(shape({ key: "s" }), "x", false)).toBe(false);
+  });
+
+  it("refuses auto-repeat, which decide() never needed: a held toggle would flip on every repeat", () => {
+    expect(focusedKeyApplies(shape({ repeat: true }), "x", false)).toBe(false);
+  });
+
+  it("the dispatcher never acts on the advertised `run: null` row, so the handler is the only actor", () => {
+    const backlog = scopes({ scope: "backlog", bindings: [binding({ key: "x", run: null })] });
+    expect(decide(ev({ key: "x" }), backlog, [], false)).toEqual({ kind: "none" });
+    // Nor does a hidden one swallow the key: `run: null` is skipped
+    // before `enabled` is read.
+    const hidden = scopes({ scope: "backlog", bindings: [binding({ key: "x", run: null, enabled: false })] });
+    expect(decide(ev({ key: "x" }), hidden, [], false)).toEqual({ kind: "none" });
+    expect(overlaySections(hidden)).toEqual([]);
   });
 });

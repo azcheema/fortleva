@@ -24,6 +24,7 @@ import {
   useOptimistic,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
 } from "react";
 import { toast } from "sonner";
@@ -40,6 +41,7 @@ import {
   visibilityRowCue,
   type RowAction,
 } from "@/components/semantic";
+import { isGoSequencePending, useScopeKeys } from "@/components/shell/use-hotkeys";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -57,6 +59,7 @@ import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { wroteSomething } from "@/lib/action-result";
 import { durationInputText, formatDay, formatDuration, type DurationStyle } from "@/lib/format";
+import { focusedKeyApplies, inMenuLayer, isEditableTarget } from "@/lib/keymap";
 import type { ActionResult, FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
 import {
@@ -367,6 +370,27 @@ function DropLine({ edge }: { edge: "top" | "bottom" }) {
   );
 }
 
+/**
+ * Whether the select column is displayed: its cells are
+ * `priority="medium"`, which `PRIORITY` in `@/components/ui/table` makes
+ * `hidden sm:table-cell`, and `sm` is Tailwind's 40rem. Kept HERE rather
+ * than exported beside `PRIORITY`, because that module is `"use client"`
+ * and server pages import it — a constant exported from it is a throwing
+ * client reference waiting for a server `className` (the standing trap).
+ *
+ * It decides only what the `?` overlay ADVERTISES. Whether `X` acts is
+ * asked of the rendered checkbox itself, so if this literal and the
+ * breakpoint ever part, the key stays right and only the overlay is wrong.
+ */
+const SELECT_COLUMN_QUERY = "(min-width: 40rem)";
+const subscribeSelectColumn = (onChange: () => void) => {
+  const media = window.matchMedia(SELECT_COLUMN_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+};
+const selectColumnShownNow = () => window.matchMedia(SELECT_COLUMN_QUERY).matches;
+const selectColumnShownOnServer = () => false;
+
 export function BacklogTable({
   projectId,
   projectKey,
@@ -375,6 +399,7 @@ export function BacklogTable({
   durationStyle,
   basePath,
   includeArchived,
+  peekOpen,
 }: {
   projectId: string;
   projectKey: string;
@@ -388,6 +413,10 @@ export function BacklogTable({
   basePath: string;
   /** Whether the server loaded archived items too (`?archived=1`). */
   includeArchived: boolean;
+  /** Whether the item peek is open over the list. REQUIRED (standing
+   * trap): while it is, focus is trapped in the sheet and `X` cannot act,
+   * so the overlay must not offer it — the board's `peekOpen` rule. */
+  peekOpen: boolean;
 }) {
   const t = useTranslations("projects.backlog");
   const tView = useTranslations("projects.workView");
@@ -468,6 +497,20 @@ export function BacklogTable({
   // selection's reach — a bulk verb can only ever touch what the member
   // can see — while re-showing them brings them back.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  // Whether the live region should SAY the selection is empty. An emptied
+  // polite region is not spoken, so taking the last row out — by `X` on a
+  // key link, where focus announces nothing of its own — was silent. Set
+  // ONLY by a member emptying the shown selection (the last shown row's
+  // toggle, select-all off, Clear), and cleared during render whenever
+  // anything is shown selected again (beside `selected`, below). So it is
+  // true only while the shown selection is empty, and a filter or refresh
+  // that LATER hides selected rows finds it false and stays silent, as it
+  // always was. A bulk verb touches no flag: the selection it acted on was
+  // not empty, so the flag is false — unless the member emptied the
+  // selection while the verb was pending, and then the region already
+  // reads "0 tasks selected", the verb's answer changes no text, and only
+  // its toast speaks.
+  const [announceNone, setAnnounceNone] = useState(false);
 
   // ── the window (2W-F slice 3) ───────────────────────────────────
   //
@@ -702,6 +745,9 @@ export function BacklogTable({
 
   const shownItems = rows.flatMap((r) => (r.kind === "item" ? [r.item] : []));
   const selected = shownItems.filter((i) => selectedIds.has(i.id));
+  // `announceNone` may not outlive an empty shown selection (its comment
+  // above): adjusted during render, never in an effect.
+  if (announceNone && selected.length > 0) setAnnounceNone(false);
 
   const atCap = selected.length >= MAX_BULK_ITEMS;
 
@@ -712,6 +758,7 @@ export function BacklogTable({
       toast.info(tView("bulk.capped", { max: MAX_BULK_ITEMS }));
       return;
     }
+    if (!on && selected.length === 1 && selected[0]!.id === id) setAnnounceNone(true);
     setSelectedIds((current) => {
       const next = new Set(current);
       if (on) next.add(id);
@@ -745,6 +792,31 @@ export function BacklogTable({
       router.refresh();
     });
   };
+
+  // The backlog's one region key (UI.md §6): `X` toggles the FOCUSED
+  // row's selection — the row's checkbox, by keyboard, cap and all, and
+  // only where that checkbox is displayed.
+  // `run: null`, advertised here and handled by the body's `onKeyDown`,
+  // for the board's `S` reason: only a handler on the event target knows
+  // which row. A window binding reading `document.activeElement` would
+  // claim `X` page-wide and do nothing wherever no row holds focus. No
+  // ⌘K row follows from that (the palette runs only run-bearing rows),
+  // and none could work: opening the palette moves focus off the row.
+  // Hidden below `sm` with the column, so the overlay never offers a key
+  // that the handler below refuses.
+  const selectColumnShown = useSyncExternalStore(
+    subscribeSelectColumn,
+    selectColumnShownNow,
+    selectColumnShownOnServer,
+  );
+  useScopeKeys("backlog", [
+    {
+      key: "x",
+      label: t("keys.select"),
+      enabled: data.caps.canEdit && !peekOpen && selectColumnShown,
+      run: null,
+    },
+  ]);
 
   // Things exist, none match: the third empty state (UI.md §5.8), never
   // conflated with "nothing yet" — the verb is to clear the filter, and
@@ -807,6 +879,7 @@ export function BacklogTable({
                       // the persistence model this component documents.
                       const shownIds = new Set(shownItems.map((i) => i.id));
                       if (on !== true) {
+                        setAnnounceNone(true);
                         setSelectedIds((current) =>
                           new Set([...current].filter((id) => !shownIds.has(id))),
                         );
@@ -859,6 +932,53 @@ export function BacklogTable({
             onBlurCapture={(e) => {
               const next = e.relatedTarget as Node | null;
               if (!next || !e.currentTarget.contains(next)) setFocusedRowId(null);
+            }}
+            // `X` (registered above). The row is the one the TARGET sits in,
+            // asked of the DOM: a portalled row menu's keydown bubbles
+            // through here in React's tree, but `closest` walks the DOM,
+            // where that menu is inside no row.
+            onKeyDown={(e) => {
+              if (!data.caps.canEdit) return;
+              const applies = focusedKeyApplies(
+                {
+                  key: e.key,
+                  metaKey: e.metaKey,
+                  ctrlKey: e.ctrlKey,
+                  altKey: e.altKey,
+                  defaultPrevented: e.defaultPrevented,
+                  repeat: e.repeat,
+                  inEditable: isEditableTarget(e.target),
+                  inMenuLayer: inMenuLayer(e.target),
+                },
+                "x",
+                isGoSequencePending(),
+              );
+              if (!applies || !(e.target instanceof Element)) return;
+              // A row's inline delete question ("Delete this task? Yes No")
+              // renders IN the row, not in a portal, so `closest` would find
+              // the row from its Yes — and `X` would change the selection
+              // with a destructive question still open.
+              if (e.target.closest('[data-slot="inline-confirm"]')) return;
+              const row = e.target.closest<HTMLElement>("[data-item-id]");
+              const id = row?.dataset["itemId"];
+              if (!row || !id || !shownItems.some((i) => i.id === id)) return;
+              // `X` IS the row's checkbox, so where that checkbox is not
+              // displayed it does nothing. Below `sm` the select column
+              // drops, and a row has no selected cue of its own — TableRow's
+              // selected style is an inset LEFT bar in `--primary`, at the
+              // edge where `visibilityRowCue` marks a client-visible row in
+              // a colour 1.0002:1 against it — so a selection made there
+              // could not be seen. Asked of the element, not of a breakpoint: no client
+              // rects means `display: none` somewhere above it. DISPLAYED,
+              // not necessarily in view: from `sm` up the table can scroll
+              // sideways past the checkbox (a long title; from `md`, four
+              // more columns) and `X` still acts — refusing would tie the key to a scroll
+              // position, while the bar's count is on screen and the cue
+              // is one scroll away.
+              const box = row.querySelector('[role="checkbox"]');
+              if (!box || box.getClientRects().length === 0) return;
+              e.preventDefault();
+              toggleRow(id, !selectedIds.has(id));
             }}
             // Chrome's scroll anchoring reacts to a mutating spacer by
             // adjusting scrollTop, which fires another scroll event,
@@ -956,6 +1076,7 @@ export function BacklogTable({
                         checked={selectedIds.has(item.id)}
                         aria-label={tView("bulk.selectRow", { key: `${projectKey}-${item.number}` })}
                         data-testid="backlog-select-row"
+                        aria-keyshortcuts="X"
                         onCheckedChange={(on) => toggleRow(item.id, on === true)}
                       />
                     ) : null}
@@ -1247,7 +1368,9 @@ export function BacklogTable({
           inside the bar would stay silent on the very first tick, which
           is the one that matters. */}
       <span role="status" aria-live="polite" className="sr-only" data-testid="bulk-live">
-        {selected.length > 0 ? tView("bulk.count", { count: selected.length }) : ""}
+        {/* …and says "0 tasks selected" once a member empties it, since an
+            emptied region is silent (`announceNone`). */}
+        {selected.length > 0 || announceNone ? tView("bulk.count", { count: selected.length }) : ""}
       </span>
       {selected.length > 0 ? (
         <BulkBar
@@ -1269,7 +1392,10 @@ export function BacklogTable({
           onArchived={(archived) =>
             runBulk(() => bulkSetArchivedAction(selected.map((i) => i.id), projectKey, archived))
           }
-          onClear={() => setSelectedIds(new Set())}
+          onClear={() => {
+            setAnnounceNone(true);
+            setSelectedIds(new Set());
+          }}
         />
       ) : null}
       <p className="text-xs">

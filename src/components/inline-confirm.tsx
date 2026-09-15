@@ -76,6 +76,7 @@ export function InlineConfirm({
   return (
     <span
       role="group"
+      data-slot="inline-confirm"
       className="inline-flex items-center gap-1 text-xs"
       onKeyDown={(e) => {
         if (e.key === "Escape") setAsking(false);
