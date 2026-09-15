@@ -15,6 +15,7 @@ import type {
   ItemActivityPage,
   ItemComments,
   ItemDetailCaps,
+  MilestoneEntry,
   ResolvedItemDetail,
   ResolvedItemSubtasks,
   ResolvedWorkflowState,
@@ -28,6 +29,7 @@ import { CommentsSection } from "./comments-section";
 import { DescriptionField } from "./description-field";
 import { DueDateField } from "./due-date-field";
 import { EstimateField } from "./estimate-field";
+import { MilestoneField } from "./milestone-field";
 import { PriorityField } from "./priority-field";
 import { StateField } from "./state-field";
 import { SubtasksSection } from "./subtasks-section";
@@ -40,9 +42,9 @@ import { VisibilityField } from "./visibility-field";
  * copy is how the two drift apart.
  *
  * Read-first: every property is its value as text until you edit it
- * (Mandate 1). State, Assignee, Priority, Estimate, Due date and
- * Visibility each have a `<PropertyPicker>` island behind them (§5.2
- * `S A P E D V`); the Subtasks section (slice 9) sits between the
+ * (Mandate 1). State, Assignee, Priority, Estimate, Due date,
+ * Visibility and Milestone each have a `<PropertyPicker>` island behind
+ * them (§5.2 `S A P E D V M`); the Subtasks section (slice 9) sits between the
  * description and the attachments; the Activity section (slice 8)
  * closes the panel; the rest of the rail and comments grow onto this
  * shell in the slices after it.
@@ -72,6 +74,7 @@ export async function ItemPanel({
   itemCaps,
   states,
   members,
+  milestones,
   activity,
   subtasks,
   comments,
@@ -116,6 +119,8 @@ export async function ItemPanel({
   states: ResolvedWorkflowState[];
   /** The Assignee picker's rows — `getItemDetail`'s, so the full page has them too. */
   members: readonly { id: string; name: string }[];
+  /** The Milestone picker's rows — the project's phases by rank, `getItemDetail`'s for the same reason. */
+  milestones: readonly MilestoneEntry[];
   /** The Activity section's page — `getItemDetail`'s, behind the same scope check as the item; it carries its own cursor. */
   activity: ItemActivityPage;
   /** The Subtasks section's rows — `getItemDetail`'s, behind the same scope check as the item. */
@@ -195,13 +200,14 @@ export async function ItemPanel({
     </>
   );
 
-  // Read-first property list (UI.md §10.15 pattern 7). The six pickers
-  // are UNCONDITIONAL siblings in rail order, each keyed by the ITEM:
-  // `PeekShell` never remounts between items, so without the key an
-  // optimistic value — or an open popover — would survive a navigation
-  // from one task to the next; and the `?` overlay lists a scope's keys
-  // in registration order, which is this DOM order (S A P E D V — the
-  // order §2 rule 3 spells the keys in).
+  // Read-first property list (UI.md §10.15 pattern 7). The seven pickers
+  // are siblings in rail order, each keyed by the ITEM: `PeekShell` never
+  // remounts between items, so without the key an optimistic value — or
+  // an open popover — would survive a navigation from one task to the
+  // next; and the `?` overlay lists a scope's keys in registration order,
+  // which is this DOM order (S A P E D V M — the order §2 rule 3 spells
+  // the keys in). Six of the seven are UNCONDITIONAL; `M` is the one that
+  // is not, and its own row says why.
   //
   // ONE row geometry for a trigger and for text: every label and every
   // value is at least the trigger's 32px (`restBoxClass`'s `h-8`), so a
@@ -327,10 +333,29 @@ export async function ItemPanel({
             </dd>
           </>
         ) : null}
-        {item.milestone ? (
+        {/* A project that uses no phases gets no row: an always-present
+            "Milestone —" would be noise on every task of every project
+            that files nothing under one, and there would be nothing for
+            `M` to open. A row the member cannot edit still shows the
+            phase the item IS under, as text — `milestones` is empty for
+            them (the read is gated on `work_item:edit`). */}
+        {item.milestone || milestones.length > 0 ? (
           <>
             <dt className={railLabel}>{t("properties.milestone")}</dt>
-            <dd className={railText}>{item.milestone.name}</dd>
+            <dd className={railPicker}>
+              <MilestoneField
+                key={item.id}
+                itemId={item.id}
+                itemNumber={item.number}
+                projectKey={projectKey}
+                surface={surface}
+                milestoneId={item.milestone?.id ?? null}
+                milestoneName={item.milestone?.name ?? null}
+                milestoneStatus={item.milestone?.status ?? null}
+                milestones={milestones}
+                canEdit={canEdit}
+              />
+            </dd>
           </>
         ) : null}
         {item.checklistTotal > 0 ? (

@@ -21,6 +21,7 @@ import {
   moveItem,
   resolveItemDetail,
   setItemArchived,
+  setItemMilestone,
   updateItemFields,
 } from "./index";
 import { transitionState } from "./states";
@@ -1812,5 +1813,157 @@ describe("deleteItem cascades to the thread (comments/cascade.ts)", () => {
         where: { tenantId: f.tenantId, action: "work_item.deleted", targetId: doomed.id },
       }),
     ).toBe(1);
+  });
+});
+
+/**
+ * The `M` picker's service (panel slice 11). What the tests here are
+ * about, beyond the happy path: the row carries the phase's IDS and
+ * never its name — the read resolves those under the reader's own RLS,
+ * which is what keeps an internal phase's name out of a client-visible
+ * history row forever — and a milestone of another project is as absent
+ * as one that does not exist.
+ */
+describe("setItemMilestone — the item's phase (panel slice 11)", () => {
+  let design: string;
+  let launch: string;
+  let foreign: string;
+  let foreignProjectId: string;
+
+  const phaseHistory = (id: string) =>
+    f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "milestoneId" },
+      orderBy: { id: "asc" },
+      select: { oldValue: true, newValue: true, oldRef: true, newRef: true, visibility: true },
+    });
+
+  beforeAll(async () => {
+    const make = async (project: string, name: string, rank: string, status?: "CANCELLED") =>
+      (
+        await f.platform.milestone.create({
+          data: {
+            tenantId: f.tenantId,
+            clientId,
+            projectId: project,
+            name,
+            rank,
+            ...(status ? { status } : {}),
+          },
+        })
+      ).id;
+    // Ranks out of alphabetical order with the names, so "by rank" is a
+    // claim the read can fail: Design is created second and ranks first.
+    launch = await make(projectId, "Launch", "a3");
+    design = await make(projectId, "Design", "a1");
+    await make(projectId, "Dropped", "a5", "CANCELLED");
+    foreignProjectId = randomUUID();
+    await f.platform.project.create({
+      data: { id: foreignProjectId, tenantId: f.tenantId, clientId, key: "PHASE", name: "Another site" },
+    });
+    foreign = await make(foreignProjectId, "Their launch", "a1");
+  }, 60_000);
+
+  afterAll(async () => {
+    // `foreignProjectId` as well as the tenant: a `beforeAll` that threw
+    // in one of the milestone creates above leaves it undefined, Prisma
+    // drops an undefined where-filter, and the three deletes below would
+    // sweep the fixture's OWN project (the trap this file's top-level
+    // teardown already guards).
+    if (!f?.tenantId || !foreignProjectId) return;
+    await f.platform.workItem.updateMany({ where: { tenantId: f.tenantId }, data: { milestoneId: null } });
+    await f.platform.milestone.deleteMany({ where: { tenantId: f.tenantId } });
+    await f.platform.workItem.deleteMany({ where: { tenantId: f.tenantId, projectId: foreignProjectId } });
+    await f.platform.workflowState.deleteMany({ where: { tenantId: f.tenantId, projectId: foreignProjectId } });
+    await f.platform.project.deleteMany({ where: { tenantId: f.tenantId, id: foreignProjectId } });
+  }, 60_000);
+
+  it("files, refiles and clears — one history row each, carrying the REFS and no name at all", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Phase walk" });
+
+    const filed = await setItemMilestone(ownerCtx(), id, design);
+    expect(filed).toMatchObject({ id, milestoneId: design, milestoneName: "Design", changed: true });
+    expect(filed.milestoneStatus).toBe("PLANNED");
+
+    const refiled = await setItemMilestone(ownerCtx(), id, launch);
+    expect(refiled).toMatchObject({ milestoneId: launch, milestoneName: "Launch", changed: true });
+
+    const cleared = await setItemMilestone(ownerCtx(), id, null);
+    expect(cleared).toMatchObject({ milestoneId: null, milestoneName: null, milestoneStatus: null, changed: true });
+
+    // The NAME is nowhere in the history. That is the whole design: a
+    // name written here is a copy that outlives every later decision
+    // about the phase's own visibility, so the read resolves it instead.
+    expect(await phaseHistory(id)).toEqual([
+      { oldValue: null, newValue: null, oldRef: null, newRef: design, visibility: "INTERNAL" },
+      { oldValue: null, newValue: null, oldRef: design, newRef: launch, visibility: "INTERNAL" },
+      { oldValue: null, newValue: null, oldRef: launch, newRef: null, visibility: "INTERNAL" },
+    ]);
+  });
+
+  it("a no-op writes nothing and still answers with the phase the item is under", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Phase no-op" });
+    await setItemMilestone(ownerCtx(), id, design);
+    const again = await setItemMilestone(ownerCtx(), id, design);
+    expect(again).toMatchObject({ milestoneId: design, milestoneName: "Design", changed: false });
+    // A bare null → null names nothing and writes nothing.
+    const { id: bare } = await createItem(ownerCtx(), { projectId, title: "Phase bare no-op" });
+    expect(await setItemMilestone(ownerCtx(), bare, null)).toMatchObject({
+      milestoneId: null,
+      milestoneName: null,
+      changed: false,
+    });
+    expect(await phaseHistory(id)).toHaveLength(1);
+    expect(await phaseHistory(bare)).toEqual([]);
+  });
+
+  it("`milestoneId` is portal-safe: on a shared task the row is CLIENT_VISIBLE, on a private one INTERNAL", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Phase on a shared task" });
+    await setItemMilestone(ownerCtx(), id, design);
+    await changeItemVisibility(ownerCtx(), id, "CLIENT_VISIBLE");
+    await setItemMilestone(ownerCtx(), id, launch);
+    expect((await phaseHistory(id)).map((r) => r.visibility)).toEqual(["INTERNAL", "CLIENT_VISIBLE"]);
+  });
+
+  it("a milestone of ANOTHER project is NOT_FOUND, and nothing is written", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Phase borrowed" });
+    await expect(setItemMilestone(ownerCtx(), id, foreign)).rejects.toThrow(AuthzError);
+    // A well-formed id that is no milestone at all gets the same answer:
+    // existence must not leak (AUTHZ §4).
+    await expect(setItemMilestone(ownerCtx(), id, randomUUID())).rejects.toThrow(AuthzError);
+    const row = await f.platform.workItem.findUniqueOrThrow({ where: { id }, select: { milestoneId: true } });
+    expect(row.milestoneId).toBeNull();
+    expect(await phaseHistory(id)).toEqual([]);
+  });
+
+  it("diffs the row version it replaces: a change that waited on an IDENTICAL one writes nothing", async () => {
+    const { id } = await createItem(ownerCtx(), { projectId, title: "Two phases at once" });
+    const { result: filing } = await raceBehind(
+      (tx) => tx.workItem.update({ where: { id }, data: { milestoneId: launch }, select: { id: true } }),
+      () => setItemMilestone(ownerCtx(), id, launch),
+    );
+    // Read unlocked, the wait would have ended in a second UPDATE and a
+    // history row from "no phase" to the phase the item already had.
+    expect(await filing).toMatchObject({ id, milestoneId: launch, milestoneName: "Launch", changed: false });
+    expect(await phaseHistory(id)).toEqual([]);
+  });
+
+  it("the history read resolves each ref to the phase's name, and the panel lists the project's phases by rank", async () => {
+    const { id, number } = await createItem(ownerCtx(), { projectId, title: "Phase history" });
+    await setItemMilestone(ownerCtx(), id, design);
+    await setItemMilestone(ownerCtx(), id, launch);
+
+    const detail = await getItemDetail(ownerCtx(), projectId, number);
+    expect(detail.item.milestone).toEqual({ id: launch, name: "Launch", status: "PLANNED" });
+    // By RANK — Design ranks first though it was created second — and
+    // the cancelled phase is a row too: which of them may be CHOSEN is
+    // `milestonePickerTargets`' rule, not the read's.
+    expect(detail.milestones.map((m) => m.name)).toEqual(["Design", "Launch", "Dropped"]);
+    expect(detail.milestones.map((m) => m.status)).toEqual(["PLANNED", "PLANNED", "CANCELLED"]);
+
+    const phases = detail.activity.rows.filter((r) => r.field === "milestoneId");
+    expect(phases.map((r) => [r.oldRefName, r.newRefName])).toEqual([
+      ["Design", "Launch"],
+      [null, "Design"],
+    ]);
   });
 });

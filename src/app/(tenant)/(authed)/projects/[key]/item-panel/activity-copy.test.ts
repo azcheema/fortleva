@@ -18,6 +18,7 @@ const look: ActivityLookups = {
   day: (iso) => `day:${iso}`,
   visibility: (v) => `vis:${v}`,
   member: (name) => `member:${name ?? "?"}`,
+  milestone: (name) => `milestone:${name ?? "?"}`,
 };
 
 const row = (partial: Partial<ActivityRow> & { field: string }): ActivityRow => ({
@@ -144,6 +145,40 @@ describe("activitySentence", () => {
     expect(activitySentence(row({ field: "assignee" }), look)).toEqual({ key: "fieldChanged", field: "assignee" });
   });
 
+  it("milestone: the REF decides the shape and the resolved name goes through the milestone lookup", () => {
+    expect(
+      activitySentence(row({ field: "milestoneId", newRef: "ms2", newRefName: "Launch" }), look),
+    ).toEqual({ key: "milestoneSet", to: "milestone:Launch" });
+    expect(
+      activitySentence(
+        row({ field: "milestoneId", oldRef: "ms1", oldRefName: "Design", newRef: "ms2", newRefName: "Launch" }),
+        look,
+      ),
+    ).toEqual({ key: "milestoneChanged", from: "milestone:Design", to: "milestone:Launch" });
+    expect(
+      activitySentence(row({ field: "milestoneId", oldRef: "ms1", oldRefName: "Design" }), look),
+    ).toEqual({ key: "milestoneCleared", from: "milestone:Design" });
+  });
+
+  it("milestone: a ref the reader cannot resolve is still a phase, and a name without a ref says nothing", () => {
+    // Gone with its project, or — for a Phase 3 contact — internal, so
+    // RLS never returned it: the lookup's "Unknown" word, never
+    // "removed the milestone", which would be a different fact.
+    expect(activitySentence(row({ field: "milestoneId", oldRef: "ms1", newRef: "hidden" }), look)).toEqual({
+      key: "milestoneChanged",
+      from: "milestone:?",
+      to: "milestone:?",
+    });
+    expect(activitySentence(row({ field: "milestoneId", newRefName: "Launch" }), look)).toEqual({
+      key: "fieldChanged",
+      field: "milestoneId",
+    });
+    expect(activitySentence(row({ field: "milestoneId" }), look)).toEqual({
+      key: "fieldChanged",
+      field: "milestoneId",
+    });
+  });
+
   it("state: each ref through the state lookup, and a gone state falls back to the category the row carries", () => {
     expect(
       activitySentence(
@@ -181,10 +216,13 @@ describe("activitySentence", () => {
     });
   });
 
-  it("a field with no sentence yet names itself", () => {
-    expect(activitySentence(row({ field: "milestoneId", newRef: "ms-1" }), look)).toEqual({
+  it("a field with no sentence yet names itself, refs and all", () => {
+    // `parentId` and `labelId`: no service writes either yet, and a row
+    // carrying a ref this builder has no case for must still say that
+    // something changed.
+    expect(activitySentence(row({ field: "parentId", newRef: "wi-1" }), look)).toEqual({
       key: "fieldChanged",
-      field: "milestoneId",
+      field: "parentId",
     });
     expect(activitySentence(row({ field: "labelId" }), look)).toEqual({ key: "fieldChanged", field: "labelId" });
   });

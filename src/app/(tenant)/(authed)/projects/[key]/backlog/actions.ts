@@ -16,9 +16,11 @@ import {
   deleteItem,
   moveItem,
   setItemArchived,
+  setItemMilestone,
   updateItemFields,
   type AssignmentCommitted,
   type BulkResult,
+  type MilestoneAssigned,
   type MovedItem,
   type VisibilityCommitted as WorkVisibilityCommitted,
   type WorkCtx,
@@ -99,7 +101,7 @@ export async function renameItemAction(
 }
 
 /* -------------------------------------------------------------- *
- * The six item PROPERTY setters — S, P, E, D, A, V (UI.md §5.2, §7.2).
+ * The seven item PROPERTY setters — S, P, E, D, A, V, M (UI.md §5.2, §7.2).
  *
  * ONE action per property, shared by the backlog table's cells and the
  * item panel's pickers. Each takes an object input naming WHERE it was
@@ -138,6 +140,7 @@ const SetDueDate = Target.extend({
   targetDate: z.string().refine((s) => isIsoDate(s)).nullable(),
 });
 const SetAssignee = Target.extend({ memberId: uuid.nullable() });
+const SetMilestone = Target.extend({ milestoneId: uuid.nullable() });
 // CLOSED at the boundary: the two tokens and nothing else. The old
 // action coerced anything unrecognised to INTERNAL — safe, but a write
 // nobody asked for is still a write; a refusal writes nothing.
@@ -163,6 +166,7 @@ export type DueDateCommitted = {
 };
 /** The service's canonical rows minus the id the caller already holds — one contract, not a second copy of it. */
 export type AssigneeCommitted = Omit<AssignmentCommitted, "id">;
+export type MilestoneCommitted = Omit<MilestoneAssigned, "id">;
 export type VisibilityCommitted = Omit<WorkVisibilityCommitted, "id">;
 
 const FAILED = {
@@ -172,6 +176,7 @@ const FAILED = {
   dueDate: "dueDate.failed",
   assignee: "assignee.failed",
   visibility: "visibility.failed",
+  milestone: "milestone.failed",
 } as const;
 
 /**
@@ -297,6 +302,35 @@ export async function setItemAssigneeAction(
   const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
     const c = await assignItem(ctx, itemId, memberId);
     return { assigneeMemberId: c.assigneeMemberId, assigneeName: c.assigneeName, changed: c.changed };
+  });
+  if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * Milestone (`M`) — one of the item's own project's phases, or null to
+ * take it out of the one it is under. A ROUTINE edit (founder decision
+ * 2026-09-12): an activity row, never an audit event. `milestoneId` IS
+ * on the portal-safe list (activity.ts), so on a client-visible task
+ * that row is client-visible — and it carries the phase's ID, never its
+ * name, so what a reader is told the phase is called is always their own
+ * RLS's answer (items.ts, `setItemMilestone`).
+ */
+export async function setItemMilestoneAction(
+  input: z.input<typeof SetMilestone>,
+): Promise<ActionResult<MilestoneCommitted>> {
+  const ctx = await ctxOf();
+  const parsed = SetMilestone.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "milestone") };
+  const { itemId, projectKey, itemNumber, surface, milestoneId } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await setItemMilestone(ctx, itemId, milestoneId);
+    return {
+      milestoneId: c.milestoneId,
+      milestoneName: c.milestoneName,
+      milestoneStatus: c.milestoneStatus,
+      changed: c.changed,
+    };
   });
   if (r.ok && r.value.changed) revalidate(projectKey);
   return r;

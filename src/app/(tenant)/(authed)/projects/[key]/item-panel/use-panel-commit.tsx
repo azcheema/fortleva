@@ -8,10 +8,10 @@ import type { ActionResult } from "@/lib/server-actions";
 
 /**
  * The ONE commit path for the item rail's property islands (UI.md §5.2,
- * §7.2) — `S A P E D V`, and the shape `M L` take. Each island owns its
+ * §7.2) — `S A P E D V M`, and the shape `L` takes. Each island owns its
  * trigger, its key and its action; this owns what happens between the
- * member's pick and the server's answer, so the six cannot drift into
- * six different ideas of "saved".
+ * member's pick and the server's answer, so the seven cannot drift into
+ * seven different ideas of "saved".
  *
  * · A TRANSITION, never a `<form action>`: React 19 resets a form action
  *   at the start of every action, so a control inside one shows stale

@@ -95,13 +95,14 @@ export async function writeActivity(
  * null). A bare `id <` bound would have let a stale or foreign link
  * render "no older activity" for an item with a full history.
  *
- * Names are resolved HERE, in the panel's transaction: the actor and,
- * for the `assignee` field, both refs — every member of the tenant,
- * suspended ones included (a suspended member still has a name to show
- * against the row they wrote), and a Phase 3 contact actor, bound to the
- * item's own client so a mis-attributed id can never name another
- * client's contact. An id that no longer resolves is a null name; the
- * panel says "Unknown".
+ * Names are resolved HERE, in the panel's transaction: the actor, the
+ * `assignee` field's two refs and the `milestoneId` field's — every
+ * member of the tenant, suspended ones included (a suspended member
+ * still has a name to show against the row they wrote), a Phase 3
+ * contact actor bound to the item's own client so a mis-attributed id
+ * can never name another client's contact, and every phase the reader's
+ * own RLS lets them see. An id that no longer resolves is a null name;
+ * the panel says "Unknown".
  */
 
 export const ACTIVITY_PAGE_SIZE = 50;
@@ -148,6 +149,44 @@ export async function resolveActorNames(
   };
 }
 
+/**
+ * The phases behind a page's `milestoneId` refs — read HERE, never
+ * written into the row (items.ts, `setItemMilestone`, says why at
+ * length). `Milestone` is class B, so this read answers with the
+ * READER's own access: every phase of the project for a member, and for
+ * a Phase 3 contact only the client-visible ones — an internal phase
+ * resolves to null and the row names no phase at all. Bound to the
+ * item's OWN client as the contact resolution is, so a mis-attributed
+ * ref can never name another client's phase, and to the ids the page
+ * actually carries; no query for a page with no milestone row on it.
+ */
+async function resolveMilestoneNames(
+  tx: TenantDb,
+  tenantId: string,
+  clientId: string,
+  milestoneIds: ReadonlySet<string>,
+): Promise<(id: string | null) => string | null> {
+  if (milestoneIds.size === 0) return () => null;
+  const rows = await tx.milestone.findMany({
+    where: { tenantId, clientId, id: { in: [...milestoneIds] } },
+    select: { id: true, name: true },
+  });
+  const byId = new Map(rows.map((m) => [m.id, m.name]));
+  return (id) => (id ? (byId.get(id) ?? null) : null);
+}
+
+/** Which resolver a field's refs belong to — the one place the two ref-bearing fields are named. */
+const refName = (
+  field: string,
+  ref: string | null,
+  member: (id: string | null) => string | null,
+  milestone: (id: string | null) => string | null,
+): string | null => {
+  if (field === "assignee") return member(ref);
+  if (field === "milestoneId") return milestone(ref);
+  return null;
+};
+
 export type ActivityActor = {
   /** Who acted: a member, a Phase 3 contact, or nobody at all (an import, a job) — the UI's "System". */
   kind: "member" | "contact" | "system";
@@ -165,7 +204,14 @@ export type ActivityEntry = {
   oldRef: string | null;
   newRef: string | null;
   actor: ActivityActor;
-  /** The member `oldRef` / `newRef` name — the `assignee` field only; null otherwise, or when the id no longer resolves. */
+  /**
+   * What `oldRef` / `newRef` NAME, resolved by this read: a member for
+   * `assignee`, a milestone for `milestoneId`. Null for every other
+   * field, and for a ref whose row no longer resolves — which, for a
+   * milestone, is also the answer RLS gives a Phase 3 contact about an
+   * INTERNAL phase. That is the whole reason the writer stores ids and
+   * not names (items.ts, `setItemMilestone`).
+   */
   oldRefName: string | null;
   newRefName: string | null;
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
@@ -218,6 +264,7 @@ export async function readItemActivity(
 
   const memberIds = new Set<string>();
   const contactIds = new Set<string>();
+  const milestoneIds = new Set<string>();
   for (const r of page) {
     if (r.actorMemberId) memberIds.add(r.actorMemberId);
     if (r.actorContactId) contactIds.add(r.actorContactId);
@@ -225,8 +272,15 @@ export async function readItemActivity(
       if (r.oldRef) memberIds.add(r.oldRef);
       if (r.newRef) memberIds.add(r.newRef);
     }
+    if (r.field === "milestoneId") {
+      if (r.oldRef) milestoneIds.add(r.oldRef);
+      if (r.newRef) milestoneIds.add(r.newRef);
+    }
   }
-  const names = await resolveActorNames(tx, tenantId, clientId, memberIds, contactIds);
+  const [names, milestoneName] = await Promise.all([
+    resolveActorNames(tx, tenantId, clientId, memberIds, contactIds),
+    resolveMilestoneNames(tx, tenantId, clientId, milestoneIds),
+  ]);
 
   return {
     rows: page.map((r) => ({
@@ -242,8 +296,8 @@ export async function readItemActivity(
         contactId: r.actorContactId,
         name: names.member(r.actorMemberId) ?? names.contact(r.actorContactId),
       },
-      oldRefName: r.field === "assignee" ? names.member(r.oldRef) : null,
-      newRefName: r.field === "assignee" ? names.member(r.newRef) : null,
+      oldRefName: refName(r.field, r.oldRef, names.member, milestoneName),
+      newRefName: refName(r.field, r.newRef, names.member, milestoneName),
       visibility: r.visibility,
       createdAt: r.createdAt,
     })),

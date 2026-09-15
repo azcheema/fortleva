@@ -17,7 +17,7 @@ import { bottomRank, lockItemRow, lockProjectRanks } from "./rank-lock";
 import { loadItemInScope, type ItemRow } from "./rows";
 import { ensureProjectStates, principalOf, transitionState, type WorkCtx } from "./states";
 import { readItemSubtasks, type ItemSubtasks, type SubtaskEntry } from "./subtasks";
-import { childTypeOf, type StateSeedKey } from "@/lib/enum-map";
+import { childTypeOf, type StateSeedKey, type StatusValue } from "@/lib/enum-map";
 import { stateLabel } from "@/lib/state-label";
 
 /**
@@ -270,6 +270,43 @@ async function activeMembers(tx: TenantDb, tenantId: string): Promise<{ id: stri
   return rows.map((m) => ({ id: m.id, name: m.user.name }));
 }
 
+/** The project's phases, as the `M` picker lists them (§6.5). */
+export type MilestoneStatus = StatusValue<"milestoneStatus">;
+
+/**
+ * One row of the `M` picker (UI.md §5.2): the project's milestones by
+ * rank. `dueAt` is the row's `meta` — the datum that tells "Sprint 3"
+ * from "Sprint 4" — and the milestone's own visibility is deliberately
+ * absent: nothing renders it here, and a phase's chip belongs on the
+ * timeline, where a member actually changes it.
+ */
+export type MilestoneEntry = {
+  id: string;
+  name: string;
+  status: MilestoneStatus;
+  dueAt: Date | null;
+};
+
+/**
+ * The project's phases for the `M` picker — by RANK, which is the one
+ * order the timeline shows them in (`projects/milestones.ts`), so the
+ * picker and the timeline can never disagree about what comes after
+ * what. Every milestone, terminal ones included: which of them may be
+ * chosen is `milestonePickerTargets`' rule, applied where the rows are
+ * built, so the read stays a read.
+ */
+async function projectMilestones(
+  tx: TenantDb,
+  tenantId: string,
+  projectId: string,
+): Promise<MilestoneEntry[]> {
+  return tx.milestone.findMany({
+    where: { tenantId, projectId },
+    orderBy: { rank: "asc" },
+    select: { id: true, name: true, status: true, dueAt: true },
+  });
+}
+
 /**
  * ONE item, by its human number, for the item panel (peek and full
  * page). The panel does NOT read its item out of a list any more: a list
@@ -290,8 +327,14 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority"> & {
   startDate: Date | null;
   /** "Follows ACME-12" — null at the root, and null when the parent is soft-deleted. */
   parent: { id: string; number: number; title: string } | null;
-  /** Name only; the picker (and the same-project guard) arrive with the M key. */
-  milestone: { id: string; name: string; visibility: "INTERNAL" | "CLIENT_VISIBLE" } | null;
+  /**
+   * The item's phase (§6.5). Name and STATUS: the rail's trigger draws
+   * the status glyph exactly as the `M` picker's rows do. NOT the
+   * milestone's own visibility — nothing renders it, and a picker row
+   * is not a class-B row of the timeline (the milestone's chip lives on
+   * the timeline, which is where a member changes it).
+   */
+  milestone: { id: string; name: string; status: MilestoneStatus } | null;
   /** The stored ProseMirror document (ARC-19) — null when there is none. */
   description: unknown;
   /**
@@ -339,6 +382,8 @@ export type ItemDetailResult = {
   caps: ItemDetailCaps;
   /** The `A` picker's rows: ACTIVE members, in the order the list surfaces use. */
   members: { id: string; name: string }[];
+  /** The `M` picker's rows: the project's milestones by rank — empty for a member who cannot edit. */
+  milestones: MilestoneEntry[];
   /** The newest page of the item's history (slice 8) — or the page `activityBefore` asked for. */
   activity: ItemActivityPage;
   /** The item's live children by rank, with the meter's counts (subtasks.ts) — empty for a SUBTASK, which has none by construction. */
@@ -417,7 +462,7 @@ export async function getItemDetail(
         state: { select: { name: true, seedKey: true } },
         assigneeMember: { select: { user: { select: { name: true } } } },
         parent: { select: { id: true, number: true, title: true, deletedAt: true } },
-        milestone: { select: { id: true, name: true, visibility: true } },
+        milestone: { select: { id: true, name: true, status: true } },
       },
     });
     if (!row) deny("NOT_FOUND");
@@ -478,8 +523,11 @@ export async function getItemDetail(
     // The Comments section's rows (comments.ts), behind the same scope
     // check as the item, with the reading member's own caps stamped on
     // each row — the section never decides who may edit what.
-    const [members, comments] = await Promise.all([
+    const [members, milestones, comments] = await Promise.all([
       canEdit ? activeMembers(tx, ctx.tenantId) : Promise.resolve([]),
+      // Same rule as the members: a viewer's panel renders the phase as
+      // text and never lists the project's others.
+      canEdit ? projectMilestones(tx, ctx.tenantId, projectId) : Promise.resolve([]),
       readItemComments(tx, ctx.tenantId, row!, ctx.actor.memberId, {
         create: held.has("comment:create"),
         editAny: held.has("comment:edit_any"),
@@ -533,6 +581,7 @@ export async function getItemDetail(
         comment: held.has("comment:create"),
       },
       members,
+      milestones,
       activity,
       subtasks,
       comments,
@@ -805,6 +854,124 @@ export async function assignItem(
     });
     if (memberId) await notifyItemMembers(tx, ctx, item, "work_item.assigned", [memberId], "assigned");
     return { id: row.id, assigneeMemberId: row.assigneeMemberId, assigneeName, changed: true };
+  });
+}
+
+/**
+ * What a milestone change left in the row — the canonical values the
+ * panel's `M` picker replaces its optimistic slice with (UI.md §7.2).
+ * The NAME and the STATUS come from the milestone row read in the same
+ * transaction, so no caller joins them.
+ */
+export type MilestoneAssigned = {
+  id: string;
+  milestoneId: string | null;
+  milestoneName: string | null;
+  milestoneStatus: MilestoneStatus | null;
+  /**
+   * False when the item already sat under that milestone: no UPDATE, no
+   * activity. Compared UNDER THE ROW LOCK, against the version an UPDATE
+   * would replace — so an identical change that committed while this one
+   * waited makes it false too.
+   */
+  changed: boolean;
+};
+
+/**
+ * File the item under one of its project's milestones, or remove it from
+ * the one it is under (UI.md §5.2 `M`). A ROUTINE edit by the founder's
+ * 2026-09-12 decision — an activity row, never an audit event — even
+ * though `milestoneId` is one of the five PORTAL-SAFE fields, so on a
+ * client-visible task the row the client reads is client-visible too.
+ *
+ * THE ROW CARRIES IDS, NEVER THE PHASE'S NAME. `oldRef` / `newRef` are
+ * the milestone ids and the names are resolved at READ time
+ * (`readItemActivity`, exactly as the `assignee` refs are), for one
+ * safety reason worth stating here: a name written into a
+ * CLIENT_VISIBLE history row is a copy that outlives every later
+ * decision about the phase. A milestone made INTERNAL afterwards would
+ * leave its name sitting in a row the portal can read, and nothing
+ * flips a milestone's history the way the item's own downgrade flips
+ * its rows. Resolved at read time, the name is whatever the READER's
+ * own RLS gives: `Milestone` is class B, so an internal phase does not
+ * resolve for a contact and the row names no phase at all — no trigger
+ * to maintain, and no way to get it wrong later. That RLS policy is the
+ * belt to rely on. There is a second, `oldRef` and `newRef` both being
+ * on `PORTAL_FORBIDDEN_COLUMNS`, so a Phase 3 `portal.ts` may not select
+ * them for ANY field — but it is the weaker one, a Vitest grep over
+ * files named exactly `portal.ts` matching camelCase identifiers, which
+ * a raw `old_ref`, an imported select object or a `portal/history.ts`
+ * would all walk past (`activity.ts` says the same of the same test).
+ * Read that way round: the database refuses, the grep reminds.
+ *
+ * The milestone must be one of the ITEM's project's — read bound to
+ * `item.projectId`, so an id from another project is `NOT_FOUND` and
+ * never a cross-project write. `work_item_milestone_guard` (20260912120000)
+ * is the belt behind that; see `db-errors.ts` for why its token stays
+ * unmapped.
+ *
+ * A CANCELLED phase is accepted here. Only the picker filters those
+ * (`milestonePickerTargets`), because the service must accept the phase
+ * the item is ALREADY under, which may have been cancelled since — the
+ * same UI-gate-only shape as `createItem` under an archived parent.
+ */
+export async function setItemMilestone(
+  ctx: WorkCtx,
+  itemId: string,
+  milestoneId: string | null,
+): Promise<MilestoneAssigned> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
+    // LOCKED, then read (rows.ts), for the reason `assignItem` and
+    // `updateItemFields` are: the diff below must describe the row
+    // version the UPDATE replaces, or a no-op reports `changed` and the
+    // history row names a phase the item had already left. A writer of
+    // ONE work_item row: never the rank lock, never a second row.
+    const item = await loadItemInScope(tx, ctx, itemId);
+    // ONE read of the milestone serves both branches: the no-op answers
+    // with the name of the phase the item is under, and only a REAL
+    // change insists the target belongs to this project.
+    const target = milestoneId
+      ? await tx.milestone.findFirst({
+          where: { tenantId: ctx.tenantId, id: milestoneId, projectId: item.projectId },
+          select: { id: true, name: true, status: true },
+        })
+      : null;
+    if (item.milestoneId === milestoneId) {
+      // Nothing written, and the caller is TOLD so — from the row just
+      // read, which is the truth about the item right now. The name is
+      // the target's when the caller named the phase the item is
+      // already under; a bare no-op (`null` → `null`) names nothing.
+      return {
+        id: item.id,
+        milestoneId: item.milestoneId,
+        milestoneName: target?.name ?? null,
+        milestoneStatus: target?.status ?? null,
+        changed: false,
+      };
+    }
+    // Existence must not leak, and a milestone of ANOTHER project is
+    // exactly as absent as one that does not exist (AUTHZ §4).
+    if (milestoneId && !target) deny("NOT_FOUND");
+    const row = await tx.workItem.update({
+      where: { id: item.id },
+      data: { milestoneId },
+      // INLINE, and never omitted: a select-less update returns the
+      // WHOLE row, 512 KB description included. This is the RETURNING.
+      select: { id: true, milestoneId: true },
+    });
+    await writeActivity(tx, ctx, item, {
+      field: "milestoneId",
+      oldRef: item.milestoneId,
+      newRef: milestoneId,
+    });
+    return {
+      id: row.id,
+      milestoneId: row.milestoneId,
+      milestoneName: target?.name ?? null,
+      milestoneStatus: target?.status ?? null,
+      changed: true,
+    };
   });
 }
 

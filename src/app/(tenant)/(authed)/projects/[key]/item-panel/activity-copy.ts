@@ -7,13 +7,13 @@ import type { ActivityEntry } from "@/modules/work";
  * What a history row SAYS — the pure half of the Activity section
  * (`activity-section.tsx` renders it). A row is a field and four
  * nullable columns (DATA_MODEL §6.14); this turns that into one of
- * sixteen sentences with its display values already formatted, so the
- * component is a switch over message keys and every branch is a unit
- * test here rather than a screenshot. The lookups are the section's
- * formatters — a state name from the project's states, a priority
- * label, a duration in the tenant's style, a day, a visibility token, a
- * member's name — handed in, so this module knows no locale and no
- * catalogue.
+ * twenty-three sentences with its display values already formatted, so
+ * the component is a switch over message keys and every branch is a
+ * unit test here rather than a screenshot. The lookups are the
+ * section's formatters — a state name from the project's states, a
+ * priority label, a duration in the tenant's style, a day, a visibility
+ * token, a member's name, a milestone's — handed in, so this module
+ * knows no locale and no catalogue.
  *
  * The value columns are TEXT the writers encode ad hoc (`items.ts`:
  * `estimateMinutes.toString()`, `targetDate.toISOString().slice(0, 10)`,
@@ -25,10 +25,10 @@ import type { ActivityEntry } from "@/modules/work";
  * `updateItemFields`, so a writer that changes format fails a test
  * rather than quietly degrading every row to the fallback.
  *
- * A row this slice has no sentence for (a milestone, a label, a comment
- * — each arrives with its own slice and adds its case here) renders as
- * "changed <field>" rather than nothing: a change a member cannot read
- * is still a change that happened.
+ * A row this slice has no sentence for (a label — each arrives with its
+ * own slice and adds its case here) renders as "changed <field>" rather
+ * than nothing: a change a member cannot read is still a change that
+ * happened.
  */
 export type ActivityLookups = {
   /** The state a ref names; falls back to the CATEGORY the row carries when the state is gone. */
@@ -39,6 +39,8 @@ export type ActivityLookups = {
   visibility: (value: VisibilityValue) => string;
   /** A resolved member name, or the "Unknown" word for an id that no longer resolves. */
   member: (name: string | null) => string;
+  /** A resolved milestone name, or the "Unknown" word — for a phase that is gone, or one the reader may not see. */
+  milestone: (name: string | null) => string;
 };
 
 export type ActivitySentence =
@@ -56,6 +58,9 @@ export type ActivitySentence =
   | { key: "reassigned"; from: string; to: string }
   | { key: "unassigned"; from: string }
   | { key: "stateChanged"; from: string; to: string }
+  | { key: "milestoneSet"; to: string }
+  | { key: "milestoneChanged"; from: string; to: string }
+  | { key: "milestoneCleared"; from: string }
   | { key: "visibilityChanged"; to: string }
   | { key: "commented" }
   | { key: "commentEdited" }
@@ -134,6 +139,20 @@ export function activitySentence(row: ActivityRow, look: ActivityLookups): Activ
         from: look.stateName(row.oldRef, row.oldValue),
         to: look.stateName(row.newRef, row.newValue),
       };
+    // The phase rows (items.ts, `setItemMilestone`): the REFS are the
+    // fact and the names are the read's (activity.ts) — a ref whose
+    // milestone the reader cannot resolve still reads as a phase
+    // ("Unknown"), never as none, exactly as a gone assignee does. "None
+    // was set" and "the phase is gone" are different facts and must not
+    // share a sentence.
+    case "milestoneId": {
+      const from = row.oldRef ? look.milestone(row.oldRefName) : null;
+      const to = row.newRef ? look.milestone(row.newRefName) : null;
+      if (to !== null && from !== null) return { key: "milestoneChanged", from, to };
+      if (to !== null) return { key: "milestoneSet", to };
+      if (from !== null) return { key: "milestoneCleared", from };
+      return fallback;
+    }
     case "visibility":
       if (!isVisibility(row.newValue)) return fallback;
       return { key: "visibilityChanged", to: look.visibility(row.newValue) };

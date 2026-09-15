@@ -149,6 +149,7 @@ export default async function ProjectBoardPage({
             itemCaps={peekItem.caps}
             states={peekItem.states}
             members={peekItem.members}
+            milestones={peekItem.milestones}
             activity={peekItem.activity}
             subtasks={peekItem.subtasks}
             comments={peekItem.comments}

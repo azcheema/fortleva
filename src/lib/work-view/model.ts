@@ -124,6 +124,42 @@ export function statePickerTargets(
   }));
 }
 
+/** One row of the `M` picker: the milestone, its ordinal test-id key, and whether it may be chosen. */
+export type MilestonePickerTarget<M extends { id: string; status: string }> = {
+  milestone: M;
+  key: string;
+  disabled: boolean;
+};
+
+/**
+ * The `M` picker's rows (UI.md §5.2): the project's milestones in the
+ * input's RANK order — a CANCELLED phase dropped, because nothing new
+ * belongs under one, and every other status kept, because late work
+ * under a finished phase is a real thing an agency files.
+ *
+ * The item's CURRENT milestone is ALWAYS a row, and non-selectable when
+ * it is not a legal target — the `S` picker's rule verbatim: a picker
+ * that cannot show what the item IS is broken (the phase would silently
+ * vanish from the rail's own control the moment someone cancelled it).
+ *
+ * The keys are ordinals over the FULL list, numbered BEFORE the filter
+ * and inside this function, so a row's test id never depends on which
+ * phases happen to be live — the rule `stateOrdinalKeys` set.
+ */
+export function milestonePickerTargets<M extends { id: string; status: string }>(
+  milestones: readonly M[],
+  currentMilestoneId: string | null,
+): MilestonePickerTarget<M>[] {
+  const targets: MilestonePickerTarget<M>[] = [];
+  milestones.forEach((milestone, i) => {
+    const current = milestone.id === currentMilestoneId;
+    const cancelled = milestone.status === "CANCELLED";
+    if (cancelled && !current) return;
+    targets.push({ milestone, key: String(i), disabled: cancelled });
+  });
+  return targets;
+}
+
 /**
  * "Done" for every surface that offers to hide it: the two TERMINAL
  * categories, not the seeded Done state. A tenant with two done-ish

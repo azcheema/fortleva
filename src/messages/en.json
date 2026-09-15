@@ -1863,6 +1863,17 @@
         "changed": "Assigned to {name}",
         "cleared": "Assignee removed"
       },
+      "milestone": {
+        "trigger": "Milestone: {name}",
+        "triggerEmpty": "Milestone: none",
+        "search": "Search milestones…",
+        "empty": "No matching milestone.",
+        "none": "No milestone",
+        "clear": "Remove from milestone",
+        "failed": "The milestone did not save. The panel shows the current milestone.",
+        "changed": "Filed under {name}",
+        "cleared": "Milestone removed"
+      },
       "visibility": {
         "trigger": "Visibility: {visibility}",
         "search": "Private to team or Client can see",
@@ -1876,7 +1887,8 @@
         "priority": "Change priority",
         "estimate": "Set estimate",
         "dueDate": "Set due date",
-        "visibility": "Change visibility"
+        "visibility": "Change visibility",
+        "milestone": "Set milestone"
       },
       "activity": {
         "title": "Activity",
@@ -1902,6 +1914,9 @@
         "reassigned": "reassigned this from {from} to {to}",
         "unassigned": "unassigned {from}",
         "stateChanged": "moved this from {from} to {to}",
+        "milestoneSet": "set the milestone to {to}",
+        "milestoneChanged": "changed the milestone from {from} to {to}",
+        "milestoneCleared": "removed the milestone ({from})",
         "visibilityChanged": "changed the visibility to {to}",
         "fieldChanged": "changed “{field}”",
         "commented": "commented",

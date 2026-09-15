@@ -9,6 +9,14 @@ import { dbErrorMapper } from "@/lib/db-error-map";
  * first, so a vanished parent is its NOT_FOUND) and the RESTORE_* family
  * (nothing in the app restores a soft-deleted row yet; the undo that
  * does maps them then).
+ *
+ * WORK_MILESTONE_PROJECT (20260912120000) stays unmapped for the same
+ * reason, and the M slice looked before deciding: `setItemMilestone`
+ * reads the target milestone BOUND to the item's own project and
+ * answers NOT_FOUND when there is none, nothing in the app moves a
+ * milestone between projects or an item between them, and no service
+ * deletes a milestone at all — so a member cannot reach the trigger,
+ * and a raise that got through would be a bug worth seeing raw.
  */
 export const { mapDbError, guarded } = dbErrorMapper([
   ["WORK_ITEM_VISIBLE_CHILDREN", "HAS_VISIBLE_CHILDREN"],

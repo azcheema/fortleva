@@ -2311,7 +2311,13 @@ enum WorkItemSource {
 ///     belong to the item's OWN project — the composite FK binds only the
 ///     tenant, and a milestone carries its own visibility, so a borrowed
 ///     one would file the task under a heading its client never shares.
-///     Token WORK_MILESTONE_PROJECT, unmapped until the M-key slice.
+///     Token WORK_MILESTONE_PROJECT. The M-key slice (2026-09-15) looked
+///     and left it UNMAPPED on purpose: `setItemMilestone` reads the
+///     target BOUND to the item's own project and answers NOT_FOUND when
+///     there is none, nothing moves a milestone or an item between
+///     projects, and no service deletes a milestone — so a member cannot
+///     reach the trigger and a raise that got through is a bug worth
+///     seeing raw (src/modules/work/db-errors.ts).
 ///   TRIGGER work_item_parent_guard BEFORE INSERT OR UPDATE OF parent_id,
 ///     project_id, type, visibility: parent must exist in the same tenant
 ///     AND same project; parent.type strictly higher (EPIC > TASK >
@@ -2465,7 +2471,11 @@ model WorkItem {
 /// INTERNAL row: the portal is shown categories, never state names. Labels, links, estimates, priority, assigneeMemberId,
 /// INTERNAL comments never produce a CLIENT_VISIBLE activity row.
 /// oldValue/newValue are display text; oldRef/newRef are ids for
-/// re-rendering (a member id here is INTERNAL by construction).
+/// re-rendering (a member id here is INTERNAL by construction). A
+/// `milestoneId` row carries ONLY the two refs (2026-09-15, the M-key
+/// slice): the phase's NAME is resolved by the read, per reader, so an
+/// internal phase's name can never sit in a CLIENT_VISIBLE row that a
+/// later change of the phase's own visibility would have to chase.
 /// scope=client  rls=B (projectScoped)  ret=R2 (deleted with the item)  enc=none
 /// audit: (dual-write of privileged transitions only)
 model WorkItemActivity {

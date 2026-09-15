@@ -404,7 +404,7 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     .map((e) => e.goKey)
     .filter((k): k is string => Boolean(k));
 
-  /** Six one-binding islands, registered in rail order — as the panel mounts them (S A P E D V, slice 7). */
+  /** Seven one-binding islands, registered in rail order — as the panel mounts them (S A P E D V M, slice 11). */
   const railEntries = (priorityEnabled = true) => [
     { scope: "item" as const, bindings: [binding({ key: "s", label: "Change state" })] },
     { scope: "item" as const, bindings: [binding({ key: "a", label: "Assign" })] },
@@ -412,18 +412,20 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     { scope: "item" as const, bindings: [binding({ key: "e", label: "Set estimate" })] },
     { scope: "item" as const, bindings: [binding({ key: "d", label: "Set due date" })] },
     { scope: "item" as const, bindings: [binding({ key: "v", label: "Change visibility" })] },
+    { scope: "item" as const, bindings: [binding({ key: "m", label: "Set milestone" })] },
   ];
 
-  it("the nav really has a `G P` and a `G A`, and no `G E`, `G D` or `G V` (the vault is 3V's)", () => {
+  it("the nav really has a `G P`, a `G A` and a `G M`, and no `G E`, `G D` or `G V` (the vault is 3V's)", () => {
     // The cases below mean something only while this holds.
     expect(GO_KEYS).toContain("P");
     expect(GO_KEYS).toContain("A");
+    expect(GO_KEYS).toContain("M");
     expect(GO_KEYS).not.toContain("E");
     expect(GO_KEYS).not.toContain("D");
     expect(GO_KEYS).not.toContain("V");
   });
 
-  it("`G P` and `G A` navigate with the item's bare `P` and `A` mounted", () => {
+  it("`G P`, `G A` and `G M` navigate with the item's bare `P`, `A` and `M` mounted", () => {
     expect(decide(ev({ key: "p" }), scopes(...railEntries()), GO_KEYS, true)).toEqual({
       kind: "go",
       key: "P",
@@ -433,6 +435,13 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     expect(decide(ev({ key: "a" }), scopes(...railEntries()), GO_KEYS, true)).toEqual({
       kind: "go",
       key: "A",
+    });
+    // `G M` is the members page; the rail's `M` is the milestone — the
+    // third of this class (slice 11), and the reason the armed `G` is
+    // consulted BEFORE the scope walk rather than beside it.
+    expect(decide(ev({ key: "m" }), scopes(...railEntries()), GO_KEYS, true)).toEqual({
+      kind: "go",
+      key: "M",
     });
   });
 
@@ -456,7 +465,7 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     expect(decide(ev({ key: "p" }), rail, GO_KEYS, false)).toEqual({ kind: "swallow" });
   });
 
-  it("the overlay lists the Task section S A P E D V, and the board keeps only the key the item did not shadow", () => {
+  it("the overlay lists the Task section S A P E D V M, and the board keeps only the key the item did not shadow", () => {
     const peek = scopes(
       {
         scope: "board",
@@ -469,7 +478,7 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     );
     const sections = overlaySections(peek);
     expect(sections.map((s) => s.scope)).toEqual(["item", "board"]);
-    expect(sections[0]!.bindings.map((b) => b.key)).toEqual(["s", "a", "p", "e", "d", "v"]);
+    expect(sections[0]!.bindings.map((b) => b.key)).toEqual(["s", "a", "p", "e", "d", "v", "m"]);
     expect(sections[1]!.bindings.map((b) => b.key)).toEqual(["j"]);
   });
 });

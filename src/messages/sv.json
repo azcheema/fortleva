@@ -1863,6 +1863,17 @@
         "changed": "Tilldelad {name}",
         "cleared": "Ansvarig togs bort"
       },
+      "milestone": {
+        "trigger": "Milstolpe: {name}",
+        "triggerEmpty": "Milstolpe: ingen",
+        "search": "Sök milstolpar…",
+        "empty": "Ingen milstolpe matchar.",
+        "none": "Ingen milstolpe",
+        "clear": "Ta bort från milstolpen",
+        "failed": "Milstolpen sparades inte. Panelen visar den nuvarande milstolpen.",
+        "changed": "Lagd under {name}",
+        "cleared": "Milstolpen togs bort"
+      },
       "visibility": {
         "trigger": "Synlighet: {visibility}",
         "search": "Privat för teamet eller Kunden kan se",
@@ -1876,7 +1887,8 @@
         "priority": "Ändra prioritet",
         "estimate": "Ange estimat",
         "dueDate": "Ange förfallodatum",
-        "visibility": "Ändra synlighet"
+        "visibility": "Ändra synlighet",
+        "milestone": "Ange milstolpe"
       },
       "activity": {
         "title": "Aktivitet",
@@ -1902,6 +1914,9 @@
         "reassigned": "flyttade ansvaret från {from} till {to}",
         "unassigned": "tog bort {from} som ansvarig",
         "stateChanged": "flyttade uppgiften från {from} till {to}",
+        "milestoneSet": "satte milstolpen till {to}",
+        "milestoneChanged": "ändrade milstolpen från {from} till {to}",
+        "milestoneCleared": "tog bort milstolpen ({from})",
         "visibilityChanged": "ändrade synligheten till {to}",
         "fieldChanged": "ändrade ”{field}”",
         "commented": "kommenterade",

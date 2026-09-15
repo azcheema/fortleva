@@ -19,6 +19,7 @@ import {
   lanesFor,
   rowAnchors,
   stateOrdinalKeys,
+  milestonePickerTargets,
   statePickerTargets,
   visibleColumns,
   workView,
@@ -302,6 +303,39 @@ describe("lanes", () => {
         "hidden",
       ]);
     });
+  });
+});
+
+describe("milestonePickerTargets (the M picker's rows)", () => {
+  const ms = (id: string, status: string) => ({ id, status });
+  // Rank order, with a cancelled phase in the MIDDLE: the one shape in
+  // which numbering the filtered rows would renumber every later phase.
+  const list = [ms("design", "DONE"), ms("dropped", "CANCELLED"), ms("build", "IN_PROGRESS"), ms("launch", "PLANNED")];
+  const keyOf = (targets: ReturnType<typeof milestonePickerTargets<{ id: string; status: string }>>, id: string) =>
+    targets.find((t) => t.milestone.id === id)?.key;
+
+  it("drops a cancelled phase, keeps every other status, and holds rank order", () => {
+    const rows = milestonePickerTargets(list, null);
+    expect(rows.map((t) => t.milestone.id)).toEqual(["design", "build", "launch"]);
+    expect(rows.some((t) => t.disabled)).toBe(false);
+  });
+
+  it("always lists the item's OWN phase, non-selectable when it is cancelled", () => {
+    const rows = milestonePickerTargets(list, "dropped");
+    expect(rows.map((t) => t.milestone.id)).toEqual(["design", "dropped", "build", "launch"]);
+    expect(rows.filter((t) => t.disabled).map((t) => t.milestone.id)).toEqual(["dropped"]);
+  });
+
+  it("gives a row the SAME key whichever phase the item is under", () => {
+    const onNone = milestonePickerTargets(list, null);
+    const onDropped = milestonePickerTargets(list, "dropped");
+    expect(keyOf(onNone, "launch")).toBe("3");
+    expect(keyOf(onDropped, "launch")).toBe("3");
+    for (const t of onNone) expect(t.key).toBe(keyOf(onDropped, t.milestone.id));
+  });
+
+  it("a project with no phases has no rows", () => {
+    expect(milestonePickerTargets([], null)).toEqual([]);
   });
 });
 

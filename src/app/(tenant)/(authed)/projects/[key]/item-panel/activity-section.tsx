@@ -2,6 +2,7 @@ import {
   CalendarIcon,
   ClockIcon,
   FileTextIcon,
+  FlagIcon,
   type LucideIcon,
   MessageSquareIcon,
   PencilIcon,
@@ -78,6 +79,7 @@ const FIELD_ICON: Record<string, LucideIcon> = {
   estimate: ClockIcon,
   targetDate: CalendarIcon,
   assignee: UserRoundIcon,
+  milestoneId: FlagIcon,
   comment: MessageSquareIcon,
   commentVisibility: MessageSquareIcon,
 };
@@ -173,9 +175,12 @@ export async function ActivitySection({
     duration: (m) => formatDuration(locale, m, durationStyle),
     visibility: (v) => tVis(visibilityLabelKey(v)),
     member: (name) => name ?? tCommon("unknown"),
+    // A phase the read could not resolve — deleted with its project, or,
+    // for a Phase 3 contact, internal — is still a phase the row names.
+    milestone: (name) => name ?? tCommon("unknown"),
   };
 
-  // Sixteen sentences in five shapes — next-intl types the ICU arguments
+  // Twenty-three sentences in five shapes — next-intl types the ICU arguments
   // per key, and every key in a group takes the same ones.
   const say = (s: ActivitySentence): string => {
     switch (s.key) {
@@ -191,16 +196,19 @@ export async function ActivitySection({
       case "dueDateChanged":
       case "reassigned":
       case "stateChanged":
+      case "milestoneChanged":
         return t(s.key, { from: s.from, to: s.to });
       case "estimateSet":
       case "dueDateSet":
       case "assigned":
+      case "milestoneSet":
       case "visibilityChanged":
       case "commentVisibilityChanged":
         return t(s.key, { to: s.to });
       case "estimateCleared":
       case "dueDateCleared":
       case "unassigned":
+      case "milestoneCleared":
         return t(s.key, { from: s.from });
       case "fieldChanged": {
         const key = propertyLabelKey(s.field);

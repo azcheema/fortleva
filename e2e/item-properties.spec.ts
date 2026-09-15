@@ -11,7 +11,7 @@ import {
 import { addClientVisibleComment, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
- * THE ITEM RAIL'S P, E, D, A AND V, IN A REAL BROWSER (UI.md §5.2, §9).
+ * THE ITEM RAIL'S P, E, D, A, V AND M, IN A REAL BROWSER (UI.md §5.2, §9).
  *
  * `keymap.spec.ts` owns the keyboard contract and only reads; these
  * pickers WRITE, so every test here creates the one task it mutates and
@@ -25,7 +25,9 @@ import { addClientVisibleComment, requireSeed, type E2ESeed } from "./fixtures/t
  *    is what the member reads, naming what to make private first;
  *  · A's rows are the tenant's members, checked in place, with the
  *    "Unassigned" row leading only while nothing is set and "Unassign"
- *    trailing only while something is;
+ *    trailing only while something is — and M's are the project's phases
+ *    by rank under the same empty-property rule, each dated one carrying
+ *    its date in `meta`;
  *  · a bare Enter on open is a no-op for P, E and D — proven by COUNTING
  *    that property's POSTs across the next real commit. The value staying
  *    put proves nothing: a round trip that re-saves the same value, then
@@ -139,6 +141,7 @@ async function expectPaletteWithoutPageRows(page: Page): Promise<void> {
     /Set estimate/,
     /Set due date/,
     /Change visibility/,
+    /Set milestone/,
   ]) {
     await expect(palette(page).getByRole("option", { name })).toHaveCount(0);
   }
@@ -277,6 +280,93 @@ test("A: assign by typing, reassign by steering, a bare Enter posts nothing, una
   await expect(value).toHaveAttribute("data-value", "");
   await expect(said(page, "Assignee removed")).toHaveCount(1, { timeout: 20_000 * SLOW });
   expect(assigneePosts()).toBe(3);
+});
+
+test("M: file by typing, refile by steering, a bare Enter posts nothing, clear, and the value survives a reload", async ({
+  page,
+}) => {
+  const milestonePosts = countPosts(page, "milestoneId");
+
+  await createOwnTask(page, seed, "Milestone picker", created);
+  const trigger = rail(page).getByTestId("item-milestone");
+  const value = trigger.locator("[data-value]");
+  await expect(trigger).toBeVisible();
+  await expect(value).toHaveAttribute("data-value", "");
+
+  // Under no phase: the checked "No milestone" row is first and lit on
+  // open, so a bare Enter closes the picker having committed nothing.
+  await pressUntil(page, "m", picker(page));
+  await expect(picker(page).getByTestId("item-milestone-none")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  // Type-ahead narrows the project's phases to one row, which cmdk lights.
+  await page.keyboard.press("m");
+  await expect(searchField(page)).toBeFocused();
+  await page.keyboard.type(seed.datedMilestoneName);
+  const datedRow = picker(page).getByRole("option", { name: new RegExp(seed.datedMilestoneName) });
+  await expect(datedRow).toHaveAttribute("aria-selected", "true");
+  await expect(picker(page).getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(value).toHaveText(seed.datedMilestoneName);
+  await settled(page, "item-milestone", "Filed under");
+  expect(milestonePosts()).toBe(1);
+
+  // Filed: the phases keep their RANK order (the seed's first milestone
+  // leads), the current one is checked in place and seeded, "No
+  // milestone" is gone and "Remove from milestone" trails under its OWN
+  // value. A bare Enter is a no-op.
+  await page.keyboard.press("m");
+  await expect(picker(page).getByTestId("item-milestone-1")).toHaveAttribute("aria-selected", "true");
+  await expect(picker(page).getByTestId("item-milestone-none")).toHaveCount(0);
+  await expect(picker(page).getByTestId("item-milestone-clear")).toHaveAttribute("data-value", "clear");
+  // ONE check, on the current row, drawn by the picker beside its
+  // "(current)" words.
+  await expect(picker(page).locator("svg.lucide-check")).toHaveCount(1);
+  await expect(picker(page).getByTestId("item-milestone-1").locator("svg.lucide-check")).toHaveCount(1);
+  // The due date rides in `meta` — the datum that tells one sprint from
+  // the next — and a phase without one carries nothing there.
+  await expect(picker(page).getByTestId("item-milestone-1").locator("span.num")).toHaveCount(1);
+  await expect(picker(page).getByTestId("item-milestone-0").locator("span.num")).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(value).toHaveText(seed.datedMilestoneName);
+  await expect(trigger).toBeFocused();
+
+  // Steering names the row it lands on; Enter commits it.
+  await page.keyboard.press("m");
+  await page.keyboard.press("ArrowUp");
+  await expectAnnounced(page, picker(page).getByTestId("item-milestone-0"));
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(value).not.toHaveText(seed.datedMilestoneName);
+  await settled(page, "item-milestone", "Filed under");
+  expect(milestonePosts()).toBe(2);
+
+  const filed = ((await value.textContent()) ?? "").trim();
+  await page.reload();
+  await expect(trigger).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(value).toHaveText(filed);
+
+  // The change is on the item's history, and it says which phase — a
+  // name the READ resolved from the row's ref, never one the write
+  // stored.
+  await expect(
+    page.locator('[data-testid="item-activity-row"][data-field="milestoneId"]').first(),
+  ).toContainText(`changed the milestone from ${seed.datedMilestoneName} to ${filed}`);
+
+  // End reaches the clear row, last; Enter takes the task out of its phase.
+  await pressUntil(page, "m", picker(page));
+  await expect(searchField(page)).toBeFocused();
+  await page.keyboard.press("End");
+  await expectAnnounced(page, picker(page).getByTestId("item-milestone-clear"));
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(value).toHaveAttribute("data-value", "");
+  await expect(said(page, "Milestone removed")).toHaveCount(1, { timeout: 20_000 * SLOW });
+  expect(milestonePosts()).toBe(3);
 });
 
 test("V: share, then a refused make-private that explains — and the chip is never optimistic", async ({ page }) => {
