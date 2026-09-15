@@ -2505,6 +2505,27 @@ model WorkItemActivity {
 /// avoided by making them tenant-wide with an optional project filter.
 /// scope=tenant  rls=A (principalScoped)  ret=R2  enc=none
 /// audit: label.created | label.deleted
+/// SHIPPED 2026-09-15 (the L-key slice, src/modules/work/labels.ts):
+/// `createLabel` (tenant-wide only, `label:manage`, audited) and
+/// `setItemLabel` (one label on or off a task, `work_item:edit`,
+/// routine — a history row `field = 'labels'` with the label id in
+/// `new_ref` for an add and `old_ref` for a removal — the assignee's
+/// shape — INTERNAL by construction; the name is resolved by the read,
+/// never stored).
+/// THE "APP ALSO CHECKS" IS NOW THE DATABASE'S: `(tenant_id, project_id,
+/// name)` cannot refuse two tenant-wide labels named alike, because a
+/// NULL project_id is distinct to a unique index, so 20260915180000 adds
+/// the partial expression index `label_tenant_wide_name_key` on
+/// (tenant_id, lower(name)) WHERE project_id IS NULL — two creators race
+/// straight into it and the second is refused LABEL_TAKEN (dbtest-pinned;
+/// the first cut's advisory lock was held to commit and covered only one
+/// writer, the review showed). The join write
+/// decides `changed` by its own row count (`createMany skipDuplicates`
+/// against the composite PK / `deleteMany`), under FOR SHARE on the
+/// task, so two adds of one label count once and a label never lands on
+/// a task being deleted. A project-scoped label of ANOTHER project is
+/// refused by the service (NOT_FOUND); no trigger belt yet, because
+/// nothing creates a project-scoped label — it lands with whatever does.
 model Label {
   id        String   @id @default(uuid(7))
   tenantId  String

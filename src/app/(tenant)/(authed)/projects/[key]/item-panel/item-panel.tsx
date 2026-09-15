@@ -15,6 +15,7 @@ import type {
   ItemActivityPage,
   ItemComments,
   ItemDetailCaps,
+  ItemLabels,
   MilestoneEntry,
   ResolvedItemDetail,
   ResolvedItemSubtasks,
@@ -29,6 +30,7 @@ import { CommentsSection } from "./comments-section";
 import { DescriptionField } from "./description-field";
 import { DueDateField } from "./due-date-field";
 import { EstimateField } from "./estimate-field";
+import { LabelsField } from "./labels-field";
 import { MilestoneField } from "./milestone-field";
 import { PriorityField } from "./priority-field";
 import { StateField } from "./state-field";
@@ -43,8 +45,8 @@ import { VisibilityField } from "./visibility-field";
  *
  * Read-first: every property is its value as text until you edit it
  * (Mandate 1). State, Assignee, Priority, Estimate, Due date,
- * Visibility and Milestone each have a `<PropertyPicker>` island behind
- * them (§5.2 `S A P E D V M`); the Subtasks section (slice 9) sits between the
+ * Visibility, Milestone and Labels each have a `<PropertyPicker>` island
+ * behind them (§5.2 `S A P E D V M L`); the Subtasks section (slice 9) sits between the
  * description and the attachments; the Activity section (slice 8)
  * closes the panel; the rest of the rail and comments grow onto this
  * shell in the slices after it.
@@ -75,6 +77,7 @@ export async function ItemPanel({
   states,
   members,
   milestones,
+  labels,
   activity,
   subtasks,
   comments,
@@ -121,6 +124,8 @@ export async function ItemPanel({
   members: readonly { id: string; name: string }[];
   /** The Milestone picker's rows — the project's phases by rank, `getItemDetail`'s for the same reason. */
   milestones: readonly MilestoneEntry[];
+  /** The task's labels and its vocabulary — `getItemDetail`'s (slice 12). */
+  labels: ItemLabels;
   /** The Activity section's page — `getItemDetail`'s, behind the same scope check as the item; it carries its own cursor. */
   activity: ItemActivityPage;
   /** The Subtasks section's rows — `getItemDetail`'s, behind the same scope check as the item. */
@@ -200,14 +205,14 @@ export async function ItemPanel({
     </>
   );
 
-  // Read-first property list (UI.md §10.15 pattern 7). The seven pickers
+  // Read-first property list (UI.md §10.15 pattern 7). The eight pickers
   // are siblings in rail order, each keyed by the ITEM: `PeekShell` never
   // remounts between items, so without the key an optimistic value — or
   // an open popover — would survive a navigation from one task to the
   // next; and the `?` overlay lists a scope's keys in registration order,
-  // which is this DOM order (S A P E D V M — the order §2 rule 3 spells
-  // the keys in). Six of the seven are UNCONDITIONAL; `M` is the one that
-  // is not, and its own row says why.
+  // which is this DOM order (S A P E D V M L — the order §2 rule 3 spells
+  // the keys in). Six of the eight are UNCONDITIONAL; `M` and `L` are the
+  // two that are not, and each row says why.
   //
   // ONE row geometry for a trigger and for text: every label and every
   // value is at least the trigger's 32px (`restBoxClass`'s `h-8`), so a
@@ -219,6 +224,8 @@ export async function ItemPanel({
   // downward and stays level with its label on its FIRST line. A PICKER
   // value is centred in the same 32px — which is also where a read-only
   // island's plain text lands.
+  // Coining a label from the picker needs the word's right AND this task's.
+  const canCreateLabel = canEdit && itemCaps.manageLabels;
   const railLabel = "min-h-8 py-1.5 text-muted-foreground";
   const railText = "min-h-8 py-1.5";
   const railPicker = "flex min-h-8 items-center";
@@ -354,6 +361,29 @@ export async function ItemPanel({
                 milestoneStatus={item.milestone?.status ?? null}
                 milestones={milestones}
                 canEdit={canEdit}
+              />
+            </dd>
+          </>
+        ) : null}
+        {/* Same shape as the milestone row: a row where there is a label
+            to show or a word to reach — the task's own, a vocabulary to
+            pick from (empty for a member who cannot edit), or the right
+            to coin one — with `canCreate` folded ONCE for the row and the
+            island alike. */}
+        {labels.applied.length > 0 || labels.offered.length > 0 || canCreateLabel ? (
+          <>
+            <dt className={railLabel}>{t("properties.labels")}</dt>
+            <dd className={railPicker}>
+              <LabelsField
+                key={item.id}
+                itemId={item.id}
+                itemNumber={item.number}
+                projectKey={projectKey}
+                surface={surface}
+                applied={labels.applied}
+                offered={labels.offered}
+                canEdit={canEdit}
+                canCreate={canCreateLabel}
               />
             </dd>
           </>

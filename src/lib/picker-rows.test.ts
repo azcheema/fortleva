@@ -189,15 +189,15 @@ const estimateDerive =
 
 /** One settle, exactly as `PickerBody` runs it: `prev` → `next` under an unchanged query. */
 function settle(
-  prev: { options: Row[]; value: string | null },
-  next: { options: Row[]; value: string | null },
+  prev: { options: Row[]; value: string | null; selected?: ReadonlySet<string> },
+  next: { options: Row[]; value: string | null; selected?: ReadonlySet<string> },
   lit: { highlight: string; steered: boolean },
   query = "",
   derive?: (q: string) => Row | null,
 ) {
   return highlightAfterChange(
-    highlightBasis(prev.options, prev.value),
-    { options: next.options, value: next.value, rows: pickerRows(next.options, query, derive) },
+    highlightBasis(prev.options, prev.value, prev.selected),
+    { options: next.options, value: next.value, rows: pickerRows(next.options, query, derive), selected: next.selected },
     lit,
   );
 }
@@ -225,6 +225,52 @@ describe("highlightBasisChanged — what makes an open picker settle its highlig
     ["the order (a rank change)", [STATES[1]!, STATES[0]!, STATES[2]!, STATES[3]!], "progress"],
   ])("is true for a change in %s", (_what, options, value) => {
     expect(highlightBasisChanged(highlightBasis(STATES, "progress"), options, value)).toBe(true);
+  });
+});
+
+describe("a MULTI property's applied set is part of the basis (slice 12)", () => {
+  const LABELS = [row("bug"), row("design"), row("hotfix")];
+  const applied = (...ids: string[]) => new Set(ids);
+
+  it("a membership change is a basis change; the same set, however built, is not", () => {
+    const basis = highlightBasis(LABELS, null, applied("bug"));
+    expect(highlightBasisChanged(basis, LABELS, null, applied("bug"))).toBe(false);
+    expect(highlightBasisChanged(basis, LABELS, null, new Set(["bug"]))).toBe(false);
+    expect(highlightBasisChanged(basis, LABELS, null, applied("bug", "design"))).toBe(true);
+    expect(highlightBasisChanged(basis, LABELS, null, applied())).toBe(true);
+    // A single-value picker's basis carries no set, and a set arriving is a change.
+    expect(highlightBasisChanged(highlightBasis(LABELS, null), LABELS, null, applied("bug"))).toBe(true);
+  });
+
+  it("a STEERED highlight re-seeds and un-steers when ITS row's membership flips — a pick there is a toggle", () => {
+    // Steered to "design" (not applied) to ADD it; a colleague adds it first.
+    const lit = { highlight: "design", steered: true };
+    const out = settle(
+      { options: LABELS, value: null, selected: applied("bug") },
+      { options: LABELS, value: null, selected: applied("bug", "design") },
+      lit,
+    );
+    // Nothing lit and Enter inert: `value` is null, so the re-seed is NO_HIGHLIGHT.
+    expect(out).toEqual({ highlight: NO_HIGHLIGHT, steered: false });
+    // And the other way: steered to REMOVE "bug", a colleague removed it.
+    expect(
+      settle(
+        { options: LABELS, value: null, selected: applied("bug") },
+        { options: LABELS, value: null, selected: applied() },
+        { highlight: "bug", steered: true },
+      ),
+    ).toEqual({ highlight: NO_HIGHLIGHT, steered: false });
+  });
+
+  it("a STEERED highlight survives when ANOTHER row's membership flips", () => {
+    const lit = { highlight: "design", steered: true };
+    expect(
+      settle(
+        { options: LABELS, value: null, selected: applied("bug") },
+        { options: LABELS, value: null, selected: applied("bug", "hotfix") },
+        lit,
+      ),
+    ).toEqual(lit);
   });
 });
 

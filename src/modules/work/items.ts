@@ -10,6 +10,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { readItemActivity, writeActivity, type ItemActivityPage } from "./activity";
 import { readItemComments, type ItemComments } from "./comments";
+import { readItemLabels, type ItemLabels } from "./labels";
 import { descriptionToken } from "./description-token";
 import { guarded } from "./db-errors";
 import { notifyItemMembers } from "./notify";
@@ -373,6 +374,8 @@ export type ItemDetailCaps = {
   create: boolean;
   /** `comment:create` — the composer is rendered. */
   comment: boolean;
+  /** `label:manage` — the `L` picker offers to create a label from the typed text. */
+  manageLabels: boolean;
 };
 
 export type ItemDetailResult = {
@@ -384,6 +387,8 @@ export type ItemDetailResult = {
   members: { id: string; name: string }[];
   /** The `M` picker's rows: the project's milestones by rank — empty for a member who cannot edit. */
   milestones: MilestoneEntry[];
+  /** The task's labels and the vocabulary it may pick from (labels.ts) — `offered` empty for a member who cannot edit. */
+  labels: ItemLabels;
   /** The newest page of the item's history (slice 8) — or the page `activityBefore` asked for. */
   activity: ItemActivityPage;
   /** The item's live children by rank, with the meter's counts (subtasks.ts) — empty for a SUBTASK, which has none by construction. */
@@ -497,6 +502,7 @@ export async function getItemDetail(
         "comment:edit_any",
         "comment:delete",
         "comment:change_visibility",
+        "label:manage",
       ]),
       tx.workflowState.findMany({
         where: { tenantId: ctx.tenantId, projectId },
@@ -523,11 +529,13 @@ export async function getItemDetail(
     // The Comments section's rows (comments.ts), behind the same scope
     // check as the item, with the reading member's own caps stamped on
     // each row — the section never decides who may edit what.
-    const [members, milestones, comments] = await Promise.all([
+    const [members, milestones, labels, comments] = await Promise.all([
       canEdit ? activeMembers(tx, ctx.tenantId) : Promise.resolve([]),
       // Same rule as the members: a viewer's panel renders the phase as
       // text and never lists the project's others.
       canEdit ? projectMilestones(tx, ctx.tenantId, projectId) : Promise.resolve([]),
+      // The task's labels always; the vocabulary under the same rule.
+      readItemLabels(tx, ctx.tenantId, { id: row!.id, projectId }, canEdit),
       readItemComments(tx, ctx.tenantId, row!, ctx.actor.memberId, {
         create: held.has("comment:create"),
         editAny: held.has("comment:edit_any"),
@@ -579,9 +587,11 @@ export async function getItemDetail(
         changeVisibility: held.has("work_item:change_visibility"),
         create: held.has("work_item:create"),
         comment: held.has("comment:create"),
+        manageLabels: held.has("label:manage"),
       },
       members,
       milestones,
+      labels,
       activity,
       subtasks,
       comments,

@@ -191,6 +191,51 @@ export const MAX_BULK_ITEMS = 50;
 /** A task title's length bound — the backlog row, the board column and the panel's subtask row all enforce it. */
 export const MAX_TITLE_LENGTH = 400;
 
+/**
+ * A label name's bound — a chip, not a sentence. It lives HERE, beside
+ * `MAX_TITLE_LENGTH`, for the same reason: the picker's typed row must
+ * honour it before the server does, `@/modules/work` reaches the
+ * database so a client component may import only types from it — and a
+ * `"use server"` module may export NOTHING but async functions: a
+ * constant re-exported from `backlog/actions.ts` compiled, typechecked,
+ * and at runtime refused every action in the file, task creation
+ * included (slice 12; only the e2e saw it).
+ */
+export const MAX_LABEL_NAME_LENGTH = 40;
+
+/**
+ * ONE notion of "the same label name", for the island's typed row, the
+ * service and the database alike: trimmed and lower-cased — what the
+ * partial unique index `label_tenant_wide_name_key` computes with
+ * `lower(name)` (20260915180000). Deliberately NOT `matchesQuery`'s
+ * diacritic fold: "Café" and "Cafe" are two words, and a client that
+ * hid the Create row for one the server would accept could never coin it.
+ * JS `toLowerCase` and Postgres `lower()` agree for ASCII and for å/ä/ö.
+ * On a libc collation they can part on a Turkish dotted İ and on a Greek
+ * final sigma; mostly the client then offers what the server refuses
+ * (safe), and for a word-final sigma — or a decomposed İ — the client can
+ * hide a word the server would accept. PG 18's builtin provider does
+ * full case mapping and agrees with JS on both. Not worth code for a
+ * Swedish agency's label names; recorded so nobody re-derives it.
+ */
+export const labelNameKey = (name: string): string => name.trim().toLowerCase();
+
+/**
+ * ONE order for labels wherever they are listed — the rail's chips, the
+ * picker's rows, the service's answer, the dbtest's expectation. Case-
+ * insensitive on the key, then the raw name, and never `localeCompare`
+ * or a database collation: CI's Postgres is C.UTF-8 (every capital
+ * before every lower-case letter) and Node's ICU is not, and the two
+ * disagreed on `["Zed", "race"]` — a chip order that jumped when the
+ * server's list replaced the optimistic one, and a coin-flip dbtest.
+ */
+export function compareLabelNames(a: string, b: string): number {
+  const ka = labelNameKey(a);
+  const kb = labelNameKey(b);
+  if (ka !== kb) return ka < kb ? -1 : 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 // ── filters ──────────────────────────────────────────────────────────
 
 /** The unassigned bucket's stable token in the URL and in the filter. */

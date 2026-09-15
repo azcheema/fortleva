@@ -19,6 +19,7 @@ const look: ActivityLookups = {
   visibility: (v) => `vis:${v}`,
   member: (name) => `member:${name ?? "?"}`,
   milestone: (name) => `milestone:${name ?? "?"}`,
+  label: (name) => `label:${name ?? "?"}`,
 };
 
 const row = (partial: Partial<ActivityRow> & { field: string }): ActivityRow => ({
@@ -177,6 +178,25 @@ describe("activitySentence", () => {
       key: "fieldChanged",
       field: "milestoneId",
     });
+  });
+
+  it("labels: an add is newRef, a removal oldRef — the assignee's shape — and a gone label is still a label", () => {
+    expect(activitySentence(row({ field: "labels", newRef: "l1", newRefName: "Bug" }), look)).toEqual({
+      key: "labelAdded",
+      to: "label:Bug",
+    });
+    expect(activitySentence(row({ field: "labels", oldRef: "l1", oldRefName: "Bug" }), look)).toEqual({
+      key: "labelRemoved",
+      from: "label:Bug",
+    });
+    // Deleted since: the lookup's "Unknown" word, never "removed".
+    expect(activitySentence(row({ field: "labels", newRef: "gone" }), look)).toEqual({ key: "labelAdded", to: "label:?" });
+    // Both refs, or neither: no sentence this build knows.
+    expect(activitySentence(row({ field: "labels", oldRef: "l1", newRef: "l2" }), look)).toEqual({
+      key: "fieldChanged",
+      field: "labels",
+    });
+    expect(activitySentence(row({ field: "labels" }), look)).toEqual({ key: "fieldChanged", field: "labels" });
   });
 
   it("state: each ref through the state lookup, and a gone state falls back to the category the row carries", () => {

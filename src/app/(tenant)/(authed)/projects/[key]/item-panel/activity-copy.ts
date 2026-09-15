@@ -7,13 +7,13 @@ import type { ActivityEntry } from "@/modules/work";
  * What a history row SAYS — the pure half of the Activity section
  * (`activity-section.tsx` renders it). A row is a field and four
  * nullable columns (DATA_MODEL §6.14); this turns that into one of
- * twenty-three sentences with its display values already formatted, so
+ * twenty-five sentences with its display values already formatted, so
  * the component is a switch over message keys and every branch is a
  * unit test here rather than a screenshot. The lookups are the
  * section's formatters — a state name from the project's states, a
  * priority label, a duration in the tenant's style, a day, a visibility
- * token, a member's name, a milestone's — handed in, so this module
- * knows no locale and no catalogue.
+ * token, a member's name, a milestone's, a label's — handed in, so this
+ * module knows no locale and no catalogue.
  *
  * The value columns are TEXT the writers encode ad hoc (`items.ts`:
  * `estimateMinutes.toString()`, `targetDate.toISOString().slice(0, 10)`,
@@ -25,10 +25,9 @@ import type { ActivityEntry } from "@/modules/work";
  * `updateItemFields`, so a writer that changes format fails a test
  * rather than quietly degrading every row to the fallback.
  *
- * A row this slice has no sentence for (a label — each arrives with its
- * own slice and adds its case here) renders as "changed <field>" rather
- * than nothing: a change a member cannot read is still a change that
- * happened.
+ * A row no slice has a sentence for yet renders as "changed <field>"
+ * rather than nothing: a change a member cannot read is still a change
+ * that happened.
  */
 export type ActivityLookups = {
   /** The state a ref names; falls back to the CATEGORY the row carries when the state is gone. */
@@ -41,6 +40,8 @@ export type ActivityLookups = {
   member: (name: string | null) => string;
   /** A resolved milestone name, or the "Unknown" word — for a phase that is gone, or one the reader may not see. */
   milestone: (name: string | null) => string;
+  /** A resolved label name, or the "Unknown" word for a label since deleted. */
+  label: (name: string | null) => string;
 };
 
 export type ActivitySentence =
@@ -61,6 +62,8 @@ export type ActivitySentence =
   | { key: "milestoneSet"; to: string }
   | { key: "milestoneChanged"; from: string; to: string }
   | { key: "milestoneCleared"; from: string }
+  | { key: "labelAdded"; to: string }
+  | { key: "labelRemoved"; from: string }
   | { key: "visibilityChanged"; to: string }
   | { key: "commented" }
   | { key: "commentEdited" }
@@ -151,6 +154,17 @@ export function activitySentence(row: ActivityRow, look: ActivityLookups): Activ
       if (to !== null && from !== null) return { key: "milestoneChanged", from, to };
       if (to !== null) return { key: "milestoneSet", to };
       if (from !== null) return { key: "milestoneCleared", from };
+      return fallback;
+    }
+    // The label rows (labels.ts): the schema's own shape — an add is
+    // `newRef`, a removal `oldRef`, exactly as the assignee's rows say it.
+    // A label since deleted is still a label ("Unknown"), never nothing;
+    // both refs or neither is no sentence this build knows.
+    case "labels": {
+      const from = row.oldRef ? look.label(row.oldRefName) : null;
+      const to = row.newRef ? look.label(row.newRefName) : null;
+      if (to !== null && from === null) return { key: "labelAdded", to };
+      if (from !== null && to === null) return { key: "labelRemoved", from };
       return fallback;
     }
     case "visibility":

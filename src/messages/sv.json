@@ -974,7 +974,8 @@
     "WORK_TYPE_TAKEN": "Det finns redan en arbetstyp med det namnet.",
     "COMMENT_EMPTY": "En kommentar behöver text.",
     "COMMENT_TOO_LARGE": "Kommentaren är för lång för att publiceras. Korta ner den, eller bifoga detaljerna som en fil.",
-    "SUBJECT_NOT_VISIBLE": "Uppgiften är privat för teamet, så ett svar kan inte visas för kunden. Dela uppgiften först."
+    "SUBJECT_NOT_VISIBLE": "Uppgiften är privat för teamet, så ett svar kan inte visas för kunden. Dela uppgiften först.",
+    "LABEL_TAKEN": "Det finns redan en etikett med det namnet."
   },
   "assignments": {
     "title": "Team",
@@ -1707,6 +1708,7 @@
         "visibility": "Synlighet",
         "parent": "Del av",
         "milestone": "Milstolpe",
+        "labels": "Etiketter",
         "checklist": "Checklista",
         "checklistValue": "{done} av {total} klara"
       },
@@ -1874,6 +1876,21 @@
         "changed": "Lagd under {name}",
         "cleared": "Milstolpen togs bort"
       },
+      "labels": {
+        "trigger": "Etiketter: {names}",
+        "triggerEmpty": "Etiketter: inga",
+        "search": "Sök etiketter…",
+        "searchOrCreate": "Sök eller skapa etiketter…",
+        "empty": "Ingen etikett matchar.",
+        "emptyCreate": "Inga etiketter ännu — skriv ett namn för att skapa en.",
+        "none": "Inga etiketter",
+        "applied": "(tillagd)",
+        "create": "Skapa ”{name}”",
+        "failed": "Etiketterna sparades inte. Panelen visar de nuvarande etiketterna.",
+        "added": "Etiketten {name} lades till",
+        "removed": "Etiketten {name} togs bort",
+        "created": "Etiketten {name} skapades och lades till"
+      },
       "visibility": {
         "trigger": "Synlighet: {visibility}",
         "search": "Privat för teamet eller Kunden kan se",
@@ -1888,7 +1905,8 @@
         "estimate": "Ange estimat",
         "dueDate": "Ange förfallodatum",
         "visibility": "Ändra synlighet",
-        "milestone": "Ange milstolpe"
+        "milestone": "Ange milstolpe",
+        "labels": "Ange etiketter"
       },
       "activity": {
         "title": "Aktivitet",
@@ -1917,6 +1935,8 @@
         "milestoneSet": "satte milstolpen till {to}",
         "milestoneChanged": "ändrade milstolpen från {from} till {to}",
         "milestoneCleared": "tog bort milstolpen ({from})",
+        "labelAdded": "lade till etiketten {to}",
+        "labelRemoved": "tog bort etiketten {from}",
         "visibilityChanged": "ändrade synligheten till {to}",
         "fieldChanged": "ändrade ”{field}”",
         "commented": "kommenterade",

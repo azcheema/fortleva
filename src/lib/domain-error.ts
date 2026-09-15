@@ -26,6 +26,8 @@ export type DomainErrorCode =
   | "COMMENT_EMPTY" // a comment with no text
   | "COMMENT_TOO_LARGE" // the comment's JSON or its extracted text is past its cap
   | "SUBJECT_NOT_VISIBLE" // a comment cannot be client-visible on a task the client cannot see
+  // Labels (2W panel slice 12 — src/modules/work/labels.ts)
+  | "LABEL_TAKEN" // a label with that name already exists (case-insensitive, tenant-wide)
   // Time (2T — DATA_MODEL.md §6.15; trigger tokens map 1:1 in src/modules/time/ctx.ts)
   | "NOTICE_UNACKNOWLEDGED" // staff notice not acknowledged — timers and clock-in refuse
   | "TIMER_ALREADY_RUNNING" // one running timer per member (partial unique)

@@ -974,7 +974,8 @@
     "WORK_TYPE_TAKEN": "A work type with that name already exists.",
     "COMMENT_EMPTY": "A comment needs some text.",
     "COMMENT_TOO_LARGE": "This comment is too long to post. Shorten it, or attach the detail as a file.",
-    "SUBJECT_NOT_VISIBLE": "This task is private to your team, so a reply can’t be shown to the client. Share the task first."
+    "SUBJECT_NOT_VISIBLE": "This task is private to your team, so a reply can’t be shown to the client. Share the task first.",
+    "LABEL_TAKEN": "A label with that name already exists."
   },
   "assignments": {
     "title": "Team",
@@ -1707,6 +1708,7 @@
         "visibility": "Visibility",
         "parent": "Part of",
         "milestone": "Milestone",
+        "labels": "Labels",
         "checklist": "Checklist",
         "checklistValue": "{done} of {total} done"
       },
@@ -1874,6 +1876,21 @@
         "changed": "Filed under {name}",
         "cleared": "Milestone removed"
       },
+      "labels": {
+        "trigger": "Labels: {names}",
+        "triggerEmpty": "Labels: none",
+        "search": "Search labels…",
+        "searchOrCreate": "Search or create labels…",
+        "empty": "No matching label.",
+        "emptyCreate": "No labels yet — type a name to create one.",
+        "none": "No labels",
+        "applied": "(applied)",
+        "create": "Create “{name}”",
+        "failed": "The labels did not save. The panel shows the current labels.",
+        "added": "Label {name} added",
+        "removed": "Label {name} removed",
+        "created": "Label {name} created and added"
+      },
       "visibility": {
         "trigger": "Visibility: {visibility}",
         "search": "Private to team or Client can see",
@@ -1888,7 +1905,8 @@
         "estimate": "Set estimate",
         "dueDate": "Set due date",
         "visibility": "Change visibility",
-        "milestone": "Set milestone"
+        "milestone": "Set milestone",
+        "labels": "Set labels"
       },
       "activity": {
         "title": "Activity",
@@ -1917,6 +1935,8 @@
         "milestoneSet": "set the milestone to {to}",
         "milestoneChanged": "changed the milestone from {from} to {to}",
         "milestoneCleared": "removed the milestone ({from})",
+        "labelAdded": "added the label {to}",
+        "labelRemoved": "removed the label {from}",
         "visibilityChanged": "changed the visibility to {to}",
         "fieldChanged": "changed “{field}”",
         "commented": "commented",

@@ -139,15 +139,17 @@ export async function resolveActorNames(
         })
       : Promise.resolve([]),
   ]);
-  const memberName = new Map(members.map((m) => [m.id, m.user.name]));
-  const contactName = new Map(contacts.map((c) => [c.id, c.name]));
-  const nameOf = (id: string | null, names: Map<string, string>): string | null =>
-    id ? (names.get(id) ?? null) : null;
   return {
-    member: (id) => nameOf(id, memberName),
-    contact: (id) => nameOf(id, contactName),
+    member: nameLookup(members.map((m) => ({ id: m.id, name: m.user.name }))),
+    contact: nameLookup(contacts),
   };
 }
+
+/** The one shape of "an id that may resolve to a name": null for no id, and for an id no row answers to. */
+const nameLookup = (rows: readonly { id: string; name: string }[]): ((id: string | null) => string | null) => {
+  const byId = new Map(rows.map((r) => [r.id, r.name]));
+  return (id) => (id ? (byId.get(id) ?? null) : null);
+};
 
 /**
  * The phases behind a page's `milestoneId` refs — read HERE, never
@@ -167,23 +169,44 @@ async function resolveMilestoneNames(
   milestoneIds: ReadonlySet<string>,
 ): Promise<(id: string | null) => string | null> {
   if (milestoneIds.size === 0) return () => null;
-  const rows = await tx.milestone.findMany({
-    where: { tenantId, clientId, id: { in: [...milestoneIds] } },
-    select: { id: true, name: true },
-  });
-  const byId = new Map(rows.map((m) => [m.id, m.name]));
-  return (id) => (id ? (byId.get(id) ?? null) : null);
+  return nameLookup(
+    await tx.milestone.findMany({
+      where: { tenantId, clientId, id: { in: [...milestoneIds] } },
+      select: { id: true, name: true },
+    }),
+  );
 }
 
-/** Which resolver a field's refs belong to — the one place the two ref-bearing fields are named. */
+/**
+ * The labels behind a page's `labels` refs — class A, tenant-bound, and
+ * never a portal concern: every `labels` row is INTERNAL by construction.
+ * Resolved rather than stored for the same reason as a phase: a rename
+ * shows the label's current name, and a deleted label reads as gone.
+ */
+async function resolveLabelNames(
+  tx: TenantDb,
+  tenantId: string,
+  labelIds: ReadonlySet<string>,
+): Promise<(id: string | null) => string | null> {
+  if (labelIds.size === 0) return () => null;
+  return nameLookup(
+    await tx.label.findMany({ where: { tenantId, id: { in: [...labelIds] } }, select: { id: true, name: true } }),
+  );
+}
+
+/** Which resolver a field's refs belong to — the one place the three ref-bearing fields are named. */
 const refName = (
   field: string,
   ref: string | null,
-  member: (id: string | null) => string | null,
-  milestone: (id: string | null) => string | null,
+  by: {
+    member: (id: string | null) => string | null;
+    milestone: (id: string | null) => string | null;
+    label: (id: string | null) => string | null;
+  },
 ): string | null => {
-  if (field === "assignee") return member(ref);
-  if (field === "milestoneId") return milestone(ref);
+  if (field === "assignee") return by.member(ref);
+  if (field === "milestoneId") return by.milestone(ref);
+  if (field === "labels") return by.label(ref);
   return null;
 };
 
@@ -206,7 +229,8 @@ export type ActivityEntry = {
   actor: ActivityActor;
   /**
    * What `oldRef` / `newRef` NAME, resolved by this read: a member for
-   * `assignee`, a milestone for `milestoneId`. Null for every other
+   * `assignee`, a milestone for `milestoneId`, a label for `labels`.
+   * Null for every other
    * field, and for a ref whose row no longer resolves — which, for a
    * milestone, is also the answer RLS gives a Phase 3 contact about an
    * INTERNAL phase. That is the whole reason the writer stores ids and
@@ -265,6 +289,7 @@ export async function readItemActivity(
   const memberIds = new Set<string>();
   const contactIds = new Set<string>();
   const milestoneIds = new Set<string>();
+  const labelIds = new Set<string>();
   for (const r of page) {
     if (r.actorMemberId) memberIds.add(r.actorMemberId);
     if (r.actorContactId) contactIds.add(r.actorContactId);
@@ -276,11 +301,17 @@ export async function readItemActivity(
       if (r.oldRef) milestoneIds.add(r.oldRef);
       if (r.newRef) milestoneIds.add(r.newRef);
     }
+    if (r.field === "labels") {
+      if (r.oldRef) labelIds.add(r.oldRef);
+      if (r.newRef) labelIds.add(r.newRef);
+    }
   }
-  const [names, milestoneName] = await Promise.all([
+  const [names, milestone, label] = await Promise.all([
     resolveActorNames(tx, tenantId, clientId, memberIds, contactIds),
     resolveMilestoneNames(tx, tenantId, clientId, milestoneIds),
+    resolveLabelNames(tx, tenantId, labelIds),
   ]);
+  const by = { member: names.member, milestone, label };
 
   return {
     rows: page.map((r) => ({
@@ -296,8 +327,8 @@ export async function readItemActivity(
         contactId: r.actorContactId,
         name: names.member(r.actorMemberId) ?? names.contact(r.actorContactId),
       },
-      oldRefName: refName(r.field, r.oldRef, names.member, milestoneName),
-      newRefName: refName(r.field, r.newRef, names.member, milestoneName),
+      oldRefName: refName(r.field, r.oldRef, by),
+      newRefName: refName(r.field, r.newRef, by),
       visibility: r.visibility,
       createdAt: r.createdAt,
     })),

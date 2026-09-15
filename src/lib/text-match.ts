@@ -16,7 +16,10 @@ export function matchesQuery(haystack: string, needle: string): boolean {
   const norm = (v: string) =>
     v.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   const h = norm(haystack);
-  const n = norm(needle);
+  // CODE POINTS on both sides: the haystack was already walked by code
+  // point, but the needle was indexed by UTF-16 unit, so an astral
+  // character (an emoji in a label name) could never match itself.
+  const n = [...norm(needle)];
   if (n.length === 0) return true;
   let i = 0;
   for (const ch of h) {

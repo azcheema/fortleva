@@ -1245,7 +1245,14 @@ describe("getItemDetail — the panel's one scoped read", () => {
     expect(seeded.name).toBeNull();
     expect(seeded.requiresApproval).toBe(true);
 
-    expect(caps).toEqual({ edit: true, approve: true, changeVisibility: true, create: true, comment: true });
+    expect(caps).toEqual({
+      edit: true,
+      approve: true,
+      changeVisibility: true,
+      create: true,
+      comment: true,
+      manageLabels: true,
+    });
 
     // The A picker's rows: every ACTIVE member, the owner first (joined
     // first), each with a name to show — the same read listItems makes.

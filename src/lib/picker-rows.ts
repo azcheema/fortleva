@@ -173,20 +173,37 @@ export function reseedHighlight(
  * options array's identity, nor `icon`, `meta` or `testId`: E and D build
  * a fresh array on every render.
  */
-export type HighlightBasis = { value: string | null; rows: readonly RowLike[] };
-
-export const highlightBasis = (options: readonly RowLike[], value: string | null): HighlightBasis => ({
+export type HighlightBasis = {
+  value: string | null;
+  rows: readonly RowLike[];
+  /** A MULTI property's applied values, sorted — null for a single-value picker. */
+  selected: readonly string[] | null;
+};
+export const highlightBasis = (
+  options: readonly RowLike[],
+  value: string | null,
+  selected?: ReadonlySet<string>,
+): HighlightBasis => ({
   value,
   rows: options.map(({ value: v, label, keywords, group, disabled }) => ({ value: v, label, keywords, group, disabled })),
+  selected: selected ? [...selected].sort() : null,
 });
 
-/** True when `value` or any basis field of any option differs from `basis` — the only time `highlightAfterChange` runs. */
+const sameMembers = (a: readonly string[] | null, b: ReadonlySet<string> | undefined): boolean => {
+  if (a === null) return b === undefined;
+  if (b === undefined || a.length !== b.size) return false;
+  return a.every((v) => b.has(v));
+};
+
+/** True when `value`, the applied set, or any basis field of any option differs from `basis` — the only time `highlightAfterChange` runs. */
 export function highlightBasisChanged(
   basis: HighlightBasis,
   options: readonly RowLike[],
   value: string | null,
+  selected?: ReadonlySet<string>,
 ): boolean {
   if (basis.value !== value || basis.rows.length !== options.length) return true;
+  if (!sameMembers(basis.selected, selected)) return true;
   return options.some((o, i) => {
     const was = basis.rows[i]!;
     return (
@@ -226,6 +243,12 @@ export function highlightBasisChanged(
  *   chose.
  * · A row that went disabled stays lit with no select listener, so Enter
  *   on it does nothing at all.
+ * · For a MULTI property (`selected`), a lit row whose MEMBERSHIP flipped
+ *   underneath the member is no longer theirs: a pick there is a TOGGLE,
+ *   so an Enter steered to "add Bug" the instant a colleague added Bug
+ *   would REMOVE it — the one place a survived highlight is a destructive
+ *   write rather than a no-op (slice 12's review). Another row's
+ *   membership changing leaves this one alone.
  *
  * Re-seeding EVERY highlight on a value change (the rule this replaced)
  * dropped a pick the change had nothing to do with: after a colleague's
@@ -238,7 +261,7 @@ export function highlightBasisChanged(
  */
 export function highlightAfterChange<O extends RowLike>(
   prev: HighlightBasis,
-  next: { options: readonly O[]; value: string | null; rows: PickerRows<O> },
+  next: { options: readonly O[]; value: string | null; rows: PickerRows<O>; selected?: ReadonlySet<string> },
   lit: { highlight: string; steered: boolean },
 ): { highlight: string; steered: boolean } {
   if (lit.steered && lit.highlight !== prev.value) {
@@ -246,7 +269,9 @@ export function highlightAfterChange<O extends RowLike>(
     if (derived && lit.highlight === derivedRowValue(derived.value)) return lit;
     const before = prev.rows.find((r) => r.value === lit.highlight);
     const after = groups.flatMap((g) => g.options).find((o) => o.value === lit.highlight);
-    if (before && after && !after.disabled && after.group === before.group) return lit;
+    const wasApplied = prev.selected?.includes(lit.highlight) ?? false;
+    const isApplied = next.selected?.has(lit.highlight) ?? false;
+    if (before && after && !after.disabled && after.group === before.group && wasApplied === isApplied) return lit;
   }
   return { highlight: reseedHighlight(next.options, next.value), steered: false };
 }

@@ -13,13 +13,16 @@ import {
   changeItemVisibility,
   changeState,
   createItem,
+  createLabel,
   deleteItem,
   moveItem,
   setItemArchived,
+  setItemLabel,
   setItemMilestone,
   updateItemFields,
   type AssignmentCommitted,
   type BulkResult,
+  type LabelsCommitted,
   type MilestoneAssigned,
   type MovedItem,
   type VisibilityCommitted as WorkVisibilityCommitted,
@@ -31,7 +34,7 @@ import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { formatDay } from "@/lib/format";
 import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { stateLabel } from "@/lib/state-label";
-import { ITEM_SURFACES, MAX_BULK_ITEMS, MAX_TITLE_LENGTH, itemReturnTo } from "@/lib/work-view";
+import { ITEM_SURFACES, MAX_BULK_ITEMS, MAX_LABEL_NAME_LENGTH, MAX_TITLE_LENGTH, itemReturnTo } from "@/lib/work-view";
 import { isIsoDate } from "@/lib/week";
 
 /**
@@ -101,7 +104,7 @@ export async function renameItemAction(
 }
 
 /* -------------------------------------------------------------- *
- * The seven item PROPERTY setters — S, P, E, D, A, V, M (UI.md §5.2, §7.2).
+ * The item PROPERTY setters — S, P, E, D, A, V, M, and L's two (UI.md §5.2, §7.2).
  *
  * ONE action per property, shared by the backlog table's cells and the
  * item panel's pickers. Each takes an object input naming WHERE it was
@@ -141,6 +144,11 @@ const SetDueDate = Target.extend({
 });
 const SetAssignee = Target.extend({ memberId: uuid.nullable() });
 const SetMilestone = Target.extend({ milestoneId: uuid.nullable() });
+const SetLabel = Target.extend({ labelId: uuid, on: z.boolean() });
+// The bound is `@/lib/work-view`'s, the island's and the service's alike:
+// a `"use server"` module may export only async functions, and a constant
+// re-exported from here refused every action in the file at runtime.
+const CreateLabel = Target.extend({ name: z.string().trim().min(1).max(MAX_LABEL_NAME_LENGTH) });
 // CLOSED at the boundary: the two tokens and nothing else. The old
 // action coerced anything unrecognised to INTERNAL — safe, but a write
 // nobody asked for is still a write; a refusal writes nothing.
@@ -167,6 +175,8 @@ export type DueDateCommitted = {
 /** The service's canonical rows minus the id the caller already holds — one contract, not a second copy of it. */
 export type AssigneeCommitted = Omit<AssignmentCommitted, "id">;
 export type MilestoneCommitted = Omit<MilestoneAssigned, "id">;
+/** The service's own contract — the list as it now stands, the label acted on and the verb — not a second copy of it. */
+export type LabelsChanged = LabelsCommitted;
 export type VisibilityCommitted = Omit<WorkVisibilityCommitted, "id">;
 
 const FAILED = {
@@ -177,6 +187,7 @@ const FAILED = {
   assignee: "assignee.failed",
   visibility: "visibility.failed",
   milestone: "milestone.failed",
+  labels: "labels.failed",
 } as const;
 
 /**
@@ -333,6 +344,43 @@ export async function setItemMilestoneAction(
     };
   });
   if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * Labels (`L`), the toggle: ONE label on or off the task. Routine — an
+ * INTERNAL history row, never audit (`labels` is not portal-safe). The
+ * answer is the whole list as it then stands, so two members labelling
+ * one task never overwrite each other.
+ */
+export async function setItemLabelAction(input: z.input<typeof SetLabel>): Promise<ActionResult<LabelsChanged>> {
+  const ctx = await ctxOf();
+  const parsed = SetLabel.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "labels") };
+  const { itemId, projectKey, itemNumber, surface, labelId, on } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), () => setItemLabel(ctx, itemId, labelId, on));
+  if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * Labels (`L`), the typed row: a NEW tenant-wide label with the typed
+ * name, put on this task in the same transaction — `label:manage` for
+ * the word (audited `label.created`), `work_item:edit` for the task, and
+ * nothing created when either is refused.
+ */
+export async function createItemLabelAction(
+  input: z.input<typeof CreateLabel>,
+): Promise<ActionResult<LabelsChanged>> {
+  const ctx = await ctxOf();
+  const parsed = CreateLabel.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "labels") };
+  const { itemId, projectKey, itemNumber, surface, name } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await createLabel(ctx, { name, applyTo: itemId });
+    return { labels: c.labels, label: c.label, verb: "created" as const, changed: true };
+  });
+  if (r.ok) revalidate(projectKey);
   return r;
 }
 

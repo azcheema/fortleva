@@ -11,7 +11,7 @@ import {
 import { addClientVisibleComment, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
- * THE ITEM RAIL'S P, E, D, A, V AND M, IN A REAL BROWSER (UI.md §5.2, §9).
+ * THE ITEM RAIL'S P, E, D, A, V, M AND L, IN A REAL BROWSER (UI.md §5.2, §9).
  *
  * `keymap.spec.ts` owns the keyboard contract and only reads; these
  * pickers WRITE, so every test here creates the one task it mutates and
@@ -142,6 +142,7 @@ async function expectPaletteWithoutPageRows(page: Page): Promise<void> {
     /Set due date/,
     /Change visibility/,
     /Set milestone/,
+    /Set labels/,
   ]) {
     await expect(palette(page).getByRole("option", { name })).toHaveCount(0);
   }
@@ -367,6 +368,102 @@ test("M: file by typing, refile by steering, a bare Enter posts nothing, clear, 
   await expect(value).toHaveAttribute("data-value", "");
   await expect(said(page, "Milestone removed")).toHaveCount(1, { timeout: 20_000 * SLOW });
   expect(milestonePosts()).toBe(3);
+});
+
+test("L: create from the typed row, toggle off and on by typing and steering, a bare Enter posts nothing, and the chips survive a reload", async ({
+  page,
+}) => {
+  const togglePosts = countPosts(page, "labelId");
+  const createPosts = countPosts(page, "name");
+
+  await createOwnTask(page, seed, "Labels picker", created);
+  const trigger = rail(page).getByTestId("item-labels");
+  const chips = trigger.locator("[data-label]");
+  await expect(trigger).toBeVisible();
+  await expect(chips).toHaveCount(0);
+
+  // Labels outlive a task (a failed attempt's stay until the tenant is
+  // torn down), so nothing here assumes an empty vocabulary: rows are
+  // found by NAME, and both names share one stamp so a typed stamp
+  // narrows the list to exactly this test's two.
+  const stamp = String(Date.now());
+  const first = `Hotfix ${stamp}`;
+  const second = `Backend ${stamp}`;
+  const rowNamed = (name: string) => picker(page).getByRole("option", { name: new RegExp(name) });
+
+  // A MULTI property seeds nothing: no row is lit on open, so a bare
+  // Enter has nothing to dispatch to and the picker stays open.
+  await pressUntil(page, "l", picker(page));
+  await expect(searchField(page)).toBeFocused();
+  await expect(picker(page).locator('[role="option"][aria-selected="true"]')).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toBeVisible();
+
+  // Typing is steering: the derived "Create" row is lit and Enter commits it.
+  await page.keyboard.type(first);
+  const createRow = picker(page).getByTestId("item-labels-create");
+  await expect(createRow).toHaveAttribute("aria-selected", "true");
+  await expect(createRow).toContainText(first);
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(chips).toHaveText([first]);
+  await expect(said(page, `Label ${first} created and added`)).toHaveCount(1, { timeout: 20_000 * SLOW });
+  expect(createPosts()).toBe(1);
+
+  // The applied row is checked (the picker's `selected` seam, with its
+  // "(applied)" words) — and an existing name offers no "Create" row,
+  // however the letters are cased: the fixed row is there to pick, and
+  // picking an applied label REMOVES it.
+  await page.keyboard.press("l");
+  await expect(rowNamed(first).locator("svg.lucide-check")).toHaveCount(1);
+  await expect(rowNamed(first)).toContainText("(applied)");
+  await page.keyboard.type(first.toUpperCase());
+  await expect(picker(page).getByTestId("item-labels-create")).toHaveCount(0);
+  await expect(rowNamed(first)).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(chips).toHaveCount(0);
+  await expect(said(page, `Label ${first} removed`)).toHaveCount(1, { timeout: 20_000 * SLOW });
+  expect(togglePosts()).toBe(1);
+
+  // A second word, then the first one back by steering. The stamp narrows
+  // the fixed rows to this test's two, by name — "Backend…" (applied)
+  // then "Hotfix…" — and, because the owner may coin a word and no label
+  // is named just the stamp, the typed row "Create “<stamp>”" leads: three
+  // options, the typed one lit by cmdk. `End` lands on the LAST row
+  // whatever was lit before — steering by a count of ArrowDowns across
+  // the refresh that lands the second word's create was seen to lose a
+  // press once (PLAN §0, the slice-12 record), and a test must not
+  // depend on that timing.
+  await page.keyboard.press("l");
+  await page.keyboard.type(second);
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(chips).toHaveText([second]);
+  await expect(said(page, `Label ${second} created and added`)).toHaveCount(1, { timeout: 20_000 * SLOW });
+  await page.keyboard.press("l");
+  await page.keyboard.type(stamp);
+  await expect(picker(page).getByRole("option")).toHaveCount(3);
+  await expect(picker(page).getByTestId("item-labels-create")).toHaveAttribute("aria-selected", "true");
+  await expect(rowNamed(second).locator("svg.lucide-check")).toHaveCount(1);
+  await expect(rowNamed(first).locator("svg.lucide-check")).toHaveCount(0);
+  await page.keyboard.press("End");
+  await expectAnnounced(page, rowNamed(first));
+  await page.keyboard.press("Enter");
+  await expect(picker(page)).toHaveCount(0);
+  await expect(chips).toHaveText([second, first]);
+  await expect(said(page, `Label ${first} added`)).toHaveCount(1, { timeout: 20_000 * SLOW });
+  expect(togglePosts()).toBe(2);
+  expect(createPosts()).toBe(2);
+
+  await page.reload();
+  await expect(trigger).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(chips).toHaveText([second, first]);
+
+  // The history says which label, by the name the READ resolved.
+  await expect(
+    page.locator('[data-testid="item-activity-row"][data-field="labels"]').first(),
+  ).toContainText(`added the label ${first}`);
 });
 
 test("V: share, then a refused make-private that explains — and the chip is never optimistic", async ({ page }) => {

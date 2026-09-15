@@ -63,3 +63,13 @@ export {
   type ItemComments,
 } from "./comments";
 export { descriptionToken } from "./description-token";
+// The writers; `readItemLabels` stays off the barrel for the same reason (labels.ts).
+export {
+  createLabel,
+  setItemLabel,
+  type ItemLabels,
+  type LabelCreated,
+  type LabelEntry,
+  type LabelVerb,
+  type LabelsCommitted,
+} from "./labels";

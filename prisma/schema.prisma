@@ -1351,6 +1351,10 @@ model WorkItemActivity {
 
 /// Tenant-wide (optionally project-scoped) tags. INTERNAL-ONLY in v1 —
 /// labels never reach the portal, so class A, no visibility column.
+/// Tenant-wide names are unique CASE-INSENSITIVELY by the hand-written
+/// partial index `label_tenant_wide_name_key` on (tenant_id, lower(name))
+/// WHERE project_id IS NULL (20260915180000) — the composite unique below
+/// cannot refuse them, NULLs being distinct to a unique index.
 model Label {
   id        String   @id @default(uuid(7))
   tenantId  String   @map("tenant_id")
@@ -1363,7 +1367,7 @@ model Label {
   project   Project?        @relation(fields: [tenantId, projectId], references: [tenantId, id])
   workItems WorkItemLabel[]
 
-  @@unique([tenantId, projectId, name]) // NULL projectId distinct — app also checks tenant-wide uniqueness
+  @@unique([tenantId, projectId, name]) // NULL projectId distinct — tenant-wide names: label_tenant_wide_name_key (above)
   @@unique([tenantId, id]) // composite-FK target
   @@map("label")
 }

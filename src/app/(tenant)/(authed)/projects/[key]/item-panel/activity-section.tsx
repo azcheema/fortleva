@@ -8,6 +8,7 @@ import {
   PencilIcon,
   PencilLineIcon,
   PlusIcon,
+  TagIcon,
   UserRoundIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -80,6 +81,7 @@ const FIELD_ICON: Record<string, LucideIcon> = {
   targetDate: CalendarIcon,
   assignee: UserRoundIcon,
   milestoneId: FlagIcon,
+  labels: TagIcon,
   comment: MessageSquareIcon,
   commentVisibility: MessageSquareIcon,
 };
@@ -127,6 +129,7 @@ const PROPERTY_LABEL = {
   visibility: "visibility",
   parentId: "parent",
   milestoneId: "milestone",
+  labels: "labels",
 } as const;
 type PropertyLabelKey = (typeof PROPERTY_LABEL)[keyof typeof PROPERTY_LABEL];
 const propertyLabelKey = (field: string): PropertyLabelKey | null =>
@@ -178,9 +181,10 @@ export async function ActivitySection({
     // A phase the read could not resolve — deleted with its project, or,
     // for a Phase 3 contact, internal — is still a phase the row names.
     milestone: (name) => name ?? tCommon("unknown"),
+    label: (name) => name ?? tCommon("unknown"),
   };
 
-  // Twenty-three sentences in five shapes — next-intl types the ICU arguments
+  // Twenty-five sentences in five shapes — next-intl types the ICU arguments
   // per key, and every key in a group takes the same ones.
   const say = (s: ActivitySentence): string => {
     switch (s.key) {
@@ -202,6 +206,7 @@ export async function ActivitySection({
       case "dueDateSet":
       case "assigned":
       case "milestoneSet":
+      case "labelAdded":
       case "visibilityChanged":
       case "commentVisibilityChanged":
         return t(s.key, { to: s.to });
@@ -209,6 +214,7 @@ export async function ActivitySection({
       case "dueDateCleared":
       case "unassigned":
       case "milestoneCleared":
+      case "labelRemoved":
         return t(s.key, { from: s.from });
       case "fieldChanged": {
         const key = propertyLabelKey(s.field);

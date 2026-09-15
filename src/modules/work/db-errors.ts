@@ -29,4 +29,12 @@ export const { mapDbError, guarded } = dbErrorMapper([
   // live before any write, so the trigger cannot find a subject they
   // did not.
   ["COMMENT_NOT_VISIBLE", "SUBJECT_NOT_VISIBLE"],
+  // The two label-name indexes (labels.ts): the schema's composite one
+  // decides for a project-scoped name, and the partial expression index
+  // on `(tenant_id, lower(name)) WHERE project_id IS NULL`
+  // (20260915180000) decides for a tenant-wide one, case-insensitively —
+  // NULL project ids are distinct to the composite index, so without the
+  // second two tenant-wide labels named alike were both accepted.
+  ["label_tenant_id_project_id_name_key", "LABEL_TAKEN"],
+  ["label_tenant_wide_name_key", "LABEL_TAKEN"],
 ]);

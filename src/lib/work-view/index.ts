@@ -8,6 +8,7 @@
 export {
   GROUP_BYS,
   MAX_BULK_ITEMS,
+  MAX_LABEL_NAME_LENGTH,
   MAX_TITLE_LENGTH,
   NO_FILTERS,
   UNASSIGNED,
@@ -17,6 +18,7 @@ export {
   canEnterState,
   cardsIn,
   columnTotals,
+  compareLabelNames,
   edgeAnchors,
   enterableStates,
   epicIdsOf,
@@ -24,6 +26,7 @@ export {
   hasActiveFilters,
   isDone,
   isGroupBy,
+  labelNameKey,
   laneKeyOf,
   lanesFor,
   matchesFilters,

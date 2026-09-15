@@ -89,7 +89,7 @@ import { cn } from "@/lib/utils";
  *   none` — with none, Radix exits never fire `animationend` and the
  *   layer stays mounted forever.
  *
- * TWO OPTIONAL SEAMS, and where each one must live:
+ * THREE OPTIONAL SEAMS, and where each one must live:
  *
  * · `derive` builds ONE row from the typed text (E's `90m`, D's
  *   `2031-03-14`). It renders first, ungrouped and unfiltered, so cmdk
@@ -108,6 +108,14 @@ import { cn } from "@/lib/utils";
  *   so there is one commit path, not two. It is a flex child of the
  *   scrolling content, so its root must not shrink (no `overflow` of its
  *   own, as `CalendarGrid`'s has none).
+ * · `selected` (slice 12) marks a MULTI property's applied rows (L): each
+ *   wears the check and the sr-only `labels.current` words, while `value`
+ *   stays null — so nothing is seeded, a bare Enter is inert, and the
+ *   member steers or types before anything can commit. The contract is
+ *   otherwise untouched: a pick still commits ONE row and closes, the
+ *   island toggles that one row, and the picker never learns what a set
+ *   is. A multi property has no "No …"/clear pair — every applied row is
+ *   its own toggle, in the one order the list keeps.
  *
  * WHAT A BARE ENTER COMMITS: never a value the member did not choose.
  *
@@ -227,6 +235,7 @@ export function PropertyPicker<V extends string>({
   className,
   derive,
   footer,
+  selected,
 }: {
   /** REQUIRED, both of them: the property's single key must be able to
    *  open this, so the state cannot live inside the component. */
@@ -256,6 +265,12 @@ export function PropertyPicker<V extends string>({
   /** Non-list content AFTER the cmdk root, inside the popover. `commit` is the exact select-and-close
    *  a row runs. Its root must not shrink: the popover content is a scrolling flex column. */
   footer?: (commit: (value: V) => void) => React.ReactNode;
+  /** A MULTI property's applied values (L). Each such row wears the check and `labels.current`; `value`
+   *  stays null, so nothing is seeded, a bare Enter is inert, and the member steers or types. A pick still
+   *  commits ONE row and closes — the contract is unchanged; only which rows are marked "current" is. The
+   *  set is part of the highlight BASIS: a lit row whose membership flips underneath the member is re-seeded
+   *  (`picker-rows.ts`), because a pick there is a toggle and would have gone the other way. */
+  selected?: ReadonlySet<V>;
 }) {
   const trigger = (
     <button
@@ -301,6 +316,7 @@ export function PropertyPicker<V extends string>({
         <PickerBody
           options={options}
           value={value}
+          selected={selected}
           onSelect={onSelect}
           onOpenChange={onOpenChange}
           labels={labels}
@@ -315,6 +331,7 @@ export function PropertyPicker<V extends string>({
 function PickerBody<V extends string>({
   options,
   value,
+  selected,
   onSelect,
   onOpenChange,
   labels,
@@ -323,6 +340,7 @@ function PickerBody<V extends string>({
 }: {
   options: readonly PickerOption<V>[];
   value: V | null;
+  selected: ReadonlySet<V> | undefined;
   onSelect: (value: V) => void;
   onOpenChange: (open: boolean) => void;
   labels: PickerLabels;
@@ -339,7 +357,7 @@ function PickerBody<V extends string>({
   // What the highlight was last settled against: the value, and each
   // option's fields that decide whether and where its row renders. Never
   // the query — see `HighlightBasis`.
-  const [basis, setBasis] = useState(() => highlightBasis(options, value));
+  const [basis, setBasis] = useState(() => highlightBasis(options, value, selected));
 
   // Grouped in FIRST-SEEN order, untouched within a group: the caller's
   // array order is the meaning (states arrive by rank).
@@ -353,9 +371,9 @@ function PickerBody<V extends string>({
   // change had nothing to do with. `highlightAfterChange` keeps a steered
   // highlight whose row is still the member's, and re-seeds and
   // un-steers everything else.
-  if (highlightBasisChanged(basis, options, value)) {
-    const next = highlightAfterChange(basis, { options, value, rows }, { highlight, steered });
-    setBasis(highlightBasis(options, value));
+  if (highlightBasisChanged(basis, options, value, selected)) {
+    const next = highlightAfterChange(basis, { options, value, rows, selected }, { highlight, steered });
+    setBasis(highlightBasis(options, value, selected));
     setHighlight(next.highlight);
     setSteered(next.steered);
   }
@@ -371,6 +389,9 @@ function PickerBody<V extends string>({
   };
 
   const name = labels.input ?? labels.trigger;
+  // ONE comparison decides the check AND the sr-only words: the single
+  // current value, or — for a multi property — membership of `selected`.
+  const isCurrent = (v: V) => (selected ? selected.has(v) : v === value);
 
   return (
     <>
@@ -459,7 +480,7 @@ function PickerBody<V extends string>({
                       words are a SIBLING of the label, both flex items,
                       so the option's name reads "1h 30m (current)" with
                       the space between. */}
-                  {option.value === value ? (
+                  {isCurrent(option.value) ? (
                     <>
                       {labels.current ? <span className="sr-only">{labels.current}</span> : null}
                       <CheckIcon className="size-3.5" aria-hidden="true" />

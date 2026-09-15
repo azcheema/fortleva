@@ -404,7 +404,7 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     .map((e) => e.goKey)
     .filter((k): k is string => Boolean(k));
 
-  /** Seven one-binding islands, registered in rail order — as the panel mounts them (S A P E D V M, slice 11). */
+  /** Eight one-binding islands, registered in rail order — as the panel mounts them (S A P E D V M L, slice 12). */
   const railEntries = (priorityEnabled = true) => [
     { scope: "item" as const, bindings: [binding({ key: "s", label: "Change state" })] },
     { scope: "item" as const, bindings: [binding({ key: "a", label: "Assign" })] },
@@ -413,9 +413,10 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     { scope: "item" as const, bindings: [binding({ key: "d", label: "Set due date" })] },
     { scope: "item" as const, bindings: [binding({ key: "v", label: "Change visibility" })] },
     { scope: "item" as const, bindings: [binding({ key: "m", label: "Set milestone" })] },
+    { scope: "item" as const, bindings: [binding({ key: "l", label: "Set labels" })] },
   ];
 
-  it("the nav really has a `G P`, a `G A` and a `G M`, and no `G E`, `G D` or `G V` (the vault is 3V's)", () => {
+  it("the nav really has a `G P`, a `G A` and a `G M`, and no `G E`, `G D`, `G V` or `G L` (the vault is 3V's)", () => {
     // The cases below mean something only while this holds.
     expect(GO_KEYS).toContain("P");
     expect(GO_KEYS).toContain("A");
@@ -423,6 +424,7 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     expect(GO_KEYS).not.toContain("E");
     expect(GO_KEYS).not.toContain("D");
     expect(GO_KEYS).not.toContain("V");
+    expect(GO_KEYS).not.toContain("L");
   });
 
   it("`G P`, `G A` and `G M` navigate with the item's bare `P`, `A` and `M` mounted", () => {
@@ -445,16 +447,18 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     });
   });
 
-  it("`G E`, `G D` and `G V` are swallowed — never a bare `E`, `D` or `V`", () => {
+  it("`G E`, `G D`, `G V` and `G L` are swallowed — never a bare `E`, `D`, `V` or `L`", () => {
     const rail = scopes(...railEntries());
     expect(decide(ev({ key: "e" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
     expect(decide(ev({ key: "d" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
     expect(decide(ev({ key: "v" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
+    expect(decide(ev({ key: "l" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
     // Un-armed, they are the rail's own bindings.
     expect(decide(ev({ key: "a" }), rail, GO_KEYS, false).kind).toBe("binding");
     expect(decide(ev({ key: "e" }), rail, GO_KEYS, false).kind).toBe("binding");
     expect(decide(ev({ key: "d" }), rail, GO_KEYS, false).kind).toBe("binding");
     expect(decide(ev({ key: "v" }), rail, GO_KEYS, false).kind).toBe("binding");
+    expect(decide(ev({ key: "l" }), rail, GO_KEYS, false).kind).toBe("binding");
   });
 
   it("a disabled item `P` swallows the key rather than letting a lower scope have it", () => {
@@ -465,7 +469,7 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     expect(decide(ev({ key: "p" }), rail, GO_KEYS, false)).toEqual({ kind: "swallow" });
   });
 
-  it("the overlay lists the Task section S A P E D V M, and the board keeps only the key the item did not shadow", () => {
+  it("the overlay lists the Task section S A P E D V M L, and the board keeps only the key the item did not shadow", () => {
     const peek = scopes(
       {
         scope: "board",
@@ -478,7 +482,7 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     );
     const sections = overlaySections(peek);
     expect(sections.map((s) => s.scope)).toEqual(["item", "board"]);
-    expect(sections[0]!.bindings.map((b) => b.key)).toEqual(["s", "a", "p", "e", "d", "v", "m"]);
+    expect(sections[0]!.bindings.map((b) => b.key)).toEqual(["s", "a", "p", "e", "d", "v", "m", "l"]);
     expect(sections[1]!.bindings.map((b) => b.key)).toEqual(["j"]);
   });
 });
