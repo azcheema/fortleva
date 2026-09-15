@@ -1343,6 +1343,8 @@ model WorkItemActivity {
   workItem WorkItem @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
 
   @@index([tenantId, workItemId, createdAt])
+  // The panel's keyset page (slice 8) — 20260915120000.
+  @@index([tenantId, workItemId, id])
   @@index([tenantId, clientId, visibility])
   @@map("work_item_activity")
 }

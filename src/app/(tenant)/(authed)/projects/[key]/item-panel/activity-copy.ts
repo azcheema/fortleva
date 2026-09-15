@@ -57,6 +57,10 @@ export type ActivitySentence =
   | { key: "unassigned"; from: string }
   | { key: "stateChanged"; from: string; to: string }
   | { key: "visibilityChanged"; to: string }
+  | { key: "commented" }
+  | { key: "commentEdited" }
+  | { key: "commentDeleted" }
+  | { key: "commentVisibilityChanged"; to: string }
   | { key: "fieldChanged"; field: string };
 
 export type ActivityRow = Pick<
@@ -133,6 +137,19 @@ export function activitySentence(row: ActivityRow, look: ActivityLookups): Activ
     case "visibility":
       if (!isVisibility(row.newValue)) return fallback;
       return { key: "visibilityChanged", to: look.visibility(row.newValue) };
+    // The comment rows (comments.ts, slice 10): `newValue` is the verb —
+    // created / edited / deleted — and `commentId` the soft pointer the
+    // panel never resolves (a deleted comment's row still says "deleted a
+    // comment", which is the fact). A verb this build does not know is
+    // the fallback, never a wrong sentence.
+    case "comment":
+      if (row.newValue === "created") return { key: "commented" };
+      if (row.newValue === "edited") return { key: "commentEdited" };
+      if (row.newValue === "deleted") return { key: "commentDeleted" };
+      return fallback;
+    case "commentVisibility":
+      if (!isVisibility(row.newValue)) return fallback;
+      return { key: "commentVisibilityChanged", to: look.visibility(row.newValue) };
     default:
       return fallback;
   }

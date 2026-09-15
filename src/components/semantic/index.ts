@@ -34,6 +34,7 @@ export {
   VISIBILITY_VALUES,
   VisibilityBadge,
   VisibilityIcon,
+  visibilityChipClass,
   visibilityLabelKey,
   visibilityRowCue,
   type VisibilityValue,

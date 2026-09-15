@@ -156,6 +156,10 @@ export const AUDIT_EVENTS = {
   "work_item.bulk_edited": TENANT,
   "comment.deleted": TENANT,
   "comment.visibility_changed": TENANT,
+  // Editing SOMEONE ELSE's comment (`comment:edit_any`) — founder
+  // decision 2026-09-12: one's own comments are routine (a history row,
+  // no audit), another member's words are not.
+  "comment.edited_by_other": TENANT,
   "workflow.changed": TENANT,
   "label.created": TENANT,
   "label.deleted": TENANT,

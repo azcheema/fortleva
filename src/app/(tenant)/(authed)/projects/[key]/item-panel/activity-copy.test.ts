@@ -186,6 +186,27 @@ describe("activitySentence", () => {
       key: "fieldChanged",
       field: "milestoneId",
     });
+    expect(activitySentence(row({ field: "labelId" }), look)).toEqual({ key: "fieldChanged", field: "labelId" });
+  });
+
+  it("comment: the verb in newValue — created, edited, deleted — and a verb this build does not know is the fallback (slice 10)", () => {
+    expect(activitySentence(row({ field: "comment", newValue: "created" }), look)).toEqual({ key: "commented" });
+    expect(activitySentence(row({ field: "comment", newValue: "edited" }), look)).toEqual({ key: "commentEdited" });
+    expect(activitySentence(row({ field: "comment", newValue: "deleted" }), look)).toEqual({ key: "commentDeleted" });
     expect(activitySentence(row({ field: "comment" }), look)).toEqual({ key: "fieldChanged", field: "comment" });
+    expect(activitySentence(row({ field: "comment", newValue: "reacted" }), look)).toEqual({
+      key: "fieldChanged",
+      field: "comment",
+    });
+  });
+
+  it("commentVisibility: the new token through the visibility lookup; a third wording is the fallback", () => {
+    expect(
+      activitySentence(row({ field: "commentVisibility", oldValue: "INTERNAL", newValue: "CLIENT_VISIBLE" }), look),
+    ).toEqual({ key: "commentVisibilityChanged", to: "vis:CLIENT_VISIBLE" });
+    expect(activitySentence(row({ field: "commentVisibility", newValue: "PUBLIC" }), look)).toEqual({
+      key: "fieldChanged",
+      field: "commentVisibility",
+    });
   });
 });

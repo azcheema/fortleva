@@ -57,3 +57,26 @@ export const descriptionExtensions = (options: DescriptionOptions = {}) => [
     ...(options.checkboxLabel ? { a11y: { checkboxLabel: options.checkboxLabel } } : {}),
   }),
 ];
+
+/**
+ * The comment (panel slice 10): StarterKit WITHOUT headings — a comment
+ * is a remark under a task, not a document with an outline, and a
+ * heading inside a 40-word reply is what a pasted email signature
+ * looks like — and without the checklist (a comment has no counters; a
+ * checklist belongs in the description, where `⌘⇧O` will turn it into
+ * subtasks). Deliberately absent, as above: mention (`Mention.commentId`
+ * is NOT NULL and the extraction is its own slice; a member's name in a
+ * client-visible body is the product's worst bug), image and
+ * file-handler.
+ *
+ * Its own list, never the description's with an option: the server
+ * normaliser refuses every node this list does not declare
+ * (`normalizeComment`), so a heading pasted into a comment is refused
+ * rather than stored.
+ */
+export const commentExtensions = () => [
+  StarterKit.configure({
+    heading: false,
+    link: { openOnClick: false, autolink: false },
+  }),
+];

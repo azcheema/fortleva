@@ -1,20 +1,21 @@
 import { randomUUID } from "node:crypto";
 
 import { record } from "@/audit/record";
-import { assertInScope, isAuthorized } from "@/authz/authorize";
+import { assertInScope, authorizedCodes, isAuthorized } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { softDeleteCommentsOn } from "@/comments/cascade";
 import { nextCounter, withTenant, type TenantDb } from "@/db";
 import { softDeleteDocumentsInTx } from "@/documents/service";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
-import { emit } from "@/notify/emit";
 import { readItemActivity, writeActivity, type ItemActivityPage } from "./activity";
+import { readItemComments, type ItemComments } from "./comments";
 import { descriptionToken } from "./description-token";
 import { guarded } from "./db-errors";
-import { bottomRank, lockProjectRanks } from "./rank-lock";
+import { notifyItemMembers } from "./notify";
+import { bottomRank, lockItemRow, lockProjectRanks } from "./rank-lock";
 import { loadItemInScope, type ItemRow } from "./rows";
-import { ensureProjectStates, transitionState, type WorkCtx } from "./states";
+import { ensureProjectStates, principalOf, transitionState, type WorkCtx } from "./states";
 import { readItemSubtasks, type ItemSubtasks, type SubtaskEntry } from "./subtasks";
 import { childTypeOf, type StateSeedKey } from "@/lib/enum-map";
 import { stateLabel } from "@/lib/state-label";
@@ -29,20 +30,6 @@ import { stateLabel } from "@/lib/state-label";
  */
 
 export type { WorkCtx } from "./states";
-
-const principalOf = (ctx: WorkCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
-
-/**
- * Share-lock a parent row, so a read that follows is the parent the
- * insert will be checked against: it cannot be deleted or made private
- * in between (the tree trigger takes the same lock at the insert, where
- * it is then re-entrant). Only ever taken under the project's rank lock
- * — see createItem for why the position is load-bearing. (The module's
- * read of one item for a writer — locked, then scoped — is rows.ts.)
- */
-async function shareLockParent(tx: TenantDb, tenantId: string, parentId: string): Promise<void> {
-  await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${parentId} FOR SHARE`;
-}
 
 export type ItemListEntry = {
   id: string;
@@ -316,38 +303,48 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority"> & {
 };
 
 /**
- * Exactly what the panel renders, and nothing it does not: each
- * `isAuthorized` resolves the member's permissions with its own query,
- * so a cap nobody reads is a query nobody needed (the slice-2 review
- * dropped five of those). `canApprove` joins `canEdit` here because the
- * State picker cannot be drawn without it — `enterableStates` needs it
- * to decide whether the gated Done is a target — and `states` because
- * the panel must not depend on a list the caller happens to have
- * loaded. `canChangeVisibility` and `members` (slice 7) are there for
- * the same two reasons: the `V` picker is a control only for a member
- * who holds `work_item:change_visibility`, and the `A` picker's rows
- * are the tenant's members — read HERE, not borrowed from the board's
- * or the backlog's list, which the full page does not have.
+ * What the panel's controls are gated on — each `isAuthorized` resolves
+ * the member's permissions with its own query, so a cap nobody reads is
+ * a query nobody needed (the slice-2 review dropped five of those).
+ * `approve` joins `edit` because the State picker cannot be drawn
+ * without it (`enterableStates` needs it to decide whether the gated
+ * Done is a target); `changeVisibility` (slice 7) because the `V`
+ * picker is a control only for a member who holds it; `create` (slice
+ * 9) for the Subtasks add row; `comment` (slice 10) for the composer.
+ * The per-COMMENT caps (edit, delete, visibility — own or any) are
+ * stamped on each comment row by `readItemComments`, which knows the
+ * author; they are not here.
  *
- * FLAT rather than nested under `caps`: the shape has one consumer and
- * three existing assertions, and nesting would churn them for nothing.
+ * Folded into one object with slice 10 (a review disposition of slice
+ * 9): five flat booleans beside a sixth was the point at which the
+ * flat shape stopped being the simpler one.
  */
+export type ItemDetailCaps = {
+  /** `work_item:edit` — the description and the properties are editable. */
+  edit: boolean;
+  /** `work_item:approve` — a gated state is a legal target. */
+  approve: boolean;
+  /** `work_item:change_visibility` — the `V` picker is a control. */
+  changeVisibility: boolean;
+  /** `work_item:create` — the Subtasks add row is a control. */
+  create: boolean;
+  /** `comment:create` — the composer is rendered. */
+  comment: boolean;
+};
+
 export type ItemDetailResult = {
   item: ItemDetail;
   /** RAW pair, by rank — the module has no locale. */
   states: WorkflowStateEntry[];
-  canEdit: boolean;
-  canApprove: boolean;
-  /** `work_item:change_visibility` — whether the `V` picker is a control here. */
-  canChangeVisibility: boolean;
+  caps: ItemDetailCaps;
   /** The `A` picker's rows: ACTIVE members, in the order the list surfaces use. */
   members: { id: string; name: string }[];
   /** The newest page of the item's history (slice 8) — or the page `activityBefore` asked for. */
   activity: ItemActivityPage;
-  /** `work_item:create` — whether the Subtasks section's add row is a control here (slice 9). */
-  canCreate: boolean;
   /** The item's live children by rank, with the meter's counts (subtasks.ts) — empty for a SUBTASK, which has none by construction. */
   subtasks: ItemSubtasks;
+  /** The item's live comments, oldest first, each with its own caps (comments.ts, slice 10). */
+  comments: ItemComments;
 };
 
 /** `ItemDetail` with the state pair resolved — see `ResolvedItemList`. */
@@ -433,7 +430,7 @@ export async function getItemDetail(
     // owe a Phase-3 answer for the contact principal. If the read ever
     // does come back empty, the panel degrades to plain text rather
     // than rendering a picker with nothing in it.
-    const [attachmentCount, canEdit, canApprove, canChangeVisibility, canCreate, states, activity, subtasks] = await Promise.all([
+    const [attachmentCount, held, states, activity, subtasks] = await Promise.all([
       tx.document.count({
         where: {
           tenantId: ctx.tenantId,
@@ -442,10 +439,20 @@ export async function getItemDetail(
           deletedAt: null,
         },
       }),
-      isAuthorized(tx, ctx.actor, "work_item:edit"),
-      isAuthorized(tx, ctx.actor, "work_item:approve"),
-      isAuthorized(tx, ctx.actor, "work_item:change_visibility"),
-      isAuthorized(tx, ctx.actor, "work_item:create"),
+      // Every cap the panel gates on, from ONE resolution of the member's
+      // permissions (`authorizedCodes` — each answer exactly as
+      // `isAuthorized` would give it). Nine separate calls resolved the
+      // same roles nine times, serially on this transaction's connection.
+      authorizedCodes(tx, ctx.actor, [
+        "work_item:edit",
+        "work_item:approve",
+        "work_item:change_visibility",
+        "work_item:create",
+        "comment:create",
+        "comment:edit_any",
+        "comment:delete",
+        "comment:change_visibility",
+      ]),
       tx.workflowState.findMany({
         where: { tenantId: ctx.tenantId, projectId },
         orderBy: { rank: "asc" },
@@ -465,9 +472,21 @@ export async function getItemDetail(
         ? Promise.resolve({ rows: [], done: 0, total: 0 } satisfies ItemSubtasks)
         : readItemSubtasks(tx, ctx.tenantId, row!.id),
     ]);
+    const canEdit = held.has("work_item:edit");
     // The `A` picker's rows — read only for a member who can edit: a
     // viewer's panel renders the assignee as text and never lists anyone.
-    const members = canEdit ? await activeMembers(tx, ctx.tenantId) : [];
+    // The Comments section's rows (comments.ts), behind the same scope
+    // check as the item, with the reading member's own caps stamped on
+    // each row — the section never decides who may edit what.
+    const [members, comments] = await Promise.all([
+      canEdit ? activeMembers(tx, ctx.tenantId) : Promise.resolve([]),
+      readItemComments(tx, ctx.tenantId, row!, ctx.actor.memberId, {
+        create: held.has("comment:create"),
+        editAny: held.has("comment:edit_any"),
+        deleteAny: held.has("comment:delete"),
+        changeVisibility: held.has("comment:change_visibility"),
+      }),
+    ]);
     const item = row!;
     return {
       item: {
@@ -506,13 +525,17 @@ export async function getItemDetail(
         descriptionToken: descriptionToken(item.description ?? null),
       },
       states,
-      canEdit,
-      canApprove,
-      canChangeVisibility,
+      caps: {
+        edit: canEdit,
+        approve: held.has("work_item:approve"),
+        changeVisibility: held.has("work_item:change_visibility"),
+        create: held.has("work_item:create"),
+        comment: held.has("comment:create"),
+      },
       members,
       activity,
-      canCreate,
       subtasks,
+      comments,
     };
   });
 }
@@ -572,7 +595,11 @@ export async function createItem(
     // also lists the lockers outside the queue).
     let parent: Pick<ItemRow, "type" | "visibility"> | null = null;
     if (input.parentId) {
-      await shareLockParent(tx, ctx.tenantId, input.parentId);
+      // Share-locked, so the read that follows is the parent the insert
+      // is checked against: it cannot be deleted or made private in
+      // between (the tree trigger takes the same lock at the insert,
+      // where it is then re-entrant).
+      await lockItemRow(tx, ctx.tenantId, input.parentId, "SHARE");
       parent = await tx.workItem.findFirst({
         where: { tenantId: ctx.tenantId, id: input.parentId, projectId: input.projectId, deletedAt: null },
         // The two fields the child takes from it, never the whole row
@@ -776,22 +803,7 @@ export async function assignItem(
       newRef: memberId,
       forceInternal: true,
     });
-    if (memberId) {
-      const project = await tx.project.findFirst({
-        where: { tenantId: ctx.tenantId, id: item.projectId },
-        select: { key: true },
-      });
-      await emit(tx, ctx.tenantId, {
-        kind: "work_item.assigned",
-        entity: { type: "WorkItem", id: item.id },
-        actorMemberId: ctx.actor.memberId,
-        clientId: item.clientId,
-        projectId: item.projectId,
-        memberIds: [memberId],
-        params: { projectKey: project?.key ?? "", itemNumber: String(item.number) },
-        dedupeKey: `assigned:${item.id}`,
-      });
-    }
+    if (memberId) await notifyItemMembers(tx, ctx, item, "work_item.assigned", [memberId], "assigned");
     return { id: row.id, assigneeMemberId: row.assigneeMemberId, assigneeName, changed: true };
   });
 }

@@ -139,7 +139,7 @@ One event model, one capture mechanism, two audiences (brief §9):
 
 | Domain | Events |
 |---|---|
-| Work (2W) | `work_item.created`, `work_item.deleted`, `work_item.state_changed`, `work_item.visibility_changed`, `work_item.triaged`, `work_item.archived`, `work_item.bulk_edited`, `comment.deleted`, `comment.visibility_changed`, `workflow.changed`, `label.created`, `label.deleted`, `project_template.applied`, `notification.preference_changed`, `search.index_rebuilt` [TENANT] |
+| Work (2W) | `work_item.created`, `work_item.deleted`, `work_item.state_changed`, `work_item.visibility_changed`, `work_item.triaged`, `work_item.archived`, `work_item.bulk_edited`, `comment.deleted`, `comment.visibility_changed`, `comment.edited_by_other` *(added 2026-09-15 — founder decision 2026-09-12: one's own comment is routine and writes a history row only; editing someone else's is `comment:edit_any` and audits)*, `workflow.changed`, `label.created`, `label.deleted`, `project_template.applied`, `notification.preference_changed`, `search.index_rebuilt` [TENANT] |
 | Time (2T) | `timer.started`, `timer.stopped`, `timer.auto_stopped`, `time_entry.created`, `time_entry.edited_by_other`, `time_entry.deleted`, `time_entry.locked`, `time_entry.unlocked`, `time_entry.repriced`, `time.exported`, `rate_card.created`, `rate_card.closed`, `rate_card.cost_revealed` (aggregate, per session — never per row), `budget.created`, `budget.changed`, `budget.alert_sent`, `staff_notice.published`, `staff_notice.acknowledged` [TENANT]. **Metadata never contains a cost amount** — card id + field only. |
 | Portal & sharing (2, 3) | `project.portal_enabled`, `project.portal_disabled`, `project.hours_sharing_changed`, `project.key_changed`, `project.viewed_as_contact`, `project_update.published`, `project_update.archived`, `project_update.visibility_changed`, `portal.request_created`, `portal.comment_created`, `portal.task_completed`, `document.approval_requested`, `document.approval_decided` [TENANT] |
 | Vault & assets (3V) | `credential.created`, `credential.updated`, `credential.deleted`, `credential.revealed`, `credential.copied`, `credential.totp_generated`, `credential.visibility_changed`, `credential.shared`, `credential.share_revoked`, `credential.share_viewed`, `credential.exported`, `credential.rotation_flagged`, `asset.created`, `asset.updated`, `asset.deleted`, `tenant_key.created`, `tenant_key.rotated`, `expiration.reminder_sent`, `vault.step_up_required`, `vault.reveal_budget_exceeded` [TENANT]. Metadata: credential id + field name only, never a secret, never a username. |
@@ -2580,15 +2580,27 @@ enum CommentSubjectType {
 ///   SHIPPED; FileVersion: its Document CLIENT_VISIBLE); parent comment
 ///   (thread) must share subject and tenant; downgrade of a subject is
 ///   refused while a CLIENT_VISIBLE comment exists (guard on the subject
-///   tables checks this table). OPEN (2026-09-11, a standing trap in PLAN
-///   §0): the shipped function (comment_denorm_guard) reads the subject
-///   WITHOUT a lock and without a liveness check — the write-skew that
-///   work_item_parent_guard and document_anchor_guard close with FOR
-///   SHARE is still open for comments. The first comment writer must add
-///   both before it ships. Restores are already guarded
-///   (comment_restore_guard, §6.14).
-/// Mentions are extracted on save into Mention rows (ids only). Reactions:
-/// not in v1 (§11).
+///   tables checks this table). CLOSED 2026-09-15 (20260915120000, the
+///   panel's comments slice — the first comment writer): the function
+///   reads its subject FOR SHARE and refuses a soft-deleted one for an
+///   INSERT and for any row CLIENT_VISIBLE after the write — the
+///   write-skew work_item_parent_guard and document_anchor_guard close the
+///   same way — while a flip to INTERNAL takes the plain lookup and never
+///   waits on its subject. The service share-locks the task BEFORE any
+///   comment row (deleteItem's order), so no cycle closes. Restores are
+///   guarded by comment_restore_guard (§6.14).
+///   FLAT IN 2W (founder decision 2026-09-12): no writer sets parent_id.
+///   The trigger pins a reply to its parent's SUBJECT but does NOT keep it
+///   no more visible than its parent — that guard comes before the first
+///   threaded reply.
+/// Mentions are extracted on save into Mention rows (ids only) — not yet:
+/// the 2W comment schema has no mention node and Mention has no writer.
+/// Reactions: not in v1 (§11).
+/// Activity (§6.14 WorkItemActivity, 2026-09-15): a member's own create
+/// and edit write `field = "comment"` with the verb in newValue
+/// (created | edited | deleted) and commentId as the soft pointer; a
+/// visibility flip writes `field = "commentVisibility"` with the two
+/// tokens. Neither field is portal-safe, so every such row is INTERNAL.
 /// A comment lives the life of its subject (§10; 2026-09-07): the
 /// subject's soft delete cascades to every live comment on it — and, for
 /// a document, on its versions — under the SUBJECT's delete permission
@@ -2599,7 +2611,7 @@ enum CommentSubjectType {
 /// must remove comments by (subjectType, subjectId) itself — no FK will —
 /// and an undo restores only comments whose audit row names the subject.
 /// scope=client (clientId nullable only for tenant-internal DOCUMENT subjects)  rls=B (projectScoped when projectId set, else clientScoped; contact INSERT allowed by WITH CHECK)  ret=R2  enc=none
-/// audit: comment.deleted | comment.visibility_changed | portal.comment_created
+/// audit: comment.deleted | comment.visibility_changed | comment.edited_by_other | portal.comment_created
 model Comment {
   id              String             @id @default(uuid(7))
   tenantId        String

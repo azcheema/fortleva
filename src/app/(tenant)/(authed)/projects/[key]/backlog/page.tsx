@@ -129,14 +129,12 @@ export default async function ProjectBacklogPage({
           <ItemPanel
             surface="backlog"
             item={peekItem.item}
-            canEdit={peekItem.canEdit}
+            itemCaps={peekItem.caps}
             states={peekItem.states}
-            canApprove={peekItem.canApprove}
-            canChangeVisibility={peekItem.canChangeVisibility}
             members={peekItem.members}
             activity={peekItem.activity}
-            canCreate={peekItem.canCreate}
             subtasks={peekItem.subtasks}
+            comments={peekItem.comments}
             itemKey={`${project.key}-${peekItem.item.number}`}
             projectId={project.id}
             projectKey={project.key}

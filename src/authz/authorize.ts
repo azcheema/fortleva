@@ -134,6 +134,43 @@ export async function isAuthorized(
   }
 }
 
+/**
+ * Which of `codes` this actor holds — ONE permission resolution for a
+ * read that gates several controls at once (the item panel gates nine;
+ * as nine `isAuthorized` calls it resolved the same member's roles nine
+ * times, serially on the transaction's one connection — the perf pass
+ * the slice-8, -9 and -10 reviews each asked for). The answer per code
+ * is exactly `isAuthorized`'s: an unknown code is denied (a config
+ * error, logged), an impersonating platform admin holds only view
+ * verbs, and a ✦ code is held only with a recent second factor.
+ */
+export async function authorizedCodes(
+  tx: TenantDb,
+  actor: MemberActor,
+  codes: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const held = await effectivePermissions(tx, actor.memberId);
+  const out = new Set<string>();
+  for (const code of codes) {
+    if (!KNOWN_CODES.has(code)) {
+      console.error(`authorizedCodes: unknown permission code "${code}" — denying (config error)`);
+      continue;
+    }
+    if (actor.impersonated && !VIEW_VERBS.has(code.split(":")[1] ?? "")) continue;
+    if (!held.has(code)) continue;
+    if (PERMISSION_BY_CODE.get(code)?.requiresMfa) {
+      try {
+        await requireRecentMfa(actor, STEP_UP_WINDOW_MINUTES);
+      } catch (e) {
+        if (e instanceof AuthzError) continue;
+        throw e;
+      }
+    }
+    out.add(code);
+  }
+  return out;
+}
+
 // ── Resource scoping — the harder half (AUTHZ.md §4) ────────────────
 //
 // Roles answer WHAT a member may do; assignments answer ON WHICH

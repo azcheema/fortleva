@@ -22,6 +22,10 @@ export type DomainErrorCode =
   | "HAS_CHILDREN" // delete refused while live subtasks exist
   | "DESCRIPTION_TOO_LARGE" // the description's JSON or its extracted text is past its cap
   | "STALE_DESCRIPTION" // someone else saved this description while this editor held it
+  // Comments (2W panel slice 10 — the trigger token maps in src/modules/work/db-errors.ts)
+  | "COMMENT_EMPTY" // a comment with no text
+  | "COMMENT_TOO_LARGE" // the comment's JSON or its extracted text is past its cap
+  | "SUBJECT_NOT_VISIBLE" // a comment cannot be client-visible on a task the client cannot see
   // Time (2T — DATA_MODEL.md §6.15; trigger tokens map 1:1 in src/modules/time/ctx.ts)
   | "NOTICE_UNACKNOWLEDGED" // staff notice not acknowledged — timers and clock-in refuse
   | "TIMER_ALREADY_RUNNING" // one running timer per member (partial unique)

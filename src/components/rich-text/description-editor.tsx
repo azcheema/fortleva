@@ -2,16 +2,19 @@
 
 import { Placeholder } from "@tiptap/extensions";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
-import { BoldIcon, CheckSquareIcon, CodeIcon, ItalicIcon, ListIcon, ListOrderedIcon, StrikethroughIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { VisibilityBadge } from "@/components/visibility-badge";
 import { descriptionExtensions } from "@/lib/rich-text/extensions";
 import { cn } from "@/lib/utils";
 import type { ActionResult } from "@/lib/server-actions";
+
+import { EditorToolbar, markStates, toolbarMarks, type MarkKey } from "./editor-toolbar";
+
+/** The description offers the checklist; the comment does not (comment-editor.tsx). */
+const DESCRIPTION_MARKS: readonly MarkKey[] = ["bold", "italic", "strike", "code", "bulletList", "orderedList", "taskList"];
 
 /**
  * The task description (ARC-19). Saves itself — on blur, 2 s after
@@ -61,6 +64,8 @@ export function DescriptionEditor({
   save: (doc: unknown, baseToken: string) => Promise<SaveResult>;
 }) {
   const t = useTranslations("projects.item.description");
+  // The toolbar's words are shared with the comment editor (`richText`).
+  const tRich = useTranslations("richText");
   const [, startTransition] = useTransition();
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   // Refs, not state: the token is what the NEXT save carries, and a
@@ -248,49 +253,11 @@ export function DescriptionEditor({
     editor.commands.setContent((doc as object | null) ?? EMPTY, { emitUpdate: false });
   }, [doc, token, editor]);
 
+  // The marks' state through ONE selector (editor-toolbar.tsx's table).
   const active = useEditorState({
     editor,
-    selector: ({ editor: e }) =>
-      e
-        ? {
-            bold: e.isActive("bold"),
-            italic: e.isActive("italic"),
-            strike: e.isActive("strike"),
-            code: e.isActive("code"),
-            bulletList: e.isActive("bulletList"),
-            orderedList: e.isActive("orderedList"),
-            taskList: e.isActive("taskList"),
-          }
-        : null,
+    selector: ({ editor: e }) => markStates(e, DESCRIPTION_MARKS),
   });
-
-  const marks = [
-    { key: "bold", icon: BoldIcon, run: () => editor?.chain().focus().toggleBold().run() },
-    { key: "italic", icon: ItalicIcon, run: () => editor?.chain().focus().toggleItalic().run() },
-    { key: "strike", icon: StrikethroughIcon, run: () => editor?.chain().focus().toggleStrike().run() },
-    { key: "code", icon: CodeIcon, run: () => editor?.chain().focus().toggleCode().run() },
-    { key: "bulletList", icon: ListIcon, run: () => editor?.chain().focus().toggleBulletList().run() },
-    { key: "orderedList", icon: ListOrderedIcon, run: () => editor?.chain().focus().toggleOrderedList().run() },
-    { key: "taskList", icon: CheckSquareIcon, run: () => editor?.chain().focus().toggleTaskList().run() },
-  ] as const;
-
-  // A toolbar is ONE tab stop with arrow keys inside it, not seven tab
-  // stops on the way to the text (WAI-ARIA `toolbar`).
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const [roving, setRoving] = useState(0);
-  const onToolbarKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const last = marks.length - 1;
-    const next =
-      e.key === "ArrowRight" ? (roving === last ? 0 : roving + 1)
-      : e.key === "ArrowLeft" ? (roving === 0 ? last : roving - 1)
-      : e.key === "Home" ? 0
-      : e.key === "End" ? last
-      : -1;
-    if (next < 0) return;
-    e.preventDefault();
-    setRoving(next);
-    toolbarRef.current?.querySelectorAll("button")[next]?.focus();
-  };
 
   return (
     <div className="flex flex-col gap-2" data-testid="description">
@@ -306,29 +273,10 @@ export function DescriptionEditor({
       </div>
 
       {editable ? (
-        <div
-          ref={toolbarRef}
-          className="flex flex-wrap gap-1"
-          role="toolbar"
-          aria-label={t("toolbar")}
-          onKeyDown={onToolbarKeyDown}
-        >
-          {marks.map(({ key, icon: Icon, run }, i) => (
-            <Button
-              key={key}
-              type="button"
-              size="icon-sm"
-              variant={active?.[key] ? "secondary" : "ghost"}
-              aria-pressed={active?.[key] ?? false}
-              aria-label={t(`format.${key}`)}
-              tabIndex={i === roving ? 0 : -1}
-              onFocus={() => setRoving(i)}
-              onClick={run}
-            >
-              <Icon />
-            </Button>
-          ))}
-        </div>
+        <EditorToolbar
+          label={tRich("toolbar.description")}
+          marks={toolbarMarks(editor, DESCRIPTION_MARKS, active, (key) => tRich(`format.${key}`))}
+        />
       ) : null}
 
       <div

@@ -5,7 +5,19 @@ import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
 import { requireTenantContext } from "@/members/tenant-context";
-import { createItem, updateItemDescription, type DescriptionSaved } from "@/modules/work";
+import {
+  createComment,
+  createItem,
+  deleteComment,
+  setCommentVisibility,
+  updateComment,
+  updateItemDescription,
+  type CommentCreated,
+  type CommentEdited,
+  type CommentVisibilityCommitted,
+  type DescriptionSaved,
+  type WorkCtx,
+} from "@/modules/work";
 import { PROJECT_KEY_RE } from "@/projects/service";
 import { runAction, type ActionResult } from "@/lib/server-actions";
 import { ITEM_SURFACES, MAX_TITLE_LENGTH, itemReturnTo } from "@/lib/work-view";
@@ -113,4 +125,82 @@ export async function createSubtaskAction(
     revalidatePath(`/projects/${p.projectKey}/board`);
   }
   return r;
+}
+
+/**
+ * The Comments section's four verbs (slice 10). The DOCUMENT is whatever
+ * the browser sent — `normalizeComment` decides what is stored, not a
+ * schema here — and the identifiers are checked for shape because they
+ * are addresses; the MFA step-up return address is the panel's own
+ * (`itemReturnTo`), as for every other panel action. No `revalidatePath`:
+ * a comment is on no list surface, and the islands `router.refresh()`
+ * inside their own transition (comment-card.tsx, comment-composer.tsx).
+ */
+const CommentAddress = {
+  /** The item's number — only the MFA step-up return address needs it. */
+  itemNumber: z.number().int().min(1).max(999_999_999),
+  projectKey: z.string().regex(PROJECT_KEY_RE),
+  surface: z.enum(ITEM_SURFACES),
+};
+
+const CommentAddressSchema = z.object(CommentAddress);
+
+/**
+ * ONE shape for the four verbs: the tenant and actor from the session,
+ * the identifiers parsed, the step-up return address computed from the
+ * PARSED address (never from the raw input), and the service call with
+ * the parsed data — so the invariant that an address is validated
+ * before it is used is written once. The DOCUMENT is passed beside the
+ * parsed data, raw: the normaliser is its gate.
+ */
+async function commentAction<S extends z.ZodObject<typeof CommentAddress>, T>(
+  schema: S,
+  input: unknown,
+  fn: (parsed: z.output<S>, ctx: WorkCtx) => Promise<T>,
+): Promise<ActionResult<T>> {
+  const { membership, actor } = await requireTenantContext();
+  const parsed = schema.safeParse(input);
+  const address = parsed.success ? CommentAddressSchema.parse(parsed.data) : null;
+  const returnTo = address ? itemReturnTo(address.surface, address.projectKey, address.itemNumber) : "/projects";
+  return runAction(returnTo, async () => {
+    if (!parsed.success) throw new Error("invalid comment input");
+    return fn(parsed.data, { tenantId: membership.tenantId, actor });
+  });
+}
+
+const CreateComment = z.object({
+  itemId: z.uuid(),
+  visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]),
+  ...CommentAddress,
+});
+
+export async function createCommentAction(
+  input: z.input<typeof CreateComment> & { doc: unknown },
+): Promise<ActionResult<CommentCreated>> {
+  return commentAction(CreateComment, input, (p, ctx) =>
+    createComment(ctx, p.itemId, { doc: input.doc, visibility: p.visibility }),
+  );
+}
+
+const CommentTarget = z.object({ commentId: z.uuid(), ...CommentAddress });
+
+export async function updateCommentAction(
+  input: z.input<typeof CommentTarget> & { doc: unknown },
+): Promise<ActionResult<CommentEdited>> {
+  return commentAction(CommentTarget, input, (p, ctx) => updateComment(ctx, p.commentId, { doc: input.doc }));
+}
+
+export async function deleteCommentAction(input: z.input<typeof CommentTarget>): Promise<ActionResult<{ id: string }>> {
+  return commentAction(CommentTarget, input, async (p, ctx) => {
+    await deleteComment(ctx, p.commentId);
+    return { id: p.commentId };
+  });
+}
+
+const CommentVisibility = z.object({ visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]), ...CommentTarget.shape });
+
+export async function setCommentVisibilityAction(
+  input: z.input<typeof CommentVisibility>,
+): Promise<ActionResult<CommentVisibilityCommitted>> {
+  return commentAction(CommentVisibility, input, (p, ctx) => setCommentVisibility(ctx, p.commentId, p.visibility));
 }

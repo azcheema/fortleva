@@ -971,7 +971,10 @@
     "REPORT_IMMUTABLE": "En publicerad tidrapport kan inte ändras eller tas bort — arkivera den och skapa en ny.",
     "BREAK_OUT_OF_BOUNDS": "En rast måste ligga inom sitt arbetspass.",
     "SHIFT_SHRINK": "Ändringen skulle lämna en rast utanför passet.",
-    "WORK_TYPE_TAKEN": "Det finns redan en arbetstyp med det namnet."
+    "WORK_TYPE_TAKEN": "Det finns redan en arbetstyp med det namnet.",
+    "COMMENT_EMPTY": "En kommentar behöver text.",
+    "COMMENT_TOO_LARGE": "Kommentaren är för lång för att publiceras. Korta ner den, eller bifoga detaljerna som en fil.",
+    "SUBJECT_NOT_VISIBLE": "Uppgiften är privat för teamet, så ett svar kan inte visas för kunden. Dela uppgiften först."
   },
   "assignments": {
     "title": "Team",
@@ -1710,22 +1713,12 @@
       "description": {
         "label": "Beskrivning",
         "placeholder": "Vad som ska göras, och det nästa person behöver veta.",
-        "toolbar": "Textformatering",
         "saving": "Sparar…",
         "saved": "Sparat",
         "notSaved": "Inte sparat",
         "saveFailed": "Beskrivningen kunde inte sparas. Texten finns kvar — försök igen.",
         "checkboxLabel": "Checklistpunkt: {text}",
-        "checkboxEmpty": "tom",
-        "format": {
-          "bold": "Fet",
-          "italic": "Kursiv",
-          "strike": "Genomstruken",
-          "code": "Kod",
-          "bulletList": "Punktlista",
-          "orderedList": "Numrerad lista",
-          "taskList": "Checklista"
-        }
+        "checkboxEmpty": "tom"
       },
       "openFullPage": "Öppna hela sidan",
       "currentValue": "(nuvarande)",
@@ -1774,6 +1767,46 @@
         "failed": {
           "TASK": "Uppgiften skapades inte. Din titel finns kvar — försök igen.",
           "SUBTASK": "Deluppgiften skapades inte. Din titel finns kvar — försök igen."
+        }
+      },
+      "comments": {
+        "title": "Kommentarer",
+        "count": "{count, plural, one {# kommentar} other {# kommentarer}}",
+        "empty": "Inga kommentarer ännu.",
+        "truncated": "Visar de senaste {limit} kommentarerna.",
+        "edited": "(redigerad)",
+        "label": "Skriv en kommentar",
+        "editLabel": "Redigera kommentar",
+        "placeholder": "Skriv en kommentar. Ctrl+Enter eller ⌘Enter publicerar.",
+        "post": "Publicera anteckning",
+        "postVisible": "Skicka svar till kunden",
+        "update": "Uppdatera kommentar",
+        "makeVisible": "Visa för kunden",
+        "makePrivate": "Gör privat",
+        "confirmDelete": "Ta bort kommentaren?",
+        "mode": {
+          "label": "Vem ser kommentaren",
+          "INTERNAL": "Intern anteckning",
+          "CLIENT_VISIBLE": "Svar till kunden"
+        },
+        "hint": {
+          "private": "Följer {key} — uppgiften är privat för teamet, så det är kommentarerna också.",
+          "internal": "Bara teamet ser den här anteckningen. Kunden ser den inte.",
+          "client": "Kunden ser det här svaret i sin portal."
+        },
+        "announce": {
+          "posted": "Anteckningen publicerades",
+          "postedVisible": "Svaret skickades — kunden kan se det",
+          "edited": "Kommentaren uppdaterades",
+          "deleted": "Kommentaren togs bort",
+          "madeVisible": "Kommentaren är nu synlig för kunden",
+          "madePrivate": "Kommentaren är nu privat för teamet"
+        },
+        "failed": {
+          "post": "Kommentaren publicerades inte. Texten finns kvar — försök igen.",
+          "edit": "Kommentaren sparades inte. Texten finns kvar — försök igen.",
+          "delete": "Kommentaren togs inte bort.",
+          "visibility": "Synligheten ändrades inte. Panelen visar den aktuella synligheten."
         }
       },
       "state": {
@@ -1870,7 +1903,11 @@
         "unassigned": "tog bort {from} som ansvarig",
         "stateChanged": "flyttade uppgiften från {from} till {to}",
         "visibilityChanged": "ändrade synligheten till {to}",
-        "fieldChanged": "ändrade ”{field}”"
+        "fieldChanged": "ändrade ”{field}”",
+        "commented": "kommenterade",
+        "commentEdited": "redigerade en kommentar",
+        "commentDeleted": "tog bort en kommentar",
+        "commentVisibilityChanged": "ändrade en kommentars synlighet till {to}"
       }
     },
     "states": {
@@ -2378,6 +2415,21 @@
       },
       "empty": "Inga avslutade pass denna månad.",
       "legal": "Självrapporterad in- och utstämpling samt raster så som medarbetaren registrerat dem. Preliminära rader avslutades automatiskt och har inte bekräftats. Ingen plats-, aktivitets- eller närvarodata registreras."
+    }
+  },
+  "richText": {
+    "toolbar": {
+      "description": "Formatering av beskrivningen",
+      "comment": "Formatering av kommentaren"
+    },
+    "format": {
+      "bold": "Fet",
+      "italic": "Kursiv",
+      "strike": "Genomstruken",
+      "code": "Kod",
+      "bulletList": "Punktlista",
+      "orderedList": "Numrerad lista",
+      "taskList": "Checklista"
     }
   }
 }

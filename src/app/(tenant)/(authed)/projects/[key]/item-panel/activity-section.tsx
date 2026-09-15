@@ -3,6 +3,7 @@ import {
   ClockIcon,
   FileTextIcon,
   type LucideIcon,
+  MessageSquareIcon,
   PencilIcon,
   PencilLineIcon,
   PlusIcon,
@@ -77,6 +78,8 @@ const FIELD_ICON: Record<string, LucideIcon> = {
   estimate: ClockIcon,
   targetDate: CalendarIcon,
   assignee: UserRoundIcon,
+  comment: MessageSquareIcon,
+  commentVisibility: MessageSquareIcon,
 };
 const GLYPH = "size-3";
 
@@ -178,6 +181,9 @@ export async function ActivitySection({
     switch (s.key) {
       case "created":
       case "descriptionEdited":
+      case "commented":
+      case "commentEdited":
+      case "commentDeleted":
         return t(s.key);
       case "titleChanged":
       case "priorityChanged":
@@ -190,6 +196,7 @@ export async function ActivitySection({
       case "dueDateSet":
       case "assigned":
       case "visibilityChanged":
+      case "commentVisibilityChanged":
         return t(s.key, { to: s.to });
       case "estimateCleared":
       case "dueDateCleared":

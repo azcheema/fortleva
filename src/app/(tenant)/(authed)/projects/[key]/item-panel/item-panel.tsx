@@ -11,12 +11,20 @@ import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
 import type { WeekStart } from "@/lib/week";
 import { childTypeOf } from "@/lib/enum-map";
 import { panelItemHref } from "@/lib/work-view";
-import type { ItemActivityPage, ResolvedItemDetail, ResolvedItemSubtasks, ResolvedWorkflowState } from "@/modules/work";
+import type {
+  ItemActivityPage,
+  ItemComments,
+  ItemDetailCaps,
+  ResolvedItemDetail,
+  ResolvedItemSubtasks,
+  ResolvedWorkflowState,
+} from "@/modules/work";
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
 import { ActivitySection } from "./activity-section";
 import { AssigneeField } from "./assignee-field";
+import { CommentsSection } from "./comments-section";
 import { DescriptionField } from "./description-field";
 import { DueDateField } from "./due-date-field";
 import { EstimateField } from "./estimate-field";
@@ -61,14 +69,12 @@ export async function ItemPanel({
   error,
   surface,
   fullPageHref,
-  canEdit,
+  itemCaps,
   states,
-  canApprove,
-  canChangeVisibility,
   members,
   activity,
-  canCreate,
   subtasks,
+  comments,
 }: {
   item: ResolvedItemDetail;
   /** "ACME-12" — the human key the header shows. */
@@ -104,25 +110,32 @@ export async function ItemPanel({
    * surface renders the section (the page passes its own URL).
    */
   fullPageHref: string;
-  /** `work_item:edit` — whether the description and the properties are editable here. */
-  canEdit: boolean;
+  /** What this member may do here — `getItemDetail`'s answer (`ItemDetailCaps`), never the caller's. */
+  itemCaps: ItemDetailCaps;
   /** The project's states, by rank, names already resolved. */
   states: ResolvedWorkflowState[];
-  /** `work_item:approve` — whether a gated state is a legal target. */
-  canApprove: boolean;
-  /** `work_item:change_visibility` — whether the Visibility chip is a control (§10.4). */
-  canChangeVisibility: boolean;
   /** The Assignee picker's rows — `getItemDetail`'s, so the full page has them too. */
   members: readonly { id: string; name: string }[];
   /** The Activity section's page — `getItemDetail`'s, behind the same scope check as the item; it carries its own cursor. */
   activity: ItemActivityPage;
-  /** `work_item:create` — whether the Subtasks section's add row is a control (§5.4). */
-  canCreate: boolean;
   /** The Subtasks section's rows — `getItemDetail`'s, behind the same scope check as the item. */
   subtasks: ResolvedItemSubtasks;
+  /** The Comments section's rows — `getItemDetail`'s, each with the reading member's own caps (slice 10). */
+  comments: ItemComments;
 }) {
   // The sheet owns the dialog title; the page owns the document's h1.
   const variant = surface === "page" ? "page" : "peek";
+  // `edit` gates the description and the properties; `approve` whether a
+  // gated state is a legal target; `changeVisibility` whether the chip is
+  // a control (§10.4); `create` the Subtasks add row; `comment` the
+  // composer.
+  const {
+    edit: canEdit,
+    approve: canApprove,
+    changeVisibility: canChangeVisibility,
+    create: canCreate,
+    comment: canComment,
+  } = itemCaps;
   const t = await getTranslations("projects.item");
   const tStates = await getTranslations("states");
   const tFiles = await getTranslations("files");
@@ -435,6 +448,17 @@ export async function ItemPanel({
             </div>
           )}
         </SectionCard>
+      </div>
+
+      <div className={variant === "peek" ? "px-4 pb-4" : "pt-4"}>
+        <CommentsSection
+          item={item}
+          itemKey={itemKey}
+          projectKey={projectKey}
+          surface={surface}
+          comments={comments}
+          canComment={canComment}
+        />
       </div>
 
       <div className={variant === "peek" ? "px-4 pb-4" : "pt-4"}>

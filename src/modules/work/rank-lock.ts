@@ -59,13 +59,18 @@ export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise
 }
 
 /**
- * The mode a writer's own UPDATE will take on the row: FOR NO KEY UPDATE
- * when no column it writes is in a unique index (a field edit, a state
- * change, an assignment, a visibility flip, an archive), FOR UPDATE when
- * it writes `rank` or `number` (a move). A lock taken in the weaker mode
- * would UPGRADE under the stronger UPDATE — so the writer says which.
+ * The mode a writer takes on an item row. For a writer of THAT row it is
+ * the mode its own UPDATE will take: FOR NO KEY UPDATE when no column it
+ * writes is in a unique index (a field edit, a state change, an
+ * assignment, a visibility flip, an archive), FOR UPDATE when it writes
+ * `rank` or `number` (a move) — a lock taken in the weaker mode would
+ * UPGRADE under the stronger UPDATE, so the writer says which. "SHARE"
+ * is the third kind: the lock of a writer of ANOTHER table's row that
+ * must hold the item still while it writes — a subtask's parent
+ * (createItem), a comment's task (comments.ts, slice 10) — taken BEFORE
+ * the child row, which is the order deleteItem takes them in.
  */
-export type RowLockMode = "NO KEY UPDATE" | "UPDATE";
+export type RowLockMode = "NO KEY UPDATE" | "UPDATE" | "SHARE";
 
 /**
  * Row-lock ONE item before it is read (rows.ts `loadItemInScope` is the
@@ -95,10 +100,19 @@ export async function lockItemRow(
   itemId: string,
   mode: RowLockMode = "NO KEY UPDATE",
 ): Promise<void> {
-  // Two statements rather than one interpolated clause: a lock mode is
+  // Three statements rather than one interpolated clause: a lock mode is
   // SQL syntax, and `$queryRaw` binds values, never keywords.
+  // FOR SHARE is the lock of a writer of ANOTHER table's row that must
+  // hold the item still while it writes — a subtask's parent (createItem),
+  // a comment's task (comments.ts) — taken BEFORE the child row, which is
+  // the order deleteItem takes them in, so no cycle closes; it never
+  // conflicts with another share, so two comments on one task land
+  // together, and it waits on exactly the writers it exists to wait for:
+  // the item's make-private and its delete.
   if (mode === "UPDATE") {
     await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR UPDATE`;
+  } else if (mode === "SHARE") {
+    await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR SHARE`;
   } else {
     await tx.$queryRaw`SELECT 1 FROM work_item WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR NO KEY UPDATE`;
   }

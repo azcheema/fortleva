@@ -7,7 +7,7 @@ import { fail, isUniqueViolation } from "@/lib/domain-error";
 import { RANK_REBALANCE_LENGTH, rankBetween, ranksBetween } from "@/lib/rank";
 import { lockLiveRow, lockPredecessor, lockProjectRanks, lockSuccessor } from "./rank-lock";
 import { loadItemInScope } from "./rows";
-import { transitionState, type WorkCtx } from "./states";
+import { principalOf, transitionState, type WorkCtx } from "./states";
 
 /**
  * Ordering (ARC-17, UI.md §7.1): ONE `rank` per item per project, unique
@@ -29,8 +29,6 @@ import { transitionState, type WorkCtx } from "./states";
  * advisory transaction lock (rank-lock.ts) — create and move alike; the
  * unique index + the retry stay as the belt for anything that slips.
  */
-
-const principalOf = (ctx: WorkCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
 
 const RANK_RETRIES = 4;
 

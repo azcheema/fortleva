@@ -45,6 +45,19 @@ export function VisibilityIcon({ value, className }: { value: VisibilityValue; c
  * absence is indistinguishable from a bug. There is no icon-only mode
  * at any density, and the mutation is never optimistic.
  */
+/**
+ * The four non-icon channels of the chip (fill, shape, weight, border)
+ * for one token, defined ONCE — the chip wears them, and so does every
+ * WRITE control that shows a chosen token (the comment composer's
+ * "Reply to client" option, slice 10): §10.4's rule that the write
+ * control is never less legible than the read chip is then a shared
+ * string, not a copy that the CVD gate would not measure.
+ */
+export const visibilityChipClass = (value: VisibilityValue): string =>
+  value === "CLIENT_VISIBLE"
+    ? "rounded-full border-vis-client-border bg-vis-client font-semibold text-vis-client-fg"
+    : "rounded-sm border-vis-internal-border bg-transparent font-medium text-vis-internal-fg";
+
 export function VisibilityBadge({
   value,
   visibility,
@@ -59,7 +72,6 @@ export function VisibilityBadge({
 }) {
   const t = useTranslations("visibility");
   const resolved: VisibilityValue = value ?? visibility ?? "INTERNAL";
-  const isClientVisible = resolved === "CLIENT_VISIBLE";
   const label = t(visibilityLabelKey(resolved));
 
   return (
@@ -70,9 +82,7 @@ export function VisibilityBadge({
       className={cn(
         "inline-flex w-fit shrink-0 items-center gap-1 border whitespace-nowrap",
         size === "sm" ? "h-4.5 px-1.5 text-2xs" : "h-5 px-2 text-2xs",
-        isClientVisible
-          ? "rounded-full border-vis-client-border bg-vis-client font-semibold text-vis-client-fg"
-          : "rounded-sm border-vis-internal-border bg-transparent font-medium text-vis-internal-fg",
+        visibilityChipClass(resolved),
         className,
       )}
     >

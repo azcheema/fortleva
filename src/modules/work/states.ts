@@ -22,6 +22,9 @@ import { loadItemInScope } from "./rows";
 
 export type WorkCtx = { readonly tenantId: string; readonly actor: MemberActor };
 
+/** The `withTenant` principal a work service opens its transaction under — ONE builder for the module (the time module's `ctx.ts` rule). */
+export const principalOf = (ctx: WorkCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
+
 // "In review" is a tenant-named state in the IN_PROGRESS category (the
 // category set is pinned closed; the portal reads categories only —
 // exactly ADO's mapping of In Review). Done carries the approval gate:

@@ -43,6 +43,8 @@ export async function writeActivity(
      * A field that is NOT on the list is INTERNAL without this.
      */
     readonly forceInternal?: boolean;
+    /** The soft pointer a `comment` / `commentVisibility` row carries (§6.14) — never an FK, never resolved by the panel. */
+    readonly commentId?: string | null;
   },
 ): Promise<void> {
   const portalSafe =
@@ -61,6 +63,7 @@ export async function writeActivity(
       newValue: change.newValue ?? null,
       oldRef: change.oldRef ?? null,
       newRef: change.newRef ?? null,
+      commentId: change.commentId ?? null,
       visibility: portalSafe ? "CLIENT_VISIBLE" : "INTERNAL",
     },
   });
@@ -102,6 +105,48 @@ export async function writeActivity(
  */
 
 export const ACTIVITY_PAGE_SIZE = 50;
+
+/**
+ * The names behind a set of actor ids, resolved in the panel's own
+ * transaction — ONE definition for the history (here) and the thread
+ * (comments.ts): every member of the tenant, suspended ones included (a
+ * suspended member still has a name to show against what they wrote),
+ * and a Phase 3 contact bound to the item's OWN client, so a
+ * mis-attributed id can never name another client's contact. Only the
+ * reads the page needs: no contact ids, no contact query; none at all
+ * for an empty page. An id that resolves to nobody is null — the panel
+ * says "Unknown".
+ */
+export async function resolveActorNames(
+  tx: TenantDb,
+  tenantId: string,
+  clientId: string,
+  memberIds: ReadonlySet<string>,
+  contactIds: ReadonlySet<string>,
+): Promise<{ member: (id: string | null) => string | null; contact: (id: string | null) => string | null }> {
+  const [members, contacts] = await Promise.all([
+    memberIds.size > 0
+      ? tx.member.findMany({
+          where: { tenantId, id: { in: [...memberIds] } },
+          select: { id: true, user: { select: { name: true } } },
+        })
+      : Promise.resolve([]),
+    contactIds.size > 0
+      ? tx.contact.findMany({
+          where: { tenantId, clientId, id: { in: [...contactIds] } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const memberName = new Map(members.map((m) => [m.id, m.user.name]));
+  const contactName = new Map(contacts.map((c) => [c.id, c.name]));
+  const nameOf = (id: string | null, names: Map<string, string>): string | null =>
+    id ? (names.get(id) ?? null) : null;
+  return {
+    member: (id) => nameOf(id, memberName),
+    contact: (id) => nameOf(id, contactName),
+  };
+}
 
 export type ActivityActor = {
   /** Who acted: a member, a Phase 3 contact, or nobody at all (an import, a job) — the UI's "System". */
@@ -181,26 +226,7 @@ export async function readItemActivity(
       if (r.newRef) memberIds.add(r.newRef);
     }
   }
-  // Only the reads the page needs: a history of member edits makes no
-  // contact query, and an empty page makes none at all.
-  const [members, contacts] = await Promise.all([
-    memberIds.size > 0
-      ? tx.member.findMany({
-          where: { tenantId, id: { in: [...memberIds] } },
-          select: { id: true, user: { select: { name: true } } },
-        })
-      : Promise.resolve([]),
-    contactIds.size > 0
-      ? tx.contact.findMany({
-          where: { tenantId, clientId, id: { in: [...contactIds] } },
-          select: { id: true, name: true },
-        })
-      : Promise.resolve([]),
-  ]);
-  const memberName = new Map(members.map((m) => [m.id, m.user.name]));
-  const contactName = new Map(contacts.map((c) => [c.id, c.name]));
-  const nameOf = (id: string | null, names: Map<string, string>): string | null =>
-    id ? (names.get(id) ?? null) : null;
+  const names = await resolveActorNames(tx, tenantId, clientId, memberIds, contactIds);
 
   return {
     rows: page.map((r) => ({
@@ -214,10 +240,10 @@ export async function readItemActivity(
         kind: r.actorMemberId ? "member" : r.actorContactId ? "contact" : "system",
         memberId: r.actorMemberId,
         contactId: r.actorContactId,
-        name: nameOf(r.actorMemberId, memberName) ?? nameOf(r.actorContactId, contactName),
+        name: names.member(r.actorMemberId) ?? names.contact(r.actorContactId),
       },
-      oldRefName: r.field === "assignee" ? nameOf(r.oldRef, memberName) : null,
-      newRefName: r.field === "assignee" ? nameOf(r.newRef, memberName) : null,
+      oldRefName: r.field === "assignee" ? names.member(r.oldRef) : null,
+      newRefName: r.field === "assignee" ? names.member(r.newRef) : null,
       visibility: r.visibility,
       createdAt: r.createdAt,
     })),

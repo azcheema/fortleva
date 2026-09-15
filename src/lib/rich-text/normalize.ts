@@ -1,11 +1,11 @@
 import { getSchema } from "@tiptap/core";
 import { Node as PMNode } from "@tiptap/pm/model";
 
-import { fail } from "@/lib/domain-error";
-import { descriptionExtensions } from "./extensions";
+import { fail, type DomainErrorCode } from "@/lib/domain-error";
+import { commentExtensions, descriptionExtensions } from "./extensions";
 
 /**
- * The description's gatekeeper: the browser sends JSON, and NOTHING it
+ * The rich-text gatekeeper: the browser sends JSON, and NOTHING it
  * sends is trusted. The document is parsed against the same schema the
  * editor uses (unknown node and mark types are refused there), then
  * rebuilt attribute by attribute from an allow-list, then parsed again —
@@ -18,23 +18,38 @@ import { descriptionExtensions } from "./extensions";
  * a `checked` string that makes the checklist count wrong, or a
  * `javascript:` href that the static renderer would print verbatim.
  *
- * It runs in Node with no DOM: the server action, the dbtests and the
+ * It runs in Node with no DOM: the server actions, the dbtests and the
  * unit tests all use it, and the text and counts the database stores are
  * derived HERE — never sent by the client.
+ *
+ * TWO DOCUMENTS, ONE GATE (panel slice 10). A description and a comment
+ * are different schemas with different caps (`extensions.ts`), and each
+ * has its own entry point below; the walk between them is the same
+ * code, so a hole closed for one cannot stay open in the other. A
+ * comment must SAY something (an empty description is a legitimate
+ * nothing-yet; an empty comment is a mis-click), and its caps are a
+ * quarter of a description's — a reply is not a document.
  */
 
 /** The JSON cap sits under Next's 1 MB server-action body limit. */
 export const DESCRIPTION_JSON_BYTES = 512 * 1024;
 /** `search_index` tokenises `left(body_text, 100000)`; beyond it a description would be silently half-indexed. */
 export const DESCRIPTION_TEXT_CHARS = 100_000;
+/** A comment's caps — a reply, not a document; still far past any honest use. */
+export const COMMENT_JSON_BYTES = 128 * 1024;
+export const COMMENT_TEXT_CHARS = 20_000;
 
 /**
- * Built on first use, not on import. Constructing the schema walks every
+ * Built on first use, not on import. Constructing a schema walks every
  * extension; a module-scope call makes merely REACHING this file cost
  * that, which is exactly what a tree-shaker cannot remove.
  */
-let cachedSchema: ReturnType<typeof getSchema> | null = null;
-const schema = (): ReturnType<typeof getSchema> => (cachedSchema ??= getSchema(descriptionExtensions()));
+let descriptionSchema: ReturnType<typeof getSchema> | null = null;
+let commentSchema: ReturnType<typeof getSchema> | null = null;
+const schemaFor = (kind: RichTextKind): ReturnType<typeof getSchema> =>
+  kind === "description"
+    ? (descriptionSchema ??= getSchema(descriptionExtensions()))
+    : (commentSchema ??= getSchema(commentExtensions()));
 
 type JsonNode = {
   type?: unknown;
@@ -131,7 +146,21 @@ function sanitize(node: JsonNode): JsonNode {
   return out;
 }
 
-export type NormalizedDescription = {
+type RichTextKind = "description" | "comment";
+
+type Caps = {
+  readonly jsonBytes: number;
+  readonly textChars: number;
+  /** The code a document past either cap fails with — named per kind, so the toast names the right thing. */
+  readonly tooLarge: DomainErrorCode;
+};
+
+const CAPS: Record<RichTextKind, Caps> = {
+  description: { jsonBytes: DESCRIPTION_JSON_BYTES, textChars: DESCRIPTION_TEXT_CHARS, tooLarge: "DESCRIPTION_TOO_LARGE" },
+  comment: { jsonBytes: COMMENT_JSON_BYTES, textChars: COMMENT_TEXT_CHARS, tooLarge: "COMMENT_TOO_LARGE" },
+};
+
+type Normalized = {
   /** Canonical JSON to store — or null when the document says nothing. */
   readonly doc: JsonNode | null;
   /** Plain text for the search feed and previews; null when empty. */
@@ -143,9 +172,11 @@ export type NormalizedDescription = {
 /**
  * Parse → allow-list → parse again → derive. Throws a DomainError for
  * anything the editor could not have produced (INVALID_INPUT) or for a
- * document past a cap (DESCRIPTION_TOO_LARGE).
+ * document past a cap (the kind's own TOO_LARGE code).
  */
-export function normalizeDescription(input: unknown): NormalizedDescription {
+function normalizeRichText(input: unknown, kind: RichTextKind): Normalized {
+  const caps = CAPS[kind];
+  const schema = schemaFor(kind);
   // Guarded: the input is whatever crossed a server-action boundary, and
   // React's decoder admits values `JSON.stringify` refuses — a BigInt
   // (`$n`) throws a TypeError here. Unguarded that leaves the gatekeeper
@@ -155,45 +186,45 @@ export function normalizeDescription(input: unknown): NormalizedDescription {
   try {
     serialized = JSON.stringify(input ?? null);
   } catch {
-    fail("INVALID_INPUT", "description is not a document this editor can produce");
+    fail("INVALID_INPUT", `${kind} is not a document this editor can produce`);
   }
-  if (Buffer.byteLength(serialized!, "utf8") > DESCRIPTION_JSON_BYTES) {
-    fail("DESCRIPTION_TOO_LARGE");
+  if (Buffer.byteLength(serialized!, "utf8") > caps.jsonBytes) {
+    fail(caps.tooLarge);
   }
 
   let parsed: PMNode;
   try {
-    parsed = PMNode.fromJSON(schema(), input as never);
+    parsed = PMNode.fromJSON(schema, input as never);
   } catch {
-    fail("INVALID_INPUT", "description is not a document this editor can produce");
+    fail("INVALID_INPUT", `${kind} is not a document this editor can produce`);
   }
   // `fromJSON` builds whatever node type it is told to. A root that is
   // not `doc` — a bare paragraph, a lone text node — parses happily and
-  // would be stored as the description, where every reader (and the
+  // would be stored as the document, where every reader (and the
   // editor's own setContent on the next poll) expects a document.
-  if (parsed!.type.name !== "doc") fail("INVALID_INPUT", "description root is not a document");
+  if (parsed!.type.name !== "doc") fail("INVALID_INPUT", `${kind} root is not a document`);
 
   let node: PMNode;
   try {
     // The second parse is the point: it proves the allow-listed result is
     // itself a valid document, rather than trusting the rewrite.
-    node = PMNode.fromJSON(schema(), sanitize(parsed!.toJSON() as JsonNode) as never);
+    node = PMNode.fromJSON(schema, sanitize(parsed!.toJSON() as JsonNode) as never);
     // …and `check()` is what makes the parse mean something. `fromJSON`
     // does NOT validate a node against its content expression, so a LEAF
     // can be handed children: `{type:"horizontalRule",content:[…text…]}`
-    // survives both parses, renders nothing, and still reaches
-    // `descriptionText` — which is the search index's body tier. That is
+    // survives both parses, renders nothing, and still reaches the
+    // extracted text — which is the search index's body tier. That is
     // a task surfacing for words nobody can see on it. `check()` recurses
     // over content, attributes and marks; without it the two parses only
     // prove the node TYPES were known.
     node.check();
   } catch {
-    fail("INVALID_INPUT", "description did not survive normalisation");
+    fail("INVALID_INPUT", `${kind} did not survive normalisation`);
   }
 
   const text = node!.textBetween(0, node!.content.size, "\n", " ").trim();
-  if (text.length > DESCRIPTION_TEXT_CHARS) fail("DESCRIPTION_TOO_LARGE");
-  if (UNSTORABLE.test(text)) fail("INVALID_INPUT", "description contains characters the database cannot store");
+  if (text.length > caps.textChars) fail(caps.tooLarge);
+  if (UNSTORABLE.test(text)) fail("INVALID_INPUT", `${kind} contains characters the database cannot store`);
 
   let checklistTotal = 0;
   let checklistDone = 0;
@@ -212,8 +243,8 @@ export function normalizeDescription(input: unknown): NormalizedDescription {
   // gains `checked`, every heading a `level`, every codeBlock a
   // `language` — so a document that fitted on the way in can be half as
   // big again on the way out, and the column would take it.
-  if (!empty && Buffer.byteLength(JSON.stringify(out), "utf8") > DESCRIPTION_JSON_BYTES) {
-    fail("DESCRIPTION_TOO_LARGE");
+  if (!empty && Buffer.byteLength(JSON.stringify(out), "utf8") > caps.jsonBytes) {
+    fail(caps.tooLarge);
   }
   return {
     doc: empty ? null : out,
@@ -221,4 +252,29 @@ export function normalizeDescription(input: unknown): NormalizedDescription {
     checklistTotal,
     checklistDone,
   };
+}
+
+export type NormalizedDescription = Normalized;
+
+/** The description: may be empty (stored as null), carries checklist counters. */
+export function normalizeDescription(input: unknown): NormalizedDescription {
+  return normalizeRichText(input, "description");
+}
+
+export type NormalizedComment = {
+  /** Canonical JSON to store — never null: an empty comment is refused. */
+  readonly doc: JsonNode;
+  /** Plain text for `bodyText` (the search feed, previews) — never empty. */
+  readonly text: string;
+};
+
+/**
+ * The comment: the comment schema (no headings, no checklist), the
+ * comment caps, and it must say something — a document whose text is
+ * empty is COMMENT_EMPTY, never a stored blank.
+ */
+export function normalizeComment(input: unknown): NormalizedComment {
+  const n = normalizeRichText(input, "comment");
+  if (n.doc === null || n.text === null) fail("COMMENT_EMPTY");
+  return { doc: n.doc!, text: n.text! };
 }

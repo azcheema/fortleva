@@ -1184,7 +1184,7 @@ describe("getItemDetail — the panel's one scoped read", () => {
     // A raw state pair, resolved at the page boundary like the item's own.
     expect(detail.subtasks.rows[0]).toMatchObject({ stateName: null, stateSeedKey: "TODO", visibility: "INTERNAL" });
     expect(resolveItemDetail(detail, (k) => `<${k}>`).subtasks.rows[0]!.stateName).toBe("<TODO>");
-    expect(detail.canCreate).toBe(true);
+    expect(detail.caps.create).toBe(true);
 
     // A subtask has no children by construction: nothing is listed, and
     // nothing is even read for it.
@@ -1195,7 +1195,7 @@ describe("getItemDetail — the panel's one scoped read", () => {
     // The employee (assigned to this client above) holds work_item:create
     // by the catalogue; the rows are the same rows.
     const theirs = await getItemDetail(employeeCtx(), projectId, parent.number);
-    expect(theirs.canCreate).toBe(true);
+    expect(theirs.caps.create).toBe(true);
     expect(theirs.subtasks.rows).toHaveLength(3);
   });
 
@@ -1224,7 +1224,7 @@ describe("getItemDetail — the panel's one scoped read", () => {
 
   it("carries the project's states by rank, the caps the pickers need, and the members the A picker lists", async () => {
     const { number } = await createItem(ownerCtx(), { projectId, title: "Picker data" });
-    const { states, canEdit, canApprove, canChangeVisibility, members } = await getItemDetail(
+    const { states, caps, members } = await getItemDetail(
       ownerCtx(),
       projectId,
       number,
@@ -1244,9 +1244,7 @@ describe("getItemDetail — the panel's one scoped read", () => {
     expect(seeded.name).toBeNull();
     expect(seeded.requiresApproval).toBe(true);
 
-    expect(canEdit).toBe(true);
-    expect(canApprove).toBe(true);
-    expect(canChangeVisibility).toBe(true);
+    expect(caps).toEqual({ edit: true, approve: true, changeVisibility: true, create: true, comment: true });
 
     // The A picker's rows: every ACTIVE member, the owner first (joined
     // first), each with a name to show — the same read listItems makes.
@@ -1259,9 +1257,9 @@ describe("getItemDetail — the panel's one scoped read", () => {
   it("an employee gets canApprove and canChangeVisibility false — the gated Done and the V picker stay out of reach", async () => {
     const { number } = await createItem(ownerCtx(), { projectId, title: "Employee caps" });
     const r = await getItemDetail(employeeCtx(), projectId, number);
-    expect(r.canEdit).toBe(true);
-    expect(r.canApprove).toBe(false);
-    expect(r.canChangeVisibility).toBe(false);
+    expect(r.caps.edit).toBe(true);
+    expect(r.caps.approve).toBe(false);
+    expect(r.caps.changeVisibility).toBe(false);
     // The states themselves are not filtered server-side: hiding the
     // target is UX (`enterableStates`), and `transitionState` is the belt.
     expect(r.states.some((s) => s.requiresApproval)).toBe(true);

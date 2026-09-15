@@ -971,7 +971,10 @@
     "REPORT_IMMUTABLE": "A published time report cannot be changed or deleted — archive it and generate a new one.",
     "BREAK_OUT_OF_BOUNDS": "A break must lie inside its shift.",
     "SHIFT_SHRINK": "That change would leave a break outside the shift.",
-    "WORK_TYPE_TAKEN": "A work type with that name already exists."
+    "WORK_TYPE_TAKEN": "A work type with that name already exists.",
+    "COMMENT_EMPTY": "A comment needs some text.",
+    "COMMENT_TOO_LARGE": "This comment is too long to post. Shorten it, or attach the detail as a file.",
+    "SUBJECT_NOT_VISIBLE": "This task is private to your team, so a reply can’t be shown to the client. Share the task first."
   },
   "assignments": {
     "title": "Team",
@@ -1710,22 +1713,12 @@
       "description": {
         "label": "Description",
         "placeholder": "What needs doing, and anything the next person needs to know.",
-        "toolbar": "Text formatting",
         "saving": "Saving…",
         "saved": "Saved",
         "notSaved": "Not saved",
         "saveFailed": "Couldn’t save your description. Your text is still here — try again.",
         "checkboxLabel": "Checklist item: {text}",
-        "checkboxEmpty": "empty",
-        "format": {
-          "bold": "Bold",
-          "italic": "Italic",
-          "strike": "Strikethrough",
-          "code": "Code",
-          "bulletList": "Bulleted list",
-          "orderedList": "Numbered list",
-          "taskList": "Checklist"
-        }
+        "checkboxEmpty": "empty"
       },
       "openFullPage": "Open full page",
       "currentValue": "(current)",
@@ -1774,6 +1767,46 @@
         "failed": {
           "TASK": "The task was not created. Your title is still here — try again.",
           "SUBTASK": "The subtask was not created. Your title is still here — try again."
+        }
+      },
+      "comments": {
+        "title": "Comments",
+        "count": "{count, plural, one {# comment} other {# comments}}",
+        "empty": "No comments yet.",
+        "truncated": "Showing the latest {limit} comments.",
+        "edited": "(edited)",
+        "label": "Write a comment",
+        "editLabel": "Edit comment",
+        "placeholder": "Write a comment. Ctrl+Enter or ⌘Enter posts.",
+        "post": "Post note",
+        "postVisible": "Post reply to client",
+        "update": "Update comment",
+        "makeVisible": "Show to client",
+        "makePrivate": "Make private",
+        "confirmDelete": "Delete this comment?",
+        "mode": {
+          "label": "Who sees this comment",
+          "INTERNAL": "Internal note",
+          "CLIENT_VISIBLE": "Reply to client"
+        },
+        "hint": {
+          "private": "Follows {key} — this task is private to your team, so comments are too.",
+          "internal": "Only your team sees this note. The client can’t.",
+          "client": "The client will see this reply on their portal."
+        },
+        "announce": {
+          "posted": "Note posted",
+          "postedVisible": "Reply posted — the client can see it",
+          "edited": "Comment updated",
+          "deleted": "Comment deleted",
+          "madeVisible": "Comment is now visible to the client",
+          "madePrivate": "Comment is now private to your team"
+        },
+        "failed": {
+          "post": "The comment was not posted. Your text is still here — try again.",
+          "edit": "The comment was not saved. Your text is still here — try again.",
+          "delete": "The comment was not deleted.",
+          "visibility": "The visibility did not change. The panel shows the current visibility."
         }
       },
       "state": {
@@ -1870,7 +1903,11 @@
         "unassigned": "unassigned {from}",
         "stateChanged": "moved this from {from} to {to}",
         "visibilityChanged": "changed the visibility to {to}",
-        "fieldChanged": "changed “{field}”"
+        "fieldChanged": "changed “{field}”",
+        "commented": "commented",
+        "commentEdited": "edited a comment",
+        "commentDeleted": "deleted a comment",
+        "commentVisibilityChanged": "changed a comment’s visibility to {to}"
       }
     },
     "states": {
@@ -2378,6 +2415,21 @@
       },
       "empty": "No closed shifts in this month.",
       "legal": "Self-reported clock-in, clock-out and breaks as recorded by the member. Provisional rows were closed automatically and have not been confirmed. No location, activity or presence data is recorded."
+    }
+  },
+  "richText": {
+    "toolbar": {
+      "description": "Description formatting",
+      "comment": "Comment formatting"
+    },
+    "format": {
+      "bold": "Bold",
+      "italic": "Italic",
+      "strike": "Strikethrough",
+      "code": "Code",
+      "bulletList": "Bulleted list",
+      "orderedList": "Numbered list",
+      "taskList": "Checklist"
     }
   }
 }

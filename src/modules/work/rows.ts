@@ -41,9 +41,12 @@ type Ctx = { readonly tenantId: string; readonly actor: MemberActor };
  * (deleteItem). `updateItemDescription` reads outside this function
  * altogether, behind its own compare-and-set on the document, and
  * `createItem` reads no item it will write — only, for a subtask, its
- * PARENT under FOR SHARE (items.ts `shareLockParent`). A writer whose
+ * PARENT under FOR SHARE (`lockItemRow(…, "SHARE")`). A writer whose
  * UPDATE writes `rank` or `number` asks for `"UPDATE"`, the mode that
- * UPDATE takes, so the lock never upgrades under it.
+ * UPDATE takes, so the lock never upgrades under it. A writer of
+ * ANOTHER table's row that must hold the item still — a comment's task
+ * (comments.ts, slice 10) — asks for `"SHARE"`: locked, read live and
+ * scoped, then the child row, the order deleteItem takes them in.
  *
  * Not in the barrel: a service reads through it, a page never does.
  * A caller outside the project holds the lock only until `assertInScope`
