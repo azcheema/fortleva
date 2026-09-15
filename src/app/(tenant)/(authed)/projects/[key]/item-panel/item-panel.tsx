@@ -10,7 +10,7 @@ import { isoDateOf } from "@/lib/duration";
 import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
 import type { WeekStart } from "@/lib/week";
 import { childTypeOf } from "@/lib/enum-map";
-import { panelItemHref } from "@/lib/work-view";
+import { panelItemHref, panelSurfaceOf } from "@/lib/work-view";
 import type {
   ItemActivityPage,
   ItemComments,
@@ -422,11 +422,18 @@ export async function ItemPanel({
           // task while the old task's text is still on screen.
           key={item.id}
           itemId={item.id}
+          itemNumber={item.number}
+          projectId={projectId}
           projectKey={projectKey}
+          surface={panelSurfaceOf(surface)}
           doc={item.description}
           token={item.descriptionToken}
           visibility={item.visibility}
           editable={canEdit}
+          // ⌘⇧O makes a CHILD, so it is offered on exactly the items the
+          // Subtasks section is rendered for, under the same cap.
+          childLevel={childTypeOf(item.type)}
+          canCreate={canCreate}
         />
       </div>
 

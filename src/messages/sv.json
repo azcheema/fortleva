@@ -1720,7 +1720,37 @@
         "notSaved": "Inte sparat",
         "saveFailed": "Beskrivningen kunde inte sparas. Texten finns kvar — försök igen.",
         "checkboxLabel": "Checklistpunkt: {text}",
-        "checkboxEmpty": "tom"
+        "checkboxEmpty": "tom",
+        "convert": {
+          "none": "Sätt markören i en enda checklistpunkt först.",
+          "busy": "Skapar fortfarande den förra — försök igen om en stund.",
+          "complex": {
+            "TASK": "Bara en checklistpunkt på en rad kan bli en uppgift. Konvertera det som ligger under den här först.",
+            "SUBTASK": "Bara en checklistpunkt på en rad kan bli en deluppgift. Konvertera det som ligger under den här först."
+          },
+          "empty": "Den här checklistpunkten har inga ord i sig ännu.",
+          "checked": {
+            "TASK": "Checklistpunkten är ikryssad, och en ny uppgift skulle börja om. Kryssa ur den först.",
+            "SUBTASK": "Checklistpunkten är ikryssad, och en ny deluppgift skulle börja om. Kryssa ur den först."
+          },
+          "tooLong": "En titel är högst {max} tecken, och den här checklistpunkten är längre.",
+          "done": {
+            "TASK": "Uppgift {key} skapad från checklistpunkten",
+            "SUBTASK": "Deluppgift {key} skapad från checklistpunkten"
+          },
+          "doneVisible": {
+            "TASK": "Uppgift {key} skapad från checklistpunkten — epicet är synligt för kunden, så den nya uppgiften är det också.",
+            "SUBTASK": "Deluppgift {key} skapad från checklistpunkten — uppgiften är synlig för kunden, så den nya deluppgiften är det också."
+          },
+          "kept": {
+            "TASK": "Uppgift {key} skapades, men checklistpunkten ändrades under tiden — den ligger kvar.",
+            "SUBTASK": "Deluppgift {key} skapades, men checklistpunkten ändrades under tiden — den ligger kvar."
+          },
+          "failed": {
+            "TASK": "Uppgiften skapades inte. Checklistpunkten är oförändrad — försök igen.",
+            "SUBTASK": "Deluppgiften skapades inte. Checklistpunkten är oförändrad — försök igen."
+          }
+        }
       },
       "openFullPage": "Öppna hela sidan",
       "currentValue": "(nuvarande)",
@@ -1906,7 +1936,11 @@
         "dueDate": "Ange förfallodatum",
         "visibility": "Ändra synlighet",
         "milestone": "Ange milstolpe",
-        "labels": "Ange etiketter"
+        "labels": "Ange etiketter",
+        "convert": {
+          "TASK": "Gör checklistpunkt till uppgift",
+          "SUBTASK": "Gör checklistpunkt till deluppgift"
+        }
       },
       "activity": {
         "title": "Aktivitet",

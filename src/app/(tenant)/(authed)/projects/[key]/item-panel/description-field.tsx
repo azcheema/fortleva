@@ -2,8 +2,15 @@
 
 import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 
-import { saveDescriptionAction } from "./actions";
+import type { ChecklistConvert } from "@/components/rich-text/description-editor";
+import { useScopeKeys } from "@/components/shell/use-hotkeys";
+import type { KeyBinding } from "@/lib/keymap";
+import type { ItemSurface } from "@/lib/work-view";
+
+import { createSubtaskAction, saveDescriptionAction } from "./actions";
 
 /**
  * The route's binding between the generic editor and this project's
@@ -45,19 +52,100 @@ function DescriptionSkeleton() {
 
 export function DescriptionField({
   itemId,
+  itemNumber,
+  projectId,
   projectKey,
+  surface,
   doc,
   token,
   visibility,
   editable,
+  childLevel,
+  canCreate,
 }: {
   itemId: string;
+  /** The item's number — `⌘⇧O`'s create needs it for the MFA step-up return address. */
+  itemNumber: number;
+  /** The project's id — `⌘⇧O`'s create names it, as the Subtasks section's does. */
+  projectId: string;
   projectKey: string;
+  /** WHICH surface this panel is — the create's step-up return address. */
+  surface: ItemSurface;
   doc: unknown;
   token: string;
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
   editable: boolean;
+  /**
+   * What a child of this item WOULD be, or `null` when it can have none
+   * (a Subtask is the lowest level) — the same `childTypeOf` answer the
+   * Subtasks section is rendered on, so the key and the section agree by
+   * construction.
+   */
+  childLevel: "TASK" | "SUBTASK" | null;
+  /** `work_item:create` — the Subtasks add row's gate, and `⌘⇧O`'s. */
+  canCreate: boolean;
 }) {
+  const t = useTranslations("projects.item.keys");
+  const router = useRouter();
+
+  /**
+   * `⌘⇧O`'s create, bound here for the reason the save is: a server
+   * component can hand a client one a server action, never a closure.
+   * It goes through the SAME `createSubtaskAction` as the Subtasks
+   * section's add row, so a child made from a checklist line lands
+   * exactly as a typed one does, and `router.refresh()` is what puts it
+   * in the section below — issued inside the editor's own transition,
+   * which is where this is awaited.
+   */
+  const convert = useMemo<ChecklistConvert | null>(() => {
+    if (!editable || !canCreate || !childLevel) return null;
+    return {
+      level: childLevel,
+      run: async (title) => {
+        const r = await createSubtaskAction({
+          parentId: itemId,
+          parentNumber: itemNumber,
+          projectId,
+          projectKey,
+          surface,
+          title,
+        });
+        if (!r.ok) return r;
+        router.refresh();
+        return { ok: true, value: { key: `${projectKey}-${r.value.number}` } };
+      },
+    };
+  }, [editable, canCreate, childLevel, itemId, itemNumber, projectId, projectKey, surface, router]);
+
+  /**
+   * The `?` overlay's row and nothing more — `run: null`, because the
+   * key is ProseMirror's (description-editor.tsx) and only the editor
+   * knows which line the caret is in. Registered HERE rather than in the
+   * editor because the editor is loaded on demand: a member who opens
+   * the overlay before the chunk lands must still be told the key
+   * exists.
+   *
+   * The registry holds ONE physical key per binding, so this row claims
+   * `o` while advertising the chord — the same approximation the board's
+   * `J or K` row makes. Nothing binds a bare `O`; if anything ever does,
+   * dispatch is unaffected (a `run: null` binding is skipped, never
+   * swallowed) and only the overlay's shadowing would need to learn
+   * about chords.
+   */
+  const keys = useMemo<KeyBinding[]>(
+    () => [
+      {
+        key: "o",
+        label: t(`convert.${childLevel ?? "SUBTASK"}`),
+        enabled: convert !== null,
+        run: null,
+        hint: ["mod", "Shift", "O"],
+      },
+    ],
+    [t, childLevel, convert],
+  );
+  useScopeKeys("item", keys);
+
   return (
     <DescriptionEditor
       doc={doc}
@@ -65,6 +153,7 @@ export function DescriptionField({
       visibility={visibility}
       editable={editable}
       save={(next, baseToken) => saveDescriptionAction({ itemId, projectKey, doc: next, baseToken })}
+      convert={convert}
     />
   );
 }

@@ -1720,7 +1720,37 @@
         "notSaved": "Not saved",
         "saveFailed": "Couldn’t save your description. Your text is still here — try again.",
         "checkboxLabel": "Checklist item: {text}",
-        "checkboxEmpty": "empty"
+        "checkboxEmpty": "empty",
+        "convert": {
+          "none": "Put the cursor in a single checklist item first.",
+          "busy": "Still creating the last one — try again in a moment.",
+          "complex": {
+            "TASK": "Only a one-line checklist item can become a task. Convert anything nested under this one first.",
+            "SUBTASK": "Only a one-line checklist item can become a subtask. Convert anything nested under this one first."
+          },
+          "empty": "This checklist item has no words in it yet.",
+          "checked": {
+            "TASK": "This checklist item is ticked, and a new task would start over. Untick it first.",
+            "SUBTASK": "This checklist item is ticked, and a new subtask would start over. Untick it first."
+          },
+          "tooLong": "A title is at most {max} characters, and this checklist item is longer.",
+          "done": {
+            "TASK": "Task {key} created from the checklist item",
+            "SUBTASK": "Subtask {key} created from the checklist item"
+          },
+          "doneVisible": {
+            "TASK": "Task {key} created from the checklist item — this epic is visible to the client, so the new task is too.",
+            "SUBTASK": "Subtask {key} created from the checklist item — this task is visible to the client, so the new subtask is too."
+          },
+          "kept": {
+            "TASK": "Task {key} was created, but the checklist item changed while it was — it has been left where it is.",
+            "SUBTASK": "Subtask {key} was created, but the checklist item changed while it was — it has been left where it is."
+          },
+          "failed": {
+            "TASK": "The task was not created. The checklist item is unchanged — try again.",
+            "SUBTASK": "The subtask was not created. The checklist item is unchanged — try again."
+          }
+        }
       },
       "openFullPage": "Open full page",
       "currentValue": "(current)",
@@ -1906,7 +1936,11 @@
         "dueDate": "Set due date",
         "visibility": "Change visibility",
         "milestone": "Set milestone",
-        "labels": "Set labels"
+        "labels": "Set labels",
+        "convert": {
+          "TASK": "Convert checklist item to task",
+          "SUBTASK": "Convert checklist item to subtask"
+        }
       },
       "activity": {
         "title": "Activity",

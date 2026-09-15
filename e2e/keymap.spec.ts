@@ -224,12 +224,16 @@ test.describe("the `?` overlay and the palette", () => {
     await expect(home.getByRole("heading", { name: "Board", exact: true })).toHaveCount(0);
   });
 
-  test("with the peek open, the Task section lists S A P E D V M L in rail order, and J or K is spoken as such", async ({
+  test("with the peek open, the Task section lists S A P E D V M L then ⌘⇧O, and J or K is spoken as such", async ({
     page,
   }) => {
-    // Eight islands register the item scope's keys, and the overlay must
+    // Nine islands register the item scope's keys, and the overlay must
     // read them in the order the rail shows them — not backwards, which
-    // is what a precedence-ordered walk alone would produce.
+    // is what a precedence-ordered walk alone would produce. The
+    // description's `⌘⇧O` comes last because the description comes after
+    // the rail, and it is the one row whose key is a CHORD: it is
+    // registered `run: null` (ProseMirror owns the keystroke) purely so
+    // the overlay can advertise it.
     await openFirstPeek(page);
     const overlay = page.getByRole("dialog", { name: /shortcut/i });
     await pressUntil(page, "?", overlay);
@@ -247,7 +251,14 @@ test.describe("the `?` overlay and the palette", () => {
       "Change visibility",
       "Set milestone",
       "Set labels",
+      "Convert checklist item to subtask",
     ]);
+
+    // The chord row prints three keys, the first of them the platform's
+    // modifier — the registry holds ONE key per binding, so this is the
+    // `hint` talking, not `b.key`.
+    const convert = section("Task").locator("li", { hasText: "Convert checklist item" });
+    await expect(convert.locator("kbd")).toHaveText([/Ctrl|⌘/, "Shift", "O"]);
 
     // `["J", "or", "K"]`: two keys and a separator whose word is there
     // for a screen reader, not a third key.
