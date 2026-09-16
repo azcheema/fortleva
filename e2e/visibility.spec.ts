@@ -3,10 +3,10 @@ import {
   test,
   type Locator,
   type Page,
-  type Request,
   type TestInfo,
 } from "@playwright/test";
 
+import { isActionPost } from "./fixtures/actions";
 import {
   documentVisibility,
   requireSeed,
@@ -58,9 +58,6 @@ type Trace = {
   readonly navigations: string[];
   readonly actionPosts: { url: string; status: number }[];
 };
-
-const isActionPost = (request: Request): boolean =>
-  request.method() === "POST" && Boolean(request.headers()["next-action"]);
 
 /** Watch what the page actually does — an error redirect must not hide. */
 function watch(page: Page): Trace {

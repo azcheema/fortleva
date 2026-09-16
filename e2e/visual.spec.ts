@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import { auditPage, type PageAudit } from "./audit";
+import { isActionPost } from "./fixtures/actions";
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
@@ -206,7 +207,7 @@ const stops = (seed: E2ESeed): Stop[] => {
       drive: async (page) => {
         await page.route("**/files", async (route) => {
           const request = route.request();
-          if (request.method() === "POST" && request.headers()["next-action"]) {
+          if (isActionPost(request)) {
             return route.fulfill({ status: 500, contentType: "text/plain", body: "" });
           }
           return route.fallback();

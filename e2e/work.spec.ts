@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { actionAnswered } from "./fixtures/actions";
 import { createBigProject, dropProject, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
@@ -88,9 +89,19 @@ test.describe("project board (owner)", () => {
     await input.press("Escape");
     await expect(input).toHaveCount(0);
 
+    // The card's own id, so the waits below take the MOVE's answer and
+    // not the timer pill's re-sync POST (fixtures/actions.ts).
+    const cardId = (await card.getAttribute("data-board-card")) ?? "";
+    expect(cardId).not.toBe("");
+
     // Drag to In progress (Pragmatic: native HTML5 drag, desktop only).
+    // The board paints the move optimistically, so the assertion below can
+    // be true before the server has stored it. Wait for the action's own
+    // answer, or the reload races the write and reads the old column.
+    const dragged = actionAnswered(page, { contains: [cardId, '"stateId"'] });
     await card.dragTo(inProgress);
     await expect(cardIn(inProgress, title)).toBeVisible({ timeout: 20_000 * SLOW });
+    await dragged;
     await page.reload();
     await expect(cardIn(inProgress, title)).toBeVisible();
     await expect(cardIn(todo, title)).toHaveCount(0);
@@ -100,8 +111,10 @@ test.describe("project board (owner)", () => {
     await page.keyboard.press("s");
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    const movedByKeyboard = actionAnswered(page, { contains: [cardId, '"stateId"'] });
     await dialog.getByTestId("move-top-DONE").click();
     await expect(cardIn(done, title)).toBeVisible({ timeout: 20_000 * SLOW });
+    await movedByKeyboard;
     await page.reload();
     await expect(cardIn(done, title)).toBeVisible();
     // "Top of Done" means first in that column.
@@ -163,18 +176,38 @@ test.describe("project board (owner)", () => {
       { timeout: 20_000 * SLOW },
     );
 
-    // Due date: the ISO value is locale-blind on both ends. The display
-    // span appears only after the server round trip — the sync point
-    // before any navigation (the priority step's indicator plays the
-    // same role above).
+    // Due date: the ISO value is locale-blind on both ends. The text here
+    // is NOT a sync point — an empty due cell has no `display` node, so
+    // `InlineEdit` falls back to the value the member just committed and
+    // "2026" is on screen before the server has it. The estimate cell
+    // below is the same shape; it only LOOKS safe because its optimistic
+    // text is the typed "90m", which happens not to contain the asserted
+    // "30". Both therefore wait for their own action. (Priority is a real
+    // sync point: its indicator is a `display` node built from the server
+    // row, so it cannot paint early.)
+    // The id is only a usable filter once it is the SERVER's. A NUMBERED
+    // key is that proof: the backlog renders the key cell unconditionally,
+    // so an optimistic row would read `KEY-0` (`number: 0`) and a bare
+    // `\d+` would accept it — hence `[1-9]\d*`. The backlog has no
+    // optimistic create today (its reducer takes only a Move), so this is
+    // a guard for the surface both `backlog-table.tsx` and `model.ts`
+    // already anticipate getting one.
+    await expect(
+      row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-[1-9]\\d*$`) }),
+    ).toBeVisible({ timeout: 20_000 * SLOW });
+    const rowId = (await row.getAttribute("data-item-id")) ?? "";
+    expect(rowId).not.toBe("");
+    const dueSaved = actionAnswered(page, { contains: [rowId, '"targetDate"'] });
     await row.getByTestId("backlog-due").getByRole("button").click();
     const dueInput = row.getByTestId("backlog-due").locator("input");
     await dueInput.fill("2026-09-15");
     await dueInput.press("Enter");
     await expect(row.getByTestId("backlog-due")).toContainText("2026", { timeout: 20_000 * SLOW });
+    await dueSaved;
 
     // Estimate: the pinned grammar — "90m" in, and the edit seed reads
     // back as the locale-blind "1h 30m" text (normalization proof).
+    const estimateSaved = actionAnswered(page, { contains: [rowId, '"estimateMinutes"'] });
     await row.getByTestId("backlog-estimate").getByRole("button").click();
     const estimateInput = row.getByTestId("backlog-estimate").locator("input");
     await estimateInput.fill("90m");
@@ -182,6 +215,7 @@ test.describe("project board (owner)", () => {
     await expect(row.getByTestId("backlog-estimate")).toContainText("30", {
       timeout: 20_000 * SLOW,
     });
+    await estimateSaved;
 
     // Everything survives a full reload.
     await page.reload();
@@ -441,10 +475,20 @@ test.describe("project board (owner)", () => {
     await expect(page.getByRole("menuitem", { name: "Move to top" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Move down" })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Move to bottom" })).toHaveCount(0);
+    // THE POLL IS NOT ENOUGH: the list is `useOptimistic` over the
+    // server's rows, so it can be satisfied by the optimistic order alone
+    // while the rank write is still in flight, and the reload then reads
+    // the server's older order. Armed before the click, awaited before the
+    // reload — the description test's pattern. (The drag below is where CI
+    // run 35002303147 actually caught it.)
+    // "Move to top" anchors BEFORE the first row (`rowAnchors`), so the
+    // body carries `beforeId` — the field half of the filter.
+    const movedToTop = actionAnswered(page, { contains: [mine, '"beforeId"'] });
     await page.getByRole("menuitem", { name: "Move to top" }).click();
     await expect
       .poll(async () => (await ids())[0], { timeout: 20_000 * SLOW })
       .toBe(mine);
+    await movedToTop;
 
     // It is a rank change, not a state change, so it survives a reload —
     // the server wrote a real rank, not an optimistic guess.
@@ -466,12 +510,16 @@ test.describe("project board (owner)", () => {
     const target = page.locator(`[data-testid="backlog-row"][data-item-id="${lastId}"]`);
     const box = await target.boundingBox();
     expect(box).not.toBeNull();
+    // THE FLAKE CI RUN 35002303147 HIT, at the assertion after this
+    // reload: the poll below had already passed on the same expression.
+    const draggedToBottom = actionAnswered(page, { contains: [mine, '"afterId"'] });
     await page
       .locator(`[data-testid="backlog-row"][data-item-id="${mine}"]`)
       .dragTo(target, { targetPosition: { x: Math.round(box!.width / 2), y: box!.height - 2 } });
     await expect
       .poll(async () => (await ids()).at(-1), { timeout: 20_000 * SLOW })
       .toBe(mine);
+    await draggedToBottom;
     await page.reload();
     expect((await ids()).at(-1)).toBe(mine);
   });

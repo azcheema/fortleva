@@ -1,4 +1,6 @@
-import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+import { isActionPost } from "./fixtures/actions";
 
 /**
  * Display name on /account.
@@ -18,9 +20,6 @@ import { expect, test, type Locator, type Page, type Request } from "@playwright
 /** The rest-mode trigger for the name, whatever it currently reads. */
 const nameTrigger = (page: Page): Locator =>
   page.locator("[data-slot=inline-edit]").first();
-
-const isActionPost = (request: Request): boolean =>
-  request.method() === "POST" && Boolean(request.headers()["next-action"]);
 
 /**
  * Type a new name and, when committing, WAIT FOR THE SERVER TO ANSWER.

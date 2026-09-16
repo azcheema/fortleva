@@ -1,5 +1,6 @@
-import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { isActionPost } from "./fixtures/actions";
 import { readMilestone, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
@@ -28,9 +29,6 @@ let seed!: E2ESeed;
 test.beforeAll(() => {
   seed = requireSeed();
 });
-
-const isActionPost = (request: Request): boolean =>
-  request.method() === "POST" && Boolean(request.headers()["next-action"]);
 
 /** Every `next-action` POST the page made, so "nothing was saved" is provable. */
 function countActionPosts(page: Page): () => number {

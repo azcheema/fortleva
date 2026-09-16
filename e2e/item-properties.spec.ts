@@ -1,5 +1,6 @@
 import { devices, expect, test, type Locator, type Page, type Request } from "@playwright/test";
 
+import { isActionPost } from "./fixtures/actions";
 import {
   SLOW,
   createOwnTask,
@@ -91,9 +92,7 @@ const plusDays = (iso: string, days: number): string =>
 const isActionPostWith =
   (field: string) =>
   (request: Request): boolean =>
-    request.method() === "POST" &&
-    Boolean(request.headers()["next-action"]) &&
-    (request.postData() ?? "").includes(`"${field}"`);
+    isActionPost(request) && (request.postData() ?? "").includes(`"${field}"`);
 
 /** Count, for the rest of the test, the action POSTs that carry `field`. */
 function countPosts(page: Page, field: string): () => number {
