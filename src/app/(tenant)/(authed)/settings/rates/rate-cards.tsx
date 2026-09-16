@@ -167,7 +167,13 @@ export function RateCardTable({
           <TableHeader>
             <TableRow>
               <TableHead>{t("columns.appliesTo")}</TableHead>
-              <TableHead priority="low">{t("columns.scope")}</TableHead>
+              {/* `medium`, not `low`: on `/settings/rates`, a `form`-width page,
+                  the card leaves this table a 670px box — below the `low` rung
+                  (46rem), so a `low` Scope never rendered there at any width
+                  (on a client's agreements page it did). Scope is the only place
+                  a card's tier is said in words: a Member card and a
+                  Member-on-project card read alike without it. */}
+              <TableHead priority="medium">{t("columns.scope")}</TableHead>
               <TableHead className="text-right">{t("columns.rate")}</TableHead>
               <TableHead priority="medium" className="w-[13ch]">{t("columns.from")}</TableHead>
               <TableHead priority="medium" className="w-[13ch]">{t("columns.to")}</TableHead>
@@ -191,7 +197,7 @@ export function RateCardTable({
                       {row.appliesTo}
                     </span>
                   </TableCell>
-                  <TableCell priority="low">
+                  <TableCell priority="medium">
                     <Badge variant="outline">{t(`scopes.${row.scope}`)}</Badge>
                   </TableCell>
                   <TableCell className="num text-right">

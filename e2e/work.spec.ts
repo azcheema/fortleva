@@ -161,6 +161,9 @@ test.describe("project board (owner)", () => {
   });
 
   test("grooming (2W-G): priority, due date and an estimate set inline from the backlog", async ({ page }) => {
+    // Due and estimate are the backlog's `lowest` rung — a 74rem table — so
+    // neither the harness's 1280px nor 1440px, with the rail open, renders them.
+    await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const title = `Groom task ${Date.now()}`;
     created.push(title); // afterEach removes it, pass or fail
@@ -966,9 +969,14 @@ test.describe("labels on the card and the row", () => {
     // And the chips cost the table NO width. Measured as the scroll box's
     // scrollWidth with the chip groups, then with them taken out of layout,
     // on the same page: equal is the property, whatever the viewport. (Not
-    // `scrollWidth <= clientWidth`: at this harness's 1280px the ten
-    // columns overflow the scroll box on their own, chips or not — 1100px
-    // in 1008px, measured — which the first draft of this test tripped on.)
+    // `scrollWidth <= clientWidth`: before column priority read the table's
+    // own box, the ten columns overflowed this harness's 1280px on their own
+    // — 1100px in 1008px, measured. Today 1280 renders eight columns inside
+    // the box, so the equality catches a missing containment only while the
+    // chips outgrow the ~85px of slack the title column has; the two
+    // 18-character chips here are wider than the 172px they once pushed the
+    // whole table past its box, and the `contain` check below is the
+    // seed-independent guard.)
     // Without the title wrapper's `contain-inline-size` the two differ.
     const table = page.locator('[data-slot="data-table"]').first();
     const setChips = (display: string) =>

@@ -138,7 +138,9 @@ export default async function MembersPage() {
                       self row renders no actions, which is why a
                       one-member fixture never saw it). A suspended
                       member still reads on a phone — the name is muted
-                      — and the badge returns at ≥640px. */}
+                      — and the badge returns once the table's box reaches
+                      the `medium` rung (38rem; ~642px on a phone, ~882px
+                      with the rail open). */}
                   <TableHead priority="medium">{t("columns.status")}</TableHead>
                   <TableHead className="w-0 text-right">
                     <span className="sr-only">{tCommon("actions")}</span>

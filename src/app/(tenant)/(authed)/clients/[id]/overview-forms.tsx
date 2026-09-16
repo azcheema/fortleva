@@ -331,11 +331,16 @@ export function ServicesList({
             <TableHead priority="medium">{t("columns.billing")}</TableHead>
             <TableHead priority="low">{t("columns.scope")}</TableHead>
             <TableHead className="text-right">{t("columns.price")}</TableHead>
-            {/* Phones keep name · price · status · ⋯; the rate still shows there in the
-                rate-card table beneath, so these two columns wait for a wider screen. */}
-            {rates ? <TableHead priority="medium" className="text-right">{t("columns.rate")}</TableHead> : null}
-            {usage ? <TableHead priority="low" className="text-right">{t("columns.thisMonth")}</TableHead> : null}
-            <TableHead priority="low">{t("columns.renews")}</TableHead>
+            {/* Phones keep name · price · status · ⋯; billing, scope and the rate wait
+                for a wider box — the rate still shows in the rate-card table beneath.
+                The rate is `low`, not `medium`: in Swedish the medium set measured 23px
+                wider than the rung's own 608px box, its row actions 7px outside.
+                This month and Renews wait one rung longer (`lower`, a 61.5rem box):
+                with all nine columns the table measured 864px, which at the `low`
+                rung's narrowest box (46rem = 736px) is 128px too wide. */}
+            {rates ? <TableHead priority="low" className="text-right">{t("columns.rate")}</TableHead> : null}
+            {usage ? <TableHead priority="lower" className="text-right">{t("columns.thisMonth")}</TableHead> : null}
+            <TableHead priority="lower">{t("columns.renews")}</TableHead>
             <TableHead>{t("columns.status")}</TableHead>
             <TableHead className="text-right">
               <span className="sr-only">{tCommon("actions")}</span>
@@ -365,16 +370,16 @@ export function ServicesList({
                 </TableCell>
                 <TableCell className="num text-right">{money(s) ?? "—"}</TableCell>
                 {rates ? (
-                  <TableCell priority="medium" className="num text-right" data-testid="agreement-rate">
+                  <TableCell priority="low" className="num text-right" data-testid="agreement-rate">
                     {rates[s.id] ?? <span className="text-muted-foreground">{"—"}</span>}
                   </TableCell>
                 ) : null}
                 {usage ? (
-                  <TableCell priority="low" className="num text-right text-muted-foreground" data-testid="agreement-usage">
+                  <TableCell priority="lower" className="num text-right text-muted-foreground" data-testid="agreement-usage">
                     {usage[s.id] ?? "—"}
                   </TableCell>
                 ) : null}
-                <TableCell priority="low" className="num text-muted-foreground">
+                <TableCell priority="lower" className="num text-muted-foreground">
                   {s.renewsAt ? format.dateTime(s.renewsAt, { dateStyle: "medium" }) : "—"}
                 </TableCell>
                 <TableCell>

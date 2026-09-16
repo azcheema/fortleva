@@ -23,6 +23,12 @@ import { ScrollFade } from "./scroll-fade";
  * and an unnamed one is announced as "region" with no clue what it
  * holds. The right-edge fade says the content continues; column
  * priority (`TableHead priority`) is what actually shortens it.
+ *
+ * The scroll box is also the `data-table` SIZE CONTAINER that column
+ * priority queries: whether a column fits is a question about this box,
+ * which the rail narrows and a viewport query cannot see (`PRIORITY` in
+ * `@/components/ui/table` has the measurement). Its width comes from its
+ * parent, never its content, so the inline-size containment costs nothing.
  */
 export type Density = "compact" | "default";
 
@@ -62,7 +68,7 @@ export function DataTable({
         aria-label={scrollLabel ?? t("table")}
         style={{ "--row-h": ROW_HEIGHT[density] } as CSSProperties}
         className={cn(
-          "w-full overflow-x-auto bg-card focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+          "@container/data-table w-full overflow-x-auto bg-card focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
           flush
             ? // Flush means the CARD owns the surface — and the card's
               // 16px padding, which the table must match or its first

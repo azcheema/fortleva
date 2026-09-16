@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
-import { auditPage, type PageAudit } from "./audit";
+import { auditPage, offscreenRowActions, type PageAudit } from "./audit";
 import { isActionPost } from "./fixtures/actions";
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
@@ -37,6 +37,32 @@ const VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
   mobile: { width: 390, height: 844 },
 } as const;
+
+/**
+ * Widths at which the ONE check column priority must pass —
+ * `offscreenRowActions` — is asked again, on every stop of one walk.
+ * Column priority reads the TABLE's box, not the viewport (UI.md §10.12),
+ * and from `md` up the open rail takes 224px of it, so 1440 and 390 say
+ * nothing about the band between: the backlog overflowed its box
+ * everywhere from 768px to ~1370px, its row actions out of view below
+ * ~1350px, while both shots were clean.
+ *
+ * The worst box a rung's columns ever get is the rung itself (38/46/61.5/74rem
+ * = 608/736/984/1184px), so each rung is asked at the viewport that puts a
+ * box exactly ON it with the rail open — twice, because a box sits 272px
+ * under the viewport for a flush table on the canvas (rail 224 + two 24px
+ * gutters; the backlog) and 274px for a bordered or carded one. 768 is the
+ * narrowest box the rail ever leaves (494/496px), where only `high` columns
+ * render but the identifying cells' `sm:` caps are already wide. A phone
+ * needs no widths of its own: a box of 608–735px holds the same columns
+ * under the same `sm:` caps at 640–767px as at 880–1009px, and the mobile
+ * walk asks 390. What this CANNOT see: the harness is English and its
+ * headless Chromium hides scrollbars, while the rungs are calibrated for
+ * Swedish content and a classic 17px scrollbar (UI.md §10.12). The Swedish
+ * widths were measured by hand with a throwaway probe; the scrollbar is
+ * arithmetic (the headless box less 17px).
+ */
+const RUNG_WIDTHS = [768, 880, 882, 1008, 1010, 1256, 1258, 1456, 1458] as const;
 
 type Device = keyof typeof VIEWPORTS;
 type Theme = "light" | "dark";
@@ -268,6 +294,8 @@ type Finding = {
   status: number | null;
   shot: string;
   audit: PageAudit;
+  /** `offscreenRowActions` by viewport width: the device's own, plus `RUNG_WIDTHS` on one walk. */
+  offscreenRowActions: Record<string, string[]>;
   trace: Trace;
 };
 
@@ -352,7 +380,7 @@ async function visit(
 
   const audit = await page.evaluate(auditPage);
   const status = response?.status() ?? null;
-  findings.push({
+  const finding: Finding = {
     route: stop.name,
     theme,
     device,
@@ -361,8 +389,10 @@ async function visit(
     status,
     shot,
     audit,
+    offscreenRowActions: {},
     trace: JSON.parse(JSON.stringify(trace)) as Trace,
-  });
+  };
+  findings.push(finding);
 
   const at = `${stop.name} [${theme}/${device}]`;
   const allowed = stop.status ?? [200];
@@ -427,10 +457,25 @@ async function visit(
   expect.soft(craft.doubleHairlines, `${at}: bordered DataTable inside a padded SectionCard`).toEqual([]);
 
   // A row's verbs behind an unadvertised horizontal scroll are verbs
-  // nobody will find — the phone case column priority exists to fix.
-  expect
-    .soft(craft.offscreenRowActions, `${at}: row actions outside their table's visible box`)
-    .toEqual([]);
+  // nobody will find — the case column priority exists to fix. Asked at
+  // this device's width on every walk, and at `RUNG_WIDTHS` on ONE:
+  // widths are the same in both themes, and the mobile walk would only
+  // repeat the desktop one's resizes. Every answer is in the report too.
+  const own = await page.evaluate(offscreenRowActions);
+  finding.offscreenRowActions[String(VIEWPORTS[device].width)] = own;
+  expect.soft(own, `${at}: row actions outside their table's visible box`).toEqual([]);
+  if (device === "desktop" && theme === "light") {
+    try {
+      for (const width of RUNG_WIDTHS) {
+        await page.setViewportSize({ width, height: VIEWPORTS.desktop.height });
+        const past = await page.evaluate(offscreenRowActions);
+        finding.offscreenRowActions[String(width)] = past;
+        expect.soft(past, `${at} at ${width}px: row actions outside their table's visible box`).toEqual([]);
+      }
+    } finally {
+      await page.setViewportSize(VIEWPORTS[device]);
+    }
+  }
 
   // Row rhythm. Desktop only: at 390px a cell legitimately wraps and
   // takes its row with it, which is the point of column priority.
@@ -508,7 +553,9 @@ for (const theme of ["light", "dark"] as const) {
         // budget and CI sets `retries: 1`, so four walks can cost twice
         // this in the worst case — ci.yml's ceiling comment does the
         // arithmetic. DERIVED, like every other number in this change —
-        // read the real per-walk time off the first green run.
+        // read the real per-walk time off the first green run. The light
+        // desktop walk also resizes nine times per stop (`RUNG_WIDTHS`);
+        // with seven it took 2.4 min locally against the remote dev DB.
         test.setTimeout(process.env["CI"] ? 600_000 : 300_000);
         const seed = requireSeed();
         const all = stops(seed);

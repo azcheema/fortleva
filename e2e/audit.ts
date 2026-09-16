@@ -43,8 +43,6 @@ export type CraftAudit = {
   doubleHairlines: string[];
   /** An inline-edit trigger that is not a named <button>. */
   badInlineEdits: string[];
-  /** A row's actions parked outside the visible box of its own table. */
-  offscreenRowActions: string[];
   /**
    * aria-current="page" entries in the phone tab bar — exactly one when
    * there IS a bar. `null` means this route has no app shell at all
@@ -70,6 +68,41 @@ export type PageAudit = {
   /** Every visible control, for the "is anything invisible?" report. */
   counts: { buttons: number; links: number; inputs: number };
 };
+
+/**
+ * A row's verbs must be ON SCREEN, not behind a horizontal scroll the page
+ * never advertises. Column priority is what makes room for them; this is
+ * the assertion that the priorities are actually enough — one line per
+ * table that fails it, named by its scroll region.
+ *
+ * Its own function rather than a field of `auditPage`, because the sweep
+ * asks it at more widths than it photographs: column priority reads the
+ * TABLE's box (UI.md §10.12), and the rail makes that box disagree with
+ * the viewport, so the two widths a device is shot at say nothing about
+ * the band between them. Serialised into the page like `auditPage`, and
+ * under the same rules.
+ */
+export function offscreenRowActions(): string[] {
+  const past = new Map<Element, { rows: number; px: number }>();
+  for (const actions of Array.from(document.querySelectorAll("[data-slot=row-actions]"))) {
+    const box = actions.closest("[data-slot=data-table]");
+    if (!box) continue;
+    const a = actions.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    if (a.width === 0) continue;
+    if (a.right > b.right + 1 || a.left < b.left - 1) {
+      const seen = past.get(box) ?? { rows: 0, px: 0 };
+      past.set(box, {
+        rows: seen.rows + 1,
+        px: Math.max(seen.px, Math.round(Math.max(a.right - b.right, b.left - a.left))),
+      });
+    }
+  }
+  return Array.from(past, ([box, { rows, px }]) => {
+    const name = box.getAttribute("aria-label") ?? "table";
+    return `"${name}" (${box.clientWidth}px box): ${rows} row(s), up to ${px}px outside`;
+  });
+}
 
 /**
  * Serialised into the page by e2e/visual.spec.ts. Keep it dependency
@@ -306,21 +339,6 @@ export function auditPage(): PageAudit {
     })
     .map(describe);
 
-  // A row's verbs must be ON SCREEN, not behind a horizontal scroll the
-  // page never advertises. Column priority is what makes room for them;
-  // this is the assertion that the priorities are actually enough.
-  const offscreenRowActions: string[] = [];
-  for (const actions of Array.from(document.querySelectorAll("[data-slot=row-actions]"))) {
-    const box = actions.closest("[data-slot=data-table]");
-    if (!box) continue;
-    const a = actions.getBoundingClientRect();
-    const b = box.getBoundingClientRect();
-    if (a.width === 0) continue;
-    if (a.right > b.right + 1 || a.left < b.left - 1) {
-      offscreenRowActions.push(`${describe(actions)} → ${Math.round(a.right - b.right)}px past`);
-    }
-  }
-
   const tabBar = document.querySelector("[data-slot=tab-bar]");
   const tabBarCurrent = tabBar ? tabBar.querySelectorAll('[aria-current="page"]').length : null;
 
@@ -365,7 +383,6 @@ export function auditPage(): PageAudit {
       unnamedScrollRegions,
       doubleHairlines,
       badInlineEdits,
-      offscreenRowActions,
       tabBarCurrent,
       tabStrip,
     },

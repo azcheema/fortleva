@@ -136,7 +136,12 @@ export function TimeWeek({
                   trailing verbs stay inside the table's visible box (UI.md §10.15 1). */}
               <TableHead priority="medium" className="w-[12ch]">{t("columns.time")}</TableHead>
               <TableHead>{t("columns.what")}</TableHead>
-              <TableHead priority="medium" className="w-[16ch]">{t("columns.agreement")}</TableHead>
+              {/* low, not medium: with time, billable and agreement all on the
+                  medium rung the table measured 29px wider than a 608px box
+                  (the rung's own width), its row verbs 13px outside — at 642px
+                  on a phone, or 882px with the rail open. The agreement is the
+                  column that waits; the billable toggle is the one edited here. */}
+              <TableHead priority="low" className="w-[16ch]">{t("columns.agreement")}</TableHead>
               <TableHead priority="low" className="w-[14ch]">{t("columns.type")}</TableHead>
               <TableHead priority="medium" className="w-[10ch]">{t("columns.billable")}</TableHead>
               <TableHead className="w-[10ch] text-right">{t("columns.duration")}</TableHead>
@@ -201,7 +206,7 @@ export function TimeWeek({
                             ) : null}
                           </div>
                         </TableCell>
-                        <TableCell priority="medium" className="text-muted-foreground">{e.serviceName ?? "—"}</TableCell>
+                        <TableCell priority="low" className="text-muted-foreground">{e.serviceName ?? "—"}</TableCell>
                         <TableCell priority="low" className="text-muted-foreground">{e.workTypeName ?? "—"}</TableCell>
                         <TableCell priority="medium">
                           <InlineEdit

@@ -271,6 +271,10 @@ test.describe("the backlog's `J K` and `X`", () => {
     // purpose: a stray commit there fails the parser and writes nothing,
     // where a title would rename a seeded task.
     // `J` in the same editor is the letter too, and moves no row.
+    // Estimate is on the backlog's `lowest` rung (a 74rem table), which the
+    // harness's 1280px leaves hidden with the rail open — and 1440 too
+    // (1168px) — hence 1600 here.
+    await page.setViewportSize({ width: 1600, height: 900 });
     await row.getByTestId("backlog-estimate").getByRole("button").click();
     const estimate = row.getByTestId("backlog-estimate").locator("input");
     await expect(estimate).toBeFocused();
@@ -282,15 +286,19 @@ test.describe("the backlog's `J K` and `X`", () => {
     await page.keyboard.press("Escape");
     await expect(estimate).toHaveCount(0);
 
-    // Below `sm` the select column drops and a row has no selected cue of
-    // its own, so `X` selects nothing and the overlay does not offer it.
+    // Below the `medium` rung the select column drops and a row has no
+    // selected cue of its own, so `X` selects nothing and the overlay does
+    // not offer it.
     // The Backlog section itself STAYS: `J K` need no column (slice 15),
     // so the section is the positive control and the missing row is the
     // gate. The same key on the same row works again once the column is
     // back — which makes the absence mean the gate, not a dead key.
+    // 800px, not a phone width: the rail is open there, so the table's box
+    // is ~528px and the column is gone, while a VIEWPORT query (≥40rem) would
+    // say it is shown — only an answer read off the table itself passes.
     const overlayHeading = (name: string) => overlay.getByRole("heading", { name, exact: true });
     const selectRow = section.locator("li", { hasText: "Select or deselect task" });
-    await page.setViewportSize({ width: 600, height: 900 });
+    await page.setViewportSize({ width: 800, height: 900 });
     await expect(box).toBeHidden();
     await link.focus();
     await page.keyboard.press("x");
@@ -309,8 +317,8 @@ test.describe("the backlog's `J K` and `X`", () => {
     await expect(box).toHaveAttribute("data-state", "checked");
     await page.keyboard.press("x");
     await expect(box).toHaveAttribute("data-state", "unchecked");
-    // …and the overlay offers it again: the media query reported the way
-    // BACK, not only the way down.
+    // …and the overlay offers it again: the header cell's observer reported
+    // the way BACK, not only the way down.
     await page.keyboard.press("?");
     await expect(selectRow).toBeVisible();
     await page.keyboard.press("?");

@@ -24,7 +24,6 @@ import {
   useOptimistic,
   useRef,
   useState,
-  useSyncExternalStore,
   useTransition,
 } from "react";
 import { toast } from "sonner";
@@ -391,27 +390,6 @@ function DropLine({ edge }: { edge: "top" | "bottom" }) {
     />
   );
 }
-
-/**
- * Whether the select column is displayed: its cells are
- * `priority="medium"`, which `PRIORITY` in `@/components/ui/table` makes
- * `hidden sm:table-cell`, and `sm` is Tailwind's 40rem. Kept HERE rather
- * than exported beside `PRIORITY`, because that module is `"use client"`
- * and server pages import it — a constant exported from it is a throwing
- * client reference waiting for a server `className` (the standing trap).
- *
- * It decides only what the `?` overlay ADVERTISES. Whether `X` acts is
- * asked of the rendered checkbox itself, so if this literal and the
- * breakpoint ever part, the key stays right and only the overlay is wrong.
- */
-const SELECT_COLUMN_QUERY = "(min-width: 40rem)";
-const subscribeSelectColumn = (onChange: () => void) => {
-  const media = window.matchMedia(SELECT_COLUMN_QUERY);
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
-};
-const selectColumnShownNow = () => window.matchMedia(SELECT_COLUMN_QUERY).matches;
-const selectColumnShownOnServer = () => false;
 
 export function BacklogTable({
   projectId,
@@ -863,15 +841,27 @@ export function BacklogTable({
   // that acts only when focus is nowhere in the list. No ⌘K row for
   // either: the palette runs only run-bearing rows, and opening it moves
   // focus off the row.
-  // `X` is hidden below `sm` with the column, so the overlay never offers
-  // a key that the handler below refuses; `J K` need no column and no
+  // `X` is hidden with the select column, so the overlay never offers a
+  // key that the handler below refuses; `J K` need no column and no
   // permission — a viewer walks the list too. Neither is offered while
   // the peek is open: focus is trapped in the sheet and no row can hold it.
-  const selectColumnShown = useSyncExternalStore(
-    subscribeSelectColumn,
-    selectColumnShownNow,
-    selectColumnShownOnServer,
-  );
+  //
+  // Whether that column is DISPLAYED is observed on its header cell, not
+  // asked of a media query: its cells are `priority="medium"`, a rung of
+  // the TABLE's width (`PRIORITY` in `@/components/ui/table`), and the
+  // viewport cannot see the 224px rail that narrows the table or the
+  // member collapsing it. A `display: none` cell has no box, so
+  // ResizeObserver reports the change both ways; it notifies on observe
+  // only for a RENDERED cell, so the initial `false` stands for a hidden
+  // one. This decides only what the overlay ADVERTISES — whether `X` acts
+  // is asked of the row's own checkbox, below.
+  const [selectColumnShown, setSelectColumnShown] = useState(false);
+  const observeSelectColumn = useCallback((head: HTMLTableCellElement | null) => {
+    if (!head) return;
+    const observer = new ResizeObserver(() => setSelectColumnShown(head.getClientRects().length > 0));
+    observer.observe(head);
+    return () => observer.disconnect();
+  }, []);
   // `J` alone carries a `run`, and it acts only when NO ROW holds focus —
   // enforced HERE, not by trusting the body handler to have
   // `preventDefault`ed: a row's `J` is prevented, but a `J` the handler
@@ -942,9 +932,9 @@ export function BacklogTable({
           // theoretical. Fixed layout would make the `w-0` on the select
           // and actions headers AUTHORITATIVE instead of a min-content
           // floor, collapsing the actions column so the row's verbs
-          // overflow the table's right edge — the same defect
-          // `craft.offscreenRowActions` caught at phone width, except up
-          // here no stop would ever photograph it. Column widths may
+          // overflow the table's right edge — the same defect the audit's
+          // `offscreenRowActions` caught at phone width, except up here no
+          // stop would ever photograph it. Column widths may
           // therefore shift a little as long titles scroll into the
           // window; that is the lesser evil, and it is reversible if it
           // ever reads badly.
@@ -965,15 +955,16 @@ export function BacklogTable({
                   width at 390px — where the surviving columns are select ·
                   key · title · actions. Adding ~32px of checkbox put the
                   row's verbs 6px past the table's own box on every backlog
-                  stop, which is `craft.offscreenRowActions` catching
+                  stop, which is the audit's `offscreenRowActions` catching
                   exactly the defect it was written for (a row's verbs
                   behind a horizontal scroll the page never advertises).
                   Column priority is the system's answer to a table that
                   does not fit, and selection is the one column here that a
                   phone can do without: the row menu still carries every
-                  single-item verb. `medium` = from `sm` up, the same tier
-                  as state and visibility. */}
-              <TableHead priority="medium" className="w-0">
+                  single-item verb. `medium` = a box of 38rem and up, the
+                  same rung as visibility (the ladder is on the next
+                  column). */}
+              <TableHead ref={observeSelectColumn} priority="medium" className="w-0">
                 {data.caps.canEdit ? (
                   <Checkbox
                     checked={allShownSelected}
@@ -1007,13 +998,38 @@ export function BacklogTable({
                   />
                 ) : null}
               </TableHead>
+              {/* THE WIDEST TABLE IN THE PRODUCT, so it climbs every rung of
+                  column priority. Its MIN-CONTENT width per rung, measured with
+                  the table forced to 1px on the e2e seed, English / Swedish:
+                  key · title (its 224px floor) · actions, + select and
+                  visibility from `medium` — ~546 / ~556px against 608; + state
+                  from `low` — ~671 / ~669 against 736; + priority and assignee
+                  from `lower` — ~924 / ~958 against 984; + estimate and due
+                  from `lowest` — ~1099 / ~1157 against 1184 (two builds, ±2px).
+                  Swedish is the wider in
+                  every placeholder ("Ingen prioritet", "Ingen ansvarig", "Ange
+                  datum"), so the rungs are Swedish-calibrated. The state and
+                  assignee names are the tenant's own text, capped at 6rem below
+                  (a long pair adds 44–50px): in Swedish that pair takes lower
+                  to ~1001 and lowest to ~1200 — at each rung's very edge the
+                  table then scrolls by ~17px, and a flush table's row actions
+                  sit 16px inside its edge, so they end about a pixel past it. NOT covered, measured and recorded: an
+                  8-character key with a four-digit number and a paperclip adds
+                  99px. At 1280px with the rail open (1008px, 991 with a classic
+                  scrollbar) estimate and due are the columns that step aside,
+                  and at 1440px (1168 / 1151) too; a member who wants all ten
+                  collapses the rail (1344px at 1440; at 1280 that is 1184, but
+                  1167 with a scrollbar, which stays under the rung). Visibility sits a rung
+                  BELOW state on purpose: the row's left-edge cue carries it
+                  below `medium`, but a chip naming it is the one safety fact
+                  the row should state in words as early as it can. */}
               <TableHead className="w-[10ch]">{t("columns.key")}</TableHead>
               <TableHead>{t("columns.title")}</TableHead>
-              <TableHead priority="medium" className="w-[14ch]">{t("columns.state")}</TableHead>
-              <TableHead priority="low" className="w-[13ch]">{t("columns.priority")}</TableHead>
-              <TableHead priority="low" className="w-[16ch]">{t("columns.assignee")}</TableHead>
-              <TableHead priority="low" className="w-[9ch] text-right">{t("columns.estimate")}</TableHead>
-              <TableHead priority="low" className="w-[12ch]">{t("columns.due")}</TableHead>
+              <TableHead priority="low" className="w-[14ch]">{t("columns.state")}</TableHead>
+              <TableHead priority="lower" className="w-[13ch]">{t("columns.priority")}</TableHead>
+              <TableHead priority="lower" className="w-[16ch]">{t("columns.assignee")}</TableHead>
+              <TableHead priority="lowest" className="w-[9ch] text-right">{t("columns.estimate")}</TableHead>
+              <TableHead priority="lowest" className="w-[12ch]">{t("columns.due")}</TableHead>
               <TableHead priority="medium" className="w-[13ch]">{t("columns.visibility")}</TableHead>
               <TableHead className="w-0 text-right">
                 <span className="sr-only">{t("columns.actions")}</span>
@@ -1100,18 +1116,18 @@ export function BacklogTable({
               if (!data.caps.canEdit) return;
               if (!focusedKeyApplies(shape, "x", goPending)) return;
               // `X` IS the row's checkbox, so where that checkbox is not
-              // displayed it does nothing. Below `sm` the select column
-              // drops, and a row has no selected cue of its own — TableRow's
+              // displayed it does nothing. Below the `medium` rung the select
+              // column drops, and a row has no selected cue of its own — TableRow's
               // selected style is an inset LEFT bar in `--primary`, at the
               // edge where `visibilityRowCue` marks a client-visible row in
               // a colour 1.0002:1 against it — so a selection made there
               // could not be seen. Asked of the element, not of a breakpoint: no client
               // rects means `display: none` somewhere above it. DISPLAYED,
-              // not necessarily in view: from `sm` up the table can scroll
-              // sideways past the checkbox (a long title; from `md`, four
-              // more columns) and `X` still acts — refusing would tie the key to a scroll
-              // position, while the bar's count is on screen and the cue
-              // is one scroll away.
+              // not necessarily in view: a table whose content outgrows its
+              // box can scroll sideways past the checkbox and `X` still
+              // acts — refusing would tie the key to a scroll position,
+              // while the bar's count is on screen and the cue is one
+              // scroll away.
               const box = row.querySelector('[role="checkbox"]');
               if (!box || box.getClientRects().length === 0) return;
               e.preventDefault();
@@ -1314,7 +1330,7 @@ export function BacklogTable({
                       <LabelChips labels={item.labels} surface="row" />
                     </span>
                   </TableCell>
-                  <TableCell priority="medium" data-testid="backlog-state">
+                  <TableCell priority="low" data-testid="backlog-state">
                     <InlineEdit
                       kind="select"
                       name="stateId"
@@ -1328,7 +1344,20 @@ export function BacklogTable({
                         : [{ value: item.stateId, label: item.stateName }, ...stateOptions]}
                       readOnly={!data.caps.canEdit}
                       hiddenInput={false}
-                      display={<span className="text-sm">{item.stateName}</span>}
+                      // CAPPED, like the assignee below: a state's name is the
+                      // tenant's own text, and a nowrap cell grows with it —
+                      // measured, a 29-character name widened this column by
+                      // 134px and walked every rung's columns out of their box.
+                      // At 6rem it costs 27px at most; the full name is the
+                      // display's own `title`.
+                      display={
+                        <span
+                          className="block max-w-24 truncate text-sm"
+                          title={item.stateName}
+                        >
+                          {item.stateName}
+                        </span>
+                      }
                       onCommit={(next) => {
                         if (next !== item.stateId)
                           run(() =>
@@ -1343,7 +1372,7 @@ export function BacklogTable({
                       }}
                     />
                   </TableCell>
-                  <TableCell priority="low" data-testid="backlog-priority">
+                  <TableCell priority="lower" data-testid="backlog-priority">
                     <InlineEdit
                       kind="select"
                       name="priority"
@@ -1375,7 +1404,7 @@ export function BacklogTable({
                       }}
                     />
                   </TableCell>
-                  <TableCell priority="low">
+                  <TableCell priority="lower">
                     <InlineEdit
                       kind="select"
                       name="assigneeMemberId"
@@ -1389,7 +1418,17 @@ export function BacklogTable({
                       hiddenInput={false}
                       display={
                         item.assigneeName ? (
-                          <span className="text-sm">{item.assigneeName}</span>
+                          <span
+                            className="block max-w-24 truncate text-sm"
+                            // ALWAYS its own title, not only the trigger's: the
+                            // options are ACTIVE members, so a suspended
+                            // assignee's trigger title falls back to the raw
+                            // member id — and the innermost title is the one a
+                            // hover shows.
+                            title={item.assigneeName}
+                          >
+                            {item.assigneeName}
+                          </span>
                         ) : null
                       }
                       onCommit={(next) => {
@@ -1406,7 +1445,7 @@ export function BacklogTable({
                       }}
                     />
                   </TableCell>
-                  <TableCell priority="low" className="text-right" data-testid="backlog-estimate">
+                  <TableCell priority="lowest" className="text-right" data-testid="backlog-estimate">
                     <InlineEdit
                       kind="text"
                       name="estimate"
@@ -1444,7 +1483,7 @@ export function BacklogTable({
                       }}
                     />
                   </TableCell>
-                  <TableCell priority="low" data-testid="backlog-due">
+                  <TableCell priority="lowest" data-testid="backlog-due">
                     <InlineEdit
                       kind="date"
                       name="dueDate"

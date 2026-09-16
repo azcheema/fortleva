@@ -148,7 +148,10 @@ export default async function ExportPage({
                   <TableRow>
                     <TableHead>{t("columns.name")}</TableHead>
                     <TableHead priority="medium">{t("columns.created")}</TableHead>
-                    <TableHead priority="low" className="text-right">
+                    {/* `medium`, as Created: a `form`-width page leaves this
+                        table a 670px box, below the `low` rung (46rem), where
+                        a `low` Size would never render at any width. */}
+                    <TableHead priority="medium" className="text-right">
                       {t("columns.size")}
                     </TableHead>
                     <TableHead className="w-0 text-right">
@@ -178,7 +181,7 @@ export default async function ExportPage({
                             timeStyle: "short",
                           })}
                         </TableCell>
-                        <TableCell priority="low" className="num text-right whitespace-nowrap">
+                        <TableCell priority="medium" className="num text-right whitespace-nowrap">
                           {size.value}
                           <span className="ml-1 text-muted-foreground">{size.unit}</span>
                         </TableCell>
