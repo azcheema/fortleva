@@ -230,8 +230,9 @@ export const SUPPRESS_SELECTOR = [
  * of the flags both read, which catches a change to one of THOSE guards;
  * a guard `decide()` gains on a new event field or on scope state is not
  * exercised there and must be mirrored here by hand. `exclusive` scopes
- * are ignored on purpose: the only one is the `?` overlay, a modal dialog
- * that traps focus, so no row's handler receives a key beneath it —
+ * are ignored on purpose: each one is a modal dialog that traps focus
+ * (the `?` overlay; a task timer's staff-notice dialog), so no row's
+ * handler receives a key beneath it —
  *
  *  · `defaultPrevented`: something nearer the target already owns it;
  *  · a ⌘/Ctrl/Alt chord is not the bare key (Shift is not a chord, as

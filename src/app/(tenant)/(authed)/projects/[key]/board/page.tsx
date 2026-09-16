@@ -15,7 +15,7 @@ import { loadProject } from "../data";
 import { GROUP_BYS, isGroupBy, listHrefOf, peekHrefOf, workViewHref, type GroupBy } from "@/lib/work-view";
 
 import { ItemPanel } from "../item-panel/item-panel";
-import { loadPanelItem } from "../item-panel/panel-data";
+import { loadPanelItem, loadPanelTimer } from "../item-panel/panel-data";
 import { PeekShell } from "../item-panel/peek-shell";
 import { peekItemNumber } from "../item-panel/peek-param";
 import { Board } from "./board";
@@ -58,7 +58,7 @@ export default async function ProjectBoardPage({
   const tStates = await getTranslations("projects.states.seed");
   const peekNumber = peekItemNumber(item, project.key);
   const listHref = listHrefOf(`/projects/${project.key}/board`, query);
-  const [rawData, peekItem, t, locale, prefs] = await Promise.all([
+  const [rawData, peekItem, peekTimer, t, locale, prefs] = await Promise.all([
     listItems(ctx, project.id),
     // ONE scope-checked read, never a lookup in the list: the board
     // drops archived items, so an archived one could be addressed and
@@ -66,6 +66,7 @@ export default async function ProjectBoardPage({
     peekNumber === null
       ? Promise.resolve(null)
       : loadPanelItem(ctx, project.id, peekNumber, listHref, (seedKey) => tStates(seedKey)),
+    peekNumber === null ? Promise.resolve(null) : loadPanelTimer(ctx, project),
     getTranslations("projects.board"),
     getLocale(),
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
@@ -170,6 +171,7 @@ export default async function ProjectBoardPage({
             weekStart={prefs.weekStart}
             showIsoWeek={prefs.showIsoWeek}
             error={error}
+            timer={peekTimer}
           />
         </PeekShell>
       ) : null}

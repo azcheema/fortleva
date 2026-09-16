@@ -1950,7 +1950,9 @@
         "convert": {
           "TASK": "Gör checklistpunkt till uppgift",
           "SUBTASK": "Gör checklistpunkt till deluppgift"
-        }
+        },
+        "startTimer": "Starta en timer på uppgiften",
+        "stopTimer": "Stoppa uppgiftens timer"
       },
       "activity": {
         "title": "Aktivitet",
@@ -1987,6 +1989,12 @@
         "commentEdited": "redigerade en kommentar",
         "commentDeleted": "tog bort en kommentar",
         "commentVisibilityChanged": "ändrade en kommentars synlighet till {to}"
+      },
+      "timer": {
+        "start": "Starta timer",
+        "stop": "Stoppa timer",
+        "acknowledgeAndStart": "Jag har läst detta — starta timern",
+        "noticeFailed": "Informationen om tidsregistrering kunde inte hämtas."
       }
     },
     "states": {
@@ -2342,13 +2350,15 @@
       "adhocNonBillable": "Snabbuppgifter är inte fakturerbara",
       "start": "Starta",
       "stop": "Stoppa",
+      "startAnother": "Starta en till",
+      "startAnotherHint": "En ny timer stoppar den här — ångra finns i meddelandet."
+    },
+    "timer": {
       "started": "Timern startad.",
       "startedStopped": "Timern startad — \"{label}\" stoppades.",
       "stopped": "Stoppad efter {duration}.",
       "undo": "Ångra",
-      "failed": "Timern kunde inte ändras.",
-      "startAnother": "Starta en till",
-      "startAnotherHint": "En ny timer stoppar den här — ångra finns i meddelandet."
+      "failed": "Timern kunde inte ändras."
     },
     "week": {
       "title": "Den här veckan",

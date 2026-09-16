@@ -879,6 +879,33 @@ async function resetNotifications(tenantId: string): Promise<void> {
 }
 
 /**
+ * Forget one member's staff-notice acknowledgments, so the next timer
+ * start is that member's FIRST again — the only state in which a task's
+ * timer control shows the notice. A spec that asserts on the notice
+ * calls this before it runs, which keeps it true on a retry (the first
+ * attempt acknowledged). Throwaway tenant only, like every write here;
+ * the member is found by email inside that tenant and nowhere else.
+ */
+async function forgetNotice(tenantId: string, email: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  // An undefined filter is silently DROPPED by Prisma, which would make
+  // this "the tenant's first member" — refuse a missing email outright.
+  if (!email) throw new Error("forget-notice needs a member email");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const member = await db.member.findFirstOrThrow({
+    where: { tenantId, user: { email } },
+    select: { id: true },
+  });
+  const { count } = await db.staffNoticeAcknowledgment.deleteMany({
+    where: { tenantId, memberId: member.id },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"forgotten":${count}}
+`);
+}
+
+/**
  * Put a seeded document back to a known visibility so each spec starts
  * from the same fixture, whatever the previous one changed or left
  * behind after a failure. Throwaway tenant only, like everything here.
@@ -1117,6 +1144,7 @@ const main = async (): Promise<void> => {
   if (command === "drop-project") return dropProject(argument!);
   if (command === "notifications") return notifications(argument!);
   if (command === "reset-notifications") return resetNotifications(argument!);
+  if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);
   throw new Error(`unknown command "${command ?? ""}"`);

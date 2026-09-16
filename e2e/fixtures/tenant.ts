@@ -162,6 +162,12 @@ export async function resetNotifications(tenantId: string): Promise<number> {
   return reset;
 }
 
+/** A member's next timer start is their first again: the staff notice shows (time.spec's task-timer test). */
+export async function forgetStaffNotice(tenantId: string, email: string): Promise<number> {
+  const { forgotten } = await runCli<{ forgotten: number }>(["forget-notice", tenantId, email]);
+  return forgotten;
+}
+
 export function readSeed(): E2ESeed | null {
   if (!existsSync(SEED_FILE)) return null;
   return JSON.parse(readFileSync(SEED_FILE, "utf8")) as E2ESeed;

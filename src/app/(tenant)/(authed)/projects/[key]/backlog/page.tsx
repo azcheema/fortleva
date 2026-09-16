@@ -13,7 +13,7 @@ import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../data";
 import { ItemPanel } from "../item-panel/item-panel";
-import { loadPanelItem } from "../item-panel/panel-data";
+import { loadPanelItem, loadPanelTimer } from "../item-panel/panel-data";
 import { PeekShell } from "../item-panel/peek-shell";
 import { peekItemNumber } from "../item-panel/peek-param";
 import { BacklogTable } from "./backlog-table";
@@ -67,6 +67,7 @@ export default async function ProjectBacklogPage({
     peekNumber === null
       ? null
       : await loadPanelItem(ctx, project.id, peekNumber, listHref, (seedKey) => tStates(seedKey));
+  const peekTimer = peekItem ? await loadPanelTimer(ctx, project) : null;
   const prefs = await withTenant(
     membership.tenantId,
     { type: "member", id: membership.memberId },
@@ -154,6 +155,7 @@ export default async function ProjectBacklogPage({
             weekStart={prefs.weekStart}
             showIsoWeek={prefs.showIsoWeek}
             error={error}
+            timer={peekTimer}
           />
         </PeekShell>
       ) : null}

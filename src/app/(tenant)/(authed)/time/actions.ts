@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { z } from "zod";
 
 import { AuthzError } from "@/authz/errors";
@@ -19,6 +19,7 @@ import {
   createEntry,
   deleteEntry,
   getCurrentTimerOnce,
+  getNoticeStatus,
   splitEntry,
   startBreak,
   startTimer,
@@ -51,9 +52,13 @@ const ctxOf = async (): Promise<TimeCtx> => {
   return { tenantId: membership.tenantId, actor };
 };
 
-/** What the header pill needs — serialisable, no Date objects. */
+/**
+ * What the header pill needs — serialisable, no Date objects. `workItemId`
+ * is the member's OWN running entry's task: a task's timer control reads
+ * it to know whether the timer running is this task's.
+ */
 export type TimerPillState = {
-  running: { id: string; label: string; projectKey: string | null; startedAt: string } | null;
+  running: { id: string; label: string; projectKey: string | null; workItemId: string | null; startedAt: string } | null;
   serverNow: string;
   nudge: boolean;
   noticeRequired: boolean;
@@ -70,6 +75,7 @@ export async function getTimerStateAction(): Promise<TimerPillState | null> {
             id: c.running.id,
             label: labelOf(c.running),
             projectKey: c.running.project?.key ?? null,
+            workItemId: c.running.workItemId,
             startedAt: c.running.startedAt.toISOString(),
           }
         : null,
@@ -194,6 +200,26 @@ export async function stopBreakAction(): Promise<FormResult> {
   });
   if (r.ok) revalidate();
   return r;
+}
+
+/**
+ * The staff notice for a surface that starts a timer somewhere other than
+ * /time (a task's own control): the current version in the member's
+ * language, fetched when the member first presses Start — never carried
+ * on every render of a panel that will almost never need it. `null` once
+ * acknowledged, so a stale "required" on the client costs one round trip
+ * and shows nothing.
+ */
+export async function staffNoticeAction(): Promise<
+  ActionResult<{ id: string; version: number; title: string; body: string } | null>
+> {
+  const [ctx, locale] = await Promise.all([ctxOf(), getLocale()]);
+  return runAction(PATH, async () => {
+    const status = await getNoticeStatus(ctx, locale);
+    if (!status.required || status.acknowledged || !status.notice) return null;
+    const { id, version, title, body } = status.notice;
+    return { id, version, title, body };
+  });
 }
 
 export async function acknowledgeNoticeAction(noticeId: string): Promise<FormResult> {

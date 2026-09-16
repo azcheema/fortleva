@@ -472,14 +472,16 @@ test.describe("the `?` overlay and the palette", () => {
     await expect(home.getByRole("heading", { name: "Board", exact: true })).toHaveCount(0);
   });
 
-  test("with the peek open, the Task section lists S A P E D V M L then ⌘⇧O, and J or K is spoken as such", async ({
+  test("with the peek open, the Task section lists T, then S A P E D V M L, then ⌘⇧O, and J or K is spoken as such", async ({
     page,
   }) => {
-    // Nine islands register the item scope's keys, and the overlay must
-    // read them in the order the rail shows them — not backwards, which
-    // is what a precedence-ordered walk alone would produce. The
-    // description's `⌘⇧O` comes last because the description comes after
-    // the rail, and it is the one row whose key is a CHORD: it is
+    // Ten islands register the item scope's keys, and the overlay must
+    // read them in the order the panel shows them — not backwards, which
+    // is what a precedence-ordered walk alone would produce. The timer's
+    // `T` comes first because its control sits in the header, above the
+    // rail (slice 19; its label names the verb it would do now, so either
+    // is accepted). The description's `⌘⇧O` comes last because the
+    // description comes after the rail, and it is the one row whose key is a CHORD: it is
     // registered `run: null` (ProseMirror owns the keystroke) purely so
     // the overlay can advertise it.
     await openFirstPeek(page);
@@ -490,6 +492,7 @@ test.describe("the `?` overlay and the palette", () => {
     // Presence first: the section is there before its rows are counted.
     await expect(section("Task")).toBeVisible();
     await expect(section("Task").locator("li > span:not([data-slot])")).toHaveText([
+      /^(Start a timer on this task|Stop this task's timer)$/,
       "Change state",
       "Assign",
       "Change priority",

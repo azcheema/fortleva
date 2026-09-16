@@ -9,7 +9,7 @@ import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../../data";
 import { ItemPanel } from "../../item-panel/item-panel";
-import { loadPanelItem } from "../../item-panel/panel-data";
+import { loadPanelItem, loadPanelTimer } from "../../item-panel/panel-data";
 
 /**
  * /projects/[key]/items/[number] — the item panel as a PAGE (UI.md §5.4):
@@ -61,13 +61,14 @@ export default async function ProjectItemPage({
   if (!panel) notFound();
   const { item, states, caps, members, milestones, labels, activity, subtasks, comments } = panel;
 
-  const [documents, prefs] = await Promise.all([
+  const [documents, prefs, timer] = await Promise.all([
     project.caps.viewDocuments
       ? listDocuments(ctx, { attachedToWorkItemId: item.id })
       : Promise.resolve([] as DocumentListItem[]),
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
       readPreferences(tx, membership.tenantId),
     ),
+    loadPanelTimer(ctx, project),
   ]);
 
   return (
@@ -98,6 +99,7 @@ export default async function ProjectItemPage({
       weekStart={prefs.weekStart}
       showIsoWeek={prefs.showIsoWeek}
       error={error}
+      timer={timer}
     />
   );
 }

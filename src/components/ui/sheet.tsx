@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { letEscapeThrough } from "@/components/ui/escape-local"
+import { keepOpenForToasts } from "@/components/ui/toast-outside"
 import { XIcon } from "lucide-react"
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
@@ -72,6 +73,7 @@ function SheetContent({
         )}
         {...props}
         onEscapeKeyDown={letEscapeThrough(props.onEscapeKeyDown)}
+        onInteractOutside={keepOpenForToasts(props.onInteractOutside)}
       >
         {children}
         {showCloseButton && (

@@ -7,6 +7,9 @@ import {
   type WorkCtx,
 } from "@/modules/work";
 import type { StateSeedKey } from "@/lib/enum-map";
+import { canTrackTime } from "@/modules/time";
+
+import { getTimerStateAction, type TimerPillState } from "../../../time/actions";
 
 /**
  * The panel's item, for every surface that shows one: the board and
@@ -48,4 +51,26 @@ export async function loadPanelItem(
     if (e instanceof AuthzError) return null;
     throw e;
   }
+}
+
+/**
+ * The panel's timer control's first picture (2T — UI.md §5.2 `T`): the
+ * member's timer exactly as the layout's pill reads it, through the same
+ * per-request `getCurrentTimerOnce`, so a peek costs no second timer read.
+ *
+ * `null` means "no control here": a project that is archived (the time
+ * service refuses its entries — `ARCHIVED`), or a member who may not
+ * track time. Permission and entitlement are asked FIRST, through
+ * `canTrackTime`, so rendering a panel never runs the time module's
+ * bootstrap for a member or a tenant it is not on for — the /home rule.
+ * (The time ACTIONS themselves still bootstrap before they authorise, as
+ * every time service entry point does; that is not this loader's to fix.)
+ */
+export async function loadPanelTimer(
+  ctx: WorkCtx,
+  project: { archivedAt: Date | null },
+): Promise<TimerPillState | null> {
+  if (project.archivedAt) return null;
+  if (!(await canTrackTime(ctx))) return null;
+  return getTimerStateAction();
 }

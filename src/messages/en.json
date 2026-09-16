@@ -1950,7 +1950,9 @@
         "convert": {
           "TASK": "Convert checklist item to task",
           "SUBTASK": "Convert checklist item to subtask"
-        }
+        },
+        "startTimer": "Start a timer on this task",
+        "stopTimer": "Stop this task's timer"
       },
       "activity": {
         "title": "Activity",
@@ -1987,6 +1989,12 @@
         "commentEdited": "edited a comment",
         "commentDeleted": "deleted a comment",
         "commentVisibilityChanged": "changed a comment’s visibility to {to}"
+      },
+      "timer": {
+        "start": "Start timer",
+        "stop": "Stop timer",
+        "acknowledgeAndStart": "I have read this — start the timer",
+        "noticeFailed": "Could not load the time-tracking notice."
       }
     },
     "states": {
@@ -2342,13 +2350,15 @@
       "adhocNonBillable": "Instant tasks are not billable",
       "start": "Start",
       "stop": "Stop",
+      "startAnother": "Start another",
+      "startAnotherHint": "Starting another timer stops this one — undo is in the toast."
+    },
+    "timer": {
       "started": "Timer started.",
       "startedStopped": "Timer started — \"{label}\" was stopped.",
       "stopped": "Stopped after {duration}.",
       "undo": "Undo",
-      "failed": "Could not change the timer.",
-      "startAnother": "Start another",
-      "startAnotherHint": "Starting another timer stops this one — undo is in the toast."
+      "failed": "Could not change the timer."
     },
     "week": {
       "title": "This week",

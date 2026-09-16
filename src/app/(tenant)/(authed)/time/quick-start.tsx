@@ -1,13 +1,10 @@
 "use client";
 
 import { PlayIcon, SquareIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
-import { toast } from "sonner";
 
 import { Field, SectionCard } from "@/components/semantic";
-import { notifyTimerChanged } from "@/components/shell/timer-pill";
 import { useServerNow } from "@/components/shell/use-server-now";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,9 +13,9 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { secondsSince } from "@/lib/duration";
 import { formatDurationClock } from "@/lib/format";
 
-import { startTimerAction, stopTimerAction, undoStartAction } from "./actions";
 import type { PickerOption, PickerProject } from "./picker-types";
 import { useProjectPickerOptions } from "./use-project-picker-options";
+import { useTimerCommands } from "./use-timer-commands";
 
 export type RunningView = {
   id: string;
@@ -50,9 +47,16 @@ export function QuickStart({
   noticeRequired: boolean;
 }) {
   const t = useTranslations("time.quickStart");
-  const locale = useLocale();
-  const router = useRouter();
-  const [pending, start] = useTransition();
+  // This card draws the running timer from its SERVER props, not the pill's
+  // store, so its buttons stay disabled until the revalidated page has
+  // landed: every verb — the toast's Undo included — runs inside this
+  // card's own transition, which lasts that long (the hook's own `pending`
+  // deliberately does not). Without it Stop and "Start another" were live
+  // over a card that still showed the old timer.
+  const [settling, startSettling] = useTransition();
+  const commands = useTimerCommands({ inTransition: startSettling });
+  const pending = commands.pending || settling;
+  const { stop } = commands;
 
   const [description, setDescription] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -72,55 +76,17 @@ export function QuickStart({
   };
 
   const startTimer = () =>
-    start(async () => {
-      const r = await startTimerAction({
+    commands.start(
+      {
         projectId: projectId || null,
         workItemId: workItemId || null,
         serviceId: serviceId || null,
         workTypeId: workTypeId || null,
         description: description.trim() || null,
         billable: billable === "" ? null : billable === "yes",
-      }).catch(() => ({ ok: false as const, message: t("failed") }));
-      if (!r.ok) {
-        toast.error(r.message);
-        return;
-      }
-      const { startedId, stoppedId, stoppedLabel } = r.value;
-      if (stoppedId) {
-        // The toast IS the undo affordance: the server accepts the undo for
-        // UNDO_WINDOW_SECONDS (120 s); sonner's 4 s default vanished before a
-        // slow refresh even showed the new timer. 30 s is the visible window.
-        toast.success(t("startedStopped", { label: stoppedLabel ?? "" }), {
-          duration: 30_000,
-          action: {
-            label: t("undo"),
-            onClick: () => {
-              start(async () => {
-                const u = await undoStartAction({ startedId, resumeId: stoppedId }).catch(() => ({ ok: false as const, message: t("failed") }));
-                if (!u.ok) toast.error(u.message);
-                else toast.success(u.message);
-                notifyTimerChanged();
-                router.refresh();
-              });
-            },
-          },
-        });
-      } else {
-        toast.success(t("started"));
-      }
-      setDescription("");
-      notifyTimerChanged();
-      router.refresh();
-    });
-
-  const stop = () =>
-    start(async () => {
-      const r = await stopTimerAction().catch(() => ({ ok: false as const, message: t("failed") }));
-      if (!r.ok) toast.error(r.message);
-      else toast.success(t("stopped", { duration: formatDurationClock(locale, r.value.durationSeconds) }));
-      notifyTimerChanged();
-      router.refresh();
-    });
+      },
+      () => setDescription(""),
+    );
 
   const canStart = !pending && (projectId !== "" || description.trim() !== "") && !noticeRequired;
 

@@ -10,6 +10,8 @@ import {
 } from "lucide-react"
 import { useEffect, useState } from "react"
 
+import { cn } from "@/lib/utils"
+
 /**
  * The toast surface follows the RESOLVED theme, not a hardcoded one:
  * sonner paints its own background, so a light toast over a dark app is
@@ -42,27 +44,39 @@ const Toaster = ({ ...props }: ToasterProps) => {
   const theme = useResolvedTheme()
 
   return (
-    <Sonner
-      theme={theme}
-      className="toaster group"
-      icons={{
-        success: <CircleCheckIcon className="size-4 text-(--tone-success-line)" />,
-        info: <InfoIcon className="size-4 text-(--tone-brand-line)" />,
-        warning: <TriangleAlertIcon className="size-4 text-(--tone-caution-line)" />,
-        error: <OctagonXIcon className="size-4 text-(--tone-danger-line)" />,
-        loading: <Loader2Icon className="size-4 animate-spin text-muted-foreground" />,
-      }}
-      style={
-        {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius-card)",
-          "--shadow": "var(--shadow-2)",
-        } as React.CSSProperties
-      }
-      {...props}
-    />
+    // A press on a toast never moves focus. Under a modal layer focus is
+    // trapped: a toast that took it would be handed straight back by the
+    // trap, which re-focuses the last element WITH its text selected — so
+    // the member typing in the peek who clicked Undo would have their next
+    // keystroke replace what they typed (review, slice 19). The click
+    // still fires. (Sonner's Alt+T reaches a toast by keyboard, except
+    // under a modal layer, whose trap takes focus back — recorded.)
+    <div className="contents" onMouseDownCapture={(e) => e.preventDefault()}>
+      <Sonner
+        theme={theme}
+        className="toaster group"
+        icons={{
+          success: <CircleCheckIcon className="size-4 text-(--tone-success-line)" />,
+          info: <InfoIcon className="size-4 text-(--tone-brand-line)" />,
+          warning: <TriangleAlertIcon className="size-4 text-(--tone-caution-line)" />,
+          error: <OctagonXIcon className="size-4 text-(--tone-danger-line)" />,
+          loading: <Loader2Icon className="size-4 animate-spin text-muted-foreground" />,
+        }}
+        style={
+          {
+            "--normal-bg": "var(--popover)",
+            "--normal-text": "var(--popover-foreground)",
+            "--normal-border": "var(--border)",
+            "--border-radius": "var(--radius-card)",
+            "--shadow": "var(--shadow-2)",
+          } as React.CSSProperties
+        }
+        {...props}
+        // A modal layer sets `pointer-events: none` on <body>; a toast's
+        // action must stay clickable over the item peek (toast-outside.ts).
+        toastOptions={{ ...props.toastOptions, className: cn("pointer-events-auto", props.toastOptions?.className) }}
+      />
+    </div>
   )
 }
 

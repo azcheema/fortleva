@@ -24,6 +24,7 @@ import type {
 
 import { DocumentsTable } from "../../../files/documents-table";
 import { UploadForm } from "../../../files/upload-form";
+import type { TimerPillState } from "../../../time/actions";
 import { ActivitySection } from "./activity-section";
 import { AssigneeField } from "./assignee-field";
 import { CommentsSection } from "./comments-section";
@@ -35,6 +36,7 @@ import { MilestoneField } from "./milestone-field";
 import { PriorityField } from "./priority-field";
 import { StateField } from "./state-field";
 import { SubtasksSection } from "./subtasks-section";
+import { TimerControl } from "./timer-control";
 import { VisibilityField } from "./visibility-field";
 
 /**
@@ -81,6 +83,7 @@ export async function ItemPanel({
   activity,
   subtasks,
   comments,
+  timer,
 }: {
   item: ResolvedItemDetail;
   /** "ACME-12" — the human key the header shows. */
@@ -132,6 +135,12 @@ export async function ItemPanel({
   subtasks: ResolvedItemSubtasks;
   /** The Comments section's rows — `getItemDetail`'s, each with the reading member's own caps (slice 10). */
   comments: ItemComments;
+  /**
+   * REQUIRED — `loadPanelTimer`'s answer: the member's timer as the pill
+   * sees it, or `null` where no timer control belongs (no `time:track`,
+   * or an archived project). An archived TASK is decided here.
+   */
+  timer: TimerPillState | null;
 }) {
   // The sheet owns the dialog title; the page owns the document's h1.
   const variant = surface === "page" ? "page" : "peek";
@@ -181,6 +190,10 @@ export async function ItemPanel({
   const archivedNote = item.archivedAt ? (
     <span className="text-xs text-muted-foreground">{tCommon("archived")}</span>
   ) : null;
+  // `T` on this task (2T): a start/stop control beside the full-page link.
+  // An archived task takes no new time, so it gets no control — and no
+  // item-scope `T`, which leaves the global one (stop / go to /time) live.
+  const timerControl = timer && !item.archivedAt ? <TimerControl key={item.id} itemId={item.id} initial={timer} /> : null;
   const fullPageLink =
     variant === "peek" ? (
       <Button asChild variant="ghost" size="sm" className="ms-auto">
@@ -196,9 +209,10 @@ export async function ItemPanel({
       <span className="num-id text-xs text-muted-foreground">{itemKey}</span>
       {title}
       {variant === "peek" ? <SheetDescription className="sr-only">{t("sheetDescription")}</SheetDescription> : null}
-      {archivedNote || fullPageLink ? (
+      {archivedNote || timerControl || fullPageLink ? (
         <div className="flex flex-wrap items-center gap-2">
           {archivedNote}
+          {timerControl}
           {fullPageLink}
         </div>
       ) : null}

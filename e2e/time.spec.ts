@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 
-import { expect, test, type Download, type Page } from "@playwright/test";
+import { expect, test, type Download, type Locator, type Page } from "@playwright/test";
 
-import { requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { isActionPost } from "./fixtures/actions";
+import { createOwnTask, deleteOwnTasks, pressUntil } from "./fixtures/keys";
+import { forgetStaffNotice, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
  * 2T in a browser (PLAN.md Phase 2T "Demo" + the 2026-08-20 D1/D2/D6
@@ -85,6 +87,48 @@ async function stopIfRunning(page: Page): Promise<void> {
   }
 }
 
+/**
+ * A task's timer control is visible AND idle. The control ignores a press
+ * while its start or stop is in flight (the pill's state not yet re-read),
+ * so a key pressed the instant the new label paints could be swallowed.
+ */
+async function timerControlReady(control: Locator): Promise<void> {
+  await expect(control).toBeVisible({ timeout: 15_000 * SLOW });
+  await expect(control).not.toHaveAttribute("aria-disabled", "true", { timeout: 15_000 * SLOW });
+  // The key registry learns `enabled` in the effect AFTER that render.
+  await nextFrames(control.page());
+}
+
+/** A promise that fails the test after `ms` instead of hanging it to the test timeout (which skips `finally`). */
+function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${what}`)), ms)),
+  ]);
+}
+
+/** Two animation frames: whatever a key's own commit mounts is in the DOM by then. */
+async function nextFrames(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+}
+
+/**
+ * Wait until a freshly LOADED task page's `T` is registered, without
+ * pressing anything that acts: the `?` overlay is a projection of the
+ * live key registry, so once it lists the task's timer row the control
+ * has hydrated. A click or `T` retried until something changes is unsafe
+ * on a toggle — a retry that lands after the first press took effect
+ * presses the button's OTHER verb (measured: a second "Start" click
+ * landed on the button that had just become "Stop").
+ */
+async function waitForTaskTimerKey(page: Page, label: string): Promise<void> {
+  const overlay = page.getByRole("dialog", { name: /shortcut/i });
+  await pressUntil(page, "?", overlay);
+  await expect(overlay.getByText(label, { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0);
+}
+
 test.describe("my time (owner)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/time");
@@ -131,6 +175,128 @@ test.describe("my time (owner)", () => {
 
     await stopButton(page).click();
     await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+  });
+
+  test("`T` on a task: start it from the peek and Undo while it is still settling; `T` and Undo again while typing in the peek; on the task's page `T` stops and starts it, and a stop in the pill reaches the button", async ({ page }) => {
+    const created: string[] = [];
+    try {
+      await page.getByTestId("quick-start-description").fill("E2E before the task");
+      await page.getByTestId("quick-start-start").click();
+      await expect(pill(page)).toContainText("E2E before the task", { timeout: 15_000 * SLOW });
+
+      const task = await createOwnTask(page, seed, "E2E timer task", created);
+      const peek = page.getByTestId("item-peek");
+      const start = peek.getByTestId("item-timer-start");
+      const stop = peek.getByTestId("item-timer-stop");
+
+      // The peek opened by a client navigation on a hydrated page, so its
+      // control is live on arrival: ONE click, never a retried one.
+      //
+      // The start's own re-read of the timer is HELD, so the Undo below is
+      // clicked while the start is still settling — the window in which an
+      // undo was once silently dropped (review). The re-read is the first
+      // argument-less action POST AFTER the start's own POST (which names
+      // the task): several actions take no arguments, so the start comes first.
+      await timerControlReady(start);
+      const control = peek.getByTestId("item-timer").getByRole("button");
+      let sawStart = false;
+      let holdRead = true;
+      let readHeld!: () => void;
+      const heldNow = new Promise<void>((r) => {
+        readHeld = r;
+      });
+      let releaseRead!: () => void;
+      const readReleased = new Promise<void>((r) => {
+        releaseRead = r;
+      });
+      await page.route("**/*", async (route) => {
+        // A flag, never `unroute` while a request is held.
+        const body = route.request().postData() ?? "";
+        if (isActionPost(route.request()) && body.includes("workItemId")) sawStart = true;
+        else if (sawStart && holdRead && isActionPost(route.request()) && body === "[]") {
+          holdRead = false;
+          readHeld();
+          await readReleased;
+        }
+        await route.fallback();
+      });
+      await start.click();
+      await within(heldNow, 30_000 * SLOW, "the start's re-read of the timer");
+      await expect(page.getByText(/"E2E before the task" was stopped/)).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(control).toHaveAttribute("aria-disabled", "true");
+      await page.getByRole("button", { name: "Undo" }).click();
+      releaseRead();
+      // The undo's OWN answer, not the pill's text: at this instant the pill
+      // may not have caught up with the start yet, so "it shows the earlier
+      // timer" alone would pass for an undo that never ran (measured, by
+      // re-introducing the drop).
+      await expect(page.getByText("Undone — the previous timer is running again.")).toBeVisible({ timeout: 15_000 * SLOW });
+      await timerControlReady(start);
+      await expect(pill(page)).toContainText("E2E before the task", { timeout: 15_000 * SLOW });
+      await expect(pill(page)).not.toContainText(task.title);
+      await expect(peek).toBeVisible();
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+
+      // Now by key — the proof that `T` belongs to the task while one is
+      // open: the global `T` would have STOPPED "E2E before the task".
+      await page.keyboard.press("t");
+      await expect(stop).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(pill(page)).toContainText(task.title, { timeout: 15_000 * SLOW });
+      await expect(peek.getByTestId("item-timer-elapsed")).toBeVisible();
+      await timerControlReady(stop);
+
+      // Undo again, now with the member typing in the peek. The toast floats
+      // over it; its Undo must be clickable there, must not close the peek
+      // (a modal layer's "outside"), and must not take focus: the peek's
+      // trap would hand it back to the field WITH its text selected, and
+      // the next key would replace what was typed.
+      const subtaskInput = peek.getByTestId("item-subtask-input");
+      await peek.getByTestId("item-subtask-add").click();
+      await subtaskInput.fill("Kept as typed");
+      await page.getByRole("button", { name: "Undo" }).click();
+      await timerControlReady(start);
+      await expect(pill(page)).toContainText("E2E before the task", { timeout: 15_000 * SLOW });
+      await expect(pill(page)).not.toContainText(task.title);
+      await expect(peek).toBeVisible();
+      await expect(subtaskInput).toBeFocused();
+      await expect(subtaskInput).toHaveValue("Kept as typed");
+      expect(await subtaskInput.evaluate((el: HTMLInputElement) => el.selectionStart === el.selectionEnd)).toBe(true);
+      await subtaskInput.press("Escape");
+      await timerControlReady(start);
+
+      // And the task's timer once more, for the page below.
+      await page.keyboard.press("t");
+      await expect(stop).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(pill(page)).toContainText(task.title, { timeout: 15_000 * SLOW });
+
+      // The task's own page: the server's first paint already knows the
+      // running timer is this task's.
+      await page.goto(`/projects/${seed.projectKey}/items/${task.number}`);
+      const pageStart = page.getByTestId("item-timer-start");
+      const pageStop = page.getByTestId("item-timer-stop");
+      await expect(pageStop).toBeVisible();
+      await waitForTaskTimerKey(page, "Stop this task's timer");
+      await page.keyboard.press("t");
+      await expect(pageStart).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+
+      // Twice: the second start is the one a stale "running here" gets wrong.
+      await timerControlReady(pageStart);
+      await page.keyboard.press("t");
+      await expect(pageStop).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(pill(page)).toContainText(task.title, { timeout: 15_000 * SLOW });
+
+      // A stop somewhere else — the pill — turns the task's button back.
+      await stopButton(page).click();
+      await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(pageStart).toBeVisible({ timeout: 15_000 * SLOW });
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      // Off the peek first: its modal layer makes the header pill unclickable.
+      await page.goto("/time");
+      await stopIfRunning(page);
+      await deleteOwnTasks(page, seed, created);
+    }
   });
 
   test("shift: clock in, a break stops the running timer, clock out", async ({ page }) => {
@@ -362,5 +528,110 @@ test.describe("as the employee", () => {
     await page.goto("/time/team");
     await expect(page.getByText("You do not have permission to see the team's time.")).toBeVisible();
     await expect(page.getByTestId("team-export-csv")).toHaveCount(0);
+  });
+
+  test("a first start from a task shows the staff notice THERE: Cancel starts nothing — even while the acknowledgment is in flight — acknowledging starts the timer, and the next start asks nothing", async ({ page }) => {
+    // Every start request the page sends: the one body that names a task.
+    const starts: string[] = [];
+    page.on("request", (r) => {
+      if (isActionPost(r) && (r.postData() ?? "").includes("workItemId")) starts.push(r.url());
+    });
+    const start = page.getByTestId("item-timer-start");
+    const stop = page.getByTestId("item-timer-stop");
+    const notice = page.getByTestId("item-timer-notice");
+    const openTask = async () => {
+      // The notice shows only on a member's FIRST start; forget any
+      // acknowledgment so this holds on a retry too. Seeded task #1 of the
+      // project the employee's client assignment puts in scope.
+      await forgetStaffNotice(seed.tenantId, seed.employeeEmail);
+      await page.goto(`/projects/${seed.projectKey}/items/1`);
+      await expect(start).toBeVisible();
+      await expect(idlePill(page)).toBeVisible();
+      await waitForTaskTimerKey(page, "Start a timer on this task");
+    };
+
+    try {
+      await openTask();
+      await start.click();
+      await expect(notice).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(notice).toContainText("What is never recorded");
+      // The dialog owns the keyboard: `p` must not open the Priority picker
+      // behind it. The picker would mount in the key's own commit, so two
+      // frames later it would be there.
+      await page.keyboard.press("p");
+      await nextFrames(page);
+      await expect(page.locator('[data-slot="popover-content"]')).toHaveCount(0);
+
+      // Cancel starts nothing, and focus goes back to the button.
+      await notice.getByRole("button", { name: "Cancel" }).click();
+      await expect(notice).toHaveCount(0);
+      await expect(start).toBeFocused();
+      await nextFrames(page);
+      expect(starts).toHaveLength(0);
+      await expect(idlePill(page)).toBeVisible();
+
+      await start.click();
+      await expect(notice).toBeVisible({ timeout: 15_000 * SLOW });
+      await notice.getByTestId("item-timer-notice-acknowledge").click();
+      await expect(notice).toHaveCount(0, { timeout: 15_000 * SLOW });
+      await expect(stop).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(pill(page)).toContainText(`${seed.projectKey}-1`, { timeout: 15_000 * SLOW });
+      expect(starts).toHaveLength(1);
+
+      await timerControlReady(stop);
+      await page.keyboard.press("t");
+      await expect(start).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+
+      // Acknowledged: the next start is a start.
+      await timerControlReady(start);
+      await page.keyboard.press("t");
+      await expect(stop).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(notice).toHaveCount(0);
+      await stopButton(page).click();
+      await timerControlReady(start);
+
+      // A change of mind DURING the acknowledgment: hold its request, Cancel,
+      // then let it land. The notice is acknowledged; no timer starts.
+      await openTask();
+      await start.click();
+      await expect(notice).toBeVisible({ timeout: 15_000 * SLOW });
+      const startsBefore = starts.length;
+      let holding = true;
+      let release!: () => void;
+      const released = new Promise<void>((r) => {
+        release = r;
+      });
+      await page.route("**/*", async (route) => {
+        // A flag, never `unroute` while a request is held (a later
+        // `continue()` then throws "Route is already handled").
+        if (holding && isActionPost(route.request())) {
+          holding = false;
+          await released;
+        }
+        await route.fallback();
+      });
+      const acknowledged = page.waitForResponse((r) => isActionPost(r.request()), { timeout: 30_000 * SLOW });
+      await notice.getByTestId("item-timer-notice-acknowledge").click();
+      await notice.getByRole("button", { name: "Cancel" }).click();
+      await expect(notice).toHaveCount(0);
+      release();
+      await acknowledged;
+      // The control decides "start or not" in the same continuation that
+      // clears its busy state, and a start keeps it busy until that start
+      // has been sent AND answered — so once it is idle, a start that was
+      // going to happen has already been counted. The control by ROLE, not by
+      // test id: a start that did go out would flip "start" to "stop" while
+      // still busy, and waiting on the start id would then time out instead
+      // of failing here, at the count (round-3 review).
+      await timerControlReady(page.getByTestId("item-timer").getByRole("button"));
+      expect(starts).toHaveLength(startsBefore);
+      await expect(start).toBeVisible();
+      await expect(idlePill(page)).toBeVisible();
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      await page.goto("/time");
+      await stopIfRunning(page);
+    }
   });
 });

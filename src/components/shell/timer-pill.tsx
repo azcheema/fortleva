@@ -75,8 +75,61 @@ const publish = (next: Snapshot) => {
   snapshot = next;
   for (const l of listeners) l();
 };
+const serverTime = (s: Snapshot | null): number => (s?.state ? Date.parse(s.state.serverNow) : -Infinity);
+/**
+ * A server read, published only if it is NEWER than the one the store
+ * holds. Reads arrive by different roads — the layout's snapshot, a page's
+ * own (a peek opened by a client navigation re-renders the page, not the
+ * layout), an awaited re-read — and the one taken later wins, whatever
+ * order they land in: an older read over a newer one would show a verb for
+ * a timer that is no longer running.
+ */
+const publishRead = (state: TimerPillState) => {
+  if (Date.parse(state.serverNow) < serverTime(snapshot)) return;
+  publish({ state, skew: Date.now() - Date.parse(state.serverNow), now: Date.now() });
+};
 
 const CLOCK_PREFIX = /^\d+:\d\d:\d\d · /;
+
+/**
+ * Re-read the member's timer and publish it to every reader, AWAITABLY —
+ * unlike `notifyTimerChanged`, whose re-sync nobody can wait for. A
+ * surface that has just started or stopped a timer awaits this before it
+ * takes the next press, so its "is the running timer mine?" is the
+ * server's answer and not the one from before its own action.
+ */
+export async function syncTimerSnapshot(): Promise<void> {
+  const next = await getTimerStateAction().catch(() => null);
+  if (next) publishRead(next);
+}
+
+/**
+ * The pill's picture of the member's timer, for a surface that must agree
+ * with it — a task's timer control asks "is the running timer MINE?".
+ * `initial` is this surface's own server read (for the panel, the same
+ * per-request `getCurrentTimerOnce` the layout's pill takes). Whichever of
+ * it and the store is the LATER read is the answer — and a later `initial`
+ * is published into the store, so the pill follows it too. From then on a
+ * start or stop on any surface reaches every reader, and the elapsed
+ * seconds tick with the pill's own 1 Hz clock rather than a second one.
+ */
+export function useTimerSnapshot(initial: TimerPillState): { state: TimerPillState; elapsed: number } {
+  const serverSnapshot = useMemo<Snapshot>(
+    () => ({ state: initial, skew: 0, now: Date.parse(initial.serverNow) }),
+    [initial],
+  );
+  const snap = useSyncExternalStore(
+    subscribe,
+    () => (serverTime(snapshot) >= serverTime(serverSnapshot) ? snapshot! : serverSnapshot),
+    () => serverSnapshot,
+  );
+  useEffect(() => {
+    publishRead(initial);
+  }, [initial]);
+  const state = snap.state ?? initial;
+  const elapsed = state.running ? secondsSince(state.running.startedAt, snap.now - snap.skew) : 0;
+  return { state, elapsed };
+}
 
 /**
  * The persistent timer pill (UI.md §3.2, rule 9; PLAN.md 2T screens):
@@ -107,10 +160,7 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
     () => serverSnapshot,
   );
 
-  const sync = useCallback(async () => {
-    const next = await getTimerStateAction().catch(() => null);
-    if (next) publish({ state: next, skew: Date.now() - Date.parse(next.serverNow), now: Date.now() });
-  }, []);
+  const sync = useCallback(() => syncTimerSnapshot(), []);
 
   // Ownership: the first mounted instance owns the side effects. Declared
   // first so the effects below (same commit) see the flag; mount-only, so
@@ -129,7 +179,7 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
   // a refresh) is authoritative: the owner publishes it for both instances.
   useEffect(() => {
     if (!owner.current || !initial) return;
-    publish({ state: initial, skew: Date.now() - Date.parse(initial.serverNow), now: Date.now() });
+    publishRead(initial);
   }, [initial]);
 
   // Re-sync on every "the timer may have changed" trigger — owner only (the ref is read in the handler, never in render).
