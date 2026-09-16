@@ -43,6 +43,8 @@ export type CraftAudit = {
   doubleHairlines: string[];
   /** An inline-edit trigger that is not a named <button>. */
   badInlineEdits: string[];
+  /** Row actions in a cell — or under a header cell — that is not pinned (sticky). */
+  unpinnedRowActions: string[];
   /**
    * aria-current="page" entries in the phone tab bar — exactly one when
    * there IS a bar. `null` means this route has no app shell at all
@@ -339,6 +341,32 @@ export function auditPage(): PageAudit {
     })
     .map(describe);
 
+  // A table's row verbs live in its PINNED column (UI.md §10.12): a cell
+  // holding them that is not sticky scrolls them away with the rest of the
+  // row, and a pinned body under an unpinned header comes apart the moment
+  // the table scrolls. Asked of the COMPUTED position, so a lost class fails
+  // as surely as a forgotten `pinned` — and on every stop, whether or not
+  // the table happens to overflow at this width.
+  // Named by the table's scroll region: every cell's own description is
+  // the same string, so a failure must say WHICH table it is.
+  const unpinnedRowActions = new Set<string>();
+  for (const actions of Array.from(
+    document.querySelectorAll("[data-slot=data-table] [data-slot=row-actions]"),
+  )) {
+    const region = actions.closest("[data-slot=data-table]")?.getAttribute("aria-label") ?? "table";
+    const cell = actions.closest("td");
+    if (!cell || getComputedStyle(cell).position !== "sticky") {
+      unpinnedRowActions.add(`"${region}": the cell holding a row's actions is not pinned`);
+      continue;
+    }
+    const head = cell.closest("table")?.querySelector("thead tr:last-child")?.lastElementChild;
+    if (!head) {
+      unpinnedRowActions.add(`"${region}": a pinned column with no header row over it`);
+    } else if (getComputedStyle(head).position !== "sticky") {
+      unpinnedRowActions.add(`"${region}": the header over the pinned column is not pinned`);
+    }
+  }
+
   const tabBar = document.querySelector("[data-slot=tab-bar]");
   const tabBarCurrent = tabBar ? tabBar.querySelectorAll('[aria-current="page"]').length : null;
 
@@ -383,6 +411,7 @@ export function auditPage(): PageAudit {
       unnamedScrollRegions,
       doubleHairlines,
       badInlineEdits,
+      unpinnedRowActions: Array.from(unpinnedRowActions),
       tabBarCurrent,
       tabStrip,
     },

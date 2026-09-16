@@ -125,7 +125,7 @@ export function ReportsPanel({
                   <TableHead priority="low">{t("columns.groupBy")}</TableHead>
                   <TableHead className="w-[10ch] text-right">{t("columns.hours")}</TableHead>
                   <TableHead>{t("columns.status")}</TableHead>
-                  <TableHead className="w-0 text-right">
+                  <TableHead pinned className="w-0 text-right">
                     <span className="sr-only">{tCommon("actions")}</span>
                   </TableHead>
                 </TableRow>
@@ -168,7 +168,7 @@ export function ReportsPanel({
                           {r.status === "PUBLISHED" ? <VisibilityBadge value={r.visibility} /> : null}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell pinned className="text-right">
                         <RowActions label={tCommon("actionsFor", { name: r.title })} items={items} />
                       </TableCell>
                     </TableRow>

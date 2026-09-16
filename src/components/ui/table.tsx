@@ -108,17 +108,16 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
  * page's two 16px gutters) and `low` (46rem = `md` less them) keep a phone
  * as it was, to the pixel for a flush table on the canvas (a bordered or
  * carded one reaches `medium` at 642px). `lower` (61.5rem) and `lowest`
- * (74rem) exist for the tables that need more than a phone rung to fit
- * (the backlog, client agreements). Both are calibrated to SWEDISH
- * content, measured (the product's first locale, and wider than English in
- * every placeholder these tables show), and to a classic 17px page
- * scrollbar, computed rather than measured (the harness's headless Chromium
- * hides it, a Windows browser does not): so a 1280px laptop with the rail
- * open (991px with the scrollbar) still reaches `lower`, while `lowest`
- * needs ~1456px with the rail open (~1473 with the scrollbar), or the rail
- * collapsed on a window of ~1297px or more — a 1440px window with the rail
- * open shows the backlog's eight, and so does 1280 with it collapsed and a
- * scrollbar (1167px).
+ * (71rem) exist for the tables that need more than a phone rung to fit
+ * (the backlog, client agreements), placed for real laptops: with a classic
+ * 17px page scrollbar (computed — the harness's headless Chromium hides it,
+ * a Windows browser does not), a 1280px window with the rail open (991px)
+ * reaches `lower`, and a 1440px one with it open (1151px) or a 1280px one
+ * with it collapsed (1167px) reaches `lowest`. Since the actions column is
+ * PINNED (below), a rung no longer has to fit the widest content to keep a
+ * row's verbs in view — a Swedish backlog row is ~21px wider than `lowest`'s
+ * narrowest box and simply scrolls under the pinned column there — so the
+ * rungs trade a little scroll at their very edge for more columns.
  * A `form`-width page never gives a table more than 670px, and a
  * `default`-width one caps it at 1030px, so a column that must render there
  * sits no higher than `medium` or `lower` respectively.
@@ -133,8 +132,56 @@ const PRIORITY: Record<ColumnPriority, string> = {
   medium: "hidden @min-[38rem]/data-table:table-cell",
   low: "hidden @min-[46rem]/data-table:table-cell",
   lower: "hidden @min-[61.5rem]/data-table:table-cell",
-  lowest: "hidden @min-[74rem]/data-table:table-cell",
+  lowest: "hidden @min-[71rem]/data-table:table-cell",
 }
+
+/**
+ * THE PINNED COLUMN — the trailing actions column's `pinned` (UI.md §10.12).
+ * Its cells are `position: sticky` at the scroll box's right edge, so a
+ * row's verbs are in view however far a table scrolls: column priority
+ * decides how MUCH scrolls, and pinning guarantees that the verbs never do.
+ *
+ * A sticky cell floats over the columns scrolling beneath it, so it must
+ * be OPAQUE and still read as part of its row — hover, an open menu,
+ * selection, and a tinted row (the time week's running entry) all paint
+ * the ROW's background, which a cell does not inherit by default. Hence
+ * three layers inside the cell's own stacking context (sticky always makes
+ * one): the cell takes the row's colour (`bg-inherit`, which only its
+ * pseudo-elements read), `::before` lays `--card` down as the opaque base,
+ * and `::after` inherits the row's colour again over it — a translucent tint
+ * composited onto the card exactly as the row's own cells show it. Both
+ * layers sit at negative z-index, below the cell's content.
+ *
+ * The header cell needs none of that: it is already `bg-card`, and its
+ * rule is an inset shadow painted with it. `data-pinned:z-2` outranks the
+ * sticky-header variant's `z-1` and every pinned body cell at rest.
+ *
+ * Every pinned cell is its own layer, painted in document order — so the
+ * NEXT row's opaque cell would cover the bottom of a focused ⋯ button's
+ * ring, which sits 4px outside a 28px button and so 2px into its
+ * neighbours on a 32px compact row (and the pinned header its top, on the
+ * first row). `focus-within:z-3` lifts the cell holding focus above both.
+ */
+const PINNED_HEAD = "sticky right-0 data-pinned:z-2"
+const PINNED_CELL =
+  "sticky right-0 z-1 focus-within:z-3 bg-inherit before:absolute before:inset-0 before:-z-2 before:bg-card after:absolute after:inset-0 after:-z-1 after:bg-inherit"
+/**
+ * A focusable row's ring (`TableRow`: a 2px outline at -6px) is painted
+ * with the row, and a pinned cell — a later, positioned layer — covers its
+ * right-hand end, measured in the live page. The cell therefore draws that
+ * end itself: the ring's top, right and bottom sides at the same 4–6px
+ * inset, open on the left where the row's own ring runs underneath. Borders,
+ * not a box-shadow, so forced-colors mode keeps it (§9). The 3.5px is
+ * measured, not a typo: in a collapsed-border table a cell's padding box —
+ * what an absolute child is placed against — sits half the rows' 1px rule
+ * inside the row's box at the top and the bottom, so `inset-y-1` put this
+ * ring half a pixel inside the row's (horizontally the two meet exactly).
+ * The last row has no rule below it (`TableBody`'s `border-b-0`), so its
+ * bottom is the whole 4px; a row under the backlog's top spacer (a bare
+ * `<tr>` with no rule) is half a pixel out at the top, recorded, not fixed.
+ */
+const PINNED_RING =
+  "pointer-events-none absolute inset-y-[3.5px] right-1 left-0 hidden border-2 border-l-0 border-ring [tr:focus>td>&]:block [tr:last-child>td>&]:bottom-1"
 
 /**
  * A border-bottom on a sticky <th> detaches in Chromium, so the rule is
@@ -143,15 +190,22 @@ const PRIORITY: Record<ColumnPriority, string> = {
 function TableHead({
   className,
   priority = "high",
+  pinned = false,
   ...props
-}: React.ComponentProps<"th"> & { priority?: ColumnPriority }) {
+}: React.ComponentProps<"th"> & {
+  priority?: ColumnPriority
+  /** The trailing actions column — see `PINNED_CELL`; pair it with the cells'. */
+  pinned?: boolean
+}) {
   return (
     <th
       data-slot="table-head"
       data-priority={priority}
+      data-pinned={pinned || undefined}
       className={cn(
         "h-8 bg-card px-2 text-left align-middle eyebrow whitespace-nowrap text-muted-foreground hairline-b has-[[role=checkbox]]:pr-0",
         PRIORITY[priority],
+        pinned && PINNED_HEAD,
         className
       )}
       {...props}
@@ -162,19 +216,30 @@ function TableHead({
 function TableCell({
   className,
   priority = "high",
+  pinned = false,
+  children,
   ...props
-}: React.ComponentProps<"td"> & { priority?: ColumnPriority }) {
+}: React.ComponentProps<"td"> & {
+  priority?: ColumnPriority
+  /** The trailing actions column — see `PINNED_CELL`; pair it with the header's. */
+  pinned?: boolean
+}) {
   return (
     <td
       data-slot="table-cell"
       data-priority={priority}
+      data-pinned={pinned || undefined}
       className={cn(
         "px-2 py-1.5 align-middle whitespace-nowrap has-[[role=checkbox]]:pr-0",
         PRIORITY[priority],
+        pinned && PINNED_CELL,
         className
       )}
       {...props}
-    />
+    >
+      {pinned ? <span aria-hidden="true" data-slot="pinned-ring" className={PINNED_RING} /> : null}
+      {children}
+    </td>
   )
 }
 

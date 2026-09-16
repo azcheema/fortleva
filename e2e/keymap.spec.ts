@@ -271,10 +271,9 @@ test.describe("the backlog's `J K` and `X`", () => {
     // purpose: a stray commit there fails the parser and writes nothing,
     // where a title would rename a seeded task.
     // `J` in the same editor is the letter too, and moves no row.
-    // Estimate is on the backlog's `lowest` rung (a 74rem table), which the
-    // harness's 1280px leaves hidden with the rail open — and 1440 too
-    // (1168px) — hence 1600 here.
-    await page.setViewportSize({ width: 1600, height: 900 });
+    // Estimate is on the backlog's `lowest` rung (a 71rem table), which the
+    // harness's 1280px leaves hidden with the rail open — hence 1440 here.
+    await page.setViewportSize({ width: 1440, height: 900 });
     await row.getByTestId("backlog-estimate").getByRole("button").click();
     const estimate = row.getByTestId("backlog-estimate").locator("input");
     await expect(estimate).toBeFocused();

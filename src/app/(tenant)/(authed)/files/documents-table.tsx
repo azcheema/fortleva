@@ -68,7 +68,7 @@ export async function DocumentsTable({
                 {t("columns.versions")}
               </TableHead>
               <TableHead priority="low">{t("columns.updated")}</TableHead>
-              <TableHead className="w-0 text-right">
+              <TableHead pinned className="w-0 text-right">
                 <span className="sr-only">{tCommon("actions")}</span>
               </TableHead>
             </TableRow>
@@ -116,7 +116,7 @@ export async function DocumentsTable({
                   <TableCell priority="low" className="num text-muted-foreground">
                     {format.dateTime(d.updatedAt, { dateStyle: "medium" })}
                   </TableCell>
-                  <TableCell>
+                  <TableCell pinned>
                     {/* A real form, so the presigned redirect still happens
                         on the server. */}
                     {canDelete ? (

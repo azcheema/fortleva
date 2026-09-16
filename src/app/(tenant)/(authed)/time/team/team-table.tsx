@@ -193,7 +193,7 @@ export function TeamTable({
                   ))}
                   <TableHead className="num text-right">{t("shifts.columns.total")}</TableHead>
                   {canExport ? (
-                    <TableHead className="w-0 text-right">
+                    <TableHead pinned className="w-0 text-right">
                       <span className="sr-only">{t("shifts.columns.statement")}</span>
                     </TableHead>
                   ) : null}
@@ -216,7 +216,7 @@ export function TeamTable({
                       })}
                       <TableCell className="num text-right font-semibold">{fmt(total)}</TableCell>
                       {canExport ? (
-                        <TableCell className="text-right">
+                        <TableCell pinned className="text-right">
                           {/* The row's one everyday verb (UI.md §10.15 #8): the member's monthly statement as a CSV download — a plain anchor, not a navigation. */}
                           <Button asChild variant="ghost" size="icon-sm" aria-label={t("statementFor", { name: m.name, month: statementMonthLabel })}>
                             <a href={`/time/export?kind=statement&member=${m.id}&month=${statementMonth}`} data-testid="team-statement-csv">

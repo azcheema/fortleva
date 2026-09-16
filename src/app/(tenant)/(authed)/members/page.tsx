@@ -142,7 +142,7 @@ export default async function MembersPage() {
                       the `medium` rung (38rem; ~642px on a phone, ~882px
                       with the rail open). */}
                   <TableHead priority="medium">{t("columns.status")}</TableHead>
-                  <TableHead className="w-0 text-right">
+                  <TableHead pinned className="w-0 text-right">
                     <span className="sr-only">{tCommon("actions")}</span>
                   </TableHead>
                 </TableRow>
@@ -190,7 +190,7 @@ export default async function MembersPage() {
                       <TableCell priority="medium">
                         <StatusBadge domain="memberStatus" value={m.status} />
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell pinned className="text-right">
                         {data.canRemove ? (
                           <MemberStatusForm
                             memberId={m.id}
@@ -221,7 +221,7 @@ export default async function MembersPage() {
                     <TableHead>{t("columns.email")}</TableHead>
                     <TableHead>{t("columns.status")}</TableHead>
                     <TableHead priority="low">{t("pending.expires")}</TableHead>
-                    <TableHead className="w-0 text-right">
+                    <TableHead pinned className="w-0 text-right">
                       <span className="sr-only">{tCommon("actions")}</span>
                     </TableHead>
                   </TableRow>
@@ -247,7 +247,7 @@ export default async function MembersPage() {
                           {format.dateTime(i.expiresAt, { dateStyle: "medium" })}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell pinned className="text-right">
                         {data.canInvite ? (
                           <RevokeInviteForm inviteId={i.id} email={i.email} />
                         ) : null}

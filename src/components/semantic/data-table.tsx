@@ -68,7 +68,10 @@ export function DataTable({
         aria-label={scrollLabel ?? t("table")}
         style={{ "--row-h": ROW_HEIGHT[density] } as CSSProperties}
         className={cn(
-          "@container/data-table w-full overflow-x-auto bg-card focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+          // `peer`: the region's focus ring is drawn by the overlay below,
+          // not by this box's own outline — a PINNED actions column is a
+          // later, positioned layer and covered the ring's right side.
+          "peer @container/data-table w-full overflow-x-auto bg-card focus-visible:outline-none",
           flush
             ? // Flush means the CARD owns the surface — and the card's
               // 16px padding, which the table must match or its first
@@ -94,6 +97,17 @@ export function DataTable({
         {children}
       </div>
       <ScrollFade />
+      {/* The scroll region's focus ring, as its own layer above the pinned
+          column (`z-3`, the pinned cells' ceiling) — the same 2px `--ring`
+          outline at -2px the box drew on itself before columns were pinned. */}
+      <span
+        aria-hidden="true"
+        data-slot="data-table-focus"
+        className={cn(
+          "pointer-events-none absolute inset-0 z-3 hidden outline-2 -outline-offset-2 outline-ring peer-focus-visible:block",
+          !flush && "rounded-card",
+        )}
+      />
     </div>
   );
 }

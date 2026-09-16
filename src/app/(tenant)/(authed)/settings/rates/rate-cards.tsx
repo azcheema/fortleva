@@ -177,7 +177,7 @@ export function RateCardTable({
               <TableHead className="text-right">{t("columns.rate")}</TableHead>
               <TableHead priority="medium" className="w-[13ch]">{t("columns.from")}</TableHead>
               <TableHead priority="medium" className="w-[13ch]">{t("columns.to")}</TableHead>
-              <TableHead className="text-right">
+              <TableHead pinned className="text-right">
                 <span className="sr-only">{tCommon("actions")}</span>
               </TableHead>
             </TableRow>
@@ -212,7 +212,7 @@ export function RateCardTable({
                   <TableCell priority="medium" className="num text-muted-foreground">
                     {row.toLabel ?? <Badge variant="success">{t("open")}</Badge>}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell pinned className="text-right">
                     {actions.length > 0 ? (
                       <RowActions label={tCommon("actionsFor", { name: row.appliesTo })} items={actions} />
                     ) : null}

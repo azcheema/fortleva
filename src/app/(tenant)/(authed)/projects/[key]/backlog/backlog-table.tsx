@@ -164,14 +164,15 @@ const useRun = (fallbackMessage: string) => {
  * column priority hides cells (the fixed-colSpan trap, PLAN §0).
  *
  * The labels chips are NOT a column of their own, and that is a MEASURED
- * decision, not a preference: at the audited 1440px desktop the table's
- * scrollWidth already EQUALS its clientWidth (1168px), with the whole of
- * the remaining slack — 63px — sitting in the flexible title column.
- * 1ch measures 8.2px here, so even a 14ch Labels column is 115px and
- * would have pushed the trailing actions cell out of the scroll box,
- * which the craft audit fails (`offscreenRowActions`). The chips
- * therefore live INSIDE the title cell, spending the one budget that
- * exists (see the cell).
+ * decision, not a preference: when it was made (slice 16, before column
+ * priority read the table and the actions column was pinned) the table at
+ * the audited 1440px already filled its 1168px box, with all 63px of slack
+ * in the flexible title column — 1ch is 8.2px, so a 14ch Labels column was
+ * 115px the table did not have, and it would have put the row's verbs out
+ * of view. Pinned, the verbs now stay in view, but the width is still
+ * spoken for: a Labels column would push a narrower rung onto every
+ * laptop, or make the table scroll. The chips live INSIDE the title cell,
+ * spending the one budget that exists (see the cell).
  */
 const COLUMN_COUNT = 10;
 /** What the create row's title cell spans: everything after select + plus-icon. */
@@ -384,7 +385,9 @@ function DropLine({ edge }: { edge: "top" | "bottom" }) {
       aria-hidden="true"
       data-testid="backlog-drop-line"
       className={cn(
-        "pointer-events-none absolute inset-x-0 h-0.5 rounded-full bg-primary",
+        // `z-2`: above the row's pinned actions cell (`z-1`), or the line
+        // stops short of the row's end, under it.
+        "pointer-events-none absolute inset-x-0 z-2 h-0.5 rounded-full bg-primary",
         edge === "top" ? "top-0" : "bottom-0",
       )}
     />
@@ -1005,24 +1008,22 @@ export function BacklogTable({
                   visibility from `medium` — ~546 / ~556px against 608; + state
                   from `low` — ~671 / ~669 against 736; + priority and assignee
                   from `lower` — ~924 / ~958 against 984; + estimate and due
-                  from `lowest` — ~1099 / ~1157 against 1184 (two builds, ±2px).
-                  Swedish is the wider in
-                  every placeholder ("Ingen prioritet", "Ingen ansvarig", "Ange
-                  datum"), so the rungs are Swedish-calibrated. The state and
-                  assignee names are the tenant's own text, capped at 6rem below
-                  (a long pair adds 44–50px): in Swedish that pair takes lower
-                  to ~1001 and lowest to ~1200 — at each rung's very edge the
-                  table then scrolls by ~17px, and a flush table's row actions
-                  sit 16px inside its edge, so they end about a pixel past it. NOT covered, measured and recorded: an
-                  8-character key with a four-digit number and a paperclip adds
-                  99px. At 1280px with the rail open (1008px, 991 with a classic
-                  scrollbar) estimate and due are the columns that step aside,
-                  and at 1440px (1168 / 1151) too; a member who wants all ten
-                  collapses the rail (1344px at 1440; at 1280 that is 1184, but
-                  1167 with a scrollbar, which stays under the rung). Visibility sits a rung
-                  BELOW state on purpose: the row's left-edge cue carries it
-                  below `medium`, but a chip naming it is the one safety fact
-                  the row should state in words as early as it can. */}
+                  from `lowest` — ~1099 / ~1157 against 1136 (two builds, ±2px).
+                  Swedish is the wider in every placeholder ("Ingen prioritet",
+                  "Ingen ansvarig", "Ange datum"). The state and assignee names
+                  are the tenant's own text, capped at 6rem below (a long pair
+                  adds 44–50px). Where a row is wider than its rung's box — the
+                  Swedish ten at `lowest`'s very edge (by up to ~21px, ~64 with
+                  long names), or an 8-character key with a four-digit number
+                  and a paperclip (+99px, measured) — the table scrolls UNDER
+                  the pinned actions column, and the row's verbs stay in view.
+                  At 1280px with the rail open (1008px, 991 with a classic
+                  scrollbar) estimate and due step aside; 1440 (1168 / 1151),
+                  or 1280 with the rail collapsed (1184 / 1167), shows all ten.
+                  Visibility sits a rung BELOW state on purpose: the row's
+                  left-edge cue carries it below `medium`, but a chip naming it
+                  is the one safety fact the row should state in words as early
+                  as it can. */}
               <TableHead className="w-[10ch]">{t("columns.key")}</TableHead>
               <TableHead>{t("columns.title")}</TableHead>
               <TableHead priority="low" className="w-[14ch]">{t("columns.state")}</TableHead>
@@ -1031,7 +1032,7 @@ export function BacklogTable({
               <TableHead priority="lowest" className="w-[9ch] text-right">{t("columns.estimate")}</TableHead>
               <TableHead priority="lowest" className="w-[12ch]">{t("columns.due")}</TableHead>
               <TableHead priority="medium" className="w-[13ch]">{t("columns.visibility")}</TableHead>
-              <TableHead className="w-0 text-right">
+              <TableHead pinned className="w-0 text-right">
                 <span className="sr-only">{t("columns.actions")}</span>
               </TableHead>
             </TableRow>
@@ -1549,7 +1550,7 @@ export function BacklogTable({
                       }}
                     />
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell pinned className="text-right">
                     {data.caps.canEdit ? (
                       <RowActions
                         label={tCommon("actionsFor", { name: `${projectKey}-${item.number}` })}

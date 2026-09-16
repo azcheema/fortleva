@@ -161,9 +161,9 @@ test.describe("project board (owner)", () => {
   });
 
   test("grooming (2W-G): priority, due date and an estimate set inline from the backlog", async ({ page }) => {
-    // Due and estimate are the backlog's `lowest` rung — a 74rem table — so
-    // neither the harness's 1280px nor 1440px, with the rail open, renders them.
-    await page.setViewportSize({ width: 1600, height: 900 });
+    // Due and estimate are the backlog's `lowest` rung — a 71rem table — so
+    // the harness's 1280px, with the rail open, would not render them.
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const title = `Groom task ${Date.now()}`;
     created.push(title); // afterEach removes it, pass or fail

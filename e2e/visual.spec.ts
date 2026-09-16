@@ -39,16 +39,23 @@ const VIEWPORTS = {
 } as const;
 
 /**
- * Widths at which the ONE check column priority must pass —
- * `offscreenRowActions` — is asked again, on every stop of one walk.
+ * Widths at which `offscreenRowActions` is asked again, on every stop of one
+ * walk. Since the actions column is PINNED (UI.md §10.12) this walk proves
+ * the pin holds at every rung — a table may now overflow there and still
+ * pass, so it no longer bounds how FAR a table overflows; a column-priority
+ * mistake that adds scroll is caught by review and by the screenshots, not
+ * here (an overflow budget per table is owed, PLAN §0). What it guards is
+ * still worth nine resizes: a pin that breaks at some width, a sticky cell
+ * that loses its layer, a table whose header and cells come apart.
+ *
  * Column priority reads the TABLE's box, not the viewport (UI.md §10.12),
  * and from `md` up the open rail takes 224px of it, so 1440 and 390 say
  * nothing about the band between: the backlog overflowed its box
  * everywhere from 768px to ~1370px, its row actions out of view below
  * ~1350px, while both shots were clean.
  *
- * The worst box a rung's columns ever get is the rung itself (38/46/61.5/74rem
- * = 608/736/984/1184px), so each rung is asked at the viewport that puts a
+ * The worst box a rung's columns ever get is the rung itself (38/46/61.5/71rem
+ * = 608/736/984/1136px), so each rung is asked at the viewport that puts a
  * box exactly ON it with the rail open — twice, because a box sits 272px
  * under the viewport for a flush table on the canvas (rail 224 + two 24px
  * gutters; the backlog) and 274px for a bordered or carded one. 768 is the
@@ -62,7 +69,7 @@ const VIEWPORTS = {
  * widths were measured by hand with a throwaway probe; the scrollbar is
  * arithmetic (the headless box less 17px).
  */
-const RUNG_WIDTHS = [768, 880, 882, 1008, 1010, 1256, 1258, 1456, 1458] as const;
+const RUNG_WIDTHS = [768, 880, 882, 1008, 1010, 1256, 1258, 1408, 1410] as const;
 
 type Device = keyof typeof VIEWPORTS;
 type Theme = "light" | "dark";
@@ -455,6 +462,11 @@ async function visit(
 
   // §10.15.1 — a bordered table inside a padded card is two hairlines.
   expect.soft(craft.doubleHairlines, `${at}: bordered DataTable inside a padded SectionCard`).toEqual([]);
+
+  // A row's verbs live in the table's pinned column, on every stop.
+  expect
+    .soft(craft.unpinnedRowActions, `${at}: row actions in a column that is not pinned`)
+    .toEqual([]);
 
   // A row's verbs behind an unadvertised horizontal scroll are verbs
   // nobody will find — the case column priority exists to fix. Asked at

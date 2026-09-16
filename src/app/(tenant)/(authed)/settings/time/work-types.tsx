@@ -77,7 +77,7 @@ export function WorkTypesTable({ rows, canManage }: { rows: WorkTypeRowView[]; c
           <TableRow>
             <TableHead>{t("columns.name")}</TableHead>
             <TableHead priority="medium" className="w-[22ch]">{t("columns.defaultBillable")}</TableHead>
-            <TableHead className="text-right">
+            <TableHead pinned className="text-right">
               <span className="sr-only">{tCommon("actions")}</span>
             </TableHead>
           </TableRow>
@@ -124,7 +124,7 @@ export function WorkTypesTable({ rows, canManage }: { rows: WorkTypeRowView[]; c
                     t(`billable.${choiceOf(row.defaultBillable)}`)
                   )}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell pinned className="text-right">
                   {actions.length > 0 ? <RowActions label={tCommon("actionsFor", { name: row.name })} items={actions} /> : null}
                 </TableCell>
               </TableRow>

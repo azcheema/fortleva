@@ -154,7 +154,7 @@ export default async function ExportPage({
                     <TableHead priority="medium" className="text-right">
                       {t("columns.size")}
                     </TableHead>
-                    <TableHead className="w-0 text-right">
+                    <TableHead pinned className="w-0 text-right">
                       <span className="sr-only">{tCommon("actions")}</span>
                     </TableHead>
                   </TableRow>
@@ -185,7 +185,7 @@ export default async function ExportPage({
                           {size.value}
                           <span className="ml-1 text-muted-foreground">{size.unit}</span>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell pinned className="text-right">
                           {canDownload ? (
                             // The row's one everyday verb: a quiet 28px ghost
                             // icon, the same shape the documents table uses.

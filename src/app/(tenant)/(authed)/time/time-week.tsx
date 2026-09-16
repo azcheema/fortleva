@@ -145,7 +145,7 @@ export function TimeWeek({
               <TableHead priority="low" className="w-[14ch]">{t("columns.type")}</TableHead>
               <TableHead priority="medium" className="w-[10ch]">{t("columns.billable")}</TableHead>
               <TableHead className="w-[10ch] text-right">{t("columns.duration")}</TableHead>
-              <TableHead className="w-0 text-right">
+              <TableHead pinned className="w-0 text-right">
                 <span className="sr-only">{t("columns.actions")}</span>
               </TableHead>
             </TableRow>
@@ -247,7 +247,7 @@ export function TimeWeek({
                             />
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell pinned className="text-right">
                           <RowActions
                             label={tCommon("actionsFor", { name: e.label || t("adhoc") })}
                             primary={

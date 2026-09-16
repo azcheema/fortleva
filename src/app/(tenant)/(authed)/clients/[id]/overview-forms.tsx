@@ -342,7 +342,7 @@ export function ServicesList({
             {usage ? <TableHead priority="lower" className="text-right">{t("columns.thisMonth")}</TableHead> : null}
             <TableHead priority="lower">{t("columns.renews")}</TableHead>
             <TableHead>{t("columns.status")}</TableHead>
-            <TableHead className="text-right">
+            <TableHead pinned className="text-right">
               <span className="sr-only">{tCommon("actions")}</span>
             </TableHead>
           </TableRow>
@@ -385,7 +385,7 @@ export function ServicesList({
                 <TableCell>
                   <StatusBadge domain="serviceStatus" value={s.status} />
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell pinned className="text-right">
                   {actions.length > 0 ? (
                     <RowActions
                       label={tCommon("actionsFor", { name: s.name })}
