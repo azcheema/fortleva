@@ -29,6 +29,22 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "estimateMinutes",
   "remainingMinutes",
   "labelId",
+  // The list projection's chip array (2026-09-16, labels on the card
+  // and the row): a label is on the never-list, and `labels` is not
+  // `labelId`, so the identifier grep would have walked past the one
+  // shape a portal task list would most plausibly reach for.
+  "labels",
+  // ...and the join table's own delegate, which a projection reading
+  // labels directly (`tx.workItemLabel.findMany`) names instead of either
+  // field (security review, 2026-09-16). Bare `label` is deliberately NOT
+  // listed: every UI projection has a `label:` key, so it would fail for
+  // the wrong reason and teach people to ignore this test.
+  "workItemLabel",
+  // ...and the two readers labels.ts keeps off the barrel, because a
+  // projection that imported one from `./labels` directly and renamed the
+  // result would name none of the three above (delta review).
+  "readLabelsByItem",
+  "readItemLabels",
   "actorMemberId",
   "authorMemberId",
   "createdByMemberId",
@@ -66,6 +82,10 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "estimateMinutes",
       "remainingMinutes",
       "labelId",
+      "labels",
+      "workItemLabel",
+      "readLabelsByItem",
+      "readItemLabels",
       "actorMemberId",
       "authorMemberId",
       "createdByMemberId",

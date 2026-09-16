@@ -1,7 +1,17 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { actionAnswered } from "./fixtures/actions";
-import { backlogRows, focusedBacklogRow, keyLink, pressUntil } from "./fixtures/keys";
+import {
+  SLOW,
+  backlogRows,
+  createOwnTask,
+  focusedBacklogRow,
+  keyLink,
+  picker,
+  pressUntil,
+  rail,
+  searchField,
+} from "./fixtures/keys";
 import { createBigProject, dropProject, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
@@ -24,10 +34,6 @@ let seed!: E2ESeed;
  * is the defect a previous review already caught on this suite.
  */
 let created: string[] = [];
-
-// A move is a server action plus a refresh of the whole board; on CI
-// (US runner, EU database) the same waits get three times the leash.
-const SLOW = process.env["CI"] ? 3 : 1;
 
 test.beforeAll(() => {
   seed = requireSeed();
@@ -869,5 +875,162 @@ test.describe("project board (employee)", () => {
     expect(missing.status).toBe(404);
     expect(notMine.body).toBe(missing.body);
     expect(notMine.body).not.toContain(seed.completedProjectId);
+  });
+});
+
+test.describe("labels on the card and the row", () => {
+  /**
+   * The chips both LIST surfaces draw, from ONE read (`listItems`'s
+   * `labels`) and ONE renderer (`<LabelChips>`). The labels are coined
+   * through the panel's `L` picker, the only writer there is, and then the
+   * same task is read on the backlog, where the cap is 2, and on the
+   * board, where it is 4.
+   *
+   * The row's half-cell budget is the point, and it is why this test
+   * measures rather than only matches text: the chips share the title
+   * cell, so a group that took the whole cell, wrapped, or widened the
+   * table would each be a defect no `toHaveText` could see.
+   */
+  test("the backlog row caps at two names and folds the rest; the board card shows all three; the row keeps its pitch and the table its width", async ({
+    page,
+  }) => {
+    // The two titles share no word: Playwright's `hasText` is a
+    // case-insensitive SUBSTRING match, so "No chips <t>" would match a
+    // locator for "Chips <t>" the moment the two stamps ever agreed.
+    const plain = await createOwnTask(page, seed, "Unlabelled", created);
+    const task = await createOwnTask(page, seed, "Chips", created);
+    const stamp = String(Date.now());
+    // Coined out of alphabetical order on purpose: what both surfaces show
+    // is `compareLabelNames` order, never the order they were added in.
+    const names = [`Zeta ${stamp}`, `Alfa ${stamp}`, `Mitt ${stamp}`];
+    const sorted = [`Alfa ${stamp}`, `Mitt ${stamp}`, `Zeta ${stamp}`];
+
+    for (const name of names) {
+      await pressUntil(page, "l", picker(page));
+      await expect(searchField(page)).toBeFocused();
+      await page.keyboard.type(name);
+      await expect(picker(page).getByTestId("item-labels-create")).toHaveAttribute("aria-selected", "true");
+      // WAIT FOR THE SERVER, NOT FOR THE CHIP. The rail's chips are
+      // optimistic: they show a pick the instant it is made, so a rail
+      // assertion passes while the create is still in flight — and the
+      // `page.goto` below then CANCELS it. The first run of this test did
+      // exactly that: the rail read all three, the backlog row read two.
+      // Armed before Enter (`actionAnswered`'s rule), and naming both the
+      // field and this label's own quoted name, so neither an earlier
+      // create nor the timer pill's own action can answer for it.
+      const saved = actionAnswered(page, { contains: ['"name"', `"${name}"`] });
+      await page.keyboard.press("Enter");
+      await saved;
+      await expect(picker(page)).toHaveCount(0);
+    }
+    await expect(rail(page).getByTestId("item-labels").locator("[data-label]")).toHaveText(sorted, {
+      timeout: 20_000 * SLOW,
+    });
+
+    // ── the backlog row ──────────────────────────────────────────────
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const row = backlogRows(page).filter({ hasText: task.title });
+    await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+    const rowChips = row.getByTestId("label-chips");
+    await expect(rowChips).toHaveAttribute("data-surface", "row");
+    // Two NAMES, then the count — `LABEL_CHIP_CAP.row`.
+    await expect(rowChips.locator("[data-label]")).toHaveText(sorted.slice(0, 2));
+    const more = rowChips.getByTestId("label-chips-more");
+    await expect(more).toHaveText(/\+1/);
+    // The folded label is WORDS, not only a digit: the tooltip a mouse
+    // reads and the sr-only sentence a reader hears name it, so nobody is
+    // told a task carries a label they cannot identify.
+    await expect(more).toHaveAttribute("title", sorted[2]!);
+    await expect(more).toContainText(sorted[2]!);
+
+    // The group shares the TITLE cell and may take at most half of it, so
+    // a labelled task never loses its title.
+    // Measured from the group itself, in one read: the cell is its own
+    // `closest("td")`. (A `td` filtered by `has: rowChips` never matches —
+    // `rowChips` is a chain rooted at the ROW, so inside a cell it asks for
+    // a backlog row nested in that cell.)
+    const widths = await rowChips.evaluate((el) => ({
+      chips: el.getBoundingClientRect().width,
+      cell: el.closest("td")?.getBoundingClientRect().width ?? 0,
+    }));
+    expect(widths.cell).toBeGreaterThan(0);
+    expect(widths.chips).toBeGreaterThan(0);
+    expect(widths.chips).toBeLessThanOrEqual(widths.cell / 2 + 1);
+    // One line, so the row still keeps the --row-h it promises (the craft
+    // audit's own rule, asserted here on the one row that carries chips).
+    const pitch = await row.evaluate((el) => ({
+      actual: Math.round(el.getBoundingClientRect().height),
+      declared: parseFloat(getComputedStyle(el).getPropertyValue("--row-h")),
+    }));
+    expect(Math.abs(pitch.actual - pitch.declared)).toBeLessThanOrEqual(1);
+    // And the chips cost the table NO width. Measured as the scroll box's
+    // scrollWidth with the chip groups, then with them taken out of layout,
+    // on the same page: equal is the property, whatever the viewport. (Not
+    // `scrollWidth <= clientWidth`: at this harness's 1280px the ten
+    // columns overflow the scroll box on their own, chips or not — 1100px
+    // in 1008px, measured — which the first draft of this test tripped on.)
+    // Without the title wrapper's `contain-inline-size` the two differ.
+    const table = page.locator('[data-slot="data-table"]').first();
+    const setChips = (display: string) =>
+      table.evaluate((el, value) => {
+        for (const group of Array.from(el.querySelectorAll('[data-slot="label-chips"]'))) {
+          (group as HTMLElement).style.display = value;
+        }
+        return el.scrollWidth;
+      }, display);
+    const withChips = await setChips("");
+    const withoutChips = await setChips("none");
+    expect(await setChips("")).toBe(withChips);
+    expect(withChips).toBe(withoutChips);
+
+    // The seed-independent half of that guard: the load-bearing style itself.
+    // The comparison above catches a missing containment only while THIS
+    // row's title plus chips is the widest title cell in the project; an
+    // unlabelled title of ~55 characters elsewhere would mask it (delta
+    // review). The computed value does not depend on what else is seeded.
+    await expect(rowChips.locator("..")).toHaveCSS("contain", /inline-size/);
+
+    // While the title IS a control, the chips step aside and the field has
+    // the whole cell; when it rests, they are back.
+    //
+    // ANCHORED ON THE ROW'S ID, NOT ITS TITLE. While the title is being
+    // edited its text exists only as the <input>'s VALUE, and Playwright's
+    // `hasText` never reads an input's value — so every locator built from
+    // `row` matches nothing mid-edit: a focus check times out, and, worse,
+    // `toBeHidden()` PASSES on an empty locator whether or not the chips
+    // were hidden (delta review; the first draft had exactly that shape).
+    const itemId = await row.getAttribute("data-item-id");
+    expect(itemId).toBeTruthy();
+    const byId = page.locator(`[data-testid="backlog-row"][data-item-id="${itemId}"]`);
+    const chipsById = byId.getByTestId("label-chips");
+    const titleWrapper = chipsById.locator("..");
+    await titleWrapper.locator('[data-slot="inline-edit"]').click();
+    await expect(titleWrapper.locator("input")).toBeFocused();
+    // PRESENT and not displayed — the count first, so "hidden" cannot be
+    // satisfied by a locator that found nothing.
+    await expect(chipsById).toHaveCount(1);
+    await expect(chipsById).toHaveCSS("display", "none");
+    await page.keyboard.press("Escape");
+    await expect(titleWrapper.locator("input")).toHaveCount(0);
+    await expect(chipsById).toBeVisible();
+
+    // An unlabelled row draws no group at all — not an empty one. The row
+    // is proven ON the page first, so the zero cannot be an empty locator's.
+    const plainRow = backlogRows(page).filter({ hasText: plain.title });
+    await expect(plainRow).toBeVisible();
+    await expect(plainRow.getByTestId("label-chips")).toHaveCount(0);
+
+    // ── the board card ───────────────────────────────────────────────
+    await page.goto(`/projects/${seed.projectKey}/board`);
+    const card = page.locator('[data-testid="board-card"]', { hasText: task.title });
+    await expect(card).toBeVisible({ timeout: 20_000 * SLOW });
+    const cardChips = card.getByTestId("label-chips");
+    await expect(cardChips).toHaveAttribute("data-surface", "card");
+    // Four is the card's cap, so all three names show and nothing folds.
+    await expect(cardChips.locator("[data-label]")).toHaveText(sorted);
+    await expect(cardChips.getByTestId("label-chips-more")).toHaveCount(0);
+    const plainCard = page.locator('[data-testid="board-card"]', { hasText: plain.title });
+    await expect(plainCard).toBeVisible();
+    await expect(plainCard.getByTestId("label-chips")).toHaveCount(0);
   });
 });

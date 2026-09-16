@@ -63,6 +63,36 @@ const offeredWhere = (tenantId: string, projectId: string) => ({
 
 const byName = (labels: LabelEntry[]): LabelEntry[] => labels.sort((a, b) => compareLabelNames(a.name, b.name));
 
+/**
+ * Every listed item's labels, for the board card's and the backlog row's
+ * chips (`listItems`). ONE read over the page's ids, never a query per
+ * row: `work_item_label`'s primary key is
+ * `(tenant_id, work_item_id, label_id)`, so the `IN` is an index scan.
+ * Grouped and sorted HERE with the rail's own `select` and `byName`, so
+ * the list and the panel cannot disagree about a label's shape or order.
+ *
+ * Off the barrel for the reason the rest of this module's reads are: the
+ * rows carry label ids, which are portal-forbidden.
+ */
+export async function readLabelsByItem(
+  tx: TenantDb,
+  tenantId: string,
+  workItemIds: readonly string[],
+): Promise<Map<string, LabelEntry[]>> {
+  const rows = await tx.workItemLabel.findMany({
+    where: { tenantId, workItemId: { in: [...workItemIds] } },
+    select: { workItemId: true, label: { select } },
+  });
+  const byItem = new Map<string, LabelEntry[]>();
+  for (const row of rows) {
+    const list = byItem.get(row.workItemId);
+    if (list) list.push(row.label);
+    else byItem.set(row.workItemId, [row.label]);
+  }
+  for (const list of byItem.values()) byName(list);
+  return byItem;
+}
+
 async function appliedLabels(tx: TenantDb, tenantId: string, workItemId: string): Promise<LabelEntry[]> {
   const rows = await tx.workItemLabel.findMany({ where: { tenantId, workItemId }, select: { label: { select } } });
   // Sorted HERE, by the one comparator, never by the database's collation

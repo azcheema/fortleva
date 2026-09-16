@@ -8,6 +8,8 @@ import {
   openOwnTaskPeek,
   picker,
   pressUntil,
+  rail,
+  searchField,
 } from "./fixtures/keys";
 import { addClientVisibleComment, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
@@ -72,8 +74,6 @@ test.afterEach(async ({ page }) => {
   await deleteOwnTasks(page, seed, titles);
 });
 
-const rail = (page: Page): Locator => page.getByTestId("item-properties");
-const searchField = (page: Page): Locator => picker(page).locator('[data-slot="command-input"]');
 /** The rail's live regions — one per island, silent until something changed. */
 const said = (page: Page, text: string): Locator => rail(page).locator('[role="status"]', { hasText: text });
 const palette = (page: Page): Locator => page.getByRole("dialog", { name: /command palette/i });

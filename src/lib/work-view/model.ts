@@ -236,6 +236,55 @@ export function compareLabelNames(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/**
+ * WHICH SURFACE a set of label chips is being drawn on — the one prop
+ * `<LabelChips>` takes, because every difference between the two is a
+ * consequence of this single fact and a caller that could pass them
+ * separately could pass a combination neither surface wants. `"row"`
+ * shares the backlog's title cell (one line inside a `--row-h`, so
+ * nothing may wrap and the group may take at most half the cell);
+ * `"card"` is the board card (its own block, so chips wrap).
+ */
+export type LabelSurface = "row" | "card";
+
+/**
+ * How many label NAMES each surface shows before the remainder collapse
+ * into one `+n` chip.
+ *
+ * The row's 2 is a MEASURED width budget, not a taste. At the audited
+ * 1440px desktop the backlog's title cell is 287px and 1ch is 8.2px, so
+ * the group's half-cell cap is ~143px: two 6-character chips (~66px
+ * each, padding included) and the 4px gap fit, and a third would have
+ * left every name truncated to five glyphs. The card's 4 is a height
+ * budget instead — chips wrap there, and a card that grows with its
+ * labels makes the whole column below it scroll.
+ */
+export const LABEL_CHIP_CAP: Record<LabelSurface, number> = { row: 2, card: 4 };
+
+/**
+ * The chips a surface draws, and the ones it folds away. Pure, so the
+ * rule is a table test rather than something only a browser can show.
+ *
+ * `shown` is the first `cap` of the list AS GIVEN — the callers hand it
+ * `compareLabelNames` order, which every label list in the product is
+ * in, so which names survive the fold is stable across renders and
+ * across the two surfaces.
+ *
+ * No `cap + 1` grace, deliberately: a `+1` pill is roughly 4ch against a
+ * name's 8-and-up, so letting one more NAME through to avoid the count
+ * would cost the row more width than it saves, which is the opposite of
+ * what the cap is for. `cap` is floored at 1 — and a cap that is not a
+ * finite number (NaN, Infinity) is read as 1 as well — so no caller can
+ * ask for a group of nothing but a count.
+ */
+export type LabelChipSplit<L> = { shown: L[]; hidden: L[] };
+
+export function splitLabelChips<L>(labels: readonly L[], cap: number): LabelChipSplit<L> {
+  const keep = Number.isFinite(cap) ? Math.max(1, Math.floor(cap)) : 1;
+  if (labels.length <= keep) return { shown: [...labels], hidden: [] };
+  return { shown: labels.slice(0, keep), hidden: labels.slice(keep) };
+}
+
 // ── filters ──────────────────────────────────────────────────────────
 
 /** The unassigned bucket's stable token in the URL and in the filter. */

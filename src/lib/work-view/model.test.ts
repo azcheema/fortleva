@@ -17,9 +17,11 @@ import {
   isDone,
   laneKeyOf,
   lanesFor,
+  LABEL_CHIP_CAP,
   rowAnchors,
   stateOrdinalKeys,
   milestonePickerTargets,
+  splitLabelChips,
   statePickerTargets,
   visibleColumns,
   workView,
@@ -60,6 +62,7 @@ const item = (id: string, over: Partial<WorkItem> = {}): WorkItem => ({
   checklistTotal: 0,
   checklistDone: 0,
   attachmentCount: 0,
+  labels: [],
   ...over,
 });
 
@@ -615,5 +618,62 @@ describe("rowAnchors — a rank-only move anchors on what the member can SEE", (
       // Every rendered row has an entry, and nothing else does.
       expect(batch.size).toBe(rows.filter((r) => r.kind === "item").length);
     }
+  });
+});
+
+describe("splitLabelChips — which label names a surface shows, and which fold into a count", () => {
+  const labels = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"].map((name) => ({
+    id: name,
+    name,
+    color: null,
+  }));
+
+  it("shows everything while the set fits the cap, and folds nothing", () => {
+    for (const n of [0, 1, 2]) {
+      const split = splitLabelChips(labels.slice(0, n), 2);
+      expect(split.shown.map((l) => l.name)).toEqual(labels.slice(0, n).map((l) => l.name));
+      expect(split.hidden).toEqual([]);
+    }
+  });
+
+  it("folds the REMAINDER the moment the set passes the cap — there is no +1 grace", () => {
+    // The rule a cap+1 grace would break: three labels in the row's
+    // 16ch cell is two truncated names, where two names and a 4ch "+1"
+    // both fit and read.
+    const three = splitLabelChips(labels.slice(0, 3), 2);
+    expect(three.shown.map((l) => l.name)).toEqual(["alpha", "beta"]);
+    expect(three.hidden.map((l) => l.name)).toEqual(["gamma"]);
+  });
+
+  it("keeps the FIRST cap names, so the fold is stable across renders and both surfaces", () => {
+    const row = splitLabelChips(labels, LABEL_CHIP_CAP.row);
+    const card = splitLabelChips(labels, LABEL_CHIP_CAP.card);
+    expect(row.shown.map((l) => l.name)).toEqual(["alpha", "beta"]);
+    expect(card.shown.map((l) => l.name)).toEqual(["alpha", "beta", "gamma", "delta"]);
+    // The card's chips are a PREFIX of nothing the row hides: what the
+    // row folds away, the card may still show, and neither ever reorders.
+    expect(card.shown.slice(0, row.shown.length)).toEqual(row.shown);
+    expect([...row.shown, ...row.hidden]).toEqual(labels);
+    expect([...card.shown, ...card.hidden]).toEqual(labels);
+  });
+
+  it("the caps are the two the two surfaces declare", () => {
+    expect(LABEL_CHIP_CAP).toEqual({ row: 2, card: 4 });
+  });
+
+  it("never asks a surface to draw a count and no names", () => {
+    // NaN once returned NO names and folded everything — `Math.max(1, NaN)` is NaN.
+    for (const cap of [-1, 0, 0.5, 1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const split = splitLabelChips(labels, cap);
+      expect(split.shown.map((l) => l.name), String(cap)).toEqual(["alpha"]);
+      expect(split.hidden).toHaveLength(labels.length - 1);
+    }
+  });
+
+  it("copies the array rather than handing back the caller's", () => {
+    const source = labels.slice(0, 2);
+    const split = splitLabelChips(source, 2);
+    expect(split.shown).toEqual(source);
+    expect(split.shown).not.toBe(source);
   });
 });

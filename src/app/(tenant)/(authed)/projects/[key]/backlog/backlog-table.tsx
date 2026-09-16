@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/table";
 import { BulkBar } from "@/components/work-view/bulk-bar";
 import { WorkFilterBar } from "@/components/work-view/filter-bar";
+import { LabelChips } from "@/components/work-view/label-chips";
 import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { wroteSomething } from "@/lib/action-result";
@@ -162,6 +163,16 @@ const useRun = (fallbackMessage: string) => {
  * create row spans all but its own two — and a `colSpan` that disagrees
  * with the header is invisible on desktop and wrong on a phone, where
  * column priority hides cells (the fixed-colSpan trap, PLAN §0).
+ *
+ * The labels chips are NOT a column of their own, and that is a MEASURED
+ * decision, not a preference: at the audited 1440px desktop the table's
+ * scrollWidth already EQUALS its clientWidth (1168px), with the whole of
+ * the remaining slack — 63px — sitting in the flexible title column.
+ * 1ch measures 8.2px here, so even a 14ch Labels column is 115px and
+ * would have pushed the trailing actions cell out of the scroll box,
+ * which the craft audit fails (`offscreenRowActions`). The chips
+ * therefore live INSIDE the title cell, spending the one budget that
+ * exists (see the cell).
  */
 const COLUMN_COUNT = 10;
 /** What the create row's title cell spans: everything after select + plus-icon. */
@@ -1237,26 +1248,71 @@ export function BacklogTable({
                       ) : null}
                     </span>
                   </TableCell>
+                  {/* The title AND the task's labels, in one cell and on one
+                      line. The chips are here rather than in a column of
+                      their own because this cell holds the table's only
+                      horizontal slack (COLUMN_COUNT's comment has the
+                      measurement); they are `shrink-0` so they take their
+                      content width and the title's `w-full` <InlineEdit>
+                      shrinks around them, and capped at half the cell so a
+                      labelled task never loses its title.
+
+                      `contain-inline-size` IS LOAD-BEARING, and was found by
+                      the labels e2e, not by reading. Auto table layout sizes
+                      a column from its cells' MIN-content, and while it does
+                      so the group's `max-w-1/2` has no definite width to
+                      resolve against — so the chips' FULL width became the
+                      title column's floor, and two 18-character labels on
+                      one row pushed the whole table 172px past its scroll
+                      box. Measured with the style injected into the live
+                      page: with it on every row's wrapper the table is back
+                      to 1168 = 1168, the title column back to its old 287px,
+                      and an unlabelled row's cell unchanged; on ONE row only
+                      it still overflowed, because a column is one width. The
+                      containment takes this wrapper out of the column's
+                      intrinsic sizing (the cell's `min-w-56` is the floor
+                      again), and `w-full` gives the flex row inside the
+                      definite width its half-cell cap resolves against.
+
+                      TWO CONSEQUENCES OF THAT, BOTH FROM THE REVIEW. (1) The
+                      column no longer grows to fit a title, so the title must
+                      truncate on EVERY render path: an editor's rest button
+                      already does, but a read-only <InlineEdit> renders
+                      `display` in a plain flex span, where a long title
+                      painted over the chips and into the State column. Hence
+                      `w-full` on the field and `min-w-0 truncate` (and the
+                      full title as `title`, the read-only path having no
+                      button to carry one) on `display`. (2) While the title
+                      IS a control the chips step aside (`:has([data-editing])`
+                      hides the group), so a 400-character title is edited in
+                      the whole cell rather than in the half the chips leave. */}
                   <TableCell className="min-w-56">
-                    <InlineEdit
-                      kind="text"
-                      name="title"
-                      density="table"
-                      value={item.title}
-                      label={t("titleLabel")}
-                      placeholder={t("titleLabel")}
-                      readOnly={!data.caps.canEdit}
-                      hiddenInput={false}
-                      display={
-                        <span className={cn("text-sm", done ? "text-muted-foreground line-through" : "font-medium", item.archivedAt ? "opacity-100 text-muted-foreground" : "")}>
-                          {item.title}
-                        </span>
-                      }
-                      onCommit={(next) => {
-                        if (next.trim() && next !== item.title)
-                          run(() => renameItemAction(item.id, projectKey, next));
-                      }}
-                    />
+                    <span className="flex w-full min-w-0 items-center gap-2 contain-inline-size has-[[data-editing]]:[&>[data-slot=label-chips]]:hidden">
+                      <InlineEdit
+                        kind="text"
+                        name="title"
+                        density="table"
+                        value={item.title}
+                        label={t("titleLabel")}
+                        placeholder={t("titleLabel")}
+                        readOnly={!data.caps.canEdit}
+                        hiddenInput={false}
+                        className="w-full"
+                        display={
+                          <span
+                            className={cn("min-w-0 truncate text-sm", done ? "text-muted-foreground line-through" : "font-medium", item.archivedAt ? "opacity-100 text-muted-foreground" : "")}
+                            title={data.caps.canEdit ? undefined : item.title}
+                          >
+                            {item.title}
+                          </span>
+                        }
+                        onCommit={(next) => {
+                          if (next.trim() && next !== item.title)
+                            run(() => renameItemAction(item.id, projectKey, next));
+                        }}
+                      />
+                      <LabelChips labels={item.labels} surface="row" />
+                    </span>
                   </TableCell>
                   <TableCell priority="medium" data-testid="backlog-state">
                     <InlineEdit

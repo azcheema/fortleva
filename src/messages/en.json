@@ -1424,6 +1424,11 @@
         "priority": "Priority",
         "epic": "Phase"
       },
+      "labels": {
+        "aria": "Labels",
+        "more": "+{count}",
+        "moreNames": "also {names}"
+      },
       "lanes": {
         "unassigned": "No assignee",
         "noEpic": "Outside a phase",

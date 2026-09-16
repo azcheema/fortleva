@@ -201,9 +201,15 @@ async function provision(seedFile: string): Promise<void> {
   const { createProject, updateProject } = await import("../../src/projects/service");
   const { createService } = await import("../../src/services/service");
   const { createRateCard } = await import("../../src/modules/time");
-  const { assignItem, changeItemVisibility, changeState, createItem, updateItemFields } = await import(
-    "../../src/modules/work"
-  );
+  const {
+    assignItem,
+    changeItemVisibility,
+    changeState,
+    createItem,
+    createLabel,
+    setItemLabel,
+    updateItemFields,
+  } = await import("../../src/modules/work");
   const { createMilestone } = await import("../../src/projects/milestones");
   const { commitUpload, createUpload } = await import("../../src/documents/service");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
@@ -424,6 +430,18 @@ async function provision(seedFile: string): Promise<void> {
     if (!s) throw new Error(`seed: no ${category} state on the project`);
     return s.id;
   };
+  // The tenant's label vocabulary, so the board card and the backlog row
+  // photograph WITH chips (2026-09-16). Three of them, and one task wears
+  // all three: the row's cap is 2, so that task is the sweep's only view
+  // of the folded `+1` chip, while two other tasks stay unlabelled and
+  // keep the "no group at all" case in frame. Swedish words — this is a
+  // Swedish agency's workspace, and `Label.name` is tenant data that is
+  // never translated (UI.md §8).
+  const labelIds: string[] = [];
+  for (const name of ["Brådskande", "Design", "Väntar på kund"]) {
+    labelIds.push((await createLabel(ctx, { name })).label.id);
+  }
+
   const task = async (
     title: string,
     opts: {
@@ -432,6 +450,8 @@ async function provision(seedFile: string): Promise<void> {
       hours?: number;
       assign?: boolean;
       clientVisible?: boolean;
+      /** How many of the tenant's labels to file it under, in name order. */
+      labels?: number;
     },
   ): Promise<string> => {
     const { id } = await createItem(ctx, { projectId, title });
@@ -444,12 +464,24 @@ async function provision(seedFile: string): Promise<void> {
     if (opts.assign) await assignItem(ctx, id, ownerMemberId);
     if (opts.clientVisible) await changeItemVisibility(ctx, id, "CLIENT_VISIBLE");
     if (opts.category) await changeState(ctx, id, stateIdOf(opts.category));
+    for (const labelId of labelIds.slice(0, opts.labels ?? 0)) {
+      await setItemLabel(ctx, id, labelId, true);
+    }
     return id;
   };
-  await task("Skriv kravspecifikation", { category: "IN_PROGRESS", hours: 4, clientVisible: true, assign: true });
+  // Three labels: past the row's cap of 2, so this is the one task that
+  // photographs the folded `+1` chip beside a truncating name.
+  await task("Skriv kravspecifikation", {
+    category: "IN_PROGRESS",
+    hours: 4,
+    clientVisible: true,
+    assign: true,
+    labels: 3,
+  });
   // Kept: the employee assigns this one to the owner below, which is
   // what puts a real notification in the owner's inbox.
-  const reviewTaskId = await task("Designgranskning med kunden", { priority: "MEDIUM", hours: 1.5 });
+  // One label — the common case, under the cap, nothing folded.
+  const reviewTaskId = await task("Designgranskning med kunden", { priority: "MEDIUM", hours: 1.5, labels: 1 });
   await task("Migrera DNS till ny leverantör", { category: "DONE", hours: 1 });
   await task("Tillgänglighetsgranskning", { category: "BACKLOG" });
 

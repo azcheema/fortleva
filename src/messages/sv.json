@@ -1424,6 +1424,11 @@
         "priority": "Prioritet",
         "epic": "Fas"
       },
+      "labels": {
+        "aria": "Etiketter",
+        "more": "+{count}",
+        "moreNames": "även {names}"
+      },
       "lanes": {
         "unassigned": "Ingen ansvarig",
         "noEpic": "Utanför en fas",

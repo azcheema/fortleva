@@ -8,7 +8,7 @@ import { projectWorkVersion } from "@/modules/work";
 /**
  * GET /api/version?scope=project:<id> — the freshness poll (ARC-18).
  * Returns a content-free token that changes whenever the project's work
- * items or states are written; the board/backlog compares it with the
+ * items, states or item labels are written; the board/backlog compares it with the
  * one it rendered and calls `router.refresh()` on a difference. Tenant
  * and member come from the session; the service applies the same
  * `work_item:view` + scope check as the list, so an out-of-scope project

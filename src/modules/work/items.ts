@@ -10,7 +10,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { readItemActivity, writeActivity, type ItemActivityPage } from "./activity";
 import { readItemComments, type ItemComments } from "./comments";
-import { readItemLabels, type ItemLabels } from "./labels";
+import { readItemLabels, readLabelsByItem, type ItemLabels, type LabelEntry } from "./labels";
 import { descriptionToken } from "./description-token";
 import { guarded } from "./db-errors";
 import { notifyItemMembers } from "./notify";
@@ -62,6 +62,20 @@ export type ItemListEntry = {
   checklistDone: number;
   /** Live documents anchored to this item (2W-A) — the backlog's paperclip. */
   attachmentCount: number;
+  /**
+   * The item's labels in `compareLabelNames` order — the board card's and
+   * the backlog row's chips (`display.labels`, UI.md §5.3).
+   *
+   * INTERNAL-ONLY, like every other word on this projection. A label is
+   * on the never-list (UI.md §11) and `labels` is on
+   * `PORTAL_FORBIDDEN_COLUMNS`, which is safe here for the same reason
+   * `stateName`, `priority`, `estimateMinutes` and `assigneeMemberId`
+   * already are: `listItems` is a MEMBER read, gated on `work_item:view`
+   * and run under the member principal. The portal gets its own
+   * `portal.ts` projection, and the forbidden-columns grep is what will
+   * catch it if that one ever reaches for this field.
+   */
+  labels: LabelEntry[];
 };
 
 export type WorkflowStateEntry = {
@@ -207,17 +221,22 @@ export async function listItems(
         isAuthorized(tx, ctx.actor, "work_item:approve"),
       ]);
 
-    // One grouped count over the anchor index — never a per-row query.
-    const attachmentCounts = await tx.document.groupBy({
-      by: ["attachedToId"],
-      where: {
-        tenantId: ctx.tenantId,
-        attachedToType: "WORK_ITEM",
-        attachedToId: { in: items.map((i) => i.id) },
-        deletedAt: null,
-      },
-      _count: { _all: true },
-    });
+    // TWO reads over the page's ids, never a per-row query: one grouped
+    // count over the document anchor index, and the labels (labels.ts).
+    const ids = items.map((i) => i.id);
+    const [attachmentCounts, labelsById] = await Promise.all([
+      tx.document.groupBy({
+        by: ["attachedToId"],
+        where: {
+          tenantId: ctx.tenantId,
+          attachedToType: "WORK_ITEM",
+          attachedToId: { in: ids },
+          deletedAt: null,
+        },
+        _count: { _all: true },
+      }),
+      readLabelsByItem(tx, ctx.tenantId, ids),
+    ]);
     const attachmentsById = new Map(attachmentCounts.map((c) => [c.attachedToId, c._count._all]));
 
     return {
@@ -246,6 +265,7 @@ export async function listItems(
         checklistTotal: i.checklistTotal,
         checklistDone: i.checklistDone,
         attachmentCount: attachmentsById.get(i.id) ?? 0,
+        labels: labelsById.get(i.id) ?? [],
       })),
       states,
       members,
@@ -316,7 +336,12 @@ async function projectMilestones(
  * that had nothing to do with permission. Archived items ARE returned —
  * a soft-deleted one never is.
  */
-export type ItemDetail = Omit<ItemListEntry, "type" | "priority"> & {
+// `labels` is omitted with `type` and `priority`, and for the same kind
+// of reason: the panel has a RICHER labels shape of its own
+// (`ItemDetailResult.labels` — applied plus the vocabulary it may pick
+// from), so the list's chip array would be a second, thinner copy of
+// the same fact on the same read. One surface, one source.
+export type ItemDetail = Omit<ItemListEntry, "type" | "priority" | "labels"> & {
   // Closed unions, not the list's open strings: the panel interpolates
   // them straight into message keys (`states.workItemType.${type}`),
   // which next-intl can only type against the catalogue when the value
@@ -1162,8 +1187,10 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
 /**
  * Freshness token for the board / backlog poll (ARC-18): changes
  * whenever an item of the project is written (soft deletes bump
- * updatedAt; ranks, states, assignments, archives all do) or a state is
- * renamed/reordered. A counter, not a list — the poll is cheap and
+ * updatedAt; ranks, states, assignments, archives all do), a state is
+ * renamed/reordered, or a label is put on or taken off one of its items
+ * (a write to `work_item_label` alone, which touches neither of the
+ * others — see the aggregate below). A counter, not a list — the poll is cheap and
  * carries no content. Requires the same view permission + scope as the
  * list itself, so polling cannot probe a project the member cannot see.
  */
@@ -1171,7 +1198,7 @@ export async function projectWorkVersion(ctx: WorkCtx, projectId: string): Promi
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:view");
     await assertInScope(tx, ctx.actor, { projectId });
-    const [items, states] = await Promise.all([
+    const [items, states, labels] = await Promise.all([
       tx.workItem.aggregate({
         where: { tenantId: ctx.tenantId, projectId },
         _max: { updatedAt: true },
@@ -1181,9 +1208,26 @@ export async function projectWorkVersion(ctx: WorkCtx, projectId: string): Promi
         where: { tenantId: ctx.tenantId, projectId },
         _max: { updatedAt: true },
       }),
+      // LABELS ARE THE FIRST THING ON A CARD THAT LIVES OUTSIDE `work_item`
+      // (2026-09-16, labels on the card and the row). A toggle inserts or
+      // deletes a `work_item_label` row and never touches the item, so the
+      // two aggregates above could not see it and a colleague's open board
+      // kept its old chips until some unrelated write (fresh-agent review).
+      // The pair below changes on every add (a newer `created_at`) and on
+      // every remove (a smaller count), including an add and a remove in
+      // one poll interval. Read-side only, on purpose: touching
+      // `work_item.updated_at` instead would fire every work_item trigger
+      // (the search feed among them) for a routine edit. Not seen: a label
+      // RENAME — nothing can rename one yet; the settings surface that adds
+      // it must add `label.updated_at` here too.
+      tx.workItemLabel.aggregate({
+        where: { tenantId: ctx.tenantId, workItem: { projectId } },
+        _max: { createdAt: true },
+        _count: { _all: true },
+      }),
     ]);
     const stamp = (d: Date | null) => (d ? d.getTime().toString(36) : "0");
-    return `${stamp(items._max.updatedAt)}.${items._count._all}.${stamp(states._max.updatedAt)}`;
+    return `${stamp(items._max.updatedAt)}.${items._count._all}.${stamp(states._max.updatedAt)}.${stamp(labels._max.createdAt)}.${labels._count._all}`;
   });
 }
 

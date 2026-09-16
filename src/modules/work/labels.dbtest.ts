@@ -4,7 +4,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthzError } from "@/authz/errors";
 import { compareLabelNames } from "@/lib/work-view";
 import { setupTenant } from "@/members/dbtest-fixture";
-import { changeItemVisibility, createItem, createLabel, getItemDetail, setItemLabel } from "./index";
+import {
+  changeItemVisibility,
+  createItem,
+  createLabel,
+  getItemDetail,
+  listItems,
+  projectWorkVersion,
+  setItemLabel,
+} from "./index";
 
 /**
  * The labels service against the real database and the real
@@ -243,5 +251,77 @@ describe("getItemDetail carries the labels (panel slice 12)", () => {
     expect(theirs.caps.edit).toBe(true);
     expect(theirs.caps.manageLabels).toBe(false);
     expect(theirs.labels.offered.length).toBeGreaterThan(0);
+  });
+});
+
+describe("listItems carries the chips (labels on the card and the row)", () => {
+  it("every item's own labels, by name — and an unlabelled item gets an empty array, never undefined", async () => {
+    const stem = randomUUID().slice(0, 6);
+    // Coined out of name order on purpose: what the surfaces show must be
+    // the comparator's order, never the insertion or the database's.
+    const zed = (await createLabel(ownerCtx(), { name: `Zeta ${stem}` })).label;
+    const ant = (await createLabel(ownerCtx(), { name: `Alfa ${stem}` })).label;
+    const mid = (await createLabel(ownerCtx(), { name: `Mitt ${stem}` })).label;
+
+    const two = await createItem(ownerCtx(), { projectId, title: `Two labels ${stem}` });
+    const one = await createItem(ownerCtx(), { projectId, title: `One label ${stem}` });
+    const none = await createItem(ownerCtx(), { projectId, title: `No labels ${stem}` });
+    await setItemLabel(ownerCtx(), two.id, zed.id, true);
+    await setItemLabel(ownerCtx(), two.id, ant.id, true);
+    await setItemLabel(ownerCtx(), two.id, mid.id, true);
+    await setItemLabel(ownerCtx(), one.id, mid.id, true);
+
+    const list = await listItems(ownerCtx(), projectId);
+    const byId = new Map(list.items.map((i) => [i.id, i]));
+    // Sorted by the one comparator: Alfa, Mitt, Zeta — not the order
+    // the rows were written in, and not a collation's.
+    expect(byId.get(two.id)?.labels.map((l) => l.name)).toEqual([ant.name, mid.name, zed.name]);
+    expect(byId.get(one.id)?.labels.map((l) => l.id)).toEqual([mid.id]);
+    // The empty array is the contract the chip component and the
+    // optimistic card literal both rely on.
+    expect(byId.get(none.id)?.labels).toEqual([]);
+    // The projection is the chip's three columns and nothing more — no
+    // `labelId`, and no column a portal list could inherit by accident.
+    expect(Object.keys(byId.get(one.id)!.labels[0]!).sort()).toEqual(["color", "id", "name"]);
+
+    // What this proves is narrow, and it is said so: the MEMBER read is
+    // unaffected by the item's visibility — a colleague looking at a task
+    // that is shared with the client still sees its labels. It proves
+    // NOTHING about the portal. That a Contact reads no label is the
+    // database's `portal_deny` on `label` and `work_item_label`, which
+    // `isolation.dbtest.ts` asserts on every class-A table.
+    await changeItemVisibility(ownerCtx(), two.id, "CLIENT_VISIBLE");
+    const shared = await listItems(ownerCtx(), projectId);
+    expect(shared.items.find((i) => i.id === two.id)?.labels).toHaveLength(3);
+
+    // An item of ANOTHER project is not in this list at all, labels and all.
+    const elsewhere = await createItem(ownerCtx(), { projectId: otherProjectId, title: `Elsewhere ${stem}` });
+    await setItemLabel(ownerCtx(), elsewhere.id, ant.id, true);
+    const again = await listItems(ownerCtx(), projectId);
+    expect(again.items.map((i) => i.id)).not.toContain(elsewhere.id);
+    expect(again.items.find((i) => i.id === two.id)?.labels).toHaveLength(3);
+  });
+
+  it("the board's freshness token moves on a label add AND on a label remove — a colleague's open board refreshes", async () => {
+    // The defect this pins (fresh-agent review): a toggle writes only
+    // `work_item_label`, and the token was built from `work_item` and
+    // `workflow_state` alone, so the 12 s poll never saw a chip change.
+    const stem = randomUUID().slice(0, 6);
+    const label = (await createLabel(ownerCtx(), { name: `Poll ${stem}` })).label;
+    const item = await createItem(ownerCtx(), { projectId, title: `Poll target ${stem}` });
+
+    const before = await projectWorkVersion(ownerCtx(), projectId);
+    await setItemLabel(ownerCtx(), item.id, label.id, true);
+    const added = await projectWorkVersion(ownerCtx(), projectId);
+    expect(added).not.toBe(before);
+
+    await setItemLabel(ownerCtx(), item.id, label.id, false);
+    const removed = await projectWorkVersion(ownerCtx(), projectId);
+    expect(removed).not.toBe(added);
+
+    // A repeat that changes nothing moves nothing: the token is a
+    // fingerprint of the board, not a counter of requests.
+    await setItemLabel(ownerCtx(), item.id, label.id, false);
+    expect(await projectWorkVersion(ownerCtx(), projectId)).toBe(removed);
   });
 });

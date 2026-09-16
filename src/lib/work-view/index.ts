@@ -7,6 +7,7 @@
  */
 export {
   GROUP_BYS,
+  LABEL_CHIP_CAP,
   MAX_BULK_ITEMS,
   MAX_LABEL_NAME_LENGTH,
   MAX_TITLE_LENGTH,
@@ -32,12 +33,15 @@ export {
   matchesFilters,
   rowAnchors,
   milestonePickerTargets,
+  splitLabelChips,
   stateOrdinalKeys,
   statePickerTargets,
   visibleColumns,
   workView,
   type GroupBy,
   type Lane,
+  type LabelChipSplit,
+  type LabelSurface,
   type MilestonePickerTarget,
   type Move,
   type Rollup,

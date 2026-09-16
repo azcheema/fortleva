@@ -19,6 +19,12 @@ export const SLOW = process.env["CI"] ? 3 : 1;
 /** The open property picker — or, for the calendar, the popover it lives in. */
 export const picker = (page: Page): Locator => page.locator('[data-slot="popover-content"]');
 
+/** The item panel's properties rail — the peek's and the full page's alike. */
+export const rail = (page: Page): Locator => page.getByTestId("item-properties");
+
+/** An open `<PropertyPicker>`'s search field. */
+export const searchField = (page: Page): Locator => picker(page).locator('[data-slot="command-input"]');
+
 /** The backlog's item rows (never its group headers or the create row). */
 export const backlogRows = (page: Page): Locator => page.locator('[data-testid="backlog-row"]');
 

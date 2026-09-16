@@ -44,6 +44,7 @@ import { isGoSequencePending, useScopeKeys } from "@/components/shell/use-hotkey
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge";
+import { LabelChips } from "@/components/work-view/label-chips";
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
 import { formatDuration, type DurationStyle } from "@/lib/format";
 import type { KeyBinding } from "@/lib/keymap";
@@ -863,6 +864,11 @@ function BoardCard({
         ) : null}
       </div>
       <p className={cn("leading-snug", done ? "text-muted-foreground line-through" : "font-medium")}>{item.title}</p>
+      {/* Between the title and the meta row: a label is what the task IS
+          about, so it reads with the title, above the numbers. Its own
+          line because chips wrap here — the card has the height the
+          backlog row does not (`LabelChips`, `surface="card"`). */}
+      <LabelChips labels={item.labels} surface="card" />
       {item.checklistTotal > 0 || item.estimateMinutes !== null || item.assigneeMemberId ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {item.checklistTotal > 0 ? (
@@ -956,6 +962,9 @@ function ColumnCreate({
           checklistTotal: 0,
           checklistDone: 0,
           attachmentCount: 0,
+          // A title-only create carries no labels, and the `L` picker is
+          // in the panel: the refresh cannot bring any either.
+          labels: [],
         },
       });
       const r = await createItemInStateAction(projectId, projectKey, state.id, value).catch(() => ({
