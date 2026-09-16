@@ -65,7 +65,24 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "row-h border-b border-border transition-colors duration-(--dur-instant) ease-out scroll-mt-8 hover:bg-accent has-aria-expanded:bg-accent aria-selected:bg-accent aria-selected:shadow-[inset_2px_0_0_var(--primary)] data-[state=selected]:bg-accent data-[state=selected]:shadow-[inset_2px_0_0_var(--primary)]",
+        // A FOCUSABLE row (the backlog's `J K`, UI.md §6) shows focus as
+        // the standard OUTLINE (§9 — never a box-shadow ring: forced-colors
+        // mode drops box-shadows, and engines differ on painting them on a
+        // collapsed-border row), at `-outline-offset-6` rather than the
+        // global +2 or a scroll container's -2. Measured from the border
+        // edge inward, the left edge of a row is: 2px border, which is
+        // `visibilityRowCue`'s client-visible mark; 2px `--primary` selected
+        // bar (the inset shadow below); then the 2px outline at 4–6px. A -2
+        // offset paints the outline OVER the cue, so a focused client-
+        // visible row read as internal, and -4 paints it over the selected
+        // bar; -6 sits beside both, and +2 would be clipped by the table
+        // container's horizontal scroll and overlap the neighbouring rows.
+        // Keyed on `:focus`, not `:focus-visible`: a row's focus only ever
+        // arrives by key, by the list's own `focus()` or by a deliberate
+        // click on its whitespace, and programmatic focus inherits the
+        // previous element's focus-visible state in Firefox and WebKit —
+        // a mouse-focused link followed by `J` would ring nothing there.
+        "row-h border-b border-border transition-colors duration-(--dur-instant) ease-out scroll-mt-8 hover:bg-accent has-aria-expanded:bg-accent aria-selected:bg-accent aria-selected:shadow-[inset_2px_0_0_var(--primary)] data-[state=selected]:bg-accent data-[state=selected]:shadow-[inset_2px_0_0_var(--primary)] focus:outline-2 focus:-outline-offset-6 focus:outline-ring",
         className
       )}
       {...props}

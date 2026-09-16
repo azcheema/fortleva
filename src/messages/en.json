@@ -1500,6 +1500,7 @@
       "invalidTitle": "That could not be saved.",
       "invalidEstimate": "Estimates look like 2h, 1.5 or 90m.",
       "keys": {
+        "navigate": "Move between tasks",
         "select": "Select or deselect task"
       },
       "saved": "Saved",

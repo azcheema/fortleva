@@ -10,7 +10,9 @@ import {
   SUPPRESS_SELECTOR,
   decide,
   focusedKeyApplies,
+  focusedKeyGuards,
   overlaySections,
+  rovingStep,
   paletteOffersPageRows,
   signatureOf,
   type KeyBinding,
@@ -589,6 +591,27 @@ describe("focusedKeyApplies — a React-tree handler's copy of the dispatcher's 
 
   it("refuses auto-repeat, which decide() never needed: a held toggle would flip on every repeat", () => {
     expect(focusedKeyApplies(shape({ repeat: true }), "x", false)).toBe(false);
+  });
+
+  it("a MOVE declares `repeat: \"allow\"` and only that policy lets a held key through — every other guard still applies", () => {
+    const allow = { repeat: "allow" as const };
+    expect(focusedKeyGuards(shape({ repeat: true }), false, allow)).toBe(true);
+    expect(focusedKeyGuards(shape({ repeat: true }), false)).toBe(false);
+    expect(focusedKeyApplies(shape({ key: "j", repeat: true }), "j", false, allow)).toBe(true);
+    for (const flag of ["defaultPrevented", "metaKey", "ctrlKey", "altKey", "inEditable", "inMenuLayer"] as const) {
+      expect(focusedKeyGuards(shape({ repeat: true, [flag]: true }), false, allow)).toBe(false);
+    }
+    expect(focusedKeyGuards(shape({ repeat: true }), true, allow)).toBe(false);
+  });
+
+  it("rovingStep: J/K and the vertical arrows are the one-row moves, case-insensitively, and only the arrows say so", () => {
+    expect(rovingStep("j")).toEqual({ delta: 1, arrow: false });
+    expect(rovingStep("K")).toEqual({ delta: -1, arrow: false });
+    expect(rovingStep("ArrowDown")).toEqual({ delta: 1, arrow: true });
+    expect(rovingStep("ArrowUp")).toEqual({ delta: -1, arrow: true });
+    for (const key of ["x", "ArrowLeft", "ArrowRight", "Home", "End", "Enter"]) {
+      expect(rovingStep(key)).toBeUndefined();
+    }
   });
 
   it("the dispatcher never acts on the advertised `run: null` row, so the handler is the only actor", () => {

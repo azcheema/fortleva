@@ -59,7 +59,7 @@ import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { wroteSomething } from "@/lib/action-result";
 import { durationInputText, formatDay, formatDuration, type DurationStyle } from "@/lib/format";
-import { focusedKeyApplies, inMenuLayer, isEditableTarget } from "@/lib/keymap";
+import { focusedKeyApplies, focusedKeyGuards, keyEventShape, ownsArrows, rovingStep } from "@/lib/keymap";
 import type { ActionResult, FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
 import {
@@ -334,9 +334,20 @@ function DragRow({
       data-testid="backlog-row"
       data-item-id={itemId}
       aria-rowindex={rowIndex}
+      // Focusable by KEY, never by Tab (UI.md §6); the ring is `TableRow`'s.
+      tabIndex={-1}
+      aria-keyshortcuts="J K"
       // Opacity, never a transform: a transformed row would become the
       // containing block for the drop line and move it off the row.
-      className={cn(className, canDrag && "cursor-grab active:cursor-grabbing", dragging && "opacity-40")}
+      // `scroll-mt-16` / `scroll-mb-16` clear the sticky header (`h-12`)
+      // and the sticky bulk bar when focus scrolls a row into view;
+      // `TableRow`'s `scroll-mt-8` is too small for the header (UI.md §6).
+      className={cn(
+        className,
+        "scroll-mt-16 scroll-mb-16",
+        canDrag && "cursor-grab active:cursor-grabbing",
+        dragging && "opacity-40",
+      )}
     >
       {children}
     </TableRow>
@@ -549,6 +560,40 @@ export function BacklogTable({
   // row mounted is the fix; it costs one row.
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTableSectionElement>(null);
+  // `J K` hand focus to a row AFTER it has rendered: the handler only
+  // NAMES the row (`setFocusedRowId`), and this effect gives it focus
+  // once it is in the DOM — never a timer, and no pending ref (a stale
+  // id in a ref stole focus from the next click; review, round 1).
+  //
+  // NO DEPENDENCY LIST, on purpose: the row may reach the DOM on a LATER
+  // render than the one that named it (a scroll between keydown and
+  // commit moved the window), and a second `J` from the same row names
+  // the same id, which is no state change — an effect keyed on the id
+  // would never retry, and the keys would be dead (review, round 2).
+  // Running on every render costs one ancestor walk in the common case.
+  //
+  // Three cases, told apart by where focus IS:
+  //  · already inside the named row — a click or Tab into one of its
+  //    controls set the state through `onFocusCapture`: nothing to do;
+  //  · inside the table elsewhere — a step: focus the row, and let
+  //    `focus()` scroll it into view under the row's own scroll margins
+  //    (that scroll fires `measure`, which is how the window follows a
+  //    held `J`);
+  //  · on `<body>` — the named row was scrolled past the pin and
+  //    unmounted with focus on it (Chromium fires no blur), and has now
+  //    come back: restore focus WITHOUT scrolling, so the flow resumes
+  //    where it was and the member's scroll position is not yanked;
+  //  · anywhere else — the member moved on; the name is stale, leave it.
+  useEffect(() => {
+    if (!focusedRowId) return;
+    const active = document.activeElement;
+    const activeRow = active instanceof Element ? active.closest<HTMLElement>("[data-item-id]") : null;
+    if (activeRow?.dataset["itemId"] === focusedRowId) return;
+    const el = bodyRef.current?.querySelector<HTMLElement>(`[data-item-id="${focusedRowId}"]`);
+    if (!el) return;
+    if (active && bodyRef.current?.contains(active)) el.focus();
+    else if (!active || active === document.body) el.focus({ preventScroll: true });
+  });
 
   const live: RowWindow = !windowable
     ? wholeList(count)
@@ -568,10 +613,13 @@ export function BacklogTable({
   // text would vanish with no commit and no toast). Beyond it the edit is
   // abandoned — the same outcome as clicking elsewhere, and a bounded
   // loss is better than an unbounded mount.
-  const pinned =
-    focusedIndex >= 0 &&
-    focusedIndex >= live.start - FOCUS_MARGIN &&
-    focusedIndex < live.end + FOCUS_MARGIN;
+  // ONE definition of the reach, read by the pin here and by `J K` below:
+  // a step whose target lies outside it is refused rather than named,
+  // because a named row the pin will not mount leaves focus on `<body>`
+  // (Chromium fires no blur for a removed focused element).
+  const inPinReach = (index: number): boolean =>
+    index >= 0 && index >= live.start - FOCUS_MARGIN && index < live.end + FOCUS_MARGIN;
+  const pinned = inPinReach(focusedIndex);
   const win = !windowable
     ? live
     : growTo(
@@ -793,23 +841,70 @@ export function BacklogTable({
     });
   };
 
-  // The backlog's one region key (UI.md §6): `X` toggles the FOCUSED
-  // row's selection — the row's checkbox, by keyboard, cap and all, and
-  // only where that checkbox is displayed.
-  // `run: null`, advertised here and handled by the body's `onKeyDown`,
-  // for the board's `S` reason: only a handler on the event target knows
-  // which row. A window binding reading `document.activeElement` would
-  // claim `X` page-wide and do nothing wherever no row holds focus. No
-  // ⌘K row follows from that (the palette runs only run-bearing rows),
-  // and none could work: opening the palette moves focus off the row.
-  // Hidden below `sm` with the column, so the overlay never offers a key
-  // that the handler below refuses.
+  // The backlog's region keys (UI.md §6): `J K` move focus between the
+  // rows (every item row is focusable, `DragRow`), and `X` toggles the FOCUSED row's
+  // selection — the row's checkbox, by keyboard, cap and all, and only
+  // where that checkbox is displayed. Together they are the one-hand
+  // flow: `J`, `X`, `J`, `X`.
+  // On a focused row both are handled by the body's `onKeyDown`, for the
+  // board's `S` reason: only a handler on the event target knows which
+  // row. `X` is `run: null` (advertised only); `J` carries a `run`, below,
+  // that acts only when focus is nowhere in the list. No ⌘K row for
+  // either: the palette runs only run-bearing rows, and opening it moves
+  // focus off the row.
+  // `X` is hidden below `sm` with the column, so the overlay never offers
+  // a key that the handler below refuses; `J K` need no column and no
+  // permission — a viewer walks the list too. Neither is offered while
+  // the peek is open: focus is trapped in the sheet and no row can hold it.
   const selectColumnShown = useSyncExternalStore(
     subscribeSelectColumn,
     selectColumnShownNow,
     selectColumnShownOnServer,
   );
+  // `J` alone carries a `run`, and it acts only when NO ROW holds focus —
+  // enforced HERE, not by trusting the body handler to have
+  // `preventDefault`ed: a row's `J` is prevented, but a `J` the handler
+  // refuses (on the inline delete question, say) is not, and it reaches
+  // this run, which would otherwise move focus and dismiss the question
+  // (review, round 3). "No row", not "nothing in the body": the create
+  // row's resting button is in the body and in no row, and `J` from it
+  // enters the list (round 4). So the registry's `J` is the ENTRY into
+  // the list — from the page, the filter bar, the table's scroll region,
+  // or after a focused row was scrolled past the pin and unmounted with
+  // focus on it — landing on the first row whose top is already past its
+  // OWN scroll margin (`scroll-mt-16`, which is what clears the sticky
+  // header), so that `focus()` scrolls nothing: a row merely clear of the
+  // header but inside that margin would still be scrolled to it (review,
+  // round 4). The window mounts eight rows above the viewport, so the
+  // first mounted row is the wrong pick. If no row qualifies (the list's
+  // end is under the header) the last mounted row is taken and the scroll
+  // is the honest outcome. Not a palette row: the palette's "On this
+  // page" is for verbs.
+  const enterList = () => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const active = document.activeElement;
+    if (active instanceof Element && active.closest("[data-item-id]")) return;
+    let fallback: HTMLElement | null = null;
+    for (const el of body.querySelectorAll<HTMLElement>("[data-item-id]")) {
+      const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+      if (el.getBoundingClientRect().top >= margin) {
+        el.focus();
+        return;
+      }
+      fallback = el;
+    }
+    fallback?.focus();
+  };
   useScopeKeys("backlog", [
+    {
+      key: "j",
+      label: t("keys.navigate"),
+      enabled: !peekOpen,
+      run: enterList,
+      hint: ["J", "or", "K"],
+      palette: false,
+    },
     {
       key: "x",
       label: t("keys.select"),
@@ -933,35 +1028,66 @@ export function BacklogTable({
               const next = e.relatedTarget as Node | null;
               if (!next || !e.currentTarget.contains(next)) setFocusedRowId(null);
             }}
-            // `X` (registered above). The row is the one the TARGET sits in,
-            // asked of the DOM: a portalled row menu's keydown bubbles
-            // through here in React's tree, but `closest` walks the DOM,
-            // where that menu is inside no row.
+            // `J K` and `X` (registered above). The row is the one the
+            // TARGET sits in, asked of the DOM: a portalled row menu's
+            // keydown bubbles through here in React's tree, but `closest`
+            // walks the DOM, where that menu is inside no row.
             onKeyDown={(e) => {
-              if (!data.caps.canEdit) return;
-              const applies = focusedKeyApplies(
-                {
-                  key: e.key,
-                  metaKey: e.metaKey,
-                  ctrlKey: e.ctrlKey,
-                  altKey: e.altKey,
-                  defaultPrevented: e.defaultPrevented,
-                  repeat: e.repeat,
-                  inEditable: isEditableTarget(e.target),
-                  inMenuLayer: inMenuLayer(e.target),
-                },
-                "x",
-                isGoSequencePending(),
-              );
-              if (!applies || !(e.target instanceof Element)) return;
+              // The key FIRST, before any DOM walk or list scan: every
+              // keystroke typed into a row's editor bubbles through here.
+              const step = rovingStep(e.key);
+              const isX = e.key.toLowerCase() === "x";
+              if ((step === undefined && !isX) || !(e.target instanceof Element)) return;
+              // The registry hides both keys while the peek is open (focus is
+              // trapped in the sheet); the handler refuses them too, so the
+              // overlay never hides a key the list would still honour.
+              if (peekOpen) return;
               // A row's inline delete question ("Delete this task? Yes No")
               // renders IN the row, not in a portal, so `closest` would find
-              // the row from its Yes — and `X` would change the selection
-              // with a destructive question still open.
+              // the row from its Yes — and `X` would change the selection,
+              // or `J` walk focus away, with a destructive question still
+              // open. Escape is the way out of it.
               if (e.target.closest('[data-slot="inline-confirm"]')) return;
               const row = e.target.closest<HTMLElement>("[data-item-id]");
               const id = row?.dataset["itemId"];
-              if (!row || !id || !shownItems.some((i) => i.id === id)) return;
+              if (!row || !id) return;
+              const shape = { ...keyEventShape(e), repeat: e.repeat };
+              const goPending = isGoSequencePending();
+
+              // ── `J K` / `↑ ↓`: roving focus ──
+              if (step !== undefined) {
+                // The arrows are left to a control that owns them, and to
+                // Shift, which a list keeps for range selection.
+                if (step.arrow && (e.shiftKey || ownsArrows(e.target))) return;
+                // `X`'s guards, with auto-repeat ALLOWED: a move is one row
+                // per event whatever the member holds, so a held `J` walks
+                // the list (the board's rule), where a held toggle flips.
+                if (!focusedKeyGuards(shape, goPending, { repeat: "allow" })) return;
+                // Item rows only, so a group header is stepped over; the
+                // ends are the ends — nothing happens. A LETTER at the end
+                // is still consumed: unprevented, it would reach the
+                // registry's `J`, whose `run` enters the list at the first
+                // row on screen — a jump to the top from the bottom. An
+                // arrow is left to the page, which scrolls. (A mounted row
+                // is always in `shownItems`; `!to` carries the impossible
+                // -1 as well.) The reach check needs the target's index in
+                // `rows`, and that IS `at + delta`: the window is live only
+                // ungrouped, where `rows` holds no group rows; grouped,
+                // `live` is the whole list and every index is in reach.
+                const at = shownItems.findIndex((i) => i.id === id);
+                const to = at < 0 ? undefined : shownItems[at + step.delta];
+                if (!to || !inPinReach(at + step.delta)) {
+                  if (!step.arrow) e.preventDefault();
+                  return;
+                }
+                e.preventDefault();
+                setFocusedRowId(to.id);
+                return;
+              }
+
+              // ── `X`: the focused row's checkbox, by keyboard ──
+              if (!data.caps.canEdit) return;
+              if (!focusedKeyApplies(shape, "x", goPending)) return;
               // `X` IS the row's checkbox, so where that checkbox is not
               // displayed it does nothing. Below `sm` the select column
               // drops, and a row has no selected cue of its own — TableRow's

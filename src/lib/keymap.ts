@@ -248,13 +248,72 @@ export function focusedKeyApplies(
   e: KeyEventShape & { repeat: boolean },
   key: string,
   goPending: boolean,
+  policy: FocusedKeyPolicy = REFUSE_REPEAT,
 ): boolean {
-  if (e.defaultPrevented || e.repeat) return false;
+  return focusedKeyGuards(e, goPending, policy) && e.key.toLowerCase() === key.toLowerCase();
+}
+
+/**
+ * Whether a held key's auto-repeat events count. `"refuse"` is the
+ * default and right for a TOGGLE (`X`); a MOVE declares `"allow"` — one
+ * row per event whatever the member holds, so a held `J` walks the list.
+ * A policy, so the exception is declared at the call site rather than
+ * smuggled in by lying about `e.repeat`.
+ */
+export type FocusedKeyPolicy = { repeat: "refuse" | "allow" };
+const REFUSE_REPEAT: FocusedKeyPolicy = { repeat: "refuse" };
+
+/**
+ * The guard half of `focusedKeyApplies` without the "which key" half —
+ * for a handler that has already matched the key (the backlog's step
+ * table) and only needs to know whether ANY focused key may act now.
+ */
+export function focusedKeyGuards(
+  e: KeyEventShape & { repeat: boolean },
+  goPending: boolean,
+  policy: FocusedKeyPolicy = REFUSE_REPEAT,
+): boolean {
+  if (e.defaultPrevented) return false;
+  if (e.repeat && policy.repeat === "refuse") return false;
   if (e.metaKey || e.ctrlKey || e.altKey) return false;
   if (e.inEditable || e.inMenuLayer) return false;
   if (goPending) return false;
-  return e.key.toLowerCase() === key.toLowerCase();
+  return true;
 }
+
+/**
+ * The roving-focus keys of a list (UI.md §6), by `e.key` compared
+ * case-insensitively (a shifted letter is the letter, as `decide()`
+ * reads it). The arrows carry `arrow: true` so a handler can refuse them
+ * where a control owns them (`ownsArrows`) and with Shift, which lists
+ * keep for range selection. ONE table, so the lists that read it cannot
+ * drift on which keys are a one-row move: the backlog today; the board
+ * when its handler migrates to these guards (PLAN §0 records that as
+ * owed — it still keeps its own `switch`); the inbox and triage lists to
+ * come.
+ */
+export type RovingStep = { delta: 1 | -1; arrow: boolean };
+const ROVING_STEPS: Record<string, RovingStep> = {
+  j: { delta: 1, arrow: false },
+  k: { delta: -1, arrow: false },
+  arrowdown: { delta: 1, arrow: true },
+  arrowup: { delta: -1, arrow: true },
+};
+export const rovingStep = (key: string): RovingStep | undefined => ROVING_STEPS[key.toLowerCase()];
+
+/**
+ * Whether the focused element uses ArrowUp/ArrowDown itself, so a
+ * list's roving arrows must leave them alone. An editable target and an
+ * open menu layer are refused before this is asked (`focusedKeyGuards`);
+ * what remains is a CLOSED control that opens or changes on an arrow:
+ * a select or combobox trigger, a spin button, a slider, a radio group.
+ * Named once here so the next such control is added in one place.
+ */
+export const ownsArrows = (target: EventTarget | null): boolean =>
+  target instanceof Element &&
+  target.closest(
+    '[role="combobox"],[role="spinbutton"],[role="slider"],[role="radio"],[role="radiogroup"],[data-slot="select-trigger"]',
+  ) !== null;
 
 /** Single keys are inert while an editable element has focus (UI.md §6). */
 export const isEditableTarget = (target: EventTarget | null): boolean => {
@@ -267,6 +326,25 @@ export const isEditableTarget = (target: EventTarget | null): boolean => {
 /** …and while focus is inside a menu, listbox, select, popover or command list. */
 export const inMenuLayer = (target: EventTarget | null): boolean =>
   target instanceof Element && target.closest(SUPPRESS_SELECTOR) !== null;
+
+/**
+ * The `KeyEventShape` of a keyboard event — DOM or React, which agree on
+ * these six fields. The ONE place the two DOM questions are asked, so a
+ * guard `KeyEventShape` gains from a new DOM question is added here and
+ * reaches the dispatcher and every React-tree handler
+ * (`focusedKeyApplies`) at once.
+ */
+export const keyEventShape = (
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "defaultPrevented" | "target">,
+): KeyEventShape => ({
+  key: e.key,
+  metaKey: e.metaKey,
+  ctrlKey: e.ctrlKey,
+  altKey: e.altKey,
+  defaultPrevented: e.defaultPrevented,
+  inEditable: isEditableTarget(e.target),
+  inMenuLayer: inMenuLayer(e.target),
+});
 
 /**
  * Where ⌘K was pressed, as `paletteOffersPageRows` needs it: the

@@ -19,6 +19,24 @@ export const SLOW = process.env["CI"] ? 3 : 1;
 /** The open property picker — or, for the calendar, the popover it lives in. */
 export const picker = (page: Page): Locator => page.locator('[data-slot="popover-content"]');
 
+/** The backlog's item rows (never its group headers or the create row). */
+export const backlogRows = (page: Page): Locator => page.locator('[data-testid="backlog-row"]');
+
+/** The item row that holds DOM focus itself — the subject of `J K` and `X`. */
+export const focusedBacklogRow = (page: Page): Locator =>
+  page.locator('[data-testid="backlog-row"]:focus');
+
+/** A backlog row's key link ("ACME-12"), the one control every row has at rest. */
+export const keyLink = (row: Locator, projectKey: string): Locator =>
+  row.getByRole("link", { name: new RegExp(`^${projectKey}-\\d+$`) });
+
+/** The `?` overlay's section for one scope, by its heading. */
+export const overlaySection = (page: Page, name: string): Locator =>
+  page
+    .getByRole("dialog", { name: /shortcut/i })
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name, exact: true }) });
+
 /**
  * Press a key until it takes, then stop.
  *
@@ -56,7 +74,7 @@ export async function pressUntil(
 export async function openOwnTaskPeek(page: Page, seed: E2ESeed, title: string): Promise<void> {
   const row = page.locator('[data-slot="table-row"]', { hasText: title });
   await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
-  await row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) }).click();
+  await keyLink(row, seed.projectKey).click();
   await expect(page.getByTestId("item-peek")).toBeVisible();
 }
 

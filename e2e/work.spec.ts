@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { actionAnswered } from "./fixtures/actions";
+import { backlogRows, focusedBacklogRow, keyLink, pressUntil } from "./fixtures/keys";
 import { createBigProject, dropProject, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
@@ -297,7 +298,7 @@ test.describe("project board (owner)", () => {
     // hand-built `${listHref}${archived ? "&" : "?"}item=` produced
     // `?group=assignee?item=…` the moment a second param existed.
     const grouped = page.locator('[data-slot="table-row"]', { hasText: title });
-    await grouped.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) }).click();
+    await keyLink(grouped, seed.projectKey).click();
     await expect(page.getByTestId("item-peek")).toBeVisible();
     const peeked = new URL(page.url());
     expect(peeked.search.match(/\?/g)).toHaveLength(1);
@@ -322,7 +323,7 @@ test.describe("project board (owner)", () => {
     await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
 
     // Peek → full page: the same panel, the same properties.
-    await row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) }).click();
+    await keyLink(row, seed.projectKey).click();
     const peek = page.getByTestId("item-peek");
     await expect(peek).toBeVisible();
     await expect(peek.getByTestId("item-properties")).toBeVisible();
@@ -368,7 +369,7 @@ test.describe("project board (owner)", () => {
     await createInput.press("Enter");
     const row = page.locator('[data-slot="table-row"]', { hasText: title });
     await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
-    await row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) }).click();
+    await keyLink(row, seed.projectKey).click();
     await page.getByTestId("item-full-page").click();
     await page.waitForURL(new RegExp(`/projects/${seed.projectKey}/items/\\d+$`), { timeout: 20_000 * SLOW });
     const itemUrl = page.url();
@@ -759,6 +760,42 @@ test.describe("a backlog past the virtualisation threshold", () => {
     // windowing metadata at the same time.
     // ARIA counts the header as row 1, so the last task of 250 is 251.
     await scrollToEndUntil(page, page.locator(`[data-testid="backlog-row"][aria-rowindex="${SIZE + 1}"]`));
+  });
+
+  test("`J` walks past the window's edge: each next row is mounted as focus reaches it, and the window follows", async ({ page }) => {
+    // The window is the viewport (~20 rows at 720px) plus eight of
+    // overscan each side, so the first row is released once focus has
+    // pushed the viewport ~9 rows in, around step 30; 40 leaves a margin
+    // over that at every configured device. Each `focus()` scroll pulls
+    // the window down behind the focus, and the overscan (or, if a scroll
+    // event were ever dropped, the focus pin) has the next row mounted
+    // before the next press. A press is asserted before the next: React
+    // commits a discrete event synchronously, but a press that raced a
+    // commit would land on the row it had just left and walk one short.
+    const STEPS = 40;
+    await page.goto(`/projects/${big.key}/backlog`);
+    const rows = backlogRows(page);
+    await expect(rows.first()).toBeVisible();
+    const focused = focusedBacklogRow(page);
+    const link = keyLink(rows.first(), big.key);
+
+    // The header is ARIA row 1 and the first task row 2, so the first
+    // press lands on 3.
+    await pressUntil(page, "j", focused, { from: link });
+    await expect(focused).toHaveAttribute("aria-rowindex", "3");
+    for (let i = 1; i < STEPS; i++) {
+      await page.keyboard.press("j");
+      await expect(focused).toHaveAttribute("aria-rowindex", String(3 + i));
+    }
+    // The window came along: the first row is released (which is also
+    // what the top spacer's presence would say), the focused row is on
+    // screen, and `X` has a subject there — then put it back.
+    await expect(page.locator('[data-testid="backlog-row"]', { hasText: "Row 0001" })).toHaveCount(0);
+    await expect(focused).toBeInViewport();
+    await page.keyboard.press("x");
+    await expect(page.getByTestId("bulk-count")).toContainText("1");
+    await page.keyboard.press("x");
+    await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
   });
 });
 

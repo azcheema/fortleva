@@ -1,6 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { SLOW, createOwnTask, deleteOwnTasks, picker, pressUntil } from "./fixtures/keys";
+import {
+  SLOW,
+  backlogRows,
+  createOwnTask,
+  deleteOwnTasks,
+  focusedBacklogRow,
+  keyLink,
+  overlaySection,
+  picker,
+  pressUntil,
+} from "./fixtures/keys";
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
@@ -108,11 +118,9 @@ test.describe("the scope registry", () => {
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     // The key cell is the link (2W-B). Located on the page rather than
     // inside "the first row", which need not be an item row.
-    const keyLink = page
-      .getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) })
-      .first();
-    await expect(keyLink).toBeVisible();
-    await keyLink.click();
+    const firstKeyLink = keyLink(page.locator("body"), seed.projectKey).first();
+    await expect(firstKeyLink).toBeVisible();
+    await firstKeyLink.click();
     await expect(page.getByTestId("item-peek")).toBeVisible();
 
     await page.keyboard.press("s");
@@ -197,7 +205,7 @@ test.describe("the scope registry", () => {
   });
 });
 
-test.describe("the backlog's `X`", () => {
+test.describe("the backlog's `J K` and `X`", () => {
   test("toggles the focused row's selection, is advertised, and types into a row's editor instead", async ({
     page,
   }) => {
@@ -206,7 +214,7 @@ test.describe("the backlog's `X`", () => {
     await page.goto(`/projects/${seed.projectKey}/backlog`);
     const row = page.locator('[data-testid="backlog-row"]').first();
     await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
-    const link = row.getByRole("link", { name: new RegExp(`^${seed.projectKey}-\\d+$`) });
+    const link = keyLink(row, seed.projectKey);
     const box = row.getByTestId("backlog-select-row");
     const checked = row.locator('[data-testid="backlog-select-row"][data-state="checked"]');
 
@@ -222,9 +230,7 @@ test.describe("the backlog's `X`", () => {
     // The overlay names it, under the backlog's own heading.
     const overlay = page.getByRole("dialog", { name: /shortcut/i });
     await page.keyboard.press("?");
-    const section = overlay
-      .locator("section")
-      .filter({ has: page.getByRole("heading", { name: "Backlog", exact: true }) });
+    const section = overlaySection(page, "Backlog");
     await expect(section.locator("li", { hasText: "Select or deselect task" }).locator("kbd")).toHaveText([
       "X",
     ]);
@@ -252,27 +258,38 @@ test.describe("the backlog's `X`", () => {
     await page.keyboard.press("x");
     await expect(yes).toBeVisible();
     await expect(box).toHaveAttribute("data-state", "unchecked");
+    // `J` there is refused by the row handler AND by the registry's entry
+    // `J`: unguarded, the latter moved focus to another row and the
+    // question's blur dismissed it (review, round 3). It stays, focused.
+    await page.keyboard.press("j");
+    await expect(yes).toBeVisible();
+    await expect(yes).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(yes).toHaveCount(0);
 
     // Inside a row's editor the key is the letter. The ESTIMATE cell, on
     // purpose: a stray commit there fails the parser and writes nothing,
     // where a title would rename a seeded task.
+    // `J` in the same editor is the letter too, and moves no row.
     await row.getByTestId("backlog-estimate").getByRole("button").click();
     const estimate = row.getByTestId("backlog-estimate").locator("input");
     await expect(estimate).toBeFocused();
     await page.keyboard.press("x");
-    await expect(estimate).toHaveValue(/x$/);
+    await page.keyboard.press("j");
+    await expect(estimate).toHaveValue(/xj$/);
+    await expect(estimate).toBeFocused();
     await expect(box).toHaveAttribute("data-state", "unchecked");
     await page.keyboard.press("Escape");
     await expect(estimate).toHaveCount(0);
 
     // Below `sm` the select column drops and a row has no selected cue of
     // its own, so `X` selects nothing and the overlay does not offer it.
-    // The same key on the same row works again once the column is back —
-    // the positive control that makes the absence mean the gate, not a
-    // dead key.
+    // The Backlog section itself STAYS: `J K` need no column (slice 15),
+    // so the section is the positive control and the missing row is the
+    // gate. The same key on the same row works again once the column is
+    // back — which makes the absence mean the gate, not a dead key.
     const overlayHeading = (name: string) => overlay.getByRole("heading", { name, exact: true });
+    const selectRow = section.locator("li", { hasText: "Select or deselect task" });
     await page.setViewportSize({ width: 600, height: 900 });
     await expect(box).toBeHidden();
     await link.focus();
@@ -281,7 +298,8 @@ test.describe("the backlog's `X`", () => {
     // Presence first, in the same overlay, so the absence is not an
     // overlay that has not rendered its sections yet.
     await expect(overlayHeading("Global")).toBeVisible();
-    await expect(overlayHeading("Backlog")).toHaveCount(0);
+    await expect(section.locator("li", { hasText: "Move between tasks" })).toBeVisible();
+    await expect(selectRow).toHaveCount(0);
     await page.keyboard.press("?");
     await expect(overlay).toHaveCount(0);
     await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
@@ -294,7 +312,7 @@ test.describe("the backlog's `X`", () => {
     // …and the overlay offers it again: the media query reported the way
     // BACK, not only the way down.
     await page.keyboard.press("?");
-    await expect(overlayHeading("Backlog")).toBeVisible();
+    await expect(selectRow).toBeVisible();
     await page.keyboard.press("?");
     await expect(overlay).toHaveCount(0);
 
@@ -306,6 +324,117 @@ test.describe("the backlog's `X`", () => {
     await pressUntil(page, "?", overlay);
     await expect(overlayHeading("Task")).toBeVisible();
     await expect(overlayHeading("Backlog")).toHaveCount(0);
+  });
+
+  test("`J K` walk the rows and `X` follows — the one-hand flow — and the ends are the ends", async ({
+    page,
+  }) => {
+    // Reads the SEEDED rows; the one selection it makes is undone before
+    // it leaves, and no bulk verb runs.
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const rows = backlogRows(page);
+    await expect(rows.nth(1)).toBeVisible({ timeout: 20_000 * SLOW });
+    const first = rows.nth(0);
+    const second = rows.nth(1);
+    const link = keyLink(first, seed.projectKey);
+    const focused = focusedBacklogRow(page);
+
+    // Rows are reachable by KEY, never by Tab: a list of four hundred
+    // rows is not four hundred more stops.
+    await expect(first).toHaveAttribute("tabindex", "-1");
+
+    // From a control INSIDE the first row, `J` lands on the second ROW
+    // itself. The handler is React's, attached at hydration, so the
+    // first press races it exactly as a registry key does.
+    await pressUntil(page, "j", focused, { from: link });
+    await expect(second).toBeFocused();
+
+    // `X` selects the row focus is on, and focus stays where it was:
+    // `J`, `X`, `J`, `X` is the flow.
+    await page.keyboard.press("x");
+    await expect(second.getByTestId("backlog-select-row")).toHaveAttribute("data-state", "checked");
+    await expect(page.getByTestId("bulk-count")).toContainText("1");
+    await expect(second).toBeFocused();
+    await page.keyboard.press("x");
+    await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
+
+    // `K` walks back; at the top it does nothing, and focus stays put.
+    await page.keyboard.press("k");
+    await expect(first).toBeFocused();
+    await page.keyboard.press("k");
+    await expect(first).toBeFocused();
+    // `↓ ↑` ON THE ROW are `J K`.
+    await page.keyboard.press("ArrowDown");
+    await expect(second).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(first).toBeFocused();
+    // …and at the bottom `J` does nothing either.
+    await rows.last().focus();
+    await page.keyboard.press("j");
+    await expect(rows.last()).toBeFocused();
+
+    // (Inside a row's editor the key is the letter: `X`'s test presses
+    // both letters in one editor.)
+
+    // The overlay names it under the backlog's own heading, with two keys
+    // and a separator whose word is there for a screen reader.
+    const overlay = page.getByRole("dialog", { name: /shortcut/i });
+    await link.focus();
+    await page.keyboard.press("?");
+    const navigate = overlaySection(page, "Backlog").locator("li", { hasText: "Move between tasks" });
+    await expect(navigate.locator("kbd")).toHaveCount(2);
+    await expect(navigate.locator('[data-slot="keyboard-hint"]')).toContainText("or");
+    await page.keyboard.press("?");
+    await expect(overlay).toHaveCount(0);
+
+    // Under a grouping the group header is a row of the same table, and
+    // `J` steps over it: from the first task, one press per remaining
+    // task visits every task row in order (the `rows` locator is lazy,
+    // so it reads the grouped page). A header is not focusable at all —
+    // that is the property, asserted as such rather than as a `:focus`
+    // count that could never be non-zero.
+    await page.goto(`/projects/${seed.projectKey}/backlog?group=priority`);
+    const headers = page.locator('[data-testid="backlog-group"]');
+    await expect(headers.first()).toBeVisible({ timeout: 20_000 * SLOW });
+    await expect(headers.first()).not.toHaveAttribute("tabindex", /.*/);
+    // Two or more groups, each non-empty by construction, so a walk from
+    // the first task to the last MUST cross a header — without this the
+    // loop could pass on one group with no header in its path.
+    expect(await headers.count()).toBeGreaterThan(1);
+    const n = await rows.count();
+    expect(n).toBeGreaterThan(1);
+    // The first press is the hydration-guarded warm-up onto row 1; the
+    // loop walks the rest.
+    await pressUntil(page, "j", focused, { from: keyLink(rows.first(), seed.projectKey) });
+    await expect(rows.nth(1)).toBeFocused();
+    for (let i = 2; i < n; i++) {
+      await page.keyboard.press("j");
+      await expect(rows.nth(i)).toBeFocused();
+    }
+  });
+
+  test("with no row focused, `J` enters the list at the first row on screen", async ({ page }) => {
+    // The registry's `J` (the one binding with a `run`) fires only when
+    // no row holds focus — a row's own `J` is handled and prevented
+    // before the dispatcher looks. From the table's scroll region, which
+    // is focusable and inside no row, it lands on the first row.
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const rows = backlogRows(page);
+    await expect(rows.first()).toBeVisible({ timeout: 20_000 * SLOW });
+    const region = page.getByRole("region", { name: "Task list" });
+    await pressUntil(page, "j", focusedBacklogRow(page), { from: region });
+    await expect(rows.first()).toBeFocused();
+    // …and from there the roving `J` takes over.
+    await page.keyboard.press("j");
+    await expect(rows.nth(1)).toBeFocused();
+    // The create row's resting button is IN the table body but in no row,
+    // so `J` from it enters the list too ("no row holds focus", not
+    // "nothing in the body does" — review, round 4). `rows.first()` is the
+    // right expectation only while the seeded list fits one screen (it is
+    // five tasks); a longer seed makes it "the first row on screen".
+    await page.locator("#new-task").getByRole("button").focus();
+    await page.keyboard.press("j");
+    await expect(rows.first()).toBeFocused();
   });
 });
 
@@ -349,8 +478,7 @@ test.describe("the `?` overlay and the palette", () => {
     await openFirstPeek(page);
     const overlay = page.getByRole("dialog", { name: /shortcut/i });
     await pressUntil(page, "?", overlay);
-    const section = (name: string) =>
-      overlay.locator("section").filter({ has: page.getByRole("heading", { name, exact: true }) });
+    const section = (name: string) => overlaySection(page, name);
 
     // Presence first: the section is there before its rows are counted.
     await expect(section("Task")).toBeVisible();

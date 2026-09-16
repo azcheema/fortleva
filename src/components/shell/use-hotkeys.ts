@@ -7,15 +7,13 @@ import {
   SCOPE_ORDER,
   decide,
   inMenuLayer,
-  isEditableTarget,
+  keyEventShape,
   paletteOffersPageRows,
   signatureOf,
   type KeyBinding,
   type KeyScope,
   type ScopeSnapshot,
 } from "@/lib/keymap";
-
-export { isEditableTarget } from "@/lib/keymap";
 
 /**
  * THE keyboard registry for the member shell (UI.md §6): ONE `window`
@@ -242,15 +240,7 @@ export function useGlobalHotkeys(handlers: HotkeyHandlers): void {
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      const shape = {
-        key: e.key,
-        metaKey: e.metaKey,
-        ctrlKey: e.ctrlKey,
-        altKey: e.altKey,
-        defaultPrevented: e.defaultPrevented,
-        inEditable: isEditableTarget(e.target),
-        inMenuLayer: inMenuLayer(e.target),
-      };
+      const shape = keyEventShape(e);
       const scopes = scopeSnapshot();
       const d = decide(shape, scopes, ref.current.goKeys, pendingGoTimer !== null);
       switch (d.kind) {

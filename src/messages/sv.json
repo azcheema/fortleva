@@ -1500,6 +1500,7 @@
       "invalidTitle": "Det gick inte att spara.",
       "invalidEstimate": "Estimat anges som 2h, 1,5 eller 90m.",
       "keys": {
+        "navigate": "Flytta mellan uppgifter",
         "select": "Markera eller avmarkera uppgift"
       },
       "saved": "Sparat",
