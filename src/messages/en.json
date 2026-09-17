@@ -111,6 +111,7 @@
       "results": "Results",
       "onThisPage": "On this page"
     },
+    "accountMenu": "Account menu",
     "shortcuts": {
       "title": "Keyboard shortcuts",
       "description": "Keys available on this page. Single keys are inert while an input, menu or picker has focus.",

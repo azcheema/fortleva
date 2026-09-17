@@ -6,7 +6,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { PwaRegister } from "@/components/shell/pwa-register";
 import { withTenant } from "@/db";
 import { getThemePreference } from "@/lib/theme-server";
-import { getActiveMembership, mfaStateOf } from "@/members/tenant-context";
+import { getActiveMembership, membershipsFor, mfaStateOf } from "@/members/tenant-context";
 import { countUnreadIn } from "@/notify/inbox";
 
 import { switchLocaleAction } from "./account/actions";
@@ -33,6 +33,10 @@ export const metadata: Metadata = {
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
   const session = await requireMemberSession();
   const membership = await getActiveMembership(session);
+  // The same per-request memoised list `getActiveMembership` just read —
+  // no second query. The shell offers "Switch workspace" only above 1
+  // (UI.md rule 8): one membership is a picker with nothing to pick.
+  const workspaceCount = (await membershipsFor(session.user.id)).length;
   // The shell renders a ThemeToggle: it gets the same preference the
   // root layout rendered <html> with, so server and client never
   // disagree about which segment is active (src/lib/theme.ts).
@@ -75,6 +79,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       onSwitchLocale={switchLocaleAction}
       timer={timer}
       unreadInbox={unreadInbox}
+      workspaceCount={workspaceCount}
     >
       <PwaRegister />
       {children}

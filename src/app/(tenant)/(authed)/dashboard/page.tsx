@@ -14,8 +14,7 @@ import {
 } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { listMembershipsForUser } from "@/members/service";
-import { getActiveMembership } from "@/members/tenant-context";
+import { getActiveMembership, membershipsFor } from "@/members/tenant-context";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("nav");
@@ -24,7 +23,21 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * Workspace picker (UI.md rule 8): /home is the home page; this lists
- * memberships.
+ * memberships. The account menu OFFERS it only above one membership —
+ * with a single workspace there is nothing to pick. The route stays
+ * reachable regardless, because it is where `requireTenantContext`
+ * sends a user with no active membership, and the only place a
+ * SUSPENDED membership's status is visible.
+ *
+ * KNOWN DEFECT, recorded 2026-09-17 (PLAN §0), NOT introduced here:
+ * this picker cannot actually switch. Every ACTIVE row links to a bare
+ * `/home`, and nothing in the repository ever WRITES the session's
+ * `activeTenantId` pointer (`src/auth/index.ts` declares it
+ * `input: false`; `getActiveMembership` is its only reader), so a
+ * member of two active tenants always lands back in `active[0]` — the
+ * one with the earliest `joinedAt`. Switching needs a server action
+ * that re-derives the membership and writes the pointer; until it
+ * exists, do not describe this page as working.
  *
  * On the page whose only job is choosing a workspace, the choices are
  * the controls: each active membership is a full-width row link with a
@@ -38,8 +51,11 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 export default async function DashboardPage() {
   const session = await requireMemberSession();
+  // Both reads come off the ONE per-request memoised list: this page
+  // used to call `listMembershipsForUser` beside `getActiveMembership`,
+  // which memoises the very same query, and so ran it twice.
   const [memberships, active] = await Promise.all([
-    listMembershipsForUser(session.user.id),
+    membershipsFor(session.user.id),
     getActiveMembership(session),
   ]);
   const t = await getTranslations("dashboard");

@@ -111,6 +111,7 @@
       "results": "Resultat",
       "onThisPage": "På den här sidan"
     },
+    "accountMenu": "Kontomeny",
     "shortcuts": {
       "title": "Kortkommandon",
       "description": "Tangenter som fungerar på den här sidan. Enkla tangenter är inaktiva när ett fält, en meny eller en väljare har fokus.",

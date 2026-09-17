@@ -100,3 +100,48 @@ test.describe("account display name", () => {
     await expect(nameTrigger(page)).toContainText(original);
   });
 });
+
+/**
+ * The account menu offers "Switch workspace" only above one membership
+ * (UI.md rule 8: `/dashboard` is the workspace picker "only for > 1
+ * membership"). The fixture owner belongs to exactly one workspace, so
+ * this pins the direction the harness can prove — the item is GONE.
+ *
+ * The > 1 direction needs a second throwaway tenant in the fixture and
+ * is owed (PLAN §0), together with the defect it would run into: the
+ * picker cannot actually switch yet (nothing writes the session's
+ * activeTenantId pointer and every row links to a bare /home).
+ */
+test.describe("the account menu", () => {
+  test("offers no workspace switch when the member has only one workspace", async ({ page }) => {
+    await page.goto("/home");
+    await page.getByRole("button", { name: "Account menu" }).click();
+
+    const menu = page.locator('[data-slot="dropdown-menu-content"]');
+    await expect(menu).toBeVisible();
+    // The menu really rendered its items — without this the assertion
+    // below would pass just as well against a menu that never opened.
+    await expect(menu.getByRole("menuitem", { name: "Account" })).toBeVisible();
+    // BOTH, and each covers the other's blind spot: a name match is a
+    // substring match, so an English copy change would make the first
+    // vacuously true forever; and a refactor that rendered the entry as
+    // a bare link would keep the second at zero while the offer is
+    // plainly on screen. The href is what the new branch controls.
+    await expect(menu.getByRole("menuitem", { name: "Switch workspace" })).toHaveCount(0);
+    await expect(menu.locator('a[href="/dashboard"]')).toHaveCount(0);
+  });
+});
+
+/**
+ * Only the OFFER is gated; the route is not. It is where
+ * `requireTenantContext` sends a member with no active membership, and
+ * the only surface a SUSPENDED membership's status shows on — so a
+ * later "redirect /dashboard to /home below two memberships" would
+ * strand that member, and must fail here first.
+ */
+test.describe("the workspace picker route", () => {
+  test("stays reachable by URL for a single-workspace member", async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
+  });
+});

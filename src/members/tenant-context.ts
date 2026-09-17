@@ -34,8 +34,21 @@ const asDate = (v: unknown): Date | null => {
 
 type MemberSession = NonNullable<Awaited<ReturnType<typeof getMemberSession>>>;
 
-/** Per-request memoised membership list (the layout, pages and locale resolution all ask). */
-const membershipsFor = cache((userId: string) => listMembershipsForUser(userId));
+/**
+ * Per-request memoised membership list (the layout, pages and locale
+ * resolution all ask). Exported because the shell needs the COUNT to
+ * decide whether the workspace picker is offered at all (UI.md rule 8)
+ * and the picker page needs the rows. The picker page used to re-query
+ * what `getActiveMembership` had already fetched under this same cache,
+ * and no longer does; the layout's count is new, and free for the same
+ * reason — it reads the entry that is already there.
+ *
+ * React's request-scoped `cache`, never `unstable_cache` — nothing here
+ * survives a request. The caller must pass the SESSION's own user id:
+ * this argument is the input to the RLS gate (`withUser` sets
+ * `app.user_id` from it), not its subject.
+ */
+export const membershipsFor = cache((userId: string) => listMembershipsForUser(userId));
 
 /**
  * The active membership for a session: the session's activeTenantId

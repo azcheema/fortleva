@@ -109,6 +109,7 @@ export function AppShell({
   onSwitchLocale,
   timer,
   unreadInbox,
+  workspaceCount,
   children,
 }: {
   nav: readonly NavEntry[];
@@ -132,6 +133,17 @@ export function AppShell({
    * same reason `timer` is: state a shared component must reflect is a
    * prop, never a default, or a new layout silently loses the badge. */
   unreadInbox: number;
+  /**
+   * How many workspaces this USER belongs to, active or suspended —
+   * REQUIRED (0 = none), for the same reason the two above are. The
+   * account menu offers "Switch workspace" only above 1: with a single
+   * membership `/dashboard` is a picker with nothing to pick, and rule 8
+   * says it is the picker "only for > 1 membership". The route itself
+   * stays reachable — a member with NO active membership is redirected
+   * there by `requireTenantContext`, and it is the only surface that
+   * shows a SUSPENDED membership's status.
+   */
+  workspaceCount: number;
   children: React.ReactNode;
 }) {
   const t = useTranslations("nav");
@@ -432,7 +444,19 @@ export function AppShell({
             </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-1.5 px-1.5">
+                {/* Named from t(), like every icon-only control (UI.md
+                    §9): its content is an avatar and a chevron, so the
+                    computed name was the two INITIALS — "TT, button" is
+                    what a screen reader announced for the whole account
+                    surface, and for want of a name the specs that reach
+                    this trigger located it by data-slot (`theme.spec`
+                    still does; `account.spec` now asks for the name). */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={tShell("accountMenu")}
+                  className="gap-1.5 px-1.5"
+                >
                   <Avatar className="size-6">
                     <AvatarFallback>{initials(user.name)}</AvatarFallback>
                   </Avatar>
@@ -453,9 +477,11 @@ export function AppShell({
                     {t("account")}
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/dashboard">{t("switchWorkspace")}</Link>
-                </DropdownMenuItem>
+                {workspaceCount > 1 ? (
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard">{t("switchWorkspace")}</Link>
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuSeparator />
                 <div className="px-2 py-1.5">
                   <ThemeToggle value={theme} className="w-full" />
