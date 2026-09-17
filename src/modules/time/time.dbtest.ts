@@ -240,11 +240,36 @@ describe("timer", () => {
     expect(running).toBe(1);
   });
 
-  it("stop with confirm-dialog edits; a second stop is TIMER_NOT_RUNNING; undo resumes the auto-stopped one", async () => {
-    const stopped = await stopTimer(ownerCtx(), { description: "Burst, edited" });
+  it("stop; a second stop is TIMER_NOT_RUNNING; the stop confirm's duration keeps the END and moves the start, a start-anchored lengthening into the future is refused; undo resumes the auto-stopped one", async () => {
+    const stopped = await stopTimer(ownerCtx());
     expect(stopped.stoppedAt).not.toBeNull();
-    expect(stopped.description).toBe("Burst, edited");
     expect(await domainCode(stopTimer(ownerCtx()))).toBe("TIMER_NOT_RUNNING");
+
+    // The stop confirm (UI.md §5.4): note + a longer duration, anchored at
+    // the end — the instant Stop was pressed stays, the start moves back.
+    const confirmed = await updateEntry(ownerCtx(), stopped.id, {
+      description: "Burst, edited",
+      durationText: "1h 30m",
+      durationAnchor: "end",
+    });
+    expect(confirmed.stoppedAt?.getTime()).toBe(stopped.stoppedAt!.getTime());
+    expect(confirmed.startedAt.getTime()).toBe(stopped.stoppedAt!.getTime() - 5400 * 1000);
+    expect(confirmed.durationSeconds).toBe(5400);
+    expect(confirmed.description).toBe("Burst, edited");
+    // The same lengthening kept at the START would end in the future: refused
+    // (createEntry's rule, now updateEntry's too, with its own code), and the
+    // row is untouched.
+    expect(await domainCode(updateEntry(ownerCtx(), stopped.id, { durationText: "3h" }))).toBe("ENDS_IN_FUTURE");
+    const soon = new Date(Date.now() + 2 * 3600 * 1000);
+    expect(
+      await domainCode(createEntry(ownerCtx(), { description: "Later", startedAt: new Date(soon.getTime() - 3600 * 1000), stoppedAt: soon })),
+    ).toBe("ENDS_IN_FUTURE");
+    const after = await f.platform.timeEntry.findUniqueOrThrow({ where: { id: stopped.id }, select: { durationSeconds: true } });
+    expect(after.durationSeconds).toBe(5400);
+    // A running row has no end to keep.
+    const running = await startTimer(ownerCtx(), { description: "Still running" });
+    expect(await domainCode(updateEntry(ownerCtx(), running.started.id, { durationText: "1h", durationAnchor: "end" }))).toBe("INVALID_INPUT");
+    await stopTimer(ownerCtx());
 
     const a = await startTimer(ownerCtx(), { workItemId: taskId });
     const b = await startTimer(ownerCtx(), { description: "Oops" });

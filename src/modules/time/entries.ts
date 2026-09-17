@@ -183,7 +183,7 @@ function intervalFrom(
     const stoppedAt = floorToSecond(input.stoppedAt);
     if (stoppedAt <= startedAt) fail("INVALID_DURATION", "end before start");
     if (secondsBetween(startedAt, stoppedAt) > 24 * 3600) fail("INVALID_DURATION", "over 24 h");
-    if (stoppedAt > addSeconds(now, 60)) fail("INVALID_DURATION", "in the future");
+    if (stoppedAt > addSeconds(now, 60)) fail("ENDS_IN_FUTURE");
     return { startedAt, stoppedAt, mode: "MANUAL" };
   }
   if (input.durationText !== undefined) {
@@ -245,16 +245,26 @@ export type EntryPatch = EntryTargetInput & {
   readonly startedAt?: Date;
   readonly stoppedAt?: Date;
   readonly durationText?: string;
+  /**
+   * Which end of a positioned row a new `durationText` keeps. `start`
+   * (default — the week grid): the end moves. `end` (the stop confirm):
+   * the end is the instant the member pressed Stop, the one timestamp
+   * known to be true, so the START moves — and a longer duration can never
+   * put the end in the future. Refused for a running or an anchored row.
+   */
+  readonly durationAnchor?: "start" | "end";
 };
 
 /** Own unlocked entry (time:track) or another member's (time:edit_any). */
 export async function updateEntry(ctx: TimeCtx, entryId: string, patch: EntryPatch): Promise<TimerEntry> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
-      const existing = await tx.timeEntry.findFirst({
-        where: { tenantId: ctx.tenantId, id: entryId, deletedAt: null },
-        select: { ...entrySelect, memberId: true, lockedReason: true, entryMode: true },
-      });
+      const readRow = () =>
+        tx.timeEntry.findFirst({
+          where: { tenantId: ctx.tenantId, id: entryId, deletedAt: null },
+          select: { ...entrySelect, memberId: true, lockedReason: true, entryMode: true },
+        });
+      let existing = await readRow();
       if (!existing) fail("INVALID_INPUT", "unknown entry");
       const forOther = existing!.memberId !== ctx.actor.memberId;
       await requireAccess(tx, ctx.tenantId, ctx.actor, forOther ? "time:edit_any" : "time:track");
@@ -265,6 +275,21 @@ export async function updateEntry(ctx: TimeCtx, entryId: string, patch: EntryPat
       if (existing!.projectId) await assertInScope(tx, ctx.actor, { projectId: existing!.projectId });
       if (existing!.lockedReason) fail("ENTRY_LOCKED");
       await lockMember(tx, ctx.tenantId, existing!.memberId);
+      // Re-read UNDER the member lock (`splitEntry`'s order). Two edits of
+      // one row — two tabs, the stop confirm and the week grid — otherwise
+      // both compute from the row as it was before either: the second writes
+      // the first's interval back with a success toast, and when the first
+      // had moved the row into another month that month's summary keeps
+      // the seconds, counted twice (review, slice 20 — the end anchor is
+      // the first edit that can move `localDate` from an action).
+      const sourceProjectId = existing!.projectId;
+      existing = await readRow();
+      if (!existing) fail("INVALID_INPUT", "unknown entry");
+      if (existing!.lockedReason) fail("ENTRY_LOCKED");
+      // Moved between the two reads: its NEW source project needs scope too.
+      if (existing!.projectId && existing!.projectId !== sourceProjectId) {
+        await assertInScope(tx, ctx.actor, { projectId: existing!.projectId });
+      }
       const { timezone, prefs } = await resolveZone(tx, ctx.tenantId, existing!.memberId);
 
       const target = await resolveTarget(
@@ -299,17 +324,33 @@ export async function updateEntry(ctx: TimeCtx, entryId: string, patch: EntryPat
         const seconds =
           parseDurationSeconds(patch.durationText) ?? (anchored && isZeroDurationText(patch.durationText) ? 0 : null);
         if (seconds === null) fail("INVALID_DURATION");
-        stoppedAt = addSeconds(startedAt, seconds!);
+        if (patch.durationAnchor === "end") {
+          if (anchored || !stoppedAt) fail("INVALID_INPUT", "only a finished, positioned row keeps its end");
+          startedAt = addSeconds(stoppedAt!, -seconds!);
+        } else {
+          stoppedAt = addSeconds(startedAt, seconds!);
+        }
       }
       const intervalChanged = Boolean(patch.startedAt || patch.stoppedAt) || patch.durationText !== undefined;
-      // An untouched interval is not re-judged: an empty (0 s) anchored row
-      // keeps accepting its other edits — billable, note, agreement, type.
+      // An untouched interval is not re-judged — not its length, not its
+      // overlaps: an empty (0 s) anchored row keeps accepting its other
+      // edits, and so does a row that became over 24 h through a tenant's
+      // long auto-stop, or one that overlaps from before a strict tenant
+      // switched blocking on. A note is not an interval.
       if (intervalChanged && stoppedAt && stoppedAt < startedAt) fail("INVALID_DURATION", "end before start");
       if (intervalChanged && stoppedAt && stoppedAt.getTime() === startedAt.getTime() && entryMode !== "DURATION") {
         fail("INVALID_DURATION", "end before start");
       }
-      if (stoppedAt && secondsBetween(startedAt, stoppedAt) > 24 * 3600) fail("INVALID_DURATION", "over 24 h");
-      await assertNoBlockedOverlap(tx, ctx.tenantId, existing!.memberId, entryMode, startedAt, stoppedAt, existing!.id, prefs.time.allowOverlap);
+      if (intervalChanged && stoppedAt && secondsBetween(startedAt, stoppedAt) > 24 * 3600) fail("INVALID_DURATION", "over 24 h");
+      // A positioned row may not END in the future — `createEntry`'s rule,
+      // with its minute of clock slack. (A DURATION row is anchored at its
+      // day's 00:00 and shows no clock, so its end is not a claim.)
+      if (intervalChanged && stoppedAt && entryMode !== "DURATION" && stoppedAt > addSeconds(new Date(), 60)) {
+        fail("ENDS_IN_FUTURE");
+      }
+      if (intervalChanged) {
+        await assertNoBlockedOverlap(tx, ctx.tenantId, existing!.memberId, entryMode, startedAt, stoppedAt, existing!.id, prefs.time.allowOverlap);
+      }
 
       const localDate = localDateColumn(startedAt, timezone);
       const snap = await snapshotFor(tx, ctx.tenantId, existing!.memberId, target, localDate);
@@ -333,9 +374,12 @@ export async function updateEntry(ctx: TimeCtx, entryId: string, patch: EntryPat
           rateSource: snap.rateSource,
           billRateCardId: snap.billRateCardId,
           costRateCardId: snap.costRateCardId,
-          // An edited auto-stop is no longer provisional.
-          needsReview: false,
-          reviewReason: null,
+          // An auto-stop whose INTERVAL the member edited is no longer
+          // provisional; a note or billable edit is not a confirmation of
+          // the time (a tenant's long auto-stop would otherwise turn a 30 h
+          // guess into clean time with a billable toggle — review, slice 20).
+          needsReview: intervalChanged ? false : existing!.needsReview,
+          reviewReason: intervalChanged ? null : existing!.reviewReason,
         },
         select: entrySelect,
       });
@@ -523,7 +567,8 @@ export async function splitEntry(
             }
           : undefined,
         // The remainder of a provisional (auto-stopped) row stays provisional: the member shaped the first half, the
-        // tail is still the auto-stop's guess and must not become clean time. An ordinary edit of it confirms it, as before.
+        // tail is still the auto-stop's guess and must not become clean time. An edit of its INTERVAL confirms it; a note or
+        // billable edit does not (slice 20).
         review: existing.needsReview ? { needsReview: true, reviewReason: existing.reviewReason } : undefined,
       });
       await recomputeTouched(tx, ctx.tenantId, [

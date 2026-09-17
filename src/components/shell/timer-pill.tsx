@@ -13,6 +13,7 @@ import { secondsSince } from "@/lib/duration";
 import { formatDurationClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+import { openStopConfirm } from "./stop-confirm";
 import { useScopeKeys } from "./use-hotkeys";
 
 /** Other surfaces dispatch this after they start/stop a timer so the pill re-syncs. */
@@ -222,12 +223,13 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
   const stop = useCallback(() => {
     startTransition(async () => {
       const r = await stopTimerAction().catch(() => ({ ok: false as const, message: t("stopFailed") }));
+      // Success is not a toast: the stop confirm shows what was saved.
       if (!r.ok) toast.error(r.message);
-      else toast.success(t("stopped", { duration: formatDurationClock(locale, r.value.durationSeconds) }));
+      else openStopConfirm(r.value);
       await sync();
       router.refresh();
     });
-  }, [locale, router, sync, t]);
+  }, [router, sync, t]);
 
   // `T`: stop the running timer, else go to /time (UI.md §6).
   //
@@ -247,7 +249,10 @@ export function TimerPill({ initial, className }: { initial: TimerPillState | nu
       key: "t",
       label: t("keyLabel"),
       enabled: snap.state !== null,
-      run: () => {
+      // A HELD `T` is refused (the item `T`'s rule): its repeats would
+      // otherwise land in the stop confirm the first press opened.
+      run: (e) => {
+        if (e.repeat) return;
         if (running) stop();
         else router.push("/time#quick-start");
       },

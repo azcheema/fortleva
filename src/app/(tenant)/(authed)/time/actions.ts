@@ -119,13 +119,33 @@ export async function startTimerAction(
   return r;
 }
 
-export async function stopTimerAction(
-  patch?: { description?: string | null },
-): Promise<ActionResult<{ entryId: string; durationSeconds: number }>> {
+/**
+ * The entry a stop just finished, as the stop confirm shows it (UI.md
+ * rule 9: one tap stops; what was saved is then shown and adjustable —
+ * no silent save). The member's OWN entry; `hasProject` decides whether
+ * billable is a choice at all (an instant task is never billable).
+ */
+export type StoppedEntry = {
+  entryId: string;
+  label: string;
+  durationSeconds: number;
+  description: string | null;
+  billable: boolean;
+  hasProject: boolean;
+};
+
+export async function stopTimerAction(): Promise<ActionResult<StoppedEntry>> {
   const ctx = await ctxOf();
   const r = await runAction(PATH, async () => {
-    const e = await stopTimer(ctx, patch ? { description: patch.description?.slice(0, 1000) ?? null } : undefined);
-    return { entryId: e.id, durationSeconds: e.durationSeconds ?? 0 };
+    const e = await stopTimer(ctx);
+    return {
+      entryId: e.id,
+      label: labelOf(e),
+      durationSeconds: e.durationSeconds ?? 0,
+      description: e.description,
+      billable: e.billable,
+      hasProject: e.projectId !== null,
+    };
   });
   if (r.ok) revalidate();
   return r;
@@ -332,13 +352,17 @@ export async function copyLastWeekAction(input: {
 }
 
 /**
- * Only the fields the grid edits inline. Server-action arguments are
- * client-supplied: a move (projectId / workItemId / start / end) is not
- * admitted here — it would need its own UI and its own scope story.
+ * The fields a member's own adjustments reach: the week grid's inline
+ * duration and billable, and the stop confirm's note, duration (anchored at
+ * the END — the instant Stop was pressed) and billable. Server-action
+ * arguments are client-supplied: a move (projectId / workItemId / start /
+ * end) is not admitted here — it would need its own UI and its own scope
+ * story. `serviceId` / `workTypeId` are admitted and have no UI yet.
  */
 const entryPatchSchema = z
   .object({
     durationText: z.string().max(40).optional(),
+    durationAnchor: z.enum(["start", "end"]).optional(),
     description: z.string().max(1000).nullable().optional(),
     billable: z.boolean().optional(),
     serviceId: uuid.nullable().optional(),
@@ -348,7 +372,14 @@ const entryPatchSchema = z
 
 export async function updateEntryAction(
   entryId: string,
-  patch: { durationText?: string; description?: string | null; billable?: boolean; serviceId?: string | null; workTypeId?: string | null },
+  patch: {
+    durationText?: string;
+    durationAnchor?: "start" | "end";
+    description?: string | null;
+    billable?: boolean;
+    serviceId?: string | null;
+    workTypeId?: string | null;
+  },
 ): Promise<FormResult> {
   const t = await getTranslations("time");
   const tCommon = await getTranslations("common");

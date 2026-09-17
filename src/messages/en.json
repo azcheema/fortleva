@@ -136,7 +136,6 @@
       "start": "Start timer",
       "startLabel": "Start a timer",
       "stop": "Stop timer",
-      "stopped": "Stopped after {duration}",
       "stopFailed": "Could not stop the timer.",
       "nudge": "This timer has been running for a long time.",
       "keyLabel": "Start or stop the timer"
@@ -965,6 +964,7 @@
     "OVERLAP_BLOCKED": "This overlaps another of your entries, and overlapping entries are not allowed here.",
     "ENTRY_LOCKED": "This entry is locked (it is on an invoice or a closed period) and cannot be changed.",
     "INVALID_DURATION": "Enter a duration like 1h 30m, 90m or 1,5 — at most 24 hours, and the end after the start.",
+    "ENDS_IN_FUTURE": "An entry cannot end in the future — enter a shorter duration or an earlier end.",
     "SPLIT_TOO_SHORT": "The first part must be shorter than the whole and leave the second part at least a minute.",
     "SERVICE_CLIENT_MISMATCH": "That agreement belongs to another client or project.",
     "RATE_OVERLAP": "A rate card already covers that period — close it first or pick a later start date.",
@@ -2356,9 +2356,21 @@
     "timer": {
       "started": "Timer started.",
       "startedStopped": "Timer started — \"{label}\" was stopped.",
-      "stopped": "Stopped after {duration}.",
       "undo": "Undo",
       "failed": "Could not change the timer."
+    },
+    "stopConfirm": {
+      "title": "Timer stopped",
+      "summary": "{label} · {duration}",
+      "adhoc": "Instant task",
+      "note": "Note",
+      "notePlaceholder": "What was this time for?",
+      "duration": "Duration",
+      "durationHint": "1h 30m · 90m · 1,5",
+      "billable": "Billable",
+      "adhocNonBillable": "Instant tasks are not billable",
+      "done": "Done",
+      "failed": "Could not update the entry."
     },
     "week": {
       "title": "This week",

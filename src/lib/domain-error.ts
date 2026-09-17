@@ -44,6 +44,7 @@ export type DomainErrorCode =
   | "OVERLAP_BLOCKED" // tenant switched time.allowOverlap off
   | "ENTRY_LOCKED" // invoiced / locked entry (trigger)
   | "INVALID_DURATION"
+  | "ENDS_IN_FUTURE" // a positioned entry may not end in the future (create and edit, with a minute of slack)
   | "SPLIT_TOO_SHORT" // a split must leave both halves at least a whole minute
   | "SERVICE_CLIENT_MISMATCH" // agreement belongs to another client/project (trigger)
   | "RATE_OVERLAP" // EXCLUDE rate_card_no_overlap

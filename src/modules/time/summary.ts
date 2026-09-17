@@ -66,19 +66,31 @@ export async function recomputeProjectMonth(
       computed_at          = EXCLUDED.computed_at`;
 }
 
-/** Recompute every distinct (project, month) a write touched (ad-hoc rows touch nothing). */
+/**
+ * Recompute every distinct (project, month) a write touched (ad-hoc rows
+ * touch nothing) — in ONE order, project then month ascending, whatever
+ * order the caller listed them in. Each recompute upserts (and so locks) a
+ * summary row; two members' writes to the same project that list the same
+ * two months in opposite orders — an end-anchored edit moving a row back
+ * across a month boundary lists the later month first, a split the earlier
+ * — would otherwise deadlock, and Postgres would fail one of them (review,
+ * slice 20).
+ */
 export async function recomputeTouched(
   tx: TenantDb,
   tenantId: string,
   touches: readonly SummaryTouch[],
 ): Promise<void> {
-  const seen = new Set<string>();
+  const keyed = new Map<string, { projectId: string; month: string }>();
   for (const t of touches) {
     if (!t.projectId) continue;
     const month = monthStartOf(isoDateOf(t.localDate));
-    const key = `${t.projectId}:${month}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    await recomputeProjectMonth(tx, tenantId, t.projectId, month);
+    keyed.set(`${t.projectId}:${month}`, { projectId: t.projectId, month });
+  }
+  const ordered = [...keyed.values()].sort((a, b) =>
+    a.projectId === b.projectId ? (a.month < b.month ? -1 : a.month > b.month ? 1 : 0) : a.projectId < b.projectId ? -1 : 1,
+  );
+  for (const { projectId, month } of ordered) {
+    await recomputeProjectMonth(tx, tenantId, projectId, month);
   }
 }

@@ -303,4 +303,86 @@ describe("overlaps: DURATION rows are anchored, not positioned", () => {
       await updatePreferences(ownerCtx(), { time: { allowOverlap: true } });
     }
   });
+
+  it("an interval that is not changed is not re-judged: two rows that overlapped before a tenant switched blocking on still take a note or billable edit — and still refuse an interval edit that keeps them overlapping", async () => {
+    const x = await createEntry(ownerCtx(), { projectId: acmeProject, description: "X", startedAt: at("2026-03-04T09:00"), stoppedAt: at("2026-03-04T10:00") });
+    const y = await createEntry(ownerCtx(), { projectId: acmeProject, description: "Y", startedAt: at("2026-03-04T09:30"), stoppedAt: at("2026-03-04T10:30") });
+    await updatePreferences(ownerCtx(), { time: { allowOverlap: false } });
+    try {
+      expect((await updateEntry(ownerCtx(), x.id, { description: "X, noted" })).description).toBe("X, noted");
+      expect((await updateEntry(ownerCtx(), y.id, { billable: false })).billable).toBe(false);
+      // X 09:00–09:45 still reaches Y (09:30–10:30): blocked. 09:00–09:20 does not: allowed.
+      expect(await domainCode(updateEntry(ownerCtx(), x.id, { durationText: "45m" }))).toBe("OVERLAP_BLOCKED");
+      expect((await updateEntry(ownerCtx(), x.id, { durationText: "20m" })).stoppedAt?.toISOString()).toBe(at("2026-03-04T09:20").toISOString());
+      // Y kept at its END (10:30): 1h 20m starts 09:10, inside X — blocked; 30m starts 10:00 — allowed, and the end did not move.
+      expect(await domainCode(updateEntry(ownerCtx(), y.id, { durationText: "1h 20m", durationAnchor: "end" }))).toBe("OVERLAP_BLOCKED");
+      const kept = await updateEntry(ownerCtx(), y.id, { durationText: "30m", durationAnchor: "end" });
+      expect(kept.startedAt.toISOString()).toBe(at("2026-03-04T10:00").toISOString());
+      expect(kept.stoppedAt?.toISOString()).toBe(at("2026-03-04T10:30").toISOString());
+    } finally {
+      await updatePreferences(ownerCtx(), { time: { allowOverlap: true } });
+    }
+  });
+
+  it("an end-anchored edit that moves the start across local midnight AND a month boundary re-dates the row and moves its seconds between both months' summaries", async () => {
+    // 22:10–22:40 UTC on 31 March 2026 is 00:10–00:40 on 1 April in Stockholm (CEST since 29 March).
+    const month = async (first: string) => {
+      const row = await f.platform.projectTimeSummary.findFirst({
+        where: { tenantId: f.tenantId, projectId: acmeProject, periodMonth: dateColumn(first) },
+        select: { billableSeconds: true, nonBillableSeconds: true },
+      });
+      return (row?.billableSeconds ?? 0) + (row?.nonBillableSeconds ?? 0);
+    };
+    const e = await createEntry(ownerCtx(), { projectId: acmeProject, description: "Across", startedAt: at("2026-03-31T22:10"), stoppedAt: at("2026-03-31T22:40") });
+    expect(iso(e.localDate)).toBe("2026-04-01");
+    const [marchBefore, aprilBefore] = [await month("2026-03-01"), await month("2026-04-01")];
+    const moved = await updateEntry(ownerCtx(), e.id, { durationText: "1h", durationAnchor: "end" });
+    expect(moved.startedAt.toISOString()).toBe(at("2026-03-31T21:40").toISOString()); // 23:40 local, 31 March
+    expect(moved.stoppedAt?.toISOString()).toBe(at("2026-03-31T22:40").toISOString());
+    expect(iso(moved.localDate)).toBe("2026-03-31");
+    expect(await month("2026-03-01")).toBe(marchBefore + 3600);
+    expect(await month("2026-04-01")).toBe(aprilBefore - 1800);
+  });
+
+  it("a note or billable edit keeps an auto-stopped row provisional — even one past 24 h under a long auto-stop — and only an interval edit confirms it", async () => {
+    const r = await createEntry(ownerCtx(), { projectId: acmeProject, description: "Ran long", startedAt: at("2026-03-06T08:00"), stoppedAt: at("2026-03-06T09:00") });
+    // What settle.ts writes under a 30 h cap: the capped end, provisional.
+    const capped = new Date(at("2026-03-06T08:00").getTime() + 30 * 3600 * 1000);
+    await f.platform.timeEntry.update({
+      where: { id: r.id },
+      data: { stoppedAt: capped, durationSeconds: 30 * 3600, needsReview: true, reviewReason: "AUTO_STOPPED" },
+    });
+    const noted = await updateEntry(ownerCtx(), r.id, { description: "Ran long, noted" });
+    expect(noted.description).toBe("Ran long, noted");
+    expect(noted.needsReview).toBe(true);
+    expect(noted.reviewReason).toBe("AUTO_STOPPED");
+    expect((await updateEntry(ownerCtx(), r.id, { billable: false })).needsReview).toBe(true);
+    const confirmed = await updateEntry(ownerCtx(), r.id, { durationText: "9h" });
+    expect(confirmed.durationSeconds).toBe(9 * 3600);
+    expect(confirmed.needsReview).toBe(false);
+    expect(confirmed.reviewReason).toBeNull();
+  });
+
+  it("two edits of one row at once — the stop confirm's end-anchored duration and the week grid's billable — both survive: the second re-reads the row under the member lock instead of writing the first one's interval back", async () => {
+    const r = await createEntry(ownerCtx(), { projectId: acmeProject, description: "Raced", startedAt: at("2026-03-09T09:00"), stoppedAt: at("2026-03-09T09:30") });
+    const wasBillable = r.billable;
+    await Promise.all([
+      updateEntry(ownerCtx(), r.id, { durationText: "2h", durationAnchor: "end" }),
+      updateEntry(ownerCtx(), r.id, { billable: !wasBillable }),
+    ]);
+    const row = await f.platform.timeEntry.findUniqueOrThrow({
+      where: { id: r.id },
+      select: { startedAt: true, stoppedAt: true, durationSeconds: true, billable: true },
+    });
+    expect(row.stoppedAt?.toISOString()).toBe(at("2026-03-09T09:30").toISOString());
+    expect(row.startedAt.toISOString()).toBe(at("2026-03-09T07:30").toISOString());
+    expect(row.durationSeconds).toBe(7200);
+    expect(row.billable).toBe(!wasBillable);
+  });
+
+  it("the end anchor is refused for an anchored (DURATION) row, which has no clock end to keep", async () => {
+    const d = await createEntry(ownerCtx(), { projectId: acmeProject, description: "D", durationText: "1h", localDate: "2026-03-05" });
+    expect(await domainCode(updateEntry(ownerCtx(), d.id, { durationText: "2h", durationAnchor: "end" }))).toBe("INVALID_INPUT");
+    expect((await updateEntry(ownerCtx(), d.id, { durationText: "2h" })).durationSeconds).toBe(7200);
+  });
 });

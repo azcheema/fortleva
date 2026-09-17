@@ -79,11 +79,23 @@ async function viewedWeekFrom(page: Page): Promise<string> {
   return from!;
 }
 
+/** The stop confirm every explicit stop opens (UI.md rule 9 — no silent save). */
+const stopConfirm = (page: Page) => page.getByTestId("stop-confirm");
+
+/** Dismiss the stop confirm — by Escape, or by its close button — keeping the entry exactly as stopped. */
+async function keepAsStopped(page: Page, via: "escape" | "close" = "escape"): Promise<void> {
+  await expect(stopConfirm(page)).toBeVisible({ timeout: 15_000 * SLOW });
+  if (via === "escape") await page.keyboard.press("Escape");
+  else await stopConfirm(page).locator('[data-slot="dialog-close"]').click();
+  await expect(stopConfirm(page)).toHaveCount(0);
+}
+
 async function stopIfRunning(page: Page): Promise<void> {
   const stop = stopButton(page);
   if (await stop.isVisible().catch(() => false)) {
     await stop.click();
     await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+    await keepAsStopped(page);
   }
 }
 
@@ -137,7 +149,7 @@ test.describe("my time (owner)", () => {
     await stopIfRunning(page);
   });
 
-  test("an instant task: quick start → the pill ticks → stop → the row is in the week", async ({ page }) => {
+  test("an instant task: quick start → the pill ticks → stop → the stop confirm adjusts the note and the duration → the row is in the week as adjusted", async ({ page }) => {
     await page.getByTestId("quick-start-description").fill("E2E instant task");
     await page.getByTestId("quick-start-start").click();
     await expect(pill(page)).toBeVisible({ timeout: 15_000 * SLOW });
@@ -152,12 +164,44 @@ test.describe("my time (owner)", () => {
 
     await stopButton(page).click();
     await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
-    const row = page.getByTestId("time-entry-row").filter({ hasText: "E2E instant task" });
-    await expect(row.first()).toBeVisible();
+
+    // One tap stopped it; the confirm then shows what was saved and takes
+    // the three adjustments. An instant task has no billable choice.
+    const confirm = stopConfirm(page);
+    await expect(confirm).toBeVisible({ timeout: 15_000 * SLOW });
+    await expect(confirm).toContainText("E2E instant task");
+    await expect(confirm.getByTestId("stop-confirm-note")).toHaveValue("E2E instant task");
+    await expect(confirm.getByTestId("stop-confirm-billable")).toHaveCount(0);
+    await expect(confirm).toContainText("Instant tasks are not billable");
+    // Focus is on Done, never in the note: the next keystrokes — a second
+    // `t`, the next task's name — must not land in the entry.
+    await expect(confirm.getByTestId("stop-confirm-done")).toBeFocused();
+    await page.keyboard.type("tt");
+    await nextFrames(page);
+    await expect(confirm.getByTestId("stop-confirm-note")).toHaveValue("E2E instant task");
+    // …nor the global `T`, which with no timer running would navigate to the quick start.
+    await expect(page).toHaveURL(/\/time$/);
+    const adjusted = `E2E instant task, adjusted ${Date.now()}`;
+    await confirm.getByTestId("stop-confirm-note").fill(adjusted);
+    // 2m, deliberately: past the service's one-minute slack for a future end,
+    // so a confirm that kept the START (not the stop instant) would be
+    // REFUSED here and the dialog would stay open — the one e2e signal that
+    // the end is kept. Short, because the start moves back by it: a run in
+    // the first two minutes after Monday 00:00 would re-date the row into
+    // last week (a recorded two-minute window).
+    await confirm.getByTestId("stop-confirm-duration").fill("2m");
+    await confirm.getByTestId("stop-confirm-done").click();
+    await expect(confirm).toHaveCount(0, { timeout: 15_000 * SLOW });
+    await expect(page.getByText("Saved.")).toBeVisible();
+    await expect(idlePill(page)).toBeVisible();
+
+    const row = page.getByTestId("time-entry-row").filter({ hasText: adjusted });
+    await expect(row.first()).toBeVisible({ timeout: 15_000 * SLOW });
     await expect(row.first()).toContainText("Not billable");
+    await expect(row.first()).toContainText("2m");
   });
 
-  test("a project timer; starting another auto-stops it and the toast offers Undo", async ({ page }) => {
+  test("a project timer; starting another auto-stops it and the toast offers Undo; the stop confirm's Escape keeps the entry as stopped, and its billable flips a project entry", async ({ page }) => {
     await page.getByTestId("quick-start-project").selectOption(seed.projectId);
     await page.getByTestId("quick-start-description").fill("E2E project work");
     await page.getByTestId("quick-start-start").click();
@@ -173,8 +217,74 @@ test.describe("my time (owner)", () => {
     await expect(pill(page)).toContainText(seed.projectKey, { timeout: 15_000 * SLOW });
     await expect(pill(page)).not.toContainText("E2E second timer");
 
-    await stopButton(page).click();
+    // Escape keeps the entry as stopped: a typed note is NOT sent. Stopped by
+    // the pill's GLOBAL `T` this time (no task is open on /time).
+    const escaped = `E2E typed then escaped ${Date.now()}`;
+    const updates: string[] = [];
+    page.on("request", (r) => {
+      if (isActionPost(r) && (r.postData() ?? "").includes(escaped)) updates.push(r.url());
+    });
+    await page.keyboard.press("t");
     await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+    const confirm = stopConfirm(page);
+    await expect(confirm).toBeVisible({ timeout: 15_000 * SLOW });
+    await confirm.getByTestId("stop-confirm-note").fill(escaped);
+    await page.keyboard.press("Escape");
+    await expect(confirm).toHaveCount(0);
+    await nextFrames(page);
+    expect(updates).toHaveLength(0);
+    // And the server agrees, after a fresh render.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "My time" })).toBeVisible();
+    await expect(page.getByTestId("time-entry-row").filter({ hasText: "E2E project work" }).first()).toBeVisible();
+    await expect(page.getByTestId("time-entry-row").filter({ hasText: escaped })).toHaveCount(0);
+
+    // Twice, from the quick start's own Stop this time: a project entry's
+    // billable is a real choice, and the flip reaches the week row.
+    const flip = `E2E billable flip ${Date.now()}`;
+    await page.getByTestId("quick-start-project").selectOption(seed.projectId);
+    await page.getByTestId("quick-start-description").fill(flip);
+    await page.getByTestId("quick-start-start").click();
+    await expect(pill(page)).toContainText(flip, { timeout: 15_000 * SLOW });
+    await page.getByTestId("quick-start-stop").click();
+    await expect(confirm).toBeVisible({ timeout: 15_000 * SLOW });
+    const billable = confirm.getByTestId("stop-confirm-billable");
+    const wasBillable = await billable.isChecked();
+    await billable.setChecked(!wasBillable);
+    // While the save is out the dialog does not close — Escape would
+    // otherwise say "kept as stopped" while the save lands anyway.
+    let holding = true;
+    let release!: () => void;
+    const released = new Promise<void>((r) => {
+      release = r;
+    });
+    await page.route("**/*", async (route) => {
+      if (holding && isActionPost(route.request()) && (route.request().postData() ?? "").includes('"billable"')) {
+        holding = false;
+        await released;
+      }
+      await route.fallback();
+    });
+    try {
+      const saved = page.waitForResponse((r) => isActionPost(r.request()) && (r.request().postData() ?? "").includes('"billable"'), { timeout: 30_000 * SLOW });
+      await confirm.getByTestId("stop-confirm-done").click();
+      await expect(confirm.getByTestId("stop-confirm-done")).toHaveAttribute("aria-disabled", "true");
+      await page.keyboard.press("Escape");
+      await nextFrames(page);
+      // Still OPEN, not merely still visible: a dialog that did close stays
+      // on screen through its exit animation, so visibility proves nothing.
+      // A close also resets `saving`, which Done's attribute would show.
+      await expect(confirm).toHaveAttribute("data-state", "open");
+      await expect(confirm.getByTestId("stop-confirm-done")).toHaveAttribute("aria-disabled", "true");
+      release();
+      await saved;
+    } finally {
+      release();
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
+    await expect(confirm).toHaveCount(0, { timeout: 15_000 * SLOW });
+    const flipped = page.getByTestId("time-entry-row").filter({ hasText: flip }).first();
+    await expect(flipped).toContainText(wasBillable ? "Not billable" : "Billable", { timeout: 15_000 * SLOW });
   });
 
   test("`T` on a task: start it from the peek and Undo while it is still settling; `T` and Undo again while typing in the peek; on the task's page `T` stops and starts it, and a stop in the pill reaches the button", async ({ page }) => {
@@ -264,6 +374,23 @@ test.describe("my time (owner)", () => {
       await subtaskInput.press("Escape");
       await timerControlReady(start);
 
+      // A stop INSIDE the peek. The confirm is the shell's, a second modal
+      // layer outside the peek's React tree: typing and Done must work in
+      // it, the peek must stay open beneath, and focus must come back into
+      // the peek where the key was pressed (the subtask row's button).
+      await page.keyboard.press("t");
+      await timerControlReady(stop);
+      await page.keyboard.press("t");
+      const confirm = stopConfirm(page);
+      await expect(confirm).toBeVisible({ timeout: 15_000 * SLOW });
+      await confirm.getByTestId("stop-confirm-note").fill("E2E stopped in the peek");
+      await confirm.getByTestId("stop-confirm-done").click();
+      await expect(confirm).toHaveCount(0, { timeout: 15_000 * SLOW });
+      await expect(page.getByText("Saved.")).toBeVisible();
+      await expect(peek).toBeVisible();
+      await expect(peek.getByTestId("item-subtask-add")).toBeFocused();
+      await timerControlReady(start);
+
       // And the task's timer once more, for the page below.
       await page.keyboard.press("t");
       await expect(stop).toBeVisible({ timeout: 15_000 * SLOW });
@@ -279,6 +406,7 @@ test.describe("my time (owner)", () => {
       await page.keyboard.press("t");
       await expect(pageStart).toBeVisible({ timeout: 15_000 * SLOW });
       await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+      await keepAsStopped(page);
 
       // Twice: the second start is the one a stale "running here" gets wrong.
       await timerControlReady(pageStart);
@@ -290,6 +418,7 @@ test.describe("my time (owner)", () => {
       await stopButton(page).click();
       await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
       await expect(pageStart).toBeVisible({ timeout: 15_000 * SLOW });
+      await keepAsStopped(page, "close");
     } finally {
       await page.unrouteAll({ behavior: "ignoreErrors" });
       // Off the peek first: its modal layer makes the header pill unclickable.
@@ -309,6 +438,9 @@ test.describe("my time (owner)", () => {
     await page.getByTestId("shift-start-break").click();
     await expect(page.getByText(/the running timer was stopped/)).toBeVisible({ timeout: 15_000 * SLOW });
     await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+    // A stop that is a side effect (the break) is not an explicit stop: no confirm.
+    await nextFrames(page);
+    await expect(stopConfirm(page)).toHaveCount(0);
     await expect(page.getByText("On break", { exact: true })).toBeVisible();
 
     await page.getByTestId("shift-end-break").click();
@@ -582,6 +714,10 @@ test.describe("as the employee", () => {
       await page.keyboard.press("t");
       await expect(start).toBeVisible({ timeout: 15_000 * SLOW });
       await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+      // The key's stop opens the confirm too; Escape hands focus back to the
+      // control it was pressed on.
+      await keepAsStopped(page);
+      await expect(start).toBeFocused();
 
       // Acknowledged: the next start is a start.
       await timerControlReady(start);
@@ -589,6 +725,7 @@ test.describe("as the employee", () => {
       await expect(stop).toBeVisible({ timeout: 15_000 * SLOW });
       await expect(notice).toHaveCount(0);
       await stopButton(page).click();
+      await keepAsStopped(page);
       await timerControlReady(start);
 
       // A change of mind DURING the acknowledgment: hold its request, Cancel,

@@ -47,6 +47,7 @@ import { cn } from "@/lib/utils";
 import { CommandPalette, flatNav } from "./command-palette";
 import { NavIcon } from "./nav-icon";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
+import { StopConfirm } from "./stop-confirm";
 import { TimerPillSlot } from "./timer-pill-slot";
 import { useGlobalHotkeys } from "./use-hotkeys";
 
@@ -470,6 +471,9 @@ export function AppShell({
         </header>
 
         <TimerPillSlot className="px-4 pt-2 md:hidden" timer={timer} />
+        {/* The stop confirm — ONE host for every stop (pill, `T`, quick
+            start, a task's control), for a member who can track time. */}
+        {timer ? <StopConfirm /> : null}
 
         {/* 64px clears the 56px bar; the safe-area inset clears the home
             indicator underneath it on a notched phone. */}

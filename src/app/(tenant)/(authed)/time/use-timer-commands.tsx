@@ -1,12 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { openStopConfirm } from "@/components/shell/stop-confirm";
 import { syncTimerSnapshot } from "@/components/shell/timer-pill";
-import { formatDurationClock } from "@/lib/format";
 
 import { startTimerAction, stopTimerAction, undoStartAction, type TargetInput } from "./actions";
 
@@ -53,7 +53,6 @@ export function useTimerCommands(
   stop: () => void;
 } {
   const t = useTranslations("time.timer");
-  const locale = useLocale();
   const router = useRouter();
   const [pending, setPending] = useState(false);
   // How many verbs are out. A count, not a flag: an undo may overlap the
@@ -128,8 +127,9 @@ export function useTimerCommands(
   const stop = () =>
     launch(() => flyAlone(async () => {
       const r = await stopTimerAction().catch(() => ({ ok: false as const, message: t("failed") }));
+      // Success is not a toast: the stop confirm shows what was saved.
       if (!r.ok) toast.error(r.message);
-      else toast.success(t("stopped", { duration: formatDurationClock(locale, r.value.durationSeconds) }));
+      else openStopConfirm(r.value);
       await settle();
     }));
 

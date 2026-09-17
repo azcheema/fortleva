@@ -203,11 +203,15 @@ export async function startTimer(
   );
 }
 
-/** time:track — stop the running timer; optional confirm-dialog edits ride along. */
-export async function stopTimer(
-  ctx: TimeCtx,
-  patch?: { description?: string | null; billable?: boolean; workTypeId?: string | null; serviceId?: string | null },
-): Promise<TimerEntry> {
+/**
+ * time:track — stop the running timer, at the press. It takes NO edits:
+ * the stop confirm (UI.md §5.4) adjusts the stopped entry afterwards
+ * through `updateEntry`, which audits `time_entry.updated` with the fields
+ * it changed. (A `patch` here once wrote note / billable / agreement /
+ * work type under `timer.stopped` alone, an edit no audit row named —
+ * removed when the confirm shipped rather than left for a caller to find.)
+ */
+export async function stopTimer(ctx: TimeCtx): Promise<TimerEntry> {
   await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(
     ctx.tenantId,
@@ -219,41 +223,7 @@ export async function stopTimer(
       const now = floorToSecond(new Date());
       const stopped = await stopRunningEntry(tx, ctx.tenantId, ctx.actor.memberId, now, "user");
       if (!stopped) fail("TIMER_NOT_RUNNING");
-      if (!patch) return stopped!;
-      // Confirm-dialog edits: same rules as an entry edit (re-resolve rates
-      // when agreement/billable change); the entry is ours and unlocked.
-      const { prefs } = await resolveZone(tx, ctx.tenantId, ctx.actor.memberId);
-      const target = await resolveTarget(
-        tx,
-        ctx,
-        {
-          projectId: stopped!.projectId,
-          workItemId: stopped!.workItemId,
-          serviceId: patch.serviceId === undefined ? stopped!.serviceId : patch.serviceId,
-          workTypeId: patch.workTypeId === undefined ? stopped!.workTypeId : patch.workTypeId,
-          billable: patch.billable ?? stopped!.billable,
-          description: patch.description === undefined ? stopped!.description : patch.description,
-        },
-        prefs,
-      );
-      const snap = await snapshotFor(tx, ctx.tenantId, ctx.actor.memberId, target, stopped!.localDate);
-      const updated = await tx.timeEntry.update({
-        where: { id: stopped!.id },
-        data: {
-          serviceId: target.serviceId,
-          workTypeId: target.workTypeId,
-          description: target.description,
-          billable: target.billable,
-          billRate: snap.billRate,
-          currency: snap.billRate !== null ? snap.currency : null,
-          rateSource: snap.rateSource,
-          billRateCardId: snap.billRateCardId,
-          costRateCardId: snap.costRateCardId,
-        },
-        select: entrySelect,
-      });
-      await recomputeTouched(tx, ctx.tenantId, [{ projectId: updated.projectId, localDate: updated.localDate }]);
-      return updated;
+      return stopped!;
     }),
     LOCKED_TX,
   );

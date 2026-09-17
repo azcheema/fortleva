@@ -136,7 +136,6 @@
       "start": "Starta timer",
       "startLabel": "Starta en timer",
       "stop": "Stoppa timer",
-      "stopped": "Stoppad efter {duration}",
       "stopFailed": "Timern kunde inte stoppas.",
       "nudge": "Den här timern har gått länge.",
       "keyLabel": "Starta eller stoppa tidtagningen"
@@ -965,6 +964,7 @@
     "OVERLAP_BLOCKED": "Det här överlappar en annan av dina poster, och överlappande poster är inte tillåtna här.",
     "ENTRY_LOCKED": "Posten är låst (den ligger på en faktura eller i en stängd period) och kan inte ändras.",
     "INVALID_DURATION": "Ange en tid som 1h 30m, 90m eller 1,5 — högst 24 timmar, och slutet efter starten.",
+    "ENDS_IN_FUTURE": "En post kan inte sluta i framtiden — ange en kortare längd eller ett tidigare slut.",
     "SPLIT_TOO_SHORT": "Första delen måste vara kortare än helheten och lämna minst en minut till den andra.",
     "SERVICE_CLIENT_MISMATCH": "Det avtalet tillhör en annan kund eller ett annat projekt.",
     "RATE_OVERLAP": "Ett priskort täcker redan den perioden — stäng det först eller välj ett senare startdatum.",
@@ -2356,9 +2356,21 @@
     "timer": {
       "started": "Timern startad.",
       "startedStopped": "Timern startad — \"{label}\" stoppades.",
-      "stopped": "Stoppad efter {duration}.",
       "undo": "Ångra",
       "failed": "Timern kunde inte ändras."
+    },
+    "stopConfirm": {
+      "title": "Timern stoppad",
+      "summary": "{label} · {duration}",
+      "adhoc": "Snabbuppgift",
+      "note": "Anteckning",
+      "notePlaceholder": "Vad gällde tiden?",
+      "duration": "Längd",
+      "durationHint": "1h 30m · 90m · 1,5",
+      "billable": "Fakturerbar",
+      "adhocNonBillable": "Snabbuppgifter är inte fakturerbara",
+      "done": "Klar",
+      "failed": "Posten kunde inte uppdateras."
     },
     "week": {
       "title": "Den här veckan",
