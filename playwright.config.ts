@@ -63,6 +63,18 @@ export default defineConfig({
     locale: "en-US",
     timezoneId: "Europe/Stockholm",
     storageState: "./.auth/member.json",
+    // The app registers a service worker on every authed page
+    // (`PwaRegister`), and Playwright's `page.route` does not own a request
+    // a service worker's fetch handler has seen — its own note on `route`
+    // says so and recommends exactly this setting. Measured 2026-09-17
+    // (visibility.spec.ts "a failed change says so…", 2 of 20 local
+    // repeats, traces compared): with the worker allowed, the aborted POST
+    // sometimes hung ~4 s and was cancelled with net::ERR_ABORTED instead
+    // of failing at once with net::ERR_FAILED, and the page's fetch promise
+    // never settled — no toast, no revert, the optimistic value stuck. Every
+    // spec that routes (visibility, item-properties, time) was exposed.
+    // `pwa.spec.ts` re-allows the worker for the one test that registers it.
+    serviceWorkers: "block",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",

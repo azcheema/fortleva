@@ -164,7 +164,8 @@ test.describe("document visibility", () => {
     expect(trace.consoleErrors).toEqual([]);
   });
 
-  test("a failed change says so instead of looking like a silent revert", async ({ page }) => {
+  test("a failed change says so instead of looking like a silent revert", async ({ page }, info) => {
+    const trace = watch(page);
     await page.goto(`/clients/${seed.clientId}/files`);
     const row = rowFor(page, seed.clientVisibleDocName);
     await expectShows(row, "CLIENT_VISIBLE");
@@ -188,26 +189,32 @@ test.describe("document visibility", () => {
 
     // RECORD the toast rather than poll for it, and record WHEN.
     //
-    // This test has flaked in CI on 2026-08-21, 2026-09-02 and
-    // 2026-09-06 (run 34027077878), always on the toast. The old
-    // assertion polled a locator, which can only see the toast while it
-    // is on screen — sonner dismisses after 4.2 s (TOAST_LIFETIME 4000
-    // + TIME_BEFORE_UNMOUNT 200; the Toaster passes no `duration`).
-    //
-    // THE ROOT CAUSE IS NOT ESTABLISHED, and this recorder exists to
-    // establish it rather than to paper over it. A dismissal race is a
-    // WEAK explanation: Playwright's retry backoff settles at 500 ms, so
-    // a 30 s expect budget samples ~60 times, and every one of them
-    // would have to miss a window that opened once. The likelier reading
-    // is that the toast sometimes does not arrive at all — which on THIS
-    // control would be a product defect, because the component's own
-    // header says it must never revert quietly.
-    //
-    // So the sweep runs in the page, at 25 ms, appending to an array
-    // that is never cleared: monotonic, immune to dismissal, and — via
-    // the timestamp — able to tell "late" from "never" the next time it
-    // fails. It cannot miss a toast that lives 4 s; if any call site
+    // This test flaked in CI on 2026-08-21, 09-02, 09-06 and twice on
+    // 09-17, always on the toast. The old assertion polled a locator,
+    // which can only see the toast while it is on screen — sonner
+    // dismisses after 4.2 s (TOAST_LIFETIME 4000 + TIME_BEFORE_UNMOUNT
+    // 200; the Toaster passes no `duration`) — so the sweep runs in the
+    // page, at 25 ms, appending to an array that is never cleared:
+    // monotonic, immune to dismissal, and able to tell "late" from
+    // "never". It cannot miss a toast that lives 4 s; if any call site
     // ever passes a shorter `duration`, revisit this interval.
+    //
+    // THE CAUSE WAS ESTABLISHED on 2026-09-17 (2 of 20 local repeats,
+    // the retained traces compared with two passing ones): the toast was
+    // "never", and the product was not at fault. Every authed page
+    // registers the app's service worker, and Playwright's `page.route`
+    // does not own a request a service worker's fetch handler has seen
+    // (its own note on `route`). In a passing run the POST failed at once
+    // with net::ERR_FAILED — the route's abort — the fetch rejected and
+    // the toast followed within 100 ms. In a failing run the SAME POST
+    // hung about 4 s, was cancelled with net::ERR_ABORTED, and the page's
+    // fetch promise never settled: no toast, no revert, and the optimistic
+    // "Private to team" stuck on screen while the database held
+    // CLIENT_VISIBLE. The harness now blocks service workers
+    // (playwright.config.ts `serviceWorkers`); `pwa.spec.ts` re-allows
+    // the worker for the one test that registers it. The recorder stays,
+    // and on failure it now reports what it saw (below), so a recurrence
+    // names its own cause instead of a bare "received: false".
     await page.evaluate(() => {
       const w = window as unknown as {
         __toasts?: { at: number; text: string; type: string | null }[];
@@ -257,9 +264,37 @@ test.describe("document visibility", () => {
     // change that reported success on a failed flip would otherwise keep
     // it green while the product told the user the opposite of the truth.
     const expected = "Could not change visibility";
-    await expect
-      .poll(async () => (await seen()).some((t) => t.text.includes(expected)))
-      .toBe(true);
+    try {
+      await expect.poll(async () => (await seen()).some((t) => t.text.includes(expected))).toBe(true);
+    } catch (error) {
+      // The failure names its own cause. `sweeps: -1` is a fresh document
+      // (the page navigated and took the recorder with it); a badge still
+      // on INTERNAL with no toast is an action that never settled (the
+      // hang above); a recorded toast with other text is a wrong message.
+      // Every probe is bounded and non-throwing (review): a locator waits
+      // out the whole test budget on a row that is gone, and an evaluate
+      // throws mid-navigation — either would replace this diagnosis with
+      // a bare timeout, in exactly the case it exists for.
+      const probe = async <T,>(read: () => Promise<T>): Promise<T | string> =>
+        read().catch((e: unknown) => `probe failed: ${e instanceof Error ? e.message : String(e)}`);
+      const diagnosis = {
+        url: page.url(),
+        sweeps: await probe(sweeps),
+        toasts: await probe(seen),
+        badge: await probe(() =>
+          badgeIn(rowFor(page, seed.clientVisibleDocName)).getAttribute("data-visibility", { timeout: 2_000 }),
+        ),
+        stored: await probe(() => documentVisibility(seed.clientVisibleDocId)),
+        navigations: trace.navigations,
+        actionPosts: trace.actionPosts,
+        consoleErrors: trace.consoleErrors,
+      };
+      await info.attach("toast-diagnosis.json", {
+        body: JSON.stringify(diagnosis, null, 2),
+        contentType: "application/json",
+      });
+      throw new Error(`no "${expected}" toast — ${JSON.stringify(diagnosis)}\n${(error as Error).message}`);
+    }
 
     const toasts = await seen();
     // Timing and type, logged on every run: a green run that reports the
@@ -273,6 +308,14 @@ test.describe("document visibility", () => {
       const w = window as unknown as { __sweeper?: number };
       if (w.__sweeper !== undefined) window.clearInterval(w.__sweeper);
     });
+
+    // The truth holds on BOTH sides after the failure, not only before
+    // the attempt: the badge is back on the server's value — the
+    // optimistic choice did not stick, which is exactly what the hang
+    // above broke — and the stored row is as it was.
+    await expectShows(rowFor(page, seed.clientVisibleDocName), "CLIENT_VISIBLE");
+    expect(await documentVisibility(seed.clientVisibleDocId)).toBe("CLIENT_VISIBLE");
+    await attach(info, trace);
   });
 
   /**

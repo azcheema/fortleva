@@ -39,15 +39,22 @@ test.describe("PWA shell", () => {
     expect(body.split("event.respondWith(").length).toBe(2); // exactly one respondWith call, after both guards
   });
 
-  test("an authed page links the manifest and registers the worker", async ({ page }) => {
-    await page.goto("/home");
-    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", /manifest\.webmanifest/);
-    await expect(page.locator('meta[name="apple-mobile-web-app-capable"], meta[name="mobile-web-app-capable"]').first()).toHaveCount(1);
-    const registered = await page.evaluate(async () => {
-      if (!("serviceWorker" in navigator)) return "unsupported";
-      const reg = await navigator.serviceWorker.getRegistration("/");
-      return reg ? "registered" : "missing";
+  // The harness blocks service workers everywhere else (playwright.config.ts
+  // `serviceWorkers` — a worker in the request path breaks `page.route`);
+  // this is the one test whose subject IS the registration.
+  test.describe("with the worker allowed", () => {
+    test.use({ serviceWorkers: "allow" });
+
+    test("an authed page links the manifest and registers the worker", async ({ page }) => {
+      await page.goto("/home");
+      await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", /manifest\.webmanifest/);
+      await expect(page.locator('meta[name="apple-mobile-web-app-capable"], meta[name="mobile-web-app-capable"]').first()).toHaveCount(1);
+      const registered = await page.evaluate(async () => {
+        if (!("serviceWorker" in navigator)) return "unsupported";
+        const reg = await navigator.serviceWorker.getRegistration("/");
+        return reg ? "registered" : "missing";
+      });
+      expect(["registered", "unsupported"]).toContain(registered);
     });
-    expect(["registered", "unsupported"]).toContain(registered);
   });
 });
