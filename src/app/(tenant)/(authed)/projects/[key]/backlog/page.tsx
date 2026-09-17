@@ -67,7 +67,13 @@ export default async function ProjectBacklogPage({
     peekNumber === null
       ? null
       : await loadPanelItem(ctx, project.id, peekNumber, listHref, (seedKey) => tStates(seedKey));
-  const peekTimer = peekItem ? await loadPanelTimer(ctx, project) : null;
+  // Always, not only for a peek: a focused row takes `T` too, and its
+  // running badge needs the member's timer on the first paint. On a full
+  // load or a refresh the timer read is the layout pill's own per-request
+  // one (`getCurrentTimerOnce`) and only the `time:track` check is new; on
+  // a CLIENT navigation (a peek, `?group=`, board ↔ backlog) the layout
+  // does not render, so this is a timer read of its own as well (recorded).
+  const timer = await loadPanelTimer(ctx, project);
   const prefs = await withTenant(
     membership.tenantId,
     { type: "member", id: membership.memberId },
@@ -123,6 +129,7 @@ export default async function ProjectBacklogPage({
             basePath={base}
             includeArchived={includeArchived}
             peekOpen={Boolean(peekItem)}
+            timer={timer}
           />
         </>
       )}
@@ -155,7 +162,7 @@ export default async function ProjectBacklogPage({
             weekStart={prefs.weekStart}
             showIsoWeek={prefs.showIsoWeek}
             error={error}
-            timer={peekTimer}
+            timer={timer}
           />
         </PeekShell>
       ) : null}

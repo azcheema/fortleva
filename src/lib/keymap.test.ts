@@ -254,6 +254,40 @@ describe("overlaySections", () => {
     expect(overlaySections(s)).toHaveLength(1);
   });
 
+  it("a doc-only row claims NOTHING: the global `T` beneath the board's focused-card `T` is still listed, and still a palette row", () => {
+    // The card's `T` acts only on a focused card; everywhere else on the
+    // board the dispatcher skips it and the global `T` acts. Hiding the
+    // global row would advertise a key that does nothing without a card
+    // focused, and take the only timer row out of the palette.
+    const board = scopes(
+      { scope: "global", bindings: [binding({ key: "t", label: "Start or stop the timer" })] },
+      { scope: "board", bindings: [binding({ key: "t", label: "Timer on the focused card", run: null })] },
+    );
+    const sections = overlaySections(board);
+    expect(sections.map((s) => [s.scope, s.bindings.map((b) => b.label)])).toEqual([
+      ["board", ["Timer on the focused card"]],
+      ["global", ["Start or stop the timer"]],
+    ]);
+    // The palette's "On this page" rows are the run-bearing ones among these
+    // (`command-palette.tsx` applies this filter; the copy here proves the
+    // overlay half, which is what feeds it).
+    const paletteRows = sections.flatMap((s) => s.bindings).filter((b) => b.run !== null);
+    expect(paletteRows.map((b) => b.label)).toEqual(["Start or stop the timer"]);
+    // …and the dispatcher agrees: with no card handler in the way, `T` is the global one.
+    expect(decide(ev({ key: "t" }), board, [], false)).toEqual({ kind: "binding", entry: 0, binding: 0 });
+  });
+
+  it("a doc-only row is still shadowed by a higher scope's claim", () => {
+    // The peek over the board: the item's `T` owns the key, and the board's
+    // focused-card row must not be listed beneath it (nor the global one).
+    const peek = scopes(
+      { scope: "global", bindings: [binding({ key: "t", label: "Global timer" })] },
+      { scope: "board", bindings: [binding({ key: "t", label: "Card timer", run: null })] },
+      { scope: "item", bindings: [binding({ key: "t", label: "Task timer" })] },
+    );
+    expect(overlaySections(peek).flatMap((s) => s.bindings.map((b) => b.label))).toEqual(["Task timer"]);
+  });
+
   it("skips `modal` scopes entirely — rows AND the exclusive break", () => {
     // The overlay IS the modal scope while it is open. Counting it
     // would blank out every section it was opened to show.

@@ -1372,6 +1372,7 @@
         "checklist": "{done} av {total} punkter i checklistan",
         "assignee": "Ansvarig: {name}",
         "estimate": "Estimat {hours}",
+        "timerRunning": "Din timer är igång på den här uppgiften",
         "label": "{key}: {title}",
         "open": "Öppna"
       },
@@ -1400,6 +1401,7 @@
       "keys": {
         "create": "Ny uppgift",
         "move": "Flytta till…",
+        "timer": "Starta eller stoppa en timer på kortet som har fokus",
         "navigate": "Flytta mellan kort"
       }
     },
@@ -1506,7 +1508,8 @@
       "invalidEstimate": "Estimat anges som 2h, 1,5 eller 90m.",
       "keys": {
         "navigate": "Flytta mellan uppgifter",
-        "select": "Markera eller avmarkera uppgift"
+        "select": "Markera eller avmarkera uppgift",
+        "timer": "Starta eller stoppa en timer på uppgiften som har fokus"
       },
       "saved": "Sparat",
       "actionFailed": "Ändringen sparades inte. Listan visar aktuellt läge.",
@@ -1523,7 +1526,8 @@
       "priorityLabel": "Prioritet",
       "dueLabel": "Förfallodatum",
       "duePlaceholder": "Ange datum",
-      "attachments": "{count, plural, one {# bilaga} other {# bilagor}}"
+      "attachments": "{count, plural, one {# bilaga} other {# bilagor}}",
+      "timerRunning": "Din timer är igång på den här uppgiften"
     },
     "portalState": {
       "on": "På",
@@ -1994,6 +1998,7 @@
         "start": "Starta timer",
         "stop": "Stoppa timer",
         "acknowledgeAndStart": "Jag har läst detta — starta timern",
+        "noticeFor": "Timern startar på {task}.",
         "noticeFailed": "Informationen om tidsregistrering kunde inte hämtas."
       }
     },

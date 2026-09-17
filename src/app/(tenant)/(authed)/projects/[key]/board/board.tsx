@@ -15,7 +15,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { KanbanSquareIcon, ListChecksIcon, PlusIcon } from "lucide-react";
+import { KanbanSquareIcon, ListChecksIcon, PlusIcon, TimerIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -47,7 +47,7 @@ import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge
 import { LabelChips } from "@/components/work-view/label-chips";
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
 import { formatDuration, type DurationStyle } from "@/lib/format";
-import type { KeyBinding } from "@/lib/keymap";
+import { focusedKeyApplies, keyEventShape, type KeyBinding } from "@/lib/keymap";
 import { cn } from "@/lib/utils";
 import {
   applyMove,
@@ -67,7 +67,10 @@ import {
 } from "@/lib/work-view";
 import type { ItemList, ResolvedItemList } from "@/modules/work";
 
+import type { TimerPillState } from "../../../time/actions";
+import { useTaskTimer } from "../../../time/use-task-timer";
 import { createItemInStateAction, deleteItemAction, moveItemAction, setItemArchivedAction } from "../backlog/actions";
+import { TimerElapsed } from "../item-panel/timer-control";
 import { MovePicker } from "./move-picker";
 
 /**
@@ -106,6 +109,7 @@ export function Board({
   version,
   durationStyle,
   peekOpen,
+  timer,
 }: {
   projectId: string;
   projectKey: string;
@@ -116,6 +120,12 @@ export function Board({
   version: string;
   /** The tenant's `ui.durationStyle` — REQUIRED (standing trap). */
   durationStyle: DurationStyle;
+  /**
+   * The member's timer as the page read it (`loadPanelTimer`), or `null`
+   * where they can start none — no `time:track`, or an archived project.
+   * REQUIRED, `null` included: it decides whether a card takes `T`.
+   */
+  timer: TimerPillState | null;
   /** True while the item peek (`?item=`) is open over the board: the
    * window-level `C` must not create behind the sheet's scrim (2W-B
    * review — the region-scoped keys are already inert, focus being
@@ -285,6 +295,7 @@ export function Board({
   const tabbableId = focusedId && items.some((i) => i.id === focusedId) ? focusedId : firstCardId;
   const defaultState = data.states.find((s) => s.isDefault) ?? columns[0];
   const canCreate = data.caps.canCreate && groupBy === "none";
+  const taskTimer = useTaskTimer(timer);
 
   // Focus is handed back to a card AFTER it has rendered where it now
   // lives (a moved card is a new DOM node in another column), never on
@@ -304,7 +315,48 @@ export function Board({
     }
   }, [picker, items]);
 
+  // `T` on a card (UI.md §6): a timer on its task. Unlike `S` and the
+  // roving keys it acts from ANYWHERE in the card — the card itself or its
+  // "…" button — because the key it would otherwise reach is not nothing
+  // but the global `T`, which stops the timer running elsewhere or leaves
+  // the board for /time. The card is asked of the DOM (`closest`), so a
+  // portalled menu whose keydown bubbles here through React's tree is in no
+  // card; `focusedKeyApplies` refuses a menu layer besides.
+  //
+  // Where this member can start no timer the key is left alone, and the
+  // global `T` keeps its meaning — the item panel's rule. Otherwise the card
+  // CLAIMS it, even while a start is still in flight and on a card with no
+  // number yet: passed down, the global `T` would stop the timer this card
+  // just started, or the one running elsewhere. The dispatcher's guards
+  // first, since this runs before it; a HELD `T` is refused (a toggle flips
+  // on every repeat) and reaches the global binding, which refuses it too.
+  //
+  // …and NOTHING under the card's inline delete question ("Delete this
+  // task? Yes No"), which `RowActions` renders in place, inside the card:
+  // `closest` finds the card from its Yes, and a timer must not start on
+  // the task being deleted, nor the global `T` act behind the question —
+  // so the key is swallowed there (review, round 2; the backlog row does
+  // the same under its own question).
+  const onCardTimerKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!(e.target instanceof Element)) return;
+    if (!focusedKeyApplies({ ...keyEventShape(e), repeat: e.repeat }, "t", isGoSequencePending())) return;
+    const card = e.target.closest<HTMLElement>("[data-board-card]");
+    if (card && e.target.closest('[data-slot="inline-confirm"]')) {
+      e.preventDefault();
+      return;
+    }
+    const cardId = card?.dataset["boardCard"];
+    const item = timer && cardId ? items.find((i) => i.id === cardId) : undefined;
+    if (!item) return;
+    e.preventDefault();
+    if (item.number > 0) taskTimer.toggle(item.id, t("card.label", { key: `${projectKey}-${item.number}`, title: item.title }));
+  };
+
   const onBoardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "t" || e.key === "T") {
+      onCardTimerKey(e);
+      return;
+    }
     const target = e.target as HTMLElement;
     const cardId = target.dataset["boardCard"];
     if (!cardId || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -388,9 +440,13 @@ export function Board({
         },
       },
       { key: "s", label: t("keys.move"), enabled: canEdit, run: null },
+      // `run: null` like `S`: it needs the focused card. It does not hide
+      // the global `T` in the overlay or the palette — that one still acts
+      // whenever no card holds focus (`overlaySections`).
+      { key: "t", label: t("keys.timer"), enabled: timer !== null && !peekOpen, run: null },
       { key: "j", label: t("keys.navigate"), enabled: true, run: null, hint: ["J", "or", "K"] },
     ],
-    [canCreate, defaultState, peekOpen, canEdit, t],
+    [canCreate, defaultState, peekOpen, canEdit, timer, t],
   );
   useScopeKeys("board", boardKeys);
 
@@ -437,7 +493,10 @@ export function Board({
         role="region"
         tabIndex={0}
         aria-label={t("scrollLabel")}
-        aria-busy={isPending || undefined}
+        // A timer verb from a card is in flight too: the card's `T` ignores
+        // a press until it has settled, and this tells assistive technology
+        // (and the e2e) so. No visible cue — the toast and the badge follow.
+        aria-busy={isPending || taskTimer.busy || undefined}
         className="-mx-1 overflow-x-auto px-1 pb-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
         onKeyDown={onBoardKeyDown}
       >
@@ -458,6 +517,8 @@ export function Board({
               canCreate={canCreate}
               canApprove={canApprove}
               durationStyle={durationStyle}
+              timer={timer}
+              runningItemId={taskTimer.runningItemId}
               tabbableId={tabbableId}
               defaultStateId={defaultState?.id ?? null}
               creatingIn={creatingIn}
@@ -490,6 +551,7 @@ export function Board({
           onChoose={onPickerChoose}
         />
       ) : null}
+      {taskTimer.notice}
     </>
   );
 }
@@ -510,6 +572,8 @@ function BoardLane(props: {
   canCreate: boolean;
   canApprove: boolean;
   durationStyle: DurationStyle;
+  timer: TimerPillState | null;
+  runningItemId: string | null;
   tabbableId: string | null;
   defaultStateId: string | null;
   creatingIn: string | null;
@@ -587,6 +651,8 @@ function BoardColumn(props: {
   canCreate: boolean;
   canApprove: boolean;
   durationStyle: DurationStyle;
+  timer: TimerPillState | null;
+  runningItemId: string | null;
   tabbableId: string | null;
   defaultStateId: string | null;
   creatingIn: string | null;
@@ -666,6 +732,8 @@ function BoardColumn(props: {
             projectKey={props.projectKey}
             locale={props.locale}
             durationStyle={props.durationStyle}
+            timer={props.runningItemId === item.id ? props.timer : null}
+            takesTimerKey={props.timer !== null}
             canEdit={props.canEdit}
             canDelete={props.canDelete}
             tabbable={props.tabbableId === item.id}
@@ -710,6 +778,8 @@ function BoardCard({
   projectKey,
   locale,
   durationStyle,
+  timer,
+  takesTimerKey,
   canEdit,
   canDelete,
   droppable,
@@ -724,6 +794,15 @@ function BoardCard({
   projectKey: string;
   locale: string;
   durationStyle: DurationStyle;
+  /**
+   * The member's timer when it runs on THIS card's task, else `null`: the
+   * card draws its running badge from it. The pill's 1 Hz tick re-renders
+   * no card (`useTimerFacts` changes only on a start or stop); the one clock
+   * that ticks is the badge's own leaf.
+   */
+  timer: TimerPillState | null;
+  /** Whether `T` on this card starts a timer (the board's `timer` is not null). */
+  takesTimerKey: boolean;
   canEdit: boolean;
   canDelete: boolean;
   /** False in a TRIAGE column: entering triage is its own verb. */
@@ -835,6 +914,8 @@ function BoardCard({
       tabIndex={tabbable ? 0 : -1}
       onFocus={onFocus}
       aria-label={t("card.label", { key, title: item.title })}
+      // The letters this card answers (the arrows are the list's own).
+      aria-keyshortcuts={["J", "K", ...(canEdit && item.number > 0 ? ["S"] : []), ...(takesTimerKey && item.number > 0 ? ["T"] : [])].join(" ")}
       className={cn(
         "relative flex flex-col gap-1.5 rounded-md border border-border bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         // The cue owns the left edge on a CLIENT_VISIBLE card; an INTERNAL
@@ -869,7 +950,7 @@ function BoardCard({
           line because chips wrap here — the card has the height the
           backlog row does not (`LabelChips`, `surface="card"`). */}
       <LabelChips labels={item.labels} surface="card" />
-      {item.checklistTotal > 0 || item.estimateMinutes !== null || item.assigneeMemberId ? (
+      {item.checklistTotal > 0 || item.estimateMinutes !== null || timer || item.assigneeMemberId ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {item.checklistTotal > 0 ? (
             <span role="img" className="inline-flex items-center gap-1" aria-label={t("card.checklist", { done: item.checklistDone, total: item.checklistTotal })}>
@@ -882,6 +963,22 @@ function BoardCard({
           {item.estimateMinutes !== null ? (
             <span role="img" className="num" aria-label={t("card.estimate", { hours: formatDuration(locale, item.estimateMinutes, durationStyle) })}>
               {formatDuration(locale, item.estimateMinutes, durationStyle)}
+            </span>
+          ) : null}
+          {/* The member's OWN running timer, never anyone else's: a card
+              that showed a colleague's clock would be the live presence
+              UI rule 14 forbids. Beside the estimate, the number it will
+              one day be read against; the label is static, so a reader is
+              not handed a new clock every second. */}
+          {timer ? (
+            <span
+              role="img"
+              aria-label={t("card.timerRunning")}
+              data-testid="board-card-timer"
+              className="inline-flex items-center gap-1 text-(--tone-success-fg)"
+            >
+              <TimerIcon aria-hidden="true" className="size-3" />
+              <TimerElapsed initial={timer} className="num tabular-nums" />
             </span>
           ) : null}
           {item.assigneeMemberId ? (

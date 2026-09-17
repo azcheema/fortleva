@@ -58,7 +58,7 @@ export default async function ProjectBoardPage({
   const tStates = await getTranslations("projects.states.seed");
   const peekNumber = peekItemNumber(item, project.key);
   const listHref = listHrefOf(`/projects/${project.key}/board`, query);
-  const [rawData, peekItem, peekTimer, t, locale, prefs] = await Promise.all([
+  const [rawData, peekItem, timer, t, locale, prefs] = await Promise.all([
     listItems(ctx, project.id),
     // ONE scope-checked read, never a lookup in the list: the board
     // drops archived items, so an archived one could be addressed and
@@ -66,7 +66,13 @@ export default async function ProjectBoardPage({
     peekNumber === null
       ? Promise.resolve(null)
       : loadPanelItem(ctx, project.id, peekNumber, listHref, (seedKey) => tStates(seedKey)),
-    peekNumber === null ? Promise.resolve(null) : loadPanelTimer(ctx, project),
+    // Always, not only for a peek: a focused card takes `T` too, and its
+    // running badge needs the member's timer on the first paint. On a full
+    // load or a refresh the timer read is the layout pill's own per-request
+    // one (`getCurrentTimerOnce`) and only the `time:track` check is new; on
+    // a CLIENT navigation (a peek, `?group=`, board ↔ backlog) the layout
+    // does not render, so this is a timer read of its own as well (recorded).
+    loadPanelTimer(ctx, project),
     getTranslations("projects.board"),
     getLocale(),
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
@@ -141,6 +147,7 @@ export default async function ProjectBoardPage({
         version={version}
         durationStyle={prefs.durationStyle}
         peekOpen={Boolean(peekItem)}
+        timer={timer}
       />
       {peekItem ? (
         <PeekShell returnHref={listHref}>
@@ -171,7 +178,7 @@ export default async function ProjectBoardPage({
             weekStart={prefs.weekStart}
             showIsoWeek={prefs.showIsoWeek}
             error={error}
-            timer={peekTimer}
+            timer={timer}
           />
         </PeekShell>
       ) : null}

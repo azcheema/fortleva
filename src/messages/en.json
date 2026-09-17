@@ -1372,6 +1372,7 @@
         "checklist": "{done} of {total} checklist items",
         "assignee": "Assigned to {name}",
         "estimate": "Estimate {hours}",
+        "timerRunning": "Your timer is running on this task",
         "label": "{key}: {title}",
         "open": "Open"
       },
@@ -1400,6 +1401,7 @@
       "keys": {
         "create": "New task",
         "move": "Move to…",
+        "timer": "Start or stop a timer on the focused card",
         "navigate": "Move between cards"
       }
     },
@@ -1506,7 +1508,8 @@
       "invalidEstimate": "Estimates look like 2h, 1.5 or 90m.",
       "keys": {
         "navigate": "Move between tasks",
-        "select": "Select or deselect task"
+        "select": "Select or deselect task",
+        "timer": "Start or stop a timer on the focused task"
       },
       "saved": "Saved",
       "actionFailed": "The change did not save. The list shows the current state.",
@@ -1523,7 +1526,8 @@
       "priorityLabel": "Priority",
       "dueLabel": "Due date",
       "duePlaceholder": "Set date",
-      "attachments": "{count, plural, one {# attachment} other {# attachments}}"
+      "attachments": "{count, plural, one {# attachment} other {# attachments}}",
+      "timerRunning": "Your timer is running on this task"
     },
     "portalState": {
       "on": "On",
@@ -1994,6 +1998,7 @@
         "start": "Start timer",
         "stop": "Stop timer",
         "acknowledgeAndStart": "I have read this — start the timer",
+        "noticeFor": "The timer starts on {task}.",
         "noticeFailed": "Could not load the time-tracking notice."
       }
     },

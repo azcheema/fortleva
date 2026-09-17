@@ -129,8 +129,8 @@ export function DescriptionField({
    * `o` while advertising the chord — the same approximation the board's
    * `J or K` row makes. Nothing binds a bare `O`; if anything ever does,
    * dispatch is unaffected (a `run: null` binding is skipped, never
-   * swallowed) and only the overlay's shadowing would need to learn
-   * about chords.
+   * swallowed) and the overlay lists both rows, since a `run: null` row
+   * claims no key there either (`overlaySections`).
    */
   const keys = useMemo<KeyBinding[]>(
     () => [

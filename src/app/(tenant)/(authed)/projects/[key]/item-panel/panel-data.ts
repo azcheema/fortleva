@@ -54,11 +54,16 @@ export async function loadPanelItem(
 }
 
 /**
- * The panel's timer control's first picture (2T — UI.md §5.2 `T`): the
- * member's timer exactly as the layout's pill reads it, through the same
- * per-request `getCurrentTimerOnce`, so a peek costs no second timer read.
+ * The first picture of the member's timer for every surface that starts
+ * one on a task (2T — UI.md §5.2 / §6 `T`): the panel's control, and the
+ * board and backlog, whose focused card or row takes `T` and wears the
+ * running badge. Exactly as the layout's pill reads it, through the same
+ * per-request `getCurrentTimerOnce` — which saves the second read only
+ * when the layout renders in the same request (a full load, a refresh). A
+ * client navigation re-renders the page and not the layout, so there this
+ * IS a timer read of its own.
  *
- * `null` means "no control here": a project that is archived (the time
+ * `null` means "no timer from a task here": a project that is archived (the time
  * service refuses its entries — `ARCHIVED`), or a member who may not
  * track time. Permission and entitlement are asked FIRST, through
  * `canTrackTime`, so rendering a panel never runs the time module's

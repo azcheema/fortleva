@@ -132,7 +132,7 @@ export function ShortcutsOverlay({
                 // name is tenant text that must never round-trip
                 // through next-intl.
                 <Row
-                  key={b.key}
+                  key={`${b.entry}:${b.index}`}
                   keys={b.hint ?? [b.key.toUpperCase()]}
                   label={b.label}
                 />

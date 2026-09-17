@@ -12,7 +12,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { PaperclipIcon, PlusIcon } from "lucide-react";
+import { PaperclipIcon, PlusIcon, TimerIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -91,6 +91,9 @@ import {
   type WorkItem,
 } from "@/lib/work-view";
 import type { ResolvedItemList } from "@/modules/work";
+
+import type { TimerPillState } from "../../../time/actions";
+import { useTaskTimer } from "../../../time/use-task-timer";
 
 import {
   bulkChangeStateAction,
@@ -289,12 +292,15 @@ function DragRow({
   className,
   onEdge,
   rowIndex,
+  keyShortcuts,
   children,
 }: {
   itemId: string;
   laneKey: string;
   canDrag: boolean;
   className?: string;
+  /** The letters this row answers, for `aria-keyshortcuts`: `J K` always, `T` where it acts (`X` is on the row's checkbox). */
+  keyShortcuts: string;
   onEdge: (itemId: string, edge: Edge | null) => void;
   /** 1-based position in the WHOLE list — set only while windowed, so a
    * screen reader is not told "row 3 of 40" in a list of four hundred. */
@@ -347,7 +353,7 @@ function DragRow({
       aria-rowindex={rowIndex}
       // Focusable by KEY, never by Tab (UI.md §6); the ring is `TableRow`'s.
       tabIndex={-1}
-      aria-keyshortcuts="J K"
+      aria-keyshortcuts={keyShortcuts}
       // Opacity, never a transform: a transformed row would become the
       // containing block for the drop line and move it off the row.
       // `scroll-mt-16` / `scroll-mb-16` clear the sticky header (`h-12`)
@@ -403,6 +409,7 @@ export function BacklogTable({
   basePath,
   includeArchived,
   peekOpen,
+  timer,
 }: {
   projectId: string;
   projectKey: string;
@@ -420,6 +427,12 @@ export function BacklogTable({
    * trap): while it is, focus is trapped in the sheet and `X` cannot act,
    * so the overlay must not offer it — the board's `peekOpen` rule. */
   peekOpen: boolean;
+  /**
+   * The member's timer as the page read it (`loadPanelTimer`), or `null`
+   * where they can start none — no `time:track`, or an archived project.
+   * REQUIRED, `null` included: it decides whether a row takes `T`.
+   */
+  timer: TimerPillState | null;
 }) {
   const t = useTranslations("projects.backlog");
   const tView = useTranslations("projects.workView");
@@ -900,6 +913,7 @@ export function BacklogTable({
     }
     fallback?.focus();
   };
+  const taskTimer = useTaskTimer(timer);
   useScopeKeys("backlog", [
     {
       key: "j",
@@ -915,6 +929,10 @@ export function BacklogTable({
       enabled: data.caps.canEdit && !peekOpen && selectColumnShown,
       run: null,
     },
+    // `T` on the focused row, the board card's rule: `run: null`, handled
+    // on the body, and it does not hide the global `T` in the overlay or
+    // the palette — that one still acts whenever no row holds focus.
+    { key: "t", label: t("keys.timer"), enabled: timer !== null && !peekOpen, run: null },
   ]);
 
   // Things exist, none match: the third empty state (UI.md §5.8), never
@@ -923,7 +941,10 @@ export function BacklogTable({
   const filteredEmpty = rollup.total > 0 && rollup.shown === 0;
 
   return (
-    <div className="flex flex-col gap-3" aria-busy={isPending || undefined}>
+    // A timer verb from a row is in flight too: the row's `T` ignores a
+    // press until it has settled, and this tells assistive technology (and
+    // the e2e) so. No visible cue — the toast and the glyph follow.
+    <div className="flex flex-col gap-3" aria-busy={isPending || taskTimer.busy || undefined}>
       <WorkFilterBar
         states={visibleColumns(data.states, data.items)}
         members={data.members}
@@ -1052,8 +1073,17 @@ export function BacklogTable({
             // is pinned for ever, and because the window only ever grows
             // to reach it, one focused row at the far end eventually
             // mounts the entire list — the opposite of the point.
+            //
+            // …EXCEPT into a dialog (`dialog-content`: the stop confirm, a
+            // timer's staff notice, the palette, the `?` overlay). Each hands
+            // focus back to its origin on close (`useFocusReturn`), and that
+            // origin must still be in the document: a row mounted only by the
+            // pin would otherwise unmount the moment the dialog took focus, and
+            // focus would come back to <body> (review, slice 21). The peek is a
+            // SHEET and still releases the pin, as before.
             onBlurCapture={(e) => {
               const next = e.relatedTarget as Node | null;
+              if (next instanceof Element && next.closest('[data-slot="dialog-content"]')) return;
               if (!next || !e.currentTarget.contains(next)) setFocusedRowId(null);
             }}
             // `J K` and `X` (registered above). The row is the one the
@@ -1065,8 +1095,9 @@ export function BacklogTable({
               // keystroke typed into a row's editor bubbles through here.
               const step = rovingStep(e.key);
               const isX = e.key.toLowerCase() === "x";
-              if ((step === undefined && !isX) || !(e.target instanceof Element)) return;
-              // The registry hides both keys while the peek is open (focus is
+              const isT = e.key.toLowerCase() === "t";
+              if ((step === undefined && !isX && !isT) || !(e.target instanceof Element)) return;
+              // The registry hides these keys while the peek is open (focus is
               // trapped in the sheet); the handler refuses them too, so the
               // overlay never hides a key the list would still honour.
               if (peekOpen) return;
@@ -1074,8 +1105,13 @@ export function BacklogTable({
               // renders IN the row, not in a portal, so `closest` would find
               // the row from its Yes — and `X` would change the selection,
               // or `J` walk focus away, with a destructive question still
-              // open. Escape is the way out of it.
-              if (e.target.closest('[data-slot="inline-confirm"]')) return;
+              // open. Escape is the way out of it. `T` there is SWALLOWED, not
+              // left to the global `T`, which would stop a timer or leave the
+              // page behind the open question (slice 21, round 2).
+              if (e.target.closest('[data-slot="inline-confirm"]')) {
+                if (isT && focusedKeyApplies({ ...keyEventShape(e), repeat: e.repeat }, "t", isGoSequencePending())) e.preventDefault();
+                return;
+              }
               const row = e.target.closest<HTMLElement>("[data-item-id]");
               const id = row?.dataset["itemId"];
               if (!row || !id) return;
@@ -1110,6 +1146,25 @@ export function BacklogTable({
                 }
                 e.preventDefault();
                 setFocusedRowId(to.id);
+                return;
+              }
+
+              // ── `T`: a timer on the focused row's task ──
+              // Where this member can start no timer — or on an archived
+              // task, which the panel offers no timer either — the key is
+              // left alone and the global `T` keeps its meaning. Otherwise
+              // the row CLAIMS it, even while a start is in flight and on a
+              // row with no number yet: passed down, the global `T` would
+              // stop the timer this row just started, or the one running
+              // elsewhere. A held `T` is refused, as `X` is.
+              if (isT) {
+                // The guards before the list scan: a `t` typed into a row's
+                // title editor stops at `inEditable` and scans nothing.
+                if (!timer || !focusedKeyApplies(shape, "t", goPending)) return;
+                const item = shownItems.find((i) => i.id === id);
+                if (!item || item.archivedAt) return;
+                e.preventDefault();
+                if (item.number > 0) taskTimer.toggle(id, tProjects("board.card.label", { key: `${projectKey}-${item.number}`, title: item.title }));
                 return;
               }
 
@@ -1223,6 +1278,7 @@ export function BacklogTable({
                   onEdge={onEdge}
                   className={cn("relative", visibilityRowCue(item.visibility))}
                   rowIndex={windowed ? rowIndex : undefined}
+                  keyShortcuts={["J", "K", ...(timer && !item.archivedAt && item.number > 0 ? ["T"] : [])].join(" ")}
                 >
                   <TableCell priority="medium">
                     {data.caps.canEdit ? (
@@ -1305,6 +1361,22 @@ export function BacklogTable({
                       the whole cell rather than in the half the chips leave. */}
                   <TableCell className="min-w-56">
                     <span className="flex w-full min-w-0 items-center gap-2 contain-inline-size has-[[data-editing]]:[&>[data-slot=label-chips]]:hidden">
+                      {/* The member's OWN running timer (UI rule 14 — never a
+                          colleague's): a glyph before the title. HERE, inside
+                          the contained wrapper, because nothing in it can
+                          widen a column — in the key cell it would have grown
+                          a column measured to the character each time a timer
+                          started (review, slice 21). No clock: the pill ticks. */}
+                      {taskTimer.runningItemId === item.id ? (
+                        <span
+                          data-testid="backlog-row-timer"
+                          className="inline-flex shrink-0 items-center text-(--tone-success-fg)"
+                          title={t("timerRunning")}
+                        >
+                          <TimerIcon aria-hidden="true" className="size-3.5" />
+                          <span className="sr-only">{t("timerRunning")}</span>
+                        </span>
+                      ) : null}
                       <InlineEdit
                         kind="text"
                         name="title"
@@ -1648,6 +1720,7 @@ export function BacklogTable({
           }
         />
       ) : null}
+      {taskTimer.notice}
     </div>
   );
 }

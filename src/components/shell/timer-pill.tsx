@@ -86,9 +86,17 @@ const serverTime = (s: Snapshot | null): number => (s?.state ? Date.parse(s.stat
  * a timer that is no longer running.
  */
 const publishRead = (state: TimerPillState) => {
-  if (Date.parse(state.serverNow) < serverTime(snapshot)) return;
+  // A TIE is not news either, and goes to the store (`laterOf`'s rule): the
+  // layout's read and a page's own are one cached read with one `serverNow`
+  // but two objects. A board card that REMOUNTS minutes after the page loaded
+  // (a drag or Move to… puts it in another column) re-publishes the page's
+  // copy from its clock, and re-measuring the skew against that stale server
+  // instant pulled the pill's clock back.
+  if (Date.parse(state.serverNow) <= serverTime(snapshot)) return;
   publish({ state, skew: Date.now() - Date.parse(state.serverNow), now: Date.now() });
 };
+/** The later of the store and a surface's own read (`publishRead`'s rule, from the reading side). */
+const laterOf = (own: Snapshot): Snapshot => (serverTime(snapshot) >= serverTime(own) ? snapshot! : own);
 
 const CLOCK_PREFIX = /^\d+:\d\d:\d\d · /;
 
@@ -119,17 +127,48 @@ export function useTimerSnapshot(initial: TimerPillState): { state: TimerPillSta
     () => ({ state: initial, skew: 0, now: Date.parse(initial.serverNow) }),
     [initial],
   );
-  const snap = useSyncExternalStore(
-    subscribe,
-    () => (serverTime(snapshot) >= serverTime(serverSnapshot) ? snapshot! : serverSnapshot),
-    () => serverSnapshot,
-  );
+  const snap = useSyncExternalStore(subscribe, () => laterOf(serverSnapshot), () => serverSnapshot);
   useEffect(() => {
     publishRead(initial);
   }, [initial]);
   const state = snap.state ?? initial;
   const elapsed = state.running ? secondsSince(state.running.startedAt, snap.now - snap.skew) : 0;
   return { state, elapsed };
+}
+
+/**
+ * The two facts a LIST of tasks needs from the timer — which task the
+ * member's timer runs on, and whether a start must show the staff notice
+ * first — as plain values. `useTimerSnapshot` hands back a new snapshot on
+ * every 1 Hz tick, so a board that read it would re-render every card once
+ * a second while a timer runs; these change only when a timer starts or
+ * stops, and a surface draws the ticking clock in a leaf of its own.
+ *
+ * The same rule as `useTimerSnapshot`: the later of the store and this
+ * surface's own read wins, and a later read is published. `null` is a
+ * surface where this member can start no timer (no `time:track`, or an
+ * archived project — `loadPanelTimer`): no task is "running here" and
+ * nothing is published.
+ */
+export function useTimerFacts(initial: TimerPillState | null): { runningItemId: string | null; noticeRequired: boolean } {
+  const own = useMemo<Snapshot | null>(
+    () => (initial ? { state: initial, skew: 0, now: Date.parse(initial.serverNow) } : null),
+    [initial],
+  );
+  const runningItemId = useSyncExternalStore(
+    subscribe,
+    () => (own ? (laterOf(own).state ?? own.state)?.running?.workItemId ?? null : null),
+    () => own?.state?.running?.workItemId ?? null,
+  );
+  const noticeRequired = useSyncExternalStore(
+    subscribe,
+    () => (own ? (laterOf(own).state ?? own.state)?.noticeRequired ?? false : false),
+    () => own?.state?.noticeRequired ?? false,
+  );
+  useEffect(() => {
+    if (initial) publishRead(initial);
+  }, [initial]);
+  return { runningItemId, noticeRequired };
 }
 
 /**

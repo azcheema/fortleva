@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 
-import { expect, test, type Download, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Download, type Locator, type Page, type Request } from "@playwright/test";
 
 import { isActionPost } from "./fixtures/actions";
-import { createOwnTask, deleteOwnTasks, pressUntil } from "./fixtures/keys";
+import { createOwnTask, deleteOwnTasks, keyLink, overlaySection, pressUntil } from "./fixtures/keys";
 import { forgetStaffNotice, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
@@ -122,6 +122,15 @@ function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
 /** Two animation frames: whatever a key's own commit mounts is in the DOM by then. */
 async function nextFrames(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+}
+
+/**
+ * Nothing on the page is busy. A card's or a row's `T` ignores a press
+ * while its own start or stop is in flight, and the board region and the
+ * backlog say so with `aria-busy` — the one outward sign of it.
+ */
+async function listIdle(page: Page): Promise<void> {
+  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, { timeout: 15_000 * SLOW });
 }
 
 /**
@@ -422,6 +431,217 @@ test.describe("my time (owner)", () => {
     } finally {
       await page.unrouteAll({ behavior: "ignoreErrors" });
       // Off the peek first: its modal layer makes the header pill unclickable.
+      await page.goto("/time");
+      await stopIfRunning(page);
+      await deleteOwnTasks(page, seed, created);
+    }
+  });
+
+  test("`T` on a focused backlog row and board card starts THAT task — never the global `T`'s stop — wears the badge there, and a second `T` stops it with focus coming back; from the card's \"…\" button too, swallowing a second `T` while the start is in flight; with no card focused `T` is the global one; under the card's delete question it does nothing; and the overlay lists both", async ({ page }) => {
+    const created: string[] = [];
+    try {
+      // A timer running ELSEWHERE first. The global `T` would STOP it, so a
+      // row that failed to claim the key would leave the pill idle — or
+      // stopped and restarted — instead of on the row's task.
+      await page.getByTestId("quick-start-description").fill("E2E before the row");
+      await page.getByTestId("quick-start-start").click();
+      await expect(pill(page)).toContainText("E2E before the row", { timeout: 15_000 * SLOW });
+      const task = await createOwnTask(page, seed, "E2E row timer", created);
+
+      // ── the backlog row ──
+      await page.goto(`/projects/${seed.projectKey}/backlog`);
+      const row = page.locator('[data-testid="backlog-row"]', { hasText: task.title });
+      await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
+      await waitForTaskTimerKey(page, "Start or stop a timer on the focused task");
+      const link = keyLink(row, seed.projectKey);
+      await link.focus();
+      await page.keyboard.press("t");
+      await expect(pill(page)).toContainText(task.title, { timeout: 15_000 * SLOW });
+      // The start stopped the other timer in the same transaction, so the toast offers Undo.
+      await expect(page.getByText(/"E2E before the row" was stopped/)).toBeVisible();
+      await expect(row.getByTestId("backlog-row-timer")).toBeVisible();
+      await expect(page.getByTestId("backlog-row-timer")).toHaveCount(1);
+      await expect(link).toBeFocused();
+
+      // Under the row's inline delete question `T` does NOTHING — with the
+      // row's timer running, the global `T` would STOP it behind the question.
+      // Its stop request would go out at once (nothing is queued ahead of it),
+      // so no action request at all is the signal.
+      await listIdle(page);
+      const rowActions = row.getByRole("button", { name: /Actions for/ });
+      await rowActions.click();
+      await page.getByRole("menuitem", { name: "Delete" }).click();
+      const rowYes = row.getByRole("button", { name: "Yes" });
+      await expect(rowYes).toBeFocused();
+      const underQuestion: string[] = [];
+      const countActions = (r: Request) => {
+        if (isActionPost(r)) underQuestion.push(r.url());
+      };
+      page.on("request", countActions);
+      await page.keyboard.press("t");
+      await nextFrames(page);
+      await nextFrames(page);
+      page.off("request", countActions);
+      expect(underQuestion).toHaveLength(0);
+      await expect(rowYes).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(rowYes).toHaveCount(0);
+      await expect(stopConfirm(page)).toHaveCount(0);
+      await expect(pill(page)).toContainText(task.title);
+      await expect(row.getByTestId("backlog-row-timer")).toBeVisible();
+      await expect(page).toHaveURL(/\/backlog$/);
+
+      await link.focus();
+      await listIdle(page);
+      await page.keyboard.press("t");
+      await keepAsStopped(page);
+      await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(row.getByTestId("backlog-row-timer")).toHaveCount(0);
+      // The confirm hands focus back to where `T` was pressed.
+      await expect(link).toBeFocused();
+
+      // ── the board card ──
+      await page.goto(`/projects/${seed.projectKey}/board`);
+      const card = page.locator('[data-testid="board-card"]', { hasText: task.title });
+      await expect(card).toBeVisible({ timeout: 20_000 * SLOW });
+      // Both `T` rows: the card's, and the global one beneath it, which still
+      // acts wherever no card holds focus — a focus-handled row hides nothing.
+      const overlay = page.getByRole("dialog", { name: /shortcut/i });
+      await pressUntil(page, "?", overlay);
+      await expect(overlaySection(page, "Board").locator("li", { hasText: "Start or stop a timer on the focused card" })).toBeVisible();
+      await expect(overlaySection(page, "Global").locator("li", { hasText: "Start or stop the timer" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(overlay).toHaveCount(0);
+
+      // No timer runs now, so a global `T` would NAVIGATE to /time: staying on
+      // the board is the card's claim.
+      await card.focus();
+      await page.keyboard.press("t");
+      await expect(pill(page)).toContainText(task.title, { timeout: 15_000 * SLOW });
+      const badge = card.getByTestId("board-card-timer");
+      await expect(badge).toBeVisible();
+      await expect(badge).toHaveAccessibleName("Your timer is running on this task");
+      const shown = await badge.textContent();
+      await expect.poll(() => badge.textContent(), { timeout: 5_000 * SLOW }).not.toBe(shown);
+      await expect(page.getByTestId("board-card-timer")).toHaveCount(1);
+      await expect(page).toHaveURL(/\/board$/);
+      await expect(card).toBeFocused();
+
+      await listIdle(page);
+      await page.keyboard.press("t");
+      await keepAsStopped(page);
+      await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(badge).toHaveCount(0);
+      await expect(card).toBeFocused();
+
+      // (The stop halves above cannot tell the card's `T` from the global one
+      // — both stop — so the claim is proved by the start halves and by this.)
+      //
+      // Once more on the card, from its "…" BUTTON this time — focus inside
+      // the card, not on it — and with the start's request HELD, so a second
+      // `T` lands while the first is in flight. The card must swallow it. A
+      // `T` passed on to the global binding would send a STOP, and Next runs
+      // server actions one at a time: that stop waits behind the held start
+      // and then stops the card's own new timer, so the badge below never
+      // appears (mutation-checked). Inside the held window the request count,
+      // the absent confirm and the URL cannot fail — Next keeps a queued action
+      // in the browser — so they are checked again once the flight has settled.
+      await page.goto("/time");
+      await page.getByTestId("quick-start-description").fill("E2E again elsewhere");
+      await page.getByTestId("quick-start-start").click();
+      await expect(pill(page)).toContainText("E2E again elsewhere", { timeout: 15_000 * SLOW });
+      await page.goto(`/projects/${seed.projectKey}/board`);
+      await expect(card).toBeVisible({ timeout: 20_000 * SLOW });
+      await waitForTaskTimerKey(page, "Start or stop a timer on the focused card");
+      const starts: string[] = [];
+      let holding = true;
+      let held!: () => void;
+      const heldNow = new Promise<void>((r) => {
+        held = r;
+      });
+      let release!: () => void;
+      const released = new Promise<void>((r) => {
+        release = r;
+      });
+      await page.route("**/*", async (route) => {
+        const body = route.request().postData() ?? "";
+        if (isActionPost(route.request()) && body.includes("workItemId")) {
+          starts.push(body);
+          if (holding) {
+            holding = false;
+            held();
+            await released;
+          }
+        }
+        await route.fallback();
+      });
+      try {
+        await card.getByRole("button", { name: /Actions for/ }).focus();
+        await page.keyboard.press("t");
+        await within(heldNow, 30_000 * SLOW, "the card's start request");
+        await expect(page.locator('[data-slot="board"][aria-busy="true"]')).toBeVisible();
+        await page.keyboard.press("t");
+        await nextFrames(page);
+        expect(starts).toHaveLength(1);
+        await expect(stopConfirm(page)).toHaveCount(0);
+        await expect(page).toHaveURL(/\/board$/);
+        release();
+        await expect(badge).toBeVisible({ timeout: 15_000 * SLOW });
+        await expect(pill(page)).toContainText(task.title, { timeout: 15_000 * SLOW });
+        await expect(page.getByText(/"E2E again elsewhere" was stopped/)).toBeVisible();
+        await listIdle(page);
+        await expect(stopConfirm(page)).toHaveCount(0);
+        await expect(badge).toBeVisible();
+        expect(starts).toHaveLength(1);
+      } finally {
+        release();
+        await page.unrouteAll({ behavior: "ignoreErrors" });
+      }
+
+      // Then `T` from the board REGION, where no card holds focus: that is the
+      // global `T`, which stops the card's timer.
+      await listIdle(page);
+      await page.getByTestId("board").focus();
+      await page.keyboard.press("t");
+      await keepAsStopped(page);
+      await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(badge).toHaveCount(0);
+      await expect(page).toHaveURL(/\/board$/);
+
+      // Under the card's inline delete question `T` does NOTHING. The question
+      // renders inside the card, so the card's handler sees its Yes: a start
+      // there would put a timer on the task being deleted, and the global `T`
+      // (no timer running) would leave the board behind the question.
+      const laterStarts: string[] = [];
+      page.on("request", (r) => {
+        if (isActionPost(r) && (r.postData() ?? "").includes("workItemId")) laterStarts.push(r.url());
+      });
+      await listIdle(page);
+      const actions = card.getByRole("button", { name: /Actions for/ });
+      await actions.click();
+      await page.getByRole("menuitem", { name: "Delete" }).click();
+      const yes = card.getByRole("button", { name: "Yes" });
+      await expect(yes).toBeFocused();
+      await page.keyboard.press("t");
+      await nextFrames(page);
+      await page.keyboard.press("Escape");
+      await expect(yes).toHaveCount(0);
+      await expect(actions).toBeFocused();
+      // Still on the board, with no stop confirm: the global `T` (no timer
+      // running) would have navigated to /time behind the question.
+      await expect(page).toHaveURL(/\/board$/);
+      await expect(stopConfirm(page)).toHaveCount(0);
+      // Settled, so a start made under the question would show by now.
+      await listIdle(page);
+      await expect(badge).toHaveCount(0);
+      await expect(idlePill(page)).toBeVisible();
+      expect(laterStarts).toHaveLength(0);
+      // …and the same key from the "…" button, the question gone, starts it.
+      await page.keyboard.press("t");
+      await expect(badge).toBeVisible({ timeout: 15_000 * SLOW });
+      await listIdle(page);
+      expect(laterStarts).toHaveLength(1);
+    } finally {
       await page.goto("/time");
       await stopIfRunning(page);
       await deleteOwnTasks(page, seed, created);
@@ -767,6 +987,49 @@ test.describe("as the employee", () => {
       await expect(idlePill(page)).toBeVisible();
     } finally {
       await page.unrouteAll({ behavior: "ignoreErrors" });
+      await page.goto("/time");
+      await stopIfRunning(page);
+    }
+  });
+
+  test("a first start from a focused board CARD shows the notice over the board: Cancel hands focus back to the card, acknowledging starts that card's task", async ({ page }) => {
+    const starts: string[] = [];
+    page.on("request", (r) => {
+      if (isActionPost(r) && (r.postData() ?? "").includes("workItemId")) starts.push(r.url());
+    });
+    const notice = page.getByTestId("item-timer-notice");
+    try {
+      // Seeded task #1 of the project in the employee's scope; forget any
+      // acknowledgment so the notice shows on a retry too.
+      await forgetStaffNotice(seed.tenantId, seed.employeeEmail);
+      await page.goto(`/projects/${seed.projectKey}/board`);
+      const card = page.locator(`[data-testid="board-card"][data-item-key="${seed.projectKey}-1"]`);
+      await expect(card).toBeVisible({ timeout: 20_000 * SLOW });
+      await expect(idlePill(page)).toBeVisible();
+      await waitForTaskTimerKey(page, "Start or stop a timer on the focused card");
+
+      await card.focus();
+      await page.keyboard.press("t");
+      await expect(notice).toBeVisible({ timeout: 15_000 * SLOW });
+      await expect(notice).toContainText("What is never recorded");
+      // It covers the board, so it names the task the start will go to.
+      await expect(notice).toContainText(`The timer starts on ${seed.projectKey}-1:`);
+      await notice.getByRole("button", { name: "Cancel" }).click();
+      await expect(notice).toHaveCount(0);
+      await expect(card).toBeFocused();
+      await nextFrames(page);
+      expect(starts).toHaveLength(0);
+      await expect(idlePill(page)).toBeVisible();
+
+      await listIdle(page);
+      await page.keyboard.press("t");
+      await expect(notice).toBeVisible({ timeout: 15_000 * SLOW });
+      await notice.getByTestId("item-timer-notice-acknowledge").click();
+      await expect(notice).toHaveCount(0, { timeout: 15_000 * SLOW });
+      await expect(pill(page)).toContainText(`${seed.projectKey}-1`, { timeout: 15_000 * SLOW });
+      await expect(card.getByTestId("board-card-timer")).toBeVisible();
+      expect(starts).toHaveLength(1);
+    } finally {
       await page.goto("/time");
       await stopIfRunning(page);
     }

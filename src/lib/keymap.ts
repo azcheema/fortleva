@@ -82,8 +82,12 @@ export type KeyBinding = {
    */
   run: ((e: KeyboardEvent) => void) | null;
   /**
-   * REQUIRED. `false` REFUSES the key — swallowing it rather than
-   * letting it fall through to a lower scope — and hides the row.
+   * REQUIRED. On a binding with a `run`, `false` REFUSES the key —
+   * swallowing it rather than letting it fall through to a lower scope —
+   * and hides the row. On a `run: null` binding it only hides the row:
+   * dispatch skips that binding before it reads `enabled`, so the key goes
+   * on to a lower scope either way (the board's `T` on an archived
+   * project leaves the key to the global `T`).
    *
    * Swallowing is the point: a member without `work_item:edit` pressing
    * `S` in the item scope must get nothing, not the board's "Move to…".
@@ -461,6 +465,14 @@ export type KeymapSection = { scope: OverlayScope; bindings: readonly PlacedBind
  * · A key already claimed by a HIGHER scope is shadowed out, because the
  *   overlay states what would happen if you pressed it right now — with
  *   the peek open that is the item's `S`, not the board's.
+ * · …but only a RUN-BEARING binding claims. A `run: null` row is handled
+ *   on a focused element (a card, a row), and wherever no such element
+ *   holds focus the key goes on to a lower scope — which is what the
+ *   dispatcher does, skipping it. So the board's `T` on a focused card
+ *   is listed AND the global `T` beneath it, and the palette keeps the
+ *   global row; a claiming row would have hidden the only `T` that works
+ *   from anywhere else on the page. A `run: null` row is still shadowed
+ *   by a higher claim, like any other.
  * · Entries sharing a scope name are merged into one section, so a
  *   surface may mount one small island per picker (slice 6's `P E D`)
  *   without the overlay growing a heading each.
@@ -480,7 +492,7 @@ export function overlaySections(scopes: readonly ScopeSnapshot[]): KeymapSection
       if (!binding.enabled) continue;
       const key = binding.key.toLowerCase();
       if (claimed.has(key)) continue;
-      claimed.add(key);
+      if (binding.run !== null) claimed.add(key);
       rows.push({ ...binding, scope: name, entry: i, index: b });
     }
   }
