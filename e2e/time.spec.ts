@@ -5,6 +5,18 @@ import { expect, test, type Download, type Locator, type Page, type Request } fr
 import { isActionPost } from "./fixtures/actions";
 import { createOwnTask, deleteOwnTasks, keyLink, overlaySection, pressUntil } from "./fixtures/keys";
 import { forgetStaffNotice, requireSeed, type E2ESeed } from "./fixtures/tenant";
+import {
+  acknowledgeNoticeIfShown,
+  elapsedClock,
+  idlePill,
+  keepAsStopped,
+  listIdle,
+  nextFrames,
+  pill,
+  stopButton,
+  stopConfirm,
+  stopIfRunning,
+} from "./fixtures/timer";
 
 /**
  * 2T in a browser (PLAN.md Phase 2T "Demo" + the 2026-08-20 D1/D2/D6
@@ -28,13 +40,6 @@ test.beforeAll(() => {
   seed = requireSeed();
 });
 
-// The pill is mounted twice (desktop header slot + mobile slot); the
-// desktop one comes first in the DOM and is the visible one at this viewport.
-const pill = (page: Page) => page.getByTestId("timer-pill").first();
-const idlePill = (page: Page) => page.getByTestId("timer-pill-idle").first();
-const stopButton = (page: Page) => page.getByTestId("timer-pill-stop").first();
-const elapsedClock = (page: Page) => page.getByTestId("timer-pill-elapsed").first();
-
 // Downloads are same-origin attachments from a route handler: click the
 // anchor, wait for the download event, read the file Playwright saved.
 const BOM = String.fromCharCode(0xfeff);
@@ -48,14 +53,6 @@ async function download(page: Page, testId: string): Promise<{ name: string; tex
 }
 const ENTRY_HEADER =
   "id,date,started_at,stopped_at,timezone,seconds,hours,member_id,member,client,project_key,project,task_key,task,agreement,work_type,billable,description,entry_mode,source,needs_review,locked_reason";
-
-async function acknowledgeNoticeIfShown(page: Page): Promise<void> {
-  const ack = page.getByTestId("notice-acknowledge");
-  if (await ack.isVisible().catch(() => false)) {
-    await ack.click();
-    await expect(ack).toHaveCount(0, { timeout: 15_000 * SLOW });
-  }
-}
 
 /**
  * A finished entry through the New-entry form (a duration on a date; the
@@ -79,26 +76,6 @@ async function viewedWeekFrom(page: Page): Promise<string> {
   return from!;
 }
 
-/** The stop confirm every explicit stop opens (UI.md rule 9 — no silent save). */
-const stopConfirm = (page: Page) => page.getByTestId("stop-confirm");
-
-/** Dismiss the stop confirm — by Escape, or by its close button — keeping the entry exactly as stopped. */
-async function keepAsStopped(page: Page, via: "escape" | "close" = "escape"): Promise<void> {
-  await expect(stopConfirm(page)).toBeVisible({ timeout: 15_000 * SLOW });
-  if (via === "escape") await page.keyboard.press("Escape");
-  else await stopConfirm(page).locator('[data-slot="dialog-close"]').click();
-  await expect(stopConfirm(page)).toHaveCount(0);
-}
-
-async function stopIfRunning(page: Page): Promise<void> {
-  const stop = stopButton(page);
-  if (await stop.isVisible().catch(() => false)) {
-    await stop.click();
-    await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
-    await keepAsStopped(page);
-  }
-}
-
 /**
  * A task's timer control is visible AND idle. The control ignores a press
  * while its start or stop is in flight (the pill's state not yet re-read),
@@ -117,20 +94,6 @@ function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
     promise,
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${what}`)), ms)),
   ]);
-}
-
-/** Two animation frames: whatever a key's own commit mounts is in the DOM by then. */
-async function nextFrames(page: Page): Promise<void> {
-  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
-}
-
-/**
- * Nothing on the page is busy. A card's or a row's `T` ignores a press
- * while its own start or stop is in flight, and the board region and the
- * backlog say so with `aria-busy` — the one outward sign of it.
- */
-async function listIdle(page: Page): Promise<void> {
-  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, { timeout: 15_000 * SLOW });
 }
 
 /**

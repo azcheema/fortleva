@@ -42,7 +42,7 @@
  * on purpose, so the slices that fill them are a registration rather
  * than a redesign.
  */
-export type KeyScope = "global" | "board" | "backlog" | "inbox" | "triage" | "item" | "modal";
+export type KeyScope = "global" | "board" | "backlog" | "home" | "inbox" | "triage" | "item" | "modal";
 
 /**
  * Precedence is THIS TABLE, never mount order. React runs child effects
@@ -50,13 +50,15 @@ export type KeyScope = "global" | "board" | "backlog" | "inbox" | "triage" | "it
  * `global` scope ABOVE the panel's `item` scope and invert shadowing —
  * a thing that would work only by luck.
  *
- * `board`/`backlog`/`inbox`/`triage` are peers: they are region scopes
- * on different surfaces and never mount together.
+ * `board`/`backlog`/`home`/`inbox`/`triage` are peers: they are region
+ * scopes on different surfaces and never mount together. `home` arrived
+ * with the queue's row verbs (slice 24, 2026-09-17), the `backlog` way.
  */
 export const SCOPE_ORDER: Record<KeyScope, number> = {
   global: 0,
   board: 10,
   backlog: 10,
+  home: 10,
   inbox: 10,
   triage: 10,
   item: 20,

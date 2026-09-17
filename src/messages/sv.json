@@ -127,7 +127,8 @@
         "backlog": "Backlogg",
         "inbox": "Inkorg",
         "triage": "Sortering",
-        "item": "Uppgift"
+        "item": "Uppgift",
+        "home": "Hem"
       },
       "always": "Alltid tillgängliga"
     },
@@ -191,6 +192,15 @@
       "runningLabel": "Timer igång på {label}",
       "timer": "Timer",
       "start": "Starta en timer"
+    },
+    "keys": {
+      "navigate": "Flytta mellan uppgifter",
+      "timer": "Starta eller stoppa en timer på uppgiften som har fokus"
+    },
+    "queueTimer": {
+      "start": "Starta en timer på {task}",
+      "stop": "Stoppa timern på {task}",
+      "running": "Din timer är igång på den här uppgiften"
     }
   },
   "inbox": {

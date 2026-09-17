@@ -9,6 +9,7 @@ import { canTrackTime, getCurrentTimerOnce, myTimeTotals } from "@/modules/time"
 import { listMyWork, resolveRowState } from "@/modules/work";
 import { inboxGlance } from "@/notify/inbox";
 
+import { getTimerStateAction, type TimerPillState } from "../time/actions";
 import { labelOf } from "../time/label";
 import { resolveWeekContext } from "../time/week-context";
 import { InboxCard } from "./inbox-card";
@@ -49,6 +50,13 @@ const greetingKey = (hour: number): "morning" | "afternoon" | "evening" =>
  * assignee or a `triageStatus` until the portal (Phase 3) — so both would
  * be cards whose number is always zero, the tiles this comment's first
  * paragraph took away. They arrive with the writers that fill them.
+ *
+ * THE QUEUE'S TIMER (slice 24): the rows carry `T` and a start-stop
+ * button, which need the member's timer as the pill sees it. For a member
+ * who tracks time that is `getTimerStateAction()` — the SAME per-request
+ * snapshot the strip and the layout's pill read (`getCurrentTimerOnce`),
+ * not a second query — and `null` otherwise, where the rows show no
+ * control and claim no key.
  */
 export default async function HomePage() {
   // Still required, and still first: a user with no ACTIVE membership is
@@ -69,11 +77,14 @@ export default async function HomePage() {
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: timezone }).format(new Date()));
 
   let strip: HomeTimeStripProps | null = null;
+  let queueTimer: TimerPillState | null = null;
   if (tracks) {
-    const [totals, timer] = await Promise.all([
+    const [totals, timer, pillState] = await Promise.all([
       myTimeTotals(ctx, { from: week.from, to: week.to, today }),
       getCurrentTimerOnce(ctx.tenantId, ctx.actor.memberId, Boolean(ctx.actor.impersonated)),
+      getTimerStateAction(),
     ]);
+    queueTimer = pillState;
     strip = {
       weekSeconds: totals.weekSeconds,
       todaySeconds: totals.todaySeconds,
@@ -124,7 +135,7 @@ export default async function HomePage() {
             count can disagree with the rows by a notification read or written
             between them — this guard only keeps that from drawing an EMPTY card. */}
         {glance.rows.length > 0 ? <InboxCard glance={glance} serverNow={new Date().toISOString()} /> : null}
-        {queue && myWork ? <MyWorkQueue rows={queue} truncated={myWork.truncated} today={today} /> : null}
+        {queue && myWork ? <MyWorkQueue rows={queue} truncated={myWork.truncated} today={today} timer={queueTimer} /> : null}
       </div>
     </Page>
   );

@@ -127,7 +127,8 @@
         "backlog": "Backlog",
         "inbox": "Inbox",
         "triage": "Triage",
-        "item": "Task"
+        "item": "Task",
+        "home": "Home"
       },
       "always": "Always available"
     },
@@ -191,6 +192,15 @@
       "runningLabel": "Timer running on {label}",
       "timer": "Timer",
       "start": "Start a timer"
+    },
+    "keys": {
+      "navigate": "Move between tasks",
+      "timer": "Start or stop a timer on the focused task"
+    },
+    "queueTimer": {
+      "start": "Start a timer on {task}",
+      "stop": "Stop the timer on {task}",
+      "running": "Your timer is running on this task"
     }
   },
   "inbox": {
