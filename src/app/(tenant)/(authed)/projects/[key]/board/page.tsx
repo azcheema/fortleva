@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
+import { projectItemSpent } from "@/modules/time";
 import { listItems, projectWorkVersion, resolveStateNames } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 import { cn } from "@/lib/utils";
@@ -58,7 +59,7 @@ export default async function ProjectBoardPage({
   const tStates = await getTranslations("projects.states.seed");
   const peekNumber = peekItemNumber(item, project.key);
   const listHref = listHrefOf(`/projects/${project.key}/board`, query);
-  const [rawData, peekItem, timer, t, locale, prefs] = await Promise.all([
+  const [rawData, peekItem, timer, spent, t, locale, prefs] = await Promise.all([
     listItems(ctx, project.id),
     // ONE scope-checked read, never a lookup in the list: the board
     // drops archived items, so an archived one could be addressed and
@@ -73,6 +74,11 @@ export default async function ProjectBoardPage({
     // a CLIENT navigation (a peek, `?group=`, board ↔ backlog) the layout
     // does not render, so this is a timer read of its own as well (recorded).
     loadPanelTimer(ctx, project),
+    // Σ spent per task for the cards — its own gated read (`time:view_team`
+    // for the team figure, `time:track` for the member's own, else null),
+    // never a ride on `listItems`, which is `work_item:view` data the
+    // backlog shares. One `groupBy`, scope-checked like the Time tab's.
+    projectItemSpent(ctx, project.id),
     getTranslations("projects.board"),
     getLocale(),
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
@@ -148,6 +154,7 @@ export default async function ProjectBoardPage({
         durationStyle={prefs.durationStyle}
         peekOpen={Boolean(peekItem)}
         timer={timer}
+        spent={spent}
       />
       {peekItem ? (
         <PeekShell returnHref={listHref}>

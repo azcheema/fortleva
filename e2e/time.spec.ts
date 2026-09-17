@@ -529,10 +529,26 @@ test.describe("my time (owner)", () => {
 
       await listIdle(page);
       await page.keyboard.press("t");
-      await keepAsStopped(page);
+      // This stop goes through the confirm's Done with a duration typed
+      // in, so the card has a FINISHED entry worth showing: Σ spent is
+      // read on the page's next render (the confirm's own refresh, slice
+      // 20), as the team's figure — the seed member holds time:view_team
+      // — and alone, since this task carries no estimate. The row's stop
+      // above left the seconds its timer ran on the task, a few locally and
+      // more on a slow runner, so the figure is 45m plus whatever they
+      // round to (review): the assertion tolerates that, not a wrong number.
+      const confirm = stopConfirm(page);
+      await expect(confirm).toBeVisible({ timeout: 15_000 * SLOW });
+      await confirm.getByTestId("stop-confirm-duration").fill("45m");
+      await confirm.getByTestId("stop-confirm-done").click();
+      await expect(confirm).toHaveCount(0, { timeout: 15_000 * SLOW });
       await expect(idlePill(page)).toBeVisible({ timeout: 15_000 * SLOW });
       await expect(badge).toHaveCount(0);
       await expect(card).toBeFocused();
+      const spent = card.getByTestId("board-card-spent");
+      await expect(spent).toBeVisible({ timeout: 20_000 * SLOW });
+      await expect(spent).toContainText(/^4[5-9]m$/);
+      await expect(spent).toHaveAccessibleName(/^Spent 4[5-9]m$/);
 
       // (The stop halves above cannot tell the card's `T` from the global one
       // — both stop — so the claim is proved by the start halves and by this.)

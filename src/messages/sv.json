@@ -1372,6 +1372,10 @@
         "checklist": "{done} av {total} punkter i checklistan",
         "assignee": "Ansvarig: {name}",
         "estimate": "Estimat {hours}",
+        "spent": "Nedlagd tid {hours}",
+        "spentOfEstimate": "Nedlagd tid {spent} av {estimate} estimerat",
+        "spentOwn": "Din tid {hours}",
+        "spentOwnOfEstimate": "Din tid {spent} av {estimate} estimerat",
         "timerRunning": "Din timer är igång på den här uppgiften",
         "label": "{key}: {title}",
         "open": "Öppna"

@@ -1372,6 +1372,10 @@
         "checklist": "{done} of {total} checklist items",
         "assignee": "Assigned to {name}",
         "estimate": "Estimate {hours}",
+        "spent": "Spent {hours}",
+        "spentOfEstimate": "Spent {spent} of {estimate} estimated",
+        "spentOwn": "Your time {hours}",
+        "spentOwnOfEstimate": "Your time {spent} of {estimate} estimated",
         "timerRunning": "Your timer is running on this task",
         "label": "{key}: {title}",
         "open": "Open"

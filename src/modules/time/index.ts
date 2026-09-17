@@ -107,6 +107,7 @@ export {
   type TeamRollupLine,
 } from "./rollup";
 export { projectMoney, type MoneyLine, type MoneyTotals, type ProjectMoney } from "./money";
+export { projectItemSpent, type ItemSpent } from "./spent";
 export {
   entriesCsv,
   exportEntries,

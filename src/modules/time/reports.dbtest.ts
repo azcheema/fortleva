@@ -5,6 +5,7 @@ import { AuthzError } from "@/authz/errors";
 import { withTenant } from "@/db";
 import { DomainError } from "@/lib/domain-error";
 import { setupTenant } from "@/members/dbtest-fixture";
+import { createRole, setRolePermissions } from "@/members/roles";
 import { changeItemVisibility, createItem } from "@/modules/work";
 
 import {
@@ -20,11 +21,13 @@ import {
   getNoticeStatus,
   getProjectBudget,
   listReports,
+  projectItemSpent,
   projectRollup,
   publishReport,
   regenerateReport,
   repriceRateCard,
   resetTimeDefaultsMemo,
+  startTimer,
   teamRollup,
   unpublishReport,
 } from "./index";
@@ -322,5 +325,96 @@ describe("reprice", () => {
     const audit = await f.audits("time_entry.repriced");
     expect(audit).toHaveLength(2);
     expect(await authzReason(repriceRateCard(managerCtx(), { rateCardId: projectCard, mode: "ALL_UNBILLED" }))).toBe("FORBIDDEN"); // CA only
+  });
+});
+
+/**
+ * The board card's Σ spent (`projectItemSpent`): the team's finished
+ * seconds per task with time:view_team, the member's OWN with time:track
+ * alone, null with neither — scope asserted first, project-level rows and
+ * running timers never counted. LAST in this file on purpose: it adds an
+ * employee entry the rollup totals above do not expect.
+ */
+describe("Σ spent per task (board cards)", () => {
+  it("team figure for time:view_team, own figure for time:track alone, null for neither, NOT_FOUND out of scope", async () => {
+    // Before the employee's row: the owner's 2 h on the visible task and
+    // 1 h on the internal one (the fixture); the project-level rows and
+    // the manager's retainer row have no task and never appear.
+    const before = await projectItemSpent(ownerCtx(), project);
+    expect(before?.scope).toBe("team");
+    expect(before?.seconds[visibleTask]).toBe(7200);
+    expect(before?.seconds[internalTask]).toBe(3600);
+    expect(Object.keys(before?.seconds ?? {})).toHaveLength(2);
+
+    // The employee is unassigned in this fixture: the project is not in
+    // scope, and the read says NOT_FOUND before it says anything else.
+    expect(await authzReason(projectItemSpent(employeeCtx(), project))).toBe("NOT_FOUND");
+
+    // Assigned, the employee (time:track, no time:view_team) sees their own
+    // finished time only; the owner's team figure now includes it, and a
+    // RUNNING timer of theirs counts for no one.
+    await f.platform.memberClient.create({ data: { tenantId: f.tenantId, memberId: f.seats.employee.memberId, clientId: acme } });
+    try {
+      await createEntry(employeeCtx(), { workItemId: visibleTask, startedAt: at("2026-08-06T08:00"), stoppedAt: at("2026-08-06T08:30") });
+      await startTimer(employeeCtx(), { workItemId: internalTask });
+      const own = await projectItemSpent(employeeCtx(), project);
+      expect(own).toEqual({ scope: "own", seconds: { [visibleTask]: 1800 } });
+      const team = await projectItemSpent(ownerCtx(), project);
+      expect(team?.seconds[visibleTask]).toBe(9000);
+      expect(team?.seconds[internalTask]).toBe(3600);
+      // A manager (time:view_team, not the owner) gets the TEAM figure —
+      // the owner's and the employee's seconds alike, not merely a resolve.
+      const manager = await projectItemSpent(managerCtx(), project);
+      expect(manager?.scope).toBe("team");
+      expect(manager?.seconds[visibleTask]).toBe(9000);
+
+      // Fresh members on custom roles, each assigned to the client so the
+      // project is in scope, so that the GATE is what decides (review):
+      // the fixture's team seats all hold client:view_all and time:track
+      // beside time:view_team, so they cannot tell a read gated on the
+      // right code from one gated on the wrong one.
+      const asRole = async (
+        name: string,
+        codes: string[],
+        check: (ctx: { tenantId: string; actor: { memberId: string } }) => Promise<void>,
+      ): Promise<void> => {
+        const { roleId } = await createRole({ tenantId: f.tenantId, actor: f.seats.owner.actor, name });
+        const userId = randomUUID();
+        let memberId: string | null = null;
+        try {
+          await setRolePermissions({ tenantId: f.tenantId, actor: f.seats.owner.actor, roleId, codes });
+          await f.platform.user.create({ data: { id: userId, name, email: `${randomUUID().slice(0, 8)}@test.invalid` } });
+          memberId = (await f.platform.member.create({ data: { tenantId: f.tenantId, userId } })).id;
+          await f.platform.memberRole.create({ data: { tenantId: f.tenantId, memberId, roleId } });
+          await f.platform.memberClient.create({ data: { tenantId: f.tenantId, memberId, clientId: acme } });
+          await check({ tenantId: f.tenantId, actor: { memberId } });
+        } finally {
+          if (memberId) await f.platform.memberClient.deleteMany({ where: { tenantId: f.tenantId, memberId } });
+          if (memberId) await f.platform.memberRole.deleteMany({ where: { tenantId: f.tenantId, memberId } });
+          if (memberId) await f.platform.member.delete({ where: { id: memberId } });
+          await f.platform.user.deleteMany({ where: { id: userId } });
+          await f.platform.rolePermission.deleteMany({ where: { tenantId: f.tenantId, roleId } });
+          await f.platform.role.delete({ where: { id: roleId } });
+        }
+      };
+      // time:view_team ALONE is the team gate: no time:track, no client:view_all.
+      await asRole("Team time only", ["time:view_team"], async (ctx) => {
+        const r = await projectItemSpent(ctx, project);
+        expect(r?.scope).toBe("team");
+        expect(r?.seconds[visibleTask]).toBe(9000);
+      });
+      // The admin shape — client:view_all and time:track, no time:view_team —
+      // is OWN (and this member has no rows): the wide client scope is not
+      // the time gate.
+      await asRole("Admin shape", ["client:view_all", "time:track"], async (ctx) => {
+        expect(await projectItemSpent(ctx, project)).toEqual({ scope: "own", seconds: {} });
+      });
+      // Neither permission: in scope, and no figure at all.
+      await asRole("Viewer only", [], async (ctx) => {
+        expect(await projectItemSpent(ctx, project)).toBeNull();
+      });
+    } finally {
+      await f.platform.memberClient.deleteMany({ where: { tenantId: f.tenantId, memberId: f.seats.employee.memberId, clientId: acme } });
+    }
   });
 });

@@ -15,7 +15,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { KanbanSquareIcon, ListChecksIcon, PlusIcon, TimerIcon } from "lucide-react";
+import { HourglassIcon, KanbanSquareIcon, ListChecksIcon, PlusIcon, TimerIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -65,6 +65,7 @@ import {
   type WorkItem,
   type WorkState,
 } from "@/lib/work-view";
+import type { ItemSpent } from "@/modules/time";
 import type { ItemList, ResolvedItemList } from "@/modules/work";
 
 import type { TimerPillState } from "../../../time/actions";
@@ -110,6 +111,7 @@ export function Board({
   durationStyle,
   peekOpen,
   timer,
+  spent,
 }: {
   projectId: string;
   projectKey: string;
@@ -126,6 +128,13 @@ export function Board({
    * REQUIRED, `null` included: it decides whether a card takes `T`.
    */
   timer: TimerPillState | null;
+  /**
+   * Σ spent per task as the page read it (`projectItemSpent`): the team's
+   * figure with `time:view_team`, the member's own with `time:track`
+   * alone, `null` with neither. REQUIRED, `null` included — a card must
+   * reflect it, never default it (standing trap).
+   */
+  spent: ItemSpent | null;
   /** True while the item peek (`?item=`) is open over the board: the
    * window-level `C` must not create behind the sheet's scrim (2W-B
    * review — the region-scoped keys are already inert, focus being
@@ -518,6 +527,7 @@ export function Board({
               canApprove={canApprove}
               durationStyle={durationStyle}
               timer={timer}
+              spent={spent}
               runningItemId={taskTimer.runningItemId}
               tabbableId={tabbableId}
               defaultStateId={defaultState?.id ?? null}
@@ -573,6 +583,7 @@ function BoardLane(props: {
   canApprove: boolean;
   durationStyle: DurationStyle;
   timer: TimerPillState | null;
+  spent: ItemSpent | null;
   runningItemId: string | null;
   tabbableId: string | null;
   defaultStateId: string | null;
@@ -652,6 +663,7 @@ function BoardColumn(props: {
   canApprove: boolean;
   durationStyle: DurationStyle;
   timer: TimerPillState | null;
+  spent: ItemSpent | null;
   runningItemId: string | null;
   tabbableId: string | null;
   defaultStateId: string | null;
@@ -733,6 +745,7 @@ function BoardColumn(props: {
             locale={props.locale}
             durationStyle={props.durationStyle}
             timer={props.runningItemId === item.id ? props.timer : null}
+            spent={props.spent}
             takesTimerKey={props.timer !== null}
             canEdit={props.canEdit}
             canDelete={props.canDelete}
@@ -772,6 +785,65 @@ function BoardColumn(props: {
 
 // ── a card ───────────────────────────────────────────────────────────
 
+/** Whole minutes of a task's Σ spent, 0 when the read has none (or none for this task). */
+const spentMinutesOf = (spent: ItemSpent | null, itemId: string): number =>
+  Math.round((spent?.seconds[itemId] ?? 0) / 60);
+
+/**
+ * Σ spent / estimate on a card (PLAN 2T; UI.md §5.4 "Σ spent on the
+ * card"). Finished time only — the running badge beside it is the live
+ * part — as ONE figure with the estimate when the task has one ("45 min /
+ * 2 h"), so the two numbers are read against each other; a task over its
+ * estimate wears the caution tone the column's WIP count wears. The
+ * accessible name says whose time it is: the team's (`time:view_team`)
+ * or "Your time" (a member with `time:track` alone, rule 14) — the glyph
+ * is the same, the sentence is not. Under a minute rounds to nothing and
+ * shows nothing, so a card never says "0 min". Without spent time the
+ * estimate renders exactly as it always has.
+ */
+function SpentFigure({
+  minutes,
+  scope,
+  estimateMinutes,
+  locale,
+  durationStyle,
+}: {
+  minutes: number;
+  scope: ItemSpent["scope"] | null;
+  estimateMinutes: number | null;
+  locale: string;
+  durationStyle: DurationStyle;
+}) {
+  const t = useTranslations("projects.board");
+  const estimate = estimateMinutes !== null ? formatDuration(locale, estimateMinutes, durationStyle) : null;
+  if (minutes < 1 || scope === null) {
+    if (estimate === null) return null;
+    return (
+      <span role="img" className="num" aria-label={t("card.estimate", { hours: estimate })}>
+        {estimate}
+      </span>
+    );
+  }
+  const spent = formatDuration(locale, minutes, durationStyle);
+  const own = scope === "own";
+  const label =
+    estimate === null
+      ? t(own ? "card.spentOwn" : "card.spent", { hours: spent })
+      : t(own ? "card.spentOwnOfEstimate" : "card.spentOfEstimate", { spent, estimate });
+  const over = !own && estimateMinutes !== null && minutes > estimateMinutes;
+  return (
+    <span
+      role="img"
+      data-testid="board-card-spent"
+      aria-label={label}
+      className={cn("num inline-flex items-center gap-1", over && "font-semibold text-(--tone-caution-fg)")}
+    >
+      <HourglassIcon aria-hidden="true" className="size-3" />
+      {estimate === null ? spent : `${spent} / ${estimate}`}
+    </span>
+  );
+}
+
 function BoardCard({
   item,
   laneKey,
@@ -779,6 +851,7 @@ function BoardCard({
   locale,
   durationStyle,
   timer,
+  spent,
   takesTimerKey,
   canEdit,
   canDelete,
@@ -801,6 +874,8 @@ function BoardCard({
    * that ticks is the badge's own leaf.
    */
   timer: TimerPillState | null;
+  /** The page's Σ spent read (`Board`'s `spent`); the card looks its own task up. */
+  spent: ItemSpent | null;
   /** Whether `T` on this card starts a timer (the board's `timer` is not null). */
   takesTimerKey: boolean;
   canEdit: boolean;
@@ -950,7 +1025,7 @@ function BoardCard({
           line because chips wrap here — the card has the height the
           backlog row does not (`LabelChips`, `surface="card"`). */}
       <LabelChips labels={item.labels} surface="card" />
-      {item.checklistTotal > 0 || item.estimateMinutes !== null || timer || item.assigneeMemberId ? (
+      {item.checklistTotal > 0 || item.estimateMinutes !== null || spentMinutesOf(spent, item.id) >= 1 || timer || item.assigneeMemberId ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {item.checklistTotal > 0 ? (
             <span role="img" className="inline-flex items-center gap-1" aria-label={t("card.checklist", { done: item.checklistDone, total: item.checklistTotal })}>
@@ -960,11 +1035,13 @@ function BoardCard({
               </span>
             </span>
           ) : null}
-          {item.estimateMinutes !== null ? (
-            <span role="img" className="num" aria-label={t("card.estimate", { hours: formatDuration(locale, item.estimateMinutes, durationStyle) })}>
-              {formatDuration(locale, item.estimateMinutes, durationStyle)}
-            </span>
-          ) : null}
+          <SpentFigure
+            minutes={spentMinutesOf(spent, item.id)}
+            scope={spent?.scope ?? null}
+            estimateMinutes={item.estimateMinutes}
+            locale={locale}
+            durationStyle={durationStyle}
+          />
           {/* The member's OWN running timer, never anyone else's: a card
               that showed a colleague's clock would be the live presence
               UI rule 14 forbids. Beside the estimate, the number it will
