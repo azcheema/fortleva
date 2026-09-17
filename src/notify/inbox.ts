@@ -180,6 +180,19 @@ export async function countUnread(ctx: InboxCtx): Promise<number> {
   );
 }
 
+/** The columns a row is drawn from — the page and the glance read the same ones. */
+const ROW_SELECT = {
+  id: true,
+  kind: true,
+  createdAt: true,
+  readAt: true,
+  archivedAt: true,
+  snoozedTill: true,
+  entityType: true,
+  entityId: true,
+  projectId: true,
+} as const;
+
 export async function listInbox(
   ctx: InboxCtx,
   opts: { filter: InboxFilter; cursor?: string | null } = { filter: "unread" },
@@ -199,33 +212,67 @@ export async function listInbox(
       where: { ...receiverWhere(ctx), AND: [filterWhere(opts.filter, now), ...after] },
       orderBy: { id: "desc" },
       take: INBOX_PAGE_SIZE + 1,
-      select: {
-        id: true,
-        kind: true,
-        createdAt: true,
-        readAt: true,
-        archivedAt: true,
-        snoozedTill: true,
-        entityType: true,
-        entityId: true,
-        projectId: true,
-      },
+      select: ROW_SELECT,
     });
     const hasMore = found.length > INBOX_PAGE_SIZE;
     const page = hasMore ? found.slice(0, INBOX_PAGE_SIZE) : found;
-    const subjects = await resolveSubjects(tx, ctx, page);
-    const rows: InboxRow[] = page.map((n) => ({
-      id: n.id,
-      kind: isNotificationKind(n.kind) ? n.kind : null,
-      createdAt: n.createdAt,
-      readAt: n.readAt,
-      archivedAt: n.archivedAt,
-      snoozedTill: n.snoozedTill,
-      subject: subjects.get(n.id) ?? null,
-    }));
+    const rows = await toInboxRows(tx, ctx, page);
     const last = page.at(-1);
     return { rows, nextCursor: hasMore && last ? last.id : null };
   });
+}
+
+/** How many unread rows `/home`'s inbox card shows (UI.md rule 8, "inbox top-5"). */
+export const INBOX_GLANCE_SIZE = 5;
+
+export type InboxGlance = {
+  /** The badge's number — every live unread row, not only the ones shown. */
+  readonly unread: number;
+  /** The newest live unread rows, at most `INBOX_GLANCE_SIZE`. */
+  readonly rows: readonly InboxRow[];
+};
+
+/**
+ * `/home`'s inbox card: the unread count and the newest few unread rows,
+ * in one transaction, through the SAME bucket predicate and the SAME
+ * scope-filtered subject resolution the Unread tab uses — so the card can
+ * never name a task the inbox itself would not.
+ */
+export async function inboxGlance(ctx: InboxCtx, limit: number = INBOX_GLANCE_SIZE): Promise<InboxGlance> {
+  return withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
+    const where = { ...receiverWhere(ctx), AND: [liveUnread(new Date())] };
+    const [unread, found] = await Promise.all([
+      tx.notification.count({ where }),
+      tx.notification.findMany({
+        where,
+        orderBy: { id: "desc" },
+        take: limit,
+        select: ROW_SELECT,
+      }),
+    ]);
+    return { unread, rows: await toInboxRows(tx, ctx, found) };
+  });
+}
+
+type RowSource = SubjectSource & {
+  kind: string;
+  createdAt: Date;
+  readAt: Date | null;
+  archivedAt: Date | null;
+  snoozedTill: Date | null;
+};
+
+async function toInboxRows(tx: TenantDb, ctx: InboxCtx, page: readonly RowSource[]): Promise<InboxRow[]> {
+  const subjects = await resolveSubjects(tx, ctx, page);
+  return page.map((n) => ({
+    id: n.id,
+    kind: isNotificationKind(n.kind) ? n.kind : null,
+    createdAt: n.createdAt,
+    readAt: n.readAt,
+    archivedAt: n.archivedAt,
+    snoozedTill: n.snoozedTill,
+    subject: subjects.get(n.id) ?? null,
+  }));
 }
 
 type SubjectSource = {

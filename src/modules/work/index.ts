@@ -11,6 +11,7 @@ export {
   listItems,
   projectWorkVersion,
   resolveItemDetail,
+  resolveRowState,
   resolveStateNames,
   resolveStates,
   setItemArchived,
@@ -42,6 +43,7 @@ export {
   bulkSetPriority,
   type BulkResult,
 } from "./bulk";
+export { listMyWork } from "./my-work";
 export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from "./ordering";
 export { changeState, ensureProjectStates, type StateChange } from "./states";
 export { updateItemDescription, type DescriptionSaved } from "./description";

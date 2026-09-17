@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
-import { InboxIcon, PlusIcon } from "lucide-react";
-import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { requireMemberSession } from "@/auth/session";
-import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
-import { Button } from "@/components/ui/button";
+import { Page, PageHeader } from "@/components/semantic";
 import { requireTenantContext } from "@/members/tenant-context";
+import { isoDateOf } from "@/lib/duration";
 import { canTrackTime, getCurrentTimerOnce, myTimeTotals } from "@/modules/time";
+import { listMyWork, resolveRowState } from "@/modules/work";
+import { inboxGlance } from "@/notify/inbox";
 
 import { labelOf } from "../time/label";
 import { resolveWeekContext } from "../time/week-context";
+import { InboxCard } from "./inbox-card";
+import { MyWorkQueue, type QueueRow } from "./my-work-queue";
 import { HomeTimeStrip, type HomeTimeStripProps } from "./time-strip";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -34,20 +36,33 @@ const greetingKey = (hour: number): "morning" | "afternoon" | "evening" =>
  * runs, so a member or tenant the module is not on for triggers none of
  * its bootstrap on the landing page.
  *
- * The queue's empty state offers ONE verb (§5.8), and it is a create
- * verb — the two buttons it replaced were copies of two rail items
- * sitting 200px to the left.
+ * THE QUEUE (2W, slice 23): the member's open assigned tasks in due-date
+ * groups (`my-work-queue.tsx`), for a member who may view work at all —
+ * `listMyWork` answers `null` otherwise and the page draws no card, the
+ * strip's rule. ABOVE it, the INBOX CARD: the newest unread
+ * notifications, drawn only while something is unread — above, because
+ * it is at most five rows and a queue can run to a hundred, which would
+ * put the glance two phone screens down (review, slice 23).
+ *
+ * NOT HERE, ON PURPOSE: rule 8's "waiting on client" and "triage count".
+ * Nothing in 2W can put a task in either — no code writes a contact
+ * assignee or a `triageStatus` until the portal (Phase 3) — so both would
+ * be cards whose number is always zero, the tiles this comment's first
+ * paragraph took away. They arrive with the writers that fill them.
  */
 export default async function HomePage() {
   // Still required, and still first: a user with no ACTIVE membership is
   // redirected to the workspace picker rather than shown an empty queue.
   const { membership, actor, userEmail } = await requireTenantContext();
   const ctx = { tenantId: membership.tenantId, actor };
-  const [session, t, { prefs, timezone, today, week, weekLabel }, tracks] = await Promise.all([
+  const [session, t, tStates, { prefs, timezone, today, week, weekLabel }, tracks, myWork, glance] = await Promise.all([
     requireMemberSession(),
     getTranslations("home"),
+    getTranslations("projects.states.seed"),
     resolveWeekContext(),
     canTrackTime(ctx),
+    listMyWork(ctx),
+    inboxGlance(ctx),
   ]);
   const firstName = session.user.name.split(/\s+/)[0] || userEmail;
   // The viewer's clock: Member.timezone → tenant `ui.timezone` → Europe/Stockholm (UI.md §8).
@@ -80,6 +95,24 @@ export default async function HomePage() {
     };
   }
 
+  const queue: QueueRow[] | null = myWork
+    ? myWork.items.map((item) => {
+        const row = resolveRowState(item, (seedKey) => tStates(seedKey));
+        return {
+          id: row.id,
+          key: `${row.projectKey}-${row.number}`,
+          number: row.number,
+          title: row.title,
+          projectKey: row.projectKey,
+          projectName: row.projectName,
+          stateCategory: row.stateCategory,
+          stateName: row.stateName,
+          priority: row.priority,
+          targetDate: row.targetDate ? isoDateOf(row.targetDate) : null,
+        };
+      })
+    : null;
+
   return (
     <Page>
       {/* No "Workspace: {name}" subtitle: the header says it 60px above. */}
@@ -87,23 +120,11 @@ export default async function HomePage() {
 
       <div className="mt-6 flex flex-col gap-4">
         {strip ? <HomeTimeStrip {...strip} /> : null}
-        <SectionCard title={t("queue")} description={t("queueDescription")}>
-          <EmptyState
-            variant="empty"
-            icon={InboxIcon}
-            title={t("empty.title")}
-            body={t("empty.description")}
-            action={
-              <Button asChild>
-                <Link href="/clients#new-client">
-                  <PlusIcon />
-                  {t("empty.action")}
-                </Link>
-              </Button>
-            }
-            className="mx-auto items-center py-8 text-center"
-          />
-        </SectionCard>
+        {/* On ROWS, not the count: the two are separate statements, so the
+            count can disagree with the rows by a notification read or written
+            between them — this guard only keeps that from drawing an EMPTY card. */}
+        {glance.rows.length > 0 ? <InboxCard glance={glance} serverNow={new Date().toISOString()} /> : null}
+        {queue && myWork ? <MyWorkQueue rows={queue} truncated={myWork.truncated} today={today} /> : null}
       </div>
     </Page>
   );

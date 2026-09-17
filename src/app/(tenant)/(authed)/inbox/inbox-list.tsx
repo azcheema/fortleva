@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  AtSignIcon,
-  BellIcon,
-  ClockIcon,
-  GaugeIcon,
-  InboxIcon,
-  MessageSquareIcon,
-  UserRoundPlusIcon,
-  type LucideProps,
-} from "lucide-react";
+import { BellIcon, ClockIcon, InboxIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -24,6 +15,7 @@ import type { ActionResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
 import type { NotificationKind } from "@/notify/catalog";
 import { GENERIC_COPY_KEY, KIND_MESSAGE_KEY } from "@/notify/kind-copy";
+import { KIND_ICON } from "@/notify/kind-icon";
 import type { InboxFilter } from "@/notify/inbox";
 
 import {
@@ -53,15 +45,6 @@ import {
  * Every verb is optimistic and runs in a transition, so a failure
  * toasts rather than looking like a revert (PLAN.md standing trap).
  */
-
-/** One glyph per kind (UI.md §10). A row written by a newer deploy —
- * `kind: null` — still renders, with the generic bell. */
-const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps>> = {
-  "work_item.assigned": UserRoundPlusIcon,
-  "comment.mentioned": AtSignIcon,
-  "work_item.commented": MessageSquareIcon,
-  "budget.threshold_reached": GaugeIcon,
-};
 
 export type InboxRowView = {
   id: string;

@@ -210,6 +210,8 @@ async function provision(seedFile: string): Promise<void> {
     setItemLabel,
     updateItemFields,
   } = await import("../../src/modules/work");
+  const { dateColumn, localDateString } = await import("../../src/lib/duration");
+  const { addDays } = await import("../../src/lib/week");
   const { createMilestone } = await import("../../src/projects/milestones");
   const { commitUpload, createUpload } = await import("../../src/documents/service");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
@@ -412,8 +414,15 @@ async function provision(seedFile: string): Promise<void> {
   // the services — numbering, rank, state machine, activity, audit —
   // exactly as the owner's session would. The first create seeds the
   // project's states lazily (ensureProjectStates); the rest read them.
+  // Due dates put the owner's three assigned tasks in three of /home's
+  // queue groups (overdue, next 7 days, later) for e2e/home.spec.ts and
+  // the sweep. THREE DAYS each side of today, in the tenant's default
+  // zone: a run that crosses midnight between this seed and the test
+  // still finds each task in the same group.
+  const today = localDateString(new Date(), "Europe/Stockholm");
+  const dueIn = (days: number): Date => dateColumn(addDays(today, days));
   const firstTask = await createItem(ctx, { projectId, title: "Sätt upp staging-miljö" });
-  await updateItemFields(ctx, firstTask.id, { priority: "HIGH", estimateMinutes: 120 });
+  await updateItemFields(ctx, firstTask.id, { priority: "HIGH", estimateMinutes: 120, targetDate: dueIn(-3) });
   await assignItem(ctx, firstTask.id, ownerMemberId);
   const workStates = await db.workflowState.findMany({
     where: { tenantId, projectId },
@@ -482,6 +491,7 @@ async function provision(seedFile: string): Promise<void> {
   // what puts a real notification in the owner's inbox.
   // One label — the common case, under the cap, nothing folded.
   const reviewTaskId = await task("Designgranskning med kunden", { priority: "MEDIUM", hours: 1.5, labels: 1 });
+  await updateItemFields(ctx, reviewTaskId, { targetDate: dueIn(3) });
   await task("Migrera DNS till ny leverantör", { category: "DONE", hours: 1 });
   await task("Tillgänglighetsgranskning", { category: "BACKLOG" });
 

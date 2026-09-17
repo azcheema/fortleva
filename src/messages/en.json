@@ -163,16 +163,26 @@
       "afternoon": "Good afternoon, {name}",
       "evening": "Good evening, {name}"
     },
-    "empty": {
-      "title": "Nothing to work on yet",
-      "description": "Boards and tasks arrive with the Work module — for now, start with your clients and projects.",
-      "action": "Create a client",
-      "clients": "Open Clients",
-      "projects": "Open Projects"
-    },
-    "workspace": "Workspace: {name}",
     "queue": "Your queue",
-    "queueDescription": "Work assigned to you, across every client and project.",
+    "queueDescription": "Unfinished tasks assigned to you, across every project you can see — soonest due first.",
+    "queueGroups": {
+      "overdue": "Overdue",
+      "today": "Due today",
+      "soon": "Next 7 days",
+      "later": "Later or no date"
+    },
+    "queuePriority": "Priority: {priority}",
+    "queueTruncated": "Showing the {count} soonest-due tasks.",
+    "queueEmpty": {
+      "title": "Nothing assigned to you",
+      "body": "Unfinished tasks assigned to you land here, soonest due first.",
+      "action": "Go to projects"
+    },
+    "inbox": {
+      "title": "Inbox",
+      "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
+      "open": "Open inbox"
+    },
     "time": {
       "title": "Your time",
       "week": "This week",
@@ -181,12 +191,6 @@
       "runningLabel": "Timer running on {label}",
       "timer": "Timer",
       "start": "Start a timer"
-    },
-    "tiles": {
-      "assigned": "Assigned to you",
-      "waiting": "Waiting on client",
-      "due": "Due this week",
-      "pending": "—"
     }
   },
   "inbox": {

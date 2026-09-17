@@ -2,7 +2,9 @@
  * WHICH surface asked for an item property change — the backlog table,
  * a peek over the board or the backlog, or the item's own page.
  *
- * It exists for one reason: the MFA step-up return address. `runAction`
+ * It exists for the MFA step-up return address — and `/home`'s queue
+ * builds its row links with `itemReturnTo("backlog-peek", …)`, the same
+ * address the inbox links a task by (slice 23). `runAction`
  * hands its first argument to `handleAuthzRedirect`, which sends the
  * member back there after a step-up, and a hardcoded backlog path sent a
  * member working in a board peek or on the item page somewhere else.

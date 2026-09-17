@@ -7,10 +7,12 @@ import { setupTenant } from "@/members/dbtest-fixture";
 import { assignItem, createItem } from "@/modules/work";
 
 import {
+  INBOX_GLANCE_SIZE,
   INBOX_PAGE_SIZE,
   MAX_INBOX_IDS,
   archive,
   countUnread,
+  inboxGlance,
   listInbox,
   markAllRead,
   markRead,
@@ -287,6 +289,57 @@ describe("inbox — the buckets", () => {
     const seen = [...first.rows, ...second.rows].map((r) => r.id);
     expect(new Set(seen).size).toBe(batch.length); // no duplicates
     expect(new Set(seen)).toEqual(new Set(batch)); // and none lost
+  });
+});
+
+describe("inbox — the /home glance", () => {
+  it("is the Unread tab's newest rows and the badge's count — the same predicate, the same receiver", async () => {
+    const hour = 60 * 60 * 1000;
+    const created: string[] = [];
+    for (let i = 0; i < INBOX_GLANCE_SIZE + 2; i++) created.push(await give(f.seats.owner.memberId));
+    // Rows the Unread tab leaves out, and so must the glance: none of
+    // these may take one of the five places or add to the count.
+    await give(f.seats.owner.memberId, { readAt: new Date() });
+    await give(f.seats.owner.memberId, { archivedAt: new Date() });
+    await give(f.seats.owner.memberId, { snoozedTill: new Date(Date.now() + hour) });
+    await give(f.seats.employee.memberId);
+
+    const glance = await inboxGlance(ownerCtx());
+    expect(glance.unread).toBe(INBOX_GLANCE_SIZE + 2);
+    expect(glance.unread).toBe(await countUnread(ownerCtx()));
+    expect(glance.rows.map((r) => r.id)).toEqual([...created].reverse().slice(0, INBOX_GLANCE_SIZE));
+    expect(glance.rows.map((r) => r.id)).toEqual(
+      (await idsIn(f.seats.owner.memberId, "unread")).slice(0, INBOX_GLANCE_SIZE),
+    );
+
+    // Nothing unread is a count of zero and no rows — the page draws no card.
+    expect(await markAllRead(ownerCtx())).toBe(INBOX_GLANCE_SIZE + 2);
+    expect(await inboxGlance(ownerCtx())).toEqual({ unread: 0, rows: [] });
+  });
+
+  it("RESOLVES SUBJECTS THROUGH SCOPE, as the inbox does — a task out of reach has no title on /home either", async () => {
+    await f.platform.memberClient.deleteMany({
+      where: { tenantId: f.tenantId, memberId: f.seats.employee.memberId },
+    });
+    const item = await createItem(ownerCtx(), { projectId, title: "Glance secret" });
+    await give(f.seats.employee.memberId, { entityType: "WorkItem", entityId: item.id });
+
+    const [blind] = (await inboxGlance(employeeCtx())).rows;
+    expect(blind?.kind).toBe("work_item.assigned");
+    expect(blind?.subject).toBeNull();
+
+    await scopeEmployeeToInboxClient();
+    try {
+      const [seeing] = (await inboxGlance(employeeCtx())).rows;
+      expect(seeing?.subject).toEqual({
+        title: "Glance secret",
+        href: `/projects/${projectKey}/backlog?item=${projectKey}-${item.number}`,
+      });
+    } finally {
+      await f.platform.memberClient.deleteMany({
+        where: { tenantId: f.tenantId, memberId: f.seats.employee.memberId },
+      });
+    }
   });
 });
 

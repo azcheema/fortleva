@@ -163,16 +163,26 @@
       "afternoon": "God eftermiddag, {name}",
       "evening": "God kväll, {name}"
     },
-    "empty": {
-      "title": "Inget att arbeta med ännu",
-      "description": "Tavlor och uppgifter kommer med arbetsmodulen — börja tills vidare med dina kunder och projekt.",
-      "action": "Skapa en kund",
-      "clients": "Öppna Kunder",
-      "projects": "Öppna Projekt"
-    },
-    "workspace": "Arbetsyta: {name}",
     "queue": "Din kö",
-    "queueDescription": "Arbete som är tilldelat dig, över alla kunder och projekt.",
+    "queueDescription": "Oavslutade uppgifter som är tilldelade dig, i alla projekt du har tillgång till — de som förfaller först överst.",
+    "queueGroups": {
+      "overdue": "Försenade",
+      "today": "Förfaller i dag",
+      "soon": "Kommande 7 dagar",
+      "later": "Senare eller utan datum"
+    },
+    "queuePriority": "Prioritet: {priority}",
+    "queueTruncated": "Visar de {count} uppgifter som förfaller först.",
+    "queueEmpty": {
+      "title": "Inget är tilldelat dig",
+      "body": "Oavslutade uppgifter som tilldelas dig hamnar här, de som förfaller först överst.",
+      "action": "Gå till projekt"
+    },
+    "inbox": {
+      "title": "Inkorg",
+      "unread": "{count, plural, one {# oläst avisering} other {# olästa aviseringar}}",
+      "open": "Öppna inkorgen"
+    },
     "time": {
       "title": "Din tid",
       "week": "Den här veckan",
@@ -181,12 +191,6 @@
       "runningLabel": "Timer igång på {label}",
       "timer": "Timer",
       "start": "Starta en timer"
-    },
-    "tiles": {
-      "assigned": "Tilldelat dig",
-      "waiting": "Väntar på kund",
-      "due": "Förfaller denna vecka",
-      "pending": "—"
     }
   },
   "inbox": {

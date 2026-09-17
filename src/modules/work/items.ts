@@ -128,7 +128,7 @@ export type ResolvedRow<T extends RawStateRow> = Omit<T, "stateName" | "stateSee
  * is one no client component can mis-read, and nothing downstream has
  * to know the translate-until-renamed rule exists.
  */
-const resolveRowState = <T extends RawStateRow>(row: T, t: (key: StateSeedKey) => string): ResolvedRow<T> => {
+export const resolveRowState = <T extends RawStateRow>(row: T, t: (key: StateSeedKey) => string): ResolvedRow<T> => {
   const { stateName, stateSeedKey, ...rest } = row;
   return { ...rest, stateName: stateLabel({ name: stateName, seedKey: stateSeedKey }, t) };
 };
