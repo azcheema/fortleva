@@ -12,7 +12,7 @@ import { notifyTimerChanged } from "@/components/shell/timer-pill";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SHOW_FROM, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { canSplitSeconds } from "@/lib/duration";
 import { durationInputText, formatDurationSeconds, type DurationStyle } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -192,15 +192,89 @@ export function TimeWeek({
                         <TableCell priority="medium" className="num text-muted-foreground">
                           {e.entryMode === "DURATION" ? t("durationOnly") : e.timeLabel}
                         </TableCell>
-                        <TableCell>
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            {e.projectKey ? <span className="num-id text-muted-foreground">{e.projectKey}</span> : null}
-                            <span className="truncate">{e.label || t("adhoc")}</span>
-                            {running ? <Badge variant="outline">{t("badges.running")}</Badge> : null}
-                            {e.overlaps ? <Badge variant="outline">{t("badges.overlap")}</Badge> : null}
-                            {e.needsReview ? <Badge variant="outline">{t("badges.review")}</Badge> : null}
+                        {/* WHAT, and it is the column that pays for the rest
+                            (measured on CI run 35380530578: this table was
+                            91px past a 356px box, 65px past 608 and 76px past
+                            736 — the largest overflow left in the product).
+                            Not a rung mistake: every badge is `shrink-0`
+                            `whitespace-nowrap`, so four of them FORCED the
+                            column exactly as `/clients`' city span forced its
+                            own. Three changes, and each answers one part:
+
+                            · `contain-inline-size` + `w-full` over the cell's
+                              `min-w-40` floor takes this wrapper out of the
+                              column's intrinsic sizing entirely (UI.md §10.12,
+                              the backlog title cell's own answer), so the
+                              column stops being measured from its content.
+                              TEN rem, not the fourteen `/clients` uses, and
+                              measured rather than chosen: this table also
+                              carries a duration editor and a pinned column
+                              with TWO buttons, ~170px of fixed width at a
+                              356px box, so a 14rem floor left it 38px over —
+                              the same way the client Projects tab's 10ch key
+                              column made 14rem 6px too wide there (slice 28).
+                              At 10rem the floor never binds on a phone: the
+                              column takes the 186px remainder instead.
+                            · `flex-wrap` is GONE. With the width now fixed the
+                              badges would have wrapped instead of widening,
+                              and a row that grows a second line fails the
+                              craft audit's row-pitch assertion — the overflow
+                              would have become a height bug.
+                            · The three ADVISORY badges take the `medium`
+                              rung, so below a 608px box they are not rendered.
+                              That is the trade, stated: a phone loses the
+                              advisories and keeps the entry they are about,
+                              the same trade the Agreement and Type columns
+                              already make two lines below — and "Running"
+                              survives it anyway, since the row is tinted.
+                              `Locked` is NOT one of them; see below. */}
+                        <TableCell className="min-w-40">
+                          <div className="flex w-full min-w-0 items-center gap-1.5 contain-inline-size">
+                            {e.projectKey ? (
+                              <span className="num-id shrink-0 text-muted-foreground">{e.projectKey}</span>
+                            ) : null}
+                            {/* The label is what YIELDS here, so it carries the
+                                full text as its own `title` — the §10.12 rule
+                                for any identifying cell that truncates. */}
+                            <span className="truncate" title={e.label || t("adhoc")}>
+                              {e.label || t("adhoc")}
+                            </span>
+                            {/* THE ADVISORY THREE, and only these, take the
+                                rung — rendered at all only when there is one
+                                to show, or the `gap-1.5` would eat 6px of
+                                every badge-less label. Capped at half the
+                                cell like the backlog's chips: they are
+                                `shrink-0` `whitespace-nowrap` and size
+                                containment does NOT clip, so three Swedish
+                                ones (`Överlappar Kontrollera`) would have
+                                collapsed the label to nothing and painted
+                                straight back out of the cell — the scroll
+                                this change removes. Past the cap the last
+                                one clips, which is a bounded failure where
+                                the alternative is an unbounded one. */}
+                            {running || e.overlaps || e.needsReview ? (
+                              <span
+                                className={cn(
+                                  "shrink-0 max-w-1/2 items-center gap-1.5 overflow-hidden",
+                                  SHOW_FROM.medium,
+                                )}
+                              >
+                                {running ? <Badge variant="outline">{t("badges.running")}</Badge> : null}
+                                {e.overlaps ? <Badge variant="outline">{t("badges.overlap")}</Badge> : null}
+                                {e.needsReview ? <Badge variant="outline">{t("badges.review")}</Badge> : null}
+                              </span>
+                            ) : null}
+                            {/* LOCKED IS NOT ADVISORY and never takes a rung.
+                                It is the one badge that explains a failed
+                                interaction: on a locked row every editor is
+                                read-only and the ⋯ trigger renders disabled,
+                                so without it a phone shows a row that simply
+                                refuses to be touched and says nothing about
+                                why (review). Uncapped too, for the same
+                                reason — it is the last thing that should
+                                clip. */}
                             {e.locked ? (
-                              <Badge variant="outline" title={t("badges.lockedWhy")}>
+                              <Badge variant="outline" className="shrink-0" title={t("badges.lockedWhy")}>
                                 {t("badges.locked")}
                               </Badge>
                             ) : null}

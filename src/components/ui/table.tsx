@@ -136,6 +136,32 @@ const PRIORITY: Record<ColumnPriority, string> = {
 }
 
 /**
+ * The SAME rungs, for something that is not a column.
+ *
+ * Sometimes the thing that will not fit is inside a cell rather than
+ * being a cell — the time week's status badges, which are `shrink-0`
+ * `whitespace-nowrap` and so force their column exactly as a cell would.
+ * Such an element wants the same widths, and the reason this exists is
+ * that it was first written out by hand at its call site: a rung spelled
+ * twice is a rung that can be re-measured in one place and not the
+ * other, and the stop that would have caught it is exempt from the
+ * overflow ratchet (review, 2026-09-18).
+ *
+ * `flex`, not `table-cell` — and the strings are COMPLETE class names on
+ * purpose, never built by concatenation, because Tailwind scans source
+ * text and a class assembled at runtime is a class that is never
+ * generated. `high` is "" for the same reason `PRIORITY.high` is: it
+ * always renders.
+ */
+export const SHOW_FROM: Record<ColumnPriority, string> = {
+  high: "",
+  medium: "hidden @min-[38rem]/data-table:flex",
+  low: "hidden @min-[46rem]/data-table:flex",
+  lower: "hidden @min-[61.5rem]/data-table:flex",
+  lowest: "hidden @min-[71rem]/data-table:flex",
+}
+
+/**
  * THE PINNED COLUMN — the trailing actions column's `pinned` (UI.md §10.12).
  * Its cells are `position: sticky` at the scroll box's right edge, so a
  * row's verbs are in view however far a table scrolls: column priority
