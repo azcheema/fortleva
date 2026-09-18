@@ -73,7 +73,12 @@ export async function pressUntil(
       await page.keyboard.press(key);
     }
     await expect(target.first()).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 30_000 });
+    // SLOW-scaled, like every other wait in this file. It was a flat 30 s,
+    // which is half the leash CI gives the assertions around it — and this
+    // helper exists precisely for the key whose owner may not have mounted
+    // yet, which is the thing a slow runner makes slower (review, after run
+    // 35357881001 went red on a single press).
+  }).toPass({ timeout: 30_000 * SLOW });
 }
 
 /** Open one of the test's own tasks in the backlog peek, through its key link. */

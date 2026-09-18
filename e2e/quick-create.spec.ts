@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { SLOW, deleteOwnTasks } from "./fixtures/keys";
+import { SLOW, deleteOwnTasks, pressUntil } from "./fixtures/keys";
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
- * THE GLOBAL `C` (UI.md rule 2, keymap `global · C`) — slice 29.
+ * THE GLOBAL `C` (UI.md rule 2, keymap `global · C`) — slice 30.
  *
  * What only a browser can see here is the WIRE: that one key registered
  * in the shell reaches a dialog from a page that knows nothing about it,
@@ -125,8 +125,29 @@ test("the board's own `C` still wins, and a modal `C` does not reopen the dialog
   // bindings are registered; the shell ALSO stands its binding down on
   // a board route, so the answer does not depend on which of the two
   // hydrated first (review).
+  //
+  // `pressUntil`, not a single press, and the reason IS the thing under
+  // test: a board card being VISIBLE is server-rendered HTML, not a
+  // mounted effect, so the board's binding may not exist yet — and the
+  // shell's, standing down here, SWALLOWS the key rather than letting
+  // it fall through. One press in that window therefore does nothing at
+  // all, which is correct and is why `keymap.spec.ts` has always
+  // retried this key. A single press passed on a fast local machine and
+  // failed both CI attempts (run 35357881001).
+  await pressUntil(page, "c", page.getByTestId("board-create-input"));
+  await expect(page.getByTestId("board-create-input").first()).toBeFocused();
+
+  // And the global dialog never opened behind it.
+  await expect(dialog(page)).toHaveCount(0);
+
+  // The second half of this test's name, which it did not used to
+  // exercise (review): a `C` pressed while the composer holds focus is
+  // a letter typed into it, not a key. Single keys are inert inside an
+  // editable target, and the dialog this shell mounts on every page
+  // must be no exception to that.
   await page.keyboard.press("c");
   await expect(dialog(page)).toHaveCount(0);
-  await expect(page.locator("input:focus")).toBeVisible();
+  await expect(page.getByTestId("board-create-input").first()).toHaveValue("c");
+
   await page.keyboard.press("Escape");
 });
