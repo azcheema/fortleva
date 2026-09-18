@@ -71,7 +71,17 @@ export function EntityChip({
   const body = (
     <>
       <EntityTile id={id} name={name} size={size} />
-      <span className="truncate">{name}</span>
+      {/* The name TRUNCATES wherever the chip is narrower than it — the
+          chip is `max-w-full` everywhere — so it carries the full name as
+          its own `title`, the rule §10.12 already states for a narrowed
+          identifying column and `/files` and `/members` already follow.
+          It was cosmetic while the tables that hold chips overflowed
+          instead of truncating; once `/projects` and `/clients` were made
+          to fit their box (slice 28) a long name became unrecoverable
+          without it, since there is no scroll left to reveal the rest. */}
+      <span className="truncate" title={name}>
+        {name}
+      </span>
       {entityKey ? (
         <span className="num-id shrink-0 font-mono text-xs text-muted-foreground">{entityKey}</span>
       ) : null}

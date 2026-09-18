@@ -82,8 +82,8 @@ const RUNG_WIDTHS = [768, 880, 882, 1008, 1010, 1256, 1258, 1408, 1410] as const
  * HAS at that viewport width. Column priority exists so a table fits its
  * box, so every key not listed is held to 0 — including every OTHER width
  * of a stop that appears here, which is the point of keying on the width:
- * `projects` is 412px over at 390px and 0 at 1440px, and a per-stop number
- * would have licensed 412px everywhere.
+ * `projects` was 412px over at 390px and 0 at 1440px, and a per-stop
+ * number would have licensed 412px everywhere.
  *
  * A RATCHET, not an allowance: one pixel past the number (plus `DRIFT_PX`)
  * and the walk fails, so fixing a stop means deleting its keys in the same
@@ -102,47 +102,41 @@ const RUNG_WIDTHS = [768, 880, 882, 1008, 1010, 1256, 1258, 1408, 1410] as const
  * visual-only run finds them empty. Numbers below are CI's. Re-calibrate
  * from a CI log, never from a local visual-only run.
  *
- * WHAT THEY ARE — both causes are the ones PLAN §0 slice-17 owed (f)
- * already named, and neither is a column-priority mistake:
- *   • `projects` — `<Table className="table-fixed min-w-3xl">`
- *     (`projects/page.tsx`) is a hard 48rem = 768px FLOOR. Every number is
- *     exactly 768 − box (356+412, 494+274, 606+162, 608+160, 734+34,
- *     736+32), so it is a CONSTANT: identical on both platforms (CI never
- *     flagged one of them) and in every locale, because under
- *     `table-fixed` content cannot widen a table at all. Deleting
- *     `min-w-3xl` deletes all of it.
- *   • `clients` — the name cell's `max-w-[420px]` (`clients/page.tsx`)
- *     behaves as a FLOOR in Chromium. `clients-archived` is ~14px more at
- *     every width: the same table with the wider "Archived" badge. The
- *     control that proves the reading is `/clients/[id]/projects`, which
- *     carries the same capped cell, never reaches it, and sits at 0.
+ * WHAT THEY ARE:
  *   • `files`, `client-files`, `error-banner`, `project-files` — 4-6px,
  *     named rather than hidden under a tolerance wide enough to blind
  *     every other stop.
+ *
+ * WHAT THEY WERE — the twelve `projects` / `clients` / `clients-archived`
+ * keys this table carried on 2026-09-18 are GONE, fixed rather than
+ * ratcheted (slice 28), and both causes were the ones PLAN §0 slice-17
+ * owed (f) already named, neither a column-priority mistake:
+ *   • `projects` — `<Table className="table-fixed min-w-3xl">` was a hard
+ *     48rem = 768px FLOOR. Every number was exactly 768 − box (356+412,
+ *     494+274, 606+162, 608+160, 734+34, 736+32), a CONSTANT in every
+ *     locale and on both platforms, because a fixed table cannot be
+ *     widened by content. `table-fixed` stays — it is what aligns the six
+ *     headings across the stacked per-client tables — and the floor went.
+ *   • `clients` — the name cell's `max-w-[420px]` was a FLOOR in
+ *     Chromium, a max-width clamping the cell's min-content contribution
+ *     as well as its max-content one. `clients-archived` was ~14px more
+ *     at every width: the same table with the wider "Archived" badge. The
+ *     control that proved the reading was `/clients/[id]/projects`, which
+ *     carried the same capped cell, never reached it, and sat at 0. All
+ *     three now use the backlog's `contain-inline-size` + `w-full`
+ *     wrapper over a `min-w` floor (UI.md §10.12).
  *
  * NOT A DEFECT LIST BY DEFINITION. `table.tsx` and UI.md §10.12 record a
  * settled trade — since the actions column is pinned, a rung may carry a
  * little scroll at its very edge in exchange for more columns — so a
  * future entry may be that trade rather than a bug, and must be labelled
- * as such. All ten keys today are bugs. The harness is ENGLISH and cannot
+ * as such. All four keys today are bugs. The harness is ENGLISH and cannot
  * see the trade at all: the backlog is 0 here and ~30px over at the
  * `lowest` rung's narrow edge in Swedish (measured with a throwaway probe
  * on 2026-09-18; `table.tsx` and UI.md §10.12 record ~21px for that
  * edge). The owed Swedish walk will add trades here.
  */
 const KNOWN_OVERFLOW: Record<string, number> = {
-  "projects@390": 412,
-  "projects@768": 274,
-  "projects@880": 162,
-  "projects@882": 160,
-  "projects@1008": 34,
-  "projects@1010": 32,
-  "clients@390": 149,
-  "clients@768": 11,
-  "clients@1010": 70,
-  "clients-archived@390": 163,
-  "clients-archived@768": 25,
-  "clients-archived@1010": 85,
   "files@390": 6,
   "client-files@390": 6,
   "error-banner@390": 6,

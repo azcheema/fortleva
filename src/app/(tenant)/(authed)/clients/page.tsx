@@ -151,10 +151,25 @@ export default async function ClientsPage({
               <TableBody>
                 {clients.map((c) => (
                   <TableRow key={c.id}>
-                    {/* Bounded, so a 220px void stops separating a city
-                        from the status chip that belongs to it. */}
-                    <TableCell className="max-w-[420px]">
-                      <span className="flex min-w-0 items-center gap-2">
+                    {/* `max-w-[420px]` used to sit here, to stop a 220px
+                        void separating a city from the status chip that
+                        belongs to it. Measured, it never did that and was
+                        a FLOOR instead: a max-width clamps a cell's
+                        min-content contribution as well as its max-content
+                        one, so the column could not go below 420px and the
+                        table was 149px past a phone's 356px box — while at
+                        a 1151px box the column was 689px anyway, the cap
+                        never binding where the void it was for actually
+                        appears (`KNOWN_OVERFLOW`, slice-17 owed (f)).
+                        The backlog's title cell already had the answer
+                        (UI.md §10.12): `contain-inline-size` + `w-full`
+                        takes the wrapper out of the column's intrinsic
+                        sizing entirely, so `min-w-56` is the floor and the
+                        slack spreads across all five columns instead of
+                        piling up behind the name — 273px of name at a
+                        356px box, 510px at 1151px, and 0 scroll at both. */}
+                    <TableCell className="min-w-56">
+                      <span className="flex w-full min-w-0 items-center gap-2 contain-inline-size">
                         <EntityChip
                           id={c.id}
                           name={c.name}
@@ -165,8 +180,21 @@ export default async function ClientsPage({
                             c.status === "ARCHIVED" && "text-muted-foreground",
                           )}
                         />
+                        {/* Capped and truncating, exactly as the backlog
+                            caps the chips that share its title cell: the
+                            city is the one item here that cannot shrink,
+                            `city` is an unbounded `String?`, and size
+                            containment does not clip — so an overlong one
+                            would eat the name chip and then overflow the
+                            cell, putting back the scroll this column is
+                            now ratcheted to 0 for. */}
                         {c.city ? (
-                          <span className="shrink-0 text-xs text-muted-foreground">{c.city}</span>
+                          <span
+                            className="max-w-1/2 shrink-0 truncate text-xs text-muted-foreground"
+                            title={c.city}
+                          >
+                            {c.city}
+                          </span>
                         ) : null}
                       </span>
                     </TableCell>

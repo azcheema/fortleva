@@ -95,14 +95,27 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
                   <TableCell className="num-id w-[10ch] font-mono text-xs text-muted-foreground">
                     {p.key}
                   </TableCell>
-                  <TableCell className="max-w-[420px]">
-                    <EntityChip
-                      id={p.id}
-                      name={p.name}
-                      kind="project"
-                      href={`/projects/${p.key}`}
-                      className="font-medium"
-                    />
+                  {/* The same shape as `/clients` — this cell carried the
+                      identical `max-w-[420px]`, and only stayed at 0px of
+                      scroll because a client's own project names are
+                      shorter than the cap, which made it the control that
+                      proved the cap was the floor there. It is the same
+                      latent floor, so it gets the same fix — with a 10rem
+                      floor rather than `/clients`' 14rem, because this
+                      table also carries the 10ch key column: measured, a
+                      14rem floor put it 6px past a phone's 356px box (the
+                      walk failed on it), and 10rem leaves 58px of slack
+                      for a wider Swedish status badge. */}
+                  <TableCell className="min-w-40">
+                    <span className="flex w-full min-w-0 items-center contain-inline-size">
+                      <EntityChip
+                        id={p.id}
+                        name={p.name}
+                        kind="project"
+                        href={`/projects/${p.key}`}
+                        className="font-medium"
+                      />
+                    </span>
                   </TableCell>
                   <TableCell>
                     <StatusBadge domain="projectStatus" value={p.status} />

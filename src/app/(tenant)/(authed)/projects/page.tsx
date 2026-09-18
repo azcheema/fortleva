@@ -162,18 +162,37 @@ export default async function ProjectsPage({
               {/* One table per client, stacked — so the columns are pinned
                   rather than measured. With auto layout each group sized
                   its own columns from its own rows and the six headings
-                  landed at six different x positions down the page. */}
+                  landed at six different x positions down the page.
+                  `table-fixed` alone does that: every column but the name
+                  carries its own width, so the name takes the same
+                  remainder in every group. It does NOT need a floor —
+                  `min-w-3xl` was one (48rem), and since a fixed table
+                  cannot be widened by content it was a CONSTANT 768 − box
+                  of sideways scroll at every width under 768: 412px over a
+                  phone's 356px box (`KNOWN_OVERFLOW`, slice-17 owed (f)).
+                  Removing it costs nothing — the name cell's chip is
+                  `max-w-full` and truncates — and `max-w-[420px]` went
+                  with it: measured, a fixed table ignores it at every
+                  width (the cap and no cap size identically). */}
               <DataTable scrollLabel={g.clientName}>
-                <Table className="table-fixed min-w-3xl">
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[10ch]">{t("columns.key")}</TableHead>
-                      <TableHead className="max-w-[420px]">{t("columns.name")}</TableHead>
+                      <TableHead>{t("columns.name")}</TableHead>
                       <TableHead className="w-36">{t("columns.status")}</TableHead>
                       <TableHead priority="low" className="w-28">
                         {t("columns.portal")}
                       </TableHead>
-                      <TableHead priority="low" className="w-56">
+                      {/* `lower` (984px box), not `low` (736): the widths
+                          are pinned, so the name column is what is left
+                          over, and at a 736px box six columns left it 67px
+                          — three characters of a project name. Lead is the
+                          widest and the least identifying of the five, so
+                          it waits for the 1280px-with-rail box that can
+                          afford it; there the name keeps 315px, and at 736
+                          it keeps 291. */}
+                      <TableHead priority="lower" className="w-56">
                         {t("columns.lead")}
                       </TableHead>
                       <TableHead priority="medium" className="w-32 text-right">
@@ -187,7 +206,7 @@ export default async function ProjectsPage({
                         <TableCell className="num-id w-[10ch] font-mono text-xs text-muted-foreground">
                           {p.key}
                         </TableCell>
-                        <TableCell className="max-w-[420px]">
+                        <TableCell>
                           <EntityChip
                             id={p.id}
                             name={p.name}
@@ -216,7 +235,7 @@ export default async function ProjectsPage({
                             </span>
                           )}
                         </TableCell>
-                        <TableCell priority="low">
+                        <TableCell priority="lower">
                           {p.leadName ? (
                             <span className="flex min-w-0 items-center gap-2">
                               <MemberAvatar id={p.leadMemberId} name={p.leadName} size="sm" />
