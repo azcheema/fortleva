@@ -85,8 +85,8 @@ const RUNG_WIDTHS = [768, 880, 882, 1008, 1010, 1256, 1258, 1408, 1410] as const
  * `projects` was 412px over at 390px and 0 at 1440px, and a per-stop
  * number would have licensed 412px everywhere.
  *
- * A RATCHET, not an allowance: one pixel past the number (plus `DRIFT_PX`)
- * and the walk fails, so fixing a stop means deleting its keys in the same
+ * A RATCHET, not an allowance: one pixel past the number (plus the
+ * proportional slack below) and the walk fails, so fixing a stop means deleting its keys in the same
  * commit. `offscreenRowActions` above proves a row's verbs stay reachable,
  * but since slice 18 pinned that column it stayed true however far a table
  * scrolled — nothing bounded the scroll itself, which is slice 18's owed
@@ -144,25 +144,58 @@ const KNOWN_OVERFLOW: Record<string, number> = {
 };
 
 /**
- * Slack on a KNOWN number, for CI-to-CI variance only.
+ * Slack on a KNOWN number, for CI-to-CI variance only — PROPORTIONAL to
+ * the number it rides on, which a flat tolerance could not be.
  *
  * NOT for the Windows ↔ ubuntu font-metric gap, though that is what
- * forced the recalibration: every number below is now CI's OWN, so that
- * gap is already inside them and this tolerance never sees it. What is
- * left to guard is a listed number moving between two CI runs — which
- * should be nothing, since every listed stop is cap- or floor-driven and
- * both attempts of run 35291774042 measured identically — and the
- * reverse case, a future key where a local run measures WIDER than CI.
+ * forced the recalibration: every number listed above is CI's OWN, so
+ * that gap is already inside them and this tolerance never sees it. What
+ * is left to guard is a listed number moving between two CI runs — which
+ * should be nothing, since both attempts of run 35291774042 measured
+ * identically — and the reverse case, a future key where a local run
+ * measures WIDER than CI.
  *
- * Deliberately small, because it is pure slack on a ratchet: at 8px,
- * `project-files@390` could have tripled (4 → 12) and `files@390` more
- * than doubled before the walk noticed, on stops whose entire purpose is
- * to bound a small regression. It is still too coarse for the smallest
- * entries — a proportional floor is owed (PLAN §0). Nothing absorbs a
- * runner-image change (ubuntu-latest moves to Ubuntu 26 from 2026-10-19);
- * that is a recalibration, not a tolerance.
+ * WHY PROPORTIONAL (PLAN §0's owed (b), and the reason it was owed): a
+ * flat allowance is worth least exactly where this ratchet is worth most.
+ * At the 8px it started as, `project-files@390` could have TRIPLED (4 →
+ * 12) and `files@390` more than doubled before the walk said a word; at
+ * 4px the same key could still silently double. Every key left is a small
+ * one, and bounding a small regression is their entire purpose.
+ *
+ * Three numbers, and the shape matters more than any of them. `FRACTION`
+ * is what makes a big number's slack big and a small number's small.
+ * `MIN` is one pixel, because `scrollWidth - clientWidth` is integer and
+ * sub-pixel layout rounding lands on ±1 — below that the ratchet would
+ * be pinning noise. `MAX` is the flat 4px this replaced, so the change
+ * can only ever TIGHTEN: no key anywhere gets more slack than it had, and
+ * a hypothetical 251px entry cannot quietly license 63px of regression
+ * because a quarter of it sounded reasonable.
+ *
+ * THE TRADE THIS MAKES, consciously (review, 2026-09-18). Slice 28 fixed
+ * every FLOOR-driven key, so the four that remain are TEXT-metric ones —
+ * exactly the class this file records as moving 2-8px between platforms.
+ * At 1px of slack a 2px font shift turns the walk red on an unrelated
+ * change. That is accepted, and it is the same policy as the line below
+ * rather than a new one: a runner-image change (ubuntu-latest moves to
+ * Ubuntu 26 from 2026-10-19) is a RECALIBRATION, and a red walk is how a
+ * session finds out it is due. Widening the floor to swallow it would
+ * also swallow a real 2px regression on a 4px key, which is the one
+ * thing these four entries exist to catch. Re-measure from the CI log
+ * and edit the numbers; do not raise `DRIFT_MIN_PX` to make it quiet.
  */
-const DRIFT_PX = 4;
+const DRIFT_FRACTION = 0.25;
+const DRIFT_MIN_PX = 1;
+const DRIFT_MAX_PX = 4;
+
+/**
+ * The slack allowed on one known number. Zero gets zero: an UNLISTED key
+ * is held to the pixel, which is the whole point of the ratchet, and a
+ * key listed at 0 would be a contradiction rather than a tolerance.
+ */
+function driftFor(known: number): number {
+  if (known <= 0) return 0;
+  return Math.min(DRIFT_MAX_PX, Math.max(DRIFT_MIN_PX, Math.round(known * DRIFT_FRACTION)));
+}
 
 /**
  * Stops whose tables are DATA-DRIVEN, so their width depends on rows
@@ -177,6 +210,28 @@ const DRIFT_PX = 4;
  * overflow badly and are owed a pass of their own (PLAN §0). They are
  * exempt because this instrument cannot yet say so reproducibly. Making
  * the walk seed its own rows would let them be ratcheted like the rest.
+ *
+ * EXEMPT IS NOT SILENT (2026-09-18). Every measurement here is now
+ * PRINTED, `[volatile] <stop> at <width>px: …`, because the report it
+ * used to go to alone is written locally and uploaded only on failure —
+ * so on a green run the worst overflow in the product was unobservable.
+ * That is how `time-team`'s "Shift day totals" sat at 249px over a 356px
+ * box, the worst number anywhere, until it was looked for on purpose.
+ * Its seven day columns are `low` as of the same day, which is what the
+ * project month grid's week columns already did, so that one is a
+ * column-priority fix rather than a ratchet — and the remaining numbers
+ * are now in every CI log for whoever takes the rest.
+ *
+ * WHAT IS LEFT, measured locally on 2026-09-18 with `time.spec.ts` run
+ * first so the residue is CI-shaped (so: the SHAPE is right, the pixels
+ * are not CI's — recalibrate from a log): `/time`'s "Time entries" is
+ * 86px over a 356px box, 65px over a 608px box and 73px over a 736px
+ * box. That one is NOT a rung mistake — its What cell is a
+ * `flex-wrap` row of a truncating label plus up to four `shrink-0`
+ * badges, so the badges force the column exactly as `/clients`' city
+ * span did — and fixing it is a design question (which of the label and
+ * the badges yields on a phone), so it is left for the founder rather
+ * than decided here. The rest are 3-5px.
  *
  * THE SET IS CHOSEN BY WHAT IS DATA-DRIVEN, not by what CI happened to
  * flag — the first draft was the latter, and a review caught two stops
@@ -614,10 +669,22 @@ async function visit(
   // cannot license the same scroll on a desktop (see KNOWN_OVERFLOW).
   const describe = (r: TableOverflow) => `"${r.label}" (${r.box}px box): ${r.px}px`;
   const overflowing = (rows: TableOverflow[], width: number): string[] => {
-    if (VOLATILE_STOPS.has(stop.name)) return [];
+    // An EXEMPT stop is not a silent one. Its numbers went into the
+    // report and nowhere else, and the report is written locally and
+    // uploaded only on FAILURE — so on a green CI run the worst
+    // overflow in the product was unobservable, which is how
+    // `time-team`'s 249px sat there. Printing them puts them in the one
+    // artefact a later session is told to calibrate from (the CI LOG),
+    // which is the precondition for ever ratcheting these stops at all
+    // (PLAN §0's owed (a)). It cannot fail a run: this is the branch
+    // that returns no findings.
+    if (VOLATILE_STOPS.has(stop.name)) {
+      for (const r of rows) console.log(`[volatile] ${at} at ${width}px: ${describe(r)}`);
+      return [];
+    }
     const known = KNOWN_OVERFLOW[`${stop.name}@${width}`] ?? 0;
-    // DRIFT_PX rides on a KNOWN number only: an unlisted key stays at 0.
-    const ceiling = known === 0 ? 0 : known + DRIFT_PX;
+    // The drift rides on a KNOWN number only: an unlisted key stays at 0.
+    const ceiling = known + driftFor(known);
     return rows
       .filter((r) => r.px > ceiling)
       .map((r) => `${describe(r)} of scroll, allowed ${ceiling}px (known ${known}px)`);
@@ -730,6 +797,55 @@ test("every KNOWN_OVERFLOW and VOLATILE_STOPS name is a real stop", () => {
   expect([...VOLATILE_STOPS].filter((n) => !names.has(n)), "VOLATILE_STOPS naming no stop").toEqual(
     [],
   );
+});
+
+/**
+ * The slack is the one thing in this file that can quietly stop the
+ * ratchet from ratcheting, and it is pure arithmetic — so it is checked
+ * here, in process, beside the name-rot test and without a browser.
+ *
+ * The load-bearing property is the LAST one: this can only ever tighten.
+ * A change to the three constants that widened any number's allowance
+ * would be a change that licensed a regression somewhere, and it would
+ * fail here rather than in six months' CI log.
+ */
+test("the overflow ratchet's slack is proportional, and can only tighten", () => {
+  // An unlisted key, and a key listed at 0, are held to the pixel.
+  expect(driftFor(0)).toBe(0);
+  expect(driftFor(-1)).toBe(0);
+
+  // Every key on the table today, spelled out rather than derived — so a
+  // constant nudged by a future session fails with the number in hand.
+  expect(driftFor(4)).toBe(1);
+  expect(driftFor(6)).toBe(2);
+
+  const sizes = Array.from({ length: 500 }, (_, i) => i + 1);
+
+  // Never below a pixel of sub-pixel rounding, never above the flat
+  // tolerance this replaced, and never decreasing as the number grows.
+  for (const n of sizes) {
+    expect(driftFor(n), `drift at ${n}px`).toBeGreaterThanOrEqual(DRIFT_MIN_PX);
+    expect(driftFor(n), `drift at ${n}px`).toBeLessThanOrEqual(DRIFT_MAX_PX);
+  }
+  for (const n of sizes.slice(1)) {
+    expect(driftFor(n), `drift is monotone at ${n}px`).toBeGreaterThanOrEqual(driftFor(n - 1));
+  }
+
+  // A listed number can never DOUBLE inside its own allowance. At 1px it
+  // can, and that is the honest exception: one pixel to two is the
+  // rounding this floor exists for, not a regression.
+  for (const n of sizes.slice(1)) {
+    expect(n + driftFor(n), `${n}px could double`).toBeLessThan(n * 2);
+  }
+
+  // THE ONE THAT MATTERS: never wider than the flat 4px this replaced,
+  // at any size at all. Asserted over the SWEEP and deliberately not
+  // over `KNOWN_OVERFLOW`'s current values — a review caught that: a
+  // loop demanding every listed key be strictly under 4 is a property of
+  // today's four small keys, not of this function, and the ~30px Swedish
+  // backlog entry this file already plans for (PLAN §0 owed (c)) would
+  // have failed it while being perfectly correct.
+  for (const n of sizes) expect(driftFor(n), `drift at ${n}px`).toBeLessThanOrEqual(4);
 });
 
 for (const theme of ["light", "dark"] as const) {

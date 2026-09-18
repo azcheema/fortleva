@@ -186,8 +186,21 @@ export function TeamTable({
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("shifts.columns.member")}</TableHead>
+                  {/* THE SEVEN DAYS ARE `low`, which is the same answer the
+                      project month grid's week columns already give
+                      (`projects/[key]/time/page.tsx`). A matrix cannot drop
+                      SOME of its columns — a week with holes in it is worse
+                      than no week — but it can drop all of them and leave
+                      the two that still say something, the member and their
+                      total. Measured before the rung existed here: this
+                      table was 249px past a 356px box on a phone and 111px
+                      past the 494px box the rail leaves at 768px, the
+                      worst overflow anywhere in the product and invisible
+                      because the stop is exempt from the ratchet
+                      (`VOLATILE_STOPS`). At `low` the seven come back at a
+                      736px box, where member + 7 + total is ~605px. */}
                   {days.map((d) => (
-                    <TableHead key={d} className="num text-right">
+                    <TableHead key={d} priority="low" className="num text-right">
                       {dayLabels[d] ?? d}
                     </TableHead>
                   ))}
@@ -209,7 +222,11 @@ export function TeamTable({
                       {days.map((d) => {
                         const cell = row.get(d);
                         return (
-                          <TableCell key={d} className="num text-right text-muted-foreground">
+                          <TableCell
+                            key={d}
+                            priority="low"
+                            className="num text-right text-muted-foreground"
+                          >
                             {cell ? fmt(cell.workedSeconds) : "—"}
                           </TableCell>
                         );
