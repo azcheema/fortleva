@@ -47,6 +47,7 @@ import { cn } from "@/lib/utils";
 import { CommandPalette, flatNav } from "./command-palette";
 import { NavIcon } from "./nav-icon";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
+import { QuickCreate } from "./quick-create";
 import { StopConfirm } from "./stop-confirm";
 import { WorkspaceWatch } from "./workspace-watch";
 import { TimerPillSlot } from "./timer-pill-slot";
@@ -106,6 +107,7 @@ export function AppShell({
   tenantName,
   activeTenantId,
   activeTenantAt,
+  canCreateTask,
   breadcrumb,
   user,
   theme,
@@ -133,6 +135,14 @@ export function AppShell({
    * session, and a value rather than a `Date.now()` in render.
    */
   activeTenantAt: string;
+  /**
+   * May this member create a task at all (`work_item:create`)? REQUIRED,
+   * like every other piece of state the shell mirrors: it decides only
+   * whether the global `C` is OFFERED — the picker shows what the
+   * member's scope allows and `createItem` refuses server-side either
+   * way — and a `false` default would silently take a shipped key away.
+   */
+  canCreateTask: boolean;
   /**
    * The route trail — "Clients › ACME" — fed from the route segment.
    * The header says WHERE YOU ARE; a constant tenant string on all 25
@@ -519,6 +529,11 @@ export function AppShell({
         {/* The stop confirm — ONE host for every stop (pill, `T`, quick
             start, a task's control), for a member who can track time. */}
         {timer ? <StopConfirm /> : null}
+
+        {/* The global `C` (UI.md rule 2) — one host, every authed page,
+            because "anywhere" is the whole point of the key. The board
+            shadows it with its own `C` by scope order, not by a guard. */}
+        <QuickCreate canCreateTask={canCreateTask} />
 
         {/* The stale-tab fence — one host, every authed page, because a
             tab is stale wherever it happens to be sitting. Keyed on the

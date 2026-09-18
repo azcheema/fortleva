@@ -162,6 +162,21 @@
       "body": "Den här fliken visar fortfarande {name}. Det du gör här skulle sparas i arbetsytan du bytte till, så den är pausad tills du väljer.",
       "reload": "Ladda om fliken",
       "stay": "Gå tillbaka till {name}"
+    },
+    "quickCreate": {
+      "key": "Ny uppgift",
+      "title": "Ny uppgift",
+      "pickProject": "Vilket projekt ska den ligga i?",
+      "inProject": "I {name}",
+      "searchProjects": "Sök projekt…",
+      "noProjects": "Inget projekt som du kan lägga till en uppgift i.",
+      "placeholder": "Vad behöver göras?",
+      "titleLabel": "Uppgiftens titel",
+      "enterHint": "skapar den och börjar nästa",
+      "openHint": "skapar den och öppnar den",
+      "created": "{key} skapad",
+      "failed": "Kunde inte skapa uppgiften.",
+      "changeProject": "Byt projekt"
     }
   },
   "home": {

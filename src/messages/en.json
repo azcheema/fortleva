@@ -162,6 +162,21 @@
       "body": "This tab is still showing {name}. Anything you do here would be saved in the workspace you switched to, so it is paused until you choose.",
       "reload": "Reload this tab",
       "stay": "Go back to {name}"
+    },
+    "quickCreate": {
+      "key": "New task",
+      "title": "New task",
+      "pickProject": "Which project should it go in?",
+      "inProject": "In {name}",
+      "searchProjects": "Search projects…",
+      "noProjects": "No project you can add a task to.",
+      "placeholder": "What needs doing?",
+      "titleLabel": "Task title",
+      "enterHint": "creates it and starts the next",
+      "openHint": "creates it and opens it",
+      "created": "{key} created",
+      "failed": "Could not create the task.",
+      "changeProject": "Change project"
     }
   },
   "home": {

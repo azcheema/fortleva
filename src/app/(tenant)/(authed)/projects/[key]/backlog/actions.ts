@@ -61,25 +61,53 @@ const revalidate = (key: string) => {
   revalidatePath(boardPath(key));
 };
 
+/**
+ * Title-only create into a project's DEFAULT state (UI rule 2), with the
+ * created row coming back — the board's `createItemInStateAction` with
+ * no column to aim at.
+ *
+ * It exists as its own export because the global `C` (the shell's quick
+ * create, §5.x) needs the id and the number: ⌘Enter is create-AND-OPEN,
+ * and a formatted success message cannot be navigated to.
+ * `createItemAction` below is this function plus that message, so the
+ * backlog's create row and the shell's dialog are one implementation of
+ * "create a task here", not two.
+ */
+export async function createItemAnywhereAction(
+  projectId: string,
+  projectKey: string,
+  title: string,
+): Promise<ActionResult<{ id: string; number: number }>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.backlog");
+  const parsed = z
+    .object({
+      projectId: uuid,
+      projectKey: keyShape,
+      title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
+    })
+    // Trimmed and CAPPED before the shape is judged, exactly as the
+    // original did: a 400-character title is a title to cut, not a
+    // refusal, and `.max()` on the raw string would have refused it.
+    .safeParse({ projectId, projectKey, title: title.trim().slice(0, MAX_TITLE_LENGTH) });
+  if (!parsed.success) return { ok: false, message: t("invalidTitle") };
+  const input = parsed.data;
+  const r = await runAction(backlogPath(input.projectKey), () =>
+    createItem(ctx, { projectId: input.projectId, title: input.title }),
+  );
+  if (r.ok) revalidate(input.projectKey);
+  return r;
+}
+
 export async function createItemAction(
   projectId: string,
   projectKey: string,
   title: string,
 ): Promise<FormResult> {
-  const ctx = await ctxOf();
   const t = await getTranslations("projects.backlog");
-  const id = uuid.safeParse(projectId);
-  const key = keyShape.safeParse(projectKey);
-  const trimmed = title.trim().slice(0, MAX_TITLE_LENGTH);
-  if (!id.success || !key.success || trimmed.length === 0) {
-    return { ok: false, message: t("invalidTitle") };
-  }
-  const r = await runForm(backlogPath(key.data), async () => {
-    const created = await createItem(ctx, { projectId: id.data, title: trimmed });
-    return t("created", { key: `${key.data}-${created.number}` });
-  });
-  if (r.ok) revalidate(key.data);
-  return r;
+  const r = await createItemAnywhereAction(projectId, projectKey, title);
+  if (!r.ok) return r;
+  return { ok: true, message: t("created", { key: `${projectKey}-${r.value.number}` }) };
 }
 
 export async function renameItemAction(

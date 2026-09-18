@@ -48,9 +48,15 @@ export default async function AuthedLayout({ children }: { children: React.React
   // under the member principal — `principal_scope` already binds it to
   // this member's own rows, so there is nothing here to get wrong.
   let unreadInbox = 0;
+  let canCreateTask = false;
   if (membership) {
     const actor = { memberId: membership.memberId, mfa: mfaStateOf(session) };
-    const gated = [...new Set(collectPermissions(NAV))];
+    // The nav's codes PLUS the shell's own: the global `C` is a key, not
+    // a nav entry, and asking for it here costs nothing — `isAuthorized`
+    // is already being run once per code in one transaction.
+    const gated = [
+      ...new Set([...collectPermissions(NAV), "work_item:create", "project:view"]),
+    ];
     const { held, unread } = await withTenant(
       membership.tenantId,
       { type: "member", id: membership.memberId },
@@ -64,6 +70,17 @@ export default async function AuthedLayout({ children }: { children: React.React
     );
     nav = visibleNav(NAV, (code) => held.has(code));
     unreadInbox = unread;
+    // The global `C` rides on the SAME batched permission read the nav
+    // does — two more codes in the `gated` set, no second query. It is
+    // not a nav entry, so it is read off `held` here rather than through
+    // `visibleNav`.
+    //
+    // BOTH codes, which a review caught: the dialog's first act is to
+    // read the project list, and that read is gated on `project:view`.
+    // A custom role holding only `work_item:create` would have got a key
+    // that opens a dialog and closes it again on a FORBIDDEN toast — an
+    // offer the product cannot keep.
+    canCreateTask = held.has("work_item:create") && held.has("project:view");
     // The pill's initial snapshot (2T): only for members who may track time.
     if (held.has("time:track")) timer = await getTimerStateAction();
   } else {
@@ -84,6 +101,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       onSwitchLocale={switchLocaleAction}
       timer={timer}
       unreadInbox={unreadInbox}
+      canCreateTask={canCreateTask}
       workspaceCount={workspaceCount}
     >
       <PwaRegister />
