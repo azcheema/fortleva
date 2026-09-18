@@ -107,6 +107,43 @@ export function offscreenRowActions(): string[] {
 }
 
 /**
+ * HOW FAR a table overflows its own scroll box — the budget the width
+ * walk never had, and the reason a column-priority mistake could ship
+ * (slice 18's owed (a), PLAN §0).
+ *
+ * `offscreenRowActions` above proves the PIN holds: that a row's verbs
+ * stay in view however far the table scrolls. Since slice 18 that is
+ * true even of a table overflowing badly, so it stopped bounding how
+ * much a table scrolls sideways — and column priority exists precisely
+ * so a table FITS its box at every rung. Anything over the tolerance is
+ * a priority that is set too low for its content.
+ *
+ * ONE PIXEL of tolerance, for sub-pixel layout rounding only — widening
+ * it to swallow the smallest findings would blind every other stop.
+ *
+ * Serialised into the page by e2e/visual.spec.ts, like the function
+ * above and under the same rules: dependency free, side-effect free, and
+ * it must not perturb what it measures.
+ *
+ * What it reports is raw truth. WHICH of those numbers are already known
+ * is the harness's policy, not the probe's: `KNOWN_OVERFLOW` in
+ * visual.spec.ts holds them, keyed `<stop>@<width>`, with the cause of
+ * each. Swedish is not measured anywhere in this harness.
+ */
+export type TableOverflow = { label: string; box: number; px: number };
+
+export function tableOverflow(): TableOverflow[] {
+  const out: TableOverflow[] = [];
+  for (const box of Array.from(document.querySelectorAll("[data-slot=data-table]"))) {
+    const px = box.scrollWidth - box.clientWidth;
+    // A hidden box (a closed tab panel) measures 0/0 and is not a finding.
+    if (box.clientWidth === 0 || px <= 1) continue;
+    out.push({ label: box.getAttribute("aria-label") ?? "table", box: box.clientWidth, px });
+  }
+  return out;
+}
+
+/**
  * Serialised into the page by e2e/visual.spec.ts. Keep it dependency
  * free and side-effect free — it must not perturb what it measures.
  */

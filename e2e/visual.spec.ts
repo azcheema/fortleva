@@ -3,7 +3,13 @@ import { join } from "node:path";
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
-import { auditPage, offscreenRowActions, type PageAudit } from "./audit";
+import {
+  auditPage,
+  offscreenRowActions,
+  tableOverflow,
+  type PageAudit,
+  type TableOverflow,
+} from "./audit";
 import { isActionPost } from "./fixtures/actions";
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
 
@@ -70,6 +76,72 @@ const VIEWPORTS = {
  * arithmetic (the headless box less 17px).
  */
 const RUNG_WIDTHS = [768, 880, 882, 1008, 1010, 1256, 1258, 1408, 1410] as const;
+
+/**
+ * KNOWN OVERFLOW, keyed `<stop>@<width>`: the horizontal scroll that
+ * table stop HAS at that viewport width today. Column priority exists so
+ * a table fits its box, so every key not listed is held to 0 — including
+ * every OTHER width of a stop that appears here, which is the point of
+ * keying on the width: `projects` is 412px over at 390px and 0 at 1440px,
+ * and a per-stop number would have licensed 412px everywhere.
+ *
+ * A RATCHET, not an allowance. One pixel more than the number here and
+ * the walk fails; fixing a stop means deleting its keys in the same
+ * commit. `offscreenRowActions` above proves a row's verbs stay
+ * reachable, but since slice 18 pinned that column it stayed true however
+ * far a table scrolled — nothing bounded the scroll itself, which is
+ * slice 18's owed (a) and how the numbers below survived unseen. They are
+ * worst on a PHONE, which this walk has photographed all along.
+ *
+ * WHAT THEY ARE, measured 2026-09-18 — both causes are the ones PLAN §0
+ * slice-17 owed (f) already named, and neither is a column-priority
+ * mistake:
+ *   • `projects` — `<Table className="table-fixed min-w-3xl">`
+ *     (`projects/page.tsx`) is a hard 48rem = 768px FLOOR. Every number
+ *     below is exactly 768 − box (356+412, 494+274, 606+162, 608+160,
+ *     734+34, 736+32), so it is a constant, identical at every locale and
+ *     every run; under `table-fixed` content cannot widen the table at
+ *     all. Removing `min-w-3xl` removes all of it.
+ *   • `clients` — the name cell's `max-w-[420px]` (`clients/page.tsx`)
+ *     behaves as a FLOOR in Chromium, so the content is 503px wide below
+ *     the `low` rung and 799px at it. `clients-archived` is 14px more at
+ *     every width: the same table with the wider "Archived" badge. The
+ *     control that proves the reading is `/clients/[id]/projects`, which
+ *     carries the same capped cell, is held to 0, and passes — its seeded
+ *     names never reach the cap.
+ *   • `files`, `client-files`, `error-banner` — 3px at phone width. Small,
+ *     but more than the 1px rounding tolerance, and named rather than
+ *     hidden under a wider tolerance that would blind every other stop.
+ * Each number is set by a CAP or a FLOOR, never by seeded text, so none of
+ * them moves with the run id in the fixture's names.
+ *
+ * NOT A DEFECT LIST BY DEFINITION. `table.tsx` and UI.md §10.12 record a
+ * settled trade — since the actions column is pinned, a rung may carry a
+ * little scroll at its very edge in exchange for more columns — so a
+ * future entry may be that trade rather than a bug. All six today are
+ * bugs. The harness is ENGLISH and cannot see the trade: the backlog is
+ * 0 here and ~30px over at the `lowest` rung's narrow edge in Swedish
+ * (measured with a throwaway probe on 2026-09-18; `table.tsx` and UI.md
+ * §10.12 record ~21px for the same edge). The owed Swedish walk will add
+ * trades here, and they must be labelled as such.
+ */
+const KNOWN_OVERFLOW: Record<string, number> = {
+  "projects@390": 412,
+  "projects@768": 274,
+  "projects@880": 162,
+  "projects@882": 160,
+  "projects@1008": 34,
+  "projects@1010": 32,
+  "clients@390": 147,
+  "clients@768": 9,
+  "clients@1010": 63,
+  "clients-archived@390": 161,
+  "clients-archived@768": 23,
+  "clients-archived@1010": 77,
+  "files@390": 3,
+  "client-files@390": 3,
+  "error-banner@390": 3,
+};
 
 type Device = keyof typeof VIEWPORTS;
 type Theme = "light" | "dark";
@@ -303,6 +375,8 @@ type Finding = {
   audit: PageAudit;
   /** `offscreenRowActions` by viewport width: the device's own, plus `RUNG_WIDTHS` on one walk. */
   offscreenRowActions: Record<string, string[]>;
+  /** `tableOverflow` at the same widths — how FAR a table scrolls, not just whether its verbs survive. */
+  tableOverflow: Record<string, string[]>;
   trace: Trace;
 };
 
@@ -397,6 +471,7 @@ async function visit(
     shot,
     audit,
     offscreenRowActions: {},
+    tableOverflow: {},
     trace: JSON.parse(JSON.stringify(trace)) as Trace,
   };
   findings.push(finding);
@@ -476,6 +551,21 @@ async function visit(
   const own = await page.evaluate(offscreenRowActions);
   finding.offscreenRowActions[String(VIEWPORTS[device].width)] = own;
   expect.soft(own, `${at}: row actions outside their table's visible box`).toEqual([]);
+  // And how FAR it scrolls. The pin keeps the verbs; this keeps the
+  // table inside its box, which is what column priority is FOR.
+  // Keyed by WIDTH as well as stop, so a number measured on a phone
+  // cannot license the same scroll on a desktop (see KNOWN_OVERFLOW).
+  const describe = (r: TableOverflow) => `"${r.label}" (${r.box}px box): ${r.px}px`;
+  const overflowing = (rows: TableOverflow[], width: number): string[] => {
+    const known = KNOWN_OVERFLOW[`${stop.name}@${width}`] ?? 0;
+    return rows.filter((r) => r.px > known).map((r) => `${describe(r)} of scroll, known ${known}px`);
+  };
+  const ownWidth = VIEWPORTS[device].width;
+  const ownOver = await page.evaluate(tableOverflow);
+  finding.tableOverflow[String(ownWidth)] = ownOver.map(describe);
+  expect
+    .soft(overflowing(ownOver, ownWidth), `${at}: a table overflows its own scroll box`)
+    .toEqual([]);
   if (device === "desktop" && theme === "light") {
     try {
       for (const width of RUNG_WIDTHS) {
@@ -483,6 +573,14 @@ async function visit(
         const past = await page.evaluate(offscreenRowActions);
         finding.offscreenRowActions[String(width)] = past;
         expect.soft(past, `${at} at ${width}px: row actions outside their table's visible box`).toEqual([]);
+        const over = await page.evaluate(tableOverflow);
+        finding.tableOverflow[String(width)] = over.map(describe);
+        expect
+          .soft(
+            overflowing(over, width),
+            `${at} at ${width}px: a table overflows its own scroll box`,
+          )
+          .toEqual([]);
       }
     } finally {
       await page.setViewportSize(VIEWPORTS[device]);
