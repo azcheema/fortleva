@@ -81,7 +81,14 @@ export async function openOwnTaskPeek(page: Page, seed: E2ESeed, title: string):
   const row = page.locator('[data-slot="table-row"]', { hasText: title });
   await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
   await keyLink(row, seed.projectKey).click();
-  await expect(page.getByTestId("item-peek")).toBeVisible();
+  // The SAME budget as the row above, and for a stronger reason: this one
+  // waits on a click, a navigation and a server render of the whole peek,
+  // where that one waits on a list already on screen. It was the default
+  // 10 s, which is the only assertion in this helper that was — and it is
+  // the one that flaked, once, in the 57-minute full suite of 2026-09-18
+  // while passing 3/3 in isolation on the same build. A budget that holds
+  // on an idle machine and not on a loaded one is a budget, not a bug.
+  await expect(page.getByTestId("item-peek")).toBeVisible({ timeout: 20_000 * SLOW });
 }
 
 /** A task a test created: its title, its human key ("ACME-12") and its number. */

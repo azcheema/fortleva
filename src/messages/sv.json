@@ -156,7 +156,13 @@
       "home": "Gå till Hem",
       "signIn": "Logga in"
     },
-    "unreadCount": "{count, plural, =1 {1 oläst} other {# olästa}}"
+    "unreadCount": "{count, plural, =1 {1 oläst} other {# olästa}}",
+    "workspaceChanged": {
+      "title": "Du bytte arbetsyta i en annan flik",
+      "body": "Den här fliken visar fortfarande {name}. Det du gör här skulle sparas i arbetsytan du bytte till, så den är pausad tills du väljer.",
+      "reload": "Ladda om fliken",
+      "stay": "Gå tillbaka till {name}"
+    }
   },
   "home": {
     "title": "Mitt arbete",

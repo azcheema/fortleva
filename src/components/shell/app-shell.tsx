@@ -48,6 +48,7 @@ import { CommandPalette, flatNav } from "./command-palette";
 import { NavIcon } from "./nav-icon";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { StopConfirm } from "./stop-confirm";
+import { WorkspaceWatch } from "./workspace-watch";
 import { TimerPillSlot } from "./timer-pill-slot";
 import { useGlobalHotkeys } from "./use-hotkeys";
 
@@ -103,6 +104,8 @@ const isActive = (pathname: string, href: string): boolean =>
 export function AppShell({
   nav,
   tenantName,
+  activeTenantId,
+  activeTenantAt,
   breadcrumb,
   user,
   theme,
@@ -114,6 +117,22 @@ export function AppShell({
 }: {
   nav: readonly NavEntry[];
   tenantName: string | null;
+  /**
+   * The workspace the SERVER resolved for this render — REQUIRED
+   * (`null` = this member is in none), for the reason `timer` and
+   * `unreadInbox` are: state a shared component must reflect is a prop,
+   * never a default. `<WorkspaceWatch>` compares it against what the
+   * member's other tabs say, and a fence that quietly defaults to
+   * "nothing to watch" is not a fence (see `src/lib/workspace-watch.ts`).
+   */
+  activeTenantId: string | null;
+  /**
+   * WHEN the server resolved it — the instant tabs order themselves by,
+   * as an ISO string, the product's `serverNow` convention (§ every
+   * other live clock): one clock, the server's, for every tab of every
+   * session, and a value rather than a `Date.now()` in render.
+   */
+  activeTenantAt: string;
   /**
    * The route trail — "Clients › ACME" — fed from the route segment.
    * The header says WHERE YOU ARE; a constant tenant string on all 25
@@ -500,6 +519,20 @@ export function AppShell({
         {/* The stop confirm — ONE host for every stop (pill, `T`, quick
             start, a task's control), for a member who can track time. */}
         {timer ? <StopConfirm /> : null}
+
+        {/* The stale-tab fence — one host, every authed page, because a
+            tab is stale wherever it happens to be sitting. Keyed on the
+            workspace AND the render that resolved it: a new server
+            render is a new watcher, which is both how `stale` clears
+            and how a tab that has just put the session pointer back
+            tells the other tab that IT is now the stale one (see the
+            component). */}
+        <WorkspaceWatch
+          key={`${activeTenantId ?? "none"}:${activeTenantAt}`}
+          tenantId={activeTenantId}
+          tenantName={tenantName}
+          at={activeTenantAt}
+        />
 
         {/* 64px clears the 56px bar; the safe-area inset clears the home
             indicator underneath it on a notched phone. */}

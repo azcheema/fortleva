@@ -156,7 +156,13 @@
       "home": "Go to Home",
       "signIn": "Sign in"
     },
-    "unreadCount": "{count, plural, =1 {1 unread} other {# unread}}"
+    "unreadCount": "{count, plural, =1 {1 unread} other {# unread}}",
+    "workspaceChanged": {
+      "title": "You switched workspace in another tab",
+      "body": "This tab is still showing {name}. Anything you do here would be saved in the workspace you switched to, so it is paused until you choose.",
+      "reload": "Reload this tab",
+      "stay": "Go back to {name}"
+    }
   },
   "home": {
     "title": "My Work",

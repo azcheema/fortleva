@@ -201,4 +201,90 @@ test.describe("the workspace picker", () => {
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
   });
+
+  /**
+   * THE STALE-TAB FENCE (`src/lib/workspace-watch.ts`).
+   *
+   * Switching became possible on 2026-09-18, and with it the hazard that
+   * came free: the active workspace is a SESSION pointer, one tab moves
+   * it, and every other tab of that browser goes on showing the old
+   * workspace while everything it posts resolves the new one. An action
+   * carrying an entity id fails safe; a create-shaped one lands in the
+   * workspace the member is not looking at.
+   *
+   * Two real tabs in ONE context, which is what makes this testable at
+   * all: the same cookie jar (so the session is genuinely shared) and
+   * the same origin (so the `BroadcastChannel` between them is the one
+   * the app uses). A single-page test could only ever have checked that
+   * a dialog renders.
+   */
+  test("a tab whose workspace another tab moved says so, and cannot be used or dismissed", async ({
+    page,
+  }) => {
+    const seed = requireSeed();
+    const fence = page.locator("[data-testid=workspace-changed]");
+
+    // Tab A, sitting on a page whose create form is exactly the shape
+    // that has no entity id to fail safe on.
+    await page.goto("/clients");
+    await expect(page.getByRole("heading", { name: "Clients", level: 1 })).toBeVisible();
+    await expect(fence).toBeHidden();
+
+    // Tab B moves the session pointer.
+    const other = await page.context().newPage();
+    try {
+      await other.goto("/dashboard");
+      await other
+        .getByRole("button", { name: `Open ${seed.secondTenantName}`, exact: true })
+        .click();
+      await other.waitForURL("**/home");
+
+      // Tab A hears it, and names the workspace it is still showing —
+      // not the one it would now write to. BOTH assertions, because the
+      // second workspace's name is the first's plus " B": a substring
+      // match on the first alone stays green even when the fence names
+      // the wrong one, the trap this file already documents above.
+      await expect(fence).toBeVisible();
+      await expect(fence).toContainText(seed.tenantName);
+      await expect(fence).not.toContainText(seed.secondTenantName);
+
+      // It is not a notice. Escape and a click outside are how every
+      // other layer in the product closes, and neither closes this one.
+      await page.keyboard.press("Escape");
+      await expect(fence).toBeVisible();
+      await page.mouse.click(5, 5);
+      await expect(fence).toBeVisible();
+
+      // And it owns the keyboard: `?` is a global binding, so an overlay
+      // opening here would mean the page behind is still live.
+      await page.keyboard.press("?");
+      await expect(page.getByRole("dialog", { name: /shortcut/i })).toHaveCount(0);
+
+      // The way out that KEEPS this tab where it is: put the session
+      // pointer back. It lands on Home in the first workspace, which is
+      // also what the afterEach would have had to do.
+      await page
+        .getByRole("button", { name: `Go back to ${seed.tenantName}`, exact: true })
+        .click();
+      await page.waitForURL("**/home");
+      await expect(fence).toBeHidden();
+      await expect(
+        page.locator("header").getByText(seed.tenantName, { exact: true }).filter({ visible: true }),
+      ).toBeVisible();
+
+      // And the fence is SYMMETRIC: the pointer is back in the first
+      // workspace, so the tab still showing the second is now the stale
+      // one and is fenced in its turn. Without the `at` stamp in the
+      // watcher's key nothing would have told it — this tab's own
+      // workspace never changed — and it would have gone on writing
+      // into a workspace nobody is looking at, which is the hazard
+      // pointing the other way (review, 2026-09-18).
+      await expect(other.locator("[data-testid=workspace-changed]")).toBeVisible();
+      await expect(other.locator("[data-testid=workspace-changed]")).toContainText(
+        seed.secondTenantName,
+      );
+    } finally {
+      await other.close();
+    }
+  });
 });

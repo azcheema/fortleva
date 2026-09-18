@@ -74,6 +74,11 @@ export default async function AuthedLayout({ children }: { children: React.React
     <AppShell
       nav={nav}
       tenantName={membership?.tenantName ?? null}
+      activeTenantId={membership?.tenantId ?? null}
+      // The stale-tab fence orders tabs by WHEN each one was told which
+      // workspace it is in, and this is that moment: one clock, the
+      // server's, for every tab of every session (src/lib/workspace-watch.ts).
+      activeTenantAt={new Date().toISOString()}
       user={{ name: session.user.name, email: session.user.email }}
       theme={theme}
       onSwitchLocale={switchLocaleAction}
