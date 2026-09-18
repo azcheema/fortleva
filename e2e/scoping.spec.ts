@@ -57,7 +57,9 @@ test.describe("as the employee", () => {
     await page.waitForURL("**/home", { timeout: 30_000 });
   });
 
-  test("sees the assigned client only, and everything else is a 404", async ({ page }) => {
+  test("sees the assigned client only, everything else is a 404, and is offered no workspace picker", async ({
+    page,
+  }) => {
     // Control first: the assigned client is fully reachable, so the
     // denials below are scoping, not a broken build.
     await page.goto(`/clients/${seed.clientId}`);
@@ -85,30 +87,25 @@ test.describe("as the employee", () => {
     // Indistinguishability: an id that exists in no tenant renders the
     // exact same screen as the one that exists out of scope.
     await expectNotFound(page, "/clients/00000000-0000-7000-8000-000000000000");
-  });
 
-  /**
-   * THE SINGLE-MEMBERSHIP HALF of UI.md rule 8 — `/dashboard` is the
-   * workspace picker "only for > 1 membership". It lives here because
-   * the employee is the only member the fixture seats in ONE workspace
-   * (the owner holds two, so the account menu offers the switch there),
-   * and this block already has them signed in — the assertion costs no
-   * second sign-in on a path that carries the suite's recorded flake.
-   *
-   * Without it nothing pins the gate: `workspaceCount > 1` could become
-   * `>= 1`, or lose its condition entirely, and every gate would stay
-   * green while a member with one workspace was offered a picker with
-   * nothing to pick.
-   */
-  test("with one workspace: no switch offered, and the picker route still renders", async ({
-    page,
-  }) => {
+    /**
+     * THE SINGLE-MEMBERSHIP HALF of UI.md rule 8 — `/dashboard` is the
+     * workspace picker "only for > 1 membership" — asserted HERE, inside
+     * this test rather than as one of its own, on purpose: the employee
+     * is the only member the fixture seats in ONE workspace (the owner
+     * holds two since 2026-09-18), and this block's `beforeEach` sign-in
+     * is the suite's one long-recorded flake. A second test would have
+     * run it twice and doubled the exposure.
+     *
+     * Without this, nothing pins the gate: `workspaceCount > 1` could
+     * become `>= 1`, or lose its condition, with every gate green.
+     */
     await page.goto("/home");
     await page.getByRole("button", { name: "Account menu" }).click();
     const menu = page.locator('[data-slot="dropdown-menu-content"]');
     await expect(menu).toBeVisible();
-    // Proves the menu really rendered its items, so the absences below
-    // are absences and not an unopened menu.
+    // Proves the menu rendered its items, so the absences are absences
+    // and not an unopened menu.
     await expect(menu.getByRole("menuitem", { name: "Account" })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Switch workspace" })).toHaveCount(0);
     await expect(menu.locator('a[href="/dashboard"]')).toHaveCount(0);

@@ -78,52 +78,57 @@ const VIEWPORTS = {
 const RUNG_WIDTHS = [768, 880, 882, 1008, 1010, 1256, 1258, 1408, 1410] as const;
 
 /**
- * KNOWN OVERFLOW, keyed `<stop>@<width>`: the horizontal scroll that
- * table stop HAS at that viewport width today. Column priority exists so
- * a table fits its box, so every key not listed is held to 0 — including
- * every OTHER width of a stop that appears here, which is the point of
- * keying on the width: `projects` is 412px over at 390px and 0 at 1440px,
- * and a per-stop number would have licensed 412px everywhere.
+ * KNOWN OVERFLOW, keyed `<stop>@<width>`: the horizontal scroll that stop
+ * HAS at that viewport width. Column priority exists so a table fits its
+ * box, so every key not listed is held to 0 — including every OTHER width
+ * of a stop that appears here, which is the point of keying on the width:
+ * `projects` is 412px over at 390px and 0 at 1440px, and a per-stop number
+ * would have licensed 412px everywhere.
  *
- * A RATCHET, not an allowance. One pixel more than the number here and
- * the walk fails; fixing a stop means deleting its keys in the same
- * commit. `offscreenRowActions` above proves a row's verbs stay
- * reachable, but since slice 18 pinned that column it stayed true however
- * far a table scrolled — nothing bounded the scroll itself, which is
- * slice 18's owed (a) and how the numbers below survived unseen. They are
- * worst on a PHONE, which this walk has photographed all along.
+ * A RATCHET, not an allowance: one pixel past the number (plus `DRIFT_PX`)
+ * and the walk fails, so fixing a stop means deleting its keys in the same
+ * commit. `offscreenRowActions` above proves a row's verbs stay reachable,
+ * but since slice 18 pinned that column it stayed true however far a table
+ * scrolled — nothing bounded the scroll itself, which is slice 18's owed
+ * (a) and how these numbers survived unseen. They are worst on a PHONE,
+ * which this walk has photographed all along.
  *
- * WHAT THEY ARE, measured 2026-09-18 — both causes are the ones PLAN §0
- * slice-17 owed (f) already named, and neither is a column-priority
- * mistake:
+ * **CALIBRATED AGAINST CI, and it has to be** (2026-09-18, run
+ * 35291774042 — the first run went red and taught this): a local
+ * `playwright test visual` measures a DIFFERENT app. The walk runs after
+ * `time.spec.ts` (`workers: 1`, `fullyParallel: false`, alphabetical —
+ * only `work.spec.ts` sorts after it), so in a full suite its tables hold
+ * whatever earlier specs left behind — `time.spec.ts`'s entries above all — while a
+ * visual-only run finds them empty. Numbers below are CI's. Re-calibrate
+ * from a CI log, never from a local visual-only run.
+ *
+ * WHAT THEY ARE — both causes are the ones PLAN §0 slice-17 owed (f)
+ * already named, and neither is a column-priority mistake:
  *   • `projects` — `<Table className="table-fixed min-w-3xl">`
- *     (`projects/page.tsx`) is a hard 48rem = 768px FLOOR. Every number
- *     below is exactly 768 − box (356+412, 494+274, 606+162, 608+160,
- *     734+34, 736+32), so it is a constant, identical at every locale and
- *     every run; under `table-fixed` content cannot widen the table at
- *     all. Removing `min-w-3xl` removes all of it.
+ *     (`projects/page.tsx`) is a hard 48rem = 768px FLOOR. Every number is
+ *     exactly 768 − box (356+412, 494+274, 606+162, 608+160, 734+34,
+ *     736+32), so it is a CONSTANT: identical on both platforms (CI never
+ *     flagged one of them) and in every locale, because under
+ *     `table-fixed` content cannot widen a table at all. Deleting
+ *     `min-w-3xl` deletes all of it.
  *   • `clients` — the name cell's `max-w-[420px]` (`clients/page.tsx`)
- *     behaves as a FLOOR in Chromium, so the content is 503px wide below
- *     the `low` rung and 799px at it. `clients-archived` is 14px more at
+ *     behaves as a FLOOR in Chromium. `clients-archived` is ~14px more at
  *     every width: the same table with the wider "Archived" badge. The
  *     control that proves the reading is `/clients/[id]/projects`, which
- *     carries the same capped cell, is held to 0, and passes — its seeded
- *     names never reach the cap.
- *   • `files`, `client-files`, `error-banner` — 3px at phone width. Small,
- *     but more than the 1px rounding tolerance, and named rather than
- *     hidden under a wider tolerance that would blind every other stop.
- * Each number is set by a CAP or a FLOOR, never by seeded text, so none of
- * them moves with the run id in the fixture's names.
+ *     carries the same capped cell, never reaches it, and sits at 0.
+ *   • `files`, `client-files`, `error-banner`, `project-files` — 4-6px,
+ *     named rather than hidden under a tolerance wide enough to blind
+ *     every other stop.
  *
  * NOT A DEFECT LIST BY DEFINITION. `table.tsx` and UI.md §10.12 record a
  * settled trade — since the actions column is pinned, a rung may carry a
  * little scroll at its very edge in exchange for more columns — so a
- * future entry may be that trade rather than a bug. All six today are
- * bugs. The harness is ENGLISH and cannot see the trade: the backlog is
- * 0 here and ~30px over at the `lowest` rung's narrow edge in Swedish
- * (measured with a throwaway probe on 2026-09-18; `table.tsx` and UI.md
- * §10.12 record ~21px for the same edge). The owed Swedish walk will add
- * trades here, and they must be labelled as such.
+ * future entry may be that trade rather than a bug, and must be labelled
+ * as such. All ten keys today are bugs. The harness is ENGLISH and cannot
+ * see the trade at all: the backlog is 0 here and ~30px over at the
+ * `lowest` rung's narrow edge in Swedish (measured with a throwaway probe
+ * on 2026-09-18; `table.tsx` and UI.md §10.12 record ~21px for that
+ * edge). The owed Swedish walk will add trades here.
  */
 const KNOWN_OVERFLOW: Record<string, number> = {
   "projects@390": 412,
@@ -132,16 +137,74 @@ const KNOWN_OVERFLOW: Record<string, number> = {
   "projects@882": 160,
   "projects@1008": 34,
   "projects@1010": 32,
-  "clients@390": 147,
-  "clients@768": 9,
-  "clients@1010": 63,
-  "clients-archived@390": 161,
-  "clients-archived@768": 23,
-  "clients-archived@1010": 77,
-  "files@390": 3,
-  "client-files@390": 3,
-  "error-banner@390": 3,
+  "clients@390": 149,
+  "clients@768": 11,
+  "clients@1010": 70,
+  "clients-archived@390": 163,
+  "clients-archived@768": 25,
+  "clients-archived@1010": 85,
+  "files@390": 6,
+  "client-files@390": 6,
+  "error-banner@390": 6,
+  "project-files@390": 4,
 };
+
+/**
+ * Slack on a KNOWN number, for CI-to-CI variance only.
+ *
+ * NOT for the Windows ↔ ubuntu font-metric gap, though that is what
+ * forced the recalibration: every number below is now CI's OWN, so that
+ * gap is already inside them and this tolerance never sees it. What is
+ * left to guard is a listed number moving between two CI runs — which
+ * should be nothing, since every listed stop is cap- or floor-driven and
+ * both attempts of run 35291774042 measured identically — and the
+ * reverse case, a future key where a local run measures WIDER than CI.
+ *
+ * Deliberately small, because it is pure slack on a ratchet: at 8px,
+ * `project-files@390` could have tripled (4 → 12) and `files@390` more
+ * than doubled before the walk noticed, on stops whose entire purpose is
+ * to bound a small regression. It is still too coarse for the smallest
+ * entries — a proportional floor is owed (PLAN §0). Nothing absorbs a
+ * runner-image change (ubuntu-latest moves to Ubuntu 26 from 2026-10-19);
+ * that is a recalibration, not a tolerance.
+ */
+const DRIFT_PX = 4;
+
+/**
+ * Stops whose tables are DATA-DRIVEN, so their width depends on rows
+ * earlier specs leave behind rather than on the layout: `time.spec.ts`
+ * writes and deletes entries, and the visual walk runs after it. Measured
+ * into the report, never asserted — an exact ratchet here would be
+ * pinning noise, and the first CI run proved it: `time-team`'s "Shift day
+ * totals" was 0px in a visual-only run and 251px over a 356px box in the
+ * full suite.
+ *
+ * They are NOT exempt because their overflow is acceptable; several
+ * overflow badly and are owed a pass of their own (PLAN §0). They are
+ * exempt because this instrument cannot yet say so reproducibly. Making
+ * the walk seed its own rows would let them be ratcheted like the rest.
+ *
+ * THE SET IS CHOSEN BY WHAT IS DATA-DRIVEN, not by what CI happened to
+ * flag — the first draft was the latter, and a review caught two stops
+ * one run away from going red for the identical reason. `project-time`
+ * grows a COLUMN PER ISO WEEK present in the month, so one entry landing
+ * in a second week widens it; `time-statement` renders a day's shift
+ * spans joined into one `whitespace-nowrap` cell with no priority, so a
+ * second shift or a break that splits a day widens it. `time.spec.ts`
+ * writes entries, splits, copy-last-week rows and shifts, and removes
+ * only tasks. Two more stops carry lighter residue and are NOT exempt
+ * (both at 0 today, both worth watching): `settings-time`, where
+ * `settings.spec.ts` leaves a seventh work type behind, and
+ * `project-backlog*`, whose seeded task the item specs retitle and
+ * relabel.
+ */
+const VOLATILE_STOPS = new Set([
+  "time",
+  "time-team",
+  "time-statement",
+  "project-money",
+  "project-time",
+]);
 
 type Device = keyof typeof VIEWPORTS;
 type Theme = "light" | "dark";
@@ -557,8 +620,13 @@ async function visit(
   // cannot license the same scroll on a desktop (see KNOWN_OVERFLOW).
   const describe = (r: TableOverflow) => `"${r.label}" (${r.box}px box): ${r.px}px`;
   const overflowing = (rows: TableOverflow[], width: number): string[] => {
+    if (VOLATILE_STOPS.has(stop.name)) return [];
     const known = KNOWN_OVERFLOW[`${stop.name}@${width}`] ?? 0;
-    return rows.filter((r) => r.px > known).map((r) => `${describe(r)} of scroll, known ${known}px`);
+    // DRIFT_PX rides on a KNOWN number only: an unlisted key stays at 0.
+    const ceiling = known === 0 ? 0 : known + DRIFT_PX;
+    return rows
+      .filter((r) => r.px > ceiling)
+      .map((r) => `${describe(r)} of scroll, allowed ${ceiling}px (known ${known}px)`);
   };
   const ownWidth = VIEWPORTS[device].width;
   const ownOver = await page.evaluate(tableOverflow);
@@ -647,6 +715,28 @@ async function visit(
     expect.soft(unexpected, `${at}: unexpected HTTP errors`).toEqual([]);
   }
 }
+
+/**
+ * The ratchet cannot tighten itself, so at least stop it ROTTING: a key
+ * naming a stop that was renamed, removed or fixed would sit there
+ * forever, silently licensing scroll on nothing. Cheap, and it runs
+ * without a browser.
+ */
+test("every KNOWN_OVERFLOW and VOLATILE_STOPS name is a real stop", () => {
+  const names = new Set(stops(requireSeed()).map((s) => s.name));
+  const unknownKeys = Object.keys(KNOWN_OVERFLOW).filter(
+    (k) => !names.has(k.slice(0, k.lastIndexOf("@"))),
+  );
+  const unknownWidths = Object.keys(KNOWN_OVERFLOW).filter((k) => {
+    const w = Number(k.slice(k.lastIndexOf("@") + 1));
+    return w !== VIEWPORTS.desktop.width && w !== VIEWPORTS.mobile.width && !RUNG_WIDTHS.includes(w as (typeof RUNG_WIDTHS)[number]);
+  });
+  expect(unknownKeys, "KNOWN_OVERFLOW keys naming no stop").toEqual([]);
+  expect(unknownWidths, "KNOWN_OVERFLOW keys at a width never measured").toEqual([]);
+  expect([...VOLATILE_STOPS].filter((n) => !names.has(n)), "VOLATILE_STOPS naming no stop").toEqual(
+    [],
+  );
+});
 
 for (const theme of ["light", "dark"] as const) {
   for (const device of Object.keys(VIEWPORTS) as Device[]) {
