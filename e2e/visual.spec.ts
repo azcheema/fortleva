@@ -222,16 +222,22 @@ function driftFor(known: number): number {
  * column-priority fix rather than a ratchet — and the remaining numbers
  * are now in every CI log for whoever takes the rest.
  *
- * WHAT IS LEFT, measured locally on 2026-09-18 with `time.spec.ts` run
- * first so the residue is CI-shaped (so: the SHAPE is right, the pixels
- * are not CI's — recalibrate from a log): `/time`'s "Time entries" is
- * 86px over a 356px box, 65px over a 608px box and 73px over a 736px
- * box. That one is NOT a rung mistake — its What cell is a
- * `flex-wrap` row of a truncating label plus up to four `shrink-0`
- * badges, so the badges force the column exactly as `/clients`' city
- * span did — and fixing it is a design question (which of the label and
- * the badges yields on a phone), so it is left for the founder rather
- * than decided here. The rest are 3-5px.
+ * WHAT IS LEFT, read off CI run 35380530578 — the first log these
+ * numbers ever appeared in, which is the point of printing them:
+ *   • `time` "Time entries" — 91px over a 356px box, 65px over 608px,
+ *     76px over 736px. NOT a rung mistake: its What cell is a
+ *     `flex-wrap` row of a truncating label plus up to four `shrink-0`
+ *     badges, so the badges force the column exactly as `/clients`' city
+ *     span did. Which of the label and the badges yields on a phone is a
+ *     design question, so it is the founder's and its own slice.
+ *   • `project-money` "By epic" / "By task" — 16px over a 356px box.
+ *   • `time-team` "Team hours" — 11px over a 356px box.
+ *   • `time-statement` — under the probe's 1px floor on CI.
+ * Every one of these is DATA-driven and drifts run to run, which two
+ * local runs showed plainly (`project-money` 4 → 9px, `time` 87 → 90px)
+ * and CI then disagreed with again — which is why they are exempt rather
+ * than merely unratcheted, and why a number here is a starting point for
+ * a pass, never a key to paste into `KNOWN_OVERFLOW`.
  *
  * THE SET IS CHOSEN BY WHAT IS DATA-DRIVEN, not by what CI happened to
  * flag — the first draft was the latter, and a review caught two stops
