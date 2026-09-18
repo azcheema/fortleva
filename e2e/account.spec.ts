@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { isActionPost } from "./fixtures/actions";
+import { requireSeed } from "./fixtures/tenant";
 
 /**
  * Display name on /account.
@@ -102,45 +103,101 @@ test.describe("account display name", () => {
 });
 
 /**
- * The account menu offers "Switch workspace" only above one membership
- * (UI.md rule 8: `/dashboard` is the workspace picker "only for > 1
- * membership"). The fixture owner belongs to exactly one workspace, so
- * this pins the direction the harness can prove — the item is GONE.
+ * The workspace picker (UI.md rule 8) — the OFFER and the SWITCH.
  *
- * The > 1 direction needs a second throwaway tenant in the fixture and
- * is owed (PLAN §0), together with the defect it would run into: the
- * picker cannot actually switch yet (nothing writes the session's
- * activeTenantId pointer and every row links to a bare /home).
+ * The fixture owner belongs to TWO workspaces (`seed-cli.ts` provisions
+ * an empty second one), which is what makes either half testable: with
+ * one membership every assertion here could only ever have been an
+ * absence. The switch itself could not be tested at all before
+ * 2026-09-18 — nothing wrote the session's `activeTenantId` pointer and
+ * every row linked to a bare `/home`, so a member of two active tenants
+ * always landed back in the earliest-joined one.
  */
-test.describe("the account menu", () => {
-  test("offers no workspace switch when the member has only one workspace", async ({ page }) => {
+test.describe("the workspace picker", () => {
+  /**
+   * The pointer this file moves lives on the SESSION ROW, which every
+   * spec shares (`workers: 1`, one storage state) — so a run that ends
+   * pointed at the empty second workspace fails everything after it, and
+   * this file runs first. An in-body `finally` is NOT enough: Playwright
+   * abandons the test body on a TEST TIMEOUT, and a hook still runs.
+   * Idempotent, so it costs one navigation after the other test too.
+   */
+  test.afterEach(async ({ page }) => {
+    const seed = requireSeed();
+    await page.goto("/dashboard");
+    await page.getByRole("button", { name: `Open ${seed.tenantName}`, exact: true }).click();
+    await page.waitForURL("**/home");
+  });
+
+  test("the account menu offers the switch above one membership", async ({ page }) => {
     await page.goto("/home");
     await page.getByRole("button", { name: "Account menu" }).click();
 
     const menu = page.locator('[data-slot="dropdown-menu-content"]');
     await expect(menu).toBeVisible();
-    // The menu really rendered its items — without this the assertion
-    // below would pass just as well against a menu that never opened.
     await expect(menu.getByRole("menuitem", { name: "Account" })).toBeVisible();
     // BOTH, and each covers the other's blind spot: a name match is a
     // substring match, so an English copy change would make the first
     // vacuously true forever; and a refactor that rendered the entry as
-    // a bare link would keep the second at zero while the offer is
-    // plainly on screen. The href is what the new branch controls.
-    await expect(menu.getByRole("menuitem", { name: "Switch workspace" })).toHaveCount(0);
-    await expect(menu.locator('a[href="/dashboard"]')).toHaveCount(0);
+    // a bare link would keep the second correct while the role is gone.
+    await expect(menu.getByRole("menuitem", { name: "Switch workspace" })).toBeVisible();
+    await expect(menu.locator('a[href="/dashboard"]')).toHaveCount(1);
   });
-});
 
-/**
- * Only the OFFER is gated; the route is not. It is where
- * `requireTenantContext` sends a member with no active membership, and
- * the only surface a SUSPENDED membership's status shows on — so a
- * later "redirect /dashboard to /home below two memberships" would
- * strand that member, and must fail here first.
- */
-test.describe("the workspace picker route", () => {
-  test("stays reachable by URL for a single-workspace member", async ({ page }) => {
+  test("choosing the other workspace actually switches, and it sticks", async ({ page }) => {
+    const seed = requireSeed();
+    // The header carries the workspace name TWICE — the phone section
+    // label falls back to it on a route no nav entry owns (/dashboard is
+    // one), and the desktop span always shows it. Only one of the two is
+    // ever on screen, so the visible filter is the whole selector: an
+    // unfiltered getByText is a strict-mode violation on /dashboard.
+    const inHeader = (name: string) =>
+      page.locator("header").getByText(name, { exact: true }).filter({ visible: true });
+
+    await page.goto("/dashboard");
+    await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
+
+    // The header names the workspace we are in before the switch.
+    await expect(inHeader(seed.tenantName)).toBeVisible();
+
+    // A submit, not a link: choosing a workspace WRITES the session
+    // pointer, so a GET would fire on Next's link prefetch. EXACT,
+    // because the second workspace's name is the first's plus " B" and a
+    // substring match resolves to both rows — the same trap as the
+    // header's two workspace names, a few lines up.
+    await page
+      .getByRole("button", { name: `Open ${seed.secondTenantName}`, exact: true })
+      .click();
+
+    // It lands on Home IN THE OTHER WORKSPACE — the assertion the old
+    // bare-`/home` link would have failed, because it landed on Home in
+    // the FIRST one and looked identical to a working switch.
+    await page.waitForURL("**/home");
+    await expect(inHeader(seed.secondTenantName)).toBeVisible();
+    await expect(inHeader(seed.tenantName)).toHaveCount(0);
+
+    // PERSISTED on the session row, not merely rendered once: a full
+    // reload re-reads it through Better Auth.
+    await page.reload();
+    await expect(inHeader(seed.secondTenantName)).toBeVisible();
+    // The afterEach above puts the fixture back.
+  });
+
+  /**
+   * Only the OFFER is gated, never the ROUTE. `requireTenantContext`
+   * redirects a member with NO active membership to `/dashboard`, so
+   * gating it would loop them, and it is the only surface a SUSPENDED
+   * membership's status shows on. A later "redirect `/dashboard` to
+   * `/home`" must fail here first.
+   *
+   * WEAKER THAN IT LOOKS, and owed (PLAN §0): the fixture owner now has
+   * two workspaces, so this cannot catch a redirect conditioned on
+   * having FEWER than two. Proving that needs a signed-in
+   * single-membership member — the seeded employee — and so a second
+   * sign-in, on the path that already carries the suite's one recorded
+   * flake.
+   */
+  test("the picker route is reachable by URL, never gated", async ({ page }) => {
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
   });

@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { requireMemberSession } from "@/auth/session";
 import {
+  Callout,
   EmptyState,
   EntityChip,
   Page,
@@ -13,8 +13,10 @@ import {
   StatusBadge,
 } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { getActiveMembership, membershipsFor } from "@/members/tenant-context";
+
+import { switchWorkspaceAction } from "./actions";
+import { WorkspaceRowButton } from "./workspace-row-button";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("nav");
@@ -29,27 +31,29 @@ export async function generateMetadata(): Promise<Metadata> {
  * sends a user with no active membership, and the only place a
  * SUSPENDED membership's status is visible.
  *
- * KNOWN DEFECT, recorded 2026-09-17 (PLAN §0), NOT introduced here:
- * this picker cannot actually switch. Every ACTIVE row links to a bare
- * `/home`, and nothing in the repository ever WRITES the session's
- * `activeTenantId` pointer (`src/auth/index.ts` declares it
- * `input: false`; `getActiveMembership` is its only reader), so a
- * member of two active tenants always lands back in `active[0]` — the
- * one with the earliest `joinedAt`. Switching needs a server action
- * that re-derives the membership and writes the pointer; until it
- * exists, do not describe this page as working.
+ * It picks as of 2026-09-18 (slice 26). It did not before: every row
+ * linked to a bare `/home` and nothing ever WROTE the session's
+ * `activeTenantId`, so a member of two active tenants always landed
+ * back in `active[0]`, the earliest `joinedAt`. Each ACTIVE row is now
+ * a form posting `switchWorkspaceAction`, which re-derives the
+ * membership under RLS before it writes the pointer.
  *
  * On the page whose only job is choosing a workspace, the choices are
- * the controls: each active membership is a full-width row link with a
- * hover surface and a trailing chevron, and the one you are currently
- * in carries aria-current plus the two-channel active-row treatment
- * (§9). The escape hatch in the header is an outline button — it used
+ * the controls: each active membership is a full-width SUBMIT with a
+ * hover surface and a trailing chevron — a button, not a link, since
+ * 2026-09-18, because choosing writes the session pointer and Next
+ * prefetches links. The one you are currently in carries aria-current
+ * plus the two-channel active-row treatment (§9). The escape hatch in the header is an outline button — it used
  * to be the loudest thing here.
  *
  * The "WORKSPACES / 1" tile is gone: it counted the list printed 60px
  * below it, alone in a three-column grid with two empty cells.
  */
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string }>;
+}) {
   const session = await requireMemberSession();
   // Both reads come off the ONE per-request memoised list: this page
   // used to call `listMembershipsForUser` beside `getActiveMembership`,
@@ -60,6 +64,11 @@ export default async function DashboardPage() {
   ]);
   const t = await getTranslations("dashboard");
   const hasActive = memberships.some((m) => m.status === "ACTIVE");
+  // The switch found no ACTIVE membership for what was clicked — the
+  // membership was suspended or removed between this page rendering and
+  // the click. The list below already shows that; this says why the
+  // click did nothing, so it cannot read as a failure that reverted.
+  const unavailable = (await searchParams).notice === "unavailable";
 
   return (
     <Page>
@@ -73,6 +82,12 @@ export default async function DashboardPage() {
           ) : null
         }
       />
+
+      {unavailable ? (
+        <Callout tone="caution" role="alert" className="mt-6">
+          {t("unavailable")}
+        </Callout>
+      ) : null}
 
       <div className="mt-6">
         <SectionCard title={t("workspaces")} contentClassName="p-0">
@@ -104,24 +119,20 @@ export default async function DashboardPage() {
                 return (
                   <li key={m.memberId} className="border-b border-border last:border-b-0">
                     {m.status === "ACTIVE" ? (
-                      <Link
-                        href="/home"
-                        aria-label={t("open", { name: m.tenantName })}
-                        aria-current={current ? "page" : undefined}
-                        className={cn(
-                          "row-h relative flex items-center gap-3 px-4 text-sm transition-colors duration-(--dur-instant) ease-out hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-                          // Two channels, the same pair the rail uses:
-                          // an --accent fill AND a 2px --primary bar.
-                          current &&
-                            "bg-accent font-medium before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary",
-                        )}
-                      >
-                        {body}
-                        <ChevronRightIcon
-                          aria-hidden="true"
-                          className="size-4 shrink-0 text-muted-foreground"
-                        />
-                      </Link>
+                      // A FORM, not a link. Choosing a workspace WRITES
+                      // the session pointer, and Next prefetches links —
+                      // a GET here would switch workspace on hover. The
+                      // button carries the row's whole surface, so the
+                      // affordance is unchanged.
+                      <form action={switchWorkspaceAction}>
+                        <input type="hidden" name="tenantId" value={m.tenantId} />
+                        <WorkspaceRowButton
+                          label={t("open", { name: m.tenantName })}
+                          current={current}
+                        >
+                          {body}
+                        </WorkspaceRowButton>
+                      </form>
                     ) : (
                       <div className="row-h flex items-center gap-3 px-4 text-sm">{body}</div>
                     )}

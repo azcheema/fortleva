@@ -53,6 +53,11 @@ export const USER_ADDITIONAL_FIELDS = {
 
 export const SESSION_ADDITIONAL_FIELDS = {
   plane: { type: "string", required: false, input: false },
+  // WRITTEN BEHIND BETTER AUTH'S BACK, by `./active-tenant.ts` straight
+  // through Prisma (as `./step-up.ts` writes mfaVerifiedAt). That is only
+  // safe while `session.cookieCache` and `secondaryStorage` stay OFF
+  // below: with either on, `getSession` would serve a cached row and a
+  // workspace switch would silently appear not to work until it expired.
   activeTenantId: { type: "string", required: false, input: false },
   // Last interactive second factor on this session (SECURITY.md §3.5);
   // stamped by memberDatabaseHooks + verifyStepUp(), read by

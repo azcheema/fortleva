@@ -296,6 +296,7 @@
     "workspaces": "Dina arbetsytor",
     "open": "Öppna {name}",
     "current": "Nuvarande arbetsyta",
+    "unavailable": "Den arbetsytan är inte längre tillgänglig för dig.",
     "none": "Du är inte medlem i någon arbetsyta ännu. Be en administratör om en inbjudan.",
     "goHome": "Gå till Hem",
     "metric": "Arbetsytor",

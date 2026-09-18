@@ -86,6 +86,42 @@ test.describe("as the employee", () => {
     // exact same screen as the one that exists out of scope.
     await expectNotFound(page, "/clients/00000000-0000-7000-8000-000000000000");
   });
+
+  /**
+   * THE SINGLE-MEMBERSHIP HALF of UI.md rule 8 — `/dashboard` is the
+   * workspace picker "only for > 1 membership". It lives here because
+   * the employee is the only member the fixture seats in ONE workspace
+   * (the owner holds two, so the account menu offers the switch there),
+   * and this block already has them signed in — the assertion costs no
+   * second sign-in on a path that carries the suite's recorded flake.
+   *
+   * Without it nothing pins the gate: `workspaceCount > 1` could become
+   * `>= 1`, or lose its condition entirely, and every gate would stay
+   * green while a member with one workspace was offered a picker with
+   * nothing to pick.
+   */
+  test("with one workspace: no switch offered, and the picker route still renders", async ({
+    page,
+  }) => {
+    await page.goto("/home");
+    await page.getByRole("button", { name: "Account menu" }).click();
+    const menu = page.locator('[data-slot="dropdown-menu-content"]');
+    await expect(menu).toBeVisible();
+    // Proves the menu really rendered its items, so the absences below
+    // are absences and not an unopened menu.
+    await expect(menu.getByRole("menuitem", { name: "Account" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Switch workspace" })).toHaveCount(0);
+    await expect(menu.locator('a[href="/dashboard"]')).toHaveCount(0);
+
+    // The OFFER is gated; the ROUTE never is. `requireTenantContext`
+    // sends a member with no active membership here, so gating it would
+    // loop them, and it is the only surface a SUSPENDED membership's
+    // status shows on — a later "redirect below two memberships" must
+    // fail HERE, on the member it would strand.
+    await page.keyboard.press("Escape");
+    await page.goto("/dashboard");
+    await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
+  });
 });
 
 test.describe("as the owner", () => {

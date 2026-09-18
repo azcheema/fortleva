@@ -114,6 +114,9 @@ type PlatformDb = ReturnType<typeof import("../../src/db/client").getPlatformCli
 export type E2ESeed = {
   readonly tenantId: string;
   readonly tenantSlug: string;
+  /** The workspace's display name — what the header shows, and how a
+   *  spec tells the two workspaces apart after a switch. */
+  readonly tenantName: string;
   readonly userId: string;
   readonly email: string;
   readonly memberId: string;
@@ -137,6 +140,20 @@ export type E2ESeed = {
   readonly internalDocName: string;
   /** Temp dir holding the fixture's bytes; removed at teardown. */
   readonly storageDir: string;
+
+  /* ── A SECOND workspace for the same owner ─────────────────────────
+   * The owner belongs to two tenants, so `/dashboard` is a picker with
+   * something to pick and the account menu's "Switch workspace" item
+   * (offered only above one membership, UI.md rule 8) exists at all.
+   * Without it neither the offer nor the switch could be tested in a
+   * browser: every assertion could only ever be an ABSENCE.
+   *
+   * Deliberately EMPTY — no client, project or document. It is the
+   * destination of a switch, and an empty workspace makes "am I in the
+   * other one?" unmistakable. It is torn down with the first. */
+  readonly secondTenantId: string;
+  readonly secondTenantSlug: string;
+  readonly secondTenantName: string;
 
   /* ── Visual-sweep fixture (e2e/visual.spec.ts) ──────────────────────
    * A one-row table hides every alignment defect there is, and an
@@ -239,9 +256,24 @@ async function provision(seedFile: string): Promise<void> {
     },
   });
 
+  const tenantName = `E2E ${run}`;
   const { tenantId, ownerMemberId } = await provisionTenant({
-    name: `E2E ${run}`,
+    name: tenantName,
     slug,
+    ownerUserId: user.id,
+  });
+
+  // A SECOND workspace for the same owner, left empty. It exists so the
+  // browser can test the two things a single membership makes
+  // untestable: that the account menu OFFERS "Switch workspace" above
+  // one membership, and that choosing a row actually switches. Its slug
+  // carries the same `e2e-` prefix, so every teardown guard and the
+  // orphan sweep apply to it unchanged.
+  const secondSlug = `${SLUG_PREFIX}${run}-b`;
+  const secondTenantName = `E2E ${run} B`;
+  const { tenantId: secondTenantId } = await provisionTenant({
+    name: secondTenantName,
+    slug: secondSlug,
     ownerUserId: user.id,
   });
 
@@ -567,6 +599,7 @@ async function provision(seedFile: string): Promise<void> {
   const seed: E2ESeed = {
     tenantId,
     tenantSlug: slug,
+    tenantName,
     userId: user.id,
     email,
     memberId: ownerMemberId,
@@ -582,6 +615,9 @@ async function provision(seedFile: string): Promise<void> {
     internalDocId: await document(internalDocName, "INTERNAL"),
     internalDocName,
     storageDir,
+    secondTenantId,
+    secondTenantSlug: secondSlug,
+    secondTenantName,
     longClientId,
     longClientName,
     archivedClientId,
@@ -788,12 +824,23 @@ async function teardown(seedFile: string): Promise<void> {
   const db = getPlatformClient();
   const { tenantId } = seed;
 
-  const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
-  if (tenant && !tenant.slug.startsWith(SLUG_PREFIX)) {
-    throw new Error(`refusing to tear down non-throwaway tenant "${tenant.slug}"`);
+  // BOTH workspaces, and the main one FIRST: `removeTenant` deletes the
+  // owner only once they hold no membership anywhere
+  // (`memberships: { none: {} }`), so the second pass is what actually
+  // removes the user. `secondTenantId` is read defensively — a seed file
+  // written before this field existed would otherwise throw here and
+  // strand the tenant it CAN remove.
+  const ids = [tenantId, seed.secondTenantId].filter(
+    (id): id is string => typeof id === "string" && id.length > 0,
+  );
+  for (const id of ids) {
+    const tenant = await db.tenant.findUnique({ where: { id }, select: { slug: true } });
+    const slug = tenant?.slug ?? (id === tenantId ? seed.tenantSlug : seed.secondTenantSlug);
+    if (tenant && !tenant.slug.startsWith(SLUG_PREFIX)) {
+      throw new Error(`refusing to tear down non-throwaway tenant "${tenant.slug}"`);
+    }
+    await removeTenant(db, id, slug);
   }
-
-  await removeTenant(db, tenantId, tenant?.slug ?? seed.tenantSlug);
   await db.$disconnect();
 
   rmSync(seed.storageDir, { recursive: true, force: true });

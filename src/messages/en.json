@@ -296,6 +296,7 @@
     "workspaces": "Your workspaces",
     "open": "Open {name}",
     "current": "Current workspace",
+    "unavailable": "That workspace is no longer available to you.",
     "none": "You are not a member of any workspace yet. Ask an admin for an invitation.",
     "goHome": "Go to Home",
     "metric": "Workspaces",
