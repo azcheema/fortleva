@@ -40,18 +40,28 @@ import { requireSeed } from "./fixtures/tenant";
 
 /**
  * THE SWEDISH RATCHET, keyed `<stop>@<width>` exactly as
- * `KNOWN_OVERFLOW` is, and EMPTY on purpose until CI has spoken.
+ * `KNOWN_OVERFLOW` is, and held to the pixel: an UNLISTED key is 0,
+ * which is what makes this a ratchet rather than a report.
  *
- * Every number in a walk like this has to be CI's own. A local run
- * measures a different app — Windows font metrics against ubuntu's,
- * 2-8 px per string on the evidence this repo already has — and the
- * standing rule in `visual.spec.ts` says it in as many words:
- * re-calibrate from a CI log, never from a local visual-only run. So
- * this map lands empty, the walk PRINTS every number it finds
- * (`[swedish] …`, the shape that made the exempt stops legible in slice
- * 31), and the next commit pastes CI's own numbers in and turns the
- * assertion on. A first run that went red on Windows numbers would
- * teach nothing except that the two platforms differ, which is known.
+ * IT LANDED EMPTY AND ASSERTED NOTHING FOR EXACTLY ONE COMMIT, which
+ * is over. There was briefly a flag here that skipped every overflow
+ * assertion while the map was empty, and a review caught what it
+ * would become: once these twelve keys are FIXED and deleted, an
+ * empty map would have turned the whole walk green and silent — a
+ * kill switch disguised as a milestone. An empty map now means every
+ * table fits, and the walk says so by passing at 0.
+ *
+ * Every number here is CI's own, off run 35443979863, and landing the
+ * map empty first was not ceremony — the platforms really do disagree.
+ * Local runs of this walk measured `Filer` at 11px and `project-files`
+ * at 2px where CI says 14 and 7, and gave the backlog 28, 29 and 30 on
+ * three consecutive runs. A map calibrated on Windows would have been
+ * wrong on the runner from its first line. The standing rule in
+ * `visual.spec.ts` says the same thing in as many words: re-calibrate
+ * from a CI log, never from a local visual-only run. The walk still
+ * PRINTS every number it finds (`[swedish] …`, the shape that made the
+ * exempt stops legible in slice 31), which is what the next
+ * re-calibration will read.
  *
  * What belongs here when it is filled: the settled TRADES of UI.md
  * §10.12 — a rung may carry a little scroll at its very edge, since the
@@ -71,7 +81,52 @@ import { requireSeed } from "./fixtures/tenant";
  *     numbers, the class this repo records as moving 2-8px between
  *     platforms, so zero tolerance would turn an unrelated change red.
  */
-const KNOWN_OVERFLOW_SV: Record<string, number> = {};
+const KNOWN_OVERFLOW_SV: Record<string, number> = {
+  // THE SETTLED TRADE (UI.md §10.12), and the first of these numbers ever
+  // measured by anything but a hand-run probe. The backlog climbs all
+  // five rungs, and at `lowest`'s NARROW edge its ten Swedish columns do
+  // not fit — which is the trade the rungs were placed to make: since the
+  // actions column is pinned, a row's verbs never scroll, so a little
+  // scroll at a rung's very edge buys a column that would otherwise wait
+  // for the next laptop. UI.md put this at ~21px from a throwaway probe;
+  // CI says 29. The four stops are one table seen four ways — the
+  // backlog, the same list grouped, the same list with a row ticked, and
+  // the same list behind the item peek.
+  //
+  // FOUR PIXELS OF SLACK ON A 29, and worth saying why that is not as
+  // tight as it sounds (review). These stops carry residue —
+  // `fixtures/overflow.ts` lists `project-backlog*` among the two that
+  // do, since the item specs retitle and relabel the seeded task — but
+  // this walk runs LAST, after `work.spec.ts`, so 29 is already the
+  // end-state number and not a number the rest of the suite is still
+  // moving. The English walk runs BEFORE that spec and has ~37px of
+  // headroom besides, which is why it has never had to care. What keeps
+  // a retitle out of the width is the title cell itself: it carries
+  // `contain-inline-size`, so its text cannot force the column, and the
+  // chips beside it are capped at half the cell (UI.md §10.12). If this
+  // does prove flaky on CI, re-measure and raise the number — do not
+  // widen `driftFor`, which every other key rides on.
+  "project-backlog@1408": 29,
+  "project-backlog@1410": 27,
+  "project-backlog-grouped@1408": 29,
+  "project-backlog-grouped@1410": 27,
+  "project-backlog-selection@1408": 29,
+  "project-backlog-selection@1410": 27,
+  "project-item-peek@1408": 29,
+  "project-item-peek@1410": 27,
+
+  // NOT TRADES — the same four documents tables `KNOWN_OVERFLOW` already
+  // calls bugs in English, where they sit at 6/6/6/4px on a phone. In
+  // Swedish they are 14/14/14/7 — the three `Filer` tables more than
+  // DOUBLE, `project-files` 1.75x — which is the single most useful
+  // thing this walk has said so far, and a set of numbers that existed
+  // nowhere before it. Listed rather than fixed because fixing them is a
+  // slice; ratcheted so they cannot get worse first.
+  "files@390": 14,
+  "client-files@390": 14,
+  "error-banner@390": 14,
+  "project-files@390": 7,
+};
 
 /** Asserted from the first run: the pin is language-blind, so it must hold everywhere. */
 const SV_WIDTHS = [VIEWPORTS.mobile.width, ...RUNG_WIDTHS] as const;
@@ -146,14 +201,17 @@ test.describe("swedish · widths", () => {
   test("every table fits its box in Swedish, and every row's verbs stay in view", async ({
     page,
   }) => {
-    // 600 s on both, unlike the English walk's 600/300 split, and
-    // measured rather than guessed: the first local run took 5.1 min and
-    // was killed by a 300 s budget mid-walk — which then ran the restore
-    // below against a page Playwright had already closed, turning one
-    // timeout into two failures. This walk is longer than an English one
-    // per stop (ten measurements against one screenshot) and shorter
-    // overall (no shots, no craft audit).
-    test.setTimeout(600_000);
+    // MEASURED ON BOTH, and they are nothing alike. CI run 35443979863
+    // walked this in about half a minute — the whole e2e suite went from
+    // 8.9 to 8.4 min with it added, which is inside the run-to-run noise
+    // — because that job's Postgres is a container on the runner. The
+    // same walk takes 4.3 min locally against Neon, where every query
+    // crosses a network. So 240 s is an 8x hang guard on CI and 600 s is
+    // barely 2.3x locally; the first local run took 5.1 min and a 300 s
+    // budget killed it mid-walk, which then ran the restore against a
+    // page Playwright had already closed and turned one timeout into two
+    // failures.
+    test.setTimeout(process.env["CI"] ? 240_000 : 600_000);
     const seed = requireSeed();
     // Signed-out stops render no table and have no member whose language
     // could be switched, so they are not this walk's business.
@@ -171,9 +229,6 @@ test.describe("swedish · widths", () => {
 
     const describe = (r: TableOverflow) => `"${r.label}" (${r.box}px box): ${r.px}px`;
     const findings: string[] = [];
-    // The map is empty on the commit that introduces this walk, and an
-    // empty map means "CI has not spoken yet", not "every number is 0".
-    const ratcheting = Object.keys(KNOWN_OVERFLOW_SV).length > 0;
 
     // INSIDE the try, not before it: the switch writes `User.locale` and
     // then polls `<html lang>`, so a failure BETWEEN those two leaves the
@@ -226,11 +281,12 @@ test.describe("swedish · widths", () => {
           const over = await measure(page, tableOverflow);
           const volatile_ = VOLATILE_STOPS.has(stop.name);
           for (const row of over) {
-            // EVERY number is printed, which is what the next commit
-            // calibrates `KNOWN_OVERFLOW_SV` from — and, for the exempt
-            // stops, all this walk will ever do with them.
+            // EVERY number is printed, listed or not: the map above was
+            // calibrated from these lines in a CI log, and the next
+            // re-calibration will be too. For an exempt stop, printing is
+            // all this walk will ever do.
             console.log(`[swedish]${volatile_ ? " [volatile]" : ""} ${at}: ${describe(row)}`);
-            if (volatile_ || !ratcheting) continue;
+            if (volatile_) continue;
             const known = KNOWN_OVERFLOW_SV[`${stop.name}@${width}`] ?? 0;
             const ceiling = known + driftFor(known);
             if (row.px > ceiling) {
