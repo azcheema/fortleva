@@ -306,7 +306,18 @@ jobs:
     # every-walk-retries path, not an expectation. This is a HANG GUARD
     # and a bill cap; when it fires, the run is already wrong, and the
     # artifact step below is written so a kill still hands back traces.
-    timeout-minutes: 30
+    #
+    # RAISED 30 → 40 on 2026-09-19, for the SWEDISH width walk
+    # (`zz-swedish-widths.spec.ts`, PLAN §0 owed (c)). Not because the
+    # green path needs it — the last green run was 8 m 55 s and the new
+    # walk measured 4.3 min locally, so ~15 min is the expectation — but
+    # because of what a RED one costs: its own 600 s budget plus
+    # `retries: 1` is 20 minutes for that file alone, which under a 30
+    # minute ceiling would CANCEL the job instead of failing it, and a
+    # cancelled job hands back a truncated log for a test that had
+    # something to say. Read the walk's real duration off the first green
+    # run and bring its in-suite budget — and then this — back down.
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:18
