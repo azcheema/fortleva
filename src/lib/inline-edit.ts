@@ -104,3 +104,50 @@ export const optionLabel = (
   options: readonly InlineEditOption[] | undefined,
   value: string,
 ): string => options?.find((o) => o.value === value)?.label ?? value;
+
+/**
+ * THE CURRENT VALUE IS ALWAYS OFFERED. A select's options are what may
+ * be CHOSEN, which is not the same set as what a row may already HOLD:
+ * the backlog's states drop TRIAGE and the gated ones, and its assignees
+ * are ACTIVE members only. A row sitting on a value outside that set
+ * breaks the control twice over, and both halves are silent:
+ *
+ *   • `optionLabel` above falls back to the raw VALUE, so the trigger's
+ *     `aria-label` and `title` announce an opaque id — a screen reader
+ *     reading a UUID where a person's name belongs;
+ *   • `NativeSelect` takes `defaultValue`, so a value matching no option
+ *     leaves the browser on the FIRST one. The picker then states a
+ *     current value the row does not have — "Unassigned" over a task
+ *     that is assigned.
+ *
+ * Prepending the held value fixes both: it is labelled, it is what the
+ * select opens on, and re-picking it fires no `change`, so it commits
+ * nothing (the item panel's `A` picker reaches the same end by leaving
+ * the row unchecked and Enter inert). It is NOT re-offered to a row that
+ * does not hold it, so a deactivated member cannot be assigned to
+ * anything new, and a filtered state cannot be entered — only kept.
+ *
+ * `value === ""` means "none" by the convention these cells share, and
+ * "none" is always a real option, so it is never prepended.
+ *
+ * A MISSING LABEL STILL GETS AN OPTION, labelled with the raw value —
+ * which looks like the very thing this helper exists to keep off the
+ * screen, and is still right (review). The two halves of the bug are not
+ * equally bad: an ugly option is cosmetic, but a MISSING one leaves the
+ * select anchored on some other row's value, where a single arrow key
+ * commits a change nobody chose. Dropping the option would have been a
+ * regression on the state cell, whose inline predecessor prepended
+ * unconditionally. On the assignee path the case is unreachable anyway —
+ * `assigneeName` comes from the item's own join and `User.name` is
+ * non-null, so it is null only when `assigneeMemberId` is, and that is
+ * the `""` bail above.
+ */
+export const withCurrentOption = (
+  options: readonly InlineEditOption[],
+  value: string,
+  label: string | null | undefined,
+): readonly InlineEditOption[] => {
+  if (value === "") return options;
+  if (options.some((o) => o.value === value)) return options;
+  return [{ value, label: label || value }, ...options];
+};

@@ -8,6 +8,7 @@ import {
   optionLabel,
   returnsFocus,
   selectsOnFocus,
+  withCurrentOption,
   type InlineEditEvent,
   type InlineEditState,
 } from "./inline-edit";
@@ -121,5 +122,68 @@ describe("optionLabel", () => {
   it("falls back to the raw value rather than rendering nothing", () => {
     expect(optionLabel(options, "MYSTERY")).toBe("MYSTERY");
     expect(optionLabel(undefined, "MYSTERY")).toBe("MYSTERY");
+  });
+});
+
+describe("withCurrentOption", () => {
+  const members = [
+    { value: "", label: "Unassigned" },
+    { value: "m1", label: "Astrid" },
+    { value: "m2", label: "Bo" },
+  ];
+
+  it("prepends a held value the options do not offer, labelled", () => {
+    // The bug this exists for: `m9` is a DEACTIVATED member, so the
+    // options (ACTIVE members) cannot name them. Uncorrected, the
+    // trigger announces "m9" and the native select opens on
+    // "Unassigned" over a task that is assigned.
+    expect(withCurrentOption(members, "m9", "Carola")).toEqual([
+      { value: "m9", label: "Carola" },
+      ...members,
+    ]);
+    expect(optionLabel(withCurrentOption(members, "m9", "Carola"), "m9")).toBe("Carola");
+  });
+
+  it("leaves the options untouched when the held value is already offered", () => {
+    expect(withCurrentOption(members, "m1", "Astrid")).toBe(members);
+  });
+
+  it("never prepends NONE — \"\" is always a real option by convention", () => {
+    expect(withCurrentOption(members, "", "Unassigned")).toBe(members);
+    expect(withCurrentOption([{ value: "a", label: "A" }], "", "anything")).toEqual([
+      { value: "a", label: "A" },
+    ]);
+  });
+
+  it("prepends EXACTLY one option and leaves the rest in order", () => {
+    // Stated as an equality, not as a `some()` over a value the fixture
+    // never had: the first draft of this asserted that `m9` is absent
+    // from the result for held value `m8`, which passes for the identity
+    // function and for an unconditional prepend alike (review).
+    expect(withCurrentOption(members, "m8", "Dag")).toEqual([
+      { value: "m8", label: "Dag" },
+      { value: "", label: "Unassigned" },
+      { value: "m1", label: "Astrid" },
+      { value: "m2", label: "Bo" },
+    ]);
+  });
+
+  it("does not mutate the options it was given", () => {
+    const before = [...members];
+    withCurrentOption(members, "m9", "Carola");
+    expect(members).toEqual(before);
+  });
+
+  it("still returns an option when the caller cannot name the value", () => {
+    // Labelled with the raw value, which is ugly and still right: a
+    // MISSING option leaves the native select anchored on some other
+    // row's value, where one arrow key commits a change nobody chose.
+    // Unreachable on the assignee path — see the helper's note.
+    expect(withCurrentOption(members, "m9", null)).toEqual([
+      { value: "m9", label: "m9" },
+      ...members,
+    ]);
+    expect(withCurrentOption(members, "m9", undefined)[0]).toEqual({ value: "m9", label: "m9" });
+    expect(withCurrentOption(members, "m9", "")[0]).toEqual({ value: "m9", label: "m9" });
   });
 });

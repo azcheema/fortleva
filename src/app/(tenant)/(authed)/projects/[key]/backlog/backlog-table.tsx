@@ -59,6 +59,7 @@ import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { wroteSomething } from "@/lib/action-result";
 import { durationInputText, formatDay, formatDuration, type DurationStyle } from "@/lib/format";
+import { withCurrentOption } from "@/lib/inline-edit";
 import { focusedKeyApplies, focusedKeyGuards, keyEventShape, ownsArrows, rovingStep } from "@/lib/keymap";
 import type { ActionResult, FormResult } from "@/lib/server-actions";
 import { cn } from "@/lib/utils";
@@ -1412,9 +1413,13 @@ export function BacklogTable({
                       value={item.stateId}
                       label={t("stateLabel")}
                       placeholder={t("stateLabel")}
-                      options={stateOptions.some((o) => o.value === item.stateId)
-                        ? stateOptions
-                        : [{ value: item.stateId, label: item.stateName }, ...stateOptions]}
+                      // The current value is always offered, even when it
+                      // is not one that may be CHOSEN — see
+                      // `withCurrentOption`. Here that keeps an item
+                      // already in TRIAGE or a gated state displayable and
+                      // reopenable; the assignee cell below now shares the
+                      // helper rather than a second copy of the idiom.
+                      options={withCurrentOption(stateOptions, item.stateId, item.stateName)}
                       readOnly={!data.caps.canEdit}
                       hiddenInput={false}
                       // CAPPED, like the assignee below: a state's name is the
@@ -1486,18 +1491,27 @@ export function BacklogTable({
                       value={item.assigneeMemberId ?? ""}
                       label={t("assigneeLabel")}
                       placeholder={t("unassigned")}
-                      options={assigneeOptions}
+                      // A DEACTIVATED ASSIGNEE IS STILL THIS ROW'S TRUTH.
+                      // `assigneeOptions` is ACTIVE members, so before this
+                      // the trigger announced the raw member id — a screen
+                      // reader reading a UUID where a person's name belongs
+                      // — and the native select, which takes `defaultValue`,
+                      // opened on its FIRST option and stated "Unassigned"
+                      // over a task that is assigned. Prepending the held
+                      // member answers both and re-offers them to nothing
+                      // else, which is the item panel's `A` picker reaching
+                      // the same end by a different road (its row is simply
+                      // absent, unchecked and inert).
+                      options={withCurrentOption(assigneeOptions, item.assigneeMemberId ?? "", item.assigneeName)}
                       readOnly={!data.caps.canEdit}
                       hiddenInput={false}
                       display={
                         item.assigneeName ? (
                           <span
                             className="block max-w-24 truncate text-sm"
-                            // ALWAYS its own title, not only the trigger's: the
-                            // options are ACTIVE members, so a suspended
-                            // assignee's trigger title falls back to the raw
-                            // member id — and the innermost title is the one a
-                            // hover shows.
+                            // Its own title as well as the trigger's: this is
+                            // the element that TRUNCATES (§10.12), and the
+                            // innermost title is the one a hover shows.
                             title={item.assigneeName}
                           >
                             {item.assigneeName}
