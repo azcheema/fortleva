@@ -71,3 +71,49 @@ export const fail = (code: DomainErrorCode, detail?: string): never => {
 /** Prisma unique-violation duck test (no runtime import of the client — one-seam rule). */
 export const isUniqueViolation = (e: unknown): boolean =>
   typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002";
+
+/**
+ * Postgres DEADLOCK (SQLSTATE 40P01), duck-tested the same way and for
+ * the same reason — no runtime import of the generated client.
+ *
+ * A deadlock is not a bug in the caller and not a state the data is in:
+ * Postgres detects the cycle, picks a victim, aborts exactly one of the
+ * transactions and lets the other finish. The victim's work is simply
+ * undone, so redoing it is the textbook remedy and the only one — there
+ * is nothing to "handle" and nothing to report to the member.
+ *
+ * THREE SHAPES, because Prisma surfaces the same 40P01 three ways, and
+ * WHICH ONE depends on the statement that hit it — verified against the
+ * installed runtime rather than inferred (review), because the first
+ * draft of this accepted only the raw one and would therefore have
+ * missed every case the retry is actually for:
+ *   • P2010 — a `$queryRaw`. `@prisma/adapter-pg` has no mapping for
+ *     40P01, so it stays `kind: "postgres"` and the client's raw branch
+ *     wraps it.
+ *   • P2039 — ANY model call (`tx.milestone.update`, a `record()` audit
+ *     write). The same driver error down the client's non-raw branch.
+ *     This is the one that matters: once a queue lock has removed the
+ *     cycle two rank writers made between themselves, what is LEFT is a
+ *     cycle through another table, and that is a model call by
+ *     definition.
+ *   • P2034 — Prisma's own write-conflict/deadlock code.
+ * The nested driver shape (`meta.driverAdapterError.cause.code`) is too
+ * brittle to walk, and both the code and the words appear in the
+ * message Prisma builds for all three, so that is what this reads.
+ *
+ * Found on CI run 35440299558, where four concurrent milestone reorders
+ * deadlocked on `SELECT … FOR UPDATE` and `retryOnRankCollision` —
+ * which tested only for P2002 — rethrew it as a 500.
+ */
+const DEADLOCK_CODES = new Set(["P2010", "P2039", "P2034"]);
+
+export const isDeadlock = (e: unknown): boolean => {
+  if (typeof e !== "object" || e === null) return false;
+  const code = (e as { code?: unknown }).code;
+  if (typeof code !== "string" || !DEADLOCK_CODES.has(code)) return false;
+  // P2034 is a deadlock by definition; the other two are generic
+  // wrappers and must say so.
+  if (code === "P2034") return true;
+  const message = String((e as { message?: unknown }).message ?? "");
+  return /40P01|deadlock detected/i.test(message);
+};

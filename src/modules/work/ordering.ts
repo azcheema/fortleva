@@ -3,7 +3,7 @@ import { assertInScope } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
-import { fail, isUniqueViolation } from "@/lib/domain-error";
+import { fail, isDeadlock, isUniqueViolation } from "@/lib/domain-error";
 import { RANK_REBALANCE_LENGTH, rankBetween, ranksBetween } from "@/lib/rank";
 import { lockLiveRow, lockPredecessor, lockProjectRanks, lockSuccessor } from "./rank-lock";
 import { loadItemInScope } from "./rows";
@@ -32,12 +32,24 @@ import { principalOf, transitionState, type WorkCtx } from "./states";
 
 const RANK_RETRIES = 4;
 
+/**
+ * A DEADLOCK RETRIES HERE TOO, as of 2026-09-19. `rank-lock.ts`'s
+ * "KNOWN LOCKERS OUTSIDE THE QUEUE" has documented a live cycle since
+ * slice 7 — `copyWeek`'s FOR KEY SHARE against a move's FOR UPDATE,
+ * turned around rather than removed — and ended with "nothing retries a
+ * deadlock (40P01) yet". That was true because there was no predicate;
+ * `isDeadlock` exists now (written for the milestone queue, CI run
+ * 35440299558), and a work item with a DOCUMENTED cycle had a weaker
+ * answer than a milestone without one. Postgres has already aborted and
+ * undone the victim, so redoing it is the whole remedy.
+ */
 async function retryOnRankCollision<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
     } catch (e) {
-      if (!isUniqueViolation(e) || attempt + 1 >= RANK_RETRIES) throw e;
+      const retryable = isUniqueViolation(e) || isDeadlock(e);
+      if (!retryable || attempt + 1 >= RANK_RETRIES) throw e;
       await new Promise((r) => setTimeout(r, 5 + Math.random() * 25));
     }
   }

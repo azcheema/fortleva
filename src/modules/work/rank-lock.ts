@@ -40,8 +40,11 @@ import { rankBetween } from "@/lib/rank";
  * member the scope check refuses holds a row lock only until the
  * rollback.
  *
- * KNOWN LOCKERS OUTSIDE THE QUEUE, all older than it, and nothing
- * retries a deadlock (40P01) yet — PLAN §0. Able to deadlock WITH a
+ * KNOWN LOCKERS OUTSIDE THE QUEUE, all older than it. A deadlock
+ * (40P01) IS retried as of 2026-09-19 — `ordering.ts`'s
+ * `retryOnRankCollision` takes `isDeadlock` beside `isUniqueViolation`,
+ * which is a cure and not a cure-all: the cycles below are still cycles,
+ * and a retry is three more chances at the same race, not a proof. Able to deadlock WITH a
  * queued writer: the portal toggle's fan-out (every row of the project,
  * scan order), and inserts that REFERENCE several work items in one
  * transaction (copyWeek — each time_entry's foreign key takes FOR KEY

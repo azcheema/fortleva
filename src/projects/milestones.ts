@@ -5,7 +5,7 @@ import { clean } from "@/clients/service";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import type { MilestoneStatus, Visibility } from "@/generated/prisma/enums";
-import { fail, isUniqueViolation } from "@/lib/domain-error";
+import { fail, isDeadlock, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
 import { rankBetween } from "@/lib/rank";
 
@@ -33,16 +33,57 @@ async function loadMilestone(tx: TenantDb, actor: MemberActor, milestoneId: stri
 }
 
 /**
- * Lock the project's milestone ranks for the transaction so concurrent
- * reorders serialise (plan §3.1: neighbours SELECT … FOR UPDATE). Runs
- * under RLS — the tenant filter is the policy's, the project filter ours.
+ * THE PROJECT'S MILESTONE QUEUE, and then its ranks in rank order.
+ *
+ * WHAT WENT WRONG (CI run 35440299558, the dbtest that races four
+ * reorders — a test whose name says they "serialise on the neighbour
+ * lock", which is exactly what they were not doing). This was a single
+ * `SELECT id, rank … ORDER BY rank FOR UPDATE`, and a statement locks
+ * rows in the order it sorts them: `rank` is the column a reorder
+ * UPDATES, so two concurrent movers could sort the same rows
+ * differently, take the same locks in the opposite order and deadlock.
+ * Postgres detected the cycle and aborted one of them. Nothing about it
+ * was new and nothing about it was the harness — two members dragging
+ * milestones in the same project at the same moment would have met it.
+ *
+ * THE FIX IS THE ONE THIS CODEBASE ALREADY SETTLED ON FOR WORK ITEMS
+ * (`modules/work/rank-lock.ts`, ARC-17): an advisory TRANSACTION lock
+ * that every writer of a rank takes before its first row lock, so no
+ * two of them ever hold rows at once. Milestones never had one — they
+ * relied on the row locks alone, which the work-item header says in as
+ * many words is not enough: under READ COMMITTED a row lock does not
+ * refresh the statement snapshot, so two "bottom" writers can mint the
+ * same key. That is the collision `retryOnRankCollision` was papering
+ * over. A SEPARATE key namespace from the work-item queue, deliberately:
+ * sharing it would make a task move block a milestone reorder for no
+ * reason.
+ *
+ * It lives HERE rather than at the two call sites because both of them
+ * — create and reorder — need it before their first row lock, and a
+ * queue lock a caller can forget is a queue lock that will be forgotten.
+ * `loadMilestone` above reads unlocked, so the order holds.
+ *
+ * The read keeps two more properties, both free now that it is a CTE.
+ * The LOCK is ordered by `id`, which cannot be updated, so even a writer
+ * outside this queue takes these rows in the same order; and the join
+ * returns exactly the rows the CTE locked, where a second, unlocked
+ * SELECT would take its own READ COMMITTED snapshot and could hand back
+ * a milestone inserted in between — a phantom in the neighbour
+ * arithmetic.
+ *
+ * Runs under RLS — the tenant filter is the policy's, the project
+ * filter ours.
  */
 async function lockedRanks(
   tx: TenantDb,
   projectId: string,
 ): Promise<{ id: string; rank: string }[]> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`milestone_rank:${projectId}`}))`;
   return tx.$queryRaw<{ id: string; rank: string }[]>`
-    SELECT id, rank FROM milestone WHERE project_id = ${projectId} ORDER BY rank FOR UPDATE`;
+    WITH locked AS (
+      SELECT id FROM milestone WHERE project_id = ${projectId} ORDER BY id FOR UPDATE
+    )
+    SELECT m.id, m.rank FROM milestone m JOIN locked l ON l.id = m.id ORDER BY m.rank`;
 }
 
 const RANK_RETRIES = 3;
@@ -51,13 +92,22 @@ const RANK_RETRIES = 3;
  * A unique collision on (tenantId, projectId, rank) aborts the Postgres
  * transaction, so the retry wraps the WHOLE unit of work: re-open, re-lock,
  * re-read neighbours, recompute. Small jitter so two writers desynchronise.
+ *
+ * A DEADLOCK IS RETRIED TOO, and for the same reason the collision is:
+ * Postgres has already aborted this transaction and undone its work, so
+ * there is no state to repair and nothing a member could be told that
+ * would help. `lockedRanks` above removes the cycle these two writers
+ * used to make between themselves; this catches one made through any
+ * other table they both touch. Before CI run 35440299558 the predicate
+ * was P2002 alone and a deadlock was rethrown as a 500.
  */
 async function retryOnRankCollision<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
     } catch (e) {
-      if (!isUniqueViolation(e) || attempt + 1 >= RANK_RETRIES) throw e;
+      const retryable = isUniqueViolation(e) || isDeadlock(e);
+      if (!retryable || attempt + 1 >= RANK_RETRIES) throw e;
       await new Promise((r) => setTimeout(r, 5 + Math.random() * 20));
     }
   }
@@ -219,7 +269,21 @@ export async function reorderMilestone(
   return retryOnRankCollision(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, PERMISSION);
     const m = await loadMilestone(tx, ctx.actor, milestoneId);
-    const ranks = (await lockedRanks(tx, m.projectId)).filter((r) => r.id !== milestoneId);
+    // `loadMilestone` read UNLOCKED and before the queue lock, so by the
+    // time this transaction owns the ranks its copy of `m.rank` may name
+    // a position this milestone has already left — another mover can
+    // have run to completion during the wait. Take the rank from the
+    // LOCKED read instead, which is the only one nothing can change
+    // underneath us, and which `rank-lock.ts` already states as the rule
+    // ("THE ONE ORDER": re-read after every wait). Before this the no-op
+    // test below compared the stale value and could answer `changed:
+    // false` to a move that had not happened, dropping it silently and
+    // snapping the row back on the next read (review). The fallback is
+    // unreachable — the row was just found and no path deletes a
+    // milestone — and is there so a future one cannot crash here.
+    const locked = await lockedRanks(tx, m.projectId);
+    const currentRank = locked.find((r) => r.id === milestoneId)?.rank ?? m.rank;
+    const ranks = locked.filter((r) => r.id !== milestoneId);
     let before: string | null;
     let after: string | null;
     if ("position" in target) {
@@ -243,7 +307,7 @@ export async function reorderMilestone(
       }
     }
     // Already between the same neighbours — nothing to write.
-    if ((before === null || before < m.rank) && (after === null || m.rank < after)) {
+    if ((before === null || before < currentRank) && (after === null || currentRank < after)) {
       return { changed: false };
     }
     const rank = rankBetween(before, after);
