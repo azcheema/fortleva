@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { revealExempt, revealScrollDelta } from "@/lib/scroll-reveal";
+
 /**
  * The right-edge fade on a horizontally scrollable table.
  *
@@ -59,28 +61,66 @@ export function ScrollFade() {
     };
     const observer = new ResizeObserver(measure);
     observer.observe(box);
-    const table = box.firstElementChild;
+    // The TABLE, not `box.firstElementChild` — which is `<Table>`'s
+    // `table-container` div, `relative w-full`, so its width is the box's
+    // by definition and observing it could never report anything the box
+    // had not already reported. The intent was always the table (it is
+    // what grows with content, past the box, and makes the box scroll);
+    // the bug was invisible because `measure()` also runs once on
+    // `observe()`, so a table that ALREADY overflowed at first paint got
+    // its fade anyway. What went missing was later growth — a label chip
+    // added, a long title committed inline — after which the content
+    // continued past the edge with nothing saying so, since the other
+    // trigger is a scroll the member has no cue to perform. Found by
+    // `e2e/scroll-reveal.spec.ts` on its first run, widening a table and
+    // waiting for a fade that never came.
+    const table = box.querySelector("table");
     if (table instanceof HTMLElement) observer.observe(table);
     box.addEventListener("scroll", measure, { passive: true });
-    // The focus ring sits 2px outside a control and is 2px wide; the fade
-    // below is `w-8`.
-    const RING = 4;
-    const FADE = 32;
+    // READS the DOM; `scroll-reveal.ts` decides. Every exemption and both
+    // geometric no-ops live there, pinned over every combination by
+    // `scroll-reveal.test.ts` — this half stays as thin as it can be,
+    // because a `node` test suite has no layout and cannot check it.
+    //
+    // THE TWO FREE FACTS GATE EVERYTHING ELSE, and that ordering is
+    // load-bearing rather than tidy. `focusin` fires on every focus
+    // change in the table and the backlog's `J K` focuses a ROW on every
+    // press, down a list seeded four thousand rows long — so the row path
+    // must not pay for the two `closest()` ancestor walks below (one of
+    // which runs to `<html>` when it matches nothing) or for the three
+    // `getBoundingClientRect()` calls, which force layout. An identity
+    // check and an `instanceof` decide it instead. `matches()` stays
+    // eager: it is a selector test on ONE element, with no tree to walk.
+    // The first draft of this refactor built all five inputs eagerly and
+    // made the hot path slower than the handler it replaced (review).
     const reveal = (event: FocusEvent) => {
       const target = event.target;
-      if (!(target instanceof HTMLElement) || target === box) return;
-      if (target instanceof HTMLTableRowElement || target.closest("[data-pinned]")) return;
-      if (!target.matches(":focus-visible")) return;
-      const pinned = target.closest("tr")?.querySelector(":scope > [data-pinned]");
-      if (!pinned) return;
-      const edge = pinned.getBoundingClientRect().left - FADE;
+      if (!(target instanceof HTMLElement)) return;
+      const isBox = target === box;
+      const isRow = target instanceof HTMLTableRowElement;
+      const free = isBox || isRow;
+      const pinned = free
+        ? null
+        : (target.closest("tr")?.querySelector(":scope > [data-pinned]") ?? null);
+      const exempt = revealExempt({
+        isBox,
+        isRow,
+        inPinnedCell: !free && target.closest("[data-pinned]") !== null,
+        hasPinnedCell: pinned !== null,
+        focusVisible: target.matches(":focus-visible"),
+      });
+      // `pinned` is named again only so TypeScript narrows it — a row
+      // without one is already exempt, and the alternative is a `!` this
+      // directory otherwise does not contain.
+      if (exempt || pinned === null) return;
       const rect = target.getBoundingClientRect();
-      const room = edge - (box.getBoundingClientRect().left + box.clientLeft);
-      // Nothing to do if it and its ring end left of the fade, and nothing
-      // sensible if they are wider than the room the column and fade leave.
-      // At the table's right end the scroll clamps, and the fade is gone.
-      if (rect.right + RING <= edge || rect.width + 2 * RING > room) return;
-      box.scrollLeft += rect.right + RING - edge;
+      const delta = revealScrollDelta({
+        targetRight: rect.right,
+        targetWidth: rect.width,
+        pinnedLeft: pinned.getBoundingClientRect().left,
+        boxContentLeft: box.getBoundingClientRect().left + box.clientLeft,
+      });
+      if (delta !== 0) box.scrollLeft += delta;
     };
     box.addEventListener("focusin", reveal);
     return () => {
