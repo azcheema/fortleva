@@ -222,22 +222,40 @@ function driftFor(known: number): number {
  * column-priority fix rather than a ratchet — and the remaining numbers
  * are now in every CI log for whoever takes the rest.
  *
- * WHAT IS LEFT, read off CI run 35380530578 — the first log these
- * numbers ever appeared in, which is the point of printing them:
+ * WHAT WAS LEFT when these numbers were first printed (CI runs
+ * 35380530578 and 35400146183) — all three are FIXED now, and the list
+ * is kept because it is the record of what printing them bought:
  *   • `time` "Time entries" — 91px over a 356px box, 65px over 608px,
- *     76px over 736px. NOT a rung mistake: its What cell is a
+ *     76px over 736px. NOT a rung mistake: its What cell was a
  *     `flex-wrap` row of a truncating label plus up to four `shrink-0`
- *     badges, so the badges force the column exactly as `/clients`' city
- *     span did. Which of the label and the badges yields on a phone is a
- *     design question, so it is the founder's and its own slice.
- *   • `project-money` "By epic" / "By task" — 16px over a 356px box.
- *   • `time-team` "Team hours" — 11px over a 356px box.
+ *     badges, so the badges forced the column exactly as `/clients`'
+ *     city span did. Fixed 2026-09-18 (`473cead`): a
+ *     `contain-inline-size` wrapper over a `min-w-40` floor, no
+ *     `flex-wrap`, and the three ADVISORY badges on the `medium` rung.
+ *   • `project-money` "By epic" / "By task" — 16px, then 21px, over a
+ *     356px box. Its `lineTable` label column was the only one without
+ *     a width and labels a line "{key} {title}". Fixed 2026-09-19: the
+ *     same wrapper over a `min-w-40` floor, in the one helper all four
+ *     of that page's tables share.
+ *   • `time-team` "Team hours" — 11px, then 13px, over a 356px box.
+ *     Member AND project are both unbounded tenant text in a
+ *     `whitespace-nowrap` cell, and a phone renders those two and Hours
+ *     and nothing else. Fixed 2026-09-19: both cells contained, over
+ *     6rem and 9rem floors — BOTH, because containing only the wider
+ *     one would have fitted that day's data and left a longer member
+ *     name to put the scroll back, which an exempt stop never reports.
  *   • `time-statement` — under the probe's 1px floor on CI.
- * Every one of these is DATA-driven and drifts run to run, which two
- * local runs showed plainly (`project-money` 4 → 9px, `time` 87 → 90px)
- * and CI then disagreed with again — which is why they are exempt rather
- * than merely unratcheted, and why a number here is a starting point for
- * a pass, never a key to paste into `KNOWN_OVERFLOW`.
+ * THEY STAY EXEMPT REGARDLESS, and a fix does not earn a stop its way
+ * out of this set: every one is DATA-driven and drifts run to run,
+ * which two local runs showed plainly (`project-money` 4 → 9px, `time`
+ * 87 → 90px) and CI then disagreed with again (that same cell measured
+ * 15, 16 and 21px across three runs). That is why they are exempt
+ * rather than merely unratcheted, and why a number here is a starting
+ * point for a pass, never a key to paste into `KNOWN_OVERFLOW`. The
+ * corollary, stated plainly: NONE of these three fixes has a regression
+ * guard — if a number comes back the walk will print it and pass.
+ * Seeding the walk's own rows (above) is what would let them be
+ * ratcheted, and is still the way to earn one.
  *
  * THE SET IS CHOSEN BY WHAT IS DATA-DRIVEN, not by what CI happened to
  * flag — the first draft was the latter, and a review caught two stops

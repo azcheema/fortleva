@@ -115,31 +115,83 @@ export default async function ProjectMoneyPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {lines.map((l) => (
-                <TableRow key={l.key}>
-                  <TableCell>{l.label || tTime("unassigned")}</TableCell>
-                  <TableCell priority="medium" className="num text-right text-muted-foreground">{fmt(l.seconds)}</TableCell>
-                  <TableCell priority="low" className="num text-right text-muted-foreground">{fmt(l.billableSeconds)}</TableCell>
-                  <TableCell className="num text-right font-semibold">{amount(l.value)}</TableCell>
-                  {showCostColumns ? (
-                    <>
-                      <TableCell className="num text-right">{amount(l.cost) ?? "—"}</TableCell>
-                      <TableCell className="num text-right">
-                        {l.margin !== null ? (
-                          <span className="inline-flex items-baseline gap-1.5">
-                            <span>{amount(l.margin)}</span>
-                            {l.marginPercent !== null ? (
-                              <span className="text-xs text-muted-foreground">{pct(l.marginPercent)}</span>
-                            ) : null}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                    </>
-                  ) : null}
-                </TableRow>
-              ))}
+              {lines.map((l) => {
+                const label = l.label || tTime("unassigned");
+                return (
+                  <TableRow key={l.key}>
+                    {/* THE LABEL IS THE ONLY COLUMN HERE WITHOUT A WIDTH, so it
+                        was the one that forced this table past its box: a
+                        `TableCell` is `whitespace-nowrap`, and `byEpic`/`byItem`
+                        label a line "{key} {title}" — 34 characters of a task
+                        title, uncapped, is a column floor. Measured on CI run
+                        35400146183: "By epic" and "By task" 21px past a 356px
+                        box on the phone walk, in BOTH themes, and 0 at every
+                        other width — which is the whole shape of the defect,
+                        since the value column is the only other one that
+                        renders there. The same answer as `/clients` and the
+                        time week (UI.md §10.12): `contain-inline-size` +
+                        `w-full` takes the wrapper out of the column's intrinsic
+                        sizing, so the column takes the remainder (254px at a
+                        356px box) and the label truncates inside it instead of
+                        widening it. "By member" and "By agreement" sat at 0 only
+                        because a member's name and a service's are SHORTER —
+                        the same latent floor, so the one helper fixes all four.
+                        TEN rem and not `/clients`' fourteen, measured per
+                        table: the floor never binds in the state the walk
+                        photographs — the remainder is 254px at a 356px box,
+                        the smallest of the seven measured (254, 392, 504,
+                        559, 488, 734, 886; it dips at the 736px box, where
+                        the `low` billable column arrives) — so the ONE place
+                        it can bind is the ✦ revealed state, where cost and
+                        margin are `high` too and a 356px box has ~24px left
+                        after the three money columns. THE TRADE THERE, stated
+                        rather than skipped (review): a floor buys a readable
+                        label at the price of scroll, and for "By member" and
+                        "By agreement" — whose labels were never going to force
+                        anything — it is ~54px of scroll they did not have
+                        before. It is still the right way round. Without it
+                        that state truncates every label to three characters,
+                        which is a row that names nothing while it prints a
+                        number, and the identity column is the last thing a
+                        table should spend; `/clients` made the same call at
+                        14rem. Ten keeps the price as low as a readable label
+                        allows. None of this is measured — the walk loads this
+                        stop without `?cost=1` — and the real answer for a
+                        phone in the revealed state is a rung on cost and
+                        margin, which changes what a ✦ reveal shows and is the
+                        founder's call, not this slice's. */}
+                    <TableCell className="min-w-40">
+                      <span className="flex w-full min-w-0 items-center contain-inline-size">
+                        {/* §10.12: an identifying cell that truncates carries the
+                            full text as its own `title`. */}
+                        <span className="truncate" title={label}>
+                          {label}
+                        </span>
+                      </span>
+                    </TableCell>
+                    <TableCell priority="medium" className="num text-right text-muted-foreground">{fmt(l.seconds)}</TableCell>
+                    <TableCell priority="low" className="num text-right text-muted-foreground">{fmt(l.billableSeconds)}</TableCell>
+                    <TableCell className="num text-right font-semibold">{amount(l.value)}</TableCell>
+                    {showCostColumns ? (
+                      <>
+                        <TableCell className="num text-right">{amount(l.cost) ?? "—"}</TableCell>
+                        <TableCell className="num text-right">
+                          {l.margin !== null ? (
+                            <span className="inline-flex items-baseline gap-1.5">
+                              <span>{amount(l.margin)}</span>
+                              {l.marginPercent !== null ? (
+                                <span className="text-xs text-muted-foreground">{pct(l.marginPercent)}</span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                      </>
+                    ) : null}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </DataTable>

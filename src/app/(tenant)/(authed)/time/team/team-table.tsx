@@ -126,15 +126,56 @@ export function TeamTable({
               <TableBody>
                 {lines.map((l) => (
                   <TableRow key={`${l.memberId}:${l.projectId ?? "adhoc"}`}>
-                    <TableCell>{l.memberName}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {l.projectKey ? (
-                        <>
-                          <span className="num-id">{l.projectKey}</span> {l.projectName}
-                        </>
-                      ) : (
-                        t("hours.internal")
-                      )}
+                    {/* THE TWO IDENTITY COLUMNS BOTH YIELD — and both, not
+                        just the wider one, because both hold unbounded
+                        tenant text in a `whitespace-nowrap` cell and either
+                        alone is a column floor (the lesson `/clients`' city
+                        span and the time week's badges each taught once).
+                        Measured on CI run 35400146183: 13px past a 356px box
+                        on the phone walk, and 0 at every other width — a
+                        phone renders member + project + hours and nothing
+                        else, so two names have to fit whatever the hours
+                        column leaves of a 356px box. Containing only
+                        the project cell would have fitted TODAY's seed and
+                        put the scroll straight back on a longer member name,
+                        which nothing would catch: this stop is exempt from
+                        the overflow ratchet (`VOLATILE_STOPS`). With both
+                        contained the slack spreads across the two instead of
+                        piling up behind either, exactly as it does across
+                        `/clients`' five columns.
+                        SIX REM AND NINE, arithmetic and not a default: at a
+                        356px box the hours column takes 73px, so 283px is
+                        the budget these two share, and 96 + 144 leaves 43px
+                        of it spare — enough that a longer duration string
+                        (the member's `durationStyle` is a preference) cannot
+                        bring the floors into play. Measured after, at that
+                        box: member 113, project 170, hours 73, and 0 of
+                        scroll; neither floor binds at any width measured.
+                        Project takes the wider one — it is the cell carrying
+                        two values. Note that hours was 64px BEFORE this, not
+                        73: squeezed to its own min-content by two columns
+                        that would not yield. */}
+                    <TableCell className="min-w-24">
+                      {/* §10.12: an identifying cell that truncates carries
+                          the full text as its own `title`. */}
+                      <span className="flex w-full min-w-0 items-center contain-inline-size">
+                        <span className="truncate" title={l.memberName}>{l.memberName}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="min-w-36 text-muted-foreground">
+                      <span className="flex w-full min-w-0 items-center gap-1 contain-inline-size">
+                        {l.projectKey ? (
+                          <>
+                            {/* The key never yields — it is the short half and
+                                the one that identifies the project; the name
+                                truncates around it. */}
+                            <span className="num-id shrink-0">{l.projectKey}</span>
+                            <span className="truncate" title={l.projectName ?? undefined}>{l.projectName}</span>
+                          </>
+                        ) : (
+                          <span className="truncate">{t("hours.internal")}</span>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="num text-right">{fmt(l.seconds)}</TableCell>
                     <TableCell priority="medium" className="num text-right text-muted-foreground">{fmt(l.billableSeconds)}</TableCell>
@@ -147,8 +188,16 @@ export function TeamTable({
                 ))}
                 {[...byMember.entries()].map(([id, m]) => (
                   <TableRow key={`total:${id}`} className="bg-muted/40">
-                    <TableCell className="font-semibold">{m.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{t("hours.total")}</TableCell>
+                    {/* A COLUMN IS ONE WIDTH, so the total row's copy of the
+                        same name has to be contained too — the backlog found
+                        this the hard way, where one uncontained row put the
+                        whole column's floor back. */}
+                    <TableCell className="min-w-24 font-semibold">
+                      <span className="flex w-full min-w-0 items-center contain-inline-size">
+                        <span className="truncate" title={m.name}>{m.name}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="min-w-36 text-xs text-muted-foreground">{t("hours.total")}</TableCell>
                     <TableCell className="num text-right font-semibold">{fmt(m.seconds)}</TableCell>
                     <TableCell priority="medium" className="num text-right">{fmt(m.billable)}</TableCell>
                     {hasAmounts ? (
@@ -218,7 +267,27 @@ export function TeamTable({
                   const total = [...row.values()].reduce((s, d) => s + d.workedSeconds, 0);
                   return (
                     <TableRow key={m.id}>
-                      <TableCell>{m.name}</TableCell>
+                      {/* THE SAME CELL, CONTAINED FOR THE SAME REASON — and
+                          it sits at 0 today only because this seed's names
+                          are short, which is precisely the control case
+                          `/clients` and the client Projects tab made in
+                          slice 28. At a 356px box this table hides its seven
+                          `low` day columns and renders member + total +
+                          the pinned statement link, so the member name IS
+                          the column that takes the remainder (197px
+                          measured); uncontained, a longer one is the
+                          column's floor and the sideways scroll is back,
+                          and this stop is exempt from the ratchet so
+                          nothing would say so. Containment can only give
+                          width BACK here: the tightest box measured is the
+                          736px one, where the seven days leave the member
+                          113px — its own min-content, which is why the
+                          floor is six rem and not more. */}
+                      <TableCell className="min-w-24">
+                        <span className="flex w-full min-w-0 items-center contain-inline-size">
+                          <span className="truncate" title={m.name}>{m.name}</span>
+                        </span>
+                      </TableCell>
                       {days.map((d) => {
                         const cell = row.get(d);
                         return (
