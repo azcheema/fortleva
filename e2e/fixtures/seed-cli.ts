@@ -67,14 +67,28 @@ const EMAIL_DOMAIN = "@test.invalid";
  * The first is `setupTenant(label)` (src/members/dbtest-fixture.ts builds
  * `${label}-${run}`); the second is the handful of suites that create a
  * tenant directly.
+ *
+ * **BOTH GREPS ARE BLIND TO A SHORTHAND PROPERTY** (2026-09-20,
+ * regenerating this list after a review): a fixture that builds its slug
+ * into a variable and passes `{ …, slug }` matches neither pattern, so it
+ * is invisible to the recipe that is supposed to keep this list honest —
+ * which is how `pauthz-` was missed the day it was written. A dbtest that
+ * creates a tenant directly must spell the literal out at the `slug:` key
+ * so the second grep can see it. That regeneration also turned up four
+ * PRE-EXISTING misses (`desc-`, `portalc-`, `switch-*`, `tree-`), whose
+ * orphans no sweep had ever collected — the same failure mode the
+ * paragraph above records, a second time. Re-run the greps, do not trust
+ * the list.
  */
 const DBTEST_PREFIXES = [
   "admin-",
   "bulk-",
+  "census-",
   "clients-",
   "copy-",
   "ctr-a-",
   "ctr-b-",
+  "desc-",
   "docs-",
   "enc-a-",
   "enc-b-",
@@ -89,6 +103,8 @@ const DBTEST_PREFIXES = [
   "mfa-",
   "money-",
   "ordering-",
+  "pauthz-",
+  "portalc-",
   "prefs-",
   "prefs-notify-",
   "projects-",
@@ -97,9 +113,11 @@ const DBTEST_PREFIXES = [
   "scope-",
   "search-",
   "split-",
+  "switch-",
   "tadmin-",
   "time-",
   "totals-",
+  "tree-",
   "work-",
   "wu-",
 ] as const;

@@ -77,12 +77,18 @@ const refusalOf = async (fn: () => Promise<unknown>) => {
 
 beforeAll(async () => {
   const db = getPlatformClient();
-  for (const [id, slug] of [
-    [T, `pauthz-${run}`],
-    [T2, `pauthz2-${run}`],
-  ] as const) {
-    await db.tenant.create({ data: { id, name: slug, slug, entitlements: {} } });
-  }
+  // Both slugs are spelled out literally, and both share ONE prefix.
+  // `sweep-dbtests` regenerates its allowlist by grepping for this exact
+  // shape, so a shorthand property is invisible to it; and `pauthz2-`
+  // does not start with `pauthz-`, so a second tenant on a near-miss
+  // prefix would have orphaned unswept. See DBTEST_PREFIXES in
+  // e2e/fixtures/seed-cli.ts.
+  await db.tenant.create({
+    data: { id: T, name: `pauthz-a-${run}`, slug: `pauthz-a-${run}`, entitlements: {} },
+  });
+  await db.tenant.create({
+    data: { id: T2, name: `pauthz-b-${run}`, slug: `pauthz-b-${run}`, entitlements: {} },
+  });
   await db.client.createMany({
     data: [
       { id: acme, tenantId: T, name: "Acme" },
