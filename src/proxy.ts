@@ -33,12 +33,29 @@ const OPS_PREFIX = "/ops";
  */
 const PLATFORM_API_PREFIX = "/api/platform-auth";
 const PORTAL_PREFIX = "/portal";
+/**
+ * The PORTAL auth API. Host-scoped for the same reason the member one
+ * above is, and the reason is not symmetry: cookie signatures do not
+ * bind the cookie NAME (better-call signs the value alone) and all
+ * three instances share one BETTER_AUTH_SECRET, so any credential
+ * surface reachable on the wrong host is a way to mint that plane's
+ * cookies where the host's controls do not apply. The portal belongs
+ * to the APP host — `planeForHost`: "os.naxdor.com serves tenant +
+ * portal" — so the ops host must 404 it, exactly as it does /api/auth.
+ */
+const PORTAL_API_PREFIX = "/api/portal-auth";
+/** The portal's own sign-in page: a contact with no session must be
+ * able to reach it. Invite acceptance will need the same treatment and
+ * is deliberately NOT pre-added — the route does not exist yet, and a
+ * public path standing open for a page nobody wrote is a hole waiting
+ * for a name. It lands with the invite flow. */
+const PORTAL_LOGIN = "/portal/login";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
 // /api/jobs/run authenticates itself (JOBS_RUN_TOKEN header): a cron has
 // no member cookie, so the presence gate must not redirect it to /login.
-const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", "/api/health", "/api/jobs/run", "/manifest.webmanifest", "/sw.js"]);
+const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", PORTAL_LOGIN, "/api/health", "/api/jobs/run", "/manifest.webmanifest", "/sw.js"]);
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
@@ -61,7 +78,11 @@ export function proxy(request: NextRequest): NextResponse {
   //
   // The dev-only storage stand-in is authorized by its own signed URL,
   // like R2, and is likewise app-plane only.
-  if (pathname.startsWith("/api/auth") || pathname.startsWith("/api/dev-storage")) {
+  if (
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith(PORTAL_API_PREFIX) ||
+    pathname.startsWith("/api/dev-storage")
+  ) {
     return plane === "platform"
       ? NextResponse.rewrite(new URL("/404", request.url))
       : NextResponse.next();
@@ -106,7 +127,17 @@ export function proxy(request: NextRequest): NextResponse {
 
   if (!request.cookies.has(cookieFor)) {
     const url = request.nextUrl.clone();
-    url.pathname = pathname.startsWith(OPS_PREFIX) ? "/ops/login" : "/login";
+    // Each plane bounces to ITS OWN login. Before the portal arm
+    // existed, a contact opening a bookmarked /portal/... URL with an
+    // expired cookie was sent to the MEMBER sign-in page — a form that
+    // cannot authenticate a contact at all, on a plane they have no
+    // account in, asking a client for credentials that would only ever
+    // match one of the agency's own staff.
+    url.pathname = pathname.startsWith(OPS_PREFIX)
+      ? "/ops/login"
+      : pathname.startsWith(PORTAL_PREFIX)
+        ? PORTAL_LOGIN
+        : "/login";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }

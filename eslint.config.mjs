@@ -2,6 +2,66 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+/**
+ * `no-restricted-imports` is configured in several blocks below, and in
+ * ESLint flat config the LAST matching block wins a rule OUTRIGHT — it
+ * does not merge with earlier ones. So every block that sets this rule
+ * must restate everything that should still apply to the files it
+ * matches. Writing a new block and listing only its own concern
+ * silently switches the others off for most of the tree (measured:
+ * adding a portal-seam block turned the raw-client restriction into a
+ * batch of "unused eslint-disable" warnings across src/auth).
+ *
+ * The pieces are therefore named once here and composed per profile.
+ */
+const RAW_CLIENT_PATTERNS = [
+  {
+    // Every entry point: internal/class exports the raw client
+    // constructor, so the single `client` group was evadable
+    // (2026-08-31 review, HIGH).
+    group: [
+      "@/generated/prisma",
+      "@/generated/prisma/**",
+      "**/generated/prisma",
+      "**/generated/prisma/**",
+    ],
+    message:
+      "Import the data layer through '@/db' (withTenant/withPlatform) — TENANCY.md one-seam rule. Type-only imports are fine.",
+    allowTypeImports: true,
+  },
+  {
+    group: ["@/db/client", "**/db/client"],
+    message: "The base Prisma client is module-private to src/db.",
+  },
+];
+
+const PLATFORM_SEAM_PATTERN = {
+  group: ["@/db/with-tenant", "**/db/with-tenant"],
+  importNames: ["withPlatform", "recordPlatformEvent"],
+  message: "withPlatform() is platform-plane only (ARC-16) — and always via '@/db'.",
+};
+
+const PORTAL_SEAM_PATTERN = {
+  group: ["@/db/portal-identity", "**/db/portal-identity"],
+  message:
+    "The portal identity seam is module-private to src/db; import it from '@/db', and only in src/auth/portal.ts.",
+};
+
+/**
+ * One entry per module name: the rule keys `paths` by name, so two
+ * entries for "@/db" would not both apply. The named exports are
+ * therefore listed together and the message covers both seams.
+ */
+const dbSeamPath = (importNames) => ({
+  name: "@/db",
+  importNames,
+  message:
+    "Seam-grade exports of '@/db'. withPlatform()/recordPlatformEvent() are platform-plane only (ARC-16): src/app/(platform)/**, src/jobs/**, src/db/**, tests, prisma/seed, plus the grandfathered files in this block's ignores — tenant-plane code uses withTenant() and record(). portalAuthClient is the portal AUTH plane's seam and belongs to src/auth/portal.ts alone — portal application code uses withTenant() under the contact principal for reads, or the brokered system principal for writes (AUTHZ.md §8).",
+});
+
+const PLATFORM_SEAM_NAMES = ["withPlatform", "recordPlatformEvent"];
+const PORTAL_SEAM_NAMES = ["portalAuthClient"];
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -23,26 +83,13 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": [
         "error",
         {
-          patterns: [
-            {
-              // Every entry point: internal/class exports the raw client
-              // constructor, so the single `client` group was evadable
-              // (2026-08-31 review, HIGH).
-              group: [
-                "@/generated/prisma",
-                "@/generated/prisma/**",
-                "**/generated/prisma",
-                "**/generated/prisma/**",
-              ],
-              message:
-                "Import the data layer through '@/db' (withTenant/withPlatform) — TENANCY.md one-seam rule. Type-only imports are fine.",
-              allowTypeImports: true,
-            },
-            {
-              group: ["@/db/client", "**/db/client"],
-              message: "The base Prisma client is module-private to src/db.",
-            },
-          ],
+          // The PORTAL seam is restricted here as well as in the block
+          // below, because this is the profile that applies to
+          // src/jobs/** and src/app/(platform)/** — which the platform
+          // block ignores, and which have no business holding portal
+          // credentials either.
+          paths: [dbSeamPath(PORTAL_SEAM_NAMES)],
+          patterns: [...RAW_CLIENT_PATTERNS, PORTAL_SEAM_PATTERN],
         },
       ],
     },
@@ -75,39 +122,33 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": [
         "error",
         {
-          paths: [
-            {
-              name: "@/db",
-              importNames: ["withPlatform", "recordPlatformEvent"],
-              message:
-                "withPlatform() and recordPlatformEvent() are platform-plane only (ARC-16): src/app/(platform)/**, src/jobs/**, src/db/**, tests, prisma/seed, plus the grandfathered files in this block's ignores. Tenant-plane code uses withTenant() and record().",
-            },
-          ],
-          patterns: [
-            {
-              // Every entry point: internal/class exports the raw client
-              // constructor, so the single `client` group was evadable
-              // (2026-08-31 review, HIGH).
-              group: [
-                "@/generated/prisma",
-                "@/generated/prisma/**",
-                "**/generated/prisma",
-                "**/generated/prisma/**",
-              ],
-              message:
-                "Import the data layer through '@/db' (withTenant/withPlatform) — TENANCY.md one-seam rule. Type-only imports are fine.",
-              allowTypeImports: true,
-            },
-            {
-              group: ["@/db/client", "**/db/client"],
-              message: "The base Prisma client is module-private to src/db.",
-            },
-            {
-              group: ["@/db/with-tenant", "**/db/with-tenant"],
-              importNames: ["withPlatform", "recordPlatformEvent"],
-              message: "withPlatform() is platform-plane only (ARC-16) — and always via '@/db'.",
-            },
-          ],
+          paths: [dbSeamPath([...PLATFORM_SEAM_NAMES, ...PORTAL_SEAM_NAMES])],
+          patterns: [...RAW_CLIENT_PATTERNS, PLATFORM_SEAM_PATTERN, PORTAL_SEAM_PATTERN],
+        },
+      ],
+    },
+  },
+  {
+    // The portal identity seam's ONE permitted importer, exempted from
+    // the portal half of the profile above and from nothing else.
+    //
+    // It is a whole block rather than an entry in that block's
+    // `ignores` because the two seams have different allowlists:
+    // src/auth/portal.ts must still be barred from withPlatform() and
+    // from the raw client. Keep it in step with
+    // PORTAL_IDENTITY_ALLOWED_FILES in belt two,
+    // src/db/import-boundary.test.ts, which catches what a lint rule
+    // cannot — a dynamic import, or a file-level disable comment.
+    //
+    // src/db/portal-identity-policy.ts is deliberately unrestricted
+    // everywhere: pure logic, no imports, no client, no row.
+    files: ["src/auth/portal.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [dbSeamPath(PLATFORM_SEAM_NAMES)],
+          patterns: [...RAW_CLIENT_PATTERNS, PLATFORM_SEAM_PATTERN],
         },
       ],
     },

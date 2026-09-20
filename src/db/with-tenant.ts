@@ -38,7 +38,7 @@ const BASE_TX_TIMEOUT_MS = 5000;
 const BASE_TX_MAX_WAIT_MS = 2000;
 const DEFAULT_TX_TIMEOUT_MS = Number(process.env["DB_TX_TIMEOUT_MS"]) || BASE_TX_TIMEOUT_MS;
 const LINK_FACTOR = DEFAULT_TX_TIMEOUT_MS / BASE_TX_TIMEOUT_MS;
-const txOptions = (timeoutMs?: number): { timeout: number; maxWait: number } => ({
+export const txOptions = (timeoutMs?: number): { timeout: number; maxWait: number } => ({
   timeout: timeoutMs ? Math.round(timeoutMs * LINK_FACTOR) : DEFAULT_TX_TIMEOUT_MS,
   maxWait: Math.round(BASE_TX_MAX_WAIT_MS * LINK_FACTOR),
 });

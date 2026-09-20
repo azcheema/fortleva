@@ -74,6 +74,14 @@ export const MODEL_CLASSES = {
     "verification",
     "twoFactor",
     "passkey",
+    // Phase 3 — portal identity (DATA_MODEL.md §6.4). AUTH class, like
+    // their member counterparts: no tenant column by design, because
+    // the portal auth flow runs before tenant context exists. They are
+    // protected by grants + allow_runtime/portal_deny, and a contact
+    // principal can never read them.
+    "contactSession",
+    "contactAccount",
+    "contactVerification",
     "permission",
     "featureFlag",
     // Platform-owned suppression list (no tenant column by design —

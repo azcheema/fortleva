@@ -5,7 +5,8 @@ import { allow, clientIp, type RateLimitBucket } from "@/ratelimit";
 
 /**
  * The per-IP limiter on Better Auth's credential endpoints (SECURITY.md
- * §3.7), shared by BOTH auth instances.
+ * §3.7), shared by ALL THREE auth instances (member, platform, portal —
+ * the portal joined 2026-09-20).
  *
  * It lives here rather than inline in src/auth/index.ts because the
  * platform instance had no limiter at all until 2026-09-09: the ops
@@ -16,8 +17,9 @@ import { allow, clientIp, type RateLimitBucket } from "@/ratelimit";
  * apart; a second copy of this middleware would.
  *
  * Paths are the Better Auth endpoint paths WITHIN an instance's
- * basePath, so the same map serves `/api/auth/*` and
- * `/api/platform-auth/*` without knowing which is which.
+ * basePath, so the same map serves `/api/auth/*`,
+ * `/api/platform-auth/*` and `/api/portal-auth/*` without knowing which
+ * is which.
  */
 export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
   "/sign-in/email": "auth.sign_in",
@@ -28,6 +30,21 @@ export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
   // bucket (6 / 10 min) precisely because the search space is small.
   "/two-factor/verify-totp": "auth.step_up",
   "/two-factor/verify-backup-code": "auth.step_up",
+  // The unauthenticated credential endpoints, added 2026-09-20 with the
+  // portal plane and covering all three. Every one of these is reachable
+  // with nothing but an email address, writes a `verification` row, and
+  // asks the product to send mail to whoever was named.
+  //
+  // THE NAMES ARE THE ONES BETTER AUTH 1.6.26 ACTUALLY MOUNTS. An
+  // earlier note in PLAN §0 said "/forget-password" was missing from
+  // this map; there is no such endpoint in this version (the review
+  // caught it), and a key that matches nothing is worse than an absent
+  // one — it reads as coverage. `password.mjs` defines
+  // /request-password-reset and /reset-password; /send-verification-email
+  // is in email-verification.mjs.
+  "/request-password-reset": "auth.credential_request",
+  "/reset-password": "auth.credential_request",
+  "/send-verification-email": "auth.credential_request",
 };
 
 /**
@@ -46,7 +63,7 @@ export async function enforceAuthRateLimit(
   const bucket = RATE_LIMITED_PATHS[ctx.path];
   if (!bucket) return;
   // The subject is namespaced BY PLANE, which matters now that one
-  // limiter serves both instances: without it, ordinary app sign-ins
+  // limiter serves all three instances: without it, ordinary app sign-ins
   // from a shared egress IP (an office NAT, a mobile carrier) would eat
   // the console's 10-per-10-minutes budget and lock the operator out of
   // the ops console — a lockout vector invented by sharing the limiter,

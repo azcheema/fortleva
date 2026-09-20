@@ -603,11 +603,123 @@ model Contact {
   client Client @relation(fields: [tenantId, clientId], references: [tenantId, id])
   // 2W:
   assignedWorkItems WorkItem[] @relation("WorkItemAssigneeContact")
+  // Phase 3 — portal identity. The FKs point INTO a tenant-scoped,
+  // RLS-forced table from AUTH-class tables, which is sound: Postgres
+  // performs referential-integrity checks as the table owner and they
+  // always bypass row security. Cascade is the revocation backstop —
+  // deleting the Contact record takes its credentials and live
+  // sessions with it.
+  //
+  // These names are ours to choose, and that was worth MEASURING
+  // rather than reading. Credential sign-in calls findUserByEmail(…,
+  // {includeAccounts: true}), and @better-auth/prisma-adapter derives
+  // an include key for a join by lowercasing the configured model name
+  // whole and appending "s" — which for account → ContactAccount reads
+  // `contactaccounts`, a name Prisma would have to match exactly. The
+  // source says so plainly and the source is not what runs: joins are
+  // native only under `experimental.joins`, which this product does not
+  // set, so the factory falls back to a SEPARATE query per relation. A
+  // probe against the real instance recorded the only two calls the
+  // adapter makes on this model, and neither carries a join key:
+  //   contact.findFirst {"where":{"email":{"equals":"…"}}}
+  //   contact.findFirst {"where":{"id":"…"},"select":{"portalStatus":true}}
+  // So: readable names, and if anyone ever turns on experimental joins,
+  // measure again before assuming they still are.
+  portalAccounts ContactAccount[]
+  portalSessions ContactSession[]
 
   @@unique([tenantId, email])
   @@unique([tenantId, id]) // composite-FK target
   @@index([tenantId, clientId])
   @@map("contact")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// PORTAL IDENTITY — contact side (Better Auth ≥ 1.6.26, 2nd instance)
+// DATA_MODEL.md §6.4. Class AUTH/global: no tenant column, no tenant
+// RLS — the auth flow runs before tenant context exists. They are NOT
+// a second copy of the member tables: a portal token is rejected on a
+// tenant route by TABLE IDENTITY, which is why no `plane` column
+// exists here (no other value is representable).
+// ───────────────────────────────────────────────────────────────────
+
+/// Portal sessions. Separate cookie name and basePath from the member
+/// Session, but the barrier that matters is this table: cookie
+/// signatures do NOT bind the cookie's NAME (better-call signs the
+/// value alone and both instances share one BETTER_AUTH_SECRET — see
+/// src/proxy.ts), so a member session token replayed under the portal
+/// cookie name verifies its signature and then finds no row here.
+model ContactSession {
+  id        String   @id @default(uuid(7))
+  token     String   @unique
+  contactId String   @map("contact_id")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+  @@index([expiresAt])
+  @@map("contact_session")
+}
+
+/// Portal credentials — the `credential` provider only in v1 (no social
+/// login for contacts), which is why the OAuth columns of `account` are
+/// absent. That is safe rather than hopeful: every one of them is
+/// `required: false` with NO defaultValue in Better Auth's core table
+/// (@better-auth/core .../db/get-tables.mjs), and its transformInput
+/// SKIPS an undefined field that has no default, so the adapter never
+/// names a column that is not here. `updatedAt` likewise has only
+/// `onUpdate`, so it is skipped on create and filled by @updatedAt.
+/// Rows are created ONLY by invite acceptance — never by a signup
+/// endpoint, which does not exist on the portal instance.
+model ContactAccount {
+  id         String   @id @default(uuid(7))
+  contactId  String   @map("contact_id")
+  accountId  String   @map("account_id")
+  providerId String   @map("provider_id")
+  password   String? // scrypt hash, credential provider only
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([contactId])
+  @@map("contact_account")
+}
+
+/// Portal invite-accept + password-reset tokens (hashes). Contact MFA
+/// is v2, so no ContactTwoFactor table exists.
+///
+/// NOT cascaded by contact deletion, unlike its two siblings, and that
+/// is structural rather than an oversight: it has no FK because its
+/// `identifier` is a string like `reset-password:<token>`, not a
+/// contact id. So an outstanding token OUTLIVES the contact it was
+/// issued for. It cannot be redeemed — `value` holds the old uuid, and
+/// consuming it resolves to a row that no longer exists — but the
+/// "CASCADE is the revocation backstop" note on the other two does not
+/// extend here, and the sweep in R4 is what actually clears these.
+///
+/// `updatedAt` IS REQUIRED and DATA_MODEL.md §6.4's listing omitted it
+/// (corrected 2026-09-20). Unlike session/account, Better Auth's
+/// `verification.updatedAt` carries a `defaultValue`, so transformInput
+/// emits it on EVERY create — against a table without the column the
+/// first invite token would have died on an unknown-argument error.
+model ContactVerification {
+  id         String   @id @default(uuid(7))
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([identifier])
+  @@index([expiresAt])
+  @@map("contact_verification")
 }
 
 /// Explicit member↔client assignment (decision #5, deny-default):

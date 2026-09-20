@@ -125,3 +125,53 @@ describe("proxy: the console lives on the ops host and nowhere else", () => {
     expect(dest(proxy(req(OPS, "/home")))).toBe("redirect:/ops/home");
   });
 });
+
+describe("proxy: the portal plane (Phase 3)", () => {
+  const PORTAL_COOKIE = "__Host-flv.portal";
+  const MEMBER_COOKIE = "__Host-flv.member";
+
+  it("serves the portal auth API on the app host and 404s it on ops", async () => {
+    // Same rule, same reason as the two APIs above: cookie signatures do
+    // not bind the cookie NAME and one secret serves all three
+    // instances, so a credential surface answering on the wrong host is
+    // a way to mint that plane's cookies where the host's controls do
+    // not reach.
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    expect(dest(proxy(req(APP, "/api/portal-auth/sign-in/email")))).toBe("next");
+    expect(dest(proxy(req(OPS, "/api/portal-auth/sign-in/email")))).toBe("rewrite:/404");
+    // With a cookie too — presence is not a pass on the wrong host.
+    expect(dest(proxy(req(OPS, "/api/portal-auth/sign-in/email", `${PORTAL_COOKIE}=x`)))).toBe(
+      "rewrite:/404",
+    );
+  });
+
+  it("sends a cookieless portal request to the PORTAL login, not the member one", async () => {
+    // Before the portal arm existed this landed on /login: a form that
+    // cannot authenticate a contact, on a plane they have no account in,
+    // asking a client for the agency's own staff credentials.
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    expect(dest(proxy(req(APP, "/portal/projects")))).toBe("redirect:/portal/login");
+  });
+
+  it("serves the portal login without demanding a cookie", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    expect(dest(proxy(req(APP, "/portal/login")))).toBe("next");
+  });
+
+  it("does not accept a MEMBER cookie as entry to the portal", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    expect(dest(proxy(req(APP, "/portal/projects", `${MEMBER_COOKIE}=x`)))).toBe(
+      "redirect:/portal/login",
+    );
+    // …nor the reverse. The door checks the NAME only; the authoritative
+    // check is the session table behind it (src/auth/portal.ts).
+    expect(dest(proxy(req(APP, "/home", `${PORTAL_COOKIE}=x`)))).toBe("redirect:/login");
+  });
+
+  it("keeps the portal off the ops host entirely", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    // The ops host serves only the console, so /portal is swept under
+    // /ops — where nothing answers.
+    expect(dest(proxy(req(OPS, "/portal/projects")))).toBe("redirect:/ops/portal/projects");
+  });
+});

@@ -27,6 +27,16 @@ const POLICIES = {
   "auth.invite_accept": { limit: 10, window: "10 m" },
   /** Step-up code attempts per session/user (SECURITY.md §3.5). */
   "auth.step_up": { limit: 6, window: "10 m" },
+  /**
+   * Password-reset and email-verification REQUESTS per IP. Each one is
+   * an unauthenticated call that writes a verification row and asks the
+   * product to send mail to an address the caller named, so it is both
+   * a write amplifier and — once SES is live — a way to have the
+   * product's own domain deliver a "reset your password" message to
+   * anyone an attacker guesses is a user. Added 2026-09-20 with the
+   * portal plane, which has by far the most exposed instance of it.
+   */
+  "auth.credential_request": { limit: 5, window: "15 m" },
   /** Presign requests per user (upload floods). */
   "files.presign": { limit: 120, window: "1 m" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;

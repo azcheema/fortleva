@@ -408,6 +408,14 @@ Every authorization-relevant mutation writes an `AuditEvent` in the same transac
 
 ## 8. Portal authorization — `authorizePortal()` (§3, §2)
 
+> **Build status, 2026-09-20 (Phase 3 slice 1).** The portal **identity** stack now exists — `ContactSession`/`ContactAccount`/`ContactVerification`, the portal Better Auth instance (`src/auth/portal.ts`), and `requirePortalContact()`. `authorizePortal()` itself does **not** yet exist; it is the next slice, with the deny matrix as dbtests and no UI. Until it lands, nothing calls a portal capability, and no contact can hold a session: `portalStatus` is only ever written by the tenant path, which has no writer that sets it away from `NO_ACCESS`.
+>
+> ~~and no application code creates a `ContactAccount`~~ — **that sentence was FALSE and both reviews of the slice caught it.** *Our* code does not, but Better Auth's `/reset-password` creates a credential when none exists, and merely configuring `sendResetPassword` mounts the unauthenticated `/request-password-reset` that issues the token. A contact a member had merely recorded could therefore have set themselves a portal password, bypassing the invitation entirely and lying dormant until somebody activated them. Closed at the database — `contact_account_requires_invite` (migration `20260920210000`) refuses a credential for any contact that is not INVITED or ACTIVE — and `sendResetPassword` declines to mail a non-ACTIVE contact, without changing the endpoint's deliberately constant response. Both are measured, including end-to-end through the real endpoints.
+>
+> Two pieces of what §8 describes are already enforced, at the point a session is minted rather than at the point a capability is checked, because that is where they fail safe: **"contact is active"** — `portalAuth`'s `session.create` hook refuses anything but the literal `ACTIVE`, after password verification so it cannot be used to enumerate addresses — and **"invite-only is an invariant"**, which is now a database fact (SECURITY.md §3.4). The rest of the pipeline below is still owed.
+>
+> **Also owed and deliberately not done here: the portal plane writes no audit rows yet.** The member and platform instances each carry an `AuthAuditSink`; the portal instance carries none, so `auth.login_succeeded` / `auth.login_failed` do not fire for a contact. That is safe only because no contact can sign in today, and it must land with — or before — the first path that can activate one.
+
 Contacts get **capabilities, not permissions**. The capability universe is a hardcoded TypeScript union in the portal module — **not rows in the `Permission` table, not tenant-customizable, not extensible at runtime**. The portal is the least-trusted surface (§9); its authorization surface is therefore frozen in code and changed only by a deploy.
 
 **Capability allowlist (v1 complete set):**

@@ -5,6 +5,8 @@ import { cache } from "react";
 import { auth } from "./index";
 import { platformGateDecision, type PlatformGate } from "./platform-gate";
 import { platformAuth } from "./platform";
+import { portalGateDecision, type PortalGate } from "./portal-gate";
+import { portalAuth } from "./portal";
 
 /**
  * Server-side session guards — the authoritative checks behind the
@@ -84,4 +86,57 @@ export async function requirePlatformAdmin() {
   redirect("/ops/login");
 }
 
-export type { PlatformGate };
+/** The portal gate's verdict for the current request, session included. */
+export const getPortalGate = cache(async () => {
+  const session = await portalAuth.api.getSession({ headers: await headers() });
+  // The contact row as this instance returns it. Every field named here
+  // is declared in CONTACT_ADDITIONAL_FIELDS; anything not declared
+  // arrives undefined however full the row is, which is precisely what
+  // portalGateDecision's "incomplete" verdict exists to refuse.
+  const contact = session?.user as
+    | {
+        tenantId?: string | null;
+        clientId?: string | null;
+        portalStatus?: string | null;
+        emailVerified?: boolean | null;
+      }
+    | undefined;
+  const gate = portalGateDecision({
+    hasSession: Boolean(session),
+    tenantId: contact?.tenantId ?? null,
+    clientId: contact?.clientId ?? null,
+    portalStatus: contact?.portalStatus ?? null,
+    emailVerified: contact?.emailVerified ?? null,
+  });
+  return { gate, session } as const;
+});
+
+/**
+ * The portal session, or null — null for EVERY verdict but "ok".
+ * There is no plane check on the row here and none is needed: the
+ * session was looked up in `contact_session`, a table no member or
+ * platform token has a row in. The table IS the plane (see
+ * ./portal.ts).
+ */
+export const getPortalSession = cache(async () => {
+  const { gate, session } = await getPortalGate();
+  return gate === "ok" ? session : null;
+});
+
+/**
+ * THE portal guard. Call it first in every portal page AND in every
+ * portal Server Action, for the reason spelled out on
+ * requirePlatformAdmin above: a layout is not a boundary in Next, and
+ * a Server Action never runs the layout of the page that rendered it.
+ *
+ * It establishes IDENTITY only. What a contact may then do is
+ * authorizePortal()'s question (AUTHZ.md §8), and what rows it can
+ * reach at all is the `portal_gate` RLS policy's.
+ */
+export async function requirePortalContact() {
+  const { gate, session } = await getPortalGate();
+  if (gate === "ok" && session) return session;
+  redirect("/portal/login");
+}
+
+export type { PlatformGate, PortalGate };

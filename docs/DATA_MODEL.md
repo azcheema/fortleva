@@ -848,6 +848,26 @@ enum ContactPortalStatus {
 /// Host-based tenant resolution lands in v2 (see Pushback P2).
 /// scope=client  rls=B (restrictive: clientId = app.client_id)  ret=R2 (identity fields erasable on GDPR request; audit pseudonymized)  enc=none
 /// audit: contact.created | contact.invited | contact.activated | contact.suspended | contact.access_revoked
+///
+/// HOW THE PORTAL INSTANCE ACTUALLY REACHES THIS TABLE (added
+/// 2026-09-20, Phase 3 slice 1 — the pin above says the Better Auth
+/// instance is "modelName-mapped user→Contact" and stops there, which
+/// is not implementable as written). `contact` is class B: its
+/// `tenant_isolation` policy is `tenant_id = app.tenant_id`, and
+/// sign-in has no tenant — the tenant is what an email lookup is FOR.
+/// With the GUC unset the comparison is NULL, so a mapped instance
+/// reads zero rows and nobody can sign in. The member plane never meets
+/// this because `user` is global with a blanket `allow_runtime`.
+/// Resolved with the `withUser()` pattern, not a blanket policy and not
+/// a BYPASSRLS connection: `contact_auth_lookup` (migration
+/// 20260920210000) admits the single row named by a transaction-local
+/// `app.auth_contact_email` or `app.auth_contact_id`, set only by
+/// src/db/portal-identity.ts. It is SELECT-only — invite-only is
+/// therefore a database fact, not just `disableSignUp` — and auth-path
+/// WRITES are brokered through `withTenant(..., {type:'system'})`,
+/// because a tenant-less UPDATE here fails on the `search_index` feed
+/// trigger. `contact_auth_path_immutable` keeps tenancy, client,
+/// portalProfile and portalStatus unchangeable on that path.
 model Contact {
   id            String              @id @default(uuid(7))
   tenantId      String
@@ -914,12 +934,22 @@ model ContactAccount {
 /// ContactVerification — portal invite-accept + reset tokens (hashes).
 /// Contact MFA (TOTP) is v2 — see Pushback P5.
 /// scope=client (via contact)  rls=AUTH  ret=R4  enc=none
+///
+/// `updatedAt` CORRECTED IN 2026-09-20 (Phase 3 slice 1): the column
+/// was missing from this listing and is REQUIRED. Unlike `session` and
+/// `account`, whose `updatedAt` carries only `onUpdate` and is skipped
+/// on create, Better Auth's core `verification.updatedAt` has a
+/// `defaultValue` (@better-auth/core .../db/get-tables.mjs), so
+/// transformInput emits it on EVERY create. Against a table without the
+/// column, the first invite token would have died on an unknown-argument
+/// error. The member `Verification` has always had it.
 model ContactVerification {
   id         String   @id @default(uuid(7))
   identifier String
   value      String
   expiresAt  DateTime @db.Timestamptz(6)
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
 
   @@index([identifier])
   @@index([expiresAt])

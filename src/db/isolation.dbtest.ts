@@ -325,25 +325,35 @@ describe("posture assertions", () => {
   });
 
   it("every RLS subclass has the columns and policies its class implies", async () => {
-    type Posture = { table: string; policies: string[]; columns: string[]; quals: Record<string, string> };
+    type Posture = {
+      table: string;
+      policies: string[];
+      /** The PERMISSIVE subset. They OR together, so only these can
+       * WIDEN what a principal reaches; a RESTRICTIVE policy can only
+       * narrow. The class-B check below keys on this distinction. */
+      permissive: string[];
+      columns: string[];
+      quals: Record<string, string>;
+    };
     const posture = await withPlatform(
       { type: "system", job: "posture-test" },
       "read RLS posture from pg_policies / information_schema",
       async (tx) => {
-        const policies = await tx.$queryRaw<{ tablename: string; policyname: string; qual: string | null }[]>`
-          SELECT tablename, policyname, qual FROM pg_policies WHERE schemaname = 'public'`;
+        const policies = await tx.$queryRaw<{ tablename: string; policyname: string; qual: string | null; permissive: string }[]>`
+          SELECT tablename, policyname, qual, permissive FROM pg_policies WHERE schemaname = 'public'`;
         const columns = await tx.$queryRaw<{ table_name: string; column_name: string }[]>`
           SELECT table_name, column_name FROM information_schema.columns
           WHERE table_schema = 'public'`;
         const byTable = new Map<string, Posture>();
         const get = (t: string) => {
           let p = byTable.get(t);
-          if (!p) byTable.set(t, (p = { table: t, policies: [], columns: [], quals: {} }));
+          if (!p) byTable.set(t, (p = { table: t, policies: [], permissive: [], columns: [], quals: {} }));
           return p;
         };
         for (const p of policies) {
           get(p.tablename).policies.push(p.policyname);
           get(p.tablename).quals[p.policyname] = p.qual ?? "";
+          if (p.permissive === "PERMISSIVE") get(p.tablename).permissive.push(p.policyname);
         }
         for (const c of columns) get(c.table_name).columns.push(c.column_name);
         return byTable;
@@ -401,6 +411,36 @@ describe("posture assertions", () => {
           "portal_enabled",
         );
       }
+      // EXACT policy set, not just "contains the two it needs".
+      //
+      // Every other assertion here is `toContain`, which cannot see an
+      // ADDED policy — and PERMISSIVE policies OR together, so a
+      // `USING (true)` added to a class-B table is the worst mistake
+      // this schema can make and the one the posture test was blindest
+      // to (security review, 2026-09-20: `contact_auth_lookup` was
+      // added to a class-B table and nothing noticed). Anything beyond
+      // the standard pair has to be named here, which forces the next
+      // person adding one to state it deliberately.
+      const EXTRA_CLASS_B_POLICIES: Readonly<Record<string, readonly string[]>> = {
+        // The portal auth path's narrow admission (Phase 3 slice 1,
+        // migration 20260920210000). SELECT only; keyed on a
+        // transaction-local GUC that only src/db/portal-identity.ts
+        // sets; `nullif(…,'')` so an empty GUC matches nothing.
+        contact: ["contact_auth_lookup"],
+      };
+      // Only PERMISSIVE policies are checked, because only they can
+      // WIDEN: they OR with tenant_isolation. A RESTRICTIVE addition
+      // can only narrow (comment carries portal_no_update /
+      // portal_no_delete that way), so it needs no declaration here.
+      const allowed = new Set([
+        "tenant_isolation",
+        "portal_gate",
+        ...(EXTRA_CLASS_B_POLICIES[m] ?? []),
+      ]);
+      expect(
+        p.permissive.filter((name) => !allowed.has(name)).sort(),
+        `${p.table}: undeclared PERMISSIVE policy on a class-B table — it ORs with tenant_isolation and can only widen`,
+      ).toEqual([]);
     }
     // principalScoped (notification): tenant_isolation + the RESTRICTIVE
     // receiver binding on SELECT and UPDATE, an INSERT deny for contacts,

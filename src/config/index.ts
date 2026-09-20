@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 /**
@@ -80,6 +82,38 @@ export const sessionCookieAttributes = (
   // no legitimate cross-site entry point.
   sameSite: plane === "platform" ? "strict" : "lax",
 });
+
+/**
+ * The PORTAL plane's own Better Auth secret, derived from the shared
+ * one rather than added as a new env var to provision.
+ *
+ * WHY IT EXISTS (security review of Phase 3 slice 1). Better Auth's
+ * email-verification tokens are self-contained JWTs signed with the
+ * instance secret and carrying NO plane claim — just
+ * `{email, updateTo?, requestType?}`. They touch no table, so the
+ * "separate tables are the barrier" property that protects SESSION
+ * tokens does not protect these at all: with one shared secret, a token
+ * minted on one plane verifies on another, `/verify-email` resolves
+ * `email` against THAT plane's user model, and both the member
+ * instance (`autoSignInAfterVerification`) and the change-email branch
+ * MINT A SESSION before any password is checked.
+ *
+ * A plane claim in the payload would need a hook on every instance and
+ * would still be one forgotten hook away from the same hole. A distinct
+ * secret makes every portal-signed artifact structurally unverifiable
+ * on the other two planes, and vice versa, with nothing to remember.
+ * SECURITY.md §3.3 already named per-plane secrets as future hardening;
+ * this is the case that makes them load-bearing rather than hygiene.
+ *
+ * Derivation, not a second env var: there are no portal sessions or
+ * tokens in existence yet, so nothing is invalidated, and the operator
+ * has one secret to rotate. If BETTER_AUTH_SECRET is unset, Better
+ * Auth's own dev fallback applies to the other planes and this derives
+ * from the same empty string — dev-only, like theirs.
+ */
+export const portalAuthSecret = createHash("sha256")
+  .update(`${env.BETTER_AUTH_SECRET ?? ""}:portal-plane`)
+  .digest("hex");
 
 export const mailFrom = {
   name: env.MAIL_FROM_NAME,

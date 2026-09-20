@@ -13,6 +13,14 @@ export { withUser } from "./with-user";
 // src/auth/platform-audit-hooks.ts may import it (pinned by
 // src/db/import-boundary.test.ts).
 export { recordPlatformEvent } from "./platform-audit";
+// The PORTAL IDENTITY seam. A FIFTH narrow entry point: the only way
+// the portal auth plane can see a `contact` row before any tenant is
+// known. It does not bypass RLS — it names one row to policies that
+// admit one row — but it is the one place where an unauthenticated
+// request reaches a tenant-scoped table, so it gets the same treatment
+// as recordPlatformEvent: exactly one permitted importer
+// (src/auth/portal.ts), pinned by src/db/import-boundary.test.ts.
+export { portalAuthClient, PortalIdentityRefused } from "./portal-identity";
 export type { UserDb } from "./with-user";
 export type { Principal, TenantContext } from "./context";
 export { currentTenantId } from "./context";
