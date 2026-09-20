@@ -592,6 +592,14 @@ model Contact {
   phone         String?
   portalProfile ContactPortalProfile @default(CONTACT_COLLABORATOR) @map("portal_profile")
   portalStatus  ContactPortalStatus  @default(NO_ACCESS) @map("portal_status")
+  /// LOAD-BEARING SINCE PHASE 3 SLICE 2, not merely a record.
+  /// `authorizePortal()` requires this stamp in addition to
+  /// `portalStatus = ACTIVE`, which makes invite-only a property of
+  /// the ROW rather than only of the codebase (AUTHZ.md §8 glosses it
+  /// as "no self-signup path exists in code"). An activation path that
+  /// forgets to set it produces a contact that can hold a session and
+  /// do nothing — which is the safe direction, and is why it is a
+  /// requirement rather than a comment. The invite flow must set it.
   invitedAt     DateTime?            @map("invited_at") @db.Timestamptz(6)
   invitedById   String?              @map("invited_by_id") // Member.id, attribution, no FK
   activatedAt   DateTime?            @map("activated_at") @db.Timestamptz(6)

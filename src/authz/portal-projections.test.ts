@@ -9,6 +9,15 @@ import { describe, expect, it } from "vitest";
  * selects Phase 3 introduces; view-as-Contact reuses the same
  * functions). None exist yet — the scan passes trivially, but the
  * constant is pinned here so the list is reviewed with every phase.
+ *
+ * **`portal-writes.ts` is scanned too, and it had to be added** (security
+ * review, 2026-09-20). The founder decision of 2026-09-20 splits brokered
+ * writes out of `portal.ts` into `portal-writes.ts` precisely so that
+ * "this code runs as system" is a property of a filename a reviewer
+ * cannot miss — and this walk matched the name `portal.ts` exactly, so
+ * the first such file would have been the first contact-facing module
+ * never scanned for a forbidden column. The split made the file MORE
+ * dangerous and less watched at the same time.
  */
 
 export const PORTAL_FORBIDDEN_COLUMNS = [
@@ -59,7 +68,7 @@ const walk = (dir: string, out: string[] = []): string[] => {
     if (entry === "generated" || entry === "node_modules") continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) walk(full, out);
-    else if (entry === "portal.ts") out.push(full);
+    else if (entry === "portal.ts" || entry === "portal-writes.ts") out.push(full);
   }
   return out;
 };

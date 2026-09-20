@@ -23,7 +23,7 @@ export { recordPlatformEvent } from "./platform-audit";
 export { portalAuthClient, PortalIdentityRefused } from "./portal-identity";
 export type { UserDb } from "./with-user";
 export type { Principal, TenantContext } from "./context";
-export { currentTenantId } from "./context";
+export { currentTenantId, currentPrincipal } from "./context";
 export {
   MODEL_CLASSES,
   RLS_CLASSES,
