@@ -43,13 +43,59 @@ import { rankBetween } from "@/lib/rank";
  * KNOWN LOCKERS OUTSIDE THE QUEUE, all older than it. A deadlock
  * (40P01) IS retried as of 2026-09-19 — `ordering.ts`'s
  * `retryOnRankCollision` takes `isDeadlock` beside `isUniqueViolation`,
- * which is a cure and not a cure-all: the cycles below are still cycles,
- * and a retry is three more chances at the same race, not a proof. Able to deadlock WITH a
- * queued writer: the portal toggle's fan-out (every row of the project,
- * scan order), and inserts that REFERENCE several work items in one
- * transaction (copyWeek — each time_entry's foreign key takes FOR KEY
- * SHARE on its item, in date order, and a rank UPDATE is a key update).
- * Able to deadlock with EACH OTHER, never with the queue: deleteItem,
+ * which is a cure and not a cure-all: a retry is three more chances at
+ * the same race, not a proof — and only one side of each cycle below
+ * actually has one. Each was re-verified on 2026-09-20 against the
+ * migrations rather than trusted; none is closed.
+ *
+ * ALL THREE ARE STILL OPEN, deliberately, with what each would cost
+ * written down so the next session does not re-derive it. The portal
+ * toggle was TRIED in the queue on 2026-09-20 and the attempt is kept
+ * here because the reason it failed is the interesting part:
+ *   • the portal toggle's fan-out. `setPortalEnabled` writes one
+ *     `project` row and `project_portal_enabled_fanout` turns it into
+ *     TEN mass UPDATEs — milestone, project_version, service, document,
+ *     work_item, work_item_activity, comment, search_index,
+ *     project_time_summary, time_report — each in scan order. Joining
+ *     THIS queue covers exactly one of those ten legs: milestones queue
+ *     on `milestone_rank:` and the other eight tables have no queue at
+ *     all. And the cost falls in the worst possible place. Turning a
+ *     project's portal OFF is the emergency "stop showing this client
+ *     our data" switch, and inside `withTenant`'s 5 s interactive budget
+ *     an unbounded wait on a queue a bulk edit is holding turns that
+ *     switch into a P2028 failure. A control that must work when it is
+ *     needed does not get to wait on a board drag. It takes a deadlock
+ *     RETRY instead (`src/projects/service.ts`), which covers all ten
+ *     legs and costs nothing when there is no contention. NOT a full
+ *     answer even so: a bulk edit holding `FOR NO KEY UPDATE` makes the
+ *     fan-out BLOCK rather than cycle, and that ends as a P2028 timeout
+ *     which no retry here matches (PLAN §0).
+ *   • copyWeek — each time_entry's foreign key takes FOR KEY SHARE on
+ *     its item, in the plan's DATE order, and a rank UPDATE is a key
+ *     update. It cannot join the queue as cheaply: one copy can span
+ *     SEVERAL projects, so it would need every touched project's lock,
+ *     taken in a deterministic (sorted) order or it makes a new cycle
+ *     among copies — and it would then block every rank writer in all of
+ *     them for the length of the copy. That is a real contention change
+ *     on a path nothing here can measure, against a race that has never
+ *     been observed. AND IT HAS NO RETRY OF ITS OWN: nothing under
+ *     `src/modules/time` tests for a deadlock, so when a copy is the
+ *     victim it 500s with the week uncopied, and only the rank writer on
+ *     the other side recovers. The cheap half of this is `retryOnDeadlock`
+ *     around `copyWeek`'s transaction; the queue is the expensive half.
+ *   • deleteItem against an attachment's visibility flip (below). The
+ *     lock the flip takes is REAL and takes two migrations to see: the
+ *     anchor carries no foreign key — `(attachedToType, attachedToId)`
+ *     is a presentation pointer and authorization never traverses it —
+ *     and `document_anchor_guard` v1 read the item with a plain SELECT,
+ *     which takes nothing. `document_anchor_guard_v2` added `FOR SHARE
+ *     OF wi` to close a write-skew, and THAT is the lock. Reading v1
+ *     alone says this cycle does not exist; it does.
+ * ABLE TO DEADLOCK WITH EACH OTHER, NEVER WITH THE QUEUE — and that
+ * second half rests entirely on no queued writer ever locking a document
+ * or comment row, so re-check it before putting anything in the queue
+ * that does. The portal toggle would have locked both, which is one of
+ * the reasons it stayed out. The pair: deleteItem,
  * which locks its item and then the item's attachments and comments,
  * against an attachment's visibility flip, which locks the attachment
  * and then the item through document_anchor_guard — deleteItem writes

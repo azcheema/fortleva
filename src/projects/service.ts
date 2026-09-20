@@ -19,6 +19,7 @@ import type {
 } from "@/generated/prisma/enums";
 import { fail, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
+import { retryOnDeadlock } from "@/lib/retry";
 
 /**
  * Projects (DATA_MODEL.md §6.5, PLAN.md Phase 2). Every list composes
@@ -549,7 +550,46 @@ export async function setPortalEnabled(
   projectId: string,
   enabled: boolean,
 ): Promise<{ changed: boolean }> {
-  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+  // RETRIED ON A DEADLOCK, and the choice of cure over prevention is the
+  // whole story of this function.
+  //
+  // It writes ONE `project` row, and `project_portal_enabled_fanout`
+  // turns that into TEN mass UPDATEs — milestone, project_version,
+  // service, document, work_item, work_item_activity, comment,
+  // search_index, project_time_summary, time_report — each `WHERE
+  // project_id = …` in scan order, sharing an order with nobody.
+  // `modules/work/rank-lock.ts` has listed it since slice 7 as a KNOWN
+  // LOCKER OUTSIDE THE QUEUE, able to deadlock WITH a queued writer.
+  //
+  // JOINING THAT QUEUE WAS TRIED ON 2026-09-20 AND REJECTED. It covers
+  // ONE of the ten legs — milestones queue on a different key
+  // (`milestone_rank:`) and the other eight tables have no queue at all
+  // — while converting a targeted wait on the rows that actually
+  // conflict into a project-wide wait on anything queued. It would also
+  // have made `rank-lock.ts`'s own invariant false, since no queued
+  // writer has ever locked a document or comment row and this one would
+  // lock both.
+  //
+  // WHAT THE RETRY DOES NOT FIX, stated because the first draft of this
+  // comment claimed otherwise (review). Contention here has two shapes
+  // and only one of them is a deadlock. A bulk edit holds `FOR NO KEY
+  // UPDATE` on every selected `work_item` row to commit, and the
+  // fan-out's own UPDATE wants the same conflicting mode — so it simply
+  // BLOCKS. No cycle, no 40P01, nothing for `isDeadlock` to match, and
+  // at `withTenant`'s 5 s interactive budget it dies as P2028 instead.
+  // That exposure is older than this change and is NOT addressed here:
+  // turning a project's portal off can still lose to a long bulk edit.
+  // The fix is a transaction budget sized for a ten-table fan-out
+  // (`withTenant`'s `timeoutMs`, which this call does not pass) and
+  // possibly a P2028 retry, both of which want measuring on a project
+  // with real row counts — PLAN §0.
+  //
+  // So: no lock, and a retry for the shape a retry can actually answer.
+  // Safe to re-run because Postgres has already rolled the victim back
+  // — the re-run redoes the permission check, the scope check and the
+  // `changed` read from scratch, so the audit row can never describe a
+  // transition that did not happen.
+  return retryOnDeadlock(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "project:edit");
     const p = await loadInScope(tx, ctx.actor, projectId);
     if (p.portalEnabled === enabled) return { changed: false };
@@ -560,7 +600,7 @@ export async function setPortalEnabled(
       targetId: projectId,
     });
     return { changed: true };
-  });
+  }));
 }
 
 /** project:edit (project:manage_portal in Phase 3) — CONTACT_PRIMARY hours widget mode. */
