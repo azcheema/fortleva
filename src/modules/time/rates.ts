@@ -7,6 +7,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { dateColumn, isoDateOf } from "@/lib/duration";
 import { fail } from "@/lib/domain-error";
+import { retryOnDeadlock } from "@/lib/retry";
 
 import { guarded, idsOnly, principalOf, type TimeCtx } from "./ctx";
 import { recomputeTouched } from "./summary";
@@ -469,7 +470,21 @@ export async function repriceRateCard(
   input: { rateCardId: string; mode: "FROM_DATE" | "ALL_UNBILLED"; fromDate?: string },
 ): Promise<{ repriced: number; skippedLocked: number }> {
   const fromDate = input.mode === "FROM_DATE" ? isoDate(input.fromDate ?? "") : null;
-  return withTenant(
+  // RETRIED ON A DEADLOCK, for the same reason `copyWeek` is and found
+  // in the same review. This is the second multi-row `time_entry` writer
+  // in the module and `rank-lock.ts` never listed it: the rows are read
+  // by `startedAt` but WRITTEN as one `updateMany` per distinct
+  // resulting snapshot, so the lock order is the GROUPING's, not the
+  // read's. Two reprices of different cards over overlapping entries
+  // group differently and can therefore take the same rows in opposite
+  // orders. Nothing on either side recovered before this.
+  //
+  // Safe to re-run for the reason every use of this helper is: Postgres
+  // has already rolled the victim back, so the re-read, the regrouping
+  // and the counters all start from nothing. The 60 s budget below is
+  // per ATTEMPT, which is the right shape — a reprice that was killed
+  // for taking too long is not a deadlock and is not retried here.
+  return retryOnDeadlock(() => withTenant(
     ctx.tenantId,
     principalOf(ctx),
     async (tx) =>
@@ -551,5 +566,5 @@ export async function repriceRateCard(
         return { repriced, skippedLocked };
       }),
     { timeoutMs: 60_000 },
-  );
+  ));
 }

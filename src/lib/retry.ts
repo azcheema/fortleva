@@ -25,12 +25,13 @@ const DEADLOCK_ATTEMPTS = 3;
  * Where it is not — a fan-out across ten tables, or a control that must
  * not wait — this is the honest answer.
  *
- * ONE CALLER TODAY (`setPortalEnabled`), and in `src/lib` anyway
- * because that is where the next one can reach it from either side of
- * the ARC-16 import direction. The two `retryOnRankCollision` helpers in
- * `milestones.ts` and `ordering.ts` predate it, also handle P2002, and
- * carry their own attempt counts — they are deliberately left alone
- * rather than folded in on a slice that is about something else.
+ * THREE CALLERS: `setPortalEnabled` (core) and, since 2026-09-20,
+ * `copyWeek` and `repriceRateCard` (the time module) — which is why it
+ * sits in `src/lib`, reachable from either side of the ARC-16 import
+ * direction. The two `retryOnRankCollision` helpers in `milestones.ts`
+ * and `ordering.ts` predate it, also handle P2002, and carry their own
+ * attempt counts; folding them in is a tidy-up for its own slice, not
+ * something to do on the way past.
  *
  * IT ONLY ANSWERS DEADLOCKS. Contention has another shape that looks
  * the same from a distance: a writer that merely BLOCKS on a

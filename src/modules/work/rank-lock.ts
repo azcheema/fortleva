@@ -78,11 +78,18 @@ import { rankBetween } from "@/lib/rank";
  *     among copies — and it would then block every rank writer in all of
  *     them for the length of the copy. That is a real contention change
  *     on a path nothing here can measure, against a race that has never
- *     been observed. AND IT HAS NO RETRY OF ITS OWN: nothing under
- *     `src/modules/time` tests for a deadlock, so when a copy is the
- *     victim it 500s with the week uncopied, and only the rank writer on
- *     the other side recovers. The cheap half of this is `retryOnDeadlock`
- *     around `copyWeek`'s transaction; the queue is the expensive half.
+ *     been observed. It takes `retryOnDeadlock` instead, as of
+ *     2026-09-20 — before that nothing under `src/modules/time` tested
+ *     for a deadlock at all, so only the rank writer on the other side
+ *     recovered and a copy chosen as the victim came back a 500 with the
+ *     week uncopied. BOTH sides retry now; neither prevents.
+ *     A review found a SECOND multi-row `time_entry` writer this list
+ *     had never named while checking that one: `repriceRateCard` reads
+ *     by `startedAt` but writes one `updateMany` per distinct resulting
+ *     snapshot, so its lock order is the GROUPING's — two reprices over
+ *     overlapping entries can cycle with each other, nothing to do with
+ *     ranks. It takes the same retry. The lesson for whoever edits this
+ *     list: it names the lockers someone thought to look for.
  *   • deleteItem against an attachment's visibility flip (below). The
  *     lock the flip takes is REAL and takes two migrations to see: the
  *     anchor carries no foreign key — `(attachedToType, attachedToId)`

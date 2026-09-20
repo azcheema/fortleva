@@ -20,6 +20,7 @@ import {
   startOfLocalDay,
 } from "@/lib/duration";
 import { DomainError, fail } from "@/lib/domain-error";
+import { retryOnDeadlock } from "@/lib/retry";
 import { addDays, isIsoDate, weekContaining } from "@/lib/week";
 import type { TenantPreferences } from "@/preferences/service";
 
@@ -809,7 +810,40 @@ export async function copyWeek(
 ): Promise<CopyWeekResult> {
   if (!isIsoDate(input.weekFrom)) fail("INVALID_INPUT", "weekFrom");
   await ensureTimeDefaults(ctx.tenantId);
-  return withTenant(
+  // RETRIED ON A DEADLOCK. `modules/work/rank-lock.ts` has listed
+  // copyWeek since slice 7 as
+  // a KNOWN LOCKER OUTSIDE THE QUEUE: every entry it writes takes FOR
+  // KEY SHARE on its work item through the foreign key, in the plan's
+  // DATE order, and a rank UPDATE is a key update — so a board drag
+  // going by RANK and a copy going by DATE can take the same two items
+  // in opposite orders and close a cycle. Slice 7 turned that cycle
+  // around rather than removing it.
+  //
+  // Until now only the OTHER side recovered: `ordering.ts` has retried
+  // since 2026-09-19 and nothing under `src/modules/time` tested for a
+  // deadlock at all, so a copy chosen as the victim came back as a 500
+  // with the week uncopied — the more expensive half of the pair to
+  // lose, since a drag is one row and a copy is a week of them.
+  //
+  // WHY A RETRY AND NOT THE QUEUE: one copy can span several projects,
+  // so joining `lockProjectRanks` would mean taking every touched
+  // project's lock in a deterministic (sorted) order — or making a new
+  // cycle among concurrent copies — and then holding all of them for the
+  // length of the copy. That is a real contention change on a weekly
+  // path, against a race that has never been observed.
+  //
+  // NOT the only one: `repriceRateCard` is a second multi-row
+  // `time_entry` writer that `rank-lock.ts` never listed, and it takes
+  // the same retry (review, 2026-09-20).
+  //
+  // `guarded` does not swallow it: `mapDbError` rethrows anything no
+  // token matches, and none of the time module's tokens appears in a
+  // 40P01 message. The retry wraps the WHOLE transaction, which is the
+  // only unit it is safe to re-run — Postgres has already rolled the
+  // victim back, so the re-run redoes the permission check, the notice
+  // acknowledgement and the "already present" read from scratch, and
+  // cannot double-write an entry it committed (it committed nothing).
+  return retryOnDeadlock(() => withTenant(
     ctx.tenantId,
     principalOf(ctx),
     async (tx) =>
@@ -900,7 +934,7 @@ export async function copyWeek(
         return { created, alreadyPresent, unusable };
       }),
     LOCKED_TX,
-  );
+  ));
 }
 
 /**
