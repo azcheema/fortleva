@@ -15,6 +15,10 @@ export type DomainErrorCode =
   | "CLIENT_MISMATCH" // projectId does not belong to clientId
   | "INVALID_INPUT"
   | "APPROVAL_REQUIRED" // entering a requiresApproval WorkflowState without work_item:approve (2W-R)
+  // Portal switch (slice 43 — src/projects/service.ts). A statement in the switch's
+  // transaction — in practice the fan-out, but the bound covers them all — could not
+  // take its row locks past a concurrent writer within lockTimeoutMs, on every attempt.
+  | "PORTAL_SWITCH_BUSY"
   // Work tree (2W — trigger tokens map 1:1 in src/modules/work/db-errors.ts)
   | "HAS_VISIBLE_CHILDREN" // make-private refused while client-visible subtasks/comments/attachments live
   | "PARENT_NOT_VISIBLE" // a child cannot be client-visible under an internal parent
@@ -106,6 +110,51 @@ export const isUniqueViolation = (e: unknown): boolean =>
  * which tested only for P2002 — rethrew it as a 500.
  */
 const DEADLOCK_CODES = new Set(["P2010", "P2039", "P2034"]);
+
+/**
+ * Postgres LOCK TIMEOUT (SQLSTATE 55P03, "canceling statement due to
+ * lock timeout") — the OTHER shape contention takes, and the reason
+ * `isDeadlock` alone was never enough.
+ *
+ * A deadlock is a CYCLE: Postgres sees it, picks a victim and aborts
+ * it. A writer that merely waits on a row another transaction holds is
+ * not a cycle, so nothing is detected and nothing is aborted — it waits
+ * until it gets the lock or something cancels it. Only a transaction
+ * that ASKED for a bound (`withTenant`'s `lockTimeoutMs`) can raise
+ * this at all, and without one there is no reliable end to the wait at
+ * all: `lock_timeout` defaults to 0 and Prisma's transaction timeout is
+ * enforced around the queries it issues, not inside one the DATABASE
+ * has parked. Measured, not assumed — a blocked fan-out with a 3 s
+ * transaction budget was still waiting past 30 s
+ * (`portal-contention.dbtest.ts`). Anywhere this repo says such a wait
+ * "dies as P2028", that sentence predates the measurement.
+ *
+ * Duck-tested for the same reason as the deadlock test — no runtime
+ * import of the generated client — and reading the same two wrappers,
+ * since Prisma has no code of its own for 55P03: P2010 for a
+ * `$queryRaw`, P2039 for any model call. Both carry the SQLSTATE and
+ * the words in the message Prisma builds, which is what this reads.
+ *
+ * P2039 IS MEASURED, P2010 IS CARRIED OVER. `portal-contention.dbtest`
+ * provokes a real 55P03 through `setPortalEnabled` rather than
+ * synthesising one, and a mutation check with this set emptied printed
+ * the arriving error verbatim: `PrismaClientKnownRequestError`,
+ * `code: "P2039"` — the fan-out rides a model call
+ * (`tx.project.update`), so that is the branch this needs. P2010 is
+ * here by the same symmetry the deadlock test rests on rather than by
+ * measurement: nothing in the product yet waits on a lock from a
+ * `$queryRaw` under a bound, so there is no way to provoke it without
+ * writing a caller that does. Keep it, and do not claim it is proven.
+ */
+const LOCK_TIMEOUT_CODES = new Set(["P2010", "P2039"]);
+
+export const isLockTimeout = (e: unknown): boolean => {
+  if (typeof e !== "object" || e === null) return false;
+  const code = (e as { code?: unknown }).code;
+  if (typeof code !== "string" || !LOCK_TIMEOUT_CODES.has(code)) return false;
+  const message = String((e as { message?: unknown }).message ?? "");
+  return /55P03|lock timeout/i.test(message);
+};
 
 export const isDeadlock = (e: unknown): boolean => {
   if (typeof e !== "object" || e === null) return false;

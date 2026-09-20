@@ -7,7 +7,7 @@ import {
 } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { clean } from "@/clients/service";
-import { withTenant, type TenantDb } from "@/db";
+import { PORTAL_ENABLED_FANOUT_TARGETS, withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import type {
   HoursSharingMode,
@@ -17,9 +17,9 @@ import type {
   UpdateCadence,
   Visibility,
 } from "@/generated/prisma/enums";
-import { fail, isUniqueViolation } from "@/lib/domain-error";
+import { fail, isDeadlock, isLockTimeout, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
-import { retryOnDeadlock } from "@/lib/retry";
+import { retryOnContention } from "@/lib/retry";
 
 /**
  * Projects (DATA_MODEL.md §6.5, PLAN.md Phase 2). Every list composes
@@ -539,6 +539,46 @@ export async function unarchiveProject(ctx: ProjectCtx, projectId: string): Prom
 }
 
 /**
+ * The portal switch's two budgets. The transaction budget is SIZED
+ * AGAINST the lock bound so the two cannot drift apart silently — but
+ * read the next paragraph before treating it as a guarantee.
+ *
+ * WHAT IT IS NOT: a worst case. `lock_timeout` applies "separately to
+ * each lock acquisition attempt" (Postgres's own wording), and an
+ * acquisition attempt is per contended ROW, not per statement — so a
+ * single leg can wait its full bound many times over, once per row a
+ * different transaction is holding, without ever tripping it. The
+ * product of legs and bound below is therefore the cost of ONE holder
+ * per leg, which is the shape this was built for (a bulk edit, the
+ * motivating case, is exactly one holder). Several distinct concurrent
+ * holders on one project can exceed it, and `lock_timeout` is
+ * structurally incapable of bounding that — only `statement_timeout`
+ * (57014) cancels a statement on its total time. WHAT HAPPENS THEN is
+ * a P2028, untranslated, which the member meets as a 500 on a control
+ * that nonetheless rolled back cleanly: worse than the toast, far
+ * better than the unbounded hang this replaced, and deliberately left
+ * visible rather than dressed up as contention, because a fan-out that
+ * genuinely takes 25 s is a bug someone should see. Reach for
+ * `statement_timeout` if that case ever stops being hypothetical.
+ *
+ * SO THE HEADROOM IS PICKED, NOT DERIVED — 10 s, a round number over a
+ * fan-out whose own work is milliseconds now that all ten legs are
+ * indexed. Only the LEGS × BOUND part is derived.
+ *
+ * PORTAL_FANOUT_LEGS IS DERIVED FROM THE REGISTRY, not counted by
+ * hand: `PORTAL_ENABLED_FANOUT_TARGETS` is the list
+ * `isolation.dbtest.ts` already checks the trigger body against, so a
+ * new projectScoped model widens this budget in the same commit that
+ * gives it a leg. The `+ 1` is `search_index`, which the trigger
+ * updates but the registry cannot name — it is deliberately not a
+ * Prisma model (generated tsvector columns are hand-written DDL), so
+ * it is the one leg no list in TypeScript knows about.
+ */
+const PORTAL_FANOUT_LEGS = PORTAL_ENABLED_FANOUT_TARGETS.length + 1;
+export const PORTAL_LOCK_WAIT_MS = 1_500;
+export const PORTAL_TX_MS = PORTAL_FANOUT_LEGS * PORTAL_LOCK_WAIT_MS + 10_000;
+
+/**
  * THE project-level portal gate (TENANCY.md §7.2). Writes ONLY
  * Project.portalEnabled — the trigger fans out to every projectScoped
  * child. Permission: project:edit for now; the plan introduces
@@ -550,8 +590,8 @@ export async function setPortalEnabled(
   projectId: string,
   enabled: boolean,
 ): Promise<{ changed: boolean }> {
-  // RETRIED ON A DEADLOCK, and the choice of cure over prevention is the
-  // whole story of this function.
+  // RETRIED ON CONTENTION — a deadlock OR a bounded lock wait — and the
+  // choice of cure over prevention is the whole story of this function.
   //
   // It writes ONE `project` row, and `project_portal_enabled_fanout`
   // turns that into TEN mass UPDATEs — milestone, project_version,
@@ -570,37 +610,93 @@ export async function setPortalEnabled(
   // writer has ever locked a document or comment row and this one would
   // lock both.
   //
-  // WHAT THE RETRY DOES NOT FIX, stated because the first draft of this
-  // comment claimed otherwise (review). Contention here has two shapes
-  // and only one of them is a deadlock. A bulk edit holds `FOR NO KEY
-  // UPDATE` on every selected `work_item` row to commit, and the
-  // fan-out's own UPDATE wants the same conflicting mode — so it simply
-  // BLOCKS. No cycle, no 40P01, nothing for `isDeadlock` to match, and
-  // at `withTenant`'s 5 s interactive budget it dies as P2028 instead.
-  // That exposure is older than this change and is NOT addressed here:
-  // turning a project's portal off can still lose to a long bulk edit.
-  // The fix is a transaction budget sized for a ten-table fan-out
-  // (`withTenant`'s `timeoutMs`, which this call does not pass) and
-  // possibly a P2028 retry, both of which want measuring on a project
-  // with real row counts — PLAN §0.
+  // THE OTHER SHAPE, which slice 40 named and left open and slice 43
+  // closes. Contention here is not always a cycle. A bulk edit holds
+  // `FOR NO KEY UPDATE` on every selected `work_item` row to commit,
+  // and the fan-out's own UPDATE wants the same conflicting mode — so
+  // it simply BLOCKS. No cycle, no 40P01, nothing for `isDeadlock` to
+  // match.
   //
-  // So: no lock, and a retry for the shape a retry can actually answer.
-  // Safe to re-run because Postgres has already rolled the victim back
-  // — the re-run redoes the permission check, the scope check and the
-  // `changed` read from scratch, so the audit row can never describe a
-  // transition that did not happen.
-  return retryOnDeadlock(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "project:edit");
-    const p = await loadInScope(tx, ctx.actor, projectId);
-    if (p.portalEnabled === enabled) return { changed: false };
-    await tx.project.update({ where: { id: projectId }, data: { portalEnabled: enabled } });
-    await record(tx, {
-      action: enabled ? "project.portal_enabled" : "project.portal_disabled",
-      targetType: "Project",
-      targetId: projectId,
-    });
-    return { changed: true };
-  }));
+  // AND IT IS WORSE THAN THIS FUNCTION USED TO CLAIM, which is the
+  // finding slice 43 did not expect. The comment here, `rank-lock.ts`
+  // and PLAN §0 all said an unbounded wait "dies as P2028 at
+  // `withTenant`'s 5 s budget". It does not. MEASURED, by removing the
+  // bound and shrinking the transaction budget to 3 s with a row lock
+  // held against it: the call was still waiting past 30 s. Prisma's
+  // interactive-transaction timeout is enforced around the queries it
+  // issues, not inside one the DATABASE has parked. Nor did anything
+  // else bound it, checked in `pg_settings` on the real datasource
+  // rather than assumed: `lock_timeout` 0 and `statement_timeout` 0,
+  // both from `source = 'default'` with nothing set on the database or
+  // on `app_runtime`, and the one bound that IS configured —
+  // `idle_in_transaction_session_timeout`, 5 min — catches a
+  // transaction sitting IDLE, never one actively waiting on a lock. So
+  // the real pre-slice behaviour of this control was
+  // not a 5 s failure: it was a request that hung until whatever sits
+  // above it gave up, holding every lock the fan-out had already taken
+  // for all of it. A starved portal switch was a blocker for everyone
+  // else, for as long as the starving lasted.
+  //
+  // So it now asks for a bound. `lockTimeoutMs` makes a wait end at a
+  // known point in an error `retryOnContention` can tell apart, and
+  // when the attempts are spent against ONE holder per leg — the shape
+  // this was built for — the member is TOLD (PORTAL_SWITCH_BUSY)
+  // rather than shown a 500. Nothing was written, the whole transaction
+  // rolled back, so "try again" is the truth and the whole remedy. See
+  // PORTAL_LOCK_WAIT_MS for the case that bound cannot cover.
+  //
+  // WHY NOT SIMPLY WAIT IT OUT with a budget long enough to outlast any
+  // bulk edit: this is the emergency "stop showing this client our
+  // data" control. A switch that hangs indefinitely and then either
+  // works or does not is worse than one that comes back and says which
+  // — typically in about three lock waits (~4.5 s), and bounded by
+  // attempts × the transaction budget, not by "seconds", which the
+  // first draft of this claimed (review). The member can press it
+  // again, and while it waits it
+  // holds locks that make everything else on the project slower, which
+  // is the opposite of what an emergency control should do. The OFF
+  // direction gets no longer allowance than ON for the same reason.
+  //
+  // THE BUDGET IS DERIVED, NOT PICKED — see PORTAL_LOCK_WAIT_MS above
+  // for why the two numbers are related rather than chosen separately.
+  //
+  // AND THE FAN-OUT ITSELF GOT FASTER in the same slice (migration
+  // 20260920190000): two of its ten legs — work_item_activity, the
+  // fastest-growing table in the product, and service — had NO index
+  // the `project_id` predicate could use, so each scanned the tenant's
+  // whole history of that table. A leg that scans is a leg that holds
+  // its locks longer, so the widest window for this contention was one
+  // this function was opening itself.
+  //
+  // Safe to re-run on either shape because Postgres has already rolled
+  // the attempt back — the re-run redoes the permission check, the
+  // scope check and the `changed` read from scratch, so the audit row
+  // can never describe a transition that did not happen.
+  try {
+    return await retryOnContention(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "project:edit");
+      const p = await loadInScope(tx, ctx.actor, projectId);
+      if (p.portalEnabled === enabled) return { changed: false };
+      await tx.project.update({ where: { id: projectId }, data: { portalEnabled: enabled } });
+      await record(tx, {
+        action: enabled ? "project.portal_enabled" : "project.portal_disabled",
+        targetType: "Project",
+        targetId: projectId,
+      });
+      return { changed: true };
+    }, { timeoutMs: PORTAL_TX_MS, lockTimeoutMs: PORTAL_LOCK_WAIT_MS }));
+  } catch (e) {
+    // BOTH shapes `retryOnContention` retried, not just the new one
+    // (review): a deadlock that survives three attempts means exactly
+    // what a spent lock timeout means — nothing was written, try again
+    // — and letting it through raw put a 500 on the emergency control.
+    // The detail never reaches the member (`messageForError` renders
+    // `t(e.code)`); it is the breadcrumb that says WHICH shape spent
+    // its attempts, for whoever reads the server log.
+    if (isLockTimeout(e)) fail("PORTAL_SWITCH_BUSY", "lock timeout");
+    if (isDeadlock(e)) fail("PORTAL_SWITCH_BUSY", "deadlock");
+    throw e;
+  }
 }
 
 /** project:edit (project:manage_portal in Phase 3) — CONTACT_PRIMARY hours widget mode. */

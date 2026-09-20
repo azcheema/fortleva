@@ -876,6 +876,7 @@ model Service {
   @@unique([tenantId, id]) // composite-FK target (InvoiceLine.serviceId)
   @@index([tenantId, clientId, status])
   @@index([tenantId, renewsAt])
+  @@index([tenantId, projectId]) // portal fan-out + the FK — 20260920190000
   @@map("service")
 }
 
@@ -1346,6 +1347,9 @@ model WorkItemActivity {
   // The panel's keyset page (slice 8) — 20260915120000.
   @@index([tenantId, workItemId, id])
   @@index([tenantId, clientId, visibility])
+  // The portal fan-out's leg over this table, and its unindexed FK —
+  // 20260920190000. Without it the only usable prefix is tenant_id.
+  @@index([tenantId, projectId])
   @@map("work_item_activity")
 }
 

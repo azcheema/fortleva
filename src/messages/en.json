@@ -978,6 +978,7 @@
     "CLIENT_MISMATCH": "The project does not belong to that client.",
     "INVALID_INPUT": "Invalid input.",
     "APPROVAL_REQUIRED": "Only an approver can move a task into this state.",
+    "PORTAL_SWITCH_BUSY": "Another change got in the way, so the portal switch could not go through. Nothing was changed — try again in a moment.",
     "HAS_VISIBLE_CHILDREN": "This task still has subtasks, comments or files the client can see. Make those private first, then the task.",
     "PARENT_NOT_VISIBLE": "Its parent task is private to your team, so this one can’t be shown to the client. Share the parent first.",
     "CANNOT_NEST": "A subtask can’t have subtasks of its own.",

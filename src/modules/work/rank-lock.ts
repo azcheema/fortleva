@@ -61,15 +61,24 @@ import { rankBetween } from "@/lib/rank";
  *     on `milestone_rank:` and the other eight tables have no queue at
  *     all. And the cost falls in the worst possible place. Turning a
  *     project's portal OFF is the emergency "stop showing this client
- *     our data" switch, and inside `withTenant`'s 5 s interactive budget
- *     an unbounded wait on a queue a bulk edit is holding turns that
- *     switch into a P2028 failure. A control that must work when it is
- *     needed does not get to wait on a board drag. It takes a deadlock
- *     RETRY instead (`src/projects/service.ts`), which covers all ten
- *     legs and costs nothing when there is no contention. NOT a full
- *     answer even so: a bulk edit holding `FOR NO KEY UPDATE` makes the
- *     fan-out BLOCK rather than cycle, and that ends as a P2028 timeout
- *     which no retry here matches (PLAN §0).
+ *     our data" switch, and an unbounded wait on a queue a bulk edit is
+ *     holding turns that switch into a timeout. A control that must
+ *     work when it is needed does not get to wait on a board drag. It
+ *     takes a RETRY instead (`src/projects/service.ts`), which covers
+ *     all ten legs and costs nothing when there is no contention.
+ *     Slice 43 (2026-09-20) finished the job the deadlock retry could
+ *     not: a bulk edit holding `FOR NO KEY UPDATE` makes the fan-out
+ *     BLOCK rather than cycle, so there is no 40P01 to match and no
+ *     retry here ever applied. THIS LIST SAID THAT WAIT ENDED AT
+ *     `withTenant`'s 5 s budget AS A P2028, AND THAT WAS WRONG —
+ *     measured in `portal-contention.dbtest.ts`, a blocked fan-out with
+ *     a 3 s budget was still waiting past 30 s, because Prisma's
+ *     transaction timeout does not reach into a statement the database
+ *     has parked. The switch now passes `lockTimeoutMs`, so the wait
+ *     ends as a 55P03 `retryOnContention` retries and, if every attempt
+ *     is spent, the member is told (PORTAL_SWITCH_BUSY) instead of
+ *     holding this project's locks until something upstream gives up.
+ *     Still a cure and not a prevention: the cycle below is unchanged.
  *   • copyWeek — each time_entry's foreign key takes FOR KEY SHARE on
  *     its item, in the plan's DATE order, and a rank UPDATE is a key
  *     update. It cannot join the queue as cheaply: one copy can span

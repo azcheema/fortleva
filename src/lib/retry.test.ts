@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { retryOnDeadlock } from "./retry";
+import { retryOnContention, retryOnDeadlock } from "./retry";
 
 /**
  * The deadlock retry. Small enough to read in one go, and worth pinning
@@ -56,6 +56,84 @@ describe("retryOnDeadlock", () => {
       let calls = 0;
       await expect(
         retryOnDeadlock(async () => {
+          calls += 1;
+          throw error;
+        }),
+      ).rejects.toBe(error);
+      expect(calls, `${JSON.stringify(error)} was retried`).toBe(1);
+    }
+  });
+});
+
+/**
+ * The contention retry. It exists because a lock timeout is not a
+ * deadlock, and the pins below are the two halves of that: it must take
+ * the shape `retryOnDeadlock` cannot, and it must still refuse
+ * everything neither of them should ever re-run.
+ */
+const lockTimeout = {
+  code: "P2039",
+  message: "Database error. Code: `55P03`. Message: `canceling statement due to lock timeout`",
+};
+
+describe("retryOnContention", () => {
+  it("retries a LOCK TIMEOUT, which retryOnDeadlock does not", async () => {
+    let calls = 0;
+    await expect(
+      retryOnContention(async () => {
+        calls += 1;
+        throw lockTimeout;
+      }),
+    ).rejects.toBe(lockTimeout);
+    expect(calls).toBe(3);
+
+    // The separation is the point: the same error through the sibling
+    // is a single attempt, because a caller that never asked for a
+    // bound can never see this shape.
+    let deadlockCalls = 0;
+    await expect(
+      retryOnDeadlock(async () => {
+        deadlockCalls += 1;
+        throw lockTimeout;
+      }),
+    ).rejects.toBe(lockTimeout);
+    expect(deadlockCalls).toBe(1);
+  });
+
+  it("retries a DEADLOCK too — it is a superset, not a replacement", async () => {
+    let calls = 0;
+    await expect(
+      retryOnContention(async () => {
+        calls += 1;
+        throw deadlock;
+      }),
+    ).rejects.toBe(deadlock);
+    expect(calls).toBe(3);
+  });
+
+  it("gives the work back as soon as it succeeds, and does not keep trying", async () => {
+    let calls = 0;
+    const value = await retryOnContention(async () => {
+      calls += 1;
+      if (calls < 2) throw lockTimeout;
+      return "through";
+    });
+    expect(value).toBe("through");
+    expect(calls).toBe(2);
+  });
+
+  it("refuses everything a re-run cannot fix", async () => {
+    for (const error of [
+      { code: "P2002" },
+      { code: "P2025" },
+      new Error("FORBIDDEN"),
+      // The transaction timeout: a re-run of a unit of work that was
+      // simply too slow is three times the wait and the same ending.
+      { code: "P2028", message: "expired transaction" },
+    ]) {
+      let calls = 0;
+      await expect(
+        retryOnContention(async () => {
           calls += 1;
           throw error;
         }),

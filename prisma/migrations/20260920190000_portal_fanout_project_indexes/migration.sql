@@ -1,0 +1,74 @@
+-- The portal switch's fan-out had one leg that could not use an index,
+-- and it was the leg over the biggest table in the product (slice 43,
+-- 2026-09-20).
+--
+-- `project_portal_enabled_fanout` turns one `project` row UPDATE into
+-- TEN mass UPDATEs, each `WHERE tenant_id = … AND project_id = …`.
+-- Eight of the ten tables carry an index whose PREFIX is exactly that
+-- pair — milestone/project_version/project_time_summary through their
+-- (tenant_id, project_id, …) uniques, document through
+-- (tenant_id, project_id, kind), work_item through
+-- (tenant_id, project_id, number), comment through
+-- (tenant_id, project_id, created_at), time_report through
+-- (tenant_id, project_id, period_start), and search_index through
+-- search_index_project_updated. (That is all eight; an earlier draft of
+-- this comment named seven and claimed eight — review.) TWO DO NOT:
+--
+--   • work_item_activity — indexed on (tenant_id, work_item_id, …)
+--     twice and (tenant_id, client_id, visibility). None mentions
+--     project_id, so the best the planner has is the tenant_id prefix
+--     of the client_id index: a scan of the TENANT'S WHOLE ACTIVITY
+--     HISTORY, every project, to find one project's rows. This is the
+--     table that grows fastest in the product — a row per routine field
+--     edit per item, kept forever (AGENTS.md's routine-edit carve-out) —
+--     so the cost of the safety control grows with total usage rather
+--     than with the project being switched.
+--   • service — indexed on (tenant_id, client_id, status) and
+--     (tenant_id, renews_at). Same shape, far fewer rows; it is here
+--     because it is the same defect and the fix is one line.
+--
+-- WHY IT IS WORTH A MIGRATION RATHER THAN A BIGGER TIMEOUT. Turning a
+-- project's portal OFF is this product's emergency "stop showing this
+-- client our data" control (SECURITY.md; the fan-out is what the portal
+-- gate reads). A slow fan-out is not merely slow: it holds row locks on
+-- every table it has already written while it scans the next one, so it
+-- is also, for that whole window, a blocker for ordinary work on the
+-- project — and the longer it runs the wider the window in which a
+-- concurrent writer can make it wait. The budget and the lock wait are
+-- dealt with in `setPortalEnabled` and `withTenant`; this removes the
+-- reason the window was ever wide.
+--
+-- BOTH COLUMNS ARE ALSO UNINDEXED FOREIGN KEYS — Postgres does not
+-- index the referencing side, and `work_item_activity`'s FK is ON
+-- DELETE CASCADE while `service`'s is ON DELETE RESTRICT, so a `project`
+-- row delete scans both tables in full. Stated as a second, smaller
+-- benefit and NOT as the justification: nothing in the application ever
+-- deletes a project — `archiveProject` is the only path `project:delete`
+-- has — so today this is reached only by tenant deletion and test
+-- teardown.
+--
+-- THE EIGHT AND THE TWO ARE MEASURED, not read off schema.prisma: the
+-- live `pg_index` catalogue was walked for all ten legs, asking which
+-- indexes lead with exactly (tenant_id, project_id). Eight answered
+-- with an index that predates this migration — two of them through
+-- UNIQUE constraints rather than `@@index`, and `search_index` through
+-- hand-written DDL that Prisma cannot see at all, which is why reading
+-- the model file alone would not have settled it. These two answered
+-- with nothing.
+--
+-- NOT `CONCURRENTLY`, and worth saying out loud in a migration whose
+-- whole subject is lock windows: a plain CREATE INDEX holds SHARE on
+-- work_item_activity, blocking writes to it for the length of the
+-- build. `CONCURRENTLY` cannot be used — Prisma runs each migration
+-- inside a transaction and Postgres forbids it there — which is why no
+-- migration in this repo uses it. Harmless now (no production data);
+-- a deploy-window consideration once that table is large.
+--
+-- Names are Prisma's defaults for the matching `@@index` in
+-- schema.prisma, so the model and the database do not drift. DDL only,
+-- no DML: no neon-smoke run owed.
+CREATE INDEX "work_item_activity_tenant_id_project_id_idx"
+  ON "work_item_activity"("tenant_id", "project_id");
+
+CREATE INDEX "service_tenant_id_project_id_idx"
+  ON "service"("tenant_id", "project_id");

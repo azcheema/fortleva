@@ -978,6 +978,7 @@
     "CLIENT_MISMATCH": "Projektet tillhör inte den kunden.",
     "INVALID_INPUT": "Ogiltig inmatning.",
     "APPROVAL_REQUIRED": "Endast en person med godkännanderätt kan flytta en uppgift till den här statusen.",
+    "PORTAL_SWITCH_BUSY": "En annan ändring kom emellan, så portalinställningen kunde inte genomföras. Ingenting ändrades — försök igen om en stund.",
     "HAS_VISIBLE_CHILDREN": "Uppgiften har fortfarande deluppgifter, kommentarer eller filer som kunden kan se. Gör dem privata först, sedan uppgiften.",
     "PARENT_NOT_VISIBLE": "Den överordnade uppgiften är privat för teamet, så den här kan inte visas för kunden. Dela den överordnade uppgiften först.",
     "CANNOT_NEST": "En deluppgift kan inte ha egna deluppgifter.",

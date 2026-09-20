@@ -43,11 +43,51 @@ const txOptions = (timeoutMs?: number): { timeout: number; maxWait: number } => 
   maxWait: Math.round(BASE_TX_MAX_WAIT_MS * LINK_FACTOR),
 });
 
+/**
+ * `lockTimeoutMs` — how long a statement in this transaction may WAIT
+ * for a row lock before Postgres cancels it (SQLSTATE 55P03). Distinct
+ * from `timeoutMs`, and NOT covered by it — measured, because assuming
+ * otherwise is what left the portal switch exposed. `timeoutMs` becomes
+ * Prisma's interactive-transaction timeout, which is enforced around
+ * the queries the client ISSUES, not inside one the DATABASE has parked
+ * on a lock: a blocked statement under a 3 s transaction budget was
+ * still waiting past 30 s (`src/projects/portal-contention.dbtest.ts`).
+ * So a blocked writer that does not ask for this has no reliable end to
+ * its wait at all, while holding every lock it had already taken; with
+ * it, contention ends at a known bound, in an error its caller can tell
+ * apart and retry.
+ *
+ * IT IS EMITTED ONLY WHEN ASKED FOR, and that is deliberate rather than
+ * tidy (review). The first cut sent `'0'` for every caller on the
+ * grounds that 0 is Postgres's own default, which is true of this
+ * datasource today and was checked — but it would have PINNED the
+ * unbounded case into the one seam all tenant work passes through. A
+ * later `ALTER ROLE app_runtime SET lock_timeout = '10s'`, the textbook
+ * hardening against exactly the hang this exists to end, would have
+ * been silently reset to "wait forever" by the first statement of every
+ * transaction in the product, and no test could have seen it: with the
+ * server default at 0 the pin is invisible. A caller that says nothing
+ * now gets whatever the operator configured.
+ *
+ * It scales by the same LINK FACTOR as the rest: the wait needed
+ * depends on how long the HOLDER takes, and the holder is as far from
+ * the database as we are. Clamped to at least 1 ms, because a rounded-
+ * down 0 does not mean "no wait" to Postgres — it means "wait forever",
+ * so the arithmetic must not be able to reach it.
+ *
+ * NOTE FOR FUTURE CALLERS: `lock_timeout` covers ADVISORY locks too. A
+ * caller that passes this AND takes `lockProjectRanks` or the
+ * `milestone_rank:` queue bounds its wait in that queue as well — and
+ * that queue is designed to wait.
+ */
+const lockTimeoutSetting = (lockTimeoutMs: number): string =>
+  String(Math.max(1, Math.round(lockTimeoutMs * LINK_FACTOR)));
+
 export async function withTenant<T>(
   tenantId: string,
   principal: Principal,
   fn: (tx: TenantDb) => Promise<T>,
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; lockTimeoutMs?: number },
 ): Promise<T> {
   if (!isUuid(tenantId)) {
     throw new Error("withTenant: tenantId is not a UUID");
@@ -71,6 +111,14 @@ export async function withTenant<T>(
                  set_config('app.principal', ${principal.type}, true),
                  set_config('app.client_id', ${clientId}, true),
                  set_config('app.principal_id', ${principalId}, true)`;
+        // Its own statement, and only for a caller that asked: see
+        // lockTimeoutSetting. One extra round trip for the one caller
+        // that wants a bound, and a byte-identical preamble for every
+        // caller that does not.
+        if (opts?.lockTimeoutMs !== undefined) {
+          await tx.$queryRaw`
+            SELECT set_config('lock_timeout', ${lockTimeoutSetting(opts.lockTimeoutMs)}, true)`;
+        }
         return fn(tx as unknown as TenantDb);
       },
       txOptions(opts?.timeoutMs),

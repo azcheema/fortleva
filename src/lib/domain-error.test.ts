@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isDeadlock, isUniqueViolation } from "./domain-error";
+import { isDeadlock, isLockTimeout, isUniqueViolation } from "./domain-error";
 
 /**
  * The two Prisma duck tests. Both exist because of the one-seam rule —
@@ -85,5 +85,64 @@ describe("isDeadlock", () => {
   it("reads the words as well as the code, since the driver gives both", () => {
     expect(isDeadlock({ code: "P2039", message: "Database error: deadlock detected" })).toBe(true);
     expect(isDeadlock({ code: "P2010", message: "Code: `40P01`" })).toBe(true);
+  });
+});
+
+/**
+ * `isLockTimeout` — the sibling, pinned for the same reason and against
+ * the same risk. The P2039 fixture is the REAL error the installed
+ * runtime produced: `portal-contention.dbtest.ts` provoked a genuine
+ * blocked fan-out and a mutation check with the code set emptied
+ * printed it verbatim. P2010 is carried over from `isDeadlock` by
+ * symmetry and is marked unproven in the source.
+ *
+ * The dangerous failure here is a FALSE POSITIVE: a wrapper code that
+ * is not 55P03 being read as contention would be retried three times
+ * and then reported to the member as "try again" — hiding a real
+ * error behind a reassuring message on a safety-critical control.
+ * Hence the refusals below, one per way in.
+ */
+const lock2039 = {
+  code: "P2039",
+  message: "Database error. Code: `55P03`. Message: `canceling statement due to lock timeout`",
+};
+
+describe("isLockTimeout", () => {
+  it("matches a lock timeout in a MODEL call (P2039) — the measured shape", () => {
+    expect(isLockTimeout(lock2039)).toBe(true);
+  });
+
+  it("matches the raw-query wrapper too, and reads words or code", () => {
+    expect(isLockTimeout({ code: "P2010", message: "Raw query failed. Code: `55P03`." })).toBe(true);
+    expect(isLockTimeout({ code: "P2039", message: "canceling statement due to lock timeout" })).toBe(true);
+  });
+
+  it("refuses a DEADLOCK — the two shapes must not be confused", () => {
+    // They share both wrapper codes, so only the SQLSTATE separates
+    // them. A deadlock read as a lock timeout would be translated to
+    // PORTAL_SWITCH_BUSY by the wrong branch, and vice versa.
+    expect(isLockTimeout({ code: "P2039", message: "Code: `40P01`. Message: `deadlock detected`" })).toBe(false);
+    expect(isDeadlock(lock2039)).toBe(false);
+  });
+
+  it("refuses a generic wrapper that is NOT a lock timeout", () => {
+    expect(isLockTimeout({ code: "P2010", message: "Raw query failed. Code: `23505`." })).toBe(false);
+  });
+
+  it("refuses P2034 and P2028, which are neither", () => {
+    // P2034 is Prisma's own deadlock/write-conflict code, so it belongs
+    // to the sibling. P2028 is the transaction timeout — the shape this
+    // slice exists to STOP being the answer, and carrying a 55P03 in
+    // its message must not make it one.
+    expect(isLockTimeout({ code: "P2034" })).toBe(false);
+    expect(isLockTimeout({ code: "P2028", message: "Code: `55P03`" })).toBe(false);
+  });
+
+  it("survives anything that is not an error object", () => {
+    expect(isLockTimeout(null)).toBe(false);
+    expect(isLockTimeout(undefined)).toBe(false);
+    expect(isLockTimeout("lock timeout")).toBe(false);
+    expect(isLockTimeout({ code: 2039 })).toBe(false);
+    expect(isLockTimeout({})).toBe(false);
   });
 });
