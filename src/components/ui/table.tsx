@@ -115,9 +115,12 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
  * reaches `lower`, and a 1440px one with it open (1151px) or a 1280px one
  * with it collapsed (1167px) reaches `lowest`. Since the actions column is
  * PINNED (below), a rung no longer has to fit the widest content to keep a
- * row's verbs in view — a Swedish backlog row is ~21px wider than `lowest`'s
- * narrowest box and simply scrolls under the pinned column there — so the
- * rungs trade a little scroll at their very edge for more columns.
+ * row's verbs in view — a Swedish backlog row is 29px wider than `lowest`'s
+ * narrowest box and simply scrolls under the pinned column there
+ * (measured on CI run 35443979863 by the Swedish width walk, which
+ * ratchets it as the trade it is; the ~21px this line carried before
+ * was a hand probe's arithmetic and was low) — so the rungs trade a
+ * little scroll at their very edge for more columns.
  * A `form`-width page never gives a table more than 670px, and a
  * `default`-width one caps it at 1030px, so a column that must render there
  * sits no higher than `medium` or `lower` respectively.

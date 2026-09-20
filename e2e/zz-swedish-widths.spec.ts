@@ -115,17 +115,17 @@ const KNOWN_OVERFLOW_SV: Record<string, number> = {
   "project-item-peek@1408": 29,
   "project-item-peek@1410": 27,
 
-  // NOT TRADES — the same four documents tables `KNOWN_OVERFLOW` already
-  // calls bugs in English, where they sit at 6/6/6/4px on a phone. In
-  // Swedish they are 14/14/14/7 — the three `Filer` tables more than
-  // DOUBLE, `project-files` 1.75x — which is the single most useful
-  // thing this walk has said so far, and a set of numbers that existed
-  // nowhere before it. Listed rather than fixed because fixing them is a
-  // slice; ratcheted so they cannot get worse first.
-  "files@390": 14,
-  "client-files@390": 14,
-  "error-banner@390": 14,
-  "project-files@390": 7,
+  // THE FOUR DOCUMENTS TABLES USED TO BE HERE at 14/14/14/7 — the
+  // numbers this walk was built to find, and the ones that made them
+  // worth a slice: they had sat at 6/6/6/4 in English since slice 27,
+  // small enough to look like rounding. Swedish more than doubled the
+  // three `Filer` tables and that is what showed the cause. FIXED
+  // 2026-09-20, the same day they were first measured: the name cell's
+  // per-viewport `max-w-28 sm:max-w-64` was a FLOOR in Chromium, so the
+  // column could not go below 112px while "Privat för teamet" needed
+  // 178. Deleted here and from `KNOWN_OVERFLOW` in the same commit,
+  // which is the rule — a ratchet that keeps a fixed number is a
+  // licence to regress back to it.
 };
 
 /** Asserted from the first run: the pin is language-blind, so it must hold everywhere. */

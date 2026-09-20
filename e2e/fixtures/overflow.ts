@@ -25,8 +25,16 @@
  * flat allowance is worth least exactly where this ratchet is worth most.
  * At the 8px it started as, `project-files@390` could have TRIPLED (4 →
  * 12) and `files@390` more than doubled before the walk said a word; at
- * 4px the same key could still silently double. Every key left is a small
- * one, and bounding a small regression is their entire purpose.
+ * 4px the same key could still silently double.
+ *
+ * THOSE TWO KEYS ARE GONE (fixed 2026-09-20) and so is every other
+ * English one, which changes what this function is currently FOR without
+ * changing what it should be. The keys left are the Swedish backlog
+ * trade at 27-29px, where `DRIFT_MAX_PX` caps the slack flat at 4 and
+ * the proportional part never comes into play — so today this reads as a
+ * flat tolerance. It is kept proportional for the small keys that come
+ * back, which is the shape the argument above is about and not a
+ * property of whichever keys happen to be listed this week.
  *
  * Three numbers, and the shape matters more than any of them. `FRACTION`
  * is what makes a big number's slack big and a small number's small.

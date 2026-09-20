@@ -66,12 +66,26 @@ mkdirSync(SHOTS, { recursive: true });
  * visual-only run finds them empty. Numbers below are CI's. Re-calibrate
  * from a CI log, never from a local visual-only run.
  *
- * WHAT THEY ARE:
+ * IT IS EMPTY, as of 2026-09-20, and an empty map is the strongest
+ * thing it can say: every table in the product fits its box at every
+ * width this walk measures, in English. Nothing is suppressed here and
+ * nothing needs to be. The machinery stays because the NEXT entry is
+ * what it exists for — and because emptiness is asserted, not assumed:
+ * an unlisted key is held to 0, so the walk goes red the day one
+ * appears rather than quietly growing a number.
+ *
+ * WHAT THEY WERE:
  *   • `files`, `client-files`, `error-banner`, `project-files` — 4-6px,
  *     named rather than hidden under a tolerance wide enough to blind
- *     every other stop.
+ *     every other stop. FIXED 2026-09-20, by the Swedish walk finding
+ *     them at 14/14/14/7 and making them worth a slice: the documents
+ *     table's name cell carried a per-viewport `max-w-28 sm:max-w-64`,
+ *     and a max-width on a table CELL is a FLOOR in Chromium, so the
+ *     column sat at 112px however little room was left. It takes the
+ *     containment idiom now, and every other column an explicit width
+ *     so the name is the one that absorbs slack.
  *
- * WHAT THEY WERE — the twelve `projects` / `clients` / `clients-archived`
+ * AND BEFORE THEM — the twelve `projects` / `clients` / `clients-archived`
  * keys this table carried on 2026-09-18 are GONE, fixed rather than
  * ratcheted (slice 28), and both causes were the ones PLAN §0 slice-17
  * owed (f) already named, neither a column-priority mistake:
@@ -94,18 +108,17 @@ mkdirSync(SHOTS, { recursive: true });
  * settled trade — since the actions column is pinned, a rung may carry a
  * little scroll at its very edge in exchange for more columns — so a
  * future entry may be that trade rather than a bug, and must be labelled
- * as such. All four keys today are bugs. The harness is ENGLISH and cannot
- * see the trade at all: the backlog is 0 here and ~30px over at the
- * `lowest` rung's narrow edge in Swedish (measured with a throwaway probe
- * on 2026-09-18; `table.tsx` and UI.md §10.12 record ~21px for that
- * edge). The owed Swedish walk will add trades here.
+ * as such. The harness is ENGLISH and cannot
+ * see the trade at all: the backlog is 0 here and 29px over at the
+ * `lowest` rung's narrow edge in Swedish. THE TRADES DO NOT BELONG IN
+ * THIS MAP and never will — `zz-swedish-widths.spec.ts` shipped on
+ * 2026-09-19 and owns them in `KNOWN_OVERFLOW_SV`. A key here is
+ * language-blind, so copying a Swedish number in would license 29px of
+ * scroll on a stop this walk measures at 0. (An earlier draft of this
+ * comment said the owed Swedish walk "will add trades here", which was
+ * the wrong file even before that walk existed.)
  */
-const KNOWN_OVERFLOW: Record<string, number> = {
-  "files@390": 6,
-  "client-files@390": 6,
-  "error-banner@390": 6,
-  "project-files@390": 4,
-};
+const KNOWN_OVERFLOW: Record<string, number> = {};
 
 type Device = keyof typeof VIEWPORTS;
 type Theme = "light" | "dark";
@@ -448,10 +461,17 @@ test("the overflow ratchet's slack is proportional, and can only tighten", () =>
   expect(driftFor(0)).toBe(0);
   expect(driftFor(-1)).toBe(0);
 
-  // Every key on the table today, spelled out rather than derived — so a
+  // The sizes the two maps carry, spelled out rather than derived — so a
   // constant nudged by a future session fails with the number in hand.
+  // `KNOWN_OVERFLOW` is empty as of 2026-09-20, so these are the Swedish
+  // ratchet's (27 and 29, where `DRIFT_MAX_PX` caps the slack flat) plus
+  // the 4 and 6 this walk carried until that day — kept because they are
+  // the SMALL sizes the proportional half exists for, and the ones that
+  // come back first.
   expect(driftFor(4)).toBe(1);
   expect(driftFor(6)).toBe(2);
+  expect(driftFor(27)).toBe(4);
+  expect(driftFor(29)).toBe(4);
 
   const sizes = Array.from({ length: 500 }, (_, i) => i + 1);
 

@@ -59,15 +59,39 @@ export async function DocumentsTable({
         <Table>
           <TableHeader>
             <TableRow>
+              {/* EVERY COLUMN BUT THE NAME CARRIES ITS OWN WIDTH, which is
+                  the other half of containing the name cell below and was
+                  learnt the same day. Chromium hands a table's spare width
+                  to the columns WITHOUT a specified one, in proportion to
+                  their max-content — and a contained cell's max-content is
+                  zero. So containment alone inverted the intent: at a
+                  1134px box the filename took 166px while the visibility
+                  badge, which has two possible values and needs neither,
+                  took 370. These four widths are UNDER each column's own
+                  min-content (the eyebrow face is 11px, so 18ch is ~99px
+                  against a visibility column that cannot go below ~178),
+                  so they never shrink anything and the safety-critical
+                  badge cannot be squeezed by them — they only stop those
+                  columns claiming slack, leaving the name as the sole
+                  absorber. Measured: 101px of name at a 356px box and 622
+                  at 1134, where containment alone gave it 166.
+                  NOT a pattern borrowed from `/clients`, which declares
+                  five bare heads and deliberately lets the slack SPREAD
+                  across all of them — that works there because its columns
+                  are evenly sized. It cannot work here: one column holds a
+                  two-value badge with a ~178px min-content and would take
+                  the lot. `/projects` reaches the same end by a third
+                  road again (`table-fixed`). Three tables, three answers,
+                  each measured. */}
               <TableHead>{t("columns.name")}</TableHead>
-              <TableHead>{t("columns.visibility")}</TableHead>
-              <TableHead priority="medium" className="text-right">
+              <TableHead className="w-[18ch]">{t("columns.visibility")}</TableHead>
+              <TableHead priority="medium" className="w-[10ch] text-right">
                 {t("columns.size")}
               </TableHead>
-              <TableHead priority="low" className="text-right">
+              <TableHead priority="low" className="w-[10ch] text-right">
                 {t("columns.versions")}
               </TableHead>
-              <TableHead priority="low">{t("columns.updated")}</TableHead>
+              <TableHead priority="low" className="w-[14ch]">{t("columns.updated")}</TableHead>
               <TableHead pinned className="w-0 text-right">
                 <span className="sr-only">{tCommon("actions")}</span>
               </TableHead>
@@ -83,12 +107,60 @@ export async function DocumentsTable({
                   data-visibility={d.visibility}
                   className={visibilityRowCue(d.visibility)}
                 >
-                  {/* The cap is per-viewport, not absolute: at 390px an
-                      untruncated filename pushed the download and the ⋯
-                      clean off the screen, which is the one thing a row
-                      of files exists to offer. */}
-                  <TableCell className="max-w-28 sm:max-w-64">
-                    <span className="flex min-w-0 items-center gap-2">
+                  {/* THE NAME COLUMN IS THE ONE THAT YIELDS, and since
+                      2026-09-20 it yields by CONTAINMENT rather than by a
+                      per-viewport cap. `max-w-28 sm:max-w-64` was here to
+                      stop an untruncated filename pushing the download and
+                      the ⋯ off a 390px screen — the one thing a row of
+                      files exists to offer — and it did that, but a
+                      max-width on a table CELL is a FLOOR in Chromium
+                      (slice 28): it clamps the column's MIN-content
+                      contribution as well as its max-content one, so this
+                      column could not go below 112px however little room
+                      was left. Measured LOCALLY at a 356px box: name 112 +
+                      visibility 178 + the pinned actions 76 = 366, an 11px
+                      scroll. CI measured 14px in Swedish and 6 in English,
+                      because the runner renders these strings 3-4px wider
+                      — the same platform gap every number in this repo
+                      carries, and the reason the ratchets hold CI's.
+                      VISIBILITY IS NOT THE ONE TO CUT even though it is
+                      the widest: it is safety-critical (UI.md §10.4), it
+                      carries all five channels of the badge, and a phone
+                      that truncated "Privat för teamet" or dropped the
+                      column to a rung would be the exact failure this
+                      product cannot have. So the name column takes the
+                      remainder instead — 101px at a 356px box, where the
+                      cap gave it 112 and cost the table a scroll — and
+                      truncates inside it, which is what the cap was
+                      approximating all along. UI.md §10.12 listed these
+                      viewport-scoped caps as an ACCEPTED EXCEPTION; this
+                      is one of them retired.
+                      FIVE REM, and it never binds on any of the three LIST
+                      pages: the remainder is 101px at the narrowest box
+                      locally and ~98 on CI, so the floor keeps ~18px of
+                      headroom there and exists only to stop a filename
+                      vanishing if the other two ever grow — an icon and
+                      about five characters, which is identity and not much
+                      else.
+                      THE FIFTH CALL SITE IS NOT FIXED BY THIS, and saying
+                      so is the point (review). The item panel renders this
+                      same table inside a peek capped at `max-w-[85vw]`,
+                      which at 390px is a box near 298 — narrower than any
+                      rung, and narrower than this table's own minimum of
+                      80 + 178 + 76 = 334. It cannot fit: the badge is the
+                      one thing that must not yield, so what is left there
+                      is a scroll UNDER the pinned actions column, which is
+                      exactly the trade the pin exists to make (UI.md
+                      §10.12) — the verbs stay reachable however far it
+                      goes. This change improves it (366 → 334) without
+                      closing it. Nothing measures it either: the walk's
+                      `project-item-peek` stop shows the EMPTY attachments
+                      state, because the seed attaches no document to a
+                      work item. Seeding one would put the peek's
+                      attachments under the ratchet for the first time —
+                      worth a slice, not worth smuggling into this one. */}
+                  <TableCell className="min-w-20">
+                    <span className="flex w-full min-w-0 items-center gap-2 contain-inline-size">
                       <FileIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate font-medium" title={d.name}>
                         {d.name}
