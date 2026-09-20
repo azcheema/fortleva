@@ -508,6 +508,7 @@
     "title": "{tenant} — medlemmar",
     "description": "Vilka som finns i arbetsytan, och vad var och en får göra.",
     "manageRoles": "Hantera roller →",
+    "noPermission": "Du har inte behörighet att se medlemslistan.",
     "columns": {
       "member": "Medlem",
       "email": "E-post",

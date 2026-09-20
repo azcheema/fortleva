@@ -4,8 +4,11 @@ import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
 import { effectivePermissions, isAuthorized } from "@/authz/authorize";
+import { AuthzError } from "@/authz/errors";
+import { requireAccess } from "@/entitlements/resolver";
 import {
   DataTable,
+  EmptyState,
   MemberAvatar,
   Page,
   PageHeader,
@@ -54,6 +57,28 @@ export default async function MembersPage() {
     membership.tenantId,
     { type: "member", id: membership.memberId },
     async (tx) => {
+      // THE PAGE'S OWN GATE, and it was missing until 2026-09-20.
+      // `member:view` existed, the rail honoured it (`nav.ts`), and this
+      // page did not — it ran on `requireTenantContext()` alone, so a
+      // member of a custom role WITHOUT the permission got the full
+      // roster and every pending invite's email by typing the URL. The
+      // four seeded templates all carry `member:view`, which is why it
+      // went unnoticed: only a hand-built role could reach it, and only
+      // within its own tenant (RLS never wavered). Found by the
+      // enforcement audit in `src/authz/enforcement.test.ts` — this was
+      // the ONE code in the catalogue whose only occurrence anywhere was
+      // a nav entry that hides a link, which is the exact false negative
+      // that test's docstring warns a string match cannot see.
+      //
+      // Shaped like `/settings/roles`: the read is refused, the page
+      // catches and renders the forbidden state rather than 404ing, so a
+      // member who lands here is told why.
+      try {
+        await requireAccess(tx, membership.tenantId, actor, "member:view");
+      } catch (e) {
+        if (!(e instanceof AuthzError)) throw e;
+        return null;
+      }
       const [members, invites, roles, canInvite, canRemove, held] = await Promise.all([
         tx.member.findMany({
           include: {
@@ -85,6 +110,23 @@ export default async function MembersPage() {
       };
     },
   );
+
+  if (!data) {
+    return (
+      <Page width="wide">
+        <PageHeader title={t("heading")} />
+        <div className="mt-6">
+          <SectionCard>
+            <EmptyState
+              variant="forbidden"
+              title={tCommon("forbiddenTitle")}
+              body={t("noPermission")}
+            />
+          </SectionCard>
+        </div>
+      </Page>
+    );
+  }
 
   const roleOptions = data.roles.map((r) => ({ id: r.id, name: r.name }));
 
