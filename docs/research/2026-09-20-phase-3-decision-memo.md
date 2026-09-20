@@ -60,6 +60,8 @@ The pins mandate a forbidden-columns grep test and a "no INTERNAL fact to a Cont
 
 ### 2.3 `setPortalEnabled` becomes load-bearing, and it has a known failure
 
+**CLOSED BY SLICE 43 on 2026-09-20 — and the mechanism written below was WRONG, which is worth more than the fix.** Measured: an unbounded wait did not die at the 5 s budget as a P2028; it did not end at all. Prisma's interactive-transaction timeout is enforced around the queries the client issues, not inside one the database has parked on a lock, and `lock_timeout`/`statement_timeout` are both 0 on this datasource. So the switch HUNG until something upstream gave up. `setPortalEnabled` now passes `withTenant`'s `lockTimeoutMs`, retries the 55P03, and fails visibly with `PORTAL_SWITCH_BUSY`; two unindexed fan-out legs were also indexed. Nothing here is owed by the Phase 3 session — read PLAN §0's slice 43 entry for the residual. The original text follows, kept because the error is instructive:
+
 Slice 40 recorded this and Phase 3 promotes it from a footnote to a risk: turning a project's portal **off** is the emergency "stop showing this client our data" switch, and it can currently fail with **P2028** — the fan-out across ten tables blocks behind a bulk edit holding `FOR NO KEY UPDATE`, and dies on `withTenant`'s 5 s interactive budget. A deadlock retry landed; a *blocking* wait is not a deadlock and is not retried.
 
 Today nobody has a portal, so nobody can be hurt. **On the day Phase 3 ships, this is a safety control that can fail under load.** It wants a transaction budget sized for the fan-out and measured on real row counts, and it should land *before* the first real client logs in, not after.
@@ -100,7 +102,7 @@ The pins give scope, not sequence. This order front-loads the parts that can be 
 1. **View-as-Contact session model** — (1), (2) or (3) in §2.1. My recommendation: (1).
 2. **Split the brokered writes** out of `portal.ts` into their own file? My recommendation: yes.
 3. **Start order** — take §3 as written, or reorder. The only ordering I would defend strongly is that **2 comes before 3**.
-4. **`setPortalEnabled`'s transaction budget** — fix it as slice 4 above, or earlier as its own thing? My recommendation: slice 4, since nobody can be hurt until the portal exists.
+4. ~~**`setPortalEnabled`'s transaction budget** — fix it as slice 4 above, or earlier as its own thing?~~ **ANSWERED: earlier, as its own thing — done, slice 43, 2026-09-20 (§2.3).**
 5. **Model and effort.** Opus 5 at high throughout, and `/security-review` on **every** Phase 3 slice regardless of what the diff appears to touch — not only when it looks portal-shaped. The `/members` gap in slice 41 was found by a reviewer reading what a single grep hit actually was; that is the class of finding Phase 3 will produce most of.
 
 ---
