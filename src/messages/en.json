@@ -1270,7 +1270,50 @@
       "timeline": "Timeline",
       "files": "Files",
       "team": "Team",
-      "time": "Time"
+      "time": "Time",
+      "portal": "Portal"
+    },
+    "portal": {
+      "title": "Client portal",
+      "controls": "Access",
+      "calloutTitle": "This switch decides what the client can reach",
+      "hint": "Off means the client sees nothing from this project, even items marked “Client can see”. The switch fans out to every row in seconds; if it is busy, try again.",
+      "enabled": "Portal enabled for this project",
+      "on": "Portal enabled",
+      "off": "Portal disabled",
+      "hoursSharing": "Hours shown to the client",
+      "hoursSharingHint": "A summary only — never per member, never who did what.",
+      "hoursSharingWarning": "The client can see this project’s hours in the portal.",
+      "hoursModes": {
+        "NONE": "Nothing",
+        "HOURS": "Hours",
+        "BILLABLE_AMOUNT": "Hours and billable amount"
+      },
+      "preview": {
+        "title": "What the client sees",
+        "viewingAs": "Exactly what {name} ({profile}) sees — the portal’s own code, in your language.",
+        "noViewer": "Nobody at this client can sign in yet, so this is what the portal would show.",
+        "truncated": "Only the first {count} tasks are shown here."
+      },
+      "blocked": {
+        "title": "Standing in the way right now",
+        "MODULE_OFF": "A module the portal needs is switched off for your workspace.",
+        "PORTAL_OFF": "The portal is off for this project — the switch beside this panel.",
+        "PROJECT_ARCHIVED": "This project is archived, so its shared tasks stay hidden until it is restored.",
+        "NO_AUDIENCE": "No contact at this client has portal access yet.",
+        "NOTHING_SHARED": "Nothing on this project is marked “Client can see” yet — mark a task on the Backlog and it appears here."
+      },
+      "audience": {
+        "title": "Who can sign in",
+        "hint": "Contacts at this client with portal access.",
+        "count": "{count, plural, =1 {1 contact can sign in} other {# contacts can sign in}}",
+        "manage": "Manage contacts",
+        "empty": {
+          "title": "No one can sign in",
+          "body": "Give a contact at this client portal access, and what they see appears here."
+        }
+      },
+      "archivedHint": "Archived — you can still switch sharing off."
     },
     "overview": {
       "details": "Details",
@@ -1302,17 +1345,6 @@
         "BIWEEKLY": "Every two weeks",
         "MONTHLY": "Monthly"
       },
-      "portal": "Client portal",
-      "portalEnabled": "Portal enabled for this project",
-      "portalHint": "The portal itself arrives in Phase 3. This switch is already the gate: off means a client sees nothing from this project, even items marked \"Client can see\".",
-      "portalOn": "Portal enabled",
-      "portalOff": "Portal disabled",
-      "hoursSharing": "Hours shown to the client",
-      "hoursModes": {
-        "NONE": "Nothing",
-        "HOURS": "Hours",
-        "BILLABLE_AMOUNT": "Hours and billable amount"
-      },
       "archive": "Archive project",
       "archiveConfirm": "Archive this project?",
       "unarchive": "Restore project",
@@ -1321,9 +1353,6 @@
       "restoredToast": "Project restored",
       "client": "Client",
       "openProduction": "Open site",
-      "portalCalloutTitle": "This switch decides what the client can reach",
-      "hoursSharingHint": "A summary only — never per member, never who did what.",
-      "hoursSharingWarning": "The client can see this project’s hours in the portal.",
       "setDate": "Set date",
       "archiveHint": "Archiving hides the project from lists and makes it read-only. Nothing is deleted, and you can restore it at any time.",
       "unarchiveHint": "This project is archived and read-only. Restoring puts it back in the lists it came from."

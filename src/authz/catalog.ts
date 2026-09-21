@@ -168,6 +168,21 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("time_report:manage", "time", "Create/generate/edit/archive TimeReport drafts", CM),
   p("time_report:publish", "time", "Publish/unpublish a TimeReport to the portal — immutable snapshot, audited", CM),
   p("work_type:manage", "time", "Create/edit/archive tenant WorkType rows", CMA),
+  // ── Phase 3 (module `portal`, +1; catalog 97 → 98; TEMPLATE_VERSION 5,
+  // 2026-09-21) — AUTHZ.md §3.2's row, which has named this code since
+  // 2026-08-16 while only `client:manage_contacts` existed in the
+  // catalogue (Phase 3 memo §2.5). It lands in the slice that gives the
+  // portal switch its own surface, and it lands ENFORCED: the equality
+  // in `enforcement.test.ts` refuses a code that merely exists.
+  //
+  // C M, NOT C M E — and this NARROWS who may flip the switch. The two
+  // controls it takes over (`setPortalEnabled`, `setHoursSharingMode`)
+  // ran on `project:edit`, which is C M E, so an employee could switch a
+  // client's portal on. Deciding what a client can reach is a delivery
+  // lead's call in every other row of §3.2's portal column, and the
+  // narrowing is the point of giving the control its own code rather
+  // than leaving it on the one that also renames the project.
+  p("project:manage_portal", "portal", "Portal master switch, hours sharing mode, view as client — audited", CM),
 ];
 
 export type RoleTemplate = {
@@ -205,8 +220,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  * template change so B3 additive propagation knows what to reconcile.
  * v2 (2026-08-20): +17 `work` codes; issue:* unseeded (deprecated).
  * v3 (2026-08-20): +16 `time` codes (2T; rate:view_cost / rate:manage_cost ✦).
- * v4 (2026-08-31): +1 `work` code (work_item:approve — the 2W-R review gate). */
-export const TEMPLATE_VERSION = 4;
+ * v4 (2026-08-31): +1 `work` code (work_item:approve — the 2W-R review gate).
+ * v5 (2026-09-21): +1 `portal` code (project:manage_portal — Phase 3
+ *     slice 4). Propagation is ADDITIVE, so a tenant whose owner and
+ *     manager roles predate this bump GAIN the code and nobody LOSES
+ *     `project:edit`; the narrowing below therefore takes effect for
+ *     employees the moment this deploys, which is the intent. */
+export const TEMPLATE_VERSION = 5;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

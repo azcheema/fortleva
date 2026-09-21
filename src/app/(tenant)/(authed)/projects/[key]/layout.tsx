@@ -7,6 +7,7 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { isAuthorized } from "@/authz/authorize";
 import { Callout, EntityTile, Page, PageHeader, StatusBadge } from "@/components/semantic";
 import { withTenant } from "@/db";
+import { hasAccess } from "@/entitlements/resolver";
 import { requireTenantContext } from "@/members/tenant-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,10 +26,16 @@ export async function generateMetadata({
 }
 
 /**
- * /projects/[key] shell (UI.md §3.1): tabs in the fixed order Board ·
- * Backlog · Timeline · Files · Team (Updates/Time/Portal arrive with
- * their phases; Board/Backlog are empty states until 2W). Overview is
- * the landing tab in Phase 2 because there is no board to land on.
+ * /projects/[key] shell (UI.md §3.1): tabs in the fixed order Overview ·
+ * Board · Backlog · Timeline · Time · Files · Team · Portal (Updates
+ * arrives with ProjectUpdate). Overview is the landing tab because there
+ * is no board to land on for a project with no work yet.
+ *
+ * Three of the eight are conditional, and each is HIDDEN rather than
+ * disabled when its permission is missing (§3.1): Time on
+ * `time:view_team`, Files on `document:view`, Portal on
+ * `project:manage_portal`. A hidden tab is not a gate — every one of
+ * those pages carries its own.
  *
  * The header is the project's identity in one line: the key in the
  * mono face (it is a code, and it is typed), the name, then the two
@@ -51,8 +58,43 @@ export default async function ProjectLayout({
   // finance-gated Money page is a sub-view of it (UI.md §3.1) at its
   // pinned route /projects/[key]/money, so the tab stays lit there.
   const { membership, actor } = await requireTenantContext();
-  const canViewTime = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
-    isAuthorized(tx, actor, "time:view_team"),
+  // TWO CHECKS, TWO HELPERS, and the difference is the whole reason
+  // `hasAccess` exists. `isAuthorized` runs gate 4 only; `hasAccess`
+  // runs all four. The Portal tab needs all four because §3.1 says a
+  // module-gated item is HIDDEN when the entitlement or the tenant
+  // preference is off — and the page behind this tab starts with
+  // `requireAccess`, so a tab lit on the permission alone would have led
+  // a tenant with the portal switched off straight into an error
+  // boundary (measured, 2026-09-21). Time's check is left as it was:
+  // changing it is a behaviour change for the `time` module and belongs
+  // in a slice that can test it.
+  const [canViewTime, canManagePortal] = await withTenant(
+    membership.tenantId,
+    { type: "member", id: membership.memberId },
+    // SEQUENTIAL, NOT `Promise.all`, and the first cut of this got it
+    // wrong in a way only the browser could show. A Prisma interactive
+    // transaction is ONE connection: two multi-query operations started
+    // concurrently on the same `tx` interleave their statements on it,
+    // and `pg` says so out loud — "Calling client.query() when the
+    // client is already executing a query is deprecated and will be
+    // removed in pg@9.0". Every gate here costs several queries
+    // (`effectivePermissions` alone is one, `hasAccess` runs four), so
+    // running them together put a project page's authorization on a
+    // pipe it does not own. Typecheck, lint, unit, dbtests and the build
+    // were all green; the e2e run went red across surfaces that have
+    // nothing to do with the portal, which is what a shared-connection
+    // fault looks like.
+    async (tx) => {
+      const time = await isAuthorized(tx, actor, "time:view_team");
+      // Short-circuited on the cap `loadProject` already resolved, so
+      // the extra gate reads happen only for the members who could hold
+      // the tab at all — not on every tab of every project for an
+      // employee who can never see it.
+      const portal = project.caps.managePortal
+        ? await hasAccess(tx, membership.tenantId, actor, "project:manage_portal")
+        : false;
+      return [time, portal] as const;
+    },
   );
 
   const tabs = [
@@ -69,6 +111,10 @@ export default async function ProjectLayout({
     ...(canViewTime ? [{ href: `${base}/time`, label: t("tabs.time"), also: [`${base}/money`] }] : []),
     ...(project.caps.viewDocuments ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),
     { href: `${base}/team`, label: t("tabs.team") },
+    // Phase 3: the portal master switch and what the client sees. Hidden
+    // rather than disabled when the member lacks project:manage_portal
+    // (UI.md §3.1); the page itself 404s for the typed URL.
+    ...(canManagePortal ? [{ href: `${base}/portal`, label: t("tabs.portal") }] : []),
   ];
 
   return (
@@ -107,7 +153,7 @@ export default async function ProjectLayout({
             {project.portalEnabled ? (
               <Badge variant="brand">
                 <GlobeIcon aria-hidden="true" />
-                {t("overview.portalOn")}
+                {t("portal.on")}
               </Badge>
             ) : null}
             {/* Phase 3 slot: <HealthChip value={project.health} /> lands here,

@@ -1,6 +1,7 @@
+import { FolderOpenIcon } from "lucide-react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 
-import { SectionCard, StatusIcon } from "@/components/semantic";
+import { EmptyState, SectionCard, StatusIcon } from "@/components/semantic";
 import { formatDay } from "@/lib/format";
 import { STATUS_MAP } from "@/lib/enum-map";
 import { PORTAL_TASK_CATEGORIES, type PortalProjectTasks, type PortalTaskCategory } from "@/modules/work";
@@ -8,6 +9,17 @@ import { TONE_CHIP } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 
 /**
+ * TWO CONSUMERS SINCE 2026-09-21, AND THAT CONSTRAINS WHAT MAY GO IN
+ * HERE. `/portal` renders this under a real contact session; the member
+ * app's Project → Portal tab renders it under a MEMBER session, which is
+ * the whole point of that tab ("what the client sees", drawn by the
+ * client's own code). So nothing in this file may reach for the contact
+ * plane's request context — `requirePortalContext()`, the contact
+ * session, `Contact.locale` — because on the member plane there is none
+ * and the tab would throw at render. Anything a portal page knows and a
+ * member page does not comes in as a PROP. (The `completedAt` note below
+ * invites exactly that mistake about a timezone: take it as a prop.)
+ *
  * The shared task list, one card per project, grouped by the portal's
  * four categories (UI.md §11). What is NOT here is the point of the
  * file: no state name, no estimate, no label, no assignee, no ordering
@@ -110,5 +122,34 @@ function CategoryChip({ category, label }: { category: PortalTaskCategory; label
       <StatusIcon name={spec.icon} className="size-3 shrink-0" />
       <span>{label}</span>
     </span>
+  );
+}
+
+/**
+ * NOTHING SHARED — and it is a component rather than six lines in
+ * `page.tsx` because it has a SECOND caller since 2026-09-21: the member
+ * app's Portal tab, whose whole claim is that it shows what the client
+ * sees. Two copies of this state would let the member's copy go on
+ * saying one thing after the client's started saying another, and the
+ * lie would be invisible from either side.
+ *
+ * `variant="forbidden"` is the honest one of the three and needs no
+ * action, which matters here: §5.8 requires a nothing-yet state to offer
+ * the verb that changes it, and on this plane there is no such verb — a
+ * contact cannot share their own agency's work with themselves. "Things
+ * exist, not for you" is also exactly what this state means when it is
+ * standing in for a denial (`portalReadOrNull`). The glyph is overridden
+ * because a shield says "you are blocked", which is the one thing this
+ * page must never say.
+ */
+export function PortalTasksEmpty() {
+  const t = useTranslations("portal");
+  return (
+    <EmptyState
+      variant="forbidden"
+      icon={FolderOpenIcon}
+      title={t("empty.title")}
+      body={t("empty.body")}
+    />
   );
 }

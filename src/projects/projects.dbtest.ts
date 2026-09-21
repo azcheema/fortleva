@@ -198,7 +198,7 @@ describe("project fields, status, portal switch", () => {
     expect(await t.audits("project.archived")).toHaveLength(1);
   });
 
-  it("portal switch (project:edit for now): audited both ways and fanned out to children", async () => {
+  it("portal switch (project:manage_portal since 2026-09-21): audited both ways and fanned out to children", async () => {
     const m = await createMilestone(owner, { projectId: p1, name: "Kickoff", visibility: "CLIENT_VISIBLE" });
     expect(await setPortalEnabled(owner, p1, true)).toEqual({ changed: true });
     expect(await setPortalEnabled(owner, p1, true)).toEqual({ changed: false });
@@ -210,9 +210,19 @@ describe("project fields, status, portal switch", () => {
     expect((await t.audits("project.portal_disabled")).map((e) => e.targetId)).toEqual([p1]);
     expect(await setHoursSharingMode(owner, p1, "HOURS")).toEqual({ changed: true });
     expect((await t.audits("project.hours_sharing_changed"))[0]?.metadata).toEqual({ from: "NONE", to: "HOURS" });
-    // employee (P1, project:edit via template) may flip too; a P2 flip is NOT_FOUND
-    expect(await setPortalEnabled(employee, p1, true)).toEqual({ changed: true });
-    await notFound(setPortalEnabled(employee, p2, true));
+    // THE NARROWING, and this assertion is the one the slice inverted.
+    // It read "employee (P1, project:edit via template) may flip too" —
+    // and that was the behaviour, because the switch ran on `project:edit`
+    // (C M E) while `project:manage_portal` was missing from the
+    // catalogue. Deciding what a client can reach is a delivery lead's
+    // call (AUTHZ §3.2), so an employee assigned to P1 is now FORBIDDEN
+    // on their own project — and FORBIDDEN on P2 as well, not NOT_FOUND,
+    // because the recipe runs `requireAccess` BEFORE `assertInScope`. An
+    // employee who may not touch the switch anywhere therefore learns
+    // nothing about which projects exist, which is the right way round.
+    await forbidden(setPortalEnabled(employee, p1, true));
+    await forbidden(setPortalEnabled(employee, p2, true));
+    expect((await getPlatformClient().project.findUniqueOrThrow({ where: { id: p1 } })).portalEnabled).toBe(false);
   });
 });
 

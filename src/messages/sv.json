@@ -1270,7 +1270,50 @@
       "timeline": "Tidslinje",
       "files": "Filer",
       "team": "Team",
-      "time": "Tid"
+      "time": "Tid",
+      "portal": "Portal"
+    },
+    "portal": {
+      "title": "Kundportal",
+      "controls": "Åtkomst",
+      "calloutTitle": "Den här brytaren avgör vad kunden når",
+      "hint": "Av betyder att kunden inte ser något från projektet, inte ens det som är märkt ”Kunden kan se”. Brytaren slår igenom på varje rad inom några sekunder; är den upptagen är det bara att försöka igen.",
+      "enabled": "Portalen aktiverad för projektet",
+      "on": "Portalen aktiverad",
+      "off": "Portalen avaktiverad",
+      "hoursSharing": "Timmar som visas för kunden",
+      "hoursSharingHint": "Bara en sammanställning — aldrig per medlem, aldrig vem som gjort vad.",
+      "hoursSharingWarning": "Kunden kan se projektets timmar i portalen.",
+      "hoursModes": {
+        "NONE": "Inget",
+        "HOURS": "Timmar",
+        "BILLABLE_AMOUNT": "Timmar och fakturerbart belopp"
+      },
+      "preview": {
+        "title": "Det här ser kunden",
+        "viewingAs": "Exakt det {name} ({profile}) ser — portalens egen kod, på ditt språk.",
+        "noViewer": "Ingen hos kunden kan logga in ännu, så det här är vad portalen skulle visa.",
+        "truncated": "Bara de första {count} uppgifterna visas här."
+      },
+      "blocked": {
+        "title": "Det här står i vägen just nu",
+        "MODULE_OFF": "En modul som portalen behöver är avstängd för er arbetsyta.",
+        "PORTAL_OFF": "Portalen är av för projektet — brytaren bredvid den här panelen.",
+        "PROJECT_ARCHIVED": "Projektet är arkiverat, så de delade uppgifterna förblir dolda tills det återställs.",
+        "NO_AUDIENCE": "Ingen kontakt hos kunden har portalåtkomst ännu.",
+        "NOTHING_SHARED": "Inget i projektet är märkt ”Kunden kan se” ännu — märk en uppgift i backloggen, så visas den här."
+      },
+      "audience": {
+        "title": "Vilka kan logga in",
+        "hint": "Kontakter hos kunden med portalåtkomst.",
+        "count": "{count, plural, =1 {1 kontakt kan logga in} other {# kontakter kan logga in}}",
+        "manage": "Hantera kontakter",
+        "empty": {
+          "title": "Ingen kan logga in",
+          "body": "Ge en kontakt hos kunden portalåtkomst, så visas det de ser här."
+        }
+      },
+      "archivedHint": "Arkiverat — du kan fortfarande stänga av delningen."
     },
     "overview": {
       "details": "Detaljer",
@@ -1302,17 +1345,6 @@
         "BIWEEKLY": "Varannan vecka",
         "MONTHLY": "Månadsvis"
       },
-      "portal": "Kundportal",
-      "portalEnabled": "Portalen aktiverad för projektet",
-      "portalHint": "Själva portalen kommer i fas 3. Den här brytaren är redan grinden: av betyder att kunden inte ser något från projektet, inte ens det som är märkt \"Kunden kan se\".",
-      "portalOn": "Portalen aktiverad",
-      "portalOff": "Portalen avaktiverad",
-      "hoursSharing": "Timmar som visas för kunden",
-      "hoursModes": {
-        "NONE": "Inget",
-        "HOURS": "Timmar",
-        "BILLABLE_AMOUNT": "Timmar och fakturerbart belopp"
-      },
       "archive": "Arkivera projekt",
       "archiveConfirm": "Arkivera projektet?",
       "unarchive": "Återställ projekt",
@@ -1321,9 +1353,6 @@
       "restoredToast": "Projektet återställt",
       "client": "Kund",
       "openProduction": "Öppna sajten",
-      "portalCalloutTitle": "Den här brytaren avgör vad kunden når",
-      "hoursSharingHint": "Bara en sammanställning — aldrig per medlem, aldrig vem som gjort vad.",
-      "hoursSharingWarning": "Kunden kan se projektets timmar i portalen.",
       "setDate": "Ange datum",
       "archiveHint": "Arkivering döljer projektet i listorna och gör det skrivskyddat. Ingenting raderas, och du kan återställa det när som helst.",
       "unarchiveHint": "Projektet är arkiverat och skrivskyddat. Återställer du det dyker det upp i listorna igen."

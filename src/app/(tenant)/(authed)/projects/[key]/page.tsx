@@ -7,7 +7,6 @@ import { requireTenantContext } from "@/members/tenant-context";
 
 import { loadProject } from "./data";
 import {
-  PortalControls,
   ProjectDangerZone,
   ProjectDetailsForm,
   ProjectInternalForm,
@@ -15,11 +14,13 @@ import {
 } from "./overview-forms";
 
 /**
- * Overview tab: details · internal (private) fields · status/key/archive
- * · the portal control group.
+ * Overview tab: details · internal (private) fields · status/key/archive.
+ * The portal controls moved to their own tab on 2026-09-21 (Phase 3
+ * slice 4), where the switch sits beside a preview of what it
+ * publishes — one home per control.
  *
  * Two columns at lg: the two forms a member edits all day on the left,
- * the two controls that change what the project IS on the right. The
+ * the status controls that change what the project IS on the right. The
  * internal card wears a VisibilityBadge in its header rather than a
  * grey badge per field (DESIGN SPEC §7) — one unmistakable statement
  * about the whole card.
@@ -56,9 +57,6 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
       <div className="flex flex-col gap-6">
         <SectionCard title={t("status")}>
           <ProjectStatusControls project={project} />
-        </SectionCard>
-        <SectionCard title={t("portal")}>
-          <PortalControls project={project} />
         </SectionCard>
       </div>
     </div>

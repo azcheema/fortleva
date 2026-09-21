@@ -191,6 +191,8 @@ export type ProjectDetail = {
     delete: boolean;
     manageVersions: boolean;
     manageAssignments: boolean;
+    /** project:manage_portal — the Portal tab and everything on it. */
+    managePortal: boolean;
     viewDocuments: boolean;
     uploadDocuments: boolean;
     deleteDocuments: boolean;
@@ -282,6 +284,7 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         delete: held.has("project:delete"),
         manageVersions: held.has("project:manage_versions"),
         manageAssignments: held.has("project:manage_assignments"),
+        managePortal: held.has("project:manage_portal"),
         viewDocuments: held.has("document:view"),
         uploadDocuments: held.has("document:upload"),
         deleteDocuments: held.has("document:delete"),
@@ -581,9 +584,10 @@ export const PORTAL_TX_MS = PORTAL_FANOUT_LEGS * PORTAL_LOCK_WAIT_MS + 10_000;
 /**
  * THE project-level portal gate (TENANCY.md §7.2). Writes ONLY
  * Project.portalEnabled — the trigger fans out to every projectScoped
- * child. Permission: project:edit for now; the plan introduces
- * project:manage_portal in Phase 3 (catalog stays 63 in Phase 2) — swap
- * the code here when it lands.
+ * child. Permission: `project:manage_portal` (C M) since Phase 3 slice
+ * 4, 2026-09-21 — it was `project:edit` (C M E) while the code was
+ * missing from the catalogue, so this NARROWS the control to a delivery
+ * lead. An employee can still edit every other field of the project.
  */
 export async function setPortalEnabled(
   ctx: ProjectCtx,
@@ -674,7 +678,7 @@ export async function setPortalEnabled(
   // can never describe a transition that did not happen.
   try {
     return await retryOnContention(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-      await requireAccess(tx, ctx.tenantId, ctx.actor, "project:edit");
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "project:manage_portal");
       const p = await loadInScope(tx, ctx.actor, projectId);
       if (p.portalEnabled === enabled) return { changed: false };
       await tx.project.update({ where: { id: projectId }, data: { portalEnabled: enabled } });
@@ -699,14 +703,14 @@ export async function setPortalEnabled(
   }
 }
 
-/** project:edit (project:manage_portal in Phase 3) — CONTACT_PRIMARY hours widget mode. */
+/** project:manage_portal (was project:edit until 2026-09-21) — CONTACT_PRIMARY hours widget mode. */
 export async function setHoursSharingMode(
   ctx: ProjectCtx,
   projectId: string,
   mode: HoursSharingMode,
 ): Promise<{ changed: boolean }> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "project:edit");
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "project:manage_portal");
     const p = await loadInScope(tx, ctx.actor, projectId);
     if (p.hoursSharingMode === mode) return { changed: false };
     await tx.project.update({ where: { id: projectId }, data: { hoursSharingMode: mode } });

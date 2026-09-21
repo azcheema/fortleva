@@ -87,4 +87,5 @@ export {
   type PortalTask,
   type PortalTaskCategory,
   type PortalTaskList,
+  type PortalTaskListOptions,
 } from "./portal";

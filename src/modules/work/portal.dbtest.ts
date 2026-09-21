@@ -514,3 +514,96 @@ describe("the projection cannot be run under the wrong principal", () => {
     ).toBe(1);
   });
 });
+
+/**
+ * NARROWING TO ONE PROJECT — the member plane's Portal tab reads through
+ * this same function with `{ projectId }` (Phase 3 slice 4), so the
+ * option's gates are part of this projection's contract rather than the
+ * caller's problem.
+ */
+describe("listPortalTasks({ projectId })", () => {
+  /**
+   * A SECOND portal-enabled, unarchived project of the SAME client, and
+   * it exists because without it this block measured nothing (code
+   * review, 2026-09-21). The fixture above gives acme exactly one live
+   * portal project, so "returns that project and nothing else of the
+   * client's" was true by construction: a `{ projectId }` that did
+   * nothing at all passed every assertion here.
+   *
+   * It is built in THIS describe's own `beforeAll` rather than in the
+   * file's, so the four tests above — which assert exact title sets, a
+   * single project group, and that flipping `pOn` off empties the whole
+   * list — keep measuring what they were written to measure. The file's
+   * `afterAll` deletes by tenant, so it needs no teardown of its own.
+   */
+  const pOn2 = randomUUID();
+  const secondTitle = `Shared in the other project ${run}`;
+
+  beforeAll(async () => {
+    const db = getPlatformClient();
+    await db.project.create({
+      data: { id: pOn2, tenantId: T, clientId: acme, key: "PWON2", name: `Acme intranet ${run}`, portalEnabled: true },
+    });
+    let rank = 900;
+    for (const category of ["BACKLOG", "TODO", "IN_PROGRESS", "DONE", "CANCELLED", "TRIAGE"] as const) {
+      const id = randomUUID();
+      states[`${pOn2}:${category}`] = id;
+      await db.workflowState.create({
+        data: {
+          id,
+          tenantId: T,
+          projectId: pOn2,
+          name: `${S.stateName}-${category}`,
+          category,
+          rank: `a${(rank++).toString().padStart(4, "0")}`,
+          isDefault: category === "BACKLOG",
+        },
+      });
+    }
+    await item({ tenantId: T, clientId: acme, projectId: pOn2, title: secondTitle, category: "TODO", visibility: "CLIENT_VISIBLE" });
+  });
+
+  it("returns that project's shared work and nothing else of the client's", async () => {
+    // The control: unnarrowed, this contact really does reach BOTH
+    // projects. Without this line the assertion below is satisfied by a
+    // client who only ever had one.
+    const all = await listPortalTasks(principal(ids.primary));
+    expect(all.projects.map((p) => p.projectId).sort()).toEqual([pOn, pOn2].sort());
+    expect(titles(all)).toContain(secondTitle);
+
+    const list = await listPortalTasks(principal(ids.primary), { projectId: pOn });
+    expect(list.projects.map((p) => p.projectId)).toEqual([pOn]);
+    expect(titles(list)).not.toContain(secondTitle);
+    expect(list.shown).toBe(all.shown - 1);
+  });
+
+  it("refuses a project whose portal switch is OFF — the ref runs through portal_gate", async () => {
+    // The unnarrowed call filters this project's rows out; the narrowed
+    // one is REFUSED, because naming a resource makes steps 3–4 of
+    // `authorizePortal` run against `project`'s own policy. That is the
+    // point of passing the ref at all.
+    await expect(
+      listPortalTasks(principal(ids.primary), { projectId: pOff }),
+    ).rejects.toBeInstanceOf(AuthzError);
+  });
+
+  it("refuses another client's project, as absent as one that does not exist", async () => {
+    await expect(
+      listPortalTasks(principal(ids.primary), { projectId: pBeta }),
+    ).rejects.toBeInstanceOf(AuthzError);
+    await expect(
+      listPortalTasks(principal(ids.primary), { projectId: randomUUID() }),
+    ).rejects.toBeInstanceOf(AuthzError);
+  });
+
+  it("ADMITS an archived project and then publishes nothing from it", async () => {
+    // The two halves are deliberately different layers and this is where
+    // that shows: `project.portal_gate` has no archive term, so the ref
+    // passes; the projection's own `project: { archivedAt: null }` is
+    // what empties the answer. A reviewer reading only the policy would
+    // conclude the opposite.
+    const list = await listPortalTasks(principal(ids.primary), { projectId: pArchived });
+    expect(list.projects).toEqual([]);
+    expect(list.shown).toBe(0);
+  });
+});

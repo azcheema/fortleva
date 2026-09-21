@@ -183,6 +183,13 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "project-money", path: `${project}/money` },
     { name: "project-files", path: `${project}/files` },
     { name: "project-team", path: `${project}/team` },
+    // Phase 3 slice 4: the master switch beside a preview that renders
+    // through the portal's OWN projection and components. The seed
+    // switches this project's portal on and activates a CONTACT_PRIMARY,
+    // so the stop photographs the live panel rather than its empty
+    // state — which makes it the second place a human ever looks at what
+    // a client sees, and the only place both views are on one screen.
+    { name: "project-portal", path: `${project}/portal` },
     { name: "files", path: "/files" },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },

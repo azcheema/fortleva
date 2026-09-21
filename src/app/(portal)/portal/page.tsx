@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { FolderOpenIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-import { Callout, EmptyState, Page, PageHeader } from "@/components/semantic";
+import { Callout, Page, PageHeader } from "@/components/semantic";
 import { listPortalTasks } from "@/modules/work";
 import { portalReadOrNull } from "@/portal";
 import { requirePortalContext } from "@/portal/context";
 
 import { PortalFrame } from "./portal-frame";
-import { ProjectTasks } from "./task-list";
+import { PortalTasksEmpty, ProjectTasks } from "./task-list";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("portal");
@@ -67,21 +66,11 @@ export default async function PortalHome() {
         <div className="flex flex-col gap-6">
           <PageHeader title={t("title")} description={t("description")} />
           {projects.length === 0 ? (
-            // `variant="forbidden"` is the honest one of the three and
-            // needs no action, which matters here: §5.8 requires a
-            // nothing-yet state to offer the verb that changes it, and on
-            // this plane there is no such verb — a contact cannot share
-            // their own agency's work with themselves. "Things exist,
-            // not for you" is also exactly what this state means when it
-            // is standing in for a denial. The glyph is overridden
-            // because a shield says "you are blocked", which is the one
-            // thing this page must never say.
-            <EmptyState
-              variant="forbidden"
-              icon={FolderOpenIcon}
-              title={t("empty.title")}
-              body={t("empty.body")}
-            />
+            // Shared with the member app's Portal tab since 2026-09-21,
+            // so the preview there and this page cannot drift apart —
+            // see `task-list.tsx` for why the variant and the glyph are
+            // what they are.
+            <PortalTasksEmpty />
           ) : (
             <>
               {list?.truncated ? (

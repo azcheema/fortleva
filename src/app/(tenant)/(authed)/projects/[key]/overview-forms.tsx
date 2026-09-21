@@ -1,15 +1,13 @@
 "use client";
 
-import { GlobeIcon, LockIcon } from "lucide-react";
+import { LockIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
-import { Fragment, useTransition } from "react";
-import { toast } from "sonner";
+import { Fragment } from "react";
 
 import { AutoForm } from "@/components/auto-form";
 import { InlineConfirm } from "@/components/inline-confirm";
 import {
-  Callout,
   Disclosure,
   Field,
   InlineEdit,
@@ -17,29 +15,24 @@ import {
   SectionCard,
   StatusBadge,
 } from "@/components/semantic";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeCheckbox } from "@/components/ui/native-checkbox";
-import { NativeSelect } from "@/components/ui/native-select";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { isoDate, type FormResult } from "@/lib/server-actions";
+import { isoDate } from "@/lib/server-actions";
 import type { ProjectDetail } from "@/projects/service";
 
 import {
   changeProjectKeyAction,
   changeProjectStatusAction,
-  setHoursSharingAction,
-  setPortalEnabledAction,
   setProjectArchivedAction,
   updateProjectAction,
 } from "./actions";
+import { useRun } from "./use-run";
 
 const STATUSES = ["PLANNED", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
 const CADENCES = ["NONE", "WEEKLY", "BIWEEKLY", "MONTHLY"] as const;
-const HOURS_MODES = ["NONE", "HOURS", "BILLABLE_AMOUNT"] as const;
 
 /** A field label that carries the INTERNAL lock glyph (UI.md §10.4). */
 function PrivateLabel({ children }: { children: React.ReactNode }) {
@@ -50,21 +43,6 @@ function PrivateLabel({ children }: { children: React.ReactNode }) {
     </span>
   );
 }
-
-const useRun = () => {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const run = (fn: () => Promise<FormResult>, onOk?: (r: FormResult) => void) =>
-    start(async () => {
-      const r = await fn();
-      if (r.ok) {
-        toast.success(r.message);
-        onOk?.(r);
-      } else toast.error(r.message);
-      router.refresh();
-    });
-  return { pending, run };
-};
 
 /**
  * One labelled property: the term on the left, the value on the right.
@@ -515,76 +493,3 @@ export function ProjectDangerZone({ project }: { project: ProjectDetail }) {
   );
 }
 
-/**
- * The portal switch — Project.portalEnabled is THE gate (TENANCY.md
- * §7.2): with it off a client sees nothing from this project, even
- * items marked "Client can see". That makes it the most consequential
- * control on the page, so it is deliberately not a bare toggle in a
- * row of fields: an explanatory caution Callout sits above it, the
- * switch lives in its own bordered group, and turning hours sharing on
- * adds a second warning naming exactly what leaves the team.
- *
- * The badge is BRAND, never the warm fill: a filled warm pill means
- * "Client can see" and nothing else, product-wide (§10.4). It renders
- * only for portal ON — the switch already IS the off state, and §10.4
- * specifies a badge for portal on alone.
- */
-export function PortalControls({ project }: { project: ProjectDetail }) {
-  const t = useTranslations("projects.overview");
-  const { pending, run } = useRun();
-  const disabled = !project.caps.edit || project.status === "ARCHIVED" || pending;
-  // Deliberately NOT optimistic: the select stays bound to the server
-  // value, so a rejected write can never leave the screen claiming the
-  // client sees hours they cannot (or worse, the reverse).
-  const sharingHours = project.portalEnabled && project.hoursSharingMode !== "NONE";
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Callout tone="caution" title={t("portalCalloutTitle")}>
-        {t("portalHint")}
-      </Callout>
-
-      <div className="flex items-start justify-between gap-3 rounded-md border border-input p-3">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <Label htmlFor="p-portal" className="text-sm">
-            {t("portalEnabled")}
-          </Label>
-          {project.portalEnabled ? (
-            <Badge variant="brand">
-              <GlobeIcon aria-hidden="true" />
-              {t("portalOn")}
-            </Badge>
-          ) : null}
-        </div>
-        <Switch
-          id="p-portal"
-          checked={project.portalEnabled}
-          disabled={disabled}
-          onCheckedChange={(v) => run(() => setPortalEnabledAction(project.id, project.key, v))}
-          className="mt-1"
-        />
-      </div>
-
-      <Field label={t("hoursSharing")} htmlFor="p-hours" hint={t("hoursSharingHint")}>
-        <NativeSelect
-          id="p-hours"
-          value={project.hoursSharingMode}
-          disabled={disabled}
-          onChange={(e) => run(() => setHoursSharingAction(project.id, project.key, e.target.value))}
-        >
-          {HOURS_MODES.map((m) => (
-            <option key={m} value={m}>
-              {t(`hoursModes.${m}`)}
-            </option>
-          ))}
-        </NativeSelect>
-      </Field>
-
-      {sharingHours ? (
-        <Callout tone="caution" role="status">
-          {t("hoursSharingWarning")}
-        </Callout>
-      ) : null}
-    </div>
-  );
-}

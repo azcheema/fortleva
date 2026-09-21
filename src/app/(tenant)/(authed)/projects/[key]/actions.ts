@@ -150,7 +150,10 @@ export async function setProjectArchivedAction(
   return r;
 }
 
-// ── Portal switch + hours sharing (project:edit now; project:manage_portal in Phase 3) ──
+// ── Portal switch + hours sharing (project:manage_portal since 2026-09-21) ──
+// Both are driven from /projects/[key]/portal, so `returnTo` is that tab
+// rather than Overview: a withError() redirect must land the member back
+// on the control they pressed.
 
 export async function setPortalEnabledAction(
   projectId: string,
@@ -159,10 +162,10 @@ export async function setPortalEnabledAction(
 ): Promise<FormResult> {
   if (!uuid.safeParse(projectId).success) return invalid();
   const ctx = await ctxOf();
-  const t = await getTranslations("projects.overview");
-  const r = await runForm(projectPath(key), async () => {
+  const t = await getTranslations("projects.portal");
+  const r = await runForm(projectPath(key, "/portal"), async () => {
     await setPortalEnabled(ctx, projectId, enabled);
-    return enabled ? t("portalOn") : t("portalOff");
+    return enabled ? t("on") : t("off");
   });
   if (r.ok) revalidateProject(key);
   return r;
@@ -177,7 +180,7 @@ export async function setHoursSharingAction(
   if (!uuid.safeParse(projectId).success || !m) return invalid();
   const ctx = await ctxOf();
   const tCommon = await getTranslations("common");
-  const r = await runForm(projectPath(key), async () => {
+  const r = await runForm(projectPath(key, "/portal"), async () => {
     await setHoursSharingMode(ctx, projectId, m);
     return tCommon("saved");
   });

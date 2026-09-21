@@ -108,6 +108,7 @@ const DBTEST_PREFIXES = [
   "prefs-",
   "prefs-notify-",
   "projects-",
+  "pview-",
   "pwork-",
   "reports-",
   "roles-",

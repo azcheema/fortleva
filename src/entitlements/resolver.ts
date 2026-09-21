@@ -3,13 +3,17 @@ import { z } from "zod";
 import type { TenantDb } from "@/db";
 import { PERMISSIONS, type Module } from "@/authz/catalog";
 import { authorize, type MemberActor } from "@/authz/authorize";
-import { deny } from "@/authz/errors";
+import { AuthzError, deny } from "@/authz/errors";
 
 /**
  * The four gates (AUTHZ.md §5), evaluated 1→2→3→4: flag kill-switch →
  * entitlement → tenant preference → permission. All AND-ed; the order
  * fixes the denial reason and lets the kill-switch dominate during an
- * incident. `core` and `portal` permissions skip gates 2–3 (always on).
+ * incident. Only `core` skips gates 1–3 — this header said "`core` and
+ * `portal`" until 2026-09-21 and was contradicted by `ALWAYS_ON` forty
+ * lines below, which has held exactly `core` since it was written. A
+ * plan may gate the portal even though client Contacts are unlimited
+ * and free forever (decision 4).
  */
 
 /** Versioned entitlements JSON on Tenant (DATA_MODEL.md §4). Defaults
@@ -129,6 +133,38 @@ export async function requireAccess(
   }
 
   await authorize(tx, actor, permissionCode);
+}
+
+/**
+ * `requireAccess` as a boolean — for HIDING a module-gated surface
+ * (UI.md §3.1: "module-gated items hidden, not disabled, when the
+ * entitlement/preference is off").
+ *
+ * It exists because `isAuthorized` is the wrong tool for that job and
+ * the difference is invisible at the call site: `isAuthorized` runs gate
+ * 4 only, so a tab gated on it stays lit for a tenant whose plan does
+ * not include the module, and the page behind it then throws
+ * NOT_ENTITLED into an error boundary. Measured on the Portal tab
+ * (2026-09-21), which is where this helper was written.
+ *
+ * NOT FOR ✦ CODES. `MFA_REQUIRED` is an `AuthzError` too, so a step-up
+ * code asked about here reads as "not held" and its surface would
+ * disappear instead of prompting for a factor. Gate a ✦ surface on the
+ * permission and let the action step up.
+ */
+export async function hasAccess(
+  tx: TenantDb,
+  tenantId: string,
+  actor: MemberActor,
+  permissionCode: string,
+): Promise<boolean> {
+  try {
+    await requireAccess(tx, tenantId, actor, permissionCode);
+    return true;
+  } catch (e) {
+    if (e instanceof AuthzError) return false;
+    throw e;
+  }
 }
 
 /**

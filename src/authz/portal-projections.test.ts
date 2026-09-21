@@ -133,8 +133,34 @@ const PORTAL_ROUTES = join("app", "(portal)");
  * the seam itself. That is the scope the security review asked for, and
  * it is the tier that would have caught the leak it described.
  */
+/**
+ * A FOURTH WAY IN, added 2026-09-21 after a security review pointed out
+ * that the widening's own stated principle had already been broken by
+ * the slice that wrote it.
+ *
+ * `src/projects/portal-preview.ts` is the member plane's "what the
+ * client sees": it synthesises a contact principal and renders portal
+ * output. It is named `portal-preview.ts`, not `portal.ts`; it lives
+ * outside `(portal)`; and it never mentions `withPortalRead`, because it
+ * calls `listPortalTasks`, which does. So all three arms missed it —
+ * the one file in the product that is a portal surface by CAPABILITY
+ * and by no convention at all, which is exactly the case the header
+ * above says this walk must follow.
+ *
+ * It is listed by name rather than by a `portal-*` glob: the point is a
+ * closed set a reviewer can read, and a glob would quietly enrol
+ * whatever someone names next. It is in the TEXT tier too — verified
+ * clean of every forbidden identifier when it was added, prose included,
+ * so it cannot go red for the wrong reason the way the first widening
+ * did on the word "cost".
+ */
+const PORTAL_SURFACES_BY_NAME = [join("projects", "portal-preview.ts")];
+
 const isProjection = (full: string, entry: string): boolean =>
-  entry === "portal.ts" || entry === "portal-writes.ts" || full.includes(PORTAL_ROUTES);
+  entry === "portal.ts" ||
+  entry === "portal-writes.ts" ||
+  full.includes(PORTAL_ROUTES) ||
+  PORTAL_SURFACES_BY_NAME.some((suffix) => full.endsWith(suffix));
 
 const isPortalSurface = (full: string, entry: string, text: () => string): boolean =>
   isProjection(full, entry) || text().includes("withPortalRead");
@@ -600,6 +626,9 @@ describe("every portal read is an explicit allow-list (memo §2.2)", () => {
     expect(scanned).toContain("modules/work/portal.ts");
     expect(scanned).toContain("app/(portal)/portal/page.tsx");
     expect(scanned).toContain("portal/authorize.ts");
+    // The named surface: a member-plane file that is neither conventionally
+    // named nor under (portal) nor a mentioner of `withPortalRead`.
+    expect(scanned).toContain("projects/portal-preview.ts");
     // …and never a test, which is where the hazards are named on purpose.
     expect(scanned.filter((f) => f.includes(".dbtest.") || f.includes(".test."))).toEqual([]);
   });

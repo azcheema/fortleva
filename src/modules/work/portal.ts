@@ -156,6 +156,35 @@ export type PortalTaskList = {
 export const PORTAL_TASK_LIMIT = 200;
 
 /**
+ * Narrowing, and the ONE caller that needs it is on the MEMBER plane.
+ *
+ * `/portal` asks for everything the contact's client has been shared and
+ * passes nothing here. The Portal tab's "what the client sees" preview
+ * (Phase 3 slice 4) renders ONE project, through this same function
+ * under a synthesised contact principal — the arrangement SECURITY.md
+ * §5.1 requires, because "a separate preview renderer is how previews
+ * lie".
+ *
+ * IT IS A NARROWING AND NOT A CONVENIENCE. A member's own scope can be a
+ * single project (`MemberProject`), while a contact's is the whole
+ * client, so an unnarrowed call would materialise the names and titles
+ * of that client's OTHER projects inside a render the member may have no
+ * scope for. Filtering the answer afterwards would leave those rows in
+ * the process; filtering the query means they never leave Postgres.
+ *
+ * WHAT IT COSTS, stated rather than discovered later: `PORTAL_TASK_LIMIT`
+ * then applies to the one project rather than to the whole list, so a
+ * client whose list is truncated across projects can see a task in the
+ * preview that their own `/portal` cuts off. The preview is per project
+ * by definition and the cap is a signal about sharing settings rather
+ * than a pager (see the constant), so this is accepted, not overlooked.
+ */
+export type PortalTaskListOptions = {
+  /** Restrict the read to one project of the contact's own client. */
+  readonly projectId?: string;
+};
+
+/**
  * THE CLIENT-VISIBLE TASK LIST — the portal's first projection.
  *
  * Every shared task of every portal-enabled project of the contact's own
@@ -206,9 +235,23 @@ export const PORTAL_TASK_LIMIT = 200;
  * PLAN §0 — if archiving should NOT hide shared work, this line is the
  * one to delete.
  */
-export async function listPortalTasks(principal: PortalPrincipal): Promise<PortalTaskList> {
+export async function listPortalTasks(
+  principal: PortalPrincipal,
+  opts?: PortalTaskListOptions,
+): Promise<PortalTaskList> {
+  const projectId = opts?.projectId;
   return withPortalRead(principal, async (tx) => {
-    await authorizePortal(tx, principal, "portal.work_item.view");
+    await authorizePortal(
+      tx,
+      principal,
+      "portal.work_item.view",
+      // A narrowed read names its resource, so steps 3–4 of the pipeline
+      // run: the project must be reachable under `portal_gate`, which is
+      // client ownership AND `portal_enabled`. An unnarrowed list names
+      // none, because every row it returns is gated individually and
+      // inventing a ref would be theatre (`PortalScopeRef`).
+      projectId ? { kind: "project", projectId } : undefined,
+    );
 
     const rows = await tx.workItem.findMany({
       where: {
@@ -221,6 +264,7 @@ export async function listPortalTasks(principal: PortalPrincipal): Promise<Porta
         stateCategory: { not: "CANCELLED" },
         // See the header: `project.portal_gate` has no archive term.
         project: { archivedAt: null },
+        ...(projectId ? { projectId } : {}),
       },
       select: {
         id: true,
