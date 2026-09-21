@@ -14,6 +14,7 @@ import { readPortalPreview } from "@/projects/portal-preview";
 
 import { loadProject } from "../data";
 import { PortalControls } from "./portal-forms";
+import { ViewAsButton } from "./view-as-button";
 
 /**
  * PROJECT → PORTAL (Phase 3 memo slice 4): the master switch, and what
@@ -109,6 +110,21 @@ export default async function ProjectPortalPage({ params }: { params: Promise<{ 
               : t("preview.noViewer")}
           </p>
         </div>
+
+        {/* THE PANEL ANSWERS "what does this project publish"; the button
+            answers "what does THIS PERSON get" — the whole client,
+            navigable, in their language (Phase 3 slice 5). Two controls
+            and not one, because the second is an audited ACT and the
+            first is a render. Absent when nobody can sign in: a door
+            whose only outcome is an error is not a door, and the
+            audience card carries the verb for that state instead. */}
+        {preview.contact ? (
+          <ViewAsButton
+            contactId={preview.contact.id}
+            projectId={project.id}
+            contactName={preview.contact.name}
+          />
+        ) : null}
 
         {preview.blockers.length > 0 ? (
           <Callout tone="caution" title={t("blocked.title")}>

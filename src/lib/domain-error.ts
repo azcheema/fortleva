@@ -19,6 +19,14 @@ export type DomainErrorCode =
   // transaction — in practice the fan-out, but the bound covers them all — could not
   // take its row locks past a concurrent writer within lockTimeoutMs, on every attempt.
   | "PORTAL_SWITCH_BUSY"
+  // View-as-Contact (slice 5 — src/clients/view-as.ts). The member holds
+  // the permission and reaches the client, but this CONTACT cannot be
+  // looked through: not ACTIVE, never invited, or an unverified address.
+  // A refusal the member can act on, which is why it is a DomainError and
+  // not an AuthzError — the member IS the agency, and "nobody can sign in
+  // as this person yet" is a fact about their own tenant (AUTHZ §8's
+  // member-side half, the same reasoning as the Portal tab's blockers).
+  | "CONTACT_NOT_VIEWABLE"
   // Work tree (2W — trigger tokens map 1:1 in src/modules/work/db-errors.ts)
   | "HAS_VISIBLE_CHILDREN" // make-private refused while client-visible subtasks/comments/attachments live
   | "PARENT_NOT_VISIBLE" // a child cannot be client-visible under an internal parent

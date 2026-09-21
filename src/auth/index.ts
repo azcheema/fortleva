@@ -59,6 +59,22 @@ export const SESSION_ADDITIONAL_FIELDS = {
   // below: with either on, `getSession` would serve a cached row and a
   // workspace switch would silently appear not to work until it expired.
   activeTenantId: { type: "string", required: false, input: false },
+  // View-as-Contact's mode pointer (Phase 3 slice 5), written the same
+  // way by `./view-as.ts` and carrying the same dependency on
+  // `session.cookieCache` staying off.
+  //
+  // IT COST AN E2E RUN TO LEARN THAT THIS LINE IS NOT OPTIONAL, which
+  // is the whole reason the paragraph above this block exists: the
+  // adapter strips keys that are not declared here, so the column was
+  // written, stored and read back as `undefined`, `/view-as` concluded
+  // the member was not in the mode and redirected them home. Nothing
+  // failed, nothing logged, and the page simply did not exist. The
+  // identical failure that made `/ops` unreachable in 2026-09-09.
+  //
+  // `input: false` — no request body may ever set it. The only writer
+  // is the audited server action, which is what makes the audit row a
+  // complete record of who entered a client's view.
+  viewAsContactId: { type: "string", required: false, input: false },
   // Last interactive second factor on this session (SECURITY.md §3.5);
   // stamped by memberDatabaseHooks + verifyStepUp(), read by
   // requireTenantContext() → authorize() for ✦ codes.

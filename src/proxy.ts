@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { planeForHost, sessionCookieName } from "@/config";
+import { VIEW_AS_HEADER, VIEW_AS_PREFIX, planeForHost, sessionCookieName } from "@/config";
 
 /**
  * Plane separation at the door (SECURITY.md §3.3, ARC-12). This layer
@@ -62,6 +62,62 @@ export function proxy(request: NextRequest): NextResponse {
   const host = request.headers.get("host") ?? "";
   const plane = planeForHost(host);
 
+  /**
+   * `VIEW_AS_HEADER` as THIS LAYER sees the pathname — which means
+   * deleting whatever arrived under that name before setting it.
+   *
+   * The deletion is the load-bearing half. A header the proxy only ever
+   * sets is a header a caller can also send: without it, a request to
+   * any route carrying `x-flv-view-as: 1` would reach the render
+   * indistinguishable from one this layer stamped. Setting it on the
+   * view-as prefix and clearing it everywhere else makes the header a
+   * fact this layer OWNS rather than a hint the client contributes to.
+   *
+   * `null` MEANS "NOTHING TO DO", and that is not an optimisation for
+   * its own sake. The first cut cloned and re-emitted the entire inbound
+   * header set on every request the proxy forwarded, for a feature that
+   * matters on one prefix — and Next re-serialises those into
+   * `x-middleware-request-*` response headers, cookies included, which
+   * its own middleware documentation warns can reach 431 Request Header
+   * Fields Too Large (code review). When the path is not view-as AND no
+   * inbound copy is present, there is genuinely nothing to strip and
+   * nothing to add, so the response carries no header override at all.
+   */
+  const isViewAsPath = pathname === VIEW_AS_PREFIX || pathname.startsWith(`${VIEW_AS_PREFIX}/`);
+  const cleanedHeaders = (): Headers | null => {
+    if (!isViewAsPath && !request.headers.has(VIEW_AS_HEADER)) return null;
+    const headers = new Headers(request.headers);
+    headers.delete(VIEW_AS_HEADER);
+    if (isViewAsPath) headers.set(VIEW_AS_HEADER, "1");
+    return headers;
+  };
+
+  /** Forward the request, with the header corrected if it needs correcting. */
+  const pass = (): NextResponse => {
+    const headers = cleanedHeaders();
+    return headers ? NextResponse.next({ request: { headers } }) : NextResponse.next();
+  };
+
+  /**
+   * The plane-boundary 404, sanitised the same way.
+   *
+   * A `rewrite` PROXIES the original request to the destination — Next's
+   * own docs say so — so the three branches below used to forward a
+   * forged `x-flv-view-as` into the `/404` render, which goes through the
+   * root layout and therefore through `resolveLocale`. A code review
+   * caught that three docblocks claimed the strip was universal when it
+   * covered only the forwarding paths. What it could achieve was small
+   * (a 404 page formatted in a contact's language, for a caller who
+   * already holds the session, the pointer, the permission and the
+   * scope) — but an absolute claim that is not true is the thing a later
+   * reader relies on.
+   */
+  const deny404 = (): NextResponse => {
+    const url = new URL("/404", request.url);
+    const headers = cleanedHeaders();
+    return headers ? NextResponse.rewrite(url, { request: { headers } }) : NextResponse.rewrite(url);
+  };
+
   // The MEMBER auth API is host-scoped too, and this is not symmetry for
   // its own sake. Cookie SIGNATURES do not bind the cookie's NAME:
   // better-call signs the value alone (`signCookieValue(value, secret)`),
@@ -83,18 +139,14 @@ export function proxy(request: NextRequest): NextResponse {
     pathname.startsWith(PORTAL_API_PREFIX) ||
     pathname.startsWith("/api/dev-storage")
   ) {
-    return plane === "platform"
-      ? NextResponse.rewrite(new URL("/404", request.url))
-      : NextResponse.next();
+    return plane === "platform" ? deny404() : pass();
   }
 
   // The PLATFORM auth API is host-scoped exactly like the console it
   // serves. Checked BEFORE the platform branch below, so the ops host
   // does not sweep it under /ops and 404 its own sign-in.
   if (pathname.startsWith(PLATFORM_API_PREFIX)) {
-    return plane === "platform"
-      ? NextResponse.next()
-      : NextResponse.rewrite(new URL("/404", request.url));
+    return plane === "platform" ? pass() : deny404();
   }
 
   if (plane === "platform") {
@@ -113,10 +165,10 @@ export function proxy(request: NextRequest): NextResponse {
     // platform credential form somewhere the ops host's controls do not
     // reach. PUBLIC_PATHS still lists it, because on the OPS host the
     // cookie gate below must not redirect the login page to itself.
-    return NextResponse.rewrite(new URL("/404", request.url));
+    return deny404();
   }
 
-  if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/invite/")) return NextResponse.next();
+  if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/invite/")) return pass();
 
   const cookieFor =
     pathname.startsWith(OPS_PREFIX)
@@ -142,7 +194,7 @@ export function proxy(request: NextRequest): NextResponse {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return pass();
 }
 
 export const config = {

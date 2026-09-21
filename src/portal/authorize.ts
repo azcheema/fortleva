@@ -65,10 +65,9 @@ const CONTACT_ROW_BY_TX = new WeakMap<
  */
 
 /**
- * The resolved contact principal for one request. Built by
- * `requirePortalContext()`; never assembled from request parameters,
- * for the reason every server action derives its tenant from the
- * session (AGENTS.md).
+ * The resolved contact principal for one request; never assembled from
+ * request parameters, for the reason every server action derives its
+ * tenant from the session (AGENTS.md).
  *
  * `gates` is carried rather than fetched per call because gates 1–3 are
  * a tenant-config read that cannot happen under this principal at all —
@@ -76,21 +75,31 @@ const CONTACT_ROW_BY_TX = new WeakMap<
  *
  * IT IS CALLER-SUPPLIED DATA AND IS NOT BOUND TO `tenantId`, which is
  * the same shape — and the same answer — as `MemberActor.mfa` on the
- * member plane: AUTHZ.md §7.5 closes it with a rule ("only
- * `requireTenantContext()` should build actors for ✦ paths") rather
- * than a mechanism, because branding a type does not survive a spread.
- * Here the rule is: **only `requirePortalContext()` builds a
- * `PortalPrincipal`**, and it resolves `gatesFor(contact.tenantId)` from
- * the session it just validated, so the gates and the tenant cannot
- * disagree.
+ * member plane: a rule rather than a mechanism, because branding a type
+ * does not survive a spread.
+ *
+ * **TWO BUILDERS, ONE PER PLANE, and that is the whole rule.**
+ * `requirePortalContext()` (`./context.ts`) builds one from a contact
+ * SESSION; `synthesiseContactPrincipal()` (`./synthesise.ts`) builds one
+ * from a contact ROW a member has been authorised to look through.
+ * Nothing else may, and `src/authz/portal-view-as.test.ts` asserts the
+ * set by equality, so a third builder fails a test rather than reaching
+ * a review.
+ *
+ * *(Corrected 2026-09-21, slice 5. This paragraph used to say "only
+ * `requirePortalContext()` builds a `PortalPrincipal`" — a sentence
+ * that stopped being true the moment slice 4 shipped the Portal tab's
+ * preview, and stayed in the file for a slice. The repo's own recurring
+ * finding: the documents disagree with the code.)*
  *
  * A slice-3 review sharpened the hazard and it is worth carrying
  * forward: the risk is less "a route spoofs all-ok" than "a route
  * reuses a gates map resolved for ANOTHER tenant", which would let one
- * agency's entitlements decide another's. **View-as-Contact is the
- * slice that will first synthesise a principal outside
- * `requirePortalContext()`, and it must resolve the gates from the
- * viewed contact's tenant rather than carrying the member's.**
+ * agency's entitlements decide another's. **Slice 5 closed it with a
+ * signature rather than a convention**: `synthesiseContactPrincipal`
+ * takes no tenant id to resolve gates from — it reads
+ * `contact.tenantId` off the row and resolves them from that, so a
+ * caller holding the member's tenant cannot pass it even by accident.
  */
 export type PortalPrincipal = {
   readonly contactId: string;

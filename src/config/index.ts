@@ -141,6 +141,23 @@ export const planeForHost = (host: string): "platform" | "app" => {
 };
 
 /**
+ * View-as-Contact's route prefix and request header (Phase 3 slice 5).
+ *
+ * RE-EXPORTED FROM A LEAF MODULE rather than declared here, and the
+ * reason is measured: one `"use client"` component needs the prefix,
+ * and importing THIS module from a client component shipped the env
+ * schema, the `portalAuthSecret` derivation and a crypto polyfill into a
+ * 444 KB browser chunk — because Turbopack tree-shakes exports but keeps
+ * top-level side effects, and lines 1 and 44 of this file are exactly
+ * that. `./view-as.ts` imports nothing. See its header for the full
+ * account.
+ *
+ * Server code may keep importing either path; the client component must
+ * use `@/config/view-as`.
+ */
+export { VIEW_AS_HEADER, VIEW_AS_PREFIX } from "./view-as";
+
+/**
  * File storage endpoints (INV-D2: hosts live here and only here). The
  * R2 endpoint is a separate apex by construction — downloads are served
  * off-origin with Content-Disposition: attachment (SECURITY.md §5).

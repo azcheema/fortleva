@@ -1,5 +1,3 @@
-import { cache } from "react";
-
 import { assertInScope, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { withTenant } from "@/db";
@@ -8,16 +6,17 @@ import type { ContactPortalProfile } from "@/generated/prisma/enums";
 import { listPortalTasks, type PortalProjectTasks } from "@/modules/work";
 import {
   PORTAL_CAPABILITIES,
+  portalGatesFor,
   portalModuleVerdict,
-  profileHolds,
   portalReadOrNull,
-  resolvePortalModuleGates,
-  type PortalPrincipal,
+  profileHolds,
+  synthesiseContactPrincipal,
 } from "@/portal";
 
 /**
- * "WHAT THE CLIENT SEES" — the member side of the portal, and the second
- * place in the product that builds a `PortalPrincipal`.
+ * "WHAT THE CLIENT SEES" — the member side of the portal, and the
+ * first surface that ever looked through a synthesised contact
+ * principal.
  *
  * THE RULE IT EXISTS TO OBEY. SECURITY.md §5.1 and the plan's §3.2 pin say
  * the same thing in three documents: the member-facing preview "reuses
@@ -30,16 +29,20 @@ import {
  * the import-graph assertion AUTHZ.md §11 asks for: it fails if this
  * file ever grows a row read of its own.
  *
- * THE PRINCIPAL IS SYNTHESISED, AND THE HAZARD IS THE GATES. `authorize.ts`
- * says only `requirePortalContext()` builds a `PortalPrincipal`, for the
- * reason AUTHZ §7.5 gives about `MemberActor.mfa`: the gates map is
- * caller-supplied data and a route that carried ANOTHER tenant's map
- * would let one agency's entitlements decide another's. This is the
- * second builder, and it closes that hazard the way the review of slice
- * 3 named: every field of the principal — tenant, client and the tenant
- * the gates are resolved for — comes from the CONTACT ROW, read inside
- * the member's own RLS-scoped transaction. The member's session decides
+ * THE PRINCIPAL IS SYNTHESISED, AND SINCE SLICE 5 NOT HERE.
+ * `synthesiseContactPrincipal()` (`src/portal/synthesise.ts`) is the
+ * member plane's one builder, and the hazard it closes is the gates
+ * map: it is caller-supplied data, and a surface carrying ANOTHER
+ * tenant's map would let one agency's entitlements decide another's.
+ * That function takes no tenant id to resolve them from — it reads
+ * `contact.tenantId` off the row this file just read inside the
+ * member's own RLS-scoped transaction. The member's session decides
  * nothing but whether they may ask.
+ *
+ * The belt below stays here rather than moving with it, and the
+ * difference is the point: the builder can only check the ONE contact
+ * handed to it, while `audience` is COUNTED from the whole list, and a
+ * count is an answer too.
  *
  * WHY THE "WHY" LIVES HERE AND NOT IN THE PROJECTION. On the portal
  * plane every refusal renders identically, because a denial reason is a
@@ -63,19 +66,10 @@ import {
  * nothing here discloses anything the Backlog does not; and the action
  * names the explicit mode View-as-Contact builds next, where a member
  * enters a client's view and navigates it. Spending the name on a tab
- * render would leave that slice without one.
+ * render would leave that slice without one. *(Slice 5 landed it:
+ * `/view-as` records exactly one row per ENTRY, because the entry is a
+ * POST and not a render — see `src/clients/view-as.ts`.)*
  */
-
-/**
- * The module gates, resolved once per request — the same treatment the
- * portal plane gives them (`src/portal/context.ts`) and for the same
- * reason: it is a system-principal round trip, and React's `cache` is
- * request-scoped, never `unstable_cache`. Entitlements are read per
- * request and never baked into anything long-lived (AUTHZ §5 —
- * revocation lag on a downgrade is the failure that rule prevents).
- * Outside a request (a dbtest) `cache` degrades to a plain call.
- */
-const gatesFor = cache(resolvePortalModuleGates);
 
 export type PortalPreviewCtx = {
   readonly tenantId: string;
@@ -235,7 +229,7 @@ export async function readPortalPreview(
   if (contacts.some((c) => c.tenantId !== ctx.tenantId)) {
     deny("NOT_FOUND", "contact tenant does not match");
   }
-  const gates = await gatesFor(ctx.tenantId);
+  const gates = await portalGatesFor(ctx.tenantId);
   // The same verdict `authorizePortal()` reaches for this capability, so
   // the member's explanation and the contact's refusal can never
   // disagree about whether the module is open.
@@ -271,12 +265,13 @@ export async function readPortalPreview(
 
   let list: Awaited<ReturnType<typeof listPortalTasks>> | null = null;
   if (as) {
-    const principal: PortalPrincipal = {
-      contactId: as.id,
-      tenantId: as.tenantId,
-      clientId: as.clientId,
-      gates,
-    };
+    // The principal is built by the one member-plane builder
+    // (`src/portal/synthesise.ts`, slice 5), which resolves the gates
+    // from `as.tenantId` rather than from anything this file is
+    // holding. Until then those two lines lived here, with the belt
+    // above them; they are the same two lines, in the place the next
+    // member-plane surface cannot bypass.
+    const principal = await synthesiseContactPrincipal(ctx.tenantId, as);
     list = await portalReadOrNull("previewPortalTasks", () =>
       listPortalTasks(principal, { projectId }),
     );

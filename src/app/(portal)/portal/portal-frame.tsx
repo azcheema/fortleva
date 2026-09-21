@@ -21,12 +21,21 @@ import { useTranslations } from "next-intl";
  * under the same path and must render for someone with NO session: a
  * layout calling `requirePortalContext()` would redirect the sign-in
  * page to itself.
+ *
+ * `data-portal-surface` (slice 5) marks the region the byte comparison
+ * is drawn around — everything a contact sees, and nothing else. The
+ * chrome is deliberately INSIDE it: the bar and the "signed in as" line
+ * are part of what the client gets, so a View-as page that rendered a
+ * different header would be a different page. The red View-as banner
+ * sits outside it, being the one thing on that route no contact ever
+ * sees. The attribute is `""` rather than a value because nothing reads
+ * a value: `e2e/view-as.spec.ts` selects on the attribute's presence.
  */
 export function PortalFrame({ name, children }: { name: string; children: React.ReactNode }) {
   const t = useTranslations("portal");
   const tCommon = useTranslations("common");
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    <div data-portal-surface="" className="flex min-h-svh flex-col bg-background">
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex w-full max-w-(--content-default) items-center justify-between gap-3 px-4 py-3 md:px-6">
           <div className="flex min-w-0 items-center gap-2">

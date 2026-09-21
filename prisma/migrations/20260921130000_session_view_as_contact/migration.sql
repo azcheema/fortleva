@@ -1,0 +1,25 @@
+-- View-as-Contact's mode pointer (Phase 3 slice 5).
+--
+-- `session` is an AUTH-class table (TENANCY.md §6.3, MODEL_CLASSES
+-- "global"): no `tenant_id` by design, because the auth flow runs
+-- before tenant context exists, and it is protected by grants plus
+-- `allow_runtime` rather than by `tenant_isolation`. So this migration
+-- adds a column and nothing else — no policy, no grant, no RLS clause.
+-- The posture dbtest asserts class A/B tables only, and `session` is
+-- neither.
+--
+-- WHY A COLUMN AND NOT A COOKIE, since a cookie would have needed no
+-- migration at all. The pointer is the thing that makes
+-- `project.viewed_as_contact` fire EXACTLY ONCE PER MODE ENTRY: the POST that
+-- writes it is the same transaction-neighbouring act that records the
+-- audit row, so a member cannot be inside View-as without having left a
+-- trail of entering it. A cookie is client-held, and a member who set
+-- one by hand would be inside the mode with no row — which is precisely
+-- the hole an audited control must not have. (A forged pointer still
+-- grants NOTHING: `/view-as` re-runs the permission, the client scope
+-- check and the contact's admission on every render. The column buys
+-- the trail, not the authorization.)
+--
+-- Nullable with no default and no backfill: every existing session is
+-- simply not in View-as, which is the correct reading of NULL.
+ALTER TABLE "session" ADD COLUMN "view_as_contact_id" TEXT;

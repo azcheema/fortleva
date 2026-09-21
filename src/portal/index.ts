@@ -22,6 +22,8 @@ export {
 export type { PortalCapability, PortalModule, PortalProfile } from "./capabilities";
 export { resolvePortalModuleGates } from "./module-gates";
 export { portalReadOrNull } from "./render";
+export { portalGatesFor, synthesiseContactPrincipal } from "./synthesise";
+export type { SynthesisableContact } from "./synthesise";
 export {
   computePortalModuleGates,
   portalModuleVerdict,

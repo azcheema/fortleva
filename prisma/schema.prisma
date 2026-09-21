@@ -72,6 +72,17 @@ model Session {
   userAgent      String?      @map("user_agent")
   impersonatedBy String?      @map("impersonated_by")
   activeTenantId String?      @map("active_tenant_id")
+  /// View-as-Contact mode pointer (Phase 3 slice 5, SECURITY.md §5.1):
+  /// the Contact whose portal view this session is currently inside, or
+  /// NULL when it is not. A UX POINTER ONLY, exactly like
+  /// `activeTenantId` beside it — authorization is never derived from
+  /// it. `/view-as` re-runs `project:manage_portal`, the client scope
+  /// check and the contact's own admission on EVERY render, so a stale
+  /// or forged pointer renders nothing. What it decides is that the
+  /// member performed the ACT, which is why it can only be written by
+  /// the audited server action: a bookmarked GET has no pointer to
+  /// render and `<Link>` prefetch cannot forge one.
+  viewAsContactId String?     @map("view_as_contact_id")
   /// Last interactive second-factor verification on THIS session
   /// (SECURITY.md §3.5 step-up): stamped on TOTP/backup-code verify at
   /// sign-in and by verifyStepUp(); NULL = no fresh factor. Trusted-device

@@ -154,7 +154,45 @@ const PORTAL_ROUTES = join("app", "(portal)");
  * so it cannot go red for the wrong reason the way the first widening
  * did on the word "cost".
  */
-const PORTAL_SURFACES_BY_NAME = [join("projects", "portal-preview.ts")];
+const PORTAL_SURFACES_BY_NAME = [
+  join("projects", "portal-preview.ts"),
+  // `src/clients/view-as.ts` — View-as-Contact's service (slice 5). The
+  // same case one slice on: it is named neither `portal.ts` nor
+  // `portal-writes.ts`, lives outside `(portal)` and outside the
+  // `view-as` ROUTE group the AST tier now walks, and never mentions
+  // `withPortalRead` because it calls `listPortalTasks`, which does.
+  // What it DOES read is the CONTACT row — PII on a member surface, and
+  // the one table where a later `include`, `omit` or select-less
+  // `findFirst` would pull an email onto a screen (security review).
+  // Verified clean of all 21 forbidden identifiers, prose included, when
+  // it was added, so it cannot go red for the wrong reason.
+  join("clients", "view-as.ts"),
+];
+
+/**
+ * A FIFTH WAY IN — and it is STRUCTURAL ONLY, which is the whole point
+ * of listing it separately (Phase 3 slice 5, 2026-09-21).
+ *
+ * `src/app/(tenant)/view-as/` is View-as-Contact: a MEMBER-plane route
+ * group that renders the portal's own components under a synthesised
+ * contact principal. By the capability rule this header states, it is a
+ * portal surface — a `/view-as/projects/[id]` written next slice as a
+ * select-less `findMany` would hand a member's screen every column of
+ * every row, and no arm above would see it, because it is not named
+ * `portal.ts`, not under `(portal)`, and mentions `withPortalRead`
+ * nowhere.
+ *
+ * IT IS DELIBERATELY NOT IN THE TEXT TIER, and the reason is measured
+ * rather than assumed. Slice 46 widened the identifier grep over every
+ * portal surface and it went red immediately — on the word `cost` in a
+ * sentence in `src/portal/authorize.ts` — which is the failure this
+ * file already records for bare `label`: *a test that goes red for the
+ * wrong reason teaches people to ignore it*. `view-as/actions.ts`
+ * carries the same word in prose today ("a small, known cost"). So the
+ * grep keeps to code whose job IS projecting, and the AST check — which
+ * fires on an actual select KEY and never on a paragraph — takes this.
+ */
+const VIEW_AS_ROUTES = join("app", "(tenant)", "view-as");
 
 const isProjection = (full: string, entry: string): boolean =>
   entry === "portal.ts" ||
@@ -163,7 +201,9 @@ const isProjection = (full: string, entry: string): boolean =>
   PORTAL_SURFACES_BY_NAME.some((suffix) => full.endsWith(suffix));
 
 const isPortalSurface = (full: string, entry: string, text: () => string): boolean =>
-  isProjection(full, entry) || text().includes("withPortalRead");
+  isProjection(full, entry) ||
+  full.includes(VIEW_AS_ROUTES) ||
+  text().includes("withPortalRead");
 
 const walk = (
   dir: string,
@@ -629,6 +669,11 @@ describe("every portal read is an explicit allow-list (memo §2.2)", () => {
     // The named surface: a member-plane file that is neither conventionally
     // named nor under (portal) nor a mentioner of `withPortalRead`.
     expect(scanned).toContain("projects/portal-preview.ts");
+    // View-as-Contact: a member-plane ROUTE GROUP that renders portal
+    // output. Structural tier only — see `VIEW_AS_ROUTES`.
+    expect(scanned).toContain("app/(tenant)/view-as/page.tsx");
+    // …and the service behind it, which reads the contact row.
+    expect(scanned).toContain("clients/view-as.ts");
     // …and never a test, which is where the hazards are named on purpose.
     expect(scanned.filter((f) => f.includes(".dbtest.") || f.includes(".test."))).toEqual([]);
   });

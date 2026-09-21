@@ -55,9 +55,19 @@ const PRINCIPAL_BUILDERS = [
   // The portal plane's own: identity from the contact session, gates
   // resolved for the tenant that session just proved.
   join("portal", "context.ts"),
-  // The member plane's only one: every field read from the contact ROW
-  // inside the member's RLS-scoped transaction (Phase 3 slice 4).
-  join("projects", "portal-preview.ts"),
+  // The member plane's only one: gates resolved from the CONTACT ROW's
+  // own tenant, by a function that takes no tenant id to get them wrong
+  // with (Phase 3 slice 5).
+  //
+  // IT USED TO BE `projects/portal-preview.ts`, and slice 5 moved it
+  // rather than adding a third entry. View-as-Contact needed to
+  // synthesise a principal too, and the choice was between a set of
+  // three — three places to review, three copies of the belt and of the
+  // gates-from-the-contact's-tenant rule — or one function both callers
+  // share. The obligations are the kind a second copy honours on the day
+  // it is written and quietly stops honouring later, so they are
+  // executed once, by code.
+  join("portal", "synthesise.ts"),
 ].sort();
 
 /** The four fields that make an object a `PortalPrincipal`. */
@@ -158,6 +168,11 @@ const delegatesOf = (file: string): Set<string> => {
 };
 
 const PREVIEW = join(SRC, "projects", "portal-preview.ts");
+const VIEW_AS_SERVICE = join(SRC, "clients", "view-as.ts");
+const VIEW_AS_PAGE = join(SRC, "app", "(tenant)", "view-as", "page.tsx");
+const VIEW_AS_BANNER = join(SRC, "app", "(tenant)", "view-as", "view-as-banner.tsx");
+const PORTAL_PAGE = join(SRC, "app", "(portal)", "portal", "page.tsx");
+const PORTAL_FRAME = join(SRC, "app", "(portal)", "portal", "portal-frame.tsx");
 const PROJECT_LAYOUT = join(SRC, "app", "(tenant)", "(authed)", "projects", "[key]", "layout.tsx");
 const PORTAL_TAB = join(
   SRC,
@@ -209,5 +224,137 @@ describe("view-as-client reuses the contact's own code", () => {
     // The nothing-shared state too: a second copy of it is how the
     // member's page goes on promising what the client's stopped saying.
     expect(text).toContain("PortalTasksEmpty");
+  });
+});
+
+/**
+ * VIEW-AS-CONTACT (Phase 3 slice 5) — the same claim, one level
+ * stronger, because this surface is NAVIGABLE and byte-compared.
+ *
+ * The Portal tab's panel renders one project's task list with the
+ * portal's components. View-as renders the portal's own PAGE: the same
+ * component `/portal` renders, for the whole client, under a
+ * synthesised principal. `e2e/view-as.spec.ts` compares the two outputs
+ * byte for byte against a real contact session; these are the
+ * structural pins that stop that comparison from quietly becoming
+ * vacuous — a byte comparison between two copies of a page passes
+ * forever and proves nothing.
+ *
+ * They are TRIPWIRES ON THE HONEST SHAPE, exactly as the header above
+ * says of the others: a `toContain` sees an import, not a call graph.
+ * What they buy is that the plausible version of each mistake — the one
+ * someone writes while meaning well — fails a test instead of reaching
+ * a review that might or might not happen.
+ */
+describe("view-as-contact renders the contact's own page", () => {
+  it("both routes render the SAME component, not two copies of one page", () => {
+    // If either route ever draws the task list itself, the byte
+    // comparison stops comparing two renderings of one component and
+    // starts comparing two components that happen to agree today.
+    // IMPORTS, not text. The first cut of this asserted
+    // `not.toContain("listPortalTasks")` and went red on its own
+    // docblock — which is the failure this file already records for the
+    // word `cost`: a test that goes red for the wrong reason teaches
+    // people to ignore it. What matters is what the module PULLS IN.
+    const importsFrom = (text: string, spec: string) =>
+      new RegExp(`^import[^;]*from\\s+["'][^"']*${spec}["']`, "m").test(text);
+    for (const file of [PORTAL_PAGE, VIEW_AS_PAGE]) {
+      const text = readFileSync(file, "utf8");
+      expect(importsFrom(text, "portal-home")).toBe(true);
+      expect(importsFrom(text, "task-list")).toBe(false);
+      expect(importsFrom(text, "@/modules/work")).toBe(false);
+    }
+  });
+
+  it("the view-as page reads nothing of its own", () => {
+    // It resolves who, synthesises a principal and renders. Every row on
+    // the screen comes back under the CONTACT principal, inside
+    // <PortalHome>. A query here would be a member-principal read
+    // wearing a portal page's clothes.
+    expect(delegatesOf(VIEW_AS_PAGE).size).toBe(0);
+  });
+
+  it("the view-as service touches two authorization tables and no work table", () => {
+    // `requireAccess` and `assertInScope` take the transaction as an
+    // ARGUMENT — they are not `tx.<delegate>` reads — so this list is
+    // the file's whole surface on the database.
+    //
+    // `contact`: who may be looked through, and the principal's fields.
+    // `project`: the entry point named in the audit row, refused when it
+    // belongs to a different client than the contact (a dbtest found an
+    // owner could pair them, because `client:view_all` reaches both).
+    // Neither is client WORK. A `workItem`, `comment` or `milestone`
+    // here would be a member-principal read wearing a portal page's
+    // clothes, which is the thing this test exists to refuse.
+    expect([...delegatesOf(VIEW_AS_SERVICE)].sort()).toEqual(["contact", "project"]);
+  });
+
+  it("the banner sits OUTSIDE the compared region", () => {
+    // `data-portal-surface` is the boundary `e2e/view-as.spec.ts` draws
+    // the comparison around, and it is marked on the portal's own frame.
+    // The banner is the one thing on this route a contact never gets: if
+    // it were inside, byte-identity would be impossible by construction
+    // and the test would have to be weakened to a subset match — the
+    // exact dilution the pins exist to prevent.
+    // The ATTRIBUTE, not the word: the banner's own docblock explains
+    // why it is outside the boundary, and naming the boundary is not
+    // carrying it.
+    const marksSurface = (text: string) => /data-portal-surface\s*=/.test(text);
+    expect(marksSurface(readFileSync(PORTAL_FRAME, "utf8"))).toBe(true);
+    expect(marksSurface(readFileSync(VIEW_AS_BANNER, "utf8"))).toBe(false);
+    // …and the page renders the banner BEFORE the frame, which is what
+    // "outside" means in a document with no wrapper between them.
+    //
+    // Measured in the COMPONENT BODY, not the file: the docblock above
+    // it names `<PortalHome>` while explaining the arrangement, and a
+    // whole-file `indexOf` therefore found the prose first and failed.
+    // Third time this file has taught the same lesson in one slice.
+    const page = readFileSync(VIEW_AS_PAGE, "utf8");
+    const body = page.slice(page.indexOf("export default async function ViewAsPage"));
+    expect(body.indexOf("<ViewAsBanner")).toBeGreaterThan(-1);
+    expect(body.indexOf("<PortalHome")).toBeGreaterThan(-1);
+    expect(body.indexOf("<ViewAsBanner")).toBeLessThan(body.indexOf("<PortalHome"));
+  });
+
+  it("the locale is pinned to the contact, ahead of the member session", () => {
+    // PLAN §0 named this owed before the slice started: `resolveLocale`
+    // prefers the member session, View-as runs under one, and a member
+    // reading Swedish would render an English contact's page in Swedish
+    // — different bytes for identical data. The ORDER is the pin: the
+    // view-as arm must be consulted BEFORE `getMemberSession()`, because
+    // below it the member's own locale has already won.
+    //
+    // MEASURED INSIDE `resolveLocale`'S OWN BODY, and the first cut was
+    // not: it compared `indexOf("isViewAsRequest")` against the whole
+    // file, so the IMPORT at the top satisfied it and deleting the arm
+    // entirely left the test green. Mutation-checked to fail now.
+    const text = readFileSync(join(SRC, "i18n", "resolve.ts"), "utf8");
+    const body = text.slice(
+      text.indexOf("export const resolveLocale"),
+      text.indexOf("export const resolvePreferences"),
+    );
+    expect(body.length).toBeGreaterThan(0);
+    const viewAs = body.indexOf("await isViewAsRequest()");
+    const member = body.indexOf("await getMemberSession()");
+    expect(viewAs).toBeGreaterThan(-1);
+    expect(member).toBeGreaterThan(-1);
+    expect(viewAs).toBeLessThan(member);
+    // THE TIME ZONE GETS THE SAME ORDERING TEST, not a proximity one.
+    // The first cut was `toMatch(/isViewAsRequest[\s\S]{0,200}?DEFAULT_TIMEZONE/)`
+    // — a regex with no ordering, which would have stayed green with the
+    // arm moved BELOW `getMemberSession()`, where the member's own
+    // `Member.timezone` silently wins (code review). The e2e cannot see
+    // this either: Playwright pins `timezoneId: "Europe/Stockholm"` and
+    // `DEFAULT_TIMEZONE` is the same string, so both sides of the byte
+    // comparison resolve one zone and the arm is invisible to it. This
+    // assertion is the only thing measuring it.
+    const zoneBody = text.slice(text.indexOf("export const resolveTimeZone"));
+    expect(zoneBody.length).toBeGreaterThan(0);
+    const zoneViewAs = zoneBody.indexOf("await isViewAsRequest()");
+    const zoneMember = zoneBody.indexOf("await getMemberSession()");
+    expect(zoneViewAs).toBeGreaterThan(-1);
+    expect(zoneMember).toBeGreaterThan(-1);
+    expect(zoneViewAs).toBeLessThan(zoneMember);
+    expect(zoneBody).toContain("DEFAULT_TIMEZONE");
   });
 });

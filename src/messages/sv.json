@@ -1015,7 +1015,8 @@
     "COMMENT_EMPTY": "En kommentar behöver text.",
     "COMMENT_TOO_LARGE": "Kommentaren är för lång för att publiceras. Korta ner den, eller bifoga detaljerna som en fil.",
     "SUBJECT_NOT_VISIBLE": "Uppgiften är privat för teamet, så ett svar kan inte visas för kunden. Dela uppgiften först.",
-    "LABEL_TAKEN": "Det finns redan en etikett med det namnet."
+    "LABEL_TAKEN": "Det finns redan en etikett med det namnet.",
+    "CONTACT_NOT_VIEWABLE": "Personen kan ännu inte logga in i portalen, så det finns ingen kundvy att öppna. Bjud in hen från kundens kontaktflik först."
   },
   "assignments": {
     "title": "Team",
@@ -2102,6 +2103,13 @@
       "title": "Inget har delats med dig ännu",
       "body": "När din byrå delar arbete med dig dyker det upp här. Hör av dig till din kontaktperson om du väntade dig något."
     }
+  },
+  "viewAs": {
+    "title": "Visar som kund",
+    "banner": "Du ser sidan som {name} — exakt det som hen ser.",
+    "exit": "Lämna kundvyn",
+    "enter": "Visa som {name}",
+    "entered": "Visar nu som {name}."
   },
   "states": {
     "clientStatus": {

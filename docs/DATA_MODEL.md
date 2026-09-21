@@ -283,6 +283,15 @@ enum SessionPlane {
 /// Portal sessions live in ContactSession, whose plane is fixed CONTACT
 /// by table identity (no column needed — that table has no other
 /// audience).
+/// `viewAsContactId` (Phase 3 slice 5) is the View-as-Contact MODE
+/// pointer and is a UX pointer of exactly the same standing as
+/// `activeTenantId`: `/view-as` re-runs `project:manage_portal`, the
+/// client-scope check and the contact's own portal admission on EVERY
+/// render, so a stale or forged pointer renders nothing. It is a
+/// database column rather than a cookie for one reason —
+/// `project.viewed_as_contact` is an AUDITED act, its only writer is the
+/// server action that records the row, and a client-held pointer would
+/// let a member be inside the mode with no trail.
 /// scope=global-identity  rls=AUTH  ret=R4  enc=none
 model Session {
   id             String       @id @default(uuid(7))
@@ -294,6 +303,7 @@ model Session {
   userAgent      String?
   impersonatedBy String?                         // platform admin User.id, when impersonating
   activeTenantId String?                         // last-used tenant (UX), re-validated per request
+  viewAsContactId String?                        // View-as-Contact mode (UX), re-authorized per render
   createdAt      DateTime     @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime     @updatedAt @db.Timestamptz(6)
 

@@ -1,17 +1,38 @@
-// Dev helper: "View as client", terminal edition.
+// Dev helper: an RLS ROW-LEVEL probe, terminal edition.
 //
-// Reads under a REAL contact principal — withTenant(tenantId,
+// Reads under a real contact principal — withTenant(tenantId,
 // {type:"contact", ...}) — so Postgres RLS (the portal_gate policies)
-// does the filtering, not application code. This is the honest preview
-// of what a client Contact is allowed to see today; the portal SCREENS
-// arrive in Phase 3, when "View as Contact" becomes a button.
+// does the filtering, not application code. What it answers is "which
+// ROWS would this client's principal be admitted to", across more
+// tables than the product yet projects: projects, milestones, versions,
+// documents, services, plus a cross-client probe that must always be
+// zero.
 //
 //   pnpm exec tsx scripts/preview-as-contact.ts                 # list clients
 //   pnpm exec tsx scripts/preview-as-contact.ts --client Acme
 //
-// Row visibility is what RLS guarantees. Column visibility (internal
-// notes, repo URLs, rates) is guarded by the portal projections in
-// Phase 3 — this script deliberately does not select those columns.
+// **IT IS NOT "VIEW AS CLIENT", AND SINCE 2026-09-21 THAT IS A REAL
+// DISTINCTION RATHER THAN A PEDANTIC ONE.** The product has the genuine
+// article now — `/view-as` (Phase 3 slice 5), which runs the CONTACT'S
+// OWN projection functions under a synthesised principal and is
+// byte-compared against a real contact session in CI. This file's
+// earlier header promised that screens would arrive "when View as
+// Contact becomes a button"; they have, and this is not them.
+//
+// The difference is the one the pins care about: RLS filters ROWS, not
+// COLUMNS. The reads below are hand-written `select`s that happen to
+// omit the sensitive columns, and NOTHING enforces that they keep doing
+// so — the projection tripwires (`src/authz/portal-projections.test.ts`)
+// walk `src/`, and this file is in `scripts/`. So:
+//
+//   • Use it to answer "is my RLS doing what I think?".
+//   • NEVER cite it as evidence about what a client can SEE. That
+//     question is answered by `modules/*/portal.ts` and by `/view-as`,
+//     which are allow-listed and tested.
+//
+// It also previews with a SYNTHETIC contact id when the client has none
+// yet — useful here, and the opposite of what the product does, which
+// refuses to view as anybody who could not actually sign in.
 import { randomUUID } from "node:crypto";
 import { config as loadEnv } from "dotenv";
 

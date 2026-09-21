@@ -175,3 +175,125 @@ describe("proxy: the portal plane (Phase 3)", () => {
     expect(dest(proxy(req(OPS, "/portal/projects")))).toBe("redirect:/ops/portal/projects");
   });
 });
+
+/**
+ * VIEW-AS-CONTACT'S REQUEST HEADER (Phase 3 slice 5).
+ *
+ * `/view-as` renders a client's portal in the CONTACT'S language and
+ * time zone rather than the member's, and next-intl's only lever
+ * (`getRequestConfig`) runs once per request above every layout and
+ * cannot see a pathname. This layer is the one that knows, so it stamps
+ * the fact and `src/clients/view-as-context.ts` reads it.
+ *
+ * THE DELETION IS THE LOAD-BEARING HALF and is why these cases exist at
+ * all. A header the proxy only ever SETS is a header a caller can also
+ * send; without the `delete`, `curl -H 'x-flv-view-as: 1'` against any
+ * route would arrive indistinguishable from one this layer stamped.
+ * Forging it still buys nothing — the render needs a member session, a
+ * `Session.viewAsContactId` pointer, `project:manage_portal` and the
+ * client scope before a byte changes — but "it cannot be forged" and
+ * "forging it is useless" are different claims, and only the first one
+ * survives someone later deciding the header is a cheap way to answer a
+ * question.
+ */
+describe("the view-as request header", () => {
+  const MEMBER_COOKIE = "__Host-flv.member";
+  /** The request headers the proxy forwarded, as the render would see them. */
+  const forwarded = (res: { headers: Headers }): Headers => {
+    const raw = res.headers.get("x-middleware-override-headers");
+    const out = new Headers();
+    if (!raw) return out;
+    for (const name of raw.split(",").map((n) => n.trim())) {
+      const v = res.headers.get(`x-middleware-request-${name}`);
+      if (v !== null) out.set(name, v);
+    }
+    return out;
+  };
+
+  const reqWith = (path: string, headers: Record<string, string>) =>
+    new NextRequest(`https://${APP}${path}`, {
+      headers: new Headers({ host: APP, cookie: `${MEMBER_COOKIE}=x`, ...headers }),
+    });
+
+  it("is set on the view-as route and on nothing else", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    expect(forwarded(proxy(reqWith("/view-as", {}))).get("x-flv-view-as")).toBe("1");
+    // A nested view-as route (the one-screen project page, later) too —
+    // the prefix, not the exact path.
+    expect(forwarded(proxy(reqWith("/view-as/projects/x", {}))).get("x-flv-view-as")).toBe("1");
+    // …and never anywhere else, which is what keeps a member's own
+    // application in their own language while they are inside the mode
+    // in another tab.
+    expect(forwarded(proxy(reqWith("/home", {}))).get("x-flv-view-as")).toBeNull();
+    expect(forwarded(proxy(reqWith("/projects/ACME/portal", {}))).get("x-flv-view-as")).toBeNull();
+  });
+
+  it("strips an inbound copy rather than letting it through", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // The whole point: a caller sending it on a route that is not
+    // view-as must not have it forwarded.
+    expect(
+      forwarded(proxy(reqWith("/home", { "x-flv-view-as": "1" }))).get("x-flv-view-as"),
+    ).toBeNull();
+    // A public path is a pass-through too, and pass-throughs are where
+    // an un-sanitised branch would hide.
+    expect(
+      forwarded(proxy(reqWith("/login", { "x-flv-view-as": "1" }))).get("x-flv-view-as"),
+    ).toBeNull();
+    // And a forged value on the real route is REPLACED, never trusted:
+    // whatever arrives, what leaves is this layer's own answer.
+    expect(
+      forwarded(proxy(reqWith("/view-as", { "x-flv-view-as": "haxx" }))).get("x-flv-view-as"),
+    ).toBe("1");
+  });
+
+  it("strips it on the plane-boundary REWRITES too, not only on forwards", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    // A `rewrite` PROXIES the original request to the destination, and
+    // `/404` renders through the root layout — so these three branches
+    // reach `resolveLocale` exactly as a forward does. The first cut
+    // sanitised only the forwards while three docblocks claimed the
+    // strip was universal (code review).
+    const ops = new NextRequest(`https://${APP}/ops/x`, {
+      headers: new Headers({ host: APP, "x-flv-view-as": "1" }),
+    });
+    expect(forwarded(proxy(ops)).get("x-flv-view-as")).toBeNull();
+
+    const platformApi = new NextRequest(`https://${APP}/api/platform-auth/sign-in`, {
+      headers: new Headers({ host: APP, "x-flv-view-as": "1" }),
+    });
+    expect(forwarded(proxy(platformApi)).get("x-flv-view-as")).toBeNull();
+
+    const memberApi = new NextRequest(`https://${OPS}/api/auth/sign-in`, {
+      headers: new Headers({ host: OPS, "x-flv-view-as": "1" }),
+    });
+    expect(forwarded(proxy(memberApi)).get("x-flv-view-as")).toBeNull();
+  });
+
+  it("adds no header override at all to ordinary traffic", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // The feature matters on one prefix; cloning and re-emitting every
+    // inbound header on every request turns each middleware response
+    // into an `x-middleware-request-*` per header, cookies included,
+    // which Next's own docs warn can reach 431 (code review).
+    const res = proxy(reqWith("/home", {}));
+    expect(res.headers.get("x-middleware-override-headers")).toBeNull();
+    // …but a request that DOES need correcting still gets it.
+    expect(
+      proxy(reqWith("/view-as", {})).headers.get("x-middleware-override-headers"),
+    ).not.toBeNull();
+    expect(
+      proxy(reqWith("/home", { "x-flv-view-as": "1" })).headers.get(
+        "x-middleware-override-headers",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("does not mistake a lookalike path for the mode", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // `startsWith("/view-as")` alone would match these. The prefix test
+    // is anchored on the segment boundary.
+    expect(forwarded(proxy(reqWith("/view-assets", {}))).get("x-flv-view-as")).toBeNull();
+    expect(forwarded(proxy(reqWith("/view-as-contact", {}))).get("x-flv-view-as")).toBeNull();
+  });
+});
