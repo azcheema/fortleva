@@ -21,6 +21,7 @@ export {
 } from "./capabilities";
 export type { PortalCapability, PortalModule, PortalProfile } from "./capabilities";
 export { resolvePortalModuleGates } from "./module-gates";
+export { portalReadOrNull } from "./render";
 export {
   computePortalModuleGates,
   portalModuleVerdict,

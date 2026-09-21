@@ -2057,6 +2057,23 @@
       }
     }
   },
+  "portal": {
+    "shortTitle": "Client portal",
+    "title": "Shared with you",
+    "description": "Everything your agency has shared with you.",
+    "signedInAs": "Signed in as {name}",
+    "tasks": {
+      "heading": "Shared tasks",
+      "phase": "Phase: {name}",
+      "due": "Due {date}",
+      "completed": "Completed {date}",
+      "truncated": "Showing the first {count} tasks. Ask your agency if something is missing."
+    },
+    "empty": {
+      "title": "Nothing shared with you yet",
+      "body": "When your agency shares work with you, it appears here. Ask your contact there if you were expecting something."
+    }
+  },
   "states": {
     "clientStatus": {
       "ACTIVE": "Active",
@@ -2116,6 +2133,12 @@
       "DONE": "Done",
       "CANCELLED": "Cancelled",
       "TRIAGE": "Triage"
+    },
+    "portalTaskCategory": {
+      "REQUESTED": "Requested",
+      "PLANNED": "Planned",
+      "IN_PROGRESS": "In progress",
+      "DONE": "Done"
     },
     "projectHealth": {
       "ON_TRACK": "On track",

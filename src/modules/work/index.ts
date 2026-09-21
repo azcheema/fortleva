@@ -75,3 +75,16 @@ export {
   type LabelVerb,
   type LabelsCommitted,
 } from "./labels";
+// Phase 3 — the portal projections (reads only; brokered writes will
+// live in `portal-writes.ts`). Exported from the barrel because the
+// portal PAGES are the callers and ARC-16 routes every cross-boundary
+// import through here.
+export {
+  PORTAL_TASK_CATEGORIES,
+  PORTAL_TASK_LIMIT,
+  listPortalTasks,
+  type PortalProjectTasks,
+  type PortalTask,
+  type PortalTaskCategory,
+  type PortalTaskList,
+} from "./portal";

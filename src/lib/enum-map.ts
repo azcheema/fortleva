@@ -133,6 +133,21 @@ export const STATUS_MAP = {
     CANCELLED: spec("quiet", "circle-x"),
     TRIAGE: spec("danger", "triangle-alert"),
   },
+  /**
+   * Phase 3: the PORTAL's four categories — the only state fact a
+   * contact ever sees (UI.md §11). A domain of its own rather than a
+   * relabelling of `stateCategory`, for the reason `StatusBadge` gives
+   * about labels: the two vocabularies are different on purpose
+   * ("Requested", never "Triage"; no "Cancelled" at all), and a shared
+   * domain is how one of them quietly becomes the other. The values are
+   * `PortalTaskCategory` in src/modules/work/portal.ts.
+   */
+  portalTaskCategory: {
+    REQUESTED: spec("neutral", "mail-question"),
+    PLANNED: spec("neutral", "circle-dashed"),
+    IN_PROGRESS: spec("caution", "circle-dot"),
+    DONE: spec("success", "circle-check"),
+  },
   /** Phase 6: portfolio health. RAG, but never without its text. */
   projectHealth: {
     ON_TRACK: spec("success", "circle-check"),

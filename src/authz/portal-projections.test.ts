@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -7,8 +8,7 @@ import { describe, expect, it } from "vitest";
  * test): no portal projection may select an INTERNAL-only column. A
  * "portal projection" is any `src/**\/portal.ts` module (the allow-listed
  * selects Phase 3 introduces; view-as-Contact reuses the same
- * functions). None exist yet — the scan passes trivially, but the
- * constant is pinned here so the list is reviewed with every phase.
+ * functions).
  *
  * **`portal-writes.ts` is scanned too, and it had to be added** (security
  * review, 2026-09-20). The founder decision of 2026-09-20 splits brokered
@@ -18,6 +18,17 @@ import { describe, expect, it } from "vitest";
  * the first such file would have been the first contact-facing module
  * never scanned for a forbidden column. The split made the file MORE
  * dangerous and less watched at the same time.
+ *
+ * **AND SINCE 2026-09-21 A NAME LIST IS NOT THE WHOLE TEST.** The Phase 3
+ * decision memo (§2.2) asks for exactly this and it is worth
+ * over-honouring: *"I would want the grep test to fail on a `select`
+ * that is not an explicit allow-list at all, not merely on known-bad
+ * column names — a new internal column added next year is not in today's
+ * forbidden list."* The second half of this file is that check. The list
+ * below stays because it is cheap, because it catches a column named in
+ * a COMMENT or reached through a helper, and because reviewing it every
+ * phase is how the never-list stays current — but the structural check
+ * is the one that holds when nobody remembers to.
  */
 
 export const PORTAL_FORBIDDEN_COLUMNS = [
@@ -59,16 +70,96 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "createdByMemberId",
   "oldRef",
   "newRef",
+  // Phase 3 slice 2 handed this one over by name (PLAN §0, "what slice 3
+  // inherits"): `portal_gate` on `contact` is STRUCTURAL — client match
+  // only, no visibility term — so a contact can read every contact row of
+  // its own client, and `Contact.invitedById` is a MEMBER id sitting on
+  // one of them. RLS grants the row; the projection owns the columns, and
+  // this is the column. It is the first entry here that guards a table
+  // whose rows a contact is *supposed* to see.
+  "invitedById",
 ] as const;
 
 const SRC = join(__dirname, "..");
+const SCHEMA = join(__dirname, "..", "..", "prisma", "schema.prisma");
 
-const walk = (dir: string, out: string[] = []): string[] => {
+/**
+ * WHAT COUNTS AS A PORTAL SURFACE — and this used to be a list of two
+ * FILENAMES, which the security review of this slice showed was not
+ * enough (2026-09-21).
+ *
+ * Nothing in the codebase forces a portal page to read through a
+ * `portal.ts`. ESLint confines `@/db/client`, `withPlatform` and
+ * `portalAuthClient`, but `withPortalRead` is importable anywhere, and
+ * UI.md §11's "portal reads use only `modules/*\/portal.ts` projections"
+ * is prose. So a `/portal/projects/[id]/page.tsx` written next slice as
+ * `withPortalRead(p, (tx) => tx.workItem.findMany({ where: { projectId } }))`
+ * would have handed the client every column of every CLIENT_VISIBLE row
+ * — the ProseMirror body, the rank, the estimate, the member id — while
+ * both halves of this test stayed green, because no file named
+ * `portal.ts` was touched. **RLS filters ROWS, not COLUMNS.** The
+ * tripwire has to follow the capability, not the filename.
+ *
+ * Three ways in, so a new surface is caught by whichever it trips first:
+ *   • the two conventional names, anywhere under src;
+ *   • everything under the portal route group;
+ *   • any file that so much as mentions `withPortalRead` — which is the
+ *     one that follows the capability rather than a convention.
+ *
+ * TESTS ARE EXCLUDED, and deliberately rather than for convenience: a
+ * dbtest's whole job is to name the hazard and measure it.
+ * `portal.dbtest.ts` selects `Contact.invitedById` on purpose, to prove
+ * the policy really hands a contact its colleague's row — scanning it
+ * would fail this test for doing the right thing.
+ */
+const PORTAL_ROUTES = join("app", "(portal)");
+
+/**
+ * TWO SCOPES, BECAUSE THE TWO TIERS CAN AFFORD DIFFERENT ONES — and the
+ * first cut of this widening proved it by going red on a comment.
+ *
+ * The TEXT grep matches a bare identifier anywhere in a file, prose
+ * included. `src/portal/authorize.ts` says "at the cost of a WeakSet
+ * lookup rather than a round trip", and `cost` is on the never-list, so
+ * scanning the whole widened set failed the build over a sentence. That
+ * is the same failure this file already records for bare `label`: a test
+ * that goes red for the wrong reason teaches people to ignore it. So the
+ * grep keeps to code whose job IS projecting — the two conventional
+ * names and the portal routes, which are render code with no room for a
+ * paragraph about round trips.
+ *
+ * The STRUCTURAL check has no such problem: it fires on an actual select
+ * KEY, never on prose, so it runs over every portal surface including
+ * the seam itself. That is the scope the security review asked for, and
+ * it is the tier that would have caught the leak it described.
+ */
+const isProjection = (full: string, entry: string): boolean =>
+  entry === "portal.ts" || entry === "portal-writes.ts" || full.includes(PORTAL_ROUTES);
+
+const isPortalSurface = (full: string, entry: string, text: () => string): boolean =>
+  isProjection(full, entry) || text().includes("withPortalRead");
+
+const walk = (
+  dir: string,
+  include: (full: string, entry: string, text: () => string) => boolean,
+  out: string[] = [],
+): string[] => {
   for (const entry of readdirSync(dir)) {
     if (entry === "generated" || entry === "node_modules") continue;
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (entry === "portal.ts" || entry === "portal-writes.ts") out.push(full);
+    if (statSync(full).isDirectory()) {
+      walk(full, include, out);
+      continue;
+    }
+    if (!/\.tsx?$/.test(entry)) continue;
+    // A test names the hazard on purpose — `portal.dbtest.ts` selects
+    // `Contact.invitedById` to prove the policy really hands a contact
+    // its colleague's row — so scanning one would fail this for doing
+    // the right thing.
+    if (entry.endsWith(".test.ts") || entry.endsWith(".dbtest.ts") || entry.endsWith(".test.tsx")) {
+      continue;
+    }
+    if (include(full, entry, () => readFileSync(full, "utf8"))) out.push(full);
   }
   return out;
 };
@@ -100,11 +191,12 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "createdByMemberId",
       "oldRef",
       "newRef",
+      "invitedById",
     ]);
   });
 
-  it("no src/**/portal.ts mentions a forbidden column", () => {
-    const files = walk(SRC);
+  it("no portal projection mentions a forbidden column", () => {
+    const files = walk(SRC, isProjection);
     const offences: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, "utf8");
@@ -113,5 +205,402 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       }
     }
     expect(offences).toEqual([]);
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────────
+ * THE STRUCTURAL HALF: every read is an explicit allow-list.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * The schema, read as TEXT rather than through the client. Prisma 7 has
+ * no runtime DMMF (`src/db/model-registry.ts` records the same problem
+ * and answers it with a checked constant), and this test must run in the
+ * unit suite — no `DATABASE_URL`, no generated-client import, no
+ * connection. What it needs is small: which models exist, and for each
+ * field whether it is a SCALAR or a RELATION, and to what.
+ *
+ * A field's type is a relation exactly when it names another model. That
+ * is the whole rule, and it is what makes `project: true` detectable:
+ * `select: { project: true }` returns every column of the project row,
+ * including the ones on the never-list, while looking exactly like a
+ * scalar pick.
+ */
+type Field = { readonly name: string; readonly relationTo: string | null };
+type Model = { readonly fields: ReadonlyMap<string, Field> };
+
+function parseSchema(text: string): ReadonlyMap<string, Model> {
+  const blocks = [...text.matchAll(/^model\s+([A-Za-z0-9_]+)\s*\{([\s\S]*?)^\}/gm)];
+  const names = new Set(blocks.map((b) => b[1]!));
+  const models = new Map<string, Model>();
+  for (const block of blocks) {
+    const fields = new Map<string, Field>();
+    for (const line of block[2]!.split("\n")) {
+      const trimmed = line.trim();
+      // Attributes (`@@index`), comments and blanks are not fields.
+      if (!trimmed || trimmed.startsWith("@@") || trimmed.startsWith("//")) continue;
+      const m = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(trimmed);
+      if (!m) continue;
+      const [, name, type] = m as unknown as [string, string, string];
+      fields.set(name, { name, relationTo: names.has(type) ? type : null });
+    }
+    models.set(block[1]!, { fields });
+  }
+  return models;
+}
+
+/** `workItem` → `WorkItem`. Prisma's delegate is the model name with a
+ *  lower-cased first character, so this inverts exactly. */
+const modelOfDelegate = (delegate: string) => delegate.charAt(0).toUpperCase() + delegate.slice(1);
+
+/**
+ * Methods nothing but Prisma has. A call to one of these IS a row read,
+ * whatever the receiver looks like — which is what lets an unresolvable
+ * delegate below be an offence rather than a silent skip.
+ */
+const PRISMA_ONLY = new Set([
+  "findMany",
+  "findFirst",
+  "findFirstOrThrow",
+  "findUnique",
+  "findUniqueOrThrow",
+  "createManyAndReturn",
+  "updateManyAndReturn",
+  "upsert",
+]);
+
+/**
+ * Writes that can RETURN a row — and whose names JavaScript also uses.
+ * `Object.create(null)` is in AGENTS.md's own ProseMirror trap,
+ * `map.delete(tx)` and `hash.update(buf)` are ordinary code, and this
+ * walk now covers files that are not projections at all
+ * (`src/auth/portal.ts` is a Better Auth config). So these count only
+ * when the receiver resolves to a real Prisma model — otherwise an
+ * unrelated edit would fail this test with a message about allow-lists.
+ */
+const AMBIGUOUS_WRITES = new Set(["create", "update", "delete"]);
+
+/**
+ * Reads that return VALUES without a `select` to allow-list — `groupBy`
+ * hands back the `by:` columns themselves. Banned outright rather than
+ * modelled: no portal projection needs one today, and the day one does,
+ * the exemption should be a visible change to this file that a reviewer
+ * meets, not a shape that was always quietly permitted. (`count` is
+ * fine: it returns a number.)
+ */
+const NOT_ALLOW_LISTABLE = new Set(["groupBy", "aggregate"]);
+
+const RAW = new Set(["$queryRaw", "$queryRawUnsafe", "$executeRaw", "$executeRawUnsafe"]);
+
+/**
+ * KEYS NO PORTAL SELECT MAY NAME, whatever model they sit on — the
+ * second tier the security review asked for, and the one that closes
+ * the gap between "the select is EXPLICIT" and "the select is SAFE".
+ * The AST half proved only the former: `select: { rank: true,
+ * triageStatus: true }` is explicit, is a real field, names nothing on
+ * the text grep's list, and publishes the agency's internal ordering.
+ *
+ * It is a SEPARATE list from `PORTAL_FORBIDDEN_COLUMNS` on purpose, and
+ * the difference is what each can afford to contain. That one greps the
+ * file's TEXT, so it can never hold a common word — `type`, `kind` and
+ * `rank` would fire on `type PortalTask = {`, on `readonly kind` and on
+ * the paragraph in `portal.ts` that explains why the ordering is NOT by
+ * rank. This one fires only on an actual select KEY, so it can hold all
+ * three. A name belongs on both lists only when merely mentioning it is
+ * already suspicious.
+ */
+const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
+  // Ordering IS importance (plan §3.1, UI.md rule 5), and importance is
+  // on §11's never-shown list.
+  "rank",
+  "priority",
+  // The agency's vocabulary for its own process.
+  "type",
+  "kind",
+  "stateId",
+  "triageStatus",
+  "snoozedUntil",
+  "duplicateOfId",
+  // Effort and internal scheduling.
+  "estimateMinutes",
+  "remainingMinutes",
+  "startedAt",
+  // Bodies: a 512 KB document and its extracted text, neither of which
+  // a list projection has any business carrying.
+  "description",
+  "descriptionText",
+  // Who, internally.
+  "assigneeMemberId",
+  "createdByMemberId",
+  "leadMemberId",
+  "actorMemberId",
+  "authorMemberId",
+  "invitedById",
+  // Import provenance and internal notes.
+  "sourceSystem",
+  "sourceId",
+  "importJobId",
+  "internalNotes",
+  "repoUrl",
+  "hostingNotes",
+]);
+
+const propName = (p: ts.ObjectLiteralElementLike): string | null => {
+  const n = p.name;
+  if (!n) return null;
+  if (ts.isIdentifier(n) || ts.isStringLiteral(n)) return n.text;
+  return null;
+};
+
+const findProp = (obj: ts.ObjectLiteralExpression, key: string): ts.PropertyAssignment | null => {
+  for (const p of obj.properties) {
+    if (ts.isPropertyAssignment(p) && propName(p) === key) return p;
+  }
+  return null;
+};
+
+/**
+ * One file's offences. Every message names the file, the line and what
+ * is wrong, because a structural failure that only says "not allow-listed"
+ * sends the reader back to the AST.
+ */
+function auditSource(text: string, label: string, models: ReadonlyMap<string, Model>): string[] {
+  const source = ts.createSourceFile(`${label}.ts`, text, ts.ScriptTarget.ES2022, true);
+  const out: string[] = [];
+  const at = (node: ts.Node) =>
+    `${label}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`;
+
+  /** Walk one `select` literal against the model it selects from. */
+  const checkSelect = (obj: ts.ObjectLiteralExpression, model: string | null): void => {
+    const def = model ? models.get(model) : undefined;
+    if (model && !def) {
+      out.push(`${at(obj)}: select against unknown model ${model}`);
+      return;
+    }
+    for (const p of obj.properties) {
+      if (!ts.isPropertyAssignment(p)) {
+        // A spread, a shorthand or a method is exactly how a shared
+        // `as const` select gets in, which is the shape AGENTS.md's
+        // Prisma trap already forbids for a different reason.
+        out.push(`${at(p)}: a select must be an inline literal of explicit keys`);
+        continue;
+      }
+      const key = propName(p);
+      if (!key) {
+        out.push(`${at(p)}: computed key in a select`);
+        continue;
+      }
+      // SAFE, not merely EXPLICIT (security review, 2026-09-21).
+      if (PORTAL_NEVER_SELECTED.has(key)) {
+        out.push(`${at(p)}: "${key}" is never selected on the portal plane`);
+        continue;
+      }
+      const value = p.initializer;
+      // `_count` is a Prisma pseudo-field that returns a NUMBER, not
+      // columns, so it is allowed with a nested literal and not walked
+      // as a relation. Named here so the next author meets the rule
+      // rather than the AST (code review L6).
+      if (key === "_count") {
+        if (!ts.isObjectLiteralExpression(value)) {
+          out.push(`${at(p)}: _count must carry an inline literal`);
+        }
+        continue;
+      }
+      const field = def?.fields.get(key);
+      if (def && !field) {
+        out.push(`${at(p)}: "${key}" is not a field of ${model}`);
+        continue;
+      }
+      if (field?.relationTo) {
+        // THE ONE THIS CHECK EXISTS FOR: `project: true` reads every
+        // column of the related row. A relation must carry its own
+        // allow-list.
+        if (!ts.isObjectLiteralExpression(value)) {
+          out.push(`${at(p)}: relation "${key}" must carry its own select, not ${value.getText(source)}`);
+          continue;
+        }
+        const nested = findProp(value, "select");
+        if (!nested || !ts.isObjectLiteralExpression(nested.initializer)) {
+          out.push(`${at(p)}: relation "${key}" must carry its own inline select`);
+          continue;
+        }
+        for (const sibling of value.properties) {
+          const name = ts.isPropertyAssignment(sibling) ? propName(sibling) : null;
+          if (name === "include" || name === "omit") {
+            out.push(`${at(sibling)}: "${name}" inside a portal select`);
+          }
+        }
+        checkSelect(nested.initializer, field.relationTo);
+        continue;
+      }
+      if (value.kind !== ts.SyntaxKind.TrueKeyword) {
+        out.push(`${at(p)}: scalar "${key}" must be selected as \`true\``);
+      }
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const method = node.expression.name.text;
+      if (RAW.has(method)) {
+        out.push(`${at(node)}: ${method} — raw SQL has no allow-list a reader can check`);
+      }
+      const receiver = node.expression.expression;
+      const delegate = ts.isPropertyAccessExpression(receiver) ? receiver.name.text : null;
+      const model = delegate ? modelOfDelegate(delegate) : null;
+      const isModel = model !== null && models.has(model);
+
+      if (NOT_ALLOW_LISTABLE.has(method) && (isModel || delegate === null)) {
+        out.push(`${at(node)}: ${method} returns values no select can allow-list`);
+      }
+
+      // A Prisma-only method is a row read WHATEVER the receiver looks
+      // like. An AMBIGUOUS one counts only when the receiver really is a
+      // model delegate, so `Object.create(null)` and `map.delete(x)` are
+      // ordinary code rather than offences (code review M3).
+      if (PRISMA_ONLY.has(method) || (AMBIGUOUS_WRITES.has(method) && isModel)) {
+        // AN UNRESOLVABLE DELEGATE IS AN OFFENCE, not a skip. It used to
+        // pass `null` to `checkSelect`, which then had no model to look
+        // fields up in — so `relationTo` was undefined, every key read as
+        // a scalar, and `tx["workItem"].findMany({ select: { project:
+        // true } })` sailed through the one case this check exists for
+        // (both reviews, 2026-09-21).
+        if (!isModel) {
+          out.push(
+            `${at(node)}: cannot resolve a Prisma model for this ${method} — write it as tx.<model>.${method}(…) so the select can be checked`,
+          );
+        }
+        const arg = node.arguments[0];
+        if (!arg || !ts.isObjectLiteralExpression(arg)) {
+          out.push(`${at(node)}: ${method} with no inline argument object`);
+        } else {
+          for (const key of ["include", "omit"] as const) {
+            const found = findProp(arg, key);
+            if (found) out.push(`${at(found)}: "${key}" is never allow-listed`);
+          }
+          const select = findProp(arg, "select");
+          if (!select) {
+            out.push(`${at(node)}: ${method} without a select — every portal read is an allow-list`);
+          } else if (!ts.isObjectLiteralExpression(select.initializer)) {
+            out.push(`${at(select)}: select must be an inline object literal`);
+          } else {
+            checkSelect(select.initializer, isModel ? model : null);
+          }
+        }
+      }
+    }
+    // A tagged template is how `$queryRaw` is actually written.
+    if (ts.isTaggedTemplateExpression(node) && ts.isPropertyAccessExpression(node.tag)) {
+      const method = node.tag.name.text;
+      if (RAW.has(method)) out.push(`${at(node)}: ${method} — raw SQL has no allow-list a reader can check`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return out;
+}
+
+describe("every portal read is an explicit allow-list (memo §2.2)", () => {
+  const models = parseSchema(readFileSync(SCHEMA, "utf8"));
+
+  it("the schema parse found the models this check reasons about", () => {
+    // A silently empty parse would make every assertion below vacuous —
+    // the failure mode a structural test is most likely to die of.
+    expect(models.size).toBeGreaterThan(40);
+    expect(models.get("WorkItem")?.fields.get("title")?.relationTo).toBeNull();
+    expect(models.get("WorkItem")?.fields.get("project")?.relationTo).toBe("Project");
+    expect(models.get("Contact")?.fields.get("invitedById")?.relationTo).toBeNull();
+  });
+
+  it("no portal module reads a row without one", () => {
+    const offences = walk(SRC, isPortalSurface).flatMap((file) =>
+      auditSource(readFileSync(file, "utf8"), relative(SRC, file), models),
+    );
+    expect(offences).toEqual([]);
+  });
+
+  /**
+   * THE CONTROL. A passing structural test is not evidence until it has
+   * been made to fail, and these are the ways a projection actually goes
+   * wrong. The `project: true` one is the reason the schema is parsed at
+   * all: it looks exactly like a scalar pick and returns every column of
+   * the related row, never naming a forbidden one.
+   */
+  it.each([
+    ["no select at all", "tx.workItem.findMany({ where: { id } });"],
+    ["an include", "tx.workItem.findMany({ include: { project: true }, select: { id: true } });"],
+    ["an omit", "tx.workItem.findFirst({ omit: { description: true }, select: { id: true } });"],
+    ["a relation picked whole", "tx.workItem.findMany({ select: { id: true, project: true } });"],
+    [
+      "a relation with no select of its own",
+      "tx.workItem.findMany({ select: { project: { where: { id } } } });",
+    ],
+    ["a nested relation picked whole", "tx.workItem.findMany({ select: { project: { select: { client: true } } } });"],
+    ["a field that is not on the model", "tx.workItem.findMany({ select: { secretSauce: true } });"],
+    ["a select that is not a literal", "tx.workItem.findMany({ select: SHARED_SELECT });"],
+    ["a spread select", "tx.workItem.findMany({ select: { ...BASE, id: true } });"],
+    ["a select-less update", "tx.workItem.update({ where: { id }, data: { title } });"],
+    ["raw SQL", "tx.$queryRaw`SELECT * FROM work_item`;"],
+    // ── added 2026-09-21, one per review finding. Each of these passed
+    // the first cut of this check, and the first four are the ones that
+    // would have leaked.
+    [
+      "an element-access delegate hiding a whole relation",
+      'tx["workItem"].findMany({ select: { id: true, project: true } });',
+    ],
+    [
+      "a delegate lifted into a local, hiding a whole relation",
+      "wi.findMany({ select: { id: true, project: true } });",
+    ],
+    ["an internal scalar that is explicit but not safe", "tx.workItem.findMany({ select: { rank: true } });"],
+    [
+      "the agency's own process vocabulary",
+      "tx.workItem.findMany({ select: { triageStatus: true, snoozedUntil: true } });",
+    ],
+    ["the 512 KB body", "tx.workItem.findMany({ select: { description: true } });"],
+    ["groupBy, which no select can allow-list", 'tx.workItem.groupBy({ by: ["rank"] });'],
+    ["aggregate", "tx.workItem.aggregate({ _max: { rank: true } });"],
+  ])("fails on %s", (_name, body) => {
+    expect(auditSource(body, "probe", models)).not.toEqual([]);
+  });
+
+  /**
+   * THE OTHER HALF OF THE CONTROL: ordinary JavaScript in a scanned file
+   * must NOT fail. This walk now covers `src/auth/portal.ts` (a Better
+   * Auth config, not a projection) and every file that mentions
+   * `withPortalRead`, so a check that flagged `Object.create(null)` —
+   * which is AGENTS.md's own ProseMirror trap — would break unrelated
+   * work with a message about allow-lists.
+   */
+  it.each([
+    ["Object.create", "const attrs = Object.create(null);"],
+    ["a Map delete", "CONTACT_TRANSACTIONS.delete(tx);"],
+    ["a Headers delete", "headers.delete('cookie');"],
+    ["a hash update", "createHash('sha256').update(buf);"],
+    ["a non-Prisma create", "const ctx = builder.create({ verbose: true });"],
+  ])("passes %s, which is not a Prisma call at all", (_name, body) => {
+    expect(auditSource(body, "probe", models)).toEqual([]);
+  });
+
+  it("passes the shape a projection is supposed to have", () => {
+    expect(
+      auditSource(
+        "tx.workItem.findMany({ where: { id }, select: { id: true, title: true, project: { select: { name: true } } } });",
+        "probe",
+        models,
+      ),
+    ).toEqual([]);
+  });
+
+  it("scans more than the two conventional filenames", () => {
+    // The widening is itself asserted: a walk that quietly went back to
+    // matching `portal.ts` alone would make every case above vacuous for
+    // the surfaces that matter most.
+    const scanned = walk(SRC, isPortalSurface).map((f) => relative(SRC, f).replaceAll("\\", "/"));
+    expect(scanned).toContain("modules/work/portal.ts");
+    expect(scanned).toContain("app/(portal)/portal/page.tsx");
+    expect(scanned).toContain("portal/authorize.ts");
+    // …and never a test, which is where the hazards are named on purpose.
+    expect(scanned.filter((f) => f.includes(".dbtest.") || f.includes(".test."))).toEqual([]);
   });
 });

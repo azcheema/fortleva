@@ -13,7 +13,7 @@ import {
 import { driftFor, DRIFT_MAX_PX, DRIFT_MIN_PX, VOLATILE_STOPS } from "./fixtures/overflow";
 import { settle } from "./fixtures/settle";
 import { RUNG_WIDTHS, stops, VIEWPORTS, type Stop } from "./fixtures/stops";
-import { requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { CONTACT_STORAGE_STATE, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
  * The visual sweep: every route the app has, in both themes, at desktop
@@ -203,7 +203,7 @@ async function visit(
   await settle(page);
 
   const shot = `${stop.name}__${theme}__${device}.png`;
-  // The shots are a HUMAN artefact — 192 full-page PNGs for the craft
+  // The shots are a HUMAN artefact — 200 full-page PNGs for the craft
   // review. Nothing asserts on them: this repo has no committed
   // baselines and no toHaveScreenshot anywhere, and ci.yml uploads only
   // playwright-report/, so under CI they were rendered, encoded and then
@@ -508,7 +508,7 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // 48 stops × 3 navigations, five minutes next to the database.
+        // 50 stops × 3 navigations, five minutes next to the database.
         // The CI branch was 900 s, sized when the runner was in the US
         // and the database in the EU (~10 s a stop on a slow evening).
         // Since 2026-09-01 CI runs against a service container on the
@@ -533,7 +533,7 @@ for (const theme of ["light", "dark"] as const) {
         const trace = watch(page);
 
         try {
-          for (const stop of all.filter((s) => !s.anon)) {
+          for (const stop of all.filter((s) => !s.anon && !s.session)) {
             await visit(page, stop, theme, device, trace, findings, seed);
           }
 
@@ -553,6 +553,31 @@ for (const theme of ["light", "dark"] as const) {
             }
           } finally {
             await anon.close();
+          }
+
+          // The PORTAL plane: a real contact session, minted through the
+          // real endpoint in global-setup. A context of its own rather
+          // than a second cookie in this one — `src/auth/portal.ts` is a
+          // separate table with a separate secret, and the surface must
+          // be photographed under the principal that will really read it.
+          const contactStops = all.filter((s) => s.session === "contact");
+          if (contactStops.length > 0) {
+            const contact: BrowserContext = await browser.newContext({
+              viewport: VIEWPORTS[device],
+              colorScheme: theme,
+              locale: "en-US",
+              storageState: CONTACT_STORAGE_STATE,
+            });
+            try {
+              await contact.addCookies([themeCookie]);
+              const contactPage = await contact.newPage();
+              const contactTrace = watch(contactPage);
+              for (const stop of contactStops) {
+                await visit(contactPage, stop, theme, device, contactTrace, findings, seed);
+              }
+            } finally {
+              await contact.close();
+            }
           }
         } finally {
           // Written even when the walk throws: a partial audit is still

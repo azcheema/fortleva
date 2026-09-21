@@ -225,7 +225,12 @@ test.describe("swedish · widths", () => {
     // by leaving it to the English walk. Every other `drive` in the list
     // is already locale-agnostic (a keystroke, a test id), and one that
     // is not can never be walked here.
-    const all = stops(seed).filter((s) => !s.anon && !s.expectsFailure);
+    // `session` stops are skipped for a THIRD reason, added with the
+    // portal (2026-09-21): `setLanguage` below switches the MEMBER's
+    // language, and a contact's comes from `Contact.locale`, so walking
+    // /portal here would measure an English page and call it Swedish.
+    // Stops.ts records what closing that needs.
+    const all = stops(seed).filter((s) => !s.anon && !s.expectsFailure && !s.session);
 
     const describe = (r: TableOverflow) => `"${r.label}" (${r.box}px box): ${r.px}px`;
     const findings: string[] = [];

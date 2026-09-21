@@ -4,8 +4,11 @@ import { join } from "node:path";
 
 import { chromium } from "@playwright/test";
 
+import { sessionCookieName } from "../src/config";
+
 import {
   AUTH_DIR,
+  CONTACT_STORAGE_STATE,
   STORAGE_STATE,
   provisionE2ETenant,
   requireSeed,
@@ -40,7 +43,7 @@ export default async function globalSetup(): Promise<void> {
   // — which is why the guard stays at 90 rather than dropping.
   const swept = await sweepStaleE2ETenants(90);
   if (swept > 0) console.log(`[e2e] swept ${swept} orphaned throwaway tenant(s)`);
-  const { password, tenantSlug } = await provisionE2ETenant();
+  const { password, contactPassword, tenantSlug } = await provisionE2ETenant();
   console.log(`[e2e] throwaway tenant ${tenantSlug} provisioned`);
 
   try {
@@ -57,6 +60,46 @@ export default async function globalSetup(): Promise<void> {
       await page.waitForURL("**/home", { timeout: 30_000 });
       await context.storageState({ path: STORAGE_STATE });
       await context.close();
+
+      // ── The CONTACT session (Phase 3) ────────────────────────────
+      // Through the REAL endpoint, in a context of its own, for the same
+      // reason the owner goes through the real form: a forged cookie
+      // proves nothing about the plane that has to mint it. There is no
+      // /portal/login FORM yet (the invite slice owns it), so this posts
+      // to the sign-in route the portal instance actually mounts —
+      // `context.request` shares the context's cookie jar, so the
+      // Set-Cookie lands exactly where a browser's would.
+      //
+      // A SEPARATE CONTEXT, never a second cookie in the member jar: the
+      // planes are separate tables with separate secrets, and a browser
+      // holding both is a state the walk should not be inventing on its
+      // own (the memo's §2.1 question, which the founder answered with
+      // "View-as renders under the member's own session" — so no real
+      // surface ever has two).
+      const portal = await browser.newContext({ baseURL, locale: "en-US" });
+      try {
+        const signIn = await portal.request.post("/api/portal-auth/sign-in/email", {
+          data: { email: seed.contactEmail, password: contactPassword },
+        });
+        if (!signIn.ok()) {
+          // The body is Better Auth's deliberately constant refusal, so
+          // it says nothing useful and nothing secret. The STATUS is the
+          // diagnosis.
+          throw new Error(`[e2e] portal sign-in failed: ${signIn.status()}`);
+        }
+        // The NAME comes from src/config — AGENTS.md's rule that no
+        // cookie name lives outside it applies to the harness too, and a
+        // literal here would silently stop asserting anything the day the
+        // prefix changed.
+        const cookieName = sessionCookieName("portal");
+        const cookies = await portal.cookies();
+        if (!cookies.some((c) => c.name === cookieName)) {
+          throw new Error("[e2e] portal sign-in set no session cookie");
+        }
+        await portal.storageState({ path: CONTACT_STORAGE_STATE });
+      } finally {
+        await portal.close();
+      }
     } finally {
       await browser.close();
     }

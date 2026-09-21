@@ -34,6 +34,13 @@ const exec = promisify(execFile);
 
 export const AUTH_DIR = join(process.cwd(), ".auth");
 export const STORAGE_STATE = join(AUTH_DIR, "member.json");
+/**
+ * The CONTACT plane's storage state (Phase 3). A separate jar, not a
+ * second cookie in the member one: the two planes are separate tables,
+ * separate secrets and separate cookie names, and a walk that carried
+ * both would be testing a browser state no real person has.
+ */
+export const CONTACT_STORAGE_STATE = join(AUTH_DIR, "contact.json");
 const SEED_FILE = join(AUTH_DIR, "seed.json");
 
 const TSX = join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
@@ -54,15 +61,22 @@ async function runCli<T>(args: string[], env: Record<string, string> = {}): Prom
 /**
  * Provision the throwaway tenant with an owner who can really sign in
  * (verified email + credential account), a client, a project, a
- * milestone, one CLIENT_VISIBLE and one INTERNAL document.
- * The password is returned for the caller's memory only.
+ * milestone, one CLIENT_VISIBLE and one INTERNAL document — and, since
+ * Phase 3, a CONTACT_PRIMARY contact with a portal credential.
+ * Both passwords are returned for the caller's memory only.
  */
-export async function provisionE2ETenant(): Promise<{ password: string; tenantSlug: string }> {
+export async function provisionE2ETenant(): Promise<{
+  password: string;
+  contactPassword: string;
+  tenantSlug: string;
+}> {
   const password = randomBytes(24).toString("base64url");
+  const contactPassword = randomBytes(24).toString("base64url");
   const { tenantSlug } = await runCli<{ tenantSlug: string }>(["provision", SEED_FILE], {
     E2E_OWNER_PASSWORD: password,
+    E2E_CONTACT_PASSWORD: contactPassword,
   });
-  return { password, tenantSlug };
+  return { password, contactPassword, tenantSlug };
 }
 
 /** Idempotent: does nothing when the seed file is already gone. */

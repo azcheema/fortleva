@@ -108,6 +108,7 @@ const DBTEST_PREFIXES = [
   "prefs-",
   "prefs-notify-",
   "projects-",
+  "pwork-",
   "reports-",
   "roles-",
   "scope-",
@@ -208,6 +209,14 @@ export type E2ESeed = {
   readonly inviteToken: string;
   readonly inviteEmail: string;
 
+  /* ── The portal plane's principal ──────────────────────────────────
+   * The CONTACT_PRIMARY contact of `clientId`, ACTIVE, invited and
+   * credentialled, so the harness can hold a real portal session. Its
+   * password is never in this file: global-setup generates it, passes it
+   * to the worker in an env var and signs in with it once. */
+  readonly contactEmail: string;
+  readonly contactName: string;
+
   /* ── Member-plane scoping fixture (e2e/scoping.spec.ts) ─────────────
    * An employee — the template role WITHOUT client:view_all — assigned
    * to exactly one client. The long-name client and its completed
@@ -225,6 +234,13 @@ const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes)
 async function provision(seedFile: string): Promise<void> {
   const password = process.env["E2E_OWNER_PASSWORD"];
   if (!password) throw new Error("E2E_OWNER_PASSWORD is not set");
+  // BEFORE anything is written, not beside the row that needs it: this
+  // check used to sit 400 lines down, next to the contact credential, so
+  // a manual `tsx seed-cli.ts provision` without the new var built the
+  // whole tenant and then threw — leaving an orphan for the 90-minute
+  // sweep to find (review).
+  const contactPassword = process.env["E2E_CONTACT_PASSWORD"];
+  if (!contactPassword) throw new Error("E2E_CONTACT_PASSWORD is not set");
 
   const { hashPassword } = await import("better-auth/crypto");
   const { getPlatformClient } = await import("../../src/db/client");
@@ -233,7 +249,9 @@ async function provision(seedFile: string): Promise<void> {
   const { archiveClient, createClient, createContact, updateClient } = await import(
     "../../src/clients/service"
   );
-  const { createProject, updateProject } = await import("../../src/projects/service");
+  const { createProject, setPortalEnabled, updateProject } = await import(
+    "../../src/projects/service"
+  );
   const { createService } = await import("../../src/services/service");
   const { createRateCard } = await import("../../src/modules/time");
   const {
@@ -243,6 +261,7 @@ async function provision(seedFile: string): Promise<void> {
     createItem,
     createLabel,
     setItemLabel,
+    setItemMilestone,
     updateItemFields,
   } = await import("../../src/modules/work");
   const { dateColumn, localDateString } = await import("../../src/lib/duration");
@@ -376,9 +395,11 @@ async function provision(seedFile: string): Promise<void> {
   const { id: archivedClientId } = await createClient(ctx, { name: `E2E Archived ${run}` });
   await archiveClient(ctx, archivedClientId);
 
-  await createContact(ctx, clientId, {
-    name: "Astrid Lindqvist",
-    email: `astrid-${run}${EMAIL_DOMAIN}`,
+  const contactEmail = `astrid-${run}${EMAIL_DOMAIN}`;
+  const contactName = "Astrid Lindqvist";
+  const { id: contactId } = await createContact(ctx, clientId, {
+    name: contactName,
+    email: contactEmail,
     title: "Marknadschef",
     phone: "+46 70 123 45 67",
     portalProfile: "CONTACT_PRIMARY",
@@ -542,8 +563,27 @@ async function provision(seedFile: string): Promise<void> {
   // One label — the common case, under the cap, nothing folded.
   const reviewTaskId = await task("Designgranskning med kunden", { priority: "MEDIUM", hours: 1.5, labels: 1 });
   await updateItemFields(ctx, reviewTaskId, { targetDate: dueIn(3) });
-  await task("Migrera DNS till ny leverantör", { category: "DONE", hours: 1 });
-  await task("Tillgänglighetsgranskning", { category: "BACKLOG" });
+  const dnsTaskId = await task("Migrera DNS till ny leverantör", { category: "DONE", hours: 1 });
+  const a11yTaskId = await task("Tillgänglighetsgranskning", { category: "BACKLOG" });
+
+  // ── Phase 3: the portal fixture ────────────────────────────────────
+  // Three shared tasks in three different portal categories, so the
+  // `/portal` stop photographs the grouped list rather than one row, and
+  // one of them carries the CLIENT_VISIBLE milestone so the "Phase:" line
+  // is in frame. Everything else in this project stays INTERNAL, which is
+  // what makes the stop a NEGATIVE control as well as a positive one: the
+  // walk's screenshots are the only place a human ever looks at what a
+  // contact sees.
+  await changeItemVisibility(ctx, dnsTaskId, "CLIENT_VISIBLE");
+  await changeItemVisibility(ctx, a11yTaskId, "CLIENT_VISIBLE");
+  await setItemMilestone(ctx, a11yTaskId, datedMilestoneId);
+  await updateItemFields(ctx, a11yTaskId, { targetDate: dueIn(10) });
+  // THROUGH THE REAL SWITCH, not a column write: `setPortalEnabled` is
+  // the emergency "stop showing this client our data" control, its
+  // trigger fans `portal_enabled` out across ten tables, and a fixture
+  // that set the column directly would leave every child row at false
+  // and the portal list empty for a reason nobody could see.
+  await setPortalEnabled(ctx, projectId, true);
 
   // The invitation row is written directly rather than through
   // createInvite(): the service also sends mail, and a fixture must not
@@ -612,6 +652,39 @@ async function provision(seedFile: string): Promise<void> {
     ownerMemberId,
   );
 
+  // ── Portal-plane fixture: a contact who can really sign in ─────────
+  // The portal has no sign-up and no invite flow yet, so the credential
+  // is written the way invite acceptance will write it — directly, into
+  // `contact_account`, after the row is ACTIVE and STAMPED AS INVITED.
+  // Both stamps are load-bearing rather than decorative: the database
+  // trigger `contact_account_requires_invite` refuses a credential for a
+  // contact that is neither INVITED nor ACTIVE, and `authorizePortal()`
+  // requires `invitedAt` on the row — an activation path that forgets it
+  // produces a contact who can hold a session and do nothing
+  // (src/portal/policy.ts).
+  //
+  // The password is generated per run by the test worker and arrives in
+  // an env var, exactly like the owner's: never written to the seed file,
+  // never printed.
+  await db.contact.update({
+    where: { tenantId_id: { tenantId, id: contactId } },
+    data: {
+      emailVerified: true,
+      portalStatus: "ACTIVE",
+      invitedAt: new Date(Date.now() - 7 * day),
+      activatedAt: new Date(Date.now() - 6 * day),
+      invitedById: ownerMemberId,
+    },
+  });
+  await db.contactAccount.create({
+    data: {
+      contactId,
+      accountId: contactId,
+      providerId: "credential",
+      password: await hashPassword(contactPassword),
+    },
+  });
+
   const clientVisibleDocName = `e2e-shared-${run}.txt`;
   const internalDocName = `e2e-private-${run}.txt`;
   const seed: E2ESeed = {
@@ -646,6 +719,8 @@ async function provision(seedFile: string): Promise<void> {
     projectDocId: await document(`e2e-projekt-${run}.txt`, "CLIENT_VISIBLE", { projectId }),
     inviteToken,
     inviteEmail,
+    contactEmail,
+    contactName,
     employeeEmail,
     employeePassword,
   };

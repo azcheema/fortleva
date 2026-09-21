@@ -72,7 +72,25 @@ const CONTACT_ROW_BY_TX = new WeakMap<
  *
  * `gates` is carried rather than fetched per call because gates 1–3 are
  * a tenant-config read that cannot happen under this principal at all —
- * see `module-gates.ts`, which is the load-bearing comment of this slice.
+ * see `module-gates.ts`, which is the load-bearing comment of slice 2.
+ *
+ * IT IS CALLER-SUPPLIED DATA AND IS NOT BOUND TO `tenantId`, which is
+ * the same shape — and the same answer — as `MemberActor.mfa` on the
+ * member plane: AUTHZ.md §7.5 closes it with a rule ("only
+ * `requireTenantContext()` should build actors for ✦ paths") rather
+ * than a mechanism, because branding a type does not survive a spread.
+ * Here the rule is: **only `requirePortalContext()` builds a
+ * `PortalPrincipal`**, and it resolves `gatesFor(contact.tenantId)` from
+ * the session it just validated, so the gates and the tenant cannot
+ * disagree.
+ *
+ * A slice-3 review sharpened the hazard and it is worth carrying
+ * forward: the risk is less "a route spoofs all-ok" than "a route
+ * reuses a gates map resolved for ANOTHER tenant", which would let one
+ * agency's entitlements decide another's. **View-as-Contact is the
+ * slice that will first synthesise a principal outside
+ * `requirePortalContext()`, and it must resolve the gates from the
+ * viewed contact's tenant rather than carrying the member's.**
  */
 export type PortalPrincipal = {
   readonly contactId: string;
@@ -105,11 +123,13 @@ export type PortalScopeRef =
  * out-of-scope — existence must not leak across the client boundary,
  * and on this plane "the client boundary" is the whole product.
  *
- * A note the first portal ROUTE will need (slice 3): these reasons are
- * for the audit row, the server log and the test matrix. The portal's
- * HTTP surface must render every one of them identically — a contact
- * who is told NOT_ENTITLED has been told something about their agency's
- * commercial arrangements.
+ * THESE REASONS ARE INTERNAL. They are for the audit row, the server log
+ * and the test matrix; the portal's HTTP surface renders every one of
+ * them identically, because a contact told NOT_ENTITLED has been told
+ * something about their agency's commercial arrangements. Since slice 3
+ * that is a call and not a rule: `portalReadOrNull()`
+ * (`src/portal/render.ts`) is the single place a page turns any of these
+ * into the one empty surface. Do not branch on `reason` in a route.
  */
 export async function authorizePortal(
   tx: TenantDb,

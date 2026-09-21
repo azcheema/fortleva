@@ -56,6 +56,21 @@ export type Stop = {
   path: string;
   /** Rendered signed out (the auth lockup). */
   anon?: true;
+  /**
+   * Rendered under a plane OTHER than the member one. `"contact"` walks
+   * the stop in a real portal session (`.auth/contact.json`,
+   * global-setup) — the harness's third principal, added with the first
+   * portal route (memo §2.4: "the portal walk needs an anonymous-ish
+   * fixture — a contact session — which the harness has no concept of
+   * today").
+   *
+   * The Swedish width walk SKIPS these, and that is a gap rather than a
+   * decision: its `setLanguage` writes `User.locale`, and a contact's
+   * language comes from `Contact.locale` (src/i18n/resolve.ts). Covering
+   * the portal in Swedish needs a contact-side switch, which the invite
+   * slice's profile menu is the natural home for.
+   */
+  session?: "contact";
   /** Accepted document statuses; defaults to [200]. */
   status?: number[];
   /** Expected landing path when the route deliberately redirects. */
@@ -192,6 +207,14 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // A member with no enrolled factor cannot step up — the page sends
     // them to enrol instead, and that redirect is the state to inspect.
     { name: "account-step-up", path: "/account/step-up" },
+
+    // ── the portal plane (Phase 3) ──────────────────────────────────
+    // The sign-in lockup, which every portal redirect lands on, and the
+    // contact's own landing page. The second is the FIRST stop in this
+    // list that is not rendered for a member, so it is also the first
+    // thing the craft audit has ever said about what a client sees.
+    { name: "portal-login", path: "/portal/login", anon: true },
+    { name: "portal-home", path: "/portal", session: "contact" },
 
     // ── the states nobody designs twice ─────────────────────────────
     // An unmatched path resolves to the ROOT not-found (the auth lockup),
