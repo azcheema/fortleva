@@ -67,6 +67,36 @@ const KINDS = {
     audience: "MEMBER",
     class: "COALESCED",
   },
+  /**
+   * Phase 3: a CLIENT submitted a request through the portal, and it is
+   * sitting in triage (`modules/work/portal-writes.ts`).
+   *
+   * AUDIENCE IS MEMBER, WHICH IS NOT A CONTRADICTION. The `audience`
+   * field names who RECEIVES the notification, not who caused it — the
+   * contact is the actor and the agency is the reader — so the
+   * `clientVisibleOnly` tripwire (CONTACT kinds only) does not apply and
+   * must not be set: setting it would claim this fan-out runs from a
+   * client-visible fact for a client's benefit, which is the opposite of
+   * what it does.
+   *
+   * INSTANT, and the level is PARTICIPATING rather than ALL. A request
+   * is the one thing in this product a client can put on an agency's
+   * board, and an agency that finds out about it on Friday has a client
+   * who was ignored all week — so it is not a digest item. PARTICIPATING
+   * because the receivers are the people assigned to that project
+   * (`portal-writes.ts` computes them); a member who has turned email
+   * down to MENTIONS has said they only want to be named, and a request
+   * names nobody.
+   *
+   * NO `debounceMinutes` AND NO `cancelledIfRead`: those exist for
+   * assignment, where a colleague may undo the thing the mail is about
+   * within two minutes. Nothing retracts a client's request.
+   */
+  "work_item.request_received": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
   // 2T: budget threshold crossed (once per budget × period × threshold —
   // the BudgetAlert unique dedupes; ids only; coalesces until digests).
   "budget.threshold_reached": {

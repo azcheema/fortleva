@@ -124,6 +124,51 @@ export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise
 }
 
 /**
+ * THE PORTAL INTAKE'S BUDGET LOCK, and the database's own clock with it
+ * (Phase 3 slice 6a).
+ *
+ * It is here and not in `requests.ts` for two reasons, one of them
+ * structural. The honest one: this file is where every
+ * `pg_advisory_xact_lock` in the product lives, and a fourth key taken
+ * somewhere else is a lock nobody reviewing the lock order would find.
+ * The structural one: `requests.ts` is scanned by the portal tripwire's
+ * AST tier (`src/authz/portal-projections.test.ts`), which bans raw SQL
+ * outright — "raw SQL has no allow-list a reader can check" — and a
+ * file the tripwire cannot read is a file the tripwire does not cover.
+ *
+ * **IT IS NOT A RANK LOCK AND IT SHARES THE SAME KEY SPACE.** The
+ * single-argument `pg_advisory_xact_lock` has ONE 64-bit space; the
+ * `portal_request:` / `work_rank:` / `milestone_rank:` prefixes change
+ * the hash INPUT, not the namespace, and `hashtext` is 32-bit, so two
+ * unrelated keys can collide. (A first draft of this comment claimed a
+ * namespace of its own — a code review caught it, and it is the repo's
+ * recurring finding: the documents disagreeing with the code.) The
+ * consequence is benign — a collision serialises two unrelated waiters
+ * and nothing more — and the CYCLE conclusion is unaffected for a
+ * better reason: the intake takes this key BEFORE the project's rank
+ * key and nothing anywhere takes them in the other order.
+ *
+ * THE CLOCK RIDES ALONG because it costs nothing to return it from the
+ * statement that takes the lock, and because the alternative compares
+ * two clocks: `work_item.created_at` is stamped by Postgres, so a
+ * window computed from a serverless instance's `Date.now()` silently
+ * narrows when that instance runs fast and widens when it runs slow,
+ * with nothing failing either way.
+ */
+export async function lockContactRequestBudget(tx: TenantDb, contactId: string): Promise<Date> {
+  // The CTE is what makes this ONE statement: the lock is taken while
+  // the row carrying `now()` is produced.
+  const rows = await tx.$queryRaw<{ now: Date }[]>`
+    WITH locked AS (SELECT pg_advisory_xact_lock(hashtext(${`portal_request:${contactId}`})))
+    SELECT now() AS now FROM locked`;
+  const clock = rows[0];
+  // Postgres cannot return zero rows here; if it somehow does, the
+  // budget has no window to measure and must not be guessed at.
+  if (!clock) throw new Error("lockContactRequestBudget: no clock row");
+  return clock.now;
+}
+
+/**
  * The mode a writer takes on an item row. For a writer of THAT row it is
  * the mode its own UPDATE will take: FOR NO KEY UPDATE when no column it
  * writes is in a unique index (a field edit, a state change, an

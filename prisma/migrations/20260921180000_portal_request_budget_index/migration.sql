@@ -1,0 +1,36 @@
+-- The portal request intake's RATE BUDGET needs an index, and without
+-- one the control would cost more than the thing it protects (Phase 3
+-- slice 6a, 2026-09-21).
+--
+-- `assertRequestBudget` (src/modules/work/requests.ts) counts the rows
+-- one contact has caused through the portal inside a window:
+--
+--   WHERE tenant_id = … AND reported_by_contact_id = … 
+--     AND source = 'PORTAL' AND created_at >= …
+--
+-- `reported_by_contact_id` had no index at all — it is attribution with
+-- no foreign key, so Prisma never made one — and `work_item` is the
+-- biggest table in the product. The best prefix available was
+-- `tenant_id`, which means a rate limiter whose cost grows with the
+-- TENANT'S ENTIRE BACKLOG, evaluated on the least-trusted surface in the
+-- product, on exactly the path an abusive submitter hammers. A limiter
+-- that gets slower the more it is exercised is a denial-of-service
+-- amplifier wearing a control's name.
+--
+-- `source` is deliberately NOT in the index. It is one of three enum
+-- values and `reported_by_contact_id` is already near-unique per
+-- contact, so the extra column would buy nothing a filter on the
+-- fetched rows does not; `created_at` earns its place because the
+-- window is the selective term once a contact has a history.
+--
+-- NOT `CONCURRENTLY`, for the reason 20260920190000 records: Prisma runs
+-- each migration inside a transaction and Postgres forbids it there. A
+-- plain CREATE INDEX holds SHARE on `work_item` for the length of the
+-- build — harmless now (no production data), a deploy-window
+-- consideration once that table is large.
+--
+-- The name is Prisma's default for the matching `@@index` in
+-- schema.prisma, so the model and the database do not drift. DDL only,
+-- no DML, no new table: no RLS work and no neon-smoke run owed.
+CREATE INDEX "work_item_tenant_id_reported_by_contact_id_created_at_idx"
+  ON "work_item"("tenant_id", "reported_by_contact_id", "created_at");

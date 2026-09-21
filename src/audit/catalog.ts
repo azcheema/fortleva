@@ -160,6 +160,19 @@ export const AUDIT_EVENTS = {
   // decision 2026-09-12: one's own comments are routine (a history row,
   // no audit), another member's words are not.
   "comment.edited_by_other": TENANT,
+  // THE PORTAL FAMILY — contact-CAUSED writes, brokered under the
+  // system principal after `authorizePortal()` (AUTHZ.md §8). They are
+  // `portal.*` rather than `work_item.*` because the family names WHO
+  // caused the row, not which table it landed in: a member creating a
+  // task is `work_item.created`, and a client submitting a request is
+  // not the same event with a different actor — it is the one act a
+  // client can perform on the agency's board, and an operator reading
+  // the log filters for exactly it.
+  //
+  // The actor is the CONTACT even though the transaction is a system
+  // one: `record()` takes `brokeredForContactId` for precisely this,
+  // and refuses it outside a system transaction.
+  "portal.request_created": TENANT,
   "workflow.changed": TENANT,
   "label.created": TENANT,
   "label.deleted": TENANT,

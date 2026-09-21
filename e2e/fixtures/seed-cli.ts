@@ -27,6 +27,8 @@
  *        tsx e2e/fixtures/seed-cli.ts milestone <milestoneId>
  *        tsx e2e/fixtures/seed-cli.ts big-project <tenantId> [size]
  *        tsx e2e/fixtures/seed-cli.ts drop-project <projectId>
+ *        tsx e2e/fixtures/seed-cli.ts portal-requests <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts clear-portal-requests <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -107,6 +109,7 @@ const DBTEST_PREFIXES = [
   "portalc-",
   "prefs-",
   "prefs-notify-",
+  "preq-",
   "projects-",
   "pvas-",
   "pview-",
@@ -1271,6 +1274,131 @@ async function dropProject(projectId: string): Promise<void> {
   process.stdout.write(`${MARKER}${JSON.stringify({ dropped: Boolean(project) })}\n`);
 }
 
+/**
+ * THE DB HALF OF THE PORTAL REQUEST SPEC (Phase 3 slice 6a).
+ *
+ * The browser can only see what the portal renders back, and the claim
+ * that matters about an intake is about columns the portal never shows:
+ * `kind`, `source`, `visibility`, the triage status, who it is
+ * attributed to, and the actor on its audit row. Those are facts in the
+ * database, so the spec asserts on them here rather than inferring them
+ * from a list item.
+ *
+ * It reads the AUDIT row alongside, because the audit actor is the one
+ * property of a brokered write that a service-level dbtest and a browser
+ * test could both pass while the real HTTP path wrote SYSTEM: the
+ * principal comes from a cookie, and only a real request has one.
+ */
+async function portalRequests(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const rows = await db.workItem.findMany({
+    where: { tenantId, kind: "REQUEST", source: "PORTAL" },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      number: true,
+      title: true,
+      descriptionText: true,
+      visibility: true,
+      portalEnabled: true,
+      stateCategory: true,
+      triageStatus: true,
+      reportedByContactId: true,
+      createdByMemberId: true,
+      clientId: true,
+      projectId: true,
+    },
+  });
+  const events = await db.auditEvent.findMany({
+    where: { tenantId, action: "portal.request_created" },
+    select: { targetId: true, actorType: true, actorId: true },
+  });
+  const byTarget = new Map(events.map((e) => [e.targetId, e]));
+  await db.$disconnect();
+  process.stdout.write(
+    `${MARKER}${JSON.stringify(
+      rows.map((r) => ({
+        ...r,
+        auditActorType: byTarget.get(r.id)?.actorType ?? null,
+        auditActorId: byTarget.get(r.id)?.actorId ?? null,
+      })),
+    )}
+`,
+  );
+}
+
+/**
+ * Hand the fixture back the way it was provisioned.
+ *
+ * WITHOUT THIS, a request submitted by the browser would still be in the
+ * shared tenant when `view-as.spec.ts`, `visual.spec.ts` and the Swedish
+ * width walk run — all three sort after `portal-requests.spec.ts` — and
+ * the portal's 204-shot stop would gain a "Requested" group whose
+ * presence depended on whether the whole suite or one file had been run.
+ * That is the cross-spec contamination the locale restore in
+ * `view-as.spec.ts` already records, and the same rule applies to the
+ * timing: the caller runs it from `afterAll`, never a `finally`, because
+ * a Playwright test TIMEOUT abandons the body and every await inside a
+ * `finally` then fails immediately.
+ */
+async function clearPortalRequests(tenantId: string, contactEmail: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  // SCOPED BY SUBMITTER, not by kind and not by a CLOCK.
+  //
+  // By kind alone (the first cut) it deleted every `kind=REQUEST,
+  // source=PORTAL` row of the shared tenant — safe today, because
+  // nothing else in `e2e/` creates one, and silently wrong the moment
+  // the triage-lane slice seeds a REQUEST fixture, at which point an
+  // unrelated spec's `afterAll` would delete it (code review).
+  //
+  // The second cut fixed that with a `createdAt >= <the run started>`
+  // window, and that was the WRONG INSTRUMENT: the rows are stamped by
+  // Postgres and the cutoff came from the test runner's own clock, so a
+  // few seconds of skew between this machine and Neon would have made
+  // the cleanup quietly delete nothing — leaving a request in the
+  // shared project's backlog for `visual` and the Swedish width walk,
+  // which is precisely the cross-spec contamination the scoping exists
+  // to prevent. It is the same two-clocks mistake the intake's own rate
+  // budget had to fix, which is how it was spotted.
+  //
+  // The submitter is the honest key: this harness can sign in as exactly
+  // one contact, so "requests reported by that contact" is exactly the
+  // set this spec can have created — with no clock in it at all.
+  const contact = await db.contact.findFirst({
+    where: { tenantId, email: contactEmail },
+    select: { id: true },
+  });
+  const rows = contact
+    ? await db.workItem.findMany({
+        where: { tenantId, kind: "REQUEST", source: "PORTAL", reportedByContactId: contact.id },
+        select: { id: true },
+      })
+    : [];
+  const ids = rows.map((r) => r.id);
+  if (ids.length > 0) {
+    await db.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId} AND entity_type = 'WORK_ITEM' AND entity_id = ANY(${ids})`;
+    await db.emailOutbox.deleteMany({
+      where: { tenantId, kind: "work_item.request_received", notificationIds: { isEmpty: false } },
+    });
+    await db.notification.deleteMany({ where: { tenantId, entityId: { in: ids } } });
+    await db.workItemActivity.deleteMany({ where: { tenantId, workItemId: { in: ids } } });
+    await db.workItem.deleteMany({ where: { tenantId, id: { in: ids } } });
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
+      await tx.auditEvent.deleteMany({
+        where: { tenantId, action: "portal.request_created", targetId: { in: ids } },
+      });
+    });
+  }
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ cleared: ids.length })}
+`);
+}
+
 /** The DB half of the visibility assertions. */
 async function visibility(documentId: string): Promise<void> {
   const { getPlatformClient } = await import("../../src/db/client");
@@ -1294,6 +1422,8 @@ const main = async (): Promise<void> => {
   if (command === "milestone") return milestone(argument!);
   if (command === "big-project") return bigProject(argument!, process.argv[4]);
   if (command === "drop-project") return dropProject(argument!);
+  if (command === "portal-requests") return portalRequests(argument!);
+  if (command === "clear-portal-requests") return clearPortalRequests(argument!, process.argv[4]!);
   if (command === "notifications") return notifications(argument!);
   if (command === "reset-notifications") return resetNotifications(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);

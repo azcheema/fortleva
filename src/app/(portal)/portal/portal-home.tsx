@@ -1,8 +1,11 @@
 import { getTranslations } from "next-intl/server";
+import Link from "next/link";
 
 import { Callout, Page, PageHeader } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 import { listPortalTasks } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
+import { listPortalProjects } from "@/projects/portal";
 
 import { PortalFrame } from "./portal-frame";
 import { PortalTasksEmpty, ProjectTasks } from "./task-list";
@@ -54,6 +57,18 @@ import { PortalTasksEmpty, ProjectTasks } from "./task-list";
  * contact would. The member's explanation lives on the Portal tab,
  * where the blockers are computed member-side from rows they may read
  * anyway — never from this call's denial.
+ *
+ * THE REQUEST LINK IS HERE AND THE REQUEST FORM IS NOT (slice 6a), and
+ * the split is View-as again. Everything in this component is rendered
+ * under a MEMBER session by `/view-as` as well, so a form placed here
+ * would show a member a submit button that can only bounce them to the
+ * client sign-in page — every portal action takes its principal from
+ * `requirePortalContext()`, so a member cannot drive one, but being
+ * unable to is not the same as not being invited to try. A LINK is
+ * genuinely part of what the client sees, so it stays; the form lives
+ * one navigation on, at `/portal/requests/new`, where only a contact
+ * can be. The byte comparison is unaffected either way: both routes
+ * render this file, so both render the same link or neither does.
  */
 
 /**
@@ -75,13 +90,43 @@ export async function PortalHome({
 }) {
   const t = await getTranslations("portal");
   const list = await portalReadOrNull("listPortalTasks", () => listPortalTasks(principal));
+  // THE LINK IS SHOWN ONLY WHEN THE SUBMIT WOULD WORK. It asks the same
+  // question `/portal/requests/new` asks — the portal-enabled projects
+  // of this client, under `portal.request.create` — so a contact whose
+  // profile does not hold the verb, or whose agency has no project
+  // switched on, is not offered a door that opens onto the plane's
+  // uniform empty page. One extra bounded read, and it is the read that
+  // decides the chrome.
+  //
+  // SEQUENTIAL, NOT `Promise.all`, and a code review was right about
+  // why. These are two independent TRANSACTIONS, so the parallel form
+  // really would overlap — but `portalReadOrNull` swallows only
+  // `AuthzError`, so if both rejected with something else (a dropped
+  // connection on this page is the realistic case) `Promise.all` would
+  // surface the first and leave the second an UNHANDLED rejection.
+  // Trading one round trip on a low-traffic page for that is the right
+  // way round.
+  const requestTargets = await portalReadOrNull("listPortalProjects", () =>
+    listPortalProjects(principal, "portal.request.create"),
+  );
   const projects = list?.projects ?? [];
+  const canRequest = (requestTargets?.length ?? 0) > 0;
 
   return (
     <PortalFrame name={name}>
       <Page>
         <div className="flex flex-col gap-6">
-          <PageHeader title={t("title")} description={t("description")} />
+          <PageHeader
+            title={t("title")}
+            description={t("description")}
+            actions={
+              canRequest ? (
+                <Button asChild size="sm">
+                  <Link href="/portal/requests/new">{t("requests.cta")}</Link>
+                </Button>
+              ) : null
+            }
+          />
           {projects.length === 0 ? (
             // Shared with the member app's Portal tab since 2026-09-21,
             // so the preview there and this page cannot drift apart —

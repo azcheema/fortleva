@@ -6,7 +6,10 @@
  * `context.ts` is deliberately NOT re-exported: it pulls in
  * `next/navigation` (it can redirect) and React's `cache`, so a test or
  * a job that only wants the policy would drag a request-scoped runtime
- * in with it. Route code imports `@/portal/context` by name.
+ * in with it. Route code imports `@/portal/context` by name. `action.ts`
+ * is off the barrel for the same reason — it resolves messages through
+ * `next-intl/server`, which only exists inside a request — and route
+ * code imports `@/portal/action` by name.
  */
 export { authorizePortal, withPortalRead } from "./authorize";
 export type { PortalPrincipal, PortalScopeRef } from "./authorize";

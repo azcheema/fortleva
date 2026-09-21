@@ -40,6 +40,10 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
     en: { subject: "New comment", body: "A task you follow has a new comment." },
     sv: { subject: "Ny kommentar", body: "En uppgift du följer har en ny kommentar." },
   },
+  "work_item.request_received": {
+    en: { subject: "A client sent a request", body: "A client submitted a request through the portal. It is waiting in triage." },
+    sv: { subject: "En kund har skickat en förfrågan", body: "En kund har skickat en förfrågan via portalen. Den väntar i sorteringen." },
+  },
   "budget.threshold_reached": {
     en: { subject: "A project budget reached a threshold", body: "A project budget in Fortleva reached one of its thresholds." },
     sv: { subject: "En projektbudget har nått en tröskel", body: "En projektbudget i Fortleva har nått en av sina trösklar." },

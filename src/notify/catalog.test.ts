@@ -67,11 +67,56 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
     for (const bad of ["", "all", "SOME", null, undefined]) expect(isEmailLevel(bad)).toBe(false);
   });
 
-  it("2W ships instant email for assignment and mention only (plan §3.5)", () => {
+  /**
+   * THE INSTANT SET IS A CLOSED LIST BECAUSE INSTANT MEANS MAIL.
+   * `plan §3.5` pinned it at two for 2W ("assignment + mention are the
+   * ONLY instant email kinds; everything else coalesces until Phase 5
+   * digests"), and that sentence is about 2W rather than about the
+   * product for ever — so this assertion is the place each later
+   * addition has to be argued, which is the whole reason it is written
+   * as an equality and not as a subset.
+   *
+   * `work_item.request_received` is the third, added with the portal
+   * request intake (Phase 3 slice 6a). It earns INSTANT on the one
+   * ground that separates the two classes: a request is the only thing
+   * a CLIENT can put on the agency's board, and an agency that learns
+   * about it in Friday's digest has a client who was ignored all week.
+   * A coalesced kind would have been the safer-looking choice and the
+   * wrong one.
+   */
+  it("instant email is assignment, mention and a client request — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
       .sort();
-    expect(instant).toEqual(["comment.mentioned", "work_item.assigned"]);
+    expect(instant).toEqual([
+      "comment.mentioned",
+      "work_item.assigned",
+      "work_item.request_received",
+    ]);
+  });
+
+  /**
+   * MENTIONS is the quietest level that still mails, and it must stay
+   * the level for a kind that NAMES you. A request names nobody, so a
+   * member who has turned email down to "only when I am mentioned" must
+   * not get one — the same rule assignment already follows.
+   */
+  it("a client request mails at PARTICIPATING, never at MENTIONS", () => {
+    expect(emailAllowed("MENTIONS", "work_item.request_received")).toBe(false);
+    expect(emailAllowed("PARTICIPATING", "work_item.request_received")).toBe(true);
+  });
+
+  /**
+   * The audience field names who RECEIVES, not who caused it. A request
+   * is contact-CAUSED and member-ADDRESSED, which is the first kind in
+   * the catalog where the two differ — so the `clientVisibleOnly`
+   * tripwire (required on every CONTACT-audience kind) must not be set
+   * on it, and its absence has to be a test rather than a comment.
+   */
+  it("a client request is a MEMBER kind and carries no client-visibility claim", () => {
+    const spec = NOTIFICATION_KINDS["work_item.request_received"];
+    expect(spec.audience).toBe("MEMBER");
+    expect(spec.clientVisibleOnly).toBeUndefined();
   });
 });

@@ -75,10 +75,9 @@ export {
   type LabelVerb,
   type LabelsCommitted,
 } from "./labels";
-// Phase 3 — the portal projections (reads only; brokered writes will
-// live in `portal-writes.ts`). Exported from the barrel because the
-// portal PAGES are the callers and ARC-16 routes every cross-boundary
-// import through here.
+// Phase 3 — the portal projections (reads only; the brokered writes are
+// below). Exported from the barrel because the portal PAGES are the
+// callers and ARC-16 routes every cross-boundary import through here.
 export {
   PORTAL_TASK_CATEGORIES,
   PORTAL_TASK_LIMIT,
@@ -89,3 +88,20 @@ export {
   type PortalTaskList,
   type PortalTaskListOptions,
 } from "./portal";
+// Phase 3 — the brokered writes (`portal-writes.ts`: authorize under
+// the contact's own principal, write under a system one). The row
+// shaping they delegate to (`requests.ts`) is deliberately NOT on the
+// barrel: `createRequest` forces the columns a submitter may not choose
+// and takes a caller-supplied transaction, so the only safe caller is
+// the broker next door.
+export {
+  createPortalRequest,
+  type PortalRequestCreated,
+  type PortalRequestInput,
+} from "./portal-writes";
+// The two length caps are NOT re-exported here, and that is deliberate:
+// the portal's request form is a client component, and anything it
+// imports from this barrel drags `portal-writes.ts` → `withTenant` →
+// `pg` into the browser graph (measured — the build failed on
+// `util/types`). It imports `@/modules/work/request-limits` directly,
+// the leaf, exactly as `src/config/view-as.ts` is imported in slice 48.

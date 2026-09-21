@@ -20,12 +20,13 @@ import type { NotificationKind } from "./catalog";
  * the page as a raw key. Interpolating a closed union into `t()` is
  * already valid; the cast buys nothing and costs the check.
  */
-type KindCopyKey = "assigned" | "mentioned" | "commented" | "budgetThreshold";
+type KindCopyKey = "assigned" | "mentioned" | "commented" | "budgetThreshold" | "requestReceived";
 
 export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.assigned": "assigned",
   "comment.mentioned": "mentioned",
   "work_item.commented": "commented",
+  "work_item.request_received": "requestReceived",
   "budget.threshold_reached": "budgetThreshold",
 };
 

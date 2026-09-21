@@ -245,7 +245,8 @@
       "mentioned": "You were mentioned",
       "commented": "New comment on a task you follow",
       "budgetThreshold": "A project budget reached a threshold",
-      "generic": "Something happened"
+      "generic": "Something happened",
+      "requestReceived": "A client sent a request"
     },
     "row": {
       "markRead": "Mark as read",
@@ -1016,7 +1017,9 @@
     "COMMENT_TOO_LARGE": "This comment is too long to post. Shorten it, or attach the detail as a file.",
     "SUBJECT_NOT_VISIBLE": "This task is private to your team, so a reply can’t be shown to the client. Share the task first.",
     "LABEL_TAKEN": "A label with that name already exists.",
-    "CONTACT_NOT_VIEWABLE": "That person cannot sign in to the portal yet, so there is no client view to open. Invite them from the client's Contacts tab first."
+    "CONTACT_NOT_VIEWABLE": "That person cannot sign in to the portal yet, so there is no client view to open. Invite them from the client's Contacts tab first.",
+    "REQUEST_RATE_LIMITED": "You have sent several requests in a short time. Wait a few minutes and try again.",
+    "REQUEST_BUSY": "We could not send that just now. Try again in a moment."
   },
   "assignments": {
     "title": "Team",
@@ -2102,6 +2105,26 @@
     "empty": {
       "title": "Nothing shared with you yet",
       "body": "When your agency shares work with you, it appears here. Ask your contact there if you were expecting something."
+    },
+    "requests": {
+      "cta": "Ask for something",
+      "title": "Ask for something",
+      "description": "Tell your agency what you need. They will see it straight away.",
+      "formTitle": "Your request",
+      "formDescription": "Pick the project it belongs to and describe what you need.",
+      "project": "Project",
+      "titleLabel": "What do you need?",
+      "titleHint": "One line — the short version.",
+      "titlePlaceholder": "A new page for the spring campaign",
+      "body": "More detail",
+      "bodyHint": "Optional. Anything that helps: links, dates, examples.",
+      "bodyPlaceholder": "Tell us anything that helps us get it right.",
+      "submit": "Send request",
+      "submitting": "Sending…",
+      "back": "Back to your projects"
+    },
+    "errors": {
+      "generic": "Something in that request could not be completed. Try again, or ask your contact at the agency."
     }
   },
   "viewAs": {

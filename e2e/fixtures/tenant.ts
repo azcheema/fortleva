@@ -155,6 +155,52 @@ export async function dropProject(projectId: string): Promise<void> {
   await runCli(["drop-project", projectId]);
 }
 
+/**
+ * A portal request as the DATABASE holds it — the columns the portal
+ * never renders, plus the actor on its audit row.
+ *
+ * The browser proves that a client can submit one; only this proves
+ * what was written. The audit actor in particular can only be checked
+ * through a REAL request: the contact principal comes from a cookie, so
+ * a service-level test and a browser test could both be green while the
+ * HTTP path attributed the row to SYSTEM.
+ */
+export type PortalRequestRecord = {
+  id: string;
+  number: number;
+  title: string;
+  descriptionText: string | null;
+  visibility: string;
+  portalEnabled: boolean;
+  stateCategory: string;
+  triageStatus: string | null;
+  reportedByContactId: string | null;
+  createdByMemberId: string | null;
+  clientId: string;
+  projectId: string;
+  auditActorType: string | null;
+  auditActorId: string | null;
+};
+
+export async function readPortalRequests(tenantId: string): Promise<PortalRequestRecord[]> {
+  return runCli(["portal-requests", tenantId]);
+}
+
+/**
+ * Hand the fixture back as provisioned — see the CLI's own note on why
+ * this runs in `afterAll` and never in a `finally`, and why it is scoped
+ * to the SUBMITTER rather than to a clock or to every request row of the
+ * tenant.
+ */
+export async function clearPortalRequests(tenantId: string, contactEmail: string): Promise<number> {
+  const { cleared } = await runCli<{ cleared: number }>([
+    "clear-portal-requests",
+    tenantId,
+    contactEmail,
+  ]);
+  return cleared;
+}
+
 export type NotificationRecord = {
   id: string;
   kind: string;

@@ -1441,6 +1441,9 @@ model WorkItem {
   @@index([tenantId, clientId, visibility, stateCategory]) // portal list + gate
   @@index([tenantId, projectId, archivedAt])
   @@index([tenantId, projectId, triageStatus]) // triage lane
+  // The portal intake's rate budget (Phase 3 slice 6a): counts this
+  // contact's own PORTAL-sourced rows inside a window, on every submit.
+  @@index([tenantId, reportedByContactId, createdAt])
   @@index([tenantId, sourceSystem, sourceId]) // import idempotency
   @@map("work_item")
 }

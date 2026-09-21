@@ -245,7 +245,8 @@
       "mentioned": "Du omnämndes",
       "commented": "Ny kommentar på en uppgift du följer",
       "budgetThreshold": "En projektbudget har nått en tröskel",
-      "generic": "Något har hänt"
+      "generic": "Något har hänt",
+      "requestReceived": "En kund har skickat en förfrågan"
     },
     "row": {
       "markRead": "Markera som läst",
@@ -1016,7 +1017,9 @@
     "COMMENT_TOO_LARGE": "Kommentaren är för lång för att publiceras. Korta ner den, eller bifoga detaljerna som en fil.",
     "SUBJECT_NOT_VISIBLE": "Uppgiften är privat för teamet, så ett svar kan inte visas för kunden. Dela uppgiften först.",
     "LABEL_TAKEN": "Det finns redan en etikett med det namnet.",
-    "CONTACT_NOT_VIEWABLE": "Personen kan ännu inte logga in i portalen, så det finns ingen kundvy att öppna. Bjud in hen från kundens kontaktflik först."
+    "CONTACT_NOT_VIEWABLE": "Personen kan ännu inte logga in i portalen, så det finns ingen kundvy att öppna. Bjud in hen från kundens kontaktflik först.",
+    "REQUEST_RATE_LIMITED": "Du har skickat flera förfrågningar på kort tid. Vänta några minuter och försök igen.",
+    "REQUEST_BUSY": "Vi kunde inte skicka det just nu. Försök igen om en liten stund."
   },
   "assignments": {
     "title": "Team",
@@ -2102,6 +2105,26 @@
     "empty": {
       "title": "Inget har delats med dig ännu",
       "body": "När din byrå delar arbete med dig dyker det upp här. Hör av dig till din kontaktperson om du väntade dig något."
+    },
+    "requests": {
+      "cta": "Be om något",
+      "title": "Be om något",
+      "description": "Berätta för din byrå vad du behöver. De ser det direkt.",
+      "formTitle": "Din förfrågan",
+      "formDescription": "Välj vilket projekt det gäller och beskriv vad du behöver.",
+      "project": "Projekt",
+      "titleLabel": "Vad behöver du?",
+      "titleHint": "En rad — den korta versionen.",
+      "titlePlaceholder": "En ny sida för vårkampanjen",
+      "body": "Mer information",
+      "bodyHint": "Frivilligt. Allt som hjälper: länkar, datum, exempel.",
+      "bodyPlaceholder": "Berätta gärna allt som hjälper oss att göra rätt.",
+      "submit": "Skicka förfrågan",
+      "submitting": "Skickar…",
+      "back": "Tillbaka till dina projekt"
+    },
+    "errors": {
+      "generic": "Något i förfrågan kunde inte genomföras. Försök igen eller hör av dig till din kontakt på byrån."
     }
   },
   "viewAs": {

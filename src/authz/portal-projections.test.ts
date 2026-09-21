@@ -194,6 +194,27 @@ const PORTAL_SURFACES_BY_NAME = [
  */
 const VIEW_AS_ROUTES = join("app", "(tenant)", "view-as");
 
+/**
+ * A SIXTH WAY IN, STRUCTURAL ONLY, for the same reason as `view-as`
+ * above (Phase 3 slice 6a, 2026-09-21).
+ *
+ * `src/modules/work/requests.ts` performs the contact-caused INSERT and
+ * derives the row's `client_id`. The brokered writer next door delegates
+ * to it precisely BECAUSE this file's text grep forbids a portal surface
+ * from naming `stateId` — and a create that lands a row in a workflow
+ * state has to name one. That split is deliberate and keeps the
+ * forbidden list absolute, but a code review put the consequence
+ * plainly: it left the file doing the actual write outside BOTH tiers,
+ * so a select-less `findFirst`, an `include`, or a helper returning a
+ * member id added there when the triage verb lands would trip nothing.
+ *
+ * So it joins the AST tier, which fires on real select KEYS and never on
+ * a paragraph, and stays out of the TEXT tier, whose list its prose
+ * necessarily spells out. That is the same trade, for the same reason,
+ * that `view-as` already records.
+ */
+const STRUCTURAL_ONLY_SURFACES = [join("modules", "work", "requests.ts")];
+
 const isProjection = (full: string, entry: string): boolean =>
   entry === "portal.ts" ||
   entry === "portal-writes.ts" ||
@@ -203,6 +224,7 @@ const isProjection = (full: string, entry: string): boolean =>
 const isPortalSurface = (full: string, entry: string, text: () => string): boolean =>
   isProjection(full, entry) ||
   full.includes(VIEW_AS_ROUTES) ||
+  STRUCTURAL_ONLY_SURFACES.some((suffix) => full.endsWith(suffix)) ||
   text().includes("withPortalRead");
 
 const walk = (
@@ -674,6 +696,13 @@ describe("every portal read is an explicit allow-list (memo §2.2)", () => {
     expect(scanned).toContain("app/(tenant)/view-as/page.tsx");
     // …and the service behind it, which reads the contact row.
     expect(scanned).toContain("clients/view-as.ts");
+    // The file that performs the contact-caused INSERT. Structural tier
+    // only, like view-as, and for the same reason — see
+    // `STRUCTURAL_ONLY_SURFACES`. Without this line the widening could
+    // be undone and every case above would go on passing.
+    expect(scanned).toContain("modules/work/requests.ts");
+    // …and the brokered writer itself, which is in BOTH tiers.
+    expect(scanned).toContain("modules/work/portal-writes.ts");
     // …and never a test, which is where the hazards are named on purpose.
     expect(scanned.filter((f) => f.includes(".dbtest.") || f.includes(".test."))).toEqual([]);
   });

@@ -205,9 +205,16 @@ async function authorizeViewAs(
  * the name the banner renders.
  *
  * The audit row is written INSIDE the member's transaction because
- * `audit.record` stamps `actorType` from the ambient principal and never
- * from its input (`src/audit/record.ts`) — a row written anywhere else
- * would not say MEMBER.
+ * `audit.record` stamps `actorType` from the ambient principal — a row
+ * written anywhere else would not say MEMBER.
+ *
+ * *(Narrowed 2026-09-21, and it is the repo's recurring finding once
+ * more: this used to say "and never from its input", which stopped
+ * being true when the portal request intake added
+ * `AuditInput.brokeredForContactId`. `record()` now takes the actor from
+ * its input for exactly one shape — a brokered portal write — and
+ * refuses the field outside a system transaction, so the conclusion for
+ * View-as is unchanged: a member transaction cannot pass it.)*
  */
 export async function enterViewAs(
   ctx: ViewAsCtx,

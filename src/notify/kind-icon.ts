@@ -1,4 +1,11 @@
-import { AtSignIcon, GaugeIcon, MessageSquareIcon, UserRoundPlusIcon, type LucideProps } from "lucide-react";
+import {
+  AtSignIcon,
+  GaugeIcon,
+  InboxIcon,
+  MessageSquareIcon,
+  UserRoundPlusIcon,
+  type LucideProps,
+} from "lucide-react";
 
 import type { NotificationKind } from "./catalog";
 
@@ -12,5 +19,6 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "work_item.assigned": UserRoundPlusIcon,
   "comment.mentioned": AtSignIcon,
   "work_item.commented": MessageSquareIcon,
+  "work_item.request_received": InboxIcon,
   "budget.threshold_reached": GaugeIcon,
 };

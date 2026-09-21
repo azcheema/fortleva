@@ -27,6 +27,21 @@ export type DomainErrorCode =
   // as this person yet" is a fact about their own tenant (AUTHZ §8's
   // member-side half, the same reasoning as the Portal tab's blockers).
   | "CONTACT_NOT_VIEWABLE"
+  // Portal request intake (slice 6a — src/modules/work/portal-writes.ts).
+  // This contact has submitted the most requests the window allows. It is
+  // the ONE refusal the portal states plainly rather than collapsing into
+  // its uniform empty answer, because it is a fact about the READER —
+  // they did this, they can wait and do it again — and not about the
+  // agency's plan, settings or other clients (src/portal/render.ts draws
+  // that line; `src/portal/action.ts` applies it to writes).
+  | "REQUEST_RATE_LIMITED"
+  // ...and the OTHER refusal that path can raise: a submission whose
+  // advisory-lock waits were spent (55P03) or which lost a deadlock,
+  // every attempt. Deliberately NOT on `src/portal/action.ts`'s
+  // disclosure list — "your agency is running something big on this
+  // project right now" is a fact about the agency — so a contact sees
+  // the plane's one generic refusal and the reason goes to the log.
+  | "REQUEST_BUSY"
   // Work tree (2W — trigger tokens map 1:1 in src/modules/work/db-errors.ts)
   | "HAS_VISIBLE_CHILDREN" // make-private refused while client-visible subtasks/comments/attachments live
   | "PARENT_NOT_VISIBLE" // a child cannot be client-visible under an internal parent

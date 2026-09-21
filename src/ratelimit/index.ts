@@ -39,6 +39,23 @@ const POLICIES = {
   "auth.credential_request": { limit: 5, window: "15 m" },
   /** Presign requests per user (upload floods). */
   "files.presign": { limit: 120, window: "1 m" },
+  /**
+   * Portal request submissions per CONTACT (Phase 3 slice 6a). A CHEAP
+   * FILTER IN FRONT OF A FAIL-CLOSED ONE, which is the only shape this
+   * module may take on a path that must actually hold: the authority is
+   * a Postgres count inside the writer's own transaction
+   * (`src/modules/work/requests.ts`), and this exists so that a contact
+   * who has spent that budget cannot go on paying for a transaction and
+   * an advisory lock per attempt. It is a NO-OP until Upstash is
+   * provisioned, which is the documented state (PLAN §0) — and that is
+   * acceptable here precisely because it is not the control.
+   *
+   * Keyed on the contact id rather than an IP: the submitter is
+   * authenticated, and an office NAT would otherwise let one client's
+   * staff spend another's budget. Its limit is above the Postgres one,
+   * so the honest refusal is normally the one that fires.
+   */
+  "portal.request_create": { limit: 20, window: "15 m" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;
 
 export type RateLimitResult = {
