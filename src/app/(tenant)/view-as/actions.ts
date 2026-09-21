@@ -113,13 +113,28 @@ export async function enterViewAsAction(
  * then check for open redirection. Named in PLAN §0 as a small, known
  * cost rather than left to be discovered.
  *
- * NOT AUDITED. There is no `project.view_as_ended` in the catalogue and
- * this slice does not invent one: an audit action cannot be backfilled,
- * so `impersonation.started`/`impersonation.ended` sitting together as a
- * paired precedent makes it a question worth the founder answering
- * rather than a call to make here. What the log says today is when a
- * member entered and as whom, which is the fact SECURITY.md §5.1 asks
- * for; how long they stayed is a question nobody has had to answer yet.
+ * NOT AUDITED, AND THE REASON IS STRUCTURAL RATHER THAN DEFERRAL.
+ * There is no `project.view_as_ended` in the catalogue, and the argument
+ * against adding one is that **this function is not the only way out of
+ * the mode**. A closed tab, an expired session, a sign-out or a plain
+ * navigation elsewhere all leave `Session.viewAsContactId` set and reach
+ * no code at all. So a paired event would fire on ENTRY always and on
+ * EXIT sometimes, and a reader would take a missing "ended" to mean
+ * "still inside" — which would be wrong most of the time. An incomplete
+ * pair is worse than an honest single event.
+ *
+ * `impersonation.started`/`impersonation.ended` is not the precedent it
+ * appears to be: platform impersonation is time-boxed and explicitly
+ * terminated, so its end event is reliable. And recording one here would
+ * force `requireTenantContext()` + `withTenant` onto the one path built
+ * to need neither — see above.
+ *
+ * What the log answers today is who entered a client's view, as whom,
+ * and when, which is the fact SECURITY.md §5.1 asks for. **If duration
+ * is ever wanted, stamp the ENTRY with an expiry and derive the window;
+ * do not pair an event that cannot reliably fire.** PLAN §0 carries the
+ * disposition (an earlier version of this comment framed it as "now or
+ * never", which was wrong on both counts).
  */
 export async function exitViewAsAction(): Promise<void> {
   const session = await requireMemberSession();

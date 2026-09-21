@@ -186,7 +186,11 @@ async function authorizeViewAs(
  * (there is no `project.view_as_ended` — see `view-as/actions.ts`), so
  * what the log answers is "who entered a client's view, as whom, and
  * when", never "for how long". That is the fact SECURITY.md §5.1 asks
- * for; the stronger reading is named in PLAN §0 as the founder's call.
+ * for, and the duration reading is deliberately not pursued: an "ended"
+ * event could only fire when the member clicks Exit, while a closed tab
+ * or an expired session emits nothing, so the pair would be incomplete
+ * in a way that reads as "still inside" (`view-as/actions.ts` has the
+ * argument; PLAN §0 carries the disposition).
  *
  * THE TARGET IS THE PROJECT THE MEMBER CAME FROM, though the mode spans
  * the client, and the mismatch is worth naming rather than smoothing
