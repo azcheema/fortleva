@@ -127,7 +127,7 @@
         "board": "Tavla",
         "backlog": "Backlogg",
         "inbox": "Inkorg",
-        "triage": "Sortering",
+        "triage": "Triage",
         "item": "Uppgift",
         "home": "Hem"
       },
@@ -1275,7 +1275,8 @@
       "files": "Filer",
       "team": "Team",
       "time": "Tid",
-      "portal": "Portal"
+      "portal": "Portal",
+      "triage": "Triage"
     },
     "portal": {
       "title": "Kundportal",
@@ -1604,6 +1605,66 @@
       "duePlaceholder": "Ange datum",
       "attachments": "{count, plural, one {# bilaga} other {# bilagor}}",
       "timerRunning": "Din timer är igång på den här uppgiften"
+    },
+    "triage": {
+      "title": "Triage",
+      "description": "Förfrågningar från din kund, äldst först. Svara på varje.",
+      "empty": {
+        "title": "Inga förfrågningar väntar",
+        "body": "När en kund skickar en förfrågan från sin portal hamnar den här.",
+        "snoozed": "{count, plural, one {# förfrågan är uppskjuten} other {# förfrågningar är uppskjutna}}.",
+        "action": "Öppna portalfliken"
+      },
+      "snoozed": "{count, plural, one {# uppskjuten förfrågan} other {# uppskjutna förfrågningar}}",
+      "truncated": "Visar de första {count} förfrågningarna. Svara på några för att se resten.",
+      "reportedBy": "Från {name}",
+      "reportedByUnknown": "Från kunden",
+      "askedOn": "Skickad {date}",
+      "wasSnoozed": "Uppskjuten, nu aktuell",
+      "row": "{key}: {title}",
+      "verbs": {
+        "ACCEPT": "Acceptera",
+        "DECLINE": "Avböj",
+        "DUPLICATE": "Dubblett av…",
+        "SNOOZE": "Skjut upp"
+      },
+      "keys": {
+        "navigate": "Gå mellan förfrågningar",
+        "ACCEPT": "Ta emot markerad förfrågan",
+        "DECLINE": "Avböj markerad förfrågan",
+        "DUPLICATE": "Markera som dubblett",
+        "SNOOZE": "Skjut upp markerad förfrågan"
+      },
+      "accepted": "{key} mottagen – den ligger på tavlan nu.",
+      "declined": "{key} avböjd. Din kund kan läsa ditt svar.",
+      "duplicated": "{key} markerad som dubblett. Din kund kan läsa ditt svar.",
+      "snoozedToast": "{key} uppskjuten.",
+      "answer": {
+        "about": "{key} · {title}",
+        "clientReads": "Din kund läser detta, ord för ord, i sin portal.",
+        "reasonLabel": "Ditt svar",
+        "DECLINE": {
+          "title": "Avböj förfrågan",
+          "placeholder": "Berätta kort varför. Kunden ser exakt detta.",
+          "confirm": "Avböj och svara"
+        },
+        "DUPLICATE": {
+          "title": "Redan på gång",
+          "targetLabel": "Uppgiften som redan täcker det",
+          "search": "Sök bland projektets uppgifter",
+          "noTargets": "Inga öppna uppgifter att peka på.",
+          "placeholder": "Berätta att det redan är på gång. Kunden ser exakt detta.",
+          "confirm": "Markera dubblett och svara"
+        },
+        "SNOOZE": {
+          "title": "Skjut upp förfrågan",
+          "tomorrow": "I morgon",
+          "week": "Nästa vecka",
+          "month": "Om en månad",
+          "dayLabel": "Eller välj en dag",
+          "confirm": "Skjut upp"
+        }
+      }
     },
     "portalState": {
       "on": "På",

@@ -1275,7 +1275,8 @@
       "files": "Files",
       "team": "Team",
       "time": "Time",
-      "portal": "Portal"
+      "portal": "Portal",
+      "triage": "Triage"
     },
     "portal": {
       "title": "Client portal",
@@ -1604,6 +1605,66 @@
       "duePlaceholder": "Set date",
       "attachments": "{count, plural, one {# attachment} other {# attachments}}",
       "timerRunning": "Your timer is running on this task"
+    },
+    "triage": {
+      "title": "Triage",
+      "description": "Requests your client has sent, oldest first. Answer each one.",
+      "empty": {
+        "title": "No requests waiting",
+        "body": "When a client submits a request from their portal, it arrives here.",
+        "snoozed": "{count, plural, one {# request is snoozed for later} other {# requests are snoozed for later}}.",
+        "action": "Open the Portal tab"
+      },
+      "snoozed": "{count, plural, one {# request snoozed for later} other {# requests snoozed for later}}",
+      "truncated": "Showing the first {count} requests. Answer some to see the rest.",
+      "reportedBy": "From {name}",
+      "reportedByUnknown": "From this client",
+      "askedOn": "Asked {date}",
+      "wasSnoozed": "Snoozed, now due",
+      "row": "{key}: {title}",
+      "verbs": {
+        "ACCEPT": "Accept",
+        "DECLINE": "Decline",
+        "DUPLICATE": "Duplicate of…",
+        "SNOOZE": "Snooze"
+      },
+      "keys": {
+        "navigate": "Move between requests",
+        "ACCEPT": "Accept the focused request",
+        "DECLINE": "Decline the focused request",
+        "DUPLICATE": "Mark the focused request a duplicate",
+        "SNOOZE": "Snooze the focused request"
+      },
+      "accepted": "{key} accepted — it is on the board now.",
+      "declined": "{key} declined. Your client can read your reply.",
+      "duplicated": "{key} marked a duplicate. Your client can read your reply.",
+      "snoozedToast": "{key} snoozed.",
+      "answer": {
+        "about": "{key} · {title}",
+        "clientReads": "Your client reads this, word for word, on their portal.",
+        "reasonLabel": "Your reply",
+        "DECLINE": {
+          "title": "Decline this request",
+          "placeholder": "Tell them why, briefly. They will see exactly this.",
+          "confirm": "Decline and reply"
+        },
+        "DUPLICATE": {
+          "title": "Already tracked",
+          "targetLabel": "The task that already covers it",
+          "search": "Search this project's tasks",
+          "noTargets": "No open tasks to point at.",
+          "placeholder": "Tell them it is already in hand. They will see exactly this.",
+          "confirm": "Mark duplicate and reply"
+        },
+        "SNOOZE": {
+          "title": "Snooze this request",
+          "tomorrow": "Tomorrow",
+          "week": "Next week",
+          "month": "In a month",
+          "dayLabel": "Or pick a day",
+          "confirm": "Snooze"
+        }
+      }
     },
     "portalState": {
       "on": "On",

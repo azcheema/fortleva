@@ -8,9 +8,9 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 98 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 — bumped deliberately 2026-09-21)", () => {
-    expect(PERMISSIONS).toHaveLength(98);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(98);
+  it("holds exactly 99 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b — bumped deliberately 2026-09-22)", () => {
+    expect(PERMISSIONS).toHaveLength(99);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(99);
   });
 
   it("the deprecated set is exactly issue:* — unseeded everywhere, rows kept (first §3.1 deprecation)", () => {

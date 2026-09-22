@@ -196,6 +196,17 @@ export async function triageItem(
     const laneVerb = parsed.verb === "ACCEPT" || parsed.verb === "SNOOZE";
     if (laneVerb && item.stateCategory !== "TRIAGE") fail("INVALID_INPUT", "not in triage");
     if (!laneVerb) {
+      // **A SECOND PERMISSION, AND IT SUPPLEMENTS THE FIRST** (founder
+      // decision, 2026-09-22). `work_item:triage` (C M E) lets an
+      // employee ACCEPT or SNOOZE. Ending a client's request publishes
+      // the agency's words to them verbatim, which is a delivery lead's
+      // call — `work_item:triage_decline` is C M.
+      //
+      // `requireAccess`, not `isAuthorized`: this is a module-gated code
+      // and the caller has already passed all four gates for
+      // `work_item:triage`, but a second code deserves the same four
+      // rather than gate 4 alone — the difference `hasAccess` exists for.
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:triage_decline");
       // Only a REQUEST can be declined: an ordinary task is cancelled
       // the ordinary way, and there is no client owed an explanation.
       if (item.kind !== "REQUEST") fail("INVALID_INPUT", "not a request");
@@ -289,6 +300,28 @@ export async function triageItem(
       oldValue: item.triageStatus,
       newValue: target.triage.triageStatus,
     });
+    // **WHAT THE CLIENT WAS TOLD, KEPT** (founder decision, 2026-09-22).
+    //
+    // The reason is deliberately absent from the audit row — an audit
+    // event outlives the row it describes and SECURITY.md §7 has the
+    // caller minimise its metadata — but that left NOTHING anywhere
+    // holding the words. And they are replaceable: reopening a declined
+    // request clears the column, after which it can be declined again
+    // with different text, so "what did we actually tell them in March"
+    // had no answer at all. A security review raised it; the founder
+    // decided the task's own history is the place.
+    //
+    // INTERNAL by construction, which is right: `triageReason` is not on
+    // `writeActivity`'s portal-safe list (nor the database's), so this
+    // row is the AGENCY's record of what it said. The client reads the
+    // live answer through the projection, not through history.
+    if (target.triage.triageReason !== null) {
+      await writeActivity(tx, ctx, item, {
+        field: "triageReason",
+        oldValue: item.triageReason,
+        newValue: target.triage.triageReason,
+      });
+    }
     await recordTriage(tx, item, parsed.verb, {
       ...(target.triage.duplicateOfId ? { duplicateOfId: target.triage.duplicateOfId } : {}),
     });

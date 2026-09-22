@@ -69,7 +69,7 @@ import {
   VIRTUALISE_ABOVE,
   allRowAnchors,
   applyMove,
-  canEnterState,
+  canItemEnterState,
   epicIdsOf,
   filtersOf,
   growTo,
@@ -494,9 +494,17 @@ export function BacklogTable({
   // non-approver — a gated state are not offered; an item ALREADY in a
   // filtered state keeps it via the current-value fallback below, so it
   // stays displayable and reopenable.
-  const stateOptions = data.states
-    .filter((s) => !s.isHidden && canEnterState(s, data.caps.canApprove))
-    .map((s) => ({ value: s.id, label: s.name }));
+  // TWO LISTS, because since slice 6b the legal targets depend on the
+  // ROW: a `kind = REQUEST` may not be moved into a cancelled state
+  // (ending one is `work_item:triage` and carries a reason the client
+  // reads). Built once each rather than per row — there are only two
+  // answers — and picked by `stateOptionsFor` at the cell.
+  const stateOptionsFor = (kind: string) =>
+    data.states
+      .filter((s) => !s.isHidden && canItemEnterState(s, data.caps.canApprove, kind))
+      .map((s) => ({ value: s.id, label: s.name }));
+  const stateOptions = stateOptionsFor("TASK");
+  const requestStateOptions = stateOptionsFor("REQUEST");
   const assigneeOptions = [
     { value: "", label: t("unassigned") },
     ...data.members.map((m) => ({ value: m.id, label: m.name })),
@@ -1419,7 +1427,11 @@ export function BacklogTable({
                       // already in TRIAGE or a gated state displayable and
                       // reopenable; the assignee cell below now shares the
                       // helper rather than a second copy of the idiom.
-                      options={withCurrentOption(stateOptions, item.stateId, item.stateName)}
+                      options={withCurrentOption(
+                        item.kind === "REQUEST" ? requestStateOptions : stateOptions,
+                        item.stateId,
+                        item.stateName,
+                      )}
                       readOnly={!data.caps.canEdit}
                       hiddenInput={false}
                       // CAPPED, like the assignee below: a state's name is the
@@ -1686,8 +1698,18 @@ export function BacklogTable({
           // The one rule again (2W-R): a gated state is not a bulk target
           // for a non-approver either — `bulkChangeState` refuses it
           // server-side regardless, but offering it would be a lie.
+          // …and since slice 6b the selection's own contents matter too:
+          // `bulkChangeState` is ALL-OR-NOTHING, so one REQUEST among
+          // twenty rows makes a move to Cancelled refuse the whole
+          // batch. Offering it would be a lie about nineteen other rows.
           states={data.states.filter(
-            (st) => !st.isHidden && canEnterState(st, data.caps.canApprove),
+            (st) =>
+              !st.isHidden &&
+              canItemEnterState(
+                st,
+                data.caps.canApprove,
+                selected.some((i) => i.kind === "REQUEST") ? "REQUEST" : undefined,
+              ),
           )}
           anyArchived={selected.some((i) => i.archivedAt !== null)}
           pending={isPending}

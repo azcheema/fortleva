@@ -193,6 +193,8 @@ export type ProjectDetail = {
     manageAssignments: boolean;
     /** project:manage_portal — the Portal tab and everything on it. */
     managePortal: boolean;
+    /** work_item:triage — the Triage tab and the four verbs on it. */
+    triage: boolean;
     viewDocuments: boolean;
     uploadDocuments: boolean;
     deleteDocuments: boolean;
@@ -285,6 +287,12 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         manageVersions: held.has("project:manage_versions"),
         manageAssignments: held.has("project:manage_assignments"),
         managePortal: held.has("project:manage_portal"),
+        // FREE: `held` is one `effectivePermissions` read the loader
+        // already does, so the Triage tab costs no query. It decides
+        // only whether the TAB is drawn — the page carries its own
+        // `requireAccess` and 404s for a typed URL (UI.md §3.1: hiding
+        // is never the gate).
+        triage: held.has("work_item:triage"),
         viewDocuments: held.has("document:view"),
         uploadDocuments: held.has("document:upload"),
         deleteDocuments: held.has("document:delete"),

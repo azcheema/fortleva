@@ -37,6 +37,7 @@ export function StateField({
   stateId,
   stateName,
   stateCategory,
+  kind,
   states,
   canEdit,
   canApprove,
@@ -49,6 +50,13 @@ export function StateField({
   stateId: string;
   stateName: string;
   stateCategory: string;
+  /**
+   * What the item is ABOUT (slice 6b) — REQUIRED, never defaulted, the
+   * standing trap: state a shared component must reflect is a prop. A
+   * REQUEST is not offered a cancelled state here, because ending one
+   * is `work_item:triage` and carries a reason the client reads.
+   */
+  kind: string;
   states: readonly ResolvedWorkflowState[];
   canEdit: boolean;
   canApprove: boolean;
@@ -71,8 +79,12 @@ export function StateField({
   // the project's states, so a row's id cannot depend on who is looking,
   // and no call site can quietly number the filtered list instead.
   const targets = useMemo(
-    () => statePickerTargets(states, canApprove, stateId),
-    [states, canApprove, stateId],
+    // `kind` since slice 6b: a REQUEST is not offered a cancelled state,
+    // because ending one is `work_item:triage` and carries a reason the
+    // client reads. `transitionState` refuses it regardless — this is
+    // the picker not inviting a gesture that cannot work.
+    () => statePickerTargets(states, canApprove, stateId, kind),
+    [states, canApprove, stateId, kind],
   );
 
   const options = useMemo<PickerOption<string>[]>(

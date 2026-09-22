@@ -8,6 +8,7 @@ import {
   allRowAnchors,
   applyMove,
   canEnterState,
+  canItemEnterState,
   cardsIn,
   edgeAnchors,
   enterableStates,
@@ -46,6 +47,7 @@ const item = (id: string, over: Partial<WorkItem> = {}): WorkItem => ({
   id,
   number: Number(id.replace(/\D/g, "")) || 0,
   title: id,
+  kind: "TASK",
   type: "TASK",
   stateId: "todo",
   stateCategory: "TODO",
@@ -181,6 +183,58 @@ describe("lanes", () => {
     expect(canEnterState(done, true)).toBe(true);
     expect(canEnterState(progress, false)).toBe(true);
     expect(canEnterState(progress, true)).toBe(true);
+  });
+
+  it("canItemEnterState (slice 6b): a REQUEST may not be moved into a cancelled state", () => {
+    const cancelled = state("cancelled", "CANCELLED");
+    const progress = state("prog", "IN_PROGRESS");
+    const done = state("done", "DONE", false, true);
+
+    // The rule, and it is about the thing being MOVED rather than the
+    // target: ending a request is `work_item:triage` and carries a
+    // reason the client reads, so no ordinary move may do it.
+    expect(canItemEnterState(cancelled, true, "REQUEST")).toBe(false);
+    // Ordinary work is cancelled the ordinary way — the refusal is
+    // about requests, not about cancelling.
+    expect(canItemEnterState(cancelled, true, "TASK")).toBe(true);
+    expect(canItemEnterState(cancelled, true, "BUG")).toBe(true);
+    // …and with NO kind, which is a surface that does not yet know
+    // which item is moving (a column asking whether it is droppable at
+    // all). It gets the old answer, which is the right one for that
+    // question — the per-drag check is what refuses the card.
+    expect(canItemEnterState(cancelled, true)).toBe(true);
+
+    // Everything `canEnterState` already decided still holds: a REQUEST
+    // is not otherwise special, and the approval gate is unchanged.
+    expect(canItemEnterState(progress, false, "REQUEST")).toBe(true);
+    expect(canItemEnterState(done, false, "REQUEST")).toBe(false);
+    expect(canItemEnterState(done, true, "REQUEST")).toBe(true);
+  });
+
+  it("enterableStates and statePickerTargets stop offering Cancelled for a REQUEST", () => {
+    const backlog = state("backlog", "BACKLOG");
+    const cancelled = state("cancelled", "CANCELLED");
+    const states = [backlog, cancelled];
+
+    expect(enterableStates(states, true, "backlog", "REQUEST").map((s) => s.id)).toEqual(["backlog"]);
+    expect(enterableStates(states, true, "backlog", "TASK").map((s) => s.id)).toEqual([
+      "backlog",
+      "cancelled",
+    ]);
+    expect(statePickerTargets(states, true, "backlog", "REQUEST").map((t) => t.state.id)).toEqual([
+      "backlog",
+    ]);
+
+    // THE CURRENT STATE IS STILL UNCONDITIONAL, which is the clause that
+    // keeps a picker able to show what the item IS: a request that has
+    // ALREADY been declined sits in a cancelled state, and a picker that
+    // hid it would render with nothing selected. Backlog is there too
+    // and should be — reopening a declined request is an ordinary move,
+    // and the rule only ever forbade the direction INTO cancelled.
+    expect(enterableStates(states, true, "cancelled", "REQUEST").map((s) => s.id)).toEqual([
+      "backlog",
+      "cancelled",
+    ]);
   });
 
   describe("enterableStates (the §5.2 picker's option list)", () => {

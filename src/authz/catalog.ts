@@ -183,6 +183,38 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // narrowing is the point of giving the control its own code rather
   // than leaving it on the one that also renames the project.
   p("project:manage_portal", "portal", "Portal master switch, hours sharing mode, view as client — audited", CM),
+  // ── Phase 3 slice 6b (module `work`, +1; catalog 98 → 99;
+  // TEMPLATE_VERSION 6, 2026-09-22) ──────────────────────────────────
+  //
+  // **C M, NOT C M E, AND THE NARROWING IS THE WHOLE POINT** (founder
+  // decision, 2026-09-22). `work_item:triage` is C M E, so an employee
+  // may answer a client's request — Accept it onto the board, or Snooze
+  // it — and that is right: the people doing the work are the people
+  // who know what is already in hand.
+  //
+  // Declining is different in kind, not in degree. It ENDS something a
+  // client asked for AND publishes the agency's words to them verbatim,
+  // on the one surface a client reads as a promise. That is the same
+  // judgement every other row of AUTHZ §3.2's portal column reserves for
+  // a delivery lead, and this product has exactly one other code that
+  // puts member-written prose in front of a client — `project_update:publish`,
+  // which is also C M.
+  //
+  // DUPLICATE IS COVERED TOO, because from the client's side it IS a
+  // decline: `portal.ts` renders both as "Declined" with the reason, and
+  // a permission that guarded only one of the two words would guard
+  // nothing. The code's name follows the client's view rather than the
+  // member's menu, deliberately.
+  //
+  // It supplements `work_item:triage`, never replaces it — both are
+  // required, exactly as `work_item:approve` supplements
+  // `work_item:edit` (2W-R).
+  p(
+    "work_item:triage_decline",
+    "work",
+    "Decline a client's REQUEST or mark it a duplicate — publishes the agency's reply to the client's portal; supplements work_item:triage, never replaces it",
+    CM,
+  ),
 ];
 
 export type RoleTemplate = {
@@ -225,8 +257,17 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     slice 4). Propagation is ADDITIVE, so a tenant whose owner and
  *     manager roles predate this bump GAIN the code and nobody LOSES
  *     `project:edit`; the narrowing below therefore takes effect for
- *     employees the moment this deploys, which is the intent. */
-export const TEMPLATE_VERSION = 5;
+ *     employees the moment this deploys, which is the intent.
+ * v6 (2026-09-22): +1 `work` code (work_item:triage_decline — Phase 3
+ *     slice 6b). Additive as ever: owners and managers GAIN it, nobody
+ *     loses `work_item:triage`, so an employee keeps Accept and Snooze
+ *     and loses Decline and Duplicate the moment this deploys — which is
+ *     the founder's decision, not a side effect. **A release carrying
+ *     this bump MUST run `prisma/seed.ts`**: a catalogue entry reaches
+ *     an existing tenant's roles only through B3 propagation, and
+ *     without it owners and managers would hold a code the code path
+ *     requires and the database has never granted. */
+export const TEMPLATE_VERSION = 6;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

@@ -50,6 +50,17 @@ export { changeState, ensureProjectStates, type StateChange, type TriageWrite } 
 // side of the portal's request intake: Accept / Decline / Duplicate /
 // Snooze, with the client-readable reason a decline must carry.
 export { triageItem, type TriageInput, type TriageOutcome } from "./triage";
+// The lane's READ is a MEMBER-plane projection and lives apart from the
+// verbs, because `triage.ts` is inside the portal tripwire's structural
+// tier and this read legitimately names columns that tier forbids. See
+// `triage-lane.ts`'s header — the split is the tripwire's doing, and it
+// is the right shape rather than a workaround.
+export {
+  TRIAGE_LANE_LIMIT,
+  listTriage,
+  type TriageEntry,
+  type TriageLane,
+} from "./triage-lane";
 // The verb list and the two caps come from the LEAF, never from
 // `./triage`: the lane's `"use client"` dialog needs them and
 // `./triage` reaches `@/db`. Same arrangement, same reason, as

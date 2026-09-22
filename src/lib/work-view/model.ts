@@ -50,6 +50,36 @@ export const canEnterState = (
 ): boolean => s.category !== "TRIAGE" && (canApprove || !s.requiresApproval);
 
 /**
+ * …AND THE HALF THAT DEPENDS ON THE ITEM, not only on the state
+ * (slice 6b).
+ *
+ * `canEnterState` above answers "may this member put anything here",
+ * which is all the board needed while every rule was about the TARGET.
+ * Ending a REQUEST is the first rule about the thing being MOVED: a
+ * `kind = REQUEST` row may not enter a CANCELLED state by an ordinary
+ * move at all, because that is how a client's own request would
+ * disappear from their portal with nobody having said why —
+ * `transitionState` refuses it and points at `work_item:triage`.
+ *
+ * SO THE SURFACES MUST STOP OFFERING IT. A target that always fails is
+ * worse than no target: the member drags, waits, and gets a refusal
+ * toast for a gesture the app invited. Hiding it is still UX and never
+ * the guard — the state machine refuses regardless, and the lane is
+ * where the verb lives.
+ *
+ * `kind` is OPTIONAL so every existing caller keeps working: a surface
+ * that does not know which item is moving (a column asking whether it is
+ * droppable at all, before a drag starts) passes nothing and gets the
+ * old answer, which is the right one for that question.
+ */
+export const canItemEnterState = (
+  s: Pick<WorkState, "category" | "requiresApproval">,
+  canApprove: boolean,
+  kind?: WorkItem["kind"],
+): boolean =>
+  canEnterState(s, canApprove) && !(kind === "REQUEST" && s.category === "CANCELLED");
+
+/**
  * The states a member may actually move THIS item into, in the input's
  * rank order — PLUS the item's current state, always, even when that is
  * TRIAGE or a gated Done under a non-approver.
@@ -69,9 +99,11 @@ export const enterableStates = (
   states: readonly WorkState[],
   canApprove: boolean,
   currentStateId: string,
+  /** The moving item's kind — a REQUEST may not be cancelled by a move. */
+  kind?: WorkItem["kind"],
 ): WorkState[] =>
   states.filter(
-    (s) => s.id === currentStateId || (canEnterState(s, canApprove) && !s.isHidden),
+    (s) => s.id === currentStateId || (canItemEnterState(s, canApprove, kind) && !s.isHidden),
   );
 
 /**
@@ -115,9 +147,11 @@ export function statePickerTargets(
   states: readonly WorkState[],
   canApprove: boolean,
   currentStateId: string,
+  /** The item's kind — a REQUEST is not offered a cancelled state. */
+  kind?: WorkItem["kind"],
 ): StatePickerTarget[] {
   const keys = stateOrdinalKeys(states);
-  return enterableStates(states, canApprove, currentStateId).map((state) => ({
+  return enterableStates(states, canApprove, currentStateId, kind).map((state) => ({
     state,
     key: keys.get(state.id)!,
     disabled: !canEnterState(state, canApprove),

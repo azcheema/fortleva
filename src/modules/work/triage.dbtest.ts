@@ -9,6 +9,7 @@ import { setupTenant } from "@/members/dbtest-fixture";
 import { createItem } from "./items";
 import { createRequest } from "./requests";
 import { changeState, ensureProjectStates } from "./states";
+import { listTriage } from "./triage-lane";
 import { triageItem } from "./triage";
 import { TRIAGE_REASON_MAX, TRIAGE_SNOOZE_MAX_DAYS } from "./triage-limits";
 
@@ -42,6 +43,17 @@ import { TRIAGE_REASON_MAX, TRIAGE_SNOOZE_MAX_DAYS } from "./triage-limits";
 let f: Awaited<ReturnType<typeof setupTenant>>;
 let clientId: string;
 let projectId: string;
+/**
+ * A SECOND PROJECT NOBODY IS ASSIGNED TO, and it exists for one test.
+ *
+ * The employee is given a `MemberProject` on the first project so this
+ * suite can separate the two triage permissions (see the `beforeAll`) —
+ * which then left no seat holding `work_item:triage` WITHOUT scope, and
+ * the scope half of `listTriage`'s gate untestable. A project outside
+ * every assignment restores it: the same employee, the same permission,
+ * a project it cannot reach.
+ */
+let unassignedProjectId: string;
 const contactId = randomUUID();
 
 beforeAll(async () => {
@@ -72,6 +84,29 @@ beforeAll(async () => {
   await withTenant(f.tenantId, { type: "system" }, (tx) =>
     ensureProjectStates(tx, f.tenantId, projectId),
   );
+  // **THE EMPLOYEE IS GIVEN SCOPE ON PURPOSE**, and without it this
+  // suite could not tell the two permissions apart. `setupTenant` writes
+  // no `MemberProject`, so an employee is refused by `assertInScope`
+  // before any permission is consulted — which is exactly how the first
+  // cut of this file's headline test came to prove nothing. With scope,
+  // the employee holds `work_item:triage` (C M E) and NOT
+  // `work_item:triage_decline` (C M), so it can Accept and Snooze and is
+  // refused FORBIDDEN on Decline: the founder's 2026-09-22 split, as a
+  // fixture rather than as a sentence.
+  await f.platform.memberProject.create({
+    data: { tenantId: f.tenantId, memberId: f.seats.employee.memberId, projectId },
+  });
+
+  unassignedProjectId = randomUUID();
+  await f.platform.project.create({
+    data: {
+      id: unassignedProjectId,
+      tenantId: f.tenantId,
+      clientId,
+      key: "TRIX",
+      name: "Unassigned project",
+    },
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -81,6 +116,7 @@ afterAll(async () => {
   // database).
   if (!f?.tenantId) return;
   const db = f.platform;
+  await db.memberProject.deleteMany({ where: { tenantId: f.tenantId } });
   await db.workItemActivity.deleteMany({ where: { tenantId: f.tenantId } });
   // `duplicate_of_id` is ON DELETE RESTRICT, so the rows that POINT at
   // another must go first. Clearing the column is cheaper and safer
@@ -436,19 +472,38 @@ describe("what the verb refuses", () => {
     expect((await readItem(id)).stateCategory).toBe("TRIAGE");
   });
 
-  it("a member WITH the permission but no scope is refused NOT_FOUND — the other refusal", async () => {
-    // The control for the test above. The employee HOLDS
-    // `work_item:triage` and has an empty scope, so it gets past
-    // `requireAccess` and is stopped by `assertInScope` — existence
-    // must not leak, so the answer is the one a nonexistent row gets.
-    const id = await newRequest("Employee cannot reach this");
-    const refusal = await triageItem(employeeCtx(), id, {
-      verb: "DECLINE",
-      reason: "no",
-    }).catch((e: unknown) => e);
-    expect(refusal).toBeInstanceOf(AuthzError);
-    expect((refusal as AuthzError).reason).toBe("NOT_FOUND");
-    expect((await readItem(id)).stateCategory).toBe("TRIAGE");
+  it("AN EMPLOYEE MAY ACCEPT AND SNOOZE BUT NOT DECLINE — the founder's split", async () => {
+    // The whole point of `work_item:triage_decline` (C M), and the
+    // reason the employee has scope in this fixture: both verbs reach
+    // the same row, through the same service, under the same member.
+    // Only the second permission separates them.
+    const snoozable = await newRequest("Employee may park this");
+    await triageItem(employeeCtx(), snoozable, {
+      verb: "SNOOZE",
+      until: new Date(Date.now() + 86_400_000),
+    });
+    expect((await readItem(snoozable)).triageStatus).toBe("SNOOZED");
+
+    const acceptable = await newRequest("Employee may take this on");
+    await triageItem(employeeCtx(), acceptable, { verb: "ACCEPT" });
+    expect((await readItem(acceptable)).stateCategory).toBe("TODO");
+
+    // …and may NOT end one. FORBIDDEN, not NOT_FOUND: the employee
+    // reaches the row (it has scope now) and is stopped by the second
+    // permission, which is the distinction this test exists to draw.
+    const declinable = await newRequest("Employee may not end this");
+    for (const input of [
+      { verb: "DECLINE", reason: "no" } as const,
+      { verb: "DUPLICATE", reason: "dup", duplicateOfId: acceptable } as const,
+    ]) {
+      const refusal = await triageItem(employeeCtx(), declinable, input).catch((e: unknown) => e);
+      expect(refusal).toBeInstanceOf(AuthzError);
+      expect((refusal as AuthzError).reason).toBe("FORBIDDEN");
+    }
+    expect((await readItem(declinable)).stateCategory).toBe("TRIAGE");
+
+    await triageItem(ownerCtx(), snoozable, { verb: "DECLINE", reason: "Cleanup." });
+    await triageItem(ownerCtx(), declinable, { verb: "DECLINE", reason: "Cleanup." });
   });
 
   it("ACCEPT and SNOOZE are LANE verbs — they refuse anything not in triage", async () => {
@@ -524,6 +579,133 @@ describe("what the verb refuses", () => {
   });
 });
 
+/**
+ * THE LANE'S READ, AND ITS TWO GATES.
+ *
+ * **BOTH FRESH REVIEWS OF THIS SLICE FOUND THE SAME GAP:** `listTriage`
+ * shipped with no test of either gate, so deleting its `requireAccess`
+ * or its `assertInScope` left typecheck, ESLint, the unit suite and
+ * `test:db` green — and those two lines are the only thing between any
+ * member of the tenant and every client's typed paragraph, in every
+ * project. That is the identical failure the FIRST commit of this slice
+ * was corrected for one day earlier, in a different file, which is why
+ * it is written out here rather than quietly fixed.
+ *
+ * The seat matters as much as the assertion (see `adminCtx` above):
+ * ADMIN separates the permission from the scope, EMPLOYEE separates the
+ * scope from the permission, and asserting the `reason` is what stops
+ * one standing in for the other.
+ */
+describe("the lane's read", () => {
+  it("returns the project's pending requests, oldest first, with the client's words and name", async () => {
+    const first = await newRequest("Oldest waiting", "We would like a newsletter signup.");
+    const second = await newRequest("Newer waiting");
+
+    const lane = await listTriage(ownerCtx(), projectId);
+    const ids = lane.entries.map((e) => e.id);
+    expect(ids.indexOf(first)).toBeLessThan(ids.indexOf(second));
+
+    const entry = lane.entries.find((e) => e.id === first)!;
+    expect(entry.title).toBe("Oldest waiting");
+    // The client's paragraph, which is the whole point of the lane —
+    // and the reason this read cannot live in `triage.ts` (that file is
+    // in the portal tripwire's structural tier, which forbids selecting
+    // `descriptionText`).
+    expect(entry.body).toBe("We would like a newsletter signup.");
+    expect(entry.reportedBy).toBe("Client Carol");
+    expect(lane.truncated).toBe(false);
+
+    await triageItem(ownerCtx(), first, { verb: "DECLINE", reason: "Not now." });
+    await triageItem(ownerCtx(), second, { verb: "DECLINE", reason: "Not now." });
+  });
+
+  it("hides a request snoozed to the future and COUNTS it instead", async () => {
+    const id = await newRequest("Parked");
+    await triageItem(ownerCtx(), id, { verb: "SNOOZE", until: new Date(Date.now() + 5 * 86_400_000) });
+
+    const lane = await listTriage(ownerCtx(), projectId);
+    expect(lane.entries.map((e) => e.id)).not.toContain(id);
+    // A lane that silently hid rows would be a lane that lost them.
+    expect(lane.snoozedCount).toBeGreaterThanOrEqual(1);
+
+    await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: "Not now." });
+  });
+
+  it("shows a snoozed request again once its moment has passed", async () => {
+    const id = await newRequest("Due again");
+    await triageItem(ownerCtx(), id, { verb: "SNOOZE", until: new Date(Date.now() + 86_400_000) });
+    // Reach past the service's "must be in the future" rule, which is
+    // about what a MEMBER may choose and not about what the lane reads.
+    await f.platform.workItem.update({
+      where: { tenantId_id: { tenantId: f.tenantId, id } },
+      data: { snoozedUntil: new Date(Date.now() - 60_000) },
+      select: { id: true },
+    });
+
+    const lane = await listTriage(ownerCtx(), projectId);
+    const entry = lane.entries.find((e) => e.id === id);
+    expect(entry, "a snoozed request comes back when it is due").toBeDefined();
+    // …and says so, so the member can tell it from one that just arrived.
+    expect(entry!.snoozedUntil).not.toBeNull();
+
+    await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: "Not now." });
+  });
+
+  it("lists nothing that is not a REQUEST, even in a TRIAGE state", async () => {
+    // Nothing in the product can put an ordinary task in triage, so this
+    // is planted raw — which is the point: the lane's copy says
+    // "requests your client has sent", and two of its four verbs would
+    // half-work on a row that is not one.
+    const ordinary = await createItem(ownerCtx(), { projectId, title: "Not a request" });
+    const triage = await f.platform.workflowState.findFirstOrThrow({
+      where: { tenantId: f.tenantId, projectId, category: "TRIAGE" },
+      select: { id: true },
+    });
+    await f.platform.workItem.update({
+      where: { tenantId_id: { tenantId: f.tenantId, id: ordinary.id } },
+      data: { stateId: triage.id, stateCategory: "TRIAGE", triageStatus: "PENDING" },
+      select: { id: true },
+    });
+
+    const lane = await listTriage(ownerCtx(), projectId);
+    expect(lane.entries.map((e) => e.id)).not.toContain(ordinary.id);
+  });
+
+  it("an employee WITH scope reads the lane — the positive half of the gate", async () => {
+    // Without this the refusals below could both be passing for a third
+    // reason (a broken read, a bad fixture) and nobody would know.
+    const lane = await listTriage(employeeCtx(), projectId);
+    expect(Array.isArray(lane.entries)).toBe(true);
+    // …and it is told it may not END one, which is what the surface
+    // uses to hide the two verbs rather than offer a refusal.
+    expect(lane.canDecline).toBe(false);
+  });
+
+  it("an owner is told it MAY end a request", async () => {
+    expect((await listTriage(ownerCtx(), projectId)).canDecline).toBe(true);
+  });
+
+  it("REFUSES a member without work_item:triage — FORBIDDEN, by the permission", async () => {
+    // The admin reaches the row (`client:view_all`) and is stopped by
+    // the gate. Asserting the REASON is what makes this a test of the
+    // permission rather than of the scope — see `adminCtx`.
+    const refusal = await listTriage(adminCtx(), projectId).catch((e: unknown) => e);
+    expect(refusal).toBeInstanceOf(AuthzError);
+    expect((refusal as AuthzError).reason).toBe("FORBIDDEN");
+  });
+
+  it("REFUSES a member with the permission but no scope — NOT_FOUND, by the scope", async () => {
+    // The control, on the project the employee is NOT assigned to. Same
+    // member, same `work_item:triage`, and it reads the first project
+    // happily (the test above) — so what is measured here is
+    // `assertInScope` and nothing else. Existence must not leak, so the
+    // answer is the one a project that does not exist gets.
+    const refusal = await listTriage(employeeCtx(), unassignedProjectId).catch((e: unknown) => e);
+    expect(refusal).toBeInstanceOf(AuthzError);
+    expect((refusal as AuthzError).reason).toBe("NOT_FOUND");
+  });
+});
+
 describe("the trail", () => {
   it("re-snoozing to the SAME moment writes nothing — no second event, no second history row", async () => {
     const id = await newRequest("Double submit");
@@ -567,6 +749,35 @@ describe("the trail", () => {
     const id = await newRequest("Two events");
     await triageItem(ownerCtx(), id, { verb: "ACCEPT" });
     expect((await f.audits("work_item.state_changed")).length).toBe(before + 1);
+  });
+
+  it("the reply the client was given is kept in the task's own history", async () => {
+    // Founder decision, 2026-09-22. The audit row deliberately carries
+    // no free text, so without this row NOTHING anywhere held the words
+    // — and they are replaceable, because reopening a decline clears the
+    // column and it can be declined again with different text.
+    const id = await newRequest("Kept reply");
+    const words = "We cannot do this before the launch, but we can look at it in Q3.";
+    await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: words });
+
+    const rows = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: id, field: "triageReason" },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.newValue).toBe(words);
+    // INTERNAL: `triageReason` is not on the portal-safe field list, so
+    // this is the AGENCY's record of what it said. The client reads the
+    // live answer through the projection, never through history.
+    expect(rows[0]!.visibility).toBe("INTERNAL");
+
+    // ACCEPT and SNOOZE carry no words, so they write no such row.
+    const accepted = await newRequest("No reply to keep");
+    await triageItem(ownerCtx(), accepted, { verb: "ACCEPT" });
+    expect(
+      await f.platform.workItemActivity.count({
+        where: { tenantId: f.tenantId, workItemId: accepted, field: "triageReason" },
+      }),
+    ).toBe(0);
   });
 
   it("SNOOZE writes an INTERNAL history row — a client must not read 'they put this off'", async () => {

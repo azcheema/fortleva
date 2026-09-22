@@ -37,6 +37,21 @@ export type ItemListEntry = {
   number: number;
   title: string;
   type: string;
+  /**
+   * What the row is ABOUT, orthogonal to `type`'s hierarchy (§6.14).
+   *
+   * Added to the LIST in slice 6b for one rule, and it is a rule about
+   * the item rather than its target: a `kind = REQUEST` row may not be
+   * moved into a cancelled state, because that is how a client's own
+   * request would vanish from their portal with nobody having said why.
+   * `transitionState` refuses it; the board's drop targets and the
+   * backlog's bulk bar need this column so they can stop OFFERING it.
+   *
+   * An open string like `type` and `priority` beside it, not a closed
+   * union: the list's shapes are open here and closed in `ItemDetail`,
+   * whose surfaces interpolate them into message keys.
+   */
+  kind: string;
   stateId: string;
   stateCategory: string;
   /**
@@ -192,6 +207,9 @@ export async function listItems(
             number: true,
             title: true,
             type: true,
+            // Slice 6b: the board and the bulk bar need it to stop
+            // offering a cancelled state for a REQUEST (see the type).
+            kind: true,
             stateId: true,
             stateCategory: true,
             priority: true,
@@ -245,6 +263,7 @@ export async function listItems(
         number: i.number,
         title: i.title,
         type: i.type,
+        kind: i.kind,
         stateId: i.stateId,
         stateCategory: i.stateCategory,
         // RAW, not display text: NULL means the state still wears its

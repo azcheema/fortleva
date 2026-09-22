@@ -253,6 +253,7 @@ export async function ItemPanel({
             itemNumber={item.number}
             projectKey={projectKey}
             surface={surface}
+            kind={item.kind}
             stateId={item.stateId}
             stateName={item.stateName}
             stateCategory={item.stateCategory}

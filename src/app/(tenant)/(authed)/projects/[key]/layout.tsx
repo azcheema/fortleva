@@ -27,15 +27,15 @@ export async function generateMetadata({
 
 /**
  * /projects/[key] shell (UI.md §3.1): tabs in the fixed order Overview ·
- * Board · Backlog · Timeline · Time · Files · Team · Portal (Updates
- * arrives with ProjectUpdate). Overview is the landing tab because there
+ * Board · Backlog · Triage · Timeline · Time · Files · Team · Portal
+ * (Updates arrives with ProjectUpdate). Overview is the landing tab because there
  * is no board to land on for a project with no work yet.
  *
- * Three of the eight are conditional, and each is HIDDEN rather than
+ * Four of the nine are conditional, and each is HIDDEN rather than
  * disabled when its permission is missing (§3.1): Time on
  * `time:view_team`, Files on `document:view`, Portal on
- * `project:manage_portal`. A hidden tab is not a gate — every one of
- * those pages carries its own.
+ * `project:manage_portal`, Triage on `work_item:triage`. A hidden tab is
+ * not a gate — every one of those pages carries its own.
  *
  * The header is the project's identity in one line: the key in the
  * mono face (it is a code, and it is typed), the name, then the two
@@ -107,6 +107,28 @@ export default async function ProjectLayout({
     // strip renders with NOTHING current, which reads as "this page has
     // no tabs".
     { href: `${base}/backlog`, label: t("tabs.backlog"), also: [`${base}/items`] },
+    // Phase 3 slice 6b: the client's requests, waiting for an answer.
+    // It sits after Backlog because that is where the work it produces
+    // lands, and it is HIDDEN without `work_item:triage`, off the same
+    // batched permission read the other caps use — so it costs no query.
+    //
+    // **GATE 4 ONLY, WHICH IS BOARD AND BACKLOG'S RULE AND NOT
+    // PORTAL'S** — the first version of this comment claimed parity with
+    // Portal and was wrong (code review). Portal deliberately runs
+    // `hasAccess` (all four gates) because a permission-only tab on a
+    // tenant with the module off walks into the page's own
+    // `requireAccess`; `work_item:triage` is in the `work` module, so
+    // the same is technically true here. It is left as it is for
+    // consistency: Board and Backlog are UNCONDITIONAL tabs on that same
+    // module, so a `work`-off tenant already meets that wall two tabs
+    // earlier, and the denial is uniform (a 404, never a 403). Changing
+    // it is a behaviour change for the `work` module and belongs in a
+    // slice that can test it — the same disposition Time carries above.
+    //
+    // A member without the permission has no lane; the requests are
+    // still visible to them in the board's TRIAGE column, so nothing is
+    // concealed that a viewer could not reach one tab away.
+    ...(project.caps.triage ? [{ href: `${base}/triage`, label: t("tabs.triage") }] : []),
     { href: `${base}/timeline`, label: t("tabs.timeline") },
     ...(canViewTime ? [{ href: `${base}/time`, label: t("tabs.time"), also: [`${base}/money`] }] : []),
     ...(project.caps.viewDocuments ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),

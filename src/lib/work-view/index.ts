@@ -17,6 +17,7 @@ export {
   allRowAnchors,
   applyMove,
   canEnterState,
+  canItemEnterState,
   cardsIn,
   columnTotals,
   compareLabelNames,

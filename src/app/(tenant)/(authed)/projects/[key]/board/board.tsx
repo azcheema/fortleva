@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import {
   applyMove,
   canEnterState,
+  canItemEnterState,
   cardsIn,
   columnTotals,
   edgeAnchors,
@@ -92,7 +93,22 @@ import { MovePicker } from "./move-picker";
  * slice, noted in PLAN.
  */
 
-type CardData = { type: "card"; itemId: string; stateId: string; laneKey: string };
+/**
+ * `kind` rides with the drag (slice 6b) because the first rule about
+ * the thing being MOVED rather than about its target needs it: a
+ * `kind = REQUEST` row may not be dropped into a CANCELLED column at
+ * all — `transitionState` refuses that move and points at
+ * `work_item:triage`, because it is how a client's own request would
+ * vanish from their portal with nobody having said why. A column cannot
+ * answer that on its own; only the pair can.
+ */
+type CardData = {
+  type: "card";
+  itemId: string;
+  stateId: string;
+  laneKey: string;
+  kind: WorkItem["kind"];
+};
 type ColumnData = { type: "column"; stateId: string; laneKey: string };
 const isCardData = (d: Record<string | symbol, unknown>): d is CardData => d["type"] === "card";
 const isColumnData = (d: Record<string | symbol, unknown>): d is ColumnData => d["type"] === "column";
@@ -555,8 +571,12 @@ export function Board({
           itemKey={`${projectKey}-${picker.number}`}
           // Entering TRIAGE is its own verb (`work_item:triage`), and a
           // gated state (Done) takes an approver — the same rule the
-          // drag follows; `transitionState` is the belt.
-          states={columns.filter((s) => canEnterState(s, canApprove))}
+          // drag follows; `transitionState` is the belt. **And the
+          // item's own kind**, since this picker is the documented
+          // keyboard/mobile TWIN of the drag (§7.1): if it offered
+          // Cancelled for a REQUEST while the drag refused it, `S`
+          // would be a way round a rule the pointer obeys.
+          states={columns.filter((s) => canItemEnterState(s, canApprove, picker.kind))}
           currentStateId={picker.stateId}
           onChoose={onPickerChoose}
         />
@@ -684,6 +704,9 @@ function BoardColumn(props: {
   const ref = useRef<HTMLDivElement>(null);
   const headingId = useId();
   const [isOver, setIsOver] = useState(false);
+  // See the effect below: primitives, so the drop target is not torn
+  // down and rebuilt on every render of the board.
+  const { category: stateCategory, requiresApproval } = state;
   // Entering TRIAGE is `work_item:triage` with a triageStatus, not a state
   // change (the DB CHECK refuses it), and a gated state (Done) takes an
   // approver — so neither is a drop target for this member; leaving
@@ -696,14 +719,31 @@ function BoardColumn(props: {
     const data: ColumnData = { type: "column", stateId: state.id, laneKey: lane.key };
     return dropTargetForElements({
       element: el,
-      canDrop: ({ source }) => isCardData(source.data) && source.data.laneKey === lane.key,
+      canDrop: ({ source }) =>
+        isCardData(source.data) &&
+        source.data.laneKey === lane.key &&
+        // PER DRAG, not per column: `droppable` above already answered
+        // "may this member put anything here", and this answers "may
+        // THIS card go there". A target that always fails is worse than
+        // no target — the member drags, waits, and is toasted a refusal
+        // for a gesture the board invited.
+        canItemEnterState(
+          { category: stateCategory, requiresApproval },
+          props.canApprove,
+          source.data.kind,
+        ),
       getData: () => data,
       getIsSticky: () => true,
       onDragEnter: () => setIsOver(true),
       onDragLeave: () => setIsOver(false),
       onDrop: () => setIsOver(false),
     });
-  }, [droppable, state.id, lane.key]);
+    // `canItemEnterState` runs inside `canDrop`, so the two facts it
+    // reads are dependencies. Destructured to PRIMITIVES above rather
+    // than depending on `state` itself: that object is rebuilt on every
+    // render of the parent, and depending on its identity would tear
+    // down and re-register every column's drop target on each one.
+  }, [droppable, state.id, stateCategory, requiresApproval, props.canApprove, lane.key]);
 
   return (
     <div
@@ -741,6 +781,8 @@ function BoardColumn(props: {
             item={item}
             laneKey={lane.key}
             droppable={droppable}
+            columnCategory={state.category}
+            columnRequiresApproval={state.requiresApproval}
             projectKey={props.projectKey}
             locale={props.locale}
             durationStyle={props.durationStyle}
@@ -856,6 +898,8 @@ function BoardCard({
   canEdit,
   canDelete,
   droppable,
+  columnCategory,
+  columnRequiresApproval,
   tabbable,
   onFocus,
   onOpenPicker,
@@ -882,6 +926,22 @@ function BoardCard({
   canDelete: boolean;
   /** False in a TRIAGE column: entering triage is its own verb. */
   droppable: boolean;
+  /**
+   * The COLUMN's category and approval flag, as primitives.
+   *
+   * The card needs them because `droppable` is a per-COLUMN answer and
+   * the rule that arrived in slice 6b is per-DRAG: a `kind = REQUEST`
+   * row may not enter a cancelled state. Without this the column's own
+   * refusal is bypassed — pragmatic-dnd SKIPS a target that refuses and
+   * hands the drop to the next one under the pointer, so dropping a
+   * request onto any CARD in the Cancelled column would have run the
+   * move anyway, with the cancelled `stateId`. Found by a fresh review.
+   *
+   * Primitives rather than the state object, so the drop target is not
+   * torn down and re-registered on every render of the board.
+   */
+  columnCategory: string;
+  columnRequiresApproval: boolean;
   tabbable: boolean;
   onFocus: () => void;
   onOpenPicker: () => void;
@@ -902,7 +962,13 @@ function BoardCard({
   useEffect(() => {
     const el = ref.current;
     if (!el || !canEdit) return;
-    const data: CardData = { type: "card", itemId: item.id, stateId: item.stateId, laneKey };
+    const data: CardData = {
+      type: "card",
+      itemId: item.id,
+      stateId: item.stateId,
+      laneKey,
+      kind: item.kind,
+    };
     // Desktop-only (ARC-17): no drag from a coarse pointer; the picker is the twin.
     const finePointer = window.matchMedia("(pointer: fine)").matches;
     return combine(
@@ -923,7 +989,23 @@ function BoardCard({
       dropTargetForElements({
         element: el,
         canDrop: ({ source }) =>
-          droppable && isCardData(source.data) && source.data.laneKey === laneKey && item.number > 0,
+          droppable &&
+          isCardData(source.data) &&
+          source.data.laneKey === laneKey &&
+          item.number > 0 &&
+          // THE SAME PER-DRAG RULE THE COLUMN APPLIES, and it has to be
+          // here too: a refusing target is skipped rather than blocking,
+          // so without this line a request dropped on a card in the
+          // Cancelled column would fall through to a move that the
+          // server then refuses.
+          // `droppable` has already folded in the approval gate for this
+          // member, so `true` here is not a claim about approval — it is
+          // what makes this call about the KIND and nothing else.
+          canItemEnterState(
+            { category: columnCategory, requiresApproval: columnRequiresApproval },
+            !columnRequiresApproval || droppable,
+            source.data.kind,
+          ),
         getData: ({ input, element }) =>
           attachClosestEdge(data, { input, element, allowedEdges: ["top", "bottom"] }),
         getIsSticky: () => true,
@@ -933,7 +1015,7 @@ function BoardCard({
         onDrop: () => setEdge(null),
       }),
     );
-  }, [canEdit, droppable, item.id, item.stateId, item.number, laneKey]);
+  }, [canEdit, droppable, columnCategory, columnRequiresApproval, item.id, item.stateId, item.number, item.kind, laneKey]);
 
   const run = (fn: () => Promise<{ ok: boolean; message: string }>) =>
     startTransition(async () => {
@@ -1121,6 +1203,10 @@ function ColumnCreate({
           number: 0,
           title: value,
           type: "TASK",
+          // A composer creates ordinary work; only the portal's intake
+          // makes a REQUEST (`createRequest`), and `createItem` has no
+          // parameter for it.
+          kind: "TASK",
           stateId: state.id,
           stateCategory: state.category,
           stateName: state.name,

@@ -312,9 +312,10 @@ export type PortalTaskListOptions = {
  * `portal_gate` under the contact principal — they are repeated in the
  * filter as defence in depth, never as the gate. What is NOT in the
  * policy and therefore must be here: `deletedAt` (a soft-deleted row is
- * still a row), the item's `archivedAt`, the `CANCELLED` exclusion and
- * its one REQUEST-shaped exception — and the PROJECT's archive, which
- * the first cut of this file missed and a review caught.
+ * still a row), the item's `archivedAt` — **for live work only, since
+ * an ANSWERED request outlives it** — the `CANCELLED` exclusion and its
+ * one REQUEST-shaped exception, and the PROJECT's archive, which the
+ * first cut of this file missed and a review caught.
  *
  * WHAT `portal_gate` DOES NOT DO, restated because a reader of this
  * `where` will wonder: it has **no `reported_by_contact_id` term**, so
@@ -363,7 +364,6 @@ export async function listPortalTasks(
         visibility: "CLIENT_VISIBLE",
         portalEnabled: true,
         deletedAt: null,
-        archivedAt: null,
         // CANCELLED IS STILL EXCLUDED — except for a REQUEST that
         // carries the agency's answer, which is shown as DECLINED with
         // that reason.
@@ -379,8 +379,22 @@ export async function listPortalTasks(
         // SELECTED — it is on the portal plane's never-selected list —
         // which is also why the test lives in `portal.dbtest.ts` rather
         // than in a unit test over the mapper.
+        //
+        // **AND AN ANSWERED REQUEST OUTLIVES THE ARCHIVE** (founder
+        // decision, 2026-09-22), which is why `archivedAt` is a term of
+        // each BRANCH rather than of the whole `where`. Archiving is how
+        // an agency tidies its own board; it must not also delete the
+        // explanation a client was given, or the answer would evaporate
+        // the moment somebody filed the row away — the same
+        // silent-vanish this category exists to end, arriving by a
+        // different door. Live work still disappears when archived, as
+        // it always has.
+        //
+        // The PROJECT's archive is untouched and still hides everything
+        // (the term below): switching a whole project off is a decision
+        // about the relationship, not about one row.
         OR: [
-          { stateCategory: { not: "CANCELLED" } },
+          { stateCategory: { not: "CANCELLED" }, archivedAt: null },
           { stateCategory: "CANCELLED", kind: "REQUEST", triageReason: { not: null } },
         ],
         // See the header: `project.portal_gate` has no archive term.

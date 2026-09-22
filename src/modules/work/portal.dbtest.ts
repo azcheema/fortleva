@@ -88,6 +88,10 @@ const SHOWN = {
   /** …and what it was told. Client-readable ON PURPOSE — the one string
    *  in this file that a member writes and a contact reads. */
   declinedReason: `We already do this under your retainer ${run}`,
+  /** A declined request the agency has since ARCHIVED — the answer
+   *  outlives the tidying (founder decision, 2026-09-22). */
+  archivedDeclined: `Archived declined request ${run}`,
+  archivedDeclinedReason: `Not before the launch ${run}`,
 } as const;
 
 const T = randomUUID();
@@ -345,6 +349,22 @@ beforeAll(async () => {
     triageStatus: "DECLINED",
     triageReason: SHOWN.declinedReason,
   });
+  // AN ANSWERED REQUEST THAT WAS THEN ARCHIVED. Archiving is how an
+  // agency tidies its own board and it must not also delete the
+  // explanation the client was given — the same silent-vanish this
+  // category exists to end, arriving by a different door.
+  await item({
+    tenantId: T,
+    clientId: acme,
+    projectId: pOn,
+    title: SHOWN.archivedDeclined,
+    category: "CANCELLED",
+    visibility: "CLIENT_VISIBLE",
+    kind: "REQUEST",
+    triageStatus: "DECLINED",
+    triageReason: SHOWN.archivedDeclinedReason,
+    archivedAt: new Date(),
+  });
   // …and the THIRD row of the set: a cancelled REQUEST with NO reason.
   // `transitionState` now refuses to create one through any service, so
   // this is planted raw — which is exactly what it is standing in for:
@@ -411,10 +431,11 @@ describe("the client-visible task list", () => {
         SHOWN.triaged,
         SHOWN.dated,
         SHOWN.declined,
+        SHOWN.archivedDeclined,
         `Shared, internal phase ${run}`,
       ].sort(),
     );
-    expect(list.shown).toBe(7);
+    expect(list.shown).toBe(8);
     expect(list.truncated).toBe(false);
     // One project, because the other three are off, another client's, or
     // another tenant's.
@@ -478,6 +499,20 @@ describe("the client-visible task list", () => {
     expect(
       await db.workItem.count({ where: { tenantId: T, title: S.cancelledRequestNoReason } }),
     ).toBe(1);
+  });
+
+  it("an ARCHIVED request keeps its answer, while archived LIVE work still disappears", async () => {
+    // The pair, in one test, because the rule is a distinction and not a
+    // blanket: `archivedAt` is a term of the LIVE branch of the `where`
+    // only. Archiving a task in progress hides it, as it always has;
+    // archiving an answered request does not take the answer with it.
+    const list = await listPortalTasks(principal(ids.primary));
+    const byTitle = new Map(list.projects.flatMap((p) => p.tasks).map((t) => [t.title, t]));
+    const kept = byTitle.get(SHOWN.archivedDeclined);
+    expect(kept?.category).toBe("DECLINED");
+    expect(kept?.declinedReason).toBe(SHOWN.archivedDeclinedReason);
+    // The control: an archived TODO task is still invisible.
+    expect(titles(list)).not.toContain(S.archivedTask);
   });
 
   it("`declinedReason` is null on every task that is not DECLINED", async () => {

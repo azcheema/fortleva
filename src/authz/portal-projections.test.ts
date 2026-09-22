@@ -227,6 +227,43 @@ const STRUCTURAL_ONLY_SURFACES = [
   join("modules", "work", "triage.ts"),
 ];
 
+/**
+ * **THE MEMBER-PLANE READ THAT SITS OUTSIDE THE TIER ON PURPOSE, and
+ * the closed set of files allowed to reach it** (security review,
+ * 2026-09-22).
+ *
+ * `src/modules/work/triage-lane.ts` is the first file in this repo
+ * created DELIBERATELY outside the structural tier. It holds
+ * `listTriage`, which selects `descriptionText` and `snoozedUntil` —
+ * both legitimate on the member plane and both on `PORTAL_NEVER_SELECTED`
+ * — so it could not live in `triage.ts`, which the previous commit put
+ * in the tier because it authors the one member-written string a contact
+ * reads.
+ *
+ * The split is sound: `WorkCtx.actor` is a `MemberActor` and
+ * `principalOf` always yields a member principal, so that transaction
+ * can never open under a contact. But the review's accounting was right
+ * that coverage went DOWN and prose is not a guard — this file's own
+ * header records that UI.md's "portal reads use only a module's own `portal.ts`"
+ * was prose and did not hold. `portal-preview.ts` and `clients/view-as.ts`
+ * are both MEMBER-plane files that render portal output, so "a
+ * member-plane read feeding a client-facing preview" is a shape this
+ * product already has; a "what the client sees for triage" view written
+ * next slice would reach this module and trip nothing.
+ *
+ * So the set is pinned, the way `portal-view-as.test.ts` pins who may
+ * build a `PortalPrincipal`. Adding a file here is the reviewable
+ * moment: if the new caller is a portal surface, the read belongs in a
+ * `portal.ts` with an allow-listed select instead.
+ */
+const LANE_READ = join("modules", "work", "triage-lane.ts");
+const LANE_READERS = [
+  // The member-plane page it exists for.
+  join("app", "(tenant)", "(authed)", "projects", "[key]", "triage", "page.tsx"),
+  // The module barrel (ARC-16 routes every cross-module import through it).
+  join("modules", "work", "index.ts"),
+];
+
 const isProjection = (full: string, entry: string): boolean =>
   entry === "portal.ts" ||
   entry === "portal-writes.ts" ||
@@ -310,6 +347,25 @@ describe("portal projections never touch INTERNAL-only columns", () => {
    * written over real data for the first time, so it is now a column
    * with something to leak rather than a reserved name.
    */
+  it("only the sanctioned member-plane files read the triage lane", () => {
+    // ON THE IMPORT SPECIFIER, never on the text. The first cut of this
+    // matched any file MENTIONING `triage-lane` or `listTriage` and
+    // caught two innocents — a sentence in `notify.ts` and a
+    // `data-testid` on the lane's own component — which is this file's
+    // own standing lesson about text-tier matching, applied to itself.
+    // `walk` already skips generated code and every test file.
+    const readers = walk(
+      SRC,
+      (full, _entry, text) =>
+        relative(SRC, full) !== LANE_READ && /from\s+["'][^"']*triage-lane["']/.test(text()),
+    )
+      .map((file) => relative(SRC, file))
+      .sort();
+    expect(readers, "a new reader of listTriage is a decision, not a detail").toEqual(
+      [...LANE_READERS].sort(),
+    );
+  });
+
   it("PORTAL_NEVER_SELECTED is pinned — a name may not quietly leave it", () => {
     expect([...PORTAL_NEVER_SELECTED].sort()).toEqual(
       [
