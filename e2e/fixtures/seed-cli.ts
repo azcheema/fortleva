@@ -111,6 +111,18 @@ const DBTEST_PREFIXES = [
   "prefs-",
   "prefs-notify-",
   "preq-",
+  // **A HISTORICAL PREFIX WITH NO LIVE CREATOR — do not delete it when
+  // regenerating this list.** Nothing in `src/`, `e2e/` or `scripts/`
+  // creates a `probe-` tenant today, so BOTH greps above come back
+  // empty for it and a regeneration would drop it as dead. It is here
+  // because an orphan was found in the dev database on 2026-09-22 (one
+  // day old, from an ad-hoc script since deleted), and without the
+  // entry `sweep-dbtests` could never collect it — the `pauthz-`
+  // failure mode arriving by a different door: that one was invisible
+  // because the grep could not see its shape, this one because its
+  // creator is gone. The greps keep this list COMPLETE; they cannot
+  // keep it CORRECT, and a prefix costs nothing but a `startsWith`.
+  "probe-",
   "projects-",
   "pvas-",
   "pview-",
