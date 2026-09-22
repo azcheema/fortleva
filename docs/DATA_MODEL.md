@@ -2460,7 +2460,7 @@ model WorkItem {
   stateCategory      StateCategory                // DENORMALISED — the only state field the portal reads
   priority           WorkItemPriority @default(NONE)
   assigneeMemberId   String?                      // XOR assigneeContactId (CHECK)
-  assigneeContactId  String?                      // ⇒ visibility = CLIENT_VISIBLE (CHECK); portal UI in Phase 3
+  assigneeContactId  String?                      // ⇒ visibility = CLIENT_VISIBLE (CHECK); WRITTEN since 6c (assignItemToContact)
   parentId           String?                      // self FK (tenantId, id); same project, higher type (trigger)
   rootId             String                       // DENORMALISED — top of this item's tree (self at depth 0)
   depth              Int              @default(0) // 0-indexed; CHECK depth <= 2
@@ -2479,6 +2479,18 @@ model WorkItem {
   triageReason       String?          @db.VarChar(500) // 6b: the agency's words TO THE CLIENT; CHECK: set iff DECLINED|DUPLICATE
   snoozedUntil       DateTime?        @db.Timestamptz(6)
   duplicateOfId      String?                      // → WorkItem (tenantId, id) when triageStatus = DUPLICATE (CHECK)
+  contactCompletedAt DateTime?        @db.Timestamptz(6) // 6c: the CLIENT's claim that their part is done — NOT a state
+  // ^ 20260922180000. Stamped by the assigned contact through the brokered
+  //   toggle (`portal.work_item.act`) and NOTHING ELSE MOVES: `DONE` means work
+  //   the AGENCY has accepted, for everyone (founder decision 2026-09-22 — the
+  //   seeded Done carries requiresApproval, so a literal "brokered state change"
+  //   let a contact enter a state an employee cannot). CHECK
+  //   work_item_contact_completed_has_assignee: contact_completed_at IS NULL OR
+  //   assignee_contact_id IS NOT NULL — a claim cannot outlive the assignment it
+  //   answers, which is what makes the clear unforgettable rather than remembered.
+  //   Cleared by: the contact retracting it, any writer that changes the contact
+  //   assignee, and transitionState on ARRIVING at a DONE or CANCELLED category
+  //   (an ordinary live move keeps it — the agency picking work up is not an answer).
   source             WorkItemSource   @default(IN_APP)
   // Checklist counters (denormalised from description on save):
   checklistTotal     Int              @default(0)
@@ -2516,7 +2528,7 @@ model WorkItem {
 /// labels) live only here. Cycle/lead time (Phase 6) is computed from
 /// state rows here.
 /// visibility: INTERNAL unless the field is in the PORTAL-SAFE LIST —
-/// {stateCategory, title, targetDate, milestoneId, assigneeContactId} —
+/// {stateCategory, title, targetDate, milestoneId, assigneeContactId}
 /// and the item is CLIENT_VISIBLE at write time; the service decides,
 /// the row carries it, `work_item_activity_portal_safe_field` (a CHECK
 /// since 20260912120000) refuses anything else, and portal_gate
@@ -2528,6 +2540,14 @@ model WorkItem {
 /// their own access changed.)* A move WITHIN a category writes an
 /// INTERNAL row: the portal is shown categories, never state names. Labels, links, estimates, priority, assigneeMemberId,
 /// INTERNAL comments never produce a CLIENT_VISIBLE activity row.
+/// *(6c: `assigneeContactId` got its first writer. It is the FIELD NAME a
+/// contact assignment writes, never `assignee` — that is what keeps each
+/// field's refs homogeneous, `assignee` refs being member ids and these
+/// contact ids, which `readItemActivity` resolves against different tables
+/// and would otherwise render as "Unknown". `contactCompletedAt` is
+/// deliberately NOT on the portal-safe list: no portal history view exists
+/// to read it, and whoever ships one adds it there rather than inheriting
+/// it.)*
 /// oldValue/newValue are display text; oldRef/newRef are ids for
 /// re-rendering (a member id here is INTERNAL by construction). A
 /// `milestoneId` row carries ONLY the two refs (2026-09-15, the M-key

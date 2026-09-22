@@ -1,0 +1,114 @@
+-- ── The client's own "I've done my part", on the row the agency reads
+--    anyway ───────────────────────────────────────────────────────────
+--
+-- Phase 3 slice 6c. `20260922120000` gave the agency's answer to a
+-- client's request somewhere to live; this gives the client's answer to
+-- the agency's request the same.
+--
+-- WHAT IT IS AND, MORE IMPORTANTLY, WHAT IT IS NOT. A member can hand a
+-- task to a contact (`assignee_contact_id`, which has existed since 2W
+-- and until this slice had no writer at all). When that contact ticks
+-- "Done" in the portal, this column is stamped — AND NOTHING ELSE
+-- MOVES. The task stays in the state the agency put it in; the agency
+-- closes it.
+--
+-- That is a founder decision of 2026-09-22 and it went against the
+-- recommendation, which is why it is written down here rather than left
+-- to the service. AUTHZ.md §8's row for `portal.work_item.act` said
+-- "brokered state change to the project's DONE-category state", and the
+-- seeded `DONE` state carries `requires_approval` — so the literal
+-- reading let the least-trusted principal in the product do what an
+-- EMPLOYEE cannot (entering that state needs `work_item:approve`, C M
+-- A). The founder's answer keeps `DONE` meaning exactly one thing for
+-- everyone: work the agency has accepted. A client's tick is a CLAIM,
+-- and a claim is a fact about what the client says, not about the state
+-- of the work. AUTHZ.md §8 is amended to match.
+--
+-- WHY A TIMESTAMP AND NOT A BOOLEAN. "When did they say so" is the
+-- question the member surface asks the moment the flag exists, and a
+-- boolean cannot answer it later. Nullable, so absence is the absence
+-- of a claim rather than a `false` that has to be maintained.
+--
+-- WHY ON `work_item` AND NOT A ROW OF ITS OWN. The same argument
+-- `triage_reason` records one migration earlier: the portal's task list
+-- is ONE projection over `work_item` on the least-trusted surface in the
+-- product, and a per-row join to a claims table would be a second read
+-- there for a single nullable fact. It also makes the invariant below
+-- expressible as a CHECK rather than as a convention between two tables.
+ALTER TABLE "work_item" ADD COLUMN "contact_completed_at" TIMESTAMPTZ(6);
+
+-- ── One CHECK: a claim belongs to the person who was asked ──────────
+--
+-- A contact can only ever tick a task that is assigned to THEM
+-- (`portal.work_item.act`, AUTHZ.md §8 — "an item assigned to this
+-- contact"), so a stamped row with no contact assignee is a row whose
+-- claim has no claimant. Two ways that could arise and the constraint
+-- refuses both:
+--
+--   · a future writer stamping the column on an unassigned task, and
+--   · — the real one — a member UNASSIGNING the contact and leaving the
+--     claim behind. The claim would then sit on the row for ever,
+--     unreadable by the portal (the client is no longer the assignee)
+--     and still shown to the agency as "the client says this is done".
+--
+-- The second is why this is a CHECK rather than a comment: it makes
+-- `assignItem`'s clear a thing the database insists on rather than a
+-- thing the next editor of that function has to remember. The same
+-- shape, and the same reasoning, as `work_item_triage_reason_iff_outcome`.
+--
+-- It is deliberately NOT a biconditional. A contact assignee with no
+-- claim is the ordinary case — every task the moment it is handed over
+-- — so only the one direction is an invariant.
+--
+-- WHAT IT DOES NOT SAY, stated so nobody reads more into it: nothing
+-- here ties the claim to the CURRENT assignee's identity. A member who
+-- moves the task from one contact of the same client to another keeps a
+-- valid row by this constraint; the service clears the claim on any
+-- assignee change, because a claim is one person's statement and the
+-- constraint cannot see names.
+--
+-- NOT VALID + VALIDATE, the pattern 20260912120000 records, and the
+-- audit that makes the scan safe is the shortest one yet: the column is
+-- created NULL one statement above and has no writer anywhere in the
+-- product until the service in this same commit. DDL only, no DML: no
+-- `neon-smoke` dispatch is owed.
+ALTER TABLE "work_item"
+  ADD CONSTRAINT work_item_contact_completed_has_assignee CHECK (
+    contact_completed_at IS NULL OR assignee_contact_id IS NOT NULL
+  ) NOT VALID;
+ALTER TABLE "work_item" VALIDATE CONSTRAINT work_item_contact_completed_has_assignee;
+
+-- ── What this migration deliberately does NOT touch ─────────────────
+--
+-- NO RLS CHANGE, and it was checked rather than assumed. `work_item` is
+-- class B and its `portal_gate` (20260820170000) is
+--
+--   USING      (principal <> 'contact' OR (client_id = app.client_id
+--               AND visibility = 'CLIENT_VISIBLE' AND portal_enabled))
+--   WITH CHECK (principal <> 'contact')
+--
+-- — a read gate with NO assignee term and a write gate that refuses a
+-- contact principal outright. Both matter here:
+--
+--   · No assignee term means a contact can ALREADY read a client-visible
+--     task of their own client whoever it is assigned to. Showing them
+--     which ones are theirs is therefore a PROJECTION change and needs
+--     no new policy — the cheap direction to have been in, and the same
+--     one slice 6b was in.
+--   · The WITH CHECK is why the tick is a brokered write and not a
+--     direct one. A contact cannot UPDATE this table under any
+--     predicate, so the claim is stamped under the system principal
+--     after `authorizePortal` — `src/modules/work/portal-writes.ts`, the
+--     file whose name is the guarantee. The contact-writable census
+--     (TENANCY.md §7.2) is UNCHANGED by this slice: `comment` is still
+--     the only table a contact INSERTs directly, and `work_item` is
+--     still closed to a contact principal in every command.
+--
+-- NO GRANT, either: `work_item`'s is table-level (20260820170000), so
+-- the new column is covered by the existing SELECT/INSERT/UPDATE/DELETE.
+--
+-- NO INDEX. The claim is read as a column of rows the two surfaces
+-- already fetch by other keys — the portal's task list (client + project
+-- + visibility) and the member's item panel (by id). The one read that
+-- would want its own index is `/home`'s "waiting on client" card, which
+-- rule 8 names and which is not in this slice; it owes its own.

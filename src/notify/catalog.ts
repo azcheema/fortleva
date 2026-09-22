@@ -97,6 +97,39 @@ const KINDS = {
     class: "INSTANT",
     email: { atLevel: "PARTICIPATING" },
   },
+  /**
+   * Phase 3 slice 6c: a CLIENT ticked "I've done my part" on a task the
+   * agency assigned to them (`modules/work/portal-writes.ts`).
+   *
+   * AUDIENCE IS MEMBER for the same reason as the kind above — the
+   * field names who RECEIVES, not who caused it — so `clientVisibleOnly`
+   * does not apply and must not be set.
+   *
+   * INSTANT, and this one is easier to justify than a request: the
+   * whole point of assigning a task to a client is that the agency is
+   * BLOCKED until it comes back, so the moment it does is the moment
+   * somebody can pick the work up. A digest here would mean paying for
+   * the round trip and then sitting on the answer.
+   *
+   * PARTICIPATING rather than ALL, matching the receivers
+   * (`requestReceivers` — the project's assignees and its lead): a
+   * member who has turned email down to MENTIONS has said they only
+   * want to be named, and this names nobody.
+   *
+   * NO `cancelledIfRead` AND NO `debounceMinutes`, which is a real
+   * difference from `work_item.assigned` and not an omission. Those
+   * exist because a colleague may undo the thing the mail is about
+   * within two minutes. A claim CAN be retracted — the tick is a toggle
+   * — but a retraction is not an undo: the client said something and
+   * then said otherwise, and both are facts the agency may need. The
+   * dedupe key still collapses a tick/untick/tick flurry while the
+   * first row is unread.
+   */
+  "work_item.completed_by_contact": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
   // 2T: budget threshold crossed (once per budget × period × threshold —
   // the BudgetAlert unique dedupes; ids only; coalesces until digests).
   "budget.threshold_reached": {

@@ -246,7 +246,8 @@
       "commented": "New comment on a task you follow",
       "budgetThreshold": "A project budget reached a threshold",
       "generic": "Something happened",
-      "requestReceived": "A client sent a request"
+      "requestReceived": "A client sent a request",
+      "completedByContact": "A client marked their task as done"
     },
     "row": {
       "markRead": "Mark as read",
@@ -1860,6 +1861,8 @@
         "parent": "Part of",
         "milestone": "Milestone",
         "labels": "Labels",
+        "clientAssignee": "Client assignee",
+        "clientDone": "Client’s completion",
         "checklist": "Checklist",
         "checklistValue": "{done} of {total} done"
       },
@@ -2118,6 +2121,11 @@
         "assigned": "assigned this to {to}",
         "reassigned": "reassigned this from {from} to {to}",
         "unassigned": "unassigned {from}",
+        "handedToClient": "gave this to {to} at the client",
+        "handedToClientFrom": "moved this from {from} to {to} at the client",
+        "takenBackFromClient": "took this back from {from} at the client",
+        "clientMarkedDone": "marked their part of this as done",
+        "clientUnmarkedDone": "unmarked their part of this as done",
         "stateChanged": "moved this from {from} to {to}",
         "milestoneSet": "set the milestone to {to}",
         "milestoneChanged": "changed the milestone from {from} to {to}",

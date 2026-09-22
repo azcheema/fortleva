@@ -113,19 +113,26 @@ export type PortalPrincipal = {
  * a list is bounded by `portal_gate` on every row it returns, so there
  * is no single resource to name and inventing one would be theatre.
  *
- * TWO KINDS TODAY, AND THAT IS THE WHOLE COVERAGE (code review,
+ * THREE KINDS TODAY, AND THAT IS THE WHOLE COVERAGE (code review,
  * 2026-09-20 — the pipeline comment above used to imply more). A
- * document, a `ProjectVersion`, a work item, a `TimeReport` or a comment
- * subject has no ref kind yet, so a caller either omits the ref —
- * authorizing nothing about the row — or passes `{kind:"project"}`,
- * which proves the project is portal-enabled and reachable and says
- * nothing about that row's own `visibility`. RLS still gates the read
- * that follows, so this is incomplete defence in depth rather than a
- * leak; the slice that introduces each resource kind owes its ref.
+ * document, a `ProjectVersion`, a `TimeReport` or a comment subject has
+ * no ref kind yet, so a caller either omits the ref — authorizing
+ * nothing about the row — or passes `{kind:"project"}`, which proves
+ * the project is portal-enabled and reachable and says nothing about
+ * that row's own `visibility`. RLS still gates the read that follows,
+ * so this is incomplete defence in depth rather than a leak; the slice
+ * that introduces each resource kind owes its ref.
+ *
+ * `work_item` PAID THAT DEBT IN SLICE 6c, and it is the strongest of
+ * the three: `work_item`'s `portal_gate` carries the row's OWN
+ * `visibility` term as well as the client and the portal switch, so a
+ * ref that resolves has proved the contact may read that exact task —
+ * not merely that its project is reachable.
  */
 export type PortalScopeRef =
   | { readonly kind: "client"; readonly clientId: string }
-  | { readonly kind: "project"; readonly projectId: string };
+  | { readonly kind: "project"; readonly projectId: string }
+  | { readonly kind: "work_item"; readonly workItemId: string };
 
 /**
  * Throws `AuthzError` on every denial. NOT_FOUND for anything
@@ -254,6 +261,15 @@ export async function authorizePortal(
     if (ref.clientId !== principal.clientId) deny("NOT_FOUND", "client");
     const row = await tx.client.findFirst({ where: { id: ref.clientId }, select: { id: true } });
     if (!row) deny("NOT_FOUND", "client");
+  } else if (ref?.kind === "work_item") {
+    // Under `portal_gate` this single probe decides four things at once
+    // — the tenant, the client, the row's own CLIENT_VISIBLE, and the
+    // project's portal switch (denormalised onto the row by trigger).
+    // `id` alone is selected: whether the contact may act on this task
+    // is the question, and every other column is the projection's
+    // business, not this file's.
+    const row = await tx.workItem.findFirst({ where: { id: ref.workItemId }, select: { id: true } });
+    if (!row) deny("NOT_FOUND", "work item");
   }
 
   // 5. Gates 1–3 for every module this capability rides on.

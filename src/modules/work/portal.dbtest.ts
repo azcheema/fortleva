@@ -575,10 +575,19 @@ describe("no INTERNAL fact reaches a contact", () => {
       expect(Object.keys(project).sort()).toEqual(["projectId", "projectName", "tasks"]);
       for (const task of project.tasks) {
         expect(Object.keys(task).sort()).toEqual([
+          // Slice 6c added the two at the top and neither is an id: the
+          // contact assignee is COMPARED in the projection and consumed
+          // there, so "is this one yours" leaves as a boolean, and the
+          // claim leaves as the stamp the client themselves wrote. A
+          // future `assigneeContactId` appearing on this list would be
+          // the projection publishing which of a client's own people
+          // owns what, which is their organisation and not ours.
+          "assignedToYou",
           "category",
           "completedAt",
           "declinedReason",
           "id",
+          "markedDoneAt",
           "phase",
           "targetDate",
           "title",

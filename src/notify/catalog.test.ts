@@ -83,8 +83,18 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * about it in Friday's digest has a client who was ignored all week.
    * A coalesced kind would have been the safer-looking choice and the
    * wrong one.
+   *
+   * `work_item.completed_by_contact` is the fourth (Phase 3 slice 6c)
+   * and its argument is the mirror of the third's. A task assigned to a
+   * CONTACT is work the agency has handed out and is BLOCKED on; the
+   * tick is the moment it comes back. Learning about it in a digest
+   * means having paid for the round trip and then sitting on the
+   * answer. The two client-caused kinds are therefore both INSTANT, and
+   * that is the line this list draws: a fact only the CLIENT can
+   * produce reaches a person, everything the agency does to its own
+   * board waits for the digest.
    */
-  it("instant email is assignment, mention and a client request — and nothing else", () => {
+  it("instant email is assignment, mention and the two client-caused kinds — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -92,6 +102,7 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
     expect(instant).toEqual([
       "comment.mentioned",
       "work_item.assigned",
+      "work_item.completed_by_contact",
       "work_item.request_received",
     ]);
   });
@@ -107,6 +118,12 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
     expect(emailAllowed("PARTICIPATING", "work_item.request_received")).toBe(true);
   });
 
+  /** The same rule, for the other kind a client can cause: a tick names nobody. */
+  it("a client's completion tick mails at PARTICIPATING, never at MENTIONS", () => {
+    expect(emailAllowed("MENTIONS", "work_item.completed_by_contact")).toBe(false);
+    expect(emailAllowed("PARTICIPATING", "work_item.completed_by_contact")).toBe(true);
+  });
+
   /**
    * The audience field names who RECEIVES, not who caused it. A request
    * is contact-CAUSED and member-ADDRESSED, which is the first kind in
@@ -116,6 +133,13 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    */
   it("a client request is a MEMBER kind and carries no client-visibility claim", () => {
     const spec = NOTIFICATION_KINDS["work_item.request_received"];
+    expect(spec.audience).toBe("MEMBER");
+    expect(spec.clientVisibleOnly).toBeUndefined();
+  });
+
+  /** And the second one, for the same reason — contact-CAUSED, member-ADDRESSED. */
+  it("a client's completion tick is a MEMBER kind and carries no client-visibility claim", () => {
+    const spec = NOTIFICATION_KINDS["work_item.completed_by_contact"];
     expect(spec.audience).toBe("MEMBER");
     expect(spec.clientVisibleOnly).toBeUndefined();
   });

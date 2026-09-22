@@ -1380,7 +1380,7 @@ model WorkItem {
   stateCategory       StateCategory    @map("state_category") // DENORMALISED — the only state field the portal reads
   priority            WorkItemPriority @default(NONE)
   assigneeMemberId    String?          @map("assignee_member_id") // XOR assigneeContactId (CHECK)
-  assigneeContactId   String?          @map("assignee_contact_id") // => visibility CLIENT_VISIBLE (CHECK); portal UI Phase 3
+  assigneeContactId   String?          @map("assignee_contact_id") // => visibility CLIENT_VISIBLE (CHECK); written since Phase 3 slice 6c
   parentId            String?          @map("parent_id") // same project, strictly higher type (trigger)
   rootId              String           @map("root_id") // DENORMALISED — top of the tree (self at depth 0)
   depth               Int              @default(0) // 0-indexed; CHECK depth <= 2
@@ -1405,6 +1405,15 @@ model WorkItem {
   triageReason        String?          @map("triage_reason") @db.VarChar(500)
   snoozedUntil        DateTime?        @map("snoozed_until") @db.Timestamptz(6)
   duplicateOfId       String?          @map("duplicate_of_id")
+  // THE CLIENT'S CLAIM THAT THEIR PART IS DONE — stamped by the contact
+  // this task is assigned to, through `modules/work/portal-writes.ts`,
+  // and NOTHING ELSE MOVES (founder decision, 2026-09-22). The state is
+  // the agency's; `DONE` means work the agency has accepted, for
+  // everyone. CHECK `work_item_contact_completed_has_assignee`: a claim
+  // cannot outlive the assignment it answers, so every writer that
+  // clears `assigneeContactId` clears this too. Cleared also when the
+  // item reaches a DONE or CANCELLED category — the agency has answered.
+  contactCompletedAt  DateTime?        @map("contact_completed_at") @db.Timestamptz(6)
   source              WorkItemSource   @default(IN_APP)
   checklistTotal      Int              @default(0) @map("checklist_total") // denormalised from description on save
   checklistDone       Int              @default(0) @map("checklist_done")

@@ -18,10 +18,24 @@ import { rankBetween } from "@/lib/rank";
  * service that locks more than one work_item row of a project takes this
  * lock before its first row lock — create (a subtask's parent, then the
  * bottom row), move and rebalance (anchors, neighbours, every rank), the
- * bulk edits (the whole selection) and a subtask's raise to
- * CLIENT_VISIBLE (its own row, then the parent the tree trigger
- * share-locks) — and re-reads, after the wait, whatever it read before
- * it (moveItem's pattern). None of them locks rows in tree order — a
+ * bulk edits (the whole selection), a subtask's raise to CLIENT_VISIBLE
+ * (its own row, then the parent the tree trigger share-locks) and — since
+ * slice 6c — a subtask's CONTACT ASSIGNMENT, whether or not it raises
+ * anything — and re-reads, after the wait, whatever it read before it
+ * (moveItem's pattern).
+ *
+ * **THAT LAST ONE IS THE TRAP THIS PARAGRAPH NOW EXISTS TO CLOSE.**
+ * `work_item_parent_guard` fires on `BEFORE UPDATE OF … visibility`,
+ * and Postgres fires `UPDATE OF` on SET-LIST MEMBERSHIP, not on the
+ * value moving. `assignItemToContact` always writes
+ * `visibility: 'CLIENT_VISIBLE'` — forced by the contact-assignee CHECK
+ * — so for a subtask the guard share-locks the parent EVERY time,
+ * including when the row was already client-visible and no raise
+ * happens at all. Its first cut therefore conditioned the queue on the
+ * row's CURRENT visibility and skipped it in exactly that case; a code
+ * review caught it. **Condition a queue decision on what your statement
+ * WRITES, never on what the row currently holds** — the latter is read
+ * before any lock and can go stale under you. None of them locks rows in tree order — a
  * move goes by rank in either direction, a bulk edit by scan order — so
  * no order could be imposed; queued, no two of them ever hold rows at
  * once, and a writer of ONE work_item row cannot close a cycle among
@@ -117,6 +131,15 @@ import { rankBetween } from "@/lib/rank";
  * and then the item through document_anchor_guard — deleteItem writes
  * only deleted_at, so it never takes a second work_item row and no
  * queued writer ever locks a document or comment row.
+ *
+ * SINCE 6c A QUEUED WRITER ALSO TOUCHES A `contact` ROW — the foreign
+ * key on `assignee_contact_id` takes `FOR KEY SHARE` on it — so the
+ * sentence above needed checking rather than extending. It closes no
+ * cycle: `deleteContact` locks the contact row and then takes only
+ * `FOR KEY SHARE` on `work_item` through the same FK, which does not
+ * conflict with the `NO KEY UPDATE` a queued writer holds, and nothing
+ * else locks a contact and then a work item. Setting the column to NULL
+ * takes no lock on `contact` at all.
  */
 
 export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise<void> {

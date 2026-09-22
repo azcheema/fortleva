@@ -56,6 +56,27 @@ const POLICIES = {
    * so the honest refusal is normally the one that fires.
    */
   "portal.request_create": { limit: 20, window: "15 m" },
+  /**
+   * The portal's task TICK per CONTACT (Phase 3 slice 6c) — "I've done
+   * my part" and its retraction.
+   *
+   * UNLIKE THE BUCKET ABOVE, THIS ONE IS THE ONLY LIMIT ON ITS PATH,
+   * and that is a weaker position stated rather than hidden: a toggle
+   * creates no row and mints no counter, so there is no Postgres budget
+   * to be the authority, and with Upstash unprovisioned (PLAN §0) this
+   * is a no-op today. What it protects is not the database — the write
+   * is one indexed UPDATE — but the AUDIT TRAIL and the agency's inbox:
+   * every flip writes an `AuditEvent`, and every tick can wake a
+   * notification once the previous one has been read.
+   *
+   * Generous on purpose. A client legitimately ticking several tasks in
+   * one sitting, changing their mind about one, is the ordinary use;
+   * this is sized to catch a script, not a person. Keyed on the contact
+   * id for the same reason as the request bucket — the actor is
+   * authenticated, and an office NAT must not let one client's staff
+   * spend another's budget.
+   */
+  "portal.task_act": { limit: 60, window: "15 m" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;
 
 export type RateLimitResult = {

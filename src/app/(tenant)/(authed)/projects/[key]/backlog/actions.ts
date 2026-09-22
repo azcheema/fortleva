@@ -430,7 +430,18 @@ export async function setItemVisibilityAction(
   const { itemId, projectKey, itemNumber, surface, visibility } = parsed.data;
   const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
     const c = await changeItemVisibility(ctx, itemId, visibility);
-    return { visibility: c.visibility, changed: c.changed };
+    // `endedContactAssignment` rides along from slice 6c: making a
+    // contact-assigned task private also takes it off the client, and
+    // the surface that can say so is the one that will draw a contact
+    // assignee at all (the next slice). Carried here rather than
+    // dropped, so that surface does not have to change this action to
+    // find out.
+    return {
+      id: c.id,
+      visibility: c.visibility,
+      endedContactAssignment: c.endedContactAssignment,
+      changed: c.changed,
+    };
   });
   if (r.ok && r.value.changed) revalidate(projectKey);
   return r;

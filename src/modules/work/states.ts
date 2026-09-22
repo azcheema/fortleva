@@ -283,6 +283,34 @@ export async function transitionState(
   // combination this could otherwise mint — a reason with no outcome.
   const leavingTriageOrCancelled =
     item.stateCategory === "TRIAGE" || item.stateCategory === "CANCELLED";
+  // THE CLIENT'S CLAIM, CLEARED WHEN THE AGENCY HAS ANSWERED IT — and
+  // only then (slice 6c). A contact assigned a task can say "I've done
+  // my part" (`contactCompletedAt`, `portal-writes.ts`); it moves
+  // nothing, because `DONE` means work the agency has accepted, for
+  // everyone (founder decision, 2026-09-22).
+  //
+  // **IT SURVIVES AN ORDINARY LIVE MOVE, AND THAT IS THE POINT.**
+  // Clearing on every transition looked tidier and was wrong: a member
+  // dragging the task from "To do" to "In progress" for their own
+  // reasons would have silently deleted the client's statement, which
+  // is the same silent-vanish class slice 6b exists to end. Reaching
+  // DONE or CANCELLED is different — the agency has now answered the
+  // claim one way or the other, and a stale "the client says this is
+  // done" on finished or dropped work says nothing.
+  //
+  // A claim can also be retracted by the client, and is cleared by
+  // every writer that changes the assignment it answers (`items.ts`);
+  // `work_item_contact_completed_has_assignee` refuses the row that
+  // would be left behind.
+  //
+  // ITS OWN SPREAD, never folded into the triage object below: the two
+  // clears answer different questions and the triage one has a branch
+  // (`triage ? … : leavingTriageOrCancelled ? … : {}`) that would have
+  // swallowed this in two of its three arms.
+  const claimColumn: Partial<Pick<ItemRow, "contactCompletedAt">> =
+    item.contactCompletedAt !== null && (to === "DONE" || to === "CANCELLED")
+      ? { contactCompletedAt: null }
+      : {};
   const triageColumns: Partial<
     Pick<ItemRow, "triageStatus" | "triageReason" | "snoozedUntil" | "duplicateOfId">
   > = triage
@@ -305,7 +333,7 @@ export async function transitionState(
   // which is the value the caller actually wants.
   const row = await tx.workItem.update({
     where: { id: item.id },
-    data: { stateId: state.id, stateCategory: to, startedAt, completedAt, ...triageColumns },
+    data: { stateId: state.id, stateCategory: to, startedAt, completedAt, ...triageColumns, ...claimColumn },
     select: {
       id: true,
       stateId: true,

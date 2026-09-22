@@ -17,6 +17,20 @@ import { dbErrorMapper } from "@/lib/db-error-map";
  * milestone between projects or an item between them, and no service
  * deletes a milestone at all — so a member cannot reach the trigger,
  * and a raise that got through would be a bug worth seeing raw.
+ *
+ * `work_item_contact_assignee_visible` (2W) joins that list in slice 6c
+ * and is worth naming, because it went from UNREACHABLE to reachable in
+ * one commit: it says a contact-assigned row must be CLIENT_VISIBLE,
+ * and until `assigneeContactId` got its first writer nothing could
+ * violate it. Two writers can now, and both close the door themselves
+ * rather than relying on a mapping — `assignItemToContact` writes the
+ * visibility in the same statement as the assignment, and
+ * `changeItemVisibility` ENDS the assignment when it goes private,
+ * because the make-private lever must never fail (both fresh reviews of
+ * this slice found the version that could). So the token stays unmapped
+ * by this file's own rule: a member cannot reach it, and a raise that
+ * got through would be a bug worth seeing raw rather than a sentence
+ * inviting them to try something else.
  */
 export const { mapDbError, guarded } = dbErrorMapper([
   ["WORK_ITEM_VISIBLE_CHILDREN", "HAS_VISIBLE_CHILDREN"],

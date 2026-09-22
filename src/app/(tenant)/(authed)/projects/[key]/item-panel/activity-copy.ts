@@ -7,7 +7,7 @@ import type { ActivityEntry } from "@/modules/work";
  * What a history row SAYS — the pure half of the Activity section
  * (`activity-section.tsx` renders it). A row is a field and four
  * nullable columns (DATA_MODEL §6.14); this turns that into one of
- * twenty-five sentences with its display values already formatted, so
+ * thirty sentences with its display values already formatted, so
  * the component is a switch over message keys and every branch is a
  * unit test here rather than a screenshot. The lookups are the
  * section's formatters — a state name from the project's states, a
@@ -38,6 +38,13 @@ export type ActivityLookups = {
   visibility: (value: VisibilityValue) => string;
   /** A resolved member name, or the "Unknown" word for an id that no longer resolves. */
   member: (name: string | null) => string;
+  /**
+   * A resolved CONTACT name, or the "Unknown" word. Separate from
+   * `member` because the two resolve against different tables
+   * (`activity.ts`) and a row's field says which one its refs are —
+   * sharing one lookup is how a contact id comes back as nobody.
+   */
+  contact: (name: string | null) => string;
   /** A resolved milestone name, or the "Unknown" word — for a phase that is gone, or one the reader may not see. */
   milestone: (name: string | null) => string;
   /** A resolved label name, or the "Unknown" word for a label since deleted. */
@@ -58,6 +65,11 @@ export type ActivitySentence =
   | { key: "assigned"; to: string }
   | { key: "reassigned"; from: string; to: string }
   | { key: "unassigned"; from: string }
+  | { key: "handedToClient"; to: string }
+  | { key: "handedToClientFrom"; from: string; to: string }
+  | { key: "takenBackFromClient"; from: string }
+  | { key: "clientMarkedDone" }
+  | { key: "clientUnmarkedDone" }
   | { key: "stateChanged"; from: string; to: string }
   | { key: "milestoneSet"; to: string }
   | { key: "milestoneChanged"; from: string; to: string }
@@ -134,6 +146,29 @@ export function activitySentence(row: ActivityRow, look: ActivityLookups): Activ
       if (from !== null) return { key: "unassigned", from };
       return fallback;
     }
+    // The CONTACT assignment rows (items.ts, `assignItemToContact` and
+    // `assignItem`'s removal). Its own field and its own sentences, for
+    // the reason `activity.ts` gives: these refs are contact ids and
+    // `assignee`'s are member ids, resolved against different tables.
+    // The words say WHO it went to, because handing work to a client is
+    // not the same act as assigning it to a colleague and a shared
+    // sentence would read as though it were.
+    case "assigneeContactId": {
+      const from = row.oldRef ? look.contact(row.oldRefName) : null;
+      const to = row.newRef ? look.contact(row.newRefName) : null;
+      if (to !== null && from !== null) return { key: "handedToClientFrom", from, to };
+      if (to !== null) return { key: "handedToClient", to };
+      if (from !== null) return { key: "takenBackFromClient", from };
+      return fallback;
+    }
+    // The client's own claim (`portal-writes.ts`). NO NAME: the actor
+    // line above the sentence already says which contact wrote it, and
+    // the only contact who can is the assignee. `newValue` is the stamp
+    // and the row's own timestamp says when — the sentence carries the
+    // VERB and nothing else, which is why the two keys take no
+    // arguments.
+    case "contactCompletedAt":
+      return row.newValue === null ? { key: "clientUnmarkedDone" } : { key: "clientMarkedDone" };
     case "stateCategory":
       if (row.oldRef === null && row.oldValue === null) return fallback;
       if (row.newRef === null && row.newValue === null) return fallback;

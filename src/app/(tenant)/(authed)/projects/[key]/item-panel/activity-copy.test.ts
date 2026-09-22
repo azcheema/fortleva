@@ -18,6 +18,7 @@ const look: ActivityLookups = {
   day: (iso) => `day:${iso}`,
   visibility: (v) => `vis:${v}`,
   member: (name) => `member:${name ?? "?"}`,
+  contact: (name) => `contact:${name ?? "?"}`,
   milestone: (name) => `milestone:${name ?? "?"}`,
   label: (name) => `label:${name ?? "?"}`,
 };
@@ -268,3 +269,56 @@ describe("activitySentence", () => {
     });
   });
 });
+
+describe("a task handed to the client, and the client's answer (slice 6c)", () => {
+  /**
+   * The refs here are CONTACT ids and `assignee`'s are member ids —
+   * different tables, different lookups (`activity.ts`). These four
+   * assertions are what would fail if the two fields ever shared a
+   * branch: the tag says which formatter the name went through, so a
+   * contact rendered by `member` is visible here rather than as the
+   * word "Unknown" on a real screen.
+   */
+  it("names the contact through the CONTACT lookup, never the member one", () => {
+    expect(
+      activitySentence(row({ field: "assigneeContactId", newRef: "c1", newRefName: "Anna" }), look),
+    ).toEqual({ key: "handedToClient", to: "contact:Anna" });
+    expect(
+      activitySentence(
+        row({ field: "assigneeContactId", oldRef: "c1", oldRefName: "Anna", newRef: "c2", newRefName: "Bea" }),
+        look,
+      ),
+    ).toEqual({ key: "handedToClientFrom", from: "contact:Anna", to: "contact:Bea" });
+    expect(
+      activitySentence(row({ field: "assigneeContactId", oldRef: "c1", oldRefName: "Anna" }), look),
+    ).toEqual({ key: "takenBackFromClient", from: "contact:Anna" });
+  });
+
+  it("reads a gone contact as a person, never as nobody", () => {
+    // The assignee rule verbatim: a ref whose contact no longer
+    // resolves still names someone the task was given to.
+    expect(
+      activitySentence(row({ field: "assigneeContactId", oldRef: "c1", oldRefName: null }), look),
+    ).toEqual({ key: "takenBackFromClient", from: "contact:?" });
+  });
+
+  it("has no sentence for a row with neither ref", () => {
+    expect(activitySentence(row({ field: "assigneeContactId" }), look)).toEqual({
+      key: "fieldChanged",
+      field: "assigneeContactId",
+    });
+  });
+
+  it("tells the claim from its withdrawal by the stamp, and neither takes a name", () => {
+    expect(
+      activitySentence(row({ field: "contactCompletedAt", newValue: "2026-09-22T10:00:00.000Z" }), look),
+    ).toEqual({ key: "clientMarkedDone" });
+    expect(
+      activitySentence(
+        row({ field: "contactCompletedAt", oldValue: "2026-09-22T10:00:00.000Z", newValue: null }),
+        look,
+      ),
+    ).toEqual({ key: "clientUnmarkedDone" });
+  });
+});
+

@@ -88,6 +88,7 @@ const DBTEST_PREFIXES = [
   "census-",
   "clients-",
   "copy-",
+  "ctask-",
   "ctr-a-",
   "ctr-b-",
   "desc-",
@@ -811,6 +812,12 @@ async function removeTenant(
   });
   await db.workItem.deleteMany({ where: { tenantId, parentId: { not: null } } });
   await db.workItem.deleteMany({ where: { tenantId } });
+  // `assignee_contact_id` (slice 6c, its own first writer) is RESTRICT
+  // too — and needs nothing here, because it points at `contact`, which
+  // this function deletes LATER. Checked rather than assumed: the
+  // residue above exists because a "no path reaches this" disposition
+  // had not looked in `e2e/`, and the next column with a restricting FK
+  // deserves the same two minutes.
   await db.workflowState.deleteMany({ where: { tenantId } });
   await db.tenantCounter.deleteMany({ where: { tenantId } }); // work_item:<project> numbering (RESTRICTs the tenant)
   await db.notification.deleteMany({ where: { tenantId } });

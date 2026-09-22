@@ -26,26 +26,74 @@ type ItemRef = {
   readonly visibility: "INTERNAL" | "CLIENT_VISIBLE";
 };
 
+/** A history row a MEMBER caused: the module's ordinary writer. */
 export async function writeActivity(
   tx: TenantDb,
   ctx: WorkCtx,
   item: ItemRef,
-  change: {
-    readonly field: string;
-    readonly oldValue?: string | null;
-    readonly newValue?: string | null;
-    readonly oldRef?: string | null;
-    readonly newRef?: string | null;
-    /**
-     * Hold a row INTERNAL even though its field is on the list: a move
-     * WITHIN a state category tells the portal nothing (it is shown
-     * categories, never state names) while carrying two state ids.
-     * A field that is NOT on the list is INTERNAL without this.
-     */
-    readonly forceInternal?: boolean;
-    /** The soft pointer a `comment` / `commentVisibility` row carries (§6.14) — never an FK, never resolved by the panel. */
-    readonly commentId?: string | null;
-  },
+  change: ActivityChange,
+): Promise<void> {
+  await insertActivity(tx, ctx.tenantId, { memberId: ctx.actor.memberId, contactId: null }, item, change);
+}
+
+/**
+ * A history row a CONTACT caused — the brokered twin of `writeActivity`,
+ * and a separate function for the same reason `portal-writes.ts` is a
+ * separate file: who the actor is should be a property of what you
+ * called, never of an argument somebody can forget to pass.
+ *
+ * It takes a tenant id rather than a `WorkCtx` because there is no
+ * member here at all. `actor_member_id` stays NULL and
+ * `actor_contact_id` carries the claimant, which is what
+ * `resolveActorNames` already resolves (it has handled a contact actor
+ * since slice 8, against the item's OWN client, so a mis-attributed id
+ * cannot name another client's contact).
+ *
+ * THE PORTAL-SAFE DECISION IS THE SAME ONE, deliberately: this shares
+ * `insertActivity` with the member writer, so a field's visibility does
+ * not depend on which plane wrote the row. A contact-caused row about a
+ * field that is not on the list is INTERNAL exactly as a member's would
+ * be — which today means every one of them, since `contactCompletedAt`
+ * is not on the list and no portal history view exists to read it.
+ */
+export async function writeContactActivity(
+  tx: TenantDb,
+  tenantId: string,
+  contactId: string,
+  item: ItemRef,
+  change: ActivityChange,
+): Promise<void> {
+  await insertActivity(tx, tenantId, { memberId: null, contactId }, item, change);
+}
+
+type ActivityChange = {
+  readonly field: string;
+  readonly oldValue?: string | null;
+  readonly newValue?: string | null;
+  readonly oldRef?: string | null;
+  readonly newRef?: string | null;
+  /**
+   * Hold a row INTERNAL even though its field is on the list: a move
+   * WITHIN a state category tells the portal nothing (it is shown
+   * categories, never state names) while carrying two state ids.
+   * A field that is NOT on the list is INTERNAL without this.
+   */
+  readonly forceInternal?: boolean;
+  /** The soft pointer a `comment` / `commentVisibility` row carries (§6.14) — never an FK, never resolved by the panel. */
+  readonly commentId?: string | null;
+};
+
+/**
+ * THE ONE INSERT, so the portal-safe decision is made in exactly one
+ * place whichever plane caused the row. Both wrappers reach it; nothing
+ * else does.
+ */
+async function insertActivity(
+  tx: TenantDb,
+  tenantId: string,
+  actor: { readonly memberId: string | null; readonly contactId: string | null },
+  item: ItemRef,
+  change: ActivityChange,
 ): Promise<void> {
   const portalSafe =
     !change.forceInternal &&
@@ -53,11 +101,12 @@ export async function writeActivity(
     item.visibility === "CLIENT_VISIBLE";
   await tx.workItemActivity.create({
     data: {
-      tenantId: ctx.tenantId,
+      tenantId,
       clientId: item.clientId,
       projectId: item.projectId,
       workItemId: item.id,
-      actorMemberId: ctx.actor.memberId,
+      actorMemberId: actor.memberId,
+      actorContactId: actor.contactId,
       field: change.field,
       oldValue: change.oldValue ?? null,
       newValue: change.newValue ?? null,
@@ -194,17 +243,22 @@ async function resolveLabelNames(
   );
 }
 
-/** Which resolver a field's refs belong to — the one place the three ref-bearing fields are named. */
+/** Which resolver a field's refs belong to — the one place the four ref-bearing fields are named. */
 const refName = (
   field: string,
   ref: string | null,
   by: {
     member: (id: string | null) => string | null;
+    contact: (id: string | null) => string | null;
     milestone: (id: string | null) => string | null;
     label: (id: string | null) => string | null;
   },
 ): string | null => {
   if (field === "assignee") return by.member(ref);
+  // Bound to the item's OWN client by `resolveActorNames`, so a
+  // mis-attributed ref can never name another client's contact — the
+  // same rule the actor resolution follows, for the same reason.
+  if (field === "assigneeContactId") return by.contact(ref);
   if (field === "milestoneId") return by.milestone(ref);
   if (field === "labels") return by.label(ref);
   return null;
@@ -229,7 +283,8 @@ export type ActivityEntry = {
   actor: ActivityActor;
   /**
    * What `oldRef` / `newRef` NAME, resolved by this read: a member for
-   * `assignee`, a milestone for `milestoneId`, a label for `labels`.
+   * `assignee`, a CONTACT for `assigneeContactId`, a milestone for
+   * `milestoneId`, a label for `labels`.
    * Null for every other
    * field, and for a ref whose row no longer resolves — which, for a
    * milestone, is also the answer RLS gives a Phase 3 contact about an
@@ -297,6 +352,16 @@ export async function readItemActivity(
       if (r.oldRef) memberIds.add(r.oldRef);
       if (r.newRef) memberIds.add(r.newRef);
     }
+    // A CONTACT assignment is its own field and never `assignee`, so
+    // that field's refs stay homogeneously member ids and these stay
+    // homogeneously contact ids. Mixing them would have resolved a
+    // contact id against the member table and rendered "Unknown" — the
+    // panel's word for a row it cannot explain — on the one kind of
+    // assignment a client can see.
+    if (r.field === "assigneeContactId") {
+      if (r.oldRef) contactIds.add(r.oldRef);
+      if (r.newRef) contactIds.add(r.newRef);
+    }
     if (r.field === "milestoneId") {
       if (r.oldRef) milestoneIds.add(r.oldRef);
       if (r.newRef) milestoneIds.add(r.newRef);
@@ -311,7 +376,7 @@ export async function readItemActivity(
     resolveMilestoneNames(tx, tenantId, clientId, milestoneIds),
     resolveLabelNames(tx, tenantId, labelIds),
   ]);
-  const by = { member: names.member, milestone, label };
+  const by = { member: names.member, contact: names.contact, milestone, label };
 
   return {
     rows: page.map((r) => ({

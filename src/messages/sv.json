@@ -246,7 +246,8 @@
       "commented": "Ny kommentar på en uppgift du följer",
       "budgetThreshold": "En projektbudget har nått en tröskel",
       "generic": "Något har hänt",
-      "requestReceived": "En kund har skickat en förfrågan"
+      "requestReceived": "En kund har skickat en förfrågan",
+      "completedByContact": "En kund har markerat sin uppgift som klar"
     },
     "row": {
       "markRead": "Markera som läst",
@@ -1860,6 +1861,8 @@
         "parent": "Del av",
         "milestone": "Milstolpe",
         "labels": "Etiketter",
+        "clientAssignee": "Kundens ansvariga",
+        "clientDone": "Kundens klarmarkering",
         "checklist": "Checklista",
         "checklistValue": "{done} av {total} klara"
       },
@@ -2118,6 +2121,11 @@
         "assigned": "tilldelade {to} uppgiften",
         "reassigned": "flyttade ansvaret från {from} till {to}",
         "unassigned": "tog bort {from} som ansvarig",
+        "handedToClient": "lämnade över detta till {to} hos kunden",
+        "handedToClientFrom": "flyttade detta från {from} till {to} hos kunden",
+        "takenBackFromClient": "tog tillbaka detta från {from} hos kunden",
+        "clientMarkedDone": "markerade sin del som klar",
+        "clientUnmarkedDone": "avmarkerade sin del som klar",
         "stateChanged": "flyttade uppgiften från {from} till {to}",
         "milestoneSet": "satte milstolpen till {to}",
         "milestoneChanged": "ändrade milstolpen från {from} till {to}",

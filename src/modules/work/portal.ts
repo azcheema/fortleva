@@ -217,6 +217,43 @@ export type PortalTask = {
    * still never ships. `portal.dbtest.ts` drives both.
    */
   readonly declinedReason: string | null;
+  /**
+   * IS THIS ONE YOURS — the fact `/portal`'s "action items first" rule
+   * (UI.md rule 8, §11) needs, and the only thing that lights the Done
+   * tick (Phase 3 slice 6c).
+   *
+   * A BOOLEAN ABOUT *YOU*, NEVER AN ASSIGNEE. `assigneeContactId` is
+   * selected, compared here, and does not leave: a task assigned to a
+   * COLLEAGUE comes back `false` with nothing else said about it. Not
+   * squeamishness about a name the client already knows — it is that
+   * "who at your company owns this" is a fact the agency's row happens
+   * to carry, and publishing it would make this projection an opinion
+   * about the client's own internal organisation. The list says what is
+   * yours; the rest is just the client's list.
+   *
+   * A member assignee can never make this true: `work_item_single_assignee`
+   * is an XOR, so the column is null on every member-held task.
+   */
+  readonly assignedToYou: boolean;
+  /**
+   * WHEN THE CLIENT SAID THEIR PART WAS DONE, or null — their own claim
+   * coming back to them.
+   *
+   * IT IS NOT A STATE, and that difference is the whole of the founder's
+   * 2026-09-22 decision: `category` says where the AGENCY has the work,
+   * this says what the CLIENT told them about it. A ticked task sits in
+   * PLANNED or IN_PROGRESS with this set until the agency accepts it,
+   * at which point the state machine clears the claim and the category
+   * says DONE.
+   *
+   * Projected for any row rather than only `assignedToYou` ones,
+   * because `work_item_contact_completed_has_assignee` makes it
+   * impossible on a row with no contact assignee — so a non-null here
+   * always names something a contact of THIS client was asked to do,
+   * and a colleague's "done" is the client's own business to see. The
+   * page decides what to draw.
+   */
+  readonly markedDoneAt: Date | null;
 };
 
 /** The shared tasks of one project. */
@@ -408,6 +445,17 @@ export async function listPortalTasks(
         triageReason: true,
         targetDate: true,
         completedAt: true,
+        // COMPARED, NEVER RETURNED — `assignedToYou` is built from it
+        // below and the id itself does not leave this function. The
+        // MEMBER assignee column is on both tripwire lists, because who
+        // at the agency owns a piece of work is an internal fact; a
+        // contact of this client is not one, so this column is on
+        // neither. *(This comment cannot spell the other column's name:
+        // the text tier greps THIS FILE and fires on the mention alone,
+        // which is the property that makes that list worth having. It
+        // caught the first draft of this very comment.)*
+        assigneeContactId: true,
+        contactCompletedAt: true,
         project: { select: { id: true, name: true } },
         milestone: { select: { name: true } },
       },
@@ -451,6 +499,10 @@ export async function listPortalTasks(
         // off the client's screen rather than the constraint being the
         // only thing between them.
         declinedReason: category === "DECLINED" ? row.triageReason : null,
+        // The comparison IS the projection: the id is consumed here and
+        // never put on the returned object.
+        assignedToYou: row.assigneeContactId === principal.contactId,
+        markedDoneAt: row.contactCompletedAt,
       });
     }
 

@@ -44,6 +44,16 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
     en: { subject: "A client sent a request", body: "A client submitted a request through the portal. It is waiting in triage." },
     sv: { subject: "En kund har skickat en förfrågan", body: "En kund har skickat en förfrågan via portalen. Den väntar i sorteringen." },
   },
+  "work_item.completed_by_contact": {
+    en: {
+      subject: "A client marked their task as done",
+      body: "A client says they have finished a task you assigned to them. It is waiting for you to check.",
+    },
+    sv: {
+      subject: "En kund har markerat sin uppgift som klar",
+      body: "En kund uppger att de har slutfört en uppgift ni tilldelat dem. Den väntar på att ni kontrollerar den.",
+    },
+  },
   "budget.threshold_reached": {
     en: { subject: "A project budget reached a threshold", body: "A project budget in Fortleva reached one of its thresholds." },
     sv: { subject: "En projektbudget har nått en tröskel", body: "En projektbudget i Fortleva har nått en av sina trösklar." },

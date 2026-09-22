@@ -173,6 +173,18 @@ export const AUDIT_EVENTS = {
   // one: `record()` takes `brokeredForContactId` for precisely this,
   // and refuses it outside a system transaction.
   "portal.request_created": TENANT,
+  // The client's "I've done my part" on a task the agency assigned to
+  // them, and its retraction (Phase 3 slice 6c). AUDITED RATHER THAN
+  // ROUTINE even though nothing moves: the founder's 2026-09-12 rule
+  // makes a field edit routine when a MEMBER makes it, and every event
+  // in this family is the other thing — the short list of acts a client
+  // can perform on the agency's board, which is exactly what an
+  // operator filters for. The withdrawal is its own action and not a
+  // `{done:false}` on the first, because "the client took it back" is a
+  // different question from "when did they say so" and a metadata flag
+  // is not something anybody greps.
+  "portal.task_completed": TENANT,
+  "portal.task_completion_withdrawn": TENANT,
   "workflow.changed": TENANT,
   "label.created": TENANT,
   "label.deleted": TENANT,

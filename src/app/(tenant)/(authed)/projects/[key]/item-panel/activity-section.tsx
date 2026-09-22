@@ -1,5 +1,6 @@
 import {
   CalendarIcon,
+  CircleCheckIcon,
   ClockIcon,
   FileTextIcon,
   FlagIcon,
@@ -80,6 +81,13 @@ const FIELD_ICON: Record<string, LucideIcon> = {
   estimate: ClockIcon,
   targetDate: CalendarIcon,
   assignee: UserRoundIcon,
+  // The client's side of the same two acts: handing a task over draws
+  // the person glyph its member twin does, and the claim draws the
+  // check that says what the client is asserting. Neither may fall
+  // through to the generic pencil — this rail's rule is that the glyph
+  // IS the field.
+  assigneeContactId: UserRoundIcon,
+  contactCompletedAt: CircleCheckIcon,
   milestoneId: FlagIcon,
   labels: TagIcon,
   comment: MessageSquareIcon,
@@ -130,6 +138,12 @@ const PROPERTY_LABEL = {
   parentId: "parent",
   milestoneId: "milestone",
   labels: "labels",
+  // Both fields have real sentences above, so this is the fallback for
+  // a row whose refs the builder refused — reachable only through a row
+  // no writer produces, which is exactly when a raw column name would
+  // otherwise reach a client-visible screen.
+  assigneeContactId: "clientAssignee",
+  contactCompletedAt: "clientDone",
 } as const;
 type PropertyLabelKey = (typeof PROPERTY_LABEL)[keyof typeof PROPERTY_LABEL];
 const propertyLabelKey = (field: string): PropertyLabelKey | null =>
@@ -178,13 +192,17 @@ export async function ActivitySection({
     duration: (m) => formatDuration(locale, m, durationStyle),
     visibility: (v) => tVis(visibilityLabelKey(v)),
     member: (name) => name ?? tCommon("unknown"),
+    // A contact the read could not resolve — deleted, or of another
+    // client, which `resolveActorNames` binds out — is still a person
+    // the row names.
+    contact: (name) => name ?? tCommon("unknown"),
     // A phase the read could not resolve — deleted with its project, or,
     // for a Phase 3 contact, internal — is still a phase the row names.
     milestone: (name) => name ?? tCommon("unknown"),
     label: (name) => name ?? tCommon("unknown"),
   };
 
-  // Twenty-five sentences in five shapes — next-intl types the ICU arguments
+  // Thirty sentences in five shapes — next-intl types the ICU arguments
   // per key, and every key in a group takes the same ones.
   const say = (s: ActivitySentence): string => {
     switch (s.key) {
@@ -193,6 +211,8 @@ export async function ActivitySection({
       case "commented":
       case "commentEdited":
       case "commentDeleted":
+      case "clientMarkedDone":
+      case "clientUnmarkedDone":
         return t(s.key);
       case "titleChanged":
       case "priorityChanged":
@@ -201,11 +221,13 @@ export async function ActivitySection({
       case "reassigned":
       case "stateChanged":
       case "milestoneChanged":
+      case "handedToClientFrom":
         return t(s.key, { from: s.from, to: s.to });
       case "estimateSet":
       case "dueDateSet":
       case "assigned":
       case "milestoneSet":
+      case "handedToClient":
       case "labelAdded":
       case "visibilityChanged":
       case "commentVisibilityChanged":
@@ -213,6 +235,7 @@ export async function ActivitySection({
       case "estimateCleared":
       case "dueDateCleared":
       case "unassigned":
+      case "takenBackFromClient":
       case "milestoneCleared":
       case "labelRemoved":
         return t(s.key, { from: s.from });

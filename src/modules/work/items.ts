@@ -863,6 +863,15 @@ export type AssignmentCommitted = {
  * Assign / unassign a member; assignment notifies (debounced email). A
  * routine edit: an INTERNAL activity row (`assignee` is not on the
  * portal-safe list), never an audit event.
+ *
+ * IT IS ALSO THE WAY A CONTACT ASSIGNEE IS REMOVED, which is why
+ * `assigneeContactId` is nulled in the same statement and why the
+ * no-op test below reads BOTH columns. `assignItemToContact` is the
+ * other direction and the two are deliberately separate functions: a
+ * contact assignment publishes the task to a client and is gated on
+ * `work_item:change_visibility`, and folding that into this signature
+ * would put the product's most dangerous flip behind an argument's
+ * type.
  */
 export async function assignItem(
   ctx: WorkCtx,
@@ -887,7 +896,13 @@ export async function assignItem(
         })
       : null;
     const assigneeName = member?.user.name ?? null;
-    if (item.assigneeMemberId === memberId) {
+    // **BOTH COLUMNS, AND THE SECOND HALF IS NOT DECORATION.** The
+    // UPDATE below clears `assigneeContactId` too, so a task held by a
+    // CONTACT and unassigned with `null` really does change — and until
+    // slice 6c gave that column a writer, this test read the member
+    // column alone and would have reported `changed: false`, written no
+    // history row, and left the client holding the task.
+    if (item.assigneeMemberId === memberId && !(memberId === null && item.assigneeContactId)) {
       // Nothing written, and the caller is TOLD so — from the row just
       // read, which is the truth about the item right now.
       return { id: item.id, assigneeMemberId: item.assigneeMemberId, assigneeName, changed: false };
@@ -895,20 +910,286 @@ export async function assignItem(
     if (memberId && member?.status !== "ACTIVE") deny("NOT_FOUND");
     const row = await tx.workItem.update({
       where: { id: item.id },
-      data: { assigneeMemberId: memberId, assigneeContactId: null },
+      data: {
+        assigneeMemberId: memberId,
+        assigneeContactId: null,
+        // THE CLAIM GOES WITH THE ASSIGNMENT IT ANSWERS, and
+        // `work_item_contact_completed_has_assignee` makes this a
+        // requirement rather than a courtesy: leaving it behind writes a
+        // row the CHECK refuses. A client's "I've done my part" is one
+        // person's statement about one thing they were asked to do; it
+        // does not survive being asked by somebody else, or not being
+        // asked at all.
+        contactCompletedAt: null,
+      },
       // INLINE, and never omitted: a select-less update returns the
       // WHOLE row, 512 KB description included. This is the RETURNING.
       select: { id: true, assigneeMemberId: true },
     });
-    await writeActivity(tx, ctx, item, {
-      field: "assignee",
-      oldRef: item.assigneeMemberId,
-      newRef: memberId,
-      forceInternal: true,
-    });
+    // UP TO TWO ROWS, ONE PER FIELD, and never one row spanning both.
+    // The first cut put the contact id into the `assignee` row's
+    // `oldRef` — and `readItemActivity` resolves that field's refs
+    // against the MEMBER table, so taking a task back from a client
+    // rendered "unassigned Unknown" in the panel: an attribution lost
+    // in the trail, eight lines from the comment in `activity.ts`
+    // promising it could not happen. Both fresh reviews found it.
+    if (item.assigneeContactId) {
+      await writeActivity(tx, ctx, item, {
+        field: "assigneeContactId",
+        oldRef: item.assigneeContactId,
+        newRef: null,
+      });
+    }
+    if (item.assigneeMemberId !== memberId) {
+      await writeActivity(tx, ctx, item, {
+        field: "assignee",
+        oldRef: item.assigneeMemberId,
+        newRef: memberId,
+        forceInternal: true,
+      });
+    }
     if (memberId) await notifyItemMembers(tx, ctx, item, "work_item.assigned", [memberId], "assigned");
     return { id: row.id, assigneeMemberId: row.assigneeMemberId, assigneeName, changed: true };
   });
+}
+
+export type ContactAssignmentCommitted = {
+  id: string;
+  assigneeContactId: string;
+  /** The contact's display name, resolved HERE so no caller joins it. */
+  assigneeName: string;
+  /** What the row's visibility is now — CLIENT_VISIBLE either way. */
+  visibility: "CLIENT_VISIBLE";
+  /** True when this call is what published the task to the client. */
+  shared: boolean;
+  /** False when that contact already held the task: nothing written. */
+  changed: boolean;
+};
+
+/**
+ * HAND A TASK TO A CLIENT'S CONTACT — the writer `assigneeContactId`
+ * has waited for since 2W, and the member-plane half of Phase 3 slice
+ * 6c. Removing a contact assignee is `assignItem(ctx, id, null)`.
+ *
+ * **IT IS A SHARE, AND IT IS GATED AS ONE** (founder decision,
+ * 2026-09-22). `work_item_contact_assignee_visible` (a CHECK since 2W)
+ * says a contact-assigned row MUST be CLIENT_VISIBLE, so handing over
+ * an INTERNAL task publishes it — there is no third answer the database
+ * will accept. That makes this function a route to the flip that
+ * `work_item:change_visibility` (C M A) exists to govern, so on an
+ * INTERNAL row it demands that code ON TOP of `work_item:edit`, exactly
+ * as `work_item:approve` supplements `work_item:edit` for a gated
+ * state. An EMPLOYEE can still hand over a task the client can already
+ * see; what they cannot do is publish a private one by assigning it.
+ *
+ * *The alternative — `work_item:edit` alone — would have made the C M A
+ * code a speed bump for the one outcome it governs, which is the exact
+ * shape of the `work_item:triage` bug the slice-6b reviews found one day
+ * earlier. The other alternative, refusing on an INTERNAL row and making
+ * the member share it first, was rejected as two deliberate steps where
+ * one honest one will do.*
+ *
+ * **THE FLIP IS THE SAME FLIP**, so it takes the same locks and writes
+ * the same trail: a subtask's raise to CLIENT_VISIBLE is the one flip
+ * whose trigger locks the PARENT, which makes it a two-row writer and
+ * therefore a queued one (`rank-lock.ts`, THE ONE ORDER) — an unlocked
+ * probe, the project's rank queue, then the locked scoped read. It
+ * audits `work_item.visibility_changed` like every other share, because
+ * an operator reading the log must not have to know that assignment is
+ * a way to publish. `changeItemVisibility` is not CALLED — it would
+ * open its own `withTenant` and re-`requireAccess` — but everything it
+ * does is done here, and `guarded` maps the same trigger refusals
+ * (child ≤ parent) to the same typed errors.
+ *
+ * THE ASSIGNMENT ITSELF STAYS ROUTINE: a `WorkItemActivity` row and no
+ * audit event, the founder's 2026-09-12 rule for a field a client can
+ * see. The field is `assigneeContactId` and NOT `assignee` — that is
+ * what keeps each field's refs homogeneous (`activity.ts`) and it is
+ * the name DATA_MODEL §6.14 puts on the portal-safe list, so on a
+ * client-visible row the history row is client-visible too.
+ *
+ * NOBODY IS NOTIFIED. The assignee is a contact, and contacts have no
+ * notification channel in v1 — inventing one here would mean designing
+ * their whole email identity in passing (the same wall slice 6a hit
+ * from the other side). The client learns they have been asked when
+ * they open the portal.
+ *
+ * **THE "SAME CLIENT" RULE IS THIS SERVICE'S, NOT THE DATABASE'S**, and
+ * that is a residue rather than an oversight. `work_item`'s FK on the
+ * contact is `(tenant_id, assignee_contact_id)` with no `client_id`
+ * term, so the schema would accept a contact of ANOTHER client of the
+ * same tenant; the read above binds `clientId: item.clientId`, which is
+ * what actually prevents it, and a dbtest drives that door. It is not a
+ * confidentiality hole — `portal_gate` on `work_item` keys on the
+ * ITEM's `client_id`, so such a row would still be unreadable by the
+ * contact it named — it is a row that means nothing. Closing it
+ * properly needs a `(tenant_id, client_id, id)` unique on `contact` and
+ * an FK swap on `work_item`, which is a schema change with no
+ * confidentiality consequence and does not belong inside this slice.
+ */
+export async function assignItemToContact(
+  ctx: WorkCtx,
+  itemId: string,
+  contactId: string,
+): Promise<ContactAssignmentCommitted> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => guarded(async () => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
+    // The probe decides the lock plan before anything is locked — it
+    // cannot be the locked read, because the rank queue precedes any
+    // row lock and only the row says whether this is a subtask. Safe to
+    // decide on: no service reparents, so `parentId` is the one fact a
+    // wait cannot change. A task that is ALREADY client-visible writes
+    // one row and never queues.
+    const probe = await loadItemInScope(tx, ctx, itemId, { lock: false });
+    // **CONDITIONED ON THE REQUESTED VISIBILITY, NOT THE CURRENT ONE**,
+    // which is why `probe.visibility` is absent from this test even
+    // though the flip below is conditional on it. This call ALWAYS
+    // writes `visibility: 'CLIENT_VISIBLE'`, so for a subtask it is
+    // always the raise the tree trigger locks the parent for — a
+    // two-row writer, and one `UPDATE OF visibility` fires for whether
+    // the column is in the SET list rather than for whether its value
+    // moved. Reading `probe.visibility` here made the lock PLAN stale:
+    // a colleague's make-private committing in the window would leave a
+    // two-row writer running with the project's rank queue never taken.
+    // `changeItemVisibility` conditions on the requested value for
+    // exactly this reason and a code review caught the copy that did
+    // not. The GATE below is a different question and is decided on the
+    // locked row, where staleness is impossible.
+    if (probe.parentId) {
+      await lockProjectRanks(tx, probe.projectId);
+    }
+    const item = await loadItemInScope(tx, ctx, probe.id);
+    // **THE SECOND PERMISSION IS DECIDED ON THE LOCKED ROW**, never on
+    // the probe: a colleague's share committing in between would
+    // otherwise let this call demand — or skip — the wrong code for the
+    // row it is actually about to write.
+    const sharing = item.visibility === "INTERNAL";
+    if (sharing) {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:change_visibility");
+    }
+    // ONE read of the contact serves both branches: the no-op answers
+    // with the name of whoever holds the task, and only a REAL
+    // assignment insists on ACTIVE. Bound to the ITEM's client, so a
+    // contact id from another client is NOT_FOUND and never a
+    // cross-client write — the row-level twin of `setItemMilestone`'s
+    // project binding.
+    const contact = await tx.contact.findFirst({
+      where: { tenantId: ctx.tenantId, clientId: item.clientId, id: contactId },
+      select: { name: true, portalStatus: true },
+    });
+    // `return deny(...)` rather than a bare call — `deny` returns
+    // `never`, but the narrowing past it is only reliable in return
+    // position here (`authorize.ts` records the same).
+    if (!contact) return deny("NOT_FOUND");
+    if (item.assigneeContactId === contactId) {
+      // Nothing written, and the caller is TOLD so — from the row just
+      // read, which is the truth about the item right now.
+      return {
+        id: item.id,
+        assigneeContactId: contactId,
+        assigneeName: contact.name,
+        visibility: "CLIENT_VISIBLE" as const,
+        shared: false,
+        changed: false,
+      };
+    }
+    // **AN ALLOWLIST, NEVER A DENYLIST** — the rule `policy.ts` and
+    // `portal-gate.ts` both state in as many words, and which the first
+    // cut of this line broke by refusing `SUSPENDED` alone.
+    // `ContactPortalStatus` has five values and that test admitted four
+    // of them, including `REVOKED` (access deliberately taken away) and
+    // `NO_ACCESS` — which is the column's DEFAULT and, with no
+    // invite flow shipped yet, what every contact row on a live tenant
+    // currently holds. Assigning one of those publishes the task to the
+    // client (the CHECK forces CLIENT_VISIBLE) for the benefit of
+    // somebody who can never open it, and `deleteContact` — which
+    // permits deletion only of a `NO_ACCESS` contact — would then hit
+    // the RESTRICT foreign key and fail, breaking an erasure control.
+    //
+    // `INVITED` is admitted deliberately: an agency preparing work for a
+    // client it has just invited is ordinary, and `INVITED` becomes
+    // ACTIVE without anything touching this row.
+    //
+    // **WHAT THIS DOES NOT CLOSE, and it is a residue rather than a
+    // fix:** nothing clears `assigneeContactId` when a contact's status
+    // changes LATER. There is no writer of `portalStatus` anywhere in
+    // the product yet, so the case cannot arise today — but the slice
+    // that ships "revoke access" must sweep this column, or a revoked
+    // contact holding a task (including a SOFT-deleted one, whose FK
+    // reference survives its 30-day window) makes `deleteContact` fail
+    // on the RESTRICT foreign key: an erasure control broken by a task
+    // nobody can see.
+    //
+    // Checked AFTER the no-op for the reason `assignItem` gives:
+    // whoever holds the task still has a name to show, whatever their
+    // status is now.
+    if (contact.portalStatus !== "ACTIVE" && contact.portalStatus !== "INVITED") {
+      deny("NOT_FOUND");
+    }
+    const row = await tx.workItem.update({
+      where: { id: item.id },
+      data: {
+        assigneeContactId: contactId,
+        // THE XOR (`work_item_single_assignee`): handing a task to the
+        // client takes it off whoever at the agency held it.
+        assigneeMemberId: null,
+        // Forced, never toggled — the CHECK admits no other value on a
+        // contact-assigned row, and writing it unconditionally means
+        // this statement is the same statement whether or not the row
+        // was already shared.
+        visibility: "CLIENT_VISIBLE",
+        // A claim belongs to the assignment it answers: moving the task
+        // from one contact to another does not carry the first one's
+        // "done" across. The CHECK cannot see names, so this is the
+        // service's to hold.
+        contactCompletedAt: null,
+      },
+      // INLINE, never omitted (the 512 KB description). The RETURNING.
+      select: { id: true, assigneeContactId: true, visibility: true },
+    });
+    if (sharing) {
+      // The share's own history row, and it is INTERNAL: `visibility`
+      // is not on the portal-safe list and since 20260912120000 the
+      // database refuses it there. A client learns what changed from
+      // the assignment row below, which names them.
+      await writeActivity(tx, ctx, item, {
+        field: "visibility",
+        oldValue: item.visibility,
+        newValue: row.visibility,
+      });
+      await record(tx, {
+        action: "work_item.visibility_changed",
+        targetType: "WorkItem",
+        targetId: item.id,
+        // `via` is what tells an operator reading the log that nobody
+        // pressed "share": the flip is the assignment's consequence.
+        metadata: {
+          from: item.visibility,
+          to: row.visibility,
+          projectId: item.projectId,
+          via: "contact_assignment",
+        },
+      });
+    }
+    // Written against the row AFTER the flip, so a share-and-assign
+    // writes a CLIENT_VISIBLE history row: the item the client is being
+    // told about is one they can now see, and `writeActivity` decides
+    // portal-safety from the `item` it is handed.
+    await writeActivity(
+      tx,
+      ctx,
+      { ...item, visibility: row.visibility },
+      { field: "assigneeContactId", oldRef: item.assigneeContactId, newRef: contactId },
+    );
+    return {
+      id: row.id,
+      assigneeContactId: contactId,
+      assigneeName: contact.name,
+      visibility: "CLIENT_VISIBLE" as const,
+      shared: sharing,
+      changed: true,
+    };
+  }));
 }
 
 /**
@@ -1038,6 +1319,19 @@ export type VisibilityCommitted = {
   id: string;
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
   /**
+   * True when making this private also ENDED A CLIENT ASSIGNMENT —
+   * `assigneeContactId` and any claim on it were cleared by the same
+   * statement, because a contact-assigned row must be CLIENT_VISIBLE
+   * and the make-private lever must never fail.
+   *
+   * REPORTED RATHER THAN SILENT, the mirror of `assignItemToContact`'s
+   * `shared`: that one exists so nobody has to know assignment is a way
+   * to publish, and this one so nobody has to know make-private is a
+   * way to take a task off a client. A re-share does NOT bring the
+   * assignment back, so this is the caller's only chance to say so.
+   */
+  endedContactAssignment: boolean;
+  /**
    * False when the item already had that visibility: no UPDATE, no
    * activity, no audit event. Compared UNDER THE ROW LOCK, against the
    * version an UPDATE would replace.
@@ -1047,7 +1341,15 @@ export type VisibilityCommitted = {
 
 /** Visibility flip — audited; the DB triggers enforce child ≤ parent
  * and refuse downgrades that would orphan client-visible children —
- * both refusals reach the caller as typed DomainErrors (`guarded`). */
+ * both refusals reach the caller as typed DomainErrors (`guarded`).
+ *
+ * **SINCE SLICE 6c, MAKING A TASK PRIVATE ALSO ENDS A CLIENT
+ * ASSIGNMENT** — `assigneeContactId` and any claim on it, in the same
+ * statement, reported as `endedContactAssignment` and stamped into the
+ * audit event. Not a feature of that slice but a consequence of it: a
+ * contact-assigned row must be CLIENT_VISIBLE (a CHECK), so without
+ * this the flip would raise an unmapped constraint violation on exactly
+ * the rows it most needs to work for. See the comment at the UPDATE. */
 export async function changeItemVisibility(
   ctx: WorkCtx,
   itemId: string,
@@ -1079,13 +1381,61 @@ export async function changeItemVisibility(
     // read INTERNAL, called itself a no-op and returned without ever
     // waiting — leaving the task shared.
     const item = await loadItemInScope(tx, ctx, probe.id);
-    if (item.visibility === visibility) return { id: item.id, visibility, changed: false };
+    if (item.visibility === visibility) {
+      return { id: item.id, visibility, endedContactAssignment: false, changed: false };
+    }
+    // **MAKING IT PRIVATE ENDS A CLIENT ASSIGNMENT, IN THE SAME
+    // STATEMENT** — and this is a correctness fix that slice 6c made
+    // urgent rather than a feature of it. `work_item_contact_assignee_visible`
+    // (a CHECK since 2W) says a contact-assigned row must be
+    // CLIENT_VISIBLE; until 6c nothing wrote `assigneeContactId`, so the
+    // constraint was unreachable and this UPDATE could not violate it.
+    // With a writer, a plain `data: { visibility }` on a handed-over
+    // task raises a bare 23514 that `db-errors.ts` does not map — so
+    // THE SAFETY LEVER, the one flip whose whole purpose is to stop
+    // showing a client something, would have 500'd and left the row
+    // published. Both fresh reviews found it, from opposite directions.
+    //
+    // Cleared rather than REFUSED, deliberately. A refusal would be
+    // honest and would still leave internal data on a client's screen
+    // while the member worked out that the fix is to unassign first.
+    // This lever must always work; and an assignment to somebody who
+    // can no longer see the task is not an assignment. The claim goes
+    // with it, as it does everywhere else (the CHECK insists).
+    const endingClientAssignment = visibility === "INTERNAL" && item.assigneeContactId !== null;
     const row = await tx.workItem.update({
       where: { id: item.id },
-      data: { visibility },
+      data: {
+        visibility,
+        ...(endingClientAssignment ? { assigneeContactId: null, contactCompletedAt: null } : {}),
+      },
       // INLINE, never omitted (the 512 KB description). The RETURNING.
       select: { id: true, visibility: true },
     });
+    // Its own history row, BEFORE the visibility row below, so the panel
+    // reads in the order the acts happened: the client lost the task,
+    // then the task went private.
+    //
+    // **WRITTEN AGAINST THE ROW AFTER THE UPDATE**, which is not a
+    // stylistic choice — `work_item_activity_denorm_guard`
+    // (20260821120000_review_guards) re-reads the item's LIVE visibility and refuses a
+    // CLIENT_VISIBLE activity row on an item the client cannot see. A
+    // first cut passed the pre-update `item` here, reasoning that the
+    // row should be client-visible and would be flipped by the
+    // downgrade trigger along with the item's others; the guard refused
+    // it outright and the whole flip rolled back — the safety lever
+    // broken a second time, by its own fix. `assigneeContactId` is on
+    // the portal-safe list, so the post-update INTERNAL is what decides
+    // it, and that is the right answer anyway: a client cannot read the
+    // history of a task they can no longer read.
+    if (endingClientAssignment) {
+      await writeActivity(
+        tx,
+        ctx,
+        { ...item, visibility: row.visibility },
+        { field: "assigneeContactId", oldRef: item.assigneeContactId, newRef: null },
+      );
+    }
     // No `forceInternal`: `visibility` is not on the portal-safe list
     // (activity.ts) and since 20260912120000 the database refuses it
     // there, so this row is INTERNAL either way — whatever the item's
@@ -1100,9 +1450,23 @@ export async function changeItemVisibility(
       action: "work_item.visibility_changed",
       targetType: "WorkItem",
       targetId: item.id,
-      metadata: { from: item.visibility, to: row.visibility, projectId: item.projectId },
+      metadata: {
+        from: item.visibility,
+        to: row.visibility,
+        projectId: item.projectId,
+        // Ids and flags, never names: an operator asked later why a
+        // client lost a task and its claim finds the answer on the
+        // event that caused it, rather than a bare visibility flip and
+        // an INTERNAL history row.
+        ...(endingClientAssignment ? { endedContactAssignment: true } : {}),
+      },
     });
-    return { id: row.id, visibility: row.visibility, changed: true };
+    return {
+      id: row.id,
+      visibility: row.visibility,
+      endedContactAssignment: endingClientAssignment,
+      changed: true,
+    };
   }));
 }
 
