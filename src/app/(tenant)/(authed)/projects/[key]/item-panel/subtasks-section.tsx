@@ -135,6 +135,13 @@ export async function SubtasksSection({
                   <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span data-testid="item-subtask-state">{row.stateName}</span>
                     {row.assigneeName ? <span>{row.assigneeName}</span> : null}
+                    {/* Its own sentence, not the bare name: on a line of
+                        meta "Astrid Lindqvist" beside a colleague's name
+                        says nothing about which side of the glass the
+                        work is on — the board card's rule (`card.assigneeContact`). */}
+                    {row.assigneeContactName ? (
+                      <span>{t("withClient", { name: row.assigneeContactName })}</span>
+                    ) : null}
                     {row.archivedAt ? <span>{tCommon("archived")}</span> : null}
                     <VisibilityBadge value={row.visibility} size="sm" />
                   </span>

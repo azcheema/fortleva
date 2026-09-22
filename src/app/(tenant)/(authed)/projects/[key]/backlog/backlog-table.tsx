@@ -957,6 +957,11 @@ export function BacklogTable({
       <WorkFilterBar
         states={visibleColumns(data.states, data.items)}
         members={data.members}
+        // The unfiltered list, exactly as `visibleColumns` above takes
+        // it: what the filter OFFERS is decided by what this surface
+        // holds, never by what is left after the filter — or unticking
+        // the box would remove the box.
+        hasClientWork={data.items.some((i) => i.assigneeContactId)}
         rollup={rollup}
       />
       <DataTable flush scrollLabel={t("scrollLabel")}>
@@ -1500,7 +1505,13 @@ export function BacklogTable({
                       name="assigneeMemberId"
                       density="table"
                       fit
-                      value={item.assigneeMemberId ?? ""}
+                      // THE CONTACT'S ID WHEN A CLIENT HOLDS THE TASK
+                      // (slice 6c). The row stores AT MOST ONE assignment
+                      // (`work_item_single_assignee`), so this cell has
+                      // one value; without the second half a handed-over
+                      // task read "Unassigned" on the agency's own list,
+                      // which is a row that is assigned saying it is not.
+                      value={item.assigneeContactId ?? item.assigneeMemberId ?? ""}
                       label={t("assigneeLabel")}
                       placeholder={t("unassigned")}
                       // A DEACTIVATED ASSIGNEE IS STILL THIS ROW'S TRUTH.
@@ -1514,24 +1525,47 @@ export function BacklogTable({
                       // else, which is the item panel's `A` picker reaching
                       // the same end by a different road (its row is simply
                       // absent, unchecked and inert).
-                      options={withCurrentOption(assigneeOptions, item.assigneeMemberId ?? "", item.assigneeName)}
+                      // The held CONTACT is prepended by the same helper
+                      // and for the same reason as a deactivated member:
+                      // it is the row's truth and the native select
+                      // otherwise opens on its first option and states
+                      // "Unassigned" over a task somebody holds. It is not
+                      // re-offered anywhere else — HANDING a task over is
+                      // a share, gated on `work_item:change_visibility`,
+                      // and it belongs behind the panel's picker where the
+                      // warning can be shown. Picking a colleague or
+                      // Unassigned here still takes the task BACK, which is
+                      // `assignItem`'s own job (it nulls the contact and
+                      // any claim in the same statement).
+                      options={withCurrentOption(
+                        assigneeOptions,
+                        item.assigneeContactId ?? item.assigneeMemberId ?? "",
+                        item.assigneeContactName ?? item.assigneeName,
+                      )}
                       readOnly={!data.caps.canEdit}
                       hiddenInput={false}
                       display={
-                        item.assigneeName ? (
+                        (item.assigneeContactName ?? item.assigneeName) ? (
                           <span
                             className="block max-w-24 truncate text-sm"
                             // Its own title as well as the trigger's: this is
                             // the element that TRUNCATES (§10.12), and the
                             // innermost title is the one a hover shows.
-                            title={item.assigneeName}
+                            title={item.assigneeContactName ?? item.assigneeName ?? undefined}
                           >
-                            {item.assigneeName}
+                            {item.assigneeContactName ?? item.assigneeName}
                           </span>
                         ) : null
                       }
                       onCommit={(next) => {
-                        if (next !== (item.assigneeMemberId ?? ""))
+                        // THE CURRENT VALUE MAY BE A CONTACT ID, and it is
+                        // the one option this cell may not act on: it is
+                        // prepended for display, `assignItem` would refuse
+                        // it as NOT_FOUND (it resolves members), and
+                        // re-picking what is already set is a no-op
+                        // whichever kind holds the task.
+                        if (next === item.assigneeContactId) return;
+                        if (next !== (item.assigneeContactId ?? item.assigneeMemberId ?? ""))
                           run(() =>
                             setItemAssigneeAction({
                               itemId: item.id,

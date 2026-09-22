@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   assignItem,
+  assignItemToContact,
   bulkChangeState,
   bulkSetArchived,
   bulkSetPriority,
@@ -22,6 +23,7 @@ import {
   updateItemFields,
   type AssignmentCommitted,
   type BulkResult,
+  type ContactAssignmentCommitted,
   type LabelsCommitted,
   type MilestoneAssigned,
   type MovedItem,
@@ -171,6 +173,13 @@ const SetDueDate = Target.extend({
   targetDate: z.string().refine((s) => isIsoDate(s)).nullable(),
 });
 const SetAssignee = Target.extend({ memberId: uuid.nullable() });
+// NOT nullable, and that is the shape of the decision rather than a
+// zod habit: removing a contact assignee is `setItemAssigneeAction`
+// with a null member, because the row holds ONE assignment
+// (`work_item_single_assignee`) and "nobody" is one answer, not two.
+// A nullable id here would have been a second way to write the same
+// null through a code path gated on `work_item:change_visibility`.
+const SetContactAssignee = Target.extend({ contactId: uuid });
 const SetMilestone = Target.extend({ milestoneId: uuid.nullable() });
 const SetLabel = Target.extend({ labelId: uuid, on: z.boolean() });
 // The bound is `@/lib/work-view`'s, the island's and the service's alike:
@@ -202,6 +211,7 @@ export type DueDateCommitted = {
 };
 /** The service's canonical rows minus the id the caller already holds — one contract, not a second copy of it. */
 export type AssigneeCommitted = Omit<AssignmentCommitted, "id">;
+export type ContactAssigneeCommitted = Omit<ContactAssignmentCommitted, "id">;
 export type MilestoneCommitted = Omit<MilestoneAssigned, "id">;
 /** The service's own contract — the list as it now stands, the label acted on and the verb — not a second copy of it. */
 export type LabelsChanged = LabelsCommitted;
@@ -327,9 +337,13 @@ export async function setItemDueDateAction(
 /**
  * Assignee (`A`) — a member's id, or null to unassign. A routine edit:
  * an INTERNAL activity row (`assignee` is not portal-safe), never audit;
- * a real assignment notifies the member (debounced email). Members only:
- * a contact assignee is Phase 3's, with the "make it client-visible?"
- * warning that has to come with it (UI.md §5.2).
+ * a real assignment notifies the member (debounced email).
+ *
+ * IT IS ALSO HOW A TASK COMES BACK FROM THE CLIENT: `assignItem` nulls
+ * `assigneeContactId` and any claim on it in the same statement, so
+ * picking a colleague — or Unassigned — takes a handed-over task back.
+ * Handing one OUT is `setItemContactAssigneeAction` below, which is a
+ * different function because it is a different permission.
  */
 export async function setItemAssigneeAction(
   input: z.input<typeof SetAssignee>,
@@ -341,6 +355,44 @@ export async function setItemAssigneeAction(
   const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
     const c = await assignItem(ctx, itemId, memberId);
     return { assigneeMemberId: c.assigneeMemberId, assigneeName: c.assigneeName, changed: c.changed };
+  });
+  if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * HAND THE TASK TO SOMEBODY AT THE CLIENT — the same `A` picker, its
+ * other group (Phase 3 slice 6c).
+ *
+ * **IT PUBLISHES THE TASK**, because `work_item_contact_assignee_visible`
+ * admits no other answer, so the service demands
+ * `work_item:change_visibility` on top of `work_item:edit` when the row
+ * is INTERNAL and audits `work_item.visibility_changed` with
+ * `via: contact_assignment`. The picker says so before the member picks
+ * and the committed `shared` flag says so after — a member must never
+ * learn that this was a share by seeing it on the client's screen.
+ *
+ * `revalidate` on `changed`, the file's rule — but note what changed is
+ * not only the assignee: on an INTERNAL row the visibility badge moved
+ * too, and both live on surfaces this call's own optimistic slice does
+ * not own.
+ */
+export async function setItemContactAssigneeAction(
+  input: z.input<typeof SetContactAssignee>,
+): Promise<ActionResult<ContactAssigneeCommitted>> {
+  const ctx = await ctxOf();
+  const parsed = SetContactAssignee.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "assignee") };
+  const { itemId, projectKey, itemNumber, surface, contactId } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await assignItemToContact(ctx, itemId, contactId);
+    return {
+      assigneeContactId: c.assigneeContactId,
+      assigneeName: c.assigneeName,
+      visibility: c.visibility,
+      shared: c.shared,
+      changed: c.changed,
+    };
   });
   if (r.ok && r.value.changed) revalidate(projectKey);
   return r;

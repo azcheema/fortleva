@@ -141,6 +141,7 @@ export default async function ProjectBacklogPage({
             itemCaps={peekItem.caps}
             states={peekItem.states}
             members={peekItem.members}
+            contacts={peekItem.contacts}
             milestones={peekItem.milestones}
             labels={peekItem.labels}
             activity={peekItem.activity}

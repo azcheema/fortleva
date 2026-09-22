@@ -15,7 +15,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { HourglassIcon, KanbanSquareIcon, ListChecksIcon, PlusIcon, TimerIcon } from "lucide-react";
+import { HourglassIcon, KanbanSquareIcon, ListChecksIcon, PlusIcon, TimerIcon, UserRoundIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -625,11 +625,13 @@ function BoardLane(props: {
         ? lane.name
         : lane.kind === "unassigned"
           ? t("lanes.unassigned")
-          : lane.kind === "priority"
-            ? tPriority(lane.priority)
-            : lane.kind === "epic"
-              ? lane.title || t("lanes.epicUntitled")
-              : t("lanes.noEpic");
+          : lane.kind === "withClient"
+            ? t("lanes.withClient")
+            : lane.kind === "priority"
+              ? tPriority(lane.priority)
+              : lane.kind === "epic"
+                ? lane.title || t("lanes.epicUntitled")
+                : t("lanes.noEpic");
   const epicIds = useMemo(() => epicIdsOf(props.items), [props.items]);
   const laneCount = props.items.filter(
     (i) => laneKeyOf(i, props.groupBy, epicIds) === lane.key && !(props.groupBy === "epic" && i.type === "EPIC"),
@@ -642,6 +644,11 @@ function BoardLane(props: {
       {laneTitle !== null ? (
         <header className="flex items-center gap-2 px-1">
           {lane.kind === "member" ? <MemberAvatar id={lane.memberId} name={lane.name} size="sm" /> : null}
+          {/* The card's glyph, at the lane's head — so the row that is
+              not the agency's reads as one thing at a glance. */}
+          {lane.kind === "withClient" ? (
+            <UserRoundIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          ) : null}
           {lane.kind === "priority" ? <PriorityIndicator value={lane.priority} /> : null}
           {lane.kind === "epic" && lane.epicKey > 0 ? (
             <span className="num-id text-xs text-muted-foreground">
@@ -1107,7 +1114,15 @@ function BoardCard({
           line because chips wrap here — the card has the height the
           backlog row does not (`LabelChips`, `surface="card"`). */}
       <LabelChips labels={item.labels} surface="card" />
-      {item.checklistTotal > 0 || item.estimateMinutes !== null || spentMinutesOf(spent, item.id) >= 1 || timer || item.assigneeMemberId ? (
+      {/* `assigneeContactId` belongs in this guard for the same reason
+          `assigneeMemberId` does, and leaving it out was the bug the
+          card's own branch below was written to fix: a title-only task
+          handed to a contact has no checklist, no estimate, no logged
+          time and no timer, so the whole meta row — the glyph with it —
+          simply did not render, and the card said nothing about an
+          assignee it has. It only ever worked on cards carrying some
+          other meta. Found by a fresh code review. */}
+      {item.checklistTotal > 0 || item.estimateMinutes !== null || spentMinutesOf(spent, item.id) >= 1 || timer || item.assigneeMemberId || item.assigneeContactId ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {item.checklistTotal > 0 ? (
             <span role="img" className="inline-flex items-center gap-1" aria-label={t("card.checklist", { done: item.checklistDone, total: item.checklistTotal })}>
@@ -1143,6 +1158,25 @@ function BoardCard({
           {item.assigneeMemberId ? (
             <span role="img" className="ml-auto" aria-label={t("card.assignee", { name: item.assigneeName ?? "" })}>
               <MemberAvatar id={item.assigneeMemberId} name={item.assigneeName ?? ""} size="sm" />
+            </span>
+          ) : item.assigneeContactId ? (
+            /* SOMEBODY AT THE CLIENT HOLDS IT (slice 6c). A GLYPH, never
+               an avatar: `MemberAvatar` derives its colour from a MEMBER
+               id, so a contact drawn through it would wear a colour
+               computed from a hash nothing else in the product shares —
+               and the card would say "a colleague" in the one language
+               this product draws people in. The spoken label is its own
+               sentence for the same reason: "Sara Berg (client)" on a
+               card is the difference between chasing a colleague and
+               chasing a customer. Without this branch a handed-over task
+               drew NO assignee at all. */
+            <span
+              role="img"
+              className="ml-auto"
+              aria-label={t("card.assigneeContact", { name: item.assigneeContactName ?? "" })}
+              data-testid="board-card-contact-assignee"
+            >
+              <UserRoundIcon aria-hidden="true" className="size-4 text-muted-foreground" />
             </span>
           ) : null}
         </div>
@@ -1216,6 +1250,10 @@ function ColumnCreate({
           visibility: "INTERNAL",
           assigneeMemberId: null,
           assigneeName: null,
+          // A title-only create assigns nobody, at the agency or at the
+          // client — `createItem` has no parameter for either.
+          assigneeContactId: null,
+          assigneeContactName: null,
           rootId: "",
           parentId: null,
           archivedAt: null,

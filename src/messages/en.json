@@ -1439,6 +1439,7 @@
       },
       "lanes": {
         "unassigned": "Unassigned",
+        "withClient": "With the client",
         "noEpic": "No epic",
         "epicUntitled": "Epic"
       },
@@ -1450,6 +1451,7 @@
       "card": {
         "checklist": "{done} of {total} checklist items",
         "assignee": "Assigned to {name}",
+        "assigneeContact": "With {name} at the client",
         "estimate": "Estimate {hours}",
         "spent": "Spent {hours}",
         "spentOfEstimate": "Spent {spent} of {estimate} estimated",
@@ -1496,6 +1498,7 @@
         "assignee": "Assignee",
         "assigneeHeading": "Show these assignees",
         "unassigned": "No assignee",
+      "withClient": "With the client",
         "priority": "Priority",
         "priorityHeading": "Show these priorities",
         "hideDone": "Hide finished",
@@ -1922,6 +1925,7 @@
         "noAccess": "You cannot view files"
       },
       "subtasks": {
+        "withClient": "With {name} at the client",
         "title": {
           "TASK": "Tasks",
           "SUBTASK": "Subtasks"
@@ -2045,14 +2049,20 @@
       },
       "assignee": {
         "trigger": "Assignee: {name}",
+        "triggerContact": "Assignee: {name}, at the client",
         "triggerEmpty": "Assignee: unassigned",
-        "search": "Search members…",
-        "empty": "No matching member.",
+        "search": "Search people…",
+        "empty": "No matching person.",
         "none": "Unassigned",
         "clear": "Unassign",
         "failed": "The assignee did not save. The panel shows the current assignee.",
         "changed": "Assigned to {name}",
-        "cleared": "Assignee removed"
+        "changedAndShared": "Assigned to {name}. The client can now see this task.",
+        "cleared": "Assignee removed",
+        "teamGroup": "Your team",
+        "clientGroup": "At the client",
+        "sharesWithClient": "Handing this over makes the task visible to the client.",
+        "sharesPortalOff": "Handing this over marks the task client-visible, but the portal is off for this project, so the client still cannot see it."
       },
       "milestone": {
         "trigger": "Milestone: {name}",

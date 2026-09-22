@@ -4,6 +4,11 @@
  */
 export {
   assignItem,
+  // Phase 3 slice 6c (second commit): the hand-over reaches the barrel
+  // with the surface that calls it. The first commit deliberately left
+  // it off — nothing outside the dbtest could reach it, which bounded
+  // the blast radius of a writer that publishes a task to a client.
+  assignItemToContact,
   changeItemVisibility,
   createItem,
   deleteItem,
@@ -18,6 +23,7 @@ export {
   setItemMilestone,
   updateItemFields,
   type AssignmentCommitted,
+  type ContactAssignmentCommitted,
   type ItemDetail,
   type ItemDetailCaps,
   type ItemDetailResult,

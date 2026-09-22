@@ -32,6 +32,31 @@ import { stateLabel } from "@/lib/state-label";
 
 export type { WorkCtx } from "./states";
 
+/**
+ * WHO MAY BE HANDED A TASK — an ALLOWLIST, the rule `policy.ts` and
+ * `portal-gate.ts` both state in as many words, and ONE list rather
+ * than two literals a thousand lines apart.
+ *
+ * `assignItemToContact` refuses everything outside it and the `A`
+ * picker offers exactly what that writer accepts; the picker's whole
+ * justification is that it must never show a row whose only outcome is
+ * a refusal, and that invariant held only while two separate literals
+ * stayed equal. The invite flow will touch one of them.
+ *
+ * The three excluded values are why this is an allowlist: `REVOKED` is
+ * access deliberately taken away, `SUSPENDED` is access paused, and
+ * `NO_ACCESS` is the column's DEFAULT — what every contact on a live
+ * tenant holds until an invite flow ships. Assigning any of them
+ * publishes the task to the client for somebody who can never open it,
+ * and `deleteContact` (which permits deleting only a `NO_ACCESS`
+ * contact) would then hit the RESTRICT foreign key: an erasure control
+ * broken by a task nobody can see. `INVITED` is admitted deliberately —
+ * an agency preparing work for a client it has just invited is
+ * ordinary, and `INVITED` becomes `ACTIVE` without anything touching
+ * the work item.
+ */
+export const ASSIGNABLE_PORTAL_STATUSES = ["ACTIVE", "INVITED"] as const;
+
 export type ItemListEntry = {
   id: string;
   number: number;
@@ -69,6 +94,43 @@ export type ItemListEntry = {
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
   assigneeMemberId: string | null;
   assigneeName: string | null;
+  /**
+   * WHO AT THE CLIENT HOLDS IT — the other half of the assignee pair,
+   * on the list since Phase 3 slice 6c's SECOND commit and for one
+   * reason: the first gave `assigneeContactId` a writer, and until these
+   * two columns reached the list a task the agency had handed to its
+   * client read **"Unassigned"** on the agency's own board and backlog.
+   * A row that is assigned and says it is not is the lie this pair
+   * exists to stop.
+   *
+   * **THE CONSTRAINT IS "AT MOST ONE", NOT "EXACTLY ONE"**, and the
+   * difference decides how a surface reads the pair.
+   * `work_item_single_assignee` is
+   * `CHECK (num_nonnulls(assignee_member_id, assignee_contact_id) <= 1)`
+   * (`20260820170000`), so the two are never both set — that much is the
+   * database's word and a surface may rely on it — but BOTH null is the
+   * ordinary, commonest state: it is what Unassigned is. This file and
+   * its callers say "XOR" in older comments; the constraint has always
+   * been the weaker one, and a reader who takes the shorthand literally
+   * would conclude every row has an assignee. Read whichever is set;
+   * neither being set is not a contradiction.
+   *
+   * THE NAME IS RESOLVED HERE, by the same join shape as the member's,
+   * so no surface joins a contact for itself.
+   *
+   * **AND IT IS NOT GATED ON `client:view`, where the picker's roster
+   * is** (see `ItemDetailResult.contacts`). The two are different
+   * questions and the split is deliberate: naming the person attached to
+   * a row the member is already reading is part of reading the row —
+   * the same door comment bylines, activity refs (`activity.ts`) and the
+   * triage lane's `reportedBy` have always used — while LISTING the
+   * client's people is a directory of a company the member may have no
+   * business browsing. Gating this one too would put "Unassigned" back
+   * on the board for exactly the seat that can see the task, which is
+   * the defect above arriving by a different door.
+   */
+  assigneeContactId: string | null;
+  assigneeContactName: string | null;
   /** Hierarchy (§3.1): the root of the subtree (itself at depth 0) — the board's group-by-epic lane. */
   rootId: string;
   parentId: string | null;
@@ -217,6 +279,7 @@ export async function listItems(
             targetDate: true,
             visibility: true,
             assigneeMemberId: true,
+            assigneeContactId: true,
             rootId: true,
             parentId: true,
             archivedAt: true,
@@ -224,6 +287,11 @@ export async function listItems(
             checklistDone: true,
             state: { select: { name: true, seedKey: true } },
             assigneeMember: { select: { user: { select: { name: true } } } },
+            // The contact's NAME only — the same one-column join the
+            // member above takes. Not `email`, not `portalStatus`: a
+            // board card says who holds the task and nothing else about
+            // them (`ItemListEntry`'s note on the pair).
+            assigneeContact: { select: { name: true } },
           },
         }),
         tx.workflowState.findMany({
@@ -278,6 +346,8 @@ export async function listItems(
         visibility: i.visibility,
         assigneeMemberId: i.assigneeMemberId,
         assigneeName: i.assigneeMember?.user.name ?? null,
+        assigneeContactId: i.assigneeContactId,
+        assigneeContactName: i.assigneeContact?.name ?? null,
         rootId: i.rootId,
         parentId: i.parentId,
         archivedAt: i.archivedAt,
@@ -380,6 +450,23 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority" | "labels"> & {
    * the timeline, which is where a member changes it).
    */
   milestone: { id: string; name: string; status: MilestoneStatus } | null;
+  /**
+   * WHETHER THE CLIENT COULD SEE THIS AT ALL — the project's portal
+   * switch, trigger-fanned onto the row (`portal_gate` is
+   * `client_id = app.client_id AND visibility = 'CLIENT_VISIBLE' AND
+   * portal_enabled`).
+   *
+   * It is on the DETAIL and not on the list because exactly one surface
+   * needs it: the `A` picker's warning. Marking a task CLIENT_VISIBLE on
+   * a portal-off project has always been allowed — `changeItemVisibility`
+   * has never consulted this column, because visibility is the ROW's flag
+   * and the portal switch is the PROJECT's — so handing a task to a
+   * contact there is allowed too, for consistency with its sibling flip.
+   * What must not happen is the panel saying "the client can now see
+   * this" when the project's portal is off and they cannot. Two
+   * sentences, and this column picks which.
+   */
+  portalEnabled: boolean;
   /** The stored ProseMirror document (ARC-19) — null when there is none. */
   description: unknown;
   /**
@@ -429,6 +516,26 @@ export type ItemDetailResult = {
   caps: ItemDetailCaps;
   /** The `A` picker's rows: ACTIVE members, in the order the list surfaces use. */
   members: { id: string; name: string }[];
+  /**
+   * The `A` picker's OTHER rows — the client's own people, offered
+   * under their own heading (Phase 3 slice 6c). One picker and not two,
+   * because the database holds at most one assignment
+   * (`work_item_single_assignee`): "who is doing this" has one answer,
+   * and a second control beside the first would be a second answer the
+   * row cannot store.
+   *
+   * ONLY THOSE WHO COULD ACTUALLY DO SOMETHING WITH IT — `ACTIVE` or
+   * `INVITED`, the allowlist `assignItemToContact` refuses everything
+   * outside. A picker that offered a `NO_ACCESS` contact (the column's
+   * DEFAULT, and what every contact on a live tenant holds until the
+   * invite flow ships) would be a row whose only outcome is a refusal.
+   *
+   * EMPTY for a member who cannot edit, and for one who does not hold
+   * `client:view` — the same code the client's own card is read under,
+   * and these are its rows. Empty is not a denial: the picker simply
+   * has no such group and the rail still names whoever holds the task.
+   */
+  contacts: { id: string; name: string }[];
   /** The `M` picker's rows: the project's milestones by rank — empty for a member who cannot edit. */
   milestones: MilestoneEntry[];
   /** The task's labels and the vocabulary it may pick from (labels.ts) — `offered` empty for a member who cannot edit. */
@@ -499,7 +606,14 @@ export async function getItemDetail(
         startDate: true,
         targetDate: true,
         visibility: true,
+        // THE PROJECT'S MASTER SWITCH, as this row carries it: the
+        // `project_portal_enabled_fanout` trigger writes it, and
+        // `work_item`'s `portal_gate` ANDs it with the row's own
+        // visibility. The panel needs it to tell the truth about what
+        // handing a task to a contact DOES — see `ItemDetail`.
+        portalEnabled: true,
         assigneeMemberId: true,
+        assigneeContactId: true,
         rootId: true,
         parentId: true,
         archivedAt: true,
@@ -510,6 +624,7 @@ export async function getItemDetail(
         description: true,
         state: { select: { name: true, seedKey: true } },
         assigneeMember: { select: { user: { select: { name: true } } } },
+        assigneeContact: { select: { name: true } },
         parent: { select: { id: true, number: true, title: true, deletedAt: true } },
         milestone: { select: { id: true, name: true, status: true } },
       },
@@ -547,6 +662,10 @@ export async function getItemDetail(
         "comment:delete",
         "comment:change_visibility",
         "label:manage",
+        // Not a cap the panel gates a control on — it gates the `A`
+        // picker's CLIENT group, which is a list of `Contact` rows and
+        // therefore the client card's own code (`getClient`).
+        "client:view",
       ]),
       tx.workflowState.findMany({
         where: { tenantId: ctx.tenantId, projectId },
@@ -587,6 +706,63 @@ export async function getItemDetail(
         changeVisibility: held.has("comment:change_visibility"),
       }),
     ]);
+    /**
+     * THE `A` PICKER'S CLIENT GROUP — the item's OWN client's people,
+     * gated on the client card's own code.
+     *
+     * **SEQUENTIAL, AND NOT A FIFTH LEG OF THE BATCH ABOVE, and that is
+     * measured rather than cautious.** Written as a fifth concurrent
+     * `Promise.all` leg this read made `readItemComments` — a function
+     * this slice never touched — throw `Cannot read properties of
+     * undefined (reading 'length')` on its own `findMany`, in one test
+     * out of a full file and never when that test was run alone. Prisma
+     * over the `pg` driver adapter does not serialise concurrent
+     * statements inside an INTERACTIVE transaction (`pg` says so itself:
+     * "Calling client.query() when the client is already executing a
+     * query is deprecated"), so the legs of a `Promise.all` share one
+     * connection and a loser can resolve `undefined`. The batch above
+     * has been four legs since it was written; four is what it is known
+     * to survive. **Do not grow it. A new read inside this transaction
+     * goes here, in sequence.**
+     *
+     * **THE GATE IS `client:view`, AND THE SCOPE IS THE ROW'S.** The
+     * first cut also wrapped this in an `assertInScope({ clientId,
+     * lifted: true })`, and two independent reviews reached the same
+     * conclusion from opposite directions: it can never deny, and it
+     * costs a whole extra scope resolution on every panel open.
+     * `resolveScope` is documented as NOT cached, so each call is
+     * `effectivePermissions` plus two `findMany`s (three, for a member
+     * with any direct client) — and it could only ever say yes, because
+     * `resolveScope` lifts `liftedClientIds` from every `MemberProject`
+     * row's own `project.clientId`: any project that passed the
+     * `assertInScope({ projectId })` above already puts its client in
+     * `direct ∪ lifted`, and `client:view_all` degrades the call to an
+     * existence probe. *(It was also, by accident, what kept this read
+     * out of the batch — which is how the race above stayed hidden
+     * until the review asked for the assertion to go.)*
+     *
+     * What makes the read sound is not a second assertion but WHERE the
+     * client id comes from: `row!.clientId`, off the item this function
+     * scope-asserted above, in this same transaction. That is slice 52's
+     * lesson satisfied rather than evaded — its bug was a lookup whose
+     * scope lived two call sites and a trigger away, and this one is a
+     * local `const`. A future reader must not take the permission check
+     * for a scope check: move this read away from `row` and it needs its
+     * own scope again.
+     */
+    const contacts =
+      canEdit && held.has("client:view")
+        ? await tx.contact.findMany({
+            where: {
+              tenantId: ctx.tenantId,
+              clientId: row!.clientId,
+              portalStatus: { in: [...ASSIGNABLE_PORTAL_STATUSES] },
+            },
+            // The order the client's own card lists them in.
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { id: true, name: true },
+          })
+        : [];
     const item = row!;
     return {
       item: {
@@ -606,8 +782,11 @@ export async function getItemDetail(
         startDate: item.startDate,
         targetDate: item.targetDate,
         visibility: item.visibility,
+        portalEnabled: item.portalEnabled,
         assigneeMemberId: item.assigneeMemberId,
         assigneeName: item.assigneeMember?.user.name ?? null,
+        assigneeContactId: item.assigneeContactId,
+        assigneeContactName: item.assigneeContact?.name ?? null,
         rootId: item.rootId,
         parentId: item.parentId,
         archivedAt: item.archivedAt,
@@ -634,6 +813,7 @@ export async function getItemDetail(
         manageLabels: held.has("label:manage"),
       },
       members,
+      contacts,
       milestones,
       labels,
       activity,
@@ -1123,7 +1303,7 @@ export async function assignItemToContact(
     // Checked AFTER the no-op for the reason `assignItem` gives:
     // whoever holds the task still has a name to show, whatever their
     // status is now.
-    if (contact.portalStatus !== "ACTIVE" && contact.portalStatus !== "INVITED") {
+    if (!(ASSIGNABLE_PORTAL_STATUSES as readonly string[]).includes(contact.portalStatus)) {
       deny("NOT_FOUND");
     }
     const row = await tx.workItem.update({

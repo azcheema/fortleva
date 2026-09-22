@@ -42,6 +42,16 @@ export type SubtaskEntry = {
   stateName: string | null;
   stateSeedKey: StateSeedKey | null;
   assigneeName: string | null;
+  /**
+   * WHO AT THE CLIENT HOLDS IT (Phase 3 slice 6c). `assignItemToContact`
+   * handles a SUBTASK explicitly — it takes the parent's rank lock for
+   * one — so without this the Subtasks list under a parent showed a
+   * blank where a handed-over child's assignee belongs: the same
+   * "assigned but says it is not" the board and the backlog were fixed
+   * for, in the one list they do not cover. Found by a fresh code review.
+   * No id: this list only ever renders a name.
+   */
+  assigneeContactName: string | null;
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
   archivedAt: Date | null;
 };
@@ -68,6 +78,7 @@ export async function readItemSubtasks(tx: TenantDb, tenantId: string, workItemI
       archivedAt: true,
       state: { select: { name: true, seedKey: true } },
       assigneeMember: { select: { user: { select: { name: true } } } },
+      assigneeContact: { select: { name: true } },
     },
   });
   let done = 0;
@@ -86,6 +97,7 @@ export async function readItemSubtasks(tx: TenantDb, tenantId: string, workItemI
       stateName: r.state.name,
       stateSeedKey: r.state.seedKey,
       assigneeName: r.assigneeMember?.user.name ?? null,
+      assigneeContactName: r.assigneeContact?.name ?? null,
       visibility: r.visibility,
       archivedAt: r.archivedAt,
     })),

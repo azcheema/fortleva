@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import type { MemberActor } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { DomainError } from "@/lib/domain-error";
-import { setupTenant } from "@/members/dbtest-fixture";
+import { actorFor, setupTenant } from "@/members/dbtest-fixture";
 import { resolvePortalModuleGates, type PortalPrincipal } from "@/portal";
 
-import { assignItem, assignItemToContact, changeItemVisibility, createItem } from "./items";
+import { assignItem, assignItemToContact, changeItemVisibility, createItem, getItemDetail, listItems } from "./items";
 import { listPortalTasks } from "./portal";
 import { setPortalTaskDone } from "./portal-writes";
 import { changeState } from "./states";
@@ -70,6 +71,31 @@ let bea: string;
 let sven: string;
 /** Bo — ACTIVE, of the OTHER client. */
 let bo: string;
+/**
+ * A CUSTOM SEAT THAT MAY LOOK AND NOT TOUCH — `work_item:view` +
+ * `project:view` + `client:view`, scoped DIRECTLY to `acme` (see
+ * `seatWith` for why not through the project). Every template role holds
+ * `work_item:edit`, so without this seat "the picker offers nobody to a
+ * member who cannot edit" has no way to be false. `client:view` is
+ * deliberately present: it is the OTHER gate, and a seat missing both
+ * could not say which one refused.
+ */
+let viewerOnly: { memberId: string; actor: MemberActor };
+/**
+ * A CUSTOM SEAT THAT MAY EDIT THE TASK AND NOT READ THE CLIENT —
+ * `work_item:view` + `work_item:edit` + `project:view`, and NOT
+ * `client:view`, scoped directly to `acme`. It is the only way the
+ * panel's client group can be shown to have a gate of its own: this
+ * seat's picker is a working control that simply has no second group.
+ */
+let noClientView: { memberId: string; actor: MemberActor };
+/**
+ * The `user` rows of the two seats above. `setupTenant`'s own cleanup
+ * deletes only the FOUR template users it made — a custom seat's user
+ * is nobody's to collect, and `user` is PLATFORM-level, so leaving one
+ * behind is a row `sweep-dbtests` cannot reach by tenant either.
+ */
+const extraUserIds: string[] = [];
 
 const principal = (contactId: string, over: Partial<PortalPrincipal> = {}): PortalPrincipal => ({
   contactId,
@@ -160,14 +186,68 @@ beforeAll(async () => {
   });
 
   const invitedAt = new Date("2026-09-01T09:00:00Z");
+  // EXPLICIT, DISTINCT `createdAt`s, because the picker's ORDER is part
+  // of what is measured below. `createMany` stamps one `now()` for the
+  // whole statement, so four rows written together are tied on the
+  // column the list is ordered by and fall through to the id — which is
+  // a v7 UUID minted by `randomUUID()` here and therefore arbitrary. A
+  // test written against that order passes or fails by luck.
   await f.platform.contact.createMany({
     data: [
-      { id: anna, tenantId: f.tenantId, clientId: acme, name: "Anna", email: `ctask-anna-${run}@test.invalid`, portalProfile: "CONTACT_PRIMARY", portalStatus: "ACTIVE", invitedAt, emailVerified: true },
-      { id: bea, tenantId: f.tenantId, clientId: acme, name: "Bea", email: `ctask-bea-${run}@test.invalid`, portalProfile: "CONTACT_COLLABORATOR", portalStatus: "ACTIVE", invitedAt, emailVerified: true },
-      { id: sven, tenantId: f.tenantId, clientId: acme, name: "Sven", email: `ctask-sven-${run}@test.invalid`, portalProfile: "CONTACT_PRIMARY", portalStatus: "SUSPENDED", invitedAt, emailVerified: true },
-      { id: bo, tenantId: f.tenantId, clientId: beta, name: "Bo", email: `ctask-bo-${run}@test.invalid`, portalProfile: "CONTACT_PRIMARY", portalStatus: "ACTIVE", invitedAt, emailVerified: true },
+      { id: anna, tenantId: f.tenantId, clientId: acme, name: "Anna", email: `ctask-anna-${run}@test.invalid`, portalProfile: "CONTACT_PRIMARY", portalStatus: "ACTIVE", invitedAt, emailVerified: true, createdAt: new Date("2026-09-01T10:00:00Z") },
+      { id: bea, tenantId: f.tenantId, clientId: acme, name: "Bea", email: `ctask-bea-${run}@test.invalid`, portalProfile: "CONTACT_COLLABORATOR", portalStatus: "ACTIVE", invitedAt, emailVerified: true, createdAt: new Date("2026-09-02T10:00:00Z") },
+      { id: sven, tenantId: f.tenantId, clientId: acme, name: "Sven", email: `ctask-sven-${run}@test.invalid`, portalProfile: "CONTACT_PRIMARY", portalStatus: "SUSPENDED", invitedAt, emailVerified: true, createdAt: new Date("2026-09-03T10:00:00Z") },
+      { id: bo, tenantId: f.tenantId, clientId: beta, name: "Bo", email: `ctask-bo-${run}@test.invalid`, portalProfile: "CONTACT_PRIMARY", portalStatus: "ACTIVE", invitedAt, emailVerified: true, createdAt: new Date("2026-09-04T10:00:00Z") },
     ],
   });
+
+  // ── The two custom seats (see their declarations above) ───────────
+  //
+  // THE CATALOGUE MUST BE SEEDED for either to mean anything: with no
+  // `permission` rows a custom role holds nothing, every case below
+  // would pass by refusing everybody, and the two gates would be
+  // indistinguishable from a missing read. `scripts/seed-catalog.ts` is
+  // what puts them there.
+  const seatWith = async (label: string, codes: readonly string[]) => {
+    const userId = randomUUID();
+    await f.platform.user.create({
+      data: { id: userId, name: `${label}-${run}@test.invalid`, email: `${label}-${run}@test.invalid` },
+    });
+    // RECORDED THE MOMENT IT EXISTS, never at the end of the helper. A
+    // `user` row is PLATFORM-level, so an orphan is one `sweep-dbtests`
+    // cannot reach by tenant — and everything below can throw, including
+    // the catalogue assertion this helper's own comment warns about, in
+    // which case `afterAll` would see an empty list and leave the row
+    // behind for good. Found by a fresh code review.
+    extraUserIds.push(userId);
+    const member = await f.platform.member.create({ data: { tenantId: f.tenantId, userId } });
+    const role = await f.platform.role.create({
+      data: { tenantId: f.tenantId, name: `${label} ${run}` },
+    });
+    const perms = await f.platform.permission.findMany({ where: { code: { in: [...codes] } } });
+    expect(perms.map((p) => p.code).sort()).toEqual([...codes].sort());
+    await f.platform.rolePermission.createMany({
+      data: perms.map((p) => ({ tenantId: f.tenantId, roleId: role.id, permissionId: p.id })),
+    });
+    await f.platform.memberRole.create({
+      data: { tenantId: f.tenantId, memberId: member.id, roleId: role.id },
+    });
+    // **SCOPE THROUGH THE CLIENT, NOT THE PROJECT**, and the reason is a
+    // failure this fixture actually produced: `pOn`'s `MemberProject`
+    // rows ARE the notification audience for a request and for a
+    // contact's tick (`requestReceivers`), so adding two seats there
+    // silently widened the audience an existing case asserts exactly.
+    // A fixture may not change what another test measures. Direct client
+    // scope reaches every project of the client and notifies nobody.
+    // The LIFT — project scope reaching the client — is exercised by the
+    // employee seat instead, which has it and holds `client:view`.
+    await f.platform.memberClient.create({
+      data: { tenantId: f.tenantId, memberId: member.id, clientId: acme },
+    });
+    return { memberId: member.id, actor: actorFor(member.id) };
+  };
+  viewerOnly = await seatWith("ctask-viewer", ["work_item:view", "project:view", "client:view"]);
+  noClientView = await seatWith("ctask-noclient", ["work_item:view", "work_item:edit", "project:view"]);
 
   gates = await resolvePortalModuleGates(f.tenantId);
 });
@@ -197,10 +277,15 @@ afterAll(async () => {
   // `setupTenant`'s cleanup fails with 23001 and strands the fixture.
   await f.platform.tenantCounter.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.memberProject.deleteMany({ where: { tenantId: f.tenantId } });
+  await f.platform.memberClient.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.contact.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.project.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.client.deleteMany({ where: { tenantId: f.tenantId } });
   await f.cleanup();
+  // AFTER `cleanup()`, never before: `member` has a foreign key to
+  // `user`, and it is `cleanup()` that deletes this tenant's members.
+  // Prisma reconnects lazily, so the disconnect inside it is not a wall.
+  await f.platform.user.deleteMany({ where: { id: { in: extraUserIds } } });
 });
 
 describe("handing a task to a client's contact", () => {
@@ -663,5 +748,143 @@ describe("what the contact's own list says", () => {
     // projection's own type has no field that could carry it.
     expect(task.assignedToYou).toBe(false);
     expect(Object.values(task)).not.toContain(f.seats.employee.memberId);
+  });
+});
+
+/**
+ * THE MEMBER PLANE'S SIDE OF THE SAME ROW — Phase 3 slice 6c's second
+ * commit. The surfaces are the picker that hands a task over and the
+ * board and backlog that must then say who holds it; these are the two
+ * reads behind them, and each has exactly one gate of its own.
+ *
+ * WHY THIS NEEDS TWO CUSTOM SEATS. Every template role holds both
+ * `work_item:edit` and `client:view` (AUTHZ §3.2, C M A E), so the four
+ * seats of the fixture cannot tell either gate from the other — or from
+ * no gate at all. A test that deleted one of them and stayed green is
+ * the vacuous shape the slice-6b reviews found twice; both seats below
+ * were mutation-checked, and each mutation reddens exactly its own case.
+ */
+describe("what the member plane can see and offer", () => {
+  /** The number `getItemDetail` is addressed by. */
+  const numberOf = async (id: string) => (await rowOf(id)).number;
+
+  it("offers the client's ACTIVE and INVITED people, and nobody else", async () => {
+    const id = await task("Who can hold this");
+    const detail = await getItemDetail(ctxOf("manager"), pOn, await numberOf(id));
+    // ANNA AND BEA, BY THE ORDER THE CLIENT'S OWN CARD LISTS THEM.
+    expect(detail.contacts.map((c) => c.name)).toEqual(["Anna", "Bea"]);
+    // SVEN IS SUSPENDED and BO BELONGS TO ANOTHER CLIENT of this tenant.
+    // Both are refusals `assignItemToContact` already makes, and a
+    // picker that offered either would be a row whose only outcome is an
+    // error — the second is also the one that would be a cross-client
+    // write if the service ever stopped binding the read to the item.
+    const ids = detail.contacts.map((c) => c.id);
+    expect(ids).not.toContain(sven);
+    expect(ids).not.toContain(bo);
+  });
+
+  it("offers them to a member whose client scope is LIFTED from one project", async () => {
+    const id = await task("Reached by the lift");
+    // THE EMPLOYEE SEAT HAS NO `MemberClient` ROW — it reaches `acme`
+    // only because it is assigned to `pOn`, which is the shape
+    // `getItemDetail`'s `assertInScope({ clientId, lifted: true })` is
+    // written for. Drop the `lifted` flag there and this is the case
+    // that goes red; every other seat in the file has direct scope or
+    // `client:view_all` and would not notice.
+    const detail = await getItemDetail(ctxOf("employee"), pOn, await numberOf(id));
+    expect(detail.contacts.map((c) => c.name)).toEqual(["Anna", "Bea"]);
+  });
+
+  it("offers nobody to a member who may view the task but not edit it", async () => {
+    const id = await task("Read only");
+    const detail = await getItemDetail(
+      { tenantId: f.tenantId, actor: viewerOnly.actor },
+      pOn,
+      await numberOf(id),
+    );
+    // The members' own rule, and for the same reason: a viewer's panel
+    // renders the assignee as text and never lists anyone.
+    expect(detail.caps.edit).toBe(false);
+    expect(detail.contacts).toEqual([]);
+    expect(detail.members).toEqual([]);
+  });
+
+  it("offers nobody to a member who may edit the task but not view clients", async () => {
+    const id = await task("No client view");
+    const detail = await getItemDetail(
+      { tenantId: f.tenantId, actor: noClientView.actor },
+      pOn,
+      await numberOf(id),
+    );
+    // THE GATE IS ITS OWN, and this seat is what proves it: it CAN edit,
+    // so the members are offered and the panel is a working control —
+    // only the client's own rows are absent, because those are `Contact`
+    // rows and `client:view` is the code they are read under.
+    expect(detail.caps.edit).toBe(true);
+    expect(detail.members.length).toBeGreaterThan(0);
+    expect(detail.contacts).toEqual([]);
+  });
+
+  it("still NAMES the contact who holds a task to that same member", async () => {
+    const id = await sharedTask("Held, and named anyway");
+    await assignItemToContact(ctxOf("manager"), id, anna);
+    const ctx = { tenantId: f.tenantId, actor: noClientView.actor };
+
+    // **THE ASYMMETRY IS DELIBERATE AND THIS IS WHAT PINS IT.** An
+    // independent security review found the two doors carrying different
+    // gates and asked for one rule; this is the rule, written as a test
+    // so the other resolution cannot be applied by accident. Naming the
+    // person attached to a row the member is ALREADY READING is part of
+    // reading the row — the door comment bylines, activity refs and the
+    // triage lane's `reportedBy` have always used — while LISTING the
+    // client's people is a directory of a company the member may have no
+    // business browsing. Gate this one too and the board says
+    // "Unassigned" over a task somebody holds, for exactly the seat that
+    // can see the task: the defect this slice exists to end, arriving by
+    // a different door.
+    const detail = await getItemDetail(ctx, pOn, await numberOf(id));
+    expect(detail.contacts).toEqual([]);
+    expect(detail.item.assigneeContactName).toBe("Anna");
+    const row = (await listItems(ctx, pOn)).items.find((r) => r.id === id)!;
+    expect(row.assigneeContactName).toBe("Anna");
+  });
+
+  it("names the contact on the panel and on the list, where a member-held row names the member", async () => {
+    const handed = await sharedTask("With the client");
+    const kept = await sharedTask("With us");
+    await assignItemToContact(ctxOf("manager"), handed, anna);
+    await assignItem(ctxOf("manager"), kept, f.seats.employee.memberId);
+
+    const detail = await getItemDetail(ctxOf("manager"), pOn, await numberOf(handed));
+    expect(detail.item.assigneeContactId).toBe(anna);
+    expect(detail.item.assigneeContactName).toBe("Anna");
+    // THE PAIR, READ BACK: the member half is empty on this row, which
+    // is what lets a surface render whichever is set without asking
+    // which. `work_item_single_assignee` is "at most one", so BOTH null
+    // is legal and ordinary — it is Unassigned — and only "both set" is
+    // the state the database refuses.
+    expect(detail.item.assigneeMemberId).toBeNull();
+    expect(detail.item.assigneeName).toBeNull();
+
+    const rows = (await listItems(ctxOf("manager"), pOn)).items;
+    const handedRow = rows.find((r) => r.id === handed)!;
+    const keptRow = rows.find((r) => r.id === kept)!;
+    // Before this pair reached the list, a task the agency had handed to
+    // its client read "Unassigned" on the agency's own board.
+    expect(handedRow.assigneeContactName).toBe("Anna");
+    expect(handedRow.assigneeName).toBeNull();
+    expect(keptRow.assigneeContactName).toBeNull();
+    expect(keptRow.assigneeName).not.toBeNull();
+  });
+
+  it("stops naming the contact the moment the task comes back", async () => {
+    const id = await claimedTask("Handed and ticked");
+    await assignItem(ctxOf("manager"), id, null);
+
+    const detail = await getItemDetail(ctxOf("manager"), pOn, await numberOf(id));
+    expect(detail.item.assigneeContactId).toBeNull();
+    expect(detail.item.assigneeContactName).toBeNull();
+    const row = (await listItems(ctxOf("manager"), pOn)).items.find((r) => r.id === id)!;
+    expect(row.assigneeContactName).toBeNull();
   });
 });

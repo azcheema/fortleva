@@ -1439,6 +1439,7 @@
       },
       "lanes": {
         "unassigned": "Ingen ansvarig",
+        "withClient": "Hos kunden",
         "noEpic": "Utan epik",
         "epicUntitled": "Epik"
       },
@@ -1450,6 +1451,7 @@
       "card": {
         "checklist": "{done} av {total} punkter i checklistan",
         "assignee": "Ansvarig: {name}",
+        "assigneeContact": "Hos {name} på kundsidan",
         "estimate": "Estimat {hours}",
         "spent": "Nedlagd tid {hours}",
         "spentOfEstimate": "Nedlagd tid {spent} av {estimate} estimerat",
@@ -1496,6 +1498,7 @@
         "assignee": "Ansvarig",
         "assigneeHeading": "Visa dessa ansvariga",
         "unassigned": "Ingen ansvarig",
+        "withClient": "Hos kunden",
         "priority": "Prioritet",
         "priorityHeading": "Visa dessa prioriteter",
         "hideDone": "Dölj avslutade",
@@ -1922,6 +1925,7 @@
         "noAccess": "Du kan inte se filer"
       },
       "subtasks": {
+        "withClient": "Hos {name} på kundsidan",
         "title": {
           "TASK": "Uppgifter",
           "SUBTASK": "Deluppgifter"
@@ -2045,14 +2049,20 @@
       },
       "assignee": {
         "trigger": "Ansvarig: {name}",
+        "triggerContact": "Ansvarig: {name}, hos kunden",
         "triggerEmpty": "Ansvarig: ingen",
-        "search": "Sök medlemmar…",
-        "empty": "Ingen medlem matchar.",
+        "search": "Sök personer…",
+        "empty": "Ingen person matchar.",
         "none": "Ingen ansvarig",
         "clear": "Ta bort ansvarig",
         "failed": "Ansvarig sparades inte. Panelen visar den nuvarande ansvariga.",
         "changed": "Tilldelad {name}",
-        "cleared": "Ansvarig togs bort"
+        "changedAndShared": "Tilldelad {name}. Kunden kan nu se uppgiften.",
+        "cleared": "Ansvarig togs bort",
+        "teamGroup": "Ditt team",
+        "clientGroup": "Hos kunden",
+        "sharesWithClient": "Om du lämnar över den blir uppgiften synlig för kunden.",
+        "sharesPortalOff": "Om du lämnar över den markeras uppgiften som synlig för kunden, men portalen är avstängd för det här projektet, så kunden ser den ändå inte."
       },
       "milestone": {
         "trigger": "Milstolpe: {name}",

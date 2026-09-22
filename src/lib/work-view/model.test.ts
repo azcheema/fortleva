@@ -4,6 +4,7 @@ import {
   GROUP_BYS,
   NO_FILTERS,
   UNASSIGNED,
+  WITH_CLIENT,
   activeFilterCount,
   allRowAnchors,
   applyMove,
@@ -58,6 +59,8 @@ const item = (id: string, over: Partial<WorkItem> = {}): WorkItem => ({
   visibility: "INTERNAL",
   assigneeMemberId: null,
   assigneeName: null,
+  assigneeContactId: null,
+  assigneeContactName: null,
   rootId: id,
   parentId: null,
   archivedAt: null,
@@ -126,6 +129,30 @@ describe("lanes", () => {
 
   it("assignee: members with items alphabetically, then Unassigned", () => {
     expect(lanesFor("assignee", items, members).map((l) => l.key)).toEqual(["m:m1", "m:m2", "unassigned"]);
+  });
+
+  it("assignee: the client's lane appears between the team and Unassigned, and only when it has work", () => {
+    // ABSENT by default — a card can only be dragged within its own lane
+    // (`canDrop` compares `laneKey`), so unlike the five priority lanes
+    // this one does not have to exist as a drop target, and an
+    // always-drawn empty lane would be a column of air on every board in
+    // every tenant that has never handed a task over.
+    expect(lanesFor("assignee", items, members).map((l) => l.kind)).not.toContain("withClient");
+
+    const held = [...items, item("t6", { assigneeContactId: "k1", assigneeContactName: "Astrid" })];
+    expect(lanesFor("assignee", held, members).map((l) => l.key)).toEqual([
+      "m:m1",
+      "m:m2",
+      "with-client",
+      "unassigned",
+    ]);
+    // BY ID, never by index: this fixture is shared and grows.
+    const laneOf = (id: string) =>
+      laneKeyOf(held.find((i) => i.id === id)!, "assignee", new Set());
+    expect(laneOf("t6")).toBe("with-client");
+    // And the other two answers are untouched by any of it.
+    expect(laneOf("t1")).toBe("m:m2");
+    expect(laneOf("t3")).toBe("unassigned");
   });
 
   it("priority: URGENT → NONE, always all five", () => {
@@ -434,6 +461,25 @@ describe("filters", () => {
     expect(ids({ assigneeIds: ["m1"] })).toEqual(["a", "d"]);
     expect(ids({ assigneeIds: [UNASSIGNED] })).toEqual(["b", "c"]);
     expect(ids({ assigneeIds: ["m1", UNASSIGNED] })).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("a task the CLIENT holds is its own bucket, not 'no assignee'", () => {
+    // The defect this bucket exists to end (found by a fresh code
+    // review of slice 6c): with `assigneeMemberId ?? UNASSIGNED`, a task
+    // handed to a contact matched "No assignee" — beside work nobody
+    // holds — and vanished from every lane the moment a real person was
+    // filtered for. "Nobody is doing this" and "the client is doing
+    // this" are opposite facts.
+    const held = [
+      ...items,
+      item("e", { assigneeContactId: "k1", assigneeContactName: "Astrid" }),
+    ];
+    const pick = (f: Partial<WorkFilters>) =>
+      filterItems(held, { ...NO_FILTERS, ...f }).map((i) => i.id);
+    expect(pick({ assigneeIds: [WITH_CLIENT] })).toEqual(["e"]);
+    expect(pick({ assigneeIds: [UNASSIGNED] })).toEqual(["b", "c"]);
+    expect(pick({ assigneeIds: ["m1"] })).toEqual(["a", "d"]);
+    expect(pick({ assigneeIds: ["m1", WITH_CLIENT] })).toEqual(["a", "d", "e"]);
   });
 
   it("an empty axis is 'everything', never 'nothing'", () => {

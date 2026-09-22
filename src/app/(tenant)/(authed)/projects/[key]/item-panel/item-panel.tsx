@@ -78,6 +78,7 @@ export async function ItemPanel({
   itemCaps,
   states,
   members,
+  contacts,
   milestones,
   labels,
   activity,
@@ -125,6 +126,8 @@ export async function ItemPanel({
   states: ResolvedWorkflowState[];
   /** The Assignee picker's rows — `getItemDetail`'s, so the full page has them too. */
   members: readonly { id: string; name: string }[];
+  /** The Assignee picker's CLIENT rows — the item's client's contacts who can hold a task; empty is ordinary. */
+  contacts: readonly { id: string; name: string }[];
   /** The Milestone picker's rows — the project's phases by rank, `getItemDetail`'s for the same reason. */
   milestones: readonly MilestoneEntry[];
   /** The task's labels and its vocabulary — `getItemDetail`'s (slice 12). */
@@ -271,9 +274,14 @@ export async function ItemPanel({
             projectKey={projectKey}
             surface={surface}
             assigneeMemberId={item.assigneeMemberId}
-            assigneeName={item.assigneeName}
+            assigneeContactId={item.assigneeContactId}
+            assigneeName={item.assigneeName ?? item.assigneeContactName}
+            visibility={item.visibility}
+            portalEnabled={item.portalEnabled}
             members={members}
+            contacts={contacts}
             canEdit={canEdit}
+            canChangeVisibility={itemCaps.changeVisibility}
           />
         </dd>
         <dt className={railLabel}>{t("properties.type")}</dt>

@@ -20,6 +20,7 @@ import { PRIORITIES, STATUS_MAP, type Priority, type StatusValue } from "@/lib/e
 import {
   GROUP_BYS,
   UNASSIGNED,
+  WITH_CLIENT,
   activeFilterCount,
   workViewParsers,
   type GroupBy,
@@ -63,12 +64,31 @@ export type FilterBarProps = {
    */
   states: readonly WorkState[];
   members: readonly WorkMember[];
+  /**
+   * REQUIRED — whether any task ON THIS SURFACE is held by a contact
+   * (Phase 3 slice 6c). It decides whether the "With the client" option
+   * is offered, by the rule the hidden-state comment above states for
+   * states: the filter offers exactly what the surface could show, so a
+   * bucket that can only ever match nothing is not a row in the menu.
+   *
+   * A REQUIRED PROP, never a default: this is state a shared component
+   * must reflect, and a default would make the option silently absent on
+   * whichever caller forgot it — which on this control reads as "no task
+   * is with the client" rather than as a missing prop.
+   */
+  hasClientWork: boolean;
   rollup: Rollup;
   /** Grouping is offered only where the surface can render groups. */
   groupings?: readonly GroupBy[];
 };
 
-export function WorkFilterBar({ states, members, rollup, groupings = GROUP_BYS }: FilterBarProps) {
+export function WorkFilterBar({
+  states,
+  members,
+  hasClientWork,
+  rollup,
+  groupings = GROUP_BYS,
+}: FilterBarProps) {
   const t = useTranslations("projects.workView");
   const tPriority = useTranslations("states.priority");
   const [params, setParams] = useQueryStates(workViewParsers, {
@@ -140,6 +160,22 @@ export function WorkFilterBar({ states, members, rollup, groupings = GROUP_BYS }
         >
           {t("filters.unassigned")}
         </DropdownMenuCheckboxItem>
+        {/* ITS OWN BUCKET, above the team, because it is the answer that
+            is NOT a person at this agency. Before it existed a
+            contact-held task matched "No assignee" — beside work nobody
+            holds — and vanished from every lane the moment a real person
+            was filtered for. */}
+        {hasClientWork ? (
+          <DropdownMenuCheckboxItem
+            checked={params.assignee.includes(WITH_CLIENT)}
+            onSelect={(e) => {
+              e.preventDefault();
+              void setParams({ assignee: toggled(params.assignee, WITH_CLIENT) });
+            }}
+          >
+            {t("filters.withClient")}
+          </DropdownMenuCheckboxItem>
+        ) : null}
         {members.length > 0 ? <DropdownMenuSeparator /> : null}
         {members.map((m) => (
           <DropdownMenuCheckboxItem

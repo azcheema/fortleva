@@ -13,6 +13,7 @@ export {
   MAX_TITLE_LENGTH,
   NO_FILTERS,
   UNASSIGNED,
+  WITH_CLIENT,
   activeFilterCount,
   allRowAnchors,
   applyMove,

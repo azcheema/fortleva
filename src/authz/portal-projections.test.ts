@@ -39,6 +39,15 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "billRate",
   "cost",
   "assigneeMemberId",
+  // Phase 3 slice 6c: the CONTACT assignee's NAME. `assigneeContactId`
+  // cannot join this list — `portal.ts` must read the column to build
+  // `assignedToYou` — but the NAME is the half that identifies a
+  // person, and UI.md §11's rule is that the portal list says which
+  // tasks are YOURS and never which are a colleague's. The slice that
+  // minted it put it on `ItemListEntry` and `ItemDetail`, the two shapes
+  // a portal projection is likeliest to copy from; without this line the
+  // portal half could carry the column across with both tiers green.
+  "assigneeContactName",
   // 2W (2026-09-12): the work tables. The portal sees state CATEGORIES,
   // never a tenant's own state names or ids; no priority, no estimate,
   // no label, and no member id on a history row or a comment — the
@@ -313,6 +322,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "billRate",
       "cost",
       "assigneeMemberId",
+      "assigneeContactName",
       "stateId",
       "stateName",
       "priority",

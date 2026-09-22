@@ -324,10 +324,33 @@ export function splitLabelChips<L>(labels: readonly L[], cap: number): LabelChip
 /** The unassigned bucket's stable token in the URL and in the filter. */
 export const UNASSIGNED = "none";
 
+/**
+ * THE WORK THAT IS WITH THE CLIENT — one bucket for every contact-held
+ * task, in the URL, in the filter and as a lane (Phase 3 slice 6c).
+ *
+ * It exists because the alternative was a lie rather than a gap: until
+ * this token, `assigneeMemberId ?? UNASSIGNED` put every task the agency
+ * had handed to its client into **Unassigned**, beside work genuinely
+ * nobody holds — and filtering to any real person made it vanish from
+ * every lane. "Nobody is doing this" and "the client is doing this" are
+ * opposite facts and the second is the one somebody has to chase.
+ *
+ * ONE BUCKET AND NOT ONE PER CONTACT, deliberately. A lane per contact
+ * would need the client's roster plumbed into the board's and the
+ * backlog's reads — which are the two hottest reads in the product —
+ * to name lanes for people who are not on the agency's team. The lane
+ * answers "is this with us?", which is the question a member grouping by
+ * assignee is asking; the CARD still names the person.
+ *
+ * Distinct from `UNASSIGNED`'s value, and neither is a uuid, so no
+ * member id can ever collide with either.
+ */
+export const WITH_CLIENT = "client";
+
 export type WorkFilters = {
   /** Empty = every state. Ids, because a column IS a state (not a category). */
   stateIds: readonly string[];
-  /** Empty = everyone. `UNASSIGNED` matches items with no assignee. */
+  /** Empty = everyone. `UNASSIGNED` matches items with no assignee; `WITH_CLIENT`, those held by a contact. */
   assigneeIds: readonly string[];
   /** Empty = every priority. */
   priorities: readonly Priority[];
@@ -358,7 +381,12 @@ export function matchesFilters(item: WorkItem, f: WorkFilters): boolean {
   if (f.stateIds.length > 0 && !f.stateIds.includes(item.stateId)) return false;
   if (f.priorities.length > 0 && !f.priorities.includes(item.priority as Priority)) return false;
   if (f.assigneeIds.length > 0) {
-    const key = item.assigneeMemberId ?? UNASSIGNED;
+    // THREE ANSWERS, NOT TWO. `assigneeContactId` is checked before the
+    // fall-through to `UNASSIGNED`, because a task the client holds is
+    // not a task nobody holds — and `work_item_single_assignee` is "at
+    // most one", so the two columns are never both set and the order
+    // here cannot mask anything.
+    const key = item.assigneeMemberId ?? (item.assigneeContactId ? WITH_CLIENT : UNASSIGNED);
     if (!f.assigneeIds.includes(key)) return false;
   }
   return true;
@@ -374,6 +402,7 @@ export type Lane =
   | { key: "all"; kind: "all" }
   | { key: string; kind: "member"; memberId: string; name: string }
   | { key: "unassigned"; kind: "unassigned" }
+  | { key: "with-client"; kind: "withClient" }
   | { key: string; kind: "priority"; priority: Priority }
   | { key: string; kind: "epic"; epicId: string; title: string; epicKey: number }
   | { key: "no-epic"; kind: "noEpic" };
@@ -388,7 +417,11 @@ export function laneKeyOf(item: WorkItem, groupBy: GroupBy, epicIds: ReadonlySet
     case "none":
       return "all";
     case "assignee":
-      return item.assigneeMemberId ? `m:${item.assigneeMemberId}` : "unassigned";
+      return item.assigneeMemberId
+        ? `m:${item.assigneeMemberId}`
+        : item.assigneeContactId
+          ? "with-client"
+          : "unassigned";
     case "priority":
       return `p:${item.priority}`;
     case "epic": {
@@ -426,7 +459,16 @@ export function lanesFor(
           named.push({ key: `m:${id}`, kind: "member", memberId: id, name });
         }
       }
-      return [...named, { key: "unassigned", kind: "unassigned" }];
+      // THE CLIENT'S LANE ONLY WHEN THERE IS CLIENT WORK, between the
+      // team and Unassigned. Unlike the five priority lanes it is not a
+      // drop target that has to exist — a card can only be dragged
+      // within its own lane (`canDrop` compares `laneKey`) — so an
+      // always-drawn empty lane would be a column of air on every board
+      // in every tenant that has never handed a task over.
+      const withClient: Lane[] = items.some((i) => i.assigneeContactId)
+        ? [{ key: "with-client", kind: "withClient" }]
+        : [];
+      return [...named, ...withClient, { key: "unassigned", kind: "unassigned" }];
     }
     case "priority":
       return [...PRIORITIES]
