@@ -1396,6 +1396,13 @@ model WorkItem {
   visibility          Visibility       @default(INTERNAL)
   portalEnabled       Boolean          @default(false) @map("portal_enabled") // trigger-maintained
   triageStatus        TriageStatus?    @map("triage_status")
+  // THE AGENCY'S WORDS TO THE CLIENT, and the only free text in this
+  // model that is written by a member and read by a contact. Set by
+  // Decline and Duplicate, cleared by Accept; projected by
+  // `modules/work/portal.ts` beside the DECLINED category, because a
+  // request that vanishes when the answer is no is the failure that
+  // category exists to prevent (founder decision, 2026-09-22).
+  triageReason        String?          @map("triage_reason") @db.VarChar(500)
   snoozedUntil        DateTime?        @map("snoozed_until") @db.Timestamptz(6)
   duplicateOfId       String?          @map("duplicate_of_id")
   source              WorkItemSource   @default(IN_APP)

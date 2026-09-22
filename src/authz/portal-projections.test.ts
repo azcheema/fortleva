@@ -213,7 +213,19 @@ const VIEW_AS_ROUTES = join("app", "(tenant)", "view-as");
  * necessarily spells out. That is the same trade, for the same reason,
  * that `view-as` already records.
  */
-const STRUCTURAL_ONLY_SURFACES = [join("modules", "work", "requests.ts")];
+const STRUCTURAL_ONLY_SURFACES = [
+  join("modules", "work", "requests.ts"),
+  // …and `triage.ts` (slice 6b, 2026-09-22), for the reason the
+  // paragraph above PREDICTED: "a select-less `findFirst`, an
+  // `include`, or a helper returning a member id added there **when the
+  // triage verb lands** would trip nothing." It landed. The file also
+  // earns it on its own: it authors `triage_reason`, the only string in
+  // this product a MEMBER writes and a CONTACT reads, so a projection
+  // mistake there reaches a client's screen directly. Structural tier
+  // only, like `requests.ts` and `view-as`, because its prose
+  // necessarily spells out the text tier's own list.
+  join("modules", "work", "triage.ts"),
+];
 
 const isProjection = (full: string, entry: string): boolean =>
   entry === "portal.ts" ||
@@ -281,6 +293,53 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "newRef",
       "invitedById",
     ]);
+  });
+
+  /**
+   * THE SECOND LIST GETS THE SAME PIN, and it did not have one until
+   * slice 6b's security review pointed that out.
+   *
+   * `PORTAL_FORBIDDEN_COLUMNS` has been pinned by the assertion above
+   * since it was written; `PORTAL_NEVER_SELECTED` — the AST tier's list,
+   * the one that catches `select: { rank: true }` — had nothing. A name
+   * quietly deleted from it would weaken the tripwire with no test
+   * failing anywhere, which is precisely the property this file exists
+   * to deny to everyone else.
+   *
+   * It matters more since 6b: `duplicateOfId` sits on this list and is
+   * written over real data for the first time, so it is now a column
+   * with something to leak rather than a reserved name.
+   */
+  it("PORTAL_NEVER_SELECTED is pinned — a name may not quietly leave it", () => {
+    expect([...PORTAL_NEVER_SELECTED].sort()).toEqual(
+      [
+        "rank",
+        "priority",
+        "type",
+        "kind",
+        "stateId",
+        "triageStatus",
+        "snoozedUntil",
+        "duplicateOfId",
+        "estimateMinutes",
+        "remainingMinutes",
+        "startedAt",
+        "description",
+        "descriptionText",
+        "assigneeMemberId",
+        "createdByMemberId",
+        "leadMemberId",
+        "actorMemberId",
+        "authorMemberId",
+        "invitedById",
+        "sourceSystem",
+        "sourceId",
+        "importJobId",
+        "internalNotes",
+        "repoUrl",
+        "hostingNotes",
+      ].sort(),
+    );
   });
 
   it("no portal projection mentions a forbidden column", () => {
@@ -696,6 +755,9 @@ describe("every portal read is an explicit allow-list (memo §2.2)", () => {
     expect(scanned).toContain("app/(tenant)/view-as/page.tsx");
     // …and the service behind it, which reads the contact row.
     expect(scanned).toContain("clients/view-as.ts");
+    // The file that answers that request, and authors the one
+    // member-written string a contact reads (slice 6b).
+    expect(scanned).toContain("modules/work/triage.ts");
     // The file that performs the contact-caused INSERT. Structural tier
     // only, like view-as, and for the same reason — see
     // `STRUCTURAL_ONLY_SURFACES`. Without this line the widening could

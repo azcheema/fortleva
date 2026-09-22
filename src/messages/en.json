@@ -2100,6 +2100,7 @@
       "phase": "Phase: {name}",
       "due": "Due {date}",
       "completed": "Completed {date}",
+      "declinedReason": "Your agency's reply: {reason}",
       "truncated": "Showing the first {count} tasks. Ask your agency if something is missing."
     },
     "empty": {
@@ -2198,7 +2199,8 @@
       "REQUESTED": "Requested",
       "PLANNED": "Planned",
       "IN_PROGRESS": "In progress",
-      "DONE": "Done"
+      "DONE": "Done",
+      "DECLINED": "Declined"
     },
     "projectHealth": {
       "ON_TRACK": "On track",

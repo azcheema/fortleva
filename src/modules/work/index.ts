@@ -45,7 +45,21 @@ export {
 } from "./bulk";
 export { listMyWork } from "./my-work";
 export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from "./ordering";
-export { changeState, ensureProjectStates, type StateChange } from "./states";
+export { changeState, ensureProjectStates, type StateChange, type TriageWrite } from "./states";
+// Phase 3 slice 6b — the triage lane (`work_item:triage`). The member
+// side of the portal's request intake: Accept / Decline / Duplicate /
+// Snooze, with the client-readable reason a decline must carry.
+export { triageItem, type TriageInput, type TriageOutcome } from "./triage";
+// The verb list and the two caps come from the LEAF, never from
+// `./triage`: the lane's `"use client"` dialog needs them and
+// `./triage` reaches `@/db`. Same arrangement, same reason, as
+// `request-limits.ts` — see that file's header and this one's.
+export {
+  TRIAGE_REASON_MAX,
+  TRIAGE_SNOOZE_MAX_DAYS,
+  TRIAGE_VERBS,
+  type TriageVerb,
+} from "./triage-limits";
 export { updateItemDescription, type DescriptionSaved } from "./description";
 export { ACTIVITY_PAGE_SIZE, type ActivityActor, type ActivityEntry, type ItemActivityPage } from "./activity";
 // Types only — `readItemSubtasks` stays off the barrel for the reason `readItemActivity` does (subtasks.ts).

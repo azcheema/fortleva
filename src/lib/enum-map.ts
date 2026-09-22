@@ -134,7 +134,7 @@ export const STATUS_MAP = {
     TRIAGE: spec("danger", "triangle-alert"),
   },
   /**
-   * Phase 3: the PORTAL's four categories — the only state fact a
+   * Phase 3: the PORTAL's five categories — the only state fact a
    * contact ever sees (UI.md §11). A domain of its own rather than a
    * relabelling of `stateCategory`, for the reason `StatusBadge` gives
    * about labels: the two vocabularies are different on purpose
@@ -147,6 +147,17 @@ export const STATUS_MAP = {
     PLANNED: spec("neutral", "circle-dashed"),
     IN_PROGRESS: spec("caution", "circle-dot"),
     DONE: spec("success", "circle-check"),
+    // The agency answered no (slice 6b). NEUTRAL, not `danger`: nothing
+    // went wrong and nobody is at fault — a declined request is an
+    // answer, and painting it red on a client's screen would read as an
+    // alarm about their own account. It is told apart from the other
+    // four by its glyph and its position (last), not by alarm.
+    //
+    // `mail-x` is `REQUESTED`'s own `mail-question` answered, which is
+    // exactly what this category is: the same envelope, closed. It also
+    // keeps the pair legible in greyscale, which `circle-*` glyphs
+    // beside `PLANNED`'s `circle-dashed` would not.
+    DECLINED: spec("neutral", "mail-x"),
   },
   /** Phase 6: portfolio health. RAG, but never without its text. */
   projectHealth: {

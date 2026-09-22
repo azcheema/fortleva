@@ -44,34 +44,44 @@ import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal"
  * engineering words ("BACKLOG", "TRIAGE"), and mapping here rather than
  * in the page is what keeps the two from drifting.
  *
- * FOUR VALUES, not the table's three, because §11 gives two different
+ * FIVE VALUES, not the table's three, because §11 gives two different
  * lists and both are right: the row of the table says "Planned / In
  * progress / Done", and the copy rule two lines below it says a business
  * reader is told "Requested", never "triage". A portal REQUEST that has
  * not been triaged yet is the client's OWN submission, so it is the one
  * thing in the list they already know about, and calling it "Planned"
- * would promise something nobody has agreed to. The request-intake slice
- * inherits this value already spelled.
+ * would promise something nobody has agreed to.
  *
- * CANCELLED HAS NO PORTAL CATEGORY AND IS NOT SHOWN, which is a product
- * decision and not an oversight. Mapping it onto `DONE` would tell a
- * client that something they can see was finished when it was dropped —
- * a misrepresentation, in the one surface a client reads as a promise —
- * and a fifth "Cancelled" heading is a word §11's vocabulary does not
- * have.
+ * A CANCELLED TASK IS STILL NOT SHOWN — mapping it onto `DONE` would
+ * tell a client that something they can see was finished when it was
+ * dropped, a misrepresentation in the one surface a client reads as a
+ * promise, and a "Cancelled" heading is a word §11's vocabulary does
+ * not have.
  *
- * **AND IT BITES HARDEST ON THE CLIENT'S OWN REQUEST**, which a review
- * sharpened and which is the version the founder should decide on:
+ * **BUT A CANCELLED REQUEST IS**, and that is the fifth value. This
+ * file's previous header called the alternative indefensible and handed
+ * the question to the founder; it was decided on 2026-09-22:
  * DATA_MODEL §6.14 pins triage `DECLINED` and `DUPLICATE` to a
- * CANCELLED-category state, so the one row on this list the client
- * SUBMITTED THEMSELVES disappears silently the moment the agency says
- * no. "Hidden" is a defensible answer for a task the client never asked
- * for and an indefensible one for a request they did. The request-intake
- * slice owns the fix (most likely a DECLINED portal category with the
- * agency's reason attached); until then this is recorded in PLAN §0
- * rather than buried here.
+ * CANCELLED-category state, so under the old rule the one row on this
+ * list the client SUBMITTED THEMSELVES vanished silently the moment the
+ * agency said no. "Hidden" is a defensible answer for a task the client
+ * never asked for and an indefensible one for a request they did. So a
+ * request that was cancelled comes back as `DECLINED`, carrying
+ * `declinedReason` — the agency's own words, which `modules/work/triage.ts`
+ * requires and `work_item_triage_reason_iff_outcome` makes unskippable.
+ *
+ * DECLINED IS LAST IN THIS ARRAY AND THAT IS PART OF THE CONTRACT: the
+ * page renders the categories in exactly this order
+ * (`portal/task-list.tsx`), so an answered-no request sits at the foot
+ * of its project card rather than among live work.
  */
-export const PORTAL_TASK_CATEGORIES = ["REQUESTED", "PLANNED", "IN_PROGRESS", "DONE"] as const;
+export const PORTAL_TASK_CATEGORIES = [
+  "REQUESTED",
+  "PLANNED",
+  "IN_PROGRESS",
+  "DONE",
+  "DECLINED",
+] as const;
 
 export type PortalTaskCategory = (typeof PORTAL_TASK_CATEGORIES)[number];
 
@@ -79,7 +89,13 @@ export type PortalTaskCategory = (typeof PORTAL_TASK_CATEGORIES)[number];
  * Internal category → portal category. A total map over the enum, so a
  * new `StateCategory` value is a compile error here rather than a row
  * that quietly vanishes from (or appears in) a client's list.
- * `CANCELLED` maps to `null`: excluded, per the note above.
+ *
+ * **`CANCELLED`'S ENTRY IS NEVER READ** since slice 6b — `portalCategory`
+ * below answers that case before it consults this map. It is not dead
+ * code: the `Record` is what makes the map TOTAL over `StateCategory`,
+ * and totality is the whole reason this table exists rather than a
+ * `switch` with a default. Deleting the key would break the type; the
+ * `null` is what it would have meant.
  */
 const PORTAL_CATEGORY: Record<
   "BACKLOG" | "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED" | "TRIAGE",
@@ -92,6 +108,64 @@ const PORTAL_CATEGORY: Record<
   DONE: "DONE",
   CANCELLED: null,
 };
+
+/**
+ * The map above, plus the one exception the founder decided on
+ * 2026-09-22: a cancelled REQUEST is shown as DECLINED rather than
+ * hidden, because the row a client submitted themselves must never
+ * vanish without an answer.
+ *
+ * **ITS PRECONDITION IS THE `where`, AND THAT IS NOT A SHORTCUT.** This
+ * function maps `CANCELLED` to `DECLINED` unconditionally, so it is
+ * correct only for rows `listPortalTasks` selected — and that query
+ * admits a cancelled row ONLY when it is a `kind = REQUEST` that
+ * CARRIES A REASON. Two reasons it is arranged this way round rather
+ * than with the tests inlined here:
+ *
+ *  · `kind` is on `portal-projections.test.ts`'s NEVER-SELECTED list —
+ *    it is the agency's vocabulary for its own process — and that list
+ *    is worth more absolute than this function is worth self-contained.
+ *    The tripwire caught the first cut of this file doing exactly that.
+ *  · Filtering in the query means a cancelled TASK or BUG never leaves
+ *    Postgres at all, which is strictly stronger than dropping it in a
+ *    loop somebody could later edit.
+ *
+ * `portal.dbtest.ts` pins all three cases from the outside: a cancelled
+ * ordinary task stays invisible, a cancelled request WITH a reason comes
+ * back DECLINED, and a cancelled request WITHOUT one stays invisible
+ * too. Change any of them and those fixtures fail.
+ *
+ * **THE REASON TERM IS A FAIL-SAFE, AND IT EXISTS BECAUSE THE FIRST CUT
+ * OF THIS SLICE SHIPPED WITHOUT IT.** Two independent reviews found the
+ * same hole: the write path guarded only a DIRECT move out of TRIAGE,
+ * so an accepted request dropped weeks later — an entirely ordinary
+ * workflow — arrived here cancelled with nothing to say, and this
+ * function announced "Declined" in the agency's name with a blank under
+ * it. `transitionState` now refuses that move for any REQUEST, so the
+ * column should never be null here; this term is what makes the
+ * PROJECTION refuse to publish a decline it cannot explain, whatever a
+ * writer does or a pre-6b row already holds. Two layers, because being
+ * wrong here is paid for by the client rather than by us.
+ *
+ * WHY THE TERM IS `triageReason` AND NOT `triageStatus`: the CHECK
+ * `work_item_triage_reason_iff_outcome` makes them equivalent, so this
+ * states the requirement the RENDER actually has — "I will only publish
+ * an answer I can show" — rather than a proxy for it. And why not
+ * `reportedByContactId IS NOT NULL`: that would hide a request a MEMBER
+ * filed on the client's behalf after a phone call, which the client
+ * should still be told was dropped.
+ *
+ * DUPLICATE AND DECLINED ANSWER IDENTICALLY, which is deliberate. "We
+ * are already tracking this" is what the agency's reason says; the
+ * portal does not get a sixth heading for it, and `duplicateOfId` is
+ * never projected — the row it points at may be INTERNAL, and a link
+ * from a client's screen to a task they cannot read is a leak that
+ * announces itself.
+ */
+const portalCategory = (
+  stateCategory: keyof typeof PORTAL_CATEGORY,
+): PortalTaskCategory | null =>
+  stateCategory === "CANCELLED" ? "DECLINED" : PORTAL_CATEGORY[stateCategory];
 
 /**
  * One shared task, as a contact sees it. Nothing is here "because the
@@ -123,6 +197,26 @@ export type PortalTask = {
    * null and its name never crosses the plane. §11 calls this a "Phase".
    */
   readonly phase: string | null;
+  /**
+   * WHY THE AGENCY SAID NO — set on, and only on, a `DECLINED` task.
+   *
+   * The one piece of free text on this plane written by a MEMBER and
+   * read by a CONTACT. Everything else the projection returns is either
+   * the client's own words coming back (`title` on a request they
+   * submitted) or something the agency already publishes: a date, a
+   * category, a milestone name. A member writing here is writing to
+   * their client, and the member-side UI says so.
+   *
+   * Never null on a `DECLINED` row and always null on every other, and
+   * BOTH halves are enforced rather than hoped for. The first is the
+   * projection's `triageReason: { not: null }` term: a cancelled
+   * request with no answer is not returned at all, so a `DECLINED`
+   * category cannot be built over a null. The second is the projection's
+   * own `null` below, which gates on the CATEGORY rather than on the
+   * column being set, so a reason that somehow attached to a live task
+   * still never ships. `portal.dbtest.ts` drives both.
+   */
+  readonly declinedReason: string | null;
 };
 
 /** The shared tasks of one project. */
@@ -218,9 +312,18 @@ export type PortalTaskListOptions = {
  * `portal_gate` under the contact principal — they are repeated in the
  * filter as defence in depth, never as the gate. What is NOT in the
  * policy and therefore must be here: `deletedAt` (a soft-deleted row is
- * still a row), the item's `archivedAt`, the `CANCELLED` exclusion —
- * and the PROJECT's archive, which the first cut of this file missed
- * and a review caught.
+ * still a row), the item's `archivedAt`, the `CANCELLED` exclusion and
+ * its one REQUEST-shaped exception — and the PROJECT's archive, which
+ * the first cut of this file missed and a review caught.
+ *
+ * WHAT `portal_gate` DOES NOT DO, restated because a reader of this
+ * `where` will wonder: it has **no `reported_by_contact_id` term**, so
+ * every ACTIVE contact of a client reads every request that client
+ * submitted, not only their own. That is a founder decision of
+ * 2026-09-22 and not an oversight — a `Client` is a company, the
+ * agency's counterparty is the company, and a request only its
+ * submitter can see is orphaned the day they leave. Making it private
+ * would be a change to the POLICY, not to this projection.
  *
  * **ARCHIVING A PROJECT DOES NOT TURN ITS PORTAL OFF, IN THE DATABASE.**
  * `project`'s `portal_gate` is `client_id = app.client_id AND
@@ -261,7 +364,25 @@ export async function listPortalTasks(
         portalEnabled: true,
         deletedAt: null,
         archivedAt: null,
-        stateCategory: { not: "CANCELLED" },
+        // CANCELLED IS STILL EXCLUDED — except for a REQUEST that
+        // carries the agency's answer, which is shown as DECLINED with
+        // that reason.
+        //
+        // **THIS CLAUSE IS `portalCategory`'S PRECONDITION**, not a
+        // convenience: that function maps CANCELLED to DECLINED with no
+        // second test, because these two terms guarantee that a
+        // cancelled TASK or BUG — and a cancelled request nobody
+        // explained — never leaves Postgres. Loosening either without
+        // the other would put "Declined" on a client's screen against
+        // work they never asked for, or against work they did ask for
+        // with no answer under it. `kind` is filtered here and never
+        // SELECTED — it is on the portal plane's never-selected list —
+        // which is also why the test lives in `portal.dbtest.ts` rather
+        // than in a unit test over the mapper.
+        OR: [
+          { stateCategory: { not: "CANCELLED" } },
+          { stateCategory: "CANCELLED", kind: "REQUEST", triageReason: { not: null } },
+        ],
         // See the header: `project.portal_gate` has no archive term.
         project: { archivedAt: null },
         ...(projectId ? { projectId } : {}),
@@ -270,6 +391,7 @@ export async function listPortalTasks(
         id: true,
         title: true,
         stateCategory: true,
+        triageReason: true,
         targetDate: true,
         completedAt: true,
         project: { select: { id: true, name: true } },
@@ -291,7 +413,9 @@ export async function listPortalTasks(
     // place, and a `?? ""` would put one there.
     const byProject = new Map<string, { projectName: string; tasks: PortalTask[] }>();
     for (const row of page) {
-      const category = PORTAL_CATEGORY[row.stateCategory];
+      // Safe BECAUSE of the `where` above — a cancelled row that is not
+      // a REQUEST never reaches this loop. See `portalCategory`.
+      const category = portalCategory(row.stateCategory);
       const project = row.project;
       if (!category || !project) continue;
       let group = byProject.get(project.id);
@@ -306,6 +430,13 @@ export async function listPortalTasks(
         targetDate: row.targetDate,
         completedAt: row.completedAt,
         phase: row.milestone?.name ?? null,
+        // GATED ON THE CATEGORY, never on the column being set. The
+        // column cannot be set on anything but a DECLINED/DUPLICATE row
+        // (the CHECK), so today these agree — and if a later writer
+        // ever put a reason on a live task, this line is what keeps it
+        // off the client's screen rather than the constraint being the
+        // only thing between them.
+        declinedReason: category === "DECLINED" ? row.triageReason : null,
       });
     }
 

@@ -2287,12 +2287,28 @@ enum WorkItemPriority {
 }
 
 /// Triage outcome for kind=REQUEST (and anything else parked in TRIAGE).
+///
+/// SHIPPED 2026-09-22 (Phase 3 slice 6b, `src/modules/work/triage.ts`).
+/// Two amendments the implementation made to the note below, both
+/// recorded here because they are now enforced rather than intended:
+///
+///  · `ACCEPTED` IS NEVER STORED. Accepting clears every triage column
+///    (status included) as the row moves to the default state, so an
+///    accepted request is indistinguishable from work that was always
+///    ordinary — which is what it now is. The value stays in the enum
+///    because dropping it is a migration for nothing; nothing writes it.
+///  · DECLINED AND DUPLICATE CARRY A CLIENT-READABLE REASON
+///    (`triageReason`, added the same day). Founder decision: a client's
+///    own request is never made to disappear without one. The portal
+///    shows such a row as `DECLINED` with that text —
+///    `modules/work/portal.ts` — where before it mapped CANCELLED to
+///    nothing and the row silently vanished.
 enum TriageStatus {
   PENDING
-  ACCEPTED    // moved to the project's default state; triage fields cleared
-  DECLINED    // moved to a CANCELLED-category state
+  ACCEPTED    // NEVER STORED — accepting clears the triage columns (see above)
+  DECLINED    // moved to a CANCELLED-category state; triageReason required
   SNOOZED     // hidden from the triage lane until snoozedUntil
-  DUPLICATE   // → CANCELLED-category state; duplicateOfId set
+  DUPLICATE   // → CANCELLED-category state; duplicateOfId AND triageReason set
 }
 
 enum WorkItemSource {
@@ -2460,8 +2476,9 @@ model WorkItem {
   visibility         Visibility       @default(INTERNAL)
   // Triage (kind=REQUEST and anything parked in TRIAGE):
   triageStatus       TriageStatus?
+  triageReason       String?          @db.VarChar(500) // 6b: the agency's words TO THE CLIENT; CHECK: set iff DECLINED|DUPLICATE
   snoozedUntil       DateTime?        @db.Timestamptz(6)
-  duplicateOfId      String?                      // → WorkItem (tenantId, id) when triageStatus = DUPLICATE
+  duplicateOfId      String?                      // → WorkItem (tenantId, id) when triageStatus = DUPLICATE (CHECK)
   source             WorkItemSource   @default(IN_APP)
   // Checklist counters (denormalised from description on save):
   checklistTotal     Int              @default(0)

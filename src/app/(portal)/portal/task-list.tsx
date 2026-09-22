@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
  * invites exactly that mistake about a timezone: take it as a prop.)
  *
  * The shared task list, one card per project, grouped by the portal's
- * four categories (UI.md §11). What is NOT here is the point of the
+ * five categories (UI.md §11). What is NOT here is the point of the
  * file: no state name, no estimate, no label, no assignee, no ordering
  * weight, nothing a client would have to learn the agency's vocabulary
  * to read. The projection cannot supply any of it — see
@@ -29,8 +29,11 @@ import { cn } from "@/lib/utils";
  * if it tried, which is the arrangement the pins ask for.
  *
  * Grouped by CATEGORY within the project, in the fixed order above, so
- * a client reads down the same three-or-four headings on every project
- * rather than a list whose shape changes with the data. A category with
+ * a client reads down the same few headings on every project rather
+ * than a list whose shape changes with the data. `DECLINED` is last in
+ * that order on purpose (`PORTAL_TASK_CATEGORIES`): a request the
+ * agency answered no to belongs at the foot of the card, not among the
+ * work that is still happening. A category with
  * nothing in it is simply absent — an empty "Done" heading on a project
  * that has not finished anything yet says nothing worth a row of space.
  */
@@ -59,6 +62,23 @@ export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
               {tasks.map((task) => (
                 <li key={task.id} className="flex flex-col gap-0.5">
                   <span className="text-sm text-foreground">{task.title}</span>
+                  {/* THE AGENCY'S ANSWER, on a declined request only —
+                      the whole point of the DECLINED category (slice
+                      6b). It sits directly under the title rather than
+                      in the meta row below, because it is a sentence
+                      somebody wrote to this reader and not a date: the
+                      meta row's `text-xs` and its horizontal flex would
+                      set prose in a strip of chips. `declinedReason` is
+                      non-null on exactly these rows (the projection
+                      gates it on the category), so no second condition
+                      is needed here — but it is written as one anyway,
+                      because a `null` rendered through `t()` would put
+                      the literal word "null" on a client's screen. */}
+                  {task.declinedReason ? (
+                    <span className="text-xs text-muted-foreground">
+                      {t("declinedReason", { reason: task.declinedReason })}
+                    </span>
+                  ) : null}
                   {task.phase || task.targetDate || task.completedAt ? (
                     <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                       {task.phase ? <span>{t("phase", { name: task.phase })}</span> : null}
@@ -103,7 +123,7 @@ export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
 /**
  * The category, drawn the way every other enum in the product is drawn —
  * `STATUS_MAP` tone + glyph, so the portal is recognisably the same
- * product and a greyscale screenshot still separates the four. It is not
+ * product and a greyscale screenshot still separates the five. It is not
  * `<StatusBadge>` because that component resolves its own label from
  * `states.<domain>.<value>` and the heading needs the label at heading
  * weight beside its glyph, not inside a chip.

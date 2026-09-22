@@ -106,8 +106,9 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
     "audit:view",
   ],
   work: [
-    // Triage: no `triage.ts`, no service, no route.
-    "work_item:triage",
+    // Triage SHIPPED on 2026-09-22 (Phase 3 slice 6b): `work_item:triage`
+    // is enforced in `src/modules/work/triage.ts`, so it is no longer
+    // declared here. It was the oldest name on this list.
     // The app CREATES a project's default states lazily
     // (`ensureProjectStates`) and reads them; it has never updated or
     // deleted one, so there is no "edit a project's workflow" to guard.

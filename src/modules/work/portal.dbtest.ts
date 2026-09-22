@@ -64,6 +64,15 @@ const S = {
   deletedTask: `SENTINELDELETED-${run}`,
   archivedTask: `SENTINELARCHIVED-${run}`,
   cancelledTask: `SENTINELCANCELLED-${run}`,
+  /** A cancelled REQUEST that nobody explained. Shown, it would read as
+   *  "Declined" with a blank under it — so it must stay hidden. */
+  cancelledRequestNoReason: `SENTINELNOREASON-${run}`,
+  /** An INTERNAL request that was declined — its title AND its reason
+   *  must both stay off the client's screen. */
+  internalDeclined: `SENTINELINTERNALDECLINED-${run}`,
+  /** The reason on that row: a member's words about a row the contact
+   *  cannot reach at all. */
+  triageOfInternal: `SENTINELINTERNALREASON-${run}`,
 } as const;
 
 /** Titles a contact IS meant to read. */
@@ -74,6 +83,11 @@ const SHOWN = {
   triaged: `Shared request ${run}`,
   dated: `Shared dated ${run}`,
   sharedPhase: `Design ${run}`,
+  /** A request the agency answered NO to (slice 6b). */
+  declined: `Declined request ${run}`,
+  /** …and what it was told. Client-readable ON PURPOSE — the one string
+   *  in this file that a member writes and a contact reads. */
+  declinedReason: `We already do this under your retainer ${run}`,
 } as const;
 
 const T = randomUUID();
@@ -125,6 +139,11 @@ async function item(input: {
   title: string;
   category: "BACKLOG" | "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED" | "TRIAGE";
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
+  /** Defaults to TASK. `REQUEST` is what makes a CANCELLED row visible. */
+  kind?: "TASK" | "BUG" | "REQUEST";
+  /** A triage outcome, for the rows that carry one. */
+  triageStatus?: "DECLINED" | "DUPLICATE";
+  triageReason?: string;
   milestoneId?: string;
   targetDate?: Date;
   completedAt?: Date;
@@ -143,8 +162,15 @@ async function item(input: {
       title: input.title,
       stateId: states[`${input.projectId}:${input.category}`]!,
       stateCategory: input.category,
+      kind: input.kind ?? "TASK",
       // `work_item_triage_has_status`: a TRIAGE row must carry one.
-      triageStatus: input.category === "TRIAGE" ? "PENDING" : null,
+      triageStatus: input.triageStatus ?? (input.category === "TRIAGE" ? "PENDING" : null),
+      // `work_item_triage_reason_iff_outcome` (20260922120000) binds
+      // these two together in BOTH directions, so a fixture that sets
+      // one without the other fails at the INSERT — which is the
+      // constraint doing its job on this file too.
+      triageReason: input.triageReason ?? null,
+      duplicateOfId: null,
       rootId: id,
       // A valid fractional key that sorts before every generated one —
       // the shape `tree-guards.dbtest.ts` settled on.
@@ -302,6 +328,54 @@ beforeAll(async () => {
   await item({ tenantId: T, clientId: acme, projectId: pOn, title: S.deletedTask, category: "TODO", visibility: "CLIENT_VISIBLE", deletedAt: new Date() });
   await item({ tenantId: T, clientId: acme, projectId: pOn, title: S.archivedTask, category: "TODO", visibility: "CLIENT_VISIBLE", archivedAt: new Date() });
   await item({ tenantId: T, clientId: acme, projectId: pOn, title: S.cancelledTask, category: "CANCELLED", visibility: "CLIENT_VISIBLE" });
+  // THE PAIR THAT PINS SLICE 6b's ONE EXCEPTION. Both rows are
+  // CLIENT_VISIBLE and both sit in the same CANCELLED state; the ONLY
+  // difference is `kind`. The row above must stay invisible and the one
+  // below must come back as DECLINED with the agency's words on it —
+  // which is `listPortalTasks`' `where` and `portalCategory` agreeing,
+  // the pair whose precondition neither can state alone.
+  await item({
+    tenantId: T,
+    clientId: acme,
+    projectId: pOn,
+    title: SHOWN.declined,
+    category: "CANCELLED",
+    visibility: "CLIENT_VISIBLE",
+    kind: "REQUEST",
+    triageStatus: "DECLINED",
+    triageReason: SHOWN.declinedReason,
+  });
+  // …and the THIRD row of the set: a cancelled REQUEST with NO reason.
+  // `transitionState` now refuses to create one through any service, so
+  // this is planted raw — which is exactly what it is standing in for:
+  // a row from before slice 6b, or one a future import writes. The
+  // projection must NOT publish it, because "Declined" with a blank
+  // under it is the failure this whole slice exists to end. Found by
+  // both fresh reviews of the first cut, which published it.
+  await item({
+    tenantId: T,
+    clientId: acme,
+    projectId: pOn,
+    title: S.cancelledRequestNoReason,
+    category: "CANCELLED",
+    visibility: "CLIENT_VISIBLE",
+    kind: "REQUEST",
+  });
+  // …and the same outcome on an INTERNAL row, whose reason must never
+  // travel: a member can decline a request they had already made
+  // internal, and `portal_gate` — not the projection — is what keeps it
+  // off the client's screen.
+  await item({
+    tenantId: T,
+    clientId: acme,
+    projectId: pOn,
+    title: S.internalDeclined,
+    category: "CANCELLED",
+    visibility: "INTERNAL",
+    kind: "REQUEST",
+    triageStatus: "DECLINED",
+    triageReason: S.triageOfInternal,
+  });
 
   gates = await resolvePortalModuleGates(T);
 });
@@ -327,12 +401,20 @@ const titles = (list: Awaited<ReturnType<typeof listPortalTasks>>) =>
   list.projects.flatMap((p) => p.tasks.map((t) => t.title)).sort();
 
 describe("the client-visible task list", () => {
-  it("returns exactly the shared, live, non-cancelled tasks of portal-enabled projects", async () => {
+  it("returns exactly the shared, live tasks of portal-enabled projects — plus the client's own declined request", async () => {
     const list = await listPortalTasks(principal(ids.primary));
     expect(titles(list)).toEqual(
-      [SHOWN.planned, SHOWN.started, SHOWN.done, SHOWN.triaged, SHOWN.dated, `Shared, internal phase ${run}`].sort(),
+      [
+        SHOWN.planned,
+        SHOWN.started,
+        SHOWN.done,
+        SHOWN.triaged,
+        SHOWN.dated,
+        SHOWN.declined,
+        `Shared, internal phase ${run}`,
+      ].sort(),
     );
-    expect(list.shown).toBe(6);
+    expect(list.shown).toBe(7);
     expect(list.truncated).toBe(false);
     // One project, because the other three are off, another client's, or
     // another tenant's.
@@ -340,7 +422,7 @@ describe("the client-visible task list", () => {
     expect(list.projects[0]!.projectName).toBe(`Acme website ${run}`);
   });
 
-  it("speaks the portal's four categories and never the tenant's", async () => {
+  it("speaks the portal's five categories and never the tenant's", async () => {
     const list = await listPortalTasks(principal(ids.primary));
     const byTitle = new Map(list.projects.flatMap((p) => p.tasks).map((t) => [t.title, t]));
     expect(byTitle.get(SHOWN.planned)?.category).toBe("PLANNED");
@@ -349,6 +431,66 @@ describe("the client-visible task list", () => {
     // TRIAGE is "Requested", not "Planned": it is the client's own
     // submission and nobody has agreed to it yet (portal.ts).
     expect(byTitle.get(SHOWN.triaged)?.category).toBe("REQUESTED");
+    expect(byTitle.get(SHOWN.declined)?.category).toBe("DECLINED");
+  });
+
+  /**
+   * THE PAIR THE FOUNDER DECIDED ON 2026-09-22, and the reason this
+   * fixture exists at all: before slice 6b the one row on a client's
+   * list that they had submitted THEMSELVES vanished silently the moment
+   * the agency said no.
+   *
+   * Both rows below are CLIENT_VISIBLE, in the same project, in the same
+   * CANCELLED state. The only difference between them is `kind` — which
+   * `listPortalTasks` filters on and never selects (it is on the portal
+   * plane's never-selected list), so this is the only place the pairing
+   * can be observed at all.
+   */
+  it("a cancelled REQUEST comes back as DECLINED with its reason; a cancelled TASK stays invisible", async () => {
+    const list = await listPortalTasks(principal(ids.primary));
+    const byTitle = new Map(list.projects.flatMap((p) => p.tasks).map((t) => [t.title, t]));
+
+    const declined = byTitle.get(SHOWN.declined);
+    expect(declined?.category).toBe("DECLINED");
+    expect(declined?.declinedReason).toBe(SHOWN.declinedReason);
+
+    // The ordinary cancelled task: still nothing. Measured from both
+    // ends, as the archived-project test does — the row exists and is
+    // absent from the answer, so this is the projection's doing and not
+    // an empty fixture.
+    expect(titles(list)).not.toContain(S.cancelledTask);
+    const db = getPlatformClient();
+    expect(await db.workItem.count({ where: { tenantId: T, title: S.cancelledTask } })).toBe(1);
+  });
+
+  it("a cancelled REQUEST with NO reason stays invisible — the projection will not publish an answer it cannot show", async () => {
+    // The fail-safe, and the case the first cut of this slice got
+    // wrong: it keyed only on `kind`, so this row came back as
+    // "Declined" with `declinedReason: null` and the page rendered the
+    // chip with nothing under it. Both fresh reviews found it.
+    //
+    // The write path now refuses to MAKE such a row, so the fixture is
+    // planted raw and stands in for what the write path cannot cover:
+    // rows that predate this slice, and whatever writes one next.
+    const list = await listPortalTasks(principal(ids.primary));
+    expect(titles(list)).not.toContain(S.cancelledRequestNoReason);
+    const db = getPlatformClient();
+    expect(
+      await db.workItem.count({ where: { tenantId: T, title: S.cancelledRequestNoReason } }),
+    ).toBe(1);
+  });
+
+  it("`declinedReason` is null on every task that is not DECLINED", async () => {
+    // The column can only be set on a DECLINED/DUPLICATE row
+    // (`work_item_triage_reason_iff_outcome`), but the projection ALSO
+    // gates it on the category rather than on the column being present —
+    // so if a later writer ever put a reason on a live task, this is the
+    // assertion that fails first.
+    const list = await listPortalTasks(principal(ids.primary));
+    for (const task of list.projects.flatMap((p) => p.tasks)) {
+      if (task.category === "DECLINED") expect(task.declinedReason).not.toBeNull();
+      else expect(task.declinedReason).toBeNull();
+    }
   });
 
   it("shows a CLIENT_VISIBLE phase and never an INTERNAL one", async () => {
@@ -366,6 +508,10 @@ describe("the client-visible task list", () => {
     const tasks = list.projects[0]!.tasks;
     expect(tasks[0]!.title).toBe(SHOWN.dated);
     expect(tasks.slice(1).every((t) => t.targetDate === null)).toBe(true);
+    // The DECLINED row is ordered by the same two keys as every other —
+    // it is undated, so it lands among the undated. What puts it at the
+    // FOOT of the card is the page's category grouping
+    // (`PORTAL_TASK_CATEGORIES` ends with DECLINED), not this order.
   });
 
   it("gives a COLLABORATOR the same list — the capability is in both profiles", async () => {
@@ -396,6 +542,7 @@ describe("no INTERNAL fact reaches a contact", () => {
         expect(Object.keys(task).sort()).toEqual([
           "category",
           "completedAt",
+          "declinedReason",
           "id",
           "phase",
           "targetDate",

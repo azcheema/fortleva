@@ -80,7 +80,22 @@ export async function ensureProjectStates(
   });
 }
 
-type StateRow = NonNullable<Awaited<ReturnType<TenantDb["workflowState"]["findFirst"]>>>;
+/**
+ * THE SIX FIELDS `transitionState` ACTUALLY READS OFF A STATE, as a
+ * `Pick` rather than the whole row.
+ *
+ * It was the whole row until slice 6b. Narrowing it costs nothing —
+ * `changeState`'s select-less `findFirst` still satisfies a `Pick`
+ * structurally — and buys one thing: `triage.ts` can resolve its target
+ * state with an explicit `select` and still pass it here. That file is
+ * now in `portal-projections.test.ts`'s STRUCTURAL tier, which forbids
+ * a select-less read, so without this the tripwire and the state
+ * machine's signature would have been in direct conflict.
+ */
+export type StateRow = Pick<
+  NonNullable<Awaited<ReturnType<TenantDb["workflowState"]["findFirst"]>>>,
+  "id" | "projectId" | "category" | "requiresApproval" | "name" | "seedKey"
+>;
 /**
  * A whole work_item row MINUS the description pair. Those two columns
  * are a ProseMirror document and its extracted text — up to 512 KB and
@@ -118,6 +133,30 @@ export type StateChange = {
 
 
 /**
+ * WHAT A TRIAGE VERB HANDS THE STATE MACHINE (slice 6b, triage.ts).
+ *
+ * The four triage columns move together and only this way. Passing it
+ * does two things no other caller may do: it WAIVES the refusal below
+ * on leaving TRIAGE for a CANCELLED state, and it writes the triage
+ * columns in the SAME `UPDATE` as the state — so a declined request
+ * never exists, even for the width of a statement, in a version where
+ * the client can no longer see it and nobody has said why.
+ *
+ * It is an argument rather than a second function because §3.1 pins
+ * ONE state machine for every entry point ("drag, inline, palette,
+ * bulk, triage, import"); a triage that wrote its own `UPDATE` would be
+ * the second, and the activity row and the audit event are exactly what
+ * the second one would forget.
+ */
+export type TriageWrite = {
+  /** `null` is ACCEPT: the row leaves triage with nothing left to say. */
+  readonly triageStatus: ItemRow["triageStatus"];
+  readonly triageReason: string | null;
+  readonly snoozedUntil: Date | null;
+  readonly duplicateOfId: string | null;
+};
+
+/**
  * The state machine (§6.14), as ONE transaction step so every entry
  * point — inline select, board drop, "Move to…", palette, bulk, triage,
  * import — runs the same code: syncs stateCategory (belt: the trigger
@@ -131,12 +170,24 @@ export type StateChange = {
  * the caller read `item` under that row's lock (changeState does).
  * Parent rollup automation (autoStartParent/autoCompleteParent) is a
  * later slice.
+ *
+ * SINCE SLICE 6b IT ALSO OWNS THE TRIAGE COLUMNS, and that is a
+ * correctness fix and not only a feature. Leaving a TRIAGE state was
+ * already an ordinary move — a member drags a request from the lane
+ * into "To do" and it is accepted — but nothing cleared
+ * `triage_status`, so the row sat in To do still marked `PENDING`,
+ * where the lane's own query would go on finding it forever. It is
+ * cleared HERE rather than in the triage service because the drag, the
+ * picker, the palette and the bulk bar all reach this function and none
+ * of them reaches that one — and the same argument is why the REFUSAL
+ * below lives here too.
  */
 export async function transitionState(
   tx: TenantDb,
   ctx: WorkCtx,
   item: ItemRow,
   state: StateRow,
+  triage?: TriageWrite,
 ): Promise<StateChange> {
   if (state.projectId !== item.projectId) deny("NOT_FOUND");
   // Already there: no row, no activity, no audit — and the caller is
@@ -159,6 +210,36 @@ export async function transitionState(
   // verb's job — a plain state change into it would reach the database and
   // come back as a raw constraint error. Leaving triage is an ordinary move.
   if (state.category === "TRIAGE") fail("INVALID_INPUT", "triage entry is not a state change");
+  // ...AND **ENDING A REQUEST** IS THE TRIAGE VERB TOO, unless the
+  // caller IS that verb. This is the founder's 2026-09-22 decision held
+  // at the one seam every writer passes through.
+  //
+  // `portal.ts` shows a cancelled REQUEST to the client as DECLINED
+  // **with the agency's reason**, so a plain move into Cancelled — a
+  // board drag, the state picker, a bulk change — would produce the one
+  // row the portal cannot render honestly: a decline with nothing to
+  // show for it. Refused here rather than papered over in the
+  // projection, because the member who dragged it is the only person
+  // who knows why, and a moment later nobody does.
+  //
+  // **IT KEYS ON `kind`, NOT ON THE CATEGORY THE ROW IS LEAVING**, and
+  // the first cut of this slice got that wrong in a way two independent
+  // reviews both found. Keyed on `item.stateCategory === "TRIAGE"` it
+  // guarded only the one-step route, and the ordinary two-step one —
+  // accept the request into "To do", drop it weeks later — sailed past
+  // and published a bare "Declined" with nothing under it. Worse, a
+  // member holding only `work_item:edit` could reach that end state,
+  // which made `work_item:triage` a speed bump rather than a gate for
+  // the one outcome it exists to govern. A request is a thing a client
+  // ASKED FOR for as long as it exists, so ending one always owes them
+  // an answer, whenever it happens.
+  //
+  // Every OTHER move stays ordinary, which is the point: dragging a
+  // request into "To do" IS accepting it, and asking a member to use a
+  // menu for that would be friction with no safety behind it.
+  if (item.kind === "REQUEST" && state.category === "CANCELLED" && !triage) {
+    fail("INVALID_INPUT", "ending a request is work_item:triage");
+  }
   // The 2W-R review gate: entering a requiresApproval state (the seeded
   // Done) needs work_item:approve ON TOP of the work_item:edit every
   // caller has already passed. Leaving a gated state (reopening) is
@@ -178,6 +259,43 @@ export async function transitionState(
         : item.startedAt;
   const completedAt = to === "DONE" ? (item.completedAt ?? new Date()) : null;
 
+  // THE TRIAGE COLUMNS, IN THIS SAME STATEMENT. Three cases, and the
+  // middle one is the one that used to be missing:
+  //
+  //   · a triage verb passed its own values            → write them
+  //   · the row is LEAVING a triage OR cancelled state → clear all four
+  //   · anything else                                  → touch nothing
+  //
+  // **BOTH HALVES OF THE MIDDLE CASE ARE LOAD-BEARING.** Leaving TRIAGE
+  // is an accept by any door, and without the clear the row sat in "To
+  // do" still marked `PENDING` for ever. Leaving CANCELLED is a REOPEN,
+  // and without the clear a request that was declined and then thought
+  // better of kept its `DECLINED` status and the old reason on a live
+  // row — so a later ordinary cancel republished those words as the
+  // agency's answer to a decision nobody had made. Both reviews found
+  // that second one; it is why this reads "or cancelled" rather than
+  // just "triage".
+  //
+  // The clear is `undefined`-free on purpose: an explicit `null` on each
+  // of the four is what makes "a live row carries no triage outcome"
+  // true by construction rather than by every caller's memory.
+  // `work_item_triage_reason_iff_outcome` (20260922120000) refuses the
+  // combination this could otherwise mint — a reason with no outcome.
+  const leavingTriageOrCancelled =
+    item.stateCategory === "TRIAGE" || item.stateCategory === "CANCELLED";
+  const triageColumns: Partial<
+    Pick<ItemRow, "triageStatus" | "triageReason" | "snoozedUntil" | "duplicateOfId">
+  > = triage
+    ? {
+        triageStatus: triage.triageStatus,
+        triageReason: triage.triageReason,
+        snoozedUntil: triage.snoozedUntil,
+        duplicateOfId: triage.duplicateOfId,
+      }
+    : leavingTriageOrCancelled
+      ? { triageStatus: null, triageReason: null, snoozedUntil: null, duplicateOfId: null }
+      : {};
+
   // `select` for the same reason `ItemRow` above carries its omit: a
   // select-less `update` returns the WHOLE row, the 512 KB ProseMirror
   // description included, and this path runs on every board drop, every
@@ -187,7 +305,7 @@ export async function transitionState(
   // which is the value the caller actually wants.
   const row = await tx.workItem.update({
     where: { id: item.id },
-    data: { stateId: state.id, stateCategory: to, startedAt, completedAt },
+    data: { stateId: state.id, stateCategory: to, startedAt, completedAt, ...triageColumns },
     select: {
       id: true,
       stateId: true,

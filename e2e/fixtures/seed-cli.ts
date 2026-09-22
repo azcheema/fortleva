@@ -124,6 +124,7 @@ const DBTEST_PREFIXES = [
   "time-",
   "totals-",
   "tree-",
+  "triage-",
   "work-",
   "wu-",
 ] as const;
@@ -791,6 +792,23 @@ async function removeTenant(
   await db.comment.deleteMany({ where: { tenantId } }); // mentions cascade
   await db.label.deleteMany({ where: { tenantId } }); // work_item_label cascades
   await db.workItemActivity.deleteMany({ where: { tenantId } });
+  // `work_item` has TWO self-referencing foreign keys and both must be
+  // unwound before the delete. `parent_id` is handled by the two passes
+  // below; `duplicate_of_id` is `ON DELETE RESTRICT`
+  // (20260820170000:502) and is NOT satisfied by the referencing row
+  // being deleted in the same statement, so a single DUPLICATE row left
+  // in a tenant made `removeTenant` throw `23503`.
+  //
+  // IT HAD NO WRITER UNTIL SLICE 6b, which is why this was never
+  // needed and why it is needed now: `sweepDbtests` loops over stale
+  // tenants with no try/catch, so ONE orphan holding a duplicate would
+  // abort the whole sweep and leave every later tenant uncollected.
+  // Found by both fresh reviews; the dbtest's own teardown already did
+  // exactly this and the harness was not given the same treatment.
+  await db.workItem.updateMany({
+    where: { tenantId, duplicateOfId: { not: null } },
+    data: { triageStatus: null, triageReason: null, duplicateOfId: null },
+  });
   await db.workItem.deleteMany({ where: { tenantId, parentId: { not: null } } });
   await db.workItem.deleteMany({ where: { tenantId } });
   await db.workflowState.deleteMany({ where: { tenantId } });

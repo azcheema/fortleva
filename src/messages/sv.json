@@ -2100,6 +2100,7 @@
       "phase": "Fas: {name}",
       "due": "Klart senast {date}",
       "completed": "Slutfördes {date}",
+      "declinedReason": "Svar från din byrå: {reason}",
       "truncated": "Visar de första {count} uppgifterna. Hör av dig till din byrå om något saknas."
     },
     "empty": {
@@ -2198,7 +2199,8 @@
       "REQUESTED": "Efterfrågat",
       "PLANNED": "Planerat",
       "IN_PROGRESS": "Pågår",
-      "DONE": "Klart"
+      "DONE": "Klart",
+      "DECLINED": "Avböjt"
     },
     "projectHealth": {
       "ON_TRACK": "Enligt plan",
