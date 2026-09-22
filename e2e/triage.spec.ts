@@ -249,4 +249,42 @@ test.describe("the triage lane", () => {
       timeout: 30_000,
     });
   });
+
+  test("/home carries the triage count, and the row is the way into the lane", async ({ page, browser }) => {
+    // WHAT ONLY A BROWSER CAN SAY HERE. The count itself is pinned
+    // against the lane's own rows in `triage.dbtest.ts`; what no dbtest
+    // can establish is that the card RENDERS on the landing page at all
+    // — it is drawn only when something is waiting, behind two
+    // permissions and a scope-composed query — and that its row is a
+    // real link to a lane that then shows the request. Rule 8's card
+    // waited since 2W for a writer; this is the proof it arrived.
+    const title = await submitRequest(browser, "Please add a second contact form.");
+
+    await page.goto("/home");
+    const card = page.getByTestId("home-triage");
+    await expect(card).toBeVisible({ timeout: 30_000 });
+
+    // Identified by where it GOES, not by the project's name: the seed
+    // does not publish one, and the link target is the row's actual
+    // contract anyway.
+    const row = card.getByTestId("home-triage-row").filter({
+      has: page.locator(`a[href="/projects/${seed.projectKey}/triage"]`),
+    });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    // /home is a GLANCE: it names the project, never the client's words.
+    // A request title leaking onto the landing page would make this card
+    // a second lane, and a smaller one. Asserted on the whole CARD
+    // rather than the row — widening it costs nothing and covers the
+    // "N more projects" line too (security review). It is preceded by a
+    // visibility assertion on purpose: a `not.toContainText` against a
+    // locator that resolves to nothing passes trivially.
+    await expect(card).not.toContainText(title);
+
+    // THE ROW IS THE LINK — clicked, not navigated past. A card whose
+    // number is right and whose row goes nowhere is the failure §5.8
+    // exists to prevent.
+    await row.click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${seed.projectKey}/triage$`), { timeout: 30_000 });
+    await expect(laneRow(page, title)).toBeVisible({ timeout: 30_000 });
+  });
 });

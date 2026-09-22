@@ -206,6 +206,11 @@
       "unread": "{count, plural, one {# oläst avisering} other {# olästa aviseringar}}",
       "open": "Öppna inkorgen"
     },
+    "triage": {
+      "title": "Kundförfrågningar",
+      "waiting": "{count, plural, one {# förfrågan väntar på svar} other {# förfrågningar väntar på svar}}",
+      "moreProjects": "{count, plural, one {# projekt till har förfrågningar som väntar} other {# projekt till har förfrågningar som väntar}}"
+    },
     "time": {
       "title": "Din tid",
       "week": "Den här veckan",

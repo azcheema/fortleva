@@ -9,7 +9,7 @@ import { setupTenant } from "@/members/dbtest-fixture";
 import { createItem } from "./items";
 import { createRequest } from "./requests";
 import { changeState, ensureProjectStates } from "./states";
-import { listTriage } from "./triage-lane";
+import { listTriage, triageGlance, type TriageGlance } from "./triage-lane";
 import { triageItem } from "./triage";
 import { TRIAGE_REASON_MAX, TRIAGE_SNOOZE_MAX_DAYS } from "./triage-limits";
 
@@ -809,5 +809,157 @@ describe("the trail", () => {
         where: { tenantId: f.tenantId, workItemId: id },
       }),
     ).toBe(beforeActivity);
+  });
+});
+
+/**
+ * `/home`'S TRIAGE COUNT — the card rule 8 has owed since 2W.
+ *
+ * Every assertion here is RELATIVE, never an absolute total, and that
+ * is deliberate: this suite has no `beforeEach` wipe, so the describes
+ * above leave whatever they leave in triage. A test asserting "the
+ * total is 3" would pass today and fail the day somebody adds a case
+ * ten describes earlier — the classic fixture-order flake. What is
+ * measured instead is the property that actually matters: **the card's
+ * number equals the lane's rows, for the same member at the same
+ * moment.**
+ */
+describe("the /home count", () => {
+  beforeAll(async () => {
+    // Only the portal switch is load-bearing: the intake path calls
+    // `ensureProjectStates` itself. Harmless to the one existing test
+    // that uses this project — that one is refused by `assertInScope`
+    // before any of it is read.
+    await f.platform.project.update({
+      where: { id: unassignedProjectId },
+      data: { portalEnabled: true },
+    });
+  }, 60_000);
+
+  const countFor = (glance: TriageGlance | null, key: string) =>
+    glance?.projects.find((p) => p.projectKey === key)?.count ?? 0;
+
+  it("says exactly what the lane it links to will show", async () => {
+    await newRequest("Glance agreement A");
+    await newRequest("Glance agreement B");
+
+    // ONE moment, two reads: the card and the lane, as a member sees
+    // them. A card saying 3 over a lane showing 2 is the surface that
+    // exists to tell the truth about a queue telling a lie about it.
+    const [glance, lane] = await Promise.all([
+      triageGlance(ownerCtx()),
+      listTriage(ownerCtx(), projectId),
+    ]);
+    expect(countFor(glance, "TRI")).toBe(lane.entries.length);
+    expect(lane.entries.length).toBeGreaterThan(0);
+  });
+
+  it("excludes a request snoozed into the future — in neither, by the shared predicate", async () => {
+    const before = countFor(await triageGlance(ownerCtx()), "TRI");
+    const id = await newRequest("Parked for a fortnight");
+    expect(countFor(await triageGlance(ownerCtx()), "TRI")).toBe(before + 1);
+
+    await triageItem(ownerCtx(), id, {
+      verb: "SNOOZE",
+      until: new Date(Date.now() + 14 * 86_400_000),
+    });
+
+    const [glance, lane] = await Promise.all([
+      triageGlance(ownerCtx()),
+      listTriage(ownerCtx(), projectId),
+    ]);
+    // Back where it started on the card, and gone from the lane's rows —
+    // the two cannot disagree, because they are one expression.
+    expect(countFor(glance, "TRI")).toBe(before);
+    expect(countFor(glance, "TRI")).toBe(lane.entries.length);
+    expect(lane.entries.some((e) => e.id === id)).toBe(false);
+    // And it is not LOST: the lane still says it is parked.
+    expect(lane.snoozedCount).toBeGreaterThan(0);
+  });
+
+  it("never puts a project the member's scope cannot reach on their home page", async () => {
+    // A request in the project the employee has no `MemberProject` for.
+    await withTenant(f.tenantId, { type: "system" }, (tx) =>
+      createRequest(tx, f.tenantId, {
+        projectId: unassignedProjectId,
+        title: "Out of reach",
+        body: null,
+        reportedByContactId: contactId,
+      }),
+    );
+
+    const [mine, theirs] = await Promise.all([
+      triageGlance(employeeCtx()),
+      triageGlance(ownerCtx()),
+    ]);
+    // THE NAME IS THE POINT, not only the number: scope is composed into
+    // the query, so a project this member cannot open never reaches the
+    // page to be counted OR named. Asserted as a difference between two
+    // seats rather than as a total, so nothing an earlier describe left
+    // behind can decide it.
+    expect(countFor(theirs, "TRIX")).toBeGreaterThan(0);
+    expect(countFor(mine, "TRIX")).toBe(0);
+    expect(mine?.projects.some((p) => p.projectName === "Unassigned project")).toBe(false);
+    // The employee still sees its OWN project, so the zero above is
+    // about scope and not about a read that answered nothing.
+    expect(countFor(mine, "TRI")).toBeGreaterThan(0);
+  });
+
+  it("keeps counting an ARCHIVED project's requests — archiving is not an answer", async () => {
+    // **THE CASE BOTH FRESH REVIEWS FOUND, and nothing covered it.** The
+    // first cut of `triageGlance` filtered `project: { archivedAt: null }`,
+    // copying `listMyWork`. Follow that through: `archiveProject` leaves
+    // child rows untouched, `portal.ts` already hides an archived
+    // project's tasks from the CLIENT, and the filter would have hidden
+    // them from the AGENCY too — a client's own request invisible to
+    // everyone but whoever typed the archived project's triage URL. The
+    // founder decided the mirror of this in 6b: an ANSWERED request
+    // outlives the archive. An unanswered one owes the same.
+    const id = await newRequest("Archived but still owed");
+    const before = countFor(await triageGlance(ownerCtx()), "TRI");
+    expect(before).toBeGreaterThan(0);
+
+    await f.platform.project.update({
+      where: { id: projectId },
+      data: { status: "ARCHIVED", archivedAt: new Date() },
+    });
+    try {
+      // Still counted, and still exactly what the lane will show.
+      const [glance, lane] = await Promise.all([
+        triageGlance(ownerCtx()),
+        listTriage(ownerCtx(), projectId),
+      ]);
+      expect(countFor(glance, "TRI")).toBe(before);
+      expect(countFor(glance, "TRI")).toBe(lane.entries.length);
+      expect(lane.entries.some((e) => e.id === id)).toBe(true);
+    } finally {
+      await f.platform.project.update({
+        where: { id: projectId },
+        data: { status: "ACTIVE", archivedAt: null },
+      });
+    }
+  });
+
+  it("answers NULL for a member who may not triage — the permission, alone", async () => {
+    // ADMIN is the seat that isolates it, the reason this file's own
+    // header gives: `client:view_all` is C M A so scope passes, and
+    // `work_item:triage` is C M E so the permission does not. Delete the
+    // `requireAccess` line from `triageGlance` and this test is the one
+    // that fails.
+    expect(await triageGlance(adminCtx())).toBeNull();
+    // The positive twin, same tenant, same moment: a seat that holds it
+    // gets a card. Without this, a read that answered null for EVERY
+    // caller would pass the assertion above.
+    expect(await triageGlance(employeeCtx())).not.toBeNull();
+  });
+
+  it("is a refusal, never a throw — /home must not 500 for a member with no triage rights", async () => {
+    // `listTriage` denies; this one cannot, because it runs on every
+    // member's landing page. The distinction is the whole reason there
+    // are two functions rather than a flag.
+    await expect(triageGlance(adminCtx())).resolves.toBeNull();
+    const refusal = await listTriage(adminCtx(), projectId).catch((e: unknown) => e);
+    expect(refusal).toBeInstanceOf(AuthzError);
+    expect((refusal as AuthzError).reason).toBe("FORBIDDEN");
   });
 });

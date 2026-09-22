@@ -206,6 +206,11 @@
       "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
       "open": "Open inbox"
     },
+    "triage": {
+      "title": "Client requests",
+      "waiting": "{count, plural, one {# request waiting for an answer} other {# requests waiting for an answer}}",
+      "moreProjects": "{count, plural, one {# more project has requests waiting} other {# more projects have requests waiting}}"
+    },
     "time": {
       "title": "Your time",
       "week": "This week",

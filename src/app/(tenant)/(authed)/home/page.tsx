@@ -6,7 +6,7 @@ import { Page, PageHeader } from "@/components/semantic";
 import { requireTenantContext } from "@/members/tenant-context";
 import { isoDateOf } from "@/lib/duration";
 import { canTrackTime, getCurrentTimerOnce, myTimeTotals } from "@/modules/time";
-import { listMyWork, resolveRowState } from "@/modules/work";
+import { listMyWork, resolveRowState, triageGlance } from "@/modules/work";
 import { inboxGlance } from "@/notify/inbox";
 
 import { getTimerStateAction, type TimerPillState } from "../time/actions";
@@ -14,6 +14,7 @@ import { labelOf } from "../time/label";
 import { resolveWeekContext } from "../time/week-context";
 import { InboxCard } from "./inbox-card";
 import { MyWorkQueue, type QueueRow } from "./my-work-queue";
+import { TriageCard } from "./triage-card";
 import { HomeTimeStrip, type HomeTimeStripProps } from "./time-strip";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -45,11 +46,22 @@ const greetingKey = (hour: number): "morning" | "afternoon" | "evening" =>
  * it is at most five rows and a queue can run to a hundred, which would
  * put the glance two phone screens down (review, slice 23).
  *
- * NOT HERE, ON PURPOSE: rule 8's "waiting on client" and "triage count".
- * Nothing in 2W can put a task in either — no code writes a contact
- * assignee or a `triageStatus` until the portal (Phase 3) — so both would
- * be cards whose number is always zero, the tiles this comment's first
- * paragraph took away. They arrive with the writers that fill them.
+ * THE TRIAGE COUNT (Phase 3, slice 6c): rule 8's, and it waited here
+ * for a writer since 2W. This comment used to say it and "waiting on
+ * client" were absent on purpose, because nothing could put a task in
+ * either and both would have been cards whose number is always zero —
+ * the tiles the first paragraph took away. Slice 6a's portal intake
+ * gave `triageStatus` its writer and 6b gave the requests a lane to be
+ * answered in, so the count arrives now: `triageGlance` answers `null`
+ * without `work_item:triage`, and the card is drawn only while
+ * something is actually waiting (the inbox card's rule).
+ *
+ * STILL NOT HERE: rule 8's "waiting on client". Its writer landed in
+ * 6c's first commit (`assigneeContactId` finally has one), but there is
+ * nowhere on the member plane that LISTS contact-assigned work yet, so
+ * the card would be a number with no link — and §5.8's rule is that a
+ * surface offers the verb that changes it. It ships with the surface
+ * that gives it a destination, in 6c's second commit.
  *
  * THE QUEUE'S TIMER (slice 24): the rows carry `T` and a start-stop
  * button, which need the member's timer as the pill sees it. For a member
@@ -63,7 +75,7 @@ export default async function HomePage() {
   // redirected to the workspace picker rather than shown an empty queue.
   const { membership, actor, userEmail } = await requireTenantContext();
   const ctx = { tenantId: membership.tenantId, actor };
-  const [session, t, tStates, { prefs, timezone, today, week, weekLabel }, tracks, myWork, glance] = await Promise.all([
+  const [session, t, tStates, { prefs, timezone, today, week, weekLabel }, tracks, myWork, glance, triage] = await Promise.all([
     requireMemberSession(),
     getTranslations("home"),
     getTranslations("projects.states.seed"),
@@ -71,6 +83,7 @@ export default async function HomePage() {
     canTrackTime(ctx),
     listMyWork(ctx),
     inboxGlance(ctx),
+    triageGlance(ctx),
   ]);
   const firstName = session.user.name.split(/\s+/)[0] || userEmail;
   // The viewer's clock: Member.timezone → tenant `ui.timezone` → Europe/Stockholm (UI.md §8).
@@ -135,6 +148,22 @@ export default async function HomePage() {
             count can disagree with the rows by a notification read or written
             between them — this guard only keeps that from drawing an EMPTY card. */}
         {glance.rows.length > 0 ? <InboxCard glance={glance} serverNow={new Date().toISOString()} /> : null}
+        {/* ABOVE the queue and BELOW the inbox: a client waiting on an
+            answer outranks the member's own list — nobody else is going
+            to notice it — while the inbox stays first because it is at
+            most five rows and already has that place.
+
+            ON THE ROWS, NOT ON `total`, and a code review caught the
+            first cut doing the opposite while a comment here claimed
+            this. Gating on `total` is what PRODUCES an empty card: a
+            glance whose every project fell out of the name lookup would
+            render a heading, "3 requests waiting for an answer", an
+            empty list and a stray "1 more project" line — a number with
+            no way to act on it, the §5.8 failure this card's own
+            docblock says it prevents. It should be unreachable now that
+            the lookup carries the member's scope, which is exactly why
+            the guard is on the thing the member can actually use. */}
+        {triage && triage.projects.length > 0 ? <TriageCard glance={triage} /> : null}
         {queue && myWork ? <MyWorkQueue rows={queue} truncated={myWork.truncated} today={today} timer={queueTimer} /> : null}
       </div>
     </Page>

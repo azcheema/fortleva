@@ -1,4 +1,5 @@
-import { assertInScope, isAuthorized } from "@/authz/authorize";
+import { assertInScope, isAuthorized, scopeWhere } from "@/authz/authorize";
+import { AuthzError } from "@/authz/errors";
 import { withTenant } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 
@@ -40,6 +41,61 @@ import { principalOf, type WorkCtx } from "./states";
  * (`truncated`) instead of pretending to be complete.
  */
 export const TRIAGE_LANE_LIMIT = 100;
+
+/**
+ * WHICH ROWS ARE "WAITING FOR AN ANSWER" — the lane's own definition,
+ * as one expression, because `/home`'s triage count has to agree with
+ * the lane it links to and a copied predicate is a number that drifts.
+ *
+ * A member who opens the lane from a card saying "3" and finds two rows
+ * has been told something false by the surface that exists to tell them
+ * the truth about their queue. The two callers differ in how they narrow
+ * it — the lane by one `projectId`, the glance by the member's whole
+ * scope — so the shared part is exactly this.
+ *
+ * **AN ARCHIVED PROJECT'S REQUESTS ARE COUNTED, and getting that wrong
+ * is what both fresh reviews caught.** The first cut added
+ * `project: { archivedAt: null }` at the glance's call site — copying
+ * `listMyWork`, and defensible in isolation — which made the two
+ * callers disagree in exactly the case that matters most. Follow it
+ * through: `archiveProject` leaves child rows untouched, `portal.ts`
+ * hides an archived project's tasks from the CLIENT, and this card
+ * would then have hidden them from the AGENCY. Two of a client's own
+ * requests would have been invisible to everyone but whoever typed the
+ * archived project's triage URL — against the one rule this slice
+ * family exists to hold, that a client's own request never disappears
+ * without a reason. The founder already decided the mirror of this in
+ * 6b (an ANSWERED request outlives the archive); an UNANSWERED one owes
+ * the same.
+ *
+ * So the predicate is the whole predicate, at both call sites, and
+ * "the card cannot disagree with its lane" is true rather than nearly
+ * true. Archiving a project does not discharge the obligation to answer
+ * what the client already asked — and the card stops showing it the
+ * moment somebody does.
+ *
+ * `now` is a PARAMETER rather than read inside, so a caller that makes
+ * two statements takes its clock once and they cannot disagree about a
+ * row whose snooze falls between them (`listTriage` relies on this for
+ * its list and its snoozed count).
+ *
+ * **COMPOSE IT UNDER AN `AND`, NEVER BY SPREADING**, when a scope
+ * fragment is involved: that fragment carries a top-level `OR` and so
+ * does this, and one would silently replace the other — `my-work.ts`
+ * records the same rule and the inbox's page-2 bug that taught it.
+ */
+export const triageWaitingWhere = (tenantId: string, now: Date) => ({
+  tenantId,
+  stateCategory: "TRIAGE" as const,
+  // REQUESTS, which is what the surface says it shows — see `listTriage`.
+  kind: "REQUEST" as const,
+  deletedAt: null,
+  archivedAt: null,
+  // Pending, or snoozed to a moment that has passed. `OR` rather than a
+  // negated comparison, because a NULL `snoozedUntil` does not satisfy
+  // one and every PENDING row would vanish.
+  OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
+});
 
 /** One request awaiting an answer, as the lane draws it. */
 export type TriageEntry = {
@@ -143,27 +199,17 @@ export async function listTriage(ctx: WorkCtx, projectId: string): Promise<Triag
     const now = new Date();
 
     const rows = await tx.workItem.findMany({
-      where: {
-        tenantId: ctx.tenantId,
-        projectId,
-        stateCategory: "TRIAGE",
-        // **REQUESTS, WHICH IS WHAT THE SURFACE SAYS IT SHOWS.** Nothing
-        // but `createRequest` can put a row in a TRIAGE state today, so
-        // this is a belt — but the lane's copy reads "Requests your
-        // client has sent" and each row is bylined "From …", and two of
-        // the four verbs (ACCEPT, SNOOZE) would happily run on a
-        // non-request while the other two refuse it. A read that matches
-        // the surface it feeds cannot drift into showing rows whose
-        // verbs half work.
-        kind: "REQUEST",
-        deletedAt: null,
-        archivedAt: null,
-        // Pending, or snoozed to a moment that has passed. `OR` rather
-        // than `NOT snoozedUntil > now`, because a NULL `snoozedUntil`
-        // does not satisfy a negated comparison in SQL and every
-        // PENDING row would have vanished from the lane.
-        OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
-      },
+      // **THE SHARED PREDICATE**, narrowed to this project. `/home`'s
+      // triage count uses the same expression narrowed to the member's
+      // scope instead, which is what keeps the card's number and this
+      // list from ever disagreeing. Nothing but `createRequest` can put
+      // a row in a TRIAGE state today, so the `kind` term is a belt —
+      // but the lane's copy reads "Requests your client has sent" and
+      // each row is bylined "From …", and two of the four verbs (ACCEPT,
+      // SNOOZE) would happily run on a non-request while the other two
+      // refuse it. A read that matches the surface it feeds cannot drift
+      // into showing rows whose verbs half work.
+      where: { ...triageWaitingWhere(ctx.tenantId, now), projectId },
       select: {
         id: true,
         number: true,
@@ -233,5 +279,154 @@ export async function listTriage(ctx: WorkCtx, projectId: string): Promise<Triag
       snoozedCount,
       canDecline,
     };
+  });
+}
+
+/** The most projects `/home`'s triage card draws as rows. */
+export const TRIAGE_GLANCE_PROJECTS = 5;
+
+/** One project with requests waiting, as the card draws it. */
+export type TriageGlanceProject = {
+  readonly projectKey: string;
+  readonly projectName: string;
+  readonly count: number;
+};
+
+export type TriageGlance = {
+  /**
+   * EVERY waiting request the member's scope reaches — never just the
+   * ones in `projects` below, and an archived project's included (see
+   * `triageWaitingWhere`: archiving does not discharge the obligation
+   * to answer).
+   *
+   * IT IS UNCAPPED WHERE THE LANE IS NOT: `listTriage` stops at
+   * `TRIAGE_LANE_LIMIT` rows and says `truncated`, so a project with
+   * 137 waiting shows 137 here over a lane drawing 100. That is the
+   * right way round — the card's job is to say how much is owed, and
+   * the lane's is to be usable — but it is the one sense in which
+   * "the card says what the lane will show" is bounded. The heading says this number and the rows
+   * may be a subset of it, which is the opposite of the queue's rule
+   * (its group counts are of the rows shown, because its cap cuts from
+   * the END of an ordered list and a count of the rest would be a
+   * number nobody could act on). Here the cap cuts PROJECTS off a
+   * grouped total that is already exact, so saying the true total costs
+   * nothing and hiding it would understate a backlog.
+   */
+  readonly total: number;
+  /** The busiest projects first, at most `TRIAGE_GLANCE_PROJECTS`. */
+  readonly projects: readonly TriageGlanceProject[];
+  /** Projects with waiting requests that `projects` does not name. */
+  readonly moreProjects: number;
+};
+
+/**
+ * `/home`'s TRIAGE COUNT (UI.md rule 8) — how many client requests are
+ * waiting for an answer, across every project this member's scope
+ * reaches, grouped by project.
+ *
+ * **IT WAITED FOR A WRITER SINCE 2W AND NOW HAS ONE.** `home/page.tsx`
+ * carried a comment saying this card and "waiting on client" were
+ * absent on purpose, because nothing could put a task in either — a
+ * card whose number is always zero is 110px of a phone screen spent
+ * saying nothing. Slice 6a's intake gave `triageStatus` its writer and
+ * 6b gave the lane somewhere to send people, so this half arrives now;
+ * the other half waits for a member-side surface that lists
+ * contact-assigned work, which is slice 6c's second commit.
+ *
+ * **PER PROJECT, BECAUSE THE LANE IS PER PROJECT.** `/projects/[key]/triage`
+ * is the only place a request can be answered, so a single tenant-wide
+ * number would be a count with nowhere to go — and §5.8's rule is that
+ * a surface offers the verb that changes what it shows. Each row is one
+ * link to one lane, the queue row's shape.
+ *
+ * **GATED ON `work_item:triage`, THE LANE'S OWN CODE**, and on
+ * `project:view` besides. The first is because this card is a way INTO
+ * the lane and a card offering a tab that is hidden is a card offering
+ * a 404; the second is the queue's rule verbatim — a row names a
+ * project and links into it, so without the code that opens the page
+ * there is no card (`getProjectByKey` is `project:view`). Every seeded
+ * role that holds one holds the other; a custom role with only
+ * `work_item:triage` gets no card and loses nothing it could have used.
+ *
+ * **GATED, NOT THROWN**, exactly as `listMyWork` is: `/home` is every
+ * member's landing page and a member without the code is not an error
+ * there. The read answers `null` and the page draws nothing.
+ *
+ * **SCOPE IS COMPOSED INTO THE QUERY**, never asserted per row — the
+ * same rule and the same reason as the queue's: a request in a project
+ * this member can no longer open must not put a number on their home
+ * page, still less the project's name. `AND`, not a spread: both
+ * fragments carry a top-level `OR`.
+ */
+export async function triageGlance(ctx: WorkCtx): Promise<TriageGlance | null> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    try {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:triage");
+    } catch (e) {
+      if (e instanceof AuthzError) return null;
+      throw e;
+    }
+    // A core code: no module gate left to pass, only the permission.
+    if (!(await isAuthorized(tx, ctx.actor, "project:view"))) return null;
+
+    const scope = await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "projectId" });
+    // THE SAME SCOPE, SPELLED FOR THE `project` TABLE, and it is what
+    // makes the name lookup below safe BY CONSTRUCTION rather than by an
+    // invariant enforced one layer away. A security review traced the
+    // scope-less version clean — the ids can only come from the
+    // narrowed grouping, and `work_item.client_id` is derived from the
+    // project at insert and frozen by `work_item_no_move` — and then
+    // observed that the argument is two call sites and a trigger away
+    // from this read. `listTriage` already learned this lesson for its
+    // contact lookup (bound to the project's own client, a few lines
+    // down). A second scope fragment costs one resolved scope, already
+    // memoised for this transaction, and removes the need to be right
+    // about anything else.
+    const projectScope = await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "id" });
+    // ONE clock for the whole read, the lane's rule: the grouping and
+    // the project lookup below are two statements, and a row whose
+    // snooze expires between them must not be in one and out of the
+    // other.
+    const now = new Date();
+    // GROUPED IN SQL rather than counted in JS: the alternative reads
+    // every waiting row of every project this member can see onto the
+    // landing page to throw away all but a number.
+    const groups = await tx.workItem.groupBy({
+      by: ["projectId"],
+      where: { AND: [scope, triageWaitingWhere(ctx.tenantId, now)] },
+      _count: { _all: true },
+    });
+    if (groups.length === 0) return { total: 0, projects: [], moreProjects: 0 };
+
+    // The total is of EVERY group, before the cap — see the type.
+    const total = groups.reduce((n, g) => n + g._count._all, 0);
+    // Busiest first, then by project id so a tie is stable between
+    // renders rather than left to the database's row order.
+    const ranked = [...groups].sort(
+      (a, b) => b._count._all - a._count._all || a.projectId.localeCompare(b.projectId),
+    );
+    const top = ranked.slice(0, TRIAGE_GLANCE_PROJECTS);
+    // Names for the rows the card will draw, and only those: a member
+    // with forty projects in triage pays for five lookups.
+    const named = await tx.project.findMany({
+      where: { AND: [projectScope, { tenantId: ctx.tenantId, id: { in: top.map((g) => g.projectId) } }] },
+      select: { id: true, key: true, name: true },
+    });
+    const byId = new Map(named.map((p) => [p.id, p]));
+
+    // A group whose project did not come back is DROPPED rather than
+    // rendered nameless, and a `?? ""` would put a link to nowhere on
+    // the member's landing page. It is dropped from the ROWS and kept in
+    // `total`, which is the honest pair: the work exists, this card just
+    // cannot address it. With the scope fragment above it should not
+    // arise — but "should not" is the whole reason the branch is here
+    // rather than a non-null assertion, and it degrades toward saying
+    // LESS, which is the direction a landing page should fail in.
+    const projects = top.flatMap((g) => {
+      const p = byId.get(g.projectId);
+      return p ? [{ projectKey: p.key, projectName: p.name, count: g._count._all }] : [];
+    });
+
+    return { total, projects, moreProjects: ranked.length - projects.length };
   });
 }

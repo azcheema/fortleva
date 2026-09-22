@@ -56,9 +56,13 @@ export { triageItem, type TriageInput, type TriageOutcome } from "./triage";
 // `triage-lane.ts`'s header — the split is the tripwire's doing, and it
 // is the right shape rather than a workaround.
 export {
+  TRIAGE_GLANCE_PROJECTS,
   TRIAGE_LANE_LIMIT,
   listTriage,
+  triageGlance,
   type TriageEntry,
+  type TriageGlance,
+  type TriageGlanceProject,
   type TriageLane,
 } from "./triage-lane";
 // The verb list and the two caps come from the LEAF, never from
