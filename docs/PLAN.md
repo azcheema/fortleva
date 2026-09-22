@@ -10,6 +10,14 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
+**PUSHED AND GREEN: slice 6b is `b134ed0` + `0a6ff5c`; CI run [35726159086](https://github.com/azcheema/fortleva/actions/runs/35726159086) — BOTH JOBS `success`.** The two commits went up TOGETHER on purpose: between them a member could not decline a request at all, and `main` must not carry that window. On the service container: unit **77 files / 1233 passed** (identical to local), `test:db` **46 files / 637 passed, 0 failed**, and the browser harness **140 passed in 12.1 min** (+4 over slice 6a's 136, which is exactly `e2e/triage.spec.ts`).
+
+**AND CI SETTLED THE TWO THINGS LOCAL COULD NOT.** (1) `ordering.dbtest.ts` is **637/637 on the container** against 636 + 1 locally — the **fourth** data point for AGENTS.md's standing note that its twelve-way concurrency test measures the transatlantic link and not the logic. The local failure was a 5412 ms transaction against a 5000 ms budget and re-ran 17/17 green in isolation; `states.ts`, the only file in `moveItem`'s call path this slice touched, was unchanged since commit 1's own green full run. (2) **The `test:db` job builds from an EMPTY database**, so it is the only place `TEMPLATE_VERSION 6` could be proven: it provisions its tenants against a catalogue seeded from scratch, which is what shows `work_item:triage_decline` reaching role seeding correctly. Local runs could not say that, because the catalogue there was upserted by hand (`scripts/seed-catalog.ts`).
+
+**STILL OWED AND NOT CI'S TO GIVE: the full `prisma/seed.ts` run** (owed item 2e). CI provisions fresh tenants, which get the new code from the catalogue; an EXISTING tenant only gets it through B3 propagation, which is the founder's to run. Until then no owner or manager on a live tenant holds `work_item:triage_decline`, and the Decline and Duplicate verbs are hidden for everybody.
+
+---
+
 **2026-09-22 — SLICE 50 (memo slice 6b, SECOND COMMIT): THE LANE ITSELF — and the tripwire caught the same class of mistake twice in one slice, from opposite directions.**
 
 **WHAT LANDED.** `/projects/[key]/triage` — a route, a tab hidden without `work_item:triage`, the four verbs with their dialog, the `triage` keyboard scope, and an e2e that drives the whole round trip. Plus the drop-target fix the first commit made urgent.
