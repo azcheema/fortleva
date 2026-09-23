@@ -177,9 +177,11 @@ export function ContactRowForm({
     // It is offered even to a contact who has WRITTEN in the portal,
     // where `deleteContact` always refuses. Hiding it would need a
     // per-contact "has written anything" count on the hottest read of
-    // this page, and the refusal now says the useful thing
-    // (`CONTACT_HAS_HISTORY`: their record is kept, end their access
-    // instead) — which is the answer a member needs either way.
+    // this page, and the refusal says the answer a member needs either
+    // way: the record is kept and cannot be deleted. **It deliberately
+    // does NOT advise ending their access** — that guard sits below the
+    // status check in `deleteContact`, so it is reachable only for a
+    // NO_ACCESS or REVOKED contact, who has no access to end.
     if (contact.portalStatus === "NO_ACCESS" || contact.portalStatus === "REVOKED") {
       items.push({
         key: "remove",

@@ -1060,8 +1060,8 @@
     "CONTACT_NOT_INVITABLE": "Personen kan inte bjudas in i sitt nuvarande läge — ladda om sidan för att se hur åtkomsten ser ut.",
     "INVITE_IN_FLIGHT": "En inbjudan till den här personen är redan på väg. Vänta ett ögonblick och försök igen.",
     "ACCESS_TRANSITION_INVALID": "Portalåtkomsten har hunnit ändras sedan sidan laddades. Ladda om den för att se hur det ser ut nu.",
-    "CONTACT_HAS_ACCESS": "Personen har fortfarande portalåtkomst. Använd Avsluta åtkomst först och sedan Ta bort kontakt.",
-    "CONTACT_HAS_HISTORY": "Personen har skrivit i portalen, så posten behålls. Använd Avsluta åtkomst i stället.",
+    "CONTACT_HAS_ACCESS": "Personen har fortfarande portalåtkomst, så posten kan inte raderas. Att avsluta åtkomsten är permanent.",
+    "CONTACT_HAS_HISTORY": "Personen har skrivit i portalen, så posten behålls och kan inte raderas. Personen saknar redan åtkomst.",
     "REQUEST_RATE_LIMITED": "Du har skickat flera förfrågningar på kort tid. Vänta några minuter och försök igen.",
     "REQUEST_BUSY": "Vi kunde inte skicka det just nu. Försök igen om en liten stund."
   },

@@ -629,6 +629,11 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
       (await tx.workItemActivity.count({
         where: { tenantId: ctx.tenantId, actorContactId: contactId },
       })) > 0;
+    // **AND ITS MESSAGE MAY NOT SAY "end their access instead"**, which
+    // is what it said for an afternoon. This guard sits BELOW the status
+    // check, so it is reachable only for a NO_ACCESS or REVOKED contact
+    // — somebody who already cannot sign in. Advice to end their access
+    // would name a verb the row does not even offer them.
     if (wrote) fail("CONTACT_HAS_HISTORY", "contact has portal history");
     await tx.contact.delete({ where: { id: contactId } });
     await record(tx, {

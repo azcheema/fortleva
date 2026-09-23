@@ -1060,8 +1060,8 @@
     "CONTACT_NOT_INVITABLE": "This person cannot be invited in their current state — reload the page to see where their access stands.",
     "INVITE_IN_FLIGHT": "An invitation to this person is already on its way. Give it a moment, then try again.",
     "ACCESS_TRANSITION_INVALID": "Their portal access has moved on since this page was loaded. Reload it to see where it stands.",
-    "CONTACT_HAS_ACCESS": "This person still has portal access. Use End access first, then Remove contact.",
-    "CONTACT_HAS_HISTORY": "This person has written in the portal, so their record is kept. Use End access instead.",
+    "CONTACT_HAS_ACCESS": "This person still has portal access, so their record cannot be deleted. Ending their access is permanent.",
+    "CONTACT_HAS_HISTORY": "This person has written in the portal, so their record is kept and cannot be deleted. They already have no access.",
     "REQUEST_RATE_LIMITED": "You have sent several requests in a short time. Wait a few minutes and try again.",
     "REQUEST_BUSY": "We could not send that just now. Try again in a moment."
   },
