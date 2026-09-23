@@ -12,6 +12,7 @@ import { releaseContactAssignments } from "@/modules/work";
 
 import { INVITE_TTL_HOURS, INVITE_TTL_MS, hashToken } from "./contact-invite-secret";
 import type { ClientCtx } from "./service";
+import { isInvitableStatus } from "./portal-status";
 
 /** The member principal, as every other service in this folder writes it. */
 const principalOf = (ctx: ClientCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
@@ -50,7 +51,7 @@ const principalOf = (ctx: ClientCtx) => ({ type: "member", id: ctx.actor.memberI
  *
  * **TWO WAYS TO TAKE ACCESS AWAY** (founder decision, 2026-09-23): a
  * PAUSE that resumes in one click and keeps the person's history and
- * their work, and a REMOVAL that ends it. They differ in exactly three
+ * their work, and a REMOVAL that ends it — and since C28, ending it is not forever: a fresh invitation is the way back. They differ in exactly three
  * things and the difference is written into `setContactPortalAccess`:
  * whether the credential survives, whether the tasks come back, and
  * which audit action names it.
@@ -106,10 +107,28 @@ export async function inviteContact(
       //   (PAUSE keeps it, and `contact_account_requires_invite` is BEFORE
       //   INSERT only, so nothing revokes it).
       // · `INVITED` → INVITED is the legitimate RESEND, and is admitted.
+      // · `REVOKED` → INVITED is a FRESH INVITATION, and is admitted
+      //   (founder decision, 2026-09-23 — OPEN_QUESTIONS C28). It used
+      //   to be refused, which made ending somebody's access an
+      //   ABSORBING state: a client contact who left and came back, or
+      //   one whose access was ended by mistake, had no route to portal
+      //   access at all, because `deleteContact` also refuses anybody
+      //   who has written in the portal. The row simply stopped offering
+      //   Invite and nothing said why.
       //
-      // So: only a contact with no access may be invited. A paused one is
-      // resumed; an active one needs nothing.
-      if (contact!.portalStatus !== "NO_ACCESS" && contact!.portalStatus !== "INVITED") {
+      //   It is safe because REMOVE already took everything away: the
+      //   credential row is deleted, the sessions are gone, any PENDING
+      //   invitation was revoked and the tasks were released. So this
+      //   grants nothing — it starts the ordinary invitation over, and
+      //   `contact_account_requires_invite` still refuses a credential
+      //   for a REVOKED row on its own account. **Their released
+      //   assignments do NOT come back**: re-inviting restores access,
+      //   not history.
+      //
+      // So: ACTIVE and SUSPENDED are the two refusals. A paused contact
+      // is RESUMED (not re-invited, which would lose the one-click
+      // return); an active one needs nothing.
+      if (!isInvitableStatus(contact!.portalStatus)) {
         fail("CONTACT_NOT_INVITABLE", `access is ${contact!.portalStatus}`);
       }
       // AN ARCHIVED CLIENT GETS NO NEW CREDENTIALS. `createContact`
@@ -255,8 +274,10 @@ export type PortalAccessAction = "PAUSE" | "RESUME" | "REMOVE";
  * what the founder said each verb is for. A pause is "they will be
  * back" — parental leave, a contractor between phases — and it resumes
  * in one click, so taking their tasks away would make the resume a lie.
- * A removal is the end, and an assignment to somebody who can never see
- * the task again is not an assignment (`releaseContactAssignments`,
+ * A removal is the end of THIS access — re-inviting is a deliberate
+ * new act that mints a fresh token (C28), and it does NOT give the
+ * released assignments back — and an assignment to somebody who can
+ * never see the task again is not an assignment (`releaseContactAssignments`,
  * which is also what unblocks erasure).
  *
  * **SESSIONS DIE IMMEDIATELY ON BOTH WAYS OUT.** `portalAuth`'s

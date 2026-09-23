@@ -765,4 +765,133 @@ describe("taking access away, and giving it back", () => {
       reason: "FORBIDDEN",
     });
   });
+
+  it("A REVOKED CONTACT CAN BE INVITED AGAIN, and accept again (founder decision C28)", async () => {
+    // **THE CASE THIS EXISTS FOR.** Ending somebody's access used to be
+    // an ABSORBING state: `inviteContact` admitted NO_ACCESS and INVITED
+    // only, and `deleteContact` refuses anybody who has written in the
+    // portal — so a client contact who left and came back, or one whose
+    // access was ended by mistake, had no route to portal access at all.
+    // The founder settled it the other way (OPEN_QUESTIONS C28): a fresh
+    // invitation is the way back.
+    await activate();
+    const removed = await setContactPortalAccess(ctxOf("manager"), anna, "REMOVE");
+    expect(removed.status).toBe("REVOKED");
+    // The credential really is gone, so this is not "re-inviting somebody
+    // who could still sign in".
+    expect(await f.platform.contactAccount.count({ where: { contactId: anna } })).toBe(0);
+
+    // WHAT REMOVE LEAVES BEHIND, asserted against a real REMOVE rather
+    // than against the fixture's own reset — `beforeEach` clears exactly
+    // these three columns, so a test that leaned on it would be measuring
+    // the fixture. `setContactPortalAccess` writes `portalStatus` and
+    // nothing else on the row: the stamps still describe the OLD
+    // invitation. Harmless, but not for the reason a first draft of this
+    // comment gave: acceptance rewrites `portalStatus`, `activatedAt`
+    // and `emailVerified` and never touches `invitedAt` — the RE-INVITE
+    // is what re-stamps that, which is what the assertion below
+    // measures. Asserted so a future change to either write is noticed.
+    const afterRemove = await contactRow(anna);
+    expect(afterRemove.emailVerified).toBe(true);
+    expect(afterRemove.activatedAt).not.toBeNull();
+    const staleInvitedAt = afterRemove.invitedAt;
+    expect(staleInvitedAt).not.toBeNull();
+
+    // THE RE-INVITE. A fresh token, not a resend. Nothing collides with
+    // the partial unique here because the previous invitation was
+    // ACCEPTED by `activate()` — REMOVE's own revoke-any-PENDING leg
+    // matched zero rows in this test, and the case where it matters has
+    // its own test below. (A review caught this comment claiming the
+    // opposite, and the gap behind it.)
+    const { mailed } = await inviteContact(ctxOf("manager"), anna);
+    expect(mailed).toBe(true);
+    const reinvited = await contactRow(anna);
+    expect(reinvited.portalStatus).toBe("INVITED");
+    expect(reinvited.invitedAt!.getTime()).toBeGreaterThan(staleInvitedAt!.getTime());
+
+    // AND IT ACCEPTS. The credential trigger admits INVITED or ACTIVE and
+    // `acceptContactInvite` flips the row to ACTIVE before the insert, so
+    // the upsert takes its CREATE path against a row that has none.
+    const invite = await liveInvite(anna);
+    const token = randomUUID().replace(/-/g, "");
+    await f.platform.contactInvite.update({
+      where: { id: invite.id },
+      data: { tokenHash: hashToken(token) },
+    });
+    await acceptContactInvite({ token, password: PASSWORD });
+    expect((await contactRow(anna)).portalStatus).toBe("ACTIVE");
+    expect(await f.platform.contactAccount.count({ where: { contactId: anna } })).toBe(1);
+
+    // AND THEY CAN REALLY SIGN IN — the claim no column check makes.
+    const res = await portalAuth.api.signInEmail({
+      body: { email: (await contactRow(anna)).email, password: PASSWORD },
+    });
+    expect(res.token).toBeTruthy();
+  });
+
+  it("re-inviting does NOT give the released assignments back", async () => {
+    // The other half of C28, and the reason the docblock says so: a
+    // removal released the work to the agency, and restoring access is
+    // not restoring history. A member reassigns deliberately.
+    await activate();
+    const itemId = await handOver("Work Anna held");
+    await setContactPortalAccess(ctxOf("manager"), anna, "REMOVE");
+    expect(
+      (await f.platform.workItem.findUniqueOrThrow({ where: { id: itemId } })).assigneeContactId,
+    ).toBeNull();
+
+    await inviteContact(ctxOf("manager"), anna);
+    expect(
+      (await f.platform.workItem.findUniqueOrThrow({ where: { id: itemId } })).assigneeContactId,
+    ).toBeNull();
+  });
+
+  it("still refuses an ACTIVE or SUSPENDED contact — C28 widened the list, it did not open it", async () => {
+    await activate();
+    await expect(inviteContact(ctxOf("manager"), anna)).rejects.toMatchObject({
+      code: "CONTACT_NOT_INVITABLE",
+    });
+    await setContactPortalAccess(ctxOf("manager"), anna, "PAUSE");
+    // A paused contact is RESUMED, never re-invited: re-inviting would
+    // undo the pause through a door that audits `contact.invited` and
+    // leaves `RESUME` throwing.
+    await expect(inviteContact(ctxOf("manager"), anna)).rejects.toMatchObject({
+      code: "CONTACT_NOT_INVITABLE",
+    });
+  });
+
+
+  it("REMOVE REVOKES A PENDING INVITATION, so the re-invite C28 allows cannot trip the live-token unique", async () => {
+    // **THE LEG NOTHING COVERED, and C28 is what made it load-bearing.**
+    // `setContactPortalAccess`'s REMOVE flips any PENDING invitation to
+    // REVOKED. Until C28 that write was inert in practice: a REVOKED
+    // contact could not be invited at all, so a stale PENDING row could
+    // never collide with anything. Now it can.
+    //
+    // The scenario is the ordinary undo: a member invites the wrong
+    // person and ends their access straight away, before the invitation
+    // is accepted. If REMOVE stopped revoking that row, the re-invite
+    // would trip `contact_invite_one_live_idx` and fail INVITE_IN_FLIGHT
+    // FOREVER — which is exactly the dead end C28 was decided to remove,
+    // reached through a different door. Every other test in this file
+    // reaches REVOKED through `activate()`, where the invitation is
+    // ACCEPTED and REMOVE's leg matches nothing. Found by a fresh review.
+    await inviteContact(ctxOf("manager"), anna);
+    expect((await liveInvite(anna)).status).toBe("PENDING");
+
+    await setContactPortalAccess(ctxOf("manager"), anna, "REMOVE");
+    expect((await contactRow(anna)).portalStatus).toBe("REVOKED");
+    const invites = await f.platform.contactInvite.findMany({
+      where: { tenantId: f.tenantId, contactId: anna },
+      select: { status: true },
+    });
+    expect(invites).toHaveLength(1);
+    expect(invites[0]!.status).toBe("REVOKED");
+
+    // And the re-invite therefore succeeds rather than colliding.
+    await inviteContact(ctxOf("manager"), anna);
+    expect((await contactRow(anna)).portalStatus).toBe("INVITED");
+    expect((await liveInvite(anna)).status).toBe("PENDING");
+  });
+
 });

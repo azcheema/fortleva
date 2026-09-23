@@ -35,7 +35,7 @@ export type DomainErrorCode =
   // has just pressed Pause on a contact who is not active would have been
   // told nothing at all. A refusal a member can act on earns a code; the
   // detail string never crosses the boundary.
-  | "CONTACT_NOT_INVITABLE" // only NO_ACCESS or INVITED may be invited (a resend)
+  | "CONTACT_NOT_INVITABLE" // only NO_ACCESS, INVITED (a resend) or REVOKED (a fresh start, C28)
   | "INVITE_IN_FLIGHT" // the partial unique: one live invitation per contact
   | "ACCESS_TRANSITION_INVALID" // pause a non-active, resume a non-paused, remove what has no access
   | "CONTACT_HAS_ACCESS" // erasure refused while the person can still sign in

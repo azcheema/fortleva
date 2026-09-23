@@ -41,7 +41,8 @@ import {
  *     without the flag pressing Invite writes the row and then throws.
  *
  * **IT CREATES ITS OWN CONTACT, and it has to.** The seeded contact is
- * already ACTIVE and `inviteContact` admits only NO_ACCESS or INVITED;
+ * already ACTIVE, and `inviteContact` refuses ACTIVE and SUSPENDED (it
+ * admits NO_ACCESS, INVITED and — since C28 — REVOKED);
  * Bo Nilsson is invitable but is photographed by the `client-contacts`
  * stop, and Carina Ek carries the seeded invitation the acceptance
  * page's own stop is taken at. So this spec adds a person, invites them,

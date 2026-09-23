@@ -13,6 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { useRun } from "@/components/use-run";
+// THE LEAF, NEVER THE SERVICE. `@/clients/contact-access` reaches
+// `withTenant` → Prisma → `pg`, and this is a browser module.
+import { isInvitableStatus } from "@/clients/portal-status";
 import type { ContactRow } from "@/clients/service";
 import type { RowAction } from "@/components/semantic";
 import type { FormResult } from "@/lib/server-actions";
@@ -83,17 +86,25 @@ export function ContactRowForm({
    * | INVITED | End access | the permission |
    * | ACTIVE | Pause · End access | the permission |
    * | SUSPENDED | Resume · End access | the permission |
+   * | REVOKED | Invite | a live client |
    * | REVOKED | Delete record | the permission |
    *
    * The right-hand column is the fix for an archived client losing the
    * only control that ends portal access — see `page.tsx` for why the
    * page now computes two gates.
    *
-   * **REVOKED OFFERS NO INVITE, and that is the service's rule rather
-   * than a gap in this list**: `inviteContact` admits NO_ACCESS and
-   * INVITED only, so ending access is terminal for that contact record.
-   * It is written down here because this is the one place a member would
-   * look for the verb and not find it.
+   * **A REVOKED ROW OFFERS INVITE AGAIN** (founder decision, 2026-09-23
+   * — OPEN_QUESTIONS C28), which is why its two rows above are identical
+   * to NO_ACCESS's. It used to offer nothing but Delete, and that made
+   * ending somebody's access an absorbing state: a client contact who
+   * came back a year later could not be given access and could not be
+   * erased either, because `deleteContact` refuses anybody who has
+   * written in the portal. The verb simply was not there and nothing
+   * said why.
+   *
+   * It mints a FRESH invitation rather than resending one — hence the
+   * label, and hence `resend` staying bound to INVITED alone. Their
+   * released assignments do not come back with it.
    *
    * **INVITE AND RESEND ARE ONE CALL.** The label differs because the
    * member's act differs; the server sees `inviteContact` either way,
@@ -116,7 +127,9 @@ export function ContactRowForm({
   // INVITING NEEDS A LIVE CLIENT (`editable`) — `inviteContact` refuses
   // an archived one, so offering it there would be a control that only
   // ever produces a refusal.
-  if (editable && (contact.portalStatus === "NO_ACCESS" || contact.portalStatus === "INVITED")) {
+  if (editable && isInvitableStatus(contact.portalStatus)) {
+    // `resend` is INVITED alone: a REVOKED row gets a FRESH invitation,
+    // so it reads "Invite", not "Send the invitation again".
     const resend = contact.portalStatus === "INVITED";
     items.push({
       key: resend ? "resend" : "invite",

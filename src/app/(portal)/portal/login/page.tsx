@@ -19,8 +19,12 @@ export async function generateMetadata(): Promise<Metadata> {
  * shipped, and leaving it locked would have made the invitation a
  * one-shot door — `contact_session` expires in two days, so a contact
  * who accepted, closed the browser and came back on Thursday would have
- * had no way in and no way to be let in (`inviteContact` admits only
- * NO_ACCESS and INVITED, so re-inviting an ACTIVE contact is refused).
+ * had no way in and no way to be let in: re-inviting an ACTIVE contact
+ * is refused (a paused one is resumed, an active one needs nothing),
+ * and at the time ending their access to start again was refused too.
+ * The second half of that changed the same evening — C28 admits a
+ * REVOKED contact — but the first half is the standing rule, and the
+ * price of the workaround is the contact's access.
  * It is also the only destination the acceptance page's dead-end state
  * can offer, and `PageState` requires one.
  *
