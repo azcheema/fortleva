@@ -222,6 +222,21 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // thing the craft audit has ever said about what a client sees.
     { name: "portal-login", path: "/portal/login", anon: true },
     { name: "portal-home", path: "/portal", session: "contact" },
+    // INVITATION ACCEPTANCE, both states, mirroring the member plane's
+    // pair at the top of this list. The live one needs a token that
+    // stands still, which is why the fixture seeds one
+    // (`contactInviteToken`); a visit only previews, so the walk cannot
+    // consume it. Both are `anon` by construction — the whole point of
+    // the page is that the visitor has no session yet — and both are
+    // metered by `portal.invite_preview`, which is sized at sixty an
+    // hour precisely so that these four visits per walk, twice over,
+    // cannot exhaust it (src/ratelimit's own note).
+    { name: "portal-invite", path: `/portal/invite/${seed.contactInviteToken}`, anon: true },
+    {
+      name: "portal-invite-unavailable",
+      path: "/portal/invite/expired-or-unknown-token",
+      anon: true,
+    },
 
     // ── the states nobody designs twice ─────────────────────────────
     // An unmatched path resolves to the ROOT not-found (the auth lockup),

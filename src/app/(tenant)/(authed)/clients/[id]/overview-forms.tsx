@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ClientDetail } from "@/clients/service";
 import { formatMoney } from "@/lib/format";
 import type { InlineEditOption } from "@/lib/inline-edit";
+import { useRun } from "@/components/use-run";
 import type { FormResult } from "@/lib/server-actions";
 import type { ServiceRow } from "@/services/service";
 
@@ -274,15 +275,7 @@ export function ServicesList({
   const tCommon = useTranslations("common");
   const locale = useLocale();
   const format = useFormatter();
-  const router = useRouter();
-  const [, start] = useTransition();
-  const run = (fn: () => Promise<FormResult>) =>
-    start(async () => {
-      const r = await fn();
-      if (r.ok) toast.success(r.message);
-      else toast.error(r.message);
-      router.refresh();
-    });
+  const { run } = useRun();
 
   const money = (row: ServiceRow): string | null => {
     if (!row.priceExVat) return null;

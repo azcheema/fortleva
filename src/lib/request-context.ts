@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 
 import { cache } from "react";
 
+import { trustedProxyHops } from "@/config";
+import { clientIpFrom, UNKNOWN_SUBJECT } from "@/lib/client-ip";
+
 /**
  * Per-request context (DATA_MODEL.md §3: requestId/ip/userAgent on every
  * AuditEvent). Two sources, checked in order:
@@ -34,13 +37,23 @@ export const withRequestContext = <T>(ctx: RequestContext, fn: () => T): T =>
  */
 const generatedRequestId = cache((): string => randomUUID());
 
-/** First hop of x-forwarded-for, else x-real-ip; trimmed; undefined if none. */
+/**
+ * The client address for an audit row — THE SAME DERIVATION THE RATE
+ * LIMITER USES, and that is the point of the shared leaf.
+ *
+ * These were two functions with OPPOSITE precedences over the same two
+ * headers: this one preferred the leftmost `x-forwarded-for` hop, the
+ * limiter's preferred `x-real-ip`. So one request could be limited under
+ * one address and recorded under another, and a caller who forged the
+ * header the limiter read did not even appear in the trail the row
+ * exists to provide. Both now count from the right of a chain the caller
+ * cannot write all of (`src/lib/client-ip.ts`), and `undefined` here
+ * means the same thing the limiter's `UNKNOWN_SUBJECT` means: the
+ * request did not arrive the way the deployment says it does.
+ */
 export const clientIpFromHeaders = (get: (name: string) => string | null): string | undefined => {
-  const xff = get("x-forwarded-for");
-  const first = xff?.split(",")[0]?.trim();
-  if (first) return first;
-  const real = get("x-real-ip")?.trim();
-  return real || undefined;
+  const subject = clientIpFrom(get, trustedProxyHops);
+  return subject === UNKNOWN_SUBJECT ? undefined : subject;
 };
 
 /** Derive a RequestContext from a header lookup (pure; unit-tested). */

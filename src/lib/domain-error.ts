@@ -27,6 +27,19 @@ export type DomainErrorCode =
   // as this person yet" is a fact about their own tenant (AUTHZ §8's
   // member-side half, the same reasoning as the Portal tab's blockers).
   | "CONTACT_NOT_VIEWABLE"
+  // The contact lifecycle's five refusals (the invite slice's SURFACES —
+  // src/clients/contact-access.ts and `deleteContact`). Every one of
+  // these was `INVALID_INPUT` while the server half had no caller, which
+  // was harmless then and is not now: `messageForError` renders
+  // `domainErrors.INVALID_INPUT` — "Invalid input." — and a member who
+  // has just pressed Pause on a contact who is not active would have been
+  // told nothing at all. A refusal a member can act on earns a code; the
+  // detail string never crosses the boundary.
+  | "CONTACT_NOT_INVITABLE" // only NO_ACCESS or INVITED may be invited (a resend)
+  | "INVITE_IN_FLIGHT" // the partial unique: one live invitation per contact
+  | "ACCESS_TRANSITION_INVALID" // pause a non-active, resume a non-paused, remove what has no access
+  | "CONTACT_HAS_ACCESS" // erasure refused while the person can still sign in
+  | "CONTACT_HAS_HISTORY" // erasure refused for somebody who has written in the portal
   // Portal request intake (slice 6a — src/modules/work/portal-writes.ts).
   // This contact has submitted the most requests the window allows. It is
   // the ONE refusal the portal states plainly rather than collapsing into

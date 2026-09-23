@@ -294,7 +294,9 @@ describe("issuing a portal invitation", () => {
   it("refuses an ARCHIVED client, as recording a contact there already is", async () => {
     await f.platform.client.update({ where: { id: acme }, data: { archivedAt: new Date() } });
     try {
-      await expect(inviteContact(ctxOf("manager"), anna)).rejects.toBeInstanceOf(DomainError);
+      await expect(inviteContact(ctxOf("manager"), anna)).rejects.toMatchObject({
+        code: "ARCHIVED",
+      });
     } finally {
       await f.platform.client.update({ where: { id: acme }, data: { archivedAt: null } });
     }
@@ -306,7 +308,14 @@ describe("issuing a portal invitation", () => {
       where: { tenantId_id: { tenantId: f.tenantId, id: anna } },
       data: { portalStatus: "ACTIVE" },
     });
-    await expect(inviteContact(ctxOf("manager"), anna)).rejects.toBeInstanceOf(DomainError);
+    // THE CODE, not merely the class. The surface reads it: the row
+    // menu picks its verbs from `portalStatus` so this refusal should
+    // be unreachable, and when a member does meet it the toast has to
+    // say something they can act on. Until the surfaces shipped these
+    // were all `INVALID_INPUT`, which renders as "Invalid input."
+    await expect(inviteContact(ctxOf("manager"), anna)).rejects.toMatchObject({
+      code: "CONTACT_NOT_INVITABLE",
+    });
   });
 
   it("refuses a member without the permission, and a contact out of scope", async () => {
@@ -673,17 +682,17 @@ describe("taking access away, and giving it back", () => {
 
   it("refuses a move that makes no sense, rather than inventing one", async () => {
     // NO_ACCESS cannot be paused, and there is nothing to remove.
-    await expect(setContactPortalAccess(ctxOf("manager"), anna, "PAUSE")).rejects.toBeInstanceOf(
-      DomainError,
-    );
-    await expect(setContactPortalAccess(ctxOf("manager"), anna, "REMOVE")).rejects.toBeInstanceOf(
-      DomainError,
-    );
+    await expect(setContactPortalAccess(ctxOf("manager"), anna, "PAUSE")).rejects.toMatchObject({
+      code: "ACCESS_TRANSITION_INVALID",
+    });
+    await expect(setContactPortalAccess(ctxOf("manager"), anna, "REMOVE")).rejects.toMatchObject({
+      code: "ACCESS_TRANSITION_INVALID",
+    });
     await activate();
     // ACTIVE cannot be resumed — only a pause can.
-    await expect(setContactPortalAccess(ctxOf("manager"), anna, "RESUME")).rejects.toBeInstanceOf(
-      DomainError,
-    );
+    await expect(setContactPortalAccess(ctxOf("manager"), anna, "RESUME")).rejects.toMatchObject({
+      code: "ACCESS_TRANSITION_INVALID",
+    });
   });
 
   it("writes the portal's OWN sign-in trail — the obligation this slice was gated on", async () => {
@@ -746,7 +755,7 @@ describe("taking access away, and giving it back", () => {
     // refuses — this is the new guard, and only it.
     await expect(
       deleteContact({ tenantId: f.tenantId, actor: f.seats.manager.actor }, anna),
-    ).rejects.toBeInstanceOf(DomainError);
+    ).rejects.toMatchObject({ code: "CONTACT_HAS_HISTORY" });
     expect(await f.platform.contact.count({ where: { tenantId: f.tenantId, id: anna } })).toBe(1);
   });
 

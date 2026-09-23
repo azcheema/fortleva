@@ -91,6 +91,13 @@ export default defineConfig({
     // Better Auth pins its baseURL and trustedOrigins to APP_URL
     // (src/config, INV-D2): the harness origin must be that origin, or
     // every sign-in POST is refused as cross-origin.
-    env: { APP_URL: BASE_URL, PORT: String(PORT) },
+    // MAIL_DEV_OUTBOX: `next start` sets NODE_ENV=production, where the
+    // mailer refuses the dev transport — which would make every
+    // mail-sending FLOW untestable from a browser, not just the mail.
+    // `inviteContact` sends AFTER its transaction commits, so pressing
+    // Invite would write the row and then throw, and the acceptance
+    // token exists nowhere but that message. See src/config's own note:
+    // this is the only place in the repository that sets it.
+    env: { APP_URL: BASE_URL, PORT: String(PORT), MAIL_DEV_OUTBOX: "1" },
   },
 });

@@ -5,9 +5,15 @@ import { cn } from "@/lib/utils";
 
 /**
  * The unauthenticated surfaces — /login, /signup, /invite/[token],
- * /ops/login, /portal — are the product's first impression, so they
- * share one lockup instead of drifting apart. It lives beside /login
- * because that is the canonical entry point.
+ * /ops/login, /portal/login and /portal/invite/[token] — are the
+ * product's first impression, so they share one lockup instead of
+ * drifting apart. It lives beside /login because that is the canonical
+ * entry point.
+ *
+ * The last of those is the newest and the only one that takes a WRITE
+ * from somebody with no session, which is why it looks like the others:
+ * a page that asks a stranger for a password has to be recognisably part
+ * of the product they were mailed a link to.
  *
  * DESIGN SPEC §7: a centred max-w-sm column on --background, no card,
  * a 32px wordmark lockup at the top, controls at lg height and exactly

@@ -243,6 +243,18 @@ export type E2ESeed = {
   readonly contactEmail: string;
   readonly contactName: string;
 
+  /**
+   * A LIVE PORTAL INVITATION — the raw token of a PENDING
+   * `contact_invite` for a third contact of `clientId`, who sits at
+   * INVITED. The acceptance page has no other stable address to be
+   * photographed at, and nothing consumes this: a visit only previews.
+   * Worthless the moment teardown deletes the row, never printed, and
+   * it lives only in the gitignored seed file — the same contract as
+   * `inviteToken`.
+   */
+  readonly contactInviteToken: string;
+  readonly contactInviteEmail: string;
+
   /* ── Member-plane scoping fixture (e2e/scoping.spec.ts) ─────────────
    * An employee — the template role WITHOUT client:view_all — assigned
    * to exactly one client. The long-name client and its completed
@@ -435,6 +447,52 @@ async function provision(seedFile: string): Promise<void> {
     email: `bo-${run}${EMAIL_DOMAIN}`,
     title: "Utvecklare",
     portalProfile: "CONTACT_COLLABORATOR",
+  });
+
+  // ── A contact with a LIVE INVITATION, so the acceptance page has a
+  // token that stands still ──────────────────────────────────────────
+  //
+  // Three contacts now, one in each of the states a member can see on
+  // the Contacts tab: ACTIVE (Astrid, below), NO_ACCESS (Bo) and
+  // INVITED (Carina). That is the fixture doing what it is for — the
+  // visual and Swedish-width walks photograph the tab, and a tab that
+  // only ever showed one status was photographing a third of it.
+  //
+  // **THE ROW IS WRITTEN DIRECTLY, NOT THROUGH `inviteContact()`, for
+  // the same reason the member invitation above is**: the service sends
+  // mail after it commits, and a fixture must not leave an envelope in
+  // `.dev-outbox` for a spec to trip over — `portal-invite.spec.ts`
+  // reads that file and takes the LAST line for its address, and a
+  // second invitation in there would be a puzzle nobody needs. Same
+  // columns, same hash, both stamps (`portalStatus` and `invitedAt`, the
+  // pair `authorizePortal` and the credential trigger both read).
+  //
+  // The raw token goes into the seed exactly as `inviteToken` does for
+  // the member plane, and is what `stops.ts` points the acceptance page
+  // at. Nothing consumes it — a visit only previews — so it stays
+  // PENDING for the life of the fixture.
+  const contactInviteEmail = `carina-${run}${EMAIL_DOMAIN}`;
+  const { id: invitedContactId } = await createContact(ctx, clientId, {
+    name: "Carina Ek",
+    email: contactInviteEmail,
+    title: "Projektledare",
+    portalProfile: "CONTACT_COLLABORATOR",
+  });
+  const contactInviteToken = randomBytes(32).toString("base64url");
+  await db.contactInvite.create({
+    data: {
+      tenantId,
+      contactId: invitedContactId,
+      email: contactInviteEmail,
+      tokenHash: createHash("sha256").update(contactInviteToken).digest("hex"),
+      invitedByMemberId: ownerMemberId,
+      // Three days, spelled out: `day` is declared further down the file.
+      expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await db.contact.update({
+    where: { tenantId_id: { tenantId, id: invitedContactId } },
+    data: { portalStatus: "INVITED", invitedAt: new Date(), invitedById: ownerMemberId },
   });
 
   const { id: activeProjectId, key: activeProjectKey } = await createProject(ctx, {
@@ -747,6 +805,8 @@ async function provision(seedFile: string): Promise<void> {
     inviteEmail,
     contactEmail,
     contactName,
+    contactInviteToken,
+    contactInviteEmail,
     employeeEmail,
     employeePassword,
   };
@@ -1443,6 +1503,64 @@ async function clearPortalRequests(tenantId: string, contactEmail: string): Prom
 `);
 }
 
+/**
+ * ERASE A CONTACT A SPEC CREATED — `portal-invite.spec.ts`'s belt.
+ *
+ * The spec adds its own contact through the real form and takes its
+ * access away and deletes it through the real row menu, which is the
+ * coverage. This is what runs when the spec failed BEFORE getting that
+ * far, and it is not optional: the Contacts tab is photographed by the
+ * visual sweep and walked by `zz-swedish-widths`, both of which sort
+ * after it, so a leftover row would change screenshots and column widths
+ * in specs that never touched this one.
+ *
+ * **IT GOES ROUND `deleteContact` ON PURPOSE, unlike most of this file.**
+ * The service refuses anyone who can still sign in and anyone who has
+ * written in the portal — which is right for a member pressing a button
+ * and wrong for a cleanup whose whole job is the case where the spec did
+ * not finish. `assertE2ETenant` above it is what keeps that safe: this
+ * can only ever reach a tenant the fixture provisioned.
+ *
+ * Scoped by ADDRESS, not by a clock and not by "contacts of this
+ * client": the two seeded contacts and the seeded invitee live there too
+ * and every other spec depends on them.
+ */
+async function removeContact(tenantId: string, email: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const contact = await db.contact.findFirst({
+    where: { tenantId, email },
+    select: { id: true },
+  });
+  if (contact) {
+    // Sequential, never a `Promise.all` — AGENTS.md's standing trap, and
+    // these run outside a transaction anyway so there is nothing to win.
+    await db.contactSession.deleteMany({ where: { contactId: contact.id } });
+    await db.contactAccount.deleteMany({ where: { contactId: contact.id } });
+    // By `value`, not the address: Better Auth keys a reset row
+    // `identifier = "reset-password:<token>"` with `value = <contact id>`
+    // (the same correction `setContactPortalAccess` now carries).
+    await db.contactVerification.deleteMany({
+      where: { OR: [{ value: contact.id }, { identifier: email }] },
+    });
+    await db.contactInvite.deleteMany({ where: { tenantId, contactId: contact.id } });
+    // `work_item.assignee_contact_id` is ON DELETE RESTRICT, so a task
+    // the contact was handed would block the delete at the database.
+    await db.workItem.updateMany({
+      where: { tenantId, assigneeContactId: contact.id },
+      data: { assigneeContactId: null, contactCompletedAt: null },
+    });
+    await db.contact.delete({ where: { tenantId_id: { tenantId, id: contact.id } } });
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
+      await tx.auditEvent.deleteMany({ where: { tenantId, targetId: contact.id } });
+    });
+  }
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ removed: contact !== null })}\n`);
+}
+
 /** The DB half of the visibility assertions. */
 async function visibility(documentId: string): Promise<void> {
   const { getPlatformClient } = await import("../../src/db/client");
@@ -1471,6 +1589,7 @@ const main = async (): Promise<void> => {
   if (command === "notifications") return notifications(argument!);
   if (command === "reset-notifications") return resetNotifications(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
+  if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);
   throw new Error(`unknown command "${command ?? ""}"`);

@@ -169,6 +169,32 @@ export const portalAuth = betterAuth({
     requireEmailVerification: true,
     revokeSessionsOnPasswordReset: true,
     /**
+     * STATED RATHER THAN INHERITED, and raised to the number the
+     * product's own password forms have always asked for. Better Auth's
+     * default is 8; `/signup` and the account's change-password form
+     * both put `minLength={12}` on the input, so the member plane has a
+     * UI that asks for twelve over a service that accepts eight. This
+     * plane must not inherit that gap, for two reasons.
+     *
+     * First, `acceptContactInvite` reads THIS config and is the sole
+     * path that ever sets a portal password for the first time — the
+     * portal has no signup endpoint and must never get one — so the
+     * number here is the only policy there is, and a form that asks for
+     * twelve while the service takes eight is a policy nobody stated.
+     *
+     * Second, the blast radius is a client COMPANY: `portal_gate` is
+     * client-scoped, so one weak password opens the whole shared list,
+     * and these users are strangers to the tenant with no second factor
+     * available to them (contact MFA is v2). The bar is higher here, not
+     * lower.
+     *
+     * Raising it costs nothing today: no contact has ever held a portal
+     * credential, so there is no existing password this could strand,
+     * and `revokeSessionsOnPasswordReset` means a future raise would
+     * only ever apply at the next set.
+     */
+    minPasswordLength: 12,
+    /**
      * CONFIGURING THIS IS WHAT MOUNTS `/request-password-reset`, and
      * that endpoint is unauthenticated. Better Auth's `/reset-password`
      * then CREATES a credential when none exists rather than requiring
@@ -303,3 +329,22 @@ export const portalAuth = betterAuth({
 });
 
 export type PortalAuthSession = typeof portalAuth.$Infer.Session;
+
+/**
+ * THE PASSWORD POLICY, READ FROM THE INSTANCE THAT ENFORCES IT.
+ *
+ * `acceptContactInvite` already takes its bounds from `password.config`
+ * rather than from a literal, and the acceptance SCREEN must agree with
+ * it exactly: a form that asks for a length the service then refuses is
+ * a refusal the visitor cannot act on, and a form that asks for less is
+ * a refusal they meet only after pressing the button. One accessor, two
+ * readers — the page (which puts the numbers on the input) and the
+ * action (which checks them before touching anything).
+ */
+export async function portalPasswordPolicy(): Promise<{
+  readonly min: number;
+  readonly max: number;
+}> {
+  const { minPasswordLength, maxPasswordLength } = (await portalAuth.$context).password.config;
+  return { min: minPasswordLength, max: maxPasswordLength };
+}

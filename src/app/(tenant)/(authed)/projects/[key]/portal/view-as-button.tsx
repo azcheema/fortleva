@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 // chunk (code review, measured in `.next/static/chunks`).
 import { VIEW_AS_PREFIX } from "@/config/view-as";
 
-import { useRun } from "../use-run";
+import { useRun } from "@/components/use-run";
 import { enterViewAsAction } from "@/app/(tenant)/view-as/actions";
 
 /**

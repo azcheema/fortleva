@@ -60,11 +60,32 @@ export async function previewContactInvite(token: string): Promise<ContactInvite
         select: {
           status: true,
           expiresAt: true,
+          // The BOUND address, so this read applies the same rule the
+          // acceptance does — see below.
+          email: true,
           tenant: { select: { name: true } },
           contact: { select: { name: true, email: true } },
         },
       });
       if (!invite) return null;
+      // **THE EMAIL BINDING IS CHECKED HERE TOO, and leaving it out was
+      // wrong in both directions.** `acceptContactInvite` refuses an
+      // invitation whose bound address no longer matches the contact's
+      // (SECURITY.md §3.4: `updateContact` may change the address while a
+      // link is in flight). This read did not, which meant the
+      // acceptance page would draw the whole password form for a token
+      // the action was always going to reject — and, worse, would draw
+      // the contact's CURRENT name and address, so whoever still held the
+      // link mailed to the OLD address learned the new one. A preview
+      // that shows more than the acceptance will accept is a disclosure.
+      //
+      // `null`, not a distinct answer: on this plane every dead token
+      // looks the same (founder decision, 2026-09-23). NULL `email`
+      // means a row written before `20260923030000` and is treated as
+      // unbound, exactly as the acceptance treats it.
+      //
+      // Found by this slice's security review.
+      if (invite.email !== null && invite.email !== invite.contact.email) return null;
       return {
         tenantName: invite.tenant.name,
         contactName: invite.contact.name,

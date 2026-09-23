@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { isProduction, mailFrom } from "@/config";
+import { allowDevMailOutbox, isProduction, mailFrom } from "@/config";
 
 /**
  * The one-interface mail adapter (ARC-09): everything that sends email
@@ -46,9 +46,30 @@ export const setTransport = (t: MailTransport): void => {
   transport = t;
 };
 
+let announcedDevOutbox = false;
+
 export async function send(msg: MailMessage): Promise<void> {
   if (isProduction && transport === devTransport) {
-    throw new Error("mailer: production requires a real transport (Amazon SES not yet wired)");
+    // **THE ONE WAY PAST THIS GUARD, and it is the e2e harness's.**
+    // `next start` sets NODE_ENV=production, so the browser harness runs
+    // a production build — which made every mail-sending FLOW untestable
+    // end to end, not merely the mail. `inviteContact` sends after its
+    // transaction commits, so pressing Invite would have written the row
+    // and then thrown, and the acceptance token exists nowhere but that
+    // message. `MAIL_DEV_OUTBOX=1` is set in `playwright.config.ts`'s
+    // `webServer.env` and nowhere else in the repository.
+    //
+    // It is opt-IN and it is LOUD: without the flag this throws exactly
+    // as it always has, and with it every process that honours it says
+    // so once. A real deployment cannot turn mail into a silent drop by
+    // accident, and could not do it quietly on purpose.
+    if (!allowDevMailOutbox) {
+      throw new Error("mailer: production requires a real transport (Amazon SES not yet wired)");
+    }
+    if (!announcedDevOutbox) {
+      announcedDevOutbox = true;
+      console.warn("[mailer] MAIL_DEV_OUTBOX=1 — production build writing to .dev-outbox, NOT sending");
+    }
   }
   await transport({ ...msg, from: mailFrom.header });
 }

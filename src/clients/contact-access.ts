@@ -74,7 +74,7 @@ const principalOf = (ctx: ClientCtx) => ({ type: "member", id: ctx.actor.memberI
 export async function inviteContact(
   ctx: ClientCtx,
   contactId: string,
-): Promise<{ inviteId: string }> {
+): Promise<{ inviteId: string; mailed: boolean }> {
   const token = randomBytes(32).toString("base64url");
   const { inviteId, email, tenantName, contactName } = await withTenant(
     ctx.tenantId,
@@ -110,7 +110,7 @@ export async function inviteContact(
       // So: only a contact with no access may be invited. A paused one is
       // resumed; an active one needs nothing.
       if (contact!.portalStatus !== "NO_ACCESS" && contact!.portalStatus !== "INVITED") {
-        fail("INVALID_INPUT", `cannot invite a contact whose access is ${contact!.portalStatus}`);
+        fail("CONTACT_NOT_INVITABLE", `access is ${contact!.portalStatus}`);
       }
       // AN ARCHIVED CLIENT GETS NO NEW CREDENTIALS. `createContact`
       // already refuses to record a person against one, so issuing them
@@ -118,7 +118,7 @@ export async function inviteContact(
       // security review's note). Existing access is untouched — that is
       // `setContactPortalAccess`'s decision to make, not a side effect
       // of archiving.
-      if (contact!.client.archivedAt !== null) fail("INVALID_INPUT", "client is archived");
+      if (contact!.client.archivedAt !== null) fail("ARCHIVED", "client is archived");
 
       // Supersede, then mint — in that order, so a crash between them
       // leaves NO live token rather than two.
@@ -154,7 +154,7 @@ export async function inviteContact(
           // already on its way, and a retry would mint a THIRD token to
           // supersede the one that just went out.
           if (e && typeof e === "object" && "code" in e && e.code === "P2002") {
-            fail("INVALID_INPUT", "an invitation is already being sent");
+            fail("INVITE_IN_FLIGHT", "an invitation is already being sent");
           }
           throw e;
         });
@@ -195,17 +195,45 @@ export async function inviteContact(
     },
   );
 
-  await send({
-    to: email,
-    subject: `${tenantName} has invited you to their client portal`,
-    text:
-      `Hello ${contactName},\n\n` +
-      `${tenantName} has invited you to their client portal, where you can see the work they are doing for you and ask for new work.\n\n` +
-      `Set your password and sign in: ${portalInviteUrl(token)}\n\n` +
-      `This link expires in ${INVITE_TTL_HOURS} hours. If you were not expecting this, you can ignore it.`,
-  });
+  // **A DELIVERY FAILURE IS NOT A FAILED INVITATION, and it must not be
+  // reported as one.** The transaction above has COMMITTED: the token
+  // exists, the contact is INVITED, and the audit row is written. An
+  // exception escaping here would leave the caller's `runForm` to rethrow
+  // it untyped — `messageForError` passes anything that is neither an
+  // `AuthzError` nor a `DomainError` straight through — so the member
+  // would get the error boundary over a row that HAD changed, and the
+  // standing rule is that an action failure must never look like a
+  // revert. Worse, the honest recovery is Resend, and a member told
+  // "that failed" would reasonably press Invite on a contact who is now
+  // INVITED, and be refused.
+  //
+  // So the send is REPORTED rather than thrown, and the caller picks the
+  // sentence. It is not swallowed: the reason goes to the server log and
+  // `mailed: false` is a fact the surface states out loud. (Today the one
+  // way it fires is a production build with no real transport — Amazon
+  // SES is not wired — which is exactly the state the founder's first
+  // invitation is meant to be read out of the dev outbox in.)
+  //
+  // Raised by this slice's review.
+  let mailed = true;
+  try {
+    await send({
+      to: email,
+      subject: `${tenantName} has invited you to their client portal`,
+      text:
+        `Hello ${contactName},\n\n` +
+        `${tenantName} has invited you to their client portal, where you can see the work they are doing for you and ask for new work.\n\n` +
+        `Set your password and sign in: ${portalInviteUrl(token)}\n\n` +
+        `This link expires in ${INVITE_TTL_HOURS} hours. If you were not expecting this, you can ignore it.`,
+    });
+  } catch (error) {
+    // No address, no name and no token: the invitation id is enough to
+    // find the row, and this line is world-readable in a CI log.
+    console.error(`[contact-invite] invitation ${inviteId} recorded but not sent`, error);
+    mailed = false;
+  }
 
-  return { inviteId };
+  return { inviteId, mailed };
 }
 
 /** Pause, resume, or end a contact's access. */
@@ -254,10 +282,12 @@ export async function setContactPortalAccess(
     const from = contact!.portalStatus;
     // EVERY LEGAL MOVE IS SPELLED OUT rather than inferred, so a state
     // nobody thought about is a refusal instead of a surprise.
-    if (action === "PAUSE" && from !== "ACTIVE") fail("INVALID_INPUT", "only active access can be paused");
-    if (action === "RESUME" && from !== "SUSPENDED") fail("INVALID_INPUT", "only paused access can be resumed");
+    if (action === "PAUSE" && from !== "ACTIVE")
+      fail("ACCESS_TRANSITION_INVALID", "only active access can be paused");
+    if (action === "RESUME" && from !== "SUSPENDED")
+      fail("ACCESS_TRANSITION_INVALID", "only paused access can be resumed");
     if (action === "REMOVE" && (from === "NO_ACCESS" || from === "REVOKED")) {
-      fail("INVALID_INPUT", "contact has no access to remove");
+      fail("ACCESS_TRANSITION_INVALID", "contact has no access to remove");
     }
 
     const status = action === "PAUSE" ? "SUSPENDED" : action === "RESUME" ? "ACTIVE" : "REVOKED";
@@ -279,9 +309,30 @@ export async function setContactPortalAccess(
       // control the credential of an account the agency had deliberately
       // suspended, live the instant anyone pressed Resume.
       //
-      // `contact_verification` has no FK to `contact` and is keyed by
-      // `identifier` — the address — so that is what identifies the rows.
-      await tx.contactVerification.deleteMany({ where: { identifier: contact!.email } });
+      // **AND THE FILTER IS `value`, NOT THE ADDRESS — the first version
+      // of this matched ZERO ROWS.** `contact_verification` has no FK to
+      // `contact`, so something on the row has to identify the person,
+      // and the obvious guess was wrong: Better Auth stores a reset token
+      // as `identifier = "reset-password:<token>"` with `value = <the
+      // user id>` (better-auth/dist/api/routes/password.mjs — the row is
+      // looked up BY the token, which is the point of it being
+      // unguessable). On the portal instance that user id IS the contact
+      // id. So a purge keyed on the email deleted nothing at all: a
+      // paused contact's outstanding reset link stayed live, and the
+      // comment above it read like a control that existed.
+      //
+      // `value` is kept beside `identifier` in an OR because not every
+      // Better Auth flow keys its row the same way — the address-keyed
+      // shape the first version assumed is the one some of them use — and
+      // over-deleting a contact's own verification rows at the moment
+      // their access is taken away is the harmless direction.
+      //
+      // Found by this slice's security review, and written out at this
+      // length because a write that can only ever match nothing is the
+      // same class of defect as a write that can only ever be undone.
+      await tx.contactVerification.deleteMany({
+        where: { OR: [{ value: contactId }, { identifier: contact!.email }] },
+      });
     }
 
     let releasedTasks = 0;

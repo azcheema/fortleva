@@ -330,24 +330,71 @@ describe("brokered portal writes", () => {
     expect(fields).toEqual(["clientId", "id", "number", "projectId", "projectKey"]);
   });
 
+  /**
+   * THE ONE PORTAL ACTION THAT HAS NO SESSION TO DERIVE A PRINCIPAL
+   * FROM — invitation acceptance (Phase 3, the invite slice's surfaces).
+   *
+   * A contact presenting a token has no cookie, no tenant and no client:
+   * the token is what resolves all three, and `requirePortalContext()`
+   * there would redirect every invitee to the sign-in form they cannot
+   * use yet. It is the same justification, in the same words, that
+   * `src/clients/contact-invite-token.ts` carries for being the one file
+   * in the feature allowed `withPlatform`, and it is kept as a NAMED
+   * allowlist of exactly one entry for the same reason: a narrow
+   * exemption with a reason beats a rule that bends.
+   *
+   * **THE OTHER HALF OF THE RULE STILL APPLIES TO IT, AND MORE SO** —
+   * see the loop below. An action with no session must not read an
+   * identity out of the form, because on that path there is nothing
+   * underneath to contradict the form if it lies. `email` is on its
+   * forbidden list and not on the session-bearing files', because for
+   * this one it is exactly the value a caller would want to substitute:
+   * the address the new session is minted for must come from the token.
+   */
+  const SESSIONLESS_ACTIONS: readonly string[] = [
+    join("app", "(portal)", "portal", "invite", "[token]", "actions.ts"),
+  ];
+
+  it("the sessionless allowlist is pinned (one entry — widen only deliberately)", () => {
+    expect(SESSIONLESS_ACTIONS).toEqual([
+      join("app", "(portal)", "portal", "invite", "[token]", "actions.ts"),
+    ]);
+    for (const rel of SESSIONLESS_ACTIONS) {
+      expect(readFileSync(join(SRC, rel), "utf8")).toContain("use server");
+    }
+  });
+
   it("every portal server action derives its principal from the session", () => {
     const actions = walk(join(SRC, "app"))
       .filter((f) => f.includes(PORTAL_ROUTES) && !isTest(f))
       .filter((f) => /^["']use server["']/m.test(readFileSync(f, "utf8")));
     expect(actions.length).toBeGreaterThan(0);
+    let sessionless = 0;
     for (const file of actions) {
       const text = readFileSync(file, "utf8");
-      expect(text, relative(SRC, file)).toContain("requirePortalContext()");
+      const rel = relative(SRC, file);
+      const exempt = SESSIONLESS_ACTIONS.includes(rel);
+      if (exempt) sessionless += 1;
+      else expect(text, rel).toContain("requirePortalContext()");
       // A portal action may not READ an identity out of the request. The
       // check is on the `field(formData, "…")` / `formData.get("…")`
       // ARGUMENT rather than on the word anywhere in the file, so a
       // docblock explaining the rule does not fail it.
-      for (const forbidden of ["tenantId", "contactId", "clientId", "memberId"]) {
+      const forbidden = exempt
+        ? ["tenantId", "contactId", "clientId", "memberId", "email"]
+        : ["tenantId", "contactId", "clientId", "memberId"];
+      for (const name of forbidden) {
         expect(
-          new RegExp(`(formData|fd)[^\\n]{0,40}["']${forbidden}["']`).test(text),
-          `${relative(SRC, file)} reads ${forbidden} out of the form`,
+          new RegExp(`(formData|fd)[^\\n]{0,40}["']${name}["']`).test(text),
+          `${rel} reads ${name} out of the form`,
         ).toBe(false);
       }
     }
+    // The allowlist must name files that EXIST and are still actions, so
+    // a rename cannot quietly turn an exemption into dead prose while
+    // the renamed file goes unchecked.
+    expect(sessionless, "an allowlisted sessionless action was not found").toBe(
+      SESSIONLESS_ACTIONS.length,
+    );
   });
 });

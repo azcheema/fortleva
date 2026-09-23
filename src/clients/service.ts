@@ -598,7 +598,7 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
     // is one click from it, and deleting them is a decision to make
     // through `setContactPortalAccess` first.
     if (current!.portalStatus !== "NO_ACCESS" && current!.portalStatus !== "REVOKED") {
-      fail("INVALID_INPUT", "contact has portal access");
+      fail("CONTACT_HAS_ACCESS", "contact has portal access");
     }
     // **AND NOT IF THEY HAVE WRITTEN ANYTHING** (founder decision,
     // 2026-09-23). Admitting REVOKED made it possible for the first time
@@ -629,7 +629,7 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
       (await tx.workItemActivity.count({
         where: { tenantId: ctx.tenantId, actorContactId: contactId },
       })) > 0;
-    if (wrote) fail("INVALID_INPUT", "contact has portal history");
+    if (wrote) fail("CONTACT_HAS_HISTORY", "contact has portal history");
     await tx.contact.delete({ where: { id: contactId } });
     await record(tx, {
       action: "contact.deleted",

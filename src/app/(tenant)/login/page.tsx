@@ -9,6 +9,7 @@ import { authClient } from "@/auth/client";
 import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { safeNext } from "@/lib/safe-next";
 
 import { AUTH_CONTROL, AuthShell, authLinkClass } from "./auth-shell";
 
@@ -16,7 +17,13 @@ function LoginForm() {
   const t = useTranslations("auth");
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/home";
+  // THROUGH THE GUARD, and this form is the reason it exists. `next`
+  // reached `router.push` unvalidated, so `/login?next=https://evil.example`
+  // signed a member in and then sent them to somebody else's site with
+  // the credibility of having just come from their own workspace. No
+  // prefix: any same-origin path is a legitimate destination here (the
+  // proxy sends people back to the page they asked for).
+  const next = safeNext(params.get("next"), "/home");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

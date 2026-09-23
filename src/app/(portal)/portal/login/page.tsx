@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { Suspense } from "react";
 
-import { AuthShell } from "@/app/(tenant)/login/auth-shell";
+import { PortalLoginForm } from "./login-form";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("auth.portal");
@@ -9,20 +10,29 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * `/portal/login` — the portal's sign-in surface, still a LOCKED SHELL:
- * there is no form here yet, because there is no invite flow yet
- * (PLAN §0). What it is not is a 404.
+ * `/portal/login` — the portal's sign-in surface, and a real form since
+ * the invite flow's surfaces landed.
  *
- * It moved here from `/portal` on 2026-09-21 (memo slice 3), when
- * `/portal` became a real page behind `requirePortalContext()`. That
- * guard redirects to this path, `src/proxy.ts` redirects to it for any
- * `/portal/...` request with no portal cookie, and it has been in
- * `PUBLIC_PATHS` since day one — so before this file existed, every one
- * of those redirects landed on a route Next had nothing for. The lockup
- * was already written and already the right words; it was simply behind
- * the wrong path.
+ * **IT WAS A LOCKED SHELL UNTIL NOW, and the reason it stopped being one
+ * is written in its own old docblock: "there is no form here yet,
+ * because there is no invite flow yet".** Both halves of that have now
+ * shipped, and leaving it locked would have made the invitation a
+ * one-shot door — `contact_session` expires in two days, so a contact
+ * who accepted, closed the browser and came back on Thursday would have
+ * had no way in and no way to be let in (`inviteContact` admits only
+ * NO_ACCESS and INVITED, so re-inviting an ACTIVE contact is refused).
+ * It is also the only destination the acceptance page's dead-end state
+ * can offer, and `PageState` requires one.
+ *
+ * The form is a client module of its own so that this file can stay a
+ * server component and keep its `generateMetadata` — the convention
+ * every page in the product follows. It reads `useSearchParams`, so it
+ * needs the `<Suspense>` boundary.
  */
-export default async function PortalLogin() {
-  const t = await getTranslations("auth.portal");
-  return <AuthShell plane="portal" eyebrow={t("eyebrow")} title={t("title")} description={t("closed")} />;
+export default function PortalLogin() {
+  return (
+    <Suspense>
+      <PortalLoginForm />
+    </Suspense>
+  );
 }

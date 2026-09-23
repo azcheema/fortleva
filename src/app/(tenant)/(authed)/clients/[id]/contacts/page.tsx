@@ -9,12 +9,33 @@ import { loadClient } from "../data";
 import { ContactRowForm, CreateContactForm } from "./contact-forms";
 import { CONTACT_GRID } from "./grid";
 
-/** Contacts tab: records list with inline edit + inline add (client:manage_contacts). No invites yet. */
+/**
+ * Contacts tab: the records list with inline edit and inline add, plus
+ * the portal access verbs (`client:manage_contacts`).
+ *
+ * **TWO GATES, NOT ONE, AND ARCHIVING IS WHY.** `editable` has always
+ * meant "this client is live and you may change its records", and it
+ * gated the whole row menu — so archiving a client REMOVED THE ONLY
+ * CONTROL THAT ENDS PORTAL ACCESS while leaving that access live. The
+ * contact could still sign in; `portal_gate` does not consult the
+ * client's archived flag; and the member had no verb to cut them off
+ * with. An archive is very often exactly the moment somebody wants that
+ * verb — the engagement is over.
+ *
+ * So `manageable` (the permission alone) gates the verbs that TAKE
+ * ACCESS AWAY, and `editable` (permission plus a live client) still
+ * gates everything that adds or changes: the add card, the inline field
+ * editors, and Invite — which `inviteContact` refuses on an archived
+ * client anyway (§3.1: hidden, never disabled). Deleting the record
+ * stays on `manageable` too, because erasure must not be blocked by an
+ * archive either. Found by this slice's security review.
+ */
 export default async function ClientContactsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const client = await loadClient(id);
   const t = await getTranslations("clients.contacts");
-  const editable = client.caps.manageContacts && client.status === "ACTIVE";
+  const manageable = client.caps.manageContacts;
+  const editable = manageable && client.status === "ACTIVE";
 
   const headers = [
     t("name"),
@@ -72,7 +93,13 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
             </div>
             <ul className="divide-y divide-border">
               {client.contacts.map((c) => (
-                <ContactRowForm key={c.id} clientId={client.id} contact={c} editable={editable} />
+                <ContactRowForm
+                  key={c.id}
+                  clientId={client.id}
+                  contact={c}
+                  editable={editable}
+                  manageable={manageable}
+                />
               ))}
             </ul>
           </>

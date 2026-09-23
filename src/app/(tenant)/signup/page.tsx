@@ -9,6 +9,7 @@ import { authClient } from "@/auth/client";
 import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { safeNext } from "@/lib/safe-next";
 
 import { AUTH_CONTROL, AuthShell, authLinkClass } from "../login/auth-shell";
 
@@ -20,7 +21,11 @@ import { AUTH_CONTROL, AuthShell, authLinkClass } from "../login/auth-shell";
 function SignupForm() {
   const t = useTranslations("auth");
   const params = useSearchParams();
-  const next = params.get("next") ?? "/home";
+  // Same guard as /login. Better Auth checks a `callbackURL` against its
+  // own `trustedOrigins`, so this is defence in depth there — but the
+  // value is also interpolated into two links on this page, which nothing
+  // else validates.
+  const next = safeNext(params.get("next"), "/home");
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

@@ -29,7 +29,7 @@ import {
   setProjectArchivedAction,
   updateProjectAction,
 } from "./actions";
-import { useRun } from "./use-run";
+import { useRun } from "@/components/use-run";
 
 const STATUSES = ["PLANNED", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
 const CADENCES = ["NONE", "WEEKLY", "BIWEEKLY", "MONTHLY"] as const;

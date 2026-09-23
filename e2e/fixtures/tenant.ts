@@ -228,6 +228,52 @@ export async function forgetStaffNotice(tenantId: string, email: string): Promis
   return forgotten;
 }
 
+/**
+ * THE RAW INVITATION TOKEN, READ OUT OF THE DEV OUTBOX — the one claim
+ * no dbtest can make, which is why `portal-invite.spec.ts` exists: a
+ * member presses Invite, and the link the contact receives is the link
+ * that works.
+ *
+ * `inviteContact` mails it AFTER its transaction commits and stores only
+ * a sha256, so this file is the only place the raw token has ever
+ * existed. The app process writes it; the test worker reads it; they
+ * share a working directory because Playwright's `webServer` inherits
+ * the config's. **It needs `MAIL_DEV_OUTBOX=1` in `webServer.env`** —
+ * `next start` runs as production, where `src/mailer` otherwise refuses
+ * the dev transport and `send()` throws after the row is already
+ * written.
+ *
+ * DEFENSIVELY: the file is never truncated, may not exist at all on a
+ * fresh checkout, and the mailer's own write is wrapped in a silent
+ * catch. Filtering on the address and taking the LAST line is what
+ * makes it correct under a resend — re-inviting supersedes, so the last
+ * token for an address is the only live one.
+ */
+export function readPortalInviteToken(email: string): string | null {
+  const file = join(process.cwd(), ".dev-outbox", "outbox.jsonl");
+  if (!existsSync(file)) return null;
+  const sent = readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line) as { to?: unknown; text?: unknown }];
+      } catch {
+        return [];
+      }
+    })
+    .filter((msg) => msg.to === email);
+  const text = sent.at(-1)?.text;
+  if (typeof text !== "string") return null;
+  return text.match(/\/portal\/invite\/([A-Za-z0-9_-]+)/)?.[1] ?? null;
+}
+
+/** Erase a contact the spec created, whatever state it reached. */
+export async function removeSpecContact(tenantId: string, email: string): Promise<boolean> {
+  const { removed } = await runCli<{ removed: boolean }>(["remove-contact", tenantId, email]);
+  return removed;
+}
+
 export function readSeed(): E2ESeed | null {
   if (!existsSync(SEED_FILE)) return null;
   return JSON.parse(readFileSync(SEED_FILE, "utf8")) as E2ESeed;

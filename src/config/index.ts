@@ -23,6 +23,44 @@ const envSchema = z.object({
   // templates and the mail adapter never compose addresses themselves.
   MAIL_FROM_NAME: z.string().default("Fortleva"),
   MAIL_FROM_ADDRESS: z.email().default("dev@localhost.invalid"),
+  /**
+   * PERMIT THE DEV MAIL TRANSPORT IN A PRODUCTION BUILD — set by, and
+   * only by, the Playwright harness's `webServer.env`.
+   *
+   * `next start` sets `NODE_ENV=production`, so `isProduction` is true
+   * for the e2e server, and `src/mailer` refuses to send through the dev
+   * transport there (rightly: an unwired SES must be an error and not a
+   * silent drop). That refusal makes every mail-sending FLOW untestable
+   * end to end — `inviteContact` sends after its transaction commits, so
+   * pressing Invite in the harness would 500 after writing the row, and
+   * the token the acceptance page needs exists only in that mail. The
+   * portal invitation is the product's first such flow; nothing before
+   * it ever needed the outbox from a browser.
+   *
+   * It is a deliberate hole with a deliberately unmistakable name, and
+   * it is opt-IN: absent, the guard behaves exactly as it always has.
+   * `src/mailer` logs loudly whenever it is honoured so a real
+   * deployment that ever set it could not do so quietly.
+   */
+  // PERMISSIVE ON PURPOSE. An earlier version of this was
+  // `z.enum(["0","1"])`, which made `MAIL_DEV_OUTBOX=true` — the value
+  // anybody would actually type — a `envSchema.parse` failure at module
+  // load, i.e. the whole application refusing to boot with a message
+  // about an enum. A footgun on a flag nobody sets is still a footgun.
+  // Anything but the literal "1" is off (see `allowDevMailOutbox`).
+  MAIL_DEV_OUTBOX: z.string().optional(),
+  /**
+   * HOW MANY PROXIES STAND IN FRONT OF THIS DEPLOYMENT — the only thing
+   * that makes a client address trustworthy enough to rate-limit on.
+   *
+   * `src/lib/client-ip.ts` carries the reasoning and the arithmetic. The
+   * default is 1 because that is the deployment RUNBOOK documents (one
+   * TLS-terminating proxy forwarding `x-forwarded-for`) and the one
+   * Vercel provides; 0 says "nothing in front of me", which makes every
+   * request share one bucket rather than trust a header the caller
+   * wrote. Raise it for a CDN in front of the proxy.
+   */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(8).default(1),
   DATABASE_URL: z.string().optional(),
   DIRECT_URL: z.string().optional(),
   // File storage (SECURITY.md §5): Cloudflare R2, EU jurisdiction. All
@@ -44,6 +82,34 @@ const envSchema = z.object({
 const env = envSchema.parse(process.env);
 
 export const isProduction = env.NODE_ENV === "production";
+
+/** See TRUSTED_PROXY_HOPS above and `src/lib/client-ip.ts` for the rule. */
+export const trustedProxyHops = env.TRUSTED_PROXY_HOPS;
+
+/**
+ * See MAIL_DEV_OUTBOX above. The e2e harness sets it; nothing else may.
+ *
+ * **TWO CONDITIONS, AND THE SECOND IS THE ONE THAT MATTERS** — the shape
+ * `next.config.ts` already argues for at length about
+ * `NEXT_SKIP_TYPECHECK`, and for exactly its reason: a lone env flag is
+ * FORGEABLE. `next start` and `playwright.config.ts` both load
+ * `.env.local` before anything reads this, and every hosting platform
+ * has an env panel, so a flag alone could turn production mail into a
+ * silent write to a file on disk. The security review raised it against
+ * this repository's own documented precedent.
+ *
+ * So the escape hatch additionally requires the app to be serving itself
+ * on a LOOPBACK address, which is a structural fact about the process
+ * rather than a string somebody can set: a real deployment's `APP_URL`
+ * is the origin its clients resolve, and a deployment whose origin is
+ * 127.0.0.1 has no clients. The harness is the only thing in this
+ * product that runs a production build on loopback
+ * (`E2E_BASE_URL=http://127.0.0.1:<port>`), which is precisely the case
+ * this exists for.
+ */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+export const allowDevMailOutbox =
+  env.MAIL_DEV_OUTBOX === "1" && LOOPBACK_HOSTS.has(new URL(env.APP_URL).hostname);
 
 export const appUrl = new URL(env.APP_URL);
 export const opsUrl = new URL(env.OPS_URL ?? env.APP_URL);

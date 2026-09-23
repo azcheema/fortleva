@@ -158,6 +158,29 @@ describe("proxy: the portal plane (Phase 3)", () => {
     expect(dest(proxy(req(APP, "/portal/login")))).toBe("next");
   });
 
+  it("serves a portal INVITATION without demanding a cookie — the invitee has none", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // The whole point of the route: an invitee is bounced to a sign-in
+    // form for a credential they do not have yet unless this passes.
+    expect(dest(proxy(req(APP, "/portal/invite/abc123")))).toBe("next");
+  });
+
+  it("does not open the portal on a lookalike of the invite prefix", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // `startsWith("/portal/invite")` without the trailing slash would
+    // match these; anchoring on the segment boundary is what keeps a
+    // future `/portal/invitations` behind the cookie gate.
+    expect(dest(proxy(req(APP, "/portal/invitations")))).toBe("redirect:/portal/login");
+    expect(dest(proxy(req(APP, "/portal/invite")))).toBe("redirect:/portal/login");
+  });
+
+  it("keeps invitation acceptance OFF the ops host", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    // The public-path branch runs after the plane sweep, so a
+    // credential-setting surface never answers on the ops origin.
+    expect(dest(proxy(req(OPS, "/portal/invite/abc123")))).toBe("redirect:/ops/portal/invite/abc123");
+  });
+
   it("does not accept a MEMBER cookie as entry to the portal", async () => {
     const proxy = await proxyWith({ APP_URL: `https://${APP}` });
     expect(dest(proxy(req(APP, "/portal/projects", `${MEMBER_COOKIE}=x`)))).toBe(

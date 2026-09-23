@@ -6,6 +6,11 @@ import { z } from "zod";
 
 import { assignMemberToClient, unassignMemberFromClient } from "@/clients/assignments";
 import {
+  inviteContact,
+  setContactPortalAccess,
+  type PortalAccessAction,
+} from "@/clients/contact-access";
+import {
   archiveClient,
   createContact,
   deleteContact,
@@ -163,17 +168,113 @@ export async function createContactAction(
   const ctx = await ctxOf();
   const t = await getTranslations("clients.contacts");
   const name = field(formData, "name") ?? "";
+  // THE TICK IS THE SHORTCUT FOR THE COMMON CASE (founder decision,
+  // 2026-09-23) — the row still carries its own Invite verb, because
+  // every contact that exists today was added before there was anything
+  // to tick. A checkbox posts nothing when it is clear, so PRESENCE is
+  // the value, which is exactly what `has()` means and what this file
+  // already uses seven times over.
+  const invite = has(formData, "invite");
   const r = await runForm(path(clientId.data, "/contacts"), async () => {
-    await createContact(ctx, clientId.data, {
+    const created = await createContact(ctx, clientId.data, {
       name,
       email: field(formData, "email") ?? "",
       title: field(formData, "title"),
       phone: field(formData, "phone"),
       portalProfile: profileOf(field(formData, "portalProfile")),
     });
-    return t("added", { name: name.trim() });
+    if (!invite) return t("added", { name: name.trim() });
+    // **TWO CALLS, TWO TRANSACTIONS, TWO AUDIT ROWS** (`contact.created`
+    // then `contact.invited`), rather than an `invite` flag threaded
+    // through `createContact`. The two acts are genuinely separate — one
+    // records a person, the other sends them a credential-bearing link —
+    // and folding them together would put a mail send inside the
+    // record-keeping path for every caller of it, including the ones
+    // that must never send anything.
+    const { mailed } = await inviteContact(ctx, created.id);
+    // Recorded, invited, and possibly not DELIVERED — `inviteContact`
+    // reports a send failure rather than throwing it, because the
+    // invitation itself has committed by then. Resend is the recovery and
+    // it lives in the row's own menu.
+    return mailed
+      ? t("addedAndInvited", { name: name.trim() })
+      : t("addedNotSent", { name: name.trim() });
   });
-  if (r.ok) revalidatePath(path(clientId.data), "layout");
+  // **REVALIDATED EVEN ON FAILURE, and the tick is why.** `createContact`
+  // and `inviteContact` are two transactions, so the second can refuse
+  // after the first has committed — a contact who exists on a page that
+  // was never re-rendered. The member then reads "could not add" over a
+  // list that does not show the person, and adds them again, which fails
+  // on the email unique. A revalidation costs one render and makes the
+  // screen agree with the database whatever happened. Raised by this
+  // slice's review.
+  revalidatePath(path(clientId.data), "layout");
+  return r;
+}
+
+/**
+ * INVITE, AND RESEND, AND THEY ARE THE SAME CALL. `inviteContact`'s
+ * allowlist admits NO_ACCESS (a first invitation) and INVITED (the
+ * legitimate resend) and supersedes any live token, so a second code
+ * path for "resend" would either mint two live invitations or trip the
+ * `contact_invite_one_live_idx` partial unique. The row picks the LABEL
+ * from the status; the server sees one verb.
+ */
+export async function inviteContactAction(
+  clientId: string,
+  contactId: string,
+): Promise<FormResult> {
+  if (!uuid.safeParse(clientId).success || !uuid.safeParse(contactId).success) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("clients.contacts");
+  const r = await runForm(path(clientId, "/contacts"), async () => {
+    // `mailed` is false when the transport refused AFTER the invitation
+    // committed. Saying "sent" then would be a lie the member could only
+    // discover by asking the client whether anything arrived.
+    const { mailed } = await inviteContact(ctx, contactId);
+    return mailed ? t("invited") : t("invitedNotSent");
+  });
+  // "layout", not the tab: `portalStatus` is read by the client's Portal
+  // tab and by View-as-Contact as well as by this list.
+  if (r.ok) revalidatePath(path(clientId), "layout");
+  return r;
+}
+
+/**
+ * PAUSE, RESUME, REMOVE — the founder's three verbs, one action.
+ *
+ * The success message is picked by the verb, and the REMOVE one carries
+ * `releasedTasks`: how many tasks came back to the team. That number is
+ * knowable only after the act — the service returns it — which is why it
+ * is reported here rather than asked in the row's confirmation, where
+ * UI.md §5.9 gives a destructive verb one short line and no modal.
+ */
+export async function setContactPortalAccessAction(
+  clientId: string,
+  contactId: string,
+  action: PortalAccessAction,
+): Promise<FormResult> {
+  if (!uuid.safeParse(clientId).success || !uuid.safeParse(contactId).success) return invalid();
+  if (action !== "PAUSE" && action !== "RESUME" && action !== "REMOVE") return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("clients.contacts");
+  const r = await runForm(path(clientId, "/contacts"), async () => {
+    const result = await setContactPortalAccess(ctx, contactId, action);
+    if (action === "PAUSE") return t("accessPaused");
+    if (action === "RESUME") return t("accessResumed");
+    // A SEPARATE SENTENCE FOR ZERO rather than a `=0` plural branch, and
+    // the catalogue's parity test is why: `icuArgs` there matches the
+    // first token inside any `{...}`, so a branch body beginning with a
+    // WORD reads as an ICU argument name and "no"/"inga" fail as a
+    // mismatched argument between locales. Every plural in this
+    // catalogue therefore starts its branches with a digit or `#`. The
+    // branch belongs in the action anyway: "no tasks came back" is a
+    // different thing to say, not a different number.
+    return result.releasedTasks === 0
+      ? t("accessRevokedNone")
+      : t("accessRevoked", { count: result.releasedTasks });
+  });
+  if (r.ok) revalidatePath(path(clientId), "layout");
   return r;
 }
 

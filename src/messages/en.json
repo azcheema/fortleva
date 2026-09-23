@@ -417,8 +417,30 @@
     },
     "portal": {
       "title": "Client portal",
-      "closed": "The portal is not open yet. Your agency will send you an invitation when it is.",
-      "eyebrow": "Portal"
+      "subtitle": "Sign in to see the work your agency is doing for you.",
+      "eyebrow": "Portal",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "failed": "We could not sign you in. Check the address and password, or ask your agency."
+    },
+    "portalInvite": {
+      "metaTitle": "Set your password",
+      "passwordShort": "Use at least {min} characters.",
+      "passwordLong": "That is too long — use at most {max} characters.",
+      "already": "Already set a password?",
+      "eyebrow": "Invitation",
+      "title": "{tenant} has invited you to their client portal",
+      "subtitle": "Choose a password for <strong>{email}</strong> and you are in. Your agency recorded you as <strong>{name}</strong>.",
+      "password": "Choose a password",
+      "passwordHint": "At least {min} characters.",
+      "confirm": "Repeat the password",
+      "submit": "Set password and sign in",
+      "submitting": "Setting your password…",
+      "mismatch": "The two passwords are not the same.",
+      "refused": "This invitation cannot be used right now. Try again later, or ask your agency to send you a new link.",
+      "unavailableTitle": "Invitation not available",
+      "unavailable": "This invitation cannot be used. Try again later, or ask your agency to send you a new link — and sign in instead if you have set your password already.",
+      "signIn": "Sign in"
     }
   },
   "account": {
@@ -1035,6 +1057,11 @@
     "SUBJECT_NOT_VISIBLE": "This task is private to your team, so a reply can’t be shown to the client. Share the task first.",
     "LABEL_TAKEN": "A label with that name already exists.",
     "CONTACT_NOT_VIEWABLE": "That person cannot sign in to the portal yet, so there is no client view to open. Invite them from the client's Contacts tab first.",
+    "CONTACT_NOT_INVITABLE": "This person cannot be invited in their current state — reload the page to see where their access stands.",
+    "INVITE_IN_FLIGHT": "An invitation to this person is already on its way. Give it a moment, then try again.",
+    "ACCESS_TRANSITION_INVALID": "Their portal access has moved on since this page was loaded. Reload it to see where it stands.",
+    "CONTACT_HAS_ACCESS": "This person still has portal access. Use End access first, then Remove contact.",
+    "CONTACT_HAS_HISTORY": "This person has written in the portal, so their record is kept. Use End access instead.",
     "REQUEST_RATE_LIMITED": "You have sent several requests in a short time. Wait a few minutes and try again.",
     "REQUEST_BUSY": "We could not send that just now. Try again in a moment."
   },
@@ -1125,7 +1152,7 @@
     "contacts": {
       "title": "Contacts",
       "empty": "Add the first contact",
-      "emptyDescription": "People at the client — records only for now; portal access arrives with the portal.",
+      "emptyDescription": "People at the client. Invite them to the portal to let them follow the work.",
       "emptyReadOnly": "No contacts yet",
       "emptyReadOnlyDescription": "No one is recorded at this client.",
       "name": "Name",
@@ -1144,6 +1171,21 @@
       "removeConfirm": "Remove contact?",
       "removeContact": "Remove contact",
       "removed": "Contact removed",
+      "invite": "Invite to the portal",
+      "resend": "Send the invitation again",
+      "invited": "Invitation sent",
+      "invitedNotSent": "Invitation recorded, but the email could not be sent — try Send again",
+      "addedNotSent": "Added {name}, but the invitation email could not be sent — try Send again",
+      "inviteOnAdd": "Invite this person to the portal",
+      "addedAndInvited": "Added {name} and sent the invitation",
+      "pauseAccess": "Pause access",
+      "accessPaused": "Access paused",
+      "resumeAccess": "Resume access",
+      "accessResumed": "Access resumed",
+      "revokeAccess": "End access",
+      "revokeConfirm": "End access?",
+      "accessRevoked": "Access ended — {count, plural, =1 {1 task came back to the team} other {# tasks came back to the team}}",
+      "accessRevokedNone": "Access ended",
       "portalStatus": {
         "NO_ACCESS": "No portal access",
         "INVITED": "Invited",
@@ -1151,7 +1193,7 @@
         "SUSPENDED": "Suspended",
         "REVOKED": "Revoked"
       },
-      "portalHint": "Portal invitations arrive in Phase 3 — contacts are records until then.",
+      "portalHint": "Tick the box to send an invitation as soon as the person is added; you can also invite from the row menu later.",
       "columns": {
         "status": "Portal"
       }
@@ -2282,8 +2324,8 @@
       "NO_ACCESS": "No portal access",
       "INVITED": "Invited",
       "ACTIVE": "Portal active",
-      "SUSPENDED": "Suspended",
-      "REVOKED": "Revoked"
+      "SUSPENDED": "Paused",
+      "REVOKED": "Ended"
     },
     "stateCategory": {
       "BACKLOG": "Backlog",

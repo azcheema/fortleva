@@ -45,11 +45,28 @@ const PORTAL_PREFIX = "/portal";
  */
 const PORTAL_API_PREFIX = "/api/portal-auth";
 /** The portal's own sign-in page: a contact with no session must be
- * able to reach it. Invite acceptance will need the same treatment and
- * is deliberately NOT pre-added — the route does not exist yet, and a
- * public path standing open for a page nobody wrote is a hole waiting
- * for a name. It lands with the invite flow. */
+ * able to reach it. */
 const PORTAL_LOGIN = "/portal/login";
+/**
+ * INVITATION ACCEPTANCE, and it is a PREFIX rather than a `PUBLIC_PATHS`
+ * entry because the token is a path segment — `PUBLIC_PATHS.has()` is an
+ * exact match and could only ever exempt the bare `/portal/invite`,
+ * leaving every real link bounced to a sign-in form for a credential the
+ * invitee does not have yet. The trailing slash anchors it on a segment
+ * boundary so `/portal/invitations` is not swept in with it.
+ *
+ * **THIS OPENS THE PAGE'S SERVER ACTION TOO**, because a Server Action
+ * POSTs to its own pathname: the same branch that lets an invitee load
+ * the page lets anyone POST to it. That is the sharp edge of the whole
+ * slice and it is why the route rate-limits through `allowStrict` — the
+ * one limiter in the product that holds without Upstash — rather than
+ * through the fail-open `allow` its member-plane sibling uses.
+ *
+ * It stays BELOW the host/plane branches, so the ops host still sweeps
+ * it under /ops and 404s it: a credential-setting surface must not be
+ * reachable on the origin whose controls are meant to be tighter.
+ */
+const PORTAL_INVITE_PREFIX = "/portal/invite/";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
@@ -168,7 +185,13 @@ export function proxy(request: NextRequest): NextResponse {
     return deny404();
   }
 
-  if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/invite/")) return pass();
+  if (
+    PUBLIC_PATHS.has(pathname) ||
+    pathname.startsWith("/invite/") ||
+    pathname.startsWith(PORTAL_INVITE_PREFIX)
+  ) {
+    return pass();
+  }
 
   const cookieFor =
     pathname.startsWith(OPS_PREFIX)

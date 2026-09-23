@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import type { ProjectDetail } from "@/projects/service";
 
 import { setHoursSharingAction, setPortalEnabledAction } from "../actions";
-import { useRun } from "../use-run";
+import { useRun } from "@/components/use-run";
 
 const HOURS_MODES = ["NONE", "HOURS", "BILLABLE_AMOUNT"] as const;
 

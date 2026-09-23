@@ -163,7 +163,7 @@ describe("contact records (client:manage_contacts; no invites in Phase 2)", () =
       fields: ["title", "portalProfile"],
     });
     await getPlatformClient().contact.update({ where: { id: contactId }, data: { portalStatus: "INVITED" } });
-    await domain(deleteContact(owner, contactId), "INVALID_INPUT");
+    await domain(deleteContact(owner, contactId), "CONTACT_HAS_ACCESS");
     await getPlatformClient().contact.update({ where: { id: contactId }, data: { portalStatus: "NO_ACCESS" } });
     await deleteContact(owner, contactId);
     expect((await t.audits("contact.deleted")).map((e) => e.targetId)).toEqual([contactId]);
