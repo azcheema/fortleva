@@ -10,6 +10,29 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
+**PUSHED AND GREEN: THE INVITE FLOW'S SERVER HALF is `efc19ab`; CI run [35850301389](https://github.com/azcheema/fortleva/actions/runs/35850301389) — both jobs `success`.** Unit 77 files, `test:db` **48 files** from an EMPTY database (so both new migrations are proven to apply from scratch: `contact_invite` with its grant and both policies, and the partial unique + email binding), browser harness **145 passed in 12.4 min** — unchanged, which is correct: this commit ships no surface to drive. Local full `test:db` was **48 files / 710 passed, exit 0**, `ordering.dbtest.ts` clean.
+
+## → THE NEXT SESSION STARTS HERE: the invite flow's SURFACES (commit 2 of 2)
+
+**WHAT IT IS.** The screens that make the server half reachable. Nothing can invite anybody today — `inviteContact` has no caller outside its dbtest — so until this ships, `Contact.portalStatus` still never moves on `naxdor` and the portal stays dark.
+
+**THE FOUR THINGS IT OWES, and the first three are one route:**
+
+1. **`/portal/invite/[token]`** — the acceptance page. `portalInviteUrl` (`src/auth/index.ts`) already builds this address and **the invitation mail already links to it**, so the route is owed before anything is allowed to send one.
+2. **Its entry in the proxy's PUBLIC_PATHS** (`src/proxy.ts`). The prefix `/portal/*` is gated on the portal session cookie, and an invitee has none by construction — without the entry they are bounced to a sign-in form for a credential they do not yet have. The existing exemption covers `/invite/` (the MEMBER plane) only.
+3. **A rate limit on that page.** It is the ONLY unauthenticated write-adjacent surface in the product, and `previewContactInvite` writes a platform audit row on every call — so a loop over random tokens appends unbounded `platform.system_job` rows to an append-only table with no pruning job before Phase 8. Raised by the security review and deliberately deferred to here.
+4. **The member side**: the client's Contacts tab gains Invite / Resend / Pause / Resume / Remove, and the add-contact form gains the **"invite to the portal" tick** (founder decision, 2026-09-23 — the tick is the shortcut for the common case; the row still needs an Invite verb, because every contact that exists today has no access). The removal dialog should say how many tasks come back, which `setContactPortalAccess` already returns as `releasedTasks`.
+
+**AND AN e2e THAT DRIVES A REAL INVITATION TO A REAL SIGN-IN**, which is the one claim no dbtest can make: a member invites, the token is read out of the outbox, the contact sets a password, and lands on `/portal` as themselves. The harness already holds a contact jar (`CONTACT_STORAGE_STATE`); this is the first test that would create one from scratch.
+
+**THE SHARP EDGE, worth naming before the work starts:** the accept page is the only surface in this product that takes a write from somebody with no session. Everything else sits behind one.
+
+**STILL DARK UNTIL IT SHIPS:** `naxdor`'s contacts are all at the `NO_ACCESS` default, so slice 6a's request intake, 6b's triage lane and 6c's hand-over remain unreachable by a real client. **This is the last thing between the build and Phase 3's DoD** ("a real Naxdor client contact logs in…").
+
+**Model and effort: Opus 5 at high.** The character changes — UI, i18n and Playwright rather than auth and crypto — but the unauthenticated surface earns a `/security-review` anyway.
+
+---
+
 **PUSHED AND GREEN: SLICE 6c's SECOND COMMIT — the member-plane hand-over — is `5c0221c`; CI run [35788739233](https://github.com/azcheema/fortleva/actions/runs/35788739233) — both jobs `success`.** Unit **77 files / 1241 passed / 1 skipped**, identical to local. Browser harness **143 passed / 1 skipped in 12.0 min** (+2 over 141, which is exactly `e2e/contact-tasks.spec.ts`).
 
 **AND THE CONTAINER SETTLED THE ONE THING LOCAL COULD NOT: `test:db` is 47 files / 679 passed, 0 failed.** Locally the same tree was 677/679, and **the two-test delta is exactly `ordering.dbtest.ts`'s 20-way and 12-way concurrency tests** — the pair that failed on the 5000 ms interactive-transaction budget by ~380 ms, failed AGAIN in isolation (where the standing note says they pass), and failed identically against clean `main` at `2ad8860` once the diff was stashed. The CI job runs Postgres in a container on the runner, where the transatlantic link does not exist, and there they are green. That is the sixth data point for AGENTS.md's note, and the first time the "re-run it alone" shortcut did not produce the answer — which is why the note now says to stash and test `main` instead.
