@@ -10,7 +10,7 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
-**LOCAL AND GREEN, NOT YET PUSHED: THE INVITE FLOW'S SURFACES.** Gates at the foot of the slice record below. The CI run and its sha go on this line once it is pushed.
+**PUSHED AND GREEN: THE INVITE FLOW'S SURFACES are `bc164d3`, and the refusal-copy fixes `6560985`; CI run [35885191555](https://github.com/azcheema/fortleva/actions/runs/35885191555) — both jobs `success`.** Unit **80 files / 1275 passed / 1 skipped**, identical to local. `test:db` **48 files** from an EMPTY database. Browser harness **147 passed / 1 skipped in 11.3 min**, and the count is the proof the new tests ran — 145 → 148 collected, which is exactly `portal-invite.spec.ts`'s two plus one the seeded third contact unlocked. **So the whole chain is proven in CI as well as locally**: a member's click, the mail, the outbox, the token, the acceptance page, a password, a session, `/portal`.
 
 ## → THE NEXT SESSION STARTS HERE: the portal's own door back in, then the founder's first invitation
 
