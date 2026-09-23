@@ -50,6 +50,17 @@ export {
   type BulkResult,
 } from "./bulk";
 export { listMyWork } from "./my-work";
+// Phase 3 slice 6c (third commit): `/home`'s "waiting on client", the
+// last of UI.md rule 8's cards and the one that has had no writer to
+// draw since 2W. A MEMBER-plane projection, and its own file for the
+// reason `triage-lane.ts` is: which plane a piece of code serves should
+// be a property of where it lives.
+export {
+  WAITING_GLANCE_LIMIT,
+  waitingOnClient,
+  type WaitingOnClient,
+  type WaitingRow,
+} from "./waiting-on-client";
 export { moveItem, rebalanceProjectRanks, type MoveInput, type MovedItem } from "./ordering";
 export { changeState, ensureProjectStates, type StateChange, type TriageWrite } from "./states";
 // Phase 3 slice 6b — the triage lane (`work_item:triage`). The member
@@ -131,8 +142,15 @@ export {
 // the broker next door.
 export {
   createPortalRequest,
+  // Phase 3 slice 6c (third commit): the contact's tick reaches the
+  // barrel with the surface that calls it, the rule the hand-over
+  // followed one commit earlier. Until now nothing outside its dbtest
+  // could reach it, which bounded the blast radius of a writer a
+  // client's browser can trigger.
+  setPortalTaskDone,
   type PortalRequestCreated,
   type PortalRequestInput,
+  type PortalTaskClaim,
 } from "./portal-writes";
 // The two length caps are NOT re-exported here, and that is deliberate:
 // the portal's request form is a client component, and anything it

@@ -6,6 +6,8 @@ import { formatDay } from "@/lib/format";
 import { STATUS_MAP } from "@/lib/enum-map";
 import { PORTAL_TASK_CATEGORIES, type PortalProjectTasks, type PortalTaskCategory } from "@/modules/work";
 import { TONE_CHIP } from "@/lib/tones";
+
+import { PortalTaskDone } from "./task-done";
 import { cn } from "@/lib/utils";
 
 /**
@@ -78,6 +80,24 @@ export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
                     <span className="text-xs text-muted-foreground">
                       {t("declinedReason", { reason: task.declinedReason })}
                     </span>
+                  ) : null}
+                  {/* THE ONE CONTROL ON THIS PLANE, and only where it
+                      would work. `assignedToYou` is the projection's
+                      boolean about the READER (never an assignee), and
+                      the two live categories are exactly what
+                      `setPortalTaskDone` accepts: it refuses a tick on
+                      work the agency has finished or dropped — which
+                      would stamp a column nothing would ever clear —
+                      and on a REQUESTED row, which nobody has agreed to
+                      yet. Offering it there would be a button whose only
+                      outcome is a refusal. A ticked task STAYS in its
+                      live category (the tick moves nothing), so the
+                      untick is always reachable from here. */}
+                  {task.assignedToYou && (task.category === "PLANNED" || task.category === "IN_PROGRESS") ? (
+                    <PortalTaskDone
+                      itemId={task.id}
+                      markedDoneAt={task.markedDoneAt?.toISOString() ?? null}
+                    />
                   ) : null}
                   {task.phase || task.targetDate || task.completedAt ? (
                     <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">

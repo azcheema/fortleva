@@ -8,6 +8,7 @@ import { actorFor, setupTenant } from "@/members/dbtest-fixture";
 import { resolvePortalModuleGates, type PortalPrincipal } from "@/portal";
 
 import { assignItem, assignItemToContact, changeItemVisibility, createItem, getItemDetail, listItems } from "./items";
+import { waitingOnClient } from "./waiting-on-client";
 import { listPortalTasks } from "./portal";
 import { setPortalTaskDone } from "./portal-writes";
 import { changeState } from "./states";
@@ -89,6 +90,21 @@ let viewerOnly: { memberId: string; actor: MemberActor };
  * seat's picker is a working control that simply has no second group.
  */
 let noClientView: { memberId: string; actor: MemberActor };
+/**
+ * A CUSTOM SEAT WITH NO `work_item:view` — `project:view` only, scoped
+ * directly to `acme`. It is the one seat that can make
+ * `waitingOnClient`'s first gate the ONLY thing refusing: it has scope,
+ * and it holds the second code the read also requires.
+ */
+let noWorkView: { memberId: string; actor: MemberActor };
+/**
+ * A CUSTOM SEAT WITH NO `project:view` — `work_item:view` only, scoped
+ * directly to `acme`. `waitingOnClient` requires BOTH codes (a row names
+ * a project and links into it, the queue's rule), and until a fresh code
+ * review pointed it out the second gate was asserted by no test and
+ * survived none of the mutations driven against this read.
+ */
+let noProjectView: { memberId: string; actor: MemberActor };
 /**
  * The `user` rows of the two seats above. `setupTenant`'s own cleanup
  * deletes only the FOUR template users it made — a custom seat's user
@@ -248,6 +264,8 @@ beforeAll(async () => {
   };
   viewerOnly = await seatWith("ctask-viewer", ["work_item:view", "project:view", "client:view"]);
   noClientView = await seatWith("ctask-noclient", ["work_item:view", "work_item:edit", "project:view"]);
+  noWorkView = await seatWith("ctask-nowork", ["project:view"]);
+  noProjectView = await seatWith("ctask-noproject", ["work_item:view"]);
 
   gates = await resolvePortalModuleGates(f.tenantId);
 });
@@ -886,5 +904,175 @@ describe("what the member plane can see and offer", () => {
     expect(detail.item.assigneeContactName).toBeNull();
     const row = (await listItems(ctxOf("manager"), pOn)).items.find((r) => r.id === id)!;
     expect(row.assigneeContactName).toBeNull();
+  });
+});
+
+
+/**
+ * `/home`'S "WAITING ON CLIENT" — the read behind rule 8's last card
+ * (Phase 3 slice 6c, third commit).
+ *
+ * WHAT ONLY A DATABASE CAN SAY HERE: the card's two groups are a
+ * PREDICATE over columns three different writers maintain — the
+ * assignment, the claim, and the state machine that clears the claim on
+ * arrival — so "a ticked task moves to the first group and leaves it
+ * when the agency finishes the work" is a fact about their interaction
+ * and not about any one of them.
+ *
+ * THE GATES ARE MEASURED ONE AT A TIME, on seats chosen so exactly one
+ * can be the one refusing — the lesson the slice-6b reviews landed on
+ * twice. `viewerOnly` holds `work_item:view` WITHOUT `project:view`?
+ * No: it holds both, so it is the POSITIVE control, and the refusal
+ * cases below use the seats that can only fail for one reason.
+ */
+describe("/home's waiting-on-client glance", () => {
+  const titles = (rows: readonly { title: string }[]) => rows.map((r) => r.title);
+
+  it("splits the two groups by the CLAIM, not by the state", async () => {
+    const handed = await sharedTask("Send us the logo");
+    await assignItemToContact(ctxOf("manager"), handed, anna);
+    await claimedTask("Approve the copy");
+
+    const g = (await waitingOnClient(ctxOf("manager")))!;
+    expect(titles(g.ticked)).toEqual([`Approve the copy ${run}`]);
+    expect(titles(g.waiting)).toEqual([`Send us the logo ${run}`]);
+    expect(g.truncated).toBe(false);
+    // The row carries who at the client holds it — a queue nobody can
+    // chase is not a queue — and the claim's own stamp.
+    expect(g.ticked[0]!.contactName).toBe("Anna");
+    expect(g.ticked[0]!.markedDoneAt).toBeInstanceOf(Date);
+    expect(g.waiting[0]!.markedDoneAt).toBeNull();
+    expect(g.waiting[0]!.contactName).toBe("Anna");
+  });
+
+  it("drops a task the moment the agency finishes it, claim and all", async () => {
+    const id = await claimedTask("Ticked then closed");
+    expect((await waitingOnClient(ctxOf("manager")))!.ticked).toHaveLength(1);
+
+    // ARRIVING at DONE clears the claim (`transitionState`) AND takes the
+    // row out of the live categories. Both would remove it; that they
+    // agree is the point — a row that left one and not the other would
+    // sit in the "still with them" group for ever.
+    await changeState(ctxOf("manager"), id, await stateOf(pOn, "DONE"));
+    const g = (await waitingOnClient(ctxOf("manager")))!;
+    expect(g.ticked).toHaveLength(0);
+    expect(g.waiting).toHaveLength(0);
+    expect((await rowOf(id)).contactCompletedAt).toBeNull();
+  });
+
+  it("drops a task taken back from the client", async () => {
+    const id = await claimedTask("Handed back");
+    await assignItem(ctxOf("manager"), id, null);
+    const g = (await waitingOnClient(ctxOf("manager")))!;
+    expect(g.ticked).toHaveLength(0);
+    expect(g.waiting).toHaveLength(0);
+  });
+
+  it("never shows a task in a project the member cannot open", async () => {
+    // `pUnassigned` is `acme`'s and the EMPLOYEE has no `MemberProject`
+    // there, so scope — composed into the query, never asserted per row
+    // — is the only thing that can keep it out. The manager sees it,
+    // which is what stops this passing for the wrong reason.
+    const id = await task("Out of the employee's reach", pUnassigned);
+    await changeItemVisibility(ctxOf("manager"), id, "CLIENT_VISIBLE");
+    await assignItemToContact(ctxOf("manager"), id, anna);
+
+    expect(titles((await waitingOnClient(ctxOf("manager")))!.waiting)).toContain(
+      `Out of the employee's reach ${run}`,
+    );
+    const employee = (await waitingOnClient(ctxOf("employee")))!;
+    expect(titles(employee.waiting)).not.toContain(`Out of the employee's reach ${run}`);
+  });
+
+  it("excludes an ARCHIVED project, which is the opposite of the triage card on purpose", async () => {
+    const id = await sharedTask("In a parked project");
+    await assignItemToContact(ctxOf("manager"), id, anna);
+    expect((await waitingOnClient(ctxOf("manager")))!.waiting).toHaveLength(1);
+
+    await f.platform.project.update({ where: { id: pOn }, data: { archivedAt: new Date() } });
+    try {
+      // `triageGlance` COUNTS an archived project's waiting requests,
+      // because a request is the client's and archiving must not delete
+      // the answer they are owed. This card is the agency's own queue and
+      // there is nothing to chase: `portal.ts` already hides an archived
+      // project's tasks from the client, so they cannot see it, cannot
+      // tick it, and are not in fact being waited on.
+      const g = (await waitingOnClient(ctxOf("manager")))!;
+      expect(g.ticked).toHaveLength(0);
+      expect(g.waiting).toHaveLength(0);
+    } finally {
+      // A SHARED FIXTURE, RESTORED IN `finally` — every later case in
+      // this file reads `pOn`.
+      await f.platform.project.update({ where: { id: pOn }, data: { archivedAt: null } });
+    }
+  });
+
+  it("caps each group and says so", async () => {
+    for (let i = 0; i < 3; i++) {
+      const id = await sharedTask(`Capped ${i}`);
+      await assignItemToContact(ctxOf("manager"), id, anna);
+    }
+    const g = (await waitingOnClient(ctxOf("manager"), { limit: 2 }))!;
+    expect(g.waiting).toHaveLength(2);
+    expect(g.truncated).toBe(true);
+  });
+
+  it("drops a task whose project has the PORTAL switched off", async () => {
+    const id = await sharedTask("Nobody can tick this");
+    await assignItemToContact(ctxOf("manager"), id, anna);
+    expect((await waitingOnClient(ctxOf("manager")))!.waiting).toHaveLength(1);
+
+    // **THE BUG THIS CASE EXISTS FOR, and the suite could not see it.**
+    // Handing a task over on a portal-off project is deliberately
+    // allowed (slice 6c's second commit, and the picker says so), but
+    // `setPortalTaskDone` requires `portal_enabled` and `listPortalTasks`
+    // filters on it — so the contact never sees the task and CANNOT tick
+    // it. Without the term the row sat on `/home` for ever as work
+    // nobody was waiting on. Found by a fresh code review; every gate was
+    // green. The column is the ITEM's, fanned out by
+    // `project_portal_enabled_fanout`, so the switch is thrown on the
+    // PROJECT here exactly as a member would throw it.
+    await f.platform.project.update({ where: { id: pOn }, data: { portalEnabled: false } });
+    try {
+      const g = (await waitingOnClient(ctxOf("manager")))!;
+      expect(g.waiting).toHaveLength(0);
+      expect(g.ticked).toHaveLength(0);
+    } finally {
+      await f.platform.project.update({ where: { id: pOn }, data: { portalEnabled: true } });
+    }
+    // AND IT COMES BACK BY ITSELF when the switch goes back on — nothing
+    // about the row changed, so nothing has to be repaired.
+    expect((await waitingOnClient(ctxOf("manager")))!.waiting).toHaveLength(1);
+  });
+
+  it("never puts one task in BOTH groups", async () => {
+    // The two statements take their own snapshots (READ COMMITTED), so a
+    // contact unticking between them is ticked to the first and waiting
+    // to the second. The claim wins, because it is the newer fact and the
+    // one that needs an answer. This pins the resolution rather than the
+    // race, which no test can schedule.
+    const id = await claimedTask("One place only");
+    const g = (await waitingOnClient(ctxOf("manager")))!;
+    const ids = [...g.ticked, ...g.waiting].map((r) => r.id);
+    expect(ids.filter((x) => x === id)).toHaveLength(1);
+    expect(g.ticked.map((r) => r.id)).toContain(id);
+  });
+
+  it("answers null for a member who may view work but not projects", async () => {
+    // THE SECOND GATE, and this seat can only fail for that one reason:
+    // it holds `work_item:view` and has direct client scope.
+    await assignItemToContact(ctxOf("manager"), await sharedTask("No project view"), anna);
+    expect(await waitingOnClient({ tenantId: f.tenantId, actor: noProjectView.actor })).toBeNull();
+    expect((await waitingOnClient(ctxOf("manager")))!.waiting).toHaveLength(1);
+  });
+
+  it("answers null for a member who may not view work at all", async () => {
+    // THE GATE, and this seat can only fail for that one reason: it holds
+    // `project:view` and has direct client scope, so neither the second
+    // code nor the scope can be what refuses.
+    await assignItemToContact(ctxOf("manager"), await sharedTask("Invisible"), anna);
+    expect(await waitingOnClient({ tenantId: f.tenantId, actor: noWorkView.actor })).toBeNull();
+    // The POSITIVE twin, so a null cannot pass for a working gate.
+    expect((await waitingOnClient(ctxOf("manager")))!.waiting).toHaveLength(1);
   });
 });

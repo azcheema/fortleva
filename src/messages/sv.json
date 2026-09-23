@@ -206,6 +206,15 @@
       "unread": "{count, plural, one {# oläst avisering} other {# olästa aviseringar}}",
       "open": "Öppna inkorgen"
     },
+    "waiting": {
+      "title": "Väntar på kund",
+      "description": "Uppgifter teamet har lämnat över till någon hos en kund.",
+      "tickedHeading": "{count, plural, one {# säger sig vara klar} other {# säger sig vara klara}}",
+      "waitingHeading": "{count, plural, one {# ligger kvar hos dem} other {# ligger kvar hos dem}}",
+      "rowMeta": "{name} · {project}",
+      "saidOn": "sa det {date}",
+      "truncated": "Visar de första {count} i varje grupp."
+    },
     "triage": {
       "title": "Kundförfrågningar",
       "waiting": "{count, plural, one {# förfrågan väntar på svar} other {# förfrågningar väntar på svar}}",
@@ -2185,6 +2194,9 @@
       "due": "Klart senast {date}",
       "completed": "Slutfördes {date}",
       "declinedReason": "Svar från din byrå: {reason}",
+      "markDone": "Jag har gjort min del",
+      "markedDoneOn": "Du markerade detta som klart {date}",
+      "doneFailed": "Det sparades inte. Försök igen.",
       "truncated": "Visar de första {count} uppgifterna. Hör av dig till din byrå om något saknas."
     },
     "empty": {

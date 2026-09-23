@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 
+import { actionAnswered } from "./fixtures/actions";
 import { SLOW, createOwnTask, deleteOwnTasks, picker, pressUntil, rail, searchField } from "./fixtures/keys";
 import { CONTACT_STORAGE_STATE, requireSeed } from "./fixtures/tenant";
 
@@ -41,8 +42,13 @@ import { CONTACT_STORAGE_STATE, requireSeed } from "./fixtures/tenant";
  * stop in the 204-shot walk whose presence depended on whether the whole
  * suite or one file had been run.
  *
- * THE CONTACT'S DONE TICK IS NOT HERE — it ships with the portal half of
- * the slice, and this file grows the second half of the round trip with it.
+ * **AND SINCE THE THIRD COMMIT, THE ROUND TRIP CLOSES HERE.** The client
+ * ticks "I've done my part" on the portal, and the agency sees it on
+ * `/home` — two planes, two cookies, two tables, one row. That sentence
+ * is the whole of the founder's 2026-09-22 decision, and no unit or
+ * database test can say it: the dbtest proves the column and the
+ * projection, and only a browser proves that a button on one plane puts a
+ * line on a page behind the other.
  */
 
 const seed = requireSeed();
@@ -68,6 +74,48 @@ async function portalSays(browser: Browser, title: string, present: boolean): Pr
     });
     if (present) await expect(page.getByText(title)).toBeVisible({ timeout: 30_000 * SLOW });
     else await expect(page.getByText(title)).toHaveCount(0);
+  } finally {
+    await contact.close();
+  }
+}
+
+/**
+ * Press the client's own "I've done my part" on a task, under the contact
+ * plane's jar, and hand back nothing — the assertion is what the AGENCY
+ * then sees. `expect` on the button's own `data-done` first, so a failure
+ * further on is about the member plane rather than about a click that
+ * never landed.
+ */
+async function tickOnPortal(browser: Browser, title: string, done: boolean): Promise<void> {
+  const contact = await browser.newContext({ storageState: CONTACT_STORAGE_STATE, locale: "en-US" });
+  try {
+    const page = await contact.newPage();
+    await page.goto("/portal");
+    const row = page.locator("li", { hasText: title }).last();
+    await expect(row).toBeVisible({ timeout: 30_000 * SLOW });
+    const tick = row.getByTestId("portal-task-done");
+    await expect(tick).toHaveAttribute("data-done", done ? "false" : "true");
+    // **ARMED BEFORE THE CLICK, AWAITED AFTER IT** — `actionAnswered`'s
+    // own contract, and this test needed it for the reason that helper
+    // exists. The tick is OPTIMISTIC: `data-done` flips the instant the
+    // button is pressed, so asserting on it proves the paint and nothing
+    // about the write, and the first cut of this helper then handed
+    // control back to a test that immediately read `/home` on the member
+    // plane. It found the old value and reported a missing card.
+    //
+    // NO `contains` FILTER, and that is safe on THIS plane specifically.
+    // The helper asks for a subject because the member shell's timer pill
+    // posts actions of its own that would resolve the wait early — and
+    // the portal has no shell, no timer pill and no ⌘K (UI.md §11), so
+    // the only action POST a contact's page can make is this one.
+    const answered = actionAnswered(page);
+    await tick.click();
+    await answered;
+    // The paint, and then the absence of a refusal — which unwinds it.
+    await expect(tick).toHaveAttribute("data-done", done ? "true" : "false", {
+      timeout: 30_000 * SLOW,
+    });
+    await expect(row.getByTestId("portal-task-done-error")).toHaveCount(0);
   } finally {
     await contact.close();
   }
@@ -191,5 +239,124 @@ test.describe("handing a task to the client", () => {
     // wants it private again says so with `V` — which then ends any
     // assignment itself, the other direction of the same rule.
     await expect(rail(page).getByTestId("item-visibility")).toContainText("Client can see");
+  });
+
+  test("the client ticks 'done', the agency sees it on /home, and the untick takes it back", async ({
+    page,
+    browser,
+  }) => {
+    const { title } = await createOwnTask(page, seed, "Round trip", created);
+    await pressUntil(page, "a", picker(page));
+    await page.keyboard.type("Astrid");
+    await page.keyboard.press("Enter");
+    await expect(assigneeValue(page)).toHaveText(seed.contactName);
+    // **WAIT ON THE LIVE REGION, NOT ON THE TRIGGER, BEFORE NAVIGATING.**
+    // The picker is OPTIMISTIC: the trigger shows the name the instant
+    // the row is picked, so the assertion above is satisfied before the
+    // server has been asked — and the first cut of this test then left
+    // for `/home` mid-flight and found no card, which read as a missing
+    // feature. `usePanelCommit` announces only after it has ADOPTED the
+    // canonical row, so this is the one signal on the page that means
+    // the write landed. Exactly the race the slice-6b reviews found in
+    // the triage lane's spec, in a new file.
+    await expect(said(page, `Assigned to ${seed.contactName}`)).toHaveCount(1, {
+      timeout: 20_000 * SLOW,
+    });
+
+    // BEFORE THE TICK: the task is on /home under "still with them", and
+    // NOT under the group that means the agency is the hold-up. Asserting
+    // both is what makes the move below a move rather than an appearance.
+    await page.goto("/home");
+    const still = page.getByTestId("home-waiting-still");
+    await expect(still).toContainText(title, { timeout: 20_000 * SLOW });
+    await expect(page.getByTestId("home-waiting-ticked").filter({ hasText: title })).toHaveCount(0);
+
+    // THE CLIENT'S OWN PRESS, behind their own cookie.
+    await tickOnPortal(browser, title, true);
+
+    // AND THE AGENCY SEES IT MOVE — the whole point of the slice, and the
+    // one claim only a browser can make. `reload`, not `goto`: /home is
+    // already the current URL and a `goto` to the same address can be a
+    // no-op navigation.
+    await page.reload();
+    await expect(page.getByTestId("home-waiting-ticked")).toContainText(title, {
+      timeout: 20_000 * SLOW,
+    });
+    // **`filter().toHaveCount(0)`, NEVER `not.toContainText`**: a group
+    // with no rows is not rendered at all (the card draws each group only
+    // if it has one), and `not.toContainText` on a locator that matches
+    // nothing fails with "element(s) not found" rather than passing. The
+    // first cut asserted the negation and went red on a working feature —
+    // the row really had moved out of this group.
+    await expect(page.getByTestId("home-waiting-still").filter({ hasText: title })).toHaveCount(0);
+
+    // **THE RETRACTION IS NOT A NICETY** (the service's own note): nothing
+    // on the member plane can clear a claim except answering it, so
+    // without an untick a mis-tick would stand as a falsehood only the
+    // agency could remove — by finishing work that is not finished.
+    await tickOnPortal(browser, title, false);
+    await page.reload();
+    await expect(page.getByTestId("home-waiting-still")).toContainText(title, {
+      timeout: 20_000 * SLOW,
+    });
+    await expect(page.getByTestId("home-waiting-ticked").filter({ hasText: title })).toHaveCount(0);
+  });
+
+  test("the View-as preview draws the client's control and refuses to let a member press it", async ({
+    page,
+  }) => {
+    const { title } = await createOwnTask(page, seed, "Look dont touch", created);
+    await pressUntil(page, "a", picker(page));
+    await page.keyboard.type("Astrid");
+    await page.keyboard.press("Enter");
+    await expect(assigneeValue(page)).toHaveText(seed.contactName);
+    // The same wait, for the same reason — this test navigates too, and
+    // it passed only because it happened to be slower.
+    await expect(said(page, `Assigned to ${seed.contactName}`)).toHaveCount(1, {
+      timeout: 20_000 * SLOW,
+    });
+
+    // The member-plane preview of the client's screen. It DRAWS the tick
+    // — that is what "you see exactly what they see" means, and the
+    // byte-comparison in `view-as.spec.ts` depends on it being the same
+    // markup — but the surface is `inert`, so the control is not in the
+    // focus order and cannot be pressed. Without that, a member pressing
+    // it would reach `requirePortalContext()`, find no contact session and
+    // be bounced to the client sign-in page (founder decision, 2026-09-22).
+    await page.goto(`/projects/${seed.projectKey}/portal`);
+    // The button names the contact (`viewAs.enter`), the locator
+    // `view-as.spec.ts` already uses.
+    await page.getByRole("button", { name: new RegExp(seed.contactName) }).click();
+    await expect(page).toHaveURL(/\/view-as/, { timeout: 30_000 * SLOW });
+    const tick = page.locator("li", { hasText: title }).last().getByTestId("portal-task-done");
+    await expect(tick).toBeVisible({ timeout: 30_000 * SLOW });
+
+    // IT IS DRAWN, AND IT IS DEAD. Two probes, because neither alone says
+    // it: the first is structural (the control sits inside an `inert`
+    // subtree, the idiom `view-as.spec.ts` uses for the banner), the
+    // second is the BEHAVIOUR that matters and is measured rather than
+    // inferred from the attribute — an inert subtree is not focusable, so
+    // a focus attempt leaves the active element elsewhere. Playwright's
+    // `toBeEnabled` is no use here: it reads the `disabled` property and
+    // knows nothing about `inert`.
+    expect(await tick.evaluate((el) => el.closest("[inert]") !== null)).toBe(true);
+    expect(
+      await tick.evaluate((el) => {
+        (el as HTMLElement).focus();
+        return el.ownerDocument.activeElement === el;
+      }),
+    ).toBe(false);
+
+    // **LEAVE THE MODE, and it is not politeness.** `Session.viewAsContactId`
+    // is SERVER-side state on the member session, behind the storage
+    // state every spec in the suite shares — so a test that enters
+    // View-as and walks away leaves the next file to find the member
+    // inside it. `view-as.spec.ts` treats being outside the mode as a
+    // precondition it restores for exactly this reason. Found by a fresh
+    // code review; the suite is `workers: 1, fullyParallel: false`, so
+    // the damage would have been order-dependent rather than racy, which
+    // is the kind that gets called flaky.
+    await page.getByRole("button", { name: "Exit client view" }).click();
+    await expect(page).toHaveURL(/\/home/, { timeout: 30_000 * SLOW });
   });
 });

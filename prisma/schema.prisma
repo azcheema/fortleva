@@ -1451,6 +1451,12 @@ model WorkItem {
   @@index([tenantId, projectId, stateId, rank]) // board column
   @@index([tenantId, projectId, stateCategory, rank]) // backlog, rollups
   @@index([tenantId, assigneeMemberId, stateCategory, targetDate]) // /home
+  /// /home's "waiting on client" card (Phase 3 slice 6c) — the contact
+  /// twin of the index above. PARTIAL in the migration
+  /// (20260923010000): `assignee_contact_id IS NOT NULL AND deleted_at
+  /// IS NULL`, which Prisma cannot express, so the schema declares the
+  /// key and the migration owns the predicate.
+  @@index([tenantId, assigneeContactId, stateCategory, contactCompletedAt])
   @@index([tenantId, parentId])
   @@index([tenantId, rootId]) // epic subtree rollups (flat)
   @@index([tenantId, milestoneId])

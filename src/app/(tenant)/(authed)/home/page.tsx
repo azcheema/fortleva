@@ -6,7 +6,7 @@ import { Page, PageHeader } from "@/components/semantic";
 import { requireTenantContext } from "@/members/tenant-context";
 import { isoDateOf } from "@/lib/duration";
 import { canTrackTime, getCurrentTimerOnce, myTimeTotals } from "@/modules/time";
-import { listMyWork, resolveRowState, triageGlance } from "@/modules/work";
+import { listMyWork, resolveRowState, triageGlance, waitingOnClient } from "@/modules/work";
 import { inboxGlance } from "@/notify/inbox";
 
 import { getTimerStateAction, type TimerPillState } from "../time/actions";
@@ -15,6 +15,7 @@ import { resolveWeekContext } from "../time/week-context";
 import { InboxCard } from "./inbox-card";
 import { MyWorkQueue, type QueueRow } from "./my-work-queue";
 import { TriageCard } from "./triage-card";
+import { WaitingCard } from "./waiting-card";
 import { HomeTimeStrip, type HomeTimeStripProps } from "./time-strip";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -56,12 +57,15 @@ const greetingKey = (hour: number): "morning" | "afternoon" | "evening" =>
  * without `work_item:triage`, and the card is drawn only while
  * something is actually waiting (the inbox card's rule).
  *
- * STILL NOT HERE: rule 8's "waiting on client". Its writer landed in
- * 6c's first commit (`assigneeContactId` finally has one), but there is
- * nowhere on the member plane that LISTS contact-assigned work yet, so
- * the card would be a number with no link — and §5.8's rule is that a
- * surface offers the verb that changes it. It ships with the surface
- * that gives it a destination, in 6c's second commit.
+ * WAITING ON CLIENT (Phase 3, slice 6c's third commit): rule 8's last
+ * card, and the one that waited longest. This comment used to say it was
+ * absent because `assigneeContactId` had no writer; 6c's first commit
+ * gave it one, its second gave the member plane a surface that lists
+ * contact-assigned work, and its third gave the client a way to hand a
+ * task back. So the card arrives whole, in two groups: what the client
+ * says is done (waiting on YOU) and what is still with them. `null`
+ * without `work_item:view` + `project:view`, the queue's rule, and drawn
+ * only while it has a row.
  *
  * THE QUEUE'S TIMER (slice 24): the rows carry `T` and a start-stop
  * button, which need the member's timer as the pill sees it. For a member
@@ -75,16 +79,18 @@ export default async function HomePage() {
   // redirected to the workspace picker rather than shown an empty queue.
   const { membership, actor, userEmail } = await requireTenantContext();
   const ctx = { tenantId: membership.tenantId, actor };
-  const [session, t, tStates, { prefs, timezone, today, week, weekLabel }, tracks, myWork, glance, triage] = await Promise.all([
-    requireMemberSession(),
-    getTranslations("home"),
-    getTranslations("projects.states.seed"),
-    resolveWeekContext(),
-    canTrackTime(ctx),
-    listMyWork(ctx),
-    inboxGlance(ctx),
-    triageGlance(ctx),
-  ]);
+  const [session, t, tStates, { prefs, timezone, today, week, weekLabel }, tracks, myWork, glance, triage, waiting] =
+    await Promise.all([
+      requireMemberSession(),
+      getTranslations("home"),
+      getTranslations("projects.states.seed"),
+      resolveWeekContext(),
+      canTrackTime(ctx),
+      listMyWork(ctx),
+      inboxGlance(ctx),
+      triageGlance(ctx),
+      waitingOnClient(ctx),
+    ]);
   const firstName = session.user.name.split(/\s+/)[0] || userEmail;
   // The viewer's clock: Member.timezone → tenant `ui.timezone` → Europe/Stockholm (UI.md §8).
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: timezone }).format(new Date()));
@@ -164,6 +170,16 @@ export default async function HomePage() {
             the lookup carries the member's scope, which is exactly why
             the guard is on the thing the member can actually use. */}
         {triage && triage.projects.length > 0 ? <TriageCard glance={triage} /> : null}
+        {/* BELOW triage, ABOVE the member's own queue. A client's
+            unanswered REQUEST outranks this, because nothing has been
+            agreed there at all; but work the client has handed back
+            outranks the member's own list, because nobody else is going
+            to notice it either. ON THE ROWS, never on a count — the
+            triage card's own lesson: a heading with an empty list under
+            it is the §5.8 failure these cards exist to avoid. */}
+        {waiting && (waiting.ticked.length > 0 || waiting.waiting.length > 0) ? (
+          <WaitingCard glance={waiting} />
+        ) : null}
         {queue && myWork ? <MyWorkQueue rows={queue} truncated={myWork.truncated} today={today} timer={queueTimer} /> : null}
       </div>
     </Page>

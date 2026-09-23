@@ -143,8 +143,20 @@ export default async function ProjectPortalPage({ params }: { params: Promise<{ 
         ) : null}
 
         {/* Exactly what /portal draws, or exactly what /portal draws when
-            there is nothing — no third rendering of either. */}
-        {preview.tasks ? <ProjectTasks project={preview.tasks} /> : <PortalTasksEmpty />}
+            there is nothing — no third rendering of either.
+
+            **INERT, for the reason `/view-as` is** (founder decision,
+            2026-09-22 — Phase 3 slice 6c): the task list now carries the
+            client's own "I've done my part" control, and this panel is a
+            preview of somebody else's screen. A member pressing it would
+            reach `requirePortalContext()`, which finds no contact session
+            on a member request. One attribute, inherited by every
+            descendant, and no change to what is drawn — the panel's whole
+            claim is that it renders the portal's own components, so
+            nothing here may fork them. */}
+        <div inert>
+          {preview.tasks ? <ProjectTasks project={preview.tasks} /> : <PortalTasksEmpty />}
+        </div>
       </section>
 
       <div className="flex flex-col gap-6">

@@ -100,7 +100,33 @@ export default async function ViewAsPage() {
           boundary it would make byte-identity impossible and the test
           would have to be weakened to a subset match. */}
       <ViewAsBanner name={target.name} />
-      <PortalHome principal={principal} name={target.name} />
+      {/* **LOOK, DON'T TOUCH** (founder decision, 2026-09-22 — Phase 3
+          slice 6c). Since the portal's task list carries a control the
+          client presses, this route would otherwise put a working-looking
+          button in front of a member — and `requirePortalContext()` finds
+          no contact session on a member request, so pressing it can only
+          bounce them to the client sign-in page. That is the exact
+          outcome slice 6a moved the request FORM off this page to avoid;
+          a per-row tick cannot be moved anywhere, so the surface is made
+          inert instead.
+
+          **THE ATTRIBUTE IS OUTSIDE `[data-portal-surface]` AND THAT IS
+          THE WHOLE TRICK.** `inert` is inherited by every descendant, so
+          one attribute on this wrapper takes the entire preview out of
+          the focus order and the accessibility tree — while the compared
+          region's own markup is not touched by a single byte, and
+          `e2e/view-as.spec.ts` still compares `innerHTML` against a real
+          contact session. Pixels identical, behaviour honest.
+
+          It deadens the "Send a request" link too, which is a fix rather
+          than a casualty: that link has bounced a member to the portal
+          sign-in page since slice 6a.
+
+          The banner stays OUTSIDE it — Exit must keep working, and it is
+          the one control on this route that is the member's own. */}
+      <div inert>
+        <PortalHome principal={principal} name={target.name} />
+      </div>
     </>
   );
 }

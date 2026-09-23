@@ -206,6 +206,15 @@
       "unread": "{count, plural, one {# unread notification} other {# unread notifications}}",
       "open": "Open inbox"
     },
+    "waiting": {
+      "title": "Waiting on client",
+      "description": "Tasks the team has handed to someone at a client.",
+      "tickedHeading": "{count, plural, one {# says they are done} other {# say they are done}}",
+      "waitingHeading": "{count, plural, one {# still with them} other {# still with them}}",
+      "rowMeta": "{name} · {project}",
+      "saidOn": "said {date}",
+      "truncated": "Showing the first {count} of each."
+    },
     "triage": {
       "title": "Client requests",
       "waiting": "{count, plural, one {# request waiting for an answer} other {# requests waiting for an answer}}",
@@ -2185,6 +2194,9 @@
       "due": "Due {date}",
       "completed": "Completed {date}",
       "declinedReason": "Your agency's reply: {reason}",
+      "markDone": "I've done my part",
+      "markedDoneOn": "You marked this done on {date}",
+      "doneFailed": "That did not save. Please try again.",
       "truncated": "Showing the first {count} tasks. Ask your agency if something is missing."
     },
     "empty": {

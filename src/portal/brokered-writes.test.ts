@@ -116,15 +116,37 @@ const importedFrom = (source: ts.SourceFile, specifier: string): string[] => {
   return out;
 };
 
-/** One top-level function declaration's body, as a NODE. */
-const bodyOf = (file: string, name: string): ts.Block => {
+/**
+ * EVERY EXPORTED top-level function of a broker, as `[name, body]`.
+ *
+ * The two ordering/attribution pins below used to name
+ * `createPortalRequest` and slice out that one body — which was true of
+ * the module while it had one writer, and stopped being true the moment
+ * it had two. A fresh security review caught it on slice 6c's third
+ * commit: `setPortalTaskDone` had shipped with the file-scoped pins
+ * covering it and the per-function ones not, so deleting
+ * `brokeredForContactId` from its audit row, or moving `authorizePortal`
+ * inside its system transaction, left `pnpm test` green.
+ *
+ * So the pins iterate instead of naming, and the NEXT broker is covered
+ * on the day it is written rather than on the day somebody remembers.
+ * Exported only: a module-private helper is not a write a contact can
+ * reach, and `requests.ts`-style row shapers are deliberately not here.
+ */
+const exportedBodies = (file: string): [string, ts.Block][] => {
   const source = parse(file);
+  const out: [string, ts.Block][] = [];
   for (const statement of source.statements) {
-    if (ts.isFunctionDeclaration(statement) && statement.name?.text === name && statement.body) {
-      return statement.body;
+    if (
+      ts.isFunctionDeclaration(statement) &&
+      statement.body &&
+      statement.name &&
+      statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      out.push([statement.name.text, statement.body]);
     }
   }
-  throw new Error(`no function declaration named ${name} in ${file}`);
+  return out;
 };
 
 /**
@@ -200,32 +222,42 @@ describe("brokered portal writes", () => {
     }
   });
 
-  it("authorization happens before the system transaction opens", () => {
-    const body = bodyOf(WORK_BROKER, "createPortalRequest");
-    const authorize = callPosition(body, "authorizePortal");
-    const read = callPosition(body, "withPortalRead");
-    const write = callPosition(body, "withTenant");
-    expect(read).toBeGreaterThan(-1);
-    expect(authorize).toBeGreaterThan(-1);
-    expect(write).toBeGreaterThan(-1);
-    expect(read).toBeLessThan(write);
-    expect(authorize).toBeLessThan(write);
+  it("authorization happens before the system transaction opens, in EVERY broker", () => {
+    const writers = brokerFiles().flatMap((f) => exportedBodies(f).map((b) => [f, ...b] as const));
+    // Not vacuous, and the count is not pinned: a new broker must be
+    // covered, never merely counted.
+    expect(writers.length).toBeGreaterThan(1);
+    for (const [file, name, body] of writers) {
+      const where = `${relative(SRC, file)}:${name}`;
+      const authorize = callPosition(body, "authorizePortal");
+      const read = callPosition(body, "withPortalRead");
+      const write = callPosition(body, "withTenant");
+      expect(read, where).toBeGreaterThan(-1);
+      expect(authorize, where).toBeGreaterThan(-1);
+      expect(write, where).toBeGreaterThan(-1);
+      expect(read, where).toBeLessThan(write);
+      expect(authorize, where).toBeLessThan(write);
+    }
   });
 
-  it("the audit row names the contact, inside the write's own transaction", () => {
-    const body = bodyOf(WORK_BROKER, "createPortalRequest");
+  it("the audit row names the contact, inside the write's own transaction, in EVERY broker", () => {
+    const writers = brokerFiles().flatMap((f) => exportedBodies(f).map((b) => [f, ...b] as const));
+    expect(writers.length).toBeGreaterThan(1);
+    for (const [file, name, body] of writers) {
+      const where = `${relative(SRC, file)}:${name}`;
     // THE PROPERTY IS PASSED, not merely mentioned. Deleting
     // `brokeredForContactId: principal.contactId` while leaving the
     // comment above it — which names the field — would have left the
     // first cut of this pin green while every portal audit row silently
     // became SYSTEM with a null actor, which is the exact regression
     // this file exists to catch.
-    expect(recordPasses(body, "brokeredForContactId")).toBe(true);
-    expect(recordPasses(body, "action")).toBe(true);
-    // ...and INSIDE the `withTenant` callback, which is what "in the
-    // same transaction" means: an audit row written after it committed
-    // describes something that may not have happened.
-    expect(callPosition(body, "record")).toBeGreaterThan(callPosition(body, "withTenant"));
+      expect(recordPasses(body, "brokeredForContactId"), where).toBe(true);
+      expect(recordPasses(body, "action"), where).toBe(true);
+      // ...and INSIDE the `withTenant` callback, which is what "in the
+      // same transaction" means: an audit row written after it committed
+      // describes something that may not have happened.
+      expect(callPosition(body, "record"), where).toBeGreaterThan(callPosition(body, "withTenant"));
+    }
   });
 
   it("only the audit seam and the brokers may name `brokeredForContactId`", () => {

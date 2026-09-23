@@ -1,0 +1,52 @@
+-- ── The index `/home`'s "waiting on client" card owes ────────────────
+--
+-- Phase 3 slice 6c, third commit. `20260922180000` added
+-- `work_item.contact_completed_at` and said in as many words why it
+-- shipped no index of its own:
+--
+--     "The one read that would want its own index is `/home`'s 'waiting
+--      on client' card, which rule 8 names and which is not in this
+--      slice; it owes its own."
+--
+-- This is that slice, so this is that index. A fresh code review caught
+-- the debt being inherited rather than paid.
+--
+-- WHY IT IS NEEDED AND WHY NO EXISTING INDEX SERVES. `waiting_on_client`
+-- runs two statements per landing-page load, both filtering
+-- `tenant_id` + `assignee_contact_id IS NOT NULL` + `state_category IN
+-- (…)`, differing only in whether `contact_completed_at` is null.
+-- `work_item` carries the MEMBER twin of this shape
+-- (`tenant_id, assignee_member_id, state_category, target_date`) and
+-- nothing for the contact column. The portal's own
+-- (`tenant_id, client_id, visibility, state_category`) does not serve
+-- either: for an owner — or anyone holding `client:view_all` —
+-- `scopeWhere` contributes no `client_id` or `project_id` term at all,
+-- so the planner has no leading column to use and scans the tenant's
+-- whole `work_item` twice, on the one page every member opens first.
+--
+-- PARTIAL, on `assignee_contact_id IS NOT NULL`. That predicate is the
+-- card's entire subject and it is true of a tiny fraction of rows — a
+-- handed-over task is rare by nature — so the partial index is a few
+-- pages where a full one would shadow the table. `deleted_at IS NULL`
+-- joins the predicate for the same reason and because every caller
+-- carries it.
+--
+-- `state_category` is in the KEY rather than the predicate because the
+-- live set is three of five values and the card's two statements share
+-- it; `contact_completed_at` trails it, which is what lets one index
+-- serve both the `IS NULL` and the `IS NOT NULL` half.
+--
+-- DDL ONLY — no DML, so **no `neon-smoke` dispatch is owed** (the rule
+-- slice 6b's entry in PLAN §0 records). No RLS change: an index is not a
+-- policy, `work_item`'s grants and policies are untouched, and nothing
+-- here alters what any principal may read.
+--
+-- NOT `CONCURRENTLY`: Prisma runs each migration inside a transaction
+-- and `CREATE INDEX CONCURRENTLY` cannot run in one. On a table this
+-- size the brief lock is not worth a hand-run step outside the
+-- migration history, and the Phase-8 scale note is where that trade
+-- would be revisited.
+
+CREATE INDEX "work_item_tenant_contact_assignee_idx"
+  ON "work_item" ("tenant_id", "assignee_contact_id", "state_category", "contact_completed_at")
+  WHERE "assignee_contact_id" IS NOT NULL AND "deleted_at" IS NULL;
