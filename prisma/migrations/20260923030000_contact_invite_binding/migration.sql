@@ -1,0 +1,62 @@
+-- ── Two things `20260923020000` should have carried ─────────────────
+--
+-- Both found by the fresh security review of the invite slice, and both
+-- structural rather than procedural — which is the point: each replaces
+-- a guarantee the SERVICE was making with one the DATABASE makes.
+--
+-- A SECOND MIGRATION RATHER THAN AN EDIT. `20260923020000` is already
+-- applied to the dev database, and Prisma records a checksum per
+-- migration: editing an applied one makes the next `migrate deploy`
+-- refuse, and the repair for that is `migrate reset`, which AGENTS.md
+-- forbids outright. Correct forward, never hand-roll back.
+--
+-- ── 1. ONE LIVE INVITATION PER CONTACT, enforced ────────────────────
+--
+-- `inviteContact` supersedes an open invitation before minting a new
+-- one — REVOKE the PENDING rows, then INSERT — and the model's own
+-- docblock promises "one live token per contact", because the whole
+-- point of a re-invite is that an old link, possibly sitting in a
+-- forwarded mail, stops working.
+--
+-- Under READ COMMITTED that promise is ordering, not enforcement. Two
+-- overlapping `inviteContact` transactions each revoke the rows VISIBLE
+-- TO THEM and each insert a row the other cannot see; both commit; two
+-- live tokens. The trigger is the ordinary double-submit of a "resend"
+-- button — and it lands exactly on the case the supersede exists for,
+-- because a member resends WHEN THEY BELIEVE THE FIRST LINK WENT
+-- ASTRAY.
+--
+-- A partial unique index makes the second insert fail with 23505
+-- instead, which the service turns into a refusal the member can act on.
+--
+-- ── 2. THE TOKEN IS BOUND TO THE INVITED ADDRESS ────────────────────
+--
+-- SECURITY.md §3.4 says the portal's only account-creation path uses a
+-- token "bound to the invited email". `contact_invite` named a ROW, and
+-- `updateContact` may change that row's address while an invitation is
+-- in flight — with no portal-status guard and no reset of
+-- `email_verified`. The link mailed to the old address would then
+-- activate a contact whose address is now somebody else's, and
+-- acceptance stamps `email_verified = true` for an address the acceptor
+-- never proved control of.
+--
+-- Reaching it needs `client:manage_contacts` — the same permission that
+-- issues and revokes invitations — so it is not a privilege crossing.
+-- It is the concrete sense in which the documented binding was absent.
+-- The column is NULLABLE because rows written before this migration
+-- have no recorded address; the service treats NULL as "unbound" and
+-- every row it writes from here on carries one.
+--
+-- DDL ONLY — no DML, so **no `neon-smoke` dispatch is owed**. No RLS
+-- change: `contact_invite`'s grants and its two policies are untouched,
+-- and an index is not a policy.
+
+ALTER TABLE "contact_invite" ADD COLUMN "email" TEXT;
+
+-- PARTIAL, on the one status that means "live". A plain unique on
+-- (tenant_id, contact_id) would forbid the history: a contact may
+-- legitimately carry many ACCEPTED, REVOKED and EXPIRED invitations
+-- over time, and only one PENDING.
+CREATE UNIQUE INDEX "contact_invite_one_live_idx"
+  ON "contact_invite" ("tenant_id", "contact_id")
+  WHERE "status" = 'PENDING';

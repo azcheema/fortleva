@@ -587,7 +587,49 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
     });
     if (!current) deny("NOT_FOUND");
     await assertInScope(tx, ctx.actor, { clientId: current!.clientId, lifted: true });
-    if (current!.portalStatus !== "NO_ACCESS") fail("INVALID_INPUT", "contact has portal access");
+    // **NO_ACCESS OR REVOKED — both mean "no live access", which is what
+    // this guard is actually protecting.** It read `!== "NO_ACCESS"`
+    // until the invite slice gave `portalStatus` its first writer, at
+    // which point a removed contact became permanently undeletable:
+    // REVOKED is not NO_ACCESS, so the record of somebody whose access
+    // the agency had deliberately ended could never be erased. That is
+    // the wrong way for an erasure control to fail. INVITED, ACTIVE and
+    // SUSPENDED are still refused — each is a person who can sign in, or
+    // is one click from it, and deleting them is a decision to make
+    // through `setContactPortalAccess` first.
+    if (current!.portalStatus !== "NO_ACCESS" && current!.portalStatus !== "REVOKED") {
+      fail("INVALID_INPUT", "contact has portal access");
+    }
+    // **AND NOT IF THEY HAVE WRITTEN ANYTHING** (founder decision,
+    // 2026-09-23). Admitting REVOKED made it possible for the first time
+    // to hard-delete somebody who had actually USED the portal — and a
+    // `Contact` is hard-deleted, while their comments, their requests and
+    // their history rows carry only attribution with no foreign key. So
+    // the delete would leave their words in the portal their COLLEAGUES
+    // still read (`portal_gate` is client-scoped), authored by nobody.
+    //
+    // The founder's answer: keep the name, refuse the delete. "Remove
+    // access" is the verb that cuts somebody off, and it is instant; a
+    // record with history stays readable. If a real erasure request ever
+    // arrives, scrubbing the person's fields in place is the shape to
+    // build then — a decision worth making against a real demand rather
+    // than in advance. Raised by a fresh code review, which spotted that
+    // the widening above had quietly changed what deletion can destroy.
+    //
+    // **SEQUENTIAL, NEVER A `Promise.all`** — AGENTS.md's standing trap,
+    // and the first draft of this very check broke it. Prisma over the
+    // `pg` adapter does not serialise concurrent statements inside an
+    // interactive transaction, and the leg that loses can resolve
+    // `undefined`, taking an unrelated part of the request down with it.
+    // Three cheap counts that short-circuit are worth one round trip
+    // each.
+    const wrote =
+      (await tx.comment.count({ where: { tenantId: ctx.tenantId, authorContactId: contactId } })) > 0 ||
+      (await tx.workItem.count({ where: { tenantId: ctx.tenantId, reportedByContactId: contactId } })) > 0 ||
+      (await tx.workItemActivity.count({
+        where: { tenantId: ctx.tenantId, actorContactId: contactId },
+      })) > 0;
+    if (wrote) fail("INVALID_INPUT", "contact has portal history");
     await tx.contact.delete({ where: { id: contactId } });
     await record(tx, {
       action: "contact.deleted",

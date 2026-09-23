@@ -152,7 +152,24 @@ function Group({
                   {ticked && row.markedDoneAt
                     ? ` · ${t("waiting.saidOn", { date: formatDay(locale, row.markedDoneAt) })}`
                     : ""}
+
                 </span>
+                {/* WHY IT IS STUCK, ON ITS OWN LINE — and the line is the
+                    point. A hand-over to somebody who has not accepted
+                    their invitation, or whose access is paused, cannot be
+                    ticked at all (`portalAuth` admits only the literal
+                    ACTIVE), so without this the row sits here looking
+                    like ordinary waiting. The first cut APPENDED it to
+                    the muted line above, which carries `truncate` and
+                    already holds the name, the project and the claim
+                    date — so the reason was the first thing clipped on a
+                    phone, and the defect it exists to prevent survived
+                    inside its own fix. A fresh code review caught it. */}
+                {row.contactStatus === "INVITED" || row.contactStatus === "SUSPENDED" ? (
+                  <span className="block text-2xs text-(--tone-caution-fg)">
+                    {row.contactStatus === "INVITED" ? t("waiting.notAccepted") : t("waiting.paused")}
+                  </span>
+                ) : null}
               </span>
               {row.targetDate ? (
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

@@ -58,7 +58,14 @@ export function ContactRowForm({
   const status = <StatusBadge domain="portalStatus" value={contact.portalStatus} />;
   // Removal is offered only while the contact has no portal identity —
   // unchanged; revoking access is a Phase-3 action of its own.
-  const removable = editable && contact.portalStatus === "NO_ACCESS";
+  // NO_ACCESS **or REVOKED**, matching `deleteContact`'s own guard: both
+  // mean "no live access". Until the invite slice, REVOKED was
+  // unreachable; the moment `portalStatus` had a writer, gating on
+  // NO_ACCESS alone made the erasure control invisible from the product
+  // for exactly the people an erasure request is about — a member removes
+  // access and the Remove action disappears. Found by a fresh code review.
+  const removable =
+    editable && (contact.portalStatus === "NO_ACCESS" || contact.portalStatus === "REVOKED");
 
   const trailing = (
     <span className="flex min-w-0 items-center justify-between gap-2">

@@ -86,6 +86,13 @@ const DBTEST_PREFIXES = [
   "admin-",
   "bulk-",
   "census-",
+  // Phase 3, the invite slice — `src/clients/contact-access.dbtest.ts`,
+  // which calls `setupTenant("cinv")` POSITIONALLY, so the first of the
+  // two regeneration greps finds it unaided. (The shorthand-property
+  // caveat above applies only to suites that build a tenant row
+  // directly; an earlier version of this comment claimed it applied
+  // here and pointed at a `slug:` key that does not exist.)
+  "cinv-",
   "clients-",
   "copy-",
   "ctask-",

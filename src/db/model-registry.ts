@@ -18,6 +18,7 @@ export const MODEL_CLASSES = {
   tenant: [
     "member",
     "memberInvite",
+    "contactInvite",
     "role",
     "rolePermission",
     "memberRole",
@@ -110,6 +111,7 @@ export const RLS_CLASSES = {
   A: [
     "member",
     "memberInvite",
+    "contactInvite",
     "role",
     "rolePermission",
     "memberRole",

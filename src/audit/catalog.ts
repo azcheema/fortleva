@@ -107,6 +107,13 @@ export const AUDIT_EVENTS = {
   "contact.invited": TENANT,
   "contact.activated": TENANT,
   "contact.suspended": TENANT,
+  // The pause's other half (Phase 3, the invite slice). The founder
+  // chose TWO ways to take access away — a pause that resumes in one
+  // click and a removal that ends it — so the resume needs its own row:
+  // an operator reading the log must be able to see that access came
+  // BACK, and re-deriving it from the absence of a later event is not
+  // reading a log, it is guessing from one.
+  "contact.access_restored": TENANT,
   "contact.access_revoked": TENANT,
   // Files & visibility
   "document.created": TENANT,

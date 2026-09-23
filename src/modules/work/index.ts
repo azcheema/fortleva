@@ -50,6 +50,11 @@ export {
   type BulkResult,
 } from "./bulk";
 export { listMyWork } from "./my-work";
+// Phase 3, the invite slice: the work module's half of "remove this
+// contact's portal access". It takes the CALLER's transaction and
+// authorizes nothing — see its docblock for why that is safe and who
+// the one legitimate caller is.
+export { releaseContactAssignments } from "./contact-release";
 // Phase 3 slice 6c (third commit): `/home`'s "waiting on client", the
 // last of UI.md rule 8's cards and the one that has had no writer to
 // draw since 2W. A MEMBER-plane projection, and its own file for the

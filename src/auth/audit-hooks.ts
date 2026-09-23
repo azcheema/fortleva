@@ -168,14 +168,29 @@ export interface AuthAuditSink {
     method: LoginMethod,
     user?: Readonly<Record<string, unknown>> | undefined,
   ): Promise<unknown>;
-  loginFailed(userId: string, reason: string): Promise<unknown>;
+  /**
+   * `user` is passed since the portal plane gained a sink (2026-09-23):
+   * a `Contact` carries its `tenantId` on the auth instance's own user
+   * object, so the portal sink can attribute the row without a database
+   * lookup — and therefore without the platform seam. The member sink
+   * ignores it and fans out over memberships as it always has.
+   */
+  loginFailed(
+    userId: string,
+    reason: string,
+    user?: Readonly<Record<string, unknown>> | undefined,
+  ): Promise<unknown>;
   mfaVerificationFailed(
     userId: string,
     opts: { method: LoginMethod; reason: string; stage: "sign_in" | "step_up" },
   ): Promise<unknown>;
   mfaChanged(userId: string, enabled: boolean): Promise<unknown>;
   emailChanged(userId: string): Promise<unknown>;
-  passwordChanged(userId: string, via: "change" | "reset"): Promise<unknown>;
+  passwordChanged(
+    userId: string,
+    via: "change" | "reset",
+    user?: Readonly<Record<string, unknown>> | undefined,
+  ): Promise<unknown>;
 }
 
 /** The member plane's sink: fan out to the user's ACTIVE memberships. */
@@ -318,7 +333,7 @@ export const auditPlugin = (sink: AuthAuditSink): BetterAuthPlugin => ({
             const found = await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase());
             if (!found) return;
             const reason = (returned?.body?.code ?? `http_${status}`).toLowerCase();
-            await sink.loginFailed(found.user.id, reason);
+            await sink.loginFailed(found.user.id, reason, found.user as Readonly<Record<string, unknown>>);
           }),
         ),
       },

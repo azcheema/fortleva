@@ -266,7 +266,25 @@ describe("brokered portal writes", () => {
     // outside a system transaction at runtime; this says who may even
     // mention it. `audit/catalog.ts` is not on the list: it describes
     // the family in prose, which the AST walk does not see.
-    const allowed = [join("audit", "record.ts"), "portal-writes.ts"];
+    const allowed = [
+      join("audit", "record.ts"),
+      "portal-writes.ts",
+      // **THE AUTH PLANE'S BROKER** (added 2026-09-23 with the portal's
+      // sign-in audit trail). It is here for the same reason
+      // `portal-writes.ts` is, not as an exception to it: a contact
+      // signing in is a contact's own act, recorded under a SYSTEM
+      // transaction because no member did it — which is precisely the
+      // dishonest-actor problem `brokeredForContactId` exists to fix.
+      // Without it every `auth.login_succeeded` on the portal would say
+      // SYSTEM with a null actor, in the one table SECURITY.md §7 treats
+      // as evidentiary.
+      //
+      // It is NOT covered by the two per-broker pins above, which walk
+      // `portal-writes.ts` files and assert `authorizePortal` before
+      // `withTenant` — there is nothing to authorize here, because Better
+      // Auth has already decided the outcome and this only records it.
+      join("auth", "portal-audit.ts"),
+    ];
     const offenders = walk(SRC)
       .filter((f) => !isTest(f))
       .filter((f) => namesIdentifier(parse(f), "brokeredForContactId"))

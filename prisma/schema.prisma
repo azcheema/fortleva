@@ -224,6 +224,7 @@ model Tenant {
 
   members         Member[]
   invites         MemberInvite[]
+  contactInvites  ContactInvite[]
   roles           Role[]
   preferences     TenantPreference[]
   counters        TenantCounter[]
@@ -416,6 +417,57 @@ model MemberInvite {
   @@index([tenantId, email])
   @@index([expiresAt])
   @@map("member_invite")
+}
+
+/// An invitation to the CLIENT PORTAL, issued against a `Contact` that
+/// already exists (Phase 3 — the invite slice). It is the contact twin
+/// of `MemberInvite` and deliberately NOT the same table: a member
+/// invitation names an EMAIL and creates the `Member` on acceptance,
+/// while a contact invitation names a ROW the agency has already
+/// recorded, and acceptance only gives that row a credential and flips
+/// its `portalStatus`.
+///
+/// **ONE LIVE INVITATION PER CONTACT is a DATABASE fact this schema
+/// cannot express**: `contact_invite_one_live_idx` (migration
+/// `20260923030000`) is a UNIQUE index on `(tenant_id, contact_id)`
+/// PARTIAL on `status = 'PENDING'`, and Prisma has no syntax for the
+/// predicate. It is deliberately NOT declared as a plain `@@unique`
+/// here — that would be a lie in the client's own type surface,
+/// offering a `findUnique` selector that is not unique across the
+/// history of ACCEPTED, REVOKED and EXPIRED rows. The service sees it
+/// as a P2002 on insert, which is exactly what the supersede needs.
+///
+/// Raw tokens never touch the database — sha256 hash stored, the link
+/// carries the token once (`MemberInvite`'s rule). CLASS A: a contact
+/// may never read this table, which is why it carries `portal_deny`
+/// rather than a gate. Re-inviting SUPERSEDES: the open invitation is
+/// marked REVOKED and a new row is minted, so one live token per
+/// contact and an old link stops working the moment a new one is sent.
+model ContactInvite {
+  id                String       @id @default(uuid(7))
+  tenantId          String       @map("tenant_id")
+  contactId         String       @map("contact_id")
+  tokenHash         String       @unique @map("token_hash")
+  /// THE ADDRESS THE INVITATION WAS SENT TO, so the token is bound to
+  /// it and not merely to the row (SECURITY.md §3.4). `updateContact`
+  /// can change a contact's email while an invitation is in flight;
+  /// without this, the link mailed to the old address would activate a
+  /// contact whose address is now somebody else's, and acceptance would
+  /// stamp `emailVerified` for an address nobody proved control of.
+  /// Nullable only for rows written before `20260923030000`.
+  email             String?
+  status            InviteStatus @default(PENDING)
+  invitedByMemberId String       @map("invited_by_member_id") // attribution, no FK
+  expiresAt         DateTime     @map("expires_at") @db.Timestamptz(6)
+  acceptedAt        DateTime?    @map("accepted_at") @db.Timestamptz(6)
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  contact Contact @relation(fields: [tenantId, contactId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, contactId, status])
+  @@index([expiresAt])
+  @@map("contact_invite")
 }
 
 /// GLOBAL seeded catalog; codes are immutable `resource:verb`, from
@@ -622,6 +674,9 @@ model Contact {
   client Client @relation(fields: [tenantId, clientId], references: [tenantId, id])
   // 2W:
   assignedWorkItems WorkItem[] @relation("WorkItemAssigneeContact")
+  // Phase 3 — the invite slice. Cascade: deleting the record takes its
+  // invitations with it, as it already takes credentials and sessions.
+  portalInvites ContactInvite[]
   // Phase 3 — portal identity. The FKs point INTO a tenant-scoped,
   // RLS-forced table from AUTH-class tables, which is sound: Postgres
   // performs referential-integrity checks as the table owner and they

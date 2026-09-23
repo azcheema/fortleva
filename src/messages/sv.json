@@ -213,6 +213,8 @@
       "waitingHeading": "{count, plural, one {# ligger kvar hos dem} other {# ligger kvar hos dem}}",
       "rowMeta": "{name} · {project}",
       "saidOn": "sa det {date}",
+      "notAccepted": "har inte tackat ja ännu",
+      "paused": "åtkomsten är pausad",
       "truncated": "Visar de första {count} i varje grupp."
     },
     "triage": {

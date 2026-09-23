@@ -3,6 +3,9 @@ import { createAuthMiddleware, APIError } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 
+import { auditPlugin } from "./audit-hooks";
+import { portalAuditSink } from "./portal-audit";
+
 import { appUrl, portalAuthSecret, sessionCookieName } from "@/config";
 import { portalAuthClient } from "@/db";
 import { send } from "@/mailer";
@@ -279,6 +282,13 @@ export const portalAuth = betterAuth({
     }),
   },
   plugins: [
+    // **THE AUTH AUDIT TRAIL, which AUTHZ §8 gated on the invite slice.**
+    // Until a contact could be activated, a portal sink would have had
+    // nothing to record; from the moment one can sign in, a tenant needs
+    // `auth.login_succeeded` / `auth.login_failed` for their own clients
+    // as much as for their staff. See `portal-audit.ts` for why it needs
+    // no tenant lookup.
+    auditPlugin(portalAuditSink),
     // No twoFactor (v2), no admin(), no passkey. Enable nothing unused
     // — and on the plane whose users are strangers to the tenant, the
     // bar for adding one is higher, not lower.

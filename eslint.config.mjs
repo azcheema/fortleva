@@ -113,6 +113,13 @@ const eslintConfig = defineConfig([
       "src/**/dbtest-fixture.ts",
       "src/members/invites.ts",
       "src/members/provisioning.ts",
+      // The CONTACT twin of invitation acceptance (Phase 3, the invite
+      // slice), and deliberately the only thing in its file: a contact
+      // presenting a token has no session, no tenant and no client, so
+      // the token is what resolves the tenant. The member-driven half
+      // (issue / pause / resume / remove) lives in contact-access.ts and
+      // stays subject to this rule.
+      "src/clients/contact-invite-token.ts",
       // The single permitted importer of recordPlatformEvent, which is
       // the only way to write an audit row with tenant_id NULL. Keep in
       // step with PLATFORM_SEAM_ALLOWED_FILES in belt two.

@@ -80,6 +80,27 @@ export type WaitingRow = {
   readonly targetDate: Date | null;
   /** When the client said their part was done — non-null on every `ticked` row and null on every `waiting` one. */
   readonly markedDoneAt: Date | null;
+  /**
+   * WHETHER THAT PERSON CAN ACTUALLY ACT — their portal status, so the
+   * card can say why a row is stalled instead of pretending it is not.
+   *
+   * **THE ROW IS KEPT, NOT FILTERED, and that is the opposite of what
+   * this file does for `portalEnabled` — on purpose.** With the portal
+   * switched off the client cannot see the project at all, so nobody is
+   * being waited on and the row is noise. Here the person genuinely
+   * holds the task and the agency genuinely is blocked on them; what is
+   * missing is a REASON. Hiding it would take the work off the only
+   * surface that tracks it, and the agency would lose the thing it can
+   * act on — chase the invitation, or resume the paused account.
+   *
+   * `portalAuth`'s `session.create` hook admits the literal `ACTIVE` and
+   * nothing else, so any other value here means the tick is impossible
+   * today. `REVOKED` cannot appear: removing access releases every
+   * assignment in the same transaction
+   * (`releaseContactAssignments`), which is what makes this a small set
+   * rather than a growing one.
+   */
+  readonly contactStatus: "ACTIVE" | "INVITED" | "SUSPENDED" | "NO_ACCESS" | "REVOKED" | null;
 };
 
 export type WaitingOnClient = {
@@ -99,7 +120,7 @@ const SELECT = {
   title: true,
   targetDate: true,
   contactCompletedAt: true,
-  assigneeContact: { select: { name: true } },
+  assigneeContact: { select: { name: true, portalStatus: true } },
   project: { select: { key: true, name: true } },
 } as const;
 
@@ -109,7 +130,7 @@ type Row = {
   title: string;
   targetDate: Date | null;
   contactCompletedAt: Date | null;
-  assigneeContact: { name: string } | null;
+  assigneeContact: { name: string; portalStatus: "ACTIVE" | "INVITED" | "SUSPENDED" | "NO_ACCESS" | "REVOKED" } | null;
   project: { key: string; name: string };
 };
 
@@ -122,6 +143,7 @@ const toRow = (r: Row): WaitingRow => ({
   contactName: r.assigneeContact?.name ?? null,
   targetDate: r.targetDate,
   markedDoneAt: r.contactCompletedAt,
+  contactStatus: r.assigneeContact?.portalStatus ?? null,
 });
 
 export async function waitingOnClient(

@@ -32,6 +32,14 @@ export const PLATFORM_SEAM_ALLOWED_FILES = [
   "members/invites.ts",
   "members/provisioning.ts",
   "members/dbtest-fixture.ts",
+  // The CONTACT twin of invitation acceptance (Phase 3, the invite
+  // slice). Cross-tenant by the same construction the two members/*
+  // entries are: a contact presenting a token has no session, no tenant
+  // and no client — the token is what resolves the tenant, so there is
+  // nothing to open `withTenant` for. It holds the token halves ONLY;
+  // the member-driven half (issue / pause / resume / remove) is
+  // `clients/contact-access.ts` and stays subject to the rule.
+  "clients/contact-invite-token.ts",
   // audit/record.ts only MENTIONS withPlatform in error messages — no import.
   //
   // The PLATFORM AUDIT WRITER's single permitted importer. recordPlatformEvent
@@ -90,6 +98,9 @@ describe("ARC-16 import boundary: withPlatform / getPlatformClient", () => {
       "members/invites.ts",
       "members/provisioning.ts",
       "members/dbtest-fixture.ts",
+      // Added 2026-09-23 with the portal invite flow — see the list's
+      // own comment for why the file is split so narrowly.
+      "clients/contact-invite-token.ts",
       // Added 2026-09-11 with the platform-plane audit trail: the single
       // permitted importer of recordPlatformEvent, which is the only way
       // to write an audit row with tenant_id NULL.

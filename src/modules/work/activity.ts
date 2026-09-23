@@ -37,6 +37,56 @@ export async function writeActivity(
 }
 
 /**
+ * MANY history rows a MEMBER caused, in ONE statement.
+ *
+ * **IT EXISTS FOR A TRANSACTION BUDGET, not for tidiness.** A writer
+ * that loops `writeActivity` costs one round trip per row inside an
+ * interactive transaction on the default 5 s budget — and
+ * `releaseContactAssignments`, which releases every task a removed
+ * contact held, is deliberately unbounded. A long-standing client
+ * contact with sixty tasks blew the budget on a transatlantic link and
+ * rolled the WHOLE removal back: access not revoked, and the erasure it
+ * exists to unblock still blocked. Found by a fresh code review of the
+ * invite slice.
+ *
+ * Each row decides its own portal-safety exactly as the single writer
+ * does — `portalSafe` is per ITEM (its visibility) and per FIELD, so a
+ * batch spanning items of different visibilities is still correct row by
+ * row. `createMany` is safe here for the reason it usually is not: these
+ * rows have no triggers that need a per-row RETURNING, and nothing reads
+ * back what it wrote.
+ */
+export async function writeActivityMany(
+  tx: TenantDb,
+  ctx: WorkCtx,
+  entries: readonly { readonly item: ItemRef; readonly change: ActivityChange }[],
+): Promise<void> {
+  if (entries.length === 0) return;
+  await tx.workItemActivity.createMany({
+    data: entries.map(({ item, change }) => ({
+      tenantId: ctx.tenantId,
+      clientId: item.clientId,
+      projectId: item.projectId,
+      workItemId: item.id,
+      actorMemberId: ctx.actor.memberId,
+      actorContactId: null,
+      field: change.field,
+      oldValue: change.oldValue ?? null,
+      newValue: change.newValue ?? null,
+      oldRef: change.oldRef ?? null,
+      newRef: change.newRef ?? null,
+      commentId: change.commentId ?? null,
+      visibility:
+        !change.forceInternal &&
+        PORTAL_SAFE_FIELDS.has(change.field) &&
+        item.visibility === "CLIENT_VISIBLE"
+          ? ("CLIENT_VISIBLE" as const)
+          : ("INTERNAL" as const),
+    })),
+  });
+}
+
+/**
  * A history row a CONTACT caused — the brokered twin of `writeActivity`,
  * and a separate function for the same reason `portal-writes.ts` is a
  * separate file: who the actor is should be a property of what you

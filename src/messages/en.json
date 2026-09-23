@@ -213,6 +213,8 @@
       "waitingHeading": "{count, plural, one {# still with them} other {# still with them}}",
       "rowMeta": "{name} · {project}",
       "saidOn": "said {date}",
+      "notAccepted": "invitation not accepted yet",
+      "paused": "access paused",
       "truncated": "Showing the first {count} of each."
     },
     "triage": {

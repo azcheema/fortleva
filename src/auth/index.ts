@@ -209,3 +209,16 @@ export type AuthSession = typeof auth.$Infer.Session;
 
 /** Deep-link helper for invitation acceptance emails (links, not data). */
 export const inviteUrl = (token: string): string => absoluteUrl(`/invite/${token}`);
+
+/**
+ * The CLIENT PORTAL's acceptance link (Phase 3, the invite slice) — the
+ * same helper for the other plane, and a separate export rather than a
+ * parameter because the two prefixes are load-bearing: `/portal/*` is
+ * what the proxy gates on the portal session cookie, so a contact
+ * arriving at `/invite/…` would be sent to the MEMBER sign-in page.
+ *
+ * It is a link, never data. The token appears here and in the mail body
+ * and nowhere else — the database holds only its sha256.
+ */
+export const portalInviteUrl = (token: string): string =>
+  absoluteUrl(`/portal/invite/${token}`);
