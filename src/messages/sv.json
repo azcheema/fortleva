@@ -366,6 +366,7 @@
       "submit": "Skapa konto",
       "submitting": "Skapar…",
       "failed": "Registreringen misslyckades",
+      "invalidInput": "Skriv namnet som vanlig text – utan tabbar eller radbrytningar – med högst 200 tecken.",
       "checkEmailTitle": "Kontrollera din e-post",
       "checkEmail": "Vi har skickat en verifieringslänk till <strong>{email}</strong>. Verifiera adressen och logga sedan in.",
       "haveAccount": "Har du redan ett konto?",

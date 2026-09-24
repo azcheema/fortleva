@@ -334,8 +334,18 @@ model Account {
   @@index([userId])
 }
 
-/// Verification — Better Auth verification tokens (email verify, reset).
-/// Token hashes, TTL'd.
+/// Verification — Better Auth's short-lived rows for the member and
+/// platform planes: the two-factor sign-in challenge (`2fa-…`, value = the
+/// user id, 10 min), its attempt counter (`2fa-attempts-…`, value = the
+/// COUNT, not a user id) and trusted devices (`trust-device-…`, value = the
+/// user id, 30 days). Stored PLAIN — the identifier is the lookup key a
+/// signed cookie carries. *(Corrected 2026-09-24, slice 58: this said
+/// "email verify, reset — token hashes". Email verification is a JWT and
+/// writes no row; reset rows were stored VERBATIM, and neither plane issues
+/// them any more — both refuse the reset endpoints. The portal's own table,
+/// `ContactVerification`, is the one that holds hashed reset tokens.)* TTL'd
+/// by Better Auth, whose `findVerificationValue` deletes every expired row
+/// each time it runs (consuming a row deletes only that row).
 /// scope=global-identity  rls=AUTH  ret=R4  enc=none
 model Verification {
   id         String   @id @default(uuid(7))
@@ -357,8 +367,8 @@ model Verification {
 model TwoFactor {
   id          String @id @default(uuid(7))
   userId      String @unique
-  secret      String                           // ENCRYPTED (app AES-GCM)
-  backupCodes String                           // ENCRYPTED
+  secret      String                           // ENCRYPTED by Better Auth under BETTER_AUTH_SECRET — NOT the app field key (corrected 2026-09-24)
+  backupCodes String                           // ENCRYPTED, the same way
 }
 
 /// Passkey — Better Auth passkey plugin (WebAuthn). Shape per plugin docs.

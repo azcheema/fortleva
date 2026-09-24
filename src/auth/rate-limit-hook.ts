@@ -42,6 +42,12 @@ export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
   // one — it reads as coverage. `password.mjs` defines
   // /request-password-reset and /reset-password; /send-verification-email
   // is in email-verification.mjs.
+  //
+  // Since slice 58 these three bind the PORTAL only in practice: the member
+  // and platform instances refuse them outright, BEFORE this limiter
+  // (./closed-endpoints). They stay listed for every plane because a
+  // limiter keyed on "which instance still serves it" is one more thing to
+  // remember the day a plane re-opens one.
   "/request-password-reset": "auth.credential_request",
   "/reset-password": "auth.credential_request",
   "/send-verification-email": "auth.credential_request",

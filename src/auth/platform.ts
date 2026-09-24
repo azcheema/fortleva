@@ -8,10 +8,10 @@ import { nextCookies } from "better-auth/next-js";
 
 import { opsUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
-import { send } from "@/mailer";
 
 import { auditPlugin, auditRowHooks, isFreshFactorPath, passwordResetHookFor } from "./audit-hooks";
 import { platformAuditSink } from "./platform-audit-hooks";
+import { refuseClosedEndpoint } from "./closed-endpoints";
 import { guardFactorMutations } from "./factor-guard";
 import { SESSION_ADDITIONAL_FIELDS, USER_ADDITIONAL_FIELDS } from "./index";
 import { enforceAuthRateLimit } from "./rate-limit-hook";
@@ -114,7 +114,8 @@ export const platformAuth = betterAuth({
     enabled: true,
     // SECURITY.md T6 claims "no public signup anywhere in v1" and the
     // control it names is that there is no surface to enumerate. There
-    // was one: `enabled: true` mounts POST /sign-up/email on this
+    // was one: with `enabled: true`, POST /sign-up/email — mounted on
+    // every instance whatever the config — CREATED accounts on this
     // instance too, on the OPS host, where an account created by a
     // stranger would at least be a distinguishable
     // "email already registered" oracle against an invite-only product.
@@ -122,21 +123,34 @@ export const platformAuth = betterAuth({
     // never by a request.
     disableSignUp: true,
     requireEmailVerification: true,
-    // Both present on the member instance and both were missing here, on
-    // the higher-privilege plane. Without the first, Better Auth leaves
-    // every live PLATFORM session valid after a reset — stamp and all —
-    // so the standard remedy for "my ops password leaked" would not
-    // evict the attacker. Without the second, the reset writes no audit
-    // row at all.
+    /**
+     * **THE CONSOLE HAS NO PASSWORD RESET** (slice 58). `sendResetPassword`
+     * is gone and `./closed-endpoints` refuses the three reset endpoints.
+     *
+     * What it was: an unauthenticated `/request-password-reset` on the
+     * most privileged host, answering for EVERY user in the shared `user`
+     * table — members included, each mailed "reset your Fortleva platform
+     * password" to a link that led nowhere, since no reset screen exists.
+     * It awaited the send (a stopwatch for who has an account), stored the
+     * token verbatim, and capped nothing per recipient. And it bought
+     * nothing: a SUPERADMIN's credential is the SAME `account` row the
+     * member plane uses, so resetting it here was never a separate
+     * recovery path — only a second door to the same room. A leaked
+     * password is changed at `/account` on the app plane
+     * (`revokeOtherSessions: true`, which ends this plane's sessions too:
+     * one `session` table), and the console still demands the factor of a
+     * SUPERADMIN who has one. One who has NOT enrolled yet — or who has just
+     * been returned to the ramp by SECURITY.md §3.5's recovery — enrols with
+     * the password alone, the bounded window that section states; for them a
+     * leaked password is the console, so enrol at once.
+     *
+     * The two settings below stay so that re-opening reset can never
+     * forget them. Without the first, Better Auth leaves every live
+     * PLATFORM session valid after a reset, stamp and all; without the
+     * second, the reset writes no audit row.
+     */
     revokeSessionsOnPasswordReset: true,
     onPasswordReset: passwordResetHookFor(platformAuditSink),
-    sendResetPassword: async ({ user, url }) => {
-      await send({
-        to: user.email,
-        subject: "Reset your Fortleva platform password",
-        text: `Reset your password: ${url}`,
-      });
-    },
   },
   session: {
     expiresIn: 60 * 60 * 8, // 8h — console sessions are short
@@ -151,7 +165,13 @@ export const platformAuth = betterAuth({
     // sign-in surfaces while SECURITY.md §3.7 presented it as the
     // hardest. The factor guard is the console-only rule, and it runs
     // after the limiter so a grinder pays the limiter first.
+    //
+    // Before both, the endpoints the console does not serve at all
+    // (slice 58, ./closed-endpoints): password reset, and email
+    // verification — whose links, signed with the secret this instance
+    // shares with the member plane, the console used to accept.
     before: createAuthMiddleware(async (ctx) => {
+      refuseClosedEndpoint(ctx, "platform");
       await enforceAuthRateLimit(ctx, "platform");
       await guardFactorMutations(ctx, "platform");
     }),

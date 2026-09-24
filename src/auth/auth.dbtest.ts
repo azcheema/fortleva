@@ -13,7 +13,9 @@ import { auth } from "./index";
  */
 
 const email = `auth-${randomUUID().slice(0, 8)}@test.invalid`;
-const password = "correct-horse-battery-staple-9";
+// Per run, never a literal: this repository is public, and a run killed before
+// afterAll would leave a verified account behind with its password printed here.
+const password = `pw-${randomUUID()}`;
 
 afterAll(async () => {
   const platform = getPlatformClient();
@@ -27,7 +29,9 @@ describe("member auth (Better Auth, email+password)", () => {
     const res = await auth.api.signUpEmail({
       body: { email, password, name: "Auth Test" },
     });
-    expect(res.user.email).toBe(email);
+    // Sign-up names nobody in its answer, a new address or a registered one
+    // alike (slice 58, src/auth/sign-up-answer.ts) — so the row is read below.
+    expect(res).toEqual({ token: null, user: null });
 
     const platform = getPlatformClient();
     const user = await platform.user.findUnique({

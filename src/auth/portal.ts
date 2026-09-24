@@ -2,8 +2,8 @@ import { betterAuth } from "better-auth";
 import { createAuthMiddleware, APIError } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
-import { after } from "next/server";
 
+import { afterResponse } from "./after-response";
 import { auditPlugin, passwordResetHookFor } from "./audit-hooks";
 import { portalAuditSink } from "./portal-audit";
 
@@ -215,48 +215,11 @@ export async function portalResetHolder(token: string): Promise<{ email: string 
 }
 
 /**
- * Run `task` once the response has been sent — through Next's `after()`,
- * which on Vercel hands the promise to `waitUntil` so the function is kept
- * alive until it settles, and on a long-lived Node server simply runs it.
- *
- * **NOT A BARE `void promise`**, which is what the first cut of this slice
- * did and what a fresh review caught: ARC-21 rejects "fire-and-forget from
- * the request" by name, because Vercel may freeze the function the moment
- * the response goes out, and the mail — or the row a decline removes —
- * would then happen late or never, with nothing logged. `after()` is not
- * durable either (ARC-21 says so too); what makes that acceptable HERE is
- * that a person whose link never arrives simply asks again, and that the
- * durable path, the `EmailOutbox`, would keep the raw token in
- * `email_outbox.params` until the drain ran — undoing the hashing below.
- *
- * `after()` throws synchronously outside a request scope (a dbtest, a
- * script), and there the task is simply started; nothing in those contexts
- * freezes a process.
- */
-function afterResponse(label: string, task: () => Promise<unknown>): void {
-  const run = async (): Promise<void> => {
-    try {
-      await task();
-    } catch (error) {
-      console.error(label, error);
-    }
-  };
-  try {
-    after(run);
-  } catch (error) {
-    // Outside a request scope is the expected case (dbtests, scripts). Any
-    // OTHER refusal means this is running as exactly the detached promise
-    // ARC-21 rejects — so it says so, rather than degrading silently.
-    if (!String(error).includes("outside a request scope")) {
-      console.warn("[portal-auth] after() refused a task; running it detached", error);
-    }
-    void run();
-  }
-}
-
-/**
  * THE MAIL, AFTER THE RESPONSE. Exported so the DB suite can await it; the
- * instance never does (`afterResponse`).
+ * instance never does (`afterResponse`, `./after-response` — which also
+ * says why the durable `EmailOutbox` was rejected here: it would keep the
+ * raw token in `email_outbox.params` until the drain ran, undoing the
+ * hashing below).
  *
  * Better Auth writes the reset row BEFORE it calls `sendResetPassword`, and
  * then awaits whatever that returns. So until this slice, the time an
@@ -540,8 +503,9 @@ export const portalAuth = betterAuth({
      */
     minPasswordLength: 12,
     /**
-     * CONFIGURING THIS IS WHAT MOUNTS `/request-password-reset`, and
-     * that endpoint is unauthenticated. Better Auth's `/reset-password`
+     * CONFIGURING THIS IS WHAT MAKES `/request-password-reset` ISSUE A
+     * TOKEN — the endpoint is mounted either way in 1.6.26 and, without
+     * this, only refuses — and that endpoint is unauthenticated. Better Auth's `/reset-password`
      * then CREATES a credential when none exists rather than requiring
      * one (better-auth/dist/api/routes/password.mjs), which made it a
      * fourth account-creation path around the three refusals above —

@@ -41,8 +41,10 @@ const T = randomUUID();
 const CLIENT = randomUUID();
 const contactEmail = `e2e-portal-${run}@test.invalid`;
 const memberEmail = `e2e-member-${run}@test.invalid`;
-const password = "correct-horse-battery-staple-9";
-const memberPassword = "another-correct-horse-42";
+// Per run, never a literal: the repository is public, and a run killed before
+// afterAll would leave a working credential behind with its password printed here.
+const password = `pw-${randomUUID()}`;
+const memberPassword = `pw-${randomUUID()}`;
 
 let contactId = "";
 /**
@@ -283,8 +285,8 @@ describe("the password reset (the portal's reset screens)", () => {
   const resetEmail = `e2e-portal-reset-${run}@test.invalid`;
   const pausedEmail = `e2e-portal-paused-${run}@test.invalid`;
   const burstEmail = `e2e-portal-burst-${run}@test.invalid`;
-  const firstPassword = "first-correct-horse-battery-1";
-  const newPassword = "second-correct-horse-battery-2";
+  const firstPassword = `first-${randomUUID()}`;
+  const newPassword = `second-${randomUUID()}`;
   let resetId = "";
   let pausedId = "";
   let burstId = "";
@@ -548,8 +550,9 @@ describe("the password reset (the portal's reset screens)", () => {
   it("a never-invited contact cannot obtain a credential through reset-password", async () => {
     /**
      * Better Auth's `/reset-password` CREATES a credential when none
-     * exists, and configuring `sendResetPassword` is what mounts the
-     * unauthenticated `/request-password-reset` that issues the token. So
+     * exists, and configuring `sendResetPassword` is what makes the
+     * unauthenticated `/request-password-reset` issue the token (the
+     * endpoint is mounted either way). So
      * the refusals in front of `contact` INSERT did not cover
      * `contact_account`, and a contact a member had merely RECORDED could
      * have given themselves a portal password (the HIGH finding of the

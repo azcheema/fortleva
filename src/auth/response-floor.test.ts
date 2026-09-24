@@ -3,7 +3,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isPortalResetRequest, RESET_REQUEST_FLOOR_MS, withResponseFloor } from "./response-floor";
+import {
+  isPortalResetRequest,
+  isSignUpRequest,
+  RESET_REQUEST_FLOOR_MS,
+  withResponseFloor,
+} from "./response-floor";
 
 /** A clock the test drives: `sleep` advances time instead of waiting. */
 const fakeClock = () => {
@@ -114,6 +119,37 @@ describe("which requests are the reset request", () => {
     expect(
       isPortalResetRequest(new Request("http://localhost:3000/api/portal-auth/request-password-reset")),
     ).toBe(false);
+  });
+});
+
+describe("which requests are the member plane's sign-up", () => {
+  it("matches the endpoint and the spellings a router might also accept", () => {
+    expect(isSignUpRequest(post("/api/auth/sign-up/email"))).toBe(true);
+    expect(isSignUpRequest(post("/api/auth/sign-up/email/"))).toBe(true);
+    expect(isSignUpRequest(post("/api/auth/Sign-Up/Email"))).toBe(true);
+    expect(isSignUpRequest(post("/api/auth/sign%2Dup/email"))).toBe(true);
+    expect(isSignUpRequest(post("/api/auth/%E0%A4%A"))).toBe(true);
+  });
+
+  it("does not slow sign-in, verification, or a GET", () => {
+    expect(isSignUpRequest(post("/api/auth/sign-in/email"))).toBe(false);
+    expect(isSignUpRequest(post("/api/auth/verify-email"))).toBe(false);
+    expect(isSignUpRequest(new Request("http://localhost:3000/api/auth/sign-up/email"))).toBe(false);
+  });
+});
+
+describe("the member auth route", () => {
+  // The same tripwire as the portal's below, for the same reason.
+  it("holds its POST to the sign-up floor, and exports no second POST", () => {
+    const route = readFileSync(
+      join(process.cwd(), "src", "app", "api", "auth", "[...all]", "route.ts"),
+      "utf8",
+    );
+    expect(route).toMatch(
+      /export const POST = withResponseFloor\(\s*handlers\.POST,\s*isSignUpRequest,\s*SIGN_UP_FLOOR_MS,?\s*\)/,
+    );
+    expect(route.match(/export\s+(?:const|let|var|async\s+function|function)\s+POST\b/g)).toHaveLength(1);
+    expect(route).not.toMatch(/export\s+const\s*\{[^}]*\bPOST\b/);
   });
 });
 

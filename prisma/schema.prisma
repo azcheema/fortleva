@@ -133,8 +133,11 @@ model Verification {
   @@map("verification")
 }
 
-/// secret and backupCodes are ENCRYPTED with the app AES-256-GCM field
-/// service before storage (SECURITY.md §6).
+/// secret and backupCodes are ENCRYPTED BY BETTER AUTH, under
+/// BETTER_AUTH_SECRET — not by the app field service, which this comment
+/// used to claim (corrected 2026-09-24). Replacing that secret therefore
+/// makes every factor undecryptable: read RUNBOOK §5 before rotating it.
+/// One row serves the member AND platform planes (userId is unique).
 model TwoFactor {
   id                      String    @id @default(uuid(7))
   userId                  String    @unique @map("user_id")

@@ -12,9 +12,12 @@ import { absoluteUrl, appUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
 import { send } from "@/mailer";
 
+import { afterResponse } from "./after-response";
 import { auditPlugin, memberAuditSink, memberDatabaseHooks, onPasswordResetHook } from "./audit-hooks";
+import { refuseChangeEmailLink, refuseClosedEndpoint } from "./closed-endpoints";
 import { guardFactorMutations } from "./factor-guard";
 import { enforceAuthRateLimit } from "./rate-limit-hook";
+import { answerSignUpAlike, refuseUnsafeSignUp } from "./sign-up-answer";
 
 /**
  * Member-plane Better Auth instance (SECURITY.md §3): identity,
@@ -102,41 +105,79 @@ export const auth = betterAuth({
       },
     },
   },
-  user: {
-    additionalFields: USER_ADDITIONAL_FIELDS,
-    changeEmail: {
-      enabled: true,
-      sendChangeEmailVerification: async ({ newEmail, url }: { newEmail: string; url: string }) => {
-        await send({
-          to: newEmail,
-          subject: "Confirm your new email address",
-          text: `Confirm your new Fortleva email address: ${url}`,
-        });
-      },
-    },
-  },
+  // NO `changeEmail` BLOCK (slice 58). It ENABLED `/change-email` — which
+  // 1.6.26 mounts either way, and which answers "disabled" without it — with
+  // no screen anywhere in the product, and its confirmation callback was
+  // named `sendChangeEmailVerification`, a key 1.6.26 does not read, so the
+  // mail to the OLD address, the one thing that makes an address change
+  // safe, was never sent. Its links were also accepted by the console's
+  // `/verify-email`, which minted a PLATFORM session for them. Build the
+  // flow with its screen, its old-address confirmation and its reset-link
+  // purge, or not at all; `./closed-endpoints` refuses the path meanwhile,
+  // and refuses a change-email LINK on this plane's `/verify-email` too.
+  user: { additionalFields: USER_ADDITIONAL_FIELDS },
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: true,
+    /**
+     * **NO `sendResetPassword`, AND THE RESET ENDPOINTS ARE REFUSED**
+     * (slice 58, `./closed-endpoints`). There is no reset screen on this
+     * plane, so the endpoint was a door with only curl in front of it —
+     * awaiting the mail (a timing oracle for who is a member), storing the
+     * live token verbatim, capping nothing per recipient — and the link it
+     * mailed led nowhere a person could use. A member forgot-password flow
+     * is a product item of its own (OPEN_QUESTIONS C30); when it is built,
+     * it takes the portal's shapes (`src/auth/portal.ts`) AND solves what the
+     * portal did not have to: this `verification` table also holds
+     * two-factor challenges and trusted devices keyed on the same user id,
+     * so the portal's count-and-purge-by-`value` would hit those too.
+     *
+     * The two settings below stay, so that re-opening reset can never
+     * forget them: without the first a reset leaves every session alive,
+     * without the second it writes no audit row.
+     */
     revokeSessionsOnPasswordReset: true,
     onPasswordReset: onPasswordResetHook,
-    sendResetPassword: async ({ user, url }) => {
-      await send({
-        to: user.email,
-        subject: "Reset your Fortleva password",
-        text: `Reset your password: ${url}\nIf you did not request this, ignore this email.`,
-      });
-    },
   },
   emailVerification: {
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
+    /**
+     * THE MAIL GOES AFTER THE RESPONSE (slice 58, `./after-response`).
+     * Better Auth awaits this callback, and sign-up calls it only for an
+     * address that is NEW — so a transport round trip on the response said
+     * which addresses were not yet members. (A transport FAILURE was never
+     * visible: the library swallowed it before, and `afterResponse` logs it
+     * now.)
+     *
+     * Its one caller now is sign-up (`sendOnSignUp`), which sends once per
+     * ADDRESS: a second sign-up for a registered address takes the library's
+     * stand-in branch and sends nothing. The unauthenticated re-send,
+     * `/send-verification-email`, is refused (`./closed-endpoints`) — it had
+     * no caller, mailed any unverified user on a stranger's say-so and 500'd
+     * for exactly those addresses when the transport failed.
+     *
+     * **WHAT THAT COSTS, and it is a dead end, not a feature.** Once per
+     * address is also once per PERSON: a member whose one link expires (an
+     * hour) or never arrives cannot get another — not by signing up again,
+     * not by signing in (`sendOnSignIn` is off), not by a re-send or a reset,
+     * both refused. Nor can the owner of an address a STRANGER signed up
+     * first, since every probe of a new address leaves an unverified user
+     * behind. Neither was self-service before this slice either (no screen
+     * ever called the re-send), but the curl-only door is gone, so the
+     * remedy is an operator's: RUNBOOK §8. A re-send is owed with the member
+     * account-lifecycle decision (OPEN_QUESTIONS C30), and it must bring a
+     * per-recipient cap: the reason none is needed today is exactly that
+     * nothing can send this mail twice.
+     */
     sendVerificationEmail: async ({ user, url }) => {
-      await send({
-        to: user.email,
-        subject: "Verify your Fortleva email",
-        text: `Verify your email address: ${url}`,
-      });
+      afterResponse(`[auth] verification mail not sent for user ${user.id}`, () =>
+        send({
+          to: user.email,
+          subject: "Verify your Fortleva email",
+          text: `Verify your email address: ${url}`,
+        }),
+      );
     },
   },
   session: {
@@ -158,10 +199,26 @@ export const auth = betterAuth({
     // console gate depends on. Guarding only the platform instance would
     // leave the weak plane able to strip the strong plane's credential.
     // See ./factor-guard.
+    //
+    // And FIRST, the endpoints this plane does not serve at all (slice 58,
+    // ./closed-endpoints), with the change-email links nothing here can
+    // mint any more: before the limiter, because they cost us nothing.
+    //
+    // Sign-up's input is checked after the limiter and before the library
+    // branches on whether the address exists (./sign-up-answer): input the
+    // DATABASE would refuse was a 422 for a new address and a 200 for a
+    // registered one.
     before: createAuthMiddleware(async (ctx) => {
+      refuseClosedEndpoint(ctx, "member");
+      refuseChangeEmailLink(ctx);
       await enforceAuthRateLimit(ctx, "member");
+      refuseUnsafeSignUp(ctx);
       await guardFactorMutations(ctx, "member");
     }),
+    // Every successful sign-up answers alike, so the body names nobody
+    // (./sign-up-answer). Nothing in it can throw — an after-hook's throw
+    // becomes the response (./audit-hooks, the guarded() note).
+    after: createAuthMiddleware(async (ctx) => answerSignUpAlike(ctx)),
   },
   plugins: [
     twoFactor({

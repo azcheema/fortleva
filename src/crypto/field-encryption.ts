@@ -13,9 +13,12 @@ export { decryptField, encryptField, isEncryptedField, resetKeyringCache } from 
  * Field-level encryption service (SECURITY.md §6, DATA_MODEL.md §4).
  * AES-256-GCM in two formats:
  *   v1 `v1.<keyId>.<iv>.<ct>.<tag>` — directly under an env root key,
- *      no AAD. Kept for the closed Phase-1 inventory (TwoFactor
- *      secret/backupCodes, Tenant bank fields, Tenant.databaseUrl) and
- *      for wrapping per-tenant DEKs. Still decryptable forever.
+ *      no AAD. Kept for the closed Phase-1 inventory (Tenant bank
+ *      fields, Tenant.databaseUrl) and for wrapping per-tenant DEKs.
+ *      Still decryptable forever. (TwoFactor secret/backupCodes used to
+ *      be listed here and never went through this service: Better Auth
+ *      encrypts them itself, under BETTER_AUTH_SECRET — corrected
+ *      2026-09-24; see RUNBOOK §5 before rotating that secret.)
  *   v2 `v2.<rootKeyId>.<tenantKeyId>.<iv>.<ct>.<tag>` — under the
  *      tenant's DEK (src/crypto/tenant-key.ts) with MANDATORY AAD
  *      `tenantId:model:rowId:field`: a ciphertext moved to another row,

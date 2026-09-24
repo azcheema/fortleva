@@ -22,7 +22,9 @@ import { verifyStepUpWithHeaders } from "./step-up";
 
 const run = randomUUID().slice(0, 8);
 const email = `mfa-${run}@test.invalid`;
-const password = "correct-horse-battery-staple-9";
+// Per run, never a literal: this repository is public, and a run killed before
+// afterAll would leave a verified account behind with its password printed here.
+const password = `pw-${randomUUID()}`;
 let userId: string;
 let tenantId: string;
 let memberId: string;
@@ -74,8 +76,9 @@ const sessionRowFor = async (cookie: string) => {
 };
 
 beforeAll(async () => {
-  const res = await auth.api.signUpEmail({ body: { email, password, name: "MFA Test" } });
-  userId = res.user.id;
+  await auth.api.signUpEmail({ body: { email, password, name: "MFA Test" } });
+  // Sign-up's answer names nobody (slice 58, src/auth/sign-up-answer.ts).
+  userId = (await platform.user.findUniqueOrThrow({ where: { email } })).id;
   await platform.user.update({ where: { id: userId }, data: { emailVerified: true } });
   const t = await provisionTenant({ name: `MFA ${run}`, slug: `mfa-${run}`, ownerUserId: userId });
   tenantId = t.tenantId;
@@ -88,7 +91,14 @@ afterAll(async () => {
   // deletes would hand Prisma undefined filters it silently DROPS —
   // the 2026-08-31 dev-DB wipe. The platform client's undefined-where
   // guard is the belt; this is the per-hook belt.
-  if (tenantId === undefined) return;
+  if (tenantId === undefined) {
+    // …but the USER may exist (beforeAll signs up and verifies it before
+    // provisioning), and `email` is always defined, so it goes regardless.
+    await platform.user.deleteMany({ where: { email } });
+    await platform.$disconnect();
+    await runtimeClient.$disconnect();
+    return;
+  }
   await platform.memberInvite.deleteMany({ where: { tenantId } });
   await platform.memberRole.deleteMany({ where: { tenantId } });
   await platform.rolePermission.deleteMany({ where: { tenantId } });

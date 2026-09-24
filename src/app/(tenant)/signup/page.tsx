@@ -46,7 +46,9 @@ function SignupForm() {
     });
     setBusy(false);
     if (err) {
-      setError(err.message ?? t("signup.failed"));
+      // The one refusal this product authors (src/auth/sign-up-answer.ts,
+      // `SIGN_UP_REFUSED`) gets its own words; the library's keep theirs.
+      setError(err.code === "INVALID_SIGN_UP" ? t("signup.invalidInput") : (err.message ?? t("signup.failed")));
       return;
     }
     setDone(true);

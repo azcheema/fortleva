@@ -366,6 +366,7 @@
       "submit": "Create account",
       "submitting": "Creating…",
       "failed": "Sign-up failed",
+      "invalidInput": "Write your name as plain text — no tabs or line breaks — in at most 200 characters.",
       "checkEmailTitle": "Check your email",
       "checkEmail": "We sent a verification link to <strong>{email}</strong>. Verify your address, then sign in.",
       "haveAccount": "Already have an account?",

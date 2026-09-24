@@ -36,8 +36,9 @@ const PORTAL_PREFIX = "/portal";
 /**
  * The PORTAL auth API. Host-scoped for the same reason the member one
  * above is, and the reason is not symmetry: cookie signatures do not
- * bind the cookie NAME (better-call signs the value alone) and all
- * three instances share one BETTER_AUTH_SECRET, so any credential
+ * bind the cookie NAME (better-call signs the value alone) and the
+ * member and platform instances share one BETTER_AUTH_SECRET (the
+ * portal's is derived from it, `portalAuthSecret`), so any credential
  * surface reachable on the wrong host is a way to mint that plane's
  * cookies where the host's controls do not apply. The portal belongs
  * to the APP host — `planeForHost`: "os.naxdor.com serves tenant +
