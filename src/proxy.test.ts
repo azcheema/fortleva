@@ -181,6 +181,31 @@ describe("proxy: the portal plane (Phase 3)", () => {
     expect(dest(proxy(req(OPS, "/portal/invite/abc123")))).toBe("redirect:/ops/portal/invite/abc123");
   });
 
+  it("serves both halves of the password reset without a cookie — whoever needs it has none", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // The request form, and the new-password form its mail links to.
+    expect(dest(proxy(req(APP, "/portal/reset-password")))).toBe("next");
+    expect(dest(proxy(req(APP, "/portal/reset-password/abc123")))).toBe("next");
+  });
+
+  it("does not open the portal on a lookalike of the reset path", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // The bare path is an EXACT entry and the token route a segment-
+    // anchored prefix, so neither sweeps a sibling in with it.
+    expect(dest(proxy(req(APP, "/portal/reset-passwords")))).toBe("redirect:/portal/login");
+    expect(dest(proxy(req(APP, "/portal/reset-password-history")))).toBe(
+      "redirect:/portal/login",
+    );
+  });
+
+  it("keeps the password reset OFF the ops host", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    expect(dest(proxy(req(OPS, "/portal/reset-password")))).toBe("redirect:/ops/portal/reset-password");
+    expect(dest(proxy(req(OPS, "/portal/reset-password/abc123")))).toBe(
+      "redirect:/ops/portal/reset-password/abc123",
+    );
+  });
+
   it("does not accept a MEMBER cookie as entry to the portal", async () => {
     const proxy = await proxyWith({ APP_URL: `https://${APP}` });
     expect(dest(proxy(req(APP, "/portal/projects", `${MEMBER_COOKIE}=x`)))).toBe(

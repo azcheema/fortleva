@@ -9,7 +9,7 @@ import { actorFor, setupTenant } from "@/members/dbtest-fixture";
 import { inviteContact, setContactPortalAccess } from "./contact-access";
 import { hashToken } from "./contact-invite-secret";
 import { acceptContactInvite, previewContactInvite } from "./contact-invite-token";
-import { deleteContact } from "./service";
+import { deleteContact, updateContact } from "./service";
 
 /**
  * THE CLIENT PORTAL'S INVITATION, END TO END — Phase 3's invite slice,
@@ -174,6 +174,9 @@ beforeEach(async () => {
   // the shared dev database.
   await f.platform.contactSession.deleteMany({ where: { contactId: { in: [anna, bo] } } });
   await f.platform.contactAccount.deleteMany({ where: { contactId: { in: [anna, bo] } } });
+  // No FK to `contact` — a reset row is looked up by its token — so it is
+  // scoped by `value`, which is the contact id on every one.
+  await f.platform.contactVerification.deleteMany({ where: { value: { in: [anna, bo] } } });
   await f.platform.contactInvite.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.comment.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.workItemActivity.deleteMany({ where: { tenantId: f.tenantId } });
@@ -193,6 +196,9 @@ afterAll(async () => {
   // Scoped by contact, for the reason `beforeEach` states.
   await f.platform.contactSession.deleteMany({ where: { contactId: { in: [anna, bo] } } });
   await f.platform.contactAccount.deleteMany({ where: { contactId: { in: [anna, bo] } } });
+  // No FK to `contact` — a reset row is looked up by its token — so it is
+  // scoped by `value`, which is the contact id on every one.
+  await f.platform.contactVerification.deleteMany({ where: { value: { in: [anna, bo] } } });
   await f.platform.contactInvite.deleteMany({ where: { tenantId: f.tenantId } });
   // BEFORE the work items and the project: `comment` has a RESTRICT FK
   // to both, so the deletion-guard case's fixture strands the teardown
@@ -598,6 +604,68 @@ describe("taking access away, and giving it back", () => {
     // that access came back, not infer it from the absence of a later
     // event.
     await expect(f.audits("contact.access_restored")).resolves.toHaveLength(1);
+  });
+
+  it.each(["PAUSE", "REMOVE"] as const)(
+    "%s kills an outstanding password-reset link, so the person cannot take the credential back",
+    async (action) => {
+      await activate();
+      // A link mailed while they were ACTIVE, written through the instance's
+      // own adapter so it is stored exactly as a real one is — HASHED, since
+      // the portal's reset screens shipped.
+      const { internalAdapter } = await portalAuth.$context;
+      const raw = `cinvreset${randomUUID().replace(/-/g, "")}`;
+      await internalAdapter.createVerificationValue({
+        identifier: `reset-password:${raw}`,
+        value: anna,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      });
+      expect(await f.platform.contactVerification.count({ where: { value: anna } })).toBe(1);
+
+      await setContactPortalAccess(ctxOf("manager"), anna, action);
+
+      // THE PURGE, and until this test nothing covered it. It is keyed on
+      // `value` — the first version keyed it on the address and matched
+      // nothing — and hashed storage changed the IDENTIFIER, not the value,
+      // which is why it still holds. This is what says so.
+      expect(await f.platform.contactVerification.count({ where: { value: anna } })).toBe(0);
+      const res = await portalAuth.api.resetPassword({
+        body: { token: raw, newPassword: "a-new-password-123" },
+        asResponse: true,
+      });
+      expect(res.status).toBe(400);
+    },
+  );
+
+  it("a NEW ADDRESS kills the reset links mailed to the old one — and a new title does not", async () => {
+    await activate();
+    const { internalAdapter } = await portalAuth.$context;
+    const live = async () => {
+      await internalAdapter.createVerificationValue({
+        identifier: `reset-password:cinvaddr${randomUUID().replace(/-/g, "")}`,
+        value: anna,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      });
+    };
+    await live();
+
+    // Nothing to do with where the mail went: the link stays.
+    await updateContact(ctxOf("manager"), anna, { title: "Head of marketing" });
+    expect(await f.platform.contactVerification.count({ where: { value: anna } })).toBe(1);
+
+    // The address a member changes to cut the old mailbox off: every link
+    // mailed to it dies with the change, in the same transaction.
+    const before = (await contactRow(anna)).email;
+    try {
+      await updateContact(ctxOf("manager"), anna, { email: `moved-${before}` });
+      expect(await f.platform.contactVerification.count({ where: { value: anna } })).toBe(0);
+    } finally {
+      // Restored for the suite's other cases, which share the fixture.
+      await f.platform.contact.update({
+        where: { tenantId_id: { tenantId: f.tenantId, id: anna } },
+        data: { email: before, title: null },
+      });
+    }
   });
 
   it("REMOVE returns every task, deletes the credential, and kills any open invitation", async () => {

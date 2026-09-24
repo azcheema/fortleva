@@ -766,13 +766,23 @@ model ContactAccount {
   @@map("contact_account")
 }
 
-/// Portal invite-accept + password-reset tokens (hashes). Contact MFA
-/// is v2, so no ContactTwoFactor table exists.
+/// Portal PASSWORD-RESET tokens, and nothing else: invitation tokens live
+/// in ContactInvite, and email verification is a self-contained JWT that
+/// writes no row. Since 2026-09-24 the `identifier` is the SHA-256 (base64url)
+/// of `reset-password:<token>` — `verification.storeIdentifier: "hashed"` in
+/// src/auth/portal.ts — so NOTHING here can be found by building the string
+/// yourself: look a token up through the instance's adapter, and purge by
+/// `value`, which is the contact id on every row. Before that date this
+/// comment said "(hashes)" over rows stored verbatim. Contact MFA is v2, so
+/// no ContactTwoFactor table exists.
 ///
-/// NOT cascaded by contact deletion, unlike its two siblings, and that
-/// is structural rather than an oversight: it has no FK because its
-/// `identifier` is a string like `reset-password:<token>`, not a
-/// contact id. So an outstanding token OUTLIVES the contact it was
+/// NOT cascaded by contact deletion, unlike its two siblings. The columns
+/// are Better Auth's generic verification store: `identifier` is derived
+/// from a token, and `value` is free-form in the library's other flows
+/// (OAuth state keeps JSON there). On THIS instance every row's `value`
+/// happens to be a contact id — which is why the purges key on it — but a
+/// foreign key would bind a library-owned column to one flow, so it has
+/// none, by choice. So an outstanding token OUTLIVES the contact it was
 /// issued for. It cannot be redeemed — `value` holds the old uuid, and
 /// consuming it resolves to a row that no longer exists — but the
 /// "CASCADE is the revocation backstop" note on the other two does not
@@ -782,7 +792,7 @@ model ContactAccount {
 /// (corrected 2026-09-20). Unlike session/account, Better Auth's
 /// `verification.updatedAt` carries a `defaultValue`, so transformInput
 /// emits it on EVERY create — against a table without the column the
-/// first invite token would have died on an unknown-argument error.
+/// first token written here would have died on an unknown-argument error.
 model ContactVerification {
   id         String   @id @default(uuid(7))
   identifier String

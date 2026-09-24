@@ -250,6 +250,24 @@ export async function forgetStaffNotice(tenantId: string, email: string): Promis
  * token for an address is the only live one.
  */
 export function readPortalInviteToken(email: string): string | null {
+  return lastLinkTokenTo(email, /\/portal\/invite\/([A-Za-z0-9_-]+)/);
+}
+
+/**
+ * The WHOLE last portal password-reset link mailed to `email` — origin and
+ * all, exactly as the recipient would click it, so a spec opens the address
+ * the mail actually carries rather than one it rebuilt from a path (a review
+ * finding: the first version returned the token and the spec reassembled
+ * the URL, which proved nothing about the origin `portalResetUrl` wrote).
+ * It is the new-password screen's address, not Better Auth's callback. The
+ * mail is sent after the response, so a caller polls this.
+ */
+export function readPortalResetLink(email: string): string | null {
+  return lastLinkTokenTo(email, /(https?:\/\/\S+\/portal\/reset-password\/[A-Za-z0-9_-]+)/);
+}
+
+/** The first capture of `pattern` in the last message to `email`, if any. */
+function lastLinkTokenTo(email: string, pattern: RegExp): string | null {
   const file = join(process.cwd(), ".dev-outbox", "outbox.jsonl");
   if (!existsSync(file)) return null;
   const sent = readFileSync(file, "utf8")
@@ -262,10 +280,10 @@ export function readPortalInviteToken(email: string): string | null {
         return [];
       }
     })
-    .filter((msg) => msg.to === email);
+    .filter((msg) => msg.to === email && typeof msg.text === "string" && pattern.test(msg.text));
   const text = sent.at(-1)?.text;
   if (typeof text !== "string") return null;
-  return text.match(/\/portal\/invite\/([A-Za-z0-9_-]+)/)?.[1] ?? null;
+  return text.match(pattern)?.[1] ?? null;
 }
 
 /** Erase a contact the spec created, whatever state it reached. */

@@ -942,7 +942,11 @@ model ContactAccount {
   @@index([contactId])
 }
 
-/// ContactVerification — portal invite-accept + reset tokens (hashes).
+/// ContactVerification — portal password-reset tokens, stored as a SHA-256 of the
+/// identifier (`verification.storeIdentifier: "hashed"`, since 2026-09-24 — until then
+/// they were stored verbatim, and this line said "hashes" over rows that were not).
+/// `value` is the contact id. Invitation tokens are NOT here: they live, hashed, in
+/// `ContactInvite`. Email verification writes no row — it is a self-contained JWT.
 /// Contact MFA (TOTP) is v2 — see Pushback P5.
 /// scope=client (via contact)  rls=AUTH  ret=R4  enc=none
 ///
@@ -952,8 +956,9 @@ model ContactAccount {
 /// on create, Better Auth's core `verification.updatedAt` has a
 /// `defaultValue` (@better-auth/core .../db/get-tables.mjs), so
 /// transformInput emits it on EVERY create. Against a table without the
-/// column, the first invite token would have died on an unknown-argument
-/// error. The member `Verification` has always had it.
+/// column, the first token written here would have died on an
+/// unknown-argument error (written when invitation tokens were expected in
+/// this table; they live in `ContactInvite`, and only reset tokens come here). The member `Verification` has always had it.
 model ContactVerification {
   id         String   @id @default(uuid(7))
   identifier String

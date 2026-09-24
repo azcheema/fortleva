@@ -323,30 +323,38 @@ export async function setContactPortalAccess(
       // **AND ANY OUTSTANDING PASSWORD-RESET TOKEN**, which the first cut
       // left behind — found by a fresh code review. `sendResetPassword`
       // declines to MAIL a non-ACTIVE contact, but a token already issued
-      // is redeemed at `/reset-password`, and that path is not
-      // status-gated: it takes the UPDATE branch on the surviving
+      // is redeemed at `/reset-password`, and the library does not
+      // status-gate that path: it takes the UPDATE branch on the surviving
       // `contact_account` row, which `contact_account_requires_invite`
       // does not see (it is BEFORE INSERT only). The person would then
       // control the credential of an account the agency had deliberately
-      // suspended, live the instant anyone pressed Resume.
+      // suspended, live the instant anyone pressed Resume. (Since the
+      // portal's reset screens, the instance's own `hooks.before` refuses
+      // that redemption too — `burnResetTokenOfInactiveContact` in
+      // src/auth/portal.ts. This purge is the first of two noes, not the
+      // only one.)
       //
       // **AND THE FILTER IS `value`, NOT THE ADDRESS — the first version
       // of this matched ZERO ROWS.** `contact_verification` has no FK to
       // `contact`, so something on the row has to identify the person,
-      // and the obvious guess was wrong: Better Auth stores a reset token
-      // as `identifier = "reset-password:<token>"` with `value = <the
-      // user id>` (better-auth/dist/api/routes/password.mjs — the row is
-      // looked up BY the token, which is the point of it being
-      // unguessable). On the portal instance that user id IS the contact
-      // id. So a purge keyed on the email deleted nothing at all: a
+      // and the obvious guess was wrong: Better Auth writes a reset row
+      // with `identifier` derived from `"reset-password:<token>"` — the
+      // SHA-256 of it since the portal's reset screens switched on
+      // `verification.storeIdentifier: "hashed"`, the string itself before
+      // — and `value = <the user id>` (better-auth/dist/api/routes/
+      // password.mjs; the row is looked up BY the token, which is the point
+      // of it being unguessable). On the portal instance that user id IS
+      // the contact id, and `value` is untouched by the hashing. So a purge keyed on the email deleted nothing at all: a
       // paused contact's outstanding reset link stayed live, and the
       // comment above it read like a control that existed.
       //
-      // `value` is kept beside `identifier` in an OR because not every
-      // Better Auth flow keys its row the same way — the address-keyed
-      // shape the first version assumed is the one some of them use — and
-      // over-deleting a contact's own verification rows at the moment
-      // their access is taken away is the harmless direction.
+      // The `identifier: email` arm beside `value` MATCHES NOTHING TODAY,
+      // stated so nobody leans on it: since `storeIdentifier: "hashed"`
+      // every identifier on this instance is stored as a hash, so no row
+      // can equal an address — and on this plane no flow ever wrote an
+      // address-keyed row (email verification is a JWT). It is left in
+      // because removing an arm from a purge is the risky direction and it
+      // costs one index probe; `value` is the key that does the work.
       //
       // Found by this slice's security review, and written out at this
       // length because a write that can only ever match nothing is the

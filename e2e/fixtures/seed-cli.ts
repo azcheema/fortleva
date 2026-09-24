@@ -255,6 +255,15 @@ export type E2ESeed = {
   readonly contactInviteToken: string;
   readonly contactInviteEmail: string;
 
+  /**
+   * A LIVE PASSWORD-RESET LINK for the ACTIVE contact above — the raw
+   * token of a `contact_verification` row, so the new-password screen has
+   * a stable address to be photographed at. A visit only reads it; the
+   * form's POST would spend it AND revoke the contact's shared session, so
+   * no spec may ever submit it. Same contract as `contactInviteToken`.
+   */
+  readonly contactResetToken: string;
+
   /* ── Member-plane scoping fixture (e2e/scoping.spec.ts) ─────────────
    * An employee — the template role WITHOUT client:view_all — assigned
    * to exactly one client. The long-name client and its completed
@@ -769,6 +778,36 @@ async function provision(seedFile: string): Promise<void> {
     },
   });
 
+  // ── A LIVE PASSWORD-RESET LINK for Astrid, so the new-password screen
+  // has an address that stands still ─────────────────────────────────
+  //
+  // Written directly, for the reason Carina's invitation is: asking
+  // `/request-password-reset` would MAIL it, and a fixture must not leave
+  // an envelope in `.dev-outbox` for a spec to trip over.
+  //
+  // **NOTHING MAY EVER SPEND IT.** A visit only reads (`portalResetHolder`);
+  // only the form's POST consumes a link, and a reset REVOKES every session
+  // the contact holds — five specs share Astrid's one session, and her
+  // password lives nowhere after global setup, so a spent link here would
+  // sign the rest of the run out with no way back in. The walks photograph
+  // the page and never press its button.
+  //
+  // STORED AS THE INSTANCE STORES IT — `verification.storeIdentifier:
+  // "hashed"`, the SHA-256 of the whole identifier in base64url without
+  // padding (better-auth/dist/db/verification-token-storage.mjs). A plain
+  // row would still resolve through the library's fallback, and the stop
+  // would then be photographing a path production never takes.
+  const contactResetToken = randomBytes(18).toString("hex");
+  await db.contactVerification.create({
+    data: {
+      identifier: createHash("sha256")
+        .update(`reset-password:${contactResetToken}`)
+        .digest("base64url"),
+      value: contactId,
+      expiresAt: new Date(Date.now() + 3 * day),
+    },
+  });
+
   const clientVisibleDocName = `e2e-shared-${run}.txt`;
   const internalDocName = `e2e-private-${run}.txt`;
   const seed: E2ESeed = {
@@ -807,6 +846,7 @@ async function provision(seedFile: string): Promise<void> {
     contactName,
     contactInviteToken,
     contactInviteEmail,
+    contactResetToken,
     employeeEmail,
     employeePassword,
   };
@@ -919,6 +959,13 @@ async function removeTenant(
   await db.service.deleteMany({ where: { tenantId } });
   await db.memberProject.deleteMany({ where: { tenantId } });
   await db.memberClient.deleteMany({ where: { tenantId } });
+  // A contact's password-reset rows have no FK to it — a row is looked up
+  // BY its token — so deleting the contact takes nothing with it, and the
+  // fixture seeds one (`contactResetToken`). By `value`, the contact id.
+  const contactIds = (await db.contact.findMany({ where: { tenantId }, select: { id: true } })).map(
+    (c) => c.id,
+  );
+  await db.contactVerification.deleteMany({ where: { value: { in: contactIds } } });
   await db.contact.deleteMany({ where: { tenantId } });
   await db.project.deleteMany({ where: { tenantId } });
   await db.client.deleteMany({ where: { tenantId } });
@@ -1538,9 +1585,12 @@ async function removeContact(tenantId: string, email: string): Promise<void> {
     // these run outside a transaction anyway so there is nothing to win.
     await db.contactSession.deleteMany({ where: { contactId: contact.id } });
     await db.contactAccount.deleteMany({ where: { contactId: contact.id } });
-    // By `value`, not the address: Better Auth keys a reset row
-    // `identifier = "reset-password:<token>"` with `value = <contact id>`
-    // (the same correction `setContactPortalAccess` now carries).
+    // By `value`, not the address: Better Auth keys a reset row by an
+    // identifier derived from the token — hashed, since the portal's reset
+    // screens — with `value = <contact id>` (the same correction
+    // `setContactPortalAccess` now carries). The address arm matches
+    // nothing since the hashing — no identifier can equal an address — and
+    // stays for the reason the service's copy of it gives.
     await db.contactVerification.deleteMany({
       where: { OR: [{ value: contact.id }, { identifier: email }] },
     });

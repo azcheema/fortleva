@@ -6,6 +6,7 @@ import { SLOW } from "./fixtures/keys";
 import {
   STORAGE_STATE,
   readPortalInviteToken,
+  readPortalResetLink,
   removeSpecContact,
   requireSeed,
 } from "./fixtures/tenant";
@@ -73,10 +74,13 @@ const seed = requireSeed();
 // fixture makes: a credential literal in a committed file is a credential
 // in a PUBLIC repository, whatever it unlocks.
 const PASSWORD = randomBytes(18).toString("base64url");
+// The password the reset test chooses, generated the same way.
+const NEW_PASSWORD = randomBytes(18).toString("base64url");
 
-// SERIAL, because the second test is the first one's undo: it asserts the
-// ACTIVE state the acceptance produced. Without this a failure in the
-// first would be reported twice, the second time as a missing row.
+// SERIAL, because each test stands on the one before: the reset needs the
+// ACTIVE contact the acceptance produced, and the last test is the undo of
+// both. Without this a failure early in the chain would be reported again
+// by every later test, as a missing row.
 test.describe.configure({ mode: "serial" });
 
 test.describe("portal invitation", () => {
@@ -178,6 +182,94 @@ test.describe("portal invitation", () => {
       expect(unknown).toBe(consumed);
     } finally {
       await spent.close();
+      await stranger.close();
+    }
+  });
+
+  /**
+   * THE WAY BACK IN, driven from the sign-in form's own link. It lives in
+   * THIS serial chain because it needs what nothing else in the harness
+   * has: an ACTIVE contact whose password the spec knows and whose
+   * sessions nobody else depends on. Astrid, the fixture's contact, is
+   * neither — her password lives nowhere after global setup, and a reset
+   * revokes the one session five later specs share.
+   *
+   * What it proves that `portal.dbtest.ts` cannot: the link the mail
+   * carries is the address a browser can actually open (the proxy's
+   * exemption, the route, the instance's `portalResetUrl`, agreeing), and
+   * the form's reset-then-sign-in lands a contact on `/portal` under a
+   * session of their own.
+   */
+  test("the contact forgets the password, is mailed a link, and chooses a new one", async ({
+    browser,
+  }) => {
+    const visitor = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+      locale: "en-US",
+    });
+    const page = await visitor.newPage();
+    try {
+      // The door as a person finds it: the sign-in form's footer link.
+      await page.goto("/portal/login");
+      await page.getByRole("link", { name: "Choose a new one" }).click();
+      await page.waitForURL((url) => url.pathname === "/portal/reset-password");
+      await page.getByLabel("Email").fill(email);
+      await page.getByRole("button", { name: "Email me a link" }).click();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Check your email");
+
+      // THE LINK, exactly as the contact receives it — origin and all. The
+      // instance sends it AFTER the response, so that neither the send nor
+      // its failure is on anybody's clock, which means it may land a moment
+      // after the confirmation does.
+      let link: string | null = null;
+      await expect
+        .poll(() => (link = readPortalResetLink(email)), { timeout: 30_000 * SLOW })
+        .toBeTruthy();
+
+      await page.goto(link!);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Choose a new password");
+      // Which account is being changed is the first thing the page says.
+      await expect(page.locator("main")).toContainText(email);
+      await page.getByLabel("New password").fill(NEW_PASSWORD);
+      await page.getByLabel("Repeat the password").fill(NEW_PASSWORD);
+      await page.getByRole("button", { name: "Save password and sign in" }).click();
+      // A predicate on the pathname, for the reason the acceptance test
+      // above gives: `/portal/login?next=/portal` also ends in "/portal".
+      await page.waitForURL((url) => url.pathname === "/portal", { timeout: 30_000 * SLOW });
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+      // THE SPENT LINK AND ONE THAT NEVER EXISTED render the SAME page.
+      await page.goto(link!);
+      const spent = await page.locator("main").innerText();
+      await page.goto("/portal/reset-password/a-link-that-never-existed");
+      const unknown = await page.locator("main").innerText();
+      expect(spent).toContain("Link not available");
+      expect(unknown).toBe(spent);
+    } finally {
+      await page.close();
+      await visitor.close();
+    }
+
+    // AND THE OLD PASSWORD NO LONGER OPENS THE DOOR — the new one is what
+    // signed them in above.
+    const stranger = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+      locale: "en-US",
+    });
+    const login = await stranger.newPage();
+    try {
+      await login.goto("/portal/login");
+      await login.getByLabel("Email").fill(email);
+      await login.getByLabel("Password").fill(PASSWORD);
+      await login.getByRole("button", { name: "Sign in" }).click();
+      // Scoped to `main`: Next mounts its own `role="alert"` route announcer
+      // outside it, and an unscoped query would match both.
+      await expect(login.locator("main").getByRole("alert")).toContainText(
+        "We could not sign you in",
+      );
+      expect(new URL(login.url()).pathname).toBe("/portal/login");
+    } finally {
+      await login.close();
       await stranger.close();
     }
   });

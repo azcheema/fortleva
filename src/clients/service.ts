@@ -567,6 +567,21 @@ export async function updateContact(
       if (isUniqueViolation(e)) fail("EMAIL_TAKEN");
       throw e;
     }
+    if ("email" in data) {
+      // **A NEW ADDRESS KILLS EVERY PASSWORD-RESET LINK MAILED TO THE OLD
+      // ONE** (the portal reset screens' review). A reset row is keyed to the
+      // contact, not to the address it was sent to, so without this the old
+      // mailbox — a departed employee's, a mistyped one, exactly the mailbox
+      // a member changes the address to cut off — could open its link for
+      // the rest of the hour, read the NEW address off the page, set the
+      // password and be signed in. By `value`, the contact id on every reset
+      // row, the key `setContactPortalAccess` purges by for the same reason.
+      // This purge is HALF of it: a request already in flight can still
+      // write its row after this statement, so the delivery re-reads the
+      // contact and sends only to the address it was asked for
+      // (`deliverPortalReset`, src/auth/portal.ts).
+      await tx.contactVerification.deleteMany({ where: { value: contactId } });
+    }
     await record(tx, {
       action: "contact.updated",
       targetType: "Contact",

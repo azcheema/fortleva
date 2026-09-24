@@ -237,6 +237,25 @@ export const stops = (seed: E2ESeed): Stop[] => {
       path: "/portal/invite/expired-or-unknown-token",
       anon: true,
     },
+    // THE PASSWORD RESET, all three states a visitor can land on: the
+    // request form, the new-password form over a live link, and the
+    // dead-link state. The live one needs a link that stands still, so
+    // the fixture seeds one for the ACTIVE contact (`contactResetToken`);
+    // a visit only reads it. NEVER add a `drive` that submits it — a
+    // reset revokes every session that contact holds, and later specs
+    // share hers. None of the three is metered, so the walks spend
+    // nothing on them.
+    { name: "portal-reset-request", path: "/portal/reset-password", anon: true },
+    {
+      name: "portal-reset",
+      path: `/portal/reset-password/${seed.contactResetToken}`,
+      anon: true,
+    },
+    {
+      name: "portal-reset-unavailable",
+      path: "/portal/reset-password/expired-or-unknown-token",
+      anon: true,
+    },
 
     // ── the states nobody designs twice ─────────────────────────────
     // An unmatched path resolves to the ROOT not-found (the auth lockup),

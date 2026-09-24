@@ -5,15 +5,19 @@ import { cn } from "@/lib/utils";
 
 /**
  * The unauthenticated surfaces — /login, /signup, /invite/[token],
- * /ops/login, /portal/login and /portal/invite/[token] — are the
- * product's first impression, so they share one lockup instead of
- * drifting apart. It lives beside /login because that is the canonical
- * entry point.
+ * /ops/login, /portal/login, /portal/invite/[token] and the portal's
+ * two password-reset screens — are the product's first impression, so
+ * they share one lockup instead of drifting apart. It lives beside
+ * /login because that is the canonical entry point.
  *
- * The last of those is the newest and the only one that takes a WRITE
- * from somebody with no session, which is why it looks like the others:
- * a page that asks a stranger for a password has to be recognisably part
- * of the product they were mailed a link to.
+ * Three of them — both invitations and the portal's new-password screen —
+ * ask somebody who has just clicked a link in an email to choose a
+ * password, which is why they must look like the rest: a page that asks a
+ * stranger for a password has to be recognisably part of the product they
+ * were mailed a link to. (This paragraph used to call the portal invitation
+ * "the only one that takes a WRITE from somebody with no session";
+ * `/invite/[token]` has done that since Phase 1, and the reset screens do
+ * too.)
  *
  * DESIGN SPEC §7: a centred max-w-sm column on --background, no card,
  * a 32px wordmark lockup at the top, controls at lg height and exactly
@@ -93,7 +97,11 @@ export function AuthShell({
                 <h1 className="text-xl font-semibold text-balance text-foreground">{title}</h1>
               ) : null}
               {description ? (
-                <div className="text-sm text-muted-foreground">{description}</div>
+                // `wrap-anywhere`: several of these descriptions carry the
+                // visitor's own email address, which has no break
+                // opportunity at "." or "@" and would otherwise push a
+                // phone-width page sideways once it is long enough.
+                <div className="text-sm wrap-anywhere text-muted-foreground">{description}</div>
               ) : null}
             </header>
           ) : null}

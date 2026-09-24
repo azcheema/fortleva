@@ -290,11 +290,29 @@ export const memberDatabaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]
   ...auditRowHooks(memberAuditSink),
 };
 
-/** emailAndPassword.onPasswordReset — the token-based reset path. */
+/**
+ * emailAndPassword.onPasswordReset — the token-based reset path.
+ *
+ * **IT HANDS THE SINK THE WHOLE USER, and until the portal's reset screens
+ * shipped it did not.** Better Auth passes the row it re-read with
+ * `findUserById`, and the portal sink finds its tenant on that row
+ * (`portal-audit.ts`: a Contact belongs to one tenant and carries it). The
+ * portal instance configured no `onPasswordReset` at all until then, so a
+ * contact's reset wrote no row — and wiring this helper in as it stood
+ * would not have fixed it: handed the id alone, the portal sink finds no
+ * tenant and writes nothing, silently, while the member and platform
+ * sinks, which look their tenants up themselves, never needed the row.
+ *
+ * Better Auth calls this BEFORE it revokes the principal's sessions
+ * (password.mjs), so a throw here would skip the revocation. `guarded` is
+ * what makes that impossible, not merely unlikely.
+ */
 export const passwordResetHookFor =
   (sink: AuthAuditSink) =>
   async ({ user }: { user: { id: string } }): Promise<void> => {
-    await guarded("password_reset", () => sink.passwordChanged(user.id, "reset"));
+    await guarded("password_reset", () =>
+      sink.passwordChanged(user.id, "reset", user as Readonly<Record<string, unknown>>),
+    );
   };
 
 export const onPasswordResetHook = passwordResetHookFor(memberAuditSink);

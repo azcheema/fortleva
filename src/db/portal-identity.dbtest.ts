@@ -347,7 +347,10 @@ describe("the three AUTH-class tables", () => {
     // The first version probed `contact_session` only. The two it
     // skipped are the sensitive ones — `contact_account` holds the
     // scrypt password hashes and `contact_verification` holds live
-    // reset and invite tokens — and "the loop in the migration builds
+    // reset tokens (hashed since 2026-09-24; invitations live in
+    // `contact_invite`, which this comment once also placed here — and the
+    // row below is written in the old plain shape, which is fine for a
+    // visibility probe) — and "the loop in the migration builds
     // them identically" is an argument, not a measurement (review).
     const db = getPlatformClient();
     const token = `e2e-token-${run}`;

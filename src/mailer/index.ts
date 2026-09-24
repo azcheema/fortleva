@@ -41,9 +41,15 @@ const devTransport: MailTransport = async (msg) => {
 
 let transport: MailTransport = devTransport;
 
-/** Amazon SES transport plugs in here (Phase 1, post-identity). */
-export const setTransport = (t: MailTransport): void => {
+/**
+ * Amazon SES transport plugs in here (Phase 1, post-identity). Returns the
+ * transport it replaced, so a test that swaps one in — the portal reset's,
+ * which needs a transport that never answers — can put the real one back.
+ */
+export const setTransport = (t: MailTransport): MailTransport => {
+  const previous = transport;
   transport = t;
+  return previous;
 };
 
 let announcedDevOutbox = false;

@@ -2,12 +2,13 @@ import { betterAuth } from "better-auth";
 import { createAuthMiddleware, APIError } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
+import { after } from "next/server";
 
-import { auditPlugin } from "./audit-hooks";
+import { auditPlugin, passwordResetHookFor } from "./audit-hooks";
 import { portalAuditSink } from "./portal-audit";
 
-import { appUrl, portalAuthSecret, sessionCookieName } from "@/config";
-import { portalAuthClient } from "@/db";
+import { absoluteUrl, appUrl, portalAuthSecret, sessionCookieName } from "@/config";
+import { portalAuthClient, withTenant } from "@/db";
 import { send } from "@/mailer";
 
 import { enforceAuthRateLimit } from "./rate-limit-hook";
@@ -36,11 +37,15 @@ import { enforceAuthRateLimit } from "./rate-limit-hook";
  *     what holds if the secret is ever unified again. See src/proxy.ts,
  *     which learned this the hard way on the ops plane.
  *  2b. A DISTINCT SECRET, because (1) protects only what is looked up
- *     in a table. Better Auth's email-verification and password-reset
- *     artifacts are self-contained JWTs carrying no plane claim, so a
- *     shared secret let one plane's token be redeemed on another —
- *     where `/verify-email` mints a session before any password is
- *     checked. See `portalAuthSecret` in src/config.
+ *     in a table. Better Auth's email-verification artifact is a
+ *     self-contained JWT carrying no plane claim, so a shared secret let
+ *     one plane's token be redeemed on another — where `/verify-email`
+ *     mints a session before any password is checked. See
+ *     `portalAuthSecret` in src/config. (This paragraph used to say the
+ *     PASSWORD-RESET artifact was a JWT too. In 1.6.26 it is not: a reset
+ *     token is a row in `contact_verification`, so the table is what
+ *     keeps it on this plane — the same barrier as (1). Corrected when
+ *     the reset screens shipped, by a recon that read password.mjs.)
  *  3. A separate basePath and cookie prefix, which are hygiene: they
  *     keep the three instances' non-session cookies out of each
  *     other's way in one browser jar.
@@ -109,6 +114,329 @@ export const SIGN_IN_REFUSED = {
   message: "Invalid email or password",
 } as const;
 
+// ─── PASSWORD RESET ────────────────────────────────────────────────────
+//
+// The portal's two reset screens (`/portal/reset-password` and
+// `/portal/reset-password/[token]`) drive Better Auth's own endpoints from
+// the browser. Everything that decides WHO gets a link, and whether a link
+// still works, lives here — because the endpoints stay reachable to anyone
+// with curl whether or not a screen exists, so a control that lived only on
+// a screen would be a control on the polite callers.
+
+/**
+ * How long a reset link works. Better Auth's default is also an hour; it
+ * is stated because both screens and the mail QUOTE it, and a sentence
+ * that says "an hour" over a library default somebody later changes is a
+ * promise nobody is keeping.
+ */
+export const RESET_TTL_SECONDS = 60 * 60;
+
+/**
+ * **HOW MANY RESET MAILS ONE CONTACT CAN BE SENT IN AN HOUR**, which is
+ * the control that actually bounds what `/request-password-reset` can do to
+ * a person. It is SECURITY.md §4's "3 / h per email", which was written
+ * down as policy in Phase 0 and never built.
+ *
+ * The per-IP limits in front of the endpoint cannot do this job: ours
+ * (`auth.credential_request`) fails open until Upstash exists, Better Auth's
+ * built-in one is per process and per address, and an attacker who wants
+ * to fill one client's inbox with "reset your password" from the agency's
+ * own domain simply rotates addresses. A budget keyed on the RECIPIENT and
+ * counted in Postgres holds against all of that, and it costs nothing an
+ * attacker can observe: the endpoint's response is identical whether the
+ * mail went or not.
+ */
+export const RESET_MAILS_PER_HOUR = 3;
+
+/** Better Auth's identifier prefix for a reset row (password.mjs). */
+const RESET_PREFIX = "reset-password:";
+
+/**
+ * A plausible token, before anything is hashed or looked up. Better Auth
+ * mints 24 alphanumerics; the bound is looser on purpose — a future version
+ * that lengthens its tokens must not strand every link in flight — and
+ * exists only so a megabyte path segment is refused without work.
+ */
+const RESET_TOKEN_SHAPE = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * The link in the reset mail — the new-password SCREEN, not Better Auth's
+ * `/reset-password/:token` callback. Building it here rather than handing
+ * the library a `redirectTo` means no caller-supplied value ever reaches a
+ * mail: `redirectTo` is a request-body field on an unauthenticated
+ * endpoint, and it is validated only when the call arrives over HTTP.
+ * The token rides in the path, exactly like `portalInviteUrl`'s.
+ */
+export const portalResetUrl = (token: string): string =>
+  absoluteUrl(`/portal/reset-password/${token}`);
+
+type ResetTokenRow = {
+  readonly contactId: string;
+  readonly email: string | null;
+  readonly active: boolean;
+};
+
+/**
+ * Resolve a reset token to its contact, or null for a token that is not
+ * live. Read through the instance's own adapter so the lookup hashes the
+ * token exactly as the write did (`verification.storeIdentifier` below).
+ *
+ * THE EXPIRY IS CHECKED HERE because `findVerificationValue` does not: it
+ * returns the newest row for the identifier whatever its `expiresAt`
+ * (better-auth/dist/db/internal-adapter.mjs — only the GET callback and the
+ * consuming POST compare it), and a page built on it alone would draw the
+ * form for a link the POST is certain to refuse.
+ */
+async function readResetToken(token: string): Promise<ResetTokenRow | null> {
+  if (!RESET_TOKEN_SHAPE.test(token)) return null;
+  const { internalAdapter } = await portalAuth.$context;
+  const row = await internalAdapter.findVerificationValue(`${RESET_PREFIX}${token}`);
+  if (!row || row.expiresAt < new Date()) return null;
+  const contact = (await portalAuthClient.contact.findFirst({
+    where: { id: row.value },
+    select: { email: true, portalStatus: true },
+  })) as { email?: string; portalStatus?: string } | null;
+  return {
+    contactId: row.value,
+    email: contact?.email ?? null,
+    active: contact?.portalStatus === "ACTIVE",
+  };
+}
+
+/**
+ * WHO A LINK WOULD RESET, for the new-password screen: the address, when
+ * the link is live AND its contact may still sign in; null for everything
+ * else. Every null is the same null — unknown, expired, used, paused,
+ * ended — because the page renders one state for all of them.
+ */
+export async function portalResetHolder(token: string): Promise<{ email: string } | null> {
+  const row = await readResetToken(token);
+  return row?.active && row.email ? { email: row.email } : null;
+}
+
+/**
+ * Run `task` once the response has been sent — through Next's `after()`,
+ * which on Vercel hands the promise to `waitUntil` so the function is kept
+ * alive until it settles, and on a long-lived Node server simply runs it.
+ *
+ * **NOT A BARE `void promise`**, which is what the first cut of this slice
+ * did and what a fresh review caught: ARC-21 rejects "fire-and-forget from
+ * the request" by name, because Vercel may freeze the function the moment
+ * the response goes out, and the mail — or the row a decline removes —
+ * would then happen late or never, with nothing logged. `after()` is not
+ * durable either (ARC-21 says so too); what makes that acceptable HERE is
+ * that a person whose link never arrives simply asks again, and that the
+ * durable path, the `EmailOutbox`, would keep the raw token in
+ * `email_outbox.params` until the drain ran — undoing the hashing below.
+ *
+ * `after()` throws synchronously outside a request scope (a dbtest, a
+ * script), and there the task is simply started; nothing in those contexts
+ * freezes a process.
+ */
+function afterResponse(label: string, task: () => Promise<unknown>): void {
+  const run = async (): Promise<void> => {
+    try {
+      await task();
+    } catch (error) {
+      console.error(label, error);
+    }
+  };
+  try {
+    after(run);
+  } catch (error) {
+    // Outside a request scope is the expected case (dbtests, scripts). Any
+    // OTHER refusal means this is running as exactly the detached promise
+    // ARC-21 rejects — so it says so, rather than degrading silently.
+    if (!String(error).includes("outside a request scope")) {
+      console.warn("[portal-auth] after() refused a task; running it detached", error);
+    }
+    void run();
+  }
+}
+
+/**
+ * THE MAIL, AFTER THE RESPONSE. Exported so the DB suite can await it; the
+ * instance never does (`afterResponse`).
+ *
+ * Better Auth writes the reset row BEFORE it calls `sendResetPassword`, and
+ * then awaits whatever that returns. So until this slice, the time an
+ * unauthenticated caller waited for `/request-password-reset` included a
+ * mail-transport round trip exactly when the address was an ACTIVE contact
+ * — and in a production build with no transport, `send()` threw, which the
+ * library logged and swallowed only after the delay. The response body was
+ * constant; a stopwatch was not. This function now runs after the response,
+ * so neither the send nor anything it decides is on the clock.
+ *
+ * **THAT ALONE DOES NOT MAKE THE ENDPOINT CONSTANT-TIME**, and the first
+ * version of this comment claimed it did. The library's found and not-found
+ * branches still issue different statements — and the hashed storage below
+ * WIDENED the gap, because a miss now also tries the legacy plain form. What
+ * closes it is the response floor on the route (`src/app/api/portal-auth/
+ * [...all]/route.ts`), which does not depend on counting anybody's queries.
+ *
+ * FOUR WAYS IT DECLINES, AND EACH ONE REMOVES THE ROW IT DECLINED. A row
+ * whose link was never mailed is a token nobody holds, and leaving it would
+ * let a flood of requests for a paused contact's address grow the table.
+ *   1. The contact is not ACTIVE — the refusal this instance has made since
+ *      the portal shipped (the header on `sendResetPassword` below).
+ *   2. `RESET_MAILS_PER_HOUR` requests for this contact came BEFORE this one
+ *      in the last hour — by creation order, not by whoever counts first, so
+ *      a burst of overlapping requests still mails exactly the first three
+ *      rather than racing each other into declining all of them (a review
+ *      finding: the first cut counted every row, its own and later ones
+ *      included). Counted by `value`, which is the contact id on every reset
+ *      row and on nothing else in this table — email verification is a JWT
+ *      and writes none — and the same key `setContactPortalAccess` purges by.
+ *   3. The contact carries no tenant, which would be a Better Auth shape
+ *      change. No tenant, no agency name, no mail.
+ *   4. Read AGAIN, the contact is no longer ACTIVE, or no longer at the
+ *      address the request was made for — the paragraph below.
+ * One more outcome is not a decline: the row is already gone — used, purged
+ * by a pause or an address change, or burned — so there is nothing to send
+ * and nothing to remove. And a send that FAILS removes its row and rethrows.
+ *
+ * **IT READS THE CONTACT AGAIN BEFORE IT SENDS** (the fix review): `user`
+ * is the row Better Auth read when the request ARRIVED, and a member can
+ * change the contact's address between that read and the reset row being
+ * written — after `updateContact`'s purge — which would mail a live link to
+ * the address the member had just taken away. So the send goes only if the
+ * contact is still ACTIVE at the SAME address. What remains is a window of a
+ * member's own open transaction, not of a request.
+ *
+ * **AND A FAILED SEND REMOVES ITS ROW**, for the reason the declines do: a
+ * link that never left is a token nobody holds, and left in place it would
+ * count against the cap for its whole hour — three transport failures and
+ * the person could not get a link at all until the hour turned, which is
+ * the opposite of "they simply ask again". A task cut off mid-flight (the
+ * non-durability `afterResponse` accepts) still leaves its row; that is the
+ * residual, stated.
+ */
+export async function deliverPortalReset(
+  user: { id: string; email: string; name: string } & Record<string, unknown>,
+  token: string,
+): Promise<"sent" | "declined" | "gone"> {
+  const { internalAdapter } = await portalAuth.$context;
+  const decline = async (): Promise<"declined"> => {
+    await internalAdapter.deleteVerificationByIdentifier(`${RESET_PREFIX}${token}`);
+    return "declined";
+  };
+
+  const tenantId = user["tenantId"];
+  if (user["portalStatus"] !== "ACTIVE" || typeof tenantId !== "string" || tenantId === "") {
+    return decline();
+  }
+  const own = await internalAdapter.findVerificationValue(`${RESET_PREFIX}${token}`);
+  if (!own) return "gone";
+  const now = (await portalAuthClient.contact.findFirst({
+    where: { id: user.id },
+    select: { email: true, portalStatus: true },
+  })) as { email?: string; portalStatus?: string } | null;
+  if (now?.portalStatus !== "ACTIVE" || now.email !== user.email) return decline();
+  const earlier = await portalAuthClient.contactVerification.count({
+    where: {
+      value: user.id,
+      createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) },
+      // Strictly before this row; the id breaks a same-millisecond tie
+      // (uuid v7 sorts by time), so two rows can never both count as first.
+      OR: [{ createdAt: { lt: own.createdAt } }, { createdAt: own.createdAt, id: { lt: own.id } }],
+    },
+  });
+  if (earlier >= RESET_MAILS_PER_HOUR) {
+    // Structured and naming nobody: the contact id is enough for an
+    // operator to find, and this line is world-readable in a CI log.
+    console.warn(`[portal-auth] reset mail declined: hourly cap reached for contact ${user.id}`);
+    return decline();
+  }
+
+  // The AGENCY'S name, because it is the one thing in this mail that makes
+  // it trustworthy: a message saying "reset your password" from a product
+  // name the recipient has never heard of is what phishing looks like. The
+  // invitation names the agency for the same reason.
+  const { name: tenantName } = await withTenant(tenantId, { type: "system" }, (tx) =>
+    tx.tenant.findFirstOrThrow({ select: { name: true } }),
+  );
+  const minutes = Math.round(RESET_TTL_SECONDS / 60);
+  try {
+    await send({
+      to: user.email,
+    subject: `Reset your password for ${tenantName}'s client portal`,
+    text:
+      `Hello ${user.name},\n\n` +
+      `Somebody asked to reset the password you use to sign in to ${tenantName}'s client portal.\n\n` +
+      `Choose a new password: ${portalResetUrl(token)}\n\n` +
+      `The link works once, for ${minutes} minutes. If you did not ask for this, ignore this email — your password has not changed.`,
+    });
+  } catch (error) {
+    // The TRANSPORT error is the one worth rethrowing; if the database is
+    // failing too, say so separately rather than let it replace the cause.
+    await decline().catch((cleanup: unknown) => {
+      console.error(`[portal-auth] unsent reset row not removed for contact ${user.id}`, cleanup);
+    });
+    throw error;
+  }
+  return "sent";
+}
+
+/**
+ * THE REDEMPTION CHECKS WHO IT IS REDEEMING FOR, rather than trusting every
+ * writer of `portal_status` to have purged the tokens.
+ *
+ * `/reset-password` is not status-gated in the library, and on an existing
+ * credential it takes the UPDATE branch, which `contact_account_requires_
+ * invite` (BEFORE INSERT) never sees. So until now the only thing between a
+ * PAUSED contact and control of their own suspended credential was
+ * `setContactPortalAccess` remembering to delete the token — and the first
+ * version of that purge matched zero rows (PLAN §0, the invite slice's
+ * security review). A control whose one prior implementation silently did
+ * nothing earns a second, independent one.
+ *
+ * It BURNS the token rather than throwing, so the library's own
+ * `consumeVerificationValue` then finds nothing and answers with its own
+ * `INVALID_TOKEN` — byte-identical to an expired link by construction, with
+ * no hand-copied error body to drift (the trap `SIGN_IN_REFUSED` records).
+ *
+ * **IT BURNS EVERY RESET ROW THE CONTACT HAS, by `value`, not just this
+ * token by its identifier.** The first cut deleted by identifier, which the
+ * adapter hashes — but lookup and consume both FALL BACK to the plain form,
+ * so a link issued before hashing was switched on survived its own burn and
+ * was then redeemed (review finding). A contact who may not sign in should
+ * hold no live link at all, so deleting by contact is both the simpler rule
+ * and the one with no second storage form to miss.
+ */
+async function burnResetTokenOfInactiveContact(ctx: {
+  readonly body?: unknown;
+  readonly query?: unknown;
+}): Promise<void> {
+  const fromBody = (ctx.body as { token?: unknown } | undefined)?.token;
+  const fromQuery = (ctx.query as { token?: unknown } | undefined)?.token;
+  const token = typeof fromBody === "string" && fromBody !== "" ? fromBody : fromQuery;
+  if (typeof token !== "string" || token === "") return;
+  const row = await readResetToken(token);
+  if (!row || row.active) return;
+  await portalAuthClient.contactVerification.deleteMany({ where: { value: row.contactId } });
+}
+
+/**
+ * After a successful reset: every OTHER link the contact was sent this hour
+ * dies too. Better Auth consumes only the one that was used, so without
+ * this the older mails in the same inbox would each reset the password
+ * again for the rest of their hour — a live credential-setting link sitting
+ * in a mailbox after its owner has already acted on the newest one.
+ *
+ * It must never throw: Better Auth calls `onPasswordReset` BEFORE it
+ * revokes the contact's sessions, so an exception here would leave every
+ * session the reset was meant to end alive.
+ */
+async function purgeOtherResetTokens(contactId: string): Promise<void> {
+  try {
+    await portalAuthClient.contactVerification.deleteMany({ where: { value: contactId } });
+  } catch (error) {
+    console.error(`[portal-auth] reset tokens not purged for contact ${contactId}`, error);
+  }
+}
+
+const auditPortalPasswordReset = passwordResetHookFor(portalAuditSink);
+
 export const portalAuth = betterAuth({
   baseURL: appUrl.origin,
   /**
@@ -133,7 +461,24 @@ export const portalAuth = betterAuth({
   // tables. `fields.userId → contactId` renames the FK, not the table.
   user: { modelName: "contact", additionalFields: CONTACT_ADDITIONAL_FIELDS },
   account: { modelName: "contactAccount", fields: { userId: "contactId" } },
-  verification: { modelName: "contactVerification" },
+  verification: {
+    modelName: "contactVerification",
+    /**
+     * RESET TOKENS ARE STORED AS A SHA-256, NOT AS THEMSELVES — the rule the
+     * invitation already follows ("raw tokens never touch the database",
+     * `contact_invite`). Until the reset screens shipped this table held
+     * each live link verbatim as `reset-password:<token>`, so anybody who
+     * could READ it — a leaked backup, a read-only injection, an operator's
+     * query history — could set the password of every client contact with
+     * a reset in flight. The library hashes on write and on every lookup
+     * (better-auth/dist/db/verification-token-storage.mjs); `value` stays
+     * the contact id, which is what `setContactPortalAccess` purges by.
+     *
+     * Lookups fall back to the plain form, so a row written before this
+     * line still resolves until it expires — an hour at most.
+     */
+    storeIdentifier: "hashed",
+  },
   advanced: {
     database: { generateId: false }, // Prisma uuid(7) defaults generate ids
     // false is load-bearing, identically to the other two instances:
@@ -216,26 +561,53 @@ export const portalAuth = betterAuth({
      *
      * `portalStatus` is present because CONTACT_ADDITIONAL_FIELDS
      * declares it; if it ever reads `undefined`, this refuses too.
+     *
+     * **AND IT RETURNS BEFORE ANY OF THAT HAPPENS** (the reset screens'
+     * slice): the whole decision and the send run in `deliverPortalReset`
+     * after the response (`afterResponse`), so neither a mail-transport
+     * round trip nor a transport failure is on the caller's clock. The
+     * route's response floor does the rest; that function's header says
+     * why both are needed. The `url` argument is ignored in favour of
+     * `portalResetUrl`, whose header says why.
      */
-    sendResetPassword: async ({ user, url }) => {
-      if ((user as { portalStatus?: string }).portalStatus !== "ACTIVE") return;
-      await send({
-        to: user.email,
-        subject: "Reset your client portal password",
-        text: `Reset your portal password: ${url}\nIf you did not request this, ignore this email.`,
-      });
+    sendResetPassword: async ({ user, token }) => {
+      // The contact id only in the log — never the address or the token.
+      afterResponse(`[portal-auth] reset mail not sent for contact ${user.id}`, () =>
+        deliverPortalReset(user as Parameters<typeof deliverPortalReset>[0], token),
+      );
+    },
+    resetPasswordTokenExpiresIn: RESET_TTL_SECONDS,
+    onPasswordReset: async ({ user }) => {
+      // The purge first: it never throws, and it is the half a person
+      // would notice missing. Both run before Better Auth revokes the
+      // contact's sessions, which is why neither may throw.
+      await purgeOtherResetTokens(user.id);
+      await auditPortalPasswordReset({ user });
     },
   },
   emailVerification: {
     // Nothing signs up, so nothing is sent on signup.
     sendOnSignUp: false,
-    sendVerificationEmail: async ({ user, url }) => {
-      await send({
-        to: user.email,
-        subject: "Verify your client portal email",
-        text: `Verify your email address: ${url}`,
-      });
-    },
+    /**
+     * **IT SENDS NOTHING, ON PURPOSE** (found while building the reset
+     * screens). A contact's address is verified by accepting an invitation
+     * — the only mailbox-control proof this plane has — and `/verify-email`
+     * on this instance fails by design (PLAN §0: it would need an email-
+     * keyed write the auth path must never be given). So a verification
+     * mail could only ever lead to an error page.
+     *
+     * And it was worse than useless. Better Auth's unauthenticated
+     * `/send-verification-email` mails any UNVERIFIED user it finds — which
+     * on this plane is every contact an agency has merely recorded, never
+     * invited — so anyone with curl could have the agency's domain mail its
+     * client list. In a production build with no transport the send threw,
+     * and the library rethrows it after its 500 ms floor, so a recorded
+     * contact's address answered 500 where every other address answered
+     * 200: the enumeration oracle `/request-password-reset` was fixed for,
+     * by a second door. Declining here keeps the endpoint's answer constant
+     * and sends nothing to anybody.
+     */
+    sendVerificationEmail: async () => undefined,
   },
   session: {
     modelName: "contactSession",
@@ -305,6 +677,10 @@ export const portalAuth = betterAuth({
     // lands, this line needs revisiting with it.
     before: createAuthMiddleware(async (ctx) => {
       await enforceAuthRateLimit(ctx, "portal");
+      // After the limiter, so a refused request spends no lookup. The GET
+      // callback `/reset-password/:token` has a different `ctx.path` and
+      // changes nothing, so only the consuming POST is checked.
+      if (ctx.path === "/reset-password") await burnResetTokenOfInactiveContact(ctx);
     }),
   },
   plugins: [

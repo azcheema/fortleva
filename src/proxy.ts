@@ -67,12 +67,31 @@ const PORTAL_LOGIN = "/portal/login";
  * reachable on the origin whose controls are meant to be tighter.
  */
 const PORTAL_INVITE_PREFIX = "/portal/invite/";
+/**
+ * THE PORTAL'S PASSWORD RESET, both halves — the request form at the bare
+ * path and the new-password form under it, whose token is a path segment
+ * exactly like an invitation's. Somebody who has forgotten their password
+ * has no session by definition, so gating either on the portal cookie
+ * would bounce them to the sign-in form they have just come from.
+ *
+ * Two entries rather than one prefix without the slash, for the reason
+ * `PORTAL_INVITE_PREFIX` gives: `startsWith("/portal/reset-password")`
+ * would also exempt `/portal/reset-passwords` and anything else a later
+ * route happens to begin with.
+ *
+ * Neither page has a Server Action — both forms call the portal auth API
+ * from the browser — so, unlike the invitation's exemption, these open a
+ * page render and nothing else. The same placement rule holds: below the
+ * host/plane branches, so the ops host sweeps them under /ops and 404s.
+ */
+const PORTAL_RESET = "/portal/reset-password";
+const PORTAL_RESET_PREFIX = `${PORTAL_RESET}/`;
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
 // /api/jobs/run authenticates itself (JOBS_RUN_TOKEN header): a cron has
 // no member cookie, so the presence gate must not redirect it to /login.
-const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", PORTAL_LOGIN, "/api/health", "/api/jobs/run", "/manifest.webmanifest", "/sw.js"]);
+const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", PORTAL_LOGIN, PORTAL_RESET, "/api/health", "/api/jobs/run", "/manifest.webmanifest", "/sw.js"]);
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
@@ -188,7 +207,8 @@ export function proxy(request: NextRequest): NextResponse {
   if (
     PUBLIC_PATHS.has(pathname) ||
     pathname.startsWith("/invite/") ||
-    pathname.startsWith(PORTAL_INVITE_PREFIX)
+    pathname.startsWith(PORTAL_INVITE_PREFIX) ||
+    pathname.startsWith(PORTAL_RESET_PREFIX)
   ) {
     return pass();
   }

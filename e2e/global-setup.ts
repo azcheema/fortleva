@@ -64,9 +64,10 @@ export default async function globalSetup(): Promise<void> {
       // ── The CONTACT session (Phase 3) ────────────────────────────
       // Through the REAL endpoint, in a context of its own, for the same
       // reason the owner goes through the real form: a forged cookie
-      // proves nothing about the plane that has to mint it. There is no
-      // /portal/login FORM yet (the invite slice owns it), so this posts
-      // to the sign-in route the portal instance actually mounts —
+      // proves nothing about the plane that has to mint it. It posts to
+      // the sign-in route the portal instance mounts rather than driving
+      // `/portal/login` — that form exists now, but this line predates it
+      // and the endpoint is the thing that mints the cookie either way;
       // `context.request` shares the context's cookie jar, so the
       // Set-Cookie lands exactly where a browser's would.
       //
