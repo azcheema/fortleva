@@ -5,19 +5,21 @@ import { cn } from "@/lib/utils";
 
 /**
  * The unauthenticated surfaces — /login, /signup, /invite/[token],
+ * /reset-password, /reset-password/[token], /confirm-email/[token],
  * /ops/login, /portal/login, /portal/invite/[token] and the portal's
  * two password-reset screens — are the product's first impression, so
  * they share one lockup instead of drifting apart. It lives beside
  * /login because that is the canonical entry point.
  *
- * Three of them — both invitations and the portal's new-password screen —
+ * Four of them — both invitations and both planes' new-password screens —
  * ask somebody who has just clicked a link in an email to choose a
- * password, which is why they must look like the rest: a page that asks a
- * stranger for a password has to be recognisably part of the product they
- * were mailed a link to. (This paragraph used to call the portal invitation
- * "the only one that takes a WRITE from somebody with no session";
- * `/invite/[token]` has done that since Phase 1, and the reset screens do
- * too.)
+ * password, and a fifth (/confirm-email/[token]) asks for the password they
+ * already chose, which is why they must look like the rest: a page that asks
+ * a stranger for a password has to be recognisably part of the product they
+ * were mailed a link to. (This paragraph used to call the
+ * portal invitation "the only one that takes a WRITE from somebody with no
+ * session"; `/invite/[token]` has done that since Phase 1, and the reset
+ * and confirmation screens do too.)
  *
  * DESIGN SPEC §7: a centred max-w-sm column on --background, no card,
  * a 32px wordmark lockup at the top, controls at lg height and exactly

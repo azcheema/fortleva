@@ -43,11 +43,13 @@ export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
   // /request-password-reset and /reset-password; /send-verification-email
   // is in email-verification.mjs.
   //
-  // Since slice 58 these three bind the PORTAL only in practice: the member
-  // and platform instances refuse them outright, BEFORE this limiter
-  // (./closed-endpoints). They stay listed for every plane because a
-  // limiter keyed on "which instance still serves it" is one more thing to
-  // remember the day a plane re-opens one.
+  // The platform instance refuses all three outright, BEFORE this limiter
+  // (./closed-endpoints, slice 58); the member instance refuses the third
+  // and, since C30, serves the first two again — with its own per-RECIPIENT
+  // cap behind them (./mail-budget), which this per-IP bucket does not
+  // replace. They stay listed for every plane because a limiter keyed on
+  // "which instance still serves it" is one more thing to remember the day
+  // a plane re-opens one — which is exactly what C30 was.
   "/request-password-reset": "auth.credential_request",
   "/reset-password": "auth.credential_request",
   "/send-verification-email": "auth.credential_request",

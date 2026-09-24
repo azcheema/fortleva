@@ -1,7 +1,7 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
 import { portalAuth } from "@/auth/portal";
-import { isPortalResetRequest, RESET_REQUEST_FLOOR_MS, withResponseFloor } from "@/auth/response-floor";
+import { isResetRequest, RESET_REQUEST_FLOOR_MS, withResponseFloor } from "@/auth/response-floor";
 
 const handlers = toNextJsHandler(portalAuth.handler);
 
@@ -19,4 +19,4 @@ export const GET = handlers.GET;
  * The dbtests drive `portalAuth.handler` directly and so run without it,
  * which is why the floor has its own unit test.
  */
-export const POST = withResponseFloor(handlers.POST, isPortalResetRequest, RESET_REQUEST_FLOOR_MS);
+export const POST = withResponseFloor(handlers.POST, isResetRequest, RESET_REQUEST_FLOOR_MS);

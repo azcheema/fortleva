@@ -4,6 +4,11 @@
  * importing src/db/client or src/generated/prisma anywhere else.
  */
 export { withTenant, withPlatform } from "./with-tenant";
+// The product's tuned transaction budget and lock-wait bound, for the auth
+// layer's own short transactions on the raw client (`src/auth/mail-budget.ts`)
+// — which must not quietly keep Prisma's untuned 5 s default, or an unscaled
+// lock wait, across the Neon link.
+export { lockTimeoutSetting, txOptions } from "./with-tenant";
 export type { TenantDb, PlatformActor } from "./with-tenant";
 export { withUser } from "./with-user";
 // The platform-plane audit writer. A FOURTH narrow entry point beside

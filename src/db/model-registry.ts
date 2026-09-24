@@ -75,6 +75,10 @@ export const MODEL_CLASSES = {
     "verification",
     "twoFactor",
     "passkey",
+    // C30 — the member plane's per-recipient auth-mail ledger. AUTH class
+    // like `verification` beside it: no tenant (an unconfirmed person has
+    // none), grants + allow_runtime/portal_deny, never tenant-exported.
+    "authMail",
     // Phase 3 — portal identity (DATA_MODEL.md §6.4). AUTH class, like
     // their member counterparts: no tenant column by design, because
     // the portal auth flow runs before tenant context exists. They are

@@ -9,10 +9,11 @@ import { after } from "next/server";
  * given (`runInBackgroundOrAwait` with no `advanced.backgroundTasks`), so a
  * send inside one puts a mail-transport round trip on the response exactly
  * when the address belongs to somebody — a stopwatch that answers "is this
- * a user?" through a constant body. Two callers today: the portal's reset
- * mail (`deliverPortalReset`, slice 57) and the member plane's verification
- * mail (slice 58), whose sign-up branch for a new address was the one that
- * waited.
+ * a user?" through a constant body. Three callers today: the portal's reset
+ * mail (`deliverPortalReset`, slice 57), the member plane's confirmation
+ * mail (slice 58; sign-up's branch for a new address was the one that
+ * waited, and since C30 an unconfirmed sign-in sends it too) and the member
+ * plane's reset mail (`deliverMemberReset`, C30).
  *
  * **NOT A BARE `void promise`**, which is what the first cut of slice 57 did
  * and what a fresh review caught: ARC-21 rejects "fire-and-forget from the
@@ -24,13 +25,13 @@ import { after } from "next/server";
  * acceptable differs by caller, and for one of them it is not a comfort:
  *   - the portal's reset: the person simply asks again (and a failed send
  *     removes its row, so the cap does not count it);
- *   - the member plane's verification mail: they CANNOT ask again — there is
- *     no re-send on that plane since slice 58 (`src/auth/index.ts` says why),
- *     so a lost link is an operator's job, RUNBOOK §8, until the re-send owed
- *     with OPEN_QUESTIONS C30 exists. Before this slice the send was awaited,
- *     so no freeze could cut it off — but a FAILED send was swallowed and
- *     logged by the library just the same, and the person saw "check your
- *     email" either way.
+ *   - the member plane's reset and confirmation mails (C30): the same — ask
+ *     for another reset, or sign in again for another confirmation link — and
+ *     a failed send gives its slot in the per-recipient ledger back
+ *     (`./mail-budget`), so lost mails cannot use up the hour. (Between slice
+ *     58 and C30 a lost confirmation mail was a dead end with only an
+ *     operator's remedy.) A task cut off mid-flight — the non-durability
+ *     accepted here — keeps its slot; that is the residual.
  *
  * `after()` throws synchronously outside a request scope (a dbtest, a
  * script), and there the task is simply started; nothing in those contexts

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 /* eslint-disable no-restricted-imports -- dbtest exercises the raw layer */
 import { getPlatformClient, runtimeClient } from "@/db/client";
@@ -47,10 +47,19 @@ describe("member auth (Better Auth, email+password)", () => {
     expect(cred?.password).not.toContain(password);
   });
 
-  it("blocks sign-in until the email is verified", async () => {
+  it("blocks sign-in until the email is verified — and mails a fresh link for the right password (C30)", async () => {
     await expect(
       auth.api.signInEmail({ body: { email, password } }),
     ).rejects.toThrow();
+    // Both confirmation mails — sign-up's and this sign-in's — run after the
+    // response. Waiting for their ledger rows keeps either from still being in
+    // flight when the next test confirms the address, or when `afterAll`
+    // disconnects the client under it.
+    await vi.waitFor(
+      async () =>
+        expect(await getPlatformClient().authMail.count({ where: { user: { email } } })).toBe(2),
+      { timeout: 15_000, interval: 100 },
+    );
   });
 
   it("signs in once verified; session carries plane MEMBER", async () => {

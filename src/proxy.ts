@@ -87,12 +87,60 @@ const PORTAL_INVITE_PREFIX = "/portal/invite/";
  */
 const PORTAL_RESET = "/portal/reset-password";
 const PORTAL_RESET_PREFIX = `${PORTAL_RESET}/`;
+/**
+ * Member INVITATION acceptance (`/invite/[token]`), a prefix for the
+ * reason `PORTAL_INVITE_PREFIX` gives — and, like it, it opens the page's
+ * Server Action too, which needs a member session and meters itself
+ * (`allow`, the fail-open limiter the portal's note above contrasts).
+ */
+const MEMBER_INVITE_PREFIX = "/invite/";
+/**
+ * THE MEMBER PLANE'S PASSWORD RESET (OPEN_QUESTIONS C30), both halves — the
+ * request form at the bare path and the new-password form its mail links
+ * to, whose token is a path segment. The portal's pair, one plane over, for
+ * the portal's reasons: somebody who has forgotten their password has no
+ * session by definition, so gating either page on the member cookie would
+ * bounce them to the sign-in form they have just come from.
+ *
+ * An exact entry and a segment-anchored prefix, never
+ * `startsWith("/reset-password")`, which would also exempt
+ * `/reset-passwords` and whatever a later route happens to begin with.
+ *
+ * Neither page has a Server Action — both forms call the member auth API
+ * from the browser — so these open a page render and nothing else. The
+ * same placement rule holds: below the host/plane branches, so the ops
+ * host sweeps them under /ops and 404s. (The member auth API they call
+ * already 404s there, so on the ops origin they could only ever render a
+ * form that cannot work; one credential row serves the member and console
+ * planes, and the console's password is never a mailbox's to reset —
+ * the instance refuses a console principal's reset outright,
+ * src/auth/member-recovery.ts.)
+ */
+const MEMBER_RESET = "/reset-password";
+const MEMBER_RESET_PREFIX = `${MEMBER_RESET}/`;
+/**
+ * THE CONFIRMATION PAGE the member plane's confirmation mail links to
+ * (C30), in place of Better Auth's `/api/auth/verify-email`, which
+ * confirmed on the GET a mail scanner makes. The person holding the link
+ * has no session — nobody can have one before confirming — so the page
+ * must not be gated on one. A prefix, segment-anchored, because the token
+ * is a path segment; there is no bare `/confirm-email` page, so no exact
+ * entry.
+ *
+ * **THIS OPENS THE PAGE'S SERVER ACTION TOO** (the invitation's note above
+ * says why an exemption does): the page changes nothing on GET, and its one
+ * action — the member plane's only way to confirm an address — trusts nothing
+ * the call carries: it verifies the link again, checks the account's password,
+ * and is limited per network like sign-in (`confirmEmailAction`). Below the
+ * host/plane branches, like every other exemption.
+ */
+const CONFIRM_EMAIL_PREFIX = "/confirm-email/";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
 // /api/jobs/run authenticates itself (JOBS_RUN_TOKEN header): a cron has
 // no member cookie, so the presence gate must not redirect it to /login.
-const PUBLIC_PATHS = new Set(["/login", "/signup", "/ops/login", PORTAL_LOGIN, PORTAL_RESET, "/api/health", "/api/jobs/run", "/manifest.webmanifest", "/sw.js"]);
+const PUBLIC_PATHS = new Set(["/login", "/signup", MEMBER_RESET, "/ops/login", PORTAL_LOGIN, PORTAL_RESET, "/api/health", "/api/jobs/run", "/manifest.webmanifest", "/sw.js"]);
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
@@ -207,7 +255,9 @@ export function proxy(request: NextRequest): NextResponse {
 
   if (
     PUBLIC_PATHS.has(pathname) ||
-    pathname.startsWith("/invite/") ||
+    pathname.startsWith(MEMBER_INVITE_PREFIX) ||
+    pathname.startsWith(MEMBER_RESET_PREFIX) ||
+    pathname.startsWith(CONFIRM_EMAIL_PREFIX) ||
     pathname.startsWith(PORTAL_INVITE_PREFIX) ||
     pathname.startsWith(PORTAL_RESET_PREFIX)
   ) {

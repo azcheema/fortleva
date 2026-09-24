@@ -1,13 +1,16 @@
 /**
  * A MINIMUM RESPONSE TIME for the unauthenticated auth endpoints whose
- * timing would otherwise say who has an account. Two of them today:
+ * timing would otherwise say who has an account. Three of them today:
  *
  *  - the PORTAL's `/request-password-reset` — would say who is a client;
  *  - the MEMBER plane's `/sign-up/email` — would say who is a member
  *    (slice 58). Its answer for an address already registered is a stand-in
  *    user the library never writes, while a new address costs two INSERTs;
  *    `src/auth/sign-up-answer.ts` makes the two BODIES and STATUSES alike,
- *    and this makes the two DURATIONS alike.
+ *    and this makes the two DURATIONS alike;
+ *  - the MEMBER plane's `/request-password-reset` (C30) — the portal's case
+ *    again: a member's address writes a reset row, a stranger's looks up a
+ *    dummy token and sweeps.
  *
  * **WHY A FLOOR AND NOT A BALANCED CODE PATH.** The endpoint's body and
  * status are the same for every address, but Better Auth's two branches do
@@ -23,10 +26,10 @@
  * same wall time is: below the floor, both branches are indistinguishable
  * however many statements either issues.
  *
- * The mail itself is already off the clock on both endpoints (the portal's
- * `deliverPortalReset` and the member plane's verification mail both run
- * after the response, `src/auth/after-response.ts`); this covers what is
- * left.
+ * The mail itself is already off the clock on all three (the portal's
+ * `deliverPortalReset`, the member plane's `deliverMemberReset` and its
+ * confirmation mail all run after the response, `src/auth/after-response.ts`);
+ * this covers what is left.
  *
  * WHAT IT IS NOT: a floor hides differences smaller than itself. A branch
  * that ever takes longer than the floor leaks for that request — which is
@@ -69,12 +72,22 @@ function isPostTo(request: Request, suffix: string): boolean {
   return path.replace(/\/+$/, "").toLowerCase().endsWith(suffix);
 }
 
-/** The portal's reset REQUEST (not the reset itself). */
-export const isPortalResetRequest = (request: Request): boolean =>
+/**
+ * A reset REQUEST (not the reset itself), on whichever plane's route this
+ * wraps — the portal's since slice 57, the member plane's since C30.
+ */
+export const isResetRequest = (request: Request): boolean =>
   isPostTo(request, "/request-password-reset");
 
 /** The member plane's sign-up. */
 export const isSignUpRequest = (request: Request): boolean => isPostTo(request, "/sign-up/email");
+
+/** Everything the MEMBER route floors: its sign-up and, since C30, its reset request. */
+export const isMemberFlooredRequest = (request: Request): boolean =>
+  isSignUpRequest(request) || isResetRequest(request);
+
+/** One floor for the member route, the longer of its two endpoints'. */
+export const MEMBER_FLOOR_MS = Math.max(SIGN_UP_FLOOR_MS, RESET_REQUEST_FLOOR_MS);
 
 /**
  * Wrap a route handler so that, for requests `applies` selects, the

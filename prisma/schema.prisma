@@ -49,6 +49,7 @@ model User {
   twoFactor   TwoFactor?
   passkeys    Passkey[]
   memberships Member[]
+  authMails   AuthMail[]
 
   @@map("user")
 }
@@ -120,6 +121,15 @@ model Account {
   @@map("account")
 }
 
+/// Shared by the MEMBER and PLATFORM instances, and by several kinds of row
+/// that carry the user id in `value`: two-factor sign-in challenges
+/// (`2fa-<id>`), trusted devices (`trust-device-…`) and — since C30 — the
+/// member plane's reset links, stored as `pwreset#<sha256>`
+/// (`src/auth/reset-identifier.ts`, wired as the `storeIdentifier` override in
+/// `src/auth/index.ts`). A challenge's `2fa-attempts-…` companion carries a
+/// COUNT in `value`, not a user id. Never count or purge by `value` alone, nor
+/// by a `2fa-` prefix alone. Identifiers are stored plain except those reset
+/// links.
 model Verification {
   id         String   @id @default(uuid(7))
   identifier String
@@ -131,6 +141,32 @@ model Verification {
   @@index([identifier])
   @@index([expiresAt])
   @@map("verification")
+}
+
+/// ONE ROW PER AUTH MAIL THE MEMBER PLANE HAS DECIDED TO SEND (C30): the
+/// ledger the per-recipient hourly cap counts. It is a table of its own
+/// because neither mail can be counted where it lives — a confirmation link
+/// is a JWT and writes no row at all, and a reset link shares `verification`
+/// with the two-factor rows above. It records ATTEMPTS, not surviving links,
+/// so using or purging a link cannot refill the budget; a declined request
+/// writes nothing, and a send that fails removes its own row. Rows older than
+/// the window are pruned by the next reservation for the same user, and the
+/// foreign key takes them with the user. No token, no address, no link.
+model AuthMail {
+  id        String       @id @default(uuid(7))
+  userId    String       @map("user_id")
+  kind      AuthMailKind
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind, createdAt])
+  @@map("auth_mail")
+}
+
+enum AuthMailKind {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
 }
 
 /// secret and backupCodes are ENCRYPTED BY BETTER AUTH, under

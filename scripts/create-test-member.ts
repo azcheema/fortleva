@@ -9,7 +9,8 @@
 //
 // Roles: owner | manager | admin | employee (templateKey), or an exact
 // role name. Idempotent: re-running adds only what is missing and can
-// reset the password with --password.
+// reset the password with --password — never a console principal's, which
+// is refused (scripts/reset-ops-password.ts is the only path for those).
 import { randomInt } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { config as loadEnv } from "dotenv";
@@ -77,6 +78,20 @@ async function main() {
 
   let user = await platform.user.findUnique({ where: { email } });
   let password: string | null = null;
+
+  // NEVER A CONSOLE PRINCIPAL'S PASSWORD (C30). One `account` row serves both
+  // planes, so `--password` here would set the CONSOLE password with no audit
+  // row, no reason, and the pending sign-ins and reset links left alive. That
+  // has exactly one sanctioned path, the operator's. Refused before anything
+  // below writes.
+  if (user?.platformRole && givenPassword) {
+    console.error(
+      `refusing to set the password of ${email}: it is a console principal (platform role ${user.platformRole}).\n` +
+        "Its password is reset with scripts/reset-ops-password.ts, which audits the change and ends every session.",
+    );
+    await platform.$disconnect();
+    process.exit(1);
+  }
 
   if (!user) {
     password = givenPassword ?? generatePassword();

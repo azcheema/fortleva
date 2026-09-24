@@ -9,8 +9,7 @@ import { contactAuthClient } from "@/auth/client";
 import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-import { useFocusHeadingOnChange } from "./use-focus-heading";
+import { useFocusHeadingOnChange } from "@/components/use-focus-heading";
 
 /**
  * The request half of the portal's password reset. `page.tsx` beside it

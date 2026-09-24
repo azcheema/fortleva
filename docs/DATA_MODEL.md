@@ -26,7 +26,7 @@
 
 `Tenant, User, Member, Role, Permission, RolePermission, MemberRole, MemberClient, MemberProject, Client, Contact, Project, ProjectVersion, Milestone, Service, Contract, ContractSignature, InvoiceSeries, Invoice, InvoiceLine, Document, FileObject, FileVersion, ~~Issue, IssueComment~~ (superseded 2026-08-16, below), PerformanceReport, AuditEvent, ContinuityBox, ContinuityOpenRequest, TenantPreference, FeatureFlag`.
 
-Supporting models (this doc's additions, still canonical): `Session, Account, Verification, TwoFactor, Passkey` (Better Auth, member side), `ContactSession, ContactAccount, ContactVerification` (portal auth), `MemberInvite`, `ContactInvite` (the portal's own invitation — Phase 3, the invite slice; it names a `Contact` row the agency has already recorded, where `MemberInvite` names an email and creates the `Member` on acceptance), `TenantCounter`, `StripeWebhookEvent` (webhook idempotency ledger, §6.2), `IntegrationConnection` (v2). Tenant entitlements are a **versioned JSON column `entitlements` on `Tenant`**, not a table (§4).
+Supporting models (this doc's additions, still canonical): `Session, Account, Verification, TwoFactor, Passkey` (Better Auth, member side), `AuthMail` (the member plane's per-recipient auth-mail ledger, C30), `ContactSession, ContactAccount, ContactVerification` (portal auth), `MemberInvite`, `ContactInvite` (the portal's own invitation — Phase 3, the invite slice; it names a `Contact` row the agency has already recorded, where `MemberInvite` names an email and creates the `Member` on acceptance), `TenantCounter`, `StripeWebhookEvent` (webhook idempotency ledger, §6.2), `IntegrationConnection` (v2). Tenant entitlements are a **versioned JSON column `entitlements` on `Tenant`**, not a table (§4).
 
 **Amended 2026-08-16 (work-management plan).** Added canonical names, by module:
 
@@ -81,8 +81,8 @@ Full enforcement design lives in `TENANCY.md`; the schema commitments are:
 
 | Class | Policy shape | Models |
 |---|---|---|
-| **P — platform/global** | No RLS. Global reference or platform-owned data; never exposed to tenant/portal queries directly. | `Permission`, `FeatureFlag`, `User`, `StripeWebhookEvent` |
-| **AUTH — auth-managed** | No RLS. Touched only by the auth layer (runs before tenant context exists). Locked down by role grants: only the auth service path reads them. | `Session`, `Account`, `Verification`, `TwoFactor`, `Passkey`, `ContactSession`, `ContactAccount`, `ContactVerification` |
+| **P — platform/global** | No TENANT RLS. Global reference or platform-owned data; never exposed to tenant/portal queries directly. `User`, `Permission` and `FeatureFlag` carry the same AUTH-class template as the row below — ENABLE + FORCE, `allow_runtime`, restrictive `portal_deny` (`20260808191500_security_foundations`) *(corrected 2026-09-24: this said "No RLS" too)*. | `Permission`, `FeatureFlag`, `User`, `StripeWebhookEvent` |
+| **AUTH — auth-managed** | No TENANT RLS. Touched only by the auth layer (runs before tenant context exists). Locked down by role grants, plus the AUTH-class template every one of them carries — ENABLE + FORCE, a blanket `allow_runtime` for `app_runtime` and a restrictive `portal_deny`, so a contact-principal transaction reads none of them *(corrected 2026-09-24: this said "No RLS", which `20260808191500_security_foundations` contradicted from the start)*. | `Session`, `Account`, `Verification`, `TwoFactor`, `Passkey`, `ContactSession`, `ContactAccount`, `ContactVerification`, `AuthMail` *(C30)* |
 | **A — tenant-strict** | Permissive policy: `tenantId = app.tenant_id`. Staff plane only; a portal principal (`app.principal = 'contact'`) gets zero rows via a restrictive deny policy. | `Member`, `MemberInvite`, `ContactInvite`, `Role`, `RolePermission`, `MemberRole`, `MemberClient`, `MemberProject`, `TenantPreference`, `TenantCounter`, `InvoiceSeries`, `FileObject`, `FileVersion`, `IntegrationConnection` |
 | **B — client-scoped** | Class A policy **plus** a RESTRICTIVE portal policy: when `app.principal = 'contact'`, row must satisfy `clientId = app.client_id` AND (where the model has `visibility`) `visibility = 'CLIENT_VISIBLE'`. Restrictive (AND-ed), never permissive (OR-ed) — permissive policies OR together, which is the footgun. | `Client`, `Contact`, `Project`, `ProjectVersion`, `Milestone`, `Service`, `Contract`, `ContractSignature`, `Invoice`, `InvoiceLine`, `Document`, ~~`Issue`, `IssueComment`~~ *(superseded 2026-08-16 — `WorkItem`, `Comment` below)*, `PerformanceReport`, `ContinuityBox`, `ContinuityOpenRequest` |
 | **AU — audit** | Append-only: runtime role has INSERT + SELECT only (`REVOKE UPDATE, DELETE`) plus a raise-exception trigger. Tenant reads filter `tenantId = app.tenant_id AND visibility = 'TENANT'`. | `AuditEvent` |
@@ -184,7 +184,7 @@ Not encrypted, on purpose: `WorkItem`/`Comment` bodies, `TimeEntry.billRate` (a 
 | **R1 — bookkeeping** | Retained until the end of the **7th year after the calendar year in which the tenant's fiscal year ended** ([BFL 1999:1078 7 kap.](https://www.bfn.se/fragor-och-svar/arkivering/)). Issued invoices are the tenant's räkenskapsinformation; Fortleva is a försystem holding it. **Carved out of GDPR deletion** (Art. 17(3)(b), legal obligation — the tenant's, which we support contractually): tenant offboarding and client deletion never delete issued `Invoice`/`InvoiceLine`/`InvoiceSeries` rows or invoice PDF `FileObject`s inside the window; offboarding produces the promised archive export instead. EU storage (Neon Frankfurt, R2 EU) is lawful with Skatteverket notification by the tenant (BFL 7 kap. 3a §) — surfaced in ToS/DPA, see `SECURITY.md`. | `Invoice`, `InvoiceLine`, `InvoiceSeries`, invoice-PDF and signed-contract `FileObject`s |
 | **R2 — tenant-lifecycle** | Live for the tenancy; exported then hard-deleted after the offboarding grace period (platform plane, §7). Client-level deletion honors per-client GDPR erasure except R1/R3 carve-outs. | All domain models not listed elsewhere |
 | **R3 — audit** | Category schedules per §3 (12/24 months; continuity = box life + 24 months); pseudonymize-don't-delete on erasure requests. | `AuditEvent` |
-| **R4 — ephemeral** | TTL'd by expiry columns + sweep jobs: sessions and verifications per auth config, invites per `expiresAt`, `PENDING` FileObjects swept (with the R2 abort-incomplete-multipart lifecycle rule + reconciliation job). | `Session`, `ContactSession`, `Verification`, `ContactVerification`, `MemberInvite`, `ContactInvite`, `FileObject(PENDING)` |
+| **R4 — ephemeral** | TTL'd by expiry columns + sweep jobs: sessions and verifications per auth config, invites per `expiresAt`, `PENDING` FileObjects swept (with the R2 abort-incomplete-multipart lifecycle rule + reconciliation job). `AuthMail` rows older than its one-hour window are pruned by the next reservation for the same person, and cascade with the user. | `Session`, `ContactSession`, `Verification`, `ContactVerification`, `MemberInvite`, `ContactInvite`, `FileObject(PENDING)`, `AuthMail` |
 | **R5 — continuity** | Sealed blob + box rows survive subscription lapse (deliberate entitlement exemption — a continuity box that seals itself on non-payment defeats its purpose). Exact post-lapse retention window is an open question (`OPEN_QUESTIONS.md`, "can wait"). Post-open: blob retained through the 7-day download window, then per `CONTINUITY_BOX.md` retention. | `ContinuityBox`, `ContinuityOpenRequest`, the R2 blob |
 
 *(rows below added 2026-08-16 — decision 11 time tracking, decision 12 vault, notifications; legal basis in SECURITY.md §9.7 and the plan's legal track)*
@@ -343,9 +343,20 @@ model Account {
 /// "email verify, reset — token hashes". Email verification is a JWT and
 /// writes no row; reset rows were stored VERBATIM, and neither plane issues
 /// them any more — both refuse the reset endpoints. The portal's own table,
-/// `ContactVerification`, is the one that holds hashed reset tokens.)* TTL'd
-/// by Better Auth, whose `findVerificationValue` deletes every expired row
-/// each time it runs (consuming a row deletes only that row).
+/// `ContactVerification`, is the one that holds hashed reset tokens.)*
+/// **And since C30 (2026-09-24) the MEMBER plane's reset links, HASHED
+/// under a prefix of their own: `pwreset#<base64url sha256 of
+/// "reset-password:<token>">`, value = the user id, 1 h** — a
+/// `storeIdentifier` override for the `reset-password:` prefix only, so
+/// every other row keeps its plain identifier. The prefix is what lets a
+/// purge of "this member's reset links" say so without also reaching the
+/// challenges and trusted devices beside them under the same user id; it
+/// must never be `reset-password:` itself, which the library's plain
+/// fallback would let anybody who can READ the table redeem. **Never count
+/// or purge by `value` alone.** The per-recipient mail cap is counted in
+/// `AuthMail`, not here. TTL'd by Better Auth, whose `findVerificationValue`
+/// deletes every expired row each time it runs (consuming a row deletes only
+/// that row).
 /// scope=global-identity  rls=AUTH  ret=R4  enc=none
 model Verification {
   id         String   @id @default(uuid(7))
@@ -357,6 +368,27 @@ model Verification {
 
   @@index([identifier])
   @@index([expiresAt])
+}
+
+/// AuthMail — the MEMBER plane's per-recipient auth-mail ledger (C30,
+/// 2026-09-24): one row per reset or confirmation mail the plane DECIDED to
+/// send, which SECURITY.md §4's "3 / h per recipient" counts. A table of its
+/// own because neither mail can be counted where it lives — a confirmation
+/// link is a JWT and writes no row, and a reset link shares `Verification`
+/// with the two-factor rows. Counts ATTEMPTS, so using or purging a link
+/// cannot refill the budget; a declined request writes nothing and a failed
+/// send deletes its own row. The reservation takes the user row's lock (`FOR
+/// NO KEY UPDATE`) and the database clock in one statement, so a burst mails
+/// exactly three. Pruned past the window by the next reservation; cascades
+/// with the user. No token, no address, no link.
+/// scope=global-identity  rls=AUTH  ret=R4  enc=none
+model AuthMail {
+  id        String       @id @default(uuid(7))
+  userId    String
+  kind      AuthMailKind // PASSWORD_RESET | EMAIL_VERIFICATION, budgeted separately
+  createdAt DateTime     @default(now()) @db.Timestamptz(6)
+
+  @@index([userId, kind, createdAt])
 }
 
 /// TwoFactor — Better Auth twoFactor plugin (TOTP + backup codes).

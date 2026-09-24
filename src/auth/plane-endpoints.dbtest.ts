@@ -12,6 +12,7 @@ import { getPlatformClient, runtimeClient } from "@/db/client";
 import { setTransport } from "@/mailer";
 
 import { auth } from "./index";
+import { confirmMemberEmail } from "./member-screens";
 import { platformAuth } from "./platform";
 
 /**
@@ -23,9 +24,14 @@ import { platformAuth } from "./platform";
  *     planes, including links minted on the other one (the two instances
  *     share `verification` and `BETTER_AUTH_SECRET`);
  *   - what is LIVE still works: a new member signs up, gets their link after
- *     the response rather than before it, and the link signs them in — while
- *     an address that is already registered gets the same answer, byte for
- *     byte, whatever the caller sends.
+ *     the response rather than before it — and, since C30, only that link
+ *     WITH the account's password confirms it — while an address that is already
+ *     registered gets the same answer, byte for byte, whatever the caller
+ *     sends.
+ *
+ * C30 RE-OPENED THE MEMBER PLANE'S RESET, deliberately and with its controls;
+ * `member-recovery.dbtest.ts` drives it. What stays closed on that plane is
+ * the library's GET callback, which nothing uses — pinned below.
  *
  * WHAT THIS FILE DOES NOT MEASURE: the one-second floor on sign-up. These
  * tests call `auth.handler` directly, below the route that applies it; the
@@ -130,10 +136,9 @@ afterAll(async () => {
   await runtimeClient.$disconnect();
 });
 
-describe.each([
-  ["member", member],
-  ["platform", platform],
-] as const)("the %s plane serves no password reset", (plane, call) => {
+describe("the platform plane serves no password reset", () => {
+  const plane = "platform";
+  const call = platform;
   it("answers a member and a stranger with the same 404", async () => {
     // Only the status and the equality can fail here, and that is the point:
     // with the refusal unwired, the library itself answers 400 (no
@@ -148,10 +153,11 @@ describe.each([
   it("will not redeem a live link, by POST or by the GET callback", async () => {
     // Planted the way the library would have written one, through the
     // instance's own adapter: the endpoints that issued these are closed,
-    // so a link can only already exist — from before this slice, or from
-    // the OTHER plane, which reads the same table. `/reset-password` never
-    // asks whether reset is configured; without the refusal this one works.
-    const { internalAdapter } = await auth.$context;
+    // so a link can only already exist — from before slice 58, or from the
+    // MEMBER plane, which reads the same table and (since C30) issues them.
+    // `/reset-password` never asks whether reset is configured; without the
+    // refusal this one works.
+    const { internalAdapter } = await platformAuth.$context;
     const raw = `plantedtoken${plane}${run.replace(/-/g, "")}`;
     await internalAdapter.createVerificationValue({
       identifier: `reset-password:${raw}`,
@@ -165,6 +171,23 @@ describe.each([
     expect(posted.status).toBe(404);
     expect(got.status).toBe(404);
     expect(await credentialOf(verified.id)).toBe(credential);
+  });
+});
+
+describe("the member plane's reset serves only what its screens use", () => {
+  it("refuses the library's GET callback — the mailed link is our screen (C30)", async () => {
+    // The row is planted through the MEMBER adapter, so it is stored exactly
+    // as a live link is; without the refusal the callback would redirect
+    // with the token — a second, unused door to the same link.
+    const { internalAdapter } = await auth.$context;
+    const raw = `callbacktoken${run.replace(/-/g, "")}`;
+    await internalAdapter.createVerificationValue({
+      identifier: `reset-password:${raw}`,
+      value: verified.id,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    const got = await member(`/reset-password/${raw}?callbackURL=%2F`);
+    expect(got.status).toBe(404);
   });
 });
 
@@ -219,13 +242,17 @@ describe("the member plane mails nobody on a stranger's say-so", () => {
   );
 });
 
-describe("a change-email link the member plane cannot read is refused too — it fails closed", () => {
+describe("a change-email link the member plane cannot read is refused too", () => {
   it("refuses a validly SIGNED link whose payload begins with a byte-order mark", async () => {
-    // The fix review's bypass of the first version: Node's decode keeps the
-    // mark and JSON.parse throws, so the refusal let the token through "for
-    // the library to refuse" — but jose strips the mark, verifies, and the
-    // library takes the change-email branch that creates the session. Signed
-    // here with the instance's real secret, byte for byte as jose checks it.
+    // Slice 58's fix review's bypass of the first version: Node's decode keeps
+    // the mark and JSON.parse throws, so the refusal let the token through
+    // "for the library to refuse" — but jose strips the mark, verifies, and
+    // the library takes the change-email branch that creates the session.
+    // Since C30 the member plane's `/verify-email` is closed outright, so the
+    // endpoint's 404 is the closure's; what must STILL refuse this token is
+    // the confirmation page's path, which decodes it with the same
+    // fail-closed check (`isSignUpLink`). Signed here with the instance's real
+    // secret, byte for byte as jose checks it.
     const db = getPlatformClient();
     const newAddress = address("taken-bom");
     emails.push(newAddress);
@@ -248,11 +275,13 @@ describe("a change-email link the member plane cannot read is refused too — it
     const before = await db.session.count({ where: { userId: verified.id } });
 
     const res = await member(`/verify-email?token=${encodeURIComponent(token)}&callbackURL=%2F`);
-    // The STATE first: it is the claim, and a 302 alone cannot tell a
-    // refused link from an honoured one — the library redirects on both.
+    const viaPage = await confirmMemberEmail(token, password);
+    // The STATE first: it is the claim, and a status alone cannot tell a
+    // refused link from an honoured one.
     expect((await db.user.findUniqueOrThrow({ where: { id: verified.id } })).email).toBe(verified.email);
     expect(await db.session.count({ where: { userId: verified.id } })).toBe(before);
     expect(res.status).toBe(404);
+    expect(viaPage).toEqual({ kind: "dead" });
   });
 });
 
@@ -274,16 +303,18 @@ describe("what stays open", () => {
     expect((await platform("/sign-in/email", body)).status).toBe(401);
   });
 
-  it("a new member signs up, is mailed a link after the response, and the link signs them in — on the member plane only", async () => {
+  it("a new member signs up and is mailed a link after the response; NEITHER plane's /verify-email honours it — only the link plus the password confirms", async () => {
     const email = address("signup");
     emails.push(email);
     const res = await member("/sign-up/email", { email, password, name: "Plane Signup" });
     expect(res.status).toBe(200);
 
     await vi.waitFor(() => expect(mailTo(email)).toHaveLength(1), settle);
+    // The mail names our confirmation PAGE (C30); the token is its path
+    // segment.
     const link = new URL(/https?:\/\/\S+/.exec(mailTo(email)[0]!.text)![0]);
-    expect(link.pathname).toBe("/api/auth/verify-email");
-    const token = link.searchParams.get("token")!;
+    expect(link.pathname.startsWith("/confirm-email/")).toBe(true);
+    const token = decodeURIComponent(link.pathname.slice("/confirm-email/".length));
     expect(token).toBeTruthy();
 
     // THE CONSOLE REFUSES IT. The two instances share a secret, so before
@@ -294,14 +325,19 @@ describe("what stays open", () => {
     expect(onOps.status).toBe(404);
     expect((await db.user.findUniqueOrThrow({ where: { email } })).emailVerified).toBe(false);
 
-    // …and the member plane, where the link was meant to land, honours it —
-    // which is also what proves the change-email refusal lets sign-up's own
-    // link through.
+    // …and since C30 NEITHER DOES THE MEMBER PLANE: its `/verify-email`
+    // confirmed on the link alone, on a bare GET a mail scanner performs, and
+    // until C30 it signed the person in too — the pre-account takeover.
     const onApp = await member(`/verify-email?token=${encodeURIComponent(token)}&callbackURL=%2F`);
-    expect(onApp.status).toBeLessThan(400);
+    expect(onApp.status).toBe(404);
+    expect((await db.user.findUniqueOrThrow({ where: { email } })).emailVerified).toBe(false);
+
+    // The one way that confirms: the link AND the account's password — the
+    // confirmation page's action (`member-recovery.dbtest.ts` drives the rest).
+    expect(await confirmMemberEmail(token, password)).toEqual({ kind: "confirmed", email });
     const user = await db.user.findUniqueOrThrow({ where: { email }, include: { sessions: true } });
     expect(user.emailVerified).toBe(true);
-    expect(user.sessions.map((s) => s.plane)).toEqual(["MEMBER"]);
+    expect(user.sessions).toEqual([]);
   });
 
   it("answers an address that is ALREADY registered byte for byte as it answers a new one", async () => {

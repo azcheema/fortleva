@@ -4,9 +4,14 @@ import { useEffect, useRef } from "react";
  * Move focus to the page's `<h1>` whenever `view` CHANGES — never on the
  * first render.
  *
- * Both reset forms replace themselves: "Check your email", "Password saved"
- * and the dead-link state each unmount the form the person was using, and
- * the focused button goes with it, which drops focus onto `<body>`. A
+ * **IT SERVES BOTH PLANES' RECOVERY SCREENS**, which is why it lives here
+ * and not beside either of them: the portal's two reset forms
+ * (`/portal/reset-password/**`, where it was written) and the member
+ * plane's (`/reset-password/**`, C30) plus its confirmation page
+ * (`/confirm-email/[token]`). Every one of those forms replaces itself —
+ * "Check your email", "Password saved", "Address confirmed" and the
+ * dead-link state each unmount the form the person was using, and the
+ * focused button goes with it, which drops focus onto `<body>`. A
  * screen-reader user is then left nowhere, told nothing (review finding).
  * The live region beside each form says WHAT happened; this puts them at
  * the top of what is now on the page.

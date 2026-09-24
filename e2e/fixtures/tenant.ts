@@ -266,11 +266,45 @@ export function readPortalResetLink(email: string): string | null {
   return lastLinkTokenTo(email, /(https?:\/\/\S+\/portal\/reset-password\/[A-Za-z0-9_-]+)/);
 }
 
-/** The first capture of `pattern` in the last message to `email`, if any. */
-function lastLinkTokenTo(email: string, pattern: RegExp): string | null {
+/**
+ * THE MEMBER PLANE'S TWO RECOVERY LINKS (C30), whole, as the recipient
+ * would click them — `readPortalResetLink`'s contract, for
+ * `memberResetUrl` and `confirmEmailUrl` (src/auth/member-recovery.ts).
+ *
+ * **ANCHORED ON THE ORIGIN**, and that is the point of `[^/\s]+`: the path
+ * must begin `/reset-password/` straight after the host, so the PORTAL's
+ * `/portal/reset-password/…` can never be read as a member link — the
+ * looser `\S+` the portal's pattern uses would match both. The
+ * confirmation link is a JWT (three base64url parts joined by dots) and
+ * may carry `?next=…`, which is part of the address the person opens.
+ * Both mails go after the response, so a caller polls.
+ */
+const MEMBER_RESET_LINK = /(https?:\/\/[^/\s]+\/reset-password\/[A-Za-z0-9_-]+)/;
+const MEMBER_CONFIRM_LINK = /(https?:\/\/[^/\s]+\/confirm-email\/[A-Za-z0-9_.-]+(?:\?\S*)?)/;
+
+export function readMemberResetLink(email: string): string | null {
+  return lastLinkTokenTo(email, MEMBER_RESET_LINK);
+}
+
+export function readMemberConfirmLink(email: string): string | null {
+  return lastLinkTokenTo(email, MEMBER_CONFIRM_LINK);
+}
+
+/**
+ * How many confirmation mails `email` has been sent — `member-recovery.spec.ts`
+ * counts them, because "signing in with the right password to an address
+ * nobody has confirmed mails a NEW link, and a wrong password mails
+ * nothing" is a claim about how many there are, not about the last one.
+ */
+export function countMemberConfirmMails(email: string): number {
+  return messagesTo(email, MEMBER_CONFIRM_LINK).length;
+}
+
+/** The bodies of every message to `email` whose text matches `pattern`, oldest first. */
+function messagesTo(email: string, pattern: RegExp): string[] {
   const file = join(process.cwd(), ".dev-outbox", "outbox.jsonl");
-  if (!existsSync(file)) return null;
-  const sent = readFileSync(file, "utf8")
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
     .flatMap((line) => {
@@ -280,15 +314,34 @@ function lastLinkTokenTo(email: string, pattern: RegExp): string | null {
         return [];
       }
     })
-    .filter((msg) => msg.to === email && typeof msg.text === "string" && pattern.test(msg.text));
-  const text = sent.at(-1)?.text;
-  if (typeof text !== "string") return null;
+    .flatMap((msg) =>
+      msg.to === email && typeof msg.text === "string" && pattern.test(msg.text) ? [msg.text] : [],
+    );
+}
+
+/** The first capture of `pattern` in the last message to `email`, if any. */
+function lastLinkTokenTo(email: string, pattern: RegExp): string | null {
+  const text = messagesTo(email, pattern).at(-1);
+  if (text === undefined) return null;
   return text.match(pattern)?.[1] ?? null;
 }
 
 /** Erase a contact the spec created, whatever state it reached. */
 export async function removeSpecContact(tenantId: string, email: string): Promise<boolean> {
   const { removed } = await runCli<{ removed: boolean }>(["remove-contact", tenantId, email]);
+  return removed;
+}
+
+/**
+ * Erase people `member-recovery.spec.ts` signed up — users who belong to
+ * no workspace, so no tenant teardown ever reaches them. The worker
+ * refuses any address outside the recovery fixture's prefixes and
+ * `@test.invalid`, and anyone holding a membership or a console role
+ * (`removeRecoveryUsers`). An address that never became a user is not an
+ * error. Returns how many were removed.
+ */
+export async function removeSpecUsers(emails: readonly string[]): Promise<number> {
+  const { removed } = await runCli<{ removed: number }>(["remove-users", ...emails]);
   return removed;
 }
 

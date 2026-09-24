@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
-import { AuthShell } from "@/app/(tenant)/login/auth-shell";
+import { AuthShell, authLinkClass } from "@/app/(tenant)/login/auth-shell";
 import { getMemberSession } from "@/auth/session";
 import { AuthzError } from "@/authz/errors";
 import { Callout, PageState } from "@/components/semantic";
@@ -15,7 +15,8 @@ import { allow, clientIp } from "@/ratelimit";
 /**
  * Invitation acceptance. The link carries the raw token exactly once;
  * the page previews the invite, and a signed-in user whose email
- * matches accepts it. Not signed in → sign up first, come back.
+ * matches accepts it. Not signed in → sign up (or, with an account
+ * already, sign in) first, come back.
  *
  * The workspace name is said ONCE, in the h1 that names what you are
  * joining. It used to appear again as a chip under it and a third time
@@ -61,6 +62,13 @@ export default async function InvitePage({
 
   const session = await getMemberSession();
   if (!session) {
+    // THE SIGN-IN DOOR IS IN THE FOOTER, beside the one primary button
+    // (C30). The button's destination is sign-up, and an invitee who already
+    // has an account — or whose confirmation link lapsed, so that signing in
+    // is how they get a new one — needs the other door; `next` brings them
+    // back here either way. (A newly confirmed invitee arrives SIGNED IN: the
+    // confirmation page confirms and signs in in one step, carrying `next`.)
+    // A link, not a second button: an auth page has one --primary element.
     return (
       <AuthShell
         eyebrow={t("eyebrow")}
@@ -69,6 +77,14 @@ export default async function InvitePage({
           email: preview.email,
           strong: (chunks) => <strong className="font-medium text-foreground">{chunks}</strong>,
         })}
+        footer={
+          <>
+            {t("haveAccount")}{" "}
+            <Link className={authLinkClass} href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}>
+              {t("signIn")}
+            </Link>
+          </>
+        }
       >
         {/* One verb for one outcome: the destination decides whether the
             visitor signs in or signs up, so the button says what the
@@ -110,7 +126,7 @@ export default async function InvitePage({
       description={t("signedInAs", { email: session.user.email })}
     >
       {mismatch ? (
-        <Callout tone="caution" role="status">
+        <Callout tone="caution" role="status" className="wrap-anywhere">
           {t("mismatch", { email: preview.email })}
         </Callout>
       ) : null}

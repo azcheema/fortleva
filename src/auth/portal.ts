@@ -480,8 +480,9 @@ export const portalAuth = betterAuth({
      * STATED RATHER THAN INHERITED, and raised to the number the
      * product's own password forms have always asked for. Better Auth's
      * default is 8; `/signup` and the account's change-password form
-     * both put `minLength={12}` on the input, so the member plane has a
-     * UI that asks for twelve over a service that accepts eight. This
+     * both put `minLength={12}` on the input, so the member plane had a
+     * UI that asked for twelve over a service that accepted eight (until
+     * C30 stated twelve on that instance too, `./recovery-policy`). This
      * plane must not inherit that gap, for two reasons.
      *
      * First, `acceptContactInvite` reads THIS config and is the sole

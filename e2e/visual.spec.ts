@@ -32,7 +32,7 @@ import { CONTACT_STORAGE_STATE, requireSeed, type E2ESeed } from "./fixtures/ten
  *     defect can be traced to a selector rather than squinted at.
  *
  * Assertions are `expect.soft` on purpose: one bad route must not hide
- * the other twenty-six, and the run still fails when anything trips.
+ * the other sixty, and the run still fails when anything trips.
  */
 
 // One clean set per RUN — cleared in global-setup, not here: Playwright
@@ -203,7 +203,7 @@ async function visit(
   await settle(page);
 
   const shot = `${stop.name}__${theme}__${device}.png`;
-  // The shots are a HUMAN artefact — 204 full-page PNGs for the craft
+  // The shots are a HUMAN artefact — 244 full-page PNGs for the craft
   // review. Nothing asserts on them: this repo has no committed
   // baselines and no toHaveScreenshot anywhere, and ci.yml uploads only
   // playwright-report/, so under CI they were rendered, encoded and then
@@ -508,7 +508,7 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: VIEWPORTS[device], colorScheme: theme });
 
       test("every route renders", async ({ page, context, browser, baseURL }) => {
-        // 51 stops × 3 navigations, five minutes next to the database.
+        // 61 stops × 3 navigations, five minutes next to the database.
         // The CI branch was 900 s, sized when the runner was in the US
         // and the database in the EU (~10 s a stop on a slow evening).
         // Since 2026-09-01 CI runs against a service container on the

@@ -80,7 +80,7 @@ export const txOptions = (timeoutMs?: number): { timeout: number; maxWait: numbe
  * `milestone_rank:` queue bounds its wait in that queue as well — and
  * that queue is designed to wait.
  */
-const lockTimeoutSetting = (lockTimeoutMs: number): string =>
+export const lockTimeoutSetting = (lockTimeoutMs: number): string =>
   String(Math.max(1, Math.round(lockTimeoutMs * LINK_FACTOR)));
 
 export async function withTenant<T>(

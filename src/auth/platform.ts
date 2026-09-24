@@ -15,6 +15,7 @@ import { refuseClosedEndpoint } from "./closed-endpoints";
 import { guardFactorMutations } from "./factor-guard";
 import { SESSION_ADDITIONAL_FIELDS, USER_ADDITIONAL_FIELDS } from "./index";
 import { enforceAuthRateLimit } from "./rate-limit-hook";
+import { MEMBER_MIN_PASSWORD_LENGTH } from "./recovery-policy";
 
 
 /**
@@ -123,6 +124,12 @@ export const platformAuth = betterAuth({
     // never by a request.
     disableSignUp: true,
     requireEmailVerification: true,
+    // THE SAME FLOOR AS THE MEMBER PLANE (C30, `./recovery-policy`), because
+    // it is the same credential: one `account` row opens both `/login` and
+    // `/ops/login`, and this instance's `/change-password` writes it. Left at
+    // the library's eight, a console session could set what the member plane
+    // and the operator script both refuse (review finding).
+    minPasswordLength: MEMBER_MIN_PASSWORD_LENGTH,
     /**
      * **THE CONSOLE HAS NO PASSWORD RESET** (slice 58). `sendResetPassword`
      * is gone and `./closed-endpoints` refuses the three reset endpoints.
@@ -148,6 +155,16 @@ export const platformAuth = betterAuth({
      * forget them. Without the first, Better Auth leaves every live
      * PLATFORM session valid after a reset, stamp and all; without the
      * second, the reset writes no audit row.
+     *
+     * **AND THE MEMBER PLANE'S RESET (C30) DOES NOT REACH THIS CREDENTIAL.**
+     * It serves every member again, but declines any user with a
+     * `platformRole` on the request, burns their link on redemption and
+     * shows its screen the dead-link state (`./member-recovery`) — the same
+     * `account` row would otherwise be the console's password, set from a
+     * mailbox. A FORGOTTEN console password has one remedy, the operator's:
+     * `scripts/reset-ops-password.ts` (RUNBOOK §8), which sets it through an
+     * audited system job, ends every session on both planes and leaves the
+     * second factor alone.
      */
     revokeSessionsOnPasswordReset: true,
     onPasswordReset: passwordResetHookFor(platformAuditSink),

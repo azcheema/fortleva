@@ -344,3 +344,42 @@ describe("wired hooks on the real Better Auth paths", () => {
     expect(rows[0]).toMatchObject({ actorType: "MEMBER", actorId: memberId });
   });
 });
+
+describe("a member-plane RESET (C30) is audited, and cleans up only what it should", () => {
+  /**
+   * Last in the file on purpose: a reset ends every session this user holds.
+   * The link is planted through the instance's own adapter, which stores it
+   * the way the live endpoint does (`pwreset#…`, the storeIdentifier override)
+   * — the request half and its mail are `member-recovery.dbtest.ts`'s.
+   */
+  it("reset → password_changed(reset) as the member; other links and sign-ins in flight die, trusted devices do not", async () => {
+    const { internalAdapter } = await auth.$context;
+    const hour = new Date(Date.now() + 60 * 60 * 1000);
+    const used = `usedtoken${run}`;
+    const older = `oldertoken${run}`;
+    await internalAdapter.createVerificationValue({ identifier: `reset-password:${older}`, value: userId, expiresAt: hour });
+    await internalAdapter.createVerificationValue({ identifier: `reset-password:${used}`, value: userId, expiresAt: hour });
+    // What shares the table under the same user id (Better Auth's own shapes).
+    const challenge = `2fa-${run}challenge0000`;
+    const device = `trust-device-${run}device00000000000000000`;
+    await platform.verification.create({ data: { identifier: challenge, value: userId, expiresAt: hour } });
+    await platform.verification.create({ data: { identifier: device, value: userId, expiresAt: hour } });
+    const before = (await auditRows("auth.password_changed")).length;
+    try {
+      const newPassword = `reset-${randomUUID()}`;
+      await auth.api.resetPassword({ body: { token: used, newPassword } });
+
+      const rows = await auditRows("auth.password_changed");
+      expect(rows).toHaveLength(before + 1);
+      expect(rows.at(-1)).toMatchObject({ actorType: "MEMBER", actorId: memberId, metadata: { via: "reset" } });
+      expect(JSON.stringify(rows.at(-1)!.metadata)).not.toContain(newPassword);
+
+      // The OTHER link and the pending challenge are gone; the device stays.
+      const left = await platform.verification.findMany({ where: { value: userId }, select: { identifier: true } });
+      expect(left.map((r) => r.identifier)).toEqual([device]);
+      expect(await platform.session.count({ where: { userId } })).toBe(0);
+    } finally {
+      await platform.verification.deleteMany({ where: { value: userId } });
+    }
+  });
+});

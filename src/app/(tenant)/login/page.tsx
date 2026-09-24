@@ -1,138 +1,39 @@
-"use client";
+import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
+import { Suspense } from "react";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { Suspense, useState } from "react";
+import { AUTH_MAILS_PER_HOUR, EMAIL_CONFIRMATION_TTL_SECONDS } from "@/auth/recovery-policy";
 
-import { authClient } from "@/auth/client";
-import { Field, FormMessage } from "@/components/semantic";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { safeNext } from "@/lib/safe-next";
+import { LoginForm } from "./login-form";
 
-import { AUTH_CONTROL, AuthShell, authLinkClass } from "./auth-shell";
-
-function LoginForm() {
-  const t = useTranslations("auth");
-  const router = useRouter();
-  const params = useSearchParams();
-  // THROUGH THE GUARD, and this form is the reason it exists. `next`
-  // reached `router.push` unvalidated, so `/login?next=https://evil.example`
-  // signed a member in and then sent them to somebody else's site with
-  // the credibility of having just come from their own workspace. No
-  // prefix: any same-origin path is a legitimate destination here (the
-  // proxy sends people back to the page they asked for).
-  const next = safeNext(params.get("next"), "/home");
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [totp, setTotp] = useState("");
-  const [stage, setStage] = useState<"credentials" | "totp">("credentials");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submitCredentials(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const { data, error: err } = await authClient.signIn.email({ email, password });
-    setBusy(false);
-    if (err) {
-      setError(err.message ?? t("login.failed"));
-      return;
-    }
-    if ((data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) {
-      setStage("totp");
-      return;
-    }
-    router.push(next);
-  }
-
-  async function submitTotp(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const { error: err } = await authClient.twoFactor.verifyTotp({ code: totp });
-    setBusy(false);
-    if (err) {
-      setError(err.message ?? t("login.invalidCode"));
-      return;
-    }
-    router.push(next);
-  }
-
-  return (
-    <AuthShell
-      title={stage === "credentials" ? t("login.title") : t("login.totpTitle")}
-      description={stage === "credentials" ? t("login.subtitle") : t("login.totpHint")}
-      footer={
-        <>
-          {t("login.noAccount")}{" "}
-          <Link className={authLinkClass} href={`/signup?next=${encodeURIComponent(next)}`}>
-            {t("login.signUp")}
-          </Link>
-        </>
-      }
-    >
-      {stage === "credentials" ? (
-        <form onSubmit={submitCredentials} className="flex flex-col gap-4">
-          <Field label={t("email")} htmlFor="email">
-            <Input
-              id="email"
-              type="email"
-              required
-              autoComplete="email"
-              className={AUTH_CONTROL}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </Field>
-          <Field label={t("password")} htmlFor="password">
-            <Input
-              id="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              className={AUTH_CONTROL}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </Field>
-          <Button type="submit" size="lg" className="mt-2 w-full" disabled={busy}>
-            {busy ? t("login.submitting") : t("login.submit")}
-          </Button>
-        </form>
-      ) : (
-        <form onSubmit={submitTotp} className="flex flex-col gap-4">
-          <Field label={t("login.totpLabel")} htmlFor="totp">
-            <Input
-              id="totp"
-              inputMode="numeric"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              required
-              autoFocus
-              autoComplete="one-time-code"
-              value={totp}
-              onChange={(e) => setTotp(e.target.value)}
-              className="otp-field h-10 text-lg"
-            />
-          </Field>
-          <Button type="submit" size="lg" className="mt-2 w-full" disabled={busy}>
-            {busy ? t("login.verifying") : t("login.verify")}
-          </Button>
-        </form>
-      )}
-      {error ? <FormMessage state={{ ok: false, message: error }} /> : null}
-    </AuthShell>
-  );
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("auth.login");
+  return { title: t("metaTitle") };
 }
 
+/**
+ * `/login` — the member plane's sign-in, and the canonical entry point
+ * every cookie-less member request is bounced to (src/proxy.ts).
+ *
+ * The form is a client module of its own (`login-form.tsx`) so that this
+ * file can be a server component with a `generateMetadata` — the
+ * convention every page in the product follows, and the portal's sign-in
+ * already did. It reads `useSearchParams`, so it needs the `<Suspense>`.
+ *
+ * The two numbers it quotes come from `src/auth/recovery-policy.ts`, the
+ * one module the instance that enforces them reads too: an unconfirmed
+ * member who signs in with the right password is mailed a new
+ * confirmation link (C30 (b)), and the screen says how many of those
+ * there can be in an hour and how long each works. A sentence promising a
+ * link over a cap somebody later lowered would be a promise nobody keeps.
+ */
 export default function LoginPage() {
   return (
     <Suspense>
-      <LoginForm />
+      <LoginForm
+        cap={AUTH_MAILS_PER_HOUR}
+        minutes={Math.round(EMAIL_CONFIRMATION_TTL_SECONDS / 60)}
+      />
     </Suspense>
   );
 }

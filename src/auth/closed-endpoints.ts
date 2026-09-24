@@ -31,27 +31,39 @@ import { APIError } from "better-auth/api";
  *    **`/reset-password/:token`** checks one and redirects with it. On EITHER
  *    plane, because both read one `verification` table, so a token minted on
  *    one could be spent on the other.
+ *    (THE MEMBER PLANE'S FIRST TWO CAME OFF THIS LIST WITH C30 — see
+ *    `CLOSED_ENDPOINTS` below for what was built before they did.)
  *  - **`/send-verification-email`**, on the member plane, mailed any
  *    UNVERIFIED user to a stranger's order, and with no mail transport it
  *    rethrew the failure as a 500 for exactly those addresses — the
  *    enumeration oracle again, by a second door. Nothing in the product calls
- *    it: sign-up sends the one verification mail itself (`sendOnSignUp`). On
- *    the platform plane it refused already; it is listed so that stays true
+ *    it: sign-up sends the confirmation mail itself (`sendOnSignUp`), and
+ *    since C30 so does a sign-in with the right password (`sendOnSignIn`) —
+ *    the same job, for the one person who should be able to ask. On the
+ *    platform plane it refused already; it is listed so that stays true
  *    whatever that instance is later configured with.
  *  - **`/change-email`**, on the member plane, had no screen, and its
  *    confirmation callback was misnamed (`sendChangeEmailVerification`, which
  *    1.6.26 does not read), so the mail to the OLD address that is the point
  *    of the flow was never sent. Its `user.changeEmail` block is removed too.
- *  - **`/verify-email`**, on the PLATFORM plane only. Email-verification
- *    tokens are JWTs signed with the instance secret and carrying no plane
- *    claim, and the member and platform instances share `BETTER_AUTH_SECRET`
- *    — so a member-minted link verified on the console. A change-email link
- *    (the endpoint above) went further: the platform's `/verify-email` MINTED
- *    A PLATFORM SESSION for it and rewrote the address, with no password. The
- *    console has no verification flow at all — its principals are seeded
- *    verified — so it has no reason to accept one. (The member plane keeps
- *    its own: sign-up's link lands there. It refuses only change-email
- *    links — `refuseChangeEmailLink` below.)
+ *  - **`/verify-email`**, on the PLATFORM plane since slice 58. Email-
+ *    verification tokens are JWTs signed with the instance secret and
+ *    carrying no plane claim, and the member and platform instances share
+ *    `BETTER_AUTH_SECRET` — so a member-minted link verified on the console.
+ *    A change-email link (the endpoint above) went further: the platform's
+ *    `/verify-email` MINTED A PLATFORM SESSION for it and rewrote the
+ *    address, with no password. The console has no verification flow at all
+ *    — its principals are seeded verified — so it has no reason to accept one.
+ *  - **`/verify-email`**, on the MEMBER plane too since C30. It confirms an
+ *    address on the link ALONE — and on a bare GET, which is what a mail
+ *    scanner does to every link in a business inbox — while confirming a
+ *    member's address now takes the link AND the account's password
+ *    (`confirmMemberEmail`, `./member-screens`, the pre-account takeover's
+ *    reason). The mail links to our confirmation page instead, whose server
+ *    action does both checks. (Slice 58 had kept this endpoint open for
+ *    sign-up and refused only change-email links on it, by decoding each
+ *    token and failing closed; closing the endpoint makes that refusal moot,
+ *    and it is gone.)
  *
  * WHY A HOOK AND NOT `disabledPaths`. `disabledPaths` compares a concrete
  * pathname, so it cannot name the token route `/reset-password/:token` at
@@ -61,7 +73,8 @@ import { APIError } from "better-auth/api";
  *
  * WHAT IT DOES NOT TOUCH, and must not: sign-in, sign-out, the session, the
  * two-factor endpoints, `/change-password`, and — on the member plane —
- * `/sign-up/email` and `/verify-email`, which are the live sign-up flow.
+ * `/sign-up/email`, and `/request-password-reset` and `/reset-password`, the
+ * live reset (C30).
  * `closed-endpoints.test.ts` pins both halves.
  *
  * Every refusal is the SAME refusal, whatever the body names, so it answers
@@ -71,8 +84,26 @@ export type ClosablePlane = "member" | "platform";
 
 const RESET = ["/request-password-reset", "/reset-password", "/reset-password/:token"] as const;
 
+/**
+ * **THE MEMBER PLANE SERVES A RESET AGAIN (C30), AND THAT IS A DELIBERATE
+ * REMOVAL FROM THIS LIST, NOT A LOOSENING OF IT.** `/request-password-reset`
+ * and `/reset-password` came out together with everything slice 58 said a
+ * re-opened reset owed — screens (`/reset-password`, `/reset-password/[token]`),
+ * the mail after the response, a response floor, hashed tokens, a
+ * per-recipient cap that leaves the two-factor rows alone, and a refusal for
+ * any console principal on both the request and the redemption
+ * (`./member-recovery`). `/reset-password/:token`, the library's GET callback,
+ * STAYS here: the mailed link is our screen, so nothing uses it. And
+ * `/verify-email` JOINED the member list with C30 (the bullet above): the
+ * member plane confirms an address only through `confirmMemberEmail`, with the
+ * link and the password.
+ *
+ * The member plane's `/reset-password` cannot spend a link minted anywhere
+ * else: the platform plane issues none (its three stay closed), and the
+ * portal's live in `contact_verification`.
+ */
 export const CLOSED_ENDPOINTS: Readonly<Record<ClosablePlane, ReadonlySet<string>>> = {
-  member: new Set<string>([...RESET, "/send-verification-email", "/change-email"]),
+  member: new Set<string>(["/reset-password/:token", "/send-verification-email", "/change-email", "/verify-email"]),
   platform: new Set<string>([...RESET, "/send-verification-email", "/verify-email"]),
 };
 
@@ -90,37 +121,24 @@ export function refuseClosedEndpoint(ctx: { readonly path: string }, plane: Clos
 }
 
 /**
- * **A CHANGE-EMAIL LINK IS REFUSED ON THE MEMBER PLANE'S `/verify-email`**
- * (the slice's fresh review). That endpoint stays open — sign-up's link lands
- * there — but it also honours links that carry `updateTo`, and for those it
- * CREATES A SESSION for the named user if none exists and rewrites their
- * address: no password, and no second factor, since the two-factor hook
- * matches only the sign-in paths. With `/change-email` refused, nothing on
- * this plane mints such a link any more — so the only one that could arrive
- * is one signed by whoever holds `BETTER_AUTH_SECRET`, and for that holder it
- * was a session for ANY member. Refusing the shape costs no real user
- * anything, and it turns a leaked secret from "sign in as anyone" into "sign
- * in as someone who has not verified yet" (RUNBOOK §5 says what to do then).
+ * **IS THIS READABLY A PLAIN SIGN-UP LINK?** — `{email, iat, exp}`, which is
+ * what `createEmailVerificationToken` signs for sign-up and for sign-in's
+ * re-send, with no `updateTo` and no extra payload (JSON drops the undefined).
+ * Used by the confirmation page's holder (`./member-screens`), so a
+ * change-email link — which names an address to move TO — can never be
+ * turned into a confirmation.
  *
- * **IT FAILS CLOSED, and the first version did not** (the fix review). A
- * sign-up link is `{email, iat, exp}` — `createEmailVerificationToken` with no
- * `updateTo` and no extra payload, and JSON drops the undefined — so a token
- * passes ONLY if its payload reads as exactly that kind of object. Anything
- * this decoder cannot read is refused rather than handed on: the claims are
- * decoded here with Node's `Buffer` and `JSON.parse`, while the library
- * verifies with jose's, and the two do not agree on everything. The one the
- * review found: a payload that begins with a UTF-8 byte-order mark makes
+ * **IT FAILS CLOSED, and a version of it once did not** (slice 58's fix
+ * review). The claims are decoded here with Node's `Buffer` and `JSON.parse`,
+ * while Better Auth verifies with jose's, and the two do not agree on
+ * everything: a payload that begins with a UTF-8 byte-order mark makes
  * `JSON.parse` throw here, while jose's `TextDecoder` strips the mark and
- * reads the claims — so the first version, which let an unreadable token
- * through "for the library to refuse", let a validly signed change-email
- * link through to the branch that mints the session. Refusing what we cannot
- * read costs a real user nothing: every link the product mails parses.
+ * reads the claims — so a check that let an unreadable token through "for the
+ * library to refuse" let a validly signed change-email link through. Anything
+ * this decoder cannot read is refused: every link the product mails parses.
  *
- * The claims are only DECODED, not verified. A token this passes carries no
- * `updateTo` and no `requestType` as far as either decoder can tell — both use
- * the same `JSON.parse`, and bytes jose rejects never reach the branch — and a
- * forged one of that shape is at worst a sign-up link, which is what the
- * library's own check (and the residual RUNBOOK §5 states) is for.
+ * The claims are only DECODED here; the holder VERIFIES the signature, the
+ * expiry and the algorithm separately.
  */
 export function isSignUpLink(token: string): boolean {
   const parts = token.split(".");
@@ -137,16 +155,4 @@ export function isSignUpLink(token: string): boolean {
   } catch {
     return false;
   }
-}
-
-/**
- * For the member instance's `hooks.before`. A request with no token at all is
- * the library's to refuse, as it always was; any token that is not readably a
- * sign-up link is refused here.
- */
-export function refuseChangeEmailLink(ctx: { readonly path: string; readonly query?: unknown }): void {
-  if (ctx.path !== "/verify-email") return;
-  const token = (ctx.query as { token?: unknown } | undefined)?.token;
-  if (typeof token !== "string" || token === "") return;
-  if (!isSignUpLink(token)) throw new APIError("NOT_FOUND");
 }

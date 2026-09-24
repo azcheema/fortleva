@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  isPortalResetRequest,
+  isMemberFlooredRequest,
+  isResetRequest,
   isSignUpRequest,
+  MEMBER_FLOOR_MS,
   RESET_REQUEST_FLOOR_MS,
+  SIGN_UP_FLOOR_MS,
   withResponseFloor,
 } from "./response-floor";
 
@@ -102,22 +105,22 @@ describe("the reset request's response floor", () => {
 
 describe("which requests are the reset request", () => {
   it("matches the endpoint and the spellings a router might also accept", () => {
-    expect(isPortalResetRequest(post("/api/portal-auth/request-password-reset"))).toBe(true);
-    expect(isPortalResetRequest(post("/api/portal-auth/request-password-reset/"))).toBe(true);
-    expect(isPortalResetRequest(post("/api/portal-auth/Request-Password-Reset"))).toBe(true);
-    expect(isPortalResetRequest(post("/api/portal-auth/request%2Dpassword-reset"))).toBe(true);
+    expect(isResetRequest(post("/api/portal-auth/request-password-reset"))).toBe(true);
+    expect(isResetRequest(post("/api/portal-auth/request-password-reset/"))).toBe(true);
+    expect(isResetRequest(post("/api/portal-auth/Request-Password-Reset"))).toBe(true);
+    expect(isResetRequest(post("/api/portal-auth/request%2Dpassword-reset"))).toBe(true);
   });
 
   it("gives an undecodable path the floor rather than a pass", () => {
-    expect(isPortalResetRequest(post("/api/portal-auth/%E0%A4%A"))).toBe(true);
+    expect(isResetRequest(post("/api/portal-auth/%E0%A4%A"))).toBe(true);
   });
 
   it("does not slow sign-in, sign-out, the reset itself, or a GET", () => {
-    expect(isPortalResetRequest(post("/api/portal-auth/sign-in/email"))).toBe(false);
-    expect(isPortalResetRequest(post("/api/portal-auth/sign-out"))).toBe(false);
-    expect(isPortalResetRequest(post("/api/portal-auth/reset-password"))).toBe(false);
+    expect(isResetRequest(post("/api/portal-auth/sign-in/email"))).toBe(false);
+    expect(isResetRequest(post("/api/portal-auth/sign-out"))).toBe(false);
+    expect(isResetRequest(post("/api/portal-auth/reset-password"))).toBe(false);
     expect(
-      isPortalResetRequest(new Request("http://localhost:3000/api/portal-auth/request-password-reset")),
+      isResetRequest(new Request("http://localhost:3000/api/portal-auth/request-password-reset")),
     ).toBe(false);
   });
 });
@@ -138,15 +141,34 @@ describe("which requests are the member plane's sign-up", () => {
   });
 });
 
+describe("which requests the member route floors (C30)", () => {
+  it("floors its sign-up AND its reset request — on the member plane's own paths", () => {
+    expect(isMemberFlooredRequest(post("/api/auth/sign-up/email"))).toBe(true);
+    expect(isMemberFlooredRequest(post("/api/auth/request-password-reset"))).toBe(true);
+    expect(isMemberFlooredRequest(post("/api/auth/Request-Password-Reset/"))).toBe(true);
+  });
+
+  it("does not slow sign-in, the reset itself, or a GET", () => {
+    expect(isMemberFlooredRequest(post("/api/auth/sign-in/email"))).toBe(false);
+    expect(isMemberFlooredRequest(post("/api/auth/reset-password"))).toBe(false);
+    expect(isMemberFlooredRequest(new Request("http://localhost:3000/api/auth/request-password-reset"))).toBe(false);
+  });
+
+  it("holds both to the longer of the two floors", () => {
+    expect(MEMBER_FLOOR_MS).toBeGreaterThanOrEqual(SIGN_UP_FLOOR_MS);
+    expect(MEMBER_FLOOR_MS).toBeGreaterThanOrEqual(RESET_REQUEST_FLOOR_MS);
+  });
+});
+
 describe("the member auth route", () => {
   // The same tripwire as the portal's below, for the same reason.
-  it("holds its POST to the sign-up floor, and exports no second POST", () => {
+  it("holds its POST to the member floor, and exports no second POST", () => {
     const route = readFileSync(
       join(process.cwd(), "src", "app", "api", "auth", "[...all]", "route.ts"),
       "utf8",
     );
     expect(route).toMatch(
-      /export const POST = withResponseFloor\(\s*handlers\.POST,\s*isSignUpRequest,\s*SIGN_UP_FLOOR_MS,?\s*\)/,
+      /export const POST = withResponseFloor\(\s*handlers\.POST,\s*isMemberFlooredRequest,\s*MEMBER_FLOOR_MS,?\s*\)/,
     );
     expect(route.match(/export\s+(?:const|let|var|async\s+function|function)\s+POST\b/g)).toHaveLength(1);
     expect(route).not.toMatch(/export\s+const\s*\{[^}]*\bPOST\b/);
@@ -167,7 +189,7 @@ describe("the portal auth route", () => {
       "utf8",
     );
     expect(route).toMatch(
-      /export const POST = withResponseFloor\(\s*handlers\.POST,\s*isPortalResetRequest,\s*RESET_REQUEST_FLOOR_MS,?\s*\)/,
+      /export const POST = withResponseFloor\(\s*handlers\.POST,\s*isResetRequest,\s*RESET_REQUEST_FLOOR_MS,?\s*\)/,
     );
     expect(route.match(/export\s+(?:const|let|var|async\s+function|function)\s+POST\b/g)).toHaveLength(1);
     expect(route).not.toMatch(/export\s+const\s*\{[^}]*\bPOST\b/);

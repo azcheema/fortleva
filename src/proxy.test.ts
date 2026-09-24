@@ -224,6 +224,55 @@ describe("proxy: the portal plane (Phase 3)", () => {
   });
 });
 
+describe("proxy: the member plane's public doors (C30)", () => {
+  it("serves both halves of the member password reset without a cookie — whoever needs it has none", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // The request form, and the new-password form its mail links to.
+    expect(dest(proxy(req(APP, "/reset-password")))).toBe("next");
+    expect(dest(proxy(req(APP, "/reset-password/abc123")))).toBe("next");
+  });
+
+  it("does not open the member app on a lookalike of the reset path", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // The bare path is an EXACT entry and the token route a segment-
+    // anchored prefix, so neither sweeps a sibling in with it.
+    expect(dest(proxy(req(APP, "/reset-passwords")))).toBe("redirect:/login");
+    expect(dest(proxy(req(APP, "/reset-password-history")))).toBe("redirect:/login");
+  });
+
+  it("keeps the member password reset OFF the ops host", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    expect(dest(proxy(req(OPS, "/reset-password")))).toBe("redirect:/ops/reset-password");
+    expect(dest(proxy(req(OPS, "/reset-password/abc123")))).toBe("redirect:/ops/reset-password/abc123");
+  });
+
+  it("serves the confirmation page without a cookie — nobody has a session before confirming", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    expect(dest(proxy(req(APP, "/confirm-email/eyJhbGciOiJIUzI1NiJ9.e30.sig")))).toBe("next");
+  });
+
+  it("does not open the member app on a lookalike of the confirmation path", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    // A prefix only, and segment-anchored: there is no bare page, so the
+    // bare path is not public either.
+    expect(dest(proxy(req(APP, "/confirm-email")))).toBe("redirect:/login");
+    expect(dest(proxy(req(APP, "/confirm-emails")))).toBe("redirect:/login");
+    expect(dest(proxy(req(APP, "/confirm-email-history")))).toBe("redirect:/login");
+  });
+
+  it("keeps the confirmation page OFF the ops host", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    expect(dest(proxy(req(OPS, "/confirm-email/abc123")))).toBe("redirect:/ops/confirm-email/abc123");
+  });
+
+  it("serves a member invitation without a cookie, and nothing that merely begins like one", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    expect(dest(proxy(req(APP, "/invite/abc123")))).toBe("next");
+    expect(dest(proxy(req(APP, "/invitations")))).toBe("redirect:/login");
+    expect(dest(proxy(req(APP, "/invite")))).toBe("redirect:/login");
+  });
+});
+
 /**
  * VIEW-AS-CONTACT'S REQUEST HEADER (Phase 3 slice 5).
  *

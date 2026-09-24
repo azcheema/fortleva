@@ -38,12 +38,19 @@ import { APIError, isAPIError } from "better-auth/api";
  * WHAT IS LEFT, stated rather than implied — each one creates an account for
  * the address and mails its owner, so none is silent or cheap:
  *   - sign an address up with a password of your choosing, then sign in with
- *     it: 403 "not verified" if it was new, 401 if not. Closing it means
- *     sign-in lying to every member who has not yet clicked their link;
+ *     it: 403 "not confirmed" if it was new, 401 if not. SINCE C30 THIS IS
+ *     KEPT ON PURPOSE rather than merely left: the 403 arises only with the
+ *     right password, and it is what lets the sign-in screen say "we are
+ *     emailing you a new link" (`sendOnSignIn`) instead of lying to every
+ *     member who has not clicked theirs yet. Each such probe also mails the
+ *     owner a fresh link, capped at three an hour (`./mail-budget`);
  *   - send two sign-ups for one new address at once: the loser of the INSERT
  *     race answers 422.
- * Both, and the account a stranger's sign-up leaves waiting for its owner to
- * click, belong to the member-account-lifecycle decision, OPEN_QUESTIONS C30.
+ * The account a stranger's sign-up leaves waiting for its owner is C30's
+ * other half: confirming an address takes the link AND the account's
+ * password (`./member-screens`), which neither the owner nor the stranger holds
+ * alone, and the owner's "Forgot your password?" replaces the stranger's
+ * password and confirms the address (`./member-recovery`).
  */
 
 /**

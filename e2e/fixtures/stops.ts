@@ -100,6 +100,46 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "signup", path: "/signup", anon: true },
     { name: "invite", path: `/invite/${seed.inviteToken}`, anon: true },
     { name: "invite-unavailable", path: "/invite/expired-or-unknown-token", anon: true },
+    // MEMBER ACCOUNT RECOVERY (C30): the password reset's three states —
+    // the request form, the new-password form over a live link, the
+    // dead-link state — and the confirmation page's two. The live links
+    // stand still because the fixture seeds them for two people who belong
+    // to no workspace (`memberResetToken`, `memberConfirmToken`), and a
+    // visit only READS either: the new-password page checks its link, and
+    // the confirmation page changes nothing on GET by design (a mail
+    // scanner's GET must not confirm an address), which is also what makes
+    // photographing it four times per run safe. NEVER add a `drive` that
+    // presses either page's button. The drives below only ASSERT the live
+    // form rendered — by id and element, never by English words — because
+    // a dead link still renders one h1 and an icon, and without them these
+    // stops would photograph "Link not available" under the live state's
+    // name and pass. None of the five is metered.
+    { name: "reset-request", path: "/reset-password", anon: true },
+    {
+      name: "reset",
+      path: `/reset-password/${seed.memberResetToken}`,
+      anon: true,
+      drive: async (page) => {
+        await expect
+          .soft(page.locator("#reset-password"), "the seeded member reset link is live")
+          .toBeVisible();
+      },
+    },
+    { name: "reset-unavailable", path: "/reset-password/expired-or-unknown-token", anon: true },
+    {
+      name: "confirm-email",
+      path: `/confirm-email/${seed.memberConfirmToken}`,
+      anon: true,
+      drive: async (page) => {
+        await expect
+          .soft(
+            page.locator('main form button[type="submit"]'),
+            "the seeded confirmation link is live and its address unconfirmed",
+          )
+          .toBeVisible();
+      },
+    },
+    { name: "confirm-email-unavailable", path: "/confirm-email/not-a-token", anon: true },
     // Signed out, an unknown path never reaches a 404: the proxy gates
     // every non-public route to /login (src/proxy.ts). That redirect is
     // the state an anonymous visitor actually gets.

@@ -31,6 +31,7 @@
  *        tsx e2e/fixtures/seed-cli.ts clear-portal-requests <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-notifications <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
  *        tsx e2e/fixtures/seed-cli.ts sweep-dbtests [maxAgeMinutes]
  */
@@ -151,6 +152,52 @@ const DBTEST_PREFIXES = [
 
 const isThrowawaySlug = (slug: string): boolean =>
   slug.startsWith(SLUG_PREFIX) || DBTEST_PREFIXES.some((p) => slug.startsWith(p));
+
+/**
+ * THE PEOPLE MEMBER ACCOUNT RECOVERY NEEDS (C30), and the ONLY users this
+ * file ever deletes outside `removeTenant`. They belong to NO workspace —
+ * a reset or a confirmation happens before anybody is anybody's member —
+ * so `removeTenant`'s "every member of the tenant" loop never reaches
+ * them, and without an explicit rule of their own nothing would ever
+ * collect them.
+ *
+ *  - `e2e-reset-` / `e2e-confirm-` — the two the fixture seeds so the new
+ *    screens have links that stand still (`provision`);
+ *  - `e2e-recovery-` — the ones `member-recovery.spec.ts` signs up through
+ *    the real form.
+ *
+ * An EXPLICIT list, like `DBTEST_PREFIXES`, and narrower than "any `e2e-`
+ * address": the vitest suites mint `e2e-portal-…`, `e2e-member-…` and
+ * similar users of their own, which this path has no business deleting
+ * (`sweep-dbtests` collects the suites' bare users, `DBTEST_USER_PREFIXES`). Every deletion also requires `@test.invalid`, no membership
+ * anywhere and no console role (`removeRecoveryUsers`).
+ */
+const RECOVERY_USER_PREFIXES = ["e2e-reset-", "e2e-confirm-", "e2e-recovery-"] as const;
+
+const isRecoveryAddress = (email: string): boolean =>
+  email.endsWith(EMAIL_DOMAIN) && RECOVERY_USER_PREFIXES.some((p) => email.startsWith(p));
+
+/**
+ * THE VITEST DB SUITE'S BARE USERS — people a dbtest creates with no tenant
+ * around them, so `DBTEST_PREFIXES` (tenant slugs) can never reach them, and a
+ * run killed before its `afterAll` would leave them on the shared dev database
+ * for good (C30's review). Some are CONSOLE principals on purpose — the suites
+ * that prove a SUPERADMIN is declined a reset, or reset by the operator's
+ * script — which is why `sweep-dbtests` may take a console role for exactly
+ * these prefixes and no others.
+ *
+ * Kept by hand, like `DBTEST_PREFIXES`: `grep -n "@test.invalid" src/**\/*.dbtest.ts`
+ * and look for any address a dbtest turns into a USER with no tenant around
+ * it — by `user.create` OR through a sign-up (`signUpEmail(`, `/sign-up/email`),
+ * which a grep for `user.create` alone misses (the fix review found two that
+ * way). Today:
+ *   - `plane-ep-`   src/auth/plane-endpoints.dbtest.ts (slice 58)
+ *   - `member-rec-` src/auth/member-recovery.dbtest.ts (C30)
+ *   - `ops-reset-`  src/jobs/reset-ops-password.dbtest.ts (C30)
+ *   - `auth-`       src/auth/auth.dbtest.ts (a sign-up)
+ *   - `e2e-member-` src/auth/portal.dbtest.ts (a sign-up; no browser fixture uses it)
+ */
+export const DBTEST_USER_PREFIXES = ["plane-ep-", "member-rec-", "ops-reset-", "auth-", "e2e-member-"] as const;
 /** Single-line, machine-readable result channel (stdout also carries logs). */
 const MARKER = "__E2E_RESULT__";
 
@@ -264,6 +311,26 @@ export type E2ESeed = {
    */
   readonly contactResetToken: string;
 
+  /* ── Member account recovery (C30) ─────────────────────────────────
+   * Two people who belong to NO workspace, each with a link that stands
+   * still, so the member plane's recovery screens have addresses to be
+   * photographed at (`e2e/fixtures/stops.ts`). Both tokens are worthless
+   * the moment teardown deletes their user, are never printed, and live
+   * only in the gitignored seed file — `contactResetToken`'s contract.
+   *
+   * NOTHING MAY SPEND EITHER. A visit only reads (`memberResetHolder`,
+   * `confirmEmailHolder`); the walks photograph the pages and never press
+   * their buttons. `member-recovery.spec.ts` signs up people of its own
+   * for everything that submits. */
+  /** A CONFIRMED user with a credential and a live reset link. */
+  readonly memberResetEmail: string;
+  /** The raw token of that link — `/reset-password/<token>`. */
+  readonly memberResetToken: string;
+  /** An UNCONFIRMED user with a credential — the confirmation page's subject. */
+  readonly memberConfirmEmail: string;
+  /** A sign-up confirmation JWT for that address — `/confirm-email/<token>`. */
+  readonly memberConfirmToken: string;
+
   /* ── Member-plane scoping fixture (e2e/scoping.spec.ts) ─────────────
    * An employee — the template role WITHOUT client:view_all — assigned
    * to exactly one client. The long-name client and its completed
@@ -288,6 +355,32 @@ async function provision(seedFile: string): Promise<void> {
   // sweep to find (review).
   const contactPassword = process.env["E2E_CONTACT_PASSWORD"];
   if (!contactPassword) throw new Error("E2E_CONTACT_PASSWORD is not set");
+
+  // THE SECRET THE CONFIRMATION LINK IS SIGNED WITH, resolved BEFORE the
+  // first write for the reason the two checks above give. It is read off
+  // the MEMBER INSTANCE ITSELF — `(await auth.$context).secret`, the very
+  // value `confirmEmailHolder` and `/verify-email` verify with — rather
+  // than off an env var by hand, because the library resolves it from
+  // three variables (`BETTER_AUTH_SECRETS`, then `BETTER_AUTH_SECRET`,
+  // then `AUTH_SECRET`, create-context.mjs) and a copy of that order here
+  // is one more thing to drift. The instance sets no `secret` of its own
+  // (src/auth/index.ts).
+  //
+  // BUT THE LIBRARY HAS A DEFAULT, and that is why this refuses rather than
+  // trusting it: with none of the three set, a process that is not
+  // production — this one — silently signs with Better Auth's built-in
+  // test secret, while the production server the harness runs refuses to
+  // start on it. The link would then verify nowhere, and the stop would
+  // photograph the dead-link state under the live state's name. Nothing
+  // here prints the value.
+  if (!process.env["BETTER_AUTH_SECRETS"] && !process.env["BETTER_AUTH_SECRET"] && !process.env["AUTH_SECRET"]) {
+    throw new Error(
+      "BETTER_AUTH_SECRET is not set (nor BETTER_AUTH_SECRETS / AUTH_SECRET): the member " +
+        "confirmation link cannot be signed with the secret the app verifies it with",
+    );
+  }
+  const { auth: memberAuth } = await import("../../src/auth/index");
+  const memberSecret = (await memberAuth.$context).secret;
 
   const { hashPassword } = await import("better-auth/crypto");
   const { getPlatformClient } = await import("../../src/db/client");
@@ -808,6 +901,86 @@ async function provision(seedFile: string): Promise<void> {
     },
   });
 
+  // ── MEMBER ACCOUNT RECOVERY (C30): two people who belong to no
+  // workspace, each holding a link that stands still ──────────────────
+  //
+  // Both links are written directly, for the reason Astrid's is: asking
+  // `/request-password-reset` or signing up would MAIL them, and a fixture
+  // must not leave envelopes in `.dev-outbox` for `member-recovery.spec.ts`
+  // to trip over. Neither person is anybody's member, so `removeTenant`
+  // never reaches them: `teardown` deletes both by address, and the sweep
+  // collects them if a run is killed (`RECOVERY_USER_PREFIXES`). Their
+  // passwords are random, used by nobody and never kept.
+  //
+  // THE RESET LINK, STORED AS THE MEMBER INSTANCE STORES IT —
+  // `storedResetIdentifierOf`, the very function its
+  // `verification.storeIdentifier` override hashes with, so no copy of the
+  // `pwreset#` form lives here to drift. A plain row would never resolve at
+  // all: `memberResetHolder` looks up the stored form only. Twenty-four
+  // URL-safe characters, the length Better Auth mints.
+  const { storedResetIdentifierOf } = await import("../../src/auth/reset-identifier");
+  const credentialFor = async (userId: string): Promise<void> => {
+    await db.account.create({
+      data: {
+        userId,
+        providerId: "credential",
+        accountId: userId,
+        password: await hashPassword(randomBytes(24).toString("base64url")),
+      },
+    });
+  };
+  const memberResetEmail = `e2e-reset-${run}${EMAIL_DOMAIN}`;
+  const resetUser = await db.user.create({
+    data: { name: "E2E Reset", email: memberResetEmail, emailVerified: true, locale: "en" },
+  });
+  await credentialFor(resetUser.id);
+  const memberResetToken = randomBytes(18).toString("base64url");
+  await db.verification.create({
+    data: {
+      identifier: storedResetIdentifierOf(memberResetToken),
+      value: resetUser.id,
+      expiresAt: new Date(Date.now() + 3 * day),
+    },
+  });
+
+  // THE CONFIRMATION LINK, SIGNED AS BETTER AUTH SIGNS ONE — its own
+  // `createEmailVerificationToken`, with the member instance's secret
+  // (resolved at the top of this function) and no `updateTo`, which is
+  // what makes it a SIGN-UP link rather than a change-of-address one
+  // (`isSignUpLink`). Three days, like every token here, not the hour a
+  // mailed one gets: it must outlive the run. A JWT writes no row, so
+  // there is nothing to delete but the person.
+  const { createEmailVerificationToken } = await import("better-auth/api");
+  const memberConfirmEmail = `e2e-confirm-${run}${EMAIL_DOMAIN}`;
+  const confirmUser = await db.user.create({
+    data: { name: "E2E Confirm", email: memberConfirmEmail, emailVerified: false, locale: "en" },
+  });
+  await credentialFor(confirmUser.id);
+  const memberConfirmToken = await createEmailVerificationToken(
+    memberSecret,
+    memberConfirmEmail,
+    undefined,
+    3 * 24 * 60 * 60,
+  );
+
+  // PROVE BOTH LINKS ARE LIVE, through the SAME reads the two pages make.
+  // Without this a link the pages refuse is not a failure anywhere: the
+  // stop still renders one h1 and an icon, and photographs "Link not
+  // available" under the name of the live state. (The stops also assert
+  // the live form is on screen, which is what catches a SERVER that
+  // resolved a different secret; this catches the seed disagreeing with
+  // the instance's own reads.) Reads only — neither consumes anything.
+  const { memberResetHolder } = await import("../../src/auth/member-recovery");
+  const { confirmEmailHolder } = await import("../../src/auth/member-screens");
+  const resetHolder = await memberResetHolder(memberResetToken);
+  if (!resetHolder || resetHolder.email !== memberResetEmail || resetHolder.twoFactor) {
+    throw new Error("seed: the member reset link does not resolve the way /reset-password/[token] reads it");
+  }
+  const confirmHolder = await confirmEmailHolder(memberConfirmToken);
+  if (!confirmHolder || confirmHolder.email !== memberConfirmEmail || confirmHolder.confirmed) {
+    throw new Error("seed: the confirmation link does not verify the way /confirm-email/[token] reads it");
+  }
+
   const clientVisibleDocName = `e2e-shared-${run}.txt`;
   const internalDocName = `e2e-private-${run}.txt`;
   const seed: E2ESeed = {
@@ -847,6 +1020,10 @@ async function provision(seedFile: string): Promise<void> {
     contactInviteToken,
     contactInviteEmail,
     contactResetToken,
+    memberResetEmail,
+    memberResetToken,
+    memberConfirmEmail,
+    memberConfirmToken,
     employeeEmail,
     employeePassword,
   };
@@ -996,11 +1173,79 @@ async function removeTenant(
 }
 
 /**
+ * DELETE THE RECOVERY FIXTURE'S PEOPLE BY ADDRESS — the seeded pair at
+ * teardown, the spec's sign-ups from its `afterAll`, and stale ones from
+ * `sweep`. The one path in this file that deletes a user who is not a
+ * member of a throwaway tenant, so it carries its own guards, all checked
+ * for EVERY address before ANYTHING is deleted:
+ *
+ *  1. the address must be a recovery fixture's own (`isRecoveryAddress`:
+ *     one of `RECOVERY_USER_PREFIXES`, and `@test.invalid`);
+ *  2. the user must be a member of NO workspace — a membership is
+ *     evidence somebody depends on the person, and this is not the path
+ *     that unwinds one;
+ *  3. and must hold no console role.
+ *
+ * Their `verification` rows go first, BY `value` (the user id): a reset
+ * link, a two-factor challenge or a trusted device has no key to `user`,
+ * so deleting the person takes none of them along. `session`, `account`,
+ * `two_factor` and the `auth_mail` ledger cascade from the user row.
+ * No audit rows exist to remove — `recordForUserMemberships` writes one
+ * per ACTIVE membership, and these people have none.
+ *
+ * Returns how many users were removed; an address with no user is not an
+ * error (the spec's `afterAll` names addresses a failed test never made).
+ */
+async function removeRecoveryUsers(db: PlatformDb, requested: readonly string[]): Promise<number> {
+  const emails = [...new Set(requested.map((e) => e.trim().toLowerCase()))];
+  const outside = emails.filter((e) => !isRecoveryAddress(e));
+  if (outside.length > 0) {
+    throw new Error(`refusing to remove users outside the recovery fixture: ${outside.join(", ")}`);
+  }
+  // An empty `in` matches nothing, but an empty call has nothing to do and
+  // should not reach the database at all.
+  if (emails.length === 0) return 0;
+  const users = await db.user.findMany({
+    where: { email: { in: emails } },
+    select: { id: true, email: true, platformRole: true, _count: { select: { memberships: true } } },
+  });
+  const held = users.filter((u) => u._count.memberships > 0 || (u.platformRole ?? "") !== "");
+  if (held.length > 0) {
+    throw new Error(
+      `refusing to remove ${held.map((u) => u.email).join(", ")}: a workspace member or a console principal`,
+    );
+  }
+  const ids = users.map((u) => u.id);
+  if (ids.length === 0) return 0;
+  await db.verification.deleteMany({ where: { value: { in: ids } } });
+  // The guards AGAIN, in the statement itself: the check above and this
+  // delete are two statements, and a membership granted between them
+  // must stop the delete rather than be cascaded into.
+  const { count } = await db.user.deleteMany({
+    where: { id: { in: ids }, email: { endsWith: EMAIL_DOMAIN }, memberships: { none: {} }, platformRole: null },
+  });
+  // Prove it, as `removeTenant` does: a cleanup that silently did less
+  // than it said is how orphans accumulate.
+  const left = await db.user.findMany({ where: { id: { in: ids } }, select: { email: true } });
+  if (left.length > 0) {
+    throw new Error(`did not remove recovery user(s): ${left.map((u) => u.email).join(", ")}`);
+  }
+  return count;
+}
+
+/**
  * Sweep throwaway tenants an interrupted run left behind. Teardown is
  * keyed on a seed file, so a killed process (or a webServer that dies
  * mid-suite) orphans its tenant; without this they accumulate in the
  * shared dev database. Only "e2e-"-prefixed tenants older than the age
  * guard are touched, so a concurrent run is never harmed.
+ *
+ * And the recovery fixture's PEOPLE (C30), under the same age guard: they
+ * belong to no tenant, so a killed run would otherwise leave them for
+ * good — the seeded pair when teardown never ran, a spec's sign-ups when
+ * its `afterAll` never did. `removeRecoveryUsers` carries the guards; the
+ * query narrows to what it will accept, so one person it would refuse
+ * cannot abort the sweep of the rest.
  */
 async function sweep(maxAgeMinutesRaw: string | undefined): Promise<void> {
   const maxAgeMinutes = Number(maxAgeMinutesRaw ?? 60);
@@ -1012,13 +1257,42 @@ async function sweep(maxAgeMinutesRaw: string | undefined): Promise<void> {
     select: { id: true, slug: true },
   });
   for (const t of stale) await removeTenant(db, t.id, t.slug);
+  const staleUsers = await db.user.findMany({
+    where: {
+      createdAt: { lt: cutoff },
+      email: { endsWith: EMAIL_DOMAIN },
+      OR: RECOVERY_USER_PREFIXES.map((prefix) => ({ email: { startsWith: prefix } })),
+      memberships: { none: {} },
+      platformRole: null,
+    },
+    select: { email: true },
+  });
+  const sweptUsers = await removeRecoveryUsers(
+    db,
+    staleUsers.map((u) => u.email),
+  );
   await db.$disconnect();
-  process.stdout.write(`${MARKER}{"swept":${stale.length}}
-`);
+  process.stdout.write(`${MARKER}${JSON.stringify({ swept: stale.length, sweptUsers })}\n`);
+}
+
+/** `remove-users <email>…` — `member-recovery.spec.ts`'s `afterAll`. */
+async function removeUsers(emails: readonly string[]): Promise<void> {
+  // Before the client is even built: a call with no address is a caller's
+  // mistake, and must not read as "removed nothing, all clean".
+  if (emails.length === 0) throw new Error("remove-users needs at least one address");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  try {
+    const removed = await removeRecoveryUsers(db, emails);
+    process.stdout.write(`${MARKER}${JSON.stringify({ removed })}\n`);
+  } finally {
+    await db.$disconnect();
+  }
 }
 
 /**
- * Remove the vitest DB suite's abandoned tenants. Manual, and age-gated
+ * Remove the vitest DB suite's abandoned tenants — and, since C30, its
+ * abandoned bare users (`DBTEST_USER_PREFIXES`). Manual, and age-gated
  * so it cannot take a tenant a run is still using — a local suite once
  * deleted a live CI fixture, which is why the age guard exists at all.
  *
@@ -1054,9 +1328,38 @@ async function sweepDbtests(maxAgeMinutesRaw: string | undefined): Promise<void>
       refused.push(`${t.slug}: ${(e as Error).message}`);
     }
   }
+  // THE BARE USERS (`DBTEST_USER_PREFIXES`), under the same age guard: never
+  // a workspace member — a membership is somebody depending on the person —
+  // and always `@test.invalid`, checked in the query AND in the delete. Their
+  // `verification` rows go first, by user id (no key to `user`), and so do the
+  // platform audit rows that NAME them (the operator script's suite writes
+  // `platform.password_changed` with the user as target; the append-only
+  // table allows a delete only under `app.audit_maintenance`, as `removeTenant`
+  // does). That suite's `platform.system_job` rows carry the run only in their
+  // free-text reason, which no sweep can match safely: they are left. Sessions,
+  // credentials, factors and the mail ledger cascade.
+  const bareWhere = {
+    email: { endsWith: EMAIL_DOMAIN },
+    OR: DBTEST_USER_PREFIXES.map((prefix) => ({ email: { startsWith: prefix } })),
+    memberships: { none: {} },
+  };
+  const bare = await db.user.findMany({
+    where: { ...bareWhere, createdAt: { lt: cutoff } },
+    select: { id: true },
+  });
+  let removedUsers = 0;
+  if (bare.length > 0) {
+    const ids = bare.map((u) => u.id);
+    await db.verification.deleteMany({ where: { value: { in: ids } } });
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
+      await tx.auditEvent.deleteMany({ where: { tenantId: null, targetId: { in: ids } } });
+    });
+    ({ count: removedUsers } = await db.user.deleteMany({ where: { ...bareWhere, id: { in: ids } } }));
+  }
   await db.$disconnect();
   process.stdout.write(
-    `${MARKER}${JSON.stringify({ maxAgeMinutes, removed, refused })}\n`,
+    `${MARKER}${JSON.stringify({ maxAgeMinutes, removed, refused, removedUsers })}\n`,
   );
   if (refused.length > 0) process.exitCode = 1;
 }
@@ -1090,6 +1393,16 @@ async function teardown(seedFile: string): Promise<void> {
     }
     await removeTenant(db, id, slug);
   }
+  // The recovery fixture's two people (C30), who belong to no tenant and
+  // so were reached by nothing above. Read defensively, like
+  // `secondTenantId`: a seed file written before these fields existed must
+  // still tear down what it can.
+  await removeRecoveryUsers(
+    db,
+    [seed.memberResetEmail, seed.memberConfirmEmail].filter(
+      (email): email is string => typeof email === "string" && email.length > 0,
+    ),
+  );
   await db.$disconnect();
 
   rmSync(seed.storageDir, { recursive: true, force: true });
@@ -1302,7 +1615,7 @@ async function milestone(milestoneId: string): Promise<void> {
  * and dropped by the ONE spec that needs it.
  *
  * It exists because virtualisation is inert at or below 200 rows, so the
- * ordinary fixture (five tasks) and all 43 visual stops exercise the
+ * ordinary fixture (five tasks) and all 61 visual stops exercise the
  * UNWINDOWED path and could never catch a defect in the windowed one.
  * Without this the feature would ship having never run.
  *
@@ -1640,6 +1953,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-notifications") return resetNotifications(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
+  if (command === "remove-users") return removeUsers(process.argv.slice(3));
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);
   throw new Error(`unknown command "${command ?? ""}"`);

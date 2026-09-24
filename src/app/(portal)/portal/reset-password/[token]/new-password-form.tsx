@@ -10,9 +10,9 @@ import { contactAuthClient } from "@/auth/client";
 import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useFocusHeadingOnChange } from "@/components/use-focus-heading";
 
 import { ResetUnavailable } from "../reset-unavailable";
-import { useFocusHeadingOnChange } from "../use-focus-heading";
 
 type View = "form" | "dead" | "saved";
 

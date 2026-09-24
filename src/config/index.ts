@@ -160,9 +160,9 @@ export const sessionCookieAttributes = (
  * "separate tables are the barrier" property that protects SESSION
  * tokens does not protect these at all: with one shared secret, a token
  * minted on one plane verifies on another, `/verify-email` resolves
- * `email` against THAT plane's user model, and both the member
- * instance (`autoSignInAfterVerification`) and the change-email branch
- * MINT A SESSION before any password is checked.
+ * `email` against THAT plane's user model, and the change-email branch
+ * MINTS A SESSION before any password is checked (so did the member
+ * instance's `autoSignInAfterVerification` until C30 turned it off).
  *
  * A plane claim in the payload would need a hook on every instance and
  * would still be one forgotten hook away from the same hole. A distinct

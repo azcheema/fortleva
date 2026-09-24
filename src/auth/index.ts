@@ -10,13 +10,24 @@ import { nextCookies } from "better-auth/next-js";
 
 import { absoluteUrl, appUrl, sessionCookieName } from "@/config";
 import { runtimeClient } from "@/db/client";
-import { send } from "@/mailer";
 
 import { afterResponse } from "./after-response";
 import { auditPlugin, memberAuditSink, memberDatabaseHooks, onPasswordResetHook } from "./audit-hooks";
-import { refuseChangeEmailLink, refuseClosedEndpoint } from "./closed-endpoints";
+import { refuseClosedEndpoint } from "./closed-endpoints";
 import { guardFactorMutations } from "./factor-guard";
+import {
+  afterMemberPasswordReset,
+  deliverMemberConfirmation,
+  deliverMemberReset,
+  refuseResetOfConsolePrincipal,
+} from "./member-recovery";
 import { enforceAuthRateLimit } from "./rate-limit-hook";
+import {
+  EMAIL_CONFIRMATION_TTL_SECONDS,
+  MEMBER_MIN_PASSWORD_LENGTH,
+  MEMBER_RESET_TTL_SECONDS,
+} from "./recovery-policy";
+import { RESET_IDENTIFIER_PREFIX, storedResetIdentifier } from "./reset-identifier";
 import { answerSignUpAlike, refuseUnsafeSignUp } from "./sign-up-answer";
 
 /**
@@ -113,70 +124,125 @@ export const auth = betterAuth({
   // safe, was never sent. Its links were also accepted by the console's
   // `/verify-email`, which minted a PLATFORM session for them. Build the
   // flow with its screen, its old-address confirmation and its reset-link
-  // purge, or not at all; `./closed-endpoints` refuses the path meanwhile,
-  // and refuses a change-email LINK on this plane's `/verify-email` too.
+  // purge, or not at all; `./closed-endpoints` refuses the path meanwhile —
+  // and, since C30, this plane's `/verify-email` too, so no emailed link of
+  // any kind is honoured here except through the confirmation page.
   user: { additionalFields: USER_ADDITIONAL_FIELDS },
+  verification: {
+    /**
+     * RESET LINKS ARE STORED AS `pwreset#<sha256>`; EVERY OTHER ROW STAYS PLAIN
+     * (C30, `./reset-identifier`). Hashed for the portal's reason — a reader
+     * of this table must not be able to set a member's password — and under a
+     * prefix of our own because the table is shared: the two-factor
+     * challenges and trusted devices beside these rows carry the same user id,
+     * and the built-in `"hashed"` form would have left a purge of "this
+     * member's reset links" no way to say so. An OVERRIDE, not a table-wide
+     * setting, so those rows keep the plain identifiers RUNBOOK §8's sign-out
+     * statement matches on — and the platform instance, which shares the
+     * table and serves no reset, is untouched.
+     */
+    storeIdentifier: {
+      default: "plain",
+      overrides: { [RESET_IDENTIFIER_PREFIX]: { hash: storedResetIdentifier } },
+    },
+  },
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: true,
+    // Stated, not inherited — `./recovery-policy` says why it is twelve.
+    minPasswordLength: MEMBER_MIN_PASSWORD_LENGTH,
     /**
-     * **NO `sendResetPassword`, AND THE RESET ENDPOINTS ARE REFUSED**
-     * (slice 58, `./closed-endpoints`). There is no reset screen on this
-     * plane, so the endpoint was a door with only curl in front of it —
-     * awaiting the mail (a timing oracle for who is a member), storing the
-     * live token verbatim, capping nothing per recipient — and the link it
-     * mailed led nowhere a person could use. A member forgot-password flow
-     * is a product item of its own (OPEN_QUESTIONS C30); when it is built,
-     * it takes the portal's shapes (`src/auth/portal.ts`) AND solves what the
-     * portal did not have to: this `verification` table also holds
-     * two-factor challenges and trusted devices keyed on the same user id,
-     * so the portal's count-and-purge-by-`value` would hit those too.
+     * **A MEMBER CAN RESET THEIR OWN PASSWORD** (C30) — re-opened after
+     * slice 58 closed the screenless endpoint, now with the screens
+     * (`/reset-password`, `/reset-password/[token]`) and the controls the
+     * closed one lacked, all in `./member-recovery`:
      *
-     * The two settings below stay, so that re-opening reset can never
-     * forget them: without the first a reset leaves every session alive,
-     * without the second it writes no audit row.
+     *  - the mail goes AFTER the response (`afterResponse`): Better Auth
+     *    awaits this callback on the found branch only, so a send on the
+     *    response path was a stopwatch for who is a member. The route's
+     *    response floor covers the library's own branch difference;
+     *  - the link names our screen, never a caller's `redirectTo`;
+     *  - the token is stored hashed (`verification` above);
+     *  - three mails an hour per RECIPIENT, counted in Postgres
+     *    (`./mail-budget`), keyed so the two-factor rows sharing the table
+     *    neither count nor get purged;
+     *  - a CONSOLE principal is declined here and refused on redemption: one
+     *    credential row serves both planes, and the console's password is
+     *    the operator script's to reset, not a mailbox's;
+     *  - `/reset-password/:token`, the library's GET callback, stays refused
+     *    (`./closed-endpoints`): the mailed link is our screen, so nothing
+     *    uses it.
+     *
+     * The response is the library's constant one, for every address, whether
+     * the mail went or not.
      */
+    sendResetPassword: async ({ user, token }) => {
+      // The user id only in the log — never the address or the token.
+      afterResponse(`[auth] reset mail not sent for user ${user.id}`, () =>
+        deliverMemberReset(user as Parameters<typeof deliverMemberReset>[0], token),
+      );
+    },
+    resetPasswordTokenExpiresIn: MEMBER_RESET_TTL_SECONDS,
     revokeSessionsOnPasswordReset: true,
-    onPasswordReset: onPasswordResetHook,
+    onPasswordReset: async ({ user }) => {
+      // The clean-up first — other links, sign-ins in flight, the address
+      // confirmed — then the audit row. Both run BEFORE Better Auth revokes
+      // the sessions, which is why neither may throw.
+      await afterMemberPasswordReset(user.id);
+      await onPasswordResetHook({ user });
+    },
   },
   emailVerification: {
     sendOnSignUp: true,
-    autoSignInAfterVerification: true,
     /**
-     * THE MAIL GOES AFTER THE RESPONSE (slice 58, `./after-response`).
-     * Better Auth awaits this callback, and sign-up calls it only for an
-     * address that is NEW — so a transport round trip on the response said
-     * which addresses were not yet members. (A transport FAILURE was never
-     * visible: the library swallowed it before, and `afterResponse` logs it
-     * now.)
-     *
-     * Its one caller now is sign-up (`sendOnSignUp`), which sends once per
-     * ADDRESS: a second sign-up for a registered address takes the library's
-     * stand-in branch and sends nothing. The unauthenticated re-send,
-     * `/send-verification-email`, is refused (`./closed-endpoints`) — it had
-     * no caller, mailed any unverified user on a stranger's say-so and 500'd
-     * for exactly those addresses when the transport failed.
-     *
-     * **WHAT THAT COSTS, and it is a dead end, not a feature.** Once per
-     * address is also once per PERSON: a member whose one link expires (an
-     * hour) or never arrives cannot get another — not by signing up again,
-     * not by signing in (`sendOnSignIn` is off), not by a re-send or a reset,
-     * both refused. Nor can the owner of an address a STRANGER signed up
-     * first, since every probe of a new address leaves an unverified user
-     * behind. Neither was self-service before this slice either (no screen
-     * ever called the re-send), but the curl-only door is gone, so the
-     * remedy is an operator's: RUNBOOK §8. A re-send is owed with the member
-     * account-lifecycle decision (OPEN_QUESTIONS C30), and it must bring a
-     * per-recipient cap: the reason none is needed today is exactly that
-     * nothing can send this mail twice.
+     * **A FRESH LINK FOR AN UNCONFIRMED MEMBER WHO SIGNS IN WITH THE RIGHT
+     * PASSWORD** (C30). The library runs this only after the password has
+     * matched, and answers 403 `EMAIL_NOT_VERIFIED` either way, which the
+     * sign-in screen turns into "we have sent you a new link". It ends the
+     * dead end slice 58 recorded — a person whose one link expired could get
+     * no other — and it is capped per recipient, because the one caller the
+     * library does not bound is a stranger who knows the password of an
+     * account they pre-registered at somebody else's address.
      */
-    sendVerificationEmail: async ({ user, url }) => {
-      afterResponse(`[auth] verification mail not sent for user ${user.id}`, () =>
-        send({
-          to: user.email,
-          subject: "Verify your Fortleva email",
-          text: `Verify your email address: ${url}`,
-        }),
+    sendOnSignIn: true,
+    /**
+     * **THE LIBRARY'S CONFIRMATION IS NOT USED ON THIS PLANE** (C30). With this
+     * on, the owner of an address a stranger signed up first was signed in,
+     * by their own click, to an account whose password the STRANGER had
+     * chosen — a pre-account takeover. It is off, and `/verify-email` itself
+     * is refused (`./closed-endpoints`): it confirms on the link alone, on a
+     * bare GET a mail scanner performs. An address is confirmed only by the
+     * confirmation PAGE's server action, which demands the link AND the
+     * account's password (`confirmMemberEmail`, `./member-screens`) — so a
+     * stranger's pre-registration can never be confirmed by either of the two
+     * people involved alone, and its owner's way in is "Forgot your
+     * password?", which replaces the stranger's password (`./member-recovery`).
+     * Off as well as refused: belt and braces for the day the refusal moves.
+     */
+    autoSignInAfterVerification: false,
+    expiresIn: EMAIL_CONFIRMATION_TTL_SECONDS,
+    /**
+     * THE MAIL GOES AFTER THE RESPONSE (slice 58, `./after-response`). Better
+     * Auth awaits this callback, and sign-up calls it only for an address
+     * that is NEW — so a transport round trip on the response said which
+     * addresses were not yet members. The library's `url` is not mailed: the
+     * link is our confirmation page (`deliverMemberConfirmation`).
+     *
+     * Two callers: sign-up (once per ADDRESS — a second sign-up for a
+     * registered address takes the library's stand-in branch and sends
+     * nothing) and sign-in (above). The unauthenticated re-send,
+     * `/send-verification-email`, stays refused (`./closed-endpoints`): it
+     * mailed any unverified user on a stranger's say-so, and sign-in does the
+     * same job for the one person who should be able to — the one who knows
+     * the password.
+     */
+    sendVerificationEmail: async ({ user, url, token }, request) => {
+      // Read now: the task runs after the response. A sign-in carries no
+      // `callbackURL` (the login form's docblock says why), so where the person
+      // was going rides in the referring `/login?next=…` instead.
+      const referer = request?.headers.get("referer") ?? null;
+      afterResponse(`[auth] confirmation mail not sent for user ${user.id}`, () =>
+        deliverMemberConfirmation(user, url, token, referer),
       );
     },
   },
@@ -200,19 +266,23 @@ export const auth = betterAuth({
     // leave the weak plane able to strip the strong plane's credential.
     // See ./factor-guard.
     //
-    // And FIRST, the endpoints this plane does not serve at all (slice 58,
-    // ./closed-endpoints), with the change-email links nothing here can
-    // mint any more: before the limiter, because they cost us nothing.
+    // And FIRST, the endpoints this plane does not serve at all (slice 58
+    // and C30, ./closed-endpoints): before the limiter, because they cost us
+    // nothing.
     //
     // Sign-up's input is checked after the limiter and before the library
     // branches on whether the address exists (./sign-up-answer): input the
     // DATABASE would refuse was a 422 for a new address and a 200 for a
     // registered one.
+    //
+    // A reset link of a CONSOLE principal is burned before the library can
+    // spend it (C30, ./member-recovery) — after the limiter, so a refused
+    // request costs no lookup.
     before: createAuthMiddleware(async (ctx) => {
       refuseClosedEndpoint(ctx, "member");
-      refuseChangeEmailLink(ctx);
       await enforceAuthRateLimit(ctx, "member");
       refuseUnsafeSignUp(ctx);
+      await refuseResetOfConsolePrincipal(ctx);
       await guardFactorMutations(ctx, "member");
     }),
     // Every successful sign-up answers alike, so the body names nobody
