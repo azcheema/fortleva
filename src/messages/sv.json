@@ -1062,6 +1062,7 @@
     "ACCESS_TRANSITION_INVALID": "Portalåtkomsten har hunnit ändras sedan sidan laddades. Ladda om den för att se hur det ser ut nu.",
     "CONTACT_HAS_ACCESS": "Personen har fortfarande portalåtkomst, så posten kan inte raderas. Att avsluta åtkomsten är permanent.",
     "CONTACT_HAS_HISTORY": "Personen har skrivit i portalen, så posten behålls och kan inte raderas. Personen saknar redan åtkomst.",
+    "REQUEST_ANSWER_IS_THE_CLIENTS": "Du har redan svarat på den här förfrågan, så den kan inte raderas — ditt svar tillhör kunden. Arkivera den i stället.",
     "REQUEST_RATE_LIMITED": "Du har skickat flera förfrågningar på kort tid. Vänta några minuter och försök igen.",
     "REQUEST_BUSY": "Vi kunde inte skicka det just nu. Försök igen om en liten stund."
   },
@@ -1705,6 +1706,11 @@
         "about": "{key} · {title}",
         "clientReads": "Din kund läser detta, ord för ord, i sin portal.",
         "reasonLabel": "Ditt svar",
+        "CANCEL_ACCEPTED": {
+          "title": "Avbryt arbetet och svara",
+          "placeholder": "Berätta varför arbetet avbryts. Kunden ser exakt detta.",
+          "confirm": "Avbryt och svara"
+        },
         "DECLINE": {
           "title": "Avböj förfrågan",
           "placeholder": "Berätta kort varför. Kunden ser exakt detta.",
@@ -2213,7 +2219,12 @@
         "acknowledgeAndStart": "Jag har läst detta — starta timern",
         "noticeFor": "Timern startar på {task}.",
         "noticeFailed": "Informationen om tidsregistrering kunde inte hämtas."
-      }
+      },
+      "requestBandTitle": "Det här började som en kundförfrågan",
+      "requestBandBody": "Om arbetet inte blir av, berätta varför — kunden har följt det sedan de frågade.",
+      "requestBandAction": "Avbryt och svara…",
+      "requestBandDone": "Avbrutet, och ditt svar finns på kundens portal",
+      "requestBandDoneUnshared": "Avbrutet, och ditt svar är sparat — kunden ser det inte så länge detta är privat eller deras portal är av"
     },
     "states": {
       "seed": {

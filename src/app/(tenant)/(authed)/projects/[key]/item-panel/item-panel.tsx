@@ -34,6 +34,7 @@ import { EstimateField } from "./estimate-field";
 import { LabelsField } from "./labels-field";
 import { MilestoneField } from "./milestone-field";
 import { PriorityField } from "./priority-field";
+import { RequestBand } from "./request-band";
 import { StateField } from "./state-field";
 import { SubtasksSection } from "./subtasks-section";
 import { TimerControl } from "./timer-control";
@@ -157,6 +158,7 @@ export async function ItemPanel({
     changeVisibility: canChangeVisibility,
     create: canCreate,
     comment: canComment,
+    endRequest: canEndRequest,
   } = itemCaps;
   const t = await getTranslations("projects.item");
   const tStates = await getTranslations("states");
@@ -246,6 +248,60 @@ export async function ItemPanel({
   const railLabel = "min-h-8 py-1.5 text-muted-foreground";
   const railText = "min-h-8 py-1.5";
   const railPicker = "flex min-h-8 items-center";
+  /**
+   * THE REQUEST BAND (C29), drawn only where all three hold: the row
+   * really began as a client's request, it is still live, and this
+   * member may speak to a client in the agency's name
+   * (`work_item:triage_decline`, which `triageItem` demands on top of
+   * `work_item:triage` — UI.md §3.1, hidden and never disabled). A
+   * CANCELLED request is already ended and a DONE one is not stopping,
+   * so neither gets the band.
+   *
+   * Built here rather than inline because the panel renders its rail at
+   * TWO stops — the peek's sheet and the full page's card — and a
+   * control that appeared on only one of them would be a door that
+   * exists depending on how you opened the task.
+   */
+  const requestBand =
+    item.kind === "REQUEST" &&
+    canEndRequest &&
+    // NOT ARCHIVED, and this was a real bug rather than belt: `triageItem`
+    // fails `ARCHIVED` on the DECLINE path, so the band was a control
+    // whose every press was refused — on a row a member archived as
+    // ordinary tidy-up, with 400 characters typed for a client and no way
+    // forward from any surface. The panel's own house rule is the same
+    // one (the timer and the Subtasks add row both test `!archivedAt`),
+    // which is what made the omission easy to miss and easy to correct.
+    // Found by a fresh review; UI.md §3.1 is the rule it broke.
+    item.archivedAt === null &&
+    item.stateCategory !== "CANCELLED" &&
+    item.stateCategory !== "DONE" ? (
+      <RequestBand
+        itemId={item.id}
+        itemNumber={item.number}
+        itemKey={itemKey}
+        itemTitle={item.title}
+        projectKey={projectKey}
+        surface={surface}
+        // **THE MODE FOLLOWS THE CATEGORY, because the two acts are
+        // different and the founder named them differently.** A request
+        // still sitting in TRIAGE has had no work agreed, so the word is
+        // "Decline" — exactly what the lane says. One that was ACCEPTED
+        // is work being stopped, which is "Cancel and reply". A review
+        // caught the band saying "Tell them why the work is stopping"
+        // over a request nobody had started.
+        //
+        // TRIAGE is NOT excluded from the band, and that is deliberate: a
+        // SNOOZED request drops out of `listTriage` until it wakes, so
+        // this is its only door, and excluding it would re-open the dead
+        // end C29 exists to close.
+        mode={item.stateCategory === "TRIAGE" ? "DECLINE" : "CANCEL_ACCEPTED"}
+        // What the toast may promise: the reply reaches the client only
+        // if the row is still shared AND the project's portal is on.
+        clientWillSee={item.visibility === "CLIENT_VISIBLE" && item.portalEnabled}
+      />
+    ) : null;
+
   const rail = (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm" data-testid="item-properties">
         <dt className={railLabel}>{t("properties.state")}</dt>
@@ -427,12 +483,16 @@ export async function ItemPanel({
       {variant === "peek" ? (
         <>
           <SheetHeader>{header}</SheetHeader>
-          <div className="px-4 pb-4">{rail}</div>
+          <div className="px-4 pb-4">
+            {requestBand}
+            {rail}
+          </div>
         </>
       ) : (
         <div className="pb-4">
           <SectionCard>
             <div className="flex flex-col gap-2 pb-4">{header}</div>
+            {requestBand}
             {rail}
           </SectionCard>
         </div>

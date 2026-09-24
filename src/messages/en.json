@@ -1062,6 +1062,7 @@
     "ACCESS_TRANSITION_INVALID": "Their portal access has moved on since this page was loaded. Reload it to see where it stands.",
     "CONTACT_HAS_ACCESS": "This person still has portal access, so their record cannot be deleted. Ending their access is permanent.",
     "CONTACT_HAS_HISTORY": "This person has written in the portal, so their record is kept and cannot be deleted. They already have no access.",
+    "REQUEST_ANSWER_IS_THE_CLIENTS": "You have already replied to this request, so it cannot be deleted — your reply is the client's to keep. Archive it instead.",
     "REQUEST_RATE_LIMITED": "You have sent several requests in a short time. Wait a few minutes and try again.",
     "REQUEST_BUSY": "We could not send that just now. Try again in a moment."
   },
@@ -1551,7 +1552,7 @@
         "assignee": "Assignee",
         "assigneeHeading": "Show these assignees",
         "unassigned": "No assignee",
-      "withClient": "With the client",
+        "withClient": "With the client",
         "priority": "Priority",
         "priorityHeading": "Show these priorities",
         "hideDone": "Hide finished",
@@ -1705,6 +1706,11 @@
         "about": "{key} · {title}",
         "clientReads": "Your client reads this, word for word, on their portal.",
         "reasonLabel": "Your reply",
+        "CANCEL_ACCEPTED": {
+          "title": "Cancel this work and reply",
+          "placeholder": "Tell them why the work is stopping. They will see exactly this.",
+          "confirm": "Cancel and reply"
+        },
         "DECLINE": {
           "title": "Decline this request",
           "placeholder": "Tell them why, briefly. They will see exactly this.",
@@ -2213,7 +2219,12 @@
         "acknowledgeAndStart": "I have read this — start the timer",
         "noticeFor": "The timer starts on {task}.",
         "noticeFailed": "Could not load the time-tracking notice."
-      }
+      },
+      "requestBandTitle": "This started as a client request",
+      "requestBandBody": "If the work is not going ahead, tell them why — they have been watching it since they asked.",
+      "requestBandAction": "Cancel and reply…",
+      "requestBandDone": "Cancelled, and your reply is on their portal",
+      "requestBandDoneUnshared": "Cancelled, and your reply is saved — the client cannot see it while this is private or their portal is off"
     },
     "states": {
       "seed": {

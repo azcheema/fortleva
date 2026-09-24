@@ -86,7 +86,27 @@ import type { DuplicateTarget, TriageActionInput } from "./actions";
  * `PropertyPicker` and the palette already use.
  */
 
-export type AnswerMode = "DECLINE" | "DUPLICATE" | "SNOOZE";
+/**
+ * THE FOUR OPENINGS OF THIS DIALOG, and the fourth is not a fourth
+ * VERB.
+ *
+ * `CANCEL_ACCEPTED` submits `DECLINE` — the same lifecycle verb,
+ * with the same reason, to the same service. What differs is only
+ * the copy, because the ACT differs: the lane's Decline refuses a
+ * request before any work started, while this one stops work the
+ * agency AGREED to and owes the client an explanation for. The
+ * founder named it "Cancel and reply" for that reason (2026-09-23,
+ * OPEN_QUESTIONS C29), and "Decline" would have been wrong on a task
+ * that has been in progress for a fortnight.
+ *
+ * It is a MODE rather than a second component because the copy is
+ * the only difference: every mechanism below — the focus return, the
+ * exclusive keyboard scope, the caller-owned reason, the "your client
+ * reads this" warning — is what makes this dialog safe to put a
+ * member's words to a client behind, and a copy of it would be a
+ * second place for those to drift.
+ */
+export type AnswerMode = "DECLINE" | "DUPLICATE" | "SNOOZE" | "CANCEL_ACCEPTED";
 
 /** The snooze presets, in days. A specific date is the fourth option. */
 const SNOOZE_PRESETS = [
@@ -184,13 +204,13 @@ export function TriageAnswer({
 
   if (mode === null) return null;
 
-  const needsReason = mode === "DECLINE" || mode === "DUPLICATE";
+  const needsReason = mode !== "SNOOZE";
   const trimmed = reason.trim();
   const canSubmit =
     !busy &&
     (mode === "SNOOZE"
       ? day !== "" && dayToInstant(day) !== null
-      : trimmed.length > 0 && (mode === "DECLINE" || duplicateOfId !== null));
+      : trimmed.length > 0 && (mode !== "DUPLICATE" || duplicateOfId !== null));
 
   const submit = () => {
     if (mode === "SNOOZE") {
@@ -199,7 +219,9 @@ export function TriageAnswer({
       return;
     }
     if (trimmed.length === 0) return;
-    if (mode === "DECLINE") {
+    // BOTH MAP TO `DECLINE`. See `AnswerMode`: `CANCEL_ACCEPTED` is the
+    // same verb said to a client who was already expecting the work.
+    if (mode === "DECLINE" || mode === "CANCEL_ACCEPTED") {
       onSubmit({ verb: "DECLINE", reason: trimmed });
       return;
     }

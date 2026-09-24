@@ -40,6 +40,12 @@ export type DomainErrorCode =
   | "ACCESS_TRANSITION_INVALID" // pause a non-active, resume a non-paused, remove what has no access
   | "CONTACT_HAS_ACCESS" // erasure refused while the person can still sign in
   | "CONTACT_HAS_HISTORY" // erasure refused for somebody who has written in the portal
+  // C29: deleting an ANSWERED client request would erase the agency's
+  // own reply from the client's list, because `listPortalTasks` filters
+  // `deletedAt` at the top level. An unanswered one is still deletable
+  // (a recorded residual — OPEN_QUESTIONS C29); archiving is always
+  // allowed and stays visible to the client.
+  | "REQUEST_ANSWER_IS_THE_CLIENTS"
   // Portal request intake (slice 6a — src/modules/work/portal-writes.ts).
   // This contact has submitted the most requests the window allows. It is
   // the ONE refusal the portal states plainly rather than collapsing into

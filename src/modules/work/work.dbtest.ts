@@ -1245,6 +1245,9 @@ describe("getItemDetail — the panel's one scoped read", () => {
     expect(seeded.name).toBeNull();
     expect(seeded.requiresApproval).toBe(true);
 
+    // A CLOSED SHAPE on purpose: a new cap has to be added here
+    // deliberately, which is what stopped C29's `endRequest` from
+    // arriving unnoticed.
     expect(caps).toEqual({
       edit: true,
       approve: true,
@@ -1252,7 +1255,26 @@ describe("getItemDetail — the panel's one scoped read", () => {
       create: true,
       comment: true,
       manageLabels: true,
+      endRequest: true,
     });
+
+    // **AND THE ONE CAP WHOSE WHOLE POINT IS THAT IT DENIES SOMEBODY.**
+    // `endRequest` is `work_item:triage_decline` (C M), which the founder
+    // chose for C29 over the wider `work_item:edit`: stopping agreed work
+    // and writing the client the reason is a delivery lead's act. An
+    // employee can edit this very task and cannot end it, so a cap that
+    // read `true` for every seat would be a band drawn where the service
+    // refuses — exactly the §3.1 failure the gate exists to prevent.
+    // `skipDuplicates`, because an earlier case in this file already
+    // assigns the employee to this client, and a test that depended on
+    // running after it would be pinned to file order.
+    await f.platform.memberClient.createMany({
+      data: [{ tenantId: f.tenantId, memberId: f.seats.employee.memberId, clientId }],
+      skipDuplicates: true,
+    });
+    const asEmployee = await getItemDetail(employeeCtx(), projectId, number);
+    expect(asEmployee.caps.edit).toBe(true);
+    expect(asEmployee.caps.endRequest).toBe(false);
 
     // The A picker's rows: every ACTIVE member, the owner first (joined
     // first), each with a name to show — the same read listItems makes.

@@ -6,7 +6,7 @@ import { withTenant } from "@/db";
 import { DomainError } from "@/lib/domain-error";
 import { setupTenant } from "@/members/dbtest-fixture";
 
-import { createItem } from "./items";
+import { createItem, deleteItem, setItemArchived } from "./items";
 import { createRequest } from "./requests";
 import { changeState, ensureProjectStates } from "./states";
 import { listTriage, triageGlance, type TriageGlance } from "./triage-lane";
@@ -170,6 +170,13 @@ async function newRequest(title: string, body: string | null = null): Promise<st
   );
   return created.id;
 }
+
+/** The two lifecycle stamps C29's delete guard is about. */
+const lifecycle = (id: string) =>
+  f.platform.workItem.findUniqueOrThrow({
+    where: { id },
+    select: { deletedAt: true, archivedAt: true },
+  });
 
 const readItem = (id: string) =>
   f.platform.workItem.findFirstOrThrow({
@@ -453,6 +460,40 @@ describe("a request cannot be ended by the back door", () => {
     expect(out.changed).toBe(true);
     expect((await readItem(ordinary.id)).stateCategory).toBe("CANCELLED");
   });
+
+  it("AN ANSWERED REQUEST CANNOT BE DELETED — the last silent-vanish (C29)", async () => {
+    // **THE DOOR THE OTHER GUARDS LEFT OPEN.** `transitionState` refuses
+    // to cancel a REQUEST without a reason, and `listPortalTasks`
+    // publishes a cancelled one only when it carries `triageReason`. A
+    // soft delete walked round both: the projection filters
+    // `deletedAt: null` at the top level, so deleting an
+    // answered request erased the row AND the agency's own reply from
+    // the client's list, with nothing said. Found by C29's recon.
+    const answered = await newRequest("Answered, then deleted");
+    await triageItem(ownerCtx(), answered, { verb: "DECLINE", reason: "Out of scope for now." });
+    const e = await deleteItem(ownerCtx(), answered).catch((err: unknown) => err);
+    expect(e).toBeInstanceOf(DomainError);
+    expect((e as DomainError).code).toBe("REQUEST_ANSWER_IS_THE_CLIENTS");
+    expect((await lifecycle(answered)).deletedAt).toBeNull();
+
+    // ARCHIVING IS STILL ALLOWED, and that is the point of refusing only
+    // the delete: the CANCELLED branch of the projection carries no
+    // `archivedAt` term, so an archived answer stays readable to the
+    // client while leaving the agency's own lists.
+    await setItemArchived(ownerCtx(), answered, true);
+    expect((await lifecycle(answered)).archivedAt).not.toBeNull();
+  });
+
+  it("an UNANSWERED request is still deletable — the guard is on the reply, not the kind", async () => {
+    // A member who files a request by mistake, or clears spam out of the
+    // lane, is hiding nothing from anybody: the client has never been
+    // told anything about it. What the guard protects is the agency's
+    // own words once they are in front of somebody.
+    const untouched = await newRequest("Filed by mistake");
+    await deleteItem(ownerCtx(), untouched);
+    expect((await lifecycle(untouched)).deletedAt).not.toBeNull();
+  });
+
 });
 
 describe("what the verb refuses", () => {

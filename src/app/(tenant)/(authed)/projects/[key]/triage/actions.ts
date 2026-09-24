@@ -13,6 +13,7 @@ import {
   type WorkCtx,
 } from "@/modules/work";
 import { runAction, type ActionResult } from "@/lib/server-actions";
+import { ITEM_SURFACES, itemReturnTo } from "@/lib/work-view";
 
 /**
  * The triage lane's four verbs, as server actions.
@@ -64,10 +65,36 @@ const input = z.discriminatedUnion("verb", [
 
 export type TriageActionInput = z.input<typeof input>;
 
+/**
+ * WHERE THE MEMBER PRESSED IT, which decides two things and nothing else:
+ * the address an MFA step-up returns to, and what is revalidated after.
+ *
+ * Absent means the lane. Present means the item panel's request band —
+ * the door C29 gave `DECLINE` outside the lane, because an ACCEPTED
+ * request keeps `kind = REQUEST` for ever while `listTriage` filters
+ * `stateCategory = TRIAGE`, so the row the agency could no longer end
+ * was not on the one screen that could end it.
+ *
+ * **IT CARRIES A SURFACE AND A NUMBER, NEVER A PATH.** `itemReturnTo`'s
+ * own docblock calls the return address an open-redirect surface and
+ * says it must be "built ONLY from validated values" — so the address is
+ * composed HERE, from a closed enum and an integer that have been through
+ * zod, exactly as `createSubtaskAction` and the backlog's actions
+ * compose theirs. A first cut had the client compute the path and pass
+ * it; a fresh review would have been right to call that a hole.
+ */
+const origin = z.object({
+  surface: z.enum(ITEM_SURFACES),
+  itemNumber: z.number().int().positive(),
+});
+
+export type TriageOrigin = z.input<typeof origin>;
+
 export async function triageAction(
   itemId: string,
   projectKey: string,
   raw: TriageActionInput,
+  from?: TriageOrigin,
 ): Promise<ActionResult<TriageOutcome>> {
   const parsed = input.safeParse(raw);
   const id = uuid.safeParse(itemId);
@@ -81,7 +108,16 @@ export async function triageAction(
   }
   const { membership, actor } = await requireTenantContext();
   const ctx: WorkCtx = { tenantId: membership.tenantId, actor };
-  const path = `/projects/${key.data}/triage`;
+  const lane = `/projects/${key.data}/triage`;
+  // The step-up return address is where the member actually is. A
+  // malformed origin falls back to the lane rather than refusing: the
+  // verb is the point, and a wrong return address is not worth losing a
+  // reply already typed for a client over.
+  const panel = from ? origin.safeParse(from) : null;
+  const path =
+    panel?.success === true
+      ? itemReturnTo(panel.data.surface, key.data, panel.data.itemNumber)
+      : lane;
 
   const result = await runAction(path, () =>
     triageItem(
@@ -98,9 +134,27 @@ export async function triageAction(
     // INTO (or out of) the board and the backlog. Revalidating only this
     // route would leave an accepted request missing from the board until
     // the next full load.
-    revalidatePath(path);
+    revalidatePath(lane);
     revalidatePath(`/projects/${key.data}/board`);
     revalidatePath(`/projects/${key.data}/backlog`);
+    // AND THE ITEM PAGE ITSELF when that is where it happened. The two
+    // PEEKS are already covered by the board and backlog paths above;
+    // what is not is `/projects/[key]/items/[number]`, so it is named
+    // literally.
+    //
+    // A first cut wrote `revalidatePath(\`/projects/${key.data}\`,
+    // "layout")` with a comment claiming it covered all three stops. It
+    // covered NONE: `revalidatePath` with a `type` builds the tag
+    // `_N_T_/projects/ACME/layout`, while a render's implicit tags are
+    // derived from the ROUTE PATTERN (`_N_T_/projects/[key]/layout`), so
+    // the two never meet. Next's docs say as much — a literal path takes
+    // no `type`. The panel still refreshed, but only because ANY
+    // `revalidatePath` call sets `pathWasRevalidated`, which the lane
+    // path above was already doing. A dead statement with a confident
+    // comment is worse than no statement; found by a fresh review.
+    if (panel?.success === true) {
+      revalidatePath(`/projects/${key.data}/items/${panel.data.itemNumber}`);
+    }
   }
   return result;
 }

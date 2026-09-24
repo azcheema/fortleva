@@ -507,6 +507,15 @@ export type ItemDetailCaps = {
   comment: boolean;
   /** `label:manage` — the `L` picker offers to create a label from the typed text. */
   manageLabels: boolean;
+  /**
+   * `work_item:triage` AND `work_item:triage_decline` — the request
+   * band's "Cancel and reply" is a control (C29). BOTH, because
+   * `triageItem` requires both and they supplement rather than nest.
+   * Named for the ACT rather than the codes, because the panel draws it
+   * only on a `kind = REQUEST` row that is still live and not archived:
+   * on anything else there is nothing to end.
+   */
+  endRequest: boolean;
 };
 
 export type ItemDetailResult = {
@@ -662,6 +671,21 @@ export async function getItemDetail(
         "comment:delete",
         "comment:change_visibility",
         "label:manage",
+        // C29's verb, and BOTH of its codes. `triageItem` runs
+        // `requireAccess("work_item:triage")` and then, for DECLINE,
+        // `requireAccess("work_item:triage_decline")` — they SUPPLEMENT
+        // rather than nest, and a first cut of this gated on the second
+        // alone, calling it "the stricter of the two". It is not: the
+        // subset only holds in the seeded templates. `setRolePermissions`
+        // applies arbitrary per-code changes to a custom role with no
+        // dependency map, so a tenant who clones Manager, revokes
+        // `work_item:triage` (they do not want that person answering the
+        // lane) and keeps `work_item:triage_decline` would get a band on
+        // every request and FORBIDDEN on every press. Found by a fresh
+        // review. Founder decision 2026-09-23: stopping agreed work and
+        // writing the client the reason is a delivery lead's act.
+        "work_item:triage",
+        "work_item:triage_decline",
         // Not a cap the panel gates a control on — it gates the `A`
         // picker's CLIENT group, which is a list of `Contact` rows and
         // therefore the client card's own code (`getClient`).
@@ -811,6 +835,8 @@ export async function getItemDetail(
         create: held.has("work_item:create"),
         comment: held.has("comment:create"),
         manageLabels: held.has("label:manage"),
+        endRequest:
+          held.has("work_item:triage") && held.has("work_item:triage_decline"),
       },
       members,
       contacts,
@@ -1691,6 +1717,46 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
     // Unlocked, explicitly (rows.ts): the compare-and-set below IS this
     // writer's guard — it diffs nothing from this read but the id.
     const item = await loadItemInScope(tx, ctx, itemId, { lock: false });
+    // **AN ANSWERED CLIENT REQUEST MAY NOT BE DELETED** (founder decision 2026-09-23,
+    // OPEN_QUESTIONS C29; the hole was found by that decision's own
+    // recon, not by the decision).
+    //
+    // Slice 6b's rule is that a client's own request never disappears
+    // without a reason: `transitionState` refuses to cancel a REQUEST
+    // without a `TriageWrite`, and `listPortalTasks` publishes a
+    // cancelled one only when it carries `triageReason`. **A soft delete
+    // walked round both.** `listPortalTasks` has a single top-level
+    // `deletedAt: null` term (`archivedAt` is the one that is
+    // per-branch), so deleting an answered request erased the row AND
+    // the agency's reply from the client's list with nothing said — the
+    // exact experience the rule exists against, reached by the one verb
+    // nobody had thought to guard. Archiving deliberately does not do
+    // this: the CANCELLED branch carries no `archivedAt` term, so an
+    // archived answer stays readable to the client.
+    //
+    // **KEYED ON THE REPLY, NOT ON THE KIND, AND THAT LEAVES A RESIDUAL
+    // THIS COMMENT MUST NOT PRETEND AWAY.** What is protected is the
+    // agency's words: once they are in front of a client they are the
+    // client's to keep. An UNANSWERED request is still deletable, and a
+    // fresh review was right that the first version of this comment
+    // justified that with something false — "the client has nothing to
+    // lose that they can see". They can see it: a request is born
+    // CLIENT_VISIBLE and shows as "Requested" while it waits, and as
+    // "Planned" once accepted. So deleting one DOES still remove a row
+    // the client was watching, with nothing said. (A reopened request is
+    // the same case by another route: `transitionState` clears
+    // `triageReason` on the way out of CANCELLED, so this guard stops
+    // applying to a row the client watched go from "Declined" back to
+    // live.)
+    //
+    // That is deliberate rather than overlooked: the founder settled C29
+    // as "protect the reply", and refusing every delete would leave a
+    // mis-filed or abusive request on the client's portal for ever, with
+    // Decline as the only way to address it. The residual is recorded in
+    // OPEN_QUESTIONS C29 so it is a known trade rather than a discovery.
+    if (item.kind === "REQUEST" && item.triageReason !== null) {
+      fail("REQUEST_ANSWER_IS_THE_CLIENTS", "answered request");
+    }
     // ONE stamp for the item and everything that goes with it, so the
     // whole deletion reads as a single event to an export and to the
     // retention sweep. What a future undo restores by is the audit
