@@ -5,7 +5,7 @@ import { getTranslations } from "next-intl/server";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 
 import { isAuthorized } from "@/authz/authorize";
-import { Callout, EntityTile, Page, PageHeader, StatusBadge } from "@/components/semantic";
+import { Callout, EntityTile, HealthChip, Page, PageHeader, StatusBadge } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { hasAccess } from "@/entitlements/resolver";
 import { requireTenantContext } from "@/members/tenant-context";
@@ -130,6 +130,10 @@ export default async function ProjectLayout({
     // concealed that a viewer could not reach one tab away.
     ...(project.caps.triage ? [{ href: `${base}/triage`, label: t("tabs.triage") }] : []),
     { href: `${base}/timeline`, label: t("tabs.timeline") },
+    // Phase 3: progress updates — the portal centrepiece. Unconditional
+    // like Timeline: `project_update:view` is held by every seeded role,
+    // and the page carries its own gate (`listUpdates` → requireAccess).
+    { href: `${base}/updates`, label: t("tabs.updates") },
     ...(canViewTime ? [{ href: `${base}/time`, label: t("tabs.time"), also: [`${base}/money`] }] : []),
     ...(project.caps.viewDocuments ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),
     { href: `${base}/team`, label: t("tabs.team") },
@@ -178,8 +182,11 @@ export default async function ProjectLayout({
                 {t("portal.on")}
               </Badge>
             ) : null}
-            {/* Phase 3 slot: <HealthChip value={project.health} /> lands here,
-                beside the status, once ProjectUpdate.health exists. */}
+            {/* The newest published update's health — a person's call,
+                beside the machine's status (UI.md rule 11). Absent until
+                the first post is published: an empty chip would be a
+                health nobody chose. */}
+            {project.health ? <HealthChip value={project.health} /> : null}
           </>
         }
         actions={

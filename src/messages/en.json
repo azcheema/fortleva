@@ -1161,7 +1161,14 @@
     "CONTACT_HAS_HISTORY": "This person has written in the portal, so their record is kept and cannot be deleted. They already have no access.",
     "REQUEST_ANSWER_IS_THE_CLIENTS": "You have already replied to this request, so it cannot be deleted — your reply is the client's to keep. Archive it instead.",
     "REQUEST_RATE_LIMITED": "You have sent several requests in a short time. Wait a few minutes and try again.",
-    "REQUEST_BUSY": "We could not send that just now. Try again in a moment."
+    "REQUEST_BUSY": "We could not send that just now. Try again in a moment.",
+    "UPDATE_IMMUTABLE": "A published update cannot be changed. Retract it within 15 minutes, or add a note.",
+    "UPDATE_NOT_DRAFT": "That update is no longer a draft.",
+    "UPDATE_NOT_PUBLISHED": "That update is not published.",
+    "UPDATE_RETRACT_WINDOW_CLOSED": "More than 15 minutes have passed since publishing, so this update can no longer be retracted. Add a note, or archive it.",
+    "UPDATE_EMPTY": "Write something in at least one section before publishing.",
+    "UPDATE_CHANGED": "The draft changed while it was being published. Check it and publish again.",
+    "UPDATE_TOO_LARGE": "One of the sections is too long to save."
   },
   "assignments": {
     "title": "Team",
@@ -1433,7 +1440,8 @@
       "team": "Team",
       "time": "Time",
       "portal": "Portal",
-      "triage": "Triage"
+      "triage": "Triage",
+      "updates": "Updates"
     },
     "portal": {
       "title": "Client portal",
@@ -2345,6 +2353,148 @@
         "CANCELLED": "Cancelled",
         "TRIAGE": "Triage"
       }
+    },
+    "updates": {
+      "title": "Updates",
+      "description": "Status posts for this project. Once published, a post is what the client reads on the portal — and it cannot be edited.",
+      "new": "New update",
+      "latest": "Latest published",
+      "list": "All updates",
+      "noPermission": "You do not have permission to read this project's updates.",
+      "empty": {
+        "title": "No updates yet",
+        "body": "Write the first one: pick a health, say what happened and what is next, and publish it to the portal."
+      },
+      "columns": {
+        "update": "Update",
+        "health": "Health",
+        "status": "Status",
+        "author": "Author",
+        "date": "Date"
+      },
+      "status": {
+        "DRAFT": "Draft",
+        "PUBLISHED": "Published",
+        "ARCHIVED": "Archived"
+      },
+      "untitled": "Untitled",
+      "seq": "#{seq}",
+      "open": "Open {name}",
+      "composer": {
+        "title": "New update",
+        "editTitle": "Edit draft",
+        "back": "Back to updates",
+        "health": "Health",
+        "healthHint": "Your call, never computed. The numbers sit beside it so the client can see both.",
+        "titleLabel": "Title",
+        "titlePlaceholder": "e.g. Week 38: on track for the launch",
+        "periodFrom": "From",
+        "periodTo": "To",
+        "periodHint": "Leave both empty to count from the previous update.",
+        "sections": "What to write",
+        "placeholders": {
+          "SUMMARY": "How it is going, in two or three sentences.",
+          "DONE": "What the team finished. Pull lines in from the panel on the right.",
+          "NEXT": "What happens next, and roughly when.",
+          "BLOCKERS": "What is in the way.",
+          "DECISIONS_NEEDED": "What you need from the client, and by when."
+        },
+        "sectionEditor": "{section} — text",
+        "toolbar": "{section} formatting",
+        "metricsTitle": "Numbers the client will see",
+        "metricsHint": "Frozen the moment you publish. Untick a group to leave it out of this post.",
+        "include": {
+          "tasks": "Tasks",
+          "milestones": "Milestones",
+          "versions": "Releases",
+          "requests": "Requests",
+          "hours": "Hours"
+        },
+        "hoursOff": "Hours are not shared with this client, so the hours group is left out (Portal tab).",
+        "changesTitle": "Since the last update",
+        "changesHint": "What happened in this window. One click adds a line to “Done” — private work is marked, and adding it publishes its title.",
+        "changesEmpty": "Nothing recorded in this window yet.",
+        "changesDone": "Finished tasks",
+        "changesMilestones": "Milestones reached",
+        "changesVersions": "Shipped",
+        "changesRequests": "New requests",
+        "addLine": "Add “{title}” to Done",
+        "addAllShared": "Add every shared line to Done",
+        "previewTitle": "What the client will see",
+        "previewHint": "Drawn by the same code as the portal. The numbers refresh when the dates change.",
+        "saveDraft": "Save draft",
+        "saved": "Draft saved.",
+        "publish": "Publish…",
+        "discard": "Discard draft",
+        "discardQuestion": "Discard this draft? Nothing has been published.",
+        "discarded": "Draft discarded.",
+        "failed": "That did not save. Your text is still here — try again.",
+        "unsaved": "Unsaved changes"
+      },
+      "publish": {
+        "title": "Publish update",
+        "description": "The numbers are frozen now, and the post cannot be edited afterwards — only retracted within 15 minutes, or annotated.",
+        "audience": "Who can read it",
+        "INTERNAL": "Private to team",
+        "CLIENT_VISIBLE": "Client can see",
+        "internalHint": "Only the team sees it. You can share it with the client later.",
+        "clientHint": "Your client reads it on the portal the moment it is published.",
+        "portalOffHint": "The portal is off for this project — the client will see it once the switch is on (Portal tab).",
+        "confirm": "Publish",
+        "back": "Go back",
+        "publishedVisible": "Update #{seq} published. Your client can read it.",
+        "publishedInternal": "Update #{seq} published, private to the team.",
+        "publishedPortalOff": "Update #{seq} published. Your client will see it once the portal is switched on for this project."
+      },
+      "detail": {
+        "back": "All updates",
+        "author": "Written by {name}",
+        "publishedBy": "Published by {name}",
+        "draftBanner": "This is a draft. Only the team can see it.",
+        "archivedBanner": "Archived — the client no longer sees it. It stays on record.",
+        "internalTitle": "For the team",
+        "internalHint": "Frozen at publish, never shown to the client. Each figure is shown to those who could see it live.",
+        "byMember": "Hours by member",
+        "cost": "Cost and margin",
+        "costValue": "Value",
+        "costCost": "Cost",
+        "costMargin": "Margin",
+        "uncosted": "{hours} without a cost rate at the time",
+        "budget": "Budget",
+        "budgetUsed": "{used} of {amount} · {percent}",
+        "budgetPeriod": "Period {key}",
+        "noInternal": "Nothing here for you to see — team hours, margin and budget are shown to those who hold them.",
+        "retractUntil": "Can be retracted until {time}",
+        "actions": {
+          "hide": "Hide from client",
+          "show": "Show to client",
+          "archive": "Archive",
+          "archiveQuestion": "Archive this update? The client will no longer see it; it stays on record.",
+          "retract": "Retract",
+          "retractQuestion": "Retract this update? It becomes a draft again, the client no longer sees it, and it gets a new number when republished.",
+          "annotate": "Add a note",
+          "editNote": "Edit the note",
+          "clearNote": "Remove the note",
+          "clearNoteQuestion": "Remove the note? The client will no longer see it."
+        },
+        "annotateDialog": {
+          "title": "Add a note",
+          "description": "The one thing that can change after publishing. The client reads it under the post.",
+          "label": "Note",
+          "placeholder": "Correction: the launch is 12 October, not September.",
+          "count": "{count} of {max}",
+          "save": "Save note"
+        },
+        "toasts": {
+          "hidden": "Hidden from the client.",
+          "shown": "The client can read it now.",
+          "archived": "Update archived.",
+          "retracted": "Update retracted — it is a draft again.",
+          "annotated": "Note saved.",
+          "noteCleared": "Note removed.",
+          "failed": "That did not work."
+        }
+      }
     }
   },
   "portal": {
@@ -2386,6 +2536,15 @@
     },
     "errors": {
       "generic": "Something in that request could not be completed. Try again, or ask your contact at the agency."
+    },
+    "updates": {
+      "latest": "Latest update",
+      "all": "All updates",
+      "title": "Updates",
+      "description": "Every update your agency has published for {project}, newest first.",
+      "empty": "No updates yet.",
+      "back": "Back to your projects",
+      "updatedAgo": "Updated {date}"
     }
   },
   "viewAs": {
@@ -2925,6 +3084,41 @@
       "bulletList": "Bulleted list",
       "orderedList": "Numbered list",
       "taskList": "Checklist"
+    }
+  },
+  "updates": {
+    "number": "Update #{seq}",
+    "published": "Published {date}",
+    "period": "{from} – {to}",
+    "periodFrom": "From {from}",
+    "periodTo": "Until {to}",
+    "note": "Note added after publishing: {note}",
+    "sections": {
+      "SUMMARY": "Summary",
+      "DONE": "Done",
+      "NEXT": "Next",
+      "BLOCKERS": "Blockers",
+      "DECISIONS_NEEDED": "Decisions needed"
+    },
+    "metrics": {
+      "title": "By the numbers",
+      "asOf": "Numbers as of {date}",
+      "tasks": "Tasks done",
+      "tasksValue": "{done} of {total}",
+      "tasksInPeriod": "{count, plural, =0 {0 finished this period} =1 {1 finished this period} other {# finished this period}}",
+      "milestones": "Milestones",
+      "milestonesValue": "{done} of {total}",
+      "milestonesHit": "Reached this period: {names}",
+      "versions": "Releases this period",
+      "versionsNone": "None",
+      "requests": "Open requests",
+      "requestsAccepted": "{count, plural, =0 {0 accepted this period} =1 {1 accepted this period} other {# accepted this period}}",
+      "hours": "Hours this period",
+      "hoursToDate": "{hours} to date",
+      "budgetHours": "Budget {hours}",
+      "amountInPeriod": "{amount} this period",
+      "amountToDate": "{amount} to date",
+      "budgetAmount": "Budget {amount}"
     }
   }
 }

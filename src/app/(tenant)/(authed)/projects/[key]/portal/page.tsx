@@ -155,7 +155,14 @@ export default async function ProjectPortalPage({ params }: { params: Promise<{ 
             claim is that it renders the portal's own components, so
             nothing here may fork them. */}
         <div inert>
-          {preview.tasks ? <ProjectTasks project={preview.tasks} /> : <PortalTasksEmpty />}
+          {preview.tasks || preview.update ? (
+            <ProjectTasks
+              project={preview.tasks ?? { projectId: project.id, projectName: project.name, tasks: [] }}
+              update={preview.update}
+            />
+          ) : (
+            <PortalTasksEmpty />
+          )}
         </div>
       </section>
 

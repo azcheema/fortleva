@@ -64,6 +64,9 @@ export const MODEL_CLASSES = {
     "shiftBreak",
     "timeReport",
     "workType",
+    // Phase 3 — progress updates (DATA_MODEL.md §6.16):
+    "projectUpdate",
+    "projectUpdateInternalSnapshot",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -149,6 +152,10 @@ export const RLS_CLASSES = {
     "shift",
     "shiftBreak",
     "workType",
+    // Phase 3 — the per-member / cost / budget half of a published
+    // update, 1:1 with the class-B row and NEVER contact-reachable
+    // (DATA_MODEL.md §6.16, SECURITY.md §T9 "ProjectUpdate snapshots").
+    "projectUpdateInternalSnapshot",
   ],
   B_clientScoped: ["client", "contact"],
   B_projectScoped: [
@@ -167,6 +174,9 @@ export const RLS_CLASSES = {
     // and time_report (4-term gate: + status = PUBLISHED).
     "projectTimeSummary",
     "timeReport",
+    // Phase 3 — the portal centrepiece (4-term gate: + status = PUBLISHED,
+    // like time_report). Its per-member / cost twin is class A below.
+    "projectUpdate",
   ],
   // Receiver-bound rows: tenant_isolation + a RESTRICTIVE principal_scope
   // policy binding SELECT/UPDATE to the receiver (member => own MEMBER

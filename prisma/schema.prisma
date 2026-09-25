@@ -305,6 +305,9 @@ model Tenant {
   shifts                     Shift[]
   shiftBreaks                ShiftBreak[]
   timeReports                TimeReport[]
+  // Phase 3 — progress updates (§6.16):
+  projectUpdates                 ProjectUpdate[]
+  projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   workTypes                  WorkType[]
 
   @@map("tenant")
@@ -655,6 +658,7 @@ model Client {
   projectBudgets       ProjectBudget[]
   projectTimeSummaries ProjectTimeSummary[]
   timeReports          TimeReport[]
+  projectUpdates       ProjectUpdate[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -964,6 +968,8 @@ model Project {
   budgets        ProjectBudget[]
   timeSummaries  ProjectTimeSummary[]
   timeReports    TimeReport[]
+  // Phase 3:
+  updates        ProjectUpdate[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -1073,6 +1079,111 @@ enum ServiceStatus {
   ACTIVE
   PAUSED
   ENDED
+}
+
+/// Progress-update health — HUMAN-CHOSEN, never computed (DATA_MODEL.md
+/// §6.16): a computed health is either wrong or ignored, so the machine
+/// numbers sit NEXT to it on the frozen snapshot instead.
+enum ProjectHealth {
+  ON_TRACK
+  AT_RISK
+  OFF_TRACK
+  ON_HOLD
+  COMPLETE
+
+  @@map("project_health")
+}
+
+enum ProjectUpdateStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED // archive-only; a published update is never deleted
+
+  @@map("project_update_status")
+}
+
+/// ProjectUpdate — one status post, the portal centrepiece (§6.16;
+/// Phase 3; rides on entitlement `work`, `project_update:*`). A human
+/// picks the health; the machine fills the metrics at PUBLISH and freezes
+/// them: `portalSnapshot` holds only portal-safe aggregates (tasks done /
+/// total, milestones, versions, requests, hours only when the project
+/// shares them), and everything per-member or cost-shaped lives on the
+/// class-A `ProjectUpdateInternalSnapshot` so it never sits on a row a
+/// contact can select. `seq` is allocated at publish from
+/// counters.next("project_update:<projectId>") — a draft has none.
+/// body Json = { sections: [{ key SUMMARY|DONE|NEXT|BLOCKERS|
+/// DECISIONS_NEEDED|CUSTOM, title?, body Tiptap }], metrics: { include } }.
+/// IMMUTABLE AFTER PUBLISH (trigger project_update_immutable): only
+/// status (PUBLISHED → ARCHIVED), visibility, editNote, pdfDocumentId and
+/// the stamped columns may change — except that within FIFTEEN MINUTES of
+/// publishing the post may be RETRACTED to DRAFT, giving up its number,
+/// its snapshots and its audience (§6.16's grace window; the service and
+/// the trigger enforce the same clock). Archiving hides it from the
+/// portal (visibility → INTERNAL; CHECK visible_only_published).
+/// portal_gate is the FOUR-term form: + status = 'PUBLISHED', so a draft
+/// is unreachable by a contact whatever its visibility says.
+/// scope=client  rls=B (projectScoped; + status = PUBLISHED)  ret=R2  enc=none
+/// audit: project_update.published | archived | visibility_changed |
+///        retracted | annotated | draft_discarded
+model ProjectUpdate {
+  id                  String              @id @default(uuid(7))
+  tenantId            String              @map("tenant_id")
+  clientId            String              @map("client_id") // denormalised for portal RLS
+  projectId           String              @map("project_id")
+  seq                 Int? // counters.next("project_update:<projectId>") at PUBLISH; NULL on a draft (CHECK)
+  health              ProjectHealth // human-chosen; the composer's first control
+  title               String?             @db.VarChar(200)
+  periodStart         DateTime?           @map("period_start") @db.Date
+  periodEnd           DateTime?           @map("period_end") @db.Date
+  body                Json // { sections, metrics }
+  bodyText            String?             @map("body_text") // extracted plain text (digest, a later search feed)
+  portalSnapshot      Json?               @map("portal_snapshot") // portal-safe metrics frozen at publish; NULL on a draft (CHECK)
+  changesSinceLast    Json?               @map("changes_since_last") // ids only — the pull-in panel's source, staff rendering
+  status              ProjectUpdateStatus @default(DRAFT)
+  visibility          Visibility          @default(INTERNAL) // the publish dialog asks; INTERNAL unless PUBLISHED (CHECK)
+  portalEnabled       Boolean             @default(false) @map("portal_enabled") // trigger-maintained
+  authorMemberId      String              @map("author_member_id") // attribution, no FK
+  publishedAt         DateTime?           @map("published_at") @db.Timestamptz(6)
+  publishedByMemberId String?             @map("published_by_member_id") // attribution, no FK
+  editNote            String?             @map("edit_note") @db.VarChar(500) // a note added AFTER publish — the one text that may change
+  pdfDocumentId       String?             @map("pdf_document_id") // → Document(kind REPORT); reserved, nothing writes it yet
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant           Tenant                         @relation(fields: [tenantId], references: [id])
+  client           Client                         @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project          Project                        @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  internalSnapshot ProjectUpdateInternalSnapshot?
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@unique([tenantId, projectId, seq])
+  @@index([tenantId, projectId, status, publishedAt(sort: Desc)])
+  @@index([tenantId, clientId, visibility, publishedAt(sort: Desc)]) // portal + timeline
+  @@map("project_update")
+}
+
+/// ProjectUpdateInternalSnapshot — 1:1 with a PUBLISHED ProjectUpdate,
+/// CLASS A: the per-member hours, the cost/margin and the budget burn the
+/// composer shows staff, frozen at publish beside portalSnapshot. Cost
+/// figures are present only when the publisher held rate:view_cost ✦
+/// with a recent factor at publish time (else NULL — never back-filled),
+/// and every part is gated on READ by the code that gates its live
+/// source (time:view_team, rate:view_cost ✦, budget:view). Deleted with
+/// its update, and by a retraction.
+/// scope=tenant  rls=A (principalScoped)  ret=R2  enc=none (aggregates only)
+model ProjectUpdateInternalSnapshot {
+  updateId   String   @id @map("update_id")
+  tenantId   String   @map("tenant_id")
+  byMember   Json?    @map("by_member") // [{ memberId, seconds, billableSeconds }]
+  cost       Json?    // { inPeriod, toDate, margin, marginPercent, currency } — NULL unless rate:view_cost at publish
+  budget     Json?    // { kind, amount, currency, used, usedPercent, periodKey }
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id])
+  update ProjectUpdate @relation(fields: [tenantId, updateId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, updateId])
+  @@map("project_update_internal_snapshot")
 }
 
 /// What the client buys — a RECORD with renewal dates, not a billing

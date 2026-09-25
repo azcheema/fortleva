@@ -12,6 +12,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import type {
   HoursSharingMode,
   MilestoneStatus,
+  ProjectHealth,
   ProjectStatus,
   ProjectVersionStatus,
   UpdateCadence,
@@ -19,6 +20,7 @@ import type {
 } from "@/generated/prisma/enums";
 import { fail, isDeadlock, isLockTimeout, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
+import { latestPublishedHealth } from "@/modules/work/updates";
 import { retryOnContention } from "@/lib/retry";
 
 /**
@@ -182,6 +184,12 @@ export type ProjectDetail = {
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * The health of the newest PUBLISHED progress update, whatever its
+   * visibility, or null before the first one — the header chip (Phase
+   * 3, DATA_MODEL §6.16). Human-chosen on the post, never computed here.
+   */
+  health: ProjectHealth | null;
   client: { id: string; name: string };
   milestones: MilestoneRow[];
   versions: VersionRow[];
@@ -225,6 +233,10 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         },
       },
     });
+    // In sequence after the row (AGENTS.md's `Promise.all` trap): the
+    // newest published post's health, through the one helper that
+    // knows which post that is.
+    const latestUpdate = await latestPublishedHealth(tx, ctx.tenantId, head!.id);
     const lead = p.leadMemberId
       ? await tx.member.findFirst({
           where: { id: p.leadMemberId },
@@ -255,6 +267,7 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
       archivedAt: p.archivedAt,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
+      health: latestUpdate?.health ?? null,
       client: p.client,
       milestones: p.milestones.map((m) => ({
         id: m.id,

@@ -1,14 +1,69 @@
 import { FolderOpenIcon } from "lucide-react";
+import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 
 import { EmptyState, SectionCard, StatusIcon } from "@/components/semantic";
-import { formatDay } from "@/lib/format";
+import { UpdateView } from "@/components/updates/update-view";
+import { formatDate, formatDay } from "@/lib/format";
 import { STATUS_MAP } from "@/lib/enum-map";
-import { PORTAL_TASK_CATEGORIES, type PortalProjectTasks, type PortalTaskCategory } from "@/modules/work";
+import {
+  PORTAL_TASK_CATEGORIES,
+  readUpdateBody,
+  type PortalProjectTasks,
+  type PortalTaskCategory,
+  type PortalUpdate,
+} from "@/modules/work";
+import type { PortalSnapshot } from "@/modules/work/update-snapshot";
 import { TONE_CHIP } from "@/lib/tones";
 
 import { PortalTaskDone } from "./task-done";
 import { cn } from "@/lib/utils";
+
+/**
+ * THE LATEST PUBLISHED UPDATE, at the top of the project's card (Phase
+ * 3, DATA_MODEL §6.16 — "the client sees one page: how is it going,
+ * what's next, what do you need from me"). Drawn by `UpdateView`, the
+ * same component the member's composer previews with and the member's
+ * Updates tab renders a published post with, so the three cannot drift.
+ *
+ * `body` and `metrics` arrive as the row's stored JSON: `readUpdateBody`
+ * is total over what the writer stores and reads an unknown shape as an
+ * empty body rather than throwing on a client's page. The metrics are
+ * the frozen portal-safe aggregates and are typed as such here because
+ * the projection (`listPortalUpdates`) hands them over as `unknown` —
+ * the type is a reading of what `computePortalSnapshot` writes, and the
+ * forbidden-keys walk in `update-metrics.test.ts` is what keeps it true.
+ */
+export function LatestUpdate({ update }: { update: PortalUpdate }) {
+  const t = useTranslations("portal.updates");
+  return (
+    <section data-slot="portal-update" className="flex flex-col gap-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="eyebrow text-muted-foreground">{t("latest")}</span>
+        <Link
+          href={`/portal/projects/${update.projectKey}/updates`}
+          className="text-xs text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          {t("all")}
+        </Link>
+      </div>
+      <UpdateView
+        update={{
+          seq: update.seq,
+          health: update.health,
+          title: update.title,
+          periodStart: update.periodStart,
+          periodEnd: update.periodEnd,
+          publishedAt: update.publishedAt,
+          body: readUpdateBody(update.body),
+          metrics: (update.metrics as PortalSnapshot | null) ?? null,
+          editNote: update.editNote,
+        }}
+        headingLevel={4}
+      />
+    </section>
+  );
+}
 
 /**
  * TWO CONSUMERS SINCE 2026-09-21, AND THAT CONSTRAINS WHAT MAY GO IN
@@ -40,8 +95,16 @@ import { cn } from "@/lib/utils";
  * empty "Done" heading on a project that has not finished anything yet
  * says nothing worth a row of space.
  */
-export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
+export function ProjectTasks({
+  project,
+  update = null,
+}: {
+  project: PortalProjectTasks;
+  /** The project's newest published update, or null — drawn above the tasks (Phase 3). */
+  update?: PortalUpdate | null;
+}) {
   const t = useTranslations("portal.tasks");
+  const tUpdates = useTranslations("portal.updates");
   const tStates = useTranslations("states.portalTaskCategory");
   const locale = useLocale();
   const format = useFormatter();
@@ -52,8 +115,15 @@ export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
   })).filter((group) => group.tasks.length > 0);
 
   return (
-    <SectionCard title={project.projectName} description={t("heading")} contentClassName="p-0">
+    <SectionCard
+      title={project.projectName}
+      description={
+        update ? tUpdates("updatedAgo", { date: formatDate(locale, update.publishedAt) }) : t("heading")
+      }
+      contentClassName="p-0"
+    >
       <div className="divide-y divide-border">
+        {update ? <LatestUpdate update={update} /> : null}
         {groups.map(({ category, tasks }) => (
           // `data-slot`/`data-category` name the GROUP, for a browser
           // test to scope an assertion to one category: `SectionCard`

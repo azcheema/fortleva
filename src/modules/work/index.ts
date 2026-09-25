@@ -138,7 +138,60 @@ export {
   type PortalTaskCategory,
   type PortalTaskList,
   type PortalTaskListOptions,
+  // Phase 3 — the published updates a contact reads.
+  PORTAL_UPDATE_LIMIT,
+  listPortalUpdates,
+  type PortalUpdate,
+  type PortalUpdateListOptions,
 } from "./portal";
+// Phase 3 — progress updates (DATA_MODEL.md §6.16). The body vocabulary
+// and the snapshot's allow-list are leaf modules a client component may
+// import directly (`update-body.ts`, `update-metrics.ts` types); the
+// services below carry `withTenant` and stay server-side.
+export {
+  annotateUpdate,
+  archiveUpdate,
+  createUpdateDraft,
+  discardUpdateDraft,
+  getUpdate,
+  latestPublishedHealth,
+  listUpdates,
+  publishUpdate,
+  readComposerContext,
+  retractUpdate,
+  setUpdateVisibility,
+  updateUpdateDraft,
+  type ComposerContext,
+  type InternalView,
+  type UpdateCaps,
+  type UpdateDetail,
+  type UpdateDraftInput,
+  type UpdateList,
+  type UpdateListEntry,
+  type UpdatePublished,
+  type UpdateStatus,
+  type UpdateVisibility,
+} from "./updates";
+export {
+  ALL_METRICS_INCLUDED,
+  UPDATE_EDIT_NOTE_MAX,
+  UPDATE_METRIC_GROUPS,
+  UPDATE_RETRACT_WINDOW_MS,
+  UPDATE_SECTION_KEYS,
+  UPDATE_TITLE_MAX,
+  readUpdateBody,
+  type UpdateBody,
+  type UpdateMetricGroup,
+  type UpdateMetricsInclude,
+  type UpdateSection,
+  type UpdateSectionKey,
+} from "./update-body";
+export {
+  type ChangesSinceLast,
+  type InternalSnapshot,
+  type MetricsWindow,
+  type PortalSnapshot,
+} from "./update-metrics";
 // Phase 3 — the brokered writes (`portal-writes.ts`: authorize under
 // the contact's own principal, write under a system one). The row
 // shaping they delegate to (`requests.ts`) is deliberately NOT on the

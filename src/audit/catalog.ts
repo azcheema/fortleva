@@ -235,6 +235,29 @@ export const AUDIT_EVENTS = {
   "time_report.unpublished": TENANT,
   "time_report.archived": TENANT,
   "time_report.deleted": TENANT,
+  // PROGRESS UPDATES (Phase 3 — DATA_MODEL.md §6.16; ride on `work`).
+  // Publishing puts member-written prose in front of a client and
+  // freezes the numbers beside it; every later change to what the
+  // client can read is here too. A DRAFT edit is routine (nobody but
+  // staff can see a draft) and writes nothing.
+  // A draft is listed to every member with `project_update:view`, so
+  // who started one is recorded once; its edits are routine (a "Save
+  // draft" per row would be noise, and nobody outside staff reads a draft).
+  "project_update.drafted": TENANT,
+  "project_update.published": TENANT,
+  "project_update.archived": TENANT,
+  "project_update.visibility_changed": TENANT,
+  // Back to DRAFT within the fifteen-minute window — the number and the
+  // snapshots are given up, so an operator must be able to see that a
+  // client MAY have read a post that no longer exists.
+  "project_update.retracted": TENANT,
+  // The one text that changes after publish: a note under an immutable
+  // post ("Correction: read October for September"), client-readable.
+  "project_update.annotated": TENANT,
+  // A draft nobody outside staff could see, deleted — recorded because
+  // deletion is never routine, and because a draft can hold an hour's
+  // writing.
+  "project_update.draft_discarded": TENANT,
   // D5 work types
   "work_type.created": TENANT,
   "work_type.updated": TENANT,

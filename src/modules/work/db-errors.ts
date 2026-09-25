@@ -51,4 +51,10 @@ export const { mapDbError, guarded } = dbErrorMapper([
   // second two tenant-wide labels named alike were both accepted.
   ["label_tenant_id_project_id_name_key", "LABEL_TAKEN"],
   ["label_tenant_wide_name_key", "LABEL_TAKEN"],
+  // project_update_immutable / project_update_no_delete_published
+  // (20260925200000): every service in `updates.ts` checks the status
+  // and the retraction clock before it writes, so a raise here is the
+  // belt catching a race — two members acting on one post in the same
+  // second — and it is worth a sentence rather than a stack.
+  ["UPDATE_IMMUTABLE", "UPDATE_IMMUTABLE"],
 ]);

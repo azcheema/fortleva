@@ -116,6 +116,9 @@ const DBTEST_PREFIXES = [
   "ordering-",
   "pauthz-",
   "portalc-",
+  // Phase 3, progress updates — `src/modules/work/updates.dbtest.ts`,
+  // `setupTenant("pupd")`.
+  "pupd-",
   "prefs-",
   "prefs-notify-",
   "preq-",
@@ -400,6 +403,8 @@ async function provision(seedFile: string): Promise<void> {
     changeState,
     createItem,
     createLabel,
+    createUpdateDraft,
+    publishUpdate,
     setItemLabel,
     setItemMilestone,
     updateItemFields,
@@ -771,6 +776,37 @@ async function provision(seedFile: string): Promise<void> {
   // and the portal list empty for a reason nobody could see.
   await setPortalEnabled(ctx, projectId, true);
 
+  // ONE PUBLISHED PROGRESS UPDATE (Phase 3, DATA_MODEL §6.16), through
+  // the real publish path so the number, the snapshots and the audit
+  // row are the service's own. AT_RISK rather than the default, so the
+  // health chip on the project header and the portal card is visibly a
+  // choice; CLIENT_VISIBLE, so `portal-home` and the contact's updates
+  // stop have a post to draw. `updates.spec.ts` publishes a SECOND one
+  // and archives it before its test ends, so this stays the newest for
+  // the visual sweep that runs after it; a failure before that step
+  // leaves #2 as the newest, which changes screenshots and nothing that
+  // is asserted.
+  const paragraph = (text: string) => ({
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  });
+  const { id: seededUpdateId } = await createUpdateDraft(ctx, projectId, {
+    health: "AT_RISK",
+    title: "Vecka 38: designgranskning klar, lansering flyttad",
+    periodStart: addDays(today, -14),
+    periodEnd: today,
+    body: {
+      sections: [
+        { key: "SUMMARY", body: paragraph("Designgranskningen är klar och sidmallarna godkända. Lanseringen flyttas en vecka för att hinna med tillgänglighetsarbetet.") },
+        { key: "DONE", body: paragraph("Staging-miljön är uppe och DNS-posterna är förberedda.") },
+        { key: "NEXT", body: paragraph("Tillgänglighetsgranskning och innehållsinläsning under nästa vecka.") },
+        { key: "DECISIONS_NEEDED", body: paragraph("Bekräfta det nya lanseringsdatumet senast fredag.") },
+      ],
+      metrics: { include: { tasks: true, milestones: true, versions: true, requests: true, hours: true } },
+    },
+  });
+  await publishUpdate(ctx, seededUpdateId, { visibility: "CLIENT_VISIBLE" });
+
   // The invitation row is written directly rather than through
   // createInvite(): the service also sends mail, and a fixture must not
   // leave an envelope in .dev-outbox behind. Same columns, same hash.
@@ -1070,6 +1106,11 @@ async function removeTenant(
   await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.time_maintenance', 'on', true)`;
     await tx.$executeRaw`SELECT set_config('app.time_lock_bypass', 'on', true)`;
+    // Phase 3: a published progress update refuses DELETE outside the
+    // work-maintenance GUC (20260925200000), and the project cascade
+    // below would run that trigger.
+    await tx.$executeRaw`SELECT set_config('app.work_maintenance', 'on', true)`;
+    await tx.projectUpdate.deleteMany({ where: { tenantId } });
     await tx.timeReport.deleteMany({ where: { tenantId } });
     await tx.budgetAlert.deleteMany({ where: { tenantId } });
     await tx.projectBudget.deleteMany({ where: { tenantId } });

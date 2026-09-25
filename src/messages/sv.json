@@ -1161,7 +1161,14 @@
     "CONTACT_HAS_HISTORY": "Personen har skrivit i portalen, så posten behålls och kan inte raderas. Personen saknar redan åtkomst.",
     "REQUEST_ANSWER_IS_THE_CLIENTS": "Du har redan svarat på den här förfrågan, så den kan inte raderas — ditt svar tillhör kunden. Arkivera den i stället.",
     "REQUEST_RATE_LIMITED": "Du har skickat flera förfrågningar på kort tid. Vänta några minuter och försök igen.",
-    "REQUEST_BUSY": "Vi kunde inte skicka det just nu. Försök igen om en liten stund."
+    "REQUEST_BUSY": "Vi kunde inte skicka det just nu. Försök igen om en liten stund.",
+    "UPDATE_IMMUTABLE": "En publicerad uppdatering kan inte ändras. Dra tillbaka den inom 15 minuter, eller lägg till en anteckning.",
+    "UPDATE_NOT_DRAFT": "Den uppdateringen är inte längre ett utkast.",
+    "UPDATE_NOT_PUBLISHED": "Den uppdateringen är inte publicerad.",
+    "UPDATE_RETRACT_WINDOW_CLOSED": "Det har gått mer än 15 minuter sedan publiceringen, så uppdateringen kan inte längre dras tillbaka. Lägg till en anteckning eller arkivera den.",
+    "UPDATE_EMPTY": "Skriv något i minst ett avsnitt innan du publicerar.",
+    "UPDATE_CHANGED": "Utkastet ändrades medan det publicerades. Kontrollera det och publicera igen.",
+    "UPDATE_TOO_LARGE": "Ett av avsnitten är för långt för att sparas."
   },
   "assignments": {
     "title": "Team",
@@ -1433,7 +1440,8 @@
       "team": "Team",
       "time": "Tid",
       "portal": "Portal",
-      "triage": "Triage"
+      "triage": "Triage",
+      "updates": "Uppdateringar"
     },
     "portal": {
       "title": "Kundportal",
@@ -2345,6 +2353,148 @@
         "CANCELLED": "Avbruten",
         "TRIAGE": "Triage"
       }
+    },
+    "updates": {
+      "title": "Uppdateringar",
+      "description": "Lägesrapporter för projektet. När en är publicerad är det den kunden läser i portalen – och den kan inte redigeras.",
+      "new": "Ny uppdatering",
+      "latest": "Senast publicerad",
+      "list": "Alla uppdateringar",
+      "noPermission": "Du har inte behörighet att läsa projektets uppdateringar.",
+      "empty": {
+        "title": "Inga uppdateringar ännu",
+        "body": "Skriv den första: välj ett läge, berätta vad som hänt och vad som är nästa steg, och publicera till portalen."
+      },
+      "columns": {
+        "update": "Uppdatering",
+        "health": "Läge",
+        "status": "Status",
+        "author": "Författare",
+        "date": "Datum"
+      },
+      "status": {
+        "DRAFT": "Utkast",
+        "PUBLISHED": "Publicerad",
+        "ARCHIVED": "Arkiverad"
+      },
+      "untitled": "Utan rubrik",
+      "seq": "#{seq}",
+      "open": "Öppna {name}",
+      "composer": {
+        "title": "Ny uppdatering",
+        "editTitle": "Redigera utkast",
+        "back": "Tillbaka till uppdateringar",
+        "health": "Läge",
+        "healthHint": "Din bedömning, aldrig uträknad. Siffrorna står bredvid så att kunden ser båda.",
+        "titleLabel": "Rubrik",
+        "titlePlaceholder": "t.ex. Vecka 38: enligt plan inför lanseringen",
+        "periodFrom": "Från",
+        "periodTo": "Till",
+        "periodHint": "Lämna båda tomma för att räkna från föregående uppdatering.",
+        "sections": "Vad du skriver",
+        "placeholders": {
+          "SUMMARY": "Hur det går, i två eller tre meningar.",
+          "DONE": "Vad teamet blev klart med. Hämta rader från panelen till höger.",
+          "NEXT": "Vad som händer härnäst, och ungefär när.",
+          "BLOCKERS": "Vad som står i vägen.",
+          "DECISIONS_NEEDED": "Vad du behöver från kunden, och när."
+        },
+        "sectionEditor": "{section} – text",
+        "toolbar": "Formatering för {section}",
+        "metricsTitle": "Siffror kunden får se",
+        "metricsHint": "Fryses i samma stund som du publicerar. Bocka ur en grupp för att utelämna den i det här inlägget.",
+        "include": {
+          "tasks": "Uppgifter",
+          "milestones": "Milstolpar",
+          "versions": "Releaser",
+          "requests": "Önskemål",
+          "hours": "Timmar"
+        },
+        "hoursOff": "Timmar delas inte med den här kunden, så timgruppen utelämnas (fliken Portal).",
+        "changesTitle": "Sedan förra uppdateringen",
+        "changesHint": "Vad som hänt under perioden. Ett klick lägger till en rad under ”Klart” – privat arbete är markerat, och att lägga till det publicerar rubriken.",
+        "changesEmpty": "Inget registrerat under perioden ännu.",
+        "changesDone": "Avslutade uppgifter",
+        "changesMilestones": "Nådda milstolpar",
+        "changesVersions": "Levererat",
+        "changesRequests": "Nya önskemål",
+        "addLine": "Lägg till ”{title}” under Klart",
+        "addAllShared": "Lägg till alla delade rader under Klart",
+        "previewTitle": "Det här ser kunden",
+        "previewHint": "Ritas av samma kod som portalen. Siffrorna uppdateras när datumen ändras.",
+        "saveDraft": "Spara utkast",
+        "saved": "Utkastet sparat.",
+        "publish": "Publicera…",
+        "discard": "Släng utkastet",
+        "discardQuestion": "Släng utkastet? Inget har publicerats.",
+        "discarded": "Utkastet slängt.",
+        "failed": "Det sparades inte. Din text finns kvar – försök igen.",
+        "unsaved": "Osparade ändringar"
+      },
+      "publish": {
+        "title": "Publicera uppdatering",
+        "description": "Siffrorna fryses nu, och inlägget kan inte redigeras efteråt – bara dras tillbaka inom 15 minuter eller förses med en anteckning.",
+        "audience": "Vem kan läsa den",
+        "INTERNAL": "Privat för teamet",
+        "CLIENT_VISIBLE": "Kunden kan se",
+        "internalHint": "Bara teamet ser den. Du kan dela den med kunden senare.",
+        "clientHint": "Kunden läser den i portalen i samma stund som den publiceras.",
+        "portalOffHint": "Portalen är av för projektet – kunden ser den när brytaren slås på (fliken Portal).",
+        "confirm": "Publicera",
+        "back": "Gå tillbaka",
+        "publishedVisible": "Uppdatering #{seq} publicerad. Kunden kan läsa den.",
+        "publishedInternal": "Uppdatering #{seq} publicerad, privat för teamet.",
+        "publishedPortalOff": "Uppdatering #{seq} publicerad. Kunden ser den när portalen slås på för projektet."
+      },
+      "detail": {
+        "back": "Alla uppdateringar",
+        "author": "Skriven av {name}",
+        "publishedBy": "Publicerad av {name}",
+        "draftBanner": "Det här är ett utkast. Bara teamet kan se det.",
+        "archivedBanner": "Arkiverad – kunden ser den inte längre. Den finns kvar i historiken.",
+        "internalTitle": "För teamet",
+        "internalHint": "Fryst vid publiceringen, visas aldrig för kunden. Varje siffra visas för dem som kunde se den live.",
+        "byMember": "Timmar per medlem",
+        "cost": "Kostnad och marginal",
+        "costValue": "Värde",
+        "costCost": "Kostnad",
+        "costMargin": "Marginal",
+        "uncosted": "{hours} utan kostnadstaxa vid tillfället",
+        "budget": "Budget",
+        "budgetUsed": "{used} av {amount} · {percent}",
+        "budgetPeriod": "Period {key}",
+        "noInternal": "Inget här för dig att se – teamets timmar, marginal och budget visas för dem som har behörigheten.",
+        "retractUntil": "Kan dras tillbaka till {time}",
+        "actions": {
+          "hide": "Dölj för kunden",
+          "show": "Visa för kunden",
+          "archive": "Arkivera",
+          "archiveQuestion": "Arkivera uppdateringen? Kunden ser den inte längre; den finns kvar i historiken.",
+          "retract": "Dra tillbaka",
+          "retractQuestion": "Dra tillbaka uppdateringen? Den blir ett utkast igen, kunden ser den inte längre, och den får ett nytt nummer när den publiceras på nytt.",
+          "annotate": "Lägg till anteckning",
+          "editNote": "Redigera anteckningen",
+          "clearNote": "Ta bort anteckningen",
+          "clearNoteQuestion": "Ta bort anteckningen? Kunden ser den inte längre."
+        },
+        "annotateDialog": {
+          "title": "Lägg till anteckning",
+          "description": "Det enda som kan ändras efter publiceringen. Kunden läser den under inlägget.",
+          "label": "Anteckning",
+          "placeholder": "Rättelse: lanseringen är 12 oktober, inte september.",
+          "count": "{count} av {max}",
+          "save": "Spara anteckning"
+        },
+        "toasts": {
+          "hidden": "Dold för kunden.",
+          "shown": "Kunden kan läsa den nu.",
+          "archived": "Uppdateringen arkiverad.",
+          "retracted": "Uppdateringen tillbakadragen – den är ett utkast igen.",
+          "annotated": "Anteckningen sparad.",
+          "noteCleared": "Anteckningen borttagen.",
+          "failed": "Det gick inte."
+        }
+      }
     }
   },
   "portal": {
@@ -2386,6 +2536,15 @@
     },
     "errors": {
       "generic": "Något i förfrågan kunde inte genomföras. Försök igen eller hör av dig till din kontakt på byrån."
+    },
+    "updates": {
+      "latest": "Senaste uppdateringen",
+      "all": "Alla uppdateringar",
+      "title": "Uppdateringar",
+      "description": "Alla uppdateringar din byrå har publicerat för {project}, nyast först.",
+      "empty": "Inga uppdateringar ännu.",
+      "back": "Tillbaka till dina projekt",
+      "updatedAgo": "Uppdaterad {date}"
     }
   },
   "viewAs": {
@@ -2925,6 +3084,41 @@
       "bulletList": "Punktlista",
       "orderedList": "Numrerad lista",
       "taskList": "Checklista"
+    }
+  },
+  "updates": {
+    "number": "Uppdatering #{seq}",
+    "published": "Publicerad {date}",
+    "period": "{from} – {to}",
+    "periodFrom": "Från {from}",
+    "periodTo": "Till och med {to}",
+    "note": "Anteckning tillagd efter publiceringen: {note}",
+    "sections": {
+      "SUMMARY": "Sammanfattning",
+      "DONE": "Klart",
+      "NEXT": "Nästa steg",
+      "BLOCKERS": "Hinder",
+      "DECISIONS_NEEDED": "Beslut som behövs"
+    },
+    "metrics": {
+      "title": "I siffror",
+      "asOf": "Siffror per {date}",
+      "tasks": "Uppgifter klara",
+      "tasksValue": "{done} av {total}",
+      "tasksInPeriod": "{count, plural, =0 {0 avslutade under perioden} =1 {1 avslutad under perioden} other {# avslutade under perioden}}",
+      "milestones": "Milstolpar",
+      "milestonesValue": "{done} av {total}",
+      "milestonesHit": "Nådda under perioden: {names}",
+      "versions": "Releaser under perioden",
+      "versionsNone": "Inga",
+      "requests": "Öppna önskemål",
+      "requestsAccepted": "{count, plural, =0 {0 antagna under perioden} =1 {1 antaget under perioden} other {# antagna under perioden}}",
+      "hours": "Timmar under perioden",
+      "hoursToDate": "{hours} hittills",
+      "budgetHours": "Budget {hours}",
+      "amountInPeriod": "{amount} under perioden",
+      "amountToDate": "{amount} hittills",
+      "budgetAmount": "Budget {amount}"
     }
   }
 }

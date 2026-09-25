@@ -38,6 +38,14 @@ export const DESCRIPTION_TEXT_CHARS = 100_000;
 /** A comment's caps — a reply, not a document; still far past any honest use. */
 export const COMMENT_JSON_BYTES = 128 * 1024;
 export const COMMENT_TEXT_CHARS = 20_000;
+/**
+ * ONE SECTION of a progress update (Phase 3, DATA_MODEL.md §6.16) — the
+ * description's schema (headings and checklists are how "what's next"
+ * gets written) at the comment's caps, because a post has up to six of
+ * them and the whole body must still fit one server-action request.
+ */
+export const UPDATE_SECTION_JSON_BYTES = COMMENT_JSON_BYTES;
+export const UPDATE_SECTION_TEXT_CHARS = COMMENT_TEXT_CHARS;
 
 /**
  * Built on first use, not on import. Constructing a schema walks every
@@ -47,9 +55,9 @@ export const COMMENT_TEXT_CHARS = 20_000;
 let descriptionSchema: ReturnType<typeof getSchema> | null = null;
 let commentSchema: ReturnType<typeof getSchema> | null = null;
 const schemaFor = (kind: RichTextKind): ReturnType<typeof getSchema> =>
-  kind === "description"
-    ? (descriptionSchema ??= getSchema(descriptionExtensions()))
-    : (commentSchema ??= getSchema(commentExtensions()));
+  kind === "comment"
+    ? (commentSchema ??= getSchema(commentExtensions()))
+    : (descriptionSchema ??= getSchema(descriptionExtensions()));
 
 type JsonNode = {
   type?: unknown;
@@ -146,7 +154,7 @@ function sanitize(node: JsonNode): JsonNode {
   return out;
 }
 
-type RichTextKind = "description" | "comment";
+type RichTextKind = "description" | "comment" | "update";
 
 type Caps = {
   readonly jsonBytes: number;
@@ -158,6 +166,7 @@ type Caps = {
 const CAPS: Record<RichTextKind, Caps> = {
   description: { jsonBytes: DESCRIPTION_JSON_BYTES, textChars: DESCRIPTION_TEXT_CHARS, tooLarge: "DESCRIPTION_TOO_LARGE" },
   comment: { jsonBytes: COMMENT_JSON_BYTES, textChars: COMMENT_TEXT_CHARS, tooLarge: "COMMENT_TOO_LARGE" },
+  update: { jsonBytes: UPDATE_SECTION_JSON_BYTES, textChars: UPDATE_SECTION_TEXT_CHARS, tooLarge: "UPDATE_TOO_LARGE" },
 };
 
 type Normalized = {
@@ -277,4 +286,22 @@ export function normalizeComment(input: unknown): NormalizedComment {
   const n = normalizeRichText(input, "comment");
   if (n.doc === null || n.text === null) fail("COMMENT_EMPTY");
   return { doc: n.doc!, text: n.text! };
+}
+
+export type NormalizedUpdateSection = {
+  /** Canonical JSON to store — or null when the section says nothing (the caller drops it). */
+  readonly doc: JsonNode | null;
+  /** Plain text for `bodyText`; null when empty. */
+  readonly text: string | null;
+};
+
+/**
+ * One section of a progress update: the description's schema (a "what's
+ * next" is a checklist as often as prose) at a section's caps. May be
+ * empty — a post's sections are optional and `normalizeUpdateBody`
+ * decides whether the WHOLE post says anything.
+ */
+export function normalizeUpdateSection(input: unknown): NormalizedUpdateSection {
+  const n = normalizeRichText(input, "update");
+  return { doc: n.doc, text: n.text };
 }

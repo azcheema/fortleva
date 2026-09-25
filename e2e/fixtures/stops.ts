@@ -230,6 +230,11 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // state — which makes it the second place a human ever looks at what
     // a client sees, and the only place both views are on one screen.
     { name: "project-portal", path: `${project}/portal` },
+    // Phase 3, progress updates: the tab with the seeded post pinned,
+    // and the composer with its five editors, the pull-in panel and the
+    // live preview.
+    { name: "project-updates", path: `${project}/updates` },
+    { name: "project-update-new", path: `${project}/updates/new` },
     { name: "files", path: "/files" },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
@@ -262,6 +267,8 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // thing the craft audit has ever said about what a client sees.
     { name: "portal-login", path: "/portal/login", anon: true },
     { name: "portal-home", path: "/portal", session: "contact" },
+    // Every published update of the seeded project, as the contact reads it.
+    { name: "portal-project-updates", path: `/portal/projects/${seed.projectKey}/updates`, session: "contact" },
     // INVITATION ACCEPTANCE, both states, mirroring the member plane's
     // pair at the top of this list. The live one needs a token that
     // stands still, which is why the fixture seeds one

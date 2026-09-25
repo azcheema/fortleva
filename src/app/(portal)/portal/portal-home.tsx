@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { Callout, Page, PageHeader } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { listPortalTasks } from "@/modules/work";
+import { listPortalTasks, listPortalUpdates, type PortalProjectTasks, type PortalUpdate } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 import { listPortalProjects } from "@/projects/portal";
 
@@ -109,7 +109,22 @@ export async function PortalHome({
   const requestTargets = await portalReadOrNull("listPortalProjects", () =>
     listPortalProjects(principal, "portal.request.create"),
   );
-  const projects = list?.projects ?? [];
+  // The newest published update per project (Phase 3), a third
+  // sequential read under the same rule as the two above. A project
+  // with an update and no shared task still gets a card — the update IS
+  // what the agency shared — so the two lists are merged by project
+  // here, in the order the task list already fixed, with update-only
+  // projects after it.
+  const latest = await portalReadOrNull("listPortalUpdates", () =>
+    listPortalUpdates(principal, { latestOnly: true }),
+  );
+  const updateByProject = new Map<string, PortalUpdate>((latest ?? []).map((u) => [u.projectId, u]));
+  const projects: PortalProjectTasks[] = [...(list?.projects ?? [])];
+  for (const u of latest ?? []) {
+    if (!projects.some((p) => p.projectId === u.projectId)) {
+      projects.push({ projectId: u.projectId, projectName: u.projectName, tasks: [] });
+    }
+  }
   const canRequest = (requestTargets?.length ?? 0) > 0;
 
   return (
@@ -139,7 +154,11 @@ export async function PortalHome({
                 <Callout tone="info">{t("tasks.truncated", { count: list.shown })}</Callout>
               ) : null}
               {projects.map((project) => (
-                <ProjectTasks key={project.projectId} project={project} />
+                <ProjectTasks
+                  key={project.projectId}
+                  project={project}
+                  update={updateByProject.get(project.projectId) ?? null}
+                />
               ))}
             </>
           )}

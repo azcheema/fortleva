@@ -3,7 +3,7 @@ import { deny } from "@/authz/errors";
 import { withTenant } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import type { ContactPortalProfile } from "@/generated/prisma/enums";
-import { listPortalTasks, type PortalProjectTasks } from "@/modules/work";
+import { listPortalTasks, listPortalUpdates, type PortalProjectTasks, type PortalUpdate } from "@/modules/work";
 import {
   PORTAL_CAPABILITIES,
   portalGatesFor,
@@ -135,6 +135,8 @@ export type PortalPreview = {
    * and they are computed from the member's side.
    */
   readonly tasks: PortalProjectTasks | null;
+  /** The project's newest published update as the contact sees it, or null (Phase 3, §6.16). */
+  readonly update: PortalUpdate | null;
   readonly truncated: boolean;
 };
 
@@ -264,14 +266,15 @@ export async function readPortalPreview(
   const as = [...pool].sort((a, b) => width(b.portalProfile) - width(a.portalProfile))[0];
 
   let list: Awaited<ReturnType<typeof listPortalTasks>> | null = null;
-  if (as) {
-    // The principal is built by the one member-plane builder
-    // (`src/portal/synthesise.ts`, slice 5), which resolves the gates
-    // from `as.tenantId` rather than from anything this file is
-    // holding. Until then those two lines lived here, with the belt
-    // above them; they are the same two lines, in the place the next
-    // member-plane surface cannot bypass.
-    const principal = await synthesiseContactPrincipal(ctx.tenantId, as);
+  // The principal is built by the one member-plane builder
+  // (`src/portal/synthesise.ts`, slice 5), which resolves the gates
+  // from `as.tenantId` rather than from anything this file is
+  // holding. Until then those two lines lived here, with the belt
+  // above them; they are the same two lines, in the place the next
+  // member-plane surface cannot bypass. Built ONCE for both reads
+  // below — each synthesis resolves the tenant's gates.
+  const principal = as ? await synthesiseContactPrincipal(ctx.tenantId, as) : null;
+  if (principal) {
     list = await portalReadOrNull("previewPortalTasks", () =>
       listPortalTasks(principal, { projectId }),
     );
@@ -280,6 +283,16 @@ export async function readPortalPreview(
   // refusal and an empty answer are both `null`, as they are for a
   // contact.
   const tasks = list?.projects[0] ?? null;
+  // The same principal, the same projection the portal's card uses, in
+  // sequence after the tasks (two transactions, and `portalReadOrNull`
+  // swallows only `AuthzError` — the reason `portal-home.tsx` gives).
+  let update: PortalUpdate | null = null;
+  if (principal) {
+    const latest = await portalReadOrNull("previewPortalUpdates", () =>
+      listPortalUpdates(principal, { projectId, latestOnly: true }),
+    );
+    update = latest?.[0] ?? null;
+  }
 
   // LAST, and only when nothing else is in the way: with a blocker
   // standing, "nothing is shared" is not the reason the panel is empty
@@ -289,10 +302,11 @@ export async function readPortalPreview(
   // list does not name, and this line names the wrong one. One extra
   // round trip would not close that race either, since the row can
   // change after it too.
-  if (!tasks && blockers.length === 0) blockers.push("NOTHING_SHARED");
+  if (!tasks && !update && blockers.length === 0) blockers.push("NOTHING_SHARED");
 
   return {
     blockers,
+    update,
     contact: as ? { id: as.id, name: as.name, profile: as.portalProfile } : null,
     audience: contacts.length,
     tasks,

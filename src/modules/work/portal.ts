@@ -1,4 +1,7 @@
+import { AuthzError } from "@/authz/errors";
 import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal";
+
+import { withoutHours } from "./update-snapshot";
 
 /**
  * THE WORK MODULE'S PORTAL PROJECTIONS — READS ONLY.
@@ -563,5 +566,150 @@ export async function listPortalTasks(
       shown: projects.reduce((n, p) => n + p.tasks.length, 0),
       truncated,
     };
+  });
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * PROGRESS UPDATES — the portal centrepiece (Phase 3, DATA_MODEL §6.16)
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * One published update, as a contact reads it. The body is the
+ * sections the author wrote (already allow-listed on the way in by
+ * `normalizeUpdateBody`, so what is stored is exactly what the renderer
+ * draws), and `metrics` is the row's frozen `portalSnapshot` — the
+ * aggregates `update-metrics.ts` builds from rows the client can see,
+ * and nothing else, by construction. The two things this row ALSO
+ * carries and this shape never does: the column that names INTERNAL
+ * work by id (the composer's pull-in record), and the class-A twin,
+ * which `portal_deny` keeps unreadable under this principal whether or
+ * not anyone asks for it.
+ *
+ * `seq` is shown: "Update #4" is how a client refers to a post in an
+ * email, and the number is the project's own count, not a secret.
+ */
+export type PortalUpdate = {
+  readonly id: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly projectKey: string;
+  readonly seq: number;
+  readonly health: "ON_TRACK" | "AT_RISK" | "OFF_TRACK" | "ON_HOLD" | "COMPLETE";
+  readonly title: string | null;
+  /** `@db.Date`s — format with `formatDay`. */
+  readonly periodStart: Date | null;
+  readonly periodEnd: Date | null;
+  readonly publishedAt: Date;
+  /** `{ sections, metrics }` as `readUpdateBody` reads it — a stored, normalised body. */
+  readonly body: unknown;
+  /** The frozen portal-safe numbers, or null for a post published without any. */
+  readonly metrics: unknown;
+  /** A note the agency added after publishing, or null. */
+  readonly editNote: string | null;
+};
+
+/** The most posts one project's list will return — a client reads the newest; older ones are history. */
+export const PORTAL_UPDATE_LIMIT = 50;
+
+export type PortalUpdateListOptions = {
+  /** Restrict the read to one project of the contact's own client. */
+  readonly projectId?: string;
+  /** Only the newest post per project — `/portal`'s project cards. */
+  readonly latestOnly?: boolean;
+};
+
+/**
+ * THE CLIENT'S PUBLISHED UPDATES — newest first, capped per read.
+ *
+ * WHAT THE `where` DOES AND DOES NOT DO, restated for this table: the
+ * tenant, the client, the visibility, the project's portal switch AND
+ * `status = 'PUBLISHED'` are all `portal_gate`'s (the four-term form)
+ * under the contact principal; they are repeated here as defence in
+ * depth. What the policy does not carry and this must: the PROJECT's
+ * archive — an archived project publishes nothing (founder decision,
+ * 2026-09-21), and `listPortalTasks` learnt that from a review.
+ *
+ * `latestOnly` is Prisma's `distinct` over the same ordered read, so the
+ * card's post and the list's first post are the same row by
+ * construction rather than by two queries agreeing.
+ */
+export async function listPortalUpdates(
+  principal: PortalPrincipal,
+  opts?: PortalUpdateListOptions,
+): Promise<readonly PortalUpdate[]> {
+  const projectId = opts?.projectId;
+  return withPortalRead(principal, async (tx) => {
+    await authorizePortal(
+      tx,
+      principal,
+      "portal.update.view",
+      projectId ? { kind: "project", projectId } : undefined,
+    );
+    // THE HOURS BLOCK IS ITS OWN CAPABILITY. `portal.hours.view` is what
+    // AUTHZ.md §8 reserves the hours / billable-amount widget for —
+    // `CONTACT_PRIMARY` only, riding on the `time` module — and the
+    // frozen block on a post is that widget's numbers by another door
+    // (security review, slice 67). Asked without throwing: a post still
+    // renders for a collaborator, minus the block, and the refusal is
+    // decided here in the projection, never in a page (rule 4 above).
+    let seesHours = true;
+    try {
+      await authorizePortal(tx, principal, "portal.hours.view");
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      seesHours = false;
+    }
+    const rows = await tx.projectUpdate.findMany({
+      where: {
+        tenantId: principal.tenantId,
+        clientId: principal.clientId,
+        visibility: "CLIENT_VISIBLE",
+        portalEnabled: true,
+        status: "PUBLISHED",
+        project: { archivedAt: null },
+        ...(projectId ? { projectId } : {}),
+      },
+      select: {
+        id: true,
+        seq: true,
+        health: true,
+        title: true,
+        periodStart: true,
+        periodEnd: true,
+        publishedAt: true,
+        body: true,
+        portalSnapshot: true,
+        editNote: true,
+        project: { select: { id: true, name: true, key: true } },
+      },
+      orderBy: [{ publishedAt: "desc" }, { seq: "desc" }],
+      ...(opts?.latestOnly ? { distinct: ["projectId"] } : {}),
+      take: PORTAL_UPDATE_LIMIT,
+    });
+    const out: PortalUpdate[] = [];
+    for (const row of rows) {
+      // Both are non-null on every PUBLISHED row (the CHECKs); the guard
+      // is what makes the projection's type honest rather than asserted.
+      if (row.seq === null || row.publishedAt === null) continue;
+      out.push({
+        id: row.id,
+        projectId: row.project.id,
+        projectName: row.project.name,
+        projectKey: row.project.key,
+        seq: row.seq,
+        health: row.health,
+        title: row.title,
+        periodStart: row.periodStart,
+        periodEnd: row.periodEnd,
+        publishedAt: row.publishedAt,
+        body: row.body,
+        metrics:
+          row.portalSnapshot !== null && typeof row.portalSnapshot === "object" && !seesHours
+            ? withoutHours(row.portalSnapshot as object)
+            : row.portalSnapshot,
+        editNote: row.editNote,
+      });
+    }
+    return out;
   });
 }

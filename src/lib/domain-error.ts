@@ -98,7 +98,16 @@ export type DomainErrorCode =
   | "REPORT_IMMUTABLE" // published TimeReport (trigger)
   | "BREAK_OUT_OF_BOUNDS" // trigger
   | "SHIFT_SHRINK" // trigger
-  | "WORK_TYPE_TAKEN"; // live name unique per tenant
+  | "WORK_TYPE_TAKEN" // live name unique per tenant
+  // Progress updates (Phase 3 — DATA_MODEL.md §6.16; the trigger token
+  // maps in src/modules/work/db-errors.ts)
+  | "UPDATE_IMMUTABLE" // a published update cannot be edited (trigger) — retract within 15 min, or add a note
+  | "UPDATE_NOT_DRAFT" // the verb wanted a draft: edit, discard, publish
+  | "UPDATE_NOT_PUBLISHED" // the verb wanted a published post: archive, visibility, annotate, retract
+  | "UPDATE_RETRACT_WINDOW_CLOSED" // more than 15 minutes since publishing
+  | "UPDATE_CHANGED" // the draft was saved by somebody else between the two publish transactions
+  | "UPDATE_EMPTY" // publishing a post whose sections say nothing
+  | "UPDATE_TOO_LARGE"; // a section's JSON or its extracted text is past its cap
 
 export class DomainError extends Error {
   constructor(

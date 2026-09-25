@@ -87,6 +87,18 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   // this is the column. It is the first entry here that guards a table
   // whose rows a contact is *supposed* to see.
   "invitedById",
+  // Phase 3, progress updates (DATA_MODEL §6.16): the class-B post's
+  // two staff-only columns and its class-A twin. `changesSinceLast`
+  // names INTERNAL work by id; `publishedByMemberId` is a member;
+  // `internalSnapshot` is the relation to the per-member / margin row
+  // and `byMember` its most tempting key. `portal_deny` keeps the twin
+  // unreadable under a contact principal; this keeps a projection from
+  // ever asking.
+  "changesSinceLast",
+  "publishedByMemberId",
+  "internalSnapshot",
+  "projectUpdateInternalSnapshot",
+  "byMember",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -339,6 +351,11 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "oldRef",
       "newRef",
       "invitedById",
+      "changesSinceLast",
+      "publishedByMemberId",
+      "internalSnapshot",
+      "projectUpdateInternalSnapshot",
+      "byMember",
     ]);
   });
 
@@ -404,6 +421,10 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "internalNotes",
         "repoUrl",
         "hostingNotes",
+        "changesSinceLast",
+        "publishedByMemberId",
+        "internalSnapshot",
+        "bodyText",
       ].sort(),
     );
   });
@@ -556,6 +577,12 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   "internalNotes",
   "repoUrl",
   "hostingNotes",
+  // Phase 3, progress updates: the post's staff-only columns and its
+  // class-A twin (see PORTAL_FORBIDDEN_COLUMNS for why each).
+  "changesSinceLast",
+  "publishedByMemberId",
+  "internalSnapshot",
+  "bodyText",
 ]);
 
 const propName = (p: ts.ObjectLiteralElementLike): string | null => {

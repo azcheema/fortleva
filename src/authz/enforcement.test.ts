@@ -113,13 +113,9 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
     // (`ensureProjectStates`) and reads them; it has never updated or
     // deleted one, so there is no "edit a project's workflow" to guard.
     "workflow:manage",
-    // ProjectUpdate: the model is in the schema, the module file
-    // (`updates.ts`) is not in the product.
-    "project_update:view",
-    "project_update:create",
-    "project_update:publish",
-    "project_update:change_visibility",
-    // ProjectTemplate: same — no `templates.ts`.
+    // ProjectUpdate SHIPPED on 2026-09-25 (Phase 3 slice 67): all four
+    // `project_update:*` codes are enforced in `src/modules/work/updates.ts`.
+    // ProjectTemplate: the model is in the schema, no `templates.ts`.
     "project_template:manage",
   ],
   time: [

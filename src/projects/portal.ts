@@ -46,6 +46,43 @@ export type PortalProjectOption = {
  * the agency works, and a client with four projects reads an
  * alphabetical list without being told anything.
  */
+export type PortalProjectRef = {
+  readonly id: string;
+  readonly key: string;
+  readonly name: string;
+};
+
+/**
+ * ONE PROJECT OF THE CONTACT'S OWN CLIENT, BY ITS KEY — the resolver a
+ * portal route under `/portal/projects/[key]` starts with. The key is
+ * the project's public handle ("ACME"), already on every task the client
+ * reads; what this proves is that THIS contact may see THIS project
+ * (`portal_gate` on `project` binds client + `portal_enabled`), and it
+ * answers null — the plane's one uniform "nothing" — for any key that is
+ * not theirs, switched off, or archived. The route treats null exactly
+ * as it treats an empty list.
+ */
+export async function findPortalProjectByKey(
+  principal: PortalPrincipal,
+  key: string,
+): Promise<PortalProjectRef | null> {
+  const upper = key.toUpperCase();
+  if (!/^[A-Z][A-Z0-9]{0,7}$/.test(upper)) return null;
+  return withPortalRead(principal, async (tx) => {
+    await authorizePortal(tx, principal, "portal.project.view");
+    return tx.project.findFirst({
+      where: {
+        tenantId: principal.tenantId,
+        clientId: principal.clientId,
+        key: upper,
+        portalEnabled: true,
+        archivedAt: null,
+      },
+      select: { id: true, key: true, name: true },
+    });
+  });
+}
+
 export async function listPortalProjects(
   principal: PortalPrincipal,
   /**
