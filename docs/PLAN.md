@@ -10,6 +10,8 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
+**PUSHED AND GREEN: SLICE 63 — WITH WORK SWITCHED OFF, THE INBOX STOPS NAMING TASKS (C33) — is `2bd6661`; CI run [36128844488](https://github.com/azcheema/fortleva/actions/runs/36128844488), both jobs `success`.** Unit **1598 passed / 1 skipped**, `test:db` **51 files / 812** from an EMPTY database (811 + 1), harness **158 passed / 1 skipped in 14.1 min**.
+
 **PUSHED AND GREEN: SLICE 62 — THE RAIL HIDES WHAT THE TENANT HAS SWITCHED OFF (item 5, `accessibleCodes`) — is `5b146a7`; CI run [36124455690](https://github.com/azcheema/fortleva/actions/runs/36124455690), both jobs `success`.** Unit **89 files / 1598 passed / 1 skipped**, identical to local. `test:db` **51 files / 811** from an EMPTY database, exactly 810 + the slice's rail case. Browser harness **158 passed / 1 skipped in 13.9 min**; the slice added no browser test.
 
 **PUSHED AND GREEN: SLICE 61 — NO PERMISSION CHECK FANS OUT ON ONE TRANSACTION (PLAN §0's owed item 4, nine reads, and the `authz-batches.test.ts` tripwire) — is `c493f25`; CI run [36118375572](https://github.com/azcheema/fortleva/actions/runs/36118375572), both jobs `success`.** Unit **88 files / 1440 passed / 1 skipped**, identical to local. `test:db` **51 files / 810** from an EMPTY database, exactly 808 + the slice's two search dbtests; this was the first full run at this count, because local ran only the four files the slice touches. Browser harness **158 passed / 1 skipped in 11.9 min**, the same count as slice 60 because the slice added no browser test; locally, the seven specs the reads bear on had already passed, 38 of 38. No migration, so no Neon smoke was owed. Earlier the same day, **C31 was asked and decided: "Cancelled" for agreed work. The founder is HOLDING the build until they have Fable.**
@@ -70,6 +72,51 @@
 **7. WHAT IS LEFT OF PHASE 3 IS THE FOUNDER'S TO START** (the Phase 3 rule: they pick the model and effort first — for portal work they want Fable, which was not available to them on 2026-09-25): the Client Timeline, `ProjectUpdate`, portal files and services, version sign-off — and C31 (held). Phase 3 stays `[ ]`.
 
 **Model and effort: medium** for the walks and their fixes; **the founder's choice** for anything in item 7.
+
+---
+
+**2026-09-25 — SLICE 64: A BUDGET ALERT LINKS TO THE MONEY PAGE ONLY WHEN THAT PAGE WOULD OPEN (founder decision C34).**
+
+**ASKED AND ANSWERED straight after slice 63's review raised it:** a budget alert keeps its project's name and drops its link when the receiver cannot open the Money page. That covers Time switched off, and a receiver without the page's codes. Budget alerts go to the budget's notify list or the project lead, not to holders of those codes.
+
+**WHAT SHIPPED.**
+- **`src/modules/time/money-codes.ts`**, a module with no imports:
+  - `PROJECT_MONEY_CODES` (`time:view_team`, `rate:view_bill`). `projectMoney` now asks these in turn, and the inbox asks the same list.
+  - `BUDGET_ALERT_ENTITY`, which `budgets.ts` emits and the inbox matches, so the string lives in one place.
+- **`src/notify/inbox.ts`:** `InboxSubject.href` may be null. `resolveSubjects` asks the Money codes on all four gates when a page holds a budget alert, and links only a row naming that entity.
+- **Both inbox views** (the list and `/home`'s card) render a linkless subject as plain text, truncated with its full value as `title` (UI.md §10.12).
+- **`projectMoney`'s three-leg `Promise.all` now runs in sequence**, because the inbox's test calls it.
+- **Tests:**
+  - `money-codes.test.ts` pins the list: exactly these two codes, catalogue codes, and no ✦.
+  - A dbtest case holds the link to the PAGE ITSELF: in every state, the link is absent exactly when `projectMoney` rejects with an `AuthzError`. The states are the owner; an employee without the codes; a manager with ONE of the two revoked, which is how it tells "every code" from "some"; and Time switched off, on `/home`'s card too.
+
+**THE REVIEW: 1 fresh agent, about 0.21M subagent tokens. No high, no medium.** Fixed:
+- The leaf file's stated reason, "an import cycle", was false.
+- A stale comment.
+- The test could not tell `.every` from `.some`.
+- The truncated plain name had no `title`.
+- The link was offered for EVERY non-task row, not just budget alerts.
+- The docs trailed the code.
+
+**THE FIX REVIEW: 1 fresh agent, about 0.23M. No high, no medium.** Fixed:
+- The leaf file's SECOND stated reason ("the inbox is on every render, and `money.ts` would drag the rates in") was also false, because the layout already loads the whole time module through `./time/actions`. It now says only that the notify layer depends on a contract rather than on service code.
+- Nothing pinned the list itself: dropping `time:view_team` would have passed every test and opened the page to a role holding `rate:view_bill` alone. `money-codes.test.ts` now pins it.
+- The test restored the revoked row with a different `source`. It now revokes the product's way (`source` → `TENANT_REVOKE`) and puts the row back exactly.
+- `"ProjectBudget"` existed twice, unguarded.
+- Sequencing `projectMoney`'s batch.
+
+Noted: `permissionsVersion` is written but read by nothing, so `search.dbtest.ts`' comment that bumping it matters is wrong. That predates this slice.
+
+**GATES — on the FINAL tree.**
+- typecheck ✅
+- ESLint → 0 ✅
+- unit ✅: **90 files / 1601 passed / 1 skipped** (`money-codes.test.ts` is new).
+- dbtests ✅, `EXIT=0` read from the log both times:
+  - `inbox.dbtest.ts` + `money.dbtest.ts`, **30 / 30**, on the fix round's tree;
+  - `inbox.dbtest.ts` + `money.dbtest.ts` + `reports.dbtest.ts`, **36 / 36**, on the final tree (`reports` because `budgets.ts`' emit now uses the shared constant).
+- Mutation-checked: an always-link mutant and an `.some` mutant each turn the dbtest red.
+- Browser (own port 3457, own build): `inbox`, `home` and `money` — **11 passed in 2.8 min**, `EXIT=0` ✅.
+- CI: expect `test:db` **51 / 813** (812 + 1).
 
 ---
 

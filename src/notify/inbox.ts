@@ -4,6 +4,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { accessibleCodes } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { idCursor } from "@/lib/id-cursor";
+import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
 
 import { isNotificationKind, type NotificationKind } from "./catalog";
 
@@ -87,8 +88,16 @@ export type InboxRow = {
   readonly readAt: Date | null;
   readonly archivedAt: Date | null;
   readonly snoozedTill: Date | null;
-  readonly subject: { readonly title: string; readonly href: string } | null;
+  readonly subject: InboxSubject | null;
 };
+
+/**
+ * What a row is about. `href` is null when the member may read the NAME
+ * but the page it would open would refuse them — a budget alert for a
+ * member without the Money page's codes, or with Time switched off (C34):
+ * the row names the project and links nowhere.
+ */
+export type InboxSubject = { readonly title: string; readonly href: string | null };
 
 export type InboxPage = {
   readonly rows: readonly InboxRow[];
@@ -312,25 +321,28 @@ async function resolveSubjects(
   tx: TenantDb,
   ctx: InboxCtx,
   rows: readonly SubjectSource[],
-): Promise<Map<string, { title: string; href: string }>> {
-  const out = new Map<string, { title: string; href: string }>();
+): Promise<Map<string, InboxSubject>> {
+  const out = new Map<string, InboxSubject>();
   if (rows.length === 0) return out;
 
-  // One call for both codes, awaited in turn — never two checks as legs
-  // of a `Promise.all` on this transaction's one connection (AGENTS.md's
-  // trap; `authz-batches.test.ts`). It runs whenever `/home`'s glance or
-  // an `/inbox` page has rows to name. `project:view` is core, so the
-  // only module gates it reads are Work's — and only when a row on the
-  // page IS a task, for a member who holds `work_item:view`.
+  // ONE call for every code the page needs, awaited in turn — never checks
+  // as legs of a `Promise.all` on this transaction's one connection
+  // (AGENTS.md's trap; `authz-batches.test.ts`). It runs whenever `/home`'s
+  // glance or an `/inbox` page has rows to name, and asks only what those
+  // rows need: `project:view` (core, so no module gate); `work_item:view`
+  // when a row is a task (Work's gates); the Money page's own codes when a
+  // row is a budget alert (Time's gates — founder decision C34: its link is
+  // offered only to a member that page would not refuse).
   const namesTasks = rows.some((r) => r.entityType === "WorkItem");
-  const may = await accessibleCodes(
-    tx,
-    ctx.tenantId,
-    ctx.actor,
-    namesTasks ? ["project:view", "work_item:view"] : ["project:view"],
-  );
+  const linksMoney = rows.some((r) => r.entityType === BUDGET_ALERT_ENTITY);
+  const may = await accessibleCodes(tx, ctx.tenantId, ctx.actor, [
+    "project:view",
+    ...(namesTasks ? ["work_item:view"] : []),
+    ...(linksMoney ? PROJECT_MONEY_CODES : []),
+  ]);
   const mayViewProjects = may.has("project:view");
   const mayViewItems = may.has("work_item:view");
+  const mayOpenMoney = PROJECT_MONEY_CODES.every((code) => may.has(code));
 
   // A task row's project is wanted only for a task's link, which needs
   // `work_item:view` too — with Work off it can name nothing.
@@ -389,10 +401,20 @@ async function resolveSubjects(
       }
       continue;
     }
-    // Everything else (today: budget thresholds) names its project —
-    // the only surface a non-item notification can point at in 2W/2T.
+    // Everything else names its project — the only surface a non-item
+    // notification can point at in 2W/2T. The NAME needs only
+    // `project:view` and scope. The LINK is a budget alert's, to the Money
+    // page, and needs that page's own codes too, or it would lead to a
+    // refusal (C34). A row naming any other entity — a newer deploy's
+    // included — is named and links nowhere rather than borrowing that
+    // link.
     const project = r.projectId ? byProject.get(r.projectId) : undefined;
-    if (project) out.set(r.id, { title: project.name, href: `/projects/${project.key}/money` });
+    if (project) {
+      out.set(r.id, {
+        title: project.name,
+        href: r.entityType === BUDGET_ALERT_ENTITY && mayOpenMoney ? `/projects/${project.key}/money` : null,
+      });
+    }
   }
   return out;
 }

@@ -5,6 +5,7 @@ import { fail } from "@/lib/domain-error";
 import { readPreferences } from "@/preferences/service";
 
 import { billAmountOf, money, principalOf, type TimeCtx } from "./ctx";
+import { PROJECT_MONEY_CODES } from "./money-codes";
 import { revealCostRates } from "./rates";
 import { loadProjectEntries, type EntryRow, type Range } from "./rollup";
 
@@ -146,15 +147,20 @@ export async function projectMoney(
   opts: { revealCost: boolean } = { revealCost: false },
 ): Promise<ProjectMoney> {
   const loaded = await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "time:view_team");
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "rate:view_bill");
+    // The page's own gate, in turn — and the list the inbox asks before it
+    // links a budget alert here (`money-codes.ts`).
+    for (const code of PROJECT_MONEY_CODES) await requireAccess(tx, ctx.tenantId, ctx.actor, code);
     await assertInScope(tx, ctx.actor, { projectId });
-    const [project, held, prefs] = await Promise.all([
-      tx.project.findFirst({ where: { tenantId: ctx.tenantId, id: projectId }, select: { billingCurrency: true } }),
-      // Held, not "fresh": the control shows for holders; a stale factor becomes step-up on the reveal (AUTHZ.md §7.5).
-      effectivePermissions(tx, ctx.actor.memberId),
-      readPreferences(tx, ctx.tenantId),
-    ]);
+    // In sequence, never a `Promise.all` on this transaction's one
+    // connection (AGENTS.md's trap) — the inbox's budget-alert test calls
+    // this read too, so a lost race here would fail a suite about the inbox.
+    const project = await tx.project.findFirst({
+      where: { tenantId: ctx.tenantId, id: projectId },
+      select: { billingCurrency: true },
+    });
+    // Held, not "fresh": the control shows for holders; a stale factor becomes step-up on the reveal (AUTHZ.md §7.5).
+    const held = await effectivePermissions(tx, ctx.actor.memberId);
+    const prefs = await readPreferences(tx, ctx.tenantId);
     if (!project) fail("INVALID_INPUT", "unknown project");
     const canRevealCost = held.has("rate:view_cost") && prefs.finance.costRatesEnabled;
     const rows = await loadProjectEntries(tx, ctx.tenantId, projectId, range);

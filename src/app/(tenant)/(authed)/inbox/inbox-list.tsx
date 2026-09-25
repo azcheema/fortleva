@@ -55,7 +55,7 @@ export type InboxRowView = {
   archived: boolean;
   snoozedTill: string | null;
   /** Null when the member may no longer see what this is about. */
-  subject: { title: string; href: string } | null;
+  subject: { title: string; href: string | null } | null;
 };
 
 type Patch = { ids: readonly string[]; read?: boolean; archived?: boolean; snoozed?: boolean };
@@ -225,13 +225,18 @@ export function InboxList({
                   {label}
                   {r.read ? null : <span className="sr-only"> — {t("unreadLabel")}</span>}
                 </p>
-                {r.subject ? (
+                {r.subject?.href ? (
                   <Link
                     href={r.subject.href}
                     className="mt-0.5 block truncate text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
                     {r.subject.title}
                   </Link>
+                ) : r.subject ? (
+                  // Named, but its page would refuse this member (C34).
+                  <p className="mt-0.5 truncate text-sm text-muted-foreground" title={r.subject.title}>
+                    {r.subject.title}
+                  </p>
                 ) : (
                   <p className="mt-0.5 text-sm text-muted-foreground">{t("subjectUnavailable")}</p>
                 )}

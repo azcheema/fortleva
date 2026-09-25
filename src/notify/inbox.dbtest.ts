@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { AuthzError } from "@/authz/errors";
 import { DomainError } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
 import { setupTenant } from "@/members/dbtest-fixture";
+import { projectMoney } from "@/modules/time";
 import { assignItem, createItem } from "@/modules/work";
 
 import {
@@ -544,6 +546,76 @@ describe("inbox — what a row is ABOUT", () => {
       });
     }
   });
+
+  it("A BUDGET ALERT LINKS TO THE MONEY PAGE EXACTLY WHEN THAT PAGE WOULD OPEN — the name stays either way (C34)", async () => {
+    // Founder decision 2026-09-25. The alert goes to the budget's notify
+    // list or the project lead, not to holders of the Money page's codes
+    // (`PROJECT_MONEY_CODES`), so a receiver can be one the page refuses.
+    // Every state below asks the PAGE's own read too, so the link is bound
+    // to what the page does rather than to a copy of its rule.
+    const range = { from: "2026-09-01", to: "2026-09-30" };
+    const pageRefuses = (ctx: { tenantId: string; actor: typeof f.seats.owner.actor }) =>
+      projectMoney(ctx, projectId, range).then(
+        () => false,
+        (e: unknown) => {
+          if (e instanceof AuthzError) return true;
+          throw e;
+        },
+      );
+    const alertFor = async (memberId: string, ctx: { tenantId: string; actor: typeof f.seats.owner.actor }) => {
+      await f.platform.notification.deleteMany({ where: { tenantId: f.tenantId } });
+      await give(memberId, { kind: "budget.threshold_reached", entityType: "ProjectBudget", entityId: randomUUID() });
+      const [row] = (await listInbox(ctx, { filter: "unread" })).rows;
+      expect(row?.subject?.title).toBe("Inbox project");
+      expect(row?.subject?.href === null).toBe(await pageRefuses(ctx));
+      return row?.subject?.href ?? null;
+    };
+    const money = `/projects/${projectKey}/money`;
+    const managerCtx = { tenantId: f.tenantId, actor: f.seats.manager.actor };
+
+    // Holds both codes: linked.
+    expect(await alertFor(f.seats.owner.memberId, ownerCtx())).toBe(money);
+
+    // Reads projects, holds neither code: named, not linked.
+    await scopeEmployeeToInboxClient();
+    try {
+      expect(await alertFor(f.seats.employee.memberId, employeeCtx())).toBeNull();
+    } finally {
+      await f.platform.memberClient.deleteMany({
+        where: { tenantId: f.tenantId, memberId: f.seats.employee.memberId },
+      });
+    }
+
+    // Holds ONE of the two: still refused, so still not linked — the case
+    // that tells "every code" from "some code".
+    expect(await alertFor(f.seats.manager.memberId, managerCtx)).toBe(money);
+    // Revoked the way the product revokes a template code (`roles.ts`):
+    // the row stays and its `source` becomes TENANT_REVOKE, which
+    // `effectivePermissions` skips — then put back exactly as it was.
+    const perm = await f.platform.permission.findFirstOrThrow({ where: { code: "rate:view_bill" } });
+    const grant = { tenantId: f.tenantId, roleId: f.seats.manager.roleId, permissionId: perm.id };
+    const { source } = await f.platform.rolePermission.findFirstOrThrow({ where: grant, select: { source: true } });
+    await f.platform.rolePermission.updateMany({ where: grant, data: { source: "TENANT_REVOKE" } });
+    try {
+      expect(await alertFor(f.seats.manager.memberId, managerCtx)).toBeNull();
+    } finally {
+      await f.platform.rolePermission.updateMany({ where: grant, data: { source } });
+    }
+
+    // Time switched off: refused for everyone, the owner included — in the
+    // inbox and on `/home`'s card, which resolves through the same function.
+    await f.platform.tenantPreference.create({
+      data: { tenantId: f.tenantId, key: "module.time.enabled", value: false },
+    });
+    try {
+      expect(await alertFor(f.seats.owner.memberId, ownerCtx())).toBeNull();
+      expect((await inboxGlance(ownerCtx())).rows[0]?.subject).toEqual({ title: "Inbox project", href: null });
+    } finally {
+      await f.platform.tenantPreference.deleteMany({
+        where: { tenantId: f.tenantId, key: "module.time.enabled" },
+      });
+    }
+  }, 120_000);
 
   it("a non-item notification points at its project", async () => {
     await give(f.seats.owner.memberId, {

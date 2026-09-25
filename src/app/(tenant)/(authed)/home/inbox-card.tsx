@@ -46,13 +46,18 @@ export async function InboxCard({ glance, serverNow }: { glance: InboxGlance; se
               <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">{label}</p>
-                {r.subject ? (
+                {r.subject?.href ? (
                   <Link
                     href={r.subject.href}
                     className="mt-0.5 block truncate text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
                     {r.subject.title}
                   </Link>
+                ) : r.subject ? (
+                  // Named, but its page would refuse this member (C34).
+                  <p className="mt-0.5 truncate text-sm text-muted-foreground" title={r.subject.title}>
+                    {r.subject.title}
+                  </p>
                 ) : (
                   <p className="mt-0.5 text-sm text-muted-foreground">{tInbox("subjectUnavailable")}</p>
                 )}

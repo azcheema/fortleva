@@ -8,6 +8,7 @@ import { emit } from "@/notify/emit";
 import { readPreferences } from "@/preferences/service";
 
 import { guarded, idsOnly, principalOf, type TimeCtx } from "./ctx";
+import { BUDGET_ALERT_ENTITY } from "./money-codes";
 
 /**
  * ProjectBudget + BudgetAlert (DATA_MODEL.md §6.15): an hours-or-money
@@ -352,7 +353,7 @@ export async function checkBudgetAlerts(
         const project = await tx.project.findFirst({ where: { id: b.projectId }, select: { clientId: true } });
         await emit(tx, tenantId, {
           kind: "budget.threshold_reached",
-          entity: { type: "ProjectBudget", id: b.id },
+          entity: { type: BUDGET_ALERT_ENTITY, id: b.id },
           clientId: project?.clientId,
           projectId: b.projectId,
           memberIds: receivers,
