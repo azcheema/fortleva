@@ -1,25 +1,24 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useRef } from "react";
 
 import { Callout } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 
 import { panelSurfaceOf } from "@/lib/work-view";
 
-import { triageAction } from "../triage/actions";
-import { TriageAnswer, type AnswerMode } from "../triage/triage-answer";
+import { useEndRequest } from "../triage/end-request";
 
 /**
  * THE DOOR A CLIENT'S OWN REQUEST HAD NOWHERE ELSE (C29).
  *
  * **THE DEAD END THIS EXISTS TO END.** `transitionState` refuses to move
  * a `kind = REQUEST` row into a cancelled state without a reason, and
- * every surface honours that by hiding the Cancelled target — the board's
- * two drop zones, Move-to, the backlog's state cell, the panel's `S`
- * picker and the bulk bar all consult one predicate
+ * every surface honours that by refusing the Cancelled target — the
+ * board's two drop zones, Move-to, the backlog's state cell and the
+ * panel's `S` picker hide it, and the bulk bar (since C29b) shows it
+ * refused with the reason; all consult one predicate
  * (`canItemEnterState`). That is right, and it was complete: an ACCEPTED
  * request keeps `kind = REQUEST` for ever, while `listTriage` filters
  * `stateCategory = TRIAGE` — so the row left the lane, the Decline
@@ -35,35 +34,28 @@ import { TriageAnswer, type AnswerMode } from "../triage/triage-answer";
  * it belong to individual comments. A caution `Callout` above the rail
  * also says the one thing a member needs to know before pressing it —
  * that somebody has been watching this since they asked — which a menu
- * label cannot.
+ * label cannot. The board card and the backlog row, which DO have menus,
+ * carry the same verb there since C29b.
  *
- * **IT SUBMITS `DECLINE`**, through the lane's own action and the lane's
- * own dialog. One verb, one dialog, one place where a member's words to
- * a client are written; `CANCEL_ACCEPTED` differs from `DECLINE` in
- * nothing but its copy (see `AnswerMode`). The origin it passes — a
- * surface and an item number — is what tells the action where a step-up
- * should return to and which item page to revalidate.
- *
- * **NO OPTIMISTIC SLICE.** The row is about to leave every live view it
- * is in, and the reason has to reach the database before the client's
- * portal can show it. A pending button and a toast is the honest shape;
- * `useOptimistic` here would flash a cancellation that the server might
- * refuse (UI.md §7.2's rule about a failure never looking like a revert).
+ * **EVERYTHING BEHIND THE BUTTON IS `useEndRequest`'s** — the lane's
+ * dialog, the lane's action, the reply held across a refusal, the toast
+ * that promises only what the server saw — shared with those two menus,
+ * so the doors cannot drift apart. The origin it passes is this panel's
+ * stop, which is what a step-up returns to.
  */
 export function RequestBand({
   itemId,
   itemNumber,
-  itemKey,
   itemTitle,
+  stateCategory,
   projectKey,
   surface,
-  mode,
-  clientWillSee,
 }: {
   itemId: string;
   itemNumber: number;
-  itemKey: string;
   itemTitle: string;
+  /** The row's category — TRIAGE makes the verb "Decline", anything live "Cancel and reply". */
+  stateCategory: string;
   projectKey: string;
   /**
    * WHICH STOP THE PANEL IS RENDERED AT, so a step-up returns the member
@@ -74,92 +66,50 @@ export function RequestBand({
    * (neither triage code sets `requiresMfa`) and cheap to get right.
    */
   surface: "board" | "backlog" | "page";
-  /** DECLINE while it waits in triage, CANCEL_ACCEPTED once work was agreed. */
-  mode: Extract<AnswerMode, "DECLINE" | "CANCEL_ACCEPTED">;
-  /** Whether the reply will actually reach the client's portal. */
-  clientWillSee: boolean;
 }) {
   const t = useTranslations("projects.item");
-  const [open, setOpen] = useState(false);
-  // OWNED HERE, not in the dialog: it closes before the server answers,
-  // and up to 500 characters written FOR A CLIENT must survive a refusal
-  // the member is being asked to retry. The lane's caller does the same.
-  const [reason, setReason] = useState("");
-  const [pending, start] = useTransition();
+  const button = useRef<HTMLButtonElement>(null);
+  const end = useEndRequest({
+    projectKey,
+    origin: panelSurfaceOf(surface),
+    // THE BAND IS ABOUT TO GO — an ended request is not endable — and the
+    // focus it holds would go with it, to `<body>` on the item page. So
+    // it goes to the rail's State, which now says what happened, and ONLY
+    // if it is still on this band's button (or already lost): a member
+    // who moved on during the round trip is left where they are.
+    onEnded: () => {
+      const active = document.activeElement;
+      if (active !== null && active !== document.body && active !== button.current) return;
+      document.querySelector<HTMLElement>('[data-slot="item-rail"] button')?.focus();
+    },
+  });
+  const item = { id: itemId, number: itemNumber, title: itemTitle, stateCategory };
 
   return (
     <>
       <Callout tone="caution" title={t("requestBandTitle")} className="mb-4">
         <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="min-w-0 flex-1">{t("requestBandBody")}</span>
+          {/* `aria-disabled`, never `disabled`, while an answer is in
+              flight: the dialog closes as the call starts, and
+              `useFocusReturn` hands focus back to this button — which a
+              native `disabled` refuses, dropping focus onto `<body>` for
+              the whole round trip. `begin` ignores a press meanwhile, and
+              `buttonVariants` styles `aria-disabled` exactly as
+              `disabled` (the timer control's pattern). */}
           <Button
+            ref={button}
             type="button"
             variant="outline"
             size="sm"
-            disabled={pending}
-            onClick={() => setOpen(true)}
+            aria-disabled={end.pending || undefined}
+            onClick={() => end.begin(item)}
           >
-            {t("requestBandAction")}
+            {end.labelFor(item)}
           </Button>
         </span>
       </Callout>
-      {open ? (
-        <TriageAnswer
-          mode={mode}
-          itemKey={itemKey}
-          itemTitle={itemTitle}
-          reason={reason}
-          onReasonChange={setReason}
-          // DUPLICATE's rows only; this mode never offers them.
-          targets={[]}
-          targetsPending={false}
-          busy={pending}
-          onCancel={() => {
-            setOpen(false);
-            // **CLEARED ON DISMISSAL, KEPT ON REFUSAL.** The two are
-            // different: a member who presses Cancel has changed their
-            // mind, and a half-sentence surviving into next week's
-            // opening would be pre-filled text in the one field that is
-            // published verbatim to a client. A member whose SUBMIT was
-            // refused is being asked to retry, so their words stay. The
-            // first cut cleared neither and claimed a `key` was doing it
-            // (it never changed); the lane clears it deliberately, which
-            // is the precedent. Found by a fresh review.
-            setReason("");
-          }}
-          onSubmit={(input) => {
-            setOpen(false);
-            start(async () => {
-              // A SURFACE AND A NUMBER, never a path: the action composes
-              // the step-up return address itself, from values it has put
-              // through zod (`itemReturnTo` is an open-redirect surface by
-              // its own docblock).
-              const r = await triageAction(itemId, projectKey, input, {
-                surface: panelSurfaceOf(surface),
-                itemNumber,
-              });
-              if (r.ok) {
-                // **THE TOAST MAY NOT PROMISE DELIVERY IT CANNOT SEE.**
-                // The reply reaches the client only through
-                // `listPortalTasks`, which additionally requires the row
-                // to be CLIENT_VISIBLE and the project's portal switch to
-                // be on — neither of which this act controls, and a
-                // member may have made the request private or the
-                // engagement may have ended. Saying "your reply is on
-                // their portal" unconditionally was a claim the code does
-                // not check. Found by a fresh review.
-                toast.success(clientWillSee ? t("requestBandDone") : t("requestBandDoneUnshared"));
-                setReason("");
-              } else {
-                // The reply is still in state, so reopening does not
-                // lose it — which is why the dialog does not own it.
-                toast.error(r.message);
-                setOpen(true);
-              }
-            });
-          }}
-        />
-      ) : null}
+      {end.dialog}
     </>
   );
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { record } from "@/audit/record";
-import { assertInScope, authorizedCodes, isAuthorized } from "@/authz/authorize";
+import { assertInScope, authorizedCodes } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { softDeleteCommentsOn } from "@/comments/cascade";
 import { nextCounter, withTenant, type TenantDb } from "@/db";
@@ -171,7 +171,24 @@ export type ItemList = {
   items: ItemListEntry[];
   states: WorkflowStateEntry[];
   members: { id: string; name: string }[];
-  caps: { canCreate: boolean; canEdit: boolean; canChangeVisibility: boolean; canDelete: boolean; canApprove: boolean };
+  caps: {
+    canCreate: boolean;
+    canEdit: boolean;
+    canChangeVisibility: boolean;
+    canDelete: boolean;
+    canApprove: boolean;
+    /**
+     * `work_item:triage` AND `work_item:triage_decline` — a board card's
+     * and a backlog row's "Cancel and reply…" is a control, and the bulk
+     * bar's greyed-out Cancelled says where to go instead (C29b). The
+     * panel's `ItemDetailCaps.endRequest` is the same conjunction, for
+     * the same reason: `triageItem` demands both codes and they
+     * supplement rather than nest, so a custom role holding only the
+     * second would otherwise be offered a verb whose every press is
+     * refused.
+     */
+    canEndRequest: boolean;
+  };
 };
 
 /**
@@ -254,7 +271,17 @@ export async function listItems(
     await assertInScope(tx, ctx.actor, { projectId });
     await ensureProjectStates(tx, ctx.tenantId, projectId);
 
-    const [items, states, members, canCreate, canEdit, canChangeVisibility, canDelete, canApprove] =
+    // FOUR LEGS, AND IT WAS EIGHT (C29b). Five of them were `isAuthorized`
+    // calls, each resolving the same member's roles with its own query —
+    // the shape AGENTS.md's worst standing trap is about: Prisma over the
+    // `pg` adapter does not serialise the legs of a `Promise.all` on an
+    // interactive transaction's one connection, and a loser can resolve
+    // `undefined` in a function nobody touched. They are ONE
+    // `authorizedCodes` resolution now, the panel's shape, and the
+    // triage pair C29b needs rides on it for free. Do not grow this
+    // batch: a new read inside this transaction goes AFTER it, in
+    // sequence (`getItemDetail`'s contacts read says why, measured).
+    const [items, states, members, held] =
       await Promise.all([
         tx.workItem.findMany({
           where: {
@@ -300,11 +327,20 @@ export async function listItems(
           select: { id: true, name: true, seedKey: true, category: true, isHidden: true, isDefault: true, wipLimit: true, requiresApproval: true },
         }),
         activeMembers(tx, ctx.tenantId),
-        isAuthorized(tx, ctx.actor, "work_item:create"),
-        isAuthorized(tx, ctx.actor, "work_item:edit"),
-        isAuthorized(tx, ctx.actor, "work_item:change_visibility"),
-        isAuthorized(tx, ctx.actor, "work_item:delete"),
-        isAuthorized(tx, ctx.actor, "work_item:approve"),
+        // Gate 4 only, each answer exactly as `isAuthorized` would give
+        // it — and that is enough: every code here is in the `work`
+        // module, whose three other gates `requireAccess("work_item:view")`
+        // passed above in this same transaction.
+        authorizedCodes(tx, ctx.actor, [
+          "work_item:create",
+          "work_item:edit",
+          "work_item:change_visibility",
+          "work_item:delete",
+          "work_item:approve",
+          // C29b's verb, and BOTH of its codes (see `canEndRequest`).
+          "work_item:triage",
+          "work_item:triage_decline",
+        ]),
       ]);
 
     // TWO reads over the page's ids, never a per-row query: one grouped
@@ -358,7 +394,14 @@ export async function listItems(
       })),
       states,
       members,
-      caps: { canCreate, canEdit, canChangeVisibility, canDelete, canApprove },
+      caps: {
+        canCreate: held.has("work_item:create"),
+        canEdit: held.has("work_item:edit"),
+        canChangeVisibility: held.has("work_item:change_visibility"),
+        canDelete: held.has("work_item:delete"),
+        canApprove: held.has("work_item:approve"),
+        canEndRequest: held.has("work_item:triage") && held.has("work_item:triage_decline"),
+      },
     };
   });
 }
@@ -478,9 +521,10 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority" | "labels"> & {
 };
 
 /**
- * What the panel's controls are gated on — each `isAuthorized` resolves
- * the member's permissions with its own query, so a cap nobody reads is
- * a query nobody needed (the slice-2 review dropped five of those).
+ * What the panel's controls are gated on — all of them from ONE
+ * `authorizedCodes` resolution (`getItemDetail`); before that each cap
+ * was an `isAuthorized` call with its own query, which is why the slice-2
+ * review dropped five caps nobody read.
  * `approve` joins `edit` because the State picker cannot be drawn
  * without it (`enterableStates` needs it to decide whether the gated
  * Done is a target); `changeVisibility` (slice 7) because the `V`

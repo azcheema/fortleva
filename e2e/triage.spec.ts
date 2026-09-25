@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page, type Route } from "@playwright/test";
 
 import {
   CONTACT_STORAGE_STATE,
@@ -7,6 +7,7 @@ import {
   readPortalRequests,
   requireSeed,
 } from "./fixtures/tenant";
+import { isActionPost } from "./fixtures/actions";
 
 /**
  * THE TRIAGE LANE, END TO END (Phase 3 slice 6b).
@@ -35,7 +36,7 @@ import {
  * the undo would not run. This file sorts BEFORE `view-as.spec.ts`,
  * `visibility.spec.ts`, `visual.spec.ts` and the Swedish width walk, so
  * a leftover request would put a "Requested" — or worse, a "Declined" —
- * group into the portal's stop in the 204-shot sweep, and its presence
+ * group into the portal's stop in the visual sweep, and its presence
  * would depend on whether the whole suite or one file had been run.
  *
  * TWO BROWSER CONTEXTS, never two cookies in one jar: the planes are
@@ -73,6 +74,32 @@ async function portalRow(browser: Browser, title: string): Promise<{ page: Page;
 
 const laneRow = (page: Page, title: string) =>
   page.getByTestId("triage-row").filter({ hasText: title });
+
+/**
+ * Accept a request from the lane, so it becomes ordinary work — the state
+ * C29 is about: out of the lane, every move target refusing Cancelled,
+ * and nothing but the Cancel-and-reply doors able to end it.
+ */
+async function accept(page: Page, title: string): Promise<void> {
+  await page.goto(`/projects/${seed.projectKey}/triage`);
+  const row = laneRow(page, title);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.getByRole("button", { name: "Accept" }).click();
+  await expect(row).toHaveCount(0, { timeout: 30_000 });
+  // The server agreed — before anything reads the board.
+  await expect(page.getByText("accepted", { exact: false })).toBeVisible({ timeout: 30_000 });
+}
+
+/** The toast every Cancel-and-reply door shows when the client can read the reply. */
+const CANCELLED_AND_SEEN = /cancelled\. Your client can read your reply\./;
+
+/** Fail after `ms` instead of hanging to the test timeout, which would skip the `finally` that un-routes (time.spec.ts has the same helper). */
+function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${what}`)), ms)),
+  ]);
+}
 
 test.use({ storageState: STORAGE_STATE, locale: "en-US" });
 
@@ -286,5 +313,378 @@ test.describe("the triage lane", () => {
     await row.click();
     await expect(page).toHaveURL(new RegExp(`/projects/${seed.projectKey}/triage$`), { timeout: 30_000 });
     await expect(laneRow(page, title)).toBeVisible({ timeout: 30_000 });
+  });
+});
+
+/**
+ * C29b: THE MENUS' DOORS. An accepted request is ordinary work on the
+ * board and the backlog, where every move target refuses Cancelled for
+ * it — so a card's menu and a row's menu carry "Cancel and reply…",
+ * opening the lane's own dialog through the hook the item panel's band
+ * uses too. `triage.dbtest.ts` proves the verb and `work.dbtest.ts` the
+ * cap; what only a browser can show is the part in between: a Radix menu
+ * handing off to a Radix dialog, where focus goes when that dialog closes
+ * (the menu item it opened from is gone by then), a card that re-renders
+ * in another column, and what the member is told — and keeps — when the
+ * round trip fails.
+ */
+test.describe("ending a client request from the board, the backlog and the item panel", () => {
+  test.afterAll(async () => {
+    await clearPortalRequests(seed.tenantId, seed.contactEmail);
+  });
+
+  test("a board card's menu ends it, focus stays with the card either way, and the client reads the reply", async ({
+    page,
+    browser,
+  }) => {
+    const title = await submitRequest(browser, "Please build a members-only area.");
+    await accept(page, title);
+
+    await page.goto(`/projects/${seed.projectKey}/board`);
+    const card = page.locator('[data-testid="board-card"]', { hasText: title });
+    await expect(card).toBeVisible({ timeout: 30_000 });
+
+    // DISMISSED FIRST — nothing is written, and focus is back on the CARD:
+    // the menu item the dialog opened from is gone by the time it closes,
+    // so `useFocusReturn` alone would leave focus on <body>. The dismiss
+    // says "Go back" beside a confirm that says "Cancel and reply" — never
+    // "Cancel", which in Swedish is the confirm's own first word (Avbryt /
+    // Avbryt och svara), and dismissing throws the reply away.
+    await card.getByRole("button", { name: /Actions for/ }).click();
+    await page.getByRole("menuitem", { name: "Cancel and reply…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Cancel this work and reply" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Go back", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(card).toBeFocused();
+
+    await card.getByRole("button", { name: /Actions for/ }).click();
+    await page.getByRole("menuitem", { name: "Cancel and reply…" }).click();
+    // THE LANE'S OWN WARNING: this is a member typing for a client.
+    await expect(dialog.getByText("Your client reads this, word for word, on their portal.")).toBeVisible();
+    const reply = "We have to stop here — the budget moved to the spring campaign.";
+    await dialog.getByLabel("Your reply").fill(reply);
+    await dialog.getByRole("button", { name: "Cancel and reply", exact: true }).click();
+
+    // The server agreed, and the toast promises only what it saw.
+    await expect(page.getByText(CANCELLED_AND_SEEN)).toBeVisible({ timeout: 30_000 });
+    // The card now lives in the Cancelled column — and HOLDS FOCUS there.
+    // It is a new node in another column; without the board handing focus
+    // to it, focus would sit on <body>, where every key acts.
+    const moved = page
+      .locator('[data-testid="board-column"][data-state-category="CANCELLED"]')
+      .locator('[data-testid="board-card"]', { hasText: title });
+    await expect(moved).toBeVisible({ timeout: 30_000 });
+    await expect(moved).toBeFocused();
+
+    // …and its menu offers no Delete that could only fail — an answered
+    // request's reply is the client's to keep (`deleteItem` refuses it):
+    // refused, with the reason, rather than a press answered by an error.
+    // No second "Cancel and reply" either: it has ended.
+    await moved.getByRole("button", { name: /Actions for/ }).click();
+    const del = page.getByRole("menuitem", { name: /^Delete/ });
+    await expect(del).toHaveAttribute("aria-disabled", "true");
+    await expect(del).toContainText("Your reply is the client’s to keep");
+    await expect(page.getByRole("menuitem", { name: "Cancel and reply…" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    const mine = (await readPortalRequests(seed.tenantId)).find((r) => r.title === title);
+    expect(mine!.stateCategory).toBe("CANCELLED");
+    expect(mine!.triageStatus).toBe("DECLINED");
+
+    const portal = await portalRow(browser, title);
+    try {
+      await expect(portal.page.getByText("Declined", { exact: true })).toBeVisible();
+      await expect(portal.page.getByText(reply)).toBeVisible();
+    } finally {
+      await portal.close();
+    }
+  });
+
+  test("a backlog row's menu ends a PRIVATE one, and the toast says the client cannot read the reply", async ({
+    page,
+    browser,
+  }) => {
+    const title = await submitRequest(browser, "Please add a newsletter sign-up.");
+    await accept(page, title);
+
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const row = page.getByTestId("backlog-row").filter({ hasText: title });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+
+    // Made private first, through the row's own visibility cell: the
+    // client can no longer see the task, so it cannot see the reply.
+    const badge = row.locator('[data-slot="visibility-badge"]');
+    await expect(badge).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+    await row.locator('[data-slot="inline-edit"]').filter({ has: page.locator('[data-slot="visibility-badge"]') }).click();
+    await row.locator("select").selectOption("INTERNAL");
+    await expect(badge).toHaveAttribute("data-visibility", "INTERNAL", { timeout: 30_000 });
+
+    // DISMISSED FIRST, and focus comes back to the ROW: the menu item the
+    // dialog opened from no longer exists, and the body's blur handler
+    // released the row's pin when focus left for the portalled menu.
+    await row.getByRole("button", { name: /Actions for/ }).click();
+    await page.getByRole("menuitem", { name: "Cancel and reply…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Cancel this work and reply" });
+    await dialog.getByLabel("Your reply").fill("A half-written sentence for the client");
+    await dialog.getByRole("button", { name: "Go back", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(row).toBeFocused();
+
+    // …and the half-sentence did not survive into the next opening: this
+    // field is published verbatim to a client.
+    await row.getByRole("button", { name: /Actions for/ }).click();
+    await page.getByRole("menuitem", { name: "Cancel and reply…" }).click();
+    await expect(dialog.getByLabel("Your reply")).toHaveValue("");
+    await dialog.getByLabel("Your reply").fill("The launch date moved, so we are stopping this one.");
+    await dialog.getByRole("button", { name: "Cancel and reply", exact: true }).click();
+
+    // THE OTHER SENTENCE — the server saw a private task, so the toast may
+    // not say the client can read the reply. And it says "while": the
+    // reply is kept, and sharing the task later publishes it.
+    await expect(
+      page.getByText(/cancelled\. Your reply is saved, but your client cannot read it while the task is private to the team/),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(CANCELLED_AND_SEEN)).toHaveCount(0);
+    await expect(row.getByTestId("backlog-state")).toContainText("Cancelled", { timeout: 30_000 });
+    const mine = (await readPortalRequests(seed.tenantId)).find((r) => r.title === title);
+    expect(mine!.triageStatus).toBe("DECLINED");
+    expect(mine!.visibility).toBe("INTERNAL");
+  });
+
+  test("a round trip that fails keeps the reply and the dialog, and the menus say an answer is in flight", async ({
+    page,
+    browser,
+  }) => {
+    const title = await submitRequest(browser, "Please add a dark mode.");
+    await accept(page, title);
+
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const row = page.getByTestId("backlog-row").filter({ hasText: title });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+
+    // HOLD THE DECLINE, and only it — the shell's timer pill posts actions
+    // of its own. A flag, never an `unroute` while a request is held
+    // (unrouting continues it, and a later `abort` then throws).
+    let hold = true;
+    const held: { route: Route | null } = { route: null };
+    let arrived!: () => void;
+    const arrival = new Promise<void>((resolve) => {
+      arrived = resolve;
+    });
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      if (hold && isActionPost(request) && (request.postData() ?? "").includes('"DECLINE"')) {
+        hold = false;
+        held.route = route;
+        arrived();
+        return;
+      }
+      await route.fallback();
+    });
+    try {
+      await row.getByRole("button", { name: /Actions for/ }).click();
+      await page.getByRole("menuitem", { name: "Cancel and reply…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Cancel this work and reply" });
+      const reply = "We will not get to this before the launch, so we are stopping it here.";
+      await dialog.getByLabel("Your reply").fill(reply);
+      await dialog.getByRole("button", { name: "Cancel and reply", exact: true }).click();
+      await within(arrival, 30_000, "the DECLINE to reach the network");
+
+      // IN FLIGHT: the verb is REFUSED on the menus, with the reason — one
+      // answer at a time, because the reply is held until it lands — and,
+      // like every refused item, it stays reachable and inert.
+      await row.getByRole("button", { name: /Actions for/ }).click();
+      const inFlight = page.getByRole("menuitem", { name: /^Cancel and reply…/ });
+      await expect(inFlight).toHaveAttribute("aria-disabled", "true");
+      await expect(inFlight).toContainText("Your last reply is still being sent");
+      // `force`: Playwright's actionability check treats `aria-disabled` as
+      // not enabled and would wait for ever — this is a real pointer click
+      // on the refused item, which is exactly what is being asserted inert.
+      await inFlight.click({ force: true });
+      await expect(page.getByRole("menu")).toHaveAttribute("data-state", "open");
+      await expect(dialog).toHaveCount(0);
+      await page.keyboard.press("Escape");
+
+      // THE ROUND TRIP FAILS — a rejected server action, not a refusal the
+      // server wrote. It is caught and said, never left to the error
+      // boundary, which would have taken the reply with it.
+      await held.route!.abort("failed");
+      await expect(page.getByText("Something went wrong.")).toBeVisible({ timeout: 30_000 });
+      // …and the reply survives it: the dialog is back holding the words,
+      // with focus in the field — not on its ✕, one keypress from
+      // throwing them away.
+      await expect(dialog).toBeVisible();
+      const field = dialog.getByLabel("Your reply");
+      await expect(field).toHaveValue(reply);
+      await expect(field).toBeFocused();
+
+      // Sent again, it lands.
+      await dialog.getByRole("button", { name: "Cancel and reply", exact: true }).click();
+      await expect(page.getByText(CANCELLED_AND_SEEN)).toBeVisible({ timeout: 30_000 });
+      await expect(row.getByTestId("backlog-state")).toContainText("Cancelled", { timeout: 30_000 });
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
+  });
+
+  test("the bulk bar keeps Cancelled for a selection holding a request — refused, reachable, and saying why", async ({
+    page,
+    browser,
+  }) => {
+    const title = await submitRequest(browser, "Please translate the site into Finnish.");
+    await accept(page, title);
+    const mine = (await readPortalRequests(seed.tenantId)).find((r) => r.title === title)!;
+
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const row = page.getByTestId("backlog-row").filter({ hasText: title });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.getByTestId("backlog-select-row").click();
+    await page.getByTestId("bulk-state").click();
+
+    // It used to VANISH from this menu with nothing said. Now it is there,
+    // refused, with the reason for a member who can end a request — and
+    // the way to do it, since this request has a door.
+    const refused = page.getByTestId("bulk-state-refused");
+    await expect(refused).toBeVisible();
+    await expect(refused).toContainText("Cancelled");
+    await expect(refused).toContainText(
+      "Client requests are never cancelled in bulk. End each one from its own menu, with a reply to the client.",
+    );
+    await expect(refused).toHaveAttribute("aria-disabled", "true");
+
+    // REACHABLE BY THE ARROWS, which a Radix-`disabled` item is not — the
+    // reason exists for the keyboard and a screen reader as well.
+    let reached = false;
+    for (let i = 0; i < 12 && !reached; i++) {
+      await page.keyboard.press("ArrowDown");
+      reached = await refused.evaluate((el) => el === document.activeElement);
+    }
+    expect(reached, "the arrows stop on the refused target").toBe(true);
+
+    // …and a press there does NOTHING. Asserted on the menu's own state —
+    // a closing menu stays mounted through its exit animation, so "still
+    // visible" would pass for a press that closed it — and on the network:
+    // no action naming this request leaves the page.
+    let posted = 0;
+    page.on("request", (request) => {
+      if (isActionPost(request) && (request.postData() ?? "").includes(mine.id)) posted += 1;
+    });
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menu")).toHaveAttribute("data-state", "open");
+    // `force`: Playwright treats `aria-disabled` as not enabled and would
+    // wait for ever; this is a real pointer click on the refused item.
+    await refused.click({ force: true });
+    await expect(page.getByRole("menu")).toHaveAttribute("data-state", "open");
+    await page.keyboard.press("Escape");
+    await expect(refused).toHaveCount(0);
+    expect(posted, "no action was sent for the refused target").toBe(0);
+    await page.getByTestId("bulk-clear").click();
+  });
+
+  test("the item panel's band says Decline… for a request still waiting, and hands focus on when it has gone", async ({
+    page,
+    browser,
+  }) => {
+    const title = await submitRequest(browser, "Please move the site to another host.");
+    const mine = (await readPortalRequests(seed.tenantId)).find((r) => r.title === title)!;
+
+    // Still in TRIAGE: no work agreed, so the verb is the lane's own word.
+    await page.goto(`/projects/${seed.projectKey}/items/${mine.number}`);
+    const band = page.getByRole("button", { name: "Decline…" });
+    await expect(band).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Cancel and reply…" })).toHaveCount(0);
+
+    await band.click();
+    const dialog = page.getByRole("dialog", { name: "Decline this request" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    // The band's own button is the dialog's origin, so focus returns to it.
+    await expect(band).toBeFocused();
+
+    // HOLD THE ANSWER, to see the band IN FLIGHT: the dialog closes as the
+    // call starts and focus comes back to the band's OWN button, which is
+    // `aria-disabled` rather than `disabled` — a native `disabled` refuses
+    // focus and would drop it on <body> for the whole round trip — and a
+    // press opens nothing, because `begin` refuses while an answer is on
+    // its way (fix review: neither was pinned).
+    let hold = true;
+    const held: { route: Route | null } = { route: null };
+    let arrived!: () => void;
+    const arrival = new Promise<void>((resolve) => {
+      arrived = resolve;
+    });
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      if (hold && isActionPost(request) && (request.postData() ?? "").includes('"DECLINE"')) {
+        hold = false;
+        held.route = route;
+        arrived();
+        return;
+      }
+      await route.fallback();
+    });
+    try {
+      await band.click();
+      await dialog.getByLabel("Your reply").fill("We only host with our own provider, so we cannot move it.");
+      await dialog.getByRole("button", { name: "Decline and reply", exact: true }).click();
+      await within(arrival, 30_000, "the DECLINE to reach the network");
+      await expect(band).toBeFocused();
+      await expect(band).toHaveAttribute("aria-disabled", "true");
+      await band.click({ force: true });
+      await expect(dialog).toHaveCount(0);
+      await held.route!.continue();
+      await expect(page.getByText(/declined\. Your client can read your reply\./)).toBeVisible({ timeout: 30_000 });
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
+
+    // The request has ended, so the band is gone — and the focus it held
+    // went to the rail's State, which now says so, rather than to <body>.
+    await expect(band).toHaveCount(0, { timeout: 30_000 });
+    const state = page.locator('[data-slot="item-rail"] button').first();
+    await expect(state).toBeFocused();
+    await expect(state).toContainText("Cancelled");
+  });
+});
+
+test.describe("an employee, who may accept a request but not end one", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+  test.afterAll(async () => {
+    await clearPortalRequests(seed.tenantId, seed.contactEmail);
+  });
+
+  test("sees no Cancel and reply, and the bulk bar tells them it is not theirs to cancel", async ({
+    page,
+    browser,
+  }) => {
+    const title = await submitRequest(browser, "Please add a cookie banner.");
+    await page.goto("/login");
+    await page.locator("#email").fill(seed.employeeEmail);
+    await page.locator("#password").fill(seed.employeePassword);
+    await page.locator('form button[type="submit"]').click();
+    await page.waitForURL("**/home", { timeout: 30_000 });
+    // `work_item:triage` is C M E: an employee MAY take the work on.
+    await accept(page, title);
+
+    await page.goto(`/projects/${seed.projectKey}/backlog`);
+    const row = page.getByTestId("backlog-row").filter({ hasText: title });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.getByRole("button", { name: /Actions for/ }).click();
+    // PRESENCE FIRST — the menu has rendered — then the absence, which
+    // would otherwise pass against a menu that had not opened yet.
+    await expect(page.getByRole("menuitem", { name: "Archive" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Cancel and reply…" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    // Not pointed at a verb their menus will never show them.
+    await row.getByTestId("backlog-select-row").click();
+    await page.getByTestId("bulk-state").click();
+    await expect(page.getByTestId("bulk-state-refused")).toContainText(
+      "A client request is selected, and you do not have permission to cancel client requests.",
+    );
+    await page.keyboard.press("Escape");
+    await page.getByTestId("bulk-clear").click();
   });
 });

@@ -69,11 +69,15 @@ export type TriageActionInput = z.input<typeof input>;
  * WHERE THE MEMBER PRESSED IT, which decides two things and nothing else:
  * the address an MFA step-up returns to, and what is revalidated after.
  *
- * Absent means the lane. Present means the item panel's request band —
- * the door C29 gave `DECLINE` outside the lane, because an ACCEPTED
- * request keeps `kind = REQUEST` for ever while `listTriage` filters
- * `stateCategory = TRIAGE`, so the row the agency could no longer end
- * was not on the one screen that could end it.
+ * Absent means the lane. Present means one of the doors C29 gave
+ * `DECLINE` outside the lane (`useEndRequest`) — the item panel's
+ * request band at whichever stop it is drawn (C29a), a board card's
+ * menu, which returns to that card's peek over the board (`board-peek`:
+ * the board itself has no item surface, and the peek holds the same
+ * verb), or a backlog row's menu (`backlog`) (C29b). They exist because
+ * an ACCEPTED request keeps `kind = REQUEST` for ever while `listTriage`
+ * filters `stateCategory = TRIAGE`, so the row the agency could no
+ * longer end was not on the one screen that could end it.
  *
  * **IT CARRIES A SURFACE AND A NUMBER, NEVER A PATH.** `itemReturnTo`'s
  * own docblock calls the return address an open-redirect surface and
@@ -137,10 +141,12 @@ export async function triageAction(
     revalidatePath(lane);
     revalidatePath(`/projects/${key.data}/board`);
     revalidatePath(`/projects/${key.data}/backlog`);
-    // AND THE ITEM PAGE ITSELF when that is where it happened. The two
-    // PEEKS are already covered by the board and backlog paths above;
-    // what is not is `/projects/[key]/items/[number]`, so it is named
-    // literally.
+    // AND THE ITEM PAGE ITSELF whenever a door outside the lane names the
+    // item — the page is one of the band's stops, and the only one the
+    // board and backlog paths above do not cover (the two PEEKS render
+    // under those), so `/projects/[key]/items/[number]` is named
+    // literally. From a card's or a row's menu it is not the page the
+    // member is on, and costs one cache entry marked stale.
     //
     // A first cut wrote `revalidatePath(\`/projects/${key.data}\`,
     // "layout")` with a comment claiming it covered all three stops. It

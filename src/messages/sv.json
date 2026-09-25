@@ -1697,7 +1697,10 @@
         "restore": "Återställ",
         "done": "{changed, plural, one {# uppgift uppdaterad} other {# uppgifter uppdaterade}}",
         "noneChanged": "Inget att ändra — uppgifterna hade redan det värdet.",
-        "failed": "Ändringen sparades inte. Listan visar aktuellt läge."
+        "failed": "Ändringen sparades inte. Listan visar aktuellt läge.",
+        "requestBlocked": "Kundförfrågningar avbryts aldrig flera åt gången. Avsluta var och en från dess egen meny, med ett svar till kunden.",
+        "requestBlockedNoRight": "En kundförfrågan är markerad, och du har inte behörighet att avbryta kundförfrågningar.",
+        "requestBlockedClosed": "Kundförfrågningar avbryts aldrig flera åt gången."
       },
       "rollup": {
         "count": "{total, plural, one {# uppgift} other {# uppgifter}}",
@@ -1758,7 +1761,9 @@
         "archive": "Arkivera",
         "restore": "Återställ",
         "delete": "Ta bort",
-        "confirmDelete": "Ta bort uppgiften?"
+        "confirmDelete": "Ta bort uppgiften?",
+        "deleteAnswered": "Ditt svar tillhör kunden — arkivera uppgiften i stället",
+        "deleteAnsweredArchived": "Ditt svar tillhör kunden"
       },
       "priorityLabel": "Prioritet",
       "dueLabel": "Förfallodatum",
@@ -1797,8 +1802,17 @@
       },
       "accepted": "{key} mottagen – den ligger på tavlan nu.",
       "declined": "{key} avböjd. Din kund kan läsa ditt svar.",
+      "declinedUnshared": "{key} avböjd. Ditt svar är sparat, men kunden kan inte läsa det så länge uppgiften är privat för teamet eller ingen hos kunden kan öppna projektets portal.",
       "duplicated": "{key} markerad som dubblett. Din kund kan läsa ditt svar.",
+      "duplicatedUnshared": "{key} markerad som dubblett. Ditt svar är sparat, men kunden kan inte läsa det så länge uppgiften är privat för teamet eller ingen hos kunden kan öppna projektets portal.",
       "snoozedToast": "{key} uppskjuten.",
+      "end": {
+        "cancel": "Avbryt och svara…",
+        "decline": "Avböj…",
+        "sending": "Ditt senaste svar skickas fortfarande",
+        "cancelled": "{key} avbruten. Din kund kan läsa ditt svar.",
+        "cancelledUnshared": "{key} avbruten. Ditt svar är sparat, men kunden kan inte läsa det så länge uppgiften är privat för teamet eller ingen hos kunden kan öppna projektets portal."
+      },
       "answer": {
         "about": "{key} · {title}",
         "clientReads": "Din kund läser detta, ord för ord, i sin portal.",
@@ -1806,7 +1820,8 @@
         "CANCEL_ACCEPTED": {
           "title": "Avbryt arbetet och svara",
           "placeholder": "Berätta varför arbetet avbryts. Kunden ser exakt detta.",
-          "confirm": "Avbryt och svara"
+          "confirm": "Avbryt och svara",
+          "dismiss": "Tillbaka"
         },
         "DECLINE": {
           "title": "Avböj förfrågan",
@@ -2318,10 +2333,7 @@
         "noticeFailed": "Informationen om tidsregistrering kunde inte hämtas."
       },
       "requestBandTitle": "Det här började som en kundförfrågan",
-      "requestBandBody": "Om arbetet inte blir av, berätta varför — kunden har följt det sedan de frågade.",
-      "requestBandAction": "Avbryt och svara…",
-      "requestBandDone": "Avbrutet, och ditt svar finns på kundens portal",
-      "requestBandDoneUnshared": "Avbrutet, och ditt svar är sparat — kunden ser det inte så länge detta är privat eller deras portal är av"
+      "requestBandBody": "Om arbetet inte blir av, berätta varför — kunden har följt det sedan de frågade."
     },
     "states": {
       "seed": {

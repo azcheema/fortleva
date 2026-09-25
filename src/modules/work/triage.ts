@@ -4,6 +4,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { retryOnDeadlock } from "@/lib/retry";
+import { portalGatesFor, portalModuleVerdict, portalPrincipalVerdict } from "@/portal";
 
 import { writeActivity } from "./activity";
 import { loadItemInScope, type ItemRow } from "./rows";
@@ -113,6 +114,48 @@ export type TriageOutcome = {
   readonly triageStatus: ItemRow["triageStatus"];
   readonly snoozedUntil: Date | null;
   readonly state: StateChange | null;
+  /**
+   * WHETHER SOMEBODY AT THE CLIENT CAN READ THIS ROW ON THEIR PORTAL NOW
+   * (C29b) — what a surface may promise in its toast. Five terms, which
+   * are the Portal tab's blocker list (`portal-preview.ts`) plus the
+   * row's own share, because that list exists to be exhaustive about
+   * exactly this question:
+   *
+   *   1. the row is CLIENT_VISIBLE, and
+   *   2. its `portalEnabled` is on — the column `portal_gate` reads,
+   *      fanned from the project's switch by trigger;
+   *   3. the project is not archived — `listPortalTasks` hides an
+   *      archived project whole;
+   *   4. at least one contact of the row's client would pass
+   *      `authorizePortal`'s own steps 1–2 for the task list (ACTIVE,
+   *      invited, a profile holding `portal.work_item.view`) and has
+   *      confirmed their address — the Portal tab's audience;
+   *   5. the tenant's portal module is open for that capability — step 5,
+   *      `portalModuleVerdict` over the same gates the Portal tab reads,
+   *      read after the commit; if they cannot be read, the answer is
+   *      FALSE rather than an error on a verb that has already landed.
+   *
+   * The row's two terms are read under the row lock, so they are current
+   * for the write; the project, the contacts and the module gates are
+   * not locked, and racing a change to one of them changes which toast
+   * the member reads, never what the client can see. What the rows that
+   * the verbs produce already satisfy by construction — the client, a
+   * live row, the answered-request branch — is not re-checked. One named
+   * residual: `listPortalTasks` returns the first `PORTAL_TASK_LIMIT`
+   * rows, so for a client with more shared tasks than that an undated
+   * reply can sort past the cut and this still says true.
+   *
+   * THE SERVICE ANSWERS IT, NOT THE SURFACE, because four doors send a
+   * reply now (the lane, the item panel's band, a board card's menu, a
+   * backlog row's menu) and a screen's props are a render old: a
+   * colleague may have made the task private since. The band's first
+   * version derived the promise from its own props, and before that
+   * promised delivery unconditionally, which a fresh review caught
+   * (C29a); the first cut of THIS field read three of the five terms and
+   * would have told a member "your client can read your reply" with every
+   * contact's access ended — a second review caught that.
+   */
+  readonly clientSees: boolean;
 };
 
 /**
@@ -166,7 +209,7 @@ export async function triageItem(
   // path has no "should not happen" branch.
   const parsed = parseInput(input);
 
-  return retryOnDeadlock(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+  const outcome = await retryOnDeadlock(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:triage");
     const item = await loadItemInScope(tx, ctx, itemId);
 
@@ -217,11 +260,19 @@ export async function triageItem(
     }
     // Archived and soft-deleted rows: `loadItemInScope` filters
     // `deletedAt`, and an archived request is one the agency has already
-    // put away. Declining it would write a client-visible answer to
-    // something the client can no longer see (`listPortalTasks` filters
-    // `archivedAt`), which is the same silent-vanish this slice exists
-    // to end, from the other direction.
+    // put away — the client stopped seeing it then (`listPortalTasks`'
+    // LIVE branch filters `archivedAt`). Declining it would bring it BACK,
+    // as Declined: an answered request outlives the archive (founder
+    // decision, 2026-09-22 — the answered branch has no archive term). A
+    // reply resurfacing a row the agency filed away is a decision nobody
+    // made while it sat there; restoring it first makes the answer an
+    // ordinary act on a live row. (Corrected in C29b: this comment said
+    // the answer would be one the client could not see, which the same
+    // founder decision had already made untrue.)
     if (item.archivedAt) fail("ARCHIVED", "work item");
+    // Read once, AFTER every refusal above: no verb changes the row's
+    // visibility or its project, so the answer holds for the outcome.
+    const clientSees = await clientCanSee(tx, ctx, item);
 
     // ── SNOOZE: the row does not move ────────────────────────────────
     // It is the one verb with no transition, so it writes its own
@@ -249,6 +300,7 @@ export async function triageItem(
           triageStatus: "SNOOZED" as const,
           snoozedUntil: item.snoozedUntil,
           state: null,
+          clientSees,
         };
       }
       await tx.workItem.update({
@@ -271,6 +323,7 @@ export async function triageItem(
         triageStatus: "SNOOZED" as const,
         snoozedUntil: parsed.until,
         state: null,
+        clientSees,
       };
     }
 
@@ -331,8 +384,78 @@ export async function triageItem(
       triageStatus: target.triage.triageStatus,
       snoozedUntil: null,
       state,
+      clientSees,
     };
   }));
+
+  // TERM 5, AFTER THE COMMIT AND ONLY WHEN THE OTHER FOUR SAID YES. The
+  // module gates are a system-principal round trip of their own
+  // (`resolvePortalModuleGates` opens its own transaction), so reading
+  // them inside the one above would hold a second connection while this
+  // row is locked. They are tenant-wide and the write does not depend on
+  // them — the answer is already committed; this only decides what the
+  // member is told about it.
+  //
+  // **AND IT MAY NOT FAIL THE VERB.** The first cut awaited it bare: a
+  // transient error here rejected an action whose answer had COMMITTED,
+  // so the member saw "Something went wrong", the dialog reopened with
+  // the reply, and a resend was refused as "already ended" — while the
+  // client was already reading it (and in the lane an ACCEPT that had
+  // landed came back as a failure). A question about a toast must never
+  // turn a done thing into an error. Unanswerable, it answers FALSE: the
+  // member is told the reply is saved and may not be readable yet, which
+  // under-promises rather than claiming what nobody checked (fix review).
+  if (!outcome.clientSees) return outcome;
+  try {
+    const gates = await portalGatesFor(ctx.tenantId);
+    return portalModuleVerdict("portal.work_item.view", gates).ok ? outcome : { ...outcome, clientSees: false };
+  } catch (e) {
+    console.error("[triage] portal module gates unreadable after the answer committed", e);
+    return { ...outcome, clientSees: false };
+  }
+}
+
+/**
+ * `TriageOutcome.clientSees`' first four terms (the fifth, the tenant's
+ * module gates, is read after the commit — see `triageItem`). Each read
+ * happens only when the ones before it have not already answered no, so
+ * a private task costs nothing beyond the row it already holds.
+ *
+ * EXPLICIT SELECTS, because this file is in `portal-projections.test.ts`'s
+ * structural tier; nothing read here leaves the function but the boolean.
+ * The audience is the Portal tab's (`portal-preview.ts`: ACTIVE, invited,
+ * address confirmed) put through `portalPrincipalVerdict`, the same
+ * steps 1–2 `authorizePortal` runs for a contact asking for the task
+ * list — so a profile that does not hold the capability is no audience,
+ * which is the one respect in which this is stricter than the tab's
+ * count, and a v1 profile cannot hit it.
+ */
+async function clientCanSee(tx: TenantDb, ctx: WorkCtx, item: ItemRow): Promise<boolean> {
+  if (item.visibility !== "CLIENT_VISIBLE" || !item.portalEnabled) return false;
+  const project = await tx.project.findFirst({
+    where: { tenantId: ctx.tenantId, id: item.projectId },
+    select: { archivedAt: true },
+  });
+  if (project === null || project.archivedAt !== null) return false;
+  const audience = await tx.contact.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      clientId: item.clientId,
+      portalStatus: "ACTIVE",
+      invitedAt: { not: null },
+      emailVerified: true,
+    },
+    select: { portalProfile: true, portalStatus: true, invitedAt: true },
+  });
+  return audience.some(
+    (contact) =>
+      portalPrincipalVerdict({
+        capability: "portal.work_item.view",
+        profile: contact.portalProfile,
+        portalStatus: contact.portalStatus,
+        invitedAt: contact.invitedAt,
+      }).ok,
+  );
 }
 
 // ── Parsing ─────────────────────────────────────────────────────────

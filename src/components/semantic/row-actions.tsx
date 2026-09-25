@@ -136,10 +136,33 @@ export function RowActions({ label, primary, items, className }: RowActionsProps
             return (
               <DropdownMenuItem
                 key={item.key}
-                variant={rowActionVariant(item)}
-                disabled={item.disabled}
-                className={item.disabled && item.disabledReason ? "h-auto py-1" : undefined}
-                onSelect={() => {
+                // A refused verb carries no danger weight: it cannot act.
+                variant={item.disabled ? "default" : rowActionVariant(item)}
+                // REFUSED, AND STILL FOCUSABLE — `aria-disabled`, not
+                // Radix's `disabled`, which drops the item from the menu's
+                // roving focus: its reason would only ever be SEEN, the
+                // arrows walking past it and a screen reader never speaking
+                // it. The WAI-ARIA menu pattern keeps a disabled item
+                // focusable and inert; the press below is swallowed and
+                // leaves the menu open. Focused, it keeps both of §9's focus
+                // channels (the accent fill and the inset bar) and lifts its
+                // label to `--muted-foreground`, because `--fg-disabled`
+                // falls below 3:1 on the dark accent fill — the bulk bar's
+                // refused target, the same way.
+                aria-disabled={item.disabled ? true : undefined}
+                className={
+                  item.disabled
+                    ? cn(
+                        "cursor-not-allowed text-fg-disabled focus:text-muted-foreground",
+                        item.disabledReason && "h-auto py-1",
+                      )
+                    : undefined
+                }
+                onSelect={(event) => {
+                  if (item.disabled) {
+                    event.preventDefault();
+                    return;
+                  }
                   if (rowActionNeedsConfirm(item)) {
                     setAskingKey(item.key);
                     return;
@@ -151,7 +174,9 @@ export function RowActions({ label, primary, items, className }: RowActionsProps
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate">{item.label}</span>
                   {item.disabled && item.disabledReason ? (
-                    <span className="truncate text-2xs text-muted-foreground">
+                    // WRAPPED, not truncated: a reason cut off mid-word is
+                    // a reason nobody can read either.
+                    <span className="max-w-56 text-2xs text-muted-foreground">
                       {item.disabledReason}
                     </span>
                   ) : null}

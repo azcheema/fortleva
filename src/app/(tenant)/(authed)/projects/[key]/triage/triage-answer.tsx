@@ -358,7 +358,13 @@ export function TriageAnswer({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
-            {tCommon("cancel")}
+            {/* NOT "Cancel" beside "Cancel and reply": in Swedish the
+                dismiss would be the confirm's own first word ("Avbryt" /
+                "Avbryt och svara"), and dismissing throws the reply away.
+                Not "Close" either, which is the ✕'s name. Found by the
+                C29b review. The other modes' confirms share no word
+                with "Cancel". */}
+            {mode === "CANCEL_ACCEPTED" ? t("answer.CANCEL_ACCEPTED.dismiss") : tCommon("cancel")}
           </Button>
           <Button type="button" onClick={submit} disabled={!canSubmit}>
             {t(`answer.${mode}.confirm`)}

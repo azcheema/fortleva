@@ -80,6 +80,7 @@ afterAll(async () => {
 }, 60_000);
 
 const ownerCtx = () => ({ tenantId: f.tenantId, actor: f.seats.owner.actor });
+const adminCtx = () => ({ tenantId: f.tenantId, actor: f.seats.admin.actor });
 const employeeCtx = () => ({ tenantId: f.tenantId, actor: f.seats.employee.actor });
 
 describe("numbering + rank under concurrency", () => {
@@ -1131,6 +1132,152 @@ describe("deny-default scoping", () => {
 });
 
 /**
+ * The caps the BOARD and the BACKLOG gate their controls on — one
+ * `authorizedCodes` resolution since C29b, where the read's batch held
+ * five `isAuthorized` legs beside its three reads (AGENTS.md's
+ * `Promise.all` trap). Each answer has to be exactly what `isAuthorized`
+ * gave, so every cap is pinned for three seats that differ on most of
+ * them, and — because two PAIRS of caps agree on every seeded role — for
+ * a seat with one code of each pair taken away.
+ */
+describe("listItems — the caps the board and the backlog gate on", () => {
+  // THE EMPLOYEE NEEDS SCOPE, or both cases below measure `assertInScope`
+  // rather than a cap. Written HERE, for the block, because the second
+  // case once borrowed it from the first — a mutation that failed the
+  // first before its write turned the second's refusal into NOT_FOUND.
+  // `skipDuplicates`: the scoping block above writes the same row.
+  beforeAll(async () => {
+    await f.platform.memberClient.createMany({
+      data: [{ tenantId: f.tenantId, memberId: f.seats.employee.memberId, clientId }],
+      skipDuplicates: true,
+    });
+  });
+
+  it("answers every cap for three seats that differ on most of them, as a closed shape", async () => {
+    // CLOSED, as the panel's is: a new cap has to be added here on purpose.
+    // Three seats, because two could not tell a SWAPPED mapping from a
+    // right one: the owner holds everything and the employee almost
+    // nothing, so `canDelete` and `canChangeVisibility` agree on both —
+    // the admin is the seat that holds one and not the other (review).
+    expect((await listItems(ownerCtx(), projectId)).caps).toEqual({
+      canCreate: true,
+      canEdit: true,
+      canChangeVisibility: true,
+      canDelete: true,
+      canApprove: true,
+      canEndRequest: true,
+    });
+    // C M A for visibility and approval, C M for delete, and neither
+    // triage code (C M E / C M).
+    expect((await listItems(adminCtx(), projectId)).caps).toEqual({
+      canCreate: true,
+      canEdit: true,
+      canChangeVisibility: true,
+      canDelete: false,
+      canApprove: true,
+      canEndRequest: false,
+    });
+    // The employee edits the work and holds none of the rest — and cannot
+    // END a client's request, which is the founder's C29 split (a delivery
+    // lead's act).
+    expect((await listItems(employeeCtx(), projectId)).caps).toEqual({
+      canCreate: true,
+      canEdit: true,
+      canChangeVisibility: false,
+      canDelete: false,
+      canApprove: false,
+      canEndRequest: false,
+    });
+  });
+
+  it("canEndRequest is the CONJUNCTION triageItem demands, across every role a member holds", async () => {
+    // A custom role holding ONLY `work_item:triage_decline`, which the
+    // seeded templates never produce (C M, a subset of `work_item:triage`'s
+    // C M E) — but `setRolePermissions` applies per-code changes with no
+    // dependency map, and the panel's first cut of this cap, gated on the
+    // second code alone, drew a band whose every press was refused.
+    const decline = await f.platform.permission.findUniqueOrThrow({
+      where: { code: "work_item:triage_decline" },
+      select: { id: true },
+    });
+    const role = await f.platform.role.create({
+      data: { tenantId: f.tenantId, name: `Decline only ${randomUUID().slice(0, 8)}` },
+      select: { id: true },
+    });
+    await f.platform.rolePermission.create({
+      data: { tenantId: f.tenantId, roleId: role.id, permissionId: decline.id },
+    });
+    await f.platform.memberRole.createMany({
+      data: [f.seats.admin.memberId, f.seats.employee.memberId].map((memberId) => ({
+        tenantId: f.tenantId,
+        memberId,
+        roleId: role.id,
+      })),
+    });
+    try {
+      // The ADMIN now holds the second code and still not the first
+      // (`work_item:triage` is C M E): no verb, because `triageItem` would
+      // refuse it before it ever reached the second check.
+      expect((await listItems(adminCtx(), projectId)).caps.canEndRequest).toBe(false);
+      // The EMPLOYEE already held the first, so with this role on top it
+      // holds BOTH — from two roles, which is the union the resolution is.
+      expect((await listItems(employeeCtx(), projectId)).caps.canEndRequest).toBe(true);
+    } finally {
+      await f.platform.memberRole.deleteMany({ where: { tenantId: f.tenantId, roleId: role.id } });
+      await f.platform.role.delete({ where: { id: role.id } });
+    }
+    // …and the seats are back to what every later case expects.
+    expect((await listItems(employeeCtx(), projectId)).caps.canEndRequest).toBe(false);
+  });
+
+  it("each cap reads its OWN code — a swapped mapping inside a pair that every seeded role agrees on is caught", async () => {
+    // `work_item:create` and `work_item:edit` are both C M A E, and
+    // `work_item:change_visibility` and `work_item:approve` both C M A, so
+    // on every seeded seat each pair answers alike — a `listItems` that
+    // read `canEdit` off `create`, or `canApprove` off `change_visibility`,
+    // passes the closed shapes above (fix review). Take ONE code of each
+    // pair off the admin's role — the tombstone `setRolePermissions`
+    // itself writes, a TENANT_REVOKE row — and the pairs come apart.
+    const codes = ["work_item:edit", "work_item:approve"];
+    const permissions = await f.platform.permission.findMany({
+      where: { code: { in: codes } },
+      select: { id: true },
+    });
+    const adminRole = f.roleId("admin");
+    const rows = await f.platform.rolePermission.findMany({
+      where: { tenantId: f.tenantId, roleId: adminRole, permissionId: { in: permissions.map((p) => p.id) } },
+      select: { permissionId: true, source: true },
+    });
+    expect(rows).toHaveLength(2);
+    await f.platform.rolePermission.updateMany({
+      where: { tenantId: f.tenantId, roleId: adminRole, permissionId: { in: permissions.map((p) => p.id) } },
+      data: { source: "TENANT_REVOKE" },
+    });
+    try {
+      expect((await listItems(adminCtx(), projectId)).caps).toEqual({
+        canCreate: true,
+        canEdit: false,
+        canChangeVisibility: true,
+        canDelete: false,
+        canApprove: false,
+        canEndRequest: false,
+      });
+    } finally {
+      // Put back EXACTLY as found, row by row.
+      for (const row of rows) {
+        await f.platform.rolePermission.update({
+          where: {
+            tenantId_roleId_permissionId: { tenantId: f.tenantId, roleId: adminRole, permissionId: row.permissionId },
+          },
+          data: { source: row.source },
+        });
+      }
+    }
+    expect((await listItems(adminCtx(), projectId)).caps.canEdit).toBe(true);
+  });
+});
+
+/**
  * The panel's one read. Its denial is NOT covered by the browser test —
  * there `loadProject` 404s first, so the item-level scope check would
  * pass a deleted `assertInScope` unnoticed (2026-09-12 review). This
@@ -1259,8 +1406,9 @@ describe("getItemDetail — the panel's one scoped read", () => {
     });
 
     // **AND THE ONE CAP WHOSE WHOLE POINT IS THAT IT DENIES SOMEBODY.**
-    // `endRequest` is `work_item:triage_decline` (C M), which the founder
-    // chose for C29 over the wider `work_item:edit`: stopping agreed work
+    // `endRequest` is `work_item:triage` AND `work_item:triage_decline`
+    // (C M E and C M — the second is the one an employee lacks), which the
+    // founder chose for C29 over the wider `work_item:edit`: stopping agreed work
     // and writing the client the reason is a delivery lead's act. An
     // employee can edit this very task and cannot end it, so a cap that
     // read `true` for every seat would be a band drawn where the service

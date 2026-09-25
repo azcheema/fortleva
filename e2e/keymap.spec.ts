@@ -192,6 +192,27 @@ test.describe("the scope registry", () => {
     await expect(page.getByTestId("board-create-input")).toHaveCount(0);
   });
 
+  test("`J` and `K` move FOCUS between a board column's cards, not only the tab stop", async ({ page }) => {
+    // THE BOARD'S ROVING KEYS HAD NO TEST, and a review of C29b read them
+    // as dead: `onBoardKeyDown` names the next card through `focusCard`,
+    // which moves the roving TAB STOP at once but leaves DOM focus to an
+    // effect that did not re-run on that change — so the key moved nothing
+    // a member could see, and the name it left behind stole focus on the
+    // next refresh. Measured here, on the seeded To do column's two cards.
+    await page.goto(`/projects/${seed.projectKey}/board`);
+    await expect(page.getByTestId("board")).toBeVisible();
+    const cards = page.locator('[data-testid="board-column"][data-state-category="TODO"] [data-testid="board-card"]');
+    await expect(cards.nth(1)).toBeVisible();
+    await cards.nth(0).locator("p").first().click();
+    await expect(cards.nth(0)).toBeFocused();
+    await page.keyboard.press("j");
+    await expect(cards.nth(1)).toBeFocused();
+    await page.keyboard.press("k");
+    await expect(cards.nth(0)).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(cards.nth(1)).toBeFocused();
+  });
+
   test("single keys stay inert inside the description editor", async ({ page }) => {
     await openFirstPeek(page);
     const editor = page.locator('[contenteditable="true"]').first();

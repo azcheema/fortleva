@@ -57,6 +57,8 @@ import {
   columnTotals,
   edgeAnchors,
   epicIdsOf,
+  isAnsweredRequest,
+  isEndableRequest,
   laneKeyOf,
   lanesFor,
   visibleColumns,
@@ -73,6 +75,7 @@ import type { TimerPillState } from "../../../time/actions";
 import { useTaskTimer } from "../../../time/use-task-timer";
 import { createItemInStateAction, deleteItemAction, moveItemAction, setItemArchivedAction } from "../backlog/actions";
 import { TimerElapsed } from "../item-panel/timer-control";
+import { useEndRequest } from "../triage/end-request";
 import { MovePicker } from "./move-picker";
 
 /**
@@ -325,20 +328,73 @@ export function Board({
   // Focus is handed back to a card AFTER it has rendered where it now
   // lives (a moved card is a new DOM node in another column), never on
   // a timer racing the transition.
-  const pendingFocusRef = useRef<string | null>(null);
-  const focusCard = useCallback((id: string) => {
+  //
+  // `ifIdle` marks a hand-back that may arrive LATE — the re-home after a
+  // request is ended, which waits on a round trip and then on the
+  // revalidated page. It is honoured only if, when it is finally
+  // consumed, focus is on `<body>` (the card's old node has gone) or
+  // still on that card's old node (the new one has not landed yet: wait);
+  // anywhere else the member has moved on and the name is dropped. The
+  // check is at CONSUMPTION, not at the call: the first cut checked when
+  // the server answered, and a member who started typing a title in the
+  // gap between that and the page's commit still had focus yanked onto
+  // the cancelled card, their letters landing on it as board keys
+  // (`S`, `T`) — found by the fix review.
+  const pendingFocusRef = useRef<{ id: string; ifIdle: boolean } | null>(null);
+  const focusCard = useCallback((id: string, opts?: { ifIdle?: boolean }) => {
     setFocusedId(id);
-    pendingFocusRef.current = id;
+    pendingFocusRef.current = { id, ifIdle: opts?.ifIdle ?? false };
   }, []);
+  // A card's OWN focus event (a click, a Tab) supersedes any name still
+  // pending for a DIFFERENT card: the member chose where they are. Without
+  // this, the effect below — which re-runs on `focusedId` — would consume
+  // the stale name and pull focus straight back.
+  const onCardFocus = useCallback((id: string) => {
+    if (pendingFocusRef.current && pendingFocusRef.current.id !== id) pendingFocusRef.current = null;
+    setFocusedId(id);
+  }, []);
+  // "Cancel and reply…" / "Decline…" from a card's menu (C29b) — the
+  // panel band's own flow (`useEndRequest`). Focus goes back to the CARD,
+  // by the road the move picker uses: when the dialog closes (it opened
+  // from a menu item, which is gone by then, so `useFocusReturn` has
+  // nowhere to return to), and again once the server agrees — `ifIdle`,
+  // because the card then re-renders in the Cancelled column as a new
+  // node, seconds later, and the member may have moved on by then.
+  const endRequest = useEndRequest({
+    projectKey,
+    origin: "board-peek",
+    onClosed: (item) => focusCard(item.id),
+    onEnded: (item) => focusCard(item.id, { ifIdle: true }),
+  });
+  const endOpen = endRequest.open;
+  // `focusedId` IS A DEPENDENCY, and it was missing until C29b's review:
+  // `J K` and the arrows name the next card through `focusCard`, which
+  // moves the roving tab stop at once but relied on this effect for DOM
+  // focus — and without `focusedId` here nothing re-ran it, so the keys
+  // moved only the tab stop, and the name they left in the ref stole
+  // focus on the next refresh that changed `items`. Now the name is
+  // consumed on the render that sets it. (Measured in a browser: the
+  // `keymap.spec.ts` test fails with this dependency removed.)
   useEffect(() => {
-    const id = pendingFocusRef.current;
-    if (!id || picker) return;
-    const el = document.querySelector<HTMLElement>(`[data-board-card="${id}"]`);
+    const pending = pendingFocusRef.current;
+    if (!pending || picker || endOpen) return;
+    if (pending.ifIdle) {
+      const active = document.activeElement;
+      if (active !== null && active !== document.body) {
+        if (active.closest(`[data-board-card="${pending.id}"]`)) return;
+        pendingFocusRef.current = null;
+        return;
+      }
+    }
+    const el = document.querySelector<HTMLElement>(`[data-board-card="${pending.id}"]`);
     if (el) {
       pendingFocusRef.current = null;
       el.focus();
     }
-  }, [picker, items]);
+  }, [picker, endOpen, focusedId, items]);
+  /** The card menu's C29b item for this card, or null where it has none. */
+  const endRequestFor = (item: WorkItem): RowAction | null =>
+    data.caps.canEndRequest && isEndableRequest(item) ? endRequest.rowActionFor(item) : null;
 
   // `T` on a card (UI.md §6): a timer on its task. Unlike `S` and the
   // roving keys it acts from ANYWHERE in the card — the card itself or its
@@ -549,8 +605,9 @@ export function Board({
               defaultStateId={defaultState?.id ?? null}
               creatingIn={creatingIn}
               setCreatingIn={setCreatingIn}
-              onFocusCard={setFocusedId}
+              onFocusCard={onCardFocus}
               onOpenPicker={setPicker}
+              endRequestFor={endRequestFor}
               applyOptimistic={applyOptimistic}
               startTransition={startTransition}
               onMutate={() => router.refresh()}
@@ -581,6 +638,11 @@ export function Board({
           onChoose={onPickerChoose}
         />
       ) : null}
+      {/* Beside the move picker and OUTSIDE the region, for the same
+          reason: the region's `onKeyDown` owns the board's single keys,
+          and a portalled dialog's keystrokes bubble through React's tree
+          to whatever rendered it. */}
+      {endRequest.dialog}
       {taskTimer.notice}
     </>
   );
@@ -611,6 +673,8 @@ function BoardLane(props: {
   setCreatingIn: (stateId: string | null) => void;
   onFocusCard: (id: string) => void;
   onOpenPicker: (item: WorkItem) => void;
+  /** A card's "Cancel and reply…" menu item, or null where it has none (`Board`'s `endRequestFor`). */
+  endRequestFor: (item: WorkItem) => RowAction | null;
   applyOptimistic: (a: OptimisticAction) => void;
   startTransition: (fn: () => Promise<void>) => void;
   onMutate: () => void;
@@ -698,6 +762,7 @@ function BoardColumn(props: {
   setCreatingIn: (stateId: string | null) => void;
   onFocusCard: (id: string) => void;
   onOpenPicker: (item: WorkItem) => void;
+  endRequestFor: (item: WorkItem) => RowAction | null;
   applyOptimistic: (a: OptimisticAction) => void;
   startTransition: (fn: () => Promise<void>) => void;
   onMutate: () => void;
@@ -801,6 +866,7 @@ function BoardColumn(props: {
             tabbable={props.tabbableId === item.id}
             onFocus={() => props.onFocusCard(item.id)}
             onOpenPicker={() => props.onOpenPicker(item)}
+            endAction={props.endRequestFor(item)}
             startTransition={props.startTransition}
             onMutate={props.onMutate}
           />
@@ -910,6 +976,7 @@ function BoardCard({
   tabbable,
   onFocus,
   onOpenPicker,
+  endAction,
   startTransition,
   onMutate,
 }: {
@@ -952,6 +1019,13 @@ function BoardCard({
   tabbable: boolean;
   onFocus: () => void;
   onOpenPicker: () => void;
+  /**
+   * "Cancel and reply…" (C29b) — or "Decline…" in TRIAGE — on a live
+   * client request, for a member who may end one; null everywhere else.
+   * REQUIRED, null included: whether the card offers it is the board's
+   * decision (the caps and `isEndableRequest`), never a default here.
+   */
+  endAction: RowAction | null;
   startTransition: (fn: () => Promise<void>) => void;
   onMutate: () => void;
 }) {
@@ -1053,16 +1127,34 @@ function BoardCard({
         ]
       : []),
     { key: "move", label: t("moveTo"), onSelect: onOpenPicker },
+    // Beside Move to…, whose picker has no Cancelled for a request: this
+    // is where that target went, with the reply the client is owed.
+    // The DRAG still refuses the column — a card that visibly landed in
+    // Cancelled and then waited on a 500-character modal would be a
+    // failure that looks like a revert (C29).
+    ...(endAction ? [endAction] : []),
     { key: "archive", label: tBacklog("actions.archive"), onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, true)) },
     ...(canDelete
       ? [
-          {
-            key: "delete",
-            label: tBacklog("actions.delete"),
-            tone: "danger" as const,
-            confirm: tBacklog("actions.confirmDelete"),
-            onSelect: () => run(() => deleteItemAction(item.id, projectKey)),
-          },
+          // An ANSWERED request's reply is the client's to keep, and
+          // `deleteItem` refuses it — so the verb is REFUSED here, with that
+          // reason, rather than a press whose only answer is an error. The
+          // flow C29b adds leads straight to it: end a request from this
+          // menu, open the menu again, and Delete was next (review).
+          isAnsweredRequest(item)
+            ? {
+                key: "delete",
+                label: tBacklog("actions.delete"),
+                disabled: true,
+                disabledReason: tBacklog("actions.deleteAnswered"),
+              }
+            : {
+                key: "delete",
+                label: tBacklog("actions.delete"),
+                tone: "danger" as const,
+                confirm: tBacklog("actions.confirmDelete"),
+                onSelect: () => run(() => deleteItemAction(item.id, projectKey)),
+              },
         ]
       : []),
   ];

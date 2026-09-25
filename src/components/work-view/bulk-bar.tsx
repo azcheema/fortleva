@@ -39,7 +39,7 @@ import type { WorkState } from "@/lib/work-view";
  */
 export function BulkBar({
   count,
-  states,
+  stateTargets,
   anyArchived,
   pending,
   onState,
@@ -49,8 +49,17 @@ export function BulkBar({
 }: {
   /** How many of the rows ON SCREEN are selected. */
   count: number;
-  /** Legal targets only — `canEnterState` has already filtered these. */
-  states: readonly WorkState[];
+  /**
+   * The Status menu's rows: every state this member may move tasks into
+   * (`bulkStateTargets` has already dropped TRIAGE, which is never a move
+   * target, and — for a non-approver — a gated state: neither depends on
+   * the selection, so both stay hidden per UI.md §3.1), each with the
+   * sentence saying why THIS selection cannot go there, or `null` when it
+   * can. Since C29b that is a CANCELLED state under a selection holding a
+   * client request: it used to vanish from the menu with nothing said,
+   * and the member was left to guess.
+   */
+  stateTargets: readonly { state: WorkState; refusal: string | null }[];
   /** True when the selection holds at least one archived item, so the
    * verb reads Restore rather than Archive. */
   anyArchived: boolean;
@@ -92,12 +101,52 @@ export function BulkBar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
             <DropdownMenuLabel>{t("bulk.statePlaceholder")}</DropdownMenuLabel>
-            {states.map((s) => {
+            {stateTargets.map(({ state: s, refusal }) => {
               const spec = STATUS_MAP.stateCategory[s.category as StatusValue<"stateCategory">];
+              if (refusal === null) {
+                return (
+                  <DropdownMenuItem key={s.id} onSelect={() => onState(s.id)}>
+                    <StatusIcon name={spec.icon} className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    {s.name}
+                  </DropdownMenuItem>
+                );
+              }
+              // REFUSED, AND STILL FOCUSABLE — `aria-disabled`, not Radix's
+              // `disabled`. A Radix-disabled item is skipped by the menu's
+              // roving focus, so the reason printed under it is only ever
+              // SEEN: the arrows walk straight past it and a screen reader
+              // never speaks it, which is §5.12's "a reason nobody can
+              // read" for everyone who is not looking. So the arrows stop
+              // here, the reason is part of what is announced, and a press
+              // does nothing and leaves the menu open (the `preventDefault`
+              // is Radix's way of keeping it open). The WAI-ARIA menu
+              // pattern's own rule: disabled items are focusable, they just
+              // cannot be activated.
+              //
+              // FOCUSED, IT KEEPS BOTH FOCUS CHANNELS (UI.md §9: the accent
+              // fill AND the inset bar) and lifts its name to
+              // `--muted-foreground`: `--fg-disabled` is tuned to ~3:1 on the
+              // menu's own surface and falls to 2.56:1 on the dark accent
+              // fill, below §9's floor for disabled text, while
+              // `--muted-foreground` holds ≥ 4.5:1 on the accent (pinned in
+              // `contrast.test.ts`) and still reads as quieter than a live
+              // item's. The first cut dropped the fill instead, which kept
+              // the contrast and broke the two-channel rule (review).
               return (
-                <DropdownMenuItem key={s.id} onSelect={() => onState(s.id)}>
-                  <StatusIcon name={spec.icon} className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                  {s.name}
+                <DropdownMenuItem
+                  key={s.id}
+                  aria-disabled="true"
+                  data-testid="bulk-state-refused"
+                  onSelect={(e) => e.preventDefault()}
+                  className="h-auto cursor-not-allowed items-start py-1 text-fg-disabled focus:text-muted-foreground"
+                >
+                  {/* On the name's line, not centred on the two: the item
+                      grows downward and the glyph belongs to the state. */}
+                  <StatusIcon name={spec.icon} className="mt-0.5 size-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span className="flex min-w-0 flex-col">
+                    <span>{s.name}</span>
+                    <span className="max-w-56 text-2xs text-muted-foreground">{refusal}</span>
+                  </span>
                 </DropdownMenuItem>
               );
             })}

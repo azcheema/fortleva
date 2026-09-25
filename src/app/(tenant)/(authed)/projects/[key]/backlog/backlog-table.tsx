@@ -69,12 +69,15 @@ import {
   VIRTUALISE_ABOVE,
   allRowAnchors,
   applyMove,
+  bulkStateTargets,
   canItemEnterState,
   epicIdsOf,
   filtersOf,
   growTo,
   hasActiveFilters,
   initialWindow,
+  isAnsweredRequest,
+  isEndableRequest,
   laneKeyOf,
   peekHrefOf,
   visibleColumns,
@@ -95,6 +98,7 @@ import type { ResolvedItemList } from "@/modules/work";
 
 import type { TimerPillState } from "../../../time/actions";
 import { useTaskTimer } from "../../../time/use-task-timer";
+import { useEndRequest } from "../triage/end-request";
 
 import {
   bulkChangeStateAction,
@@ -574,6 +578,18 @@ export function BacklogTable({
   // row mounted is the fix; it costs one row.
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTableSectionElement>(null);
+  // "Cancel and reply…" / "Decline…" from a row's menu (C29b) — the
+  // panel band's own flow (`useEndRequest`). When its dialog closes, focus
+  // goes back to the ROW by the same road `J K` use: naming it here lets
+  // the effect below restore it from `<body>` without a scroll. Left to
+  // `useFocusReturn` it would go nowhere — the dialog opened from a menu
+  // item, which is gone by then — and the body's blur handler has already
+  // released the pin, because focus left for the portalled menu first.
+  const endRequest = useEndRequest({
+    projectKey,
+    origin: "backlog",
+    onClosed: (item) => setFocusedRowId(item.id),
+  });
   // `J K` hand focus to a row AFTER it has rendered: the handler only
   // NAMES the row (`setFocusedRowId`), and this effect gives it focus
   // once it is in the DOM — never a timer, and no pending ref (a stale
@@ -1257,6 +1273,11 @@ export function BacklogTable({
                 : [];
               const actions: RowAction[] = [
                 ...moveActions,
+                // C29b: the one way to end a client's request, which every
+                // move target refuses because the client is owed a reply.
+                // Between the rank moves and Archive — the only verb in
+                // this menu that writes to the client.
+                ...(data.caps.canEndRequest && isEndableRequest(item) ? [endRequest.rowActionFor(item)] : []),
                 item.archivedAt
                   ? {
                       key: "restore",
@@ -1270,13 +1291,28 @@ export function BacklogTable({
                     },
                 ...(data.caps.canDelete
                   ? [
-                      {
-                        key: "delete",
-                        label: t("actions.delete"),
-                        tone: "danger" as const,
-                        confirm: t("actions.confirmDelete"),
-                        onSelect: () => run(() => deleteItemAction(item.id, projectKey), { serverMessage: true }),
-                      },
+                      // Refused on an ANSWERED request, with the reason —
+                      // `deleteItem` would refuse it, and the reply is the
+                      // client's to keep (the board card's rule, the same
+                      // predicate).
+                      isAnsweredRequest(item)
+                        ? {
+                            key: "delete",
+                            label: t("actions.delete"),
+                            disabled: true,
+                            // An archived one is not told to "archive it
+                            // instead" — this same menu offers Restore.
+                            disabledReason: item.archivedAt
+                              ? t("actions.deleteAnsweredArchived")
+                              : t("actions.deleteAnswered"),
+                          }
+                        : {
+                            key: "delete",
+                            label: t("actions.delete"),
+                            tone: "danger" as const,
+                            confirm: t("actions.confirmDelete"),
+                            onSelect: () => run(() => deleteItemAction(item.id, projectKey), { serverMessage: true }),
+                          },
                     ]
                   : []),
               ];
@@ -1734,16 +1770,27 @@ export function BacklogTable({
           // server-side regardless, but offering it would be a lie.
           // …and since slice 6b the selection's own contents matter too:
           // `bulkChangeState` is ALL-OR-NOTHING, so one REQUEST among
-          // twenty rows makes a move to Cancelled refuse the whole
-          // batch. Offering it would be a lie about nineteen other rows.
-          states={data.states.filter(
-            (st) =>
-              !st.isHidden &&
-              canItemEnterState(
-                st,
-                data.caps.canApprove,
-                selected.some((i) => i.kind === "REQUEST") ? "REQUEST" : undefined,
-              ),
+          // twenty rows makes a move to Cancelled refuse the whole batch.
+          // Since C29b that target is REFUSED WITH A REASON rather than
+          // removed (`bulkStateTargets`), and the reason depends on the
+          // member and on the requests: one who cannot end a request is told
+          // that, rather than pointed at a verb their menus will never show
+          // them; one who can is told how (one at a time, from its own
+          // menu, with a reply) — unless one of the requests has no such
+          // door (delivered, archived), when the sentence states the rule
+          // and points at nothing.
+          stateTargets={bulkStateTargets(data.states, data.caps.canApprove, selected).map(
+            ({ state, blockedBy }) => ({
+              state,
+              refusal:
+                blockedBy === null
+                  ? null
+                  : !data.caps.canEndRequest
+                    ? tView("bulk.requestBlockedNoRight")
+                    : blockedBy === "liveRequest"
+                      ? tView("bulk.requestBlocked")
+                      : tView("bulk.requestBlockedClosed"),
+            }),
           )}
           anyArchived={selected.some((i) => i.archivedAt !== null)}
           pending={isPending}
@@ -1791,6 +1838,10 @@ export function BacklogTable({
         />
       ) : null}
       {taskTimer.notice}
+      {/* OUTSIDE THE TABLE: the body's `onKeyDown` owns `J K X T`, and a
+          portalled dialog's keystrokes bubble through React's tree to
+          whatever rendered it. */}
+      {endRequest.dialog}
     </div>
   );
 }

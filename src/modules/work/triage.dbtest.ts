@@ -4,9 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthzError } from "@/authz/errors";
 import { withTenant } from "@/db";
 import { DomainError } from "@/lib/domain-error";
+import { portalGateDecision } from "@/auth/portal-gate";
 import { setupTenant } from "@/members/dbtest-fixture";
+import { synthesiseContactPrincipal } from "@/portal";
 
-import { createItem, deleteItem, setItemArchived } from "./items";
+import { changeItemVisibility, createItem, deleteItem, setItemArchived } from "./items";
+import { listPortalTasks } from "./portal";
 import { createRequest } from "./requests";
 import { changeState, ensureProjectStates } from "./states";
 import { listTriage, triageGlance, type TriageGlance } from "./triage-lane";
@@ -281,6 +284,173 @@ describe("the four verbs", () => {
     // carrying a future `snoozedUntil` would come back to a lane it can
     // never re-enter.
     expect(row.snoozedUntil).toBeNull();
+  });
+});
+
+/**
+ * WHAT A TOAST MAY PROMISE (C29b). Four doors send a reply now and every
+ * one of them says either "your client can read your reply" or "saved,
+ * but your client cannot read it while…" — from `clientSees`. One case
+ * per term, each flipped on its own, so deleting any term fails exactly
+ * one — AND EVERY CASE ASKS THE CLIENT'S OWN PORTAL LIST TOO:
+ * `listPortalTasks` under the contact's principal, the projection the
+ * reply is actually read through, must agree with the outcome. That binds
+ * `clientSees` to what a client sees rather than to a copy of the rule,
+ * so a later change to either drifts into a red test instead of a false
+ * toast (review) — for every term the LIST enforces. The one it does not,
+ * a confirmed address, belongs to the portal's session gate
+ * (`portalGateDecision`), and its case agrees with that gate instead.
+ */
+describe("the outcome says whether the client can read the reply", () => {
+  // THE AUDIENCE, for this block only: Carol becomes a contact who could
+  // sign in (ACTIVE, invited, address confirmed). The fixture's default
+  // NO_ACCESS is what every other block of this file assumes, so it is
+  // put back.
+  beforeAll(async () => {
+    await f.platform.contact.update({
+      where: { id: contactId },
+      data: { portalStatus: "ACTIVE", invitedAt: new Date(), emailVerified: true },
+    });
+  });
+  afterAll(async () => {
+    await f.platform.contact.update({
+      where: { id: contactId },
+      data: { portalStatus: "NO_ACCESS", invitedAt: null, emailVerified: false },
+    });
+  });
+
+  /** Whether the client's own portal list carries the row — a refusal (nobody to read it, the module off) is "no". */
+  async function portalShows(id: string): Promise<boolean> {
+    const principal = await synthesiseContactPrincipal(f.tenantId, { id: contactId, tenantId: f.tenantId, clientId });
+    try {
+      const list = await listPortalTasks(principal);
+      return list.projects.some((p) => p.tasks.some((t) => t.id === id));
+    } catch (e) {
+      if (e instanceof AuthzError) return false;
+      throw e;
+    }
+  }
+
+  /** Decline the request, and require the outcome AND the client's list to say `expected`. */
+  async function declineAndCompare(id: string, expected: boolean): Promise<void> {
+    const out = await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: "Not this time." });
+    expect(out.clientSees).toBe(expected);
+    expect(await portalShows(id), "the client's own portal list agrees with the toast").toBe(expected);
+  }
+
+  it("TRUE for a shared request in a live project, with its portal on and somebody to read it", async () => {
+    await declineAndCompare(await newRequest("Shared and live"), true);
+    // The lane verbs carry it too — the client still sees the request.
+    const snoozed = await newRequest("Shared, snoozed");
+    try {
+      const out = await triageItem(ownerCtx(), snoozed, {
+        verb: "SNOOZE",
+        until: new Date(Date.now() + 86_400_000),
+      });
+      expect(out.clientSees).toBe(true);
+      expect(await portalShows(snoozed)).toBe(true);
+    } finally {
+      await triageItem(ownerCtx(), snoozed, { verb: "DECLINE", reason: "Cleanup." });
+    }
+  });
+
+  it("FALSE once a member has made the request private — through the real service", async () => {
+    const id = await newRequest("Made private since");
+    await changeItemVisibility(ownerCtx(), id, "INTERNAL");
+    await declineAndCompare(id, false);
+  });
+
+  it("FALSE while the project's portal is switched off", async () => {
+    const id = await newRequest("Portal about to go off");
+    // Through the fan-out trigger, exactly as the Portal tab's switch
+    // writes it: the ROW's `portalEnabled` is what `portal_gate` reads.
+    await f.platform.project.update({ where: { id: projectId }, data: { portalEnabled: false } });
+    try {
+      expect((await f.platform.workItem.findUniqueOrThrow({ where: { id } })).portalEnabled).toBe(false);
+      await declineAndCompare(id, false);
+    } finally {
+      await f.platform.project.update({ where: { id: projectId }, data: { portalEnabled: true } });
+    }
+  });
+
+  it("FALSE in an archived project — the portal hides the whole project", async () => {
+    const id = await newRequest("Project about to be archived");
+    // Put back EXACTLY as found: the fixture's project is PLANNED (the
+    // column default), not ACTIVE.
+    const before = await f.platform.project.findUniqueOrThrow({
+      where: { id: projectId },
+      select: { status: true, archivedAt: true },
+    });
+    await f.platform.project.update({
+      where: { id: projectId },
+      data: { status: "ARCHIVED", archivedAt: new Date() },
+    });
+    try {
+      await declineAndCompare(id, false);
+    } finally {
+      await f.platform.project.update({ where: { id: projectId }, data: before });
+    }
+  });
+
+  it("FALSE when nobody at the client can sign in — the one contact's access paused", async () => {
+    // The Portal tab's NO_AUDIENCE: the row, the switch and the project
+    // are all fine, and there is simply no one to read the reply. The
+    // first cut of `clientSees` said TRUE here.
+    const id = await newRequest("Nobody left to read it");
+    await f.platform.contact.update({ where: { id: contactId }, data: { portalStatus: "SUSPENDED" } });
+    try {
+      await declineAndCompare(id, false);
+    } finally {
+      await f.platform.contact.update({ where: { id: contactId }, data: { portalStatus: "ACTIVE" } });
+    }
+  });
+
+  it("FALSE when the only contact never confirmed their address — the portal's SESSION gate refuses them", async () => {
+    // The one term the list check above cannot see: `listPortalTasks`
+    // and `synthesiseContactPrincipal` do not look at `emailVerified` —
+    // the session gate does (`portalGateDecision`, which refuses an
+    // unverified contact's session outright). So the agreement here is
+    // with THAT gate, over the very row `clientSees` read (fix review:
+    // this term was pinned by nothing).
+    const id = await newRequest("Nobody verified to read it");
+    await f.platform.contact.update({ where: { id: contactId }, data: { emailVerified: false } });
+    try {
+      const out = await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: "Not this time." });
+      expect(out.clientSees).toBe(false);
+      const carol = await f.platform.contact.findUniqueOrThrow({
+        where: { id: contactId },
+        select: { portalStatus: true, emailVerified: true },
+      });
+      expect(
+        portalGateDecision({
+          hasSession: true,
+          tenantId: f.tenantId,
+          clientId,
+          portalStatus: carol.portalStatus,
+          emailVerified: carol.emailVerified,
+        }),
+        "the session gate refuses the same contact",
+      ).toBe("unverified");
+    } finally {
+      await f.platform.contact.update({ where: { id: contactId }, data: { emailVerified: true } });
+    }
+  });
+
+  it("FALSE while the workspace's portal module is switched off", async () => {
+    // The Portal tab's MODULE_OFF, and the one term read after the commit
+    // (`triageItem`): gate 3, a tenant preference, the switch an owner
+    // actually has.
+    const id = await newRequest("Module about to go off");
+    await f.platform.tenantPreference.create({
+      data: { tenantId: f.tenantId, key: "module.portal.enabled", value: false },
+    });
+    try {
+      await declineAndCompare(id, false);
+    } finally {
+      await f.platform.tenantPreference.deleteMany({
+        where: { tenantId: f.tenantId, key: "module.portal.enabled" },
+      });
+    }
   });
 });
 
@@ -960,6 +1130,12 @@ describe("the /home count", () => {
     const before = countFor(await triageGlance(ownerCtx()), "TRI");
     expect(before).toBeGreaterThan(0);
 
+    // Put back EXACTLY as found (the fixture's project is PLANNED, the
+    // column default — this used to restore ACTIVE).
+    const found = await f.platform.project.findUniqueOrThrow({
+      where: { id: projectId },
+      select: { status: true, archivedAt: true },
+    });
     await f.platform.project.update({
       where: { id: projectId },
       data: { status: "ARCHIVED", archivedAt: new Date() },
@@ -974,10 +1150,7 @@ describe("the /home count", () => {
       expect(countFor(glance, "TRI")).toBe(lane.entries.length);
       expect(lane.entries.some((e) => e.id === id)).toBe(true);
     } finally {
-      await f.platform.project.update({
-        where: { id: projectId },
-        data: { status: "ACTIVE", archivedAt: null },
-      });
+      await f.platform.project.update({ where: { id: projectId }, data: found });
     }
   });
 

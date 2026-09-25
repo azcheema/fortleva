@@ -122,7 +122,11 @@ describe.each(THEMES)("%s theme — non-text contrast (WCAG 2.2 SC 1.4.11)", (th
     },
   );
 
-  it.each(["--muted", "--card", "--background"])(
+  // `--popover` since C29b: a menu's REFUSED item (`RowActions`, the bulk
+  // bar's Status target) wears `--fg-disabled` on the menu's own surface.
+  // It held only because dark `--popover` equals `--muted` and light
+  // equals `--card`, which is a coincidence of today's tokens (review).
+  it.each(["--muted", "--card", "--background", "--popover"])(
     "--fg-disabled on %s is >= 3:1 (disabled is never conveyed by dimming alone)",
     (surface) => {
       expect(ratio("--fg-disabled", surface, theme)).toBeGreaterThanOrEqual(AA_NON_TEXT);

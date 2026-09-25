@@ -64,8 +64,12 @@ export const canEnterState = (
  * SO THE SURFACES MUST STOP OFFERING IT. A target that always fails is
  * worse than no target: the member drags, waits, and gets a refusal
  * toast for a gesture the app invited. Hiding it is still UX and never
- * the guard — the state machine refuses regardless, and the lane is
- * where the verb lives.
+ * the guard — the state machine refuses regardless. The verb that CAN
+ * end a request is `triageItem`'s DECLINE, and its doors are the lane,
+ * and — since C29 — "Cancel and reply…" on the item panel, a board
+ * card's menu and a backlog row's menu (`isEndableRequest` below); the
+ * bulk bar keeps the target and says why it is refused
+ * (`bulkStateTargets`).
  *
  * `kind` is OPTIONAL so every existing caller keeps working: a surface
  * that does not know which item is moving (a column asking whether it is
@@ -105,6 +109,113 @@ export const enterableStates = (
   states.filter(
     (s) => s.id === currentStateId || (canItemEnterState(s, canApprove, kind) && !s.isHidden),
   );
+
+/**
+ * WHETHER A ROW OFFERS "Cancel and reply…" (C29) — ONE rule for the item
+ * panel's request band, a board card's menu and a backlog row's menu,
+ * and the permission is the caller's half (`canEndRequest` /
+ * `endRequest`, both the `work_item:triage` + `work_item:triage_decline`
+ * conjunction).
+ *
+ * `canItemEnterState` above is why this exists: it strips Cancelled from
+ * every move target for a `kind = REQUEST` row, because ending a
+ * client's request owes them a reason and a move carries none. That left
+ * an ACCEPTED request — out of the lane, since `listTriage` filters
+ * `stateCategory = TRIAGE` — with no way to end it at all. This is the
+ * door the move targets point at.
+ *
+ * Each exclusion is a refusal `triageItem` would give, or a row with
+ * nothing to end: ARCHIVED is refused (`ARCHIVED` — the agency put the
+ * row away, and an answer would bring it back onto the client's portal,
+ * since an answered request outlives the archive; the C29a review found
+ * the band drawn there, every press refused), CANCELLED is already ended
+ * ("already ended"), and a DONE request is delivered rather than stopping
+ * — the service would accept that one, and the product rule is that
+ * delivered work is not cancelled. TRIAGE is NOT excluded: a SNOOZED
+ * request drops out of the lane until it wakes, so for it this is the
+ * only door there is.
+ */
+export const isEndableRequest = (
+  item: Pick<WorkItem, "kind" | "archivedAt" | "stateCategory">,
+): boolean =>
+  item.kind === "REQUEST" &&
+  item.archivedAt === null &&
+  item.stateCategory !== "CANCELLED" &&
+  item.stateCategory !== "DONE";
+
+/**
+ * A client request that has been ANSWERED — declined, marked a
+ * duplicate, or cancelled with a reply — as a list can see it: a REQUEST
+ * in a CANCELLED state. `deleteItem` refuses exactly those
+ * (`REQUEST_ANSWER_IS_THE_CLIENTS`: a REQUEST with a stored reply), and
+ * a request reaches a cancelled state ONLY through a triage verb that
+ * writes one (`transitionState` refuses every other way in; reopening
+ * clears it on the way out), so the two agree on every row a surface
+ * shows. The menus render Delete REFUSED on these, with the reason,
+ * rather than a press whose only answer is an error (UI.md §7.1: a
+ * target that always fails is worse than none). Archiving still works.
+ */
+export const isAnsweredRequest = (item: Pick<WorkItem, "kind" | "stateCategory">): boolean =>
+  item.kind === "REQUEST" && item.stateCategory === "CANCELLED";
+
+/**
+ * One row of the bulk bar's Status menu: a state this member may move
+ * tasks into, and whether THIS selection can go there.
+ */
+export type BulkStateTarget = {
+  state: WorkState;
+  /**
+   * Why THIS selection may not move there — a reason code, not the
+   * sentence, because the sentence also depends on whether the member
+   * can end a request themselves, which is a cap the model does not hold.
+   * `null` when it may.
+   *
+   *  · `"liveRequest"` — the selection holds a client request and the
+   *    state is one a request may not be MOVED into (a CANCELLED one),
+   *    and EVERY such request can be ended one at a time from its own
+   *    menu (`isEndableRequest`), so the sentence may say how;
+   *  · `"request"` — the same refusal, where at least one of them has no
+   *    such door (delivered, archived), so the sentence must not point at
+   *    one: it states the rule and nothing more.
+   */
+  blockedBy: "liveRequest" | "request" | null;
+};
+
+/**
+ * The bulk bar's Status targets — the member's legal states, with the
+ * ones THIS selection cannot enter marked rather than removed.
+ *
+ * `bulkChangeState` is ALL-OR-NOTHING, so one REQUEST among twenty rows
+ * makes a move to Cancelled refuse the whole batch; offering it would be
+ * a lie about the other nineteen. Until C29b the target was simply
+ * DROPPED, and a member who ticked a request among their tasks watched
+ * "Cancelled" vanish from the menu with nothing saying why — the silent
+ * verb this product keeps being caught with (C28's "a verb quietly
+ * vanishing"). So it stays, refused, with the reason beside it
+ * (`blockedBy`). What does not depend on the selection is still
+ * filtered: TRIAGE is never a move target for anyone, and a gated state
+ * is none for a non-approver (UI.md §3.1, hidden and never disabled).
+ *
+ * A REQUEST ALREADY IN THE TARGET STATE DOES NOT BLOCK IT. `bulkChangeState`
+ * skips a row that is already where it is being sent, before the state
+ * machine's request rule is ever asked — so a selection of tasks plus a
+ * request that is already Cancelled can go to Cancelled, and refusing it
+ * would be the false refusal a review caught in the first cut of this.
+ */
+export function bulkStateTargets(
+  states: readonly WorkState[],
+  canApprove: boolean,
+  selection: readonly Pick<WorkItem, "kind" | "stateId" | "archivedAt" | "stateCategory">[],
+): BulkStateTarget[] {
+  return states
+    .filter((state) => !state.isHidden && canEnterState(state, canApprove))
+    .map((state): BulkStateTarget => {
+      if (canItemEnterState(state, canApprove, "REQUEST")) return { state, blockedBy: null };
+      const blocking = selection.filter((item) => item.kind === "REQUEST" && item.stateId !== state.id);
+      if (blocking.length === 0) return { state, blockedBy: null };
+      return { state, blockedBy: blocking.every(isEndableRequest) ? "liveRequest" : "request" };
+    });
+}
 
 /**
  * A UNIQUE key per state, for test ids: `${category}-${n}`, with `n`

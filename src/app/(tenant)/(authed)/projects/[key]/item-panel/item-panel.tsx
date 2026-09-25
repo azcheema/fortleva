@@ -10,7 +10,7 @@ import { isoDateOf } from "@/lib/duration";
 import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
 import type { WeekStart } from "@/lib/week";
 import { childTypeOf } from "@/lib/enum-map";
-import { panelItemHref, panelSurfaceOf } from "@/lib/work-view";
+import { isEndableRequest, panelItemHref, panelSurfaceOf } from "@/lib/work-view";
 import type {
   ItemActivityPage,
   ItemComments,
@@ -249,13 +249,15 @@ export async function ItemPanel({
   const railText = "min-h-8 py-1.5";
   const railPicker = "flex min-h-8 items-center";
   /**
-   * THE REQUEST BAND (C29), drawn only where all three hold: the row
-   * really began as a client's request, it is still live, and this
-   * member may speak to a client in the agency's name
-   * (`work_item:triage_decline`, which `triageItem` demands on top of
-   * `work_item:triage` — UI.md §3.1, hidden and never disabled). A
-   * CANCELLED request is already ended and a DONE one is not stopping,
-   * so neither gets the band.
+   * THE REQUEST BAND (C29), drawn only where both hold: the row is a
+   * live client request (`isEndableRequest` — the one rule the board's
+   * and the backlog's menus read too: not archived, since `triageItem`
+   * refuses an archived row, and neither CANCELLED, already ended, nor
+   * DONE, not stopping; TRIAGE included, because a SNOOZED request
+   * drops out of the lane and this is its only door), and this member
+   * may speak to a client in the agency's name (`work_item:triage` AND
+   * `work_item:triage_decline`, both of which `triageItem` demands —
+   * UI.md §3.1, hidden and never disabled).
    *
    * Built here rather than inline because the panel renders its rail at
    * TWO stops — the peek's sheet and the full page's card — and a
@@ -263,47 +265,24 @@ export async function ItemPanel({
    * exists depending on how you opened the task.
    */
   const requestBand =
-    item.kind === "REQUEST" &&
-    canEndRequest &&
-    // NOT ARCHIVED, and this was a real bug rather than belt: `triageItem`
-    // fails `ARCHIVED` on the DECLINE path, so the band was a control
-    // whose every press was refused — on a row a member archived as
-    // ordinary tidy-up, with 400 characters typed for a client and no way
-    // forward from any surface. The panel's own house rule is the same
-    // one (the timer and the Subtasks add row both test `!archivedAt`),
-    // which is what made the omission easy to miss and easy to correct.
-    // Found by a fresh review; UI.md §3.1 is the rule it broke.
-    item.archivedAt === null &&
-    item.stateCategory !== "CANCELLED" &&
-    item.stateCategory !== "DONE" ? (
+    canEndRequest && isEndableRequest(item) ? (
       <RequestBand
         itemId={item.id}
         itemNumber={item.number}
-        itemKey={itemKey}
         itemTitle={item.title}
+        // The verb follows it — "Decline" in TRIAGE, "Cancel and reply"
+        // once the work was agreed — and so does what the toast says.
+        stateCategory={item.stateCategory}
         projectKey={projectKey}
         surface={surface}
-        // **THE MODE FOLLOWS THE CATEGORY, because the two acts are
-        // different and the founder named them differently.** A request
-        // still sitting in TRIAGE has had no work agreed, so the word is
-        // "Decline" — exactly what the lane says. One that was ACCEPTED
-        // is work being stopped, which is "Cancel and reply". A review
-        // caught the band saying "Tell them why the work is stopping"
-        // over a request nobody had started.
-        //
-        // TRIAGE is NOT excluded from the band, and that is deliberate: a
-        // SNOOZED request drops out of `listTriage` until it wakes, so
-        // this is its only door, and excluding it would re-open the dead
-        // end C29 exists to close.
-        mode={item.stateCategory === "TRIAGE" ? "DECLINE" : "CANCEL_ACCEPTED"}
-        // What the toast may promise: the reply reaches the client only
-        // if the row is still shared AND the project's portal is on.
-        clientWillSee={item.visibility === "CLIENT_VISIBLE" && item.portalEnabled}
       />
     ) : null;
 
   const rail = (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm" data-testid="item-properties">
+    // `data-slot="item-rail"` is a PRODUCT hook, not a test id: the request
+    // band hands focus to the rail's first control (State) when the request
+    // it offered to end has ended and the band goes (request-band.tsx).
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm" data-testid="item-properties" data-slot="item-rail">
         <dt className={railLabel}>{t("properties.state")}</dt>
         <dd className={railPicker}>
           <StateField

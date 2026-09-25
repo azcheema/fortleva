@@ -1697,7 +1697,10 @@
         "restore": "Restore",
         "done": "{changed, plural, one {# task updated} other {# tasks updated}}",
         "noneChanged": "Nothing to change — those tasks already had that value.",
-        "failed": "The change did not save. The list shows the current state."
+        "failed": "The change did not save. The list shows the current state.",
+        "requestBlocked": "Client requests are never cancelled in bulk. End each one from its own menu, with a reply to the client.",
+        "requestBlockedNoRight": "A client request is selected, and you do not have permission to cancel client requests.",
+        "requestBlockedClosed": "Client requests are never cancelled in bulk."
       },
       "rollup": {
         "count": "{total, plural, one {# task} other {# tasks}}",
@@ -1758,7 +1761,9 @@
         "archive": "Archive",
         "restore": "Restore",
         "delete": "Delete",
-        "confirmDelete": "Delete this task?"
+        "confirmDelete": "Delete this task?",
+        "deleteAnswered": "Your reply is the client’s to keep — archive it instead",
+        "deleteAnsweredArchived": "Your reply is the client’s to keep"
       },
       "priorityLabel": "Priority",
       "dueLabel": "Due date",
@@ -1797,8 +1802,17 @@
       },
       "accepted": "{key} accepted — it is on the board now.",
       "declined": "{key} declined. Your client can read your reply.",
+      "declinedUnshared": "{key} declined. Your reply is saved, but your client cannot read it while the task is private to the team or nobody at the client can open this project’s portal.",
       "duplicated": "{key} marked a duplicate. Your client can read your reply.",
+      "duplicatedUnshared": "{key} marked a duplicate. Your reply is saved, but your client cannot read it while the task is private to the team or nobody at the client can open this project’s portal.",
       "snoozedToast": "{key} snoozed.",
+      "end": {
+        "cancel": "Cancel and reply…",
+        "decline": "Decline…",
+        "sending": "Your last reply is still being sent",
+        "cancelled": "{key} cancelled. Your client can read your reply.",
+        "cancelledUnshared": "{key} cancelled. Your reply is saved, but your client cannot read it while the task is private to the team or nobody at the client can open this project’s portal."
+      },
       "answer": {
         "about": "{key} · {title}",
         "clientReads": "Your client reads this, word for word, on their portal.",
@@ -1806,7 +1820,8 @@
         "CANCEL_ACCEPTED": {
           "title": "Cancel this work and reply",
           "placeholder": "Tell them why the work is stopping. They will see exactly this.",
-          "confirm": "Cancel and reply"
+          "confirm": "Cancel and reply",
+          "dismiss": "Go back"
         },
         "DECLINE": {
           "title": "Decline this request",
@@ -2318,10 +2333,7 @@
         "noticeFailed": "Could not load the time-tracking notice."
       },
       "requestBandTitle": "This started as a client request",
-      "requestBandBody": "If the work is not going ahead, tell them why — they have been watching it since they asked.",
-      "requestBandAction": "Cancel and reply…",
-      "requestBandDone": "Cancelled, and your reply is on their portal",
-      "requestBandDoneUnshared": "Cancelled, and your reply is saved — the client cannot see it while this is private or their portal is off"
+      "requestBandBody": "If the work is not going ahead, tell them why — they have been watching it since they asked."
     },
     "states": {
       "seed": {

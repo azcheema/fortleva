@@ -175,13 +175,22 @@ export function TriageLane({
       toast.error(result.message);
       return;
     }
+    // "Your client can read your reply" only when the SERVER saw that they
+    // can (`TriageOutcome.clientSees` — its five terms: the row shared, its
+    // portal switch on, the project live, somebody at the client who
+    // could sign in, and the workspace's portal module open). A request
+    // is born shared, but any of those can have changed since. The item
+    // panel's band was caught promising delivery unconditionally (C29a);
+    // this toast was the same sentence, and C29b gave all four doors the
+    // one answer.
+    const shown = result.value.clientSees;
     toast.success(
       input.verb === "ACCEPT"
         ? t("accepted", { key: row.key })
         : input.verb === "DECLINE"
-          ? t("declined", { key: row.key })
+          ? t(shown ? "declined" : "declinedUnshared", { key: row.key })
           : input.verb === "DUPLICATE"
-            ? t("duplicated", { key: row.key })
+            ? t(shown ? "duplicated" : "duplicatedUnshared", { key: row.key })
             : t("snoozedToast", { key: row.key }),
     );
     // The reply has been published; the next one starts from nothing.

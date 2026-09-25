@@ -8,6 +8,7 @@ import {
   activeFilterCount,
   allRowAnchors,
   applyMove,
+  bulkStateTargets,
   canEnterState,
   canItemEnterState,
   cardsIn,
@@ -16,7 +17,9 @@ import {
   epicIdsOf,
   filterItems,
   hasActiveFilters,
+  isAnsweredRequest,
   isDone,
+  isEndableRequest,
   laneKeyOf,
   lanesFor,
   LABEL_CHIP_CAP,
@@ -27,6 +30,7 @@ import {
   statePickerTargets,
   visibleColumns,
   workView,
+  type BulkStateTarget,
   type StatePickerTarget,
   type WorkFilters,
   type WorkItem,
@@ -262,6 +266,102 @@ describe("lanes", () => {
       "backlog",
       "cancelled",
     ]);
+  });
+
+  it("isEndableRequest (C29): a live client request offers Cancel and reply, and nothing else does", () => {
+    const request = (over: Partial<WorkItem> = {}) => item("r1", { kind: "REQUEST", ...over });
+    // Accepted and under way — the case C29 exists for: every move target
+    // refuses Cancelled for it, so this is the only way to end it.
+    expect(isEndableRequest(request({ stateCategory: "BACKLOG" }))).toBe(true);
+    expect(isEndableRequest(request({ stateCategory: "TODO" }))).toBe(true);
+    expect(isEndableRequest(request({ stateCategory: "IN_PROGRESS" }))).toBe(true);
+    // STILL IN TRIAGE, deliberately: a snoozed request has left the lane,
+    // and on the board or the backlog this is its only door.
+    expect(isEndableRequest(request({ stateCategory: "TRIAGE" }))).toBe(true);
+    // Already ended, delivered, or put away — `triageItem` refuses the
+    // first and the last, and a delivered request is not stopping.
+    expect(isEndableRequest(request({ stateCategory: "CANCELLED" }))).toBe(false);
+    expect(isEndableRequest(request({ stateCategory: "DONE" }))).toBe(false);
+    expect(isEndableRequest(request({ archivedAt: new Date("2026-09-25T09:00:00Z") }))).toBe(false);
+    // Ordinary work is cancelled the ordinary way; nobody is owed a reply.
+    expect(isEndableRequest(item("t1", { kind: "TASK" }))).toBe(false);
+    expect(isEndableRequest(item("b1", { kind: "BUG" }))).toBe(false);
+  });
+
+  it("bulkStateTargets (C29b): a request in the selection REFUSES Cancelled instead of removing it", () => {
+    const triage = state("triage", "TRIAGE", true);
+    // A VISIBLE triage state too, so "TRIAGE is never a target" is decided
+    // by `canEnterState`'s own rule and not by the fixture's `isHidden` —
+    // the seeded one is hidden, and a test that leaned on that could not
+    // tell the rule was gone (fix review).
+    const visibleTriage = state("triage-open", "TRIAGE");
+    const todo = state("todo", "TODO");
+    const done = state("done", "DONE", false, true);
+    const cancelled = state("cancelled", "CANCELLED");
+    const states = [triage, visibleTriage, todo, done, cancelled];
+    const shape = (targets: BulkStateTarget[]) => targets.map((x) => [x.state.id, x.blockedBy]);
+
+    const live = item("r1", { kind: "REQUEST" });
+
+    // Ordinary tasks: every target the member may use, none refused.
+    expect(shape(bulkStateTargets(states, true, [item("t1"), item("t2")]))).toEqual([
+      ["todo", null],
+      ["done", null],
+      ["cancelled", null],
+    ]);
+    // ONE live request among them, and Cancelled is still THERE — refused,
+    // with the code that lets the bar say how to end it instead. It used
+    // to vanish.
+    expect(shape(bulkStateTargets(states, true, [item("t1"), live]))).toEqual([
+      ["todo", null],
+      ["done", null],
+      ["cancelled", "liveRequest"],
+    ]);
+    // What does not depend on the selection is still hidden, not refused:
+    // TRIAGE is never a target, and a gated Done is none for a non-approver.
+    expect(shape(bulkStateTargets(states, false, [live]))).toEqual([
+      ["todo", null],
+      ["cancelled", "liveRequest"],
+    ]);
+    // Only a CANCELLED target is refused for a request — the one rule
+    // `canItemEnterState` adds for it.
+    expect(shape(bulkStateTargets([state("backlog", "BACKLOG")], true, [live]))).toEqual([["backlog", null]]);
+
+    // A request with NO door of its own — delivered, or archived — still
+    // refuses the target, but with the code that points at nothing: "end
+    // each one from its own menu" would send the member to a verb that
+    // row does not have. One such request is enough.
+    const delivered = item("r2", { kind: "REQUEST", stateId: "done", stateCategory: "DONE" });
+    const filed = item("r3", { kind: "REQUEST", archivedAt: new Date("2026-09-25T09:00:00Z") });
+    expect(shape(bulkStateTargets(states, true, [delivered])).at(-1)).toEqual(["cancelled", "request"]);
+    expect(shape(bulkStateTargets(states, true, [filed])).at(-1)).toEqual(["cancelled", "request"]);
+    expect(shape(bulkStateTargets(states, true, [live, delivered])).at(-1)).toEqual(["cancelled", "request"]);
+
+    // A request ALREADY in the target state does not block it:
+    // `bulkChangeState` skips a row already where it is being sent, before
+    // the request rule is asked, so refusing would be a false refusal.
+    const alreadyCancelled = item("r4", { kind: "REQUEST", stateId: "cancelled", stateCategory: "CANCELLED" });
+    expect(shape(bulkStateTargets(states, true, [item("t1"), alreadyCancelled])).at(-1)).toEqual([
+      "cancelled",
+      null,
+    ]);
+    // …while one elsewhere in the same selection still does.
+    expect(shape(bulkStateTargets(states, true, [alreadyCancelled, live])).at(-1)).toEqual([
+      "cancelled",
+      "liveRequest",
+    ]);
+  });
+
+  it("isAnsweredRequest (C29b): a request in a cancelled state — the ones deleteItem refuses", () => {
+    // Declined, marked a duplicate or cancelled with a reply: every way a
+    // request reaches a cancelled state writes the reply the client keeps.
+    expect(isAnsweredRequest(item("r1", { kind: "REQUEST", stateCategory: "CANCELLED" }))).toBe(true);
+    // Still open, or reopened (which clears the reply on the way out):
+    // deletable, so nothing is refused.
+    expect(isAnsweredRequest(item("r2", { kind: "REQUEST", stateCategory: "TODO" }))).toBe(false);
+    expect(isAnsweredRequest(item("r3", { kind: "REQUEST", stateCategory: "TRIAGE" }))).toBe(false);
+    // An ordinary cancelled task owes nobody a reply.
+    expect(isAnsweredRequest(item("t1", { kind: "TASK", stateCategory: "CANCELLED" }))).toBe(false);
   });
 
   describe("enterableStates (the §5.2 picker's option list)", () => {
