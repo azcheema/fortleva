@@ -10,6 +10,8 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
+**HANDOFF, 2026-09-25 evening: the founder has Fable now and asked to continue in a NEW session. C31 is no longer held — it is the first thing that session builds** (the "→ THE NEXT SESSION STARTS HERE" block below). The paragraphs under this one that say C31 is "held for Fable" were true when they were written. `main` = `9016e08` plus this note, the tree clean, everything pushed, slices 61–64 green in CI, no dev server running.
+
 **PUSHED AND GREEN: SLICE 64 — A BUDGET ALERT LINKS TO THE MONEY PAGE ONLY WHEN THAT PAGE WOULD OPEN (C34) — is `5add099`; CI run [36131413718](https://github.com/azcheema/fortleva/actions/runs/36131413718), both jobs `success`.** Unit **90 files / 1601 passed / 1 skipped**, `test:db` **51 files / 813** from an EMPTY database (812 + 1), harness **158 passed / 1 skipped in 14.1 min**. **2026-09-25 shipped four slices (61–64) and settled four founder questions (C31–C34); C31's build is held for Fable.**
 
 **PUSHED AND GREEN: SLICE 63 — WITH WORK SWITCHED OFF, THE INBOX STOPS NAMING TASKS (C33) — is `2bd6661`; CI run [36128844488](https://github.com/azcheema/fortleva/actions/runs/36128844488), both jobs `success`.** Unit **1598 passed / 1 skipped**, `test:db` **51 files / 812** from an EMPTY database (811 + 1), harness **158 passed / 1 skipped in 14.1 min**.
@@ -46,9 +48,29 @@
 
 **WHAT THAT DOES AND DOES NOT CLOSE.** Phase 3's shippable line (§Phase 3) is *"a real Naxdor client contact logs in, sees exactly their own projects / shared tasks / timeline / updates / files / services, signs off a version, submits a request that lands in triage — and nothing else, provably"*. **The first clause and the "nothing else, provably" are now MEASURED on real data.** The rest is unbuilt: no Client Timeline, no `ProjectUpdate`, no portal files or services surface, no version sign-off. **Phase 3 stays `[ ]`** — and an earlier reading of §0's "the last thing between the build and Phase 3's DoD" as "the DoD is met" was wrong: it was the last thing between the build and being able to REACH it.
 
-## → THE NEXT SESSION STARTS HERE: the founder's walks (C29b's doors, member recovery, the portal reset) — C31 is DECIDED and its build is HELD, and what remains of Phase 3 waits for the founder's go and model
+## → THE NEXT SESSION STARTS HERE: BUILD C31 ON FABLE — the founder has it now and asked for a fresh session — then `resolveScope`'s batch (item 4); the founder's walks whenever they choose
 
-**C31 WAS ASKED AND ANSWERED, 2026-09-25: "Cancelled" for work that had been agreed**, and "Declined" stays for a request turned down in triage (`OPEN_QUESTIONS.md` C31). **THE BUILD IS HELD by the founder's word**: *"Wait for this work, just keep it in your record. I do not have Fable for this task at the moment."* It is portal work (the Phase 3 rule), and the suggestion was Fable at max effort. **Do not start it until the founder says so.** The C31 entry lists four things in the code its builder needs to know. Until it is built, the portal keeps saying "Declined" for both cases, which is imprecise but safe.
+**START WITH C31 — UNBLOCKED 2026-09-25, evening.** The founder now has Fable and asked to do this work in a NEW session rather than in the long one that decided it: *"I have fable now, can we plan to work in a new session instead of this one?"* The founder gave the go and the model together (the Phase 3 rule), so build it.
+
+**What to build** (read `OPEN_QUESTIONS.md` C31 first, including its four code facts): a request the agency had ACCEPTED and then stops with "Cancel and reply" reads **"Cancelled"** ("Avbrutet") on the client's portal, with the reply under it. A request turned down in triage still reads **"Declined"**.
+
+**The shape the entry points at:**
+- A real column recording the acceptance, set by `triageItem`'s ACCEPT. Nothing today can derive it, because ACCEPT clears every triage column.
+- `listPortalTasks`' projection reads it to choose the category. The client needs the category, never the date, and `portal-projections.test.ts` pins what the projection may select.
+- A new portal category and heading in both languages, at the foot of the card; where exactly is a UI.md §11 call.
+- The reply shown under it. Mind the `declinedReason` gate, which is set only for `category === "DECLINED"` today.
+
+**Decide before building: BACKFILL or not.** `naxdor` holds at least one request accepted before the column exists (ACME-3, accepted 2026-09-23).
+- Without a backfill, such a request cancelled later still reads "Declined": safe, only imprecise.
+- A backfill from the audit trail is DML in a hand-written migration, and DML owes a `neon-smoke.yml` dispatch BEFORE the push (AGENTS.md).
+- Write to `naxdor` only through that reviewed migration, never by hand.
+
+**It is portal work with a migration,** so it needs all of these before the commit:
+- `/code-review` AND `/security-review`, each through fresh read-only agents;
+- the full gate list;
+- a browser test on the portal's list.
+
+Until it ships, the portal says "Declined" for both cases.
 
 **C29b IS BUILT** (slice 60, below): "Cancel and reply…" ("Decline…" while a request is still in triage) on a board card's menu and a backlog row's menu, the bulk bar saying why Cancelled is refused instead of hiding it, every "your client can read your reply" toast now checked against the Portal tab's own blockers, and `listItems`' eight-leg batch down to four. **C30 IS BUILT** too (slice 59): a member can reset a forgotten password, an unconfirmed member who signs in is mailed a fresh link, confirming an address takes the link AND the password, and a forgotten console password has an operator's script. What is left on both fronts is the founder seeing them work.
 
@@ -58,9 +80,9 @@
 
 **2. OR THE PORTAL RESET WALK** — unchanged from the slice-57 block: Kane Acmesson is ACTIVE on `naxdor`; `/portal/login` → "Choose a new one" → the link out of `.dev-outbox` → a new password → `/portal`, and the tenant's audit log shows `auth.password_changed` `{via: "reset"}` with Kane as the actor.
 
-**3. ~~A FOUNDER QUESTION~~ DECIDED 2026-09-25, BUILD HELD (above): the client's portal calls an accepted-then-cancelled request "Declined".** That is the word the founder rejected for the MEMBER's verb, because work had been agreed and is being stopped ("Cancel and reply", C29). The portal maps every answered request to Declined; saying "Cancelled" for agreed work would need the projection to know the request was accepted first (a column, or a read of its history), so it is a product decision with a small build behind it, not a copy change.
+**3. ~~A FOUNDER QUESTION~~ DECIDED 2026-09-25 — UNBLOCKED THE SAME EVENING, START HERE (above): the client's portal calls an accepted-then-cancelled request "Declined".** That is the word the founder rejected for the MEMBER's verb, because work had been agreed and is being stopped ("Cancel and reply", C29). The portal maps every answered request to Declined; saying "Cancelled" for agreed work would need the projection to know the request was accepted first (a column, or a read of its history), so it is a product decision with a small build behind it, not a copy change.
 
-**4. ~~OWED: EIGHT more reads run `isAuthorized` as legs of a `Promise.all` on ONE interactive transaction's connection~~ DONE — slice 61 (below).** It was NINE: search's `allowedTypes` fanned out `requireAccess`, which the item's `isAuthorized` grep could not see. Every one now resolves once or awaits in turn, and `src/authz/authz-batches.test.ts` fails the unit suite if the shape comes back. **The trap's wider shape — plain reads batched on one transaction — is still NOT swept** (`getItemDetail`'s two batches, `resolvePortalModuleGates`' three legs, `/members`' four): recorded, measured where it bit, and not worth a sweep until one does. **Three more found by slice 63's review, and the first is the one to take next:**
+**4. ~~OWED: EIGHT more reads run `isAuthorized` as legs of a `Promise.all` on ONE interactive transaction's connection~~ DONE — slice 61 (below).** It was NINE: search's `allowedTypes` fanned out `requireAccess`, which the item's `isAuthorized` grep could not see. Every one now resolves once or awaits in turn, and `src/authz/authz-batches.test.ts` fails the unit suite if the shape comes back. **The trap's wider shape — plain reads batched on one transaction — is still NOT swept** (`getItemDetail`'s two batches, `resolvePortalModuleGates`' three legs, `/members`' four): recorded, measured where it bit, and not worth a sweep until one does. **Three more found by slice 63's review, and the first is the one to take next, after C31:**
 - **`resolveScope`** (`src/authz/authorize.ts`) runs its `memberClient` and `memberProject` reads in a `Promise.all` on the caller's transaction. Every `scopeWhere` and `assertInScope` goes through it, including `/home`'s and `/inbox`'s subject loads. It fails closed (a lost race throws), but it is the authorization seam, so change it as its own reviewed slice.
 - **`noticeStatusFor`** (`src/modules/time/notice.ts`): a lost acknowledgement read would DISPLAY "acknowledged". It is display only; the write gate `noticeRequiredFor` runs in sequence.
 - **`getCurrentShift`** (`src/modules/time/shifts.ts`).
@@ -71,9 +93,13 @@
 
 **6. OWED BEFORE PLATFORM IMPERSONATION SHIPS — none of it reachable today, because nothing sets `actor.impersonated` from a session (`src/auth/index.ts`).** *(a)* Five surfaces still gate controls on the raw `effectivePermissions` set, which an impersonating admin's view-only limit never touches: `settings/preferences/page.tsx` (`settings:manage_modules` ✦, `settings:edit`), `settings/rates/page.tsx` (`rate:view_cost` ✦, `rate:manage_cost` ✦), `src/modules/time/money.ts`' reveal OFFER (`rate:view_cost` ✦ — the reveal itself is a separate audited ✦ check), `settings/time/page.tsx` and `clients/[id]/agreements/page.tsx`. Convert each to `resolvePermissions`, as `/members` and `/settings/roles` were. *(b)* `continuity_box:view` is ✦ AND a view verb, so `authorize` lets an impersonator with a fresh factor hold it, against AUTHZ.md §7.5 ("✦ actions are impossible under impersonation by construction"). Decide which is right; if §7.5 is, deny every ✦ code under impersonation in both `authorize` and `resolvePermissions`, and make `authorized-codes.test.ts` assert `afterStepUp` is empty there.
 
-**7. WHAT IS LEFT OF PHASE 3 IS THE FOUNDER'S TO START** (the Phase 3 rule: they pick the model and effort first — for portal work they want Fable, which was not available to them on 2026-09-25): the Client Timeline, `ProjectUpdate`, portal files and services, version sign-off — and C31 (held). Phase 3 stays `[ ]`.
+**7. WHAT IS LEFT OF PHASE 3 AFTER C31 IS THE FOUNDER'S TO ORDER:** the Client Timeline, `ProjectUpdate`, portal files and services, and version sign-off. The Phase 3 rule still holds — they pick the model and effort — but they have Fable now. Ask which comes next once C31 has shipped. Phase 3 stays `[ ]`.
 
-**Model and effort: medium** for the walks and their fixes; **the founder's choice** for anything in item 7.
+**Model and effort:**
+- **Fable at max effort for C31** — a client-visible projection and a migration.
+- Fable or Opus at high for `resolveScope` (item 4), the authorization seam.
+- Medium for the walks and their fixes.
+- The founder's choice for item 7.
 
 ---
 
