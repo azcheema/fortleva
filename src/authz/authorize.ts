@@ -242,13 +242,21 @@ export async function resolveScope(tx: TenantDb, actor: MemberActor): Promise<Sc
   const held = await effectivePermissions(tx, actor.memberId);
   if (held.has("client:view_all")) return { all: true };
 
-  const [clientRows, projectRows] = await Promise.all([
-    tx.memberClient.findMany({ where: { memberId: actor.memberId }, select: { clientId: true } }),
-    tx.memberProject.findMany({
-      where: { memberId: actor.memberId },
-      select: { projectId: true, project: { select: { clientId: true } } },
-    }),
-  ]);
+  // In SEQUENCE, never a `Promise.all`: the two reads share the caller's
+  // one transaction connection, which Prisma over the `pg` adapter does
+  // not serialise, so a loser can resolve `undefined` (AGENTS.md's
+  // standing trap; measured 2026-09-22). Here a lost race threw rather
+  // than widened the scope — but this is the seam every `scopeWhere`
+  // and `assertInScope` runs through, and the connection executes one
+  // statement at a time anyway, so the batch never bought any speed.
+  const clientRows = await tx.memberClient.findMany({
+    where: { memberId: actor.memberId },
+    select: { clientId: true },
+  });
+  const projectRows = await tx.memberProject.findMany({
+    where: { memberId: actor.memberId },
+    select: { projectId: true, project: { select: { clientId: true } } },
+  });
   const direct = new Set(clientRows.map((r) => r.clientId));
   const projects = new Set(projectRows.map((r) => r.projectId));
   const lifted = new Set<string>();

@@ -153,17 +153,20 @@ export async function noticeStatusFor(
     select: { version: true },
   });
   if (!latest) return { required: false, acknowledged: true, notice: null };
-  const [rows, tenant, ack] = await Promise.all([
-    tx.staffNotice.findMany({
-      where: { tenantId, version: latest.version, publishedAt: { not: null } },
-      orderBy: { locale: "asc" },
-    }),
-    tx.tenant.findFirst({ where: { id: tenantId }, select: { defaultLocale: true } }),
-    tx.staffNoticeAcknowledgment.findFirst({
-      where: { tenantId, memberId, noticeVersion: latest.version },
-      select: { id: true },
-    }),
-  ]);
+  // In sequence, not a `Promise.all` on the caller's one connection
+  // (AGENTS.md's standing trap): a lost `ack` read resolving `undefined`
+  // would have DISPLAYED "acknowledged" — `ack !== null` is true of
+  // `undefined`. The write gate, `noticeRequiredFor`, was already
+  // sequential.
+  const rows = await tx.staffNotice.findMany({
+    where: { tenantId, version: latest.version, publishedAt: { not: null } },
+    orderBy: { locale: "asc" },
+  });
+  const tenant = await tx.tenant.findFirst({ where: { id: tenantId }, select: { defaultLocale: true } });
+  const ack = await tx.staffNoticeAcknowledgment.findFirst({
+    where: { tenantId, memberId, noticeVersion: latest.version },
+    select: { id: true },
+  });
   const pick =
     rows.find((r) => r.locale === preferredLocale) ??
     rows.find((r) => r.locale === tenant?.defaultLocale) ??

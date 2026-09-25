@@ -37,10 +37,11 @@ export async function resolveZone(
   tenantId: string,
   memberId: string,
 ): Promise<{ timezone: string; prefs: TenantPreferences }> {
-  const [member, prefs] = await Promise.all([
-    tx.member.findFirst({ where: { tenantId, id: memberId }, select: { timezone: true } }),
-    readPreferences(tx, tenantId),
-  ]);
+  // In sequence on the caller's one connection (AGENTS.md's `Promise.all`
+  // trap): every timer and shift write resolves its zone here, and a lost
+  // member read would have stamped the tenant's zone on the member's day.
+  const member = await tx.member.findFirst({ where: { tenantId, id: memberId }, select: { timezone: true } });
+  const prefs = await readPreferences(tx, tenantId);
   return { timezone: member?.timezone ?? prefs.timezone, prefs };
 }
 

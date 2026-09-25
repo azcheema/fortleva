@@ -256,10 +256,11 @@ export async function getCurrentShift(ctx: TimeCtx): Promise<CurrentShift> {
   await settleMemberOnce(ctx.tenantId, ctx.actor.memberId);
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
-    const [shift, { prefs }] = await Promise.all([
-      openShiftOf(tx, ctx.tenantId, ctx.actor.memberId),
-      resolveZone(tx, ctx.tenantId, ctx.actor.memberId),
-    ]);
+    // In sequence on the transaction's one connection (AGENTS.md's
+    // `Promise.all` trap): a lost shift read would have shown no shift
+    // to a member who is clocked in.
+    const shift = await openShiftOf(tx, ctx.tenantId, ctx.actor.memberId);
+    const { prefs } = await resolveZone(tx, ctx.tenantId, ctx.actor.memberId);
     return {
       shift,
       onBreak: shift?.breaks.some((b) => b.stoppedAt === null) ?? false,
