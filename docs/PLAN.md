@@ -40,7 +40,7 @@
 
 **WHAT THAT DOES AND DOES NOT CLOSE.** Phase 3's shippable line (§Phase 3) is *"a real Naxdor client contact logs in, sees exactly their own projects / shared tasks / timeline / updates / files / services, signs off a version, submits a request that lands in triage — and nothing else, provably"*. **The first clause and the "nothing else, provably" are now MEASURED on real data.** The rest is unbuilt: no Client Timeline, no `ProjectUpdate`, no portal files or services surface, no version sign-off. **Phase 3 stays `[ ]`** — and an earlier reading of §0's "the last thing between the build and Phase 3's DoD" as "the DoD is met" was wrong: it was the last thing between the build and being able to REACH it.
 
-## → THE NEXT SESSION STARTS HERE: the founder's walks (C29b's doors, member recovery, the portal reset), then the rail's module gates (item 5) — C31 is DECIDED and its build is HELD
+## → THE NEXT SESSION STARTS HERE: the founder's walks (C29b's doors, member recovery, the portal reset) and two small questions for them (item 5) — C31 is DECIDED and its build is HELD, and what remains of Phase 3 waits for the founder's go and model
 
 **C31 WAS ASKED AND ANSWERED, 2026-09-25: "Cancelled" for work that had been agreed**, and "Declined" stays for a request turned down in triage (`OPEN_QUESTIONS.md` C31). **THE BUILD IS HELD by the founder's word**: *"Wait for this work, just keep it in your record. I do not have Fable for this task at the moment."* It is portal work (the Phase 3 rule), and the suggestion was Fable at max effort. **Do not start it until the founder says so.** The C31 entry lists four things in the code its builder needs to know. Until it is built, the portal keeps saying "Declined" for both cases, which is imprecise but safe.
 
@@ -56,11 +56,78 @@
 
 **4. ~~OWED: EIGHT more reads run `isAuthorized` as legs of a `Promise.all` on ONE interactive transaction's connection~~ DONE — slice 61 (below).** It was NINE: search's `allowedTypes` fanned out `requireAccess`, which the item's `isAuthorized` grep could not see. Every one now resolves once or awaits in turn, and `src/authz/authz-batches.test.ts` fails the unit suite if the shape comes back. **The trap's wider shape — plain reads batched on one transaction — is still NOT swept** (`getItemDetail`'s two batches, `resolvePortalModuleGates`' three legs, `/members`' four): recorded, measured where it bit, and not worth a sweep until one does.
 
-**5. OWED, found by slice 61's review: THE RAIL IGNORES THE MODULE GATES, which UI.md §3.1 says it must not** ("module-gated items hidden (not disabled) when the entitlement/preference is off"). `layout.tsx` asks the permission gate only (`authorizedCodes`), so Time (`time:track`), Rates (`rate:view_bill`), Files (`document:view`) and the `C` key (`work_item:create`) stay lit for a tenant whose plan or preference has switched that module off, and the page behind each then refuses. Pre-existing; the refactor kept the old answer, as a refactor should. The layout is now the cheap place to fix it: one read of the module gates (flags, the tenant's entitlements, the `module.*.enabled` preferences — `resolvePortalModuleGates` is the portal's version of that read) in sequence after the permission read, and an entry shows only when its code's module is on (`core` always is). **Beside it, a product question not yet asked:** the inbox and `/home`'s glance still name tasks for a tenant whose `work` module is off, while search now provably hides them.
+**5. ~~OWED: THE RAIL IGNORES THE MODULE GATES~~ DONE — slice 62 (below).** Time, Rates, Files and the `C` key now disappear for a tenant whose kill-switch, plan or own switch has closed their module (UI.md §3.1). **What it leaves is TWO SMALL PRODUCT QUESTIONS for the founder — ask them in plain words, neither is urgent:** *(a)* with time tracking switched off, **Settings → Time** stays in the rail, because its permission (`settings:view`) belongs to no module, and the page still shows the staff notice about time tracking. Should it disappear with the module? That needs a module on a nav entry, not just a permission — a small build. *(b)* With Work switched off, **the inbox and `/home`'s inbox card still show task titles**, while search now provably hides them. Should the inbox hide them too?
 
 **6. OWED BEFORE PLATFORM IMPERSONATION SHIPS — none of it reachable today, because nothing sets `actor.impersonated` from a session (`src/auth/index.ts`).** *(a)* Five surfaces still gate controls on the raw `effectivePermissions` set, which an impersonating admin's view-only limit never touches: `settings/preferences/page.tsx` (`settings:manage_modules` ✦, `settings:edit`), `settings/rates/page.tsx` (`rate:view_cost` ✦, `rate:manage_cost` ✦), `src/modules/time/money.ts`' reveal OFFER (`rate:view_cost` ✦ — the reveal itself is a separate audited ✦ check), `settings/time/page.tsx` and `clients/[id]/agreements/page.tsx`. Convert each to `resolvePermissions`, as `/members` and `/settings/roles` were. *(b)* `continuity_box:view` is ✦ AND a view verb, so `authorize` lets an impersonator with a fresh factor hold it, against AUTHZ.md §7.5 ("✦ actions are impossible under impersonation by construction"). Decide which is right; if §7.5 is, deny every ✦ code under impersonation in both `authorize` and `resolvePermissions`, and make `authorized-codes.test.ts` assert `afterStepUp` is empty there.
 
-**Model and effort: medium** for the walks and their fixes; **Opus at high** for item 5 (the shell's every render, and the module gates).
+**7. WHAT IS LEFT OF PHASE 3 IS THE FOUNDER'S TO START** (the Phase 3 rule: they pick the model and effort first — for portal work they want Fable, which was not available to them on 2026-09-25): the Client Timeline, `ProjectUpdate`, portal files and services, version sign-off — and C31 (held). Phase 3 stays `[ ]`.
+
+**Model and effort: medium** for the walks and their fixes, and for items 5's two builds if the founder wants them; **the founder's choice** for anything in item 7.
+
+---
+
+**2026-09-25 — SLICE 62: THE RAIL HIDES WHAT THE TENANT HAS SWITCHED OFF — the owed item 5, and UI.md §3.1 at last.**
+
+**WHAT SHIPPED.**
+
+1. **`accessibleCodes(tx, tenantId, actor, codes)`** (`src/entitlements/resolver.ts`): `hasAccess` per code. It makes one read of the member's permissions, then up to three module-gate reads in sequence (`openModules`, module-private); it skips those three when no code it holds belongs to a gated module. The shell's rail, its `C` key and its timer pill now read it over `RAIL_CODES` (`nav.ts`, the old `gated` list moved). So Time and Rates (the time module), Files (documentation) and the `C` key (work) now disappear for a tenant whose kill-switch, plan or own switch has closed that module. Before, they led to a page that refused. Nothing a member could use is hidden: the review walked every page behind those entries, and each still enforces its own code on the server. The go-keys, the `?` overlay, the palette and the phone tabs all derive from the filtered rail, so they follow it.
+2. **Gates 1 and 3 each have one rule now, in one place** (`flagOn`, `preferenceOn`). Every `requireAccess` in the product uses them, through `flagEnabled`/`preferenceEnabled`, and so does `openModules`. `requireAccess` also builds its flag key with `flagKey`. Both reviewers compared them line by line with the old code, and no gate decision changed.
+3. **`src/entitlements/access.test.ts`**, which checks three things:
+   - **Equivalence:** `accessibleCodes` answers exactly as `hasAccess` across the whole catalogue, 37 module worlds, 4 postures and 2 holdings. The worlds: each gated module killed by its flag, left out of the plan, or switched off by the tenant; overrides both ways; another tenant's rows; preference values other than a literal false; unparseable entitlements; and, for parity only, an unreadable tenant row.
+   - **Absolute checks on the shared rules**, which the equivalence cannot see, because a change to a shared rule moves both answers together.
+   - **Reads:** four, one at a time. The stub records any overlap, and a positive control proves it can. `RAIL_CODES` holds no ✦ code, and a source tripwire checks the layout still calls `accessibleCodes` over `RAIL_CODES`.
+
+   A new case in `preferences.dbtest.ts` asks exactly what the layout asks, against the real schema. It switches Time off through the owner's own switch and takes Files out of the suite tenant's plan, and holds the answer to `hasAccess` code by code.
+4. **The record around it.** `openModules` and `accessibleCodes` joined the tripwire's list, because they read module gates, which fail open. AGENTS.md's trap now names `accessibleCodes` for many codes on all four gates. AUTHZ.md's `hasAccess` paragraph gains it.
+
+**COST.** For any member holding a module-gated rail code — every seeded role does — the layout now makes five reads in sequence where it made two. Beside the database that is a few milliseconds; over the dev transatlantic link it is about 300 ms. A tenant with Time off gets the skipped timer path back.
+
+**THE REVIEW: 2 fresh read-only agents (correctness; security), about 0.39M subagent tokens by their own usage reports. No high, no medium.** Fixed:
+- **`openModules` was exported and takes no actor** (security). Under a CONTACT principal all three tables read empty (`portal_deny`), so it would answer every module open. It is module-private now, and for a contact `accessibleCodes`' permission read comes back empty first.
+- **Nothing pinned "in sequence"** (security), which is the one refactor that fails open. The stub now records overlapping reads, and a `Promise.all` mutant goes red.
+- **The equivalence could not see a change to a rule both sides share** (correctness): a `preferenceOn = value === true` mutant passed the whole file. The rules now have absolute checks.
+- **Test and stub gaps:**
+  - The stub returned no rows for a read that forgot its tenant, where Prisma returns every tenant's rows.
+  - The unreadable-tenant-row path was never exercised.
+  - Nothing pinned the layout's call.
+- **Comments that said too much:**
+  - The layout said the timer pill had stayed lit. It had not: `getTimerStateAction` answers null with the module off.
+  - `nav.ts` understated the gate.
+  - The `openModules` docstring said any lost read would fail open. Only the tenant read does; the two list reads would throw.
+- **Smaller:** `requireAccess` still spelled its flag key inline, and the dbtest's single transaction carried every read over a slow link.
+
+**THE FIX REVIEW: 1 fresh agent over the whole diff, about 0.22M subagent tokens. No high, no medium.** Fixed:
+- **The dbtest case could hit vitest's 30 s default over the dev link.** The whole file measured 19.3 s, so the case now declares 120 s, as `time/export.dbtest.ts` does.
+- **An absolute check made a fail-open a contract.** It asserted that an unreadable tenant row opens every module, while `src/portal/module-gates.ts` deliberately closes that case. That world now asserts agreement between the two paths only, so closing it later is a hardening, not a regression.
+- **Comments:** the header's claims about which worlds close a module and what the stub "fails" on; which module the `C` key needs; the dbtest's read count; AUTHZ.md's "three" is now "up to three".
+- **The layout tripwire** now also refuses a partial revert to `resolvePermissions`, `isAuthorized` or `hasAccess`.
+
+**DISPOSITIONED:**
+- *(a)* Settings → Time staying in the rail, and the inbox with Work off. Both are the founder's questions, item 5 above.
+- *(b)* `src/portal/module-gates.ts` keeps its own copy of the key helpers and the two rules. It reads under the system principal for a reason of its own, and it is portal code (Phase 3's stop), so it was not unified here.
+- *(c)* A missing tenant row answers everything-on in both `requireAccess` and `accessibleCodes`. They agree, and slice 61's disposition of it stands.
+
+**GATES — on the FINAL tree unless stated.**
+- typecheck ✅
+- ESLint `src e2e scripts --max-warnings 0` → 0 ✅
+- unit **89 files / 1598 passed / 1 skipped** ✅ (slice 61 had 88 / 1440; `access.test.ts` is new).
+- dbtests ✅, `EXIT=0` read from the log each time:
+  - preferences, search and portal-preview, **3 files / 36**, on the first tree;
+  - `preferences.dbtest.ts` **7 / 7** on the fix round's tree.
+
+  After that, only the rail case's timeout, comments and unit tests changed.
+- Mutation-checked: EIGHT mutants each turn `access.test.ts` red —
+  - `openModules` ignoring flags / the plan / preferences / the tenant filter on preferences;
+  - `flagOn` ignoring overrides;
+  - `accessibleCodes` skipping the module gates;
+  - `openModules`' three reads batched in a `Promise.all` (the overlap check);
+  - `preferenceOn` as `value === true` (an absolute check only).
+
+  One mutant run first reported green because the script's sed never applied it (its `|` clashed with the delimiter). It was re-applied by hand and then went red. Recorded, because a mutant that never ran looks exactly like a test that cannot fail.
+- Browser (own port 3457, own `pnpm build` of the final tree): `scoping`, `home`, `settings`, `time` and `quick-create` (the `C` key) — **27 passed in 12.0 min**, `EXIT=0` read from the log ✅. The build compiled, and nothing was left listening. None of these toggles a module; the rail's module behaviour is proven by the dbtest and the unit table.
+- CI: expect `test:db` **51 files / 811** (810 + 1) and the harness **158 passed / 1 skipped**.
+
+No migration, so no Neon smoke was owed.
 
 ---
 

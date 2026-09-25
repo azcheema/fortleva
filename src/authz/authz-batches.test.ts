@@ -43,10 +43,12 @@ import { describe, expect, it } from "vitest";
  *      => requireAccess(…))` starts the check just the same.
  * A callback that opens its OWN transaction (`OPENERS`) has a connection
  * of its own: what surrounds it is not scanned, and inside it scanning
- * starts over. ONE resolution for many codes — `authorizedCodes`,
- * `resolvePermissions`, `effectivePermissions` — is not in `CHECKS` and
- * MAY be a single leg, which is the shape `listItems` and `getItemDetail`
- * settled on after review. The rest of the trap — plain reads batched on
+ * starts over. ONE read of the permissions for many codes —
+ * `authorizedCodes`, `resolvePermissions`, `effectivePermissions` — is
+ * not in `CHECKS` and MAY be a single leg, which is the shape `listItems`
+ * and `getItemDetail` settled on after review (it fails closed: a lost
+ * race throws). `accessibleCodes` and `openModules` read the module gates
+ * too, so they are checks like any other. The rest of the trap — plain reads batched on
  * one transaction — is NOT pinned here: PLAN §0 records it, it was
  * measured where it bit, and it is not swept.
  *
@@ -67,6 +69,10 @@ const CHECKS: ReadonlySet<string> = new Set([
   "hasAccess",
   "flagEnabled",
   "preferenceEnabled",
+  // One call for many codes, but it reads the module gates, which fail
+  // OPEN on a lost race — so unlike `authorizedCodes` it is never a leg.
+  "openModules",
+  "accessibleCodes",
   "resolveScope",
   "scopeWhere",
   "assertInScope",

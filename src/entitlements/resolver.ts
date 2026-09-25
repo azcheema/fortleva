@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { TenantDb } from "@/db";
 import { PERMISSIONS, type Module } from "@/authz/catalog";
-import { authorize, type MemberActor } from "@/authz/authorize";
+import { authorize, authorizedCodes, type MemberActor } from "@/authz/authorize";
 import { AuthzError, deny } from "@/authz/errors";
 
 /**
@@ -70,6 +70,23 @@ type EntitlementModule = keyof Entitlements["modules"];
 
 const isEntitlementModule = (m: Module): m is EntitlementModule => !ALWAYS_ON.has(m);
 
+const flagKey = (module: EntitlementModule): string => `module.${module}`;
+const preferenceKey = (module: EntitlementModule): string => `module.${module}.enabled`;
+
+/** Gate 1's rule over a row already read: no row is ON. */
+const flagOn = (
+  flag: { readonly defaultOn: boolean; readonly tenantOverrides: unknown } | null | undefined,
+  tenantId: string,
+): boolean => {
+  if (!flag) return true;
+  const overrides = (flag.tenantOverrides ?? {}) as Record<string, boolean>;
+  return overrides[tenantId] ?? flag.defaultOn;
+};
+
+/** Gate 3's rule over a row already read: no row is ENABLED. */
+const preferenceOn = (pref: { readonly value: unknown } | null | undefined): boolean =>
+  !pref || pref.value !== false;
+
 /** Gate 1 — engineering kill-switch. Fail OPEN on a missing flag row:
  * flags gate rollouts, they are not authorization. */
 export async function flagEnabled(
@@ -77,10 +94,7 @@ export async function flagEnabled(
   key: string,
   tenantId: string,
 ): Promise<boolean> {
-  const flag = await tx.featureFlag.findFirst({ where: { key } });
-  if (!flag) return true;
-  const overrides = (flag.tenantOverrides ?? {}) as Record<string, boolean>;
-  return overrides[tenantId] ?? flag.defaultOn;
+  return flagOn(await tx.featureFlag.findFirst({ where: { key } }), tenantId);
 }
 
 /** Gate 2 — commercial entitlement from the tenant row. */
@@ -93,11 +107,56 @@ export async function preferenceEnabled(
   tenantId: string,
   module: EntitlementModule,
 ): Promise<boolean> {
-  const pref = await tx.tenantPreference.findFirst({
-    where: { tenantId, key: `module.${module}.enabled` },
+  return preferenceOn(
+    await tx.tenantPreference.findFirst({ where: { tenantId, key: preferenceKey(module) } }),
+  );
+}
+
+/**
+ * Gates 1–3 for several modules at once: which of `modules` are OPEN for
+ * this tenant — no kill-switch, entitled, not switched off by the tenant.
+ * THREE reads whatever the number of modules, and in SEQUENCE: were the
+ * tenant read to lose AGENTS.md's `Promise.all` race and come back
+ * `undefined`, `parseEntitlements` would answer everything-on and open a
+ * module the plan leaves out (the two lists would throw instead).
+ *
+ * MODULE-PRIVATE ON PURPOSE. It takes no actor and trusts whatever the
+ * transaction can read — and under a CONTACT principal all three tables
+ * read as empty (`portal_deny`), which every rule here answers as "open".
+ * The portal has its own read for exactly that reason
+ * (`src/portal/module-gates.ts`); the member plane reaches this only
+ * through `accessibleCodes`, whose permission read comes back empty for a
+ * contact and so closes every code first.
+ */
+async function openModules(
+  tx: TenantDb,
+  tenantId: string,
+  modules: readonly EntitlementModule[],
+): Promise<ReadonlySet<EntitlementModule>> {
+  if (modules.length === 0) return new Set();
+  const flags = await tx.featureFlag.findMany({
+    where: { key: { in: modules.map(flagKey) } },
+    select: { key: true, defaultOn: true, tenantOverrides: true },
   });
-  if (!pref) return true;
-  return pref.value !== false;
+  const tenant = await tx.tenant.findFirst({
+    where: { id: tenantId },
+    select: { entitlements: true },
+  });
+  const preferences = await tx.tenantPreference.findMany({
+    where: { tenantId, key: { in: modules.map(preferenceKey) } },
+    select: { key: true, value: true },
+  });
+  const ents = parseEntitlements(tenant?.entitlements);
+  const flagByKey = new Map(flags.map((f) => [f.key, f]));
+  const preferenceByKey = new Map(preferences.map((p) => [p.key, p]));
+  return new Set(
+    modules.filter(
+      (m) =>
+        flagOn(flagByKey.get(flagKey(m)), tenantId) &&
+        entitled(ents, m) &&
+        preferenceOn(preferenceByKey.get(preferenceKey(m))),
+    ),
+  );
 }
 
 const MODULE_BY_CODE = new Map(PERMISSIONS.map((p) => [p.code, p.module]));
@@ -117,7 +176,7 @@ export async function requireAccess(
   if (!mod) deny("FORBIDDEN", "unknown permission code");
 
   if (mod && isEntitlementModule(mod)) {
-    if (!(await flagEnabled(tx, `module.${mod}`, tenantId))) {
+    if (!(await flagEnabled(tx, flagKey(mod), tenantId))) {
       deny("FEATURE_DISABLED");
     }
     const tenant = await tx.tenant.findFirst({
@@ -165,6 +224,39 @@ export async function hasAccess(
     if (e instanceof AuthzError) return false;
     throw e;
   }
+}
+
+/**
+ * `hasAccess` for many codes at once — all four gates, from ONE read of
+ * the member's permissions (`authorizedCodes`) and the three of
+ * `openModules`, in sequence (none of the three when no code it holds
+ * belongs to a gated module). For a surface that HIDES whatever the
+ * tenant has switched off: the member shell's rail (UI.md §3.1), where
+ * `authorizedCodes` alone answered the permission gate and left Time,
+ * Files and the `C` key lit over pages that then refused. The answer per
+ * code is exactly `hasAccess`'s (`access.test.ts` holds them to it), so
+ * the same caveat applies: NOT FOR ✦ CODES.
+ */
+export async function accessibleCodes(
+  tx: TenantDb,
+  tenantId: string,
+  actor: MemberActor,
+  codes: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const allowed = await authorizedCodes(tx, actor, codes);
+  const moduleOf = (code: string): Module | undefined => MODULE_BY_CODE.get(code);
+  const gated = new Set<EntitlementModule>();
+  for (const code of allowed) {
+    const mod = moduleOf(code);
+    if (mod && isEntitlementModule(mod)) gated.add(mod);
+  }
+  const open = await openModules(tx, tenantId, [...gated]);
+  return new Set(
+    [...allowed].filter((code) => {
+      const mod = moduleOf(code);
+      return mod !== undefined && (!isEntitlementModule(mod) || open.has(mod));
+    }),
+  );
 }
 
 /**

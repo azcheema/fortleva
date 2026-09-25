@@ -3,8 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /* eslint-disable no-restricted-imports -- dbtest setup/cleanup uses the raw layer */
 import { getPlatformClient } from "@/db/client";
-import { withTenant } from "@/db";
-import { requireAccess } from "@/entitlements/resolver";
+import { RAIL_CODES } from "@/app/(tenant)/(authed)/nav";
+import { withTenant, type TenantDb } from "@/db";
+import { accessibleCodes, hasAccess, requireAccess } from "@/entitlements/resolver";
 import { setupTenant } from "@/members/dbtest-fixture";
 
 import { LOCALES } from "@/i18n/config";
@@ -115,6 +116,61 @@ describe("preferences", () => {
       await requireAccess(tx, t.tenantId, t.seats.owner.actor, "client:manage_contacts");
     });
   });
+
+  it("THE RAIL HIDES A MODULE THE TENANT SWITCHED OFF OR THE PLAN LEAVES OUT — code for code with hasAccess", async () => {
+    // UI.md §3.1. The shell asks `accessibleCodes` over `RAIL_CODES` on
+    // every render; before 2026-09-25 it asked the permission gate only,
+    // so Time stayed in the rail for a tenant that had switched time
+    // tracking off, over a page that then refused. Asked here exactly as
+    // the layout asks it, and held to `hasAccess` on the same tree.
+    // A transaction per question, so no one transaction carries the 21
+    // reads of nine `hasAccess` calls over a slow link.
+    const asOwner = <T>(fn: (tx: TenantDb) => Promise<T>) =>
+      withTenant(t.tenantId, { type: "member", id: t.seats.owner.memberId }, fn);
+    const rail = async () => {
+      const held = await asOwner((tx) => accessibleCodes(tx, t.tenantId, t.seats.owner.actor, RAIL_CODES));
+      const each = new Set<string>();
+      for (const code of RAIL_CODES) {
+        if (await asOwner((tx) => hasAccess(tx, t.tenantId, t.seats.owner.actor, code))) each.add(code);
+      }
+      return { held, each };
+    };
+
+    const open = await rail();
+    expect(open.held).toEqual(open.each);
+    expect(open.held.has("time:track") && open.held.has("document:view")).toBe(true);
+
+    // Gate 3, through the owner's own switch.
+    await setModuleEnabled(owner, "time", false);
+    try {
+      const off = await rail();
+      expect(off.held).toEqual(off.each);
+      expect(off.held.has("time:track")).toBe(false);
+      expect(off.held.has("rate:view_bill")).toBe(false);
+      expect(off.held.has("document:view")).toBe(true);
+    } finally {
+      await setModuleEnabled(owner, "time", true);
+    }
+
+    // Gate 2, on this suite's own tenant row: the plan leaves Files out.
+    const p = getPlatformClient();
+    await p.tenant.update({
+      where: { id: t.tenantId },
+      data: { entitlements: { modules: { documentation: false } } },
+    });
+    try {
+      const unplanned = await rail();
+      expect(unplanned.held).toEqual(unplanned.each);
+      expect(unplanned.held.has("document:view")).toBe(false);
+      expect(unplanned.held.has("time:track")).toBe(true);
+    } finally {
+      // `provisionTenant` writes `{}`; the documents suite restores the same.
+      await p.tenant.update({ where: { id: t.tenantId }, data: { entitlements: {} } });
+    }
+    // About thirty short transactions in a row: over the dev link that is
+    // most of vitest's 30 s default, so this case says how long it may take
+    // (`time/export.dbtest.ts` does the same). CI's local Postgres needs none of it.
+  }, 120_000);
 });
 
 describe("the search index follows the workspace language (search/rebuild.ts)", () => {

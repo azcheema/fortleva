@@ -1,8 +1,10 @@
 /**
  * Member-plane navigation registry (UI.md §3.1). Fixed order, no
  * reordering; an entry is HIDDEN (not disabled) when the member lacks
- * its view permission — the layout resolves visibility with one
- * authorizedCodes() read and hands the shell a filtered list. Modules register
+ * its view permission OR its module is closed for the tenant (the
+ * kill-switch, the plan, or the tenant's own switch) — the layout
+ * resolves visibility with one accessibleCodes() call over `RAIL_CODES`
+ * and hands the shell a filtered list. Modules register
  * entries here later (ARC-16 module registry); nothing here is
  * tenant-specific. Icons are names so the registry stays serialisable
  * from server to client.
@@ -49,7 +51,8 @@ export type NavEntry = {
     | "account";
   href: string;
   icon: NavIcon;
-  /** Permission that must be held for the entry to show; none = always. */
+  /** Permission that must be held for the entry to show — on all four
+   * gates, so its module must be open too; none = always. */
   permission?: string;
   /** Two-key "go to" sequence shown in the ? overlay and the palette (UI.md §6). */
   goKey?: string;
@@ -177,6 +180,23 @@ export const NAV: readonly NavEntry[] = [
     ],
   },
   { id: "account", labelKey: "account", href: "/account", icon: "account", goKey: "A" },
+];
+
+const permissionsOf = (entries: readonly NavEntry[]): string[] =>
+  entries.flatMap((e) => [
+    ...(e.permission ? [e.permission] : []),
+    ...(e.children ? permissionsOf(e.children) : []),
+  ]);
+
+/**
+ * Every code the shell asks about on each render, in ONE call: the
+ * rail's entries PLUS the shell's own — the global `C` is a key, not a
+ * nav entry, and it needs `work_item:create` and `project:view` (the
+ * layout says why both). Exported so a test can ask exactly what the
+ * layout asks.
+ */
+export const RAIL_CODES: readonly string[] = [
+  ...new Set([...permissionsOf(NAV), "work_item:create", "project:view"]),
 ];
 
 /**

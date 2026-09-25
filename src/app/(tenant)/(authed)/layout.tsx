@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 
-import { authorizedCodes } from "@/authz/authorize";
 import { requireMemberSession } from "@/auth/session";
 import { AppShell } from "@/components/shell/app-shell";
 import { PwaRegister } from "@/components/shell/pwa-register";
 import { withTenant } from "@/db";
+import { accessibleCodes } from "@/entitlements/resolver";
 import { getThemePreference } from "@/lib/theme-server";
 import { getActiveMembership, membershipsFor, mfaStateOf } from "@/members/tenant-context";
 import { countUnreadIn } from "@/notify/inbox";
 
 import { switchLocaleAction } from "./account/actions";
-import { NAV, visibleNav, type NavEntry } from "./nav";
+import { NAV, RAIL_CODES, visibleNav, type NavEntry } from "./nav";
 import { getTimerStateAction, type TimerPillState } from "./time/actions";
 
 /**
@@ -25,11 +25,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * Member-plane chrome (UI.md §3). Nav visibility is a permission
- * question (AUTHZ.md): every gated entry is checked under the member
- * principal — `authorizedCodes`, which answers each code exactly as
- * `isAuthorized` would — and HIDDEN when not held. A user with no
- * active membership (workspace picker only) gets the ungated entries.
+ * Member-plane chrome (UI.md §3). Nav visibility is an access question
+ * (AUTHZ.md §5): every gated entry is checked under the member principal
+ * on all four gates — `accessibleCodes`, which answers each code exactly
+ * as `hasAccess` would — and HIDDEN when not held. A user with no active
+ * membership (workspace picker only) gets the ungated entries.
  */
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
   const session = await requireMemberSession();
@@ -52,37 +52,42 @@ export default async function AuthedLayout({ children }: { children: React.React
   let canCreateTask = false;
   if (membership) {
     const actor = { memberId: membership.memberId, mfa: mfaStateOf(session) };
-    // The nav's codes PLUS the shell's own: the global `C` is a key, not
-    // a nav entry, and asking for it here costs nothing — every code is
-    // answered by the same single resolution.
-    const gated = [
-      ...new Set([...collectPermissions(NAV), "work_item:create", "project:view"]),
-    ];
     const { held, unread } = await withTenant(
       membership.tenantId,
       { type: "member", id: membership.memberId },
       async (tx) => {
-        // TWO READS, IN SEQUENCE, and this was ten at once on every
-        // authed render: one `isAuthorized` per gated code — each
-        // resolving the same member's roles with reads of its own — plus
-        // the count, all legs of one `Promise.all` on this interactive
-        // transaction's one connection. That is AGENTS.md's worst
-        // standing trap: Prisma over the `pg` adapter does not serialise
-        // those legs, and a loser can resolve `undefined` in code nobody
-        // touched. One connection runs one statement at a time anyway,
-        // so the batch bought no speed. `authz-batches.test.ts` keeps
-        // the fan-out from coming back.
-        const held = await authorizedCodes(tx, actor, gated);
+        // IN SEQUENCE, and this was ten reads at once on every authed
+        // render: one `isAuthorized` per gated code — each resolving the
+        // same member's roles with reads of its own — plus the count, all
+        // legs of one `Promise.all` on this interactive transaction's one
+        // connection. That is AGENTS.md's worst standing trap: Prisma over
+        // the `pg` adapter does not serialise those legs, and a loser can
+        // resolve `undefined` in code nobody touched. One connection runs
+        // one statement at a time anyway, so the batch bought no speed.
+        // `authz-batches.test.ts` keeps the fan-out from coming back.
+        //
+        // ALL FOUR GATES, not the permission alone (UI.md §3.1: a
+        // module-gated item is HIDDEN when the entitlement or preference
+        // is off). `authorizedCodes` answered the permission gate only,
+        // so a tenant that switched Time or Files off still had the entry,
+        // and one that switched Work off still had the `C` key, over a
+        // page — or a dialog — that then refused. (The timer
+        // pill was already safe: `getTimerStateAction` answers null with
+        // the module off. Its read is now simply skipped.) `accessibleCodes`
+        // is `hasAccess` per code: one read of the roles and up to three
+        // of the module gates.
+        const held = await accessibleCodes(tx, membership.tenantId, actor, RAIL_CODES);
         const unread = await countUnreadIn(tx, { tenantId: membership.tenantId, actor });
         return { held, unread };
       },
     );
     nav = visibleNav(NAV, (code) => held.has(code));
     unreadInbox = unread;
-    // The global `C` rides on the SAME permission read the nav does — one
-    // more code in the `gated` set (`project:view` is a nav code already),
-    // no second query. It is not a nav entry, so it is read off `held`
-    // here rather than through `visibleNav`.
+    // The global `C` rides on the SAME read the nav does — one more code
+    // in `RAIL_CODES` (`project:view` is a nav code already), no second
+    // query. It is not a nav entry, so it is read off `held` here rather
+    // than through `visibleNav`. With the work module switched off it is
+    // gone too: its dialog could only fail.
     //
     // BOTH codes, which a review caught: the dialog's first act is to
     // read the project list, and that read is gated on `project:view`.
@@ -118,9 +123,3 @@ export default async function AuthedLayout({ children }: { children: React.React
     </AppShell>
   );
 }
-
-const collectPermissions = (entries: readonly NavEntry[]): string[] =>
-  entries.flatMap((e) => [
-    ...(e.permission ? [e.permission] : []),
-    ...(e.children ? collectPermissions(e.children) : []),
-  ]);
