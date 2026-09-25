@@ -1,6 +1,7 @@
-import { authorizedCodes, scopeWhere } from "@/authz/authorize";
+import { scopeWhere } from "@/authz/authorize";
 import type { MemberActor } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
+import { accessibleCodes } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { idCursor } from "@/lib/id-cursor";
 
@@ -241,15 +242,17 @@ export type InboxGlance = {
 export async function inboxGlance(ctx: InboxCtx, limit: number = INBOX_GLANCE_SIZE): Promise<InboxGlance> {
   return withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
     const where = { ...receiverWhere(ctx), AND: [liveUnread(new Date())] };
-    const [unread, found] = await Promise.all([
-      tx.notification.count({ where }),
-      tx.notification.findMany({
-        where,
-        orderBy: { id: "desc" },
-        take: limit,
-        select: ROW_SELECT,
-      }),
-    ]);
+    // In sequence, never a `Promise.all` on this transaction's one
+    // connection (AGENTS.md's trap): a lost race would hand `undefined` to
+    // `toInboxRows` and take `/home` down with it. The connection runs one
+    // statement at a time either way.
+    const unread = await tx.notification.count({ where });
+    const found = await tx.notification.findMany({
+      where,
+      orderBy: { id: "desc" },
+      take: limit,
+      select: ROW_SELECT,
+    });
     return { unread, rows: await toInboxRows(tx, ctx, found) };
   });
 }
@@ -299,6 +302,11 @@ type SubjectSource = {
  * would be the one surface in the product that renders tenant content
  * with no permission code behind it. They still get the row and the
  * kind — they are told something happened — with no title and no link.
+ *
+ * ON ALL FOUR GATES, not the permission alone (founder decision C33,
+ * 2026-09-25): with the Work module switched off a task's subject is null
+ * too, because the backlog its link opens would refuse, and search already
+ * hides tasks in that state.
  */
 async function resolveSubjects(
   tx: TenantDb,
@@ -308,24 +316,44 @@ async function resolveSubjects(
   const out = new Map<string, { title: string; href: string }>();
   if (rows.length === 0) return out;
 
-  // One resolution for both codes, never two `isAuthorized` legs of a
-  // `Promise.all` on this transaction's one connection (AGENTS.md's
+  // One call for both codes, awaited in turn — never two checks as legs
+  // of a `Promise.all` on this transaction's one connection (AGENTS.md's
   // trap; `authz-batches.test.ts`). It runs whenever `/home`'s glance or
-  // an `/inbox` page has rows to name.
-  const may = await authorizedCodes(tx, ctx.actor, ["project:view", "work_item:view"]);
+  // an `/inbox` page has rows to name. `project:view` is core, so the
+  // only module gates it reads are Work's — and only when a row on the
+  // page IS a task, for a member who holds `work_item:view`.
+  const namesTasks = rows.some((r) => r.entityType === "WorkItem");
+  const may = await accessibleCodes(
+    tx,
+    ctx.tenantId,
+    ctx.actor,
+    namesTasks ? ["project:view", "work_item:view"] : ["project:view"],
+  );
   const mayViewProjects = may.has("project:view");
   const mayViewItems = may.has("work_item:view");
 
+  // A task row's project is wanted only for a task's link, which needs
+  // `work_item:view` too — with Work off it can name nothing.
   const projectIds = mayViewProjects
-    ? [...new Set(rows.map((r) => r.projectId).filter((v): v is string => v !== null))]
+    ? [
+        ...new Set(
+          rows
+            .filter((r) => r.entityType !== "WorkItem" || mayViewItems)
+            .map((r) => r.projectId)
+            .filter((v): v is string => v !== null),
+        ),
+      ]
     : [];
-  const projectScope = await scopeWhere(tx, ctx.actor, {
-    clientField: "clientId",
-    projectField: "id",
-  });
+  // Each scope is resolved only when there is something to look up — with
+  // Work off, or a page of nothing but budget alerts, the item side has
+  // no ids at all and its three or four reads would buy nothing.
   const projects = projectIds.length
     ? await tx.project.findMany({
-        where: { ...projectScope, tenantId: ctx.tenantId, id: { in: projectIds } },
+        where: {
+          ...(await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "id" })),
+          tenantId: ctx.tenantId,
+          id: { in: projectIds },
+        },
         select: { id: true, key: true, name: true },
       })
     : [];
@@ -334,13 +362,14 @@ async function resolveSubjects(
   const itemIds = mayViewItems
     ? [...new Set(rows.filter((r) => r.entityType === "WorkItem").map((r) => r.entityId))]
     : [];
-  const itemScope = await scopeWhere(tx, ctx.actor, {
-    clientField: "clientId",
-    projectField: "projectId",
-  });
   const items = itemIds.length
     ? await tx.workItem.findMany({
-        where: { ...itemScope, tenantId: ctx.tenantId, id: { in: itemIds }, deletedAt: null },
+        where: {
+          ...(await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "projectId" })),
+          tenantId: ctx.tenantId,
+          id: { in: itemIds },
+          deletedAt: null,
+        },
         select: { id: true, number: true, title: true, projectId: true },
       })
     : [];

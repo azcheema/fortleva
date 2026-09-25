@@ -513,6 +513,38 @@ describe("inbox — what a row is ABOUT", () => {
     }
   });
 
+  it("WITH WORK SWITCHED OFF, A TASK LOSES ITS TITLE AND LINK — the row, its kind and a project's subject stay (C33)", async () => {
+    // Founder decision 2026-09-25: the backlog the link opens would refuse,
+    // and search already hides tasks in this state. The owner holds every
+    // code, so only the module gate can take the title away here.
+    const item = await createItem(ownerCtx(), { projectId, title: "Work is off" });
+    const taskRow = await give(f.seats.owner.memberId, { entityType: "WorkItem", entityId: item.id });
+    const budgetRow = await give(f.seats.owner.memberId, {
+      kind: "budget.threshold_reached",
+      entityType: "ProjectBudget",
+      entityId: randomUUID(),
+    });
+    const before = new Map((await listInbox(ownerCtx(), { filter: "unread" })).rows.map((r) => [r.id, r]));
+    expect(before.get(taskRow)?.subject?.title).toBe("Work is off");
+
+    await f.platform.tenantPreference.create({
+      data: { tenantId: f.tenantId, key: "module.work.enabled", value: false },
+    });
+    try {
+      const rows = new Map((await listInbox(ownerCtx(), { filter: "unread" })).rows.map((r) => [r.id, r]));
+      expect(rows.get(taskRow)?.kind).toBe("work_item.assigned");
+      expect(rows.get(taskRow)?.subject).toBeNull();
+      expect(rows.get(budgetRow)?.subject?.title).toBe("Inbox project");
+      // `/home`'s card resolves through the same function.
+      const glance = new Map((await inboxGlance(ownerCtx())).rows.map((r) => [r.id, r]));
+      expect(glance.get(taskRow)?.subject).toBeNull();
+    } finally {
+      await f.platform.tenantPreference.deleteMany({
+        where: { tenantId: f.tenantId, key: "module.work.enabled" },
+      });
+    }
+  });
+
   it("a non-item notification points at its project", async () => {
     await give(f.seats.owner.memberId, {
       kind: "budget.threshold_reached",

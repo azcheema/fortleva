@@ -42,7 +42,7 @@
 
 **WHAT THAT DOES AND DOES NOT CLOSE.** Phase 3's shippable line (§Phase 3) is *"a real Naxdor client contact logs in, sees exactly their own projects / shared tasks / timeline / updates / files / services, signs off a version, submits a request that lands in triage — and nothing else, provably"*. **The first clause and the "nothing else, provably" are now MEASURED on real data.** The rest is unbuilt: no Client Timeline, no `ProjectUpdate`, no portal files or services surface, no version sign-off. **Phase 3 stays `[ ]`** — and an earlier reading of §0's "the last thing between the build and Phase 3's DoD" as "the DoD is met" was wrong: it was the last thing between the build and being able to REACH it.
 
-## → THE NEXT SESSION STARTS HERE: the founder's walks (C29b's doors, member recovery, the portal reset) and two small questions for them (item 5) — C31 is DECIDED and its build is HELD, and what remains of Phase 3 waits for the founder's go and model
+## → THE NEXT SESSION STARTS HERE: the founder's walks (C29b's doors, member recovery, the portal reset) — C31 is DECIDED and its build is HELD, and what remains of Phase 3 waits for the founder's go and model
 
 **C31 WAS ASKED AND ANSWERED, 2026-09-25: "Cancelled" for work that had been agreed**, and "Declined" stays for a request turned down in triage (`OPEN_QUESTIONS.md` C31). **THE BUILD IS HELD by the founder's word**: *"Wait for this work, just keep it in your record. I do not have Fable for this task at the moment."* It is portal work (the Phase 3 rule), and the suggestion was Fable at max effort. **Do not start it until the founder says so.** The C31 entry lists four things in the code its builder needs to know. Until it is built, the portal keeps saying "Declined" for both cases, which is imprecise but safe.
 
@@ -56,15 +56,58 @@
 
 **3. ~~A FOUNDER QUESTION~~ DECIDED 2026-09-25, BUILD HELD (above): the client's portal calls an accepted-then-cancelled request "Declined".** That is the word the founder rejected for the MEMBER's verb, because work had been agreed and is being stopped ("Cancel and reply", C29). The portal maps every answered request to Declined; saying "Cancelled" for agreed work would need the projection to know the request was accepted first (a column, or a read of its history), so it is a product decision with a small build behind it, not a copy change.
 
-**4. ~~OWED: EIGHT more reads run `isAuthorized` as legs of a `Promise.all` on ONE interactive transaction's connection~~ DONE — slice 61 (below).** It was NINE: search's `allowedTypes` fanned out `requireAccess`, which the item's `isAuthorized` grep could not see. Every one now resolves once or awaits in turn, and `src/authz/authz-batches.test.ts` fails the unit suite if the shape comes back. **The trap's wider shape — plain reads batched on one transaction — is still NOT swept** (`getItemDetail`'s two batches, `resolvePortalModuleGates`' three legs, `/members`' four): recorded, measured where it bit, and not worth a sweep until one does.
+**4. ~~OWED: EIGHT more reads run `isAuthorized` as legs of a `Promise.all` on ONE interactive transaction's connection~~ DONE — slice 61 (below).** It was NINE: search's `allowedTypes` fanned out `requireAccess`, which the item's `isAuthorized` grep could not see. Every one now resolves once or awaits in turn, and `src/authz/authz-batches.test.ts` fails the unit suite if the shape comes back. **The trap's wider shape — plain reads batched on one transaction — is still NOT swept** (`getItemDetail`'s two batches, `resolvePortalModuleGates`' three legs, `/members`' four): recorded, measured where it bit, and not worth a sweep until one does. **Three more found by slice 63's review, and the first is the one to take next:**
+- **`resolveScope`** (`src/authz/authorize.ts`) runs its `memberClient` and `memberProject` reads in a `Promise.all` on the caller's transaction. Every `scopeWhere` and `assertInScope` goes through it, including `/home`'s and `/inbox`'s subject loads. It fails closed (a lost race throws), but it is the authorization seam, so change it as its own reviewed slice.
+- **`noticeStatusFor`** (`src/modules/time/notice.ts`): a lost acknowledgement read would DISPLAY "acknowledged". It is display only; the write gate `noticeRequiredFor` runs in sequence.
+- **`getCurrentShift`** (`src/modules/time/shifts.ts`).
 
-**5. ~~OWED: THE RAIL IGNORES THE MODULE GATES~~ DONE — slice 62 (below).** Time, Rates, Files and the `C` key now disappear for a tenant whose kill-switch, plan or own switch has closed their module (UI.md §3.1). **What it leaves is TWO SMALL PRODUCT QUESTIONS for the founder — ask them in plain words, neither is urgent:** *(a)* with time tracking switched off, **Settings → Time** stays in the rail, because its permission (`settings:view`) belongs to no module, and the page still shows the staff notice about time tracking. Should it disappear with the module? That needs a module on a nav entry, not just a permission — a small build. *(b)* With Work switched off, **the inbox and `/home`'s inbox card still show task titles**, while search now provably hides them. Should the inbox hide them too?
+**5. ~~OWED: THE RAIL IGNORES THE MODULE GATES~~ DONE — slice 62 (below).** Time, Rates, Files and the `C` key now disappear for a tenant whose kill-switch, plan or own switch has closed their module (UI.md §3.1). **Its two product questions were ASKED AND ANSWERED the same day** (`OPEN_QUESTIONS.md`):
+- **C32: Settings → Time STAYS in the menu with time tracking off.** A workspace can then publish its own staff notice before tracking starts. Otherwise members who track first may acknowledge the product's default notice, which every tracking write seeds and publishes first, and then acknowledge again. Nothing to build. *(The reason given when this was asked was wrong; see C32 and slice 63.)*
+- **C33: the inbox HIDES a task's name and link with Work off,** keeping the row and its kind. Built as slice 63 (below).
 
 **6. OWED BEFORE PLATFORM IMPERSONATION SHIPS — none of it reachable today, because nothing sets `actor.impersonated` from a session (`src/auth/index.ts`).** *(a)* Five surfaces still gate controls on the raw `effectivePermissions` set, which an impersonating admin's view-only limit never touches: `settings/preferences/page.tsx` (`settings:manage_modules` ✦, `settings:edit`), `settings/rates/page.tsx` (`rate:view_cost` ✦, `rate:manage_cost` ✦), `src/modules/time/money.ts`' reveal OFFER (`rate:view_cost` ✦ — the reveal itself is a separate audited ✦ check), `settings/time/page.tsx` and `clients/[id]/agreements/page.tsx`. Convert each to `resolvePermissions`, as `/members` and `/settings/roles` were. *(b)* `continuity_box:view` is ✦ AND a view verb, so `authorize` lets an impersonator with a fresh factor hold it, against AUTHZ.md §7.5 ("✦ actions are impossible under impersonation by construction"). Decide which is right; if §7.5 is, deny every ✦ code under impersonation in both `authorize` and `resolvePermissions`, and make `authorized-codes.test.ts` assert `afterStepUp` is empty there.
 
 **7. WHAT IS LEFT OF PHASE 3 IS THE FOUNDER'S TO START** (the Phase 3 rule: they pick the model and effort first — for portal work they want Fable, which was not available to them on 2026-09-25): the Client Timeline, `ProjectUpdate`, portal files and services, version sign-off — and C31 (held). Phase 3 stays `[ ]`.
 
-**Model and effort: medium** for the walks and their fixes, and for items 5's two builds if the founder wants them; **the founder's choice** for anything in item 7.
+**Model and effort: medium** for the walks and their fixes; **the founder's choice** for anything in item 7.
+
+---
+
+**2026-09-25 — SLICE 63: WITH WORK SWITCHED OFF, THE INBOX STOPS NAMING TASKS (founder decision C33) — and C32 recorded beside it.**
+
+**THE FOUNDER ANSWERED slice 62's two questions the same afternoon** — asked in plain words, both with the recommendation.
+- **C32:** Settings → Time stays in the menu. Nothing built.
+- **C33:** the inbox hides a task's name and link with Work off.
+
+**THE REASON GIVEN FOR C32 WAS WRONG, and the review caught it.** While writing the question I read `noticeRequiredFor`, which answers "not required" when no staff notice is published. From that I told the founder that hiding the page would force "switch on, then write the notice", with a window where people track uninformed. There is no such window. Every tracking write (`startTimer`, `clockIn`, `createEntry`, `copyWeek`) first runs `ensureTimeDefaults`, which seeds and PUBLISHES a default notice, and a member tracking their OWN time must acknowledge it (`createEntry` for someone else does not ask — `forOther`). The real stake is only that members who track before the workspace publishes its own notice may acknowledge the default first and the workspace's text again later. The decision stands on that smaller reason, and the founder was told. **The lesson: a function read alone is not a flow. `noticeRequiredFor` was true, and the conclusion drawn from it was false, because its callers run a seed before it.**
+
+**WHAT SHIPPED.** `resolveSubjects` (`src/notify/inbox.ts`), which resolves `/inbox`'s rows and `/home`'s inbox card, asks `accessibleCodes` — all four gates — instead of the permission gate alone. With Work switched off, a notification about a task keeps its row and its kind and loses its title and link, exactly as a task the member may not see already did; the backlog the link opened would have refused, and search already hid tasks in that state. A project's subject (a budget notification) is unaffected: `project:view` is core. The extra cost is the Work module's three gate reads, and they happen only when a row on the page IS a task and the member holds `work_item:view`. From the review: each scope is now resolved only when there are ids to look up, which pays that cost back on a page with no tasks, and `inboxGlance`'s two-leg `Promise.all` — `/home`'s card, the plain-read shape of AGENTS.md's trap — now runs in sequence. A new `inbox.dbtest.ts` case pins it (the task row loses its subject in the list and in the glance, the budget row keeps its project); a mutant reverting to the permission-only call turns it red ("expected { title: 'Work is off', … } to be null"). UI.md §3.1's Inbox row says so.
+
+**THE REVIEW: 1 fresh read-only agent (correctness and authorization combined — proportionate to a one-call change), about 0.20M subagent tokens. No high. One MEDIUM, in the docs: C32's reason was wrong** (above) — corrected in OPEN_QUESTIONS and here, and the founder told. Fixed from the lows:
+- `inboxGlance`'s two-leg `Promise.all` now runs in sequence.
+- Each scope is resolved only when there are ids to look up.
+- `work_item:view` is asked only when a row is a task.
+- "board" → "backlog".
+
+**THE FIX REVIEW: 1 fresh agent over the fix round, about 0.18M. No high, no medium.** Fixed:
+- The corrected C32 still said `createEntry` demands the acknowledgement. It does not when a member writes for someone else (`forOther`), so it now reads "their own time".
+- "Members acknowledge the default first" became "may": only members who track before the workspace publishes its own notice are affected.
+- A task row's project is no longer loaded when no task subject can use it.
+
+**DISPOSITIONED:**
+- *(a)* Three more plain-read batches, `resolveScope` first. Now in item 4's list.
+- *(b)* **A budget alert's LINK has the same dead end with Time switched off** (`/projects/KEY/money` refuses). The title is fine, because `project:view` is core. It is the same question as C33. **It was asked, and the founder answered straight away: DROP THE LINK** whenever the receiver cannot open the Money page — with Time off, or without the codes that page needs. That is `OPEN_QUESTIONS.md` C34, built as its own slice rather than widening this one.
+
+**GATES — on the FINAL tree.**
+- typecheck ✅
+- ESLint `src e2e scripts --max-warnings 0` → 0 ✅
+- unit **89 files / 1598 passed / 1 skipped** ✅ (unchanged: no unit test in this slice).
+- `inbox.dbtest.ts` **23 / 23**, `EXIT=0` read from the log ✅, three times: before the review, after it, and on the final tree.
+- A mutant reverting the call to the permission gate alone turns the new case red.
+- Browser (own port 3457, own build): `inbox` and `home` — **9 passed in 2.5 min**, `EXIT=0` ✅.
+- CI: expect `test:db` **51 files / 812** (811 + 1) and the harness **158 passed / 1 skipped**.
+
+No migration.
 
 ---
 
