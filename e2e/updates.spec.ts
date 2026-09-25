@@ -1,7 +1,10 @@
-import { expect, test, type Browser } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 
 import { CONTACT_STORAGE_STATE, STORAGE_STATE, requireSeed } from "./fixtures/tenant";
 import { SLOW } from "./fixtures/keys";
+
+/** The one toast that says `text` — never the whole stack (see the note at the first use). */
+const toast = (page: Page, text: string | RegExp): Locator => page.locator("[data-sonner-toast]", { hasText: text });
 
 /**
  * PROGRESS UPDATES, ACROSS BOTH PLANES (Phase 3, DATA_MODEL §6.16).
@@ -71,9 +74,12 @@ test.describe("progress updates", () => {
     await expect(page.getByTestId("publish-audience-CLIENT_VISIBLE")).toHaveAttribute("aria-checked", "true");
     await page.getByTestId("publish-confirm").click();
 
-    await expect(page.locator("[data-sonner-toast]")).toContainText(/Update #\d+ published\. Your client can read it\./, {
-      timeout: 30_000,
-    });
+    // Every toast assertion in this file filters by its TEXT: on a fast
+    // machine the previous toast is still on screen when the next one
+    // appears, and a bare `[data-sonner-toast]` then matches two
+    // elements, which strict mode refuses (CI run 36169282318 — the
+    // archive had succeeded; the locator had not).
+    await expect(toast(page, /Update #\d+ published\. Your client can read it\./)).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(/\/updates\/[0-9a-f-]{36}$/, { timeout: 30_000 });
     const detail = page.getByTestId("update-detail");
     await expect(detail).toContainText(title);
@@ -99,7 +105,7 @@ test.describe("progress updates", () => {
     // (`InlineConfirm` swaps the button for the question and Yes / No).
     await page.getByTestId("published-actions").getByRole("button", { name: "Archive" }).click();
     await page.getByTestId("published-actions").getByRole("button", { name: "Yes" }).click();
-    await expect(page.locator("[data-sonner-toast]")).toContainText("Update archived.", { timeout: 30_000 });
+    await expect(toast(page, "Update archived.")).toBeVisible({ timeout: 30_000 });
     await portalShows(browser, summary, false);
   });
 
@@ -110,7 +116,7 @@ test.describe("progress updates", () => {
     await page.getByTestId("update-section-SUMMARY").click();
     await page.keyboard.type(summary);
     await page.getByTestId("save-draft").click();
-    await expect(page.locator("[data-sonner-toast]")).toContainText("Draft saved.", { timeout: 30_000 });
+    await expect(toast(page, "Draft saved.")).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(/\/updates\/[0-9a-f-]{36}$/, { timeout: 30_000 });
 
     await page.goto(`/projects/${seed.projectKey}/updates`);
@@ -124,7 +130,7 @@ test.describe("progress updates", () => {
     await expect(page.getByTestId("update-composer")).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Discard draft" }).click();
     await page.getByTestId("update-composer").getByRole("button", { name: "Yes" }).click();
-    await expect(page.locator("[data-sonner-toast]")).toContainText("Draft discarded.", { timeout: 30_000 });
+    await expect(toast(page, "Draft discarded.")).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(new RegExp(`/projects/${seed.projectKey}/updates$`), { timeout: 30_000 });
   });
 });

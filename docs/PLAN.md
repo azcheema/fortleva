@@ -105,6 +105,8 @@
 
 **GATES (after the fixes): typecheck ✓ · eslint 0 ✓ · unit ✓ · `test:db` on `updates.dbtest.ts` + `portal.dbtest.ts` + `portal-gate` + `isolation` + `census` ✓ · build ✓ · `e2e/updates.spec.ts` ✓ locally (member publishes → contact reads → archive takes it back; a draft never reaches the client), plus `view-as`, `portal-requests` and `contact-tasks` 8/8 locally.** `neon-smoke.yml`: not owed (DDL only). The full `test:db` and harness are CI's.
 
+**PUSHED AS `fe24223`; CI run [36169282318](https://github.com/azcheema/fortleva/actions/runs/36169282318): the isolation job GREEN (the full `test:db` from an empty database, 4 min), the browser harness RED on ONE test — the new spec's own locator, not the product.** `page.locator("[data-sonner-toast]")` matched TWO toasts on the faster runner ("Update #2 published…" was still on screen when "Update archived." appeared), and Playwright's strict mode refuses a two-element `toContainText`; locally the first toast had expired. The archive had succeeded (the retry published #3 and archived it too — nothing left behind). Fixed in the follow-up commit by filtering every toast assertion in the file by its text (`item-properties.spec.ts`'s shape); 159 other tests passed in 14.4 min. **Worth remembering: a toast assertion on the bare stack is a timing assertion in disguise — always `hasText`.**
+
 ---
 
 **2026-09-25 — SLICE 66: THE AUTHORIZATION SEAM'S SCOPE READS, AND THREE TIME READS, RUN IN SEQUENCE ON THEIR TRANSACTION'S ONE CONNECTION (PLAN §0 item 4, the last of it) — built on Fable at high, the founder's setting for it.**
