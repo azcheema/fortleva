@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthzError } from "@/authz/errors";
 import { withTenant } from "@/db";
 import { DomainError } from "@/lib/domain-error";
-import { actorFor, setupTenant } from "@/members/dbtest-fixture";
+import { actorFor, maskIds, setupTenant } from "@/members/dbtest-fixture";
 import { createRole, setRolePermissions } from "@/members/roles";
 import { createItem } from "@/modules/work";
 import { setHoursSharingMode } from "@/projects/service";
@@ -459,11 +459,21 @@ describe("rates — tiers, SERVICE, snapshot stability, EXCLUDE, immutability, C
     expect(await authzReason(revealCostRates(employeeCtx(), [card.id]))).toBe("FORBIDDEN");
     const stale = { tenantId: f.tenantId, actor: { memberId: f.seats.owner.memberId, mfa: { enrolled: true, verifiedAt: hoursAgo(2) } } };
     expect(await authzReason(revealCostRates(stale, [card.id]))).toBe("MFA_REQUIRED");
+    // THE PLAINTEXT AMOUNT MUST NOT BE IN THE TRAIL. The reveal's
+    // metadata has a known shape — `revealCostRates` records exactly
+    // `{count, ids}`, "with the ids, never the amounts" — so it is pinned
+    // whole: a leak under any key fails, and an id that happens to
+    // contain "600" cannot. (This line used to be a substring test over
+    // the serialised metadata, and a random card id `aaa60007-…` failed
+    // it in CI on 2026-09-25, in a run that touched nothing here.)
     const revealed = await f.audits("rate_card.cost_revealed");
     expect(revealed).toHaveLength(1);
-    expect(JSON.stringify(revealed[0]?.metadata)).not.toContain("600");
+    expect(revealed[0]?.metadata).toEqual({ count: 1, ids: [card.id] });
+    // The created events of EVERY card in this file are scanned, and
+    // their metadata holds member and project ids: masked before the
+    // substring test, for the reason `maskIds` gives.
     const created = await f.audits("rate_card.created");
-    expect(created.some((a) => JSON.stringify(a.metadata).includes("600"))).toBe(false);
+    expect(created.some((a) => maskIds(a.metadata).includes("600"))).toBe(false);
 
     // A new entry for the owner carries the COST card id, never the amount.
     const e = await createEntry(ownerCtx(), {

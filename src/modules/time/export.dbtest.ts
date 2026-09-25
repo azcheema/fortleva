@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthzError } from "@/authz/errors";
 import { DomainError } from "@/lib/domain-error";
 import { dateColumn, localDateString } from "@/lib/duration";
-import { actorFor, setupTenant } from "@/members/dbtest-fixture";
+import { actorFor, maskIds, setupTenant } from "@/members/dbtest-fixture";
 import { createRole, setRolePermissions } from "@/members/roles";
 import { createItem } from "@/modules/work";
 import { updatePreferences } from "@/preferences/service";
@@ -315,7 +315,10 @@ describe("project rollup export — amounts with rate:view_bill, cost ONLY throu
     const audit = await lastExportAudit();
     expect(audit.metadata).toMatchObject({ kind: "project_rollup", includesCost: true });
     expect(Object.keys(audit.metadata as object).sort()).toEqual(["from", "includesCost", "includesRates", "kind", "projectId", "rows", "to"]);
-    expect(JSON.stringify(audit.metadata)).not.toMatch(new RegExp(String(COST_OWNER)));
+    // `projectId` is a random id, and "500" can sit inside one — the
+    // same latent flake `time.dbtest.ts` paid for on 2026-09-25 — so the
+    // ids are masked before the figure is looked for.
+    expect(maskIds(audit.metadata)).not.toMatch(new RegExp(String(COST_OWNER)));
 
     const stale = { tenantId: f.tenantId, actor: { memberId: f.seats.owner.memberId, mfa: { enrolled: true, verifiedAt: hoursAgo(2) } } };
     const exportsBefore = (await f.audits("time.exported")).length;

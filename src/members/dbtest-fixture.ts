@@ -20,6 +20,24 @@ const freshMfa = () => ({ enrolled: true, verifiedAt: new Date() });
 export const actorFor = (memberId: string): MemberActor => ({ memberId, mfa: freshMfa() });
 export const noMfa = (memberId: string): MemberActor => ({ memberId });
 
+/**
+ * Serialise a value with every UUID-shaped substring masked to `<id>`,
+ * for a "the trail must not carry this figure" assertion over audit
+ * metadata that legitimately holds ids. A short numeric sentinel can
+ * appear INSIDE a 32-hex-digit id — `"600"` did, in `aaa60007-…`, and
+ * failed `time.dbtest.ts` in a CI run that touched nothing there
+ * (2026-09-25) — so the ids are taken out before the substring test.
+ * Lowercase only, which is what `randomUUID()` and Prisma's `uuid(7)`
+ * both produce; an uppercase id would bring the flake back, never hide
+ * a leak. Prefer `toEqual` on the whole metadata where its shape is
+ * known — this is for the scans where it is not.
+ */
+export const maskIds = (value: unknown): string =>
+  JSON.stringify(value).replace(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,
+    "<id>",
+  );
+
 export async function setupTenant(label: string) {
   const platform = getPlatformClient();
   const run = randomUUID().slice(0, 8);
