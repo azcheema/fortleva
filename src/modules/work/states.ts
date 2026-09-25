@@ -180,7 +180,9 @@ export type TriageWrite = {
  * cleared HERE rather than in the triage service because the drag, the
  * picker, the palette and the bulk bar all reach this function and none
  * of them reaches that one — and the same argument is why the REFUSAL
- * below lives here too.
+ * below lives here too. SINCE C31 (2026-09-25) IT ALSO STAMPS
+ * `acceptedAt` on a request's first arrival in live work, for the same
+ * reason: an accept by any door is an accept.
  */
 export async function transitionState(
   tx: TenantDb,
@@ -323,6 +325,33 @@ export async function transitionState(
     : leavingTriageOrCancelled
       ? { triageStatus: null, triageReason: null, snoozedUntil: null, duplicateOfId: null }
       : {};
+  // WHEN THE AGENCY TOOK A REQUEST ON (founder decision C31, 2026-09-25).
+  //
+  // A `kind = REQUEST` row arriving in a live category from TRIAGE or
+  // CANCELLED is the agency agreeing to the work — the lane's Accept, a
+  // drag out of the lane, a reopen of a declined request — and the
+  // FIRST such moment is kept, like `startedAt`. It exists so the portal
+  // can tell agreed work that was later stopped ("Cancelled") from a
+  // request turned down at the door ("Declined"): after the clear above
+  // an accepted request is indistinguishable from ordinary work, and a
+  // cancelled one from a declined one, and the client was told the
+  // wrong word for a fortnight of Planned.
+  //
+  // NEVER CLEARED. Cancelling agreed work and reopening it does not
+  // un-agree what was agreed, and a request cannot re-enter TRIAGE (the
+  // refusal above), so there is no path on which "accepted" stops being
+  // true. Stamped HERE rather than in `triageItem`, for the reason the
+  // clear is: a drag never reaches that file. Its own spread, like the
+  // claim's, because the triage object's branches would swallow it.
+  //
+  // `to` cannot be TRIAGE here (refused above), so "not CANCELLED" is
+  // "live" — spelled out anyway, so the stamp cannot widen if that
+  // refusal ever moves.
+  const arrivingLive = to === "BACKLOG" || to === "TODO" || to === "IN_PROGRESS" || to === "DONE";
+  const acceptedColumn: Partial<Pick<ItemRow, "acceptedAt">> =
+    item.kind === "REQUEST" && item.acceptedAt === null && leavingTriageOrCancelled && arrivingLive
+      ? { acceptedAt: new Date() }
+      : {};
 
   // `select` for the same reason `ItemRow` above carries its omit: a
   // select-less `update` returns the WHOLE row, the 512 KB ProseMirror
@@ -333,7 +362,15 @@ export async function transitionState(
   // which is the value the caller actually wants.
   const row = await tx.workItem.update({
     where: { id: item.id },
-    data: { stateId: state.id, stateCategory: to, startedAt, completedAt, ...triageColumns, ...claimColumn },
+    data: {
+      stateId: state.id,
+      stateCategory: to,
+      startedAt,
+      completedAt,
+      ...triageColumns,
+      ...claimColumn,
+      ...acceptedColumn,
+    },
     select: {
       id: true,
       stateId: true,

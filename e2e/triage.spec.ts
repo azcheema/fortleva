@@ -76,6 +76,23 @@ const laneRow = (page: Page, title: string) =>
   page.getByTestId("triage-row").filter({ hasText: title });
 
 /**
+ * One category's group on the contact's portal card. Asserting on the
+ * GROUP rather than on a bare "Cancelled" somewhere on the page is what
+ * makes "this request is under Cancelled and not under Declined" a
+ * statement about the row (C31), and it stays true when another spec's
+ * leftover puts a second answered request on the same card.
+ *
+ * BY THE GROUP'S OWN ATTRIBUTE, not by "a section holding the chip":
+ * `SectionCard` wraps every group in a `<section>` of its own, so that
+ * shape matched the whole card as well — the negative assertion below
+ * would then fail against any leftover Declined request on the card,
+ * and the positive ones would pass against a title anywhere on it. Both
+ * fresh reviews of slice 65 found it.
+ */
+const portalGroup = (page: Page, category: "PLANNED" | "CANCELLED" | "DECLINED") =>
+  page.locator(`[data-slot="portal-group"][data-category="${category}"]`);
+
+/**
  * Accept a request from the lane, so it becomes ordinary work — the state
  * C29 is about: out of the lane, every move target refusing Cancelled,
  * and nothing but the Cancel-and-reply doors able to end it.
@@ -156,14 +173,19 @@ test.describe("the triage lane", () => {
     // It stays CLIENT_VISIBLE — that is what lets the client read the
     // answer at all. A decline is not a retraction.
     expect(mine!.visibility).toBe("CLIENT_VISIBLE");
+    // Nobody agreed to this, so nothing says they did (C31).
+    expect(mine!.acceptedAt).toBeNull();
 
     // ── The client's side: the whole point of the slice ──────────────
     // Before 6b this row simply vanished from their list the moment the
-    // agency said no. Now it says Declined and carries the words above.
+    // agency said no. Now it says Declined and carries the words above —
+    // DECLINED, because it was turned down at the door (C31 gives agreed
+    // work its own word; the board-card test below drives that one).
     const portal = await portalRow(browser, title);
     try {
-      await expect(portal.page.getByText("Declined", { exact: true })).toBeVisible();
-      await expect(portal.page.getByText(reply)).toBeVisible();
+      const declined = portalGroup(portal.page, "DECLINED");
+      await expect(declined.getByText(title)).toBeVisible();
+      await expect(declined.getByText(reply)).toBeVisible();
     } finally {
       await portal.close();
     }
@@ -198,10 +220,13 @@ test.describe("the triage lane", () => {
     const rows = await readPortalRequests(seed.tenantId);
     const mine = rows.find((r) => r.title === title);
     expect(mine!.stateCategory).toBe("TODO");
-    // ACCEPTED IS NEVER STORED — accepting clears every triage column,
-    // so the row becomes ordinary work (DATA_MODEL §6.14, amended by
-    // this slice).
+    // ACCEPTED IS NEVER STORED as a status — accepting clears every
+    // triage column, so the row becomes ordinary work (DATA_MODEL §6.14,
+    // amended by this slice) — but the MOMENT is (C31): it is what lets
+    // the portal call this "Cancelled" rather than "Declined" if the
+    // agency later stops it.
     expect(mine!.triageStatus).toBeNull();
+    expect(mine!.acceptedAt).not.toBeNull();
 
     // The client's list stops saying "Requested" and starts saying
     // "Planned" — the same row, a different promise.
@@ -391,11 +416,23 @@ test.describe("ending a client request from the board, the backlog and the item 
     const mine = (await readPortalRequests(seed.tenantId)).find((r) => r.title === title);
     expect(mine!.stateCategory).toBe("CANCELLED");
     expect(mine!.triageStatus).toBe("DECLINED");
+    // Accepted first — the fact the portal's word turns on (C31).
+    expect(mine!.acceptedAt).not.toBeNull();
 
+    // ── THE CLIENT READS "CANCELLED", NOT "DECLINED" (founder decision
+    //    C31, 2026-09-25). They watched this request as Planned after
+    //    the accept above; "Declined" would tell them the agency never
+    //    agreed to it. Same reply under it, at the foot of the card, in
+    //    its own group — and NOT in Declined, which is asserted on the
+    //    group rather than on the page so a leftover declined request
+    //    from another spec cannot make it pass. ────────────────────────
     const portal = await portalRow(browser, title);
     try {
-      await expect(portal.page.getByText("Declined", { exact: true })).toBeVisible();
-      await expect(portal.page.getByText(reply)).toBeVisible();
+      const cancelled = portalGroup(portal.page, "CANCELLED");
+      await expect(cancelled.getByText("Cancelled", { exact: true })).toBeVisible();
+      await expect(cancelled.getByText(title)).toBeVisible();
+      await expect(cancelled.getByText(reply)).toBeVisible();
+      await expect(portalGroup(portal.page, "DECLINED").getByText(title)).toHaveCount(0);
     } finally {
       await portal.close();
     }

@@ -2357,7 +2357,7 @@
       "phase": "Phase: {name}",
       "due": "Due {date}",
       "completed": "Completed {date}",
-      "declinedReason": "Your agency's reply: {reason}",
+      "reply": "Your agency's reply: {reason}",
       "markDone": "I've done my part",
       "markedDoneOn": "You marked this done on {date}",
       "doneFailed": "That did not save. Please try again.",
@@ -2460,6 +2460,7 @@
       "PLANNED": "Planned",
       "IN_PROGRESS": "In progress",
       "DONE": "Done",
+      "CANCELLED": "Cancelled",
       "DECLINED": "Declined"
     },
     "projectHealth": {

@@ -262,7 +262,8 @@ export async function triageItem(
     // `deletedAt`, and an archived request is one the agency has already
     // put away — the client stopped seeing it then (`listPortalTasks`'
     // LIVE branch filters `archivedAt`). Declining it would bring it BACK,
-    // as Declined: an answered request outlives the archive (founder
+    // answered — Declined, or Cancelled if it had been accepted (C31):
+    // an answered request outlives the archive (founder
     // decision, 2026-09-22 — the answered branch has no archive term). A
     // reply resurfacing a row the agency filed away is a decision nobody
     // made while it sat there; restoring it first makes the answer an

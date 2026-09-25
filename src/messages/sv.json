@@ -2357,7 +2357,7 @@
       "phase": "Fas: {name}",
       "due": "Klart senast {date}",
       "completed": "Slutfördes {date}",
-      "declinedReason": "Svar från din byrå: {reason}",
+      "reply": "Svar från din byrå: {reason}",
       "markDone": "Jag har gjort min del",
       "markedDoneOn": "Du markerade detta som klart {date}",
       "doneFailed": "Det sparades inte. Försök igen.",
@@ -2460,6 +2460,7 @@
       "PLANNED": "Planerat",
       "IN_PROGRESS": "Pågår",
       "DONE": "Klart",
+      "CANCELLED": "Avbrutet",
       "DECLINED": "Avböjt"
     },
     "projectHealth": {

@@ -1509,6 +1509,15 @@ model WorkItem {
   triageReason        String?          @map("triage_reason") @db.VarChar(500)
   snoozedUntil        DateTime?        @map("snoozed_until") @db.Timestamptz(6)
   duplicateOfId       String?          @map("duplicate_of_id")
+  // WHEN THE AGENCY TOOK A REQUEST ON (founder decision C31, 2026-09-25).
+  // Stamped by `transitionState` on a `kind = REQUEST` row's FIRST
+  // arrival in a live category from TRIAGE or CANCELLED — the lane's
+  // Accept, a drag out of the lane, a reopen of a declined request — and
+  // never cleared. The portal reads only WHETHER it is set: a cancelled
+  // request that had been accepted is "Cancelled", one turned down in
+  // triage is "Declined"; the value itself never leaves the projection.
+  // Backfilled from the audit trail by 20260925120000.
+  acceptedAt          DateTime?        @map("accepted_at") @db.Timestamptz(6)
   // THE CLIENT'S CLAIM THAT THEIR PART IS DONE — stamped by the contact
   // this task is assigned to, through `modules/work/portal-writes.ts`,
   // and NOTHING ELSE MOVES (founder decision, 2026-09-22). The state is

@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
  * invites exactly that mistake about a timezone: take it as a prop.)
  *
  * The shared task list, one card per project, grouped by the portal's
- * five categories (UI.md §11). What is NOT here is the point of the
+ * six categories (UI.md §11). What is NOT here is the point of the
  * file: no state name, no estimate, no label, no assignee, no ordering
  * weight, nothing a client would have to learn the agency's vocabulary
  * to read. The projection cannot supply any of it — see
@@ -32,12 +32,13 @@ import { cn } from "@/lib/utils";
  *
  * Grouped by CATEGORY within the project, in the fixed order above, so
  * a client reads down the same few headings on every project rather
- * than a list whose shape changes with the data. `DECLINED` is last in
- * that order on purpose (`PORTAL_TASK_CATEGORIES`): a request the
- * agency answered no to belongs at the foot of the card, not among the
- * work that is still happening. A category with
- * nothing in it is simply absent — an empty "Done" heading on a project
- * that has not finished anything yet says nothing worth a row of space.
+ * than a list whose shape changes with the data. `CANCELLED` and
+ * `DECLINED` are last in that order on purpose (`PORTAL_TASK_CATEGORIES`):
+ * a request the agency answered no to — after agreeing to it, or at the
+ * door — belongs at the foot of the card, not among the work that is
+ * still happening. A category with nothing in it is simply absent — an
+ * empty "Done" heading on a project that has not finished anything yet
+ * says nothing worth a row of space.
  */
 export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
   const t = useTranslations("portal.tasks");
@@ -54,7 +55,13 @@ export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
     <SectionCard title={project.projectName} description={t("heading")} contentClassName="p-0">
       <div className="divide-y divide-border">
         {groups.map(({ category, tasks }) => (
-          <section key={category} className="p-4">
+          // `data-slot`/`data-category` name the GROUP, for a browser
+          // test to scope an assertion to one category: `SectionCard`
+          // renders a `<section>` of its own around all of these, so
+          // "the section holding this chip" matched the whole card too
+          // (both fresh reviews of slice 65). Rendered on both planes
+          // alike, so the view-as byte comparison is unaffected.
+          <section key={category} data-slot="portal-group" data-category={category} className="p-4">
             {/* The chip IS the heading — it carries its own size and
                 tone from `TONE_CHIP`, so the h3 only positions it. */}
             <h3 className="mb-2 flex items-center">
@@ -64,21 +71,22 @@ export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
               {tasks.map((task) => (
                 <li key={task.id} className="flex flex-col gap-0.5">
                   <span className="text-sm text-foreground">{task.title}</span>
-                  {/* THE AGENCY'S ANSWER, on a declined request only —
-                      the whole point of the DECLINED category (slice
-                      6b). It sits directly under the title rather than
-                      in the meta row below, because it is a sentence
-                      somebody wrote to this reader and not a date: the
-                      meta row's `text-xs` and its horizontal flex would
-                      set prose in a strip of chips. `declinedReason` is
-                      non-null on exactly these rows (the projection
-                      gates it on the category), so no second condition
-                      is needed here — but it is written as one anyway,
-                      because a `null` rendered through `t()` would put
-                      the literal word "null" on a client's screen. */}
-                  {task.declinedReason ? (
+                  {/* THE AGENCY'S ANSWER, on an answered request only —
+                      declined at the door, or cancelled after it was
+                      agreed (slice 6b; C31). It sits directly under the
+                      title rather than in the meta row below, because
+                      it is a sentence somebody wrote to this reader and
+                      not a date: the meta row's `text-xs` and its
+                      horizontal flex would set prose in a strip of
+                      chips. `reply` is non-null on exactly these rows
+                      (the projection gates it on the category), so no
+                      second condition is needed here — but it is
+                      written as one anyway, because a `null` rendered
+                      through `t()` would put the literal word "null" on
+                      a client's screen. */}
+                  {task.reply ? (
                     <span className="text-xs text-muted-foreground">
-                      {t("declinedReason", { reason: task.declinedReason })}
+                      {t("reply", { reason: task.reply })}
                     </span>
                   ) : null}
                   {/* THE ONE CONTROL ON THIS PLANE, and only where it
@@ -143,7 +151,7 @@ export function ProjectTasks({ project }: { project: PortalProjectTasks }) {
 /**
  * The category, drawn the way every other enum in the product is drawn —
  * `STATUS_MAP` tone + glyph, so the portal is recognisably the same
- * product and a greyscale screenshot still separates the five. It is not
+ * product and a greyscale screenshot still separates the six. It is not
  * `<StatusBadge>` because that component resolves its own label from
  * `states.<domain>.<value>` and the heading needs the label at heading
  * weight beside its glyph, not inside a chip.

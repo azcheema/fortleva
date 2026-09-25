@@ -192,8 +192,18 @@ const readItem = (id: string) =>
       duplicateOfId: true,
       completedAt: true,
       visibility: true,
+      acceptedAt: true,
     },
   });
+
+/** The project's seeded states the tests move rows between. */
+const stateId = async (where: { seedKey: "TODO" } | { category: "CANCELLED" }): Promise<string> =>
+  (
+    await f.platform.workflowState.findFirstOrThrow({
+      where: { tenantId: f.tenantId, projectId, ...where },
+      select: { id: true },
+    })
+  ).id;
 
 describe("the four verbs", () => {
   it("ACCEPT moves the request to the project's default state and clears its triage status", async () => {
@@ -223,6 +233,11 @@ describe("the four verbs", () => {
     // it, only what it says. This is the row born CLIENT_VISIBLE at
     // intake and it stays that way.
     expect(row.visibility).toBe("CLIENT_VISIBLE");
+    // …AND THE MOMENT IS KEPT (C31). Clearing the triage columns made an
+    // accepted request indistinguishable from ordinary work; this stamp
+    // is what lets the portal say "Cancelled" rather than "Declined" if
+    // the agency later stops it.
+    expect(row.acceptedAt).not.toBeNull();
   });
 
   it("DECLINE cancels the request and keeps the agency's reason on the row", async () => {
@@ -241,6 +256,9 @@ describe("the four verbs", () => {
     // category but DONE, and a declined request that carried one would
     // read on the client's screen as "finished".
     expect(row.completedAt).toBeNull();
+    // NOT an acceptance either: turned down at the door, so the portal
+    // says "Declined" (C31).
+    expect(row.acceptedAt).toBeNull();
   });
 
   it("DUPLICATE cancels it, names the row it duplicates, and still carries a reason", async () => {
@@ -512,6 +530,9 @@ describe("a client's request never disappears without a reason", () => {
     expect(row.stateCategory).toBe("TODO");
     expect(row.triageStatus).toBeNull();
     expect(row.snoozedUntil).toBeNull();
+    // A drag IS an accept, so it is stamped like one (C31) — the reason
+    // the stamp lives in `transitionState` and not in the verb.
+    expect(row.acceptedAt).not.toBeNull();
   });
 
   it("the DATABASE refuses a reasonless decline even when no service is involved", async () => {
@@ -569,7 +590,8 @@ describe("a request cannot be ended by the back door", () => {
     const e = await changeState(ownerCtx(), id, cancelled.id).catch((err: unknown) => err);
     expect(e).toBeInstanceOf(DomainError);
     expect((e as DomainError).code).toBe("INVALID_INPUT");
-    expect((await readItem(id)).stateCategory).toBe("TODO");
+    const accepted = await readItem(id);
+    expect(accepted.stateCategory).toBe("TODO");
 
     // …and the verb CAN end it, from a live state. That is the other
     // half of the fix: if DECLINE only worked in the lane, the refusal
@@ -578,6 +600,12 @@ describe("a request cannot be ended by the back door", () => {
     const row = await readItem(id);
     expect(row.stateCategory).toBe("CANCELLED");
     expect(row.triageReason).toBe("Client changed direction.");
+    // THE ACCEPTANCE SURVIVES THE CANCEL, untouched (C31): it is what
+    // the portal reads to say "Cancelled" here and "Declined" for a
+    // request turned down at the door. The cancel neither clears it nor
+    // restamps it.
+    expect(row.acceptedAt).toEqual(accepted.acceptedAt);
+    expect(row.acceptedAt).not.toBeNull();
   });
 
   it("REOPENING a declined request drops the old reason, so a later cancel cannot republish it", async () => {
@@ -599,6 +627,11 @@ describe("a request cannot be ended by the back door", () => {
     expect(reopened.triageStatus).toBeNull();
     expect(reopened.triageReason).toBeNull();
     expect(reopened.duplicateOfId).toBeNull();
+    // A reopen is the agency agreeing to the work after all, so it is
+    // stamped as an acceptance (C31): stopped again later, the client
+    // reads "Cancelled", which is what happened to work they had been
+    // told was planned.
+    expect(reopened.acceptedAt).not.toBeNull();
   });
 
   it("a member with work_item:edit alone cannot reach the end state either", async () => {
@@ -629,6 +662,13 @@ describe("a request cannot be ended by the back door", () => {
     const out = await changeState(ownerCtx(), ordinary.id, cancelled.id);
     expect(out.changed).toBe(true);
     expect((await readItem(ordinary.id)).stateCategory).toBe("CANCELLED");
+    // …and reopening it is not an "acceptance" of anything: the stamp
+    // is about REQUESTS (C31), and an ordinary task carries none however
+    // it moves.
+    await changeState(ownerCtx(), ordinary.id, await stateId({ seedKey: "TODO" }));
+    const reopened = await readItem(ordinary.id);
+    expect(reopened.stateCategory).toBe("TODO");
+    expect(reopened.acceptedAt).toBeNull();
   });
 
   it("AN ANSWERED REQUEST CANNOT BE DELETED — the last silent-vanish (C29)", async () => {
@@ -664,6 +704,102 @@ describe("a request cannot be ended by the back door", () => {
     expect((await lifecycle(untouched)).deletedAt).not.toBeNull();
   });
 
+});
+
+/**
+ * FOUNDER DECISION C31 (2026-09-25), MEASURED THROUGH THE PROJECTION:
+ * a request the agency accepted and later stopped reads "Cancelled" on
+ * the client's portal; one turned down in triage reads "Declined". The
+ * two are the same CANCELLED state carrying the same reply column, and
+ * before this slice they were identical in the database. Every case
+ * here drives the REAL verbs and reads the answer through
+ * `listPortalTasks` under a synthesised contact principal, so it is the
+ * category a client would be shown, not a column, that is asserted.
+ */
+describe("the portal tells agreed work from a request turned down (C31)", () => {
+  // THE AUDIENCE, for this block only — the same arrangement the
+  // `clientSees` block makes and puts back.
+  beforeAll(async () => {
+    await f.platform.contact.update({
+      where: { id: contactId },
+      data: { portalStatus: "ACTIVE", invitedAt: new Date(), emailVerified: true },
+    });
+  });
+  afterAll(async () => {
+    await f.platform.contact.update({
+      where: { id: contactId },
+      data: { portalStatus: "NO_ACCESS", invitedAt: null, emailVerified: false },
+    });
+  });
+
+  /** What the client's own portal list says about one request. */
+  async function portalTask(id: string): Promise<{ category: string; reply: string | null } | null> {
+    const principal = await synthesiseContactPrincipal(f.tenantId, { id: contactId, tenantId: f.tenantId, clientId });
+    const list = await listPortalTasks(principal);
+    const task = list.projects.flatMap((p) => p.tasks).find((t) => t.id === id);
+    return task ? { category: task.category, reply: task.reply } : null;
+  }
+
+  it("accepted, then stopped with a reply: CANCELLED, with the words", async () => {
+    // The ordinary path the decision is about: take the work on, drop
+    // it later. The client watched it as Planned in between.
+    const id = await newRequest("Agreed and then stopped");
+    await triageItem(ownerCtx(), id, { verb: "ACCEPT" });
+    expect(await portalTask(id)).toEqual({ category: "PLANNED", reply: null });
+    await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: "The budget moved to the spring campaign." });
+    expect(await portalTask(id)).toEqual({
+      category: "CANCELLED",
+      reply: "The budget moved to the spring campaign.",
+    });
+  });
+
+  it("turned down at the door: DECLINED, with the words — and a duplicate the same", async () => {
+    const declined = await newRequest("Turned down at the door");
+    await triageItem(ownerCtx(), declined, { verb: "DECLINE", reason: "Not something we do." });
+    expect(await portalTask(declined)).toEqual({ category: "DECLINED", reply: "Not something we do." });
+
+    // A duplicate marked in the lane is a turn-down like any other.
+    const original = await createItem(ownerCtx(), { projectId, title: "The original" });
+    const duplicate = await newRequest("Asked twice");
+    await triageItem(ownerCtx(), duplicate, { verb: "DUPLICATE", reason: "Already tracked.", duplicateOfId: original.id });
+    expect(await portalTask(duplicate)).toEqual({ category: "DECLINED", reply: "Already tracked." });
+  });
+
+  it("accepted, then marked a duplicate: CANCELLED — the word follows the acceptance, not the verb", async () => {
+    // DUPLICATE is a lifecycle verb like DECLINE (`triage.ts`), so it can
+    // end a request the agency had already taken on; the client watched
+    // that one as Planned, and "we are already tracking this" is then
+    // agreed work being stopped. Pinned so it is a decision rather than
+    // a surprise — the first cut's comments claimed a duplicate could
+    // never have been accepted, and a fresh review read the verb.
+    const original = await createItem(ownerCtx(), { projectId, title: "The original, again" });
+    const id = await newRequest("Agreed, then found to be a duplicate");
+    await triageItem(ownerCtx(), id, { verb: "ACCEPT" });
+    await triageItem(ownerCtx(), id, { verb: "DUPLICATE", reason: "This is the same as the form you asked for.", duplicateOfId: original.id });
+    expect(await portalTask(id)).toEqual({
+      category: "CANCELLED",
+      reply: "This is the same as the form you asked for.",
+    });
+  });
+
+  it("accepted by a DRAG out of the lane, then stopped: CANCELLED too", async () => {
+    // The stamp lives in `transitionState`, so an accept by any door
+    // counts — a member with `work_item:edit` alone accepts this way.
+    const id = await newRequest("Dragged into To do");
+    await changeState(ownerCtx(), id, await stateId({ seedKey: "TODO" }));
+    await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: "We are stopping here." });
+    expect(await portalTask(id)).toEqual({ category: "CANCELLED", reply: "We are stopping here." });
+  });
+
+  it("declined, reopened, and stopped again: CANCELLED — the reopen was the agency agreeing", async () => {
+    const id = await newRequest("Declined, then taken on, then stopped");
+    await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: "No budget this quarter." });
+    expect((await portalTask(id))?.category).toBe("DECLINED");
+    await changeState(ownerCtx(), id, await stateId({ seedKey: "TODO" }));
+    expect(await portalTask(id)).toEqual({ category: "PLANNED", reply: null });
+    await triageItem(ownerCtx(), id, { verb: "DECLINE", reason: "The quarter ended without it." });
+    expect(await portalTask(id)).toEqual({ category: "CANCELLED", reply: "The quarter ended without it." });
+  });
 });
 
 describe("what the verb refuses", () => {

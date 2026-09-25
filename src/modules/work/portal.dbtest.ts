@@ -67,6 +67,10 @@ const S = {
   /** A cancelled REQUEST that nobody explained. Shown, it would read as
    *  "Declined" with a blank under it — so it must stay hidden. */
   cancelledRequestNoReason: `SENTINELNOREASON-${run}`,
+  /** The same with the agency having ACCEPTED it first (C31). Shown, it
+   *  would read as "Cancelled" with a blank under it — the new category
+   *  inherits the fail-safe, not an exception to it. */
+  cancelledAcceptedNoReason: `SENTINELACCEPTEDNOREASON-${run}`,
   /** An INTERNAL request that was declined — its title AND its reason
    *  must both stay off the client's screen. */
   internalDeclined: `SENTINELINTERNALDECLINED-${run}`,
@@ -92,7 +96,27 @@ const SHOWN = {
    *  outlives the tidying (founder decision, 2026-09-22). */
   archivedDeclined: `Archived declined request ${run}`,
   archivedDeclinedReason: `Not before the launch ${run}`,
+  /** A request the agency ACCEPTED and later stopped (founder decision
+   *  C31, 2026-09-25): the client watched it as Planned, so it reads
+   *  "Cancelled", never "Declined". */
+  cancelled: `Cancelled request ${run}`,
+  cancelledReply: `The budget moved to the spring campaign ${run}`,
+  /** An accepted request still in live work — `acceptedAt` decides
+   *  nothing about a live row, only about a cancelled one. */
+  acceptedPlanned: `Accepted planned request ${run}`,
 } as const;
+
+/**
+ * WHEN THE ACCEPTED ROWS WERE ACCEPTED — a date chosen to appear nowhere
+ * else, so the serialised projection can be checked for it the way it
+ * is checked for the sentinel strings. The projection SELECTS the column
+ * (it decides "Cancelled" against "Declined") and must not RETURN it:
+ * §11 shows a client no such date, and the key list below has no room
+ * for one. A `Date` sentinel rather than a string because JSON carries
+ * it as its ISO form, and that is what the sweep greps for.
+ */
+const ACCEPTED_SENTINEL = new Date("2001-02-03T04:05:06Z");
+const ACCEPTED_SENTINEL_TEXT = "2001-02-03";
 
 const T = randomUUID();
 const T2 = randomUUID();
@@ -148,6 +172,8 @@ async function item(input: {
   /** A triage outcome, for the rows that carry one. */
   triageStatus?: "DECLINED" | "DUPLICATE";
   triageReason?: string;
+  /** The agency took this request on, at this moment (C31). */
+  acceptedAt?: Date;
   milestoneId?: string;
   targetDate?: Date;
   completedAt?: Date;
@@ -175,6 +201,7 @@ async function item(input: {
       // constraint doing its job on this file too.
       triageReason: input.triageReason ?? null,
       duplicateOfId: null,
+      acceptedAt: input.acceptedAt ?? null,
       rootId: id,
       // A valid fractional key that sorts before every generated one —
       // the shape `tree-guards.dbtest.ts` settled on.
@@ -381,6 +408,51 @@ beforeAll(async () => {
     visibility: "CLIENT_VISIBLE",
     kind: "REQUEST",
   });
+  // THE ROW C31 IS ABOUT: a request the agency ACCEPTED — `acceptedAt`
+  // set, which is the one thing that separates it from the declined row
+  // above — and later stopped with a reply. It reads "Cancelled", not
+  // "Declined": the client watched it as Planned, and the portal must
+  // not tell them the agency never agreed to it.
+  await item({
+    tenantId: T,
+    clientId: acme,
+    projectId: pOn,
+    title: SHOWN.cancelled,
+    category: "CANCELLED",
+    visibility: "CLIENT_VISIBLE",
+    kind: "REQUEST",
+    triageStatus: "DECLINED",
+    triageReason: SHOWN.cancelledReply,
+    acceptedAt: ACCEPTED_SENTINEL,
+  });
+  // …its control: an accepted request still in LIVE work. The stamp
+  // says nothing about a live row — it is Planned like any other — and
+  // the stamp's value must not ride out with it.
+  await item({
+    tenantId: T,
+    clientId: acme,
+    projectId: pOn,
+    title: SHOWN.acceptedPlanned,
+    category: "TODO",
+    visibility: "CLIENT_VISIBLE",
+    kind: "REQUEST",
+    acceptedAt: ACCEPTED_SENTINEL,
+  });
+  // …and its fail-safe: accepted, cancelled, and NO reason. The new
+  // category is built over the same reason term as the old one, so
+  // this row stays invisible exactly as `cancelledRequestNoReason` does
+  // — "Cancelled" with a blank under it is no better than "Declined"
+  // with one.
+  await item({
+    tenantId: T,
+    clientId: acme,
+    projectId: pOn,
+    title: S.cancelledAcceptedNoReason,
+    category: "CANCELLED",
+    visibility: "CLIENT_VISIBLE",
+    kind: "REQUEST",
+    acceptedAt: ACCEPTED_SENTINEL,
+  });
   // …and the same outcome on an INTERNAL row, whose reason must never
   // travel: a member can decline a request they had already made
   // internal, and `portal_gate` — not the projection — is what keeps it
@@ -432,10 +504,12 @@ describe("the client-visible task list", () => {
         SHOWN.dated,
         SHOWN.declined,
         SHOWN.archivedDeclined,
+        SHOWN.cancelled,
+        SHOWN.acceptedPlanned,
         `Shared, internal phase ${run}`,
       ].sort(),
     );
-    expect(list.shown).toBe(8);
+    expect(list.shown).toBe(10);
     expect(list.truncated).toBe(false);
     // One project, because the other three are off, another client's, or
     // another tenant's.
@@ -443,7 +517,7 @@ describe("the client-visible task list", () => {
     expect(list.projects[0]!.projectName).toBe(`Acme website ${run}`);
   });
 
-  it("speaks the portal's five categories and never the tenant's", async () => {
+  it("speaks the portal's six categories and never the tenant's", async () => {
     const list = await listPortalTasks(principal(ids.primary));
     const byTitle = new Map(list.projects.flatMap((p) => p.tasks).map((t) => [t.title, t]));
     expect(byTitle.get(SHOWN.planned)?.category).toBe("PLANNED");
@@ -453,6 +527,12 @@ describe("the client-visible task list", () => {
     // submission and nobody has agreed to it yet (portal.ts).
     expect(byTitle.get(SHOWN.triaged)?.category).toBe("REQUESTED");
     expect(byTitle.get(SHOWN.declined)?.category).toBe("DECLINED");
+    // …and agreed work that was stopped is "Cancelled" (C31): the same
+    // CANCELLED state, the same reply, told apart by `acceptedAt` alone.
+    expect(byTitle.get(SHOWN.cancelled)?.category).toBe("CANCELLED");
+    // An accepted request still in live work is Planned like any other:
+    // the stamp decides nothing until the row is cancelled.
+    expect(byTitle.get(SHOWN.acceptedPlanned)?.category).toBe("PLANNED");
   });
 
   /**
@@ -467,13 +547,21 @@ describe("the client-visible task list", () => {
    * plane's never-selected list), so this is the only place the pairing
    * can be observed at all.
    */
-  it("a cancelled REQUEST comes back as DECLINED with its reason; a cancelled TASK stays invisible", async () => {
+  it("a cancelled REQUEST comes back as DECLINED with its reason — CANCELLED if it had been accepted — and a cancelled TASK stays invisible", async () => {
     const list = await listPortalTasks(principal(ids.primary));
     const byTitle = new Map(list.projects.flatMap((p) => p.tasks).map((t) => [t.title, t]));
 
     const declined = byTitle.get(SHOWN.declined);
     expect(declined?.category).toBe("DECLINED");
-    expect(declined?.declinedReason).toBe(SHOWN.declinedReason);
+    expect(declined?.reply).toBe(SHOWN.declinedReason);
+
+    // THE ROW C31 ADDED. Same state, same kind, same column carrying the
+    // reply; `acceptedAt` is the only difference between this row and
+    // the one above, and it is the difference between telling the
+    // client "we stopped what we agreed to" and "we never agreed".
+    const cancelled = byTitle.get(SHOWN.cancelled);
+    expect(cancelled?.category).toBe("CANCELLED");
+    expect(cancelled?.reply).toBe(SHOWN.cancelledReply);
 
     // The ordinary cancelled task: still nothing. Measured from both
     // ends, as the archived-project test does — the row exists and is
@@ -495,9 +583,16 @@ describe("the client-visible task list", () => {
     // rows that predate this slice, and whatever writes one next.
     const list = await listPortalTasks(principal(ids.primary));
     expect(titles(list)).not.toContain(S.cancelledRequestNoReason);
+    // …and the ACCEPTED twin (C31): the new category is built over the
+    // same reason term, so "Cancelled" with a blank under it cannot ship
+    // any more than "Declined" with one could.
+    expect(titles(list)).not.toContain(S.cancelledAcceptedNoReason);
     const db = getPlatformClient();
     expect(
       await db.workItem.count({ where: { tenantId: T, title: S.cancelledRequestNoReason } }),
+    ).toBe(1);
+    expect(
+      await db.workItem.count({ where: { tenantId: T, title: S.cancelledAcceptedNoReason } }),
     ).toBe(1);
   });
 
@@ -510,21 +605,28 @@ describe("the client-visible task list", () => {
     const byTitle = new Map(list.projects.flatMap((p) => p.tasks).map((t) => [t.title, t]));
     const kept = byTitle.get(SHOWN.archivedDeclined);
     expect(kept?.category).toBe("DECLINED");
-    expect(kept?.declinedReason).toBe(SHOWN.archivedDeclinedReason);
+    expect(kept?.reply).toBe(SHOWN.archivedDeclinedReason);
     // The control: an archived TODO task is still invisible.
     expect(titles(list)).not.toContain(S.archivedTask);
   });
 
-  it("`declinedReason` is null on every task that is not DECLINED", async () => {
+  it("`reply` is null on every task that is not an answered request", async () => {
     // The column can only be set on a DECLINED/DUPLICATE row
     // (`work_item_triage_reason_iff_outcome`), but the projection ALSO
     // gates it on the category rather than on the column being present —
     // so if a later writer ever put a reason on a live task, this is the
-    // assertion that fails first.
+    // assertion that fails first. Two answered categories since C31. A
+    // gate keyed on `acceptedAt` instead of on the category is caught
+    // by the DECLINED row (stamp null, reason set — its reply would come
+    // back null), not by the accepted-but-live one: the CHECK keeps a
+    // reason off a live row, so that one passes either way.
     const list = await listPortalTasks(principal(ids.primary));
     for (const task of list.projects.flatMap((p) => p.tasks)) {
-      if (task.category === "DECLINED") expect(task.declinedReason).not.toBeNull();
-      else expect(task.declinedReason).toBeNull();
+      if (task.category === "DECLINED" || task.category === "CANCELLED") {
+        expect(task.reply).not.toBeNull();
+      } else {
+        expect(task.reply).toBeNull();
+      }
     }
   });
 
@@ -563,6 +665,11 @@ describe("no INTERNAL fact reaches a contact", () => {
       .filter(([, value]) => serialised.includes(value))
       .map(([key]) => key);
     expect(leaked).toEqual([]);
+    // The date the accepted rows were accepted (C31): SELECTED, so the
+    // projection can choose the word, and never returned — a client is
+    // owed "Cancelled", not the day the agency took the work on. Two of
+    // the rows in the answer carry it; neither may show it.
+    expect(serialised).not.toContain(ACCEPTED_SENTINEL_TEXT);
   });
 
   it("the projection carries no key that is not on the contract", async () => {
@@ -585,10 +692,15 @@ describe("no INTERNAL fact reaches a contact", () => {
           "assignedToYou",
           "category",
           "completedAt",
-          "declinedReason",
           "id",
           "markedDoneAt",
           "phase",
+          // `declinedReason` until C31, when a second answered category
+          // made the old name a lie on half the rows it is set on. No
+          // `acceptedAt` here, and there must never be: the projection
+          // reads it and consumes it (the sentinel sweep above proves
+          // the value stays behind).
+          "reply",
           "targetDate",
           "title",
         ]);

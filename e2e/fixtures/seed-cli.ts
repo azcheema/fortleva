@@ -1769,6 +1769,9 @@ async function portalRequests(tenantId: string): Promise<void> {
       portalEnabled: true,
       stateCategory: true,
       triageStatus: true,
+      // C31: whether the agency took the request on before it ended it —
+      // the fact behind "Cancelled" against "Declined" on the portal.
+      acceptedAt: true,
       reportedByContactId: true,
       createdByMemberId: true,
       clientId: true,

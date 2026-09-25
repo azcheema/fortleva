@@ -174,6 +174,8 @@ export type PortalRequestRecord = {
   portalEnabled: boolean;
   stateCategory: string;
   triageStatus: string | null;
+  /** ISO text over the CLI's JSON; null until the agency accepts the request (C31). */
+  acceptedAt: string | null;
   reportedByContactId: string | null;
   createdByMemberId: string | null;
   clientId: string;

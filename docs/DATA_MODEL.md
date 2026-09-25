@@ -2339,11 +2339,15 @@ enum WorkItemPriority {
 /// Two amendments the implementation made to the note below, both
 /// recorded here because they are now enforced rather than intended:
 ///
-///  · `ACCEPTED` IS NEVER STORED. Accepting clears every triage column
-///    (status included) as the row moves to the default state, so an
-///    accepted request is indistinguishable from work that was always
-///    ordinary — which is what it now is. The value stays in the enum
-///    because dropping it is a migration for nothing; nothing writes it.
+///  · `ACCEPTED` IS NEVER STORED as a STATUS. Accepting clears every
+///    triage column (status included) as the row moves to the default
+///    state, so an accepted request is indistinguishable from work that
+///    was always ordinary — which is what it now is. The value stays in
+///    the enum because dropping it is a migration for nothing; nothing
+///    writes it. THE MOMENT IS STORED, since C31 (2026-09-25):
+///    `WorkItem.acceptedAt`, stamped by `transitionState` on a request's
+///    first arrival in live work, is what lets the portal call agreed
+///    work that was later stopped "Cancelled" rather than "Declined".
 ///  · DECLINED AND DUPLICATE CARRY A CLIENT-READABLE REASON
 ///    (`triageReason`, added the same day). Founder decision: a client's
 ///    own request is never made to disappear without one. The portal
@@ -2526,6 +2530,15 @@ model WorkItem {
   triageReason       String?          @db.VarChar(500) // 6b: the agency's words TO THE CLIENT; CHECK: set iff DECLINED|DUPLICATE
   snoozedUntil       DateTime?        @db.Timestamptz(6)
   duplicateOfId      String?                      // → WorkItem (tenantId, id) when triageStatus = DUPLICATE (CHECK)
+  acceptedAt         DateTime?        @db.Timestamptz(6) // C31: when the agency took a REQUEST on; first arrival in live work, never cleared
+  // ^ 20260925120000, backfilled from `work_item.state_changed` events. Stamped
+  //   by `transitionState` when a `kind = REQUEST` row leaves TRIAGE or
+  //   CANCELLED for BACKLOG/TODO/IN_PROGRESS/DONE — the lane's Accept, a drag
+  //   out of the lane, a reopen of a declined request — and kept, like
+  //   `startedAt`. The portal SELECTS it and never returns it: a cancelled
+  //   request that had been accepted is "Cancelled", one turned down in triage
+  //   is "Declined" (UI.md §11). No CHECK — the failure it guards is a wrong
+  //   word, not a hidden row — and no index.
   contactCompletedAt DateTime?        @db.Timestamptz(6) // 6c: the CLIENT's claim that their part is done — NOT a state
   // ^ 20260922180000. Stamped by the assigned contact through the brokered
   //   toggle (`portal.work_item.act`) and NOTHING ELSE MOVES: `DONE` means work

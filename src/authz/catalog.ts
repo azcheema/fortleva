@@ -201,10 +201,11 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // which is also C M.
   //
   // DUPLICATE IS COVERED TOO, because from the client's side it IS a
-  // decline: `portal.ts` renders both as "Declined" with the reason, and
-  // a permission that guarded only one of the two words would guard
-  // nothing. The code's name follows the client's view rather than the
-  // member's menu, deliberately.
+  // decline: `portal.ts` renders both as an answered request with the
+  // reason — "Declined", or "Cancelled" when the agency had accepted it
+  // first (C31) — and a permission that guarded only one of the two
+  // verbs would guard nothing. The code's name follows the client's view
+  // rather than the member's menu, deliberately.
   //
   // It supplements `work_item:triage`, never replaces it — both are
   // required, exactly as `work_item:approve` supplements

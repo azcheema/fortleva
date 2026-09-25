@@ -134,12 +134,13 @@ export const STATUS_MAP = {
     TRIAGE: spec("danger", "triangle-alert"),
   },
   /**
-   * Phase 3: the PORTAL's five categories — the only state fact a
+   * Phase 3: the PORTAL's six categories — the only state fact a
    * contact ever sees (UI.md §11). A domain of its own rather than a
    * relabelling of `stateCategory`, for the reason `StatusBadge` gives
    * about labels: the two vocabularies are different on purpose
-   * ("Requested", never "Triage"; no "Cancelled" at all), and a shared
-   * domain is how one of them quietly becomes the other. The values are
+   * ("Requested", never "Triage"; "Cancelled" only for a REQUEST the
+   * agency had agreed to, never for a task), and a shared domain is how
+   * one of them quietly becomes the other. The values are
    * `PortalTaskCategory` in src/modules/work/portal.ts.
    */
   portalTaskCategory: {
@@ -158,6 +159,16 @@ export const STATUS_MAP = {
     // keeps the pair legible in greyscale, which `circle-*` glyphs
     // beside `PLANNED`'s `circle-dashed` would not.
     DECLINED: spec("neutral", "mail-x"),
+    // Agreed work the agency then stopped (founder decision C31,
+    // 2026-09-25). NEUTRAL for the reason DECLINED is. `circle-x` is
+    // the circle family the three live categories wear — dashed, dot,
+    // check — closed with a cross: this WAS work on the board, and it
+    // stopped, where `mail-x` is a request answered at the door. Not
+    // `quiet`, which is how the member-side `stateCategory` draws its
+    // CANCELLED: that tone strikes the label through, and a struck-out
+    // heading on a client's screen would read as an erasure of
+    // something they asked for rather than an answer to it.
+    CANCELLED: spec("neutral", "circle-x"),
   },
   /** Phase 6: portfolio health. RAG, but never without its text. */
   projectHealth: {
