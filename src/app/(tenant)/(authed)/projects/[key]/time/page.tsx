@@ -2,6 +2,7 @@ import { ChevronLeftIcon, ChevronRightIcon, CoinsIcon, DownloadIcon, FileTextIco
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { authorizedCodes } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { DataTable, EmptyState, MetricTile, ProgressMeter, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
@@ -65,10 +66,13 @@ export default async function ProjectTimePage({
   // Held, not exercised: the controls show for holders; the route / action re-checks on use.
   let canExport = false;
   if (rollup) {
-    [canManageBudget, canExport] = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
-      const { isAuthorized } = await import("@/authz/authorize");
-      return Promise.all([isAuthorized(tx, actor, "budget:manage"), isAuthorized(tx, actor, "time:export")]);
-    });
+    // One resolution for both codes, not two `isAuthorized` legs of a
+    // `Promise.all` on one connection (AGENTS.md's trap).
+    const held = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
+      authorizedCodes(tx, actor, ["budget:manage", "time:export"]),
+    );
+    canManageBudget = held.has("budget:manage");
+    canExport = held.has("time:export");
   }
 
   if (!rollup) {

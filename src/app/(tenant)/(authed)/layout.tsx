@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { isAuthorized } from "@/authz/authorize";
+import { authorizedCodes } from "@/authz/authorize";
 import { requireMemberSession } from "@/auth/session";
 import { AppShell } from "@/components/shell/app-shell";
 import { PwaRegister } from "@/components/shell/pwa-register";
@@ -26,8 +26,9 @@ export const metadata: Metadata = {
 
 /**
  * Member-plane chrome (UI.md §3). Nav visibility is a permission
- * question (AUTHZ.md): every gated entry is checked with isAuthorized()
- * under the member principal and HIDDEN when not held. A user with no
+ * question (AUTHZ.md): every gated entry is checked under the member
+ * principal — `authorizedCodes`, which answers each code exactly as
+ * `isAuthorized` would — and HIDDEN when not held. A user with no
  * active membership (workspace picker only) gets the ungated entries.
  */
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
@@ -52,8 +53,8 @@ export default async function AuthedLayout({ children }: { children: React.React
   if (membership) {
     const actor = { memberId: membership.memberId, mfa: mfaStateOf(session) };
     // The nav's codes PLUS the shell's own: the global `C` is a key, not
-    // a nav entry, and asking for it here costs nothing — `isAuthorized`
-    // is already being run once per code in one transaction.
+    // a nav entry, and asking for it here costs nothing — every code is
+    // answered by the same single resolution.
     const gated = [
       ...new Set([...collectPermissions(NAV), "work_item:create", "project:view"]),
     ];
@@ -61,19 +62,27 @@ export default async function AuthedLayout({ children }: { children: React.React
       membership.tenantId,
       { type: "member", id: membership.memberId },
       async (tx) => {
-        const [results, unread] = await Promise.all([
-          Promise.all(gated.map((code) => isAuthorized(tx, actor, code))),
-          countUnreadIn(tx, { tenantId: membership.tenantId, actor }),
-        ]);
-        return { held: new Set(gated.filter((_, i) => results[i])), unread };
+        // TWO READS, IN SEQUENCE, and this was ten at once on every
+        // authed render: one `isAuthorized` per gated code — each
+        // resolving the same member's roles with reads of its own — plus
+        // the count, all legs of one `Promise.all` on this interactive
+        // transaction's one connection. That is AGENTS.md's worst
+        // standing trap: Prisma over the `pg` adapter does not serialise
+        // those legs, and a loser can resolve `undefined` in code nobody
+        // touched. One connection runs one statement at a time anyway,
+        // so the batch bought no speed. `authz-batches.test.ts` keeps
+        // the fan-out from coming back.
+        const held = await authorizedCodes(tx, actor, gated);
+        const unread = await countUnreadIn(tx, { tenantId: membership.tenantId, actor });
+        return { held, unread };
       },
     );
     nav = visibleNav(NAV, (code) => held.has(code));
     unreadInbox = unread;
-    // The global `C` rides on the SAME batched permission read the nav
-    // does — two more codes in the `gated` set, no second query. It is
-    // not a nav entry, so it is read off `held` here rather than through
-    // `visibleNav`.
+    // The global `C` rides on the SAME permission read the nav does — one
+    // more code in the `gated` set (`project:view` is a nav code already),
+    // no second query. It is not a nav entry, so it is read off `held`
+    // here rather than through `visibleNav`.
     //
     // BOTH codes, which a review caught: the dialog's first act is to
     // read the project list, and that read is gated on `project:view`.

@@ -170,11 +170,15 @@ export async function projectRollup(ctx: TimeCtx, projectId: string, range: Rang
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:view_team");
     await assertInScope(tx, ctx.actor, { projectId });
-    const [project, canSeeMoney] = await Promise.all([
-      tx.project.findFirst({ where: { tenantId: ctx.tenantId, id: projectId }, select: { billingCurrency: true } }),
-      isAuthorized(tx, ctx.actor, "rate:view_bill"),
-    ]);
+    // In sequence, as `teamRollup` and `agreementConsumption` below already
+    // are: a permission check is never a leg of a `Promise.all` on one
+    // transaction's connection (AGENTS.md's trap; `authz-batches.test.ts`).
+    const project = await tx.project.findFirst({
+      where: { tenantId: ctx.tenantId, id: projectId },
+      select: { billingCurrency: true },
+    });
     if (!project) fail("INVALID_INPUT", "unknown project");
+    const canSeeMoney = await isAuthorized(tx, ctx.actor, "rate:view_bill");
     const rows = await loadProjectEntries(tx, ctx.tenantId, projectId, range);
     const estimate = await tx.workItem.aggregate({
       where: { tenantId: ctx.tenantId, projectId, deletedAt: null, archivedAt: null },

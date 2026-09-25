@@ -3,7 +3,7 @@ import { FileIcon, UploadIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { isAuthorized } from "@/authz/authorize";
+import { authorizedCodes } from "@/authz/authorize";
 import { Callout, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
@@ -38,13 +38,20 @@ export default async function FilesPage({
 
   const [documents, caps] = await Promise.all([
     listDocuments(ctx),
+    // Its own transaction, so it may run beside `listDocuments`. Inside
+    // it, ONE resolution for the three codes — never three `isAuthorized`
+    // legs on one connection (AGENTS.md's `Promise.all` trap).
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
-      const [canUpload, canDelete, canChangeVisibility] = await Promise.all([
-        isAuthorized(tx, actor, "document:upload"),
-        isAuthorized(tx, actor, "document:delete"),
-        isAuthorized(tx, actor, "document:change_visibility"),
+      const held = await authorizedCodes(tx, actor, [
+        "document:upload",
+        "document:delete",
+        "document:change_visibility",
       ]);
-      return { canUpload, canDelete, canChangeVisibility };
+      return {
+        canUpload: held.has("document:upload"),
+        canDelete: held.has("document:delete"),
+        canChangeVisibility: held.has("document:change_visibility"),
+      };
     }),
   ]);
 

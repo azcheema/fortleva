@@ -38,7 +38,7 @@
 
 **WHAT THAT DOES AND DOES NOT CLOSE.** Phase 3's shippable line (§Phase 3) is *"a real Naxdor client contact logs in, sees exactly their own projects / shared tasks / timeline / updates / files / services, signs off a version, submits a request that lands in triage — and nothing else, provably"*. **The first clause and the "nothing else, provably" are now MEASURED on real data.** The rest is unbuilt: no Client Timeline, no `ProjectUpdate`, no portal files or services surface, no version sign-off. **Phase 3 stays `[ ]`** — and an earlier reading of §0's "the last thing between the build and Phase 3's DoD" as "the DoD is met" was wrong: it was the last thing between the build and being able to REACH it.
 
-## → THE NEXT SESSION STARTS HERE: the founder's walks (C29b's doors, member recovery, the portal reset) and the owed `isAuthorized` batches — C31 is DECIDED and its build is HELD
+## → THE NEXT SESSION STARTS HERE: the founder's walks (C29b's doors, member recovery, the portal reset), then the rail's module gates (item 5) — C31 is DECIDED and its build is HELD
 
 **C31 WAS ASKED AND ANSWERED, 2026-09-25: "Cancelled" for work that had been agreed**, and "Declined" stays for a request turned down in triage (`OPEN_QUESTIONS.md` C31). **THE BUILD IS HELD by the founder's word**: *"Wait for this work, just keep it in your record. I do not have Fable for this task at the moment."* It is portal work (the Phase 3 rule), and the suggestion was Fable at max effort. **Do not start it until the founder says so.** The C31 entry lists four things in the code its builder needs to know. Until it is built, the portal keeps saying "Declined" for both cases, which is imprecise but safe.
 
@@ -52,9 +52,75 @@
 
 **3. ~~A FOUNDER QUESTION~~ DECIDED 2026-09-25, BUILD HELD (above): the client's portal calls an accepted-then-cancelled request "Declined".** That is the word the founder rejected for the MEMBER's verb, because work had been agreed and is being stopped ("Cancel and reply", C29). The portal maps every answered request to Declined; saying "Cancelled" for agreed work would need the projection to know the request was accepted first (a column, or a read of its history), so it is a product decision with a small build behind it, not a copy change.
 
-**4. OWED, found by the review and deliberately outside C29b: EIGHT more reads run `isAuthorized` as legs of a `Promise.all` on ONE interactive transaction's connection — the shape AGENTS.md's worst standing trap is about — and two of them run on the pages every member lands on.** `(authed)/layout.tsx` (one `isAuthorized` per gated nav code plus the unread count, on EVERY authed render); `src/notify/inbox.ts`' `resolveSubjects` (two, reached on `/home` through `inboxGlance` whenever anything is unread, and on `/inbox`); `members/page.tsx` (two, in a six-leg batch); `settings/roles/page.tsx` (two); `files/page.tsx` (three); `projects/[key]/time/page.tsx` (two); `projects/[key]/money/page.tsx` (one, beside `readPreferences`); and `src/modules/time/rollup.ts`' `projectRollup` (one, beside a project read). Each is the fix `listItems` just had — one `authorizedCodes` resolution, or a read in sequence — and the layout and the inbox come first. **Found by** `grep -l "isAuthorized(" src` intersected with `grep -l "Promise.all"`, then READ: `clients/page.tsx`, `projects/page.tsx` and `time/team/page.tsx` match both and are NOT the shape, because their `isAuthorized` runs in a `withTenant` of its own. **The trap's wider shape — plain reads batched on one transaction — is everywhere** (`getItemDetail`'s two batches, `resolvePortalModuleGates`' three legs, which C29b now calls after a reply) and is NOT this item; it is recorded, measured where it bit, and not worth a sweep until one does.
+**4. ~~OWED: EIGHT more reads run `isAuthorized` as legs of a `Promise.all` on ONE interactive transaction's connection~~ DONE — slice 61 (below).** It was NINE: search's `allowedTypes` fanned out `requireAccess`, which the item's `isAuthorized` grep could not see. Every one now resolves once or awaits in turn, and `src/authz/authz-batches.test.ts` fails the unit suite if the shape comes back. **The trap's wider shape — plain reads batched on one transaction — is still NOT swept** (`getItemDetail`'s two batches, `resolvePortalModuleGates`' three legs, `/members`' four): recorded, measured where it bit, and not worth a sweep until one does.
 
-**Model and effort: medium** for the walks and their fixes; **Opus at high** for item 4 (it touches the shell's every render).
+**5. OWED, found by slice 61's review: THE RAIL IGNORES THE MODULE GATES, which UI.md §3.1 says it must not** ("module-gated items hidden (not disabled) when the entitlement/preference is off"). `layout.tsx` asks the permission gate only (`authorizedCodes`), so Time (`time:track`), Rates (`rate:view_bill`), Files (`document:view`) and the `C` key (`work_item:create`) stay lit for a tenant whose plan or preference has switched that module off, and the page behind each then refuses. Pre-existing; the refactor kept the old answer, as a refactor should. The layout is now the cheap place to fix it: one read of the module gates (flags, the tenant's entitlements, the `module.*.enabled` preferences — `resolvePortalModuleGates` is the portal's version of that read) in sequence after the permission read, and an entry shows only when its code's module is on (`core` always is). **Beside it, a product question not yet asked:** the inbox and `/home`'s glance still name tasks for a tenant whose `work` module is off, while search now provably hides them.
+
+**6. OWED BEFORE PLATFORM IMPERSONATION SHIPS — none of it reachable today, because nothing sets `actor.impersonated` from a session (`src/auth/index.ts`).** *(a)* Five surfaces still gate controls on the raw `effectivePermissions` set, which an impersonating admin's view-only limit never touches: `settings/preferences/page.tsx` (`settings:manage_modules` ✦, `settings:edit`), `settings/rates/page.tsx` (`rate:view_cost` ✦, `rate:manage_cost` ✦), `src/modules/time/money.ts`' reveal OFFER (`rate:view_cost` ✦ — the reveal itself is a separate audited ✦ check), `settings/time/page.tsx` and `clients/[id]/agreements/page.tsx`. Convert each to `resolvePermissions`, as `/members` and `/settings/roles` were. *(b)* `continuity_box:view` is ✦ AND a view verb, so `authorize` lets an impersonator with a fresh factor hold it, against AUTHZ.md §7.5 ("✦ actions are impossible under impersonation by construction"). Decide which is right; if §7.5 is, deny every ✦ code under impersonation in both `authorize` and `resolvePermissions`, and make `authorized-codes.test.ts` assert `afterStepUp` is empty there.
+
+**Model and effort: medium** for the walks and their fixes; **Opus at high** for item 5 (the shell's every render, and the module gates).
+
+---
+
+**2026-09-25 — SLICE 61: NO PERMISSION CHECK FANS OUT ON ONE TRANSACTION — the owed item 4, nine reads rather than eight, and a tripwire so the shape cannot come back.**
+
+**FIRST, C31 WAS ASKED AND ANSWERED** (the block above): "Cancelled" for agreed work, the build held for the founder's model — recorded in `f102fb4`.
+
+**WHAT SHIPPED.**
+
+1. **Nine reads.** Item 4 named eight: the shell's `layout.tsx`, `inbox.ts`' `resolveSubjects`, `/members`, `/settings/roles`, `/files`, a project's Time and Money tabs, and `projectRollup`. The layout was the worst of them: one `isAuthorized` per gated nav code plus the unread count, ten reads at once on EVERY authed render. The ninth is **search's `allowedTypes`**, which item 4's grep could not see because it fanned out `requireAccess`, not `isAuthorized`: four codes at once, each up to four reads. A scan of every `Promise.all` block for any gate call found it. Each read now resolves ONCE (`authorizedCodes`) or awaits its checks in turn. One connection runs one statement at a time whatever the code says, so nothing got slower, and the layout now does two reads in sequence where it did ten at once.
+2. **`resolvePermissions(tx, actor, codes) → { allowed, afterStepUp }`** (`src/authz/authorize.ts`); `authorizedCodes` returns its `allowed`. `afterStepUp` means exactly "a ✦ code refused now that a fresh factor would allow". So `/members` and `/settings/roles` offer their ✦ editors on `allowed ∪ afterStepUp`, which is the step-up the save demands. They used to read the raw `effectivePermissions` set, which an impersonating admin's view-only limit never touched. That was unreachable, because nothing sets `impersonated` today.
+3. **`src/authz/authz-batches.test.ts`, a repo-wide tripwire.** It parses every product file and checks every call to a per-code check: `isAuthorized`, `authorize`, `requireAccess`, `hasAccess`, `flagEnabled`, `preferenceEnabled`, the scope helpers and `authorizePortal`. It fails on such a call if it is:
+   - inside a `Promise.all`, `allSettled`, `race` or `any`;
+   - inside a callback that an array method calls per element; or
+   - not awaited or returned where it is made — and the same goes for any once-callback it sits in, such as `guarded`.
+
+   A call inside a callback that opens its own transaction (`withTenant`, `withPlatform`, `withUser`, `withPortalRead`, `runGuarded`) is outside those rules. On the pre-slice tree it flags exactly the 15 calls in the nine files. On this tree it flags none, with no false alarm across 507 files. ONE resolution may still be one leg, which is the shape `listItems` and `getItemDetail` settled on. AGENTS.md's trap now says both things.
+4. **`src/authz/authorized-codes.test.ts`.** `authorizedCodes` and `resolvePermissions` answer each code exactly as `isAuthorized` does, over the whole catalogue plus an unknown code, four holdings and six postures, and they read the roles once. Before this, that was a docblock's promise that nothing checked, and three more reads now rest on it.
+5. **Search.** A dbtest that a module the tenant switched off drops its types while core types still answer. A pin that every `PERMISSION_BY_TYPE` entry is a catalogue `:view` code, because a typo would drop a type for everyone without a word: `requireAccess` refuses an unknown code silently. The old comment that said such a code "must surface" was false, and is corrected.
+
+**WHY IT MATTERED MORE THAN A LATENT CRASH.** Both first-round reviewers made this point, and it is the strongest argument for the slice. `requireAccess` reads a flag, the tenant's entitlements and a preference before the permission, and all three read a missing answer as ON (`flagEnabled`'s `!flag`, `parseEntitlements(undefined)`, `preferenceEnabled`'s `!pref`). So a `requireAccess` leg whose read lost the race and came back `undefined` would have let a module the tenant had switched off into search. Only the permission read fails closed, by throwing.
+
+**THE REVIEW: 2 fresh read-only agents (correctness; security and authorization), about 0.47M subagent tokens by their own usage reports. No high, no medium: every site answers as before for every actor.** Fixed:
+- The first cut's exported `authorizedCodesFrom(actor, held, codes)` answered for whatever set it was handed, on a page that holds every member's roles (both lenses). Replaced by `resolvePermissions`, which reads its own.
+- The ✦ editors read the raw set, past the impersonation limit (security). Now `afterStepUp`.
+- The tripwire missed a hoisted array (`const checks = codes.map(…)`) and a check started early and awaited later (correctness). Rules 2 and 3 now catch both. `flagEnabled` and `preferenceEnabled` joined its list.
+- Search's gates 1–3 had no test. That is item 5 above.
+- "TWO STATEMENTS" and "ten statements at once" counted Prisma operations, not SQL. There is no `relationJoins`, so a nested select is several SELECTs. Now "reads".
+- Smaller: two pages claimed "one resolution" where the page gate is a second; a comment probe sat outside any batch and could never fail; "600-odd files" (it is 507); a shadowed `prefs`; a stale "batched … two more codes".
+
+**One reviewer broke its read-only rule.** It wrote and ran a node script from its scratchpad. The script failed at once (it could not load `typescript`) and changed nothing. Recorded because the rule exists to protect the founder's machine.
+
+**THE FIX REVIEW: 1 fresh read-only agent over the whole diff, about 0.28M subagent tokens. No high, no medium; 5 low, 2 nits.** Fixed:
+- AGENTS.md's new sentence said "a permission check is never a leg", over code that runs one `resolvePermissions` as a leg. It also did not say that one resolution answers the permission gate only, so it never replaces `requireAccess` where the module gates matter. Reworded.
+- The tripwire walked through a once-callback without asking whether the callback's own call was awaited, so `const gate = guarded(async () => requireAccess(…))` passed. Rule 3 now covers each such host, with a self-test, and `Array.from` joined the per-element list.
+- A docblock sentence said an opener's callback was exempt from all three rules, while the code scans inside it.
+- Smaller: the unknown-code log's prefix, and the inbox comment's reach.
+
+**Dispositioned:**
+- Items 5 and 6 of the next-session block: the rail's module gates, and the impersonation list.
+- `requireAccess` answers a MISSING tenant row with the everything-on default, where `resolvePortalModuleGates` fails closed. Not changed here, for three reasons:
+  - The row is always visible to a member principal (`tenant_self_select`), so it only guards an invariant violation.
+  - Gates 1 and 3 cannot fail closed on a missing row at all, because an absent row IS "enabled".
+  - Which error to raise is a decision of its own.
+
+**GATES — on the FINAL tree unless stated.**
+- typecheck ✅
+- ESLint `src e2e scripts --max-warnings 0` → 0 ✅
+- unit **88 files / 1440 passed / 1 skipped** ✅ (HEAD was 86 / 1406; the two new files).
+- dbtests ✅, `EXIT=0` read from the log both times:
+  - inbox, search, time reports and work, **4 files / 104**, on the first tree;
+  - search, work and inbox, **3 files / 100**, on the fix round's tree (+2 in search).
+
+  What changed after the second run is a log string, comments and the unit tripwire.
+- Mutation-checked:
+  - The tripwire run against the pre-slice tree (stash) flags exactly the 15 original calls — three times, once after each change to its rules.
+  - Five mutants of `resolvePermissions` (the impersonation check, the ✦ check, the unknown-code check, the held check, `afterStepUp.add`) each turn the equivalence test red.
+  - `allowedTypes` asking the permission gate only turns the module-off dbtest red.
+- Browser (own port 3457, own `pnpm build` of the final tree): the seven specs the reads bear on — `scoping`, `inbox`, `search`, `settings`, `money`, `time` and `home` — **38 passed in 11.9 min**, `EXIT=0` read from the log ✅. The build compiled, and nothing was left listening afterwards.
+- CI's jobs: the full `test:db`, the full harness and the visual walk. Expect `test:db` **51 files / 810** (808 + 2) and the harness **158 passed / 1 skipped**, with the 244 shots unchanged.
+
+No migration, so no Neon smoke was owed.
 
 ---
 

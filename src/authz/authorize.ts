@@ -149,11 +149,43 @@ export async function authorizedCodes(
   actor: MemberActor,
   codes: readonly string[],
 ): Promise<ReadonlySet<string>> {
+  return (await resolvePermissions(tx, actor, codes)).allowed;
+}
+
+export type PermissionAnswers = {
+  /** Exactly `isAuthorized`'s answer for each code: the actor may use it NOW. */
+  readonly allowed: ReadonlySet<string>;
+  /**
+   * ✦ codes the actor would be allowed but for the second factor —
+   * missing or stale (AUTHZ.md §7.5). A surface OFFERS such a control and
+   * lets the action step up on use; hiding it would leave a holder no way
+   * to reach the step-up. Every other gate — an unknown code, an
+   * impersonating platform admin's view-only limit — has already refused
+   * what it refuses, so this is never "held" read raw.
+   */
+  readonly afterStepUp: ReadonlySet<string>;
+};
+
+/**
+ * `authorizedCodes`, for a read that also shows ✦ controls: ONE
+ * resolution of the member's roles, answered twice. `/members` offers
+ * the role editor and `/settings/roles` the permission editor to anyone
+ * the step-up would let through, which is `allowed ∪ afterStepUp`; their
+ * other controls read `allowed`. It does its own read on purpose —
+ * a variant taking a caller's set would answer for whatever set it was
+ * handed, and `/members` holds every member's roles.
+ */
+export async function resolvePermissions(
+  tx: TenantDb,
+  actor: MemberActor,
+  codes: readonly string[],
+): Promise<PermissionAnswers> {
   const held = await effectivePermissions(tx, actor.memberId);
-  const out = new Set<string>();
+  const allowed = new Set<string>();
+  const afterStepUp = new Set<string>();
   for (const code of codes) {
     if (!KNOWN_CODES.has(code)) {
-      console.error(`authorizedCodes: unknown permission code "${code}" — denying (config error)`);
+      console.error(`resolvePermissions: unknown permission code "${code}" — denying (config error)`);
       continue;
     }
     if (actor.impersonated && !VIEW_VERBS.has(code.split(":")[1] ?? "")) continue;
@@ -162,13 +194,14 @@ export async function authorizedCodes(
       try {
         await requireRecentMfa(actor, STEP_UP_WINDOW_MINUTES);
       } catch (e) {
-        if (e instanceof AuthzError) continue;
-        throw e;
+        if (!(e instanceof AuthzError)) throw e;
+        afterStepUp.add(code);
+        continue;
       }
     }
-    out.add(code);
+    allowed.add(code);
   }
-  return out;
+  return { allowed, afterStepUp };
 }
 
 // ── Resource scoping — the harder half (AUTHZ.md §4) ────────────────

@@ -1,4 +1,4 @@
-import { isAuthorized, scopeWhere } from "@/authz/authorize";
+import { authorizedCodes, scopeWhere } from "@/authz/authorize";
 import type { MemberActor } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
 import { fail } from "@/lib/domain-error";
@@ -308,10 +308,13 @@ async function resolveSubjects(
   const out = new Map<string, { title: string; href: string }>();
   if (rows.length === 0) return out;
 
-  const [mayViewProjects, mayViewItems] = await Promise.all([
-    isAuthorized(tx, ctx.actor, "project:view"),
-    isAuthorized(tx, ctx.actor, "work_item:view"),
-  ]);
+  // One resolution for both codes, never two `isAuthorized` legs of a
+  // `Promise.all` on this transaction's one connection (AGENTS.md's
+  // trap; `authz-batches.test.ts`). It runs whenever `/home`'s glance or
+  // an `/inbox` page has rows to name.
+  const may = await authorizedCodes(tx, ctx.actor, ["project:view", "work_item:view"]);
+  const mayViewProjects = may.has("project:view");
+  const mayViewItems = may.has("work_item:view");
 
   const projectIds = mayViewProjects
     ? [...new Set(rows.map((r) => r.projectId).filter((v): v is string => v !== null))]

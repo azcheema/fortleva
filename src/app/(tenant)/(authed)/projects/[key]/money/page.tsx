@@ -47,9 +47,12 @@ export default async function ProjectMoneyPage({
   const timezone = await resolveTimeZone();
   const sp = await searchParams;
   // Held, not exercised: the export control shows for time:export holders; the route re-checks on use.
-  const [prefs, canExport] = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
-    Promise.all([readPreferences(tx, membership.tenantId), isAuthorized(tx, actor, "time:export")]),
-  );
+  // In sequence: a permission check is never a leg of a `Promise.all` on
+  // one transaction's connection (AGENTS.md's trap; `authz-batches.test.ts`).
+  const [prefs, canExport] = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
+    const preferences = await readPreferences(tx, membership.tenantId);
+    return [preferences, await isAuthorized(tx, actor, "time:export")] as const;
+  });
   const today = localDateString(new Date(), timezone);
   const month = monthContaining(today);
   const range = { from: isIsoDate(sp.from) ? sp.from : month.from, to: isIsoDate(sp.to) ? sp.to : month.to };

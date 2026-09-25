@@ -3,7 +3,7 @@ import { MailIcon, UserPlusIcon } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
-import { effectivePermissions, isAuthorized } from "@/authz/authorize";
+import { resolvePermissions } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { requireAccess } from "@/entitlements/resolver";
 import {
@@ -79,7 +79,12 @@ export default async function MembersPage() {
         if (!(e instanceof AuthzError)) throw e;
         return null;
       }
-      const [members, invites, roles, canInvite, canRemove, held] = await Promise.all([
+      // Four legs, and it was six: two `isAuthorized` calls, each
+      // resolving the member's roles again, beside a raw read of them.
+      // ONE `resolvePermissions` leg answers all four codes now. A single
+      // resolution as one leg is the `listItems` shape; checks fanned out
+      // as legs are AGENTS.md's `Promise.all` trap (`authz-batches.test.ts`).
+      const [members, invites, roles, perms] = await Promise.all([
         tx.member.findMany({
           include: {
             user: { select: { name: true, email: true } },
@@ -92,21 +97,27 @@ export default async function MembersPage() {
           orderBy: { createdAt: "desc" },
         }),
         tx.role.findMany({ orderBy: [{ isSystem: "desc" }, { name: "asc" }] }),
-        isAuthorized(tx, actor, "member:invite"),
-        isAuthorized(tx, actor, "member:remove"),
-        // member:manage_roles is ✦: the editor shows for holders of the
-        // permission; a stale factor is handled at save time by the
-        // step-up redirect (AUTHZ.md §7.5), not by hiding the control.
-        effectivePermissions(tx, actor.memberId),
+        resolvePermissions(tx, actor, [
+          "member:invite",
+          "member:remove",
+          "member:manage_roles",
+          "role:view",
+        ]),
       ]);
       return {
         members,
         invites,
         roles,
-        canInvite,
-        canRemove,
-        canManageRoles: held.has("member:manage_roles"),
-        canViewRoles: held.has("role:view"),
+        canInvite: perms.allowed.has("member:invite"),
+        canRemove: perms.allowed.has("member:remove"),
+        // member:manage_roles is ✦: the editor shows for anyone the
+        // step-up would let through; a stale or missing factor is handled
+        // at save time by the step-up redirect (AUTHZ.md §7.5), not by
+        // hiding the control. It used to read the raw set, which an
+        // impersonating admin's view-only limit never touched.
+        canManageRoles:
+          perms.allowed.has("member:manage_roles") || perms.afterStepUp.has("member:manage_roles"),
+        canViewRoles: perms.allowed.has("role:view"),
       };
     },
   );

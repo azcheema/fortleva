@@ -1,8 +1,8 @@
 /**
  * Member-plane navigation registry (UI.md §3.1). Fixed order, no
  * reordering; an entry is HIDDEN (not disabled) when the member lacks
- * its view permission — the layout resolves visibility with
- * isAuthorized() and hands the shell a filtered list. Modules register
+ * its view permission — the layout resolves visibility with one
+ * authorizedCodes() read and hands the shell a filtered list. Modules register
  * entries here later (ARC-16 module registry); nothing here is
  * tenant-specific. Icons are names so the registry stays serialisable
  * from server to client.

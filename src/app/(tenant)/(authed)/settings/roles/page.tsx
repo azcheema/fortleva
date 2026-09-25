@@ -3,7 +3,7 @@ import { LockIcon, PlusIcon, ShieldIcon } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { effectivePermissions, isAuthorized } from "@/authz/authorize";
+import { resolvePermissions } from "@/authz/authorize";
 import { MODULES, PERMISSIONS, ROLE_TEMPLATES } from "@/authz/catalog";
 import { AuthzError } from "@/authz/errors";
 import { Disclosure, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
@@ -44,14 +44,21 @@ export default async function RolesPage() {
       } catch (e) {
         if (!(e instanceof AuthzError)) throw e;
       }
-      const [canCreate, canDelete, held] = await Promise.all([
-        isAuthorized(tx, actor, "role:create"),
-        isAuthorized(tx, actor, "role:delete"),
-        // role:edit is ✦: show the editor to holders; a stale factor is
-        // handled by the step-up redirect on save (AUTHZ.md §7.5).
-        effectivePermissions(tx, actor.memberId),
-      ]);
-      return { roles, canCreate, canDelete, canEdit: held.has("role:edit") };
+      // One read answers the page's three codes, after `listRoles`' own
+      // gate — it was three at once, two `isAuthorized` legs beside a raw
+      // read of the roles, on this transaction's one connection
+      // (AGENTS.md's `Promise.all` trap; `authz-batches.test.ts`).
+      const perms = await resolvePermissions(tx, actor, ["role:create", "role:delete", "role:edit"]);
+      return {
+        roles,
+        canCreate: perms.allowed.has("role:create"),
+        canDelete: perms.allowed.has("role:delete"),
+        // role:edit is ✦: show the editor to anyone the step-up would let
+        // through; a stale or missing factor is handled by the step-up
+        // redirect on save (AUTHZ.md §7.5). It used to read the raw set,
+        // which an impersonating admin's view-only limit never touched.
+        canEdit: perms.allowed.has("role:edit") || perms.afterStepUp.has("role:edit"),
+      };
     },
   );
 

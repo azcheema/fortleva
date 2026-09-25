@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { PERMISSIONS } from "@/authz/catalog";
 import { setupTenant } from "@/members/dbtest-fixture";
 import { createItem } from "@/modules/work";
 
-import { PER_TYPE_LIMIT, search } from "./query";
+import { PERMISSION_BY_TYPE, PER_TYPE_LIMIT, search } from "./query";
 
 /**
  * The first reader of `search_index`, against the real database and the
@@ -200,6 +201,47 @@ describe("search — the permission gate", () => {
         });
       }
       await f.platform.client.update({ where: { id: clientId }, data: { name: "Search Co" } });
+    }
+  });
+
+  it("A MODULE THE TENANT SWITCHED OFF DROPS ITS TYPES, and the rest still answer", async () => {
+    // Each type's gate is the whole of `requireAccess` — flag, plan,
+    // tenant preference, permission — not the permission alone. The owner
+    // holds every code, so only the module gate can take tasks away here,
+    // while clients (core, never switched off) keep answering. It is also
+    // the gate a lost race would have opened: `preferenceEnabled` reads a
+    // missing answer as "on", which is why `allowedTypes` asks one code at
+    // a time (`src/authz/authz-batches.test.ts`).
+    const named = `Modoff${token}`;
+    await f.platform.client.update({ where: { id: clientId }, data: { name: named } });
+    await createItem(ownerCtx(), { projectId, title: `Task ${named}` });
+    const before = await hits(ownerCtx(), named);
+    expect(before.some((h) => h.entityType === "WORK_ITEM")).toBe(true);
+    expect(before.some((h) => h.entityType === "CLIENT")).toBe(true);
+
+    await f.platform.tenantPreference.create({
+      data: { tenantId: f.tenantId, key: "module.work.enabled", value: false },
+    });
+    try {
+      const found = await hits(ownerCtx(), named);
+      expect(found.some((h) => h.entityType === "WORK_ITEM")).toBe(false);
+      expect(found.some((h) => h.entityType === "CLIENT")).toBe(true);
+    } finally {
+      await f.platform.tenantPreference.deleteMany({
+        where: { tenantId: f.tenantId, key: "module.work.enabled" },
+      });
+      await f.platform.client.update({ where: { id: clientId }, data: { name: "Search Co" } });
+    }
+  });
+
+  it("every type is read under a real view code — a typo would drop that type for everyone, silently", () => {
+    // `requireAccess` refuses an unknown code without a word, so a
+    // misspelt entry here would not fail loudly anywhere: the type would
+    // simply never be searchable again.
+    const known = new Set(PERMISSIONS.map((p) => p.code));
+    for (const [type, code] of Object.entries(PERMISSION_BY_TYPE)) {
+      expect(known.has(code), `${type} → ${code}`).toBe(true);
+      expect(code.endsWith(":view"), `${type} → ${code}`).toBe(true);
     }
   });
 });

@@ -88,7 +88,7 @@ export {
  * row is a work item's conversation, and there is no `comment:view`
  * code — the two `comment:*` codes are edit_any and delete.
  */
-const PERMISSION_BY_TYPE: Record<SearchEntityType, string> = {
+export const PERMISSION_BY_TYPE: Readonly<Record<SearchEntityType, string>> = {
   WORK_ITEM: "work_item:view",
   COMMENT: "work_item:view",
   DOCUMENT: "document:view",
@@ -221,25 +221,31 @@ export async function search(ctx: SearchCtx, raw: string): Promise<SearchOutcome
  * once each: `requireAccess` re-reads the flag, the entitlement and the
  * preference per call, so asking per TYPE would pay for `work_item:view`
  * and `client:view` twice for nothing.
+ *
+ * ONE CODE AT A TIME. This was a `Promise.all` of the four, each
+ * `requireAccess` up to four reads, all on this interactive
+ * transaction's one connection — AGENTS.md's worst standing trap, where
+ * a loser can resolve `undefined` in code nobody touched. The connection
+ * runs one statement at a time anyway, so sequencing costs nothing
+ * (`authz-batches.test.ts` keeps a check from coming back as a leg).
  */
 async function allowedTypes(tx: TenantDb, ctx: SearchCtx): Promise<SearchEntityType[]> {
   const codes = [...new Set(Object.values(PERMISSION_BY_TYPE))];
-  const verdicts = await Promise.all(
-    codes.map(async (code) => {
-      try {
-        await requireAccess(tx, ctx.tenantId, ctx.actor, code);
-        return [code, true] as const;
-      } catch (e) {
-        // Only an authorization refusal narrows the answer. Anything
-        // else — a dead connection, a bad code — must surface, or a
-        // broken gate would look like an empty workspace.
-        if (e instanceof AuthzError) return [code, false] as const;
-        throw e;
-      }
-    }),
-  );
-  const held = new Map(verdicts);
-  return SEARCH_ENTITY_TYPES.filter((t) => held.get(PERMISSION_BY_TYPE[t]) === true);
+  const held = new Set<string>();
+  for (const code of codes) {
+    try {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, code);
+      held.add(code);
+    } catch (e) {
+      // Only an authorization refusal narrows the answer. Anything
+      // else — a dead connection, say — must surface, or a broken gate
+      // would look like an empty workspace. (An unknown code is a
+      // refusal: `requireAccess` denies it FORBIDDEN and logs nothing,
+      // so the type simply drops out.)
+      if (!(e instanceof AuthzError)) throw e;
+    }
+  }
+  return SEARCH_ENTITY_TYPES.filter((t) => held.has(PERMISSION_BY_TYPE[t]));
 }
 
 async function runSearch(
