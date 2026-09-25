@@ -10,6 +10,8 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
+**PUSHED AND GREEN: SLICE 64 — A BUDGET ALERT LINKS TO THE MONEY PAGE ONLY WHEN THAT PAGE WOULD OPEN (C34) — is `5add099`; CI run [36131413718](https://github.com/azcheema/fortleva/actions/runs/36131413718), both jobs `success`.** Unit **90 files / 1601 passed / 1 skipped**, `test:db` **51 files / 813** from an EMPTY database (812 + 1), harness **158 passed / 1 skipped in 14.1 min**. **2026-09-25 shipped four slices (61–64) and settled four founder questions (C31–C34); C31's build is held for Fable.**
+
 **PUSHED AND GREEN: SLICE 63 — WITH WORK SWITCHED OFF, THE INBOX STOPS NAMING TASKS (C33) — is `2bd6661`; CI run [36128844488](https://github.com/azcheema/fortleva/actions/runs/36128844488), both jobs `success`.** Unit **1598 passed / 1 skipped**, `test:db` **51 files / 812** from an EMPTY database (811 + 1), harness **158 passed / 1 skipped in 14.1 min**.
 
 **PUSHED AND GREEN: SLICE 62 — THE RAIL HIDES WHAT THE TENANT HAS SWITCHED OFF (item 5, `accessibleCodes`) — is `5b146a7`; CI run [36124455690](https://github.com/azcheema/fortleva/actions/runs/36124455690), both jobs `success`.** Unit **89 files / 1598 passed / 1 skipped**, identical to local. `test:db` **51 files / 811** from an EMPTY database, exactly 810 + the slice's rail case. Browser harness **158 passed / 1 skipped in 13.9 min**; the slice added no browser test.
