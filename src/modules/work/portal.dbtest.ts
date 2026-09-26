@@ -679,7 +679,10 @@ describe("no INTERNAL fact reaches a contact", () => {
     const list = await listPortalTasks(principal(ids.primary));
     expect(Object.keys(list).sort()).toEqual(["projects", "shown", "truncated"]);
     for (const project of list.projects) {
-      expect(Object.keys(project).sort()).toEqual(["projectId", "projectName", "tasks"]);
+      // `projectKey` since the Timeline slice: the card's link to the
+      // one-screen project page. The key is the prefix of every task
+      // number the client already reads.
+      expect(Object.keys(project).sort()).toEqual(["projectId", "projectKey", "projectName", "tasks"]);
       for (const task of project.tasks) {
         expect(Object.keys(task).sort()).toEqual([
           // Slice 6c added the two at the top and neither is an id: the

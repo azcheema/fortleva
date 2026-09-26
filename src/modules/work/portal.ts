@@ -299,6 +299,12 @@ export type PortalTask = {
 /** The shared tasks of one project. */
 export type PortalProjectTasks = {
   readonly projectId: string;
+  /**
+   * The project's public handle ("ACME") — already the prefix of every
+   * task number a client reads, and what `/portal/projects/[key]`
+   * resolves on, so the card can link to the one-screen project page.
+   */
+  readonly projectKey: string;
   readonly projectName: string;
   readonly tasks: readonly PortalTask[];
 };
@@ -505,7 +511,7 @@ export async function listPortalTasks(
         // carry it — `portal.dbtest.ts` pins the key list and plants a
         // sentinel date to prove the value never leaves either.
         acceptedAt: true,
-        project: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true, key: true } },
         milestone: { select: { name: true } },
       },
       orderBy: [{ targetDate: { sort: "asc", nulls: "last" } }, { id: "asc" }],
@@ -522,7 +528,7 @@ export async function listPortalTasks(
     // the project's), but it is DROPPED rather than rendered nameless:
     // a task with no project on a client's screen is a task they cannot
     // place, and a `?? ""` would put one there.
-    const byProject = new Map<string, { projectName: string; tasks: PortalTask[] }>();
+    const byProject = new Map<string, { projectKey: string; projectName: string; tasks: PortalTask[] }>();
     for (const row of page) {
       // Safe BECAUSE of the `where` above — a cancelled row that is not
       // a REQUEST never reaches this loop. See `portalCategory`.
@@ -531,7 +537,7 @@ export async function listPortalTasks(
       if (!category || !project) continue;
       let group = byProject.get(project.id);
       if (!group) {
-        group = { projectName: project.name, tasks: [] };
+        group = { projectKey: project.key, projectName: project.name, tasks: [] };
         byProject.set(project.id, group);
       }
       group.tasks.push({
@@ -557,6 +563,7 @@ export async function listPortalTasks(
 
     const projects = [...byProject].map(([projectId, group]) => ({
       projectId,
+      projectKey: group.projectKey,
       projectName: group.projectName,
       tasks: group.tasks,
     }));
@@ -711,5 +718,205 @@ export async function listPortalUpdates(
       });
     }
     return out;
+  });
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * THE CLIENT TIMELINE — derived, never stored (Phase 3, DATA_MODEL §6.16)
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * One dated thing that happened — or is due to happen — on a project,
+ * as a contact reads it. A UNION over three class-B tables, each read
+ * under the contact principal so that `portal_gate` decides every branch
+ * row by row before this code has an opinion:
+ *
+ *  - `update`           a PUBLISHED, CLIENT_VISIBLE progress update (its
+ *                       number, its health, its title — never its body,
+ *                       which the updates page renders in full);
+ *  - `milestone_done`   a CLIENT_VISIBLE milestone the agency reached,
+ *                       dated by when it was reached;
+ *  - `milestone_due`    a CLIENT_VISIBLE milestone still open, dated by
+ *                       the day the agency published for it — in the
+ *                       future ("coming up") or in the past (the plan as
+ *                       it was published; the header says what the
+ *                       current phase is);
+ *  - `version_shipped`  a SHIPPED version, dated by its ship date, with
+ *                       the release notes — client-visible once shipped
+ *                       by DATA_MODEL §6.5's own rule.
+ *
+ * WHAT IS NOT HERE, by the spec's own never-list: no `AuditEvent`, no
+ * `WorkItemActivity`, no comment. And two branches the spec names that
+ * this slice leaves to the slice that owns their writer, recorded in
+ * PLAN §0 rather than half-built: deliverable/report document versions
+ * (`file_version` is class A — the portal never queries the file layer —
+ * so that branch is the portal files slice's, with its brokered read),
+ * and version approval decisions (no writer exists until the sign-off
+ * slice, which owns what a decision means on a re-shipped version).
+ *
+ * NO MILESTONE STATUS LEAVES HERE. A `milestone_due` entry says a name
+ * and a day; whether the agency has that phase "paused" is the agency's
+ * own word for its own plan, and the header already names the one phase
+ * that is in progress. A CANCELLED milestone is absent altogether, on
+ * the rule the frozen snapshot already applies (`update-metrics.ts`):
+ * a plan the agency dropped is not an event the client is owed.
+ */
+export type PortalTimelineEntry =
+  | {
+      readonly kind: "update";
+      readonly id: string;
+      readonly at: Date;
+      readonly seq: number;
+      readonly health: PortalUpdate["health"];
+      readonly title: string | null;
+    }
+  | { readonly kind: "milestone_done"; readonly id: string; readonly at: Date; readonly name: string }
+  | { readonly kind: "milestone_due"; readonly id: string; readonly at: Date; readonly name: string }
+  | {
+      readonly kind: "version_shipped";
+      readonly id: string;
+      readonly at: Date;
+      readonly version: string;
+      readonly title: string | null;
+      readonly releaseNotes: string | null;
+    };
+
+export type PortalTimeline = {
+  /** Newest first; a due date in the future sorts above everything that has happened. */
+  readonly entries: readonly PortalTimelineEntry[];
+  /** True when `PORTAL_TIMELINE_LIMIT` cut the merged rail short. */
+  readonly truncated: boolean;
+};
+
+/**
+ * The most events one read returns after the merge. Each branch is read
+ * to the same cap, so the merge is over at most four times this many
+ * rows and the cut is taken on the merged order — a project with a
+ * hundred shipped versions and one update still shows the update where
+ * it belongs. Materialising into a table is the spec's answer if this
+ * is ever measured slow; at agency scale a project has a few dozen of
+ * these in its whole life.
+ */
+export const PORTAL_TIMELINE_LIMIT = 100;
+
+/** Same-instant ties break by kind — the post before the reach it announces — then by id, so a render is stable. */
+const TIMELINE_KIND_ORDER: Record<PortalTimelineEntry["kind"], number> = {
+  update: 0,
+  version_shipped: 1,
+  milestone_done: 2,
+  milestone_due: 3,
+};
+
+const byNewest = (a: PortalTimelineEntry, b: PortalTimelineEntry): number =>
+  b.at.getTime() - a.at.getTime() ||
+  TIMELINE_KIND_ORDER[a.kind] - TIMELINE_KIND_ORDER[b.kind] ||
+  (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/**
+ * ONE PROJECT'S TIMELINE, for a contact of its client.
+ *
+ * `portal.timeline.view` on the project (steps 3–4 of the pipeline: the
+ * project must be reachable under `portal_gate`, which is client
+ * ownership AND `portal_enabled`), then four SEQUENTIAL reads on the one
+ * connection (AGENTS.md's `Promise.all` trap). The update branch also
+ * asks `portal.update.view`, without throwing: a profile that may read
+ * the timeline but not the posts gets a rail with no posts on it, and
+ * the refusal is decided here, never in a page (rule 4 above). Both v1
+ * profiles hold both, so today this is defence in depth against the
+ * profile that does not exist yet.
+ *
+ * Every `where` repeats the gate's terms — tenant, client, visibility or
+ * status, the portal switch — as defence in depth, and adds the one term
+ * the policy does not carry: the PROJECT's archive, for the reason
+ * `listPortalTasks` documents at length.
+ */
+export async function listPortalTimeline(
+  principal: PortalPrincipal,
+  opts: { readonly projectId: string },
+): Promise<PortalTimeline> {
+  const { projectId } = opts;
+  return withPortalRead(principal, async (tx) => {
+    await authorizePortal(tx, principal, "portal.timeline.view", { kind: "project", projectId });
+    let seesUpdates = true;
+    try {
+      await authorizePortal(tx, principal, "portal.update.view", { kind: "project", projectId });
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      seesUpdates = false;
+    }
+
+    const scope = {
+      tenantId: principal.tenantId,
+      clientId: principal.clientId,
+      projectId,
+      portalEnabled: true,
+      project: { archivedAt: null },
+    } as const;
+    const take = PORTAL_TIMELINE_LIMIT + 1;
+    const entries: PortalTimelineEntry[] = [];
+
+    if (seesUpdates) {
+      const updates = await tx.projectUpdate.findMany({
+        where: { ...scope, visibility: "CLIENT_VISIBLE", status: "PUBLISHED" },
+        select: { id: true, seq: true, health: true, title: true, publishedAt: true },
+        orderBy: [{ publishedAt: "desc" }, { seq: "desc" }],
+        take,
+      });
+      for (const u of updates) {
+        // Both non-null on every PUBLISHED row (the CHECKs); the guard
+        // keeps the type honest rather than asserted.
+        if (u.seq === null || u.publishedAt === null) continue;
+        entries.push({ kind: "update", id: u.id, at: u.publishedAt, seq: u.seq, health: u.health, title: u.title });
+      }
+    }
+
+    const reached = await tx.milestone.findMany({
+      where: { ...scope, visibility: "CLIENT_VISIBLE", status: "DONE", completedAt: { not: null } },
+      select: { id: true, name: true, completedAt: true },
+      orderBy: [{ completedAt: "desc" }, { id: "asc" }],
+      take,
+    });
+    for (const m of reached) {
+      if (m.completedAt === null) continue;
+      entries.push({ kind: "milestone_done", id: m.id, at: m.completedAt, name: m.name });
+    }
+
+    const open = await tx.milestone.findMany({
+      where: {
+        ...scope,
+        visibility: "CLIENT_VISIBLE",
+        status: { in: ["PLANNED", "IN_PROGRESS", "PAUSED"] },
+        dueAt: { not: null },
+      },
+      select: { id: true, name: true, dueAt: true },
+      orderBy: [{ dueAt: "desc" }, { id: "asc" }],
+      take,
+    });
+    for (const m of open) {
+      if (m.dueAt === null) continue;
+      entries.push({ kind: "milestone_due", id: m.id, at: m.dueAt, name: m.name });
+    }
+
+    const shipped = await tx.projectVersion.findMany({
+      where: { ...scope, status: "SHIPPED", shippedAt: { not: null } },
+      select: { id: true, version: true, title: true, releaseNotes: true, shippedAt: true },
+      orderBy: [{ shippedAt: "desc" }, { id: "asc" }],
+      take,
+    });
+    for (const v of shipped) {
+      if (v.shippedAt === null) continue;
+      entries.push({
+        kind: "version_shipped",
+        id: v.id,
+        at: v.shippedAt,
+        version: v.version,
+        title: v.title,
+        releaseNotes: v.releaseNotes,
+      });
+    }
+
+    entries.sort(byNewest);
+    const truncated = entries.length > PORTAL_TIMELINE_LIMIT;
+    return { entries: truncated ? entries.slice(0, PORTAL_TIMELINE_LIMIT) : entries, truncated };
   });
 }

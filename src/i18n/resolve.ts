@@ -7,7 +7,7 @@ import { withTenant } from "@/db";
 import { getActiveMembership } from "@/members/tenant-context";
 import { isTimezone, readPreferences, type TenantPreferences } from "@/preferences/service";
 
-import { DEFAULT_LOCALE, isLocale, negotiateLocale, type AppLocale } from "./config";
+import { DEFAULT_LOCALE, DEFAULT_TIMEZONE, isLocale, negotiateLocale, type AppLocale } from "./config";
 
 /**
  * Locale resolution (UI.md §8, ARC-14): signed-in User.locale → the
@@ -136,7 +136,7 @@ export const resolvePreferences = cache(async (): Promise<TenantPreferences | nu
   );
 });
 
-export const DEFAULT_TIMEZONE = "Europe/Stockholm";
+export { DEFAULT_TIMEZONE };
 
 /**
  * Time-zone resolution (UI.md §8): Member.timezone → the tenant's

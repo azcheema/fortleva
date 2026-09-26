@@ -326,7 +326,9 @@ test.describe("handing a task to the client", () => {
     await page.goto(`/projects/${seed.projectKey}/portal`);
     // The button names the contact (`viewAs.enter`), the locator
     // `view-as.spec.ts` already uses.
-    await page.getByRole("button", { name: new RegExp(seed.contactName) }).click();
+    // EXACT: since the Timeline slice the tab carries a second door,
+    // "View this project as …", and a regex on the name matched both.
+    await page.getByRole("button", { name: `View as ${seed.contactName}`, exact: true }).click();
     await expect(page).toHaveURL(/\/view-as/, { timeout: 30_000 * SLOW });
     const tick = page.locator("li", { hasText: title }).last().getByTestId("portal-task-done");
     await expect(tick).toBeVisible({ timeout: 30_000 * SLOW });

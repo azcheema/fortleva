@@ -14,7 +14,7 @@ import { readPortalPreview } from "@/projects/portal-preview";
 
 import { loadProject } from "../data";
 import { PortalControls } from "./portal-forms";
-import { ViewAsButton } from "./view-as-button";
+import { ViewAsButtons } from "./view-as-button";
 
 /**
  * PROJECT → PORTAL (Phase 3 memo slice 4): the master switch, and what
@@ -119,9 +119,14 @@ export default async function ProjectPortalPage({ params }: { params: Promise<{ 
             whose only outcome is an error is not a door, and the
             audience card carries the verb for that state instead. */}
         {preview.contact ? (
-          <ViewAsButton
+          // Two doors since the Timeline slice: the client's home, and
+          // the client's one-screen page for THIS project — the page
+          // this tab's panel is a fragment of. Both enter the same
+          // audited mode, once; only where the member lands differs.
+          <ViewAsButtons
             contactId={preview.contact.id}
             projectId={project.id}
+            projectKey={project.key}
             contactName={preview.contact.name}
           />
         ) : null}
@@ -157,7 +162,9 @@ export default async function ProjectPortalPage({ params }: { params: Promise<{ 
         <div inert>
           {preview.tasks || preview.update ? (
             <ProjectTasks
-              project={preview.tasks ?? { projectId: project.id, projectName: project.name, tasks: [] }}
+              project={
+                preview.tasks ?? { projectId: project.id, projectKey: project.key, projectName: project.name, tasks: [] }
+              }
               update={preview.update}
             />
           ) : (

@@ -268,6 +268,11 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "portal-login", path: "/portal/login", anon: true },
     { name: "portal-home", path: "/portal", session: "contact" },
     // Every published update of the seeded project, as the contact reads it.
+    // The one-screen project page (UI.md §4; Phase 3, the Client
+    // Timeline slice): header with the health chip, the phase line and
+    // the milestone meter, the latest update, the dated rail, the
+    // shared tasks. The seed gives the rail every kind of entry.
+    { name: "portal-project", path: `/portal/projects/${seed.projectKey}`, session: "contact" },
     { name: "portal-project-updates", path: `/portal/projects/${seed.projectKey}/updates`, session: "contact" },
     // INVITATION ACCEPTANCE, both states, mirroring the member plane's
     // pair at the top of this list. The live one needs a token that

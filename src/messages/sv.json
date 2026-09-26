@@ -2544,7 +2544,31 @@
       "description": "Alla uppdateringar din byrå har publicerat för {project}, nyast först.",
       "empty": "Inga uppdateringar ännu.",
       "back": "Tillbaka till dina projekt",
-      "updatedAgo": "Uppdaterad {date}"
+      "updatedAgo": "Uppdaterad {date}",
+      "backToProject": "Tillbaka till {project}"
+    },
+    "project": {
+      "title": "Projekt",
+      "back": "Tillbaka till dina projekt",
+      "phase": "Fas: {name}",
+      "phaseDue": "Klart senast {date}",
+      "nextMilestone": "Nästa milstolpe: {name}, klart senast {date}",
+      "milestonesProgress": "{done} av {total} milstolpar"
+    },
+    "actionItems": {
+      "title": "Väntar på dig",
+      "description": "Uppgifter som din byrå har bett dig om."
+    },
+    "timeline": {
+      "title": "Tidslinje",
+      "description": "Uppdateringar, milstolpar och leveranser, nyast först.",
+      "truncated": "Visar de {count} senaste händelserna.",
+      "updateNumber": "Uppdatering #{seq}",
+      "published": "Publicerad {date}",
+      "milestoneReached": "Milstolpe nådd {date}",
+      "milestoneDue": "Milstolpe klar senast {date}",
+      "version": "Version {version}",
+      "released": "Levererad {date}"
     }
   },
   "viewAs": {
@@ -2552,7 +2576,8 @@
     "banner": "Du ser sidan som {name} — exakt det som hen ser.",
     "exit": "Lämna kundvyn",
     "enter": "Visa som {name}",
-    "entered": "Visar nu som {name}."
+    "entered": "Visar nu som {name}.",
+    "enterProject": "Visa det här projektet som {name}"
   },
   "states": {
     "clientStatus": {

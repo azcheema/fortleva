@@ -10,6 +10,7 @@ import {
   PORTAL_TASK_CATEGORIES,
   readUpdateBody,
   type PortalProjectTasks,
+  type PortalTask,
   type PortalTaskCategory,
   type PortalUpdate,
 } from "@/modules/work";
@@ -42,6 +43,7 @@ export function LatestUpdate({ update }: { update: PortalUpdate }) {
         <span className="eyebrow text-muted-foreground">{t("latest")}</span>
         <Link
           href={`/portal/projects/${update.projectKey}/updates`}
+          prefetch={false}
           className="text-xs text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {t("all")}
@@ -98,28 +100,65 @@ export function LatestUpdate({ update }: { update: PortalUpdate }) {
 export function ProjectTasks({
   project,
   update = null,
+  title,
+  description,
 }: {
   project: PortalProjectTasks;
   /** The project's newest published update, or null — drawn above the tasks (Phase 3). */
   update?: PortalUpdate | null;
+  /**
+   * The card's heading. Left out, it is the project's name linking to
+   * the one-screen project page — `/portal` and the Portal tab's panel.
+   * The project page itself passes "Shared tasks", because its h1
+   * already carries the name and a card linking to the page it is on
+   * would be a link to nowhere.
+   */
+  title?: React.ReactNode;
+  /**
+   * The card's subline. Left out, it says when the newest update was, or
+   * "Shared tasks" — unless `title` was given, in which case a heading
+   * that IS "Shared tasks" needs no subline saying it again.
+   */
+  description?: React.ReactNode;
 }) {
   const t = useTranslations("portal.tasks");
   const tUpdates = useTranslations("portal.updates");
   const tStates = useTranslations("states.portalTaskCategory");
   const locale = useLocale();
-  const format = useFormatter();
 
   const groups = PORTAL_TASK_CATEGORIES.map((category) => ({
     category,
     tasks: project.tasks.filter((task) => task.category === category),
   })).filter((group) => group.tasks.length > 0);
 
+  // The home card's subline: when the newest post was, or "Shared tasks".
+  // A caller that names the card itself gets no subline unless it asks.
+  const defaultDescription = update
+    ? tUpdates("updatedAgo", { date: formatDate(locale, update.publishedAt) })
+    : t("heading");
+
   return (
     <SectionCard
-      title={project.projectName}
-      description={
-        update ? tUpdates("updatedAgo", { date: formatDate(locale, update.publishedAt) }) : t("heading")
+      title={
+        title ?? (
+          // The NAME is the link, so the card reads as it always did and
+          // the whole heading is the target. Rendered on both planes
+          // alike (the Portal tab's panel is `inert`, so there it is a
+          // link that cannot be followed — which is what look-don't-touch
+          // means), so the view-as byte comparison is unaffected.
+          <Link
+            href={`/portal/projects/${project.projectKey}`}
+            // No prefetch: on the member plane (the Portal tab, View-as)
+            // a prefetch of a portal-gated route carries a member cookie
+            // and is answered with a redirect to the client sign-in page.
+            prefetch={false}
+            className="underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {project.projectName}
+          </Link>
+        )
       }
+      description={description ?? (title === undefined ? defaultDescription : undefined)}
       contentClassName="p-0"
     >
       <div className="divide-y divide-border">
@@ -139,76 +178,7 @@ export function ProjectTasks({
             </h3>
             <ul className="flex flex-col gap-2">
               {tasks.map((task) => (
-                <li key={task.id} className="flex flex-col gap-0.5">
-                  <span className="text-sm text-foreground">{task.title}</span>
-                  {/* THE AGENCY'S ANSWER, on an answered request only —
-                      declined at the door, or cancelled after it was
-                      agreed (slice 6b; C31). It sits directly under the
-                      title rather than in the meta row below, because
-                      it is a sentence somebody wrote to this reader and
-                      not a date: the meta row's `text-xs` and its
-                      horizontal flex would set prose in a strip of
-                      chips. `reply` is non-null on exactly these rows
-                      (the projection gates it on the category), so no
-                      second condition is needed here — but it is
-                      written as one anyway, because a `null` rendered
-                      through `t()` would put the literal word "null" on
-                      a client's screen. */}
-                  {task.reply ? (
-                    <span className="text-xs text-muted-foreground">
-                      {t("reply", { reason: task.reply })}
-                    </span>
-                  ) : null}
-                  {/* THE ONE CONTROL ON THIS PLANE, and only where it
-                      would work. `assignedToYou` is the projection's
-                      boolean about the READER (never an assignee), and
-                      the two live categories are exactly what
-                      `setPortalTaskDone` accepts: it refuses a tick on
-                      work the agency has finished or dropped — which
-                      would stamp a column nothing would ever clear —
-                      and on a REQUESTED row, which nobody has agreed to
-                      yet. Offering it there would be a button whose only
-                      outcome is a refusal. A ticked task STAYS in its
-                      live category (the tick moves nothing), so the
-                      untick is always reachable from here. */}
-                  {task.assignedToYou && (task.category === "PLANNED" || task.category === "IN_PROGRESS") ? (
-                    <PortalTaskDone
-                      itemId={task.id}
-                      markedDoneAt={task.markedDoneAt?.toISOString() ?? null}
-                    />
-                  ) : null}
-                  {task.phase || task.targetDate || task.completedAt ? (
-                    <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                      {task.phase ? <span>{t("phase", { name: task.phase })}</span> : null}
-                      {task.targetDate ? (
-                        <span>{t("due", { date: formatDay(locale, task.targetDate) })}</span>
-                      ) : null}
-                      {/* TWO DATES, TWO FORMATTERS, and the split is not
-                          fussiness. `targetDate` is a `@db.Date` — UTC
-                          midnight standing for a calendar day — so
-                          `formatDay` pins it to UTC or the day shifts
-                          west. `completedAt` is a real instant, so it
-                          takes next-intl's zone, which on this plane is
-                          the product default: a Contact has no timezone
-                          column and `tenant` carries `portal_deny`, so
-                          there is nothing better to read yet. The Portal
-                          tab slice, which earns a system-principal read
-                          for the agency's name, can pass its zone here
-                          too. */}
-                      {task.completedAt ? (
-                        <span>
-                          {t("completed", {
-                            date: format.dateTime(task.completedAt, {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            }),
-                          })}
-                        </span>
-                      ) : null}
-                    </span>
-                  ) : null}
-                </li>
+                <TaskRow key={task.id} task={task} />
               ))}
             </ul>
           </section>
@@ -217,6 +187,102 @@ export function ProjectTasks({
     </SectionCard>
   );
 }
+
+/**
+ * ONE SHARED TASK, as a list item — the row the category groups above
+ * draw, and since the one-screen project page (Phase 3, the Timeline
+ * slice) the row its "Waiting on you" card draws too. One component,
+ * because UI.md §12 forbids a second implementation of any list, and
+ * because the tick below is the only control on this plane: a second
+ * copy of the row is a second place its offer-only-where-it-works rule
+ * could drift.
+ */
+export function TaskRow({ task }: { task: PortalTask }) {
+  const t = useTranslations("portal.tasks");
+  const locale = useLocale();
+  const format = useFormatter();
+  return (
+    <li data-slot="portal-task" className="flex flex-col gap-0.5">
+      <span className="text-sm text-foreground">{task.title}</span>
+      {/* THE AGENCY'S ANSWER, on an answered request only —
+          declined at the door, or cancelled after it was
+          agreed (slice 6b; C31). It sits directly under the
+          title rather than in the meta row below, because
+          it is a sentence somebody wrote to this reader and
+          not a date: the meta row's `text-xs` and its
+          horizontal flex would set prose in a strip of
+          chips. `reply` is non-null on exactly these rows
+          (the projection gates it on the category), so no
+          second condition is needed here — but it is
+          written as one anyway, because a `null` rendered
+          through `t()` would put the literal word "null" on
+          a client's screen. */}
+      {task.reply ? (
+        <span className="text-xs text-muted-foreground">
+          {t("reply", { reason: task.reply })}
+        </span>
+      ) : null}
+      {/* THE ONE CONTROL ON THIS PLANE, and only where it
+          would work. `assignedToYou` is the projection's
+          boolean about the READER (never an assignee), and
+          the two live categories are exactly what
+          `setPortalTaskDone` accepts: it refuses a tick on
+          work the agency has finished or dropped — which
+          would stamp a column nothing would ever clear —
+          and on a REQUESTED row, which nobody has agreed to
+          yet. Offering it there would be a button whose only
+          outcome is a refusal. A ticked task STAYS in its
+          live category (the tick moves nothing), so the
+          untick is always reachable from here. */}
+      {isWaitingOnYou(task) ? (
+        <PortalTaskDone
+          itemId={task.id}
+          markedDoneAt={task.markedDoneAt?.toISOString() ?? null}
+        />
+      ) : null}
+      {task.phase || task.targetDate || task.completedAt ? (
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          {task.phase ? <span>{t("phase", { name: task.phase })}</span> : null}
+          {task.targetDate ? (
+            <span>{t("due", { date: formatDay(locale, task.targetDate) })}</span>
+          ) : null}
+          {/* TWO DATES, TWO FORMATTERS, and the split is not
+              fussiness. `targetDate` is a `@db.Date` — UTC
+              midnight standing for a calendar day — so
+              `formatDay` pins it to UTC or the day shifts
+              west. `completedAt` is a real instant, so it
+              takes next-intl's zone, which on this plane is
+              the product default: a Contact has no timezone
+              column and `tenant` carries `portal_deny`, so
+              there is nothing better to read yet. The Portal
+              tab slice, which earns a system-principal read
+              for the agency's name, can pass its zone here
+              too. */}
+          {task.completedAt ? (
+            <span>
+              {t("completed", {
+                date: format.dateTime(task.completedAt, {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                }),
+              })}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * A task the READER has been asked to do and can still act on — exactly
+ * the set the tick is offered on, and the set the project page's
+ * "Waiting on you" card lists. One predicate for both, so the card can
+ * never list a task whose row then offers no control.
+ */
+export const isWaitingOnYou = (task: PortalTask): boolean =>
+  task.assignedToYou && (task.category === "PLANNED" || task.category === "IN_PROGRESS");
 
 /**
  * The category, drawn the way every other enum in the product is drawn —

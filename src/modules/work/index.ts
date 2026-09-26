@@ -143,6 +143,12 @@ export {
   listPortalUpdates,
   type PortalUpdate,
   type PortalUpdateListOptions,
+  // Phase 3 — the Client Timeline, a union over updates, milestones and
+  // shipped versions (DATA_MODEL §6.16), for the one-screen project page.
+  PORTAL_TIMELINE_LIMIT,
+  listPortalTimeline,
+  type PortalTimeline,
+  type PortalTimelineEntry,
 } from "./portal";
 // Phase 3 — progress updates (DATA_MODEL.md §6.16). The body vocabulary
 // and the snapshot's allow-list are leaf modules a client component may

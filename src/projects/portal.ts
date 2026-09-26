@@ -1,3 +1,5 @@
+import { DEFAULT_TIMEZONE } from "@/i18n/config";
+import { localDateString } from "@/lib/duration";
 import {
   authorizePortal,
   withPortalRead,
@@ -80,6 +82,98 @@ export async function findPortalProjectByKey(
       },
       select: { id: true, key: true, name: true },
     });
+  });
+}
+
+/**
+ * THE HEADER OF THE ONE-SCREEN PROJECT PAGE (UI.md §4: "Phase: Design ·
+ * Next milestone: Launch due 12 Sep", and the milestone progress bar),
+ * computed from the CLIENT_VISIBLE milestones alone. The health chip is
+ * not here: it is the newest published update's, and the page takes it
+ * from `listPortalUpdates`, so the header and the post under it cannot
+ * name two different healths.
+ *
+ * THE RULES, stated because each is a choice:
+ *  - `phase` is the milestone the agency has IN_PROGRESS — the earliest
+ *    due if it has several, undated last — or null. One phase, because
+ *    the header has room for one sentence and a client is owed the
+ *    agency's answer, not its whole board.
+ *  - `nextMilestone` is the soonest milestone not yet reached whose DAY
+ *    is today or later in the reader's zone, whatever its status. "Next"
+ *    means coming up: an open milestone whose published day has passed
+ *    is on the rail at that day, not in a sentence that would call it
+ *    the next thing. Compared by calendar day and not by instant (a
+ *    review caught the instant form): a milestone due today is "next"
+ *    all day, which is the day the sentence matters most. It may be the
+ *    phase itself (the phase's own end is the next thing due), and the
+ *    page renders that as one fact rather than two.
+ *  - `milestones` counts DONE over everything not CANCELLED — the same
+ *    rule the frozen snapshot's `milestones` block applies
+ *    (`update-metrics.ts`), so the header's "2 of 5" and the newest
+ *    post's "2 of 5" agree on the day it is published.
+ *
+ * NO STATUS AND NO ORDERING KEY LEAVES HERE. Which milestone is "paused"
+ * is the agency's word for its own plan; the plan's order is the
+ * agency's too. A name and a day are what a client reads.
+ */
+export type PortalMilestoneRef = {
+  readonly id: string;
+  readonly name: string;
+  readonly dueAt: Date | null;
+};
+
+export type PortalProjectSummary = {
+  readonly phase: PortalMilestoneRef | null;
+  readonly nextMilestone: (PortalMilestoneRef & { readonly dueAt: Date }) | null;
+  readonly milestones: { readonly done: number; readonly total: number };
+};
+
+export async function readPortalProjectSummary(
+  principal: PortalPrincipal,
+  projectId: string,
+  /** The reader's clock and zone — the request's (`getTimeZone()`), so View-as and the portal agree. */
+  clock: { readonly now?: Date; readonly timeZone?: string } = {},
+): Promise<PortalProjectSummary> {
+  const now = clock.now ?? new Date();
+  const timeZone = clock.timeZone ?? DEFAULT_TIMEZONE;
+  const today = localDateString(now, timeZone);
+  return withPortalRead(principal, async (tx) => {
+    await authorizePortal(tx, principal, "portal.project.view", { kind: "project", projectId });
+    // Tenant, client, visibility and the portal switch are `portal_gate`'s
+    // under this principal (the three-term form on `milestone`); repeated
+    // as defence in depth. The project's archive is the projection's own
+    // term, as everywhere on this plane.
+    const rows = await tx.milestone.findMany({
+      where: {
+        tenantId: principal.tenantId,
+        clientId: principal.clientId,
+        projectId,
+        visibility: "CLIENT_VISIBLE",
+        portalEnabled: true,
+        status: { not: "CANCELLED" },
+        project: { archivedAt: null },
+      },
+      select: { id: true, name: true, status: true, dueAt: true },
+      // Soonest due first, undated last, the row id as the stable tie —
+      // never the plan's own order (UI.md §11: the agency's sequence is
+      // the agency's).
+      orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+    });
+    const ref = (m: (typeof rows)[number]): PortalMilestoneRef => ({ id: m.id, name: m.name, dueAt: m.dueAt });
+    const inProgress = rows.find((m) => m.status === "IN_PROGRESS");
+    // `dueAt` is a DAY encoded as UTC midnight (the member form writes
+    // `${day}T00:00:00Z`), so its day is read in UTC — `formatDay`'s own
+    // rule — while "today" is the reader's. Running the column through
+    // the reader's zone would move a milestone due today to yesterday
+    // for any zone west of UTC (the fix review's note).
+    const next = rows.find(
+      (m) => m.status !== "DONE" && m.dueAt !== null && m.dueAt.toISOString().slice(0, 10) >= today,
+    );
+    return {
+      phase: inProgress ? ref(inProgress) : null,
+      nextMilestone: next && next.dueAt ? { ...ref(next), dueAt: next.dueAt } : null,
+      milestones: { done: rows.filter((m) => m.status === "DONE").length, total: rows.length },
+    };
   });
 }
 

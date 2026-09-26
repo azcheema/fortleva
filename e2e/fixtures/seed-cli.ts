@@ -122,6 +122,9 @@ const DBTEST_PREFIXES = [
   "prefs-",
   "prefs-notify-",
   "preq-",
+  // Phase 3, the Client Timeline — `src/modules/work/portal-timeline.dbtest.ts`,
+  // `setupTenant("ptl")`.
+  "ptl-",
   // **A HISTORICAL PREFIX WITH NO LIVE CREATOR — do not delete it when
   // regenerating this list.** Nothing in `src/`, `e2e/` or `scripts/`
   // creates a `probe-` tenant today, so BOTH greps above come back
@@ -227,6 +230,17 @@ export type E2ESeed = {
    */
   readonly datedMilestoneId: string;
   readonly datedMilestoneName: string;
+  /**
+   * The portal timeline's fixture (Phase 3): a CLIENT_VISIBLE milestone
+   * already reached, a CLIENT_VISIBLE one still to come, and the label
+   * of the one shipped version — each an entry on the contact's rail.
+   * The INTERNAL "Lansering" milestone beside them is the negative
+   * control and is deliberately NOT in this type: nothing on the portal
+   * plane may need its name.
+   */
+  readonly reachedMilestoneName: string;
+  readonly upcomingMilestoneName: string;
+  readonly shippedVersion: string;
   /** Seeded CLIENT_VISIBLE document — the one BUG 1 is reproduced on. */
   readonly clientVisibleDocId: string;
   readonly clientVisibleDocName: string;
@@ -411,7 +425,10 @@ async function provision(seedFile: string): Promise<void> {
   } = await import("../../src/modules/work");
   const { dateColumn, localDateString } = await import("../../src/lib/duration");
   const { addDays } = await import("../../src/lib/week");
-  const { createMilestone } = await import("../../src/projects/milestones");
+  const { completeMilestone, createMilestone, setMilestoneStatus } = await import(
+    "../../src/projects/milestones"
+  );
+  const { createVersion, shipVersion } = await import("../../src/projects/versions");
   const { commitUpload, createUpload } = await import("../../src/documents/service");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
 
@@ -621,6 +638,16 @@ async function provision(seedFile: string): Promise<void> {
   });
 
   const day = 24 * 60 * 60 * 1000;
+  // ── The project's plan, as the portal's one-screen page reads it ───
+  // (Phase 3, the Client Timeline slice). Four milestones in plan order
+  // — one reached, one in progress (the header's "Phase:"), one INTERNAL
+  // (the negative control: it must appear on no portal surface), one
+  // shared and still to come (the header's "Next milestone:") — and one
+  // shipped version with release notes, so the contact's timeline
+  // photographs with every kind of entry on it and
+  // `e2e/portal-project.spec.ts` has each to assert on. Every row goes
+  // through the real service, so the audit trail and the stamps are the
+  // product's own.
   const datedMilestoneName = "Designgranskning";
   const { id: datedMilestoneId } = await createMilestone(ctx, {
     projectId,
@@ -629,11 +656,42 @@ async function provision(seedFile: string): Promise<void> {
     dueAt: new Date(Date.now() - 14 * day),
     visibility: "CLIENT_VISIBLE",
   });
+  await setMilestoneStatus(ctx, datedMilestoneId, "IN_PROGRESS");
   await createMilestone(ctx, {
     projectId,
     name: "Lansering",
     dueAt: new Date(Date.now() + 21 * day),
   });
+  // APPENDED, NOT PREPENDED — the plan's rank order is what the item
+  // panel's milestone picker lists, and `e2e/item-properties.spec.ts`
+  // addresses its rows by ORDINAL (`item-milestone-0` is "E2E Milestone",
+  // `-1` is Designgranskning). A reached milestone placed first would
+  // have shifted both (a fresh code review caught it before CI did). The
+  // portal orders by date, never by rank, so nothing there notices.
+  const reachedMilestoneName = "Sidmallar";
+  const { id: reachedMilestoneId } = await createMilestone(ctx, {
+    projectId,
+    name: reachedMilestoneName,
+    description: "Sidmallar och navigation godkända.",
+    dueAt: new Date(Date.now() - 21 * day),
+    visibility: "CLIENT_VISIBLE",
+  });
+  await completeMilestone(ctx, reachedMilestoneId);
+  const upcomingMilestoneName = "Innehållsinläsning";
+  await createMilestone(ctx, {
+    projectId,
+    name: upcomingMilestoneName,
+    dueAt: new Date(Date.now() + 7 * day),
+    visibility: "CLIENT_VISIBLE",
+  });
+  const shippedVersion = "1.0";
+  const { id: shippedVersionId } = await createVersion(ctx, {
+    projectId,
+    version: shippedVersion,
+    title: "Staging",
+    releaseNotes: "Sidmallar och navigation på plats. Formulär och sök återstår.",
+  });
+  await shipVersion(ctx, shippedVersionId, { shippedAt: new Date(Date.now() - 7 * day) });
 
   const { id: maintenanceServiceId } = await createService(ctx, {
     clientId,
@@ -1033,6 +1091,9 @@ async function provision(seedFile: string): Promise<void> {
     milestoneId,
     datedMilestoneId,
     datedMilestoneName,
+    reachedMilestoneName,
+    upcomingMilestoneName,
+    shippedVersion,
     clientVisibleDocId: await document(clientVisibleDocName, "CLIENT_VISIBLE"),
     clientVisibleDocName,
     internalDocId: await document(internalDocName, "INTERNAL"),

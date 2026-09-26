@@ -172,6 +172,11 @@ const VIEW_AS_SERVICE = join(SRC, "clients", "view-as.ts");
 const VIEW_AS_PAGE = join(SRC, "app", "(tenant)", "view-as", "page.tsx");
 const VIEW_AS_BANNER = join(SRC, "app", "(tenant)", "view-as", "view-as-banner.tsx");
 const PORTAL_PAGE = join(SRC, "app", "(portal)", "portal", "page.tsx");
+// The one-screen project page and its View-as twin (Phase 3, the Client
+// Timeline slice): the same claim as the home, for the portal's second
+// navigable page.
+const PORTAL_PROJECT_PAGE = join(SRC, "app", "(portal)", "portal", "projects", "[key]", "page.tsx");
+const VIEW_AS_PROJECT_PAGE = join(SRC, "app", "(tenant)", "view-as", "projects", "[key]", "page.tsx");
 const PORTAL_FRAME = join(SRC, "app", "(portal)", "portal", "portal-frame.tsx");
 const PROJECT_LAYOUT = join(SRC, "app", "(tenant)", "(authed)", "projects", "[key]", "layout.tsx");
 const PORTAL_TAB = join(
@@ -264,14 +269,26 @@ describe("view-as-contact renders the contact's own page", () => {
       expect(importsFrom(text, "task-list")).toBe(false);
       expect(importsFrom(text, "@/modules/work")).toBe(false);
     }
+    // …and the same for the portal's second page: both routes render
+    // <PortalProjectView>, which resolves the key under the CONTACT
+    // principal itself, so neither route can hand it a different project.
+    for (const file of [PORTAL_PROJECT_PAGE, VIEW_AS_PROJECT_PAGE]) {
+      const text = readFileSync(file, "utf8");
+      expect(importsFrom(text, "project-view")).toBe(true);
+      expect(importsFrom(text, "task-list")).toBe(false);
+      expect(importsFrom(text, "project-timeline")).toBe(false);
+      expect(importsFrom(text, "@/modules/work")).toBe(false);
+      expect(importsFrom(text, "@/projects/portal")).toBe(false);
+    }
   });
 
-  it("the view-as page reads nothing of its own", () => {
-    // It resolves who, synthesises a principal and renders. Every row on
-    // the screen comes back under the CONTACT principal, inside
-    // <PortalHome>. A query here would be a member-principal read
-    // wearing a portal page's clothes.
+  it("the view-as pages read nothing of their own", () => {
+    // They resolve who, synthesise a principal and render. Every row on
+    // the screen comes back under the CONTACT principal, inside the
+    // portal's own component. A query here would be a member-principal
+    // read wearing a portal page's clothes.
     expect(delegatesOf(VIEW_AS_PAGE).size).toBe(0);
+    expect(delegatesOf(VIEW_AS_PROJECT_PAGE).size).toBe(0);
   });
 
   it("the view-as service touches two authorization tables and no work table", () => {
@@ -314,6 +331,12 @@ describe("view-as-contact renders the contact's own page", () => {
     expect(body.indexOf("<ViewAsBanner")).toBeGreaterThan(-1);
     expect(body.indexOf("<PortalHome")).toBeGreaterThan(-1);
     expect(body.indexOf("<ViewAsBanner")).toBeLessThan(body.indexOf("<PortalHome"));
+    // …and on the project page, the same arrangement.
+    const projectPage = readFileSync(VIEW_AS_PROJECT_PAGE, "utf8");
+    const projectBody = projectPage.slice(projectPage.indexOf("export default async function ViewAsProjectPage"));
+    expect(projectBody.indexOf("<ViewAsBanner")).toBeGreaterThan(-1);
+    expect(projectBody.indexOf("<PortalProjectView")).toBeGreaterThan(-1);
+    expect(projectBody.indexOf("<ViewAsBanner")).toBeLessThan(projectBody.indexOf("<PortalProjectView"));
   });
 
   it("the locale is pinned to the contact, ahead of the member session", () => {

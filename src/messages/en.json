@@ -2544,7 +2544,31 @@
       "description": "Every update your agency has published for {project}, newest first.",
       "empty": "No updates yet.",
       "back": "Back to your projects",
-      "updatedAgo": "Updated {date}"
+      "updatedAgo": "Updated {date}",
+      "backToProject": "Back to {project}"
+    },
+    "project": {
+      "title": "Project",
+      "back": "Back to your projects",
+      "phase": "Phase: {name}",
+      "phaseDue": "Due {date}",
+      "nextMilestone": "Next milestone: {name}, due {date}",
+      "milestonesProgress": "{done} of {total} milestones"
+    },
+    "actionItems": {
+      "title": "Waiting on you",
+      "description": "Tasks your agency has asked you to do."
+    },
+    "timeline": {
+      "title": "Timeline",
+      "description": "Updates, milestones and releases, newest first.",
+      "truncated": "Showing the {count} most recent events.",
+      "updateNumber": "Update #{seq}",
+      "published": "Published {date}",
+      "milestoneReached": "Milestone reached {date}",
+      "milestoneDue": "Milestone due {date}",
+      "version": "Version {version}",
+      "released": "Released {date}"
     }
   },
   "viewAs": {
@@ -2552,7 +2576,8 @@
     "banner": "Viewing as {name} — you see exactly what they see.",
     "exit": "Exit client view",
     "enter": "View as {name}",
-    "entered": "Now viewing as {name}."
+    "entered": "Now viewing as {name}.",
+    "enterProject": "View this project as {name}"
   },
   "states": {
     "clientStatus": {

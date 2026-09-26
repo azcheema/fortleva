@@ -6,6 +6,16 @@ export const LOCALES = ["sv", "en"] as const;
 export type AppLocale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: AppLocale = "en";
 
+/**
+ * The product's default zone — what a request with no preference and no
+ * member resolves to (`resolve.ts`), and what a projection with no
+ * request in reach uses for "today" (`src/projects/portal.ts`). A LEAF
+ * constant here rather than in `resolve.ts`, which reaches
+ * `next/headers` and the auth layer and must not be imported by a
+ * service module.
+ */
+export const DEFAULT_TIMEZONE = "Europe/Stockholm";
+
 export const isLocale = (v: unknown): v is AppLocale =>
   typeof v === "string" && (LOCALES as readonly string[]).includes(v);
 

@@ -111,14 +111,25 @@ test.describe("view-as-contact", () => {
       locale: "en-US",
     });
     let contactHtml: string;
+    let contactProjectHtml: string;
     try {
       const contactPage = await portal.newPage();
       await contactPage.goto("/portal");
       contactHtml = await portalSurface(contactPage);
+      // The portal's SECOND page (Phase 3, the Client Timeline slice):
+      // the one-screen project page, compared below against its View-as
+      // twin. Captured in the same session, so the two comparisons
+      // measure the same contact on the same data.
+      await contactPage.goto(`/portal/projects/${seed.projectKey}`);
+      contactProjectHtml = await portalSurface(contactPage);
       await contactPage.close();
     } finally {
       await portal.close();
     }
+    // Not vacuous either: the rail and a reached milestone are on it.
+    expect(contactProjectHtml).toContain('data-slot="portal-timeline"');
+    expect(contactProjectHtml).toContain(seed.reachedMilestoneName);
+    expect(contactProjectHtml).not.toContain('data-slot="empty-state"');
     // NOT VACUOUS — and the first cut of this guard did not measure that
     // (code review). It asserted `toContain(seed.contactName)` and a
     // length over 200, both of which the portal CHROME satisfies on its
@@ -148,7 +159,10 @@ test.describe("view-as-contact", () => {
       await page.goto(`/projects/${seed.projectKey}/portal`);
       // The button names the contact, so this also asserts the tab chose
       // a viewer at all — with no admissible contact it does not render.
-      await page.getByRole("button", { name: new RegExp(seed.contactName) }).click();
+      // EXACT, and in SWEDISH — the member was switched above: the tab
+      // carries a second door since the Timeline slice ("Visa det här
+      // projektet som …"), and a regex on the name matched both.
+      await page.getByRole("button", { name: `Visa som ${seed.contactName}`, exact: true }).click();
       await page.waitForURL("**/view-as", { timeout: 30_000 });
 
       // THE BANNER IS THERE, IT IS OUTSIDE THE SURFACE, AND IT IS IN THE
@@ -178,6 +192,16 @@ test.describe("view-as-contact", () => {
 
       // ── THE COMPARISON ───────────────────────────────────────────────
       expect(await portalSurface(page)).toBe(contactHtml);
+
+      // ── THE PROJECT PAGE, from inside the same mode ──────────────────
+      // Navigated to by URL: the links inside the compared region point
+      // at the PORTAL plane (they are the client's links, byte for byte)
+      // and the region is inert, so a member reaches this page the way
+      // the Portal tab's second button does — by its own address.
+      await page.goto(`/view-as/projects/${seed.projectKey}`);
+      await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
+      await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");
+      expect(await portalSurface(page)).toBe(contactProjectHtml);
 
       // ── AND LEAVING WORKS, from inside the mode ──────────────────────
       await page.getByRole("button", { name: "Lämna kundvyn" }).click();

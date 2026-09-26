@@ -122,7 +122,7 @@ export async function PortalHome({
   const projects: PortalProjectTasks[] = [...(list?.projects ?? [])];
   for (const u of latest ?? []) {
     if (!projects.some((p) => p.projectId === u.projectId)) {
-      projects.push({ projectId: u.projectId, projectName: u.projectName, tasks: [] });
+      projects.push({ projectId: u.projectId, projectKey: u.projectKey, projectName: u.projectName, tasks: [] });
     }
   }
   const canRequest = (requestTargets?.length ?? 0) > 0;
@@ -137,7 +137,12 @@ export async function PortalHome({
             actions={
               canRequest ? (
                 <Button asChild size="sm">
-                  <Link href="/portal/requests/new">{t("requests.cta")}</Link>
+                  {/* No prefetch: on `/view-as` a prefetch of a portal-gated
+                      route carries a member cookie and is answered with a
+                      redirect to the client sign-in page on every render. */}
+                  <Link href="/portal/requests/new" prefetch={false}>
+                    {t("requests.cta")}
+                  </Link>
                 </Button>
               ) : null
             }

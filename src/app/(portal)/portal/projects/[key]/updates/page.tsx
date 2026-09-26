@@ -54,8 +54,13 @@ export default async function PortalProjectUpdatesPage({ params }: { params: Pro
             title={project ? project.name : t("title")}
             description={project ? t("description", { project: project.name }) : undefined}
             actions={
+              // Back to the PROJECT when there is one to go back to —
+              // the one-screen page this list hangs off since the
+              // Timeline slice — and to the home otherwise.
               <Button asChild variant="outline" size="sm">
-                <Link href="/portal">{t("back")}</Link>
+                <Link href={project ? `/portal/projects/${project.key}` : "/portal"}>
+                  {project ? t("backToProject", { project: project.name }) : t("back")}
+                </Link>
               </Button>
             }
           />
@@ -63,8 +68,11 @@ export default async function PortalProjectUpdatesPage({ params }: { params: Pro
             <PortalTasksEmpty />
           ) : (
             updates.map((update) => (
+              // The anchor the timeline's update entries link to.
               <SectionCard
                 key={update.id}
+                id={`update-${update.id}`}
+                className="scroll-mt-16"
                 title={update.title ?? t("title")}
                 description={t("updatedAgo", { date: formatDate(locale, update.publishedAt) })}
               >
