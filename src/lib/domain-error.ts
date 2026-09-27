@@ -61,6 +61,14 @@ export type DomainErrorCode =
   // project right now" is a fact about the agency — so a contact sees
   // the plane's one generic refusal and the reason goes to the log.
   | "REQUEST_BUSY"
+  // This contact has downloaded the most files the window allows (Phase
+  // 3, the portal files slice). Disclosed for the same reason
+  // REQUEST_RATE_LIMITED is: a fact about the READER's own behaviour.
+  | "DOWNLOAD_RATE_LIMITED"
+  // ...and the download's `REQUEST_BUSY`: its budget lock's waits were
+  // spent (55P03) or it lost a deadlock, every attempt. Not disclosable,
+  // for the same reason — the contact sees the plane's generic refusal.
+  | "DOWNLOAD_BUSY"
   // Work tree (2W — trigger tokens map 1:1 in src/modules/work/db-errors.ts)
   | "HAS_VISIBLE_CHILDREN" // make-private refused while client-visible subtasks/comments/attachments live
   | "PARENT_NOT_VISIBLE" // a child cannot be client-visible under an internal parent

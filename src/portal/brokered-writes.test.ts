@@ -198,6 +198,35 @@ const recordPasses = (body: ts.Block, property: string): boolean => {
 
 const WORK_BROKER = join(SRC, "modules", "work", "portal-writes.ts");
 
+/**
+ * BROKERED READS — the closed set of exported broker functions that
+ * write no audit row, because nothing happened (the portal
+ * files-and-services slice, 2026-09-27).
+ *
+ * `readPortalFileVersions` reads `file_version` as `system` on the
+ * portal's behalf: the table is class A (`portal_deny`), so the newest
+ * version of a shared file — its number, date and size — and the
+ * Client Timeline's document branch can come from nowhere else. It is
+ * a READ, so the "audit row names the contact" pin below does not apply
+ * to it; every OTHER pin does — it authorizes under the contact before
+ * the system transaction opens, its principal literal is inline, and
+ * it lives in a `portal-writes.ts` so that "this code runs as system"
+ * stays a property of the filename. And one pin of its own: a brokered
+ * read must call `record` NOWHERE, because a read that audits is a
+ * write that has misnamed itself.
+ *
+ * A closed, named list rather than a rule ("exported functions without
+ * `record`"), for the reason `SESSIONLESS_ACTIONS` is: the reviewable
+ * moment is adding an entry here, and a broker that FORGOT its audit
+ * row must fail the pin, not slide into the exemption.
+ */
+const BROKERED_READS: readonly (readonly [string, string])[] = [
+  [join("documents", "portal-writes.ts"), "readPortalFileVersions"],
+];
+
+const isBrokeredRead = (file: string, name: string): boolean =>
+  BROKERED_READS.some(([suffix, fn]) => file.endsWith(suffix) && fn === name);
+
 describe("brokered portal writes", () => {
   it("there is at least one broker, so nothing below passes vacuously", () => {
     // The control. Renaming the convention would otherwise turn every
@@ -243,8 +272,19 @@ describe("brokered portal writes", () => {
   it("the audit row names the contact, inside the write's own transaction, in EVERY broker", () => {
     const writers = brokerFiles().flatMap((f) => exportedBodies(f).map((b) => [f, ...b] as const));
     expect(writers.length).toBeGreaterThan(1);
+    // The exemption must name functions that EXIST, so a rename cannot
+    // quietly turn an entry into dead prose while the renamed function
+    // goes unchecked.
+    for (const [suffix, fn] of BROKERED_READS) {
+      expect(writers.some(([file, name]) => file.endsWith(suffix) && name === fn), `${suffix}:${fn}`).toBe(true);
+    }
     for (const [file, name, body] of writers) {
       const where = `${relative(SRC, file)}:${name}`;
+      if (isBrokeredRead(file, name)) {
+        // A brokered READ audits nothing — anywhere in its body.
+        expect(callPosition(body, "record"), `${where} is a brokered read and must not audit`).toBe(-1);
+        continue;
+      }
     // THE PROPERTY IS PASSED, not merely mentioned. Deleting
     // `brokeredForContactId: principal.contactId` while leaving the
     // comment above it — which names the field — would have left the

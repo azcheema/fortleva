@@ -14,6 +14,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DocumentListItem } from "@/documents/service";
 import { bytesParts } from "@/lib/format";
+import { TONE_CHIP } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 
 import { deleteDocumentAction, downloadAction } from "./actions";
 import { VisibilitySelect } from "./visibility-select";
@@ -165,6 +167,26 @@ export async function DocumentsTable({
                       <span className="truncate font-medium" title={d.name}>
                         {d.name}
                       </span>
+                      {/* A DELIVERABLE is marked where the member reads the
+                          row (Phase 3, the portal files slice): it is the
+                          one kind a member chooses, it puts the file first
+                          on the client's list and on their timeline, and a
+                          table that showed no difference would leave the
+                          choice invisible after the upload. The chip, not a
+                          column: two kinds at most, and the name column is
+                          the one that yields. */}
+                      {d.kind === "DELIVERABLE" ? (
+                        <span
+                          data-slot="document-kind"
+                          data-value={d.kind}
+                          className={cn(
+                            "inline-flex h-5 shrink-0 items-center rounded-full px-2 text-2xs whitespace-nowrap",
+                            TONE_CHIP.brand,
+                          )}
+                        >
+                          {t("deliverable")}
+                        </span>
+                      ) : null}
                     </span>
                   </TableCell>
                   <TableCell>

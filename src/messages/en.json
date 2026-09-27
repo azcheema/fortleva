@@ -1068,7 +1068,9 @@
       "clientVisibleWarning": "Anyone with portal access at this client will be able to open this file.",
       "step": "Step {step} of {total}",
       "progressLabel": "Upload progress",
-      "choose": "Choose file"
+      "choose": "Choose file",
+      "deliverable": "This is a deliverable",
+      "deliverableHint": "Listed first on the client's files page and shown on their timeline for every version, once the client can see it."
     },
     "errors": {
       "quota": "Storage quota reached — delete files or upgrade the plan.",
@@ -1091,7 +1093,8 @@
     },
     "tableLabel": "Files",
     "downloadName": "Download {name}",
-    "deleteConfirm": "Delete {name}?"
+    "deleteConfirm": "Delete {name}?",
+    "deliverable": "Deliverable"
   },
   "errors": {
     "generic": "Something went wrong.",
@@ -1168,7 +1171,9 @@
     "UPDATE_RETRACT_WINDOW_CLOSED": "More than 15 minutes have passed since publishing, so this update can no longer be retracted. Add a note, or archive it.",
     "UPDATE_EMPTY": "Write something in at least one section before publishing.",
     "UPDATE_CHANGED": "The draft changed while it was being published. Check it and publish again.",
-    "UPDATE_TOO_LARGE": "One of the sections is too long to save."
+    "UPDATE_TOO_LARGE": "One of the sections is too long to save.",
+    "DOWNLOAD_RATE_LIMITED": "You have downloaded a lot of files in a short time. Wait a few minutes and try again.",
+    "DOWNLOAD_BUSY": "That file could not be fetched just now. Try again in a moment."
   },
   "assignments": {
     "title": "Team",
@@ -2561,14 +2566,71 @@
     },
     "timeline": {
       "title": "Timeline",
-      "description": "Updates, milestones and releases, newest first.",
+      "description": "Updates, milestones, releases and deliverables, newest first.",
       "truncated": "Showing the {count} most recent events.",
       "updateNumber": "Update #{seq}",
       "published": "Published {date}",
       "milestoneReached": "Milestone reached {date}",
       "milestoneDue": "Milestone due {date}",
       "version": "Version {version}",
-      "released": "Released {date}"
+      "released": "Released {date}",
+      "deliverable": "Deliverable: {name}",
+      "report": "Report: {name}",
+      "fileVersion": "Version {number}",
+      "shared": "Added {date}"
+    },
+    "nav": {
+      "label": "Client portal",
+      "home": "Overview",
+      "files": "Files",
+      "company": "Your company"
+    },
+    "files": {
+      "title": "Files",
+      "description": "Files and deliverables your agency has shared with you.",
+      "projectTitle": "Files & deliverables",
+      "projectDescription": "What your agency has delivered and shared on this project.",
+      "company": "Shared with your company",
+      "companyDescription": "Files that are not tied to one project.",
+      "kinds": {
+        "DELIVERABLE": "Deliverables",
+        "REPORT": "Reports",
+        "GENERAL": "Other files"
+      },
+      "version": "Version {number}",
+      "shared": "Added {date}",
+      "download": "Download",
+      "downloadName": "Download {name}",
+      "truncated": "Showing the first {count} files. Ask your agency if something is missing.",
+      "errors": {
+        "download": "That file could not be downloaded just now. Try again, or ask your contact at the agency."
+      }
+    },
+    "company": {
+      "title": "Your company",
+      "description": "What your agency has on file about your company, and the agreements between you.",
+      "record": "Company details",
+      "recordDescription": "Ask your contact at the agency if something here is out of date.",
+      "name": "Name",
+      "orgNr": "Org. no.",
+      "vatNumber": "VAT number",
+      "address": "Address",
+      "agreements": "Agreements",
+      "agreementsDescription": "What you buy from your agency.",
+      "kinds": {
+        "ONE_TIME": "One-time",
+        "RECURRING": "Recurring"
+      },
+      "intervals": {
+        "MONTHLY": "monthly",
+        "QUARTERLY": "quarterly",
+        "YEARLY": "yearly"
+      },
+      "priceExVat": "{amount} ex. VAT",
+      "renews": "Renews {date}",
+      "ends": "Ends {date}",
+      "ended": "Ended {date}",
+      "project": "Project: {name}"
     }
   },
   "viewAs": {

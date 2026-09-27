@@ -112,6 +112,8 @@ test.describe("view-as-contact", () => {
     });
     let contactHtml: string;
     let contactProjectHtml: string;
+    let contactFilesHtml: string;
+    let contactCompanyHtml: string;
     try {
       const contactPage = await portal.newPage();
       await contactPage.goto("/portal");
@@ -122,6 +124,12 @@ test.describe("view-as-contact", () => {
       // measure the same contact on the same data.
       await contactPage.goto(`/portal/projects/${seed.projectKey}`);
       contactProjectHtml = await portalSurface(contactPage);
+      // …and the third and fourth (the portal files-and-services slice):
+      // the files page, with its download forms, and the company page.
+      await contactPage.goto("/portal/files");
+      contactFilesHtml = await portalSurface(contactPage);
+      await contactPage.goto("/portal/company");
+      contactCompanyHtml = await portalSurface(contactPage);
       await contactPage.close();
     } finally {
       await portal.close();
@@ -130,6 +138,14 @@ test.describe("view-as-contact", () => {
     expect(contactProjectHtml).toContain('data-slot="portal-timeline"');
     expect(contactProjectHtml).toContain(seed.reachedMilestoneName);
     expect(contactProjectHtml).not.toContain('data-slot="empty-state"');
+    // Nor these: the shared deliverable with its download form, and the
+    // shared agreement — the two things each page exists to show.
+    expect(contactFilesHtml).toContain(seed.deliverableDocName);
+    expect(contactFilesHtml).toContain('data-slot="portal-file"');
+    expect(contactFilesHtml).not.toContain('data-slot="empty-state"');
+    expect(contactCompanyHtml).toContain(seed.serviceName);
+    expect(contactCompanyHtml).toContain('data-slot="portal-agreement"');
+    expect(contactCompanyHtml).not.toContain('data-slot="empty-state"');
     // NOT VACUOUS — and the first cut of this guard did not measure that
     // (code review). It asserted `toContain(seed.contactName)` and a
     // length over 200, both of which the portal CHROME satisfies on its
@@ -202,6 +218,19 @@ test.describe("view-as-contact", () => {
       await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
       await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");
       expect(await portalSurface(page)).toBe(contactProjectHtml);
+
+      // ── THE FILES AND COMPANY PAGES, the same way ────────────────────
+      // The files page carries a download FORM per row — a server action
+      // reference rendered on both planes — so this is also the test
+      // that the form's markup is stable across routes.
+      await page.goto("/view-as/files");
+      await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
+      await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");
+      expect(await portalSurface(page)).toBe(contactFilesHtml);
+      await page.goto("/view-as/company");
+      await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
+      await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");
+      expect(await portalSurface(page)).toBe(contactCompanyHtml);
 
       // ── AND LEAVING WORKS, from inside the mode ──────────────────────
       await page.getByRole("button", { name: "Lämna kundvyn" }).click();

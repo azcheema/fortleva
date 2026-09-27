@@ -120,6 +120,9 @@ describe("portalPrincipalVerdict — the contact half", () => {
       "portal.continuity.view_status",
       "portal.continuity.request_open",
       "portal.continuity.download",
+      // An agreement row carries the fee (the portal files-and-services
+      // slice): money, so PRIMARY only.
+      "portal.service.view",
     ]);
     for (const capability of PORTAL_CAPABILITIES) {
       expect(

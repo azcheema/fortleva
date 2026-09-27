@@ -328,6 +328,16 @@ async function commitFileObject(
   });
 }
 
+/**
+ * What kind of file a member may SAY a document is (DATA_MODEL §6.8
+ * `DocumentKind`): a deliverable — client-approvable output, grouped
+ * first on the portal's "Files & deliverables" and an event on the
+ * Client Timeline for every version — or just a file. REPORT and EXPORT
+ * are GENERATED kinds with writers of their own (`src/export`, the
+ * Phase 4 tidrapport) and are not a choice the upload form offers.
+ */
+export type UploadKind = "GENERAL" | "DELIVERABLE";
+
 export type CommitUploadInput = {
   fileObjectId: string;
   /** Defaults to the original filename recorded at presign. */
@@ -338,6 +348,8 @@ export type CommitUploadInput = {
    * clientId. An ANCHORED document with no explicit choice inherits its
    * work item's visibility (DATA_MODEL §10). */
   visibility?: Visibility;
+  /** GENERAL unless the member marks it a deliverable (Phase 3, the portal files slice). */
+  kind?: UploadKind;
   /** 2W-A: see CreateUploadInput. */
   attachedToType?: "WORK_ITEM";
   attachedToId?: string;
@@ -358,6 +370,7 @@ export async function commitUpload(
     const visibility = input.visibility ?? target.parentVisibility ?? "INTERNAL";
     if (anchor) assertAnchorVisibility(visibility, target.parentVisibility);
     const name = (input.name ?? obj.originalFilename ?? "untitled").trim() || "untitled";
+    const kind: UploadKind = input.kind ?? "GENERAL";
     await tx.document.create({
       data: {
         id: documentId,
@@ -365,6 +378,7 @@ export async function commitUpload(
         clientId: target.clientId,
         projectId: target.projectId,
         name,
+        kind,
         visibility,
         attachedToType: anchor?.type ?? null,
         attachedToId: anchor?.id ?? null,
@@ -384,6 +398,7 @@ export async function commitUpload(
       targetId: documentId,
       metadata: {
         name,
+        kind,
         visibility,
         fileObjectId: obj.id,
         clientId: target.clientId,
@@ -435,6 +450,8 @@ export async function addVersion(
 export type DocumentListItem = {
   id: string;
   name: string;
+  /** GENERAL, DELIVERABLE, REPORT or EXPORT — the table marks a deliverable. */
+  kind: "GENERAL" | "DELIVERABLE" | "REPORT" | "EXPORT";
   visibility: Visibility;
   clientId: string | null;
   projectId: string | null;
@@ -495,6 +512,7 @@ export async function listDocuments(
       return {
         id: d.id,
         name: d.name,
+        kind: d.kind,
         visibility: d.visibility,
         clientId: d.clientId,
         projectId: d.projectId,

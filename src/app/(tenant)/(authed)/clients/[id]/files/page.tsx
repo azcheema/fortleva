@@ -93,7 +93,7 @@ export default async function ClientFilesPage({
           title={tFiles("upload.title")}
           description={t("emptyDescription")}
         >
-          <UploadForm target={{ clientId: client.id, returnTo }} visibilityEnabled />
+          <UploadForm target={{ clientId: client.id, returnTo }} visibilityEnabled kindEnabled />
         </SectionCard>
       ) : null}
     </div>

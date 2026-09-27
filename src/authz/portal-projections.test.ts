@@ -99,6 +99,12 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "internalSnapshot",
   "projectUpdateInternalSnapshot",
   "byMember",
+  // Phase 3, the portal files slice: the file layer's member column.
+  // `file_version` is class A and reached only through the broker
+  // (`src/documents/portal-writes.ts`), which is scanned by both tiers
+  // — so the one member id on that table is named here, where a
+  // brokered select would meet it.
+  "uploadedByMemberId",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -356,6 +362,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "internalSnapshot",
       "projectUpdateInternalSnapshot",
       "byMember",
+      "uploadedByMemberId",
     ]);
   });
 
@@ -425,8 +432,16 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "publishedByMemberId",
         "internalSnapshot",
         "bodyText",
+        "uploadedByMemberId",
       ].sort(),
     );
+    // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
+    // model quietly added to one would widen the tripwire with no test
+    // failing anywhere.
+    expect(PORTAL_NEVER_SELECTED_EXCEPT).toEqual({
+      kind: ["Document", "Service"],
+      description: ["Service"],
+    });
   });
 
   it("no portal projection mentions a forbidden column", () => {
@@ -583,7 +598,38 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   "publishedByMemberId",
   "internalSnapshot",
   "bodyText",
+  // Phase 3, the portal files slice: the file layer's member column.
+  "uploadedByMemberId",
 ]);
+
+/**
+ * KEYS ON THE LIST ABOVE THAT ONE NAMED MODEL MAY SELECT ANYWAY — a
+ * closed map a reviewer meets, added by the portal files-and-services
+ * slice (2026-09-27), because the list is keyed on a NAME and two of
+ * its names mean different things on different tables:
+ *
+ *  - `kind` on `WorkItem` is TASK / BUG / REQUEST, the agency's
+ *    vocabulary for its own process, and stays banned. On `Document` it
+ *    is GENERAL / DELIVERABLE / REPORT / EXPORT, which DATA_MODEL §6.8
+ *    says exists precisely "to drive the portal Files & deliverables
+ *    grouping" and the Client Timeline's document branch; on `Service`
+ *    it is ONE_TIME / RECURRING — what the client buys, printed on
+ *    their invoice.
+ *  - `description` on `WorkItem` is the 512 KB ProseMirror body; on
+ *    `Service` it is the one-line text DATA_MODEL §6.6 marks
+ *    "client-visible".
+ *
+ * The exemption is by MODEL, resolved through the schema like every
+ * other key here, so `kind` selected through a relation to `WorkItem`
+ * from a document projection is still an offence. Pinned below.
+ */
+const PORTAL_NEVER_SELECTED_EXCEPT: Readonly<Record<string, readonly string[]>> = {
+  kind: ["Document", "Service"],
+  description: ["Service"],
+};
+
+const neverSelected = (key: string, model: string | null): boolean =>
+  PORTAL_NEVER_SELECTED.has(key) && !(model !== null && PORTAL_NEVER_SELECTED_EXCEPT[key]?.includes(model));
 
 const propName = (p: ts.ObjectLiteralElementLike): string | null => {
   const n = p.name;
@@ -630,8 +676,9 @@ function auditSource(text: string, label: string, models: ReadonlyMap<string, Mo
         out.push(`${at(p)}: computed key in a select`);
         continue;
       }
-      // SAFE, not merely EXPLICIT (security review, 2026-09-21).
-      if (PORTAL_NEVER_SELECTED.has(key)) {
+      // SAFE, not merely EXPLICIT (security review, 2026-09-21) — with
+      // the per-model exemptions above, which need the model resolved.
+      if (neverSelected(key, model)) {
         out.push(`${at(p)}: "${key}" is never selected on the portal plane`);
         continue;
       }
@@ -800,8 +847,24 @@ describe("every portal read is an explicit allow-list (memo §2.2)", () => {
     ["the 512 KB body", "tx.workItem.findMany({ select: { description: true } });"],
     ["groupBy, which no select can allow-list", 'tx.workItem.groupBy({ by: ["rank"] });'],
     ["aggregate", "tx.workItem.aggregate({ _max: { rank: true } });"],
+    // ── the per-model exemptions do NOT reach the models they do not
+    // name (the portal files-and-services slice, 2026-09-27).
+    ["the work item's kind, which the document exemption must not cover", "tx.workItem.findMany({ select: { kind: true } });"],
+    [
+      "the work item's kind reached through a relation from an exempt-looking read",
+      "tx.client.findMany({ select: { id: true, workItems: { select: { kind: true } } } });",
+    ],
+    ["a document's description, which only Service may select", "tx.document.findMany({ select: { description: true } });"],
+    ["the file layer's member column", "tx.fileVersion.findMany({ select: { uploadedByMemberId: true } });"],
   ])("fails on %s", (_name, body) => {
     expect(auditSource(body, "probe", models)).not.toEqual([]);
+  });
+
+  it.each([
+    ["a document's kind — the portal grouping DATA_MODEL §6.8 built it for", "tx.document.findMany({ select: { id: true, kind: true } });"],
+    ["a service's kind and description — what the client buys", "tx.service.findMany({ select: { kind: true, description: true } });"],
+  ])("passes %s", (_name, body) => {
+    expect(auditSource(body, "probe", models)).toEqual([]);
   });
 
   /**
@@ -858,6 +921,18 @@ describe("every portal read is an explicit allow-list (memo §2.2)", () => {
     expect(scanned).toContain("modules/work/requests.ts");
     // …and the brokered writer itself, which is in BOTH tiers.
     expect(scanned).toContain("modules/work/portal-writes.ts");
+    // The portal files-and-services slice (2026-09-27): three more
+    // projections by the conventional name, the file layer's broker —
+    // the one file in the product that reads class-A rows on the
+    // portal's behalf — and the two new portal routes.
+    expect(scanned).toContain("documents/portal.ts");
+    expect(scanned).toContain("documents/portal-writes.ts");
+    expect(scanned).toContain("services/portal.ts");
+    expect(scanned).toContain("clients/portal.ts");
+    expect(scanned).toContain("app/(portal)/portal/files/page.tsx");
+    expect(scanned).toContain("app/(portal)/portal/company/page.tsx");
+    expect(scanned).toContain("app/(tenant)/view-as/files/page.tsx");
+    expect(scanned).toContain("app/(tenant)/view-as/company/page.tsx");
     // …and never a test, which is where the hazards are named on purpose.
     expect(scanned.filter((f) => f.includes(".dbtest.") || f.includes(".test."))).toEqual([]);
   });

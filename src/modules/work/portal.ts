@@ -1,4 +1,5 @@
 import { AuthzError } from "@/authz/errors";
+import { readPortalFileVersions } from "@/documents/portal-writes";
 import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal";
 
 import { withoutHours } from "./update-snapshot";
@@ -745,14 +746,22 @@ export async function listPortalUpdates(
  *                       the release notes — client-visible once shipped
  *                       by DATA_MODEL §6.5's own rule.
  *
+ *  - `document_version`  a version of a CLIENT_VISIBLE deliverable or
+ *                       report — "we delivered v2 of the design" — dated
+ *                       by when the version was committed (the portal
+ *                       files slice; DATA_MODEL §6.16's fourth branch).
+ *                       The DOCUMENT rows come from this transaction
+ *                       under `portal_gate`; the VERSIONS come from the
+ *                       file layer's broker, `readPortalFileVersions`,
+ *                       after it closes — `file_version` is class A and
+ *                       the portal never queries it directly.
+ *
  * WHAT IS NOT HERE, by the spec's own never-list: no `AuditEvent`, no
- * `WorkItemActivity`, no comment. And two branches the spec names that
- * this slice leaves to the slice that owns their writer, recorded in
- * PLAN §0 rather than half-built: deliverable/report document versions
- * (`file_version` is class A — the portal never queries the file layer —
- * so that branch is the portal files slice's, with its brokered read),
- * and version approval decisions (no writer exists until the sign-off
- * slice, which owns what a decision means on a re-shipped version).
+ * `WorkItemActivity`, no comment. And the one branch the spec names
+ * that is still left to the slice that owns its writer, recorded in
+ * PLAN §0 rather than half-built: approval decisions (no writer exists
+ * until the sign-off slice, which owns what a decision means on a
+ * re-shipped version or a re-uploaded deliverable).
  *
  * NO MILESTONE STATUS LEAVES HERE. A `milestone_due` entry says a name
  * and a day; whether the agency has that phase "paused" is the agency's
@@ -779,6 +788,16 @@ export type PortalTimelineEntry =
       readonly version: string;
       readonly title: string | null;
       readonly releaseNotes: string | null;
+    }
+  | {
+      readonly kind: "document_version";
+      /** The VERSION's id — one entry per delivered version, so two versions of one file are two entries. */
+      readonly id: string;
+      readonly at: Date;
+      readonly documentId: string;
+      readonly name: string;
+      readonly documentKind: "DELIVERABLE" | "REPORT";
+      readonly versionNumber: number;
     };
 
 export type PortalTimeline = {
@@ -803,9 +822,15 @@ export const PORTAL_TIMELINE_LIMIT = 100;
 const TIMELINE_KIND_ORDER: Record<PortalTimelineEntry["kind"], number> = {
   update: 0,
   version_shipped: 1,
-  milestone_done: 2,
-  milestone_due: 3,
+  document_version: 2,
+  milestone_done: 3,
+  milestone_due: 4,
 };
+
+/** The document kinds whose versions are events (DATA_MODEL §6.16: DELIVERABLE | REPORT). */
+const TIMELINE_DOCUMENT_KINDS = ["DELIVERABLE", "REPORT"] as const;
+const isTimelineDocumentKind = (kind: string): kind is (typeof TIMELINE_DOCUMENT_KINDS)[number] =>
+  (TIMELINE_DOCUMENT_KINDS as readonly string[]).includes(kind);
 
 const byNewest = (a: PortalTimelineEntry, b: PortalTimelineEntry): number =>
   b.at.getTime() - a.at.getTime() ||
@@ -817,25 +842,37 @@ const byNewest = (a: PortalTimelineEntry, b: PortalTimelineEntry): number =>
  *
  * `portal.timeline.view` on the project (steps 3–4 of the pipeline: the
  * project must be reachable under `portal_gate`, which is client
- * ownership AND `portal_enabled`), then four SEQUENTIAL reads on the one
+ * ownership AND `portal_enabled`), then five SEQUENTIAL reads on the one
  * connection (AGENTS.md's `Promise.all` trap). The update branch also
  * asks `portal.update.view`, without throwing: a profile that may read
  * the timeline but not the posts gets a rail with no posts on it, and
  * the refusal is decided here, never in a page (rule 4 above). Both v1
  * profiles hold both, so today this is defence in depth against the
- * profile that does not exist yet.
+ * profile that does not exist yet. The document branch asks
+ * `portal.document.view` the same way, inside the broker.
  *
  * Every `where` repeats the gate's terms — tenant, client, visibility or
  * status, the portal switch — as defence in depth, and adds the one term
  * the policy does not carry: the PROJECT's archive, for the reason
  * `listPortalTasks` documents at length.
+ *
+ * THE DOCUMENT BRANCH IS TWO STEPS, and the second is outside this
+ * transaction on purpose. The deliverable and report DOCUMENTS are read
+ * here, under the contact principal, so `portal_gate` decides them; the
+ * VERSIONS of exactly those documents are then read by the file layer's
+ * broker after the contact's transaction has closed (a nested
+ * `withTenant` would open a second transaction inside the first, and
+ * `authorizePortal`'s step 0 keys on the ambient principal). The broker
+ * restates the gate's terms on the joined document row, so a version of
+ * a document this read did not return cannot come back.
  */
 export async function listPortalTimeline(
   principal: PortalPrincipal,
   opts: { readonly projectId: string },
 ): Promise<PortalTimeline> {
   const { projectId } = opts;
-  return withPortalRead(principal, async (tx) => {
+  const take = PORTAL_TIMELINE_LIMIT + 1;
+  const { entries, documents } = await withPortalRead(principal, async (tx) => {
     await authorizePortal(tx, principal, "portal.timeline.view", { kind: "project", projectId });
     let seesUpdates = true;
     try {
@@ -852,7 +889,6 @@ export async function listPortalTimeline(
       portalEnabled: true,
       project: { archivedAt: null },
     } as const;
-    const take = PORTAL_TIMELINE_LIMIT + 1;
     const entries: PortalTimelineEntry[] = [];
 
     if (seesUpdates) {
@@ -915,8 +951,63 @@ export async function listPortalTimeline(
       });
     }
 
-    entries.sort(byNewest);
-    const truncated = entries.length > PORTAL_TIMELINE_LIMIT;
-    return { entries: truncated ? entries.slice(0, PORTAL_TIMELINE_LIMIT) : entries, truncated };
+    // The deliverables and reports this contact may read — the document
+    // half of the fourth branch. The soft delete is the projection's
+    // term, as on the files list. `kind` is FILTERED here and selected
+    // for the entry's own label (a deliverable and a report are drawn
+    // differently); it is exempt from the never-selected list for this
+    // model alone (`portal-projections.test.ts` says why).
+    const documents = await tx.document.findMany({
+      where: {
+        ...scope,
+        visibility: "CLIENT_VISIBLE",
+        deletedAt: null,
+        kind: { in: [...TIMELINE_DOCUMENT_KINDS] },
+      },
+      select: { id: true, name: true, kind: true },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take,
+    });
+
+    return { entries, documents };
   });
+
+  // The version half, brokered, after the contact's transaction closed.
+  // Asked without throwing, the update branch's shape: a profile that
+  // may read the rail but not documents gets a rail with no deliveries
+  // on it, not a blank page. Both v1 profiles hold `portal.document.view`,
+  // so today this is defence in depth against the profile that does
+  // not exist yet (the security review's second note).
+  if (documents.length > 0) {
+    const byId = new Map(documents.map((d) => [d.id, d]));
+    let versions: Awaited<ReturnType<typeof readPortalFileVersions>> = [];
+    try {
+      versions = await readPortalFileVersions(
+        principal,
+        documents.map((d) => d.id),
+        { take },
+      );
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+    }
+    for (const v of versions) {
+      const doc = byId.get(v.documentId);
+      // The broker is bounded by the ids above, so a miss cannot happen;
+      // the guard keeps the entry's type honest rather than asserted.
+      if (!doc || !isTimelineDocumentKind(doc.kind)) continue;
+      entries.push({
+        kind: "document_version",
+        id: v.id,
+        at: v.at,
+        documentId: v.documentId,
+        name: doc.name,
+        documentKind: doc.kind,
+        versionNumber: v.versionNumber,
+      });
+    }
+  }
+
+  entries.sort(byNewest);
+  const truncated = entries.length > PORTAL_TIMELINE_LIMIT;
+  return { entries: truncated ? entries.slice(0, PORTAL_TIMELINE_LIMIT) : entries, truncated };
 }

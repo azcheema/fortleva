@@ -85,6 +85,19 @@ const POLICIES = {
    */
   "portal.task_act": { limit: 60, window: "15 m" },
   /**
+   * THE PORTAL'S FILE DOWNLOAD per CONTACT (Phase 3, the portal files
+   * slice). The cheap filter in front of a fail-CLOSED Postgres budget
+   * (`assertDownloadBudget`, `src/documents/portal-writes.ts`, which
+   * counts the `file.downloaded` audit rows the downloads themselves
+   * write) — the same layering as `portal.request_create`, and a no-op
+   * until Upstash is provisioned for the same documented reason. Its
+   * limit sits ABOVE the Postgres one so the honest refusal is normally
+   * the one that fires. Keyed on the contact id: the actor is
+   * authenticated, and an office NAT must not let one client's staff
+   * spend another's budget.
+   */
+  "portal.document_download": { limit: 120, window: "15 m" },
+  /**
    * THE PORTAL INVITATION ACCEPTANCE PAGE (Phase 3, the invite slice's
    * surfaces) — `/portal/invite/[token]`, the ONLY surface in this
    * product that takes a write from somebody with no session.

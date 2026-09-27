@@ -1068,7 +1068,9 @@
       "clientVisibleWarning": "Alla med portalåtkomst hos den här kunden kommer kunna öppna filen.",
       "step": "Steg {step} av {total}",
       "progressLabel": "Uppladdningsförlopp",
-      "choose": "Välj fil"
+      "choose": "Välj fil",
+      "deliverable": "Det här är en leverans",
+      "deliverableHint": "Visas först på kundens filsida och på kundens tidslinje för varje version, när kunden kan se den."
     },
     "errors": {
       "quota": "Lagringskvoten är full — ta bort filer eller uppgradera planen.",
@@ -1091,7 +1093,8 @@
     },
     "tableLabel": "Filer",
     "downloadName": "Ladda ner {name}",
-    "deleteConfirm": "Ta bort {name}?"
+    "deleteConfirm": "Ta bort {name}?",
+    "deliverable": "Leverans"
   },
   "errors": {
     "generic": "Något gick fel.",
@@ -1168,7 +1171,9 @@
     "UPDATE_RETRACT_WINDOW_CLOSED": "Det har gått mer än 15 minuter sedan publiceringen, så uppdateringen kan inte längre dras tillbaka. Lägg till en anteckning eller arkivera den.",
     "UPDATE_EMPTY": "Skriv något i minst ett avsnitt innan du publicerar.",
     "UPDATE_CHANGED": "Utkastet ändrades medan det publicerades. Kontrollera det och publicera igen.",
-    "UPDATE_TOO_LARGE": "Ett av avsnitten är för långt för att sparas."
+    "UPDATE_TOO_LARGE": "Ett av avsnitten är för långt för att sparas.",
+    "DOWNLOAD_RATE_LIMITED": "Du har laddat ner många filer på kort tid. Vänta några minuter och försök igen.",
+    "DOWNLOAD_BUSY": "Filen kunde inte hämtas just nu. Försök igen om en stund."
   },
   "assignments": {
     "title": "Team",
@@ -2561,14 +2566,71 @@
     },
     "timeline": {
       "title": "Tidslinje",
-      "description": "Uppdateringar, milstolpar och leveranser, nyast först.",
+      "description": "Uppdateringar, milstolpar, releaser och leveranser, nyast först.",
       "truncated": "Visar de {count} senaste händelserna.",
       "updateNumber": "Uppdatering #{seq}",
       "published": "Publicerad {date}",
       "milestoneReached": "Milstolpe nådd {date}",
       "milestoneDue": "Milstolpe klar senast {date}",
       "version": "Version {version}",
-      "released": "Levererad {date}"
+      "released": "Levererad {date}",
+      "deliverable": "Leverans: {name}",
+      "report": "Rapport: {name}",
+      "fileVersion": "Version {number}",
+      "shared": "Tillagd {date}"
+    },
+    "nav": {
+      "label": "Kundportal",
+      "home": "Översikt",
+      "files": "Filer",
+      "company": "Ditt företag"
+    },
+    "files": {
+      "title": "Filer",
+      "description": "Filer och leveranser som din byrå har delat med dig.",
+      "projectTitle": "Filer och leveranser",
+      "projectDescription": "Det din byrå har levererat och delat i projektet.",
+      "company": "Delat med ditt företag",
+      "companyDescription": "Filer som inte hör till ett visst projekt.",
+      "kinds": {
+        "DELIVERABLE": "Leveranser",
+        "REPORT": "Rapporter",
+        "GENERAL": "Övriga filer"
+      },
+      "version": "Version {number}",
+      "shared": "Tillagd {date}",
+      "download": "Ladda ner",
+      "downloadName": "Ladda ner {name}",
+      "truncated": "Visar de första {count} filerna. Hör av dig till din byrå om något saknas.",
+      "errors": {
+        "download": "Filen kunde inte laddas ner just nu. Försök igen eller hör av dig till din kontakt på byrån."
+      }
+    },
+    "company": {
+      "title": "Ditt företag",
+      "description": "Det din byrå har registrerat om ditt företag, och avtalen mellan er.",
+      "record": "Företagsuppgifter",
+      "recordDescription": "Hör av dig till din kontakt på byrån om något här är inaktuellt.",
+      "name": "Namn",
+      "orgNr": "Org.nr",
+      "vatNumber": "Momsregistreringsnummer",
+      "address": "Adress",
+      "agreements": "Avtal",
+      "agreementsDescription": "Det du köper av din byrå.",
+      "kinds": {
+        "ONE_TIME": "Engång",
+        "RECURRING": "Återkommande"
+      },
+      "intervals": {
+        "MONTHLY": "månadsvis",
+        "QUARTERLY": "kvartalsvis",
+        "YEARLY": "årsvis"
+      },
+      "priceExVat": "{amount} exkl. moms",
+      "renews": "Förnyas {date}",
+      "ends": "Avslutas {date}",
+      "ended": "Avslutades {date}",
+      "project": "Projekt: {name}"
     }
   },
   "viewAs": {

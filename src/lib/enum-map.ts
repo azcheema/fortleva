@@ -35,6 +35,7 @@ export type StatusIconName =
   | "circle-pause"
   | "circle-x"
   | "archive"
+  | "file-check"
   | "file-pen"
   | "package-check"
   | "minus"

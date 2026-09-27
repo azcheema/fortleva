@@ -1,5 +1,6 @@
 import type { TenantDb } from "@/db";
 import { rankBetween } from "@/lib/rank";
+import { lockContactBudget } from "@/portal/contact-budget-lock";
 
 /**
  * The project's rank lock and the locked neighbour reads (ARC-17),
@@ -178,18 +179,12 @@ export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise
  * narrows when that instance runs fast and widens when it runs slow,
  * with nothing failing either way.
  */
-export async function lockContactRequestBudget(tx: TenantDb, contactId: string): Promise<Date> {
-  // The CTE is what makes this ONE statement: the lock is taken while
-  // the row carrying `now()` is produced.
-  const rows = await tx.$queryRaw<{ now: Date }[]>`
-    WITH locked AS (SELECT pg_advisory_xact_lock(hashtext(${`portal_request:${contactId}`})))
-    SELECT now() AS now FROM locked`;
-  const clock = rows[0];
-  // Postgres cannot return zero rows here; if it somehow does, the
-  // budget has no window to measure and must not be guessed at.
-  if (!clock) throw new Error("lockContactRequestBudget: no clock row");
-  return clock.now;
-}
+export const lockContactRequestBudget = (tx: TenantDb, contactId: string): Promise<Date> =>
+  // The statement itself lives in core since the portal files slice
+  // (2026-09-27): the download budget needed the same lock, and one raw
+  // statement in one place beats two copies of the CTE trick and its
+  // caveats. The key is unchanged — `portal_request:<contactId>`.
+  lockContactBudget(tx, "portal_request", contactId);
 
 /**
  * The mode a writer takes on an item row. For a writer of THAT row it is

@@ -53,6 +53,9 @@ const PORTAL_DISCLOSABLE: ReadonlySet<DomainErrorCode> = new Set<DomainErrorCode
   // "You have sent too many requests." — a fact about the reader's own
   // behaviour, and useless to hide: the wait is observable anyway.
   "REQUEST_RATE_LIMITED",
+  // "You have downloaded a lot of files in a short time." — the same
+  // shape, for the portal files slice's download budget.
+  "DOWNLOAD_RATE_LIMITED",
   // "Check what you typed." — their own input, echoed back at them.
   "INVALID_INPUT",
 ]);
@@ -80,15 +83,20 @@ export const portalDisclosableCode = (error: unknown): DomainErrorCode | null =>
 export async function runPortalAction<T>(
   label: string,
   fn: () => Promise<T>,
-): Promise<{ ok: true; value: T } | { ok: false; message: string }> {
+): Promise<{ ok: true; value: T } | { ok: false; message: string; code?: DomainErrorCode }> {
   const t = await getTranslations("portal.errors");
   try {
     return { ok: true, value: await fn() };
   } catch (error) {
     const disclosable = portalDisclosableCode(error);
     if (disclosable) {
+      // The CODE rides along with the message, and only for a disclosable
+      // refusal: a caller that has no toast — a form POST that redirects
+      // back to a page — needs to know WHICH of the disclosable things
+      // happened to say it, and the code is already the reader's to have.
+      // A non-disclosable failure carries no code, by construction.
       const tDomain = await getTranslations("domainErrors");
-      return { ok: false, message: tDomain(disclosable) };
+      return { ok: false, message: tDomain(disclosable), code: disclosable };
     }
     if (error instanceof AuthzError || error instanceof DomainError) {
       // Structured enough to grep, naming no contact and no row: a

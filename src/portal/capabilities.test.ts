@@ -24,6 +24,7 @@ describe("the portal capability union", () => {
   it("is exactly the v1 allowlist", () => {
     expect([...PORTAL_CAPABILITIES].sort()).toEqual([
       "portal.comment.create",
+      "portal.company.view",
       "portal.continuity.download",
       "portal.continuity.request_open",
       "portal.continuity.view_status",
@@ -38,6 +39,7 @@ describe("the portal capability union", () => {
       "portal.invoice.view",
       "portal.project.view",
       "portal.request.create",
+      "portal.service.view",
       "portal.share_link.view",
       "portal.timeline.view",
       "portal.update.view",
@@ -96,6 +98,8 @@ describe("the portal capability union", () => {
       "portal.document.view": null,
       "portal.document.download": null,
       "portal.deliverable.approve": null,
+      "portal.company.view": null,
+      "portal.service.view": null,
       "portal.work_item.view": "work",
       "portal.work_item.act": "work",
       "portal.request.create": "work",
@@ -145,12 +149,13 @@ describe("the two v1 contact profiles", () => {
     // adding a row to the union is otherwise a silent grant to every
     // primary contact in the product.
     expect([...PORTAL_PROFILES.CONTACT_PRIMARY].sort()).toEqual([...PORTAL_CAPABILITIES].sort());
-    expect(PORTAL_PROFILES.CONTACT_PRIMARY.length).toBe(21);
+    expect(PORTAL_PROFILES.CONTACT_PRIMARY.length).toBe(23);
   });
 
   it("CONTACT_COLLABORATOR holds exactly the collaborator bundle", () => {
     expect([...PORTAL_PROFILES.CONTACT_COLLABORATOR].sort()).toEqual([
       "portal.comment.create",
+      "portal.company.view",
       "portal.credential.submit",
       "portal.document.download",
       "portal.document.view",
@@ -176,6 +181,9 @@ describe("the two v1 contact profiles", () => {
       "portal.hours.view",
       "portal.deliverable.approve",
       "portal.version.approve",
+      // An agreement row carries the fee the client pays (Phase 3, the
+      // files-and-services slice): money, so PRIMARY only.
+      "portal.service.view",
     ]) {
       expect(profileHolds("CONTACT_COLLABORATOR", withheld), withheld).toBe(false);
       expect(profileHolds("CONTACT_PRIMARY", withheld), withheld).toBe(true);

@@ -177,6 +177,13 @@ const PORTAL_PAGE = join(SRC, "app", "(portal)", "portal", "page.tsx");
 // navigable page.
 const PORTAL_PROJECT_PAGE = join(SRC, "app", "(portal)", "portal", "projects", "[key]", "page.tsx");
 const VIEW_AS_PROJECT_PAGE = join(SRC, "app", "(tenant)", "view-as", "projects", "[key]", "page.tsx");
+// The files page and the company page, with their twins (Phase 3, the
+// portal files-and-services slice): the same claim for the portal's
+// third and fourth navigable pages.
+const PORTAL_FILES_PAGE = join(SRC, "app", "(portal)", "portal", "files", "page.tsx");
+const VIEW_AS_FILES_PAGE = join(SRC, "app", "(tenant)", "view-as", "files", "page.tsx");
+const PORTAL_COMPANY_PAGE = join(SRC, "app", "(portal)", "portal", "company", "page.tsx");
+const VIEW_AS_COMPANY_PAGE = join(SRC, "app", "(tenant)", "view-as", "company", "page.tsx");
 const PORTAL_FRAME = join(SRC, "app", "(portal)", "portal", "portal-frame.tsx");
 const PROJECT_LAYOUT = join(SRC, "app", "(tenant)", "(authed)", "projects", "[key]", "layout.tsx");
 const PORTAL_TAB = join(
@@ -279,6 +286,24 @@ describe("view-as-contact renders the contact's own page", () => {
       expect(importsFrom(text, "project-timeline")).toBe(false);
       expect(importsFrom(text, "@/modules/work")).toBe(false);
       expect(importsFrom(text, "@/projects/portal")).toBe(false);
+      expect(importsFrom(text, "@/documents/portal")).toBe(false);
+    }
+    // …the files page: both render <PortalFilesView>, and neither reaches
+    // the documents module or the file list itself.
+    for (const file of [PORTAL_FILES_PAGE, VIEW_AS_FILES_PAGE]) {
+      const text = readFileSync(file, "utf8");
+      expect(importsFrom(text, "files-view")).toBe(true);
+      expect(importsFrom(text, "file-list")).toBe(false);
+      expect(importsFrom(text, "@/documents/portal")).toBe(false);
+      expect(importsFrom(text, "@/documents/portal-writes")).toBe(false);
+    }
+    // …and the company page: both render <PortalCompanyView>, and neither
+    // reaches the client or services projections itself.
+    for (const file of [PORTAL_COMPANY_PAGE, VIEW_AS_COMPANY_PAGE]) {
+      const text = readFileSync(file, "utf8");
+      expect(importsFrom(text, "company-view")).toBe(true);
+      expect(importsFrom(text, "@/clients/portal")).toBe(false);
+      expect(importsFrom(text, "@/services/portal")).toBe(false);
     }
   });
 
@@ -289,6 +314,8 @@ describe("view-as-contact renders the contact's own page", () => {
     // read wearing a portal page's clothes.
     expect(delegatesOf(VIEW_AS_PAGE).size).toBe(0);
     expect(delegatesOf(VIEW_AS_PROJECT_PAGE).size).toBe(0);
+    expect(delegatesOf(VIEW_AS_FILES_PAGE).size).toBe(0);
+    expect(delegatesOf(VIEW_AS_COMPANY_PAGE).size).toBe(0);
   });
 
   it("the view-as service touches two authorization tables and no work table", () => {
@@ -337,6 +364,19 @@ describe("view-as-contact renders the contact's own page", () => {
     expect(projectBody.indexOf("<ViewAsBanner")).toBeGreaterThan(-1);
     expect(projectBody.indexOf("<PortalProjectView")).toBeGreaterThan(-1);
     expect(projectBody.indexOf("<ViewAsBanner")).toBeLessThan(projectBody.indexOf("<PortalProjectView"));
+    // …and on the files and company pages (the portal files-and-services
+    // slice), the same arrangement, measured in each component's body.
+    for (const [file, fn, view] of [
+      [VIEW_AS_FILES_PAGE, "ViewAsFilesPage", "<PortalFilesView"],
+      [VIEW_AS_COMPANY_PAGE, "ViewAsCompanyPage", "<PortalCompanyView"],
+    ] as const) {
+      const text = readFileSync(file, "utf8");
+      const body = text.slice(text.indexOf(`export default async function ${fn}`));
+      expect(body.length, file).toBeGreaterThan(0);
+      expect(body.indexOf("<ViewAsBanner"), file).toBeGreaterThan(-1);
+      expect(body.indexOf(view), file).toBeGreaterThan(-1);
+      expect(body.indexOf("<ViewAsBanner"), file).toBeLessThan(body.indexOf(view));
+    }
   });
 
   it("the locale is pinned to the contact, ahead of the member session", () => {

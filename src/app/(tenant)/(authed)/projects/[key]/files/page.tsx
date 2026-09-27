@@ -102,7 +102,7 @@ export default async function ProjectFilesPage({
             title={tFiles("upload.title")}
             description={project.portalEnabled ? t("uploadPortalOn") : t("uploadPortalOff")}
           >
-            <UploadForm target={{ projectId: project.id, returnTo }} visibilityEnabled />
+            <UploadForm target={{ projectId: project.id, returnTo }} visibilityEnabled kindEnabled />
           </SectionCard>
         </div>
       ) : null}

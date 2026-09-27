@@ -67,7 +67,8 @@ export const retryOnDeadlock = <T>(fn: () => Promise<T>): Promise<T> =>
  * OR simply kept waiting — a caller that passes `withTenant`'s
  * `lockTimeoutMs` and therefore gets a 55P03 where it would otherwise
  * have waited with no end in sight (`isLockTimeout` has the
- * measurement). ONE CALLER: `setPortalEnabled`.
+ * measurement). Callers: `setPortalEnabled`, the two work-module
+ * brokers, and the portal download (`src/documents/portal-writes.ts`).
  *
  * THE TWO ARE SEPARATE EXPORTS ON PURPOSE. A lock timeout can only
  * reach a caller that ASKED for the bound, so folding both shapes into

@@ -274,6 +274,12 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // shared tasks. The seed gives the rail every kind of entry.
     { name: "portal-project", path: `/portal/projects/${seed.projectKey}`, session: "contact" },
     { name: "portal-project-updates", path: `/portal/projects/${seed.projectKey}/updates`, session: "contact" },
+    // The files page and the company page (Phase 3, the portal
+    // files-and-services slice): the shared deliverable at version 2
+    // under the project's card, the company's own file under its own;
+    // the record and the one shared agreement with its fee.
+    { name: "portal-files", path: "/portal/files", session: "contact" },
+    { name: "portal-company", path: "/portal/company", session: "contact" },
     // INVITATION ACCEPTANCE, both states, mirroring the member plane's
     // pair at the top of this list. The live one needs a token that
     // stands still, which is why the fixture seeds one

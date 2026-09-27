@@ -102,6 +102,11 @@ const targetSchema = z
     // its work item's visibility in the service (DATA_MODEL §10); the
     // service defaults every un-anchored path to INTERNAL as before.
     visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]).optional(),
+    // Phase 3, the portal files slice: a member may mark an upload a
+    // DELIVERABLE (grouped first on the client's files list, an event
+    // on their timeline per version). The generated kinds are not a
+    // choice — `UploadKind` in the service says why.
+    kind: z.enum(["GENERAL", "DELIVERABLE"]).optional(),
     returnTo: z.string().regex(SAFE_PATH).default("/files"),
     // 2W-A: anchor to a work item — the anchor implies client + project
     // (derived from the item; the service refuses a disagreement).
@@ -153,11 +158,11 @@ export async function commitUploadAction(
     const t = await getTranslations("files.errors");
     return { ok: false, message: t("invalidRequest") };
   }
-  const { clientId, projectId, visibility, returnTo, attachedToType, attachedToId } = target.data;
+  const { clientId, projectId, visibility, kind, returnTo, attachedToType, attachedToId } = target.data;
   const result = await guard(returnTo, () =>
     commitUpload(
       { tenantId: membership.tenantId, actor },
-      { fileObjectId, clientId, projectId, visibility, attachedToType, attachedToId },
+      { fileObjectId, clientId, projectId, visibility, kind, attachedToType, attachedToId },
     ),
   );
   if (result.ok) revalidatePath(returnTo);

@@ -95,6 +95,14 @@ export const PORTAL_CAPABILITY_DEFS = {
   "portal.document.view": { modules: ["portal"] },
   "portal.document.download": { modules: ["portal"] },
   "portal.deliverable.approve": { modules: ["portal"] },
+  // The client's OWN COMPANY RECORD and the agreements it holds (Phase 3,
+  // the portal files-and-services slice; PLAN Phase 3 "read surfaces:
+  // … `Service`s, own company record"). Both are `core`: a client's
+  // name and a Service row exist for every tenant, on every plan.
+  // `portal.service.view` is PRIMARY ONLY (below) — the row carries the
+  // agreement's FEE, and AUTHZ.md §8's collaborator rule is "no money".
+  "portal.company.view": { modules: ["portal"] },
+  "portal.service.view": { modules: ["portal"] },
   // ── work: items, requests, comments, updates, timeline ───────────
   // `ProjectUpdate` rides on `work` (AUTHZ.md §5: there is no separate
   // `updates` key), and so does the derived timeline.
@@ -145,12 +153,15 @@ export const isPortalCapability = (value: unknown): value is PortalCapability =>
  * derivation is a convenience, the pin is the control.
  *
  * `CONTACT_COLLABORATOR` is written out: no money, no signatures, no
- * continuity, no hours, no deliverable sign-off, no version approval.
+ * continuity, no hours, no deliverable sign-off, no version approval —
+ * and no agreements (`portal.service.view`), because an agreement row
+ * carries the fee the client pays, which is money.
  */
 export const PORTAL_PROFILES = {
   CONTACT_PRIMARY: PORTAL_CAPABILITIES,
   CONTACT_COLLABORATOR: [
     "portal.project.view",
+    "portal.company.view",
     "portal.document.view",
     "portal.document.download",
     "portal.work_item.view",

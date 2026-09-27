@@ -8,6 +8,8 @@ import { toast } from "sonner";
 
 import { Callout, Field, FileDropField, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { chosenFileFrom, type ChosenFile } from "@/lib/file-field";
 import { cn } from "@/lib/utils";
@@ -52,11 +54,19 @@ type Phase =
 export function UploadForm({
   target = {},
   visibilityEnabled = false,
+  kindEnabled = false,
   defaultVisibility = "INTERNAL",
   visibilityHint,
 }: {
-  target?: Omit<UploadTarget, "visibility">;
+  target?: Omit<UploadTarget, "visibility" | "kind">;
   visibilityEnabled?: boolean;
+  /**
+   * Offer "This is a deliverable" (Phase 3, the portal files slice) —
+   * only where a client exists to deliver TO, which is the client's and
+   * the project's Files tabs; a workspace-internal upload has nobody to
+   * be a deliverable for. Off by default, like the visibility select.
+   */
+  kindEnabled?: boolean;
   /** Where the select starts (and resets to after a success). An
    * ANCHORED upload passes its work item's visibility so the §10
    * inheritance is what the member actually sees pre-selected; every
@@ -69,6 +79,7 @@ export function UploadForm({
   const tVis = useTranslations("visibility");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [visibility, setVisibility] = useState<"INTERNAL" | "CLIENT_VISIBLE">(defaultVisibility);
+  const [deliverable, setDeliverable] = useState(false);
   const [chosen, setChosen] = useState<ChosenFile | null>(null);
   const [, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -78,7 +89,11 @@ export function UploadForm({
     e.preventDefault();
     const file = inputRef.current?.files?.[0];
     if (!file) return;
-    const fullTarget: UploadTarget = { ...target, visibility };
+    const fullTarget: UploadTarget = {
+      ...target,
+      visibility,
+      ...(kindEnabled && deliverable ? { kind: "DELIVERABLE" as const } : {}),
+    };
 
     setPhase({ kind: "busy", step: "preparing" });
     const sha256 = await sha256Hex(file);
@@ -112,6 +127,7 @@ export function UploadForm({
     if (inputRef.current) inputRef.current.value = "";
     setChosen(null);
     setVisibility(defaultVisibility);
+    setDeliverable(false);
     startTransition(() => router.refresh());
   };
 
@@ -159,6 +175,27 @@ export function UploadForm({
           <option value="CLIENT_VISIBLE">{tVis("clientVisible")}</option>
         </NativeSelect>
       </Field>
+
+      {kindEnabled ? (
+        // A DELIVERABLE is a claim about what the file IS, not about who
+        // may see it: it can be uploaded private and shared later, and
+        // the client's list and timeline read the kind only once the row
+        // is CLIENT_VISIBLE. So it is a separate control from the
+        // visibility select, and it says what it changes on the portal.
+        <div className="flex flex-col gap-1">
+          <Label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              name="deliverable"
+              checked={deliverable}
+              onCheckedChange={(v) => setDeliverable(v === true)}
+              disabled={busy}
+              data-testid="upload-deliverable"
+            />
+            {t("upload.deliverable")}
+          </Label>
+          <p className="text-xs text-muted-foreground">{t("upload.deliverableHint")}</p>
+        </div>
+      ) : null}
 
       {clientVisible ? (
         <Callout tone="caution" role="status">

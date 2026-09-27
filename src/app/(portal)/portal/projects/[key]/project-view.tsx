@@ -3,11 +3,14 @@ import { getLocale, getTimeZone, getTranslations } from "next-intl/server";
 
 import { Callout, HealthChip, Page, PageHeader, ProgressMeter, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { listPortalDocuments } from "@/documents/portal";
 import { formatDay } from "@/lib/format";
 import { listPortalTasks, listPortalTimeline, listPortalUpdates } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 import { findPortalProjectByKey, readPortalProjectSummary } from "@/projects/portal";
 
+import { PortalFileList } from "../../files/file-list";
+import type { PortalFileError } from "../../files/files-view";
 import { PortalFrame } from "../../portal-frame";
 import { LatestUpdate, PortalTasksEmpty, ProjectTasks, TaskRow, isWaitingOnYou } from "../../task-list";
 import { PortalTimeline } from "./project-timeline";
@@ -54,12 +57,16 @@ export async function PortalProjectView({
   principal,
   name,
   projectKey,
+  error,
 }: {
   principal: PortalPrincipal;
   name: string;
   projectKey: string;
+  /** A refused download's word, when the files section's form sent the reader back here (`../../files/actions.ts`). */
+  error?: PortalFileError;
 }) {
   const t = await getTranslations("portal");
+  const tDomain = await getTranslations("domainErrors");
   const locale = await getLocale();
   // The request's zone — the product default on the portal plane, and
   // pinned to the same on `/view-as` — decides which day is "today" for
@@ -85,11 +92,17 @@ export async function PortalProjectView({
   const list = project
     ? await portalReadOrNull("listPortalTasks", () => listPortalTasks(principal, { projectId: project.id }))
     : null;
+  // The sixth read (the portal files slice): this project's shared files,
+  // for section 6. Sequential, like the five above.
+  const files = project
+    ? await portalReadOrNull("listPortalDocuments", () => listPortalDocuments(principal, { projectId: project.id }))
+    : null;
 
   const latest = updates?.[0] ?? null;
   const tasks = list?.projects[0] ?? null;
   const waiting = tasks?.tasks.filter(isWaitingOnYou) ?? [];
   const events = timeline?.entries ?? [];
+  const documents = files?.documents ?? [];
   // THE EMPTY STATE IS FOR A PAGE WITH NO PLAN EITHER. A project whose
   // only shared rows are undated open milestones has a header — the
   // phase, the meter — and no section to draw under it, and that is
@@ -97,7 +110,12 @@ export async function PortalProjectView({
   // "Nothing shared with you yet" under a meter that counts shared
   // milestones would be the page contradicting itself (a review asked
   // the question; this is the answer, on purpose).
-  const nothing = !latest && events.length === 0 && !tasks && !(summary && summary.milestones.total > 0);
+  const nothing =
+    !latest &&
+    events.length === 0 &&
+    !tasks &&
+    documents.length === 0 &&
+    !(summary && summary.milestones.total > 0);
 
   // The header's one sentence, built from the summary's two facts. The
   // phase's own end is the next thing due when they are the same row,
@@ -113,7 +131,7 @@ export async function PortalProjectView({
   else if (next) facts.push(t("project.nextMilestone", { name: next.name, date: formatDay(locale, next.dueAt) }));
 
   return (
-    <PortalFrame name={name}>
+    <PortalFrame name={name} nav="home">
       <Page>
         <div className="flex flex-col gap-6">
           <PageHeader
@@ -144,6 +162,15 @@ export async function PortalProjectView({
               </Button>
             }
           />
+
+          {error ? (
+            // A refused download from the files section below, drawn in
+            // place: `alert`, never `status`, on the plane with no toast.
+            // The budget refusal is the domain error's own sentence.
+            <Callout tone="danger" role="alert">
+              {error === "rate" ? tDomain("DOWNLOAD_RATE_LIMITED") : t("files.errors.download")}
+            </Callout>
+          ) : null}
 
           {!project || nothing ? (
             <PortalTasksEmpty />
@@ -198,6 +225,29 @@ export async function PortalProjectView({
                 <Callout tone="info">{t("tasks.truncated", { count: list.shown })}</Callout>
               ) : null}
               {tasks ? <ProjectTasks project={tasks} title={t("tasks.heading")} /> : null}
+
+              {/* 6. FILES & DELIVERABLES (UI.md §4 item 6; the portal
+                  files slice): the project's shared files, deliverables
+                  first, each with its download. Omitted when there are
+                  none, like the rail. AFTER the tasks, which is §4's
+                  order — a refused download returns the reader here
+                  with the banner at the top of the page. */}
+              {documents.length > 0 ? (
+                <SectionCard
+                  title={t("files.projectTitle")}
+                  description={t("files.projectDescription")}
+                  contentClassName="p-0"
+                >
+                  <div data-slot="portal-project-files" className="flex flex-col">
+                    {files?.truncated ? (
+                      <div className="p-4 pb-0">
+                        <Callout tone="info">{t("files.truncated", { count: documents.length })}</Callout>
+                      </div>
+                    ) : null}
+                    <PortalFileList documents={documents} returnTo={`/portal/projects/${project.key}`} />
+                  </div>
+                </SectionCard>
+              ) : null}
             </>
           )}
         </div>

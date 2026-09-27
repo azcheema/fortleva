@@ -159,5 +159,39 @@ function TimelineEntry({
         </TimelineItem>
       );
     }
+    case "document_version": {
+      // A DELIVERED FILE (the portal files slice): the filled file-check,
+      // brand tone — it happened, and it is the agency's output rather
+      // than a plan or a post. One entry per version, so "v2" reads as
+      // its own event above "v1". No download here: the rail says what
+      // was delivered and when; the files section below it is where the
+      // newest version is fetched from, so a client cannot click a "v1"
+      // entry and receive v2.
+      return (
+        <TimelineItem
+          node={<StatusIcon name="file-check" className="size-3.5" />}
+          tone="brand"
+          filled
+          last={last}
+          contentClassName="flex flex-col gap-1"
+        >
+          <div
+            data-slot="portal-event"
+            data-kind={entry.kind}
+            data-document-kind={entry.documentKind}
+            className="flex flex-col gap-1"
+          >
+            <span className="text-sm font-medium text-foreground">
+              {entry.documentKind === "DELIVERABLE"
+                ? t("deliverable", { name: entry.name })
+                : t("report", { name: entry.name })}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {t("fileVersion", { number: entry.versionNumber })} · {t("shared", { date: when })}
+            </span>
+          </div>
+        </TimelineItem>
+      );
+    }
   }
 }

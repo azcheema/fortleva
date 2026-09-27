@@ -128,11 +128,23 @@ export type PortalPrincipal = {
  * `visibility` term as well as the client and the portal switch, so a
  * ref that resolves has proved the contact may read that exact task —
  * not merely that its project is reachable.
+ *
+ * `document` PAID ITS DEBT WITH THE PORTAL FILES SLICE, and it is the
+ * same strength: `document`'s `portal_gate` is the three-term form
+ * (client, CLIENT_VISIBLE, `portal_enabled` — which the stamp trigger
+ * sets TRUE for a client-level document with no project), so a ref that
+ * resolves has proved the contact may read that exact file's row. What
+ * it has NOT proved is anything about the file LAYER: `file_version`
+ * and `file_object` carry `portal_deny`, and the download that follows
+ * is brokered (`src/documents/portal-writes.ts`), which is the whole
+ * reason the ref exists — the broker's system transaction must be
+ * preceded by a proof the database made.
  */
 export type PortalScopeRef =
   | { readonly kind: "client"; readonly clientId: string }
   | { readonly kind: "project"; readonly projectId: string }
-  | { readonly kind: "work_item"; readonly workItemId: string };
+  | { readonly kind: "work_item"; readonly workItemId: string }
+  | { readonly kind: "document"; readonly documentId: string };
 
 /**
  * Throws `AuthzError` on every denial. NOT_FOUND for anything
@@ -270,6 +282,16 @@ export async function authorizePortal(
     // business, not this file's.
     const row = await tx.workItem.findFirst({ where: { id: ref.workItemId }, select: { id: true } });
     if (!row) deny("NOT_FOUND", "work item");
+  } else if (ref?.kind === "document") {
+    // The same single probe: tenant, client, the row's own CLIENT_VISIBLE
+    // and the project's switch are all `portal_gate`'s. The soft-delete
+    // term is the projection's, not the policy's, and it is repeated
+    // here so a deleted file cannot be downloaded by an id somebody kept.
+    const row = await tx.document.findFirst({
+      where: { id: ref.documentId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!row) deny("NOT_FOUND", "document");
   }
 
   // 5. Gates 1–3 for every module this capability rides on.

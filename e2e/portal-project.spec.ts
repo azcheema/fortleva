@@ -47,22 +47,30 @@ test.describe("portal project page", () => {
     await expect(rail).toBeVisible();
     const events = rail.locator('[data-slot="portal-event"]');
     // Newest first: the upcoming due (+7 d), the post (today), the
-    // reached milestone (today, before the post in the seed), the ship
-    // (−7 d), the in-progress phase's own due (−14 d).
-    await expect(events).toHaveCount(5);
+    // reached milestone (today, before the post in the seed), the two
+    // versions of the shared deliverable (today, seeded before the
+    // milestones — the portal files slice), the ship (−7 d), the
+    // in-progress phase's own due (−14 d).
+    await expect(events).toHaveCount(7);
     await expect(events.nth(0)).toHaveAttribute("data-kind", "milestone_due");
     await expect(events.nth(0)).toContainText(seed.upcomingMilestoneName);
     await expect(events.nth(1)).toHaveAttribute("data-kind", "update");
     await expect(events.nth(1).locator('[data-slot="health-chip"]')).toHaveAttribute("data-value", "AT_RISK");
     await expect(events.nth(2)).toHaveAttribute("data-kind", "milestone_done");
     await expect(events.nth(2)).toContainText(seed.reachedMilestoneName);
-    await expect(events.nth(3)).toHaveAttribute("data-kind", "version_shipped");
-    await expect(events.nth(3)).toContainText(`Version ${seed.shippedVersion}`);
-    await expect(events.nth(3)).toContainText("Sidmallar och navigation på plats");
-    await expect(events.nth(4)).toHaveAttribute("data-kind", "milestone_due");
-    await expect(events.nth(4)).toContainText(seed.datedMilestoneName);
+    await expect(events.nth(3)).toHaveAttribute("data-kind", "document_version");
+    await expect(events.nth(3)).toHaveAttribute("data-document-kind", "DELIVERABLE");
+    await expect(events.nth(3)).toContainText(`Deliverable: ${seed.deliverableDocName}`);
+    await expect(events.nth(3)).toContainText("Version 2");
+    await expect(events.nth(4)).toHaveAttribute("data-kind", "document_version");
+    await expect(events.nth(4)).toContainText("Version 1");
+    await expect(events.nth(5)).toHaveAttribute("data-kind", "version_shipped");
+    await expect(events.nth(5)).toContainText(`Version ${seed.shippedVersion}`);
+    await expect(events.nth(5)).toContainText("Sidmallar och navigation på plats");
+    await expect(events.nth(6)).toHaveAttribute("data-kind", "milestone_due");
+    await expect(events.nth(6)).toContainText(seed.datedMilestoneName);
 
-    // ── THE NEGATIVE CONTROL ─────────────────────────────────────────
+    // ── THE NEGATIVE CONTROLS ────────────────────────────────────────
     // The INTERNAL milestone is on no part of the page. Checked on the
     // whole surface, not the rail alone: the header's facts and the
     // meter are the other places a milestone name could reach.
@@ -72,10 +80,23 @@ test.describe("portal project page", () => {
     // are checked rather than the post's body.)
     await expect(rail).not.toContainText("Lansering");
     await expect(facts).not.toContainText("Lansering");
+    // …and the INTERNAL deliverable is on neither the rail nor the files
+    // section (the portal files slice's control).
+    await expect(page.locator("[data-portal-surface]")).not.toContainText(seed.internalDeliverableDocName);
 
     // ── The latest update and the shared tasks are on the page too ──
     await expect(page.locator('[data-slot="portal-update"]')).toHaveCount(1);
     await expect(page.locator('[data-slot="portal-group"]').first()).toBeVisible();
+
+    // ── 6. Files & deliverables: the project's shared files, the
+    // deliverable first at version 2, each with its download. ────────
+    const filesSection = page.locator('[data-slot="portal-project-files"]');
+    await expect(filesSection).toBeVisible();
+    const rows = filesSection.locator('[data-slot="portal-file"]');
+    await expect(rows.first()).toHaveAttribute("data-kind", "DELIVERABLE");
+    await expect(rows.first()).toContainText(seed.deliverableDocName);
+    await expect(rows.first()).toContainText("Version 2");
+    await expect(rows.first().getByRole("button", { name: `Download ${seed.deliverableDocName}` })).toBeVisible();
 
     // ── The post's entry links to the updates page, at its anchor ────
     await events.nth(1).getByRole("link").click();

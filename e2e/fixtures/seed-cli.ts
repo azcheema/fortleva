@@ -115,6 +115,9 @@ const DBTEST_PREFIXES = [
   "money-",
   "ordering-",
   "pauthz-",
+  // Phase 3, the portal files slice — `src/documents/portal.dbtest.ts`,
+  // `setupTenant("pfil")`.
+  "pfil-",
   "portalc-",
   // Phase 3, progress updates — `src/modules/work/updates.dbtest.ts`,
   // `setupTenant("pupd")`.
@@ -138,6 +141,9 @@ const DBTEST_PREFIXES = [
   // keep it CORRECT, and a prefix costs nothing but a `startsWith`.
   "probe-",
   "projects-",
+  // Phase 3, the portal files-and-services slice — `src/services/portal.dbtest.ts`,
+  // `setupTenant("pser")`.
+  "pser-",
   "pvas-",
   "pview-",
   "pwork-",
@@ -244,6 +250,19 @@ export type E2ESeed = {
   /** Seeded CLIENT_VISIBLE document — the one BUG 1 is reproduced on. */
   readonly clientVisibleDocId: string;
   readonly clientVisibleDocName: string;
+  /**
+   * The portal files fixture (Phase 3): a shared DELIVERABLE on the
+   * portal-enabled project, in two versions — first on the contact's
+   * files list, two entries on their rail — and the INTERNAL deliverable
+   * beside it, which is the negative control and must appear on no
+   * portal surface. The shared agreement `/portal/company` draws, and
+   * the sentinel planted in its staff-only notes.
+   */
+  readonly deliverableDocId: string;
+  readonly deliverableDocName: string;
+  readonly internalDeliverableDocName: string;
+  readonly serviceName: string;
+  readonly serviceNotesSentinel: string;
   /** Seeded INTERNAL document — the reverse direction. */
   readonly internalDocId: string;
   readonly internalDocName: string;
@@ -429,7 +448,7 @@ async function provision(seedFile: string): Promise<void> {
     "../../src/projects/milestones"
   );
   const { createVersion, shipVersion } = await import("../../src/projects/versions");
-  const { commitUpload, createUpload } = await import("../../src/documents/service");
+  const { addVersion, commitUpload, createUpload } = await import("../../src/documents/service");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
 
   const run = randomUUID().slice(0, 8);
@@ -499,21 +518,15 @@ async function provision(seedFile: string): Promise<void> {
    * `scope` is the document's owner: a client, a project, or neither
    * (tenant-wide, which the model only allows to be INTERNAL).
    */
-  const document = async (
-    name: string,
-    visibility: "INTERNAL" | "CLIENT_VISIBLE",
-    scope: { clientId?: string; projectId?: string } = { clientId },
-  ) => {
-    const body = new TextEncoder().encode(`${name}\n`);
+  /** Presign + the browser's half of the upload, performed in process; returns the PENDING object's id. */
+  const putBytes = async (name: string, body: Uint8Array, scope: { clientId?: string; projectId?: string }) => {
     const presigned = await createUpload(ctx, {
       name,
       contentType: "text/plain",
       sizeBytes: body.byteLength,
       sha256: sha256(body),
       ...scope,
-      visibility,
     });
-    // The browser's half of the upload, performed in process.
     const key = new URL(presigned.uploadUrl).pathname
       .replace(/^\/api\/dev-storage\//, "")
       .split("/")
@@ -528,13 +541,38 @@ async function provision(seedFile: string): Promise<void> {
       key,
     );
     if (res.status !== 200) throw new Error(`fixture upload failed: ${res.status}`);
-    const { documentId } = await commitUpload(ctx, {
-      fileObjectId: presigned.fileObjectId,
-      ...scope,
-      visibility,
-    });
+    return presigned.fileObjectId;
+  };
+  const document = async (
+    name: string,
+    visibility: "INTERNAL" | "CLIENT_VISIBLE",
+    scope: { clientId?: string; projectId?: string } = { clientId },
+    /** Phase 3, the portal files slice: a DELIVERABLE sits first on the client's list and on their rail. */
+    kind: "GENERAL" | "DELIVERABLE" = "GENERAL",
+  ) => {
+    const fileObjectId = await putBytes(name, new TextEncoder().encode(`${name}\n`), scope);
+    const { documentId } = await commitUpload(ctx, { fileObjectId, ...scope, visibility, kind });
     return documentId;
   };
+  /** A further version of a document, through the real service — one more entry on the client's rail. */
+  const version = async (documentId: string, scope: { clientId?: string; projectId?: string }, text: string) => {
+    const fileObjectId = await putBytes(`v-${run}.txt`, new TextEncoder().encode(text), scope);
+    await addVersion(ctx, { documentId, fileObjectId, note: "Slutversion" });
+  };
+
+  // ── Phase 3, the portal files slice ────────────────────────────────
+  // A shared DELIVERABLE on the portal-enabled project, in TWO versions,
+  // so the contact's files list photographs a deliverable with "Version
+  // 2" and the rail carries two delivery entries; and an INTERNAL
+  // deliverable beside it as the negative control. Created HERE, before
+  // the milestones and the update below, so its versions are older than
+  // every "today" event and `e2e/portal-project.spec.ts` can pin the
+  // rail's order.
+  const deliverableDocName = `e2e-leverans-${run}.txt`;
+  const deliverableDocId = await document(deliverableDocName, "CLIENT_VISIBLE", { projectId }, "DELIVERABLE");
+  await version(deliverableDocId, { projectId }, `Slutversion av leveransen ${run}\n`);
+  const internalDeliverableDocName = `e2e-intern-leverans-${run}.txt`;
+  await document(internalDeliverableDocName, "INTERNAL", { projectId }, "DELIVERABLE");
 
   // ── Visual-sweep fixture ───────────────────────────────────────────
   // Everything below exists so the screenshots show populated tables,
@@ -693,9 +731,17 @@ async function provision(seedFile: string): Promise<void> {
   });
   await shipVersion(ctx, shippedVersionId, { shippedAt: new Date(Date.now() - 7 * day) });
 
+  // SHARED with the client (Phase 3, the portal files-and-services
+  // slice), so `/portal/company` photographs an agreement and
+  // `e2e/portal-files.spec.ts` has one to assert on — and carrying the
+  // staff-only notes column as a SENTINEL, the one string on this row a
+  // client must never read. "Migrering" below stays INTERNAL and on a
+  // portal-OFF project: the negative control twice over.
+  const serviceName = "Förvaltning";
+  const serviceNotesSentinel = `SENTINEL-INTERNAL-NOTES-${run}`;
   const { id: maintenanceServiceId } = await createService(ctx, {
     clientId,
-    name: "Förvaltning",
+    name: serviceName,
     description: "Löpande underhåll, säkerhetsuppdateringar och support.",
     kind: "RECURRING",
     billingInterval: "MONTHLY",
@@ -703,6 +749,8 @@ async function provision(seedFile: string): Promise<void> {
     currency: "SEK",
     startedAt: new Date(Date.now() - 200 * day),
     renewsAt: new Date(Date.now() + 30 * day),
+    internalNotes: serviceNotesSentinel,
+    visibility: "CLIENT_VISIBLE",
   });
   await createService(ctx, {
     clientId,
@@ -1098,6 +1146,11 @@ async function provision(seedFile: string): Promise<void> {
     clientVisibleDocName,
     internalDocId: await document(internalDocName, "INTERNAL"),
     internalDocName,
+    deliverableDocId,
+    deliverableDocName,
+    internalDeliverableDocName,
+    serviceName,
+    serviceNotesSentinel,
     storageDir,
     secondTenantId,
     secondTenantSlug: secondSlug,

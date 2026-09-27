@@ -47,7 +47,7 @@ export default async function PortalProjectUpdatesPage({ params }: { params: Pro
     : null;
 
   return (
-    <PortalFrame name={name}>
+    <PortalFrame name={name} nav="home">
       <Page>
         <div className="flex flex-col gap-6">
           <PageHeader
