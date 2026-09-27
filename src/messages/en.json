@@ -2013,13 +2013,7 @@
         "failed": "That did not work.",
         "preview": {
           "title": "Preview — {title}",
-          "description": "{from} – {to}",
-          "line": "Line",
-          "hours": "Hours",
-          "billable": "Billable",
-          "amount": "Amount",
-          "total": "Total",
-          "other": "Other work"
+          "description": "{from} – {to}"
         }
       }
     },
@@ -2673,6 +2667,25 @@
       "ends": "Ends {date}",
       "ended": "Ended {date}",
       "project": "Project: {name}"
+    },
+    "hours": {
+      "title": "Hours",
+      "description": "Time your agency has logged on this project, and the time reports it has published.",
+      "thisMonth": "This month",
+      "toDate": "To date",
+      "billed": "{amount} billable",
+      "budget": "Budget",
+      "byMonth": "Hours by month",
+      "month": "Month",
+      "hours": "Hours",
+      "amount": "Billable",
+      "truncated": "Showing the last {count} months. The total to date counts every month.",
+      "reports": "Time reports",
+      "reportsTruncated": "Showing the newest {count} reports. Ask your agency for an older one.",
+      "period": "{from} – {to}",
+      "reportTotal": "{hours}",
+      "reportTotalWithAmount": "{hours} · {amount}",
+      "showLines": "Show lines"
     }
   },
   "viewAs": {
@@ -3213,6 +3226,16 @@
       "bulletList": "Bulleted list",
       "orderedList": "Numbered list",
       "taskList": "Checklist"
+    }
+  },
+  "timeReports": {
+    "snapshot": {
+      "line": "Line",
+      "hours": "Hours",
+      "billable": "Billable",
+      "amount": "Amount",
+      "total": "Total",
+      "other": "Other work"
     }
   },
   "updates": {

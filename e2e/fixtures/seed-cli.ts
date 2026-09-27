@@ -123,6 +123,9 @@ const DBTEST_PREFIXES = [
   // Phase 3, progress updates — `src/modules/work/updates.dbtest.ts`,
   // `setupTenant("pupd")`.
   "pupd-",
+  // Phase 3, the hours & retainer widget — `src/modules/time/portal.dbtest.ts`,
+  // `setupTenant("phrs")`.
+  "phrs-",
   "prefs-",
   "prefs-notify-",
   "preq-",
@@ -278,6 +281,16 @@ export type E2ESeed = {
   readonly internalDeliverableDocName: string;
   readonly serviceName: string;
   readonly serviceNotesSentinel: string;
+  /**
+   * The hours & retainer fixture (Phase 3): the project shares hours
+   * and amounts, carries a monthly hours budget, has two months of the
+   * employee's time and one PUBLISHED time report grouped by task.
+   * `hoursInternalTaskTitle` is the INTERNAL task an entry sits on — the
+   * report folds it into "Other work", and the title must appear
+   * nowhere on the portal.
+   */
+  readonly timeReportTitle: string;
+  readonly hoursInternalTaskTitle: string;
   /** Seeded INTERNAL document — the reverse direction. */
   readonly internalDocId: string;
   readonly internalDocName: string;
@@ -882,7 +895,7 @@ async function provision(seedFile: string): Promise<void> {
   };
   // Three labels: past the row's cap of 2, so this is the one task that
   // photographs the folded `+1` chip beside a truncating name.
-  await task("Skriv kravspecifikation", {
+  const specTaskId = await task("Skriv kravspecifikation", {
     category: "IN_PROGRESS",
     hours: 4,
     clientVisible: true,
@@ -892,7 +905,12 @@ async function provision(seedFile: string): Promise<void> {
   // Kept: the employee assigns this one to the owner below, which is
   // what puts a real notification in the owner's inbox.
   // One label — the common case, under the cap, nothing folded.
-  const reviewTaskId = await task("Designgranskning med kunden", { priority: "MEDIUM", hours: 1.5, labels: 1 });
+  // Named once: an hour of the hours-widget fixture below sits on this
+  // INTERNAL task, and its title is the negative control the portal
+  // spec searches the whole surface for — derived, so a rename cannot
+  // leave the spec searching for a string that no longer exists.
+  const hoursInternalTaskTitle = "Designgranskning med kunden";
+  const reviewTaskId = await task(hoursInternalTaskTitle, { priority: "MEDIUM", hours: 1.5, labels: 1 });
   await updateItemFields(ctx, reviewTaskId, { targetDate: dueIn(3) });
   const dnsTaskId = await task("Migrera DNS till ny leverantör", { category: "DONE", hours: 1 });
   const a11yTaskId = await task("Tillgänglighetsgranskning", { category: "BACKLOG" });
@@ -1018,6 +1036,56 @@ async function provision(seedFile: string): Promise<void> {
     reviewTaskId,
     ownerMemberId,
   );
+
+  // ── Hours & retainer fixture (Phase 3, the hours widget slice) ─────
+  // The employee's time on the portal-enabled project, written by the
+  // owner (`time:edit_any` — another member's row needs no staff-notice
+  // acknowledgment, so the employee's own first timer in time.spec
+  // still meets the notice). Dated 35 and 70 days back, so the entries
+  // fall in two different months and never the current one: the week
+  // exports in time.spec, the owner's "this week" strip on /home and
+  // the money tab's period never see them, and the widget's "this
+  // month" tile reads zero whatever else has run. The project shares
+  // HOURS AND AMOUNTS — money on a client's screen is the case worth
+  // photographing and asserting — and carries a monthly hours budget,
+  // so the budget tile has a fact to show. One entry sits on the
+  // INTERNAL task, so the published report's task grouping folds it
+  // into "Other work": that task's title is the negative control
+  // portal-project.spec.ts searches the whole surface for.
+  const { createBudget, createEntry, generateReport, publishReport } = await import("../../src/modules/time");
+  const { setHoursSharingMode } = await import("../../src/projects/service");
+  await updateProject(ctx, projectId, { billingCurrency: "SEK" });
+  const entryOn = (localDate: string, workItemId: string, durationText: string) =>
+    createEntry(ctx, {
+      memberId: employeeMember.id,
+      workItemId,
+      durationText,
+      localDate,
+      billable: true,
+      description: "E2E hours fixture",
+    });
+  await entryOn(addDays(today, -70), specTaskId, "2h 30m");
+  await entryOn(addDays(today, -35), specTaskId, "3h");
+  await entryOn(addDays(today, -35), reviewTaskId, "1h");
+  await setHoursSharingMode(ctx, projectId, "BILLABLE_AMOUNT");
+  await createBudget(ctx, {
+    projectId,
+    kind: "HOURS",
+    billingModel: "RETAINER",
+    amount: "40",
+    period: "MONTHLY",
+    periodAnchor: `${today.slice(0, 7)}-01`,
+  });
+  const timeReportTitle = `Tidrapport ${run}`;
+  const { id: timeReportId } = await generateReport(ctx, {
+    projectId,
+    title: timeReportTitle,
+    periodStart: addDays(today, -75),
+    periodEnd: addDays(today, -30),
+    groupBy: "WORK_ITEM",
+    includeAmounts: true,
+  });
+  await publishReport(ctx, timeReportId);
 
   // ── Portal-plane fixture: a contact who can really sign in ─────────
   // The portal has no sign-up and no invite flow yet, so the credential
@@ -1192,6 +1260,8 @@ async function provision(seedFile: string): Promise<void> {
     internalDeliverableDocName,
     serviceName,
     serviceNotesSentinel,
+    timeReportTitle,
+    hoursInternalTaskTitle,
     storageDir,
     secondTenantId,
     secondTenantSlug: secondSlug,

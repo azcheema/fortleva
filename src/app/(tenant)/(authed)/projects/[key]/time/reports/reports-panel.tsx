@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
+import { ReportSnapshotTable } from "@/components/time/report-snapshot";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDurationSeconds, formatMoney, type DurationStyle } from "@/lib/format";
+import { formatDurationSeconds, type DurationStyle } from "@/lib/format";
 import type { FormResult } from "@/lib/server-actions";
 import type { ReportSnapshot, ReportView } from "@/modules/time";
 
@@ -185,57 +186,22 @@ export function ReportsPanel({
   );
 }
 
+/**
+ * The preview draws the snapshot with `ReportSnapshotTable` — the very
+ * component the PORTAL draws a published report with (the hours &
+ * retainer slice), so the confirmation's "the client will see exactly
+ * this snapshot" is a statement about one rendering, not two.
+ */
 function SnapshotPreview({ report, fmt, locale }: { report: ReportRow; fmt: (s: number) => string; locale: string }) {
   const t = useTranslations("projects.time.reports");
   const s = report.snapshot as ReportSnapshot;
-  const money = (a: string | undefined) => (a !== undefined && s.currency ? formatMoney(locale, Number(a), s.currency) : null);
-  const label = (l: ReportSnapshot["lines"][number]): string => {
-    switch (l.kind) {
-      case "day":
-        return l.date;
-      case "work_item":
-      case "epic":
-        return `${l.ref} ${l.label}`;
-      case "service":
-        return l.label;
-      case "other":
-        return t("preview.other");
-    }
-  };
   return (
     <SectionCard
       title={t("preview.title", { title: report.title })}
       description={t("preview.description", { from: s.period.start, to: s.period.end })}
       contentClassName="p-0"
     >
-      <DataTable flush density="compact" scrollLabel={t("preview.title", { title: report.title })}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("preview.line")}</TableHead>
-              <TableHead className="w-[10ch] text-right">{t("preview.hours")}</TableHead>
-              <TableHead priority="medium" className="w-[10ch] text-right">{t("preview.billable")}</TableHead>
-              {s.includeAmounts ? <TableHead priority="low" className="w-[14ch] text-right">{t("preview.amount")}</TableHead> : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {s.lines.map((l, i) => (
-              <TableRow key={i}>
-                <TableCell className={l.kind === "other" ? "text-muted-foreground" : undefined}>{label(l)}</TableCell>
-                <TableCell className="num text-right">{fmt(l.seconds)}</TableCell>
-                <TableCell priority="medium" className="num text-right text-muted-foreground">{fmt(l.billableSeconds)}</TableCell>
-                {s.includeAmounts ? <TableCell priority="low" className="num text-right">{money(l.amount) ?? "—"}</TableCell> : null}
-              </TableRow>
-            ))}
-            <TableRow className="bg-muted/40">
-              <TableCell className="font-semibold">{t("preview.total")}</TableCell>
-              <TableCell className="num text-right font-semibold">{fmt(s.totals.seconds)}</TableCell>
-              <TableCell priority="medium" className="num text-right">{fmt(s.totals.billableSeconds)}</TableCell>
-              {s.includeAmounts ? <TableCell priority="low" className="num text-right font-semibold">{money(s.totals.amount) ?? "—"}</TableCell> : null}
-            </TableRow>
-          </TableBody>
-        </Table>
-      </DataTable>
+      <ReportSnapshotTable snapshot={s} fmt={fmt} locale={locale} scrollLabel={t("preview.title", { title: report.title })} />
     </SectionCard>
   );
 }

@@ -856,7 +856,12 @@ describe("review-of-the-review 2026-08-21 — a project with a budget and summar
     });
     await createBudget(ownerCtx(), { projectId: pid, kind: "MONEY", amount: "1000", currency: "SEK" });
     const e = await createEntry(ownerCtx(), { projectId: pid, description: "Doomed", durationText: "1h", localDate: "2026-06-10" });
-    expect(await f.platform.projectTimeSummary.count({ where: { tenantId: f.tenantId, projectId: pid } })).toBe(1);
+    // At least the June row — and, since the hours-widget slice (71),
+    // the CURRENT month's zero row too, which `createBudget` upserts so
+    // a budget set before the first entry reaches the portal. Two rows
+    // except in June 2026, when they coincide; the claim under test is
+    // that rows exist and the cascade takes them.
+    expect(await f.platform.projectTimeSummary.count({ where: { tenantId: f.tenantId, projectId: pid } })).toBeGreaterThanOrEqual(1);
     // time_entry RESTRICTs the project: remove it the sanctioned way first, then cascade the rest.
     await deleteEntry(ownerCtx(), e.id);
     await f.platform.$transaction(async (tx) => {

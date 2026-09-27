@@ -2,13 +2,14 @@ import { record } from "@/audit/record";
 import { assertInScope, isAuthorized } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
-import { dateColumn, isoDateOf, localDateString } from "@/lib/duration";
+import { dateColumn, isoDateOf, localDateString, monthStartOf } from "@/lib/duration";
 import { fail } from "@/lib/domain-error";
 import { emit } from "@/notify/emit";
 import { readPreferences } from "@/preferences/service";
 
 import { guarded, idsOnly, principalOf, type TimeCtx } from "./ctx";
 import { BUDGET_ALERT_ENTITY } from "./money-codes";
+import { recomputeProjectMonth } from "./summary";
 
 /**
  * ProjectBudget + BudgetAlert (DATA_MODEL.md §6.15): an hours-or-money
@@ -263,6 +264,18 @@ export async function createBudget(ctx: TimeCtx, input: BudgetInput): Promise<Bu
         },
         select,
       });
+      // THE BUDGET REACHES THE PORTAL ONLY THROUGH A SUMMARY ROW (the
+      // widget reads `budget_seconds` / `budget_amount` off the month rows;
+      // `project_budget` is class A). A project budgeted before its first
+      // entry has no row, so the fan-out triggers have nothing to stamp
+      // and the client would read hours without the budget until someone
+      // logs time. Recomputing the current month here — an idempotent
+      // upsert of a zero row, the budget columns derived by the same SQL
+      // every entry write runs — closes that gap in this transaction, and
+      // the mode fan-out flips the row's visibility whenever sharing is
+      // switched on later (review, slice 71).
+      const prefs = await readPreferences(tx, ctx.tenantId);
+      await recomputeProjectMonth(tx, ctx.tenantId, input.projectId, monthStartOf(localDateString(new Date(), prefs.timezone)));
       await record(tx, {
         action: "budget.created",
         targetType: "ProjectBudget",

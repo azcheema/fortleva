@@ -2,6 +2,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { RichText } from "@/components/rich-text/render";
 import { Callout, HealthChip } from "@/components/semantic";
+import { MetricTiles, type MetricTileSpec } from "@/components/updates/metric-tiles";
 import { formatDate, formatDay, formatDurationSeconds, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { UpdateBody, UpdateSection } from "@/modules/work/update-body";
@@ -125,7 +126,7 @@ export function UpdateView({
 function Metrics({ metrics }: { metrics: PortalSnapshot }) {
   const t = useTranslations("updates.metrics");
   const locale = useLocale();
-  const tiles: { key: string; label: string; value: string; detail: string | null }[] = [];
+  const tiles: MetricTileSpec[] = [];
 
   if (metrics.tasks) {
     tiles.push({
@@ -180,19 +181,7 @@ function Metrics({ metrics }: { metrics: PortalSnapshot }) {
   return (
     <section data-slot="update-metrics" className="flex flex-col gap-2">
       <p className="eyebrow text-muted-foreground">{t("title")}</p>
-      <dl className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
-        {tiles.map((tile) => (
-          <div
-            key={tile.key}
-            data-metric={tile.key}
-            className="flex min-w-0 flex-col gap-0.5 rounded-md border border-border bg-background p-3"
-          >
-            <dt className="text-xs text-muted-foreground">{tile.label}</dt>
-            <dd className="num text-lg font-semibold text-foreground">{tile.value}</dd>
-            {tile.detail ? <dd className="text-xs text-muted-foreground">{tile.detail}</dd> : null}
-          </div>
-        ))}
-      </dl>
+      <MetricTiles tiles={tiles} className="lg:grid-cols-5" />
       <p className="text-xs text-muted-foreground">
         {t("asOf", { date: formatDate(locale, new Date(metrics.computedAt)) })}
       </p>

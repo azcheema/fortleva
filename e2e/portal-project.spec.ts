@@ -108,6 +108,47 @@ test.describe("portal project page", () => {
     await expect(rows.first()).toContainText("Version 2");
     await expect(rows.first().getByRole("button", { name: `Download ${seed.deliverableDocName}` })).toBeVisible();
 
+    // ── 7. Hours & retainer (the hours widget slice): the seed shares
+    // hours AND amounts on this project, so a primary contact reads the
+    // live widget with money on it, the monthly hours budget as a fact,
+    // two months of the employee's time (35 and 70 days back — never
+    // the current month, so "this month" is zero whatever ran before),
+    // and the one published time report, grouped by task. ────────────
+    const hoursSection = page.locator('[data-slot="portal-hours"]');
+    await expect(hoursSection).toBeVisible();
+    const live = hoursSection.locator('[data-slot="portal-hours-live"]');
+    // The VALUE cell exactly — "0m" is a substring of "2h 30m", and zero is
+    // the one fact the fixture was dated to guarantee.
+    await expect(live.locator('[data-metric="thisMonth"] dd').first()).toHaveText("0m");
+    await expect(live.locator('[data-metric="toDate"] dd').first()).toHaveText("6h 30m");
+    // 2 h 30 m + 3 h + 1 h, at the tenant's 950 SEK bill rate: 6 175 SEK.
+    await expect(live.locator('[data-metric="toDate"]')).toContainText("SEK 6,175.00");
+    await expect(live.locator('[data-metric="budget"]')).toContainText("40h");
+    const months = live.locator('[data-slot="portal-hours-month"]');
+    await expect(months).toHaveCount(2);
+    // Newest first: the month 35 days back (3 h + 1 h), then 70 days back (2 h 30 m).
+    await expect(months.nth(0)).toContainText("4h");
+    await expect(months.nth(0)).toContainText("SEK 3,800.00");
+    await expect(months.nth(1)).toContainText("2h 30m");
+    await expect(months.nth(1)).toContainText("SEK 2,375.00");
+    // The published report: its row, then its lines behind the disclosure
+    // — the shared task by name, the INTERNAL task's hour folded into
+    // "Other work".
+    const report = hoursSection.locator('[data-slot="portal-time-report"]', { hasText: seed.timeReportTitle });
+    await expect(report).toHaveCount(1);
+    await expect(report).toContainText("6h 30m · SEK 6,175.00");
+    await report.locator("summary").click();
+    const lines = report.locator('[data-slot="report-line"]');
+    await expect(lines).toHaveCount(2);
+    await expect(lines.filter({ hasText: "Skriv kravspecifikation" })).toContainText("5h 30m");
+    await expect(lines.filter({ hasText: "Other work" })).toContainText("1h");
+    await expect(report.locator('[data-slot="report-total"]')).toContainText("SEK 6,175.00");
+    // THE NEGATIVE CONTROL: the INTERNAL task an hour was logged on is
+    // named nowhere on the surface — not in the report's lines, not
+    // anywhere else. (Its title is a phrase the seeded post's prose does
+    // not contain; see the seed.)
+    await expect(page.locator("[data-portal-surface]")).not.toContainText(seed.hoursInternalTaskTitle);
+
     // ── The post's entry links to the updates page, at its anchor ────
     await events.nth(1).getByRole("link").click();
     await expect(page).toHaveURL(new RegExp(`/portal/projects/${seed.projectKey}/updates#update-`), {

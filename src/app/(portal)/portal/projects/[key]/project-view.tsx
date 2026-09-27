@@ -5,6 +5,7 @@ import { Callout, HealthChip, Page, PageHeader, ProgressMeter, SectionCard } fro
 import { Button } from "@/components/ui/button";
 import { listPortalDocuments } from "@/documents/portal";
 import { formatDay } from "@/lib/format";
+import { readPortalHours } from "@/modules/time";
 import { listPortalTasks, listPortalTimeline, listPortalUpdates } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 import { fileAnchor, versionAnchor } from "@/portal/signoff-vocabulary";
@@ -15,6 +16,7 @@ import type { PortalFileError } from "../../files/files-view";
 import { PortalFrame } from "../../portal-frame";
 
 import { LatestUpdate, PortalTasksEmpty, ProjectTasks, TaskRow, isWaitingOnYou } from "../../task-list";
+import { ProjectHours } from "./project-hours";
 import { PortalTimeline } from "./project-timeline";
 
 /**
@@ -34,12 +36,11 @@ import { PortalTimeline } from "./project-timeline";
  *
  * THE ORDER IS THE SPEC'S: header (name, health, phase and next
  * milestone, progress) → what is waiting on the reader → the latest
- * update → the timeline → the shared tasks by category. Files and
- * deliverables, the hours widget and version sign-off are the slices
- * after this one; requests are already on the task list under
- * "Requested" (UI.md §11's sixth category).
+ * update → the timeline → the shared tasks by category → files and
+ * deliverables → hours & retainer. Requests are already on the task
+ * list under "Requested" (UI.md §11's sixth category).
  *
- * FIVE SEQUENTIAL READS, five transactions, each through
+ * SEVEN SEQUENTIAL READS, seven transactions, each through
  * `portalReadOrNull` — never `Promise.all`, for the reason
  * `portal-home.tsx` gives (two independent transactions that both
  * reject with something other than `AuthzError` would leave one an
@@ -99,6 +100,16 @@ export async function PortalProjectView({
   const files = project
     ? await portalReadOrNull("listPortalDocuments", () => listPortalDocuments(principal, { projectId: project.id }))
     : null;
+  // The seventh (the hours & retainer slice): the live hours widget and
+  // the published time reports, for section 7. `portal.hours.view` is
+  // PRIMARY only; the projection answers EMPTY for a collaborator (its
+  // own rule, as `listPortalUpdates`' hours block), so the section is
+  // simply absent — the same page, minus one card, which is what "no
+  // money to a collaborator" looks like. Null here is a real refusal
+  // (the project is not theirs), like every other read above.
+  const hours = project
+    ? await portalReadOrNull("readPortalHours", () => readPortalHours(principal, project.id, { timeZone }))
+    : null;
 
   const latest = updates?.[0] ?? null;
   const tasks = list?.projects[0] ?? null;
@@ -119,11 +130,13 @@ export async function PortalProjectView({
   // "Nothing shared with you yet" under a meter that counts shared
   // milestones would be the page contradicting itself (a review asked
   // the question; this is the answer, on purpose).
+  const hasHours = hours !== null && (hours.live !== null || hours.reports.length > 0);
   const nothing =
     !latest &&
     events.length === 0 &&
     !tasks &&
     documents.length === 0 &&
+    !hasHours &&
     !(summary && summary.milestones.total > 0);
 
   // The header's one sentence, built from the summary's two facts. The
@@ -299,6 +312,14 @@ export async function PortalProjectView({
                   </div>
                 </SectionCard>
               ) : null}
+
+              {/* 7. HOURS & RETAINER (UI.md §4 item 7; the hours & retainer
+                  slice): the live monthly widget when the project shares
+                  hours, the published time reports when there are any.
+                  Absent for a collaborator (the projection answers empty)
+                  and for a project that shares neither — `hasHours` is the
+                  one place that decides. */}
+              {hasHours && hours ? <ProjectHours hours={hours} /> : null}
             </>
           )}
         </div>

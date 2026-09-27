@@ -2013,13 +2013,7 @@
         "failed": "Det gick inte.",
         "preview": {
           "title": "Förhandsvisning — {title}",
-          "description": "{from} – {to}",
-          "line": "Rad",
-          "hours": "Timmar",
-          "billable": "Fakturerbart",
-          "amount": "Belopp",
-          "total": "Totalt",
-          "other": "Övrigt arbete"
+          "description": "{from} – {to}"
         }
       }
     },
@@ -2673,6 +2667,25 @@
       "ends": "Avslutas {date}",
       "ended": "Avslutades {date}",
       "project": "Projekt: {name}"
+    },
+    "hours": {
+      "title": "Timmar",
+      "description": "Tid som din byrå har registrerat på projektet, och de tidrapporter den har publicerat.",
+      "thisMonth": "Den här månaden",
+      "toDate": "Hittills",
+      "billed": "{amount} fakturerbart",
+      "budget": "Budget",
+      "byMonth": "Timmar per månad",
+      "month": "Månad",
+      "hours": "Timmar",
+      "amount": "Fakturerbart",
+      "truncated": "Visar de senaste {count} månaderna. Summan hittills räknar alla månader.",
+      "reports": "Tidrapporter",
+      "reportsTruncated": "Visar de {count} senaste rapporterna. Fråga din byrå efter en äldre.",
+      "period": "{from} – {to}",
+      "reportTotal": "{hours}",
+      "reportTotalWithAmount": "{hours} · {amount}",
+      "showLines": "Visa rader"
     }
   },
   "viewAs": {
@@ -3213,6 +3226,16 @@
       "bulletList": "Punktlista",
       "orderedList": "Numrerad lista",
       "taskList": "Checklista"
+    }
+  },
+  "timeReports": {
+    "snapshot": {
+      "line": "Rad",
+      "hours": "Timmar",
+      "billable": "Fakturerbart",
+      "amount": "Belopp",
+      "total": "Totalt",
+      "other": "Övrigt arbete"
     }
   },
   "updates": {

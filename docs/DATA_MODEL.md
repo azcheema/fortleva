@@ -3245,6 +3245,25 @@ model ProjectTimeSummary {
   @@index([tenantId, clientId, visibility])
 }
 
+/// ── Landed 2026-09-27 (Phase 3 slice 71 — the hours & retainer widget;
+/// `readPortalHours`, src/modules/time/portal.ts) ──────────────────────
+/// The portal reads this table as written: under the contact principal,
+/// through the three-term gate, every month row of one project, summed
+/// in the service for "to date" and read per month for the table; the
+/// budget columns are projected as FIGURES ("Budget 40 h", "Budget
+/// 50 000 kr"), never as a meter, because the row carries the amount
+/// and not the budget's period or its includeNonBillable rule, and
+/// project_budget is class A — the retainer meter waits for the
+/// retainer columns sketched below (Phase 4). The project's
+/// hoursSharingMode is read off the project row (gated by client + the
+/// portal switch) to tell a BILLABLE_AMOUNT month with no billable time
+/// (a NULL sum) from HOURS mode. Published TimeReport rows (D3, below)
+/// are read in the same transaction under their four-term gate and
+/// drawn beside the widget, lines and all. No new column, no migration.
+/// One write joined it after review: createBudget upserts the current
+/// month's summary row (recomputeProjectMonth) so a budget set before
+/// the first entry has a row to carry it to the portal; the projection
+/// lists only months with time, so that zero row is never a table row.
 /// StaffNotice — the information the tenant gives its staff before time
 /// tracking starts (Art. 13 GDPR; MBL 19 §; NY/CT/DE notice statutes by
 /// jurisdictionTags). Versioned & immutable; sv/en draft text ships in

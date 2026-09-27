@@ -142,3 +142,15 @@ export {
   type ReportStatus,
   type ReportView,
 } from "./reports";
+// Phase 3 — the portal projection (a read only; the portal never
+// writes time). Exported from the barrel because the portal PAGE is
+// its consumer and ARC-16 routes cross-module imports through here.
+export {
+  PORTAL_HOURS_MONTHS,
+  PORTAL_REPORT_LIMIT,
+  readPortalHours,
+  type PortalHours,
+  type PortalHoursLive,
+  type PortalHoursMonth,
+  type PortalTimeReport,
+} from "./portal";
