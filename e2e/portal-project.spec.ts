@@ -117,20 +117,35 @@ test.describe("portal project page", () => {
     const hoursSection = page.locator('[data-slot="portal-hours"]');
     await expect(hoursSection).toBeVisible();
     const live = hoursSection.locator('[data-slot="portal-hours-live"]');
-    // The VALUE cell exactly — "0m" is a substring of "2h 30m", and zero is
-    // the one fact the fixture was dated to guarantee.
-    await expect(live.locator('[data-metric="thisMonth"] dd').first()).toHaveText("0m");
-    await expect(live.locator('[data-metric="toDate"] dd').first()).toHaveText("6h 30m");
+    // THE CURRENT MONTH IS NOT THIS SPEC'S TO PIN. Earlier specs start and
+    // stop timers on this project (seconds each), and every one of those
+    // lands in the current month: in CI "to date" read SEK 6,175.53 for
+    // 6 h 30 m — two seconds at 950 SEK. So the tiles are asserted to
+    // within what a suite of timers can add (under an hour, under a
+    // hundred kronor), and the PAST months and the report — which no
+    // spec can touch — carry the exact figures.
+    await expect(live.locator('[data-metric="thisMonth"] dd').first()).toHaveText(/^\d+m$/);
+    await expect(live.locator('[data-metric="toDate"] dd').first()).toHaveText(/^6h 3\dm$/);
     // 2 h 30 m + 3 h + 1 h, at the tenant's 950 SEK bill rate: 6 175 SEK.
-    await expect(live.locator('[data-metric="toDate"]')).toContainText("SEK 6,175.00");
-    await expect(live.locator('[data-metric="budget"]')).toContainText("40h");
+    // `\s`, not a space: the formatter puts a NO-BREAK SPACE between the
+    // code and the number, which a string match normalises and a regex
+    // does not.
+    await expect(live.locator('[data-metric="toDate"]')).toContainText(/SEK\s6,1\d\d\.\d\d billable/);
+    await expect(live.locator('[data-metric="budget"] dd').first()).toHaveText("40h");
+    // Newest first: the month 35 days back (3 h + 1 h), then 70 days back
+    // (2 h 30 m) — found by their amounts, because a timer this month adds
+    // a third row above them.
     const months = live.locator('[data-slot="portal-hours-month"]');
-    await expect(months).toHaveCount(2);
-    // Newest first: the month 35 days back (3 h + 1 h), then 70 days back (2 h 30 m).
-    await expect(months.nth(0)).toContainText("4h");
-    await expect(months.nth(0)).toContainText("SEK 3,800.00");
-    await expect(months.nth(1)).toContainText("2h 30m");
-    await expect(months.nth(1)).toContainText("SEK 2,375.00");
+    const newer = months.filter({ hasText: "SEK 3,800.00" });
+    const older = months.filter({ hasText: "SEK 2,375.00" });
+    await expect(newer).toHaveCount(1);
+    await expect(older).toHaveCount(1);
+    await expect(newer).toContainText("4h");
+    await expect(older).toContainText("2h 30m");
+    const monthKeys = await months.evaluateAll((rows) => rows.map((r) => r.getAttribute("data-month") ?? ""));
+    expect(monthKeys.indexOf((await newer.getAttribute("data-month")) ?? "")).toBeLessThan(
+      monthKeys.indexOf((await older.getAttribute("data-month")) ?? ""),
+    );
     // The published report: its row, then its lines behind the disclosure
     // — the shared task by name, the INTERNAL task's hour folded into
     // "Other work".

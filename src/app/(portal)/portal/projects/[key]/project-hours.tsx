@@ -50,7 +50,7 @@ export async function ProjectHours({ hours }: { hours: PortalHours }) {
       <div data-slot="portal-hours" className="flex flex-col">
         {live ? <LiveHours live={live} fmt={fmt} locale={locale} /> : null}
         {reports.length > 0 ? (
-          <div data-slot="portal-time-reports" className="flex flex-col gap-3 p-4">
+          <div data-slot="portal-time-reports" className={live ? "flex flex-col gap-3 border-t border-border p-4" : "flex flex-col gap-3 p-4"}>
             <p className="eyebrow text-muted-foreground">{t("reports")}</p>
             <ul className="flex flex-col gap-2">
               {reports.map((report) => (
@@ -107,39 +107,49 @@ async function LiveHours({ live, fmt, locale }: { live: PortalHoursLive; fmt: (s
   }
 
   return (
-    <div data-slot="portal-hours-live" className="flex flex-col gap-4 p-4">
-      <MetricTiles tiles={tiles} />
+    // THE TABLE IS FLUSH AND OUTSIDE THE PADDING (UI.md §10.15.1, the
+    // visual walk's hairline rule): a bordered table inside a padded card
+    // draws two hairlines 16px apart, so the tiles keep the padding and
+    // the months run edge to edge under a single rule.
+    <div data-slot="portal-hours-live" className="flex flex-col">
+      <div className="p-4">
+        <MetricTiles tiles={tiles} />
+      </div>
       {live.months.length > 0 ? (
-        <DataTable density="compact" scrollLabel={t("byMonth")}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("month")}</TableHead>
-                <TableHead className="w-[10ch] text-right">{t("hours")}</TableHead>
-                {showAmounts ? (
-                  <TableHead className="w-[14ch] text-right">
-                    {t("amount")}
-                  </TableHead>
-                ) : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {live.months.map((m) => (
-                <TableRow key={m.month} data-slot="portal-hours-month" data-month={m.month}>
-                  <TableCell>{monthName(m.month)}</TableCell>
-                  <TableCell className="num text-right">{fmt(m.seconds)}</TableCell>
+        <div className="border-t border-border">
+          <DataTable flush density="compact" scrollLabel={t("byMonth")}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("month")}</TableHead>
+                  <TableHead className="w-[10ch] text-right">{t("hours")}</TableHead>
                   {showAmounts ? (
-                    <TableCell className="num text-right">
-                      {amount(m.amount)}
-                    </TableCell>
+                    <TableHead className="w-[14ch] text-right">
+                      {t("amount")}
+                    </TableHead>
                   ) : null}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTable>
+              </TableHeader>
+              <TableBody>
+                {live.months.map((m) => (
+                  <TableRow key={m.month} data-slot="portal-hours-month" data-month={m.month}>
+                    <TableCell>{monthName(m.month)}</TableCell>
+                    <TableCell className="num text-right">{fmt(m.seconds)}</TableCell>
+                    {showAmounts ? (
+                      <TableCell className="num text-right">
+                        {amount(m.amount)}
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DataTable>
+        </div>
       ) : null}
-      {live.truncated ? <p className="text-xs text-muted-foreground">{t("truncated", { count: live.months.length })}</p> : null}
+      {live.truncated ? (
+        <p className="px-4 py-3 text-xs text-muted-foreground">{t("truncated", { count: live.months.length })}</p>
+      ) : null}
     </div>
   );
 }
