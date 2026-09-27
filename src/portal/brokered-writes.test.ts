@@ -224,6 +224,24 @@ const BROKERED_READS: readonly (readonly [string, string])[] = [
   [join("documents", "portal-writes.ts"), "readPortalFileVersions"],
 ];
 
+/**
+ * THE ANNOUNCERS — the closed set of files that open a SYSTEM transaction
+ * because a contact acted, and write only to the members' inboxes (the
+ * sign-off slice, 2026-09-27; a security review asked for the pin).
+ *
+ * `src/portal/signoff-announce.ts` tells the agency about a decision
+ * AFTER the census write has committed. It is not a broker — nothing in
+ * it is authorized, because the decision it announces already was, under
+ * the contact, in its own transaction — and it is deliberately not named
+ * `portal-writes.ts`, since the per-broker pins above (authorize before
+ * the system transaction, an audit row naming the contact) do not fit a
+ * fan-out. What DOES bind it is pinned here: the principal literal is
+ * inline `{type:'system'}`; it never audits (the decision's audit row is
+ * the census write's); it never opens a contact transaction; and `emit`
+ * is the only writer it calls. A second announcer is added by name.
+ */
+const ANNOUNCERS: readonly string[] = [join("portal", "signoff-announce.ts")];
+
 const isBrokeredRead = (file: string, name: string): boolean =>
   BROKERED_READS.some(([suffix, fn]) => file.endsWith(suffix) && fn === name);
 
@@ -297,6 +315,29 @@ describe("brokered portal writes", () => {
       // same transaction" means: an audit row written after it committed
       // describes something that may not have happened.
       expect(callPosition(body, "record"), where).toBeGreaterThan(callPosition(body, "withTenant"));
+    }
+  });
+
+  it("every announcer runs as `system`, audits nothing, opens no contact transaction, and writes through `emit` alone", () => {
+    expect(ANNOUNCERS.length).toBeGreaterThan(0);
+    for (const suffix of ANNOUNCERS) {
+      const file = walk(SRC).find((f) => f.endsWith(suffix));
+      expect(file, suffix).toBeDefined();
+      const source = parse(file!);
+      const principals = withTenantPrincipals(source);
+      expect(principals.length, suffix).toBeGreaterThan(0);
+      for (const principal of principals) {
+        expect(ts.isObjectLiteralExpression(principal), suffix).toBe(true);
+        expect(principal.getText(source).replace(/\s|"|'/g, ""), suffix).toBe("{type:system}");
+      }
+      const text = readFileSync(file!, "utf8");
+      expect(text, `${suffix} must not audit`).not.toMatch(/\brecord(Many)?\(/);
+      expect(text, `${suffix} must not open a contact transaction`).not.toContain("withPortalRead(");
+      expect(text, `${suffix} must not open a contact transaction`).not.toContain("withCensusWrite(");
+      expect(text, `${suffix} must not name brokeredForContactId`).not.toContain("brokeredForContactId");
+      // The only Prisma WRITE verb in the file is none: `emit` writes.
+      expect(text, `${suffix} writes through emit alone`).not.toMatch(/\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/);
+      expect(text, `${suffix} calls emit`).toContain("emit(");
     }
   });
 

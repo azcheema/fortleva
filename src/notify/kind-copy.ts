@@ -26,7 +26,8 @@ type KindCopyKey =
   | "commented"
   | "budgetThreshold"
   | "requestReceived"
-  | "completedByContact";
+  | "completedByContact"
+  | "approvalDecided";
 
 export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.assigned": "assigned",
@@ -34,6 +35,7 @@ export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.commented": "commented",
   "work_item.request_received": "requestReceived",
   "work_item.completed_by_contact": "completedByContact",
+  "approval.decided": "approvalDecided",
   "budget.threshold_reached": "budgetThreshold",
 };
 

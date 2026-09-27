@@ -201,6 +201,7 @@ const ROW_SELECT = {
   entityType: true,
   entityId: true,
   projectId: true,
+  clientId: true,
 } as const;
 
 export async function listInbox(
@@ -292,6 +293,7 @@ type SubjectSource = {
   entityType: string;
   entityId: string;
   projectId: string | null;
+  clientId: string | null;
 };
 
 /**
@@ -335,14 +337,26 @@ async function resolveSubjects(
   // offered only to a member that page would not refuse).
   const namesTasks = rows.some((r) => r.entityType === "WorkItem");
   const linksMoney = rows.some((r) => r.entityType === BUDGET_ALERT_ENTITY);
+  const linksFiles = rows.some((r) => r.entityType === "Document");
+  const namesClients = rows.some((r) => r.entityType === "Document" && r.projectId === null);
   const may = await accessibleCodes(tx, ctx.tenantId, ctx.actor, [
     "project:view",
     ...(namesTasks ? ["work_item:view"] : []),
     ...(linksMoney ? PROJECT_MONEY_CODES : []),
+    // A deliverable's decision links to the Files tab, which `document:view`
+    // gates (C34's rule: a link is offered only where the page would not
+    // refuse). A version's links to the Timeline tab, which the project
+    // itself gates. A deliverable shared with the company itself is named
+    // by its CLIENT, which `client:view` gates — the code that says who
+    // may read a client's name, never `project:view` (the fix-pass review).
+    ...(linksFiles ? ["document:view"] : []),
+    ...(namesClients ? ["client:view"] : []),
   ]);
   const mayViewProjects = may.has("project:view");
   const mayViewItems = may.has("work_item:view");
   const mayOpenMoney = PROJECT_MONEY_CODES.every((code) => may.has(code));
+  const mayOpenFiles = may.has("document:view");
+  const mayViewClients = may.has("client:view");
 
   // A task row's project is wanted only for a task's link, which needs
   // `work_item:view` too — with Work off it can name nothing.
@@ -387,6 +401,33 @@ async function resolveSubjects(
     : [];
   const byItem = new Map(items.map((i) => [i.id, i]));
 
+  // A deliverable shared with the company itself has no project: its
+  // decision is named by the CLIENT and links to the client's Files tab
+  // (Phase 3, sign-off). Scope-filtered like the projects, sequential.
+  const clientIds = mayViewClients
+    ? [
+        ...new Set(
+          rows
+            .filter((r) => r.entityType === "Document" && r.projectId === null)
+            .map((r) => r.clientId)
+            .filter((v): v is string => v !== null),
+        ),
+      ]
+    : [];
+  // The scope's own `id` term and the page's ids are ANDed rather than
+  // one overriding the other (the Client table's client column is `id`).
+  const clients = clientIds.length
+    ? await tx.client.findMany({
+        where: {
+          ...(await scopeWhere<"id", never>(tx, ctx.actor, { clientField: "id" })),
+          tenantId: ctx.tenantId,
+          AND: [{ id: { in: clientIds } }],
+        },
+        select: { id: true, name: true },
+      })
+    : [];
+  const byClient = new Map(clients.map((c) => [c.id, c]));
+
   for (const r of rows) {
     if (r.entityType === "WorkItem") {
       const item = byItem.get(r.entityId);
@@ -412,8 +453,24 @@ async function resolveSubjects(
     if (project) {
       out.set(r.id, {
         title: project.name,
-        href: r.entityType === BUDGET_ALERT_ENTITY && mayOpenMoney ? `/projects/${project.key}/money` : null,
+        href:
+          r.entityType === BUDGET_ALERT_ENTITY && mayOpenMoney
+            ? `/projects/${project.key}/money`
+            : r.entityType === "ProjectVersion"
+              ? `/projects/${project.key}/timeline`
+              : r.entityType === "Document" && mayOpenFiles
+                ? `/projects/${project.key}/files`
+                : null,
       });
+      continue;
+    }
+    // Company-level rows only: a PROJECT deliverable whose project did
+    // not resolve stays label-only rather than borrowing the client's
+    // Files tab, which does not list project documents.
+    const client =
+      r.entityType === "Document" && r.projectId === null && r.clientId ? byClient.get(r.clientId) : undefined;
+    if (client) {
+      out.set(r.id, { title: client.name, href: mayOpenFiles ? `/clients/${client.id}/files` : null });
     }
   }
   return out;

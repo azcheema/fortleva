@@ -7,11 +7,13 @@ import { listPortalDocuments } from "@/documents/portal";
 import { formatDay } from "@/lib/format";
 import { listPortalTasks, listPortalTimeline, listPortalUpdates } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
+import { fileAnchor, versionAnchor } from "@/portal/signoff-vocabulary";
 import { findPortalProjectByKey, readPortalProjectSummary } from "@/projects/portal";
 
 import { PortalFileList } from "../../files/file-list";
 import type { PortalFileError } from "../../files/files-view";
 import { PortalFrame } from "../../portal-frame";
+
 import { LatestUpdate, PortalTasksEmpty, ProjectTasks, TaskRow, isWaitingOnYou } from "../../task-list";
 import { PortalTimeline } from "./project-timeline";
 
@@ -103,6 +105,13 @@ export async function PortalProjectView({
   const waiting = tasks?.tasks.filter(isWaitingOnYou) ?? [];
   const events = timeline?.entries ?? [];
   const documents = files?.documents ?? [];
+  // THE ASKS THIS READER MAY ANSWER (the sign-off slice): the shipped
+  // versions and the deliverables whose `canDecide` the projections set
+  // — drawn from the same rows the rail and the files section draw, so
+  // the card can never list an ask its row then offers no control for.
+  const pendingVersions = events.flatMap((e) => (e.kind === "version_shipped" && e.approval.canDecide ? [e] : []));
+  const pendingDeliverables = documents.filter((d) => d.approval?.canDecide);
+  const asks = pendingVersions.length + pendingDeliverables.length;
   // THE EMPTY STATE IS FOR A PAGE WITH NO PLAN EITHER. A project whose
   // only shared rows are undated open milestones has a header — the
   // phase, the meter — and no section to draw under it, and that is
@@ -176,19 +185,61 @@ export async function PortalProjectView({
             <PortalTasksEmpty />
           ) : (
             <>
-              {/* 2. WHAT IS WAITING ON THE READER — the same rows the
-                  category list below draws, with the same tick, listed
-                  first because "what do you need from me" is the
-                  question this page answers before the other two. Only
-                  where it would work: `isWaitingOnYou` is the tick's own
-                  predicate. Absent when nothing is. */}
-              {waiting.length > 0 ? (
+              {/* 2. WHAT IS WAITING ON THE READER — the asks to sign off
+                  first (a decision the agency is blocked on), then the
+                  same task rows the category list below draws, with the
+                  same tick. Listed first because "what do you need from
+                  me" is the question this page answers before the other
+                  two. Only where it would work: `canDecide` and
+                  `isWaitingOnYou` are the controls' own predicates.
+                  Absent when nothing is.
+
+                  AN ASK ON THIS CARD IS A LINK, NOT THE CONTROL (the
+                  home's shape). The control lives ONCE per subject — on
+                  the rail entry or the file row — and "Review" jumps to
+                  it. Drawing it here too would put the decision under a
+                  row that the same round trip removes: the action
+                  revalidates the page, `canDecide` turns false, and the
+                  row the reader just pressed vanishes with its
+                  confirmation (a code review traced it). One instance,
+                  on an element that stays, is what "in place" means. */}
+              {asks > 0 || waiting.length > 0 ? (
                 <SectionCard
                   title={t("actionItems.title")}
                   description={t("actionItems.description")}
                   contentClassName="p-4"
                 >
-                  <ul data-slot="portal-action-items" className="flex flex-col gap-2">
+                  <ul data-slot="portal-action-items" className="flex flex-col gap-3">
+                    {pendingVersions.map((v) => (
+                      <li
+                        key={`version-${v.id}`}
+                        data-slot="portal-action-item"
+                        data-kind="version"
+                        className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+                      >
+                        <span className="text-sm text-foreground">
+                          {t("actionItems.signoffVersion", { version: v.title ? `${v.version} · ${v.title}` : v.version })}
+                        </span>
+                        <Button asChild variant="outline" size="sm">
+                          <a href={`#${versionAnchor(v.id)}`}>{t("actionItems.review")}</a>
+                        </Button>
+                      </li>
+                    ))}
+                    {pendingDeliverables.map((d) => (
+                      <li
+                        key={`deliverable-${d.id}`}
+                        data-slot="portal-action-item"
+                        data-kind="deliverable"
+                        className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+                      >
+                        <span className="text-sm text-foreground">
+                          {t("actionItems.signoffDeliverable", { name: d.name, number: d.approval?.versionNumber ?? d.version.number })}
+                        </span>
+                        <Button asChild variant="outline" size="sm">
+                          <a href={`#${fileAnchor(d.id)}`}>{t("actionItems.review")}</a>
+                        </Button>
+                      </li>
+                    ))}
                     {waiting.map((task) => (
                       <TaskRow key={task.id} task={task} />
                     ))}

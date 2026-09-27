@@ -1,11 +1,13 @@
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
-import { Callout, Page, PageHeader } from "@/components/semantic";
+import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { listPortalPendingDeliverables } from "@/documents/portal";
 import { listPortalTasks, listPortalUpdates, type PortalProjectTasks, type PortalUpdate } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
-import { listPortalProjects } from "@/projects/portal";
+import type { PortalPendingApproval } from "@/portal/signoff";
+import { listPortalPendingVersions, listPortalProjects } from "@/projects/portal";
 
 import { PortalFrame } from "./portal-frame";
 import { PortalTasksEmpty, ProjectTasks } from "./task-list";
@@ -118,6 +120,21 @@ export async function PortalHome({
   const latest = await portalReadOrNull("listPortalUpdates", () =>
     listPortalUpdates(principal, { latestOnly: true }),
   );
+  // THE OPEN ASKS, ACROSS PROJECTS — UI.md §4's "action items first"
+  // (the sign-off slice): the versions and the deliverables waiting on
+  // THIS reader's decision, two more sequential reads under the same
+  // rule as the three above. Each answers empty, not refused, for a
+  // profile that cannot sign, so a collaborator's home simply has no
+  // card. The row names the thing and links to the project page, where
+  // the control sits beside what it is about; a company-level
+  // deliverable links to the files page.
+  const pendingVersions = await portalReadOrNull("listPortalPendingVersions", () =>
+    listPortalPendingVersions(principal),
+  );
+  const pendingDeliverables = await portalReadOrNull("listPortalPendingDeliverables", () =>
+    listPortalPendingDeliverables(principal),
+  );
+  const asks: readonly PortalPendingApproval[] = [...(pendingVersions ?? []), ...(pendingDeliverables ?? [])];
   const updateByProject = new Map<string, PortalUpdate>((latest ?? []).map((u) => [u.projectId, u]));
   const projects: PortalProjectTasks[] = [...(list?.projects ?? [])];
   for (const u of latest ?? []) {
@@ -147,7 +164,50 @@ export async function PortalHome({
               ) : null
             }
           />
-          {projects.length === 0 ? (
+          {asks.length > 0 ? (
+            <SectionCard
+              title={t("actionItems.title")}
+              description={t("actionItems.description")}
+              contentClassName="p-4"
+            >
+              <ul data-slot="portal-action-items" className="flex flex-col gap-2">
+                {asks.map((ask) => {
+                  const href = ask.project ? `/portal/projects/${ask.project.key}` : "/portal/files";
+                  return (
+                    <li
+                      key={`${ask.kind}-${ask.id}`}
+                      data-slot="portal-action-item"
+                      data-kind={ask.kind}
+                      className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+                    >
+                      <span className="flex min-w-0 flex-col gap-0.5">
+                        {/* ONE text node, not two: adjacent text children
+                            render with a `<!-- -->` marker on a document
+                            load and without one on a client navigation,
+                            which is exactly the byte the View-as
+                            comparison then sees (measured on this card). */}
+                        <span className="text-sm text-foreground">
+                          {ask.kind === "version"
+                            ? `${t("actionItems.signoffVersion", { version: ask.version })}${ask.title ? ` · ${ask.title}` : ""}`
+                            : t("actionItems.signoffDeliverable", { name: ask.name, number: ask.versionNumber })}
+                        </span>
+                        {ask.project ? (
+                          <span className="text-xs text-muted-foreground">{ask.project.name}</span>
+                        ) : null}
+                      </span>
+                      <Button asChild variant="outline" size="sm">
+                        {/* No prefetch: rendered on the member plane too (View-as). */}
+                        <Link href={href} prefetch={false}>
+                          {t("actionItems.review")}
+                        </Link>
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </SectionCard>
+          ) : null}
+          {projects.length === 0 && asks.length === 0 ? (
             // Shared with the member app's Portal tab since 2026-09-21,
             // so the preview there and this page cannot drift apart —
             // see `task-list.tsx` for why the variant and the glyph are

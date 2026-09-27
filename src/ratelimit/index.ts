@@ -85,6 +85,14 @@ const POLICIES = {
    */
   "portal.task_act": { limit: 60, window: "15 m" },
   /**
+   * A contact's sign-off decisions (Phase 3): the fail-open front
+   * filter in front of a census write that the database bounds to one
+   * decision per ask. What it protects is the audit trail and the
+   * agency's inbox, not the row — a client has at most a handful of
+   * open asks, so this is sized to catch a script.
+   */
+  "portal.sign_off": { limit: 30, window: "15 m" },
+  /**
    * THE PORTAL'S FILE DOWNLOAD per CONTACT (Phase 3, the portal files
    * slice). The cheap filter in front of a fail-CLOSED Postgres budget
    * (`assertDownloadBudget`, `src/documents/portal-writes.ts`, which

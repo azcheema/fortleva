@@ -144,7 +144,15 @@ export type PortalScopeRef =
   | { readonly kind: "client"; readonly clientId: string }
   | { readonly kind: "project"; readonly projectId: string }
   | { readonly kind: "work_item"; readonly workItemId: string }
-  | { readonly kind: "document"; readonly documentId: string };
+  | { readonly kind: "document"; readonly documentId: string }
+  /**
+   * `project_version` PAID ITS DEBT WITH THE SIGN-OFF SLICE (2026-09-27).
+   * Its `portal_gate` is the status-structural form — client match AND
+   * `status = 'SHIPPED'` AND `portal_enabled` — so a ref that resolves
+   * has proved the contact may read that exact shipped version, which
+   * is the row the decision lands on.
+   */
+  | { readonly kind: "project_version"; readonly versionId: string };
 
 /**
  * Throws `AuthzError` on every denial. NOT_FOUND for anything
@@ -292,6 +300,15 @@ export async function authorizePortal(
       select: { id: true },
     });
     if (!row) deny("NOT_FOUND", "document");
+  } else if (ref?.kind === "project_version") {
+    // Tenant, client, SHIPPED and the project's switch are all
+    // `portal_gate`'s on this table (the status-structural form); there
+    // is no soft delete on a version, so the probe is the policy alone.
+    const row = await tx.projectVersion.findFirst({
+      where: { id: ref.versionId },
+      select: { id: true },
+    });
+    if (!row) deny("NOT_FOUND", "project version");
   }
 
   // 5. Gates 1–3 for every module this capability rides on.
@@ -328,5 +345,48 @@ export async function withPortalRead<T>(
       CONTACT_TRANSACTIONS.add(tx);
       return fn(tx);
     },
+  );
+}
+
+/**
+ * THE CENSUS-WRITE SEAM — the one transaction shape in which a contact
+ * WRITES under their own principal (Phase 3, the sign-off slice).
+ *
+ * TENANCY.md §7.2 enumerates the contact-writable census exactly: a
+ * `Comment` INSERT, the approval columns of a `ProjectVersion` and of a
+ * `Document`, the inbox flags on the contact's own `Notification` rows.
+ * Those writes are NOT brokered — the whole point of a census entry is
+ * that RLS, a named policy and a trigger decide them, so that the
+ * database is the last line rather than the application's `where`. A
+ * write through here therefore runs under the SAME principal as a read,
+ * with the same stamp (`authorizePortal` inside it works exactly as it
+ * does in a read), and every identifying term is the policy's before it
+ * is the code's.
+ *
+ * It is a second name for the same transaction rather than a flag on
+ * `withPortalRead`, for the reason the broker file has its own name:
+ * "this transaction writes as the contact" must be greppable, and
+ * `src/authz/portal-projections.test.ts` scans every file that says it.
+ * What may be written through it is what the census test measures
+ * (`src/portal/census.dbtest.ts`) — anything else is refused by the
+ * database with 42501, which is the property the seam exists to lean on.
+ * The audit row is written INSIDE it, under the contact
+ * (`portal_audit_insert` admits a row describing the contact itself);
+ * anything the agency must be told is emitted AFTER it, because a
+ * contact may not insert a `notification` row.
+ */
+export async function withCensusWrite<T>(
+  principal: PortalPrincipal,
+  fn: (tx: TenantDb) => Promise<T>,
+  opts?: { readonly lockTimeoutMs?: number },
+): Promise<T> {
+  return withTenant(
+    principal.tenantId,
+    { type: "contact", id: principal.contactId, clientId: principal.clientId },
+    (tx) => {
+      CONTACT_TRANSACTIONS.add(tx);
+      return fn(tx);
+    },
+    opts,
   );
 }

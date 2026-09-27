@@ -60,8 +60,16 @@ test.describe("portal files", () => {
     await expect(project.locator('[data-slot="portal-file-group"][data-kind="GENERAL"]')).toContainText(
       `e2e-projekt-${seed.tenantSlug.slice("e2e-".length)}.txt`,
     );
-    // Every row offers exactly one verb: download.
+    // Every row offers the download; the seeded deliverable, asked about
+    // at version 2, also carries the sign-off control (the sign-off
+    // slice — `portal-signoff.spec.ts` drives it), and the ordinary file
+    // does not.
     await expect(files.first().getByRole("button", { name: `Download ${seed.deliverableDocName}` })).toBeVisible();
+    await expect(files.first().locator('[data-slot="portal-signoff"]')).toHaveAttribute("data-status", "PENDING");
+    await expect(files.first().getByTestId("portal-signoff-approve")).toBeVisible();
+    await expect(
+      project.locator('[data-slot="portal-file-group"][data-kind="GENERAL"] [data-slot="portal-signoff"]'),
+    ).toHaveCount(0);
 
     // ── THE NEGATIVE CONTROLS, on the whole surface ──────────────────
     await expect(surface).not.toContainText(seed.internalDocName);

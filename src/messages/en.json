@@ -263,7 +263,8 @@
       "budgetThreshold": "A project budget reached a threshold",
       "generic": "Something happened",
       "requestReceived": "A client sent a request",
-      "completedByContact": "A client marked their task as done"
+      "completedByContact": "A client marked their task as done",
+      "approvalDecided": "A client answered a sign-off request"
     },
     "row": {
       "markRead": "Mark as read",
@@ -1094,7 +1095,11 @@
     "tableLabel": "Files",
     "downloadName": "Download {name}",
     "deleteConfirm": "Delete {name}?",
-    "deliverable": "Deliverable"
+    "deliverable": "Deliverable",
+    "requestSignoff": "Request sign-off",
+    "signoffVersion": "v{number}",
+    "signoffBy": "{name}, {date}",
+    "clientNote": "The client wrote:"
   },
   "errors": {
     "generic": "Something went wrong.",
@@ -1173,7 +1178,10 @@
     "UPDATE_CHANGED": "The draft changed while it was being published. Check it and publish again.",
     "UPDATE_TOO_LARGE": "One of the sections is too long to save.",
     "DOWNLOAD_RATE_LIMITED": "You have downloaded a lot of files in a short time. Wait a few minutes and try again.",
-    "DOWNLOAD_BUSY": "That file could not be fetched just now. Try again in a moment."
+    "DOWNLOAD_BUSY": "That file could not be fetched just now. Try again in a moment.",
+    "SIGNOFF_NOT_SHAREABLE": "The client cannot see this yet. Share it first: a shipped version on a project with the portal on, or a shared deliverable with an uploaded file.",
+    "SIGNOFF_ALREADY_REQUESTED": "Sign-off has already been requested from the client.",
+    "SIGNOFF_ALREADY_APPROVED": "The client has already approved this."
   },
   "assignments": {
     "title": "Team",
@@ -1572,6 +1580,15 @@
       "draft": "Draft",
       "shippedToast": "Shipped {version}",
       "shippedVisibleHint": "Shipped versions are visible to the client once the portal is enabled.",
+      "requestSignoff": "Request sign-off",
+      "requestSignoffConfirm": "Ask the client to sign off version {version}?",
+      "signoffRequestedToast": "Sign-off requested for {version}",
+      "signoffRequestedOn": "Sign-off requested {date}",
+      "approvedBy": "Approved by {name} {date}",
+      "changesBy": "Changes requested by {name} {date}",
+      "approvedOn": "Approved {date}",
+      "changesOn": "Changes requested {date}",
+      "clientNote": "The client wrote:",
       "more": "More actions",
       "title": "Timeline",
       "description": "Milestones in plan order, with each shipped version placed where it landed.",
@@ -2562,11 +2579,30 @@
     },
     "actionItems": {
       "title": "Waiting on you",
-      "description": "Tasks your agency has asked you to do."
+      "description": "Things your agency has asked you to do or decide.",
+      "signoffVersion": "Sign off version {version}",
+      "signoffDeliverable": "Sign off {name} (version {number})",
+      "review": "Review"
+    },
+    "signoff": {
+      "awaitingYou": "Waiting for your sign-off",
+      "awaitingReview": "Awaiting review",
+      "approve": "Approve",
+      "requestChanges": "Request changes",
+      "noteLabel": "What should change?",
+      "notePlaceholder": "Tell your agency what to change.",
+      "noteHint": "Your agency reads this. It is required when you request changes.",
+      "sendChanges": "Send",
+      "cancel": "Cancel",
+      "approved": "Approved",
+      "changes": "Changes requested",
+      "approvedOn": "Approved {date}",
+      "changesOn": "Changes requested {date}",
+      "failed": "That did not save. Please try again."
     },
     "timeline": {
       "title": "Timeline",
-      "description": "Updates, milestones, releases and deliverables, newest first.",
+      "description": "Updates, milestones, releases, deliverables and your sign-offs, newest first.",
       "truncated": "Showing the {count} most recent events.",
       "updateNumber": "Update #{seq}",
       "published": "Published {date}",
@@ -2577,7 +2613,12 @@
       "deliverable": "Deliverable: {name}",
       "report": "Report: {name}",
       "fileVersion": "Version {number}",
-      "shared": "Added {date}"
+      "shared": "Added {date}",
+      "versionApproved": "Version {version} approved",
+      "versionChanges": "Changes requested on version {version}",
+      "deliverableApproved": "{name} approved (version {number})",
+      "deliverableChanges": "Changes requested on {name} (version {number})",
+      "decided": "Decided {date}"
     },
     "nav": {
       "label": "Client portal",
@@ -2604,7 +2645,8 @@
       "truncated": "Showing the first {count} files. Ask your agency if something is missing.",
       "errors": {
         "download": "That file could not be downloaded just now. Try again, or ask your contact at the agency."
-      }
+      },
+      "approvalVersion": "Sign-off concerns version {number}"
     },
     "company": {
       "title": "Your company",

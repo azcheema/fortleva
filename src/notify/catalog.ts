@@ -130,6 +130,27 @@ const KINDS = {
     class: "INSTANT",
     email: { atLevel: "PARTICIPATING" },
   },
+  /**
+   * Phase 3, sign-off: a CLIENT approved, or asked for changes to, a
+   * shipped version or a delivered file the agency asked them to sign
+   * off (`src/projects/portal-signoff.ts`, `src/documents/portal-signoff.ts`).
+   *
+   * AUDIENCE IS MEMBER, as for the two kinds above: the field names who
+   * RECEIVES. INSTANT for the same reason a tick is: the agency asked
+   * and is waiting on the answer — "changes requested" is work somebody
+   * should pick up now, and "approved" is the moment an invoice or a
+   * launch can move. PARTICIPATING, matching the receivers (the
+   * project's people, or the client's when the file was shared with the
+   * company itself). No `debounceMinutes`, no `cancelledIfRead`: a
+   * decision is final until staff ask again, so there is nothing to
+   * undo inside two minutes. The dedupe key collapses a decision that
+   * is re-asked and re-decided while the first row is unread.
+   */
+  "approval.decided": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
   // 2T: budget threshold crossed (once per budget × period × threshold —
   // the BudgetAlert unique dedupes; ids only; coalesces until digests).
   "budget.threshold_reached": {

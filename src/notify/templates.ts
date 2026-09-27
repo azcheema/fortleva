@@ -54,6 +54,16 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "En kund uppger att de har slutfört en uppgift ni tilldelat dem. Den väntar på att ni kontrollerar den.",
     },
   },
+  "approval.decided": {
+    en: {
+      subject: "A client answered a sign-off request",
+      body: "A client has approved, or asked for changes to, something you asked them to sign off. Open the project to see their answer.",
+    },
+    sv: {
+      subject: "En kund har svarat på en begäran om godkännande",
+      body: "En kund har godkänt, eller bett om ändringar i, något ni bad dem godkänna. Öppna projektet för att se svaret.",
+    },
+  },
   "budget.threshold_reached": {
     en: { subject: "A project budget reached a threshold", body: "A project budget in Fortleva reached one of its thresholds." },
     sv: { subject: "En projektbudget har nått en tröskel", body: "En projektbudget i Fortleva har nått en av sina trösklar." },
@@ -82,6 +92,19 @@ const linkFor = (
   if (key === "time.weekly_reminder") return new URL("/time", appUrl);
   const projectKey = typeof params?.["projectKey"] === "string" ? params["projectKey"] : null;
   const itemNumber = typeof params?.["itemNumber"] === "string" ? params["itemNumber"] : null;
+  // A sign-off decision lands on the project's Timeline tab (a version)
+  // or its Files tab (a deliverable); a deliverable shared with the
+  // company itself has no project and takes the one home.
+  if (key === "approval.decided") {
+    if (projectKey) {
+      return new URL(
+        params?.["subject"] === "deliverable" ? `/projects/${projectKey}/files` : `/projects/${projectKey}/timeline`,
+        appUrl,
+      );
+    }
+    const clientId = typeof params?.["clientId"] === "string" ? params["clientId"] : null;
+    if (clientId) return new URL(`/clients/${clientId}/files`, appUrl);
+  }
   return projectKey && itemNumber
     ? new URL(`/projects/${projectKey}/backlog?item=${projectKey}-${itemNumber}`, appUrl)
     : new URL("/home", appUrl);

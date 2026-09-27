@@ -111,6 +111,7 @@ export default async function ProjectTimelinePage({ params }: { params: Promise<
                   projectKey={project.key}
                   version={entry.version}
                   editable={editable}
+                  portalEnabled={project.portalEnabled}
                   last={i === entries.length - 1}
                 />
               ),

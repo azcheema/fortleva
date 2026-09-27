@@ -84,6 +84,7 @@ export default async function ClientFilesPage({
           returnTo={returnTo}
           canDelete={client.caps.deleteDocuments}
           canChangeVisibility={client.caps.changeDocumentVisibility}
+          canRequestSignoff={client.caps.editDocuments && client.status === "ACTIVE"}
         />
       )}
       {canUpload ? (

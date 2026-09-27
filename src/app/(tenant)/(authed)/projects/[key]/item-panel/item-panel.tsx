@@ -555,6 +555,10 @@ export async function ItemPanel({
                   returnTo={returnTo}
                   canDelete={caps.deleteDocuments}
                   canChangeVisibility={caps.changeDocumentVisibility}
+                  // An attachment marked a deliverable is asked about from
+                  // the Files tab, where the row shows the ask's state
+                  // beside the project's switch; the panel offers no ask.
+                  canRequestSignoff={false}
                 />
               )}
               {caps.uploadDocuments ? (

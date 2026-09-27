@@ -411,7 +411,26 @@ export async function commitUpload(
   return { documentId };
 }
 
-/** Step 2 (existing document): COMMITTED + FileVersion N+1. */
+/**
+ * Step 2 (existing document): COMMITTED + FileVersion N+1.
+ *
+ * A NEW VERSION VOIDS AN OPEN ASK (DATA_MODEL §6.8): a PENDING sign-off
+ * goes back to NOT_REQUESTED, because the client must not approve bytes
+ * they never saw — the ask named `approvalVersionNumber`, and that
+ * number is no longer the newest. A DECISION stands: it is pinned to the
+ * number it was about, which is what that column exists to answer, and
+ * staff ask again for the new version when they want it signed off.
+ *
+ * THE VOID IS DECIDED BY THE DATABASE, NOT BY A PRE-READ: the reset is
+ * `updateMany … WHERE approval_status = 'PENDING'`, so a contact whose
+ * decision commits between this transaction's read and its write does
+ * not leave the row NOT_REQUESTED with a decision on it (the CHECK would
+ * have refused the whole upload — a security review traced the race).
+ * Zero rows means the ask was answered first and the decision stands.
+ * When it DOES void, it is audited (`document.approval_voided`): an ask
+ * vanishing from the client's card is a change a person can see, and an
+ * operator asked why must find it in the log.
+ */
 export async function addVersion(
   ctx: DocumentCtx,
   input: { documentId: string; fileObjectId: string; note?: string },
@@ -440,9 +459,105 @@ export async function addVersion(
         uploadedByMemberId: ctx.actor.memberId,
       },
     });
-    await tx.document.update({ where: { id: doc!.id }, data: { updatedAt: new Date() } });
+    // Always asked of the database, never gated on the read above: an
+    // ask that opened between that read and this statement is voided
+    // too, so no ask can be pinned to a version older than the newest.
+    const voided = await tx.document.updateMany({
+      where: { id: doc!.id, approvalStatus: "PENDING" },
+      data: { approvalStatus: "NOT_REQUESTED", approvalRequestedAt: null, approvalVersionNumber: null },
+    });
+    if (voided.count === 1) {
+      await record(tx, {
+        action: "document.approval_voided",
+        targetType: "Document",
+        targetId: doc!.id,
+        metadata: { clientId: doc!.clientId, projectId: doc!.projectId, newVersionNumber: versionNumber },
+      });
+    }
+    await tx.document.update({ where: { id: doc!.id }, data: { updatedAt: new Date() }, select: { id: true } });
   });
   return { versionNumber };
+}
+
+/**
+ * ASK THE CLIENT TO SIGN A DELIVERABLE OFF (Phase 3, DATA_MODEL §6.8,
+ * mirroring `requestVersionSignoff`): NOT_REQUESTED or CHANGES_REQUESTED
+ * — or APPROVED at an OLDER version than the newest — → PENDING, with
+ * `approvalVersionNumber` stamped to the newest COMMITTED version, so
+ * "what exactly was the client asked about" is a column and not a
+ * guess. The previous decision and its note are cleared with the ask.
+ * `document:edit` — the code that uploads the next version is the code
+ * that asks about it. Audited `document.approval_requested`.
+ *
+ * Refused where the client could not see or fetch the row: not a
+ * DELIVERABLE, not CLIENT_VISIBLE, a project whose portal is off or
+ * that is archived, or a file with no committed bytes yet. Refused as
+ * already open on PENDING, and as nothing-to-ask when the newest version
+ * is the one the client already approved.
+ */
+export async function requestDocumentSignoff(
+  ctx: DocumentCtx,
+  documentId: string,
+): Promise<{ requestedAt: Date; versionNumber: number }> {
+  return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "document:edit");
+    const doc = await tx.document.findFirst({
+      where: { id: documentId, deletedAt: null },
+      select: {
+        id: true,
+        clientId: true,
+        projectId: true,
+        kind: true,
+        visibility: true,
+        portalEnabled: true,
+        approvalStatus: true,
+        approvalVersionNumber: true,
+        project: { select: { archivedAt: true } },
+        versions: {
+          where: { fileObject: { status: "COMMITTED" } },
+          orderBy: { versionNumber: "desc" },
+          take: 1,
+          select: { versionNumber: true },
+        },
+      },
+    });
+    if (!doc) deny("NOT_FOUND");
+    await assertDocumentInScope(tx, ctx.actor, doc!);
+    if (doc!.kind !== "DELIVERABLE") fail("SIGNOFF_NOT_SHAREABLE", "not a deliverable");
+    if (doc!.visibility !== "CLIENT_VISIBLE" || !doc!.portalEnabled) fail("SIGNOFF_NOT_SHAREABLE", "not shared");
+    if (doc!.project?.archivedAt) fail("ARCHIVED");
+    const newest = doc!.versions[0]?.versionNumber;
+    if (newest === undefined) fail("SIGNOFF_NOT_SHAREABLE", "no committed version");
+    if (doc!.approvalStatus === "PENDING") fail("SIGNOFF_ALREADY_REQUESTED");
+    if (doc!.approvalStatus === "APPROVED" && doc!.approvalVersionNumber === newest) {
+      fail("SIGNOFF_ALREADY_APPROVED");
+    }
+    const requestedAt = new Date();
+    await tx.document.update({
+      where: { id: doc!.id },
+      data: {
+        approvalStatus: "PENDING",
+        approvalRequestedAt: requestedAt,
+        approvalDecidedAt: null,
+        approvalByContactId: null,
+        approvalNote: null,
+        approvalVersionNumber: newest!,
+      },
+      select: { id: true },
+    });
+    await record(tx, {
+      action: "document.approval_requested",
+      targetType: "Document",
+      targetId: doc!.id,
+      metadata: {
+        clientId: doc!.clientId,
+        projectId: doc!.projectId,
+        versionNumber: newest!,
+        previous: doc!.approvalStatus,
+      },
+    });
+    return { requestedAt, versionNumber: newest! };
+  });
 }
 
 // ── Read side ────────────────────────────────────────────────────────
@@ -460,6 +575,13 @@ export type DocumentListItem = {
   sizeBytes: number;
   contentType: string;
   updatedAt: Date;
+  /** Sign-off (Phase 3, DELIVERABLE only): where the ask stands and the client's answer, with the version it was about. */
+  approvalStatus: "NOT_REQUESTED" | "PENDING" | "APPROVED" | "CHANGES_REQUESTED";
+  approvalVersionNumber: number | null;
+  approvalDecidedAt: Date | null;
+  /** The contact who decided, by NAME — resolved on the member plane. */
+  approvalByName: string | null;
+  approvalNote: string | null;
 };
 
 export type DocumentFilter = {
@@ -507,6 +629,13 @@ export async function listDocuments(
         },
       },
     });
+    // The deciding contacts' NAMES, one sequential statement for the
+    // whole page (`approvalByContactId` is attribution with no FK).
+    const deciderIds = [...new Set(rows.map((d) => d.approvalByContactId).filter((v): v is string => v !== null))];
+    const deciders = deciderIds.length
+      ? await tx.contact.findMany({ where: { id: { in: deciderIds } }, select: { id: true, name: true } })
+      : [];
+    const deciderName = new Map(deciders.map((c) => [c.id, c.name]));
     return rows.map((d) => {
       const latest = d.versions[0];
       return {
@@ -521,6 +650,11 @@ export async function listDocuments(
         sizeBytes: Number(latest?.fileObject.sizeBytes ?? 0n),
         contentType: latest?.fileObject.contentType ?? "application/octet-stream",
         updatedAt: d.updatedAt,
+        approvalStatus: d.approvalStatus,
+        approvalVersionNumber: d.approvalVersionNumber,
+        approvalDecidedAt: d.approvalDecidedAt,
+        approvalByName: d.approvalByContactId ? (deciderName.get(d.approvalByContactId) ?? null) : null,
+        approvalNote: d.approvalNote,
       };
     });
   });

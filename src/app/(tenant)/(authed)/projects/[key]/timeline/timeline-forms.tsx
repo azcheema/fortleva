@@ -44,6 +44,7 @@ import {
   createMilestoneAction,
   createVersionAction,
   reorderMilestoneAction,
+  requestVersionSignoffAction,
   setMilestoneStatusAction,
   shipVersionAction,
   updateMilestoneAction,
@@ -429,11 +430,14 @@ export function VersionItem({
   projectKey,
   version,
   editable,
+  portalEnabled,
   last = false,
 }: {
   projectKey: string;
   version: VersionRow;
   editable: boolean;
+  /** The project's portal switch: "Request sign-off" is offered only where the client could see the version. Required, never defaulted (AGENTS.md). */
+  portalEnabled: boolean;
   last?: boolean;
 }) {
   const t = useTranslations("projects.timeline");
@@ -443,15 +447,65 @@ export function VersionItem({
   const shipped = v.status === "SHIPPED";
   const spec = STATUS_MAP.versionStatus[v.status];
   const node = <StatusIcon name={spec.icon} className="size-3.5" />;
+  const day = (d: Date) => format.dateTime(d, { dateStyle: "medium" });
+
+  // SIGN-OFF (Phase 3): where the ask stands, drawn beside the status
+  // — the approval chip, then the sentence that says who answered and
+  // when, then the client's words. `NOT_REQUESTED` draws nothing, so a
+  // version nobody asked about looks as it always did.
+  const signoff =
+    v.approvalStatus === "NOT_REQUESTED" ? null : (
+      <span data-slot="version-signoff" data-status={v.approvalStatus} className="flex flex-col gap-0.5">
+        <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <StatusBadge domain="approvalStatus" value={v.approvalStatus} />
+          {v.approvalStatus === "PENDING" && v.approvalRequestedAt ? (
+            <span className="num">{t("signoffRequestedOn", { date: day(v.approvalRequestedAt) })}</span>
+          ) : null}
+          {/* `approvalByContactId` is attribution with no FK, so after a
+              contact's erasure the decision stands with no name: the
+              sentence then says the decision and the day, and nothing
+              about who (the same fallback the Files tab takes). */}
+          {v.approvalStatus === "APPROVED" && v.approvalDecidedAt ? (
+            <span>
+              {v.approvalByName
+                ? t("approvedBy", { name: v.approvalByName, date: day(v.approvalDecidedAt) })
+                : t("approvedOn", { date: day(v.approvalDecidedAt) })}
+            </span>
+          ) : null}
+          {v.approvalStatus === "CHANGES_REQUESTED" && v.approvalDecidedAt ? (
+            <span>
+              {v.approvalByName
+                ? t("changesBy", { name: v.approvalByName, date: day(v.approvalDecidedAt) })
+                : t("changesOn", { date: day(v.approvalDecidedAt) })}
+            </span>
+          ) : null}
+        </span>
+        {/* The prefix outside the quotation: only the client's words are quoted. */}
+        {v.approvalNote ? (
+          <span className="text-xs whitespace-pre-wrap text-muted-foreground">
+            {t("clientNote")} <q>{v.approvalNote}</q>
+          </span>
+        ) : null}
+      </span>
+    );
+  // Offered only where the service would not refuse it: shipped, the
+  // portal on, and no open ask or standing approval (UI.md §3.1: hiding
+  // is never the gate — the service says no again).
+  const canRequestSignoff =
+    editable &&
+    shipped &&
+    portalEnabled &&
+    (v.approvalStatus === "NOT_REQUESTED" || v.approvalStatus === "CHANGES_REQUESTED");
 
   const meta = (
-    <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <StatusBadge domain="versionStatus" value={v.status} />
-      {shipped && v.shippedAt ? (
-        <span className="num">
-          {t("shipped", { date: format.dateTime(v.shippedAt, { dateStyle: "medium" }) })}
-        </span>
-      ) : null}
+    <span className="flex flex-col gap-1">
+      <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <StatusBadge domain="versionStatus" value={v.status} />
+        {shipped && v.shippedAt ? (
+          <span className="num">{t("shipped", { date: day(v.shippedAt) })}</span>
+        ) : null}
+      </span>
+      {signoff}
     </span>
   );
 
@@ -532,6 +586,16 @@ export function VersionItem({
               variant="outline"
               pending={pending}
               onConfirm={() => run(() => shipVersionAction(v.id, projectKey, v.version))}
+            />
+          </span>
+        ) : canRequestSignoff ? (
+          <span className="shrink-0">
+            <InlineConfirm
+              label={t("requestSignoff")}
+              question={t("requestSignoffConfirm", { version: v.version })}
+              variant="outline"
+              pending={pending}
+              onConfirm={() => run(() => requestVersionSignoffAction(v.id, projectKey, v.version))}
             />
           </span>
         ) : null}

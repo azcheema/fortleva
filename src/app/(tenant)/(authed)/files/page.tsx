@@ -44,6 +44,7 @@ export default async function FilesPage({
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
       const held = await authorizedCodes(tx, actor, [
         "document:upload",
+        "document:edit",
         "document:delete",
         "document:change_visibility",
       ]);
@@ -51,6 +52,9 @@ export default async function FilesPage({
         canUpload: held.has("document:upload"),
         canDelete: held.has("document:delete"),
         canChangeVisibility: held.has("document:change_visibility"),
+        // Asking a client to sign a deliverable off (Phase 3). This list
+        // spans projects, so the portal switch is the service's to check.
+        canRequestSignoff: held.has("document:edit"),
       };
     }),
   ]);
@@ -111,6 +115,7 @@ export default async function FilesPage({
             returnTo="/files"
             canDelete={caps.canDelete}
             canChangeVisibility={caps.canChangeVisibility}
+            canRequestSignoff={caps.canRequestSignoff}
           />
         )}
       </section>

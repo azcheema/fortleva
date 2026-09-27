@@ -10,6 +10,7 @@ import { clean } from "@/clients/service";
 import { PORTAL_ENABLED_FANOUT_TARGETS, withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import type {
+  ApprovalStatus,
   HoursSharingMode,
   MilestoneStatus,
   ProjectHealth,
@@ -157,6 +158,13 @@ export type VersionRow = {
   status: ProjectVersionStatus;
   shippedAt: Date | null;
   createdAt: Date;
+  /** Sign-off (Phase 3): where the ask stands, and the client's answer when there is one. */
+  approvalStatus: ApprovalStatus;
+  approvalRequestedAt: Date | null;
+  approvalDecidedAt: Date | null;
+  /** The contact who decided, by NAME — resolved on the member plane, where a contact's name is readable. */
+  approvalByName: string | null;
+  approvalNote: string | null;
 };
 
 export type ProjectDetail = {
@@ -205,6 +213,8 @@ export type ProjectDetail = {
     triage: boolean;
     viewDocuments: boolean;
     uploadDocuments: boolean;
+    /** `document:edit` — asking the client to sign a deliverable off rides on it (Phase 3). */
+    editDocuments: boolean;
     deleteDocuments: boolean;
     changeDocumentVisibility: boolean;
   };
@@ -237,6 +247,14 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
     // newest published post's health, through the one helper that
     // knows which post that is.
     const latestUpdate = await latestPublishedHealth(tx, ctx.tenantId, head!.id);
+    // …and the names of the contacts who signed a version off (Phase 3):
+    // `approvalByContactId` is attribution with no FK, so a name is a
+    // second, sequential read — one statement for every decided version.
+    const deciderIds = [...new Set(p.versions.map((v) => v.approvalByContactId).filter((v): v is string => v !== null))];
+    const deciders = deciderIds.length
+      ? await tx.contact.findMany({ where: { id: { in: deciderIds } }, select: { id: true, name: true } })
+      : [];
+    const deciderName = new Map(deciders.map((c) => [c.id, c.name]));
     const lead = p.leadMemberId
       ? await tx.member.findFirst({
           where: { id: p.leadMemberId },
@@ -287,6 +305,11 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         status: v.status,
         shippedAt: v.shippedAt,
         createdAt: v.createdAt,
+        approvalStatus: v.approvalStatus,
+        approvalRequestedAt: v.approvalRequestedAt,
+        approvalDecidedAt: v.approvalDecidedAt,
+        approvalByName: v.approvalByContactId ? (deciderName.get(v.approvalByContactId) ?? null) : null,
+        approvalNote: v.approvalNote,
       })),
       assignments: p.memberProjects.map((mp) => ({
         memberId: mp.memberId,
@@ -308,6 +331,9 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         triage: held.has("work_item:triage"),
         viewDocuments: held.has("document:view"),
         uploadDocuments: held.has("document:upload"),
+        // Asking the client to sign a deliverable off is `document:edit`'s
+        // (Phase 3): the same code that uploads a new version of it.
+        editDocuments: held.has("document:edit"),
         deleteDocuments: held.has("document:delete"),
         changeDocumentVisibility: held.has("document:change_visibility"),
       },

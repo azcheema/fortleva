@@ -69,6 +69,19 @@ export type DomainErrorCode =
   // spent (55P03) or it lost a deadlock, every attempt. Not disclosable,
   // for the same reason — the contact sees the plane's generic refusal.
   | "DOWNLOAD_BUSY"
+  // Sign-off (Phase 3 — src/projects/versions.ts, src/documents/service.ts).
+  // The member's three refusals when ASKING a client to sign off: the row
+  // is not something the client can see (a draft version, an INTERNAL or
+  // non-DELIVERABLE document, a project whose portal is off, a document
+  // with no committed bytes); the ask is already open; or the client has
+  // already approved and there is nothing left to ask. Each is a fact
+  // about the member's own tenant and earns a sentence. The CONTACT'S
+  // side raises none of these: a decision on a row that is not PENDING
+  // is answered with the row's current state, and everything else is
+  // the plane's uniform NOT_FOUND.
+  | "SIGNOFF_NOT_SHAREABLE"
+  | "SIGNOFF_ALREADY_REQUESTED"
+  | "SIGNOFF_ALREADY_APPROVED"
   // Work tree (2W — trigger tokens map 1:1 in src/modules/work/db-errors.ts)
   | "HAS_VISIBLE_CHILDREN" // make-private refused while client-visible subtasks/comments/attachments live
   | "PARENT_NOT_VISIBLE" // a child cannot be client-visible under an internal parent

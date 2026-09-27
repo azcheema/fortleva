@@ -24,7 +24,7 @@ import {
   updateProject,
   type ProjectPatch,
 } from "@/projects/service";
-import { createVersion, shipVersion, updateVersion } from "@/projects/versions";
+import { createVersion, requestVersionSignoff, shipVersion, updateVersion } from "@/projects/versions";
 
 /**
  * Server actions for /projects/[key]/*. Tenant + actor from the session;
@@ -353,6 +353,27 @@ export async function updateVersionAction(formData: FormData): Promise<FormResul
         : {}),
     });
     return tCommon("saved");
+  });
+  if (r.ok) revalidateProject(key);
+  return r;
+}
+
+/**
+ * Ask the client to sign a shipped version off (Phase 3, sign-off). The
+ * service refuses a draft, a project whose portal is off, an open ask and
+ * a standing approval, each with its own sentence.
+ */
+export async function requestVersionSignoffAction(
+  versionId: string,
+  key: string,
+  versionLabel: string,
+): Promise<FormResult> {
+  if (!uuid.safeParse(versionId).success) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.timeline");
+  const r = await runForm(projectPath(key, "/timeline"), async () => {
+    await requestVersionSignoff(ctx, versionId);
+    return t("signoffRequestedToast", { version: versionLabel });
   });
   if (r.ok) revalidateProject(key);
   return r;

@@ -1,4 +1,6 @@
+import { AuthzError } from "@/authz/errors";
 import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal";
+import type { PortalApprovalState, PortalPendingApproval } from "@/portal/signoff";
 
 import { readPortalFileVersions } from "./portal-writes";
 
@@ -11,10 +13,10 @@ import { readPortalFileVersions } from "./portal-writes";
  * WHAT A CLIENT IS TOLD ABOUT A FILE: its name, what kind of thing it
  * is (a deliverable, a report, or just a file — `Document.kind`, which
  * DATA_MODEL §6.8 says exists to drive exactly this grouping), which
- * project it belongs to if any, and the newest version's number, date,
- * size and type. Nothing else: no tags, no uploader, no anchor, no
- * approval state (the sign-off slice's, which owns what a decision
- * means), no key.
+ * project it belongs to if any, the newest version's number, date, size
+ * and type, and — on a DELIVERABLE, since the sign-off slice — where
+ * the ask to sign it off stands, with the version it was about. Nothing
+ * else: no tags, no uploader, no anchor, no key.
  *
  * THE VERSION FACTS DO NOT COME FROM THIS TRANSACTION, and that is the
  * one thing this projection does that no other does. `file_version` is
@@ -50,6 +52,13 @@ export type PortalDocument = {
     readonly sizeBytes: number;
     readonly contentType: string;
   };
+  /**
+   * The sign-off ask on a DELIVERABLE, null on every other kind. Carries
+   * the version number the ask was about beside the state, because the
+   * newest version (above) may be later than what the client approved —
+   * DATA_MODEL §6.8's reason for the column.
+   */
+  readonly approval: (PortalApprovalState & { readonly versionNumber: number | null }) | null;
 };
 
 export type PortalDocumentList = {
@@ -88,7 +97,7 @@ export async function listPortalDocuments(
   opts?: { readonly projectId?: string },
 ): Promise<PortalDocumentList> {
   const projectId = opts?.projectId;
-  const rows = await withPortalRead(principal, async (tx) => {
+  const { rows, mayApprove } = await withPortalRead(principal, async (tx) => {
     await authorizePortal(
       tx,
       principal,
@@ -97,7 +106,17 @@ export async function listPortalDocuments(
       // row by row (`PortalScopeRef`).
       projectId ? { kind: "project", projectId } : undefined,
     );
-    return tx.document.findMany({
+    // MAY THIS READER SIGN A DELIVERABLE OFF — asked once, without
+    // throwing, for every deliverable's `canDecide`: a collaborator reads
+    // the ask's state and gets no control (the timeline's shape).
+    let mayApprove = true;
+    try {
+      await authorizePortal(tx, principal, "portal.deliverable.approve", projectId ? { kind: "project", projectId } : undefined);
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      mayApprove = false;
+    }
+    const rows = await tx.document.findMany({
       where: {
         tenantId: principal.tenantId,
         clientId: principal.clientId,
@@ -113,6 +132,10 @@ export async function listPortalDocuments(
         id: true,
         name: true,
         kind: true,
+        approvalStatus: true,
+        approvalDecidedAt: true,
+        approvalNote: true,
+        approvalVersionNumber: true,
         project: { select: { id: true, key: true, name: true } },
       },
       // THE CAP IS CUT BY `updatedAt`, which `addVersion` bumps, so a
@@ -129,6 +152,7 @@ export async function listPortalDocuments(
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       take: PORTAL_DOCUMENT_LIMIT + 1,
     });
+    return { rows, mayApprove };
   });
 
   const truncated = rows.length > PORTAL_DOCUMENT_LIMIT;
@@ -160,6 +184,16 @@ export async function listPortalDocuments(
         sizeBytes: version.sizeBytes,
         contentType: version.contentType,
       },
+      approval:
+        row.kind === "DELIVERABLE"
+          ? {
+              status: row.approvalStatus,
+              decidedAt: row.approvalDecidedAt,
+              note: row.approvalNote,
+              versionNumber: row.approvalVersionNumber,
+              canDecide: mayApprove && row.approvalStatus === "PENDING",
+            }
+          : null,
     });
   }
   documents.sort(
@@ -170,4 +204,64 @@ export async function listPortalDocuments(
       (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );
   return { documents, truncated };
+}
+
+/**
+ * THE DELIVERABLES WAITING ON THIS READER — every open ask of the
+ * client across its projects and its company-level files, for the
+ * home's "Waiting on you" card (UI.md §4: action items first).
+ *
+ * EMPTY, NOT REFUSED, for a profile that cannot sign: the card lists
+ * what the reader can DO, and a collaborator can do nothing here — the
+ * ask is still visible to them on the files list, as the word "awaiting
+ * review" with no control. Asked without throwing, so the home never
+ * turns a profile into the plane's empty page over a card it would omit.
+ *
+ * The version facts are NOT read here — a row on the card says the
+ * name, the version number the ask names, and the project; the control
+ * itself lives on the files list and the project page, where the file
+ * layer's broker has been consulted.
+ */
+export async function listPortalPendingDeliverables(
+  principal: PortalPrincipal,
+): Promise<readonly PortalPendingApproval[]> {
+  return withPortalRead(principal, async (tx) => {
+    await authorizePortal(tx, principal, "portal.document.view");
+    try {
+      await authorizePortal(tx, principal, "portal.deliverable.approve");
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      return [];
+    }
+    const rows = await tx.document.findMany({
+      where: {
+        tenantId: principal.tenantId,
+        clientId: principal.clientId,
+        visibility: "CLIENT_VISIBLE",
+        portalEnabled: true,
+        deletedAt: null,
+        kind: "DELIVERABLE",
+        approvalStatus: "PENDING",
+        OR: [{ projectId: null }, { project: { archivedAt: null } }],
+      },
+      select: {
+        id: true,
+        name: true,
+        approvalVersionNumber: true,
+        project: { select: { id: true, key: true, name: true } },
+      },
+      // Oldest ask first: the one the agency has been waiting on longest.
+      orderBy: [{ approvalRequestedAt: "asc" }, { id: "asc" }],
+      take: PORTAL_DOCUMENT_LIMIT,
+    });
+    return rows.map((row) => ({
+      kind: "deliverable" as const,
+      id: row.id,
+      name: row.name,
+      // Non-null on every PENDING row (the CHECK); the fallback keeps the
+      // type honest rather than asserted.
+      versionNumber: row.approvalVersionNumber ?? 0,
+      project: row.project ? { id: row.project.id, key: row.project.key, name: row.project.name } : null,
+    }));
+  });
 }

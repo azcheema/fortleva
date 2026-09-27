@@ -993,8 +993,8 @@ enum ApprovalStatus {
 /// What shipped when, with release notes (the version timeline).
 /// Structural-status gate (DATA_MODEL.md §6.5): no visibility column —
 /// SHIPPED ⇒ client-visible; portal_gate = client match AND
-/// status = 'SHIPPED' AND portal_enabled. Approval columns become
-/// contact-writable in Phase 3.
+/// status = 'SHIPPED' AND portal_enabled. The four decision columns are
+/// CONTACT-writable under RLS since migration 20260927120000 (sign-off).
 model ProjectVersion {
   id                  String               @id @default(uuid(7))
   tenantId            String               @map("tenant_id")
@@ -1280,6 +1280,16 @@ model Document {
   portalEnabled      Boolean         @default(false) @map("portal_enabled") // trigger-maintained
   attachedToType     AttachableType? @map("attached_to_type")
   attachedToId       String?         @map("attached_to_id")
+  // Sign-off, v1-lite (DATA_MODEL.md §6.8, Phase 3): mirrors ProjectVersion's
+  // block; the four decision columns are CONTACT-writable under RLS on a
+  // DELIVERABLE (migration 20260927120000). `approvalVersionNumber` is the
+  // FileVersion the ask was about, stamped by staff at request time.
+  approvalStatus        ApprovalStatus @default(NOT_REQUESTED) @map("approval_status")
+  approvalRequestedAt   DateTime?      @map("approval_requested_at") @db.Timestamptz(6)
+  approvalDecidedAt     DateTime?      @map("approval_decided_at") @db.Timestamptz(6)
+  approvalByContactId   String?        @map("approval_by_contact_id") // attribution, no FK
+  approvalNote          String?        @map("approval_note")
+  approvalVersionNumber Int?           @map("approval_version_number")
   createdByMemberId  String?         @map("created_by_member_id") // attribution, no FK
   createdByContactId String?         @map("created_by_contact_id") // attribution, no FK
   deletedAt          DateTime?       @map("deleted_at") @db.Timestamptz(6)

@@ -11,7 +11,7 @@
  * `next-intl/server`, which only exists inside a request — and route
  * code imports `@/portal/action` by name.
  */
-export { authorizePortal, withPortalRead } from "./authorize";
+export { authorizePortal, withCensusWrite, withPortalRead } from "./authorize";
 export type { PortalPrincipal, PortalScopeRef } from "./authorize";
 export {
   PORTAL_CAPABILITIES,

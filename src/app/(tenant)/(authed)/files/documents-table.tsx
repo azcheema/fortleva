@@ -1,7 +1,7 @@
 import { DownloadIcon, FileIcon } from "lucide-react";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
-import { DataTable, RowActions, VisibilityBadge, visibilityRowCue } from "@/components/semantic";
+import { DataTable, RowActions, StatusBadge, VisibilityBadge, visibilityRowCue, type RowAction } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -17,7 +17,7 @@ import { bytesParts } from "@/lib/format";
 import { TONE_CHIP } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 
-import { deleteDocumentAction, downloadAction } from "./actions";
+import { deleteDocumentAction, downloadAction, requestDocumentSignoffAction } from "./actions";
 import { VisibilitySelect } from "./visibility-select";
 
 /**
@@ -44,11 +44,21 @@ export async function DocumentsTable({
   returnTo,
   canDelete,
   canChangeVisibility,
+  canRequestSignoff,
 }: {
   documents: DocumentListItem[];
   returnTo: string;
   canDelete: boolean;
   canChangeVisibility: boolean;
+  /**
+   * `document:edit` (and, where the page knows it, the project's portal
+   * switch): "Request sign-off" is offered on a shared DELIVERABLE with a
+   * version, outside an open ask. REQUIRED, never defaulted — state a
+   * shared component must reflect is a required prop (AGENTS.md), and
+   * the tenant-wide Files page had silently lost the verb behind a
+   * `= false` (code review). The service repeats every check.
+   */
+  canRequestSignoff: boolean;
 }) {
   const t = await getTranslations("files");
   const tCommon = await getTranslations("common");
@@ -103,6 +113,55 @@ export async function DocumentsTable({
             {documents.map((d) => {
               const size = bytesParts(locale, d.sizeBytes);
               const download = t("downloadName", { name: d.name });
+              // SIGN-OFF (Phase 3): the ask on a deliverable, and the menu
+              // item that opens one. Offered on a shared DELIVERABLE with
+              // a version, no open ask — and after "changes requested",
+              // or after an approval of an OLDER version than the newest,
+              // since the client is then owed a fresh look. The service
+              // is the gate and repeats every check with the terms this
+              // row cannot see — the version's COMMITTED status, the
+              // portal switch (UI.md §3.1).
+              const offerSignoff =
+                canRequestSignoff &&
+                d.kind === "DELIVERABLE" &&
+                d.visibility === "CLIENT_VISIBLE" &&
+                d.latestVersion > 0 &&
+                d.approvalStatus !== "PENDING" &&
+                !(d.approvalStatus === "APPROVED" && d.approvalVersionNumber === d.latestVersion);
+              const items: RowAction[] = [
+                ...(offerSignoff
+                  ? [
+                      {
+                        key: "signoff",
+                        label: t("requestSignoff"),
+                        formAction: requestDocumentSignoffAction,
+                        hidden: [
+                          { name: "documentId", value: d.id },
+                          { name: "returnTo", value: returnTo },
+                        ],
+                      } satisfies RowAction,
+                    ]
+                  : []),
+                ...(canDelete
+                  ? [
+                      {
+                        key: "delete",
+                        label: t("delete"),
+                        // No `icon`: this is a SERVER component, and a
+                        // lucide icon is a plain function there — passing
+                        // one across the RSC boundary to <RowActions>
+                        // would fail to serialise at render time.
+                        tone: "danger",
+                        confirm: t("deleteConfirm", { name: d.name }),
+                        formAction: deleteDocumentAction,
+                        hidden: [
+                          { name: "documentId", value: d.id },
+                          { name: "returnTo", value: returnTo },
+                        ],
+                      } satisfies RowAction,
+                    ]
+                  : []),
+              ];
               return (
                 <TableRow
                   key={d.id}
@@ -187,7 +246,40 @@ export async function DocumentsTable({
                           {t("deliverable")}
                         </span>
                       ) : null}
+                      {/* THE ASK'S STATE, beside the deliverable chip: the
+                          approval badge, and the version it concerns when
+                          that is not the newest one — an approval stands on
+                          the bytes the client saw (DATA_MODEL §6.8). */}
+                      {d.approvalStatus !== "NOT_REQUESTED" ? (
+                        <span
+                          data-slot="document-signoff"
+                          data-status={d.approvalStatus}
+                          className="inline-flex shrink-0 items-center gap-1"
+                          title={
+                            d.approvalByName && d.approvalDecidedAt
+                              ? t("signoffBy", {
+                                  name: d.approvalByName,
+                                  date: format.dateTime(d.approvalDecidedAt, { dateStyle: "medium" }),
+                                })
+                              : undefined
+                          }
+                        >
+                          <StatusBadge domain="approvalStatus" value={d.approvalStatus} />
+                          {d.approvalVersionNumber !== null && d.approvalVersionNumber !== d.latestVersion ? (
+                            <span className="num text-2xs text-muted-foreground">
+                              {t("signoffVersion", { number: d.approvalVersionNumber })}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : null}
                     </span>
+                    {/* The prefix outside the quotation: only the client's
+                        own words are quoted. */}
+                    {d.approvalNote ? (
+                      <span className="mt-0.5 block text-xs whitespace-pre-wrap text-muted-foreground">
+                        {t("clientNote")} <q>{d.approvalNote}</q>
+                      </span>
+                    ) : null}
                   </TableCell>
                   <TableCell>
                     {canChangeVisibility && d.clientId ? (
@@ -213,27 +305,11 @@ export async function DocumentsTable({
                   <TableCell pinned>
                     {/* A real form, so the presigned redirect still happens
                         on the server. */}
-                    {canDelete ? (
+                    {items.length > 0 ? (
                       <RowActions
                         label={tCommon("actionsFor", { name: d.name })}
                         primary={<DownloadButton id={d.id} returnTo={returnTo} label={download} />}
-                        items={[
-                          {
-                            key: "delete",
-                            label: t("delete"),
-                            // No `icon`: this is a SERVER component, and a
-                            // lucide icon is a plain function there — passing
-                            // one across the RSC boundary to <RowActions>
-                            // would fail to serialise at render time.
-                            tone: "danger",
-                            confirm: t("deleteConfirm", { name: d.name }),
-                            formAction: deleteDocumentAction,
-                            hidden: [
-                              { name: "documentId", value: d.id },
-                              { name: "returnTo", value: returnTo },
-                            ],
-                          },
-                        ]}
+                        items={items}
                       />
                     ) : (
                       // No menu rather than an always-disabled one: a

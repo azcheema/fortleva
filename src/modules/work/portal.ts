@@ -1,6 +1,7 @@
 import { AuthzError } from "@/authz/errors";
 import { readPortalFileVersions } from "@/documents/portal-writes";
 import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal";
+import type { PortalApprovalState } from "@/portal/signoff";
 
 import { withoutHours } from "./update-snapshot";
 
@@ -744,7 +745,10 @@ export async function listPortalUpdates(
  *                       current phase is);
  *  - `version_shipped`  a SHIPPED version, dated by its ship date, with
  *                       the release notes — client-visible once shipped
- *                       by DATA_MODEL §6.5's own rule.
+ *                       by DATA_MODEL §6.5's own rule — and, since the
+ *                       sign-off slice, where its ask stands
+ *                       (`approval`), which is what puts the approve /
+ *                       request-changes control on the entry.
  *
  *  - `document_version`  a version of a CLIENT_VISIBLE deliverable or
  *                       report — "we delivered v2 of the design" — dated
@@ -756,12 +760,19 @@ export async function listPortalUpdates(
  *                       after it closes — `file_version` is class A and
  *                       the portal never queries it directly.
  *
+ *  - `approval_decided`  the client's own answer to an ask — a version
+ *                       or a deliverable approved, or changes requested,
+ *                       with the note they wrote — dated by the decision
+ *                       (the sign-off slice; §6.16's fifth branch). ONE
+ *                       decision per row, because the columns hold one:
+ *                       a re-asked and re-decided version shows its
+ *                       newest answer, and the earlier one is the audit
+ *                       log's. Read from the same version and document
+ *                       rows as the two branches above, so it costs no
+ *                       read of its own.
+ *
  * WHAT IS NOT HERE, by the spec's own never-list: no `AuditEvent`, no
- * `WorkItemActivity`, no comment. And the one branch the spec names
- * that is still left to the slice that owns its writer, recorded in
- * PLAN §0 rather than half-built: approval decisions (no writer exists
- * until the sign-off slice, which owns what a decision means on a
- * re-shipped version or a re-uploaded deliverable).
+ * `WorkItemActivity`, no comment.
  *
  * NO MILESTONE STATUS LEAVES HERE. A `milestone_due` entry says a name
  * and a day; whether the agency has that phase "paused" is the agency's
@@ -788,6 +799,8 @@ export type PortalTimelineEntry =
       readonly version: string;
       readonly title: string | null;
       readonly releaseNotes: string | null;
+      /** Where the sign-off ask stands, and whether THIS reader may answer it. */
+      readonly approval: PortalApprovalState;
     }
   | {
       readonly kind: "document_version";
@@ -798,6 +811,19 @@ export type PortalTimelineEntry =
       readonly name: string;
       readonly documentKind: "DELIVERABLE" | "REPORT";
       readonly versionNumber: number;
+    }
+  | {
+      readonly kind: "approval_decided";
+      /** The decided ROW's id (the version's or the document's) — one decision per row. */
+      readonly id: string;
+      readonly at: Date;
+      readonly subject: "version" | "deliverable";
+      /** The version's label, or the deliverable's name. */
+      readonly label: string;
+      /** The file version the decision was about — deliverables only. */
+      readonly versionNumber: number | null;
+      readonly outcome: "APPROVED" | "CHANGES_REQUESTED";
+      readonly note: string | null;
     };
 
 export type PortalTimeline = {
@@ -821,11 +847,15 @@ export const PORTAL_TIMELINE_LIMIT = 100;
 /** Same-instant ties break by kind — the post before the reach it announces — then by id, so a render is stable. */
 const TIMELINE_KIND_ORDER: Record<PortalTimelineEntry["kind"], number> = {
   update: 0,
-  version_shipped: 1,
-  document_version: 2,
-  milestone_done: 3,
-  milestone_due: 4,
+  approval_decided: 1,
+  version_shipped: 2,
+  document_version: 3,
+  milestone_done: 4,
+  milestone_due: 5,
 };
+
+const isDecided = (status: string): status is "APPROVED" | "CHANGES_REQUESTED" =>
+  status === "APPROVED" || status === "CHANGES_REQUESTED";
 
 /** The document kinds whose versions are events (DATA_MODEL §6.16: DELIVERABLE | REPORT). */
 const TIMELINE_DOCUMENT_KINDS = ["DELIVERABLE", "REPORT"] as const;
@@ -881,6 +911,18 @@ export async function listPortalTimeline(
       if (!(e instanceof AuthzError)) throw e;
       seesUpdates = false;
     }
+    // MAY THIS READER SIGN A VERSION OFF — asked once, without throwing,
+    // for every `version_shipped` entry's `canDecide`. A collaborator
+    // reads the ask's state and gets no control; the refusal is decided
+    // here, never in a page (rule 4 above). The contact row behind the
+    // check is the transaction's memoised one, so this is free.
+    let mayApproveVersions = true;
+    try {
+      await authorizePortal(tx, principal, "portal.version.approve", { kind: "project", projectId });
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      mayApproveVersions = false;
+    }
 
     const scope = {
       tenantId: principal.tenantId,
@@ -935,7 +977,16 @@ export async function listPortalTimeline(
 
     const shipped = await tx.projectVersion.findMany({
       where: { ...scope, status: "SHIPPED", shippedAt: { not: null } },
-      select: { id: true, version: true, title: true, releaseNotes: true, shippedAt: true },
+      select: {
+        id: true,
+        version: true,
+        title: true,
+        releaseNotes: true,
+        shippedAt: true,
+        approvalStatus: true,
+        approvalDecidedAt: true,
+        approvalNote: true,
+      },
       orderBy: [{ shippedAt: "desc" }, { id: "asc" }],
       take,
     });
@@ -948,7 +999,27 @@ export async function listPortalTimeline(
         version: v.version,
         title: v.title,
         releaseNotes: v.releaseNotes,
+        approval: {
+          status: v.approvalStatus,
+          decidedAt: v.approvalDecidedAt,
+          note: v.approvalNote,
+          canDecide: mayApproveVersions && v.approvalStatus === "PENDING",
+        },
       });
+      // The fifth branch, from the same row: the client's answer, dated
+      // by the decision. Both non-null on a decided row (the CHECK).
+      if (isDecided(v.approvalStatus) && v.approvalDecidedAt !== null) {
+        entries.push({
+          kind: "approval_decided",
+          id: v.id,
+          at: v.approvalDecidedAt,
+          subject: "version",
+          label: v.version,
+          versionNumber: null,
+          outcome: v.approvalStatus,
+          note: v.approvalNote,
+        });
+      }
     }
 
     // The deliverables and reports this contact may read — the document
@@ -964,10 +1035,35 @@ export async function listPortalTimeline(
         deletedAt: null,
         kind: { in: [...TIMELINE_DOCUMENT_KINDS] },
       },
-      select: { id: true, name: true, kind: true },
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        approvalStatus: true,
+        approvalDecidedAt: true,
+        approvalNote: true,
+        approvalVersionNumber: true,
+      },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       take,
     });
+    // …and a deliverable's decision, the fifth branch's other half, from
+    // the same document rows. Only a DELIVERABLE is ever asked (the
+    // CHECK), so the kind needs no second look.
+    for (const d of documents) {
+      if (isDecided(d.approvalStatus) && d.approvalDecidedAt !== null) {
+        entries.push({
+          kind: "approval_decided",
+          id: d.id,
+          at: d.approvalDecidedAt,
+          subject: "deliverable",
+          label: d.name,
+          versionNumber: d.approvalVersionNumber,
+          outcome: d.approvalStatus,
+          note: d.approvalNote,
+        });
+      }
+    }
 
     return { entries, documents };
   });

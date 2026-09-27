@@ -12,8 +12,10 @@ import type { ProjectCtx } from "./service";
 /**
  * ProjectVersion — what shipped when (DATA_MODEL.md §6.5). Structural-
  * status gate: no visibility column; SHIPPED ⇒ client-visible once the
- * project's portal is on. project:manage_versions for every write;
- * approvals are Phase 3 (contact-writable columns).
+ * project's portal is on. project:manage_versions for every write on
+ * this plane — including ASKING the client to sign off (below). The
+ * client's answer is written under the contact's own principal in
+ * `./portal-signoff.ts`, on the four columns the census opens.
  */
 
 const principalOf = (ctx: ProjectCtx) =>
@@ -124,6 +126,61 @@ export async function updateVersion(
       metadata: { projectId: v.projectId, fields: changed },
     });
     return { changed };
+  });
+}
+
+/**
+ * ASK THE CLIENT TO SIGN OFF a shipped version (decision #7, v1-lite):
+ * NOT_REQUESTED or CHANGES_REQUESTED → PENDING, stamped `approvalRequestedAt`,
+ * the previous decision cleared — the client answers the ask as it
+ * stands, and `project_version_approval_decision_shape` will not let a
+ * PENDING row keep an old decision anyway. A note the client left with
+ * "changes requested" goes with it: the ask is the agency saying it has
+ * acted on those words. Audited `project_version.approval_requested`.
+ *
+ * Refused where the client could not see the row: a draft (SHIPPED is
+ * the gate's own term), a project whose portal is off, an archived
+ * project. Refused as already open on PENDING, and as nothing-to-ask on
+ * APPROVED — a version does not gain new bytes, so an approval stands.
+ */
+export async function requestVersionSignoff(
+  ctx: ProjectCtx,
+  versionId: string,
+): Promise<{ requestedAt: Date }> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, PERMISSION);
+    const v = await loadVersion(tx, ctx.actor, versionId);
+    if (v.status !== "SHIPPED") fail("SIGNOFF_NOT_SHAREABLE", "not shipped");
+    const project = await tx.project.findFirst({
+      where: { id: v.projectId },
+      select: { portalEnabled: true, archivedAt: true },
+    });
+    if (!project) deny("NOT_FOUND");
+    // `archivedAt`, the term every portal projection and the writers use
+    // — one spelling of one predicate (code review).
+    if (project!.archivedAt !== null) fail("ARCHIVED");
+    if (!project!.portalEnabled) fail("SIGNOFF_NOT_SHAREABLE", "portal off");
+    if (v.approvalStatus === "PENDING") fail("SIGNOFF_ALREADY_REQUESTED");
+    if (v.approvalStatus === "APPROVED") fail("SIGNOFF_ALREADY_APPROVED");
+    const requestedAt = new Date();
+    await tx.projectVersion.update({
+      where: { id: versionId },
+      data: {
+        approvalStatus: "PENDING",
+        approvalRequestedAt: requestedAt,
+        approvalDecidedAt: null,
+        approvalByContactId: null,
+        approvalNote: null,
+      },
+      select: { id: true },
+    });
+    await record(tx, {
+      action: "project_version.approval_requested",
+      targetType: "ProjectVersion",
+      targetId: versionId,
+      metadata: { projectId: v.projectId, version: v.version, previous: v.approvalStatus },
+    });
+    return { requestedAt };
   });
 }
 

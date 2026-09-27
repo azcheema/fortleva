@@ -49,9 +49,10 @@ test.describe("portal project page", () => {
     // Newest first: the upcoming due (+7 d), the post (today), the
     // reached milestone (today, before the post in the seed), the two
     // versions of the shared deliverable (today, seeded before the
-    // milestones — the portal files slice), the ship (−7 d), the
+    // milestones — the portal files slice), the second ship (−2 d, the
+    // sign-off fixture, with its control), the first ship (−7 d), the
     // in-progress phase's own due (−14 d).
-    await expect(events).toHaveCount(7);
+    await expect(events).toHaveCount(8);
     await expect(events.nth(0)).toHaveAttribute("data-kind", "milestone_due");
     await expect(events.nth(0)).toContainText(seed.upcomingMilestoneName);
     await expect(events.nth(1)).toHaveAttribute("data-kind", "update");
@@ -65,10 +66,19 @@ test.describe("portal project page", () => {
     await expect(events.nth(4)).toHaveAttribute("data-kind", "document_version");
     await expect(events.nth(4)).toContainText("Version 1");
     await expect(events.nth(5)).toHaveAttribute("data-kind", "version_shipped");
-    await expect(events.nth(5)).toContainText(`Version ${seed.shippedVersion}`);
-    await expect(events.nth(5)).toContainText("Sidmallar och navigation på plats");
-    await expect(events.nth(6)).toHaveAttribute("data-kind", "milestone_due");
-    await expect(events.nth(6)).toContainText(seed.datedMilestoneName);
+    await expect(events.nth(5)).toContainText(`Version ${seed.pendingVersion}`);
+    // The ask, on the entry it is about (the sign-off slice): the reader
+    // is a primary contact, so the control is offered. Deciding it is
+    // `portal-signoff.spec.ts`'s; this only reads the offer.
+    await expect(events.nth(5).locator('[data-slot="portal-signoff"]')).toHaveAttribute("data-status", "PENDING");
+    await expect(events.nth(5).getByTestId("portal-signoff-approve")).toBeVisible();
+    await expect(events.nth(6)).toHaveAttribute("data-kind", "version_shipped");
+    await expect(events.nth(6)).toContainText(`Version ${seed.shippedVersion}`);
+    await expect(events.nth(6)).toContainText("Sidmallar och navigation på plats");
+    // …and no ask on the version nobody asked about: no state, no control.
+    await expect(events.nth(6).locator('[data-slot="portal-signoff"]')).toHaveCount(0);
+    await expect(events.nth(7)).toHaveAttribute("data-kind", "milestone_due");
+    await expect(events.nth(7)).toContainText(seed.datedMilestoneName);
 
     // ── THE NEGATIVE CONTROLS ────────────────────────────────────────
     // The INTERNAL milestone is on no part of the page. Checked on the
@@ -111,7 +121,14 @@ test.describe("portal project page", () => {
   test("the home's project card leads to the page", async ({ page }) => {
     await page.goto("/portal");
     await expect(page.locator("[data-portal-surface]")).toBeVisible({ timeout: 30_000 });
-    const card = page.locator('[data-slot="section-card"]', { hasText: "E2E Project" }).first();
+    // The PROJECT card — the one whose heading is a link. Since the
+    // sign-off slice the home leads with a "Waiting on you" card that
+    // also names the project (under each open ask), so `.first()` on the
+    // name alone would land there.
+    const card = page
+      .locator('[data-slot="section-card"]', { hasText: "E2E Project" })
+      .filter({ has: page.locator("h2 a") })
+      .first();
     await card.locator("h2").getByRole("link").click();
     await expect(page).toHaveURL(new RegExp(`/portal/projects/${seed.projectKey}$`), { timeout: 30_000 });
     await expect(page.locator('[data-slot="page-header"] h1')).toContainText("E2E Project");

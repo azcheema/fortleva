@@ -92,6 +92,7 @@ export default async function ProjectFilesPage({
           returnTo={returnTo}
           canDelete={project.caps.deleteDocuments}
           canChangeVisibility={project.caps.changeDocumentVisibility}
+          canRequestSignoff={project.caps.editDocuments && project.portalEnabled && project.status !== "ARCHIVED"}
         />
       )}
       {canUpload ? (

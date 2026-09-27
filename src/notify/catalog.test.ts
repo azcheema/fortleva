@@ -94,12 +94,15 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * produce reaches a person, everything the agency does to its own
    * board waits for the digest.
    */
-  it("instant email is assignment, mention and the two client-caused kinds — and nothing else", () => {
+  it("instant email is assignment, mention and the three client-caused kinds — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
       .sort();
     expect(instant).toEqual([
+      // A client's sign-off decision (Phase 3): the agency asked and is
+      // waiting on the answer, the same argument as the tick's.
+      "approval.decided",
       "comment.mentioned",
       "work_item.assigned",
       "work_item.completed_by_contact",

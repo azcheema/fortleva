@@ -122,6 +122,18 @@ export const AUDIT_EVENTS = {
   "file.downloaded": TENANT,
   "document.visibility_changed": TENANT,
   "document.deleted": TENANT,
+  // Deliverable sign-off (Phase 3, DATA_MODEL §6.8): staff ask, the
+  // client answers. ONE decided verb with the outcome in metadata,
+  // where `project_version` has two — both shapes are the documents'
+  // own (§6.5 names `approved | changes_requested`, §6.8 names
+  // `approval_decided`), and a catalog action is immutable once
+  // emitted, so neither family is renamed to match the other.
+  "document.approval_requested": TENANT,
+  "document.approval_decided": TENANT,
+  // A new version uploaded while an ask was open: the ask is voided (the
+  // client must not approve bytes they never saw), and the vanishing is
+  // a change a person can see, so it is a row.
+  "document.approval_voided": TENANT,
   // Money (Phase 4 emitters)
   "contract.sent": TENANT,
   "contract.signed": TENANT,

@@ -1,11 +1,13 @@
 import { DEFAULT_TIMEZONE } from "@/i18n/config";
 import { localDateString } from "@/lib/duration";
+import { AuthzError } from "@/authz/errors";
 import {
   authorizePortal,
   withPortalRead,
   type PortalCapability,
   type PortalPrincipal,
 } from "@/portal";
+import type { PortalPendingApproval } from "@/portal/signoff";
 
 /**
  * THE PROJECTS A CONTACT CAN SEE, AS A CONTACT SEES THEM — two columns.
@@ -209,5 +211,54 @@ export async function listPortalProjects(
       select: { id: true, name: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
     });
+  });
+}
+
+/**
+ * THE VERSIONS WAITING ON THIS READER — every shipped version of the
+ * client's portal-enabled projects whose sign-off is PENDING, for the
+ * home's "Waiting on you" card. Empty, not refused, for a profile that
+ * cannot sign (`listPortalPendingDeliverables` says why). Tenant,
+ * client, SHIPPED and the portal switch are `portal_gate`'s on this
+ * table; the project's archive is the projection's own term, as
+ * everywhere on this plane.
+ */
+export async function listPortalPendingVersions(
+  principal: PortalPrincipal,
+): Promise<readonly PortalPendingApproval[]> {
+  return withPortalRead(principal, async (tx) => {
+    await authorizePortal(tx, principal, "portal.project.view");
+    try {
+      await authorizePortal(tx, principal, "portal.version.approve");
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      return [];
+    }
+    const rows = await tx.projectVersion.findMany({
+      where: {
+        tenantId: principal.tenantId,
+        clientId: principal.clientId,
+        status: "SHIPPED",
+        portalEnabled: true,
+        approvalStatus: "PENDING",
+        project: { archivedAt: null },
+      },
+      select: {
+        id: true,
+        version: true,
+        title: true,
+        project: { select: { id: true, key: true, name: true } },
+      },
+      // Oldest ask first: the one the agency has been waiting on longest.
+      orderBy: [{ approvalRequestedAt: "asc" }, { id: "asc" }],
+      take: 100,
+    });
+    return rows.map((row) => ({
+      kind: "version" as const,
+      id: row.id,
+      version: row.version,
+      title: row.title,
+      project: { id: row.project.id, key: row.project.key, name: row.project.name },
+    }));
   });
 }

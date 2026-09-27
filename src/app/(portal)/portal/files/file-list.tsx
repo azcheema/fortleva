@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { PORTAL_DOCUMENT_KINDS, type PortalDocument } from "@/documents/portal";
 import { formatBytes, formatDate } from "@/lib/format";
 
+import { fileAnchor, signOffKey } from "@/portal/signoff-vocabulary";
+
+import { PortalSignOff } from "../sign-off";
 import { downloadDocumentAction } from "./actions";
 
 /**
@@ -17,10 +20,13 @@ import { downloadDocumentAction } from "./actions";
  * card; a kind with nothing in it is absent, not drawn empty.
  *
  * WHAT A ROW SAYS: the name, then one line of facts — which version,
- * how big, when it was shared — and the one control on this list, the
- * download. Nothing else: no uploader, no tags, no visibility badge (on
- * this plane everything is by definition visible), no approval state
- * (the sign-off slice's).
+ * how big, when it was shared — and the download. On a DELIVERABLE,
+ * since the sign-off slice, the ask to sign it off: the approve /
+ * request-changes control where the reader may answer, the state in
+ * words otherwise, and the decision with the version it was about once
+ * one stands (UI.md §4 item 6's other half). Nothing else: no uploader,
+ * no tags, no visibility badge (on this plane everything is by
+ * definition visible).
  *
  * THE DOWNLOAD IS A FORM POST, NOT A LINK, for the reason the member
  * plane's `DownloadButton` is: the action mints a short-lived off-origin
@@ -60,9 +66,10 @@ export function PortalFileList({
             {rows.map((d) => (
               <li
                 key={d.id}
+                id={fileAnchor(d.id)}
                 data-slot="portal-file"
                 data-kind={d.kind}
-                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+                className="flex scroll-mt-16 flex-wrap items-center justify-between gap-x-4 gap-y-1"
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="truncate text-sm font-medium text-foreground" title={d.name}>
@@ -73,6 +80,29 @@ export function PortalFileList({
                     <span className="num">{formatBytes(locale, d.version.sizeBytes)}</span>
                     <span>{t("shared", { date: formatDate(locale, d.version.at) })}</span>
                   </span>
+                  {/* THE ASK, on the deliverable it is about. The version
+                      the ask names is printed beside the state when it is
+                      not the newest one above — a decision stands on the
+                      bytes the client saw, and a later upload does not
+                      move it (DATA_MODEL §6.8). */}
+                  {d.approval && d.approval.status !== "NOT_REQUESTED" ? (
+                    <span className="flex flex-col gap-0.5 pt-1">
+                      {d.approval.versionNumber !== null && d.approval.versionNumber !== d.version.number ? (
+                        <span className="text-2xs text-muted-foreground">
+                          {t("approvalVersion", { number: d.approval.versionNumber })}
+                        </span>
+                      ) : null}
+                      <PortalSignOff
+                        key={signOffKey(d.id, d.approval)}
+                        subject="deliverable"
+                        id={d.id}
+                        status={d.approval.status}
+                        decidedAt={d.approval.decidedAt?.toISOString() ?? null}
+                        note={d.approval.note}
+                        canDecide={d.approval.canDecide}
+                      />
+                    </span>
+                  ) : null}
                 </span>
                 <form action={downloadDocumentAction} className="shrink-0">
                   <input type="hidden" name="documentId" value={d.id} />

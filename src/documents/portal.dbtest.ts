@@ -351,7 +351,11 @@ describe("the files list", () => {
     const out = await listPortalDocuments(principal(carol));
     expectNoSentinel(out);
     const keysOf = (d: PortalDocument) => Object.keys(d).sort();
-    expect(keysOf(out.documents[0]!)).toEqual(["id", "kind", "name", "project", "version"]);
+    // `approval` since the sign-off slice — the ask on a DELIVERABLE, null
+    // on every other kind (`signoff.dbtest.ts` drives it).
+    expect(keysOf(out.documents[0]!)).toEqual(["approval", "id", "kind", "name", "project", "version"]);
+    expect(out.documents[0]!.approval).toMatchObject({ status: "NOT_REQUESTED", canDecide: false });
+    expect(out.documents[2]!.approval).toBeNull();
     expect(Object.keys(out.documents[0]!.version).sort()).toEqual(["at", "contentType", "number", "sizeBytes"]);
     expect(Object.keys(out.documents[0]!.project!).sort()).toEqual(["id", "key", "name"]);
   });

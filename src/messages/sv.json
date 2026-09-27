@@ -263,7 +263,8 @@
       "budgetThreshold": "En projektbudget har nått en tröskel",
       "generic": "Något har hänt",
       "requestReceived": "En kund har skickat en förfrågan",
-      "completedByContact": "En kund har markerat sin uppgift som klar"
+      "completedByContact": "En kund har markerat sin uppgift som klar",
+      "approvalDecided": "En kund har svarat på en begäran om godkännande"
     },
     "row": {
       "markRead": "Markera som läst",
@@ -1094,7 +1095,11 @@
     "tableLabel": "Filer",
     "downloadName": "Ladda ner {name}",
     "deleteConfirm": "Ta bort {name}?",
-    "deliverable": "Leverans"
+    "deliverable": "Leverans",
+    "requestSignoff": "Begär godkännande",
+    "signoffVersion": "v{number}",
+    "signoffBy": "{name}, {date}",
+    "clientNote": "Kunden skrev:"
   },
   "errors": {
     "generic": "Något gick fel.",
@@ -1173,7 +1178,10 @@
     "UPDATE_CHANGED": "Utkastet ändrades medan det publicerades. Kontrollera det och publicera igen.",
     "UPDATE_TOO_LARGE": "Ett av avsnitten är för långt för att sparas.",
     "DOWNLOAD_RATE_LIMITED": "Du har laddat ner många filer på kort tid. Vänta några minuter och försök igen.",
-    "DOWNLOAD_BUSY": "Filen kunde inte hämtas just nu. Försök igen om en stund."
+    "DOWNLOAD_BUSY": "Filen kunde inte hämtas just nu. Försök igen om en stund.",
+    "SIGNOFF_NOT_SHAREABLE": "Kunden kan inte se detta ännu. Dela det först: en levererad version i ett projekt med portalen på, eller en delad leverans med en uppladdad fil.",
+    "SIGNOFF_ALREADY_REQUESTED": "Godkännande har redan begärts från kunden.",
+    "SIGNOFF_ALREADY_APPROVED": "Kunden har redan godkänt detta."
   },
   "assignments": {
     "title": "Team",
@@ -1572,6 +1580,15 @@
       "draft": "Utkast",
       "shippedToast": "Levererade {version}",
       "shippedVisibleHint": "Levererade versioner syns för kunden när portalen är aktiverad.",
+      "requestSignoff": "Begär godkännande",
+      "requestSignoffConfirm": "Be kunden godkänna version {version}?",
+      "signoffRequestedToast": "Godkännande begärt för {version}",
+      "signoffRequestedOn": "Godkännande begärt {date}",
+      "approvedBy": "Godkänd av {name} {date}",
+      "changesBy": "Ändringar begärda av {name} {date}",
+      "approvedOn": "Godkänd {date}",
+      "changesOn": "Ändringar begärda {date}",
+      "clientNote": "Kunden skrev:",
       "more": "Fler åtgärder",
       "title": "Tidslinje",
       "description": "Milstolpar i planens ordning, med varje levererad version inlagd där den hamnade.",
@@ -2562,11 +2579,30 @@
     },
     "actionItems": {
       "title": "Väntar på dig",
-      "description": "Uppgifter som din byrå har bett dig om."
+      "description": "Sådant din byrå har bett dig göra eller ta ställning till.",
+      "signoffVersion": "Godkänn version {version}",
+      "signoffDeliverable": "Godkänn {name} (version {number})",
+      "review": "Granska"
+    },
+    "signoff": {
+      "awaitingYou": "Väntar på ditt godkännande",
+      "awaitingReview": "Väntar på granskning",
+      "approve": "Godkänn",
+      "requestChanges": "Begär ändringar",
+      "noteLabel": "Vad ska ändras?",
+      "notePlaceholder": "Berätta för din byrå vad som ska ändras.",
+      "noteHint": "Din byrå läser detta. Det krävs när du begär ändringar.",
+      "sendChanges": "Skicka",
+      "cancel": "Avbryt",
+      "approved": "Godkänt",
+      "changes": "Ändringar begärda",
+      "approvedOn": "Godkänt {date}",
+      "changesOn": "Ändringar begärda {date}",
+      "failed": "Det sparades inte. Försök igen."
     },
     "timeline": {
       "title": "Tidslinje",
-      "description": "Uppdateringar, milstolpar, releaser och leveranser, nyast först.",
+      "description": "Uppdateringar, milstolpar, releaser, leveranser och dina godkännanden, nyast först.",
       "truncated": "Visar de {count} senaste händelserna.",
       "updateNumber": "Uppdatering #{seq}",
       "published": "Publicerad {date}",
@@ -2577,7 +2613,12 @@
       "deliverable": "Leverans: {name}",
       "report": "Rapport: {name}",
       "fileVersion": "Version {number}",
-      "shared": "Tillagd {date}"
+      "shared": "Tillagd {date}",
+      "versionApproved": "Version {version} godkänd",
+      "versionChanges": "Ändringar begärda för version {version}",
+      "deliverableApproved": "{name} godkänd (version {number})",
+      "deliverableChanges": "Ändringar begärda för {name} (version {number})",
+      "decided": "Beslutat {date}"
     },
     "nav": {
       "label": "Kundportal",
@@ -2604,7 +2645,8 @@
       "truncated": "Visar de första {count} filerna. Hör av dig till din byrå om något saknas.",
       "errors": {
         "download": "Filen kunde inte laddas ner just nu. Försök igen eller hör av dig till din kontakt på byrån."
-      }
+      },
+      "approvalVersion": "Godkännandet gäller version {number}"
     },
     "company": {
       "title": "Ditt företag",

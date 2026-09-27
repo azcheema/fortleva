@@ -194,6 +194,17 @@ const PORTAL_SURFACES_BY_NAME = [
   // Verified clean of all 21 forbidden identifiers, prose included, when
   // it was added, so it cannot go red for the wrong reason.
   join("clients", "view-as.ts"),
+  // The two CENSUS WRITERS (Phase 3, the sign-off slice): a contact's
+  // decision on a shipped version and on a shared deliverable, written
+  // under the contact's own principal through `withCensusWrite`. They
+  // are caught by the seventh arm below anyway (they say the seam's
+  // name); they are listed here so the TEXT tier reads them too — each
+  // re-reads its row after the write with an allow-listed select, and
+  // the note it hands back is the one string a contact writes that
+  // every contact of the client then reads. Verified clean of every
+  // forbidden identifier, prose included, when added.
+  join("projects", "portal-signoff.ts"),
+  join("documents", "portal-signoff.ts"),
 ];
 
 /**
@@ -301,7 +312,11 @@ const isPortalSurface = (full: string, entry: string, text: () => string): boole
   isProjection(full, entry) ||
   full.includes(VIEW_AS_ROUTES) ||
   STRUCTURAL_ONLY_SURFACES.some((suffix) => full.endsWith(suffix)) ||
-  text().includes("withPortalRead");
+  text().includes("withPortalRead") ||
+  // A SEVENTH WAY IN (the sign-off slice): the census-write seam is a
+  // contact-principal transaction like the read seam, and a file that
+  // opens one is a portal surface by the same capability rule.
+  text().includes("withCensusWrite");
 
 const walk = (
   dir: string,

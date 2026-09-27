@@ -31,6 +31,7 @@
  *        tsx e2e/fixtures/seed-cli.ts clear-portal-requests <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-notifications <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts reset-signoffs <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
  *        tsx e2e/fixtures/seed-cli.ts sweep-dbtests [maxAgeMinutes]
@@ -144,6 +145,9 @@ const DBTEST_PREFIXES = [
   // Phase 3, the portal files-and-services slice — `src/services/portal.dbtest.ts`,
   // `setupTenant("pser")`.
   "pser-",
+  // Phase 3, version sign-off — `src/portal/signoff.dbtest.ts`,
+  // `setupTenant("psign")`.
+  "psign-",
   "pvas-",
   "pview-",
   "pwork-",
@@ -247,6 +251,17 @@ export type E2ESeed = {
   readonly reachedMilestoneName: string;
   readonly upcomingMilestoneName: string;
   readonly shippedVersion: string;
+  /**
+   * The sign-off fixture (Phase 3): a SECOND shipped version whose
+   * sign-off the seed REQUESTS, so the contact's home carries a "Waiting
+   * on you" card and the rail an approve / request-changes control —
+   * and so `e2e/portal-signoff.spec.ts` has something to decide. The
+   * shared deliverable below is asked about too. Both are put back to
+   * PENDING by that spec's teardown (`resetSignoffs`), so the walks that
+   * follow it photograph the seeded state whether or not it ran.
+   */
+  readonly pendingVersion: string;
+  readonly pendingVersionId: string;
   /** Seeded CLIENT_VISIBLE document — the one BUG 1 is reproduced on. */
   readonly clientVisibleDocId: string;
   readonly clientVisibleDocName: string;
@@ -447,8 +462,10 @@ async function provision(seedFile: string): Promise<void> {
   const { completeMilestone, createMilestone, setMilestoneStatus } = await import(
     "../../src/projects/milestones"
   );
-  const { createVersion, shipVersion } = await import("../../src/projects/versions");
-  const { addVersion, commitUpload, createUpload } = await import("../../src/documents/service");
+  const { createVersion, requestVersionSignoff, shipVersion } = await import("../../src/projects/versions");
+  const { addVersion, commitUpload, createUpload, requestDocumentSignoff } = await import(
+    "../../src/documents/service"
+  );
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
 
   const run = randomUUID().slice(0, 8);
@@ -730,6 +747,23 @@ async function provision(seedFile: string): Promise<void> {
     releaseNotes: "Sidmallar och navigation på plats. Formulär och sök återstår.",
   });
   await shipVersion(ctx, shippedVersionId, { shippedAt: new Date(Date.now() - 7 * day) });
+  // The sign-off fixture: a second version, shipped two days ago, whose
+  // sign-off is REQUESTED — one more `version_shipped` entry on the rail
+  // (between the deliverable's versions and 1.0) with the control on it,
+  // and a row on the home's "Waiting on you" card. The shared deliverable
+  // is asked about too, at its second version. Both asks are made HERE,
+  // after the portal switch above, because the service refuses an ask the
+  // client could not see.
+  const pendingVersion = "1.1";
+  const { id: pendingVersionId } = await createVersion(ctx, {
+    projectId,
+    version: pendingVersion,
+    title: "Formulär och sök",
+    releaseNotes: "Kontaktformulär och sökfunktion på plats. Vänligen granska.",
+  });
+  await shipVersion(ctx, pendingVersionId, { shippedAt: new Date(Date.now() - 2 * day) });
+  // The two ASKS are made further down, once the portal switch is on:
+  // the service refuses an ask the client could not see.
 
   // SHARED with the client (Phase 3, the portal files-and-services
   // slice), so `/portal/company` photographs an agreement and
@@ -881,6 +915,11 @@ async function provision(seedFile: string): Promise<void> {
   // that set the column directly would leave every child row at false
   // and the portal list empty for a reason nobody could see.
   await setPortalEnabled(ctx, projectId, true);
+  // The sign-off fixture's two ASKS, now that the client can see the rows
+  // (the service refuses an ask on a portal-off project): version 1.1,
+  // shipped above, and the shared deliverable at its second version.
+  await requestVersionSignoff(ctx, pendingVersionId);
+  await requestDocumentSignoff(ctx, deliverableDocId);
 
   // ONE PUBLISHED PROGRESS UPDATE (Phase 3, DATA_MODEL §6.16), through
   // the real publish path so the number, the snapshots and the audit
@@ -1142,6 +1181,8 @@ async function provision(seedFile: string): Promise<void> {
     reachedMilestoneName,
     upcomingMilestoneName,
     shippedVersion,
+    pendingVersion,
+    pendingVersionId,
     clientVisibleDocId: await document(clientVisibleDocName, "CLIENT_VISIBLE"),
     clientVisibleDocName,
     internalDocId: await document(internalDocName, "INTERNAL"),
@@ -1653,6 +1694,41 @@ async function resetNotifications(tenantId: string): Promise<void> {
 }
 
 /**
+ * Put every decided sign-off of the standing fixture back to PENDING —
+ * the seeded ask on version 1.1 and on the shared deliverable, which
+ * `portal-signoff.spec.ts` decides. A contact cannot undo a decision and
+ * the member's "Request sign-off" refuses an APPROVED version by design,
+ * so the only way back to the seeded state is the database: the four
+ * decision columns cleared, the ask kept. The audit rows the decisions
+ * wrote stay (they are immutable and name nothing the walks read); the
+ * inbox rows go with `reset-notifications`. Throwaway tenant only, like
+ * every write here.
+ */
+async function resetSignoffs(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertThrowawayTenant(db, tenantId);
+  const cleared = {
+    approvalStatus: "PENDING" as const,
+    approvalDecidedAt: null,
+    approvalByContactId: null,
+    approvalNote: null,
+  };
+  const decided = { in: ["APPROVED", "CHANGES_REQUESTED"] as ("APPROVED" | "CHANGES_REQUESTED")[] };
+  const versions = await db.projectVersion.updateMany({
+    where: { tenantId, approvalStatus: decided },
+    data: cleared,
+  });
+  const documents = await db.document.updateMany({
+    where: { tenantId, approvalStatus: decided },
+    data: cleared,
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"reset":${versions.count + documents.count}}
+`);
+}
+
+/**
  * Forget one member's staff-notice acknowledgments, so the next timer
  * start is that member's FIRST again — the only state in which a task's
  * timer control shows the notice. A spec that asserts on the notice
@@ -2109,6 +2185,7 @@ const main = async (): Promise<void> => {
   if (command === "clear-portal-requests") return clearPortalRequests(argument!, process.argv[4]!);
   if (command === "notifications") return notifications(argument!);
   if (command === "reset-notifications") return resetNotifications(argument!);
+  if (command === "reset-signoffs") return resetSignoffs(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "remove-users") return removeUsers(process.argv.slice(3));

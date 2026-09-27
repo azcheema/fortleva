@@ -6,6 +6,10 @@ import { STATUS_MAP } from "@/lib/enum-map";
 import { formatDate, formatDay } from "@/lib/format";
 import type { PortalTimelineEntry } from "@/modules/work";
 
+import { signOffKey, versionAnchor } from "@/portal/signoff-vocabulary";
+
+import { PortalSignOff } from "../../sign-off";
+
 /**
  * THE CLIENT TIMELINE, DRAWN (Phase 3, DATA_MODEL §6.16; UI.md §4 item
  * 4 and §10.15 pattern 3). One dated rail — the same `Timeline` the
@@ -146,7 +150,12 @@ function TimelineEntry({
           last={last}
           contentClassName="flex flex-col gap-1"
         >
-          <div data-slot="portal-event" data-kind={entry.kind} className="flex flex-col gap-1">
+          <div
+            id={versionAnchor(entry.id)}
+            data-slot="portal-event"
+            data-kind={entry.kind}
+            className="flex scroll-mt-16 flex-col gap-1"
+          >
             <span className="text-sm font-medium text-foreground">
               {t("version", { version: entry.version })}
               {entry.title ? ` · ${entry.title}` : null}
@@ -155,6 +164,60 @@ function TimelineEntry({
             {entry.releaseNotes ? (
               <p className="text-sm whitespace-pre-wrap text-muted-foreground">{entry.releaseNotes}</p>
             ) : null}
+            {/* THE SIGN-OFF CONTROL, on the entry the ask is about (PLAN
+                §0: "on a `version_shipped` rail entry"). Offered only
+                where it would work — `canDecide` is the projection's
+                boolean about the reader — and drawn as the standing
+                decision otherwise. The decision ALSO gets an entry of
+                its own above (`approval_decided`), dated by the day it
+                was made; this line is the version's own state. */}
+            <PortalSignOff
+              key={signOffKey(entry.id, entry.approval)}
+              subject="version"
+              id={entry.id}
+              status={entry.approval.status}
+              decidedAt={entry.approval.decidedAt?.toISOString() ?? null}
+              note={entry.approval.note}
+              canDecide={entry.approval.canDecide}
+            />
+          </div>
+        </TimelineItem>
+      );
+    }
+    case "approval_decided": {
+      // THE CLIENT'S OWN ANSWER, as an event: the approval map's glyph
+      // and tone (`STATUS_MAP.approvalStatus` — success check, danger
+      // undo), filled, because it happened. It names the version or the
+      // file and, for a file, which version of it the ask was about; the
+      // note is quoted, because it is the client's words read back.
+      const spec = STATUS_MAP.approvalStatus[entry.outcome];
+      const approved = entry.outcome === "APPROVED";
+      const label =
+        entry.subject === "version"
+          ? approved
+            ? t("versionApproved", { version: entry.label })
+            : t("versionChanges", { version: entry.label })
+          : approved
+            ? t("deliverableApproved", { name: entry.label, number: entry.versionNumber ?? 0 })
+            : t("deliverableChanges", { name: entry.label, number: entry.versionNumber ?? 0 });
+      return (
+        <TimelineItem
+          node={<StatusIcon name={spec.icon} className="size-3.5" />}
+          tone={spec.tone}
+          filled
+          last={last}
+          contentClassName="flex flex-col gap-1"
+        >
+          <div
+            data-slot="portal-event"
+            data-kind={entry.kind}
+            data-subject={entry.subject}
+            data-outcome={entry.outcome}
+            className="flex flex-col gap-1"
+          >
+            <span className="text-sm font-medium text-foreground">{label}</span>
+            <span className="text-xs text-muted-foreground">{t("decided", { date: when })}</span>
+            {entry.note ? <q className="text-sm whitespace-pre-wrap text-muted-foreground">{entry.note}</q> : null}
           </div>
         </TimelineItem>
       );

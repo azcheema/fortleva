@@ -1,6 +1,7 @@
 import {
   AtSignIcon,
   CircleCheckIcon,
+  ClipboardCheckIcon,
   GaugeIcon,
   InboxIcon,
   MessageSquareIcon,
@@ -22,5 +23,6 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "work_item.commented": MessageSquareIcon,
   "work_item.request_received": InboxIcon,
   "work_item.completed_by_contact": CircleCheckIcon,
+  "approval.decided": ClipboardCheckIcon,
   "budget.threshold_reached": GaugeIcon,
 };

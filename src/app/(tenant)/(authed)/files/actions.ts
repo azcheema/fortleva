@@ -14,10 +14,12 @@ import {
   createUpload,
   DocumentError,
   getDownloadUrl,
+  requestDocumentSignoff,
   softDeleteDocument,
   type CreateUploadResult,
 } from "@/documents/service";
 import { DomainError } from "@/lib/domain-error";
+import { messageForError } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 
 /**
@@ -57,6 +59,9 @@ const messageOf = (t: Translate, e: unknown): string | null => {
     }
   }
   if (e instanceof DomainError && e.code === "CLIENT_MISMATCH") return t("clientRequired");
+  // The sign-off refusals carry their own sentences (`domainErrors.*`);
+  // `messageForError` is the member plane's one mapping for those.
+  if (e instanceof DomainError && e.code.startsWith("SIGNOFF_")) return null;
   if (e instanceof DocumentError) {
     switch (e.code) {
       case "UPLOAD_MISSING":
@@ -187,6 +192,35 @@ export async function downloadAction(formData: FormData): Promise<void> {
   if (!result.ok) redirect(withError(returnTo, result.message));
   // Off-origin, short-lived, Content-Disposition: attachment (SECURITY.md §5).
   redirect(result.value.url);
+}
+
+/**
+ * Ask the client to sign a deliverable off (Phase 3, sign-off): a form
+ * POST from the row's menu, back to the page it was on, with the
+ * service's own sentence on a refusal — not a DELIVERABLE, not shared,
+ * no committed file, an open ask, a standing approval of the newest
+ * version. `messageForError` renders the `domainErrors.*` text; `guard`
+ * above answers null for these so it reaches that mapping.
+ */
+export async function requestDocumentSignoffAction(formData: FormData): Promise<void> {
+  const documentId = String(formData.get("documentId") ?? "");
+  const returnTo = returnToOf(formData);
+  const { membership, actor } = await requireTenantContext();
+  let message: string | null = null;
+  try {
+    await requestDocumentSignoff({ tenantId: membership.tenantId, actor }, documentId);
+  } catch (e) {
+    handleAuthzRedirect(e, returnTo);
+    message = e instanceof DomainError ? await messageForError(e) : null;
+    if (message === null) {
+      const t = await getTranslations("files.errors");
+      const mapped = messageOf(t, e);
+      if (mapped === null) throw e;
+      message = mapped;
+    }
+  }
+  if (message !== null) redirect(withError(returnTo, message));
+  revalidatePath(returnTo);
 }
 
 export async function deleteDocumentAction(formData: FormData): Promise<void> {

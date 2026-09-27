@@ -205,6 +205,8 @@ export type ClientDetail = {
     viewProjects: boolean;
     viewDocuments: boolean;
     uploadDocuments: boolean;
+    /** `document:edit` — asking the client to sign a deliverable off rides on it (Phase 3). */
+    editDocuments: boolean;
     deleteDocuments: boolean;
     changeDocumentVisibility: boolean;
     viewServices: boolean;
@@ -304,6 +306,7 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
         viewProjects: held.has("project:view"),
         viewDocuments: held.has("document:view") && direct,
         uploadDocuments: held.has("document:upload") && direct,
+        editDocuments: held.has("document:edit") && direct,
         deleteDocuments: held.has("document:delete") && direct,
         changeDocumentVisibility: held.has("document:change_visibility") && direct,
         viewServices: held.has("service:view") && direct,

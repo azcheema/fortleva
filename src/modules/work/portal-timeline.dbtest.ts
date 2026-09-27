@@ -293,7 +293,9 @@ describe("the client timeline", () => {
     expect(keysOf("update")).toEqual(["at", "health", "id", "kind", "seq", "title"]);
     expect(keysOf("milestone_done")).toEqual(["at", "id", "kind", "name"]);
     expect(keysOf("milestone_due")).toEqual(["at", "id", "kind", "name"]);
-    expect(keysOf("version_shipped")).toEqual(["at", "id", "kind", "releaseNotes", "title", "version"]);
+    // `approval` since the sign-off slice: where the ask stands, and
+    // whether THIS reader may answer it (`signoff.dbtest.ts` drives it).
+    expect(keysOf("version_shipped")).toEqual(["approval", "at", "id", "kind", "releaseNotes", "title", "version"]);
   });
 
   it("a collaborator reads the same rail as the primary contact", async () => {

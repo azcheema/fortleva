@@ -99,7 +99,7 @@ Full enforcement design lives in `TENANCY.md`; the schema commitments are:
 
 - **`app.principal_id` GUC** (Phase 1b): `withTenant()` sets `app.principal_id` (Member.id or Contact.id) transaction-locally alongside `app.tenant_id` / `app.principal` / `app.client_id`, so contact-authored `WITH CHECK` clauses can bind the author column (`author_contact_id = app.principal_id`) and `Notification` rows can bind the receiver.
 - **Posture test** (CI): for every registered model the subclass implies its column set and policy names; a projectScoped table missing `portal_enabled`, or a principalScoped table carrying `visibility`, fails the build. Behavioural test: flipping `Project.portalEnabled=false` ⇒ 0 rows for a contact principal across every projectScoped table.
-- **Contact-writable census (amended 2026-08-16, replaces the list in the note below):** exactly `Comment` (INSERT, `WITH CHECK visibility='CLIENT_VISIBLE' AND client_id=app.client_id AND author_contact_id=app.principal_id`), `ProjectVersion` approval columns, `Document` approval columns, `Notification.read_at/archived_at` on contact-receiver rows, `ContinuityOpenRequest`. **Every other contact-caused write** (REQUEST creation, completing an own-assigned task, credential submission, uploads) is brokered under `withTenant(tenantId, {type:'system'})` after `authorizePortal()`, in `src/modules/*/portal.ts`. Portal *reads* always run under the RLS-scoped contact principal — never a system principal.
+- **Contact-writable census (amended 2026-08-16, replaces the list in the note below):** exactly `Comment` (INSERT, `WITH CHECK visibility='CLIENT_VISIBLE' AND client_id=app.client_id AND author_contact_id=app.principal_id`), `ProjectVersion` approval columns, `Document` approval columns *(both ENFORCED and first WRITTEN 2026-09-27, Phase 3 slice 70 — migration `20260927120000`: `portal_no_update` dropped on both tables, `portal_approval_update` + `portal_contact_columns_only(<cols…>)` + `portal_approval_decision` in its place; `withCensusWrite` is the seam, `src/projects/portal-signoff.ts` and `src/documents/portal-signoff.ts` the writers)*, `Notification.read_at/archived_at` on contact-receiver rows, `ContinuityOpenRequest`. **Every other contact-caused write** (REQUEST creation, completing an own-assigned task, credential submission, uploads) is brokered under `withTenant(tenantId, {type:'system'})` after `authorizePortal()`, in `src/modules/*/portal.ts`. Portal *reads* always run under the RLS-scoped contact principal — never a system principal.
 - **The `portal_gate` shapes above govern READS. Contact WRITES are a separate, named set of policies** *(added 2026-09-20, Phase 3 slice 2 — migrations `20260920230000` + `20260920233000`)*. `tenant_isolation` is PERMISSIVE **FOR ALL**, and `portal_gate`'s WITH CHECK only pins the row to the contact's own client, so on its own the class-B template ADMITS a contact write. Every class-B table except `comment` therefore carries `portal_no_insert` / `portal_no_update` / `portal_no_delete` — three named RESTRICTIVE policies, so that opening one is a visible `DROP POLICY` rather than an edit inside a boolean. **`portal_no_update` is a `WITH CHECK` deny with no `USING`, and the shape is load-bearing:** Postgres applies the UPDATE policies to a row LOCK, so a `FOR UPDATE … USING` deny also makes `SELECT … FOR SHARE` return nothing — which breaks `comment_denorm_guard`, and with it the one permitted contact write. `portal_no_delete` stays a USING deny (DELETE has no WITH CHECK; a row lock consults UPDATE policies only). The resulting set is computed and pinned per column in `src/portal/census.dbtest.ts`; `TENANCY.md` §7.2 carries the full account.
 - Why a column and not a subquery: under FORCE RLS a `project.portal_enabled` subquery inside a RESTRICTIVE policy re-evaluates `project`'s own policies per row for the contact principal — the same footgun family as `ProjectTimeSummary`-as-view (§11). A trigger-fanned boolean keeps `portal_gate` a pure column comparison, which is the only shape TENANCY.md §7.2's template has ever had.
 
@@ -1144,6 +1144,15 @@ enum ApprovalStatus {
 /// v1-lite): approval fields inline — a portal contact approves or
 /// requests changes on a shipped version; that is the whole v1 feature
 /// (no separate approval entity, no reminders engine until v2).
+/// LANDED 2026-09-27 (Phase 3 slice 70): staff ask with
+/// `project:manage_versions` (SHIPPED, portal on, not archived; never an
+/// open ask, never a standing approval — a version gains no new bytes,
+/// so an approval is final), the contact decides under their own
+/// principal (the four decision columns are the census entry, enforced
+/// as §6.8's "LANDED" note describes on the same migration), a re-ask
+/// clears the previous decision and its note. Three CHECKs carry the
+/// shape; the policies carry no archive term (the writer and every
+/// projection do — measured and pinned in `signoff.dbtest.ts`).
 /// AMENDED 2026-08-16: rls subclass projectScoped — gains the trigger-
 /// maintained `portal_enabled` column (elided below, §1.4); a SHIPPED
 /// version of a portal-disabled project is invisible to contacts.
@@ -1655,6 +1664,23 @@ enum DocumentKind {
 ///   contact may UPDATE only them, only on CLIENT_VISIBLE rows of its
 ///   client with approvalStatus = 'PENDING' (WITH CHECK). Generalised
 ///   ApprovalRequest is Phase 5.
+/// LANDED 2026-09-27 (Phase 3 slice 70, migration 20260927120000), with
+///   three readings: (a) the PENDING precondition is the OLD row's, which
+///   a WITH CHECK cannot see and a USING deny must not carry (it would
+///   make the row unlockable, TENANCY §7.2), so it lives in a BEFORE
+///   UPDATE trigger (`portal_approval_decision`) beside the column
+///   allow-list (`portal_contact_columns_only`, whose ARGUMENTS the
+///   census test reads back) and a NEW-row policy
+///   (`portal_approval_update`: a decision, by the principal, dated, on a
+///   DELIVERABLE that is not deleted); (b) `approvalVersionNumber` is
+///   stamped by STAFF at the ask, to the newest COMMITTED version, and
+///   a contact may not write it; (c) a new FileVersion resets to
+///   NOT_REQUESTED only from PENDING — an open ask is voided because the
+///   client must not approve bytes they never saw — while a DECISION
+///   stands, pinned to its number (the column's stated purpose), until
+///   staff ask again; staff may re-ask an APPROVED document only once
+///   the newest version is newer than the approved one. Five CHECKs
+///   carry the shape. The member's ask is `document:edit`.
 /// - rls subclass: projectScoped when projectId IS NOT NULL (gains
 ///   `portal_enabled` — set from the project by trigger; a document on a
 ///   portal-disabled project is invisible to contacts even if
@@ -1669,7 +1695,7 @@ enum DocumentKind {
 ///   applies (§10); a parent cannot be flipped to INTERNAL while an
 ///   attached CLIENT_VISIBLE document exists (downgrade refusal).
 /// scope=client (clientId nullable ⇒ tenant-internal)  rls=B (projectScoped when projectId set, else clientScoped)  ret=R2 (invoice/contract PDFs referenced via R1 parents survive)  enc=none
-/// audit: document.created | document.visibility_changed | document.renamed | document.deleted | document.approval_requested | document.approval_decided | file.uploaded | file.downloaded
+/// audit: document.created | document.visibility_changed | document.renamed | document.deleted | document.approval_requested | document.approval_decided | document.approval_voided (a new version voided an open ask, 2026-09-27) | file.uploaded | file.downloaded
 model Document {
   id                 String          @id @default(uuid(7))
   tenantId           String

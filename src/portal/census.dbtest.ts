@@ -84,27 +84,51 @@ const CENSUS: Readonly<
   // of `search_feed_comment` fires on a comment DELETE or soft-delete,
   // neither of which a contact can perform), so DELETE is closed.
   search_index: { INSERT: "*", UPDATE: "*" },
+  // THE TWO SIGN-OFF DOORS (Phase 3, migration 20260927120000): the
+  // four decision columns of a DELIVERABLE and of a SHIPPED version,
+  // plus `updated_at`, which the ORM stamps on every update and which
+  // is therefore LISTED rather than quietly exempted. The list is read
+  // back from the `portal_contact_columns_only(...)` trigger's own
+  // arguments (`columnTriggers` below), not written here by hand: the
+  // grant is table-level on both tables, so `has_column_privilege`
+  // alone would report `"*"`, and a census that said `"*"` over a
+  // trigger it could not see would be the "trust me" this file exists
+  // to refuse. Narrowed further by `portal_approval_update` (a
+  // decision, by the principal, dated — an OR-form policy, so not
+  // counted as a deny) and by `portal_approval_decision` (PENDING →
+  // decided, once). `signoff.dbtest.ts` drives every one of those.
+  document: {
+    UPDATE: ["approval_by_contact_id", "approval_decided_at", "approval_note", "approval_status", "updated_at"],
+  },
+  project_version: {
+    UPDATE: ["approval_by_contact_id", "approval_decided_at", "approval_note", "approval_status", "updated_at"],
+  },
 };
 
 /**
- * THE THREE REMAINING INSERT/UPDATE ENTRIES ARE OPEN *UNDER A
- * PREDICATE*, AND THIS TABLE CANNOT SEE THE PREDICATE. The computation
- * below answers "may a contact write this column at all", which is the
- * right question for a tripwire and the wrong one to read as
- * "unconstrained". Each is narrowed by a RESTRICTIVE policy whose
- * predicate contains an OR — deliberately not counted as a deny, because
- * counting OR-forms would make the tripwire's failure direction unsafe:
+ * THE INSERT/UPDATE ENTRIES ABOVE ARE OPEN *UNDER A PREDICATE*, AND THIS
+ * TABLE CANNOT SEE THE PREDICATE. The computation below answers "may a
+ * contact write this column at all", which is the right question for a
+ * tripwire and the wrong one to read as "unconstrained". Each is
+ * narrowed by a RESTRICTIVE policy whose predicate contains an OR —
+ * deliberately not counted as a deny, because counting OR-forms would
+ * make the tripwire's failure direction unsafe:
  *
- *   comment       INSERT — CLIENT_VISIBLE, own client, authored as
- *                          self, portal-enabled (`portal_gate`)
- *   audit_event   INSERT — actor_type = 'CONTACT', actor_id =
- *                          app.principal_id, visibility = 'TENANT'
- *                          (`portal_audit_insert`)
- *   search_index  I/U    — entity_type = 'COMMENT'
- *                          (`portal_comment_rows_only*`)
+ *   comment          INSERT — CLIENT_VISIBLE, own client, authored as
+ *                             self, portal-enabled (`portal_gate`)
+ *   audit_event      INSERT — actor_type = 'CONTACT', actor_id =
+ *                             app.principal_id, visibility = 'TENANT'
+ *                             (`portal_audit_insert`)
+ *   search_index     I/U    — entity_type = 'COMMENT'
+ *                             (`portal_comment_rows_only*`)
+ *   project_version  UPDATE — a decision by the principal on a row
+ *   document                  `portal_gate` admits, PENDING before
+ *                             (`portal_approval_update` + the two
+ *                             BEFORE UPDATE triggers)
  *
- * The behavioural tests below drive each predicate; the pin above only
- * guarantees that no NEW verb or column has opened.
+ * The behavioural tests below and in `signoff.dbtest.ts` drive each
+ * predicate; the pin above only guarantees that no NEW verb or column
+ * has opened.
  */
 
 /**
@@ -161,6 +185,32 @@ describe("the contact-writable census is exactly what the documents say", () => 
        WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname NOT LIKE '\\_prisma%'
          AND has_column_privilege('app_runtime', c.oid, a.attname, p.pt)`;
 
+    // A COLUMN-NARROWING TRIGGER, read back from its own arguments. A
+    // table whose UPDATE grant is table-level but which carries a BEFORE
+    // UPDATE `portal_contact_columns_only(<cols…>)` trigger is writable
+    // by a contact on exactly those columns (migration 20260927120000):
+    // the function refuses any other change under a contact principal.
+    // `pg_get_triggerdef` is parsed rather than `tgargs` decoded, because
+    // the definition text is what a reviewer reads in `psql` too.
+    const columnTriggers = await db.$queryRaw<{ t: string; def: string }[]>`
+      SELECT c.relname AS t, pg_get_triggerdef(tg.oid) AS def
+        FROM pg_trigger tg
+        JOIN pg_class c ON c.oid = tg.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = tg.tgfoid
+       WHERE n.nspname = 'public' AND NOT tg.tgisinternal
+         AND p.proname = 'portal_contact_columns_only'`;
+    const narrowedTo = new Map<string, string[]>();
+    for (const r of columnTriggers) {
+      // Only a BEFORE UPDATE row trigger with an argument list narrows
+      // anything; anything else shaped is reported as NOT narrowing, so
+      // the census over-reports (`"*"`) rather than under-reports.
+      const m = /BEFORE UPDATE ON \S+ FOR EACH ROW EXECUTE FUNCTION portal_contact_columns_only\((.*)\)$/.exec(r.def);
+      if (!m) continue;
+      const cols = m[1]!.split(",").map((a) => a.trim().replace(/^'|'$/g, "")).filter(Boolean);
+      if (cols.length > 0) narrowedTo.set(r.t, cols);
+    }
+
     const wholeTable = new Map(tablePriv.map((r) => [`${r.t}|${r.pt}`, r.granted]));
     const columns = new Map<string, string[]>();
     for (const r of columnPriv) {
@@ -199,8 +249,10 @@ describe("the contact-writable census is exactly what the documents say", () => 
           if (wholeTable.get(`${table}|DELETE`)) entry[cmd] = true;
           continue;
         }
-        if (wholeTable.get(`${table}|${cmd}`)) entry[cmd] = "*";
-        else {
+        if (wholeTable.get(`${table}|${cmd}`)) {
+          const narrowed = cmd === "UPDATE" ? narrowedTo.get(table) : undefined;
+          entry[cmd] = narrowed ? [...narrowed].sort() : "*";
+        } else {
           const cols = columns.get(`${table}|${cmd}`);
           if (cols?.length) entry[cmd] = [...cols].sort();
         }
