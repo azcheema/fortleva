@@ -84,7 +84,11 @@ async function guard<T>(path: string, fn: () => Promise<T>): Promise<ActionResul
   } catch (e) {
     handleAuthzRedirect(e, path);
     const t = await getTranslations("files.errors");
-    const message = messageOf(t, e);
+    // Any other domain refusal speaks the member plane's one mapping
+    // (`domainErrors.*`) rather than escaping as an unhandled error — the
+    // attachment flip's VISIBILITY_BUSY (slice 72) reached the member as a
+    // generic failure before this fallback.
+    const message = messageOf(t, e) ?? (e instanceof DomainError ? await messageForError(e) : null);
     if (message) return { ok: false, message };
     throw e;
   }

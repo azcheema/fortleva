@@ -89,9 +89,12 @@ const KNOWN_OVERFLOW_SV: Record<string, number> = {
   // actions column is pinned, a row's verbs never scroll, so a little
   // scroll at a rung's very edge buys a column that would otherwise wait
   // for the next laptop. UI.md put this at ~21px from a throwaway probe;
-  // CI says 29. The four stops are one table seen four ways — the
-  // backlog, the same list grouped, the same list with a row ticked, and
-  // the same list behind the item peek.
+  // CI says 29. The six stops are one table seen six ways — the
+  // backlog, the same list grouped, the same list with a row ticked, the
+  // same list behind the item peek, behind the peek's make-private
+  // question, and with the selection bar's make-private question open
+  // (the last two since slice 72 — the same numbers, re-measure from the
+  // first CI log).
   //
   // FOUR PIXELS OF SLACK ON A 29, and worth saying why that is not as
   // tight as it sounds (review). These stops carry residue —
@@ -114,6 +117,10 @@ const KNOWN_OVERFLOW_SV: Record<string, number> = {
   "project-backlog-selection@1410": 27,
   "project-item-peek@1408": 29,
   "project-item-peek@1410": 27,
+  "project-item-private-question@1408": 29,
+  "project-item-private-question@1410": 27,
+  "project-backlog-visibility-question@1408": 29,
+  "project-backlog-visibility-question@1410": 27,
 
   // THE FOUR DOCUMENTS TABLES USED TO BE HERE at 14/14/14/7 — the
   // numbers this walk was built to find, and the ones that made them

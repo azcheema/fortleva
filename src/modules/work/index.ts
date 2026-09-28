@@ -49,7 +49,21 @@ export {
   bulkSetPriority,
   type BulkResult,
 } from "./bulk";
+export {
+  bulkShare,
+  makeItemPrivate,
+  makePrivateWithChildren,
+  previewMakePrivate,
+  type BulkShareResult,
+  type ItemPrivateCommitted,
+  type MakePrivateResult,
+  type PrivacyPreview,
+} from "./visibility";
 export { listMyWork } from "./my-work";
+// The project's row-lock queue, for ANOTHER module's writer that locks
+// many work_item rows of one project (rank-lock.ts: "a new multi-row
+// writer MUST take it") — the time reports' publish check, slice 72.
+export { lockProjectRanks } from "./rank-lock";
 // Phase 3, the invite slice: the work module's half of "remove this
 // contact's portal access". It takes the CALLER's transaction and
 // authorizes nothing — see its docblock for why that is safe and who

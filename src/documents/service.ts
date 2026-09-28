@@ -8,10 +8,11 @@ import {
 import { requireAccess, parseEntitlements } from "@/entitlements/resolver";
 import { assertInScope, scopeWhere, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
-import { fail } from "@/lib/domain-error";
+import { fail, isDeadlock } from "@/lib/domain-error";
 import { withTenant, type TenantDb } from "@/db";
 import { attachmentDisposition } from "@/lib/http-download";
 import { newId } from "@/lib/ids";
+import { retryOnDeadlock } from "@/lib/retry";
 import { getStorage } from "@/storage";
 
 import { validateUpload } from "./allowlist";
@@ -765,6 +766,27 @@ export async function renameDocument(
 
 /** Flip INTERNAL ⇄ CLIENT_VISIBLE — the audited worst-bug lever (§5). */
 export async function changeVisibility(
+  ctx: DocumentCtx,
+  documentId: string,
+  visibility: Visibility,
+): Promise<void> {
+  // RETRIED ON A DEADLOCK, and told when every attempt is spent (Phase 3
+  // slice 72). An attachment's flip locks the document and then its task
+  // (`document_anchor_guard`'s FOR SHARE); the sharing UI's cascade
+  // (`src/modules/work/visibility.ts`) and `deleteItem` lock the task and
+  // then its documents, so the two orders can cycle and Postgres aborts
+  // one side. The cascade retries; before this, a flip chosen as the
+  // victim reached the member as an unmapped error — a 500 on the very
+  // control that makes a file private (rank-lock.ts has the list).
+  try {
+    await retryOnDeadlock(() => changeVisibilityOnce(ctx, documentId, visibility));
+  } catch (e) {
+    if (isDeadlock(e)) fail("VISIBILITY_BUSY", "deadlock");
+    throw e;
+  }
+}
+
+async function changeVisibilityOnce(
   ctx: DocumentCtx,
   documentId: string,
   visibility: Visibility,

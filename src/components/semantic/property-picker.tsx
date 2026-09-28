@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import {
   Command,
@@ -235,6 +235,7 @@ export function PropertyPicker<V extends string>({
   className,
   derive,
   footer,
+  note,
   selected,
 }: {
   /** REQUIRED, both of them: the property's single key must be able to
@@ -265,6 +266,18 @@ export function PropertyPicker<V extends string>({
   /** Non-list content AFTER the cmdk root, inside the popover. `commit` is the exact select-and-close
    *  a row runs. Its root must not shrink: the popover content is a scrolling flex column. */
   footer?: (commit: (value: V) => void) => React.ReactNode;
+  /**
+   * A SENTENCE the member should hear before picking — the A picker's
+   * "handing this over makes the task visible to the client", the V
+   * picker's portal-off and hand-back warnings (slice 72). Rendered after
+   * the cmdk root like `footer`, but NON-INTERACTIVE and with an id the
+   * search box's `aria-describedby` names, so a screen reader speaks it
+   * with the field instead of never reaching it (a `footer` sits after
+   * the list, where a keyboard user inside the combobox never goes).
+   * Not for D's calendar: that is `footer`, and describing an input by a
+   * calendar would read the whole month.
+   */
+  note?: React.ReactNode;
   /** A MULTI property's applied values (L). Each such row wears the check and `labels.current`; `value`
    *  stays null, so nothing is seeded, a bare Enter is inert, and the member steers or types. A pick still
    *  commits ONE row and closes — the contract is unchanged; only which rows are marked "current" is. The
@@ -322,6 +335,7 @@ export function PropertyPicker<V extends string>({
           labels={labels}
           derive={derive}
           footer={footer}
+          note={note}
         />
       </PopoverContent>
     </Popover>
@@ -337,6 +351,7 @@ function PickerBody<V extends string>({
   labels,
   derive,
   footer,
+  note,
 }: {
   options: readonly PickerOption<V>[];
   value: V | null;
@@ -346,8 +361,10 @@ function PickerBody<V extends string>({
   labels: PickerLabels;
   derive: ((query: string) => PickerOption<V> | null) | undefined;
   footer: ((commit: (value: V) => void) => React.ReactNode) | undefined;
+  note: React.ReactNode | undefined;
 }) {
   const [query, setQuery] = useState("");
+  const noteId = useId();
   // The seed on open: `""`, the current value, or `NO_HIGHLIGHT` — see
   // `initialHighlight` for what each one makes a bare Enter do.
   const [highlight, setHighlight] = useState<string>(() => initialHighlight(options, value));
@@ -422,6 +439,7 @@ function PickerBody<V extends string>({
       >
         <CommandInput
           placeholder={labels.search}
+          aria-describedby={note ? noteId : undefined}
           value={query}
           onValueChange={(next) => {
             setQuery(next);
@@ -499,6 +517,11 @@ function PickerBody<V extends string>({
       <span role="status" aria-live="polite" className="sr-only">
         {empty && query.trim() !== "" ? labels.empty : ""}
       </span>
+      {note ? (
+        <p id={noteId} data-slot="picker-note" className="px-2 pb-1 text-2xs text-muted-foreground">
+          {note}
+        </p>
+      ) : null}
       {footer?.(commit)}
     </>
   );

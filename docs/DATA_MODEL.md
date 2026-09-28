@@ -2424,7 +2424,8 @@ enum WorkItemSource {
 /// at creation; child <= parent enforced by trigger; flipping a parent to
 /// INTERNAL is REFUSED while any child (item, comment, attached document)
 /// is CLIENT_VISIBLE — a bulk "make private with N children" action
-/// exists and is audited (work_item.bulk_edited + visibility_changed).
+/// exists and is audited (work_item.bulk_edited + visibility_changed;
+/// built in Phase 3 slice 72 — §10 has the closure and C37).
 ///
 /// SQL (hand-written in the 2W migration; every line has a test):
 ///   rank text COLLATE "C"                       — fractional-indexing keys
@@ -2819,7 +2820,7 @@ model Comment {
   authorContactId String?
   body            Json                            // Tiptap JSON
   bodyText        String                          // extracted text (search feed, email, previews)
-  visibility      Visibility         @default(INTERNAL)  // contact-authored forced CLIENT_VISIBLE
+  visibility      Visibility         @default(INTERNAL)  // contact-authored: forced CLIENT_VISIBLE when written; then follows its task (C37, slice 72)
   editedAt        DateTime?          @db.Timestamptz(6)
   deletedAt       DateTime?          @db.Timestamptz(6)  // soft delete keeps the thread shape
   createdAt       DateTime           @default(now()) @db.Timestamptz(6)
@@ -3441,10 +3442,16 @@ enum TimeReportGroupBy {
 /// selects/groups member_id (no member key can exist — same rule as
 /// ProjectTimeSummary), and lines carry an entity's NAME only when that
 /// entity (work item / service) is CLIENT_VISIBLE — INTERNAL ones fold
-/// into one generic "Other work" line AT GENERATION TIME, so any
-/// snapshot is publishable without a validate-at-publish step. Fixture
-/// test: an INTERNAL task title / agreement name never appears in any
-/// snapshot.
+/// into one generic "Other work" line AT GENERATION TIME. That makes a
+/// snapshot safe on the day it is generated, not the day it is published:
+/// since Phase 3 slice 72, publish and republish re-check every task and
+/// epic line against the task's visibility NOW (named rows and their
+/// ancestors locked FOR SHARE; a soft-deleted task counts only while the
+/// tasks above it are shared — the generator applies the same rule) and
+/// refuse REPORT_NAMES_PRIVATE_TASK; the frozen snapshot is never edited.
+/// SERVICE lines are not re-checked (named, with no id) — a recorded
+/// residual. Fixture test: an INTERNAL task title / agreement name never
+/// appears in any snapshot.
 /// Generation runs under the acting member (RLS live): requires
 /// time_report:manage + time:view_team (+ rate:view_bill when
 /// includeAmounts); internal readers without rate:view_bill get amount
@@ -4469,7 +4476,7 @@ Rejected alternatives:
 
 The decisive argument: **the security-relevant dimensions of a file are tenant, client, and visibility — never "what it is pinned to."** A document attached to a ~~Issue~~ WorkItem *(amended 2026-08-16)* is client-visible because its own row says `(clientId=X, visibility=CLIENT_VISIBLE)`, not because the issue is. That keeps the §5 invariant enforceable at the data layer with real constraints, while the anchor stays flexible enough that "attachable to any entity" (§6) never needs another migration.
 
-**Restated 2026-08-16 (work-management plan §3.2 "Inheritance") — the rule stands and is now enforced in the DB, not only in the app.** Attachments, comments and child work items carry their **own** `visibility` column, **defaulted from the parent at creation** (an attachment on a CLIENT_VISIBLE task starts CLIENT_VISIBLE; on an INTERNAL task, INTERNAL — the composer shows the two-token badge either way). Two guards, both triggers with tests: **child ≤ parent** — a `WorkItem(parent)`, `Comment(subject)` or `Document` anchored to `WORK_ITEM | COMMENT | PROJECT_UPDATE` cannot be CLIENT_VISIBLE unless its parent is (§6.14 `work_item_parent_guard`, `comment_subject_guard`, and the Document anchor check on write); and **downgrade refusal** — flipping a parent to INTERNAL is *refused* while any child (item, comment, attached document) is CLIENT_VISIBLE (`work_item_visibility_downgrade_guard` and its siblings on `project_update`/`document`); the UI offers a bulk "make private with N children" action that flips children first, deepest first, in one transaction, audited (`work_item.bulk_edited` + one `*.visibility_changed` per privileged flip). `Project.portalEnabled` sits above all of this as the project-level gate (§2.3): turning it off hides everything without touching per-item decisions; turning it back on restores exactly what was shared. `AttachableType` gained `WORK_ITEM, COMMENT, PROJECT_UPDATE, CREDENTIAL, ASSET` (§6.8); a `CREDENTIAL` anchor never carries a secret — the secret lives only in `CredentialSecret`.
+**Restated 2026-08-16 (work-management plan §3.2 "Inheritance") — the rule stands and is now enforced in the DB, not only in the app.** Attachments, comments and child work items carry their **own** `visibility` column, **defaulted from the parent at creation** (an attachment on a CLIENT_VISIBLE task starts CLIENT_VISIBLE; on an INTERNAL task, INTERNAL — the composer shows the two-token badge either way). Two guards, both triggers with tests: **child ≤ parent** — a `WorkItem(parent)`, `Comment(subject)` or `Document` anchored to `WORK_ITEM | COMMENT | PROJECT_UPDATE` cannot be CLIENT_VISIBLE unless its parent is (§6.14 `work_item_parent_guard`, `comment_subject_guard`, and the Document anchor check on write); and **downgrade refusal** — flipping a parent to INTERNAL is *refused* while any child (item, comment, attached document) is CLIENT_VISIBLE (`work_item_visibility_downgrade_guard` and its siblings on `project_update`/`document`); the UI offers a bulk "make private with N children" action that flips children first, deepest first, in one transaction, audited (`work_item.bulk_edited` + one `*.visibility_changed` per privileged flip). **BUILT 2026-09-28 (Phase 3 slice 72, `src/modules/work/visibility.ts`):** the closure is every CLIENT_VISIBLE live descendant (depth ≤ 2, ARCHIVED included — the trigger counts them; soft-deleted ones neither block nor move), every CLIENT_VISIBLE comment on them — the client's own included (founder decision C37: a contact's comments on a task FOLLOW THEIR TASK; a re-share raises them back — not a contact's comments on an attached FILE, which the cascade lowers with the file and nothing raises yet, PLAN §0's slice-72 residual) — every CLIENT_VISIBLE attached document, and every comment on those documents and their versions; no cap (every write is set-based); the tasks are locked before anything is read, which freezes the set; the whole of it runs under `work_item:change_visibility` (AUTHZ.md), the documents module's switch and code deliberately not asked. A pending sign-off on a document is hidden with it, never withdrawn. The selection bar also SHARES in bulk (C35), parent first, refusing a selected task whose parent stays private. `Project.portalEnabled` sits above all of this as the project-level gate (§2.3): turning it off hides everything without touching per-item decisions; turning it back on restores exactly what was shared. `AttachableType` gained `WORK_ITEM, COMMENT, PROJECT_UPDATE, CREDENTIAL, ASSET` (§6.8); a `CREDENTIAL` anchor never carries a secret — the secret lives only in `CredentialSecret`.
 
 ## 11. Deliberate omissions — and why
 

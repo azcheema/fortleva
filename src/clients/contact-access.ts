@@ -5,7 +5,8 @@ import { assertInScope } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { withTenant } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
-import { fail } from "@/lib/domain-error";
+import { fail, isDeadlock } from "@/lib/domain-error";
+import { retryOnDeadlock } from "@/lib/retry";
 import { portalInviteUrl } from "@/auth";
 import { send } from "@/mailer";
 import { releaseContactAssignments } from "@/modules/work";
@@ -287,6 +288,28 @@ export type PortalAccessAction = "PAUSE" | "RESUME" | "REMOVE";
  * this person off now". The rows go.
  */
 export async function setContactPortalAccess(
+  ctx: ClientCtx,
+  contactId: string,
+  action: PortalAccessAction,
+): Promise<{ readonly status: "ACTIVE" | "SUSPENDED" | "REVOKED"; readonly releasedTasks: number }> {
+  // RETRIED ON A DEADLOCK, and told when every attempt is spent (Phase 3
+  // slice 72). REMOVE releases every task the contact holds in ONE
+  // unqueued statement (`releaseContactAssignments`, scan order), and the
+  // sharing UI's make-private cascade locks a task tree level by level, so
+  // the two can cycle; before this, a revoke chosen as the victim — the
+  // "cut this person off now" control — came back as a 500 with the
+  // access still live (review). The unit is the whole transaction, which
+  // is database-only (no mail is sent from it), so a re-run is the whole
+  // remedy.
+  try {
+    return await retryOnDeadlock(() => setContactPortalAccessOnce(ctx, contactId, action));
+  } catch (e) {
+    if (isDeadlock(e)) fail("CONTACT_ACCESS_BUSY", "deadlock");
+    throw e;
+  }
+}
+
+async function setContactPortalAccessOnce(
   ctx: ClientCtx,
   contactId: string,
   action: PortalAccessAction,

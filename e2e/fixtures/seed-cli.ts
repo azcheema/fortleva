@@ -24,6 +24,8 @@
  * Usage: tsx e2e/fixtures/seed-cli.ts <provision|teardown> <seedFile>
  *        tsx e2e/fixtures/seed-cli.ts visibility <documentId>
  *        tsx e2e/fixtures/seed-cli.ts set-visibility <documentId> <value>
+ *        tsx e2e/fixtures/seed-cli.ts item-visibility <projectId> <number>
+ *        tsx e2e/fixtures/seed-cli.ts contact-comment <projectId> <number> <visibility>
  *        tsx e2e/fixtures/seed-cli.ts milestone <milestoneId>
  *        tsx e2e/fixtures/seed-cli.ts big-project <tenantId> [size]
  *        tsx e2e/fixtures/seed-cli.ts drop-project <projectId>
@@ -165,6 +167,9 @@ const DBTEST_PREFIXES = [
   "totals-",
   "tree-",
   "triage-",
+  // Phase 3 slice 72, the sharing UI — `src/modules/work/visibility.dbtest.ts`,
+  // `setupTenant("vshare")`.
+  "vshare-",
   "work-",
   "wu-",
 ] as const;
@@ -462,6 +467,7 @@ async function provision(seedFile: string): Promise<void> {
     assignItem,
     changeItemVisibility,
     changeState,
+    createComment,
     createItem,
     createLabel,
     createUpdateDraft,
@@ -925,6 +931,16 @@ async function provision(seedFile: string): Promise<void> {
   // contact sees.
   await changeItemVisibility(ctx, dnsTaskId, "CLIENT_VISIBLE");
   await changeItemVisibility(ctx, a11yTaskId, "CLIENT_VISIBLE");
+  // ONE REPLY THE CLIENT CAN SEE, on the shared spec task (Phase 3 slice
+  // 72): the one child that makes "Private to team" on KEY-2 ASK first —
+  // "Make this task private, together with 1 comment?" — which is what
+  // the visual walk's rail-question stop photographs. Through the real
+  // comment service, by the owner; the stop only ever opens the question
+  // and NEVER confirms it, so KEY-2 stays shared for every later spec.
+  await createComment(ctx, specTaskId, {
+    doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Utkastet är klart för granskning." }] }] },
+    visibility: "CLIENT_VISIBLE",
+  });
   await setItemMilestone(ctx, a11yTaskId, datedMilestoneId);
   await updateItemFields(ctx, a11yTaskId, { targetDate: dueIn(10) });
   // THROUGH THE REAL SWITCH, not a column write: `setPortalEnabled` is
@@ -1886,6 +1902,68 @@ async function clientVisibleComment(projectId: string, number: string): Promise<
 }
 
 /**
+ * A task's stored visibility and how many of its live comments the
+ * client can see — the read side of the sharing specs (Phase 3 slice
+ * 72): the rail's chip is the member's view, this is what was stored.
+ * Read-only, addressed by project id + number like `client-visible-comment`.
+ */
+async function itemVisibility(projectId: string, number: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  const item = await db.workItem.findFirstOrThrow({
+    where: { projectId, number: Number(number) },
+    select: { id: true, visibility: true },
+  });
+  const clientVisibleComments = await db.comment.count({
+    where: { subjectType: "WORK_ITEM", subjectId: item.id, visibility: "CLIENT_VISIBLE", deletedAt: null },
+  });
+  await db.$disconnect();
+  process.stdout.write(
+    `${MARKER}${JSON.stringify({ visibility: item.visibility, clientVisibleComments })}\n`,
+  );
+}
+
+/**
+ * A comment WRITTEN BY THE CLIENT'S CONTACT under one of the throwaway
+ * tenant's tasks, at a chosen visibility — founder decision C37's fixture:
+ * an INTERNAL one is what a make-private left behind, and a share must
+ * bring it back. Raw, as `client-visible-comment` is: no portal comment
+ * writer exists yet. The author is the item's client's first ACTIVE
+ * contact, the one the harness signs in as.
+ */
+async function contactComment(projectId: string, number: string, value: string): Promise<void> {
+  if (value !== "INTERNAL" && value !== "CLIENT_VISIBLE") {
+    throw new Error(`bad visibility "${value}"`);
+  }
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  const item = await db.workItem.findFirstOrThrow({
+    where: { projectId, number: Number(number), deletedAt: null },
+    select: { id: true, tenantId: true, clientId: true },
+  });
+  await assertE2ETenant(db, item.tenantId);
+  const contact = await db.contact.findFirstOrThrow({
+    where: { tenantId: item.tenantId, clientId: item.clientId, portalStatus: "ACTIVE" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const comment = await db.comment.create({
+    data: {
+      tenantId: item.tenantId,
+      subjectType: "WORK_ITEM",
+      subjectId: item.id,
+      authorContactId: contact.id,
+      body: {},
+      bodyText: "a reply from the client",
+      visibility: value,
+    },
+    select: { id: true },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ commentId: comment.id })}\n`);
+}
+
+/**
  * The three columns an inline edit of a milestone must NOT disturb.
  *
  * Hazard H1: `AutoForm` posts the whole FormData, and `updateMilestone`
@@ -2248,6 +2326,8 @@ const main = async (): Promise<void> => {
   if (command === "visibility") return visibility(argument!);
   if (command === "set-visibility") return setVisibility(argument!, process.argv[4]!);
   if (command === "client-visible-comment") return clientVisibleComment(argument!, process.argv[4]!);
+  if (command === "item-visibility") return itemVisibility(argument!, process.argv[4]!);
+  if (command === "contact-comment") return contactComment(argument!, process.argv[4]!, process.argv[5]!);
   if (command === "milestone") return milestone(argument!);
   if (command === "big-project") return bigProject(argument!, process.argv[4]);
   if (command === "drop-project") return dropProject(argument!);

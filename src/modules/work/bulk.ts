@@ -32,15 +32,13 @@ import { transitionState, type WorkCtx } from "./states";
  *
  * WHY THESE THREE VERBS AND NOT THE OTHERS (dispositioned, not
  * forgotten — each is a slice of its own):
- *   • visibility — the downgrade refusal is typed now (2026-09-11: the
- *     trigger's `WORK_ITEM_VISIBLE_CHILDREN` token, `guarded` in
- *     db-errors.ts), so a bulk verb would only have to wrap its body the
- *     way changeItemVisibility does. What still makes it a slice of its
- *     own, on the one axis where the worst bug this product can have
- *     lives: a descendant closure (deepest-first to make private,
- *     refuse-up to make visible), a count confirmation (UI.md §5.5), and
- *     a bulk RAISE of subtasks being a multi-row writer that must take
- *     the rank lock like every other (rank-lock.ts). Not a loop.
+ *   • visibility — BUILT, in its own file: `visibility.ts` (Phase 3
+ *     slice 72; founder decision C35). It needed exactly what this note
+ *     said it would — a descendant closure (deepest-first to make
+ *     private, refuse-up to make visible), a count confirmation (UI.md
+ *     §5.5) and the rank lock — and it gates on
+ *     `work_item:change_visibility`, not `work_item:edit`, which is why
+ *     `probeSelection` below takes the code from its caller.
  *   • assign — `assignItem` emits one notification and one debounced
  *     email PER ITEM with a per-item dedupe key, so twenty rows would be
  *     twenty emails. It needs a summary notification kind first.
@@ -95,18 +93,7 @@ type ItemRow = Omit<
  * claiming a successful no-op.
  */
 async function loadSelection(tx: TenantDb, ctx: WorkCtx, itemIds: readonly string[]): Promise<ItemRow[]> {
-  if (itemIds.length === 0) fail("INVALID_INPUT", "no items selected");
-  if (itemIds.length > MAX_BULK_ITEMS) fail("INVALID_INPUT", "too many items selected");
-  await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
-  const scope = await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "projectId" });
-  const ids = [...new Set(itemIds)];
-  const where = { ...scope, tenantId: ctx.tenantId, id: { in: ids }, deletedAt: null };
-  const probe = await tx.workItem.findMany({ where, select: { projectId: true } });
-  if (probe.length === 0) deny("NOT_FOUND");
-  const projectIds = new Set(probe.map((i) => i.projectId));
-  if (projectIds.size > 1) fail("INVALID_INPUT", "a selection spans one project");
-  const projectId = probe[0]!.projectId;
-  await assertInScope(tx, ctx.actor, { projectId });
+  const { projectId, ids, where } = await probeSelection(tx, ctx, itemIds, "work_item:edit");
   // A bulk edit locks every selected row, in scan order: it queues on the
   // project's rank lock first, like every queued writer (rank-lock.ts), so
   // it never holds one of these rows while another queued writer holds
@@ -144,6 +131,44 @@ async function loadSelection(tx: TenantDb, ctx: WorkCtx, itemIds: readonly strin
   });
   if (items.length === 0) deny("NOT_FOUND");
   return items;
+}
+
+/**
+ * The selection's gate and its SCOPE-FILTERED probe — the first half of
+ * `loadSelection`, shared with the visibility verbs (visibility.ts),
+ * which gate on a different code. Everything `loadSelection`'s comment
+ * says about why the load is filtered rather than checked applies here:
+ * this is where that property lives.
+ *
+ * THE CODE IS THE CALLER'S, AND IT IS THE ONLY CODE. The three edits
+ * here are `work_item:edit`; sharing and making private are
+ * `work_item:change_visibility` alone, exactly as the single flip is —
+ * a custom role holding the visibility code without `edit` may make a
+ * task private (the lever), and one holding `edit` without it may not.
+ *
+ * Returns the one project, the de-duplicated ids and the scoped `where`
+ * a caller's locked read must reuse, so an id outside the member's
+ * scope stays absent through every later statement.
+ */
+export async function probeSelection(
+  tx: TenantDb,
+  ctx: WorkCtx,
+  itemIds: readonly string[],
+  code: "work_item:edit" | "work_item:change_visibility",
+) {
+  if (itemIds.length === 0) fail("INVALID_INPUT", "no items selected");
+  if (itemIds.length > MAX_BULK_ITEMS) fail("INVALID_INPUT", "too many items selected");
+  await requireAccess(tx, ctx.tenantId, ctx.actor, code);
+  const scope = await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "projectId" });
+  const ids = [...new Set(itemIds)];
+  const where = { ...scope, tenantId: ctx.tenantId, id: { in: ids }, deletedAt: null };
+  const probe = await tx.workItem.findMany({ where, select: { projectId: true } });
+  if (probe.length === 0) deny("NOT_FOUND");
+  const projectIds = new Set(probe.map((i) => i.projectId));
+  if (projectIds.size > 1) fail("INVALID_INPUT", "a selection spans one project");
+  const projectId = probe[0]!.projectId;
+  await assertInScope(tx, ctx.actor, { projectId });
+  return { projectId, ids, where: { ...where, projectId } };
 }
 
 /**

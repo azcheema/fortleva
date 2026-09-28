@@ -8,6 +8,8 @@ import {
   activeFilterCount,
   allRowAnchors,
   applyMove,
+  bulkPrivateRefused,
+  bulkShareRefusal,
   bulkStateTargets,
   canEnterState,
   canItemEnterState,
@@ -26,6 +28,9 @@ import {
   rowAnchors,
   stateOrdinalKeys,
   milestonePickerTargets,
+  privatizableIds,
+  selectionKey,
+  sharableIds,
   splitLabelChips,
   statePickerTargets,
   visibleColumns,
@@ -67,6 +72,7 @@ const item = (id: string, over: Partial<WorkItem> = {}): WorkItem => ({
   assigneeContactName: null,
   rootId: id,
   parentId: null,
+  parentRef: null,
   archivedAt: null,
   checklistTotal: 0,
   checklistDone: 0,
@@ -875,5 +881,68 @@ describe("splitLabelChips — which label names a surface shows, and which fold 
     const split = splitLabelChips(source, 2);
     expect(split.shown).toEqual(source);
     expect(split.shown).not.toBe(source);
+  });
+});
+
+describe("bulkShareRefusal / bulkPrivateRefused (the bar's Visibility verb, slice 72)", () => {
+  const shared = { parentRef: null, visibility: "CLIENT_VISIBLE" as const };
+  const epic = item("e1", { visibility: "INTERNAL" });
+  const task = item("t2", { visibility: "INTERNAL", parentId: "e1", parentRef: { number: 1, visibility: "INTERNAL" } });
+  const sub = item("s3", { visibility: "INTERNAL", parentId: "t2", parentRef: { number: 2, visibility: "INTERNAL" } });
+
+  it("refuses with 'none' when every selected task is already shared", () => {
+    expect(bulkShareRefusal([item("a1", shared), item("a2", shared)])).toEqual({ kind: "none" });
+  });
+
+  it("lets a private task at the root through", () => {
+    expect(bulkShareRefusal([epic])).toBeNull();
+  });
+
+  it("refuses a private task whose private parent is not selected — never shares upward", () => {
+    expect(bulkShareRefusal([task])).toEqual({ kind: "parent", number: 2 });
+  });
+
+  it("lets a private task through when its parent is selected too (shared parent first)", () => {
+    expect(bulkShareRefusal([epic, task, sub])).toBeNull();
+  });
+
+  it("refuses the child of a chain whose middle is left private", () => {
+    // SUBTASK + EPIC ticked, the TASK between them private and not ticked.
+    expect(bulkShareRefusal([epic, sub])).toEqual({ kind: "parent", number: 3 });
+  });
+
+  it("lets a private task through under a parent that is already shared", () => {
+    const underShared = item("c4", { visibility: "INTERNAL", parentId: "p9", parentRef: { number: 9, visibility: "CLIENT_VISIBLE" } });
+    expect(bulkShareRefusal([underShared])).toBeNull();
+  });
+
+  it("refuses a private task whose parent is gone (soft-deleted: no parentRef)", () => {
+    const orphan = item("o5", { visibility: "INTERNAL", parentId: "gone", parentRef: null });
+    expect(bulkShareRefusal([orphan])).toEqual({ kind: "parent", number: 5 });
+  });
+
+  it("refuses 'Make private' only when nothing selected is shared", () => {
+    expect(bulkPrivateRefused([epic, task])).toBe(true);
+    expect(bulkPrivateRefused([epic, item("x6", shared)])).toBe(false);
+  });
+});
+
+describe("the bar's snapshot helpers (slice 72 fix review — each pins a fix a mutation survived)", () => {
+  const priv = item("p1", { visibility: "INTERNAL" });
+  const pub = item("s2", { visibility: "CLIENT_VISIBLE" });
+
+  it("sharableIds sends only the rows shown private — never one shown shared, which a colleague may have made private since", () => {
+    expect(sharableIds([priv, pub])).toEqual(["p1"]);
+  });
+
+  it("privatizableIds sends only the rows shown shared", () => {
+    expect(privatizableIds([priv, pub])).toEqual(["s2"]);
+  });
+
+  it("selectionKey changes when a row's VISIBILITY changes under the same ids — so the open question is withdrawn", () => {
+    const before = selectionKey([priv, pub]);
+    const after = selectionKey([item("p1", { visibility: "CLIENT_VISIBLE" }), pub]);
+    expect(after).not.toBe(before);
+    expect(selectionKey([priv, pub])).toBe(before);
   });
 });

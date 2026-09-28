@@ -1109,7 +1109,20 @@
   "visibility": {
     "label": "Synlighet",
     "internal": "Privat för teamet",
-    "clientVisible": "Kunden kan se"
+    "clientVisible": "Kunden kan se",
+    "parts": {
+      "belowIt": "{count, plural, one {# uppgift under den} other {# uppgifter under den}}",
+      "belowThem": "{count, plural, one {# uppgift under dem} other {# uppgifter under dem}}",
+      "comments": "{count, plural, one {# kommentar} other {# kommentarer}}",
+      "files": "{count, plural, one {# fil} other {# filer}}"
+    },
+    "ask": {
+      "checking": "Kontrollerar vad mer kunden kan se…",
+      "handedOver": "{count, plural, one {# uppgift är tilldelad} other {# uppgifter är tilldelade}} någon hos kunden och tas bort från deras lista. Delar ni igen senare lämnas ingenting tillbaka.",
+      "signoff": "{count, plural, one {# fil väntar} other {# filer väntar}} på kundens godkännande. Begäran döljs tillsammans med filen, den dras inte tillbaka.",
+      "frozen": "Tidrapporter och uppdateringar som redan har publicerats behåller det de sa.",
+      "portalOff": "Projektets portal är avstängd, så kunden ser inget av detta i vilket fall som helst."
+    }
   },
   "domainErrors": {
     "NAME_REQUIRED": "Ett namn krävs.",
@@ -1125,6 +1138,7 @@
     "APPROVAL_REQUIRED": "Endast en person med godkännanderätt kan flytta en uppgift till den här statusen.",
     "PORTAL_SWITCH_BUSY": "En annan ändring kom emellan, så portalinställningen kunde inte genomföras. Ingenting ändrades — försök igen om en stund.",
     "HAS_VISIBLE_CHILDREN": "Uppgiften har fortfarande deluppgifter, kommentarer eller filer som kunden kan se. Gör dem privata först, sedan uppgiften.",
+    "VISIBILITY_BUSY": "Någon annan ändrade i projektet i samma stund, så ingenting ändrades. Försök igen om en stund.",
     "PARENT_NOT_VISIBLE": "Den överordnade uppgiften är privat för teamet, så den här kan inte visas för kunden. Dela den överordnade uppgiften först.",
     "CANNOT_NEST": "En deluppgift kan inte ha egna deluppgifter.",
     "HAS_CHILDREN": "Uppgiften har deluppgifter. Ta bort dem först.",
@@ -1154,6 +1168,8 @@
     "RATE_OVERLAP": "Ett priskort täcker redan den perioden — stäng det först eller välj ett senare startdatum.",
     "RATE_CARD_IMMUTABLE": "Priskort kan inte redigeras — stäng det här och lägg till ett nytt.",
     "REPORT_IMMUTABLE": "En publicerad tidrapport kan inte ändras eller tas bort — arkivera den och skapa en ny.",
+    "REPORT_NAMES_PRIVATE_TASK": "Rapporten nämner en uppgift som nu är privat för teamet. Skapa en ny rapport innan du publicerar den.",
+    "REPORT_CHANGED": "Rapporten ändrades medan du publicerade den, så ingenting publicerades. Titta på den igen och publicera sedan.",
     "BREAK_OUT_OF_BOUNDS": "En rast måste ligga inom sitt arbetspass.",
     "SHIFT_SHRINK": "Ändringen skulle lämna en rast utanför passet.",
     "WORK_TYPE_TAKEN": "Det finns redan en arbetstyp med det namnet.",
@@ -1167,6 +1183,7 @@
     "ACCESS_TRANSITION_INVALID": "Portalåtkomsten har hunnit ändras sedan sidan laddades. Ladda om den för att se hur det ser ut nu.",
     "CONTACT_HAS_ACCESS": "Personen har fortfarande portalåtkomst, så posten kan inte raderas. Att avsluta åtkomsten är permanent.",
     "CONTACT_HAS_HISTORY": "Personen har skrivit i portalen, så posten behålls och kan inte raderas. Personen saknar redan åtkomst.",
+    "CONTACT_ACCESS_BUSY": "Någon annan ändrade i den här kundens arbete i samma stund, så ingenting ändrades. Försök igen om en stund.",
     "REQUEST_ANSWER_IS_THE_CLIENTS": "Du har redan svarat på den här förfrågan, så den kan inte raderas — ditt svar tillhör kunden. Arkivera den i stället.",
     "REQUEST_RATE_LIMITED": "Du har skickat flera förfrågningar på kort tid. Vänta några minuter och försök igen.",
     "REQUEST_BUSY": "Vi kunde inte skicka det just nu. Försök igen om en liten stund.",
@@ -1730,7 +1747,25 @@
         "failed": "Ändringen sparades inte. Listan visar aktuellt läge.",
         "requestBlocked": "Kundförfrågningar avbryts aldrig flera åt gången. Avsluta var och en från dess egen meny, med ett svar till kunden.",
         "requestBlockedNoRight": "En kundförfrågan är markerad, och du har inte behörighet att avbryta kundförfrågningar.",
-        "requestBlockedClosed": "Kundförfrågningar avbryts aldrig flera åt gången."
+        "requestBlockedClosed": "Kundförfrågningar avbryts aldrig flera åt gången.",
+        "visibility": "Synlighet",
+        "visibilityPlaceholder": "Ändra vad kunden ser",
+        "share": "Visa för kunden…",
+        "makePrivate": "Gör privat…",
+        "shareRefusedParent": "Den överordnade uppgiften till {key} är privat. Markera den också, eller dela den först.",
+        "shareRefusedNone": "Alla markerade uppgifter syns redan för kunden.",
+        "privateRefusedNone": "Ingen markerad uppgift syns för kunden.",
+        "shareQuestion": "Visa {count, plural, one {# uppgift} other {# uppgifter}} för kunden?",
+        "privateQuestion": "Göra {count, plural, one {# uppgift privat} other {# uppgifter privata}}?",
+        "privateQuestionWith": "Göra {count, plural, one {# uppgift privat} other {# uppgifter privata}}, tillsammans med {list}?",
+        "shareConfirm": "Visa för kunden",
+        "privateConfirm": "Gör privat",
+        "cancel": "Avbryt",
+        "sharedDone": "{count, plural, one {# uppgift syns} other {# uppgifter syns}} nu för kunden.",
+        "sharedComments": "{count, plural, one {# kommentar från kunden syns} other {# kommentarer från kunden syns}} igen.",
+        "privateDone": "{count, plural, one {# uppgift är nu privat} other {# uppgifter är nu privata}} för teamet.",
+        "alsoPrivate": "Nu privat också: {list}.",
+        "endedAssignments": "{count, plural, one {# uppgift togs} other {# uppgifter togs}} bort från kundens listor."
       },
       "rollup": {
         "count": "{total, plural, one {# uppgift} other {# uppgifter}}",
@@ -1799,7 +1834,14 @@
       "dueLabel": "Förfallodatum",
       "duePlaceholder": "Ange datum",
       "attachments": "{count, plural, one {# bilaga} other {# bilagor}}",
-      "timerRunning": "Din timer är igång på den här uppgiften"
+      "timerRunning": "Din timer är igång på den här uppgiften",
+      "visibilityShared": "{key} syns nu för kunden.",
+      "visibilityPrivate": "{key} är nu privat för teamet.",
+      "visibilityPrivateEnded": "{key} är nu privat för teamet, och {name} har inte längre uppgiften.",
+      "visibilityPrivateWith": "{key} är nu privat för teamet, tillsammans med {list}.",
+      "visibilityAsk": "Kunden kan fortfarande se {key}. Vill du göra den privat, tillsammans med {list}?",
+      "visibilityAskPortalOff": "Vill du göra {key} privat, tillsammans med {list}?",
+      "visibilityAskAction": "Gör allt privat"
     },
     "triage": {
       "title": "Triage",
@@ -2290,7 +2332,15 @@
         "search": "Privat för teamet eller Kunden kan se",
         "empty": "Ingen synlighet matchar.",
         "failed": "Synligheten sparades inte. Panelen visar den nuvarande synligheten.",
-        "changed": "Synligheten ändrades till {visibility}"
+        "changed": "Synligheten ändrades till {visibility}",
+        "askQuestion": "Göra uppgiften privat, tillsammans med {list}?",
+        "askConfirm": "Gör allt privat",
+        "askCancel": "Behåll delad",
+        "changedWith": "Synligheten ändrades till {visibility}, tillsammans med {list}",
+        "endedAssignment": "{name} har inte längre uppgiften. Delar ni den igen senare lämnas den inte tillbaka.",
+        "handBackWarning": "Görs den privat tas den också bort från listan hos {name}. Delar ni den igen senare lämnas den inte tillbaka.",
+        "portalOff": "Projektets portal är avstängd, så kunden kan inte se uppgiften i vilket fall som helst.",
+        "follows": "Följer {key}. Dela {key} först för att kunna dela den här uppgiften."
       },
       "keys": {
         "state": "Ändra status",

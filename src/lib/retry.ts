@@ -39,13 +39,18 @@ async function retryWhile<T>(
  * Where it is not — a fan-out across ten tables, or a control that must
  * not wait — this is the honest answer.
  *
- * TWO CALLERS since slice 43 moved `setPortalEnabled` to
- * `retryOnContention` below: `copyWeek` and `repriceRateCard`, both in
- * the time module. The file stays in `src/lib` because the pair is
- * reachable from either side of the ARC-16 import direction, and
- * because the core caller took the sibling rather than leaving.
- * Neither of those two passes `lockTimeoutMs`, so neither can raise a
- * 55P03 and neither loses anything by staying on this shape. The two `retryOnRankCollision` helpers in `milestones.ts`
+ * SIX CALLERS: `copyWeek` and `repriceRateCard` in the time module
+ * (since slice 43 moved `setPortalEnabled` to `retryOnContention` below),
+ * `triageItem` (`src/modules/work/triage.ts`), and — since Phase 3 slice
+ * 72 — `documents.changeVisibility`, `setContactPortalAccess`
+ * (`src/clients/contact-access.ts`) and `publishReport`
+ * (`src/modules/time/reports.ts`), each of which the sharing UI's
+ * make-private cascade, or an unqueued locker, can cycle with
+ * (rank-lock.ts). The file stays in
+ * `src/lib` because its callers sit on both sides of the ARC-16 import
+ * direction, and because the core caller took the sibling rather than
+ * leaving. None of them passes `lockTimeoutMs`, so none can raise a
+ * 55P03 and none loses anything by staying on this shape. The two `retryOnRankCollision` helpers in `milestones.ts`
  * and `ordering.ts` predate it, also handle P2002, and carry their own
  * attempt counts; folding them in is a tidy-up for its own slice, not
  * something to do on the way past.
@@ -68,11 +73,12 @@ export const retryOnDeadlock = <T>(fn: () => Promise<T>): Promise<T> =>
  * `lockTimeoutMs` and therefore gets a 55P03 where it would otherwise
  * have waited with no end in sight (`isLockTimeout` has the
  * measurement). Callers: `setPortalEnabled`, the two work-module
- * brokers, and the portal download (`src/documents/portal-writes.ts`).
+ * brokers, the portal download (`src/documents/portal-writes.ts`), and
+ * the sharing UI's cascade and bulk share (`src/modules/work/visibility.ts`).
  *
  * THE TWO ARE SEPARATE EXPORTS ON PURPOSE. A lock timeout can only
  * reach a caller that ASKED for the bound, so folding both shapes into
- * `retryOnDeadlock` would be a no-op for both of its callers today —
+ * `retryOnDeadlock` would be a no-op for every caller it has today (none passes `lockTimeoutMs`) —
  * but it would also mean a future caller inherits a retry it never
  * reasoned about. Which shapes a transaction expects is part of what
  * it is, so it says which one it wants.

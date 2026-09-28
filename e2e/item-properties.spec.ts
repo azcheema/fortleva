@@ -11,7 +11,13 @@ import {
   rail,
   searchField,
 } from "./fixtures/keys";
-import { addClientVisibleComment, requireSeed, type E2ESeed } from "./fixtures/tenant";
+import {
+  addClientVisibleComment,
+  addContactComment,
+  readItemVisibility,
+  requireSeed,
+  type E2ESeed,
+} from "./fixtures/tenant";
 
 /**
  * THE ITEM RAIL'S P, E, D, A, V, M AND L, IN A REAL BROWSER (UI.md §5.2, §9).
@@ -23,9 +29,10 @@ import { addClientVisibleComment, requireSeed, type E2ESeed } from "./fixtures/t
  *
  * What only a browser can see:
  *  · V is never optimistic (§10.4): the chip still says "Client can see"
- *    the instant the picker has closed on a pick of "Private to team"
- *    that the database is about to refuse — and the refusal's sentence
- *    is what the member reads, naming what to make private first;
+ *    the instant the picker has closed on a pick of "Private to team" —
+ *    and since the sharing UI (Phase 3 slice 72) a task with something
+ *    the client can see UNDER it ASKS first, naming what else goes
+ *    private, instead of refusing; the answer takes the whole tree;
  *  · A's rows are the tenant's members, checked in place, with the
  *    "Unassigned" row leading only while nothing is set and "Unassign"
  *    trailing only while something is — and M's are the project's phases
@@ -93,6 +100,34 @@ const isActionPostWith =
   (field: string) =>
   (request: Request): boolean =>
     isActionPost(request) && (request.postData() ?? "").includes(`"${field}"`);
+
+/**
+ * The ONE make-private door's POSTs (slice 72, `makeItemPrivateAction`):
+ * its argument is exactly the item's target — no property field — which
+ * is what tells it apart from `setItemVisibilityAction`'s "visibility".
+ */
+const isPrivatePost = (request: Request): boolean => {
+  if (!isActionPost(request)) return false;
+  try {
+    const args: unknown = JSON.parse(request.postData() ?? "");
+    const first = Array.isArray(args) ? (args[0] as unknown) : null;
+    return (
+      typeof first === "object" &&
+      first !== null &&
+      Object.keys(first).sort().join(",") === "itemId,itemNumber,projectKey,surface"
+    );
+  } catch {
+    return false;
+  }
+};
+
+function countPrivatePosts(page: Page): () => number {
+  let posts = 0;
+  page.on("request", (request) => {
+    if (isPrivatePost(request)) posts += 1;
+  });
+  return () => posts;
+}
 
 /** Count, for the rest of the test, the action POSTs that carry `field`. */
 function countPosts(page: Page, field: string): () => number {
@@ -465,8 +500,11 @@ test("L: create from the typed row, toggle off and on by typing and steering, a 
   ).toContainText(`added the label ${first}`);
 });
 
-test("V: share, then a refused make-private that explains — and the chip is never optimistic", async ({ page }) => {
+test("V: share, then a make-private that ASKS what else goes private — never optimistic, and the whole tree is stored private", async ({
+  page,
+}) => {
   const visibilityPosts = countPosts(page, "visibility");
+  const privatePosts = countPrivatePosts(page);
 
   const task = await createOwnTask(page, seed, "Visibility picker", created);
   const trigger = rail(page).getByTestId("item-visibility");
@@ -496,8 +534,8 @@ test("V: share, then a refused make-private that explains — and the chip is ne
   await expect(picker(page)).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
-  // A comment the client can see, under the task: the database now
-  // refuses to make the task private (work_item_visibility_downgrade_guard).
+  // A comment the client can see, under the task: the database would
+  // refuse the plain flip (work_item_visibility_downgrade_guard).
   await addClientVisibleComment(seed.projectId, task.number);
 
   await page.keyboard.press("v");
@@ -507,23 +545,47 @@ test("V: share, then a refused make-private that explains — and the chip is ne
   // An optimistic slice would already read INTERNAL here, a chip saying
   // "Private to team" over a task the client can still see.
   expect(await chip.getAttribute("data-visibility")).toBe("CLIENT_VISIBLE");
-  // The refusal explains what to make private first, and the chip never moved.
-  await expect(page.getByText(/Make those private first, then the task/)).toBeVisible({
+  // It ASKS, in place, naming what else goes private — focus on the answer.
+  const question = page.getByTestId("item-visibility-question");
+  await expect(question).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(question).toContainText("Make this task private, together with 1 comment?");
+  await expect(question.getByTestId("item-visibility-question-confirm")).toBeFocused();
+  // Escape keeps it shared, hands focus back to the chip — and INSIDE THE
+  // PEEK, whose Radix layer would otherwise take the Escape first and
+  // close the whole panel (`data-escape-local`).
+  await page.keyboard.press("Escape");
+  await expect(question).toHaveCount(0);
+  await expect(page.getByTestId("item-peek")).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+  expect(privatePosts()).toBe(0);
+
+  // Ask again, and answer.
+  await page.keyboard.press("v");
+  await picker(page).getByTestId("item-visibility-INTERNAL").click();
+  await expect(question).toBeVisible({ timeout: 20_000 * SLOW });
+  await question.getByTestId("item-visibility-question-confirm").click();
+  await expect(chip).toHaveAttribute("data-visibility", "INTERNAL", { timeout: 20_000 * SLOW });
+  await expect(said(page, "Visibility changed to Private to team, together with 1 comment")).toHaveCount(1, {
     timeout: 20_000 * SLOW,
   });
-  await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
-  await expect(said(page, "Visibility changed to Private to team")).toHaveCount(0);
-  expect(visibilityPosts()).toBe(2);
+  expect(visibilityPosts()).toBe(1);
+  expect(privatePosts()).toBe(1);
+  // STORED so — the task and the comment under it.
+  await expect
+    .poll(() => readItemVisibility(seed.projectId, task.number), { timeout: 20_000 * SLOW })
+    .toEqual({ visibility: "INTERNAL", clientVisibleComments: 0 });
 
   await page.reload();
   await expect(trigger).toBeVisible({ timeout: 20_000 * SLOW });
-  await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+  await expect(chip).toHaveAttribute("data-visibility", "INTERNAL");
 });
 
 test("V: a reversal picked while the first pick is in flight supersedes it — the task ends on the member's last word", async ({
   page,
 }) => {
   const visibilityPosts = countPosts(page, "visibility");
+  const privatePosts = countPrivatePosts(page);
 
   await createOwnTask(page, seed, "Visibility reversal", created);
   const trigger = rail(page).getByTestId("item-visibility");
@@ -550,11 +612,14 @@ test("V: a reversal picked while the first pick is in flight supersedes it — t
   await expect(picker(page)).toHaveCount(0);
   // Never optimistic: still private on screen while the share is in flight.
   expect(await chip.getAttribute("data-visibility")).toBe("INTERNAL");
-  // The reversal, before any answer: a second POST, not a dropped no-op.
+  // The reversal, before any answer: a second POST, not a dropped no-op —
+  // through the make-private DOOR (slice 72), straight away: the task is
+  // being shared, not settled, so there is nothing to ask about yet.
   await page.keyboard.press("v");
   await picker(page).getByTestId("item-visibility-INTERNAL").click();
   await expect(picker(page)).toHaveCount(0);
-  await expect.poll(() => visibilityPosts(), { timeout: 20_000 * SLOW }).toBe(2);
+  await expect.poll(() => visibilityPosts() + privatePosts(), { timeout: 20_000 * SLOW }).toBe(2);
+  expect(privatePosts()).toBe(1);
   holding = false;
 
   // The newest pick decides: the share landed and was superseded, the
@@ -567,24 +632,92 @@ test("V: a reversal picked while the first pick is in flight supersedes it — t
   await expect(chip).toHaveAttribute("data-visibility", "INTERNAL");
 });
 
-test("the backlog's visibility cell says Saved for a write that happened, and its badge follows the server", async ({
+test("V: a reversal after a share that brought the client's own comment back still ends private (C37)", async ({
   page,
 }) => {
-  const { title } = await createOwnTask(page, seed, "Backlog visibility cell", created);
+  const privatePosts = countPrivatePosts(page);
+  const task = await createOwnTask(page, seed, "Visibility reversal C37", created);
+  const trigger = rail(page).getByTestId("item-visibility");
+  const chip = trigger.locator('[data-slot="visibility-badge"]');
+  await expect(chip).toHaveAttribute("data-visibility", "INTERNAL");
+  // What an earlier make-private left behind: the client's own comment,
+  // private with its task. A SHARE brings it back (follow-task.ts)…
+  await addContactComment(seed.projectId, task.number, "INTERNAL");
+
+  const holds = isActionPostWith("visibility");
+  let holding = true;
+  await page.route("**/*", async (route) => {
+    if (holding && holds(route.request())) await new Promise((r) => setTimeout(r, 1_500));
+    await route.continue();
+  });
+  await pressUntil(page, "v", picker(page));
+  await picker(page).getByTestId("item-visibility-CLIENT_VISIBLE").click();
+  await expect(picker(page)).toHaveCount(0);
+  // …so the reversal behind it meets a child the client can see, which
+  // the plain flip would refuse. The door falls back to the cascade: the
+  // lever still works, and says what else it took.
+  await page.keyboard.press("v");
+  await picker(page).getByTestId("item-visibility-INTERNAL").click();
+  await expect(picker(page)).toHaveCount(0);
+  await expect.poll(() => privatePosts(), { timeout: 20_000 * SLOW }).toBe(1);
+  holding = false;
+
+  await expect(said(page, "Visibility changed to Private to team, together with 1 comment")).toHaveCount(1, {
+    timeout: 20_000 * SLOW,
+  });
+  await expect(chip).toHaveAttribute("data-visibility", "INTERNAL");
+  await expect(page.getByText(/Make those private first, then the task/)).toHaveCount(0);
+  await expect
+    .poll(() => readItemVisibility(seed.projectId, task.number), { timeout: 20_000 * SLOW })
+    .toEqual({ visibility: "INTERNAL", clientVisibleComments: 0 });
+});
+
+test("the backlog's visibility cell names what the task is now, asks before taking what is under it, and its badge follows the server", async ({
+  page,
+}) => {
+  const task = await createOwnTask(page, seed, "Backlog visibility cell", created);
   // The cell sits behind the peek: the list URL without `?item=` closes it.
   await page.goto(`/projects/${seed.projectKey}/backlog`);
-  const row = page.locator('[data-slot="table-row"]', { hasText: title });
+  const row = page.locator('[data-slot="table-row"]', { hasText: task.title });
   await expect(row).toBeVisible({ timeout: 20_000 * SLOW });
   const badge = row.locator('[data-slot="visibility-badge"]');
   await expect(badge).toHaveAttribute("data-visibility", "INTERNAL");
+  const cell = row.locator('[data-slot="inline-edit"]').filter({ has: page.locator('[data-slot="visibility-badge"]') });
+  const toast = (text: string | RegExp) => page.locator("[data-sonner-toast]", { hasText: text });
 
-  // Rest → select → CLIENT_VISIBLE commits on change (§5.11); the table
-  // toasts "Saved" for the write, and the badge — never optimistic — shows
+  // Rest → select → CLIENT_VISIBLE commits on change (§5.11); the toast
+  // names what the task is now, and the badge — never optimistic — shows
   // the value once the server has it.
-  await row.locator('[data-slot="inline-edit"]').filter({ has: page.locator('[data-slot="visibility-badge"]') }).click();
+  await cell.click();
   await row.locator("select").selectOption("CLIENT_VISIBLE");
-  await expect(page.locator("[data-sonner-toast]", { hasText: "Saved" })).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(toast(`${task.key} is now visible to the client.`)).toBeVisible({ timeout: 20_000 * SLOW });
   await expect(badge).toHaveAttribute("data-visibility", "CLIENT_VISIBLE", { timeout: 20_000 * SLOW });
+
+  // Nothing under it: "Private to team" is one step, and says so.
+  await cell.click();
+  await row.locator("select").selectOption("INTERNAL");
+  await expect(toast(`${task.key} is now private to the team.`)).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(badge).toHaveAttribute("data-visibility", "INTERNAL", { timeout: 20_000 * SLOW });
+
+  // Shared again, with a comment the client can see under it: the cell
+  // ASKS — a toast whose action is the answer — and changes nothing yet.
+  await cell.click();
+  await row.locator("select").selectOption("CLIENT_VISIBLE");
+  await expect(badge).toHaveAttribute("data-visibility", "CLIENT_VISIBLE", { timeout: 20_000 * SLOW });
+  await addClientVisibleComment(seed.projectId, task.number);
+  await cell.click();
+  await row.locator("select").selectOption("INTERNAL");
+  const ask = toast(`The client can still see ${task.key}. Make it private, together with 1 comment?`);
+  await expect(ask).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(badge).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+  await ask.getByRole("button", { name: "Make all private" }).click();
+  await expect(toast(`${task.key} is now private to the team, together with 1 comment.`)).toBeVisible({
+    timeout: 20_000 * SLOW,
+  });
+  await expect(badge).toHaveAttribute("data-visibility", "INTERNAL", { timeout: 20_000 * SLOW });
+  await expect
+    .poll(() => readItemVisibility(seed.projectId, task.number), { timeout: 20_000 * SLOW })
+    .toEqual({ visibility: "INTERNAL", clientVisibleComments: 0 });
 });
 
 test("E: typed text is the option, and a bare Enter posts nothing", async ({ page }) => {

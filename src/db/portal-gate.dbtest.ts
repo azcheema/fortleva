@@ -13,6 +13,12 @@ import { getPlatformClient, runtimeClient } from "./client";
  * the trigger contract: stamp on INSERT, fan-out in the same tx, and a
  * direct write to a child's portal_enabled is overwritten (derived, not
  * app-owned). Runs as the real app_runtime role.
+ *
+ * It is also where the RLS half of "no INTERNAL fact to a contact" is
+ * proved for the two shapes PLAN Phase 3 names (slice 72): each project
+ * carries an INTERNAL subtask of its CLIENT_VISIBLE task and an INTERNAL
+ * comment on that same task, and the raw per-table counts below, taken
+ * under the contact principal with no filter of ours, stay at one row.
  */
 
 const run = randomUUID().slice(0, 8);
@@ -109,6 +115,18 @@ beforeAll(async () => {
     await db.workItem.create({
       data: { id: wiInternal, tenantId: T, clientId, projectId, number: 2, title: "Internal task", stateId, stateCategory: "TODO", rootId: wiInternal, rank: "a1", visibility: "INTERNAL" },
     });
+    // "NO INTERNAL FACT TO A CONTACT" (PLAN Phase 3's non-negotiable
+    // fixtures): an INTERNAL child of a CLIENT_VISIBLE parent. Visibility
+    // is never inherited live, so the shared parent must not carry its
+    // private subtask across the gate — and the counts below, taken RAW
+    // under the contact principal with no filter of ours, are the RLS
+    // proof that it does not (`work_item: 1` stays 1). The projections
+    // (`modules/work/portal.dbtest.ts`, `clients/view-as.dbtest.ts`)
+    // repeat the absence at their own layer.
+    const wiInternalChild = randomUUID();
+    await db.workItem.create({
+      data: { id: wiInternalChild, tenantId: T, clientId, projectId, number: 3, type: "SUBTASK", parentId: wiVisible, title: "Internal subtask of a shared task", stateId, stateCategory: "TODO", rootId: wiInternalChild, rank: "a2", visibility: "INTERNAL" },
+    });
     await db.workItemActivity.createMany({
       data: [
         { tenantId: T, clientId, projectId, workItemId: wiVisible, field: "stateCategory", visibility: "CLIENT_VISIBLE" },
@@ -138,9 +156,13 @@ beforeAll(async () => {
     });
     // clientId/projectId deliberately omitted: comment_denorm_guard
     // derives them from the subject — that derivation is under test.
+    // The second owed fixture: an INTERNAL comment on the CLIENT_VISIBLE
+    // item. Same subject as the shared reply, so only the comment's own
+    // visibility term can keep it out — `comment: 1` below stays 1.
     await db.comment.createMany({
       data: [
         { tenantId: T, subjectType: "WORK_ITEM", subjectId: wiVisible, authorMemberId: member.id, body: {}, bodyText: "client reply", visibility: "CLIENT_VISIBLE" },
+        { tenantId: T, subjectType: "WORK_ITEM", subjectId: wiVisible, authorMemberId: member.id, body: {}, bodyText: "internal note on a shared task", visibility: "INTERNAL" },
         { tenantId: T, subjectType: "WORK_ITEM", subjectId: wiInternal, authorMemberId: member.id, body: {}, bodyText: "triage note", visibility: "INTERNAL" },
       ],
     });
@@ -160,6 +182,8 @@ afterAll(async () => {
     await tx.projectTimeSummary.deleteMany({ where: { tenantId: T } });
     await tx.comment.deleteMany({ where: { tenantId: T } });
     await tx.workItemActivity.deleteMany({ where: { tenantId: T } });
+    // Children first: `work_item.parent_id` is ON DELETE RESTRICT.
+    await tx.workItem.deleteMany({ where: { tenantId: T, parentId: { not: null } } });
     await tx.workItem.deleteMany({ where: { tenantId: T } });
     await tx.workflowState.deleteMany({ where: { tenantId: T } });
     await tx.document.deleteMany({ where: { tenantId: T } });
@@ -222,13 +246,21 @@ describe("portalEnabled=false ⇒ zero project rows for the contact", () => {
         milestone: 1,
         service: 1,
         document: 1,
-        work_item: 1, // CLIENT_VISIBLE only (2W)
+        work_item: 1, // CLIENT_VISIBLE only (2W) — never its INTERNAL subtask
         work_item_activity: 1,
-        comment: 1,
+        comment: 1, // never the INTERNAL note on the same shared task
         project_time_summary: 1, // PB shares hours (HOURS) ⇒ derived CLIENT_VISIBLE (2T)
         time_report: 1, // PUBLISHED + CLIENT_VISIBLE only (2T, 4-term gate)
         project_update: 1, // PUBLISHED + CLIENT_VISIBLE only (Phase 3, 4-term gate)
       });
+    });
+    // The control that keeps the two `1`s above honest: the INTERNAL
+    // subtask and the INTERNAL note on the shared task EXIST — a member
+    // of the same tenant reads all three of each.
+    await withTenant(T, memberP, async (tx) => {
+      const b = await countProjectRows(tx, PB);
+      expect(b.work_item).toBe(3);
+      expect(b.comment).toBe(3);
     });
   });
 });
@@ -257,9 +289,9 @@ describe("flipping portalEnabled=true exposes only CLIENT_VISIBLE / SHIPPED rows
         project_version: 1, // SHIPPED only
         service: 1, // CLIENT_VISIBLE only
         document: 1, // CLIENT_VISIBLE only
-        work_item: 1, // CLIENT_VISIBLE only (2W)
+        work_item: 1, // CLIENT_VISIBLE only (2W) — never its INTERNAL subtask
         work_item_activity: 1,
-        comment: 1,
+        comment: 1, // never the INTERNAL note on the same shared task
         project_time_summary: 0, // P does not share hours (NONE) ⇒ derived INTERNAL even with the portal on
         time_report: 1, // the PUBLISHED one; the DRAFT stays invisible
         project_update: 1, // the PUBLISHED one; the DRAFT stays invisible

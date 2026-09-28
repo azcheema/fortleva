@@ -1,6 +1,6 @@
 "use client";
 
-import { ArchiveIcon, XIcon } from "lucide-react";
+import { ArchiveIcon, EyeIcon, XIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { PriorityIndicator, StatusIcon } from "@/components/semantic";
@@ -33,9 +33,20 @@ import type { WorkState } from "@/lib/work-view";
  * `backlog-table.tsx`). The verbs still have none; which single key
  * should archive a selection is a question nobody has asked yet.
  *
- * Three verbs, deliberately. Visibility, assignment and deletion are NOT
- * here: each needs machinery a loop cannot stand in for, and the reasons
- * are recorded on `src/modules/work/bulk.ts`.
+ * Four verbs. VISIBILITY joined in Phase 3 slice 72 (founder decision
+ * C35): "Show to client…" and "Make private…", each asking once with the
+ * count, in place, UNDER the verbs (`question`) — never in a modal
+ * (§5.9), and below rather than instead of them, so the Visibility
+ * trigger is still there to hand focus back to. The verb is HIDDEN for a
+ * member without `work_item:change_visibility` (§3.1); a choice this
+ * selection cannot take stays focusable with its reason (C29b), like the
+ * Status menu's. Assignment and deletion are still NOT here: each needs
+ * machinery a loop cannot stand in for (`src/modules/work/bulk.ts`).
+ *
+ * WHILE A VERB IS IN FLIGHT the controls are `aria-disabled` and swallow
+ * a press — never `disabled`, which drops the focused trigger's focus to
+ * `<body>`, where every single key acts (the timer control's rule; slice
+ * 72's design review found every verb here doing it).
  */
 export function BulkBar({
   count,
@@ -46,6 +57,10 @@ export function BulkBar({
   onPriority,
   onArchived,
   onClear,
+  visibility,
+  question,
+  checking = false,
+  visibilityTriggerRef,
 }: {
   /** How many of the rows ON SCREEN are selected. */
   count: number;
@@ -68,9 +83,41 @@ export function BulkBar({
   onPriority: (priority: Priority) => void;
   onArchived: (archived: boolean) => void;
   onClear: () => void;
+  /**
+   * The Visibility verb (slice 72) — ABSENT for a member without
+   * `work_item:change_visibility` (hidden, never disabled). Each choice
+   * carries the sentence saying why THIS selection cannot take it, or
+   * `null` when it can.
+   */
+  visibility?: {
+    shareRefusal: string | null;
+    privateRefusal: string | null;
+    onShare: () => void;
+    onMakePrivate: () => void;
+  };
+  /** The open count question, drawn under the verbs. */
+  question?: React.ReactNode;
+  /** A make-private's preview is in flight. */
+  checking?: boolean;
+  /** The Visibility trigger — the question hands focus back to it. */
+  visibilityTriggerRef?: React.Ref<HTMLButtonElement>;
 }) {
   const t = useTranslations("projects.workView");
   const tPriority = useTranslations("states.priority");
+  const tVisibility = useTranslations("visibility");
+  const busy = pending || checking;
+  // `aria-disabled` + a swallowed press: a Radix trigger opens on
+  // pointerdown and on Enter / Space / ArrowDown, and skips its own
+  // handler for a default-prevented event.
+  const inert = busy
+    ? {
+        "aria-disabled": true as const,
+        onPointerDown: (e: React.PointerEvent) => e.preventDefault(),
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") e.preventDefault();
+        },
+      }
+    : {};
 
   return (
     <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 md:bottom-0">
@@ -78,6 +125,9 @@ export function BulkBar({
         role="group"
         aria-label={t("bulk.label")}
         data-testid="bulk-bar"
+        // A PRODUCT hook, not only a test id: the backlog asks whether focus
+        // is still inside the bar before it hands focus back to a row.
+        data-slot="bulk-bar"
         aria-busy={pending || undefined}
         // Border + surface step, no shadow: §10.8 reserves the three
         // shadows for things that genuinely float (popovers, toasts,
@@ -95,7 +145,7 @@ export function BulkBar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" size="sm" variant="outline" disabled={pending} data-testid="bulk-state">
+            <Button type="button" size="sm" variant="outline" {...inert} data-testid="bulk-state">
               {t("bulk.state")}
             </Button>
           </DropdownMenuTrigger>
@@ -155,7 +205,7 @@ export function BulkBar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" size="sm" variant="outline" disabled={pending} data-testid="bulk-priority">
+            <Button type="button" size="sm" variant="outline" {...inert} data-testid="bulk-priority">
               {t("bulk.priority")}
             </Button>
           </DropdownMenuTrigger>
@@ -178,13 +228,48 @@ export function BulkBar({
           type="button"
           size="sm"
           variant="outline"
-          disabled={pending}
+          aria-disabled={busy || undefined}
           data-testid="bulk-archive"
-          onClick={() => onArchived(!anyArchived)}
+          onClick={() => {
+            if (!busy) onArchived(!anyArchived);
+          }}
         >
           <ArchiveIcon aria-hidden="true" />
           {anyArchived ? t("bulk.restore") : t("bulk.archive")}
         </Button>
+
+        {visibility ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                ref={visibilityTriggerRef}
+                type="button"
+                size="sm"
+                variant="outline"
+                {...inert}
+                data-testid="bulk-visibility"
+              >
+                <EyeIcon aria-hidden="true" />
+                {t("bulk.visibility")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuLabel>{t("bulk.visibilityPlaceholder")}</DropdownMenuLabel>
+              <BulkChoice
+                label={t("bulk.share")}
+                refusal={visibility.shareRefusal}
+                testId="bulk-share"
+                onSelect={visibility.onShare}
+              />
+              <BulkChoice
+                label={t("bulk.makePrivate")}
+                refusal={visibility.privateRefusal}
+                testId="bulk-make-private"
+                onSelect={visibility.onMakePrivate}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
 
         <Button
           type="button"
@@ -197,7 +282,49 @@ export function BulkBar({
           <XIcon aria-hidden="true" />
           {t("bulk.clear")}
         </Button>
+        {checking ? (
+          <span className="basis-full px-1 text-xs text-muted-foreground" data-testid="bulk-checking">
+            {tVisibility("ask.checking")}
+          </span>
+        ) : null}
+        {question ? <div className="basis-full">{question}</div> : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * One choice of a bar menu: live, or REFUSED WITH ITS REASON and still
+ * focusable — `aria-disabled`, never Radix's `disabled` (C29b; the
+ * Status menu's refused target, above, says why at length).
+ */
+function BulkChoice({
+  label,
+  refusal,
+  testId,
+  onSelect,
+}: {
+  label: string;
+  refusal: string | null;
+  testId: string;
+  onSelect: () => void;
+}) {
+  if (refusal === null) {
+    return (
+      <DropdownMenuItem data-testid={testId} onSelect={onSelect}>
+        {label}
+      </DropdownMenuItem>
+    );
+  }
+  return (
+    <DropdownMenuItem
+      aria-disabled="true"
+      data-testid={`${testId}-refused`}
+      onSelect={(e) => e.preventDefault()}
+      className="h-auto cursor-not-allowed flex-col items-start py-1 text-fg-disabled focus:text-muted-foreground"
+    >
+      <span>{label}</span>
+      <span className="max-w-56 text-2xs text-muted-foreground">{refusal}</span>
+    </DropdownMenuItem>
   );
 }

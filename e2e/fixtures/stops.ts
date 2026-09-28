@@ -216,6 +216,42 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // The same panel as a page (2W-P): the shot that shows the two
     // surfaces cannot drift apart.
     { name: "project-item-page", path: `${project}/items/1` },
+    {
+      // Phase 3 slice 72: the rail's make-private QUESTION — "Make this
+      // task private, together with 1 comment?" — on the seeded shared
+      // spec task (KEY-2), which carries one client-visible reply seeded
+      // for exactly this stop. The drive OPENS the question and NEVER
+      // answers it: KEY-2 must stay shared for every later spec and for
+      // the Swedish width walk, which walks this same drive.
+      name: "project-item-private-question",
+      path: `${project}/backlog?item=${seed.projectKey}-2`,
+      drive: async (page) => {
+        await page.getByTestId("item-properties").getByTestId("item-visibility").click();
+        await page.getByTestId("item-visibility-INTERNAL").click();
+        await expect(page.getByTestId("item-visibility-question")).toBeVisible({ timeout: 20_000 });
+      },
+    },
+    {
+      // …and the selection bar's (C35): a shared row ticked, Visibility →
+      // Make private…, the preview, the question under the verbs. Never
+      // answered. Desktop only in effect — on a phone the select column
+      // is dropped (`priority="medium"`) and the stop degrades to a second
+      // look at the list, as `project-backlog-selection` does.
+      name: "project-backlog-visibility-question",
+      path: `${project}/backlog`,
+      drive: async (page) => {
+        const shared = page
+          .locator('[data-testid="backlog-row"]')
+          .filter({ has: page.locator('[data-slot="visibility-badge"][data-visibility="CLIENT_VISIBLE"]') })
+          .first();
+        const box = shared.locator('[data-testid="backlog-select-row"]');
+        if (!(await box.isVisible())) return;
+        await box.click();
+        await page.getByTestId("bulk-visibility").click();
+        await page.getByTestId("bulk-make-private").click();
+        await expect(page.getByTestId("bulk-question")).toBeVisible({ timeout: 20_000 });
+      },
+    },
     { name: "project-timeline", path: `${project}/timeline` },
     // 2T: the Time tab (rollups, budget) and the Money tab (value; cost
     // stays behind the tenant's cost layer, which the fixture leaves off).

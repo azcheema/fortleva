@@ -34,10 +34,16 @@ import { listPortalTasks } from "./portal";
  * the half that reads what actually came out of Postgres.
  *
  * WHAT ONLY A DATABASE CAN SAY, and is therefore here rather than in a
- * unit test: that an INTERNAL child of a shared parent is absent because
- * `portal_gate` refused it; that flipping `portalEnabled` off empties
- * the list; that another client's and another tenant's shared work is
- * not merely filtered out in TypeScript but unreachable.
+ * unit test: that an INTERNAL child of a shared parent never reaches the
+ * projection (planted below as `S.internalChild`, a SUBTASK of the
+ * shared planned task, and swept for with every other sentinel); that
+ * flipping `portalEnabled` off empties the list; that another client's
+ * and another tenant's shared work is not merely filtered out in
+ * TypeScript but unreachable. The projection repeats the visibility term
+ * as defence in depth, so the child's absence HERE is the projection
+ * and the gate together — the RLS proof on its own, a raw count under
+ * the contact principal with no filter of ours, lives in
+ * `src/db/portal-gate.dbtest.ts` (slice 72).
  *
  * Tenant slugs are spelled out literally at the `slug:` key and the
  * prefix `pwork-` is registered in `DBTEST_PREFIXES` (e2e/fixtures/seed-cli.ts)
@@ -57,6 +63,8 @@ const S = {
   repo: `SENTINELREPO-${run}`,
   hosting: `SENTINELHOST-${run}`,
   internalTask: `SENTINELINTERNALTASK-${run}`,
+  /** An INTERNAL SUBTASK of a CLIENT_VISIBLE task — visibility is never inherited live. */
+  internalChild: `SENTINELINTERNALCHILD-${run}`,
   hiddenProject: `SENTINELHIDDENPROJECT-${run}`,
   archivedProject: `SENTINELARCHIVEDPROJECT-${run}`,
   otherClientTask: `SENTINELOTHERCLIENT-${run}`,
@@ -174,6 +182,10 @@ async function item(input: {
   triageReason?: string;
   /** The agency took this request on, at this moment (C31). */
   acceptedAt?: Date;
+  /** A child row: the parent guard derives `rootId` and `depth` from it. */
+  parentId?: string;
+  /** Defaults to TASK; a child of a TASK must be a SUBTASK (the tree trigger). */
+  type?: "TASK" | "SUBTASK";
   milestoneId?: string;
   targetDate?: Date;
   completedAt?: Date;
@@ -202,6 +214,8 @@ async function item(input: {
       triageReason: input.triageReason ?? null,
       duplicateOfId: null,
       acceptedAt: input.acceptedAt ?? null,
+      type: input.type ?? "TASK",
+      parentId: input.parentId ?? null,
       rootId: id,
       // A valid fractional key that sorts before every generated one —
       // the shape `tree-guards.dbtest.ts` settled on.
@@ -349,6 +363,9 @@ beforeAll(async () => {
 
   // ── what a contact must NOT see ──────────────────────────────────
   await item({ tenantId: T, clientId: acme, projectId: pOn, title: S.internalTask, category: "TODO", visibility: "INTERNAL" });
+  // An INTERNAL child of the SHARED planned task (PLAN Phase 3's owed
+  // fixture): the parent is on the client's list, the child must not be.
+  await item({ tenantId: T, clientId: acme, projectId: pOn, title: S.internalChild, category: "TODO", visibility: "INTERNAL", type: "SUBTASK", parentId: shared });
   // A CLIENT_VISIBLE row carrying an INTERNAL milestone: the ROW is
   // shared, the PHASE is not, and the name must not ride along.
   await item({ tenantId: T, clientId: acme, projectId: pOn, title: `Shared, internal phase ${run}`, category: "TODO", visibility: "CLIENT_VISIBLE", milestoneId: ids.internalPhase });
@@ -477,6 +494,8 @@ afterAll(async () => {
   for (const tenantId of [T, T2]) {
     await db.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
     await db.workItemLabel.deleteMany({ where: { tenantId } });
+    // Children first: `work_item.parent_id` is ON DELETE RESTRICT.
+    await db.workItem.deleteMany({ where: { tenantId, parentId: { not: null } } });
     await db.workItem.deleteMany({ where: { tenantId } });
     await db.label.deleteMany({ where: { tenantId } });
     await db.milestone.deleteMany({ where: { tenantId } });
@@ -818,6 +837,21 @@ describe("the projection cannot be run under the wrong principal", () => {
     expect(
       await db.workItem.count({ where: { tenantId: T, clientId: acme, title: S.internalTask } }),
     ).toBe(1);
+  });
+
+  it("never carries a shared task's INTERNAL child — measured from both ends", async () => {
+    // The row exists, under the SHARED planned task, and the parent IS on
+    // the client's list — so the child's absence is not an empty fixture
+    // and not a parent that was filtered out with it.
+    const db = getPlatformClient();
+    const child = await db.workItem.findFirstOrThrow({
+      where: { tenantId: T, title: S.internalChild },
+      select: { visibility: true, parent: { select: { title: true, visibility: true } } },
+    });
+    expect(child).toEqual({ visibility: "INTERNAL", parent: { title: SHOWN.planned, visibility: "CLIENT_VISIBLE" } });
+    const list = await listPortalTasks(principal(ids.primary));
+    expect(titles(list)).toContain(SHOWN.planned);
+    expect(titles(list)).not.toContain(S.internalChild);
   });
 });
 

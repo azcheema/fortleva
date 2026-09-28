@@ -1190,12 +1190,18 @@ function BoardCard({
           className={cn("pointer-events-none absolute inset-x-0 h-0.5 rounded-full bg-primary", edge === "top" ? "-top-1.5" : "-bottom-1.5")}
         />
       ) : null}
-      <div className="flex items-center gap-1.5">
-        <span className="num-id text-xs text-muted-foreground">{key}</span>
+      {/* BOTH STATES WEAR THE CHIP (founder decision C36, 2026-09-28 —
+          UI.md §10.4: absence is not a state, it looks exactly like a
+          chip that failed to render). The row WRAPS rather than overflows:
+          a 16rem column holds the key, the priority, "Privat för teamet"
+          and the menu only just, so at the tightest the chip drops to its
+          own line instead of squeezing the key onto two. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="num-id shrink-0 whitespace-nowrap text-xs text-muted-foreground">{key}</span>
         {item.priority !== "NONE" ? <PriorityIndicator value={item.priority as Priority} /> : null}
-        {item.visibility === "CLIENT_VISIBLE" ? <VisibilityBadge value="CLIENT_VISIBLE" size="sm" className="ml-auto" /> : null}
+        <VisibilityBadge value={item.visibility} size="sm" className="ml-auto" />
         {canEdit && item.number > 0 ? (
-          <span className={cn(item.visibility === "CLIENT_VISIBLE" ? "" : "ml-auto")}>
+          <span>
             <RowActions label={tCommon("actionsFor", { name: key })} items={actions} />
           </span>
         ) : null}
@@ -1348,6 +1354,7 @@ function ColumnCreate({
           assigneeContactName: null,
           rootId: "",
           parentId: null,
+          parentRef: null,
           archivedAt: null,
           checklistTotal: 0,
           checklistDone: 0,

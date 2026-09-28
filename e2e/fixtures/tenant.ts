@@ -125,6 +125,23 @@ export async function addClientVisibleComment(projectId: string, number: number)
   return commentId;
 }
 
+/** A task's stored visibility and its client-visible comment count (slice 72). */
+export type ItemVisibilityRecord = { visibility: string; clientVisibleComments: number };
+
+export async function readItemVisibility(projectId: string, number: number): Promise<ItemVisibilityRecord> {
+  return runCli<ItemVisibilityRecord>(["item-visibility", projectId, String(number)]);
+}
+
+/** A comment written by the client's contact, at a chosen visibility (C37's fixture). */
+export async function addContactComment(
+  projectId: string,
+  number: number,
+  visibility: "INTERNAL" | "CLIENT_VISIBLE",
+): Promise<string> {
+  const { commentId } = await runCli<{ commentId: string }>(["contact-comment", projectId, String(number), visibility]);
+  return commentId;
+}
+
 export type MilestoneRecord = {
   name: string;
   dueAt: string | null;

@@ -56,7 +56,11 @@ import { enterViewAs, resolveViewAs } from "./view-as";
 const run = randomUUID().slice(0, 8);
 
 const SHOWN = { a: `Shared A ${run}`, b: `Shared B ${run}` };
-const HIDDEN = { internal: `PVASINTERNAL-${run}` };
+const HIDDEN = {
+  internal: `PVASINTERNAL-${run}`,
+  /** An INTERNAL SUBTASK of the shared task `SHOWN.a` — PLAN Phase 3's owed fixture. */
+  internalChild: `PVASINTERNALCHILD-${run}`,
+};
 
 let f: Awaited<ReturnType<typeof setupTenant>>;
 let clientId: string;
@@ -83,7 +87,9 @@ async function item(input: {
   title: string;
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
   targetDate?: Date;
-}): Promise<void> {
+  /** A SUBTASK of this row: the parent guard derives `rootId` and `depth`. */
+  parentId?: string;
+}): Promise<string> {
   const id = randomUUID();
   // `portalEnabled` is NEVER written here: it is trigger-derived from
   // the project (`stamp_portal_enabled`, BEFORE INSERT), the rule
@@ -99,11 +105,13 @@ async function item(input: {
       stateId: states[`${input.projectId}:TODO`]!,
       stateCategory: "TODO",
       rootId: id,
+      ...(input.parentId ? { type: "SUBTASK" as const, parentId: input.parentId } : {}),
       rank: `Zz${randomUUID().replace(/-/g, "")}1`,
       visibility: input.visibility,
       targetDate: input.targetDate ?? null,
     },
   });
+  return id;
 }
 
 async function statesFor(pid: string) {
@@ -260,14 +268,17 @@ beforeAll(async () => {
   });
   viewerOnly = { memberId: viewerMember.id, actor: actorFor(viewerMember.id) };
 
-  await item({ projectId: projectA, title: SHOWN.a, visibility: "CLIENT_VISIBLE", targetDate: new Date("2026-02-01T00:00:00Z") });
+  const sharedA = await item({ projectId: projectA, title: SHOWN.a, visibility: "CLIENT_VISIBLE", targetDate: new Date("2026-02-01T00:00:00Z") });
   await item({ projectId: projectA, title: HIDDEN.internal, visibility: "INTERNAL" });
+  await item({ projectId: projectA, title: HIDDEN.internalChild, visibility: "INTERNAL", parentId: sharedA });
   await item({ projectId: projectB, title: SHOWN.b, visibility: "CLIENT_VISIBLE", targetDate: new Date("2026-01-01T00:00:00Z") });
 });
 
 afterAll(async () => {
   if (!f) return;
   await f.platform.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${f.tenantId}`;
+  // Children first: `work_item.parent_id` is ON DELETE RESTRICT.
+  await f.platform.workItem.deleteMany({ where: { tenantId: f.tenantId, parentId: { not: null } } });
   await f.platform.workItem.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.workflowState.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.memberProject.deleteMany({ where: { tenantId: f.tenantId } });
@@ -340,6 +351,20 @@ describe("view-as-contact is the contact's own read", () => {
     expect(JSON.stringify(asMember)).toBe(JSON.stringify(asContact));
     // …and it is not vacuously equal because both are empty.
     expect(asContact.projects.length).toBeGreaterThan(0);
+    // THE INTERNAL CHILD OF A SHARED TASK crosses neither door — the
+    // member's View-as principal and the contact's own — while its parent
+    // is on both lists, so neither absence is a parent filtered out with it.
+    for (const list of [asMember, asContact]) {
+      expect(titles(list)).toContain(SHOWN.a);
+      expect(titles(list)).not.toContain(HIDDEN.internalChild);
+      expect(JSON.stringify(list)).not.toContain(HIDDEN.internalChild);
+    }
+    // …and the row does exist, under that parent.
+    const child = await f.platform.workItem.findFirstOrThrow({
+      where: { tenantId: f.tenantId, title: HIDDEN.internalChild },
+      select: { visibility: true, parent: { select: { title: true, visibility: true } } },
+    });
+    expect(child).toEqual({ visibility: "INTERNAL", parent: { title: SHOWN.a, visibility: "CLIENT_VISIBLE" } });
   });
 
   it("spans the whole CLIENT, which is what the preview does not", async () => {
@@ -353,6 +378,7 @@ describe("view-as-contact is the contact's own read", () => {
     // INTERNAL never crosses, and it is `portal_gate` that says so, not
     // a filter in TypeScript.
     expect(titles(list)).not.toContain(HIDDEN.internal);
+    expect(titles(list)).not.toContain(HIDDEN.internalChild);
   });
 });
 

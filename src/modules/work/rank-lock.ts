@@ -122,16 +122,73 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
  *     which takes nothing. `document_anchor_guard_v2` added `FOR SHARE
  *     OF wi` to close a write-skew, and THAT is the lock. Reading v1
  *     alone says this cycle does not exist; it does.
- * ABLE TO DEADLOCK WITH EACH OTHER, NEVER WITH THE QUEUE — and that
- * second half rests entirely on no queued writer ever locking a document
- * or comment row, so re-check it before putting anything in the queue
- * that does. The portal toggle would have locked both, which is one of
- * the reasons it stayed out. The pair: deleteItem,
+ * ABLE TO DEADLOCK WITH EACH OTHER — and, SINCE PHASE 3 SLICE 72, WITH
+ * THE QUEUE TOO. The sentence that stood here said "never with the
+ * queue", resting on no queued writer ever locking a document or comment
+ * row. The sharing UI's cascade (`visibility.ts`, `makePrivateWithChildren`)
+ * is a queued writer that DOES: queue → the closure's tasks (root first,
+ * level by level) → their attached documents → the comments on all of
+ * them. That order FREEZES the closure (every writer that could hang a new
+ * client-visible child under a locked task takes FOR SHARE on it, or
+ * queues), which is what makes the make-private lever always work — and
+ * no order could satisfy every locker outside the queue anyway, because
+ * they disagree among themselves:
+ *   • an attachment's visibility flip (`documents.changeVisibility`)
+ *     locks the DOCUMENT, then the task (`document_anchor_guard`'s
+ *     FOR SHARE) — the reverse of the cascade's task → document;
+ *   • the portal switch's fan-out updates `document` before `work_item`,
+ *     in scan order (the first bullet above);
+ *   • `releaseContactAssignments` updates every task a contact holds in
+ *     ONE unqueued statement, in scan order, against the cascade's
+ *     level-by-level order.
+ * Each cycle is detected by Postgres (40P01) and the cascade RETRIES
+ * (`retryOnContention`, with a bounded lock wait, and a spent retry is
+ * `VISIBILITY_BUSY`, never a 500). THE OTHER SIDES RETRY TOO, since the
+ * same slice: the portal switch (`retryOnContention`, PORTAL_SWITCH_BUSY),
+ * the attachment flip (`documents.changeVisibility`, `retryOnDeadlock`,
+ * VISIBILITY_BUSY) and the contact revoke that wraps the release
+ * (`setContactPortalAccess`, `retryOnDeadlock`, CONTACT_ACCESS_BUSY) —
+ * the first cut of slice 72 left the last two unretried, so a revoke that
+ * lost to a cascade was a 500 with the access still live (review). The
+ * cascade-versus-release cycle is NEW in slice 72: make-private used to
+ * lock one row. Comment EDITS and DELETES are not
+ * in the list — the comment trigger fires only on `UPDATE OF
+ * subject_type, subject_id, parent_id, visibility`, and their only lock
+ * on the task is the history row's FOR KEY SHARE, which conflicts with
+ * nothing here. `changeItemVisibility`'s raise also locks comment rows
+ * now (a client's own comments follow the task, C37, follow-task.ts) —
+ * task first, then comment, the order every comment writer keeps.
+ *
+ * The older pair: deleteItem,
  * which locks its item and then the item's attachments and comments,
  * against an attachment's visibility flip, which locks the attachment
  * and then the item through document_anchor_guard — deleteItem writes
- * only deleted_at, so it never takes a second work_item row and no
- * queued writer ever locks a document or comment row.
+ * only deleted_at, so it never takes a second work_item row. The flip's
+ * side of it retries since slice 72; deleteItem's side still does not,
+ * and a victim there is still an unmapped error (a recorded residual,
+ * PLAN §0's slice-72 entry).
+ *
+ * TWO APPLIED MIGRATIONS SAY OTHERWISE AND MUST NOT BE EDITED (an
+ * applied migration's checksum is fixed):
+ *   • `20260911200000_work_tree_guards` argues against making
+ *     make-private a multi-row writer that queues behind creates, moves
+ *     and bulk edits. Slice 72 does exactly that — for the CASCADE only;
+ *     the single make-private (`changeItemVisibility`) still never
+ *     queues, and `makeItemPrivate` tries it first — and the bounded wait
+ *     is the answer to that migration's concern.
+ *   • `20260915120000_comment_guard_lock_and_activity_id_index` says "No
+ *     work service that queues on the project's rank lock ever locks a
+ *     comment row". False since slice 72: the cascade, `bulkShare` and a
+ *     subtask's raise (through follow-task.ts) all do — task first, then
+ *     comment, the order every comment writer keeps.
+ * This comment and PLAN §0's slice-72 entry are where both supersessions
+ * are recorded.
+ *
+ * A QUEUED WRITER FROM ANOTHER MODULE, since slice 72: the time reports'
+ * publish check (`assertNamesStillShared`) share-locks the tasks a report
+ * names, and their parents and roots, root first — behind THIS queue, so
+ * it cannot cycle with a bulk edit or the cascade; `publishReport`
+ * retries a deadlock with the unqueued lockers above.
  *
  * SINCE 6c A QUEUED WRITER ALSO TOUCHES A `contact` ROW — the foreign
  * key on `assignee_contact_id` takes `FOR KEY SHARE` on it — so the

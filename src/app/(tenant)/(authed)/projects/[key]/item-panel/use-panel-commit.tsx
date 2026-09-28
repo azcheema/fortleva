@@ -105,6 +105,15 @@ export function usePanelCommit<Shown, Committed extends { changed: boolean }>(op
   /** The always-mounted live region — render it once, anywhere in the island. */
   status: React.ReactNode;
   commit: (next: Shown, call: () => Promise<ActionResult<Committed>>) => void;
+  /**
+   * The newest value the member MEANT — the pick in flight, else what is
+   * shown — for an island that must decide BEFORE committing which door a
+   * pick goes through (V, slice 72: a make-private of a task that is
+   * shared, or is being shared, may need its question first). The no-op
+   * guard's own basis, so the two can never disagree. Call it from an
+   * event handler, never during render: it reads a ref.
+   */
+  intent: () => Shown;
 } {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -185,5 +194,7 @@ export function usePanelCommit<Shown, Committed extends { changed: boolean }>(op
     </span>
   );
 
-  return { shown, status, commit };
+  const intent = () => (inFlight.current ? inFlight.current.value : shown);
+
+  return { shown, status, commit, intent };
 }

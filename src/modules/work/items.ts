@@ -13,6 +13,7 @@ import { readItemComments, type ItemComments } from "./comments";
 import { readItemLabels, readLabelsByItem, type ItemLabels, type LabelEntry } from "./labels";
 import { descriptionToken } from "./description-token";
 import { guarded } from "./db-errors";
+import { raiseClientCommentsWithTask } from "./follow-task";
 import { notifyItemMembers } from "./notify";
 import { bottomRank, lockItemRow, lockProjectRanks } from "./rank-lock";
 import { loadItemInScope, type ItemRow } from "./rows";
@@ -134,6 +135,15 @@ export type ItemListEntry = {
   /** Hierarchy (§3.1): the root of the subtree (itself at depth 0) — the board's group-by-epic lane. */
   rootId: string;
   parentId: string | null;
+  /**
+   * The parent's number and visibility (slice 72) — null at the root and
+   * when the parent is soft-deleted. The selection bar's "Show to
+   * client" refuses, with the reason, a selected task whose parent is
+   * private and not selected too (sharing never reaches upward, C35); the
+   * parent may be ARCHIVED and so absent from the list, which is why it
+   * rides on the row rather than being looked up among the rows.
+   */
+  parentRef: { number: number; visibility: "INTERNAL" | "CLIENT_VISIBLE" } | null;
   archivedAt: Date | null;
   checklistTotal: number;
   checklistDone: number;
@@ -169,6 +179,12 @@ export type WorkflowStateEntry = {
 
 export type ItemList = {
   items: ItemListEntry[];
+  /**
+   * The project's portal switch (slice 72): the selection bar's share and
+   * make-private questions say what they will do, and with the portal off
+   * the client sees nothing either way. Read after the batch, in sequence.
+   */
+  portalEnabled: boolean;
   states: WorkflowStateEntry[];
   members: { id: string; name: string }[];
   caps: {
@@ -319,6 +335,10 @@ export async function listItems(
             // board card says who holds the task and nothing else about
             // them (`ItemListEntry`'s note on the pair).
             assigneeContact: { select: { name: true } },
+            // The parent's number and visibility — the bar's refuse-up
+            // (see `ItemListEntry.parentRef`). A join on this leg, not a
+            // new leg.
+            parent: { select: { number: true, visibility: true, deletedAt: true } },
           },
         }),
         tx.workflowState.findMany({
@@ -360,8 +380,14 @@ export async function listItems(
       readLabelsByItem(tx, ctx.tenantId, ids),
     ]);
     const attachmentsById = new Map(attachmentCounts.map((c) => [c.attachedToId, c._count._all]));
+    // In sequence, after both batches — never a new leg (AGENTS.md).
+    const project = await tx.project.findFirst({
+      where: { tenantId: ctx.tenantId, id: projectId },
+      select: { portalEnabled: true },
+    });
 
     return {
+      portalEnabled: project?.portalEnabled ?? false,
       items: items.map((i) => ({
         id: i.id,
         number: i.number,
@@ -386,6 +412,10 @@ export async function listItems(
         assigneeContactName: i.assigneeContact?.name ?? null,
         rootId: i.rootId,
         parentId: i.parentId,
+        parentRef:
+          i.parent && i.parent.deletedAt === null
+            ? { number: i.parent.number, visibility: i.parent.visibility }
+            : null,
         archivedAt: i.archivedAt,
         checklistTotal: i.checklistTotal,
         checklistDone: i.checklistDone,
@@ -483,8 +513,16 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority" | "labels"> & {
   priority: "NONE" | "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   depth: number;
   startDate: Date | null;
-  /** "Follows ACME-12" — null at the root, and null when the parent is soft-deleted. */
-  parent: { id: string; number: number; title: string } | null;
+  /**
+   * "Follows ACME-12" — null at the root, and null when the parent is
+   * soft-deleted. Its VISIBILITY decides the `V` rail row (slice 72): a
+   * task under a PRIVATE parent cannot be shared (child ≤ parent, the
+   * tree trigger), so the rail draws the chip as text with the reason
+   * instead of offering "Client can see" for the database to refuse.
+   * Capped by the parent, never tracking it — inheritance is a default at
+   * creation (DATA_MODEL §6.14).
+   */
+  parent: { id: string; number: number; title: string; visibility: "INTERNAL" | "CLIENT_VISIBLE" } | null;
   /**
    * The item's phase (§6.5). Name and STATUS: the rail's trigger draws
    * the status glyph exactly as the `M` picker's rows do. NOT the
@@ -678,7 +716,7 @@ export async function getItemDetail(
         state: { select: { name: true, seedKey: true } },
         assigneeMember: { select: { user: { select: { name: true } } } },
         assigneeContact: { select: { name: true } },
-        parent: { select: { id: true, number: true, title: true, deletedAt: true } },
+        parent: { select: { id: true, number: true, title: true, visibility: true, deletedAt: true } },
         milestone: { select: { id: true, name: true, status: true } },
       },
     });
@@ -857,6 +895,10 @@ export async function getItemDetail(
         assigneeContactName: item.assigneeContact?.name ?? null,
         rootId: item.rootId,
         parentId: item.parentId,
+        parentRef:
+          item.parent && item.parent.deletedAt === null
+            ? { number: item.parent.number, visibility: item.parent.visibility }
+            : null,
         archivedAt: item.archivedAt,
         checklistTotal: item.checklistTotal,
         checklistDone: item.checklistDone,
@@ -865,7 +907,7 @@ export async function getItemDetail(
         // panel would link a key that 404s.
         parent:
           item.parent && item.parent.deletedAt === null
-            ? { id: item.parent.id, number: item.parent.number, title: item.parent.title }
+            ? { id: item.parent.id, number: item.parent.number, title: item.parent.title, visibility: item.parent.visibility }
             : null,
         milestone: item.milestone,
         description: item.description ?? null,
@@ -1420,6 +1462,10 @@ export async function assignItemToContact(
           via: "contact_assignment",
         },
       });
+      // Handing a task over is a share, so it brings the client's own
+      // comments back like every other share does (C37) — the contact now
+      // holding the task included.
+      await raiseClientCommentsWithTask(tx, ctx, [item], "contact_assignment");
     }
     // Written against the row AFTER the flip, so a share-and-assign
     // writes a CLIENT_VISIBLE history row: the item the client is being
@@ -1711,6 +1757,15 @@ export async function changeItemVisibility(
         ...(endingClientAssignment ? { endedContactAssignment: true } : {}),
       },
     });
+    // A SHARE brings the client's own comments back with the task (C37,
+    // follow-task.ts) — after the task's own UPDATE, because the comment
+    // trigger checks the subject's live visibility. A make-private never
+    // reaches here with anything to lower: the downgrade trigger has
+    // already refused it if a comment was still client-visible, and the
+    // cascade (visibility.ts) is the path that lowers them.
+    if (row.visibility === "CLIENT_VISIBLE") {
+      await raiseClientCommentsWithTask(tx, ctx, [item], "share");
+    }
     return {
       id: row.id,
       visibility: row.visibility,

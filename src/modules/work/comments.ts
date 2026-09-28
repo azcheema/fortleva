@@ -414,6 +414,14 @@ export async function setCommentVisibility(
       const raise = visibility === "CLIENT_VISIBLE";
       const item = await loadItemInScope(tx, ctx, probe.subjectId, { lock: raise ? "SHARE" : false });
       const comment = await lockComment(tx, ctx.tenantId, commentId);
+      // A contact's words are never hidden from them ONE AT A TIME. Their
+      // visibility moves only with their task's (founder decision C37,
+      // 2026-09-28): a task's make-private lowers them with it
+      // (visibility.ts) and its re-share raises them back
+      // (follow-task.ts), whose predicate — "private and written by a
+      // contact of this client" — is only right while THIS refusal holds.
+      // A new path that hides a client's comment for any other reason must
+      // revisit `raiseClientCommentsWithTask`, or the next share undoes it.
       if (comment.authorMemberId === null) deny("FORBIDDEN", "a contact's comment keeps its visibility");
       if (comment.visibility === visibility) return { id: comment.id, visibility, changed: false };
       if (raise && item.visibility !== "CLIENT_VISIBLE") fail("SUBJECT_NOT_VISIBLE");

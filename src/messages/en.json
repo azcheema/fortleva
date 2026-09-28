@@ -1109,7 +1109,20 @@
   "visibility": {
     "label": "Visibility",
     "internal": "Private to team",
-    "clientVisible": "Client can see"
+    "clientVisible": "Client can see",
+    "parts": {
+      "belowIt": "{count, plural, one {# task under it} other {# tasks under it}}",
+      "belowThem": "{count, plural, one {# task under them} other {# tasks under them}}",
+      "comments": "{count, plural, one {# comment} other {# comments}}",
+      "files": "{count, plural, one {# file} other {# files}}"
+    },
+    "ask": {
+      "checking": "Checking what else the client can see…",
+      "handedOver": "{count, plural, one {# task is} other {# tasks are}} handed to someone at the client and will come off their list. Sharing again later does not hand anything back.",
+      "signoff": "{count, plural, one {# file is} other {# files are}} waiting for the client's sign-off. The request is hidden with the file, not withdrawn.",
+      "frozen": "Time reports and updates already published keep what they said.",
+      "portalOff": "This project's portal is off, so the client sees none of this either way."
+    }
   },
   "domainErrors": {
     "NAME_REQUIRED": "A name is required.",
@@ -1125,6 +1138,7 @@
     "APPROVAL_REQUIRED": "Only an approver can move a task into this state.",
     "PORTAL_SWITCH_BUSY": "Another change got in the way, so the portal switch could not go through. Nothing was changed — try again in a moment.",
     "HAS_VISIBLE_CHILDREN": "This task still has subtasks, comments or files the client can see. Make those private first, then the task.",
+    "VISIBILITY_BUSY": "Someone else was changing this project at the same moment, so nothing was changed. Try again in a moment.",
     "PARENT_NOT_VISIBLE": "Its parent task is private to your team, so this one can’t be shown to the client. Share the parent first.",
     "CANNOT_NEST": "A subtask can’t have subtasks of its own.",
     "HAS_CHILDREN": "This task has subtasks. Delete them first.",
@@ -1154,6 +1168,8 @@
     "RATE_OVERLAP": "A rate card already covers that period — close it first or pick a later start date.",
     "RATE_CARD_IMMUTABLE": "Rate cards cannot be edited — close this one and add a new card.",
     "REPORT_IMMUTABLE": "A published time report cannot be changed or deleted — archive it and generate a new one.",
+    "REPORT_NAMES_PRIVATE_TASK": "This report names a task that is private to your team now. Generate a new report before you publish it.",
+    "REPORT_CHANGED": "This report changed while you were publishing it, so nothing was published. Look at it again, then publish.",
     "BREAK_OUT_OF_BOUNDS": "A break must lie inside its shift.",
     "SHIFT_SHRINK": "That change would leave a break outside the shift.",
     "WORK_TYPE_TAKEN": "A work type with that name already exists.",
@@ -1167,6 +1183,7 @@
     "ACCESS_TRANSITION_INVALID": "Their portal access has moved on since this page was loaded. Reload it to see where it stands.",
     "CONTACT_HAS_ACCESS": "This person still has portal access, so their record cannot be deleted. Ending their access is permanent.",
     "CONTACT_HAS_HISTORY": "This person has written in the portal, so their record is kept and cannot be deleted. They already have no access.",
+    "CONTACT_ACCESS_BUSY": "Someone else was changing this client's work at the same moment, so nothing was changed. Try again in a moment.",
     "REQUEST_ANSWER_IS_THE_CLIENTS": "You have already replied to this request, so it cannot be deleted — your reply is the client's to keep. Archive it instead.",
     "REQUEST_RATE_LIMITED": "You have sent several requests in a short time. Wait a few minutes and try again.",
     "REQUEST_BUSY": "We could not send that just now. Try again in a moment.",
@@ -1730,7 +1747,25 @@
         "failed": "The change did not save. The list shows the current state.",
         "requestBlocked": "Client requests are never cancelled in bulk. End each one from its own menu, with a reply to the client.",
         "requestBlockedNoRight": "A client request is selected, and you do not have permission to cancel client requests.",
-        "requestBlockedClosed": "Client requests are never cancelled in bulk."
+        "requestBlockedClosed": "Client requests are never cancelled in bulk.",
+        "visibility": "Visibility",
+        "visibilityPlaceholder": "Change what the client sees",
+        "share": "Show to client…",
+        "makePrivate": "Make private…",
+        "shareRefusedParent": "The parent task of {key} is private. Select it too, or share it first.",
+        "shareRefusedNone": "Every selected task is already visible to the client.",
+        "privateRefusedNone": "No selected task is visible to the client.",
+        "shareQuestion": "Show {count, plural, one {# task} other {# tasks}} to the client?",
+        "privateQuestion": "Make {count, plural, one {# task} other {# tasks}} private?",
+        "privateQuestionWith": "Make {count, plural, one {# task} other {# tasks}} private, together with {list}?",
+        "shareConfirm": "Show to client",
+        "privateConfirm": "Make private",
+        "cancel": "Cancel",
+        "sharedDone": "{count, plural, one {# task is} other {# tasks are}} now visible to the client.",
+        "sharedComments": "{count, plural, one {# comment from the client is visible again} other {# comments from the client are visible again}}.",
+        "privateDone": "{count, plural, one {# task is now private} other {# tasks are now private}} to the team.",
+        "alsoPrivate": "Also private now: {list}.",
+        "endedAssignments": "{count, plural, one {# task came} other {# tasks came}} off the client's lists."
       },
       "rollup": {
         "count": "{total, plural, one {# task} other {# tasks}}",
@@ -1799,7 +1834,14 @@
       "dueLabel": "Due date",
       "duePlaceholder": "Set date",
       "attachments": "{count, plural, one {# attachment} other {# attachments}}",
-      "timerRunning": "Your timer is running on this task"
+      "timerRunning": "Your timer is running on this task",
+      "visibilityShared": "{key} is now visible to the client.",
+      "visibilityPrivate": "{key} is now private to the team.",
+      "visibilityPrivateEnded": "{key} is now private to the team, and {name} no longer has it.",
+      "visibilityPrivateWith": "{key} is now private to the team, together with {list}.",
+      "visibilityAsk": "The client can still see {key}. Make it private, together with {list}?",
+      "visibilityAskPortalOff": "Make {key} private, together with {list}?",
+      "visibilityAskAction": "Make all private"
     },
     "triage": {
       "title": "Triage",
@@ -2290,7 +2332,15 @@
         "search": "Private to team or Client can see",
         "empty": "No matching visibility.",
         "failed": "The visibility did not save. The panel shows the current visibility.",
-        "changed": "Visibility changed to {visibility}"
+        "changed": "Visibility changed to {visibility}",
+        "askQuestion": "Make this task private, together with {list}?",
+        "askConfirm": "Make all private",
+        "askCancel": "Keep shared",
+        "changedWith": "Visibility changed to {visibility}, together with {list}",
+        "endedAssignment": "{name} no longer has this task. Sharing it again later does not hand it back.",
+        "handBackWarning": "Making it private also takes it off {name}'s list. Sharing it again later does not hand it back.",
+        "portalOff": "This project's portal is off, so the client cannot see this task either way.",
+        "follows": "Follows {key}. Share {key} first to share this task."
       },
       "keys": {
         "state": "Change state",

@@ -217,6 +217,63 @@ export function bulkStateTargets(
     });
 }
 
+/** Why the selection bar cannot "Show to client…" THIS selection, or null when it can (Phase 3 slice 72). */
+export type BulkShareRefusal =
+  /** Every selected task is already shared — nothing to do. */
+  | { kind: "none" }
+  /** A selected PRIVATE task sits under a private parent that is not selected too — sharing never reaches upward (C35). */
+  | { kind: "parent"; number: number };
+
+/**
+ * The bar's "Show to client…" rule, the client-side twin of `bulkShare`'s
+ * refuse-up (visibility.ts), so the menu says WHY before the server has to
+ * refuse the whole batch. A selected private task may be shared only if
+ * its parent is shared already or is being shared in the same batch
+ * (parent first). `parentRef` rides on the row because an ARCHIVED parent
+ * is absent from the list the rows came from. The server stays the
+ * authority: this only decides what the menu offers.
+ */
+export function bulkShareRefusal(
+  selection: readonly Pick<WorkItem, "id" | "number" | "visibility" | "parentId" | "parentRef">[],
+): BulkShareRefusal | null {
+  const toShare = selection.filter((i) => i.visibility === "INTERNAL");
+  if (toShare.length === 0) return { kind: "none" };
+  const sharing = new Set(toShare.map((i) => i.id));
+  for (const i of toShare) {
+    if (i.parentId === null) continue;
+    if (sharing.has(i.parentId)) continue;
+    if (i.parentRef && i.parentRef.visibility === "CLIENT_VISIBLE") continue;
+    return { kind: "parent", number: i.number };
+  }
+  return null;
+}
+
+/**
+ * The ids a "Show to client" sends: the selected rows SHOWN PRIVATE — the
+ * ones its question counts — and never the rest. The server shares every
+ * sent row that is private when it writes, so sending a row the member saw
+ * as already shared would re-share it if a colleague had made it private
+ * since this list rendered (slice 72 review).
+ */
+export const sharableIds = (selection: readonly Pick<WorkItem, "id" | "visibility">[]): string[] =>
+  selection.filter((i) => i.visibility === "INTERNAL").map((i) => i.id);
+
+/** The ids a "Make private" sends: the selected rows SHOWN SHARED, symmetric with `sharableIds`. */
+export const privatizableIds = (selection: readonly Pick<WorkItem, "id" | "visibility">[]): string[] =>
+  selection.filter((i) => i.visibility === "CLIENT_VISIBLE").map((i) => i.id);
+
+/**
+ * What a bar question was asked ABOUT: each selected row's id AND what it
+ * showed. A row whose visibility changes under an open question changes
+ * what the question counted, so it withdraws the question as a tick does.
+ */
+export const selectionKey = (selection: readonly Pick<WorkItem, "id" | "visibility">[]): string =>
+  selection.map((i) => `${i.id}:${i.visibility}`).join(",");
+
+/** The bar's "Make private…" is refused when nothing selected is shared — there is nothing to make private. */
+export const bulkPrivateRefused = (selection: readonly Pick<WorkItem, "visibility">[]): boolean =>
+  !selection.some((i) => i.visibility === "CLIENT_VISIBLE");
+
 /**
  * A UNIQUE key per state, for test ids: `${category}-${n}`, with `n`
  * 1-based within the category over the FULL rank-ordered list. The

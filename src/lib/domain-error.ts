@@ -40,6 +40,10 @@ export type DomainErrorCode =
   | "ACCESS_TRANSITION_INVALID" // pause a non-active, resume a non-paused, remove what has no access
   | "CONTACT_HAS_ACCESS" // erasure refused while the person can still sign in
   | "CONTACT_HAS_HISTORY" // erasure refused for somebody who has written in the portal
+  // A pause / resume / removal of a contact's access that lost a deadlock on
+  // every attempt (Phase 3 slice 72: REMOVE releases the contact's tasks,
+  // which can cycle with a make-private cascade). Nothing was written.
+  | "CONTACT_ACCESS_BUSY"
   // C29: deleting an ANSWERED client request would erase the agency's
   // own reply from the client's list, because `listPortalTasks` filters
   // `deletedAt` at the top level. An unanswered one is still deletable
@@ -84,6 +88,12 @@ export type DomainErrorCode =
   | "SIGNOFF_ALREADY_APPROVED"
   // Work tree (2W — trigger tokens map 1:1 in src/modules/work/db-errors.ts)
   | "HAS_VISIBLE_CHILDREN" // make-private refused while client-visible subtasks/comments/attachments live
+  // The sharing UI (Phase 3 slice 72 — src/modules/work/visibility.ts): a
+  // make-private cascade or a bulk share whose lock waits were spent
+  // (55P03) or which lost a deadlock, every attempt. Nothing was written;
+  // "try again" is the truth and the whole remedy, the portal switch's
+  // PORTAL_SWITCH_BUSY shape.
+  | "VISIBILITY_BUSY"
   | "PARENT_NOT_VISIBLE" // a child cannot be client-visible under an internal parent
   | "CANNOT_NEST" // parent type must be strictly higher (EPIC > TASK > SUBTASK)
   | "HAS_CHILDREN" // delete refused while live subtasks exist
@@ -117,6 +127,17 @@ export type DomainErrorCode =
   | "RATE_OVERLAP" // EXCLUDE rate_card_no_overlap
   | "RATE_CARD_IMMUTABLE" // trigger
   | "REPORT_IMMUTABLE" // published TimeReport (trigger)
+  // A report whose snapshot names a task (or its epic) that is no longer
+  // CLIENT_VISIBLE — it was generated while the task was shared, and the
+  // task has been made private since. Refused at publish and republish
+  // (Phase 3 slice 72): the snapshot is frozen, so the only honest answer
+  // is a fresh one.
+  | "REPORT_NAMES_PRIVATE_TASK"
+  // The report was regenerated, deleted, archived — or published by a
+  // colleague first — while it was being published (the check it passed
+  // was of another version, or the verb no longer applies). Nothing was
+  // published.
+  | "REPORT_CHANGED"
   | "BREAK_OUT_OF_BOUNDS" // trigger
   | "SHIFT_SHRINK" // trigger
   | "WORK_TYPE_TAKEN" // live name unique per tenant

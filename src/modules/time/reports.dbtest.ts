@@ -6,7 +6,7 @@ import { withTenant } from "@/db";
 import { DomainError } from "@/lib/domain-error";
 import { setupTenant } from "@/members/dbtest-fixture";
 import { createRole, setRolePermissions } from "@/members/roles";
-import { changeItemVisibility, createItem } from "@/modules/work";
+import { changeItemVisibility, createItem, deleteItem } from "@/modules/work";
 
 import {
   acknowledgeNotice,
@@ -136,6 +136,9 @@ afterAll(async () => {
   await db.notification.deleteMany({ where: { tenantId: f.tenantId } });
   await db.emailOutbox.deleteMany({ where: { tenantId: f.tenantId } });
   await db.workItemActivity.deleteMany({ where: { tenantId: f.tenantId } });
+  // Children first: `work_item.parent_id` is ON DELETE RESTRICT, and the
+  // EPIC case at the end of this file plants an epic with a task under it.
+  await db.workItem.deleteMany({ where: { tenantId: f.tenantId, parentId: { not: null } } });
   await db.workItem.deleteMany({ where: { tenantId: f.tenantId } });
   await db.workflowState.deleteMany({ where: { tenantId: f.tenantId } });
   await db.contact.deleteMany({ where: { tenantId: f.tenantId } });
@@ -416,5 +419,186 @@ describe("Σ spent per task (board cards)", () => {
     } finally {
       await f.platform.memberClient.deleteMany({ where: { tenantId: f.tenantId, memberId: f.seats.employee.memberId, clientId: acme } });
     }
+  });
+});
+
+/**
+ * A SNAPSHOT IS FROZEN; THE TASK'S VISIBILITY IS NOT (Phase 3 slice 72).
+ * A report folds a private task into "other" when it is GENERATED, which
+ * says nothing about the day it is PUBLISHED: a draft generated while a
+ * task was shared, published after the task was made private, would put
+ * the task's title on the client's portal — and so would republishing
+ * an unpublished report. `publishReport` checks every task and epic line
+ * against the task's visibility NOW and refuses REPORT_NAMES_PRIVATE_TASK.
+ *
+ * LAST in this file, after the Σ-spent block: the EPIC case adds a time
+ * entry that the rollup and Σ figures above do not expect, and every case
+ * restores the fixture's `visibleTask` to shared in a `finally`.
+ */
+describe("publish refuses a snapshot that names a task made private since (slice 72)", () => {
+  const seenBy = () =>
+    withTenant(f.tenantId, { type: "contact", id: contact.id, clientId: acme }, (tx) =>
+      tx.timeReport.findMany({ select: { id: true } }),
+    ).then((rows) => rows.map((r) => r.id));
+  const rowOf = (id: string) =>
+    f.platform.timeReport.findUniqueOrThrow({ where: { id }, select: { status: true, visibility: true } });
+  const publishedEvents = async (id: string) =>
+    (await f.audits("time_report.published")).filter((e) => e.targetId === id).length;
+
+  it("a DRAFT that named a shared task is refused once the task is private, and publishes once it is shared again", async () => {
+    const draft = await generateReport(ownerCtx(), {
+      projectId: project,
+      title: "August, named task",
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-31",
+      groupBy: "WORK_ITEM",
+    });
+    // The precondition: the snapshot NAMES the task (ACME-1 is `visibleTask`).
+    expect(draft.snapshot.lines.some((l) => l.kind === "work_item" && l.ref === "ACME-1")).toBe(true);
+    try {
+      await changeItemVisibility(ownerCtx(), visibleTask, "INTERNAL");
+      expect(await domainCode(publishReport(ownerCtx(), draft.id))).toBe("REPORT_NAMES_PRIVATE_TASK");
+      // Nothing moved: still a draft, still internal, nothing audited, nothing on the portal.
+      expect(await rowOf(draft.id)).toEqual({ status: "DRAFT", visibility: "INTERNAL" });
+      expect(await publishedEvents(draft.id)).toBe(0);
+      expect(await seenBy()).not.toContain(draft.id);
+
+      // The positive twin: the same draft, the task shared again.
+      await changeItemVisibility(ownerCtx(), visibleTask, "CLIENT_VISIBLE");
+      const published = await publishReport(ownerCtx(), draft.id);
+      expect(published).toMatchObject({ status: "PUBLISHED", visibility: "CLIENT_VISIBLE" });
+      expect(await seenBy()).toContain(draft.id);
+    } finally {
+      await changeItemVisibility(ownerCtx(), visibleTask, "CLIENT_VISIBLE");
+    }
+  });
+
+  it("a REPUBLISH after an unpublish is refused once the task is private — the report stays off the portal", async () => {
+    const report = await generateReport(ownerCtx(), {
+      projectId: project,
+      title: "August, republished",
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-31",
+      groupBy: "WORK_ITEM",
+    });
+    expect(report.snapshot.lines.some((l) => l.kind === "work_item" && l.ref === "ACME-1")).toBe(true);
+    try {
+      await publishReport(ownerCtx(), report.id);
+      await unpublishReport(ownerCtx(), report.id);
+      expect(await rowOf(report.id)).toEqual({ status: "PUBLISHED", visibility: "INTERNAL" });
+      await changeItemVisibility(ownerCtx(), visibleTask, "INTERNAL");
+      expect(await domainCode(publishReport(ownerCtx(), report.id))).toBe("REPORT_NAMES_PRIVATE_TASK");
+      expect(await rowOf(report.id)).toEqual({ status: "PUBLISHED", visibility: "INTERNAL" });
+      // One publish event — the first; the refused republish wrote none.
+      expect(await publishedEvents(report.id)).toBe(1);
+      expect(await seenBy()).not.toContain(report.id);
+    } finally {
+      await changeItemVisibility(ownerCtx(), visibleTask, "CLIENT_VISIBLE");
+    }
+  });
+
+  it("an EPIC-grouped draft whose epic went private is refused — the epic line is checked, not only task lines", async () => {
+    // An epic with a task under it, both shared, and time on the TASK:
+    // grouped by epic, the snapshot's only named line is the EPIC's.
+    const epicId = (await createItem(ownerCtx(), { projectId: project, title: "Relaunch epic" })).id;
+    await f.platform.workItem.update({ where: { id: epicId }, data: { type: "EPIC" }, select: { id: true } });
+    await changeItemVisibility(ownerCtx(), epicId, "CLIENT_VISIBLE");
+    const child = (await createItem(ownerCtx(), { projectId: project, title: "Relaunch page", parentId: epicId })).id;
+    const epicNumber = (await f.platform.workItem.findUniqueOrThrow({ where: { id: epicId }, select: { number: true } })).number;
+    // July: outside every August figure above.
+    await createEntry(ownerCtx(), { workItemId: child, startedAt: at("2026-07-10T08:00"), stoppedAt: at("2026-07-10T09:00") });
+    const draft = await generateReport(ownerCtx(), {
+      projectId: project,
+      title: "July by epic",
+      periodStart: "2026-07-01",
+      periodEnd: "2026-07-31",
+      groupBy: "EPIC",
+    });
+    expect(draft.snapshot.lines.map((l) => (l.kind === "epic" ? l.ref : l.kind))).toEqual([`ACME-${epicNumber}`]);
+
+    // Private, children first (the downgrade trigger insists).
+    await changeItemVisibility(ownerCtx(), child, "INTERNAL");
+    await changeItemVisibility(ownerCtx(), epicId, "INTERNAL");
+    expect(await domainCode(publishReport(ownerCtx(), draft.id))).toBe("REPORT_NAMES_PRIVATE_TASK");
+    expect(await rowOf(draft.id)).toEqual({ status: "DRAFT", visibility: "INTERNAL" });
+    expect(await publishedEvents(draft.id)).toBe(0);
+  });
+
+  it("a SOFT-DELETED shared subtask under a parent made private since is refused — its own flag is not enough (review)", async () => {
+    // A shared parent, a shared subtask with time on it (June: outside
+    // every figure above), a draft that names the SUBTASK. Then the
+    // subtask is deleted — it keeps CLIENT_VISIBLE; a make-private leaves
+    // soft-deleted rows alone — and the parent is made private.
+    const parentId = (await createItem(ownerCtx(), { projectId: project, title: "Landing page" })).id;
+    await changeItemVisibility(ownerCtx(), parentId, "CLIENT_VISIBLE");
+    const subId = (await createItem(ownerCtx(), { projectId: project, title: "Landing hero copy", parentId })).id;
+    const sub = await f.platform.workItem.findUniqueOrThrow({ where: { id: subId }, select: { number: true, visibility: true } });
+    expect(sub.visibility).toBe("CLIENT_VISIBLE");
+    await createEntry(ownerCtx(), { workItemId: subId, startedAt: at("2026-06-10T08:00"), stoppedAt: at("2026-06-10T09:00") });
+    const draft = await generateReport(ownerCtx(), {
+      projectId: project,
+      title: "June, a deleted subtask",
+      periodStart: "2026-06-01",
+      periodEnd: "2026-06-30",
+      groupBy: "WORK_ITEM",
+    });
+    expect(draft.snapshot.lines.some((l) => l.kind === "work_item" && l.ref === `ACME-${sub.number}`)).toBe(true);
+    await deleteItem(ownerCtx(), subId);
+    await changeItemVisibility(ownerCtx(), parentId, "INTERNAL");
+    // The subtask's own row still says CLIENT_VISIBLE — which is exactly
+    // why the check must look above it.
+    expect(
+      (await f.platform.workItem.findUniqueOrThrow({ where: { id: subId }, select: { visibility: true } })).visibility,
+    ).toBe("CLIENT_VISIBLE");
+    expect(await domainCode(publishReport(ownerCtx(), draft.id))).toBe("REPORT_NAMES_PRIVATE_TASK");
+    expect(await rowOf(draft.id)).toEqual({ status: "DRAFT", visibility: "INTERNAL" });
+    expect(await publishedEvents(draft.id)).toBe(0);
+  });
+
+  it("the positive twin: a SOFT-DELETED shared subtask under a STILL-shared parent publishes — shared and then deleted was still shared", async () => {
+    // May: no other case uses it (June's deleted subtask sits under a
+    // parent made private and would be refused for the wrong reason).
+    const parentId = (await createItem(ownerCtx(), { projectId: project, title: "Pricing page" })).id;
+    await changeItemVisibility(ownerCtx(), parentId, "CLIENT_VISIBLE");
+    const subId = (await createItem(ownerCtx(), { projectId: project, title: "Pricing table copy", parentId })).id;
+    const sub = await f.platform.workItem.findUniqueOrThrow({ where: { id: subId }, select: { number: true } });
+    await createEntry(ownerCtx(), { workItemId: subId, startedAt: at("2026-05-12T08:00"), stoppedAt: at("2026-05-12T09:00") });
+    await deleteItem(ownerCtx(), subId);
+    const draft = await generateReport(ownerCtx(), {
+      projectId: project,
+      title: "May, a deleted subtask under a shared parent",
+      periodStart: "2026-05-01",
+      periodEnd: "2026-05-31",
+      groupBy: "WORK_ITEM",
+    });
+    // Generated AFTER the delete: still named — its parent is shared.
+    expect(draft.snapshot.lines.some((l) => l.kind === "work_item" && l.ref === `ACME-${sub.number}`)).toBe(true);
+    const published = await publishReport(ownerCtx(), draft.id);
+    expect(published).toMatchObject({ status: "PUBLISHED", visibility: "CLIENT_VISIBLE" });
+  });
+
+  it("GENERATED after the parent went private, the deleted subtask is folded into Other and the report publishes — the two sides agree", async () => {
+    // April: its own month. Delete, make the parent private, THEN generate:
+    // the generator applies publish's rule, so the subtask is not named,
+    // and the advice "generate a new report" is one that can work.
+    const parentId = (await createItem(ownerCtx(), { projectId: project, title: "About page" })).id;
+    await changeItemVisibility(ownerCtx(), parentId, "CLIENT_VISIBLE");
+    const subId = (await createItem(ownerCtx(), { projectId: project, title: "About team bios", parentId })).id;
+    const sub = await f.platform.workItem.findUniqueOrThrow({ where: { id: subId }, select: { number: true } });
+    await createEntry(ownerCtx(), { workItemId: subId, startedAt: at("2026-04-14T08:00"), stoppedAt: at("2026-04-14T09:30") });
+    await deleteItem(ownerCtx(), subId);
+    await changeItemVisibility(ownerCtx(), parentId, "INTERNAL");
+    const draft = await generateReport(ownerCtx(), {
+      projectId: project,
+      title: "April, after the parent went private",
+      periodStart: "2026-04-01",
+      periodEnd: "2026-04-30",
+      groupBy: "WORK_ITEM",
+    });
+    expect(draft.snapshot.lines.some((l) => l.kind === "work_item" && l.ref === `ACME-${sub.number}`)).toBe(false);
+    expect(draft.snapshot.lines.some((l) => l.kind === "other")).toBe(true);
+    expect(JSON.stringify(draft.snapshot)).not.toContain("About team bios");
+    const published = await publishReport(ownerCtx(), draft.id);
+    expect(published).toMatchObject({ status: "PUBLISHED", visibility: "CLIENT_VISIBLE" });
   });
 });

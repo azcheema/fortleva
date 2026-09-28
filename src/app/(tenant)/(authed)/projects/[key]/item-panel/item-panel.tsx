@@ -377,17 +377,22 @@ export async function ItemPanel({
           />
         </dd>
         <dt className={railLabel}>{t("properties.visibility")}</dt>
-        <dd className={railPicker}>
-          <VisibilityField
-            key={item.id}
-            itemId={item.id}
-            itemNumber={item.number}
-            projectKey={projectKey}
-            surface={surface}
-            visibility={item.visibility}
-            canChangeVisibility={canChangeVisibility}
-          />
-        </dd>
+        {/* The island renders its own `<dd>` — and, under it, full-width
+            rows of its own: the make-private question (slice 72, §5.9 in
+            place) and the "Follows ACME-12" line under a private parent. */}
+        <VisibilityField
+          key={item.id}
+          itemId={item.id}
+          itemNumber={item.number}
+          projectKey={projectKey}
+          surface={surface}
+          visibility={item.visibility}
+          canChangeVisibility={canChangeVisibility}
+          portalEnabled={item.portalEnabled}
+          parent={item.parent ? { number: item.parent.number, visibility: item.parent.visibility } : null}
+          assigneeContactName={item.assigneeContactId ? item.assigneeContactName : null}
+          valueClassName={railPicker}
+        />
         {item.parent && parentHref ? (
           <>
             <dt className={railLabel}>{t("properties.parent")}</dt>

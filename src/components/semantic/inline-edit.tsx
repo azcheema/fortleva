@@ -2,7 +2,7 @@
 
 import { ChevronDownIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useReducer, useRef } from "react";
+import { useReducer, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -91,6 +91,15 @@ export type InlineEditProps = {
   controlClassName?: string;
   /** data-* the mounted control must emit (e.g. data-visibility). */
   controlData?: Record<`data-${string}`, string>;
+  /**
+   * Bump to put the control back on `value` WITHOUT a remount — for a
+   * commit the caller did not carry out (slice 72: the backlog's visibility
+   * cell ASKS before a make-private, and a question the member declines
+   * writes nothing, so the server value never changes and the key-by-value
+   * reseed never runs; the control's own state kept saying "Private to
+   * team" over a shared task). A remount would drop focus to `<body>`.
+   */
+  resetKey?: number;
   className?: string;
 };
 
@@ -121,10 +130,21 @@ function InlineEditControl({
   inputProps,
   controlClassName,
   controlData,
+  resetKey,
   className,
 }: InlineEditProps) {
   const t = useTranslations("common.inlineEdit");
   const [state, dispatch] = useReducer(inlineEditReducer, value, inlineEditInitial);
+  // `resetKey`: back to the server value, during render (React's
+  // "adjusting state when a prop changes"), never in an effect — and NOT
+  // while the member has the control open: a reseed returns to rest,
+  // which would unmount the control under them and drop focus to <body>.
+  // It lands when they leave it (the next render at rest).
+  const [seenReset, setSeenReset] = useState(resetKey);
+  if (seenReset !== resetKey && state.mode !== "editing") {
+    setSeenReset(resetKey);
+    dispatch({ type: "reseed", value });
+  }
 
   // Refs, not state: none of these three change what is rendered.
   const returnFocus = useRef(false);
@@ -160,6 +180,10 @@ function InlineEditControl({
 
   const commit = (next: string) => {
     leave();
+    // A NEW PICK supersedes a reset still waiting for the member to leave
+    // the control (below): it lands on this render otherwise, and would
+    // put back the older server value over the pick just made.
+    setSeenReset(resetKey);
     dispatch({ type: "commit", value: next });
     if (next !== state.value) onCommit?.(next);
   };
@@ -359,6 +383,7 @@ export function VisibilityInlineEdit({
   hiddenInput,
   invalid,
   onCommit,
+  resetKey,
   className,
 }: {
   value: VisibilityValue;
@@ -369,6 +394,8 @@ export function VisibilityInlineEdit({
   hiddenInput?: boolean;
   invalid?: boolean;
   onCommit?: (next: VisibilityValue) => void;
+  /** See `InlineEditProps.resetKey`. */
+  resetKey?: number;
   className?: string;
 }) {
   const t = useTranslations("visibility");
@@ -396,6 +423,7 @@ export function VisibilityInlineEdit({
       onCommit={(next) => onCommit?.(next === "CLIENT_VISIBLE" ? "CLIENT_VISIBLE" : "INTERNAL")}
       controlClassName={value === "CLIENT_VISIBLE" ? VISIBILITY_WARM : undefined}
       controlData={{ "data-visibility": value }}
+      resetKey={resetKey}
       className={className}
     />
   );

@@ -55,6 +55,9 @@ import {
 import { BulkBar } from "@/components/work-view/bulk-bar";
 import { WorkFilterBar } from "@/components/work-view/filter-bar";
 import { LabelChips } from "@/components/work-view/label-chips";
+import { usePrivacyCopy } from "@/components/work-view/use-privacy-copy";
+import { afterClosingLayers } from "@/lib/after-closing-layers";
+import { VisibilityQuestion } from "@/components/visibility-question";
 import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { wroteSomething } from "@/lib/action-result";
@@ -69,7 +72,12 @@ import {
   VIRTUALISE_ABOVE,
   allRowAnchors,
   applyMove,
+  bulkPrivateRefused,
+  bulkShareRefusal,
   bulkStateTargets,
+  privatizableIds,
+  selectionKey,
+  sharableIds,
   canItemEnterState,
   epicIdsOf,
   filtersOf,
@@ -94,7 +102,7 @@ import {
   type RowWindow,
   type WorkItem,
 } from "@/lib/work-view";
-import type { ResolvedItemList } from "@/modules/work";
+import type { PrivacyPreview, ResolvedItemList } from "@/modules/work";
 
 import type { TimerPillState } from "../../../time/actions";
 import { useTaskTimer } from "../../../time/use-task-timer";
@@ -102,8 +110,10 @@ import { useEndRequest } from "../triage/end-request";
 
 import {
   bulkChangeStateAction,
+  bulkMakePrivateAction,
   bulkSetArchivedAction,
   bulkSetPriorityAction,
+  bulkShareAction,
   createItemAction,
   deleteItemAction,
   renameItemAction,
@@ -115,6 +125,10 @@ import {
   setItemPriorityAction,
   setItemStateAction,
   setItemVisibilityAction,
+  makeItemPrivateAction,
+  previewMakePrivateAction,
+  type BulkPrivateResult,
+  type ItemPrivateResult,
 } from "./actions";
 
 /**
@@ -152,12 +166,28 @@ type RunResult = FormResult | ActionResult<unknown>;
 const useRun = (fallbackMessage: string) => {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const run = (fn: () => Promise<RunResult>, opts: { serverMessage?: boolean; success?: string } = {}) =>
+  const run = (
+    fn: () => Promise<RunResult>,
+    opts: {
+      serverMessage?: boolean;
+      success?: string;
+      /** A success sentence that depends on the ANSWER (slice 72: what else went private); null says nothing. */
+      successOf?: (value: unknown) => string | null;
+      /** Runs when the write was refused or failed — nothing was written. */
+      onFail?: () => void;
+    } = {},
+  ) =>
     start(async () => {
       const r = await fn().catch(() => ({ ok: false as const, message: fallbackMessage }));
-      if (!r.ok) toast.error(r.message);
+      if (!r.ok) {
+        opts.onFail?.();
+        toast.error(r.message);
+      }
       else if (opts.serverMessage && "message" in r) toast.success(r.message);
-      else if (opts.success && wroteSomething(r)) toast.success(opts.success);
+      else if (opts.successOf && "value" in r) {
+        const sentence = opts.successOf(r.value);
+        if (sentence) toast.success(sentence);
+      } else if (opts.success && wroteSomething(r)) toast.success(opts.success);
       router.refresh();
     });
   return { pending, run };
@@ -446,6 +476,12 @@ export function BacklogTable({
   const tPriority = useTranslations("states.priority");
   const router = useRouter();
   const { run } = useRun(t("actionFailed"));
+  const { partsOf, detailsOf, hasBelow, portalOff } = usePrivacyCopy();
+  // Per row: bumped when a pick from the visibility cell wrote nothing (yet).
+  const [cellResets, setCellResets] = useState<Record<string, number>>({});
+  const resetCell = (id: string) => setCellResets((m) => ({ ...m, [id]: (m[id] ?? 0) + 1 }));
+  // Per row: the newest visibility pick's sequence number.
+  const rowPicks = useRef<Record<string, number>>({});
   const searchParams = useSearchParams();
   const [params, setParams] = useQueryStates(workViewParsers, {
     shallow: true,
@@ -854,22 +890,269 @@ export function BacklogTable({
   const allShownSelected =
     selectAllTarget.length > 0 && selectAllTarget.every((i) => selectedIds.has(i.id));
 
-  const runBulk = (fn: () => Promise<{ ok: boolean; message?: string; value?: { changed: number } }>) => {
+  const focusIsOnBar = (): boolean => {
+    const active = document.activeElement;
+    return (
+      active === null ||
+      active === document.body ||
+      (active instanceof Element &&
+        active.closest('[data-slot="bulk-bar"], [data-slot="dropdown-menu-content"]') !== null)
+    );
+  };
+
+  const runBulk = <V extends { changed: number }>(
+    fn: () => Promise<{ ok: true; value: V } | { ok: false; message: string }>,
+    successOf?: (value: V) => string,
+  ) => {
+    // The rows this verb acts on, named NOW: on success the selection
+    // clears and the bar unmounts with focus inside it, and focus must go
+    // back to a ROW, never to <body>, where every single key acts. Naming
+    // it is enough — the focused-row effect restores it from <body>.
+    const firstSelected = selected[0]?.id ?? null;
     startTransition(async () => {
       const r = await fn().catch(() => ({ ok: false as const, message: tView("bulk.failed") }));
       if (!r.ok) {
         toast.error(r.message ?? tView("bulk.failed"));
         return;
       }
-      const changed = r.value?.changed ?? 0;
+      const changed = r.value.changed;
       // A verb that changed nothing must SAY so — a silent success on a
       // selection that already had the value reads as a failed click.
       if (changed === 0) toast.info(tView("bulk.noneChanged"));
-      else toast.success(tView("bulk.done", { changed }));
+      else toast.success(successOf ? successOf(r.value) : tView("bulk.done", { changed }));
+      // Only if focus is still where the verb left it — in the bar (or its
+      // closing menu), or already on <body>. A member who clicked into
+      // another row's field during the round trip keeps it: yanking focus
+      // there would blur, and so COMMIT, a half-typed inline edit.
+      if (firstSelected && focusIsOnBar()) setFocusedRowId(firstSelected);
+      setBarAsk(null);
       setSelectedIds(new Set());
       router.refresh();
     });
   };
+
+  // THE ONE-TASK MAKE-PRIVATE FROM THE CELL (slice 72). Ask the database
+  // what else would go private; with nothing below, the one door
+  // (`makeItemPrivateAction` — the plain flip, the cascade as its
+  // fallback) runs at once. With something below, the question is a toast
+  // whose action is the answer: the cell is a narrow column with no room
+  // for a sentence in place, and this is the product's own shape for a
+  // verb offered after the fact (the timer's 30 s undo).
+  const makeRowPrivate = (item: WorkItem, pick: number) => {
+    const key = `${projectKey}-${item.number}`;
+    // Nothing is written until the member answers (or the door runs), so the
+    // cell goes back to what the row IS — its own state would otherwise keep
+    // saying "Private to team" over a shared task, and a second pick of it
+    // would be swallowed as no change.
+    // Only while this is still the row's newest pick: an older pick's
+    // answer must not put the control back under a newer one in flight.
+    const backToServer = () => {
+      if (rowPicks.current[item.id] === pick) resetCell(item.id);
+    };
+    const name = item.assigneeContactId ? item.assigneeContactName : null;
+    const commitPrivate = () =>
+      run(
+        () => makeItemPrivateAction({ itemId: item.id, projectKey, itemNumber: item.number, surface: "backlog" }),
+        {
+          // A refused make-private (VISIBILITY_BUSY, a lost permission) wrote
+          // nothing: the cell goes back to the row, or the retry the error
+          // invites would be swallowed as no change.
+          onFail: backToServer,
+          successOf: (value) => {
+            const v = value as ItemPrivateResult;
+            if (!v.changed) return null;
+            const also = v.alsoPrivate;
+            if (also && hasBelow(also)) return t("visibilityPrivateWith", { key, list: partsOf(also, "it") });
+            if (v.endedContactAssignment && name) return t("visibilityPrivateEnded", { key, name });
+            return t("visibilityPrivate", { key });
+          },
+        },
+      );
+    void previewMakePrivateAction([item.id], projectKey)
+      .catch(() => ({ ok: false as const, message: tView("bulk.failed") }))
+      .then((r) => {
+        // A NEWER pick on this row is the member's word — the panel's
+        // `previewToken`, per row (slice 72's fourth review).
+        if (rowPicks.current[item.id] !== pick) return;
+        if (!r.ok) {
+          backToServer();
+          toast.error(r.message);
+          return;
+        }
+        if (!hasBelow(r.value)) {
+          commitPrivate();
+          return;
+        }
+        backToServer();
+        toast.warning(t(r.value.portalEnabled ? "visibilityAsk" : "visibilityAskPortalOff", { key, list: partsOf(r.value, "it") }), {
+          description: detailsOf(r.value).join(" "),
+          duration: 30_000,
+          action: { label: t("visibilityAskAction"), onClick: commitPrivate },
+        });
+      });
+  };
+
+  // THE BAR'S QUESTION (slice 72, C35). A SNAPSHOT of the selection taken
+  // when the menu choice was made: the question counts it and the answer
+  // sends exactly it. If the selection on screen stops being that set — a
+  // tick, a filter chip, a refresh taking a row away — the question is
+  // withdrawn during render, so a share can never publish a row the
+  // member did not see counted.
+  const [barAsk, setBarAsk] = useState<
+    | { kind: "share"; ids: string[]; count: number; takeFocus: boolean }
+    | { kind: "private"; ids: string[]; preview: PrivacyPreview; takeFocus: boolean }
+    | null
+  >(null);
+  const [barChecking, setBarChecking] = useState(false);
+  const visibilityTrigger = useRef<HTMLButtonElement>(null);
+  // The ids AND what each showed: a row a colleague made private (or
+  // shared) under an open question changes what the question counted, so
+  // it withdraws the question as surely as a tick does (review, slice 72).
+  const selectedKey = selectionKey(selected);
+  // The preview's own sequence: a token each ask bumps, and the LIVE
+  // selection (a ref kept current from an effect) — an answer that lands
+  // after the selection moved on is dropped.
+  const barCheckToken = useRef(0);
+  const selectedKeyNow = useRef(selectedKey);
+  useEffect(() => {
+    selectedKeyNow.current = selectedKey;
+  });
+  const [askedFor, setAskedFor] = useState(selectedKey);
+  if (askedFor !== selectedKey) {
+    setAskedFor(selectedKey);
+    if (barAsk) setBarAsk(null);
+    if (barChecking) setBarChecking(false);
+  }
+  const barHandBack = () => visibilityTrigger.current?.focus();
+
+  const shareRefused = bulkShareRefusal(selected);
+  const shareRefusal =
+    shareRefused === null
+      ? null
+      : shareRefused.kind === "none"
+        ? tView("bulk.shareRefusedNone")
+        : tView("bulk.shareRefusedParent", { key: `${projectKey}-${shareRefused.number}` });
+  const privateRefusal = bulkPrivateRefused(selected) ? tView("bulk.privateRefusedNone") : null;
+
+  const askShare = () => {
+    // ONLY THE ROWS THE QUESTION COUNTS are sent — the ones shown private.
+    // Sending the whole selection let `bulkShare` share every row that was
+    // private AT WRITE TIME, so a task a colleague had made private after
+    // this list rendered (shown here as shared, never counted) was silently
+    // shared again with its client comments — found by the slice 72 review,
+    // three reviewers independently. A counted row that someone else shared
+    // meanwhile is skipped by the server; a selected parent that was shown
+    // shared is an OUTSIDE parent to `bulkShare`, share-locked and re-checked
+    // live, so refuse-up still holds.
+    const ids = sharableIds(selected);
+    const key = selectedKey;
+    const token = ++barCheckToken.current;
+    setBarChecking(false);
+    // Opened once the menu has finished closing (its focus trap outlives
+    // the choice — `afterClosingLayers`), and only if nothing moved since:
+    // another ask, or the selection itself.
+    afterClosingLayers(() => {
+      if (token !== barCheckToken.current || selectedKeyNow.current !== key) return;
+      setBarAsk({ kind: "share", ids, count: ids.length, takeFocus: focusIsOnBar() });
+    });
+  };
+  const askPrivate = () => {
+    // Symmetric with `askShare`: only the rows SHOWN SHARED are asked about
+    // and sent, so a stale list never quietly undoes a colleague's share
+    // either. The preview counts exactly these; the write re-derives them.
+    const ids = privatizableIds(selected);
+    const key = selectedKey;
+    const token = ++barCheckToken.current;
+    setBarAsk(null);
+    setBarChecking(true);
+    void previewMakePrivateAction(ids, projectKey)
+      .catch(() => ({ ok: false as const, message: tView("bulk.failed") }))
+      .then((r) => {
+        // Dropped if another ask started, or the selection moved on.
+        if (token !== barCheckToken.current || selectedKeyNow.current !== key) return;
+        setBarChecking(false);
+        if (!r.ok) {
+          toast.error(r.message);
+          return;
+        }
+        const preview = r.value;
+        // As for the share: once the menu has finished closing, and only
+        // if nothing moved meanwhile. "Here" is the bar or nowhere.
+        afterClosingLayers(() => {
+          if (token !== barCheckToken.current || selectedKeyNow.current !== key) return;
+          setBarAsk({ kind: "private", ids, preview, takeFocus: focusIsOnBar() });
+        });
+      });
+  };
+
+  const barQuestion = (() => {
+    if (!barAsk) return undefined;
+    if (barAsk.kind === "share") {
+      return (
+        <VisibilityQuestion
+          testId="bulk-question"
+          question={tView("bulk.shareQuestion", { count: barAsk.count })}
+          details={data.portalEnabled ? [] : [portalOff()]}
+          confirmLabel={tView("bulk.shareConfirm")}
+          cancelLabel={tView("bulk.cancel")}
+          takeFocus={barAsk.takeFocus}
+          onConfirm={() => {
+            barHandBack();
+            const ids = barAsk.ids;
+            setBarAsk(null);
+            runBulk(
+              () => bulkShareAction(ids, projectKey),
+              (v) =>
+                v.clientComments > 0
+                  ? `${tView("bulk.sharedDone", { count: v.changed })} ${tView("bulk.sharedComments", { count: v.clientComments })}`
+                  : tView("bulk.sharedDone", { count: v.changed }),
+            );
+          }}
+          onCancel={({ returnFocus }) => {
+            if (returnFocus) barHandBack();
+            setBarAsk(null);
+          }}
+          onWithdrawn={barHandBack}
+        />
+      );
+    }
+    const p = barAsk.preview;
+    return (
+      <VisibilityQuestion
+        testId="bulk-question"
+        question={
+          hasBelow(p)
+            ? tView("bulk.privateQuestionWith", { count: p.tasks, list: partsOf(p, "them") })
+            : tView("bulk.privateQuestion", { count: p.tasks })
+        }
+        details={detailsOf(p)}
+        confirmLabel={tView("bulk.privateConfirm")}
+        cancelLabel={tView("bulk.cancel")}
+        takeFocus={barAsk.takeFocus}
+        onConfirm={() => {
+          barHandBack();
+          const ids = barAsk.ids;
+          setBarAsk(null);
+          runBulk(
+            () => bulkMakePrivateAction(ids, projectKey),
+            (v: BulkPrivateResult) =>
+              [
+                tView("bulk.privateDone", { count: v.changed }),
+                ...(hasBelow(v) ? [tView("bulk.alsoPrivate", { list: partsOf(v, "them") })] : []),
+                ...(v.endedContactAssignments > 0
+                  ? [tView("bulk.endedAssignments", { count: v.endedContactAssignments })]
+                  : []),
+              ].join(" "),
+          );
+        }}
+        onCancel={({ returnFocus }) => {
+          if (returnFocus) barHandBack();
+          setBarAsk(null);
+        }}
+        onWithdrawn={barHandBack}
+      />
+    );
+  })();
 
   // The backlog's region keys (UI.md §6): `J K` move focus between the
   // rows (every item row is focusable, `DragRow`), and `X` toggles the FOCUSED row's
@@ -1694,27 +1977,48 @@ export function BacklogTable({
                   <TableCell priority="medium">
                     <VisibilityInlineEdit
                       value={item.visibility}
+                      resetKey={cellResets[item.id] ?? 0}
                       density="table"
                       fit
                       readOnly={!data.caps.canChangeVisibility}
                       hiddenInput={false}
                       onCommit={(next) => {
-                        if (next === item.visibility) return;
-                        // The badge at rest reads the SERVER prop, so the
+                        // NO `next === item.visibility` early return: the
+                        // prop lags a share by the whole refresh, so it
+                        // swallowed a "Private to team" reversal picked in
+                        // that window and the share landed as the member's
+                        // last word (slice 72 fix review). `InlineEdit`
+                        // already commits only a pick that differs from its
+                        // own last one, and both doors are no-ops on an
+                        // unchanged value. The badge at rest reads the SERVER prop, so the
                         // chip never shows a visibility the row does not hold
-                        // (§10.4); the table still says "Saved" here, for a
-                        // write that happened.
-                        run(
-                          () =>
-                            setItemVisibilityAction({
-                              itemId: item.id,
-                              projectKey,
-                              itemNumber: item.number,
-                              surface: "backlog",
-                              visibility: next,
-                            }),
-                          { success: t("saved") },
-                        );
+                        // (§10.4); the toast names what the task is now.
+                        // Every pick is the row's newest word: a make-private
+                        // preview still out for an older one is dropped.
+                        const pick = (rowPicks.current[item.id] = (rowPicks.current[item.id] ?? 0) + 1);
+                        if (next === "CLIENT_VISIBLE") {
+                          run(
+                            () =>
+                              setItemVisibilityAction({
+                                itemId: item.id,
+                                projectKey,
+                                itemNumber: item.number,
+                                surface: "backlog",
+                                visibility: next,
+                              }),
+                            {
+                              success: t("visibilityShared", { key: `${projectKey}-${item.number}` }),
+                              // A refused share (a private parent) wrote
+                              // nothing: the cell goes back to the row —
+                              // unless a newer pick has spoken since.
+                              onFail: () => {
+                                if (rowPicks.current[item.id] === pick) resetCell(item.id);
+                              },
+                            },
+                          );
+                          return;
+                        }
+                        makeRowPrivate(item, pick);
                       }}
                     />
                   </TableCell>
@@ -1807,6 +2111,14 @@ export function BacklogTable({
             setAnnounceNone(true);
             setSelectedIds(new Set());
           }}
+          visibility={
+            data.caps.canChangeVisibility
+              ? { shareRefusal, privateRefusal, onShare: askShare, onMakePrivate: askPrivate }
+              : undefined
+          }
+          question={barQuestion}
+          checking={barChecking}
+          visibilityTriggerRef={visibilityTrigger}
         />
       ) : null}
       <p className="text-xs">

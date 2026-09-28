@@ -304,14 +304,15 @@ export function AssigneeField({
         // that never reached anyone. Found by a fresh code review, which
         // also caught that UI.md's old "portal-enabled projects only"
         // qualifier had been deleted rather than implemented.
-        footer={
-          visibility === "INTERNAL" && offered.length > 0
-            ? () => (
-                <p className="px-2 pb-1 text-2xs text-muted-foreground" data-testid="item-assignee-shares">
-                  {portalEnabled ? t("assignee.sharesWithClient") : t("assignee.sharesPortalOff")}
-                </p>
-              )
-            : undefined
+        // A `note`, not a `footer` (slice 72): the same place, but named by
+        // the search box's `aria-describedby`, so a screen reader hears the
+        // warning with the field rather than never reaching it.
+        note={
+          visibility === "INTERNAL" && offered.length > 0 ? (
+            <span data-testid="item-assignee-shares">
+              {portalEnabled ? t("assignee.sharesWithClient") : t("assignee.sharesPortalOff")}
+            </span>
+          ) : undefined
         }
       >
         {shown.memberId !== null ? (

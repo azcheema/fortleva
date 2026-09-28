@@ -11,22 +11,30 @@ import {
   bulkChangeState,
   bulkSetArchived,
   bulkSetPriority,
+  bulkShare,
   changeItemVisibility,
   changeState,
   createItem,
   createLabel,
   deleteItem,
+  makeItemPrivate,
+  makePrivateWithChildren,
   moveItem,
+  previewMakePrivate,
   setItemArchived,
   setItemLabel,
   setItemMilestone,
   updateItemFields,
   type AssignmentCommitted,
   type BulkResult,
+  type BulkShareResult,
   type ContactAssignmentCommitted,
   type LabelsCommitted,
   type MilestoneAssigned,
   type MovedItem,
+  type ItemPrivateCommitted,
+  type MakePrivateResult,
+  type PrivacyPreview,
   type VisibilityCommitted as WorkVisibilityCommitted,
   type WorkCtx,
 } from "@/modules/work";
@@ -216,6 +224,8 @@ export type MilestoneCommitted = Omit<MilestoneAssigned, "id">;
 /** The service's own contract — the list as it now stands, the label acted on and the verb — not a second copy of it. */
 export type LabelsChanged = LabelsCommitted;
 export type VisibilityCommitted = Omit<WorkVisibilityCommitted, "id">;
+/** The one make-private door's answer (slice 72): the single flip's contract, plus what else went private with it. */
+export type ItemPrivateResult = Omit<ItemPrivateCommitted, "id">;
 
 const FAILED = {
   state: "state.failed",
@@ -624,6 +634,88 @@ export async function moveItemAction(input: {
     }),
   );
   if (r.ok) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * MAKE PRIVATE, THE ONE DOOR (Phase 3 slice 72) — the rail's `V` and the
+ * backlog's cell, for "Private to team" on one task. The service tries
+ * the plain one-row flip and, when something below the task is still
+ * client-visible, runs the cascade (visibility.ts `makeItemPrivate`): the
+ * surfaces ASK first when their preview counts something below, and this
+ * is what makes the answer hold when the preview was stale. SAFETY-
+ * CRITICAL and never routine: history and audit in the same transaction.
+ */
+export async function makeItemPrivateAction(
+  input: z.input<typeof Target>,
+): Promise<ActionResult<ItemPrivateResult>> {
+  const ctx = await ctxOf();
+  const parsed = Target.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "visibility") };
+  const { itemId, projectKey, itemNumber, surface } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await makeItemPrivate(ctx, itemId);
+    return {
+      visibility: c.visibility,
+      endedContactAssignment: c.endedContactAssignment,
+      changed: c.changed,
+      alsoPrivate: c.alsoPrivate,
+    };
+  });
+  if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * What a make-private of these tasks would ALSO take out of the client's
+ * view — the counts the rail and the selection bar ask about ("Make 3
+ * tasks private, with 2 tasks under them, 5 comments and 1 file?").
+ * Read-only; the write recomputes everything under its locks.
+ */
+export async function previewMakePrivateAction(
+  itemIds: string[],
+  projectKey: string,
+): Promise<ActionResult<PrivacyPreview>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.workView");
+  const parsed = bulkShape.safeParse({ itemIds, projectKey });
+  if (!parsed.success) return { ok: false, message: t("bulk.failed") };
+  const input = parsed.data;
+  return runAction(backlogPath(input.projectKey), () => previewMakePrivate(ctx, input.itemIds));
+}
+
+/** The selection bar's make-private — `changed` is the count the bar's toast and `runBulk` read. */
+export type BulkPrivateResult = { changed: number; skipped: number } & Omit<MakePrivateResult, "tasks" | "alreadyPrivate">;
+
+export async function bulkMakePrivateAction(
+  itemIds: string[],
+  projectKey: string,
+): Promise<ActionResult<BulkPrivateResult>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.workView");
+  const parsed = bulkShape.safeParse({ itemIds, projectKey });
+  if (!parsed.success) return { ok: false, message: t("bulk.failed") };
+  const input = parsed.data;
+  const r = await runAction(backlogPath(input.projectKey), async () => {
+    const { tasks, alreadyPrivate, ...rest } = await makePrivateWithChildren(ctx, input.itemIds);
+    return { changed: tasks, skipped: alreadyPrivate, ...rest };
+  });
+  if (r.ok && r.value.changed > 0) revalidate(input.projectKey);
+  return r;
+}
+
+/** The selection bar's "Show to client" (C35). */
+export async function bulkShareAction(
+  itemIds: string[],
+  projectKey: string,
+): Promise<ActionResult<BulkShareResult>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.workView");
+  const parsed = bulkShape.safeParse({ itemIds, projectKey });
+  if (!parsed.success) return { ok: false, message: t("bulk.failed") };
+  const input = parsed.data;
+  const r = await runAction(backlogPath(input.projectKey), () => bulkShare(ctx, input.itemIds));
+  if (r.ok && r.value.changed > 0) revalidate(input.projectKey);
   return r;
 }
 
