@@ -182,7 +182,10 @@ export type ItemList = {
   /**
    * The project's portal switch (slice 72): the selection bar's share and
    * make-private questions say what they will do, and with the portal off
-   * the client sees nothing either way. Read after the batch, in sequence.
+   * the client sees nothing either way. And (slice 73) whether the
+   * backlog's create row and the board column's "+" offer "Client can see"
+   * at all (`rootCreateVisibility`) — a safety-relevant reader. Read after
+   * the batch, in sequence.
    */
   portalEnabled: boolean;
   states: WorkflowStateEntry[];
@@ -537,8 +540,12 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority" | "labels"> & {
    * `client_id = app.client_id AND visibility = 'CLIENT_VISIBLE' AND
    * portal_enabled`).
    *
-   * It is on the DETAIL and not on the list because exactly one surface
-   * needs it: the `A` picker's warning. Marking a task CLIENT_VISIBLE on
+   * The panel's portal-off sentences read it: the `A` picker's warning,
+   * the `V` picker's note, and the Subtasks add row's hint (slice 73).
+   * (The LIST carries the project's own switch — `ItemList.portalEnabled`.)
+   * Until slice 74 closes the stamp race (C40) this copy can disagree
+   * with the project's switch, in either direction, for a row inserted
+   * while the switch was being flipped. Marking a task CLIENT_VISIBLE on
    * a portal-off project has always been allowed — `changeItemVisibility`
    * has never consulted this column, because visibility is the ROW's flag
    * and the portal switch is the PROJECT's — so handing a task to a
@@ -935,18 +942,76 @@ export async function getItemDetail(
   });
 }
 
-/** Title-only create (UI rule 2): lands in the default state — or the
+/** What a create stored — its own row's values, read back after the insert. */
+export type ItemCreated = {
+  id: string;
+  number: number;
+  /**
+   * The visibility the row was BORN with, which for a child can be lower
+   * than what was asked (the clamp below) — so every surface's "the
+   * client can see it" is said from this, never from its own pick.
+   */
+  visibility: "INTERNAL" | "CLIENT_VISIBLE";
+  /** The row's stamped portal switch — the fact `portal_gate` reads (`ItemDetail.portalEnabled`). */
+  portalEnabled: boolean;
+};
+
+/**
+ * Title-only create (UI rule 2): lands in the default state — or the
  * given state of the same project (a board column's "+") — at the
- * bottom of the list; visibility defaults from the parent (INTERNAL at
- * the root — the worst-bug guard). Returns the human key. The tree
- * trigger has the last word on nesting, translated by `guarded`. */
+ * bottom of the list. The tree trigger has the last word on nesting,
+ * translated by `guarded`.
+ *
+ * VISIBILITY AT BIRTH (Phase 3 slice 73; UI.md rule 10, §5.4; founder
+ * decisions (8) of 2026-09-12, C38 and C39 of 2026-09-28):
+ *   · A TOP-LEVEL task is born INTERNAL unless asked otherwise — the
+ *     worst-bug default. Asking for CLIENT_VISIBLE is a share, so it
+ *     takes `work_item:change_visibility` (C38: only people who can
+ *     share tasks may create one the client sees from the start), and
+ *     the service enforces it; hiding the option is only the courtesy.
+ *   · A CHILD is born with its parent's visibility, or LOWER — never
+ *     higher (the tree trigger's `WORK_TREE_CHILD_VISIBILITY` is the
+ *     belt). Lowering at birth is `work_item:create` alone: it is the
+ *     lever decision (8) gave the member who cannot lower it afterwards.
+ *     A CLIENT_VISIBLE ask under a parent that went private after the
+ *     member's render is CLAMPED to INTERNAL, never refused: the child is
+ *     "born with its parent's visibility", and a refusal would refuse
+ *     every retry from the stale surface until a refresh. The answer
+ *     carries what was stored, so the surface can say so.
+ *   · Omitted, a child inherits — service callers, the seed and the
+ *     dbtests, which is exactly the behaviour before slice 73. The
+ *     member's surfaces always send what they SHOW.
+ * The share at birth is audited on `work_item.created` itself, whose
+ * metadata carries the STORED visibility (the `document.created`
+ * precedent) — never a second `work_item.visibility_changed`: a birth
+ * has no `from`, and every actor of that event holds the code today.
+ * No comment is raised (follow-task.ts: creation is not a raise), and
+ * the portal switch is not consulted — visibility is the row's flag,
+ * the switch is the project's (`changeItemVisibility`'s rule).
+ */
 export async function createItem(
   ctx: WorkCtx,
-  input: { projectId: string; title: string; parentId?: string; stateId?: string },
-): Promise<{ id: string; number: number }> {
+  input: {
+    projectId: string;
+    title: string;
+    parentId?: string;
+    stateId?: string;
+    /** What the member's surface showed; omitted = inherit (see above). */
+    visibility?: "INTERNAL" | "CLIENT_VISIBLE";
+  },
+): Promise<ItemCreated> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => guarded(async () => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:create");
     await assertInScope(tx, ctx.actor, { projectId: input.projectId });
+    // C38, decided BEFORE any lock: a refused top-level share waits on
+    // nothing — not on the counter row, not on the project's queue — so
+    // it never queues behind a colleague's move or the portal fan-out.
+    // Awaited in sequence, never a batch leg (authz-batches.test.ts). A
+    // child's CLIENT_VISIBLE is not a share (it can never exceed its
+    // parent) and never asks for the code.
+    if (!input.parentId && input.visibility === "CLIENT_VISIBLE") {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:change_visibility");
+    }
     const project = await tx.project.findFirst({
       where: { tenantId: ctx.tenantId, id: input.projectId },
       select: { clientId: true },
@@ -1007,7 +1072,17 @@ export async function createItem(
     // the same rule, and a parent it says has no children is its
     // CANNOT_NEST.
     const type = parent ? (childTypeOf(parent.type) ?? "SUBTASK") : "TASK";
-    const visibility = parent?.visibility ?? "INTERNAL";
+    // Computed EXPLICITLY, never `data: { visibility: input.visibility }`:
+    // Prisma drops an undefined field and the column's INTERNAL default
+    // would silently replace a child's inheritance. The child's value is
+    // decided on the parent read UNDER ITS SHARE LOCK above, never a
+    // probe — a stale read would turn the clamp into the trigger's
+    // PARENT_NOT_VISIBLE refusal during a colleague's make-private.
+    const visibility: "INTERNAL" | "CLIENT_VISIBLE" = parent
+      ? (input.visibility ?? parent.visibility) === "CLIENT_VISIBLE" && parent.visibility === "CLIENT_VISIBLE"
+        ? "CLIENT_VISIBLE"
+        : "INTERNAL"
+      : (input.visibility ?? "INTERNAL");
     const rank = await bottomRank(tx, ctx.tenantId, input.projectId);
     await tx.workItem.create({
       data: {
@@ -1033,10 +1108,14 @@ export async function createItem(
       action: "work_item.created",
       targetType: "WorkItem",
       targetId: id,
-      metadata: { number, projectId: input.projectId, type },
+      // `visibility` from the RE-READ row, never the ask: a clamped
+      // child's trail must not claim a share that did not happen. On
+      // EVERY create — an Employee's subtask born shared under a shared
+      // parent had never recorded that it was born shared at all.
+      metadata: { number, projectId: input.projectId, type, visibility: created!.visibility },
     });
-    if (targetState) await transitionState(tx, ctx, created!, targetState);
-    return { id, number };
+    if (targetState) await transitionState(tx, ctx, created!, targetState, undefined, { birth: true });
+    return { id, number, visibility: created!.visibility, portalEnabled: created!.portalEnabled };
   }));
 }
 

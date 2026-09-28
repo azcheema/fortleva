@@ -20,6 +20,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
+  type Dispatch,
+  type SetStateAction,
   useCallback,
   useEffect,
   useId,
@@ -32,6 +34,7 @@ import {
 import { toast } from "sonner";
 
 import {
+  CreateVisibilitySelect,
   EmptyState,
   MemberAvatar,
   PriorityIndicator,
@@ -45,6 +48,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge";
 import { LabelChips } from "@/components/work-view/label-chips";
+import { onCreateGroupBlur, useRootCreatePick } from "@/components/work-view/use-create-visibility";
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
 import { formatDuration, type DurationStyle } from "@/lib/format";
 import { focusedKeyApplies, keyEventShape, type KeyBinding } from "@/lib/keymap";
@@ -61,6 +65,8 @@ import {
   isEndableRequest,
   laneKeyOf,
   lanesFor,
+  pendingCreateItem,
+  rootCreateVisibility,
   visibleColumns,
   type GroupBy,
   type Lane,
@@ -597,6 +603,8 @@ export function Board({
               canDelete={data.caps.canDelete}
               canCreate={canCreate}
               canApprove={canApprove}
+              portalEnabled={data.portalEnabled}
+              canShare={data.caps.canChangeVisibility}
               durationStyle={durationStyle}
               timer={timer}
               spent={spent}
@@ -663,6 +671,10 @@ function BoardLane(props: {
   canDelete: boolean;
   canCreate: boolean;
   canApprove: boolean;
+  /** The project's portal switch (`ItemList.portalEnabled`) — the column "+" asks who can see it only with it on. */
+  portalEnabled: boolean;
+  /** `work_item:change_visibility` — "Client can see" is offered only with it (C38). */
+  canShare: boolean;
   durationStyle: DurationStyle;
   timer: TimerPillState | null;
   spent: ItemSpent | null;
@@ -670,7 +682,8 @@ function BoardLane(props: {
   tabbableId: string | null;
   defaultStateId: string | null;
   creatingIn: string | null;
-  setCreatingIn: (stateId: string | null) => void;
+  /** The Board's own setter — an UPDATER too, so a column can close only ITSELF. */
+  setCreatingIn: Dispatch<SetStateAction<string | null>>;
   onFocusCard: (id: string) => void;
   onOpenPicker: (item: WorkItem) => void;
   /** A card's "Cancel and reply…" menu item, or null where it has none (`Board`'s `endRequestFor`). */
@@ -752,6 +765,10 @@ function BoardColumn(props: {
   canDelete: boolean;
   canCreate: boolean;
   canApprove: boolean;
+  /** The project's portal switch (`ItemList.portalEnabled`) — the column "+" asks who can see it only with it on. */
+  portalEnabled: boolean;
+  /** `work_item:change_visibility` — "Client can see" is offered only with it (C38). */
+  canShare: boolean;
   durationStyle: DurationStyle;
   timer: TimerPillState | null;
   spent: ItemSpent | null;
@@ -759,7 +776,8 @@ function BoardColumn(props: {
   tabbableId: string | null;
   defaultStateId: string | null;
   creatingIn: string | null;
-  setCreatingIn: (stateId: string | null) => void;
+  /** The Board's own setter — an UPDATER too, so a column can close only ITSELF. */
+  setCreatingIn: Dispatch<SetStateAction<string | null>>;
   onFocusCard: (id: string) => void;
   onOpenPicker: (item: WorkItem) => void;
   endRequestFor: (item: WorkItem) => RowAction | null;
@@ -885,9 +903,14 @@ function BoardColumn(props: {
             state={state}
             projectId={props.projectId}
             projectKey={props.projectKey}
+            portalEnabled={props.portalEnabled}
+            canShare={props.canShare}
             isDefault={props.defaultStateId === state.id}
             editing={props.creatingIn === state.id}
-            setEditing={(on) => props.setCreatingIn(on ? state.id : null)}
+            // Closing clears THIS column only: a late close (the group blur's
+            // deferred answer, code review 2026-09-28) must never shut the
+            // composer a member has opened in another column since.
+            setEditing={(on) => props.setCreatingIn(on ? state.id : (current) => (current === state.id ? null : current))}
             applyOptimistic={props.applyOptimistic}
             startTransition={props.startTransition}
             onMutate={props.onMutate}
@@ -1288,12 +1311,29 @@ function BoardCard({
 /** At rest a button (founder mandate 1); activating swaps in the field;
  * Enter creates and stays open; Escape or an empty blur rests. Not a
  * <form action> — the value is cleared on success, React never resets
- * it mid-flight. The created card appears at once (optimistic, keyed
- * "…") and takes its real number on the refresh. */
+ * it mid-flight. The created card appears at once (pending, keyed "…")
+ * and takes its real number on the refresh.
+ *
+ * WHO CAN SEE IT (Phase 3 slice 73; UI.md rule 10; founder decisions C38,
+ * C39): in a portal-enabled project a member who may share gets the
+ * visibility select under the title, at "Private to team"; one who may
+ * not sees the "Private to team" chip; a portal-off project asks
+ * nothing. The select never creates — only the title does. Enter starts
+ * the next task private again; ⌘⇧Enter keeps the pick. The PENDING card
+ * wears the visibility the create SENT (`pendingCreateItem`): a
+ * top-level create stores exactly that or nothing, so its chip is never
+ * a false "Private to team" over a task being created shared.
+ *
+ * `busy` is the action's own flight: Enter waits for it, and so does
+ * Escape — a field closed while a create is out has nowhere to keep a
+ * title the server then refuses, and the failure toast says the title is
+ * still here. */
 function ColumnCreate({
   state,
   projectId,
   projectKey,
+  portalEnabled,
+  canShare,
   isDefault,
   editing,
   setEditing,
@@ -1304,6 +1344,10 @@ function ColumnCreate({
   state: WorkState;
   projectId: string;
   projectKey: string;
+  /** REQUIRED — see `BoardColumn`'s. */
+  portalEnabled: boolean;
+  /** REQUIRED — see `BoardColumn`'s. */
+  canShare: boolean;
   isDefault: boolean;
   editing: boolean;
   setEditing: (on: boolean) => void;
@@ -1312,9 +1356,11 @@ function ColumnCreate({
   onMutate: () => void;
 }) {
   const t = useTranslations("projects.board");
+  const tVis = useTranslations("visibility.create");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const groupRef = useRef<HTMLDivElement>(null);
   // Escape leaves the field and hands focus back to the control that
   // opened it (UI.md §5.11) — but ONLY Escape. A blur-close because the
   // member clicked a card must leave that click's focus alone, or the
@@ -1322,54 +1368,39 @@ function ColumnCreate({
   // Same shape as InlineEdit / RowActions: a flag the button's callback
   // ref consumes once, after it has actually rendered.
   const returnFocus = useRef(false);
+  // Keyed to the COLUMN as well as to the field being open: the board's
+  // `C` moving the composer to another column starts it private.
+  const { pick, setPick, afterCreate } = useRootCreatePick({
+    open: editing,
+    scope: state.id,
+    offered: portalEnabled && canShare,
+  });
+  const { offered, send } = rootCreateVisibility({ portalEnabled, canShare, pick });
+  const hintId = `board-create-visibility-hint-${state.id}`;
+  const hinted = offered && pick === "CLIENT_VISIBLE";
 
-  const submit = () => {
+  const submit = (keep: boolean) => {
     const value = title.trim();
     if (!value || busy) return;
     setBusy(true);
+    // The one value the card, the action and the answer's reset share.
+    const sent = send;
     startTransition(async () => {
       applyOptimistic({
         type: "create",
-        item: {
-          id: `temp-${Date.now()}`,
-          number: 0,
-          title: value,
-          type: "TASK",
-          // A composer creates ordinary work; only the portal's intake
-          // makes a REQUEST (`createRequest`), and `createItem` has no
-          // parameter for it.
-          kind: "TASK",
-          stateId: state.id,
-          stateCategory: state.category,
-          stateName: state.name,
-          priority: "NONE",
-          estimateMinutes: null,
-          targetDate: null,
-          visibility: "INTERNAL",
-          assigneeMemberId: null,
-          assigneeName: null,
-          // A title-only create assigns nobody, at the agency or at the
-          // client — `createItem` has no parameter for either.
-          assigneeContactId: null,
-          assigneeContactName: null,
-          rootId: "",
-          parentId: null,
-          parentRef: null,
-          archivedAt: null,
-          checklistTotal: 0,
-          checklistDone: 0,
-          attachmentCount: 0,
-          // A title-only create carries no labels, and the `L` picker is
-          // in the panel: the refresh cannot bring any either.
-          labels: [],
-        },
+        item: pendingCreateItem({ tempId: `temp-${Date.now()}`, state, title: value, visibility: sent }),
       });
-      const r = await createItemInStateAction(projectId, projectKey, state.id, value).catch(() => ({
+      const r = await createItemInStateAction(projectId, projectKey, state.id, value, sent).catch(() => ({
         ok: false as const,
         message: t("create.failed"),
       }));
       setBusy(false);
-      inputRef.current?.focus();
+      // Back to the field only if focus is nowhere or still in this
+      // composer — a member who moved on meanwhile is not pulled back.
+      const active = document.activeElement;
+      if (active === null || active === document.body || groupRef.current?.contains(active)) {
+        inputRef.current?.focus();
+      }
       if (!r.ok) {
         // The title STAYS in the field — a failed action must never look
         // like a revert, and retyping a lost title is the worst of both
@@ -1383,34 +1414,70 @@ function ColumnCreate({
       // is not, and "Fix login " would otherwise stay put and read as a
       // failure the member answers by creating the task twice.
       setTitle((current) => (current.trim() === value ? "" : current));
+      // C39: the next task starts private again — unless ⌘⇧Enter asked to
+      // keep it, or the member changed the pick while this one was out.
+      afterCreate(sent, keep);
       onMutate();
     });
   };
 
   return editing ? (
-    <Input
-      ref={inputRef}
-      autoFocus
-      value={title}
-      onChange={(e) => setTitle(e.target.value)}
+    <div
+      ref={groupRef}
+      className="flex flex-col gap-1.5"
       onKeyDown={(e) => {
-        if (e.key === "Enter") {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        if (busy) return;
+        returnFocus.current = true;
+        setTitle("");
+        setEditing(false);
+      }}
+      onBlur={(e) =>
+        onCreateGroupBlur(e, () => {
+          if (title.trim() === "" && !busy) setEditing(false);
+        })
+      }
+    >
+      <Input
+        ref={inputRef}
+        autoFocus
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
           e.preventDefault();
-          submit();
-        } else if (e.key === "Escape") {
-          returnFocus.current = true;
-          setTitle("");
-          setEditing(false);
-        }
-      }}
-      onBlur={() => {
-        if (title.trim() === "" && !busy) setEditing(false);
-      }}
-      placeholder={t("create.placeholder")}
-      aria-label={t("create.label", { state: state.name })}
-      data-testid="board-create-input"
-      className="h-8"
-    />
+          // ⌘⇧Enter: create another like this one — the pick kept (C39).
+          submit((e.metaKey || e.ctrlKey) && e.shiftKey);
+        }}
+        placeholder={t("create.placeholder")}
+        aria-label={t("create.label", { state: state.name })}
+        aria-describedby={hinted ? hintId : undefined}
+        data-testid="board-create-input"
+        className="h-8"
+      />
+      {offered ? (
+        <CreateVisibilitySelect
+          value={pick}
+          onChange={setPick}
+          testId="board-create-visibility"
+          describedBy={hinted ? hintId : undefined}
+          density="field"
+          className="self-start"
+        />
+      ) : portalEnabled ? (
+        // No choice for this member (C38) where the client can look: the
+        // state is still drawn (§10.4 — absence is not a state).
+        <span data-testid="board-create-visibility-fixed" className="self-start">
+          <VisibilityBadge value="INTERNAL" size="sm" />
+        </span>
+      ) : null}
+      {hinted ? (
+        <p id={hintId} className="text-xs whitespace-normal text-muted-foreground">
+          {tVis("rootHint")}
+        </p>
+      ) : null}
+    </div>
   ) : (
     <button
       ref={(node) => {

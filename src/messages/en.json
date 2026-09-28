@@ -176,7 +176,10 @@
       "openHint": "creates it and opens it",
       "created": "{key} created",
       "failed": "Could not create the task.",
-      "changeProject": "Change project"
+      "changeProject": "Change project",
+      "createdVisible": "{key} created — the client can see it",
+      "createdVisiblePortalOff": "{key} created and marked for the client — this project's portal is off, so they see nothing yet",
+      "keepHint": "keeps “Client can see” for the next one"
     }
   },
   "home": {
@@ -1122,6 +1125,9 @@
       "signoff": "{count, plural, one {# file is} other {# files are}} waiting for the client's sign-off. The request is hidden with the file, not withdrawn.",
       "frozen": "Time reports and updates already published keep what they said.",
       "portalOff": "This project's portal is off, so the client sees none of this either way."
+    },
+    "create": {
+      "rootHint": "The client will see this task on their portal."
     }
   },
   "domainErrors": {
@@ -2148,6 +2154,10 @@
           "failed": {
             "TASK": "The task was not created. The checklist item is unchanged — try again.",
             "SUBTASK": "The subtask was not created. The checklist item is unchanged — try again."
+          },
+          "doneVisiblePortalOff": {
+            "TASK": "Task {key} created from the checklist item and marked for the client — this project's portal is off, so they see nothing yet.",
+            "SUBTASK": "Subtask {key} created from the checklist item and marked for the client — this project's portal is off, so they see nothing yet."
           }
         }
       },
@@ -2192,13 +2202,33 @@
           "SUBTASK": "Subtask {key} added"
         },
         "visibleHint": {
-          "TASK": "Follows {key} — this epic is visible to the client, so new tasks start visible too",
-          "SUBTASK": "Follows {key} — this task is visible to the client, so new subtasks start visible too"
+          "TASK": "Epic {key} is visible to the client, so the new task will be too — choose “Private to team” to keep it to your team.",
+          "SUBTASK": "Task {key} is visible to the client, so the new subtask will be too — choose “Private to team” to keep it to your team."
         },
         "invalidTitle": "A title is 1 to {max} characters.",
         "failed": {
           "TASK": "The task was not created. Your title is still here — try again.",
           "SUBTASK": "The subtask was not created. Your title is still here — try again."
+        },
+        "visibleHintPortalOff": {
+          "TASK": "Epic {key} is marked for the client, so the new task will be too — they see nothing while this project's portal is off.",
+          "SUBTASK": "Task {key} is marked for the client, so the new subtask will be too — they see nothing while this project's portal is off."
+        },
+        "privateHint": {
+          "TASK": "Follows {key} — the epic is private to your team, so new tasks are too.",
+          "SUBTASK": "Follows {key} — the task is private to your team, so new subtasks are too."
+        },
+        "addedVisible": {
+          "TASK": "Task {key} added — the client can see it",
+          "SUBTASK": "Subtask {key} added — the client can see it"
+        },
+        "addedVisiblePortalOff": {
+          "TASK": "Task {key} added and marked for the client — this project's portal is off, so they see nothing yet",
+          "SUBTASK": "Subtask {key} added and marked for the client — this project's portal is off, so they see nothing yet"
+        },
+        "addedPrivate": {
+          "TASK": "Task {key} was added private to your team — {parent} is private now.",
+          "SUBTASK": "Subtask {key} was added private to your team — {parent} is private now."
         }
       },
       "comments": {

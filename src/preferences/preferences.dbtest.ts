@@ -123,8 +123,9 @@ describe("preferences", () => {
     // so Time stayed in the rail for a tenant that had switched time
     // tracking off, over a page that then refused. Asked here exactly as
     // the layout asks it, and held to `hasAccess` on the same tree.
-    // A transaction per question, so no one transaction carries the 21
-    // reads of nine `hasAccess` calls over a slow link.
+    // A transaction per question, so no one transaction carries the reads
+    // of ten `hasAccess` calls over a slow link (ten since slice 73 added
+    // `work_item:change_visibility` for quick create's "Client can see").
     const asOwner = <T>(fn: (tx: TenantDb) => Promise<T>) =>
       withTenant(t.tenantId, { type: "member", id: t.seats.owner.memberId }, fn);
     const rail = async () => {

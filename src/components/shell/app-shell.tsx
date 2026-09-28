@@ -108,6 +108,7 @@ export function AppShell({
   activeTenantId,
   activeTenantAt,
   canCreateTask,
+  canShareTask,
   breadcrumb,
   user,
   theme,
@@ -143,6 +144,13 @@ export function AppShell({
    * way — and a `false` default would silently take a shipped key away.
    */
   canCreateTask: boolean;
+  /**
+   * May this member create a task the client sees from the start
+   * (`work_item:change_visibility`, founder decision C38)? REQUIRED: it
+   * decides whether quick create OFFERS "Client can see"; `createItem`
+   * refuses the share without it either way.
+   */
+  canShareTask: boolean;
   /**
    * The route trail — "Clients › ACME" — fed from the route segment.
    * The header says WHERE YOU ARE; a constant tenant string on all 25
@@ -533,7 +541,7 @@ export function AppShell({
         {/* The global `C` (UI.md rule 2) — one host, every authed page,
             because "anywhere" is the whole point of the key. The board
             shadows it with its own `C` by scope order, not by a guard. */}
-        <QuickCreate canCreateTask={canCreateTask} />
+        <QuickCreate canCreateTask={canCreateTask} canShareTask={canShareTask} />
 
         {/* The stale-tab fence — one host, every authed page, because a
             tab is stale wherever it happens to be sitting. Keyed on the

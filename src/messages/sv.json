@@ -176,7 +176,10 @@
       "openHint": "skapar den och öppnar den",
       "created": "{key} skapad",
       "failed": "Kunde inte skapa uppgiften.",
-      "changeProject": "Byt projekt"
+      "changeProject": "Byt projekt",
+      "createdVisible": "{key} skapad — kunden kan se den",
+      "createdVisiblePortalOff": "{key} skapad och markerad för kunden — projektets portal är avstängd, så de ser inget ännu",
+      "keepHint": "behåller ”Kunden kan se” till nästa"
     }
   },
   "home": {
@@ -1122,6 +1125,9 @@
       "signoff": "{count, plural, one {# fil väntar} other {# filer väntar}} på kundens godkännande. Begäran döljs tillsammans med filen, den dras inte tillbaka.",
       "frozen": "Tidrapporter och uppdateringar som redan har publicerats behåller det de sa.",
       "portalOff": "Projektets portal är avstängd, så kunden ser inget av detta i vilket fall som helst."
+    },
+    "create": {
+      "rootHint": "Kunden kommer att se den här uppgiften i sin portal."
     }
   },
   "domainErrors": {
@@ -2148,6 +2154,10 @@
           "failed": {
             "TASK": "Uppgiften skapades inte. Checklistpunkten är oförändrad — försök igen.",
             "SUBTASK": "Deluppgiften skapades inte. Checklistpunkten är oförändrad — försök igen."
+          },
+          "doneVisiblePortalOff": {
+            "TASK": "Uppgift {key} skapad från checklistpunkten och markerad för kunden — projektets portal är avstängd, så de ser inget ännu.",
+            "SUBTASK": "Deluppgift {key} skapad från checklistpunkten och markerad för kunden — projektets portal är avstängd, så de ser inget ännu."
           }
         }
       },
@@ -2192,13 +2202,33 @@
           "SUBTASK": "Deluppgift {key} tillagd"
         },
         "visibleHint": {
-          "TASK": "Följer {key} — epicet är synligt för kunden, så nya uppgifter börjar också synliga",
-          "SUBTASK": "Följer {key} — uppgiften är synlig för kunden, så nya deluppgifter börjar också synliga"
+          "TASK": "Epicet {key} är synligt för kunden, så den nya uppgiften blir det också — välj ”Privat för teamet” för att hålla den inom teamet.",
+          "SUBTASK": "Uppgiften {key} är synlig för kunden, så den nya deluppgiften blir det också — välj ”Privat för teamet” för att hålla den inom teamet."
         },
         "invalidTitle": "En titel är 1 till {max} tecken.",
         "failed": {
           "TASK": "Uppgiften skapades inte. Din titel finns kvar — försök igen.",
           "SUBTASK": "Deluppgiften skapades inte. Din titel finns kvar — försök igen."
+        },
+        "visibleHintPortalOff": {
+          "TASK": "Epicet {key} är markerat för kunden, så den nya uppgiften blir det också — de ser inget så länge projektets portal är avstängd.",
+          "SUBTASK": "Uppgiften {key} är markerad för kunden, så den nya deluppgiften blir det också — de ser inget så länge projektets portal är avstängd."
+        },
+        "privateHint": {
+          "TASK": "Följer {key} — epicet är privat för teamet, så nya uppgifter är det också.",
+          "SUBTASK": "Följer {key} — uppgiften är privat för teamet, så nya deluppgifter är det också."
+        },
+        "addedVisible": {
+          "TASK": "Uppgift {key} tillagd — kunden kan se den",
+          "SUBTASK": "Deluppgift {key} tillagd — kunden kan se den"
+        },
+        "addedVisiblePortalOff": {
+          "TASK": "Uppgift {key} tillagd och markerad för kunden — projektets portal är avstängd, så de ser inget ännu",
+          "SUBTASK": "Deluppgift {key} tillagd och markerad för kunden — projektets portal är avstängd, så de ser inget ännu"
+        },
+        "addedPrivate": {
+          "TASK": "Uppgift {key} lades till som privat för teamet — {parent} är privat nu.",
+          "SUBTASK": "Deluppgift {key} lades till som privat för teamet — {parent} är privat nu."
         }
       },
       "comments": {

@@ -192,11 +192,12 @@ const permissionsOf = (entries: readonly NavEntry[]): string[] =>
  * Every code the shell asks about on each render, in ONE call: the
  * rail's entries PLUS the shell's own — the global `C` is a key, not a
  * nav entry, and it needs `work_item:create` and `project:view` (the
- * layout says why both). Exported so a test can ask exactly what the
- * layout asks.
+ * layout says why both), and its dialog offers "Client can see" only to
+ * a member holding `work_item:change_visibility` (slice 73, C38).
+ * Exported so a test can ask exactly what the layout asks.
  */
 export const RAIL_CODES: readonly string[] = [
-  ...new Set([...permissionsOf(NAV), "work_item:create", "project:view"]),
+  ...new Set([...permissionsOf(NAV), "work_item:create", "project:view", "work_item:change_visibility"]),
 ];
 
 /**

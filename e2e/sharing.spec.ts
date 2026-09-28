@@ -62,13 +62,28 @@ async function portalSays(browser: Browser, title: string, present: boolean): Pr
   }
 }
 
-/** Add a subtask from the open peek; registered FIRST for cleanup. */
-async function addSubtask(page: Page, title: string): Promise<void> {
+/**
+ * Add a subtask from the open peek; registered FIRST for cleanup. `parent`
+ * is what the add row must SHOW before anything is typed (slice 73): under
+ * a shared parent the lower-only switch at "Client can see" — decision
+ * (8)'s default, visible before Enter — and under a private one the
+ * "Private to team" chip. (That the row reads the RAIL's value rather than
+ * the prop that lags a share cannot be told here — the prop catches up
+ * inside any expect timeout; shown-visibility.test.ts pins the store's read
+ * rule and, by reading the three islands' sources, their wiring to it.)
+ */
+async function addSubtask(page: Page, title: string, parent: "shared" | "private"): Promise<void> {
   const section = page.getByTestId("item-peek").getByTestId("item-subtasks");
   created.unshift(title);
   await section.getByTestId("item-subtask-add").click();
   const input = section.getByTestId("item-subtask-input");
   await expect(input).toBeFocused();
+  if (parent === "shared") {
+    await expect(section.getByTestId("item-subtask-visibility")).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+  } else {
+    await expect(section.getByTestId("item-subtask-visibility")).toHaveCount(0);
+    await expect(section.getByTestId("item-subtask-visibility-fixed")).toBeVisible();
+  }
   await input.fill(title);
   await input.press("Enter");
   await expect(section.getByTestId("item-subtask-row").filter({ hasText: title })).toHaveCount(1, {
@@ -91,7 +106,7 @@ test("making a shared task private takes it AND the shared subtask under it off 
   await picker(page).getByTestId("item-visibility-CLIENT_VISIBLE").click();
   await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE", { timeout: 20_000 * SLOW });
   const childTitle = `Sharing cascade child ${Date.now()}`;
-  await addSubtask(page, childTitle);
+  await addSubtask(page, childTitle, "shared");
   const childRow = page.getByTestId("item-subtask-row").filter({ hasText: childTitle });
   await expect(childRow.locator('[data-slot="visibility-badge"]')).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
   const childNumber = Number((await childRow.textContent())?.match(new RegExp(`${seed.projectKey}-(\\d+)`))?.[1]);
@@ -127,7 +142,7 @@ test("making a shared task private takes it AND the shared subtask under it off 
 test("under a private parent the chip is text and says whom it follows", async ({ page }) => {
   const parent = await createOwnTask(page, seed, "Follows parent", created);
   const childTitle = `Follows child ${Date.now()}`;
-  await addSubtask(page, childTitle);
+  await addSubtask(page, childTitle, "private");
   await page.getByTestId("item-subtask-row").filter({ hasText: childTitle }).getByRole("link").click();
   const peek = page.getByTestId("item-peek");
   await expect(peek.getByText(childTitle)).toBeVisible({ timeout: 20_000 * SLOW });

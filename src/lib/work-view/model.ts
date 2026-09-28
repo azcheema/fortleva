@@ -274,6 +274,120 @@ export const selectionKey = (selection: readonly Pick<WorkItem, "id" | "visibili
 export const bulkPrivateRefused = (selection: readonly Pick<WorkItem, "visibility">[]): boolean =>
   !selection.some((i) => i.visibility === "CLIENT_VISIBLE");
 
+type CreateVisibility = { offered: boolean; send: WorkItem["visibility"] };
+
+/**
+ * A TOP-LEVEL create field's visibility (Phase 3 slice 73; UI.md rule 10;
+ * founder decision C38) — the ONE place quick create, the backlog row and
+ * the board column learn both what they OFFER and what they SEND, so no
+ * surface can offer one thing and send another. The choice is offered
+ * only in a portal-enabled project and only to a member who may share
+ * tasks; wherever it is not offered the create sends INTERNAL, whatever
+ * a pick left in state says — a project changed under the dialog, or a
+ * portal switched off by a refresh, can never carry a share with it.
+ * `createItem` enforces the permission half; the portal half is this
+ * function alone (visibility is the row's flag, not the switch's), which
+ * is why it is unit-tested across the whole matrix.
+ */
+export function rootCreateVisibility(input: {
+  portalEnabled: boolean;
+  canShare: boolean;
+  pick: WorkItem["visibility"];
+}): CreateVisibility {
+  const offered = input.portalEnabled && input.canShare;
+  return { offered, send: offered ? input.pick : "INTERNAL" };
+}
+
+/**
+ * The Subtasks add row's visibility (founder decision (8), 2026-09-12): a
+ * child is born with its parent's visibility, and the member may LOWER it
+ * — never raise it. `parentShown` is what the panel SHOWS for the parent
+ * (the rail's value, never the lagging server prop — shown-visibility.ts);
+ * `lowered` is the member's "Private to team". Under a private parent
+ * there is nothing to choose and the create sends INTERNAL. Offered to
+ * every member who may create — lowering at birth is the one lever an
+ * Employee has, since they cannot lower it afterwards.
+ */
+export function childCreateVisibility(input: {
+  parentShown: WorkItem["visibility"];
+  lowered: boolean;
+}): CreateVisibility {
+  const offered = input.parentShown === "CLIENT_VISIBLE";
+  return { offered, send: offered && !input.lowered ? "CLIENT_VISIBLE" : "INTERNAL" };
+}
+
+/**
+ * What a top-level field's pick becomes after a create ANSWERED ok
+ * (founder decision C39: the next task starts "Private to team" again;
+ * ⌘⇧Enter — `keep` — keeps the choice).
+ *
+ * COMPARE-AND-SET, and it may only LOWER. The field stays live through
+ * the round trip (seconds, on a revalidating page), so the member may
+ * have changed the pick meanwhile: a pick that is no longer the one that
+ * was SENT is theirs and is never touched — neither written back to a
+ * share they just turned off, nor reverted from one they just chose.
+ * The caller applies it through the functional updater, never with the
+ * render-time pick (the title field's "clear only what was sent").
+ */
+export function afterCreatePick(input: {
+  sent: WorkItem["visibility"];
+  current: WorkItem["visibility"];
+  keep: boolean;
+}): WorkItem["visibility"] {
+  if (input.keep || input.current !== input.sent) return input.current;
+  return "INTERNAL";
+}
+
+/**
+ * The board's PENDING card for a column create — drawn from the moment
+ * the create is sent until the refreshed page brings the real one.
+ * `visibility` is REQUIRED and is the value the create SENT: a top-level
+ * create stores exactly what it asked for or nothing (`createItem`
+ * refuses the whole create when the share is not allowed; only a child
+ * can be clamped), so the pending chip is never a false "Private to
+ * team" over a task being created shared, nor a false share (UI.md
+ * §10.4). `number: 0` is the pending marker every anchor already skips.
+ */
+export function pendingCreateItem(input: {
+  tempId: string;
+  state: Pick<WorkState, "id" | "category" | "name">;
+  title: string;
+  visibility: WorkItem["visibility"];
+}): WorkItem {
+  return {
+    id: input.tempId,
+    number: 0,
+    title: input.title,
+    type: "TASK",
+    // A composer creates ordinary work; only the portal's intake makes a
+    // REQUEST (`createRequest`), and `createItem` has no parameter for it.
+    kind: "TASK",
+    stateId: input.state.id,
+    stateCategory: input.state.category,
+    stateName: input.state.name,
+    priority: "NONE",
+    estimateMinutes: null,
+    targetDate: null,
+    visibility: input.visibility,
+    assigneeMemberId: null,
+    assigneeName: null,
+    // A title-only create assigns nobody, at the agency or at the client
+    // — `createItem` has no parameter for either.
+    assigneeContactId: null,
+    assigneeContactName: null,
+    rootId: "",
+    parentId: null,
+    parentRef: null,
+    archivedAt: null,
+    checklistTotal: 0,
+    checklistDone: 0,
+    attachmentCount: 0,
+    // A title-only create carries no labels, and the `L` picker is in the
+    // panel: the refresh cannot bring any either.
+    labels: [],
+  };
+}
+
 /**
  * A UNIQUE key per state, for test ids: `${category}-${n}`, with `n`
  * 1-based within the category over the FULL rank-ordered list. The

@@ -6,6 +6,7 @@ import {
   UNASSIGNED,
   WITH_CLIENT,
   activeFilterCount,
+  afterCreatePick,
   allRowAnchors,
   applyMove,
   bulkPrivateRefused,
@@ -14,6 +15,7 @@ import {
   canEnterState,
   canItemEnterState,
   cardsIn,
+  childCreateVisibility,
   edgeAnchors,
   enterableStates,
   epicIdsOf,
@@ -28,7 +30,9 @@ import {
   rowAnchors,
   stateOrdinalKeys,
   milestonePickerTargets,
+  pendingCreateItem,
   privatizableIds,
+  rootCreateVisibility,
   selectionKey,
   sharableIds,
   splitLabelChips,
@@ -944,5 +948,64 @@ describe("the bar's snapshot helpers (slice 72 fix review — each pins a fix a 
     const after = selectionKey([item("p1", { visibility: "CLIENT_VISIBLE" }), pub]);
     expect(after).not.toBe(before);
     expect(selectionKey([priv, pub])).toBe(before);
+  });
+});
+
+describe("visibility on create (Phase 3 slice 73; C38, C39, founder decision (8))", () => {
+  const VALUES = ["INTERNAL", "CLIENT_VISIBLE"] as const;
+
+  it("rootCreateVisibility offers the choice only with the portal on AND the code, and sends INTERNAL whenever it is not offered", () => {
+    for (const portalEnabled of [true, false]) {
+      for (const canShare of [true, false]) {
+        for (const pick of VALUES) {
+          const r = rootCreateVisibility({ portalEnabled, canShare, pick });
+          const offered = portalEnabled && canShare;
+          expect(r.offered).toBe(offered);
+          // The worst-bug direction: a pick left in state never leaves
+          // with a create that no longer offers it.
+          expect(r.send).toBe(offered ? pick : "INTERNAL");
+        }
+      }
+    }
+  });
+
+  it("childCreateVisibility follows the parent it SHOWS, lowers on request, and never raises", () => {
+    expect(childCreateVisibility({ parentShown: "CLIENT_VISIBLE", lowered: false })).toEqual({
+      offered: true,
+      send: "CLIENT_VISIBLE",
+    });
+    expect(childCreateVisibility({ parentShown: "CLIENT_VISIBLE", lowered: true })).toEqual({
+      offered: true,
+      send: "INTERNAL",
+    });
+    for (const lowered of [true, false]) {
+      expect(childCreateVisibility({ parentShown: "INTERNAL", lowered })).toEqual({ offered: false, send: "INTERNAL" });
+    }
+  });
+
+  it("afterCreatePick starts the next task private after a shared Enter, and ⌘⇧Enter keeps the share (C39)", () => {
+    expect(afterCreatePick({ sent: "CLIENT_VISIBLE", current: "CLIENT_VISIBLE", keep: false })).toBe("INTERNAL");
+    expect(afterCreatePick({ sent: "CLIENT_VISIBLE", current: "CLIENT_VISIBLE", keep: true })).toBe("CLIENT_VISIBLE");
+    expect(afterCreatePick({ sent: "INTERNAL", current: "INTERNAL", keep: false })).toBe("INTERNAL");
+  });
+
+  it("afterCreatePick never touches a pick the member changed while the create was out — in either direction", () => {
+    // Sent shared, turned private for the next one: never written back.
+    expect(afterCreatePick({ sent: "CLIENT_VISIBLE", current: "INTERNAL", keep: true })).toBe("INTERNAL");
+    expect(afterCreatePick({ sent: "CLIENT_VISIBLE", current: "INTERNAL", keep: false })).toBe("INTERNAL");
+    // Sent private, deliberately shared for the next one: not reverted.
+    expect(afterCreatePick({ sent: "INTERNAL", current: "CLIENT_VISIBLE", keep: false })).toBe("CLIENT_VISIBLE");
+  });
+
+  it("pendingCreateItem wears exactly the visibility the create sent — both tokens, no default", () => {
+    const todo = state("todo", "TODO");
+    for (const visibility of VALUES) {
+      const card = pendingCreateItem({ tempId: "temp-1", state: todo, title: "Draft", visibility });
+      expect(card.visibility).toBe(visibility);
+      expect(card).toMatchObject({ id: "temp-1", number: 0, title: "Draft", stateId: "todo", parentId: null, parentRef: null });
+    }
+    // @ts-expect-error — `visibility` is REQUIRED: a call site that forgets
+    // it must not compile into a "Private to team" chip over a share.
+    pendingCreateItem({ tempId: "temp-2", state: todo, title: "Draft" });
   });
 });

@@ -11,6 +11,7 @@ import type { KeyBinding } from "@/lib/keymap";
 import type { ItemSurface } from "@/lib/work-view";
 
 import { createSubtaskAction, saveDescriptionAction } from "./actions";
+import { useShownVisibility } from "./shown-visibility";
 
 /**
  * The route's binding between the generic editor and this project's
@@ -87,6 +88,10 @@ export function DescriptionField({
 }) {
   const t = useTranslations("projects.item.keys");
   const router = useRouter();
+  // What the rail SHOWS for this task, not the prop that lags a share by
+  // the whole refresh (shown-visibility.ts): ⌘⇧O's child is born with
+  // THIS, never above what the database then holds (`createItem`).
+  const shownVisibility = useShownVisibility(itemId, visibility);
 
   /**
    * `⌘⇧O`'s create, bound here for the reason the save is: a server
@@ -95,7 +100,10 @@ export function DescriptionField({
    * section's add row, so a child made from a checklist line lands
    * exactly as a typed one does, and `router.refresh()` is what puts it
    * in the section below — issued inside the editor's own transition,
-   * which is where this is awaited.
+   * which is where this is awaited. It has no field to hang the add
+   * row's lower-only switch on (founder decision (8) names the add row),
+   * so a child made this way is born with the parent's visibility as the
+   * panel shows it, and the editor says so from the answer.
    */
   const convert = useMemo<ChecklistConvert | null>(() => {
     if (!editable || !canCreate || !childLevel) return null;
@@ -109,13 +117,21 @@ export function DescriptionField({
           projectKey,
           surface,
           title,
+          visibility: shownVisibility,
         });
         if (!r.ok) return r;
         router.refresh();
-        return { ok: true, value: { key: `${projectKey}-${r.value.number}` } };
+        return {
+          ok: true,
+          value: {
+            key: `${projectKey}-${r.value.number}`,
+            visibility: r.value.visibility,
+            portalEnabled: r.value.portalEnabled,
+          },
+        };
       },
     };
-  }, [editable, canCreate, childLevel, itemId, itemNumber, projectId, projectKey, surface, router]);
+  }, [editable, canCreate, childLevel, itemId, itemNumber, projectId, projectKey, surface, router, shownVisibility]);
 
   /**
    * The `?` overlay's row and nothing more — `run: null`, because the
@@ -150,7 +166,7 @@ export function DescriptionField({
     <DescriptionEditor
       doc={doc}
       token={token}
-      visibility={visibility}
+      visibility={shownVisibility}
       editable={editable}
       save={(next, baseToken) => saveDescriptionAction({ itemId, projectKey, doc: next, baseToken })}
       convert={convert}

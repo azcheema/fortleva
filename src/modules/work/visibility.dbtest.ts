@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { MemberActor } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
-import { withTenant, type TenantDb } from "@/db";
+import { nextCounter, withTenant, type TenantDb } from "@/db";
 import { listPortalPendingDeliverables } from "@/documents/portal";
 import { listDocuments, requestDocumentSignoff } from "@/documents/service";
 import { DomainError } from "@/lib/domain-error";
@@ -1300,5 +1300,219 @@ describe("a single raise brings the client's own comment back", () => {
       via: "follows_task",
       cause: "share",
     });
+  }, LONG);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * VISIBILITY AT BIRTH (Phase 3 slice 73; founder decisions (8) of
+ * 2026-09-12, C38 and C39 of 2026-09-28): `createItem({ visibility })`.
+ *
+ *  · C38 — a TOP-LEVEL task born "Client can see" is a share, and only a
+ *    member holding `work_item:change_visibility` may make it; the check
+ *    is ADDITIVE to `work_item:create`, and decided before any lock.
+ *  · Decision (8) — a CHILD is born with its parent's visibility or
+ *    lower, on `work_item:create` alone; a CLIENT_VISIBLE ask under a
+ *    parent that went private is CLAMPED, never refused.
+ *  · The share at birth is audited on `work_item.created` itself, whose
+ *    metadata carries the STORED visibility — never a second
+ *    `work_item.visibility_changed`, and never the ask.
+ *  · A birth writes no client-visible history, the column "+" included.
+ *  · The portal switch is not consulted: a portal-off project stores the
+ *    share and the contact still reads nothing.
+ * Measured from the client's side wherever it matters: a raw read under
+ * Carol's principal, by id, of `work_item` and `search_index`.
+ */
+describe("visibility at birth: createItem({ visibility })", () => {
+  /** A project of acme with its portal OFF — the one case the service must not refuse. */
+  let pOff: string;
+
+  beforeAll(async () => {
+    pOff = randomUUID();
+    await f.platform.project.create({
+      data: {
+        id: pOff,
+        tenantId: f.tenantId,
+        clientId: acme,
+        key: `VSD${run.slice(0, 3).toUpperCase()}`,
+        name: `Off ${run}`,
+        portalEnabled: false,
+      },
+    });
+  }, LONG);
+
+  const employee = () => ctxOf(f.seats.employee.actor);
+
+  /** What Carol's own principal reads of these ids — `portal_gate` answers, by id, with no filter of ours. */
+  const carolReads = (ids: readonly string[]) =>
+    withTenant(f.tenantId, contactOf(carol), async (tx) => {
+      const items = await tx.workItem.findMany({ where: { id: { in: [...ids] } }, select: { id: true } });
+      // In sequence on the one transaction (AGENTS.md), never a batch leg.
+      const found = await tx.$queryRaw<{ entity_id: string }[]>`
+        SELECT entity_id FROM search_index
+         WHERE entity_type = 'WORK_ITEM' AND entity_id = ANY(${[...ids]}::text[])`;
+      return { items: items.map((r) => r.id).sort(), search: found.map((r) => r.entity_id).sort() };
+    });
+
+  /** The one `work_item.created` a call wrote, and whether any `visibility_changed` came with it. */
+  const trailOf = async (before: ReadonlySet<string>, id: string) => {
+    const since = await auditsSince(before);
+    return {
+      created: since.filter((a) => a.action === "work_item.created" && a.targetId === id).map((a) => a.metadata),
+      changed: since.filter((a) => a.action === "work_item.visibility_changed").length,
+    };
+  };
+
+  it("an owner's top-level task born shared: the client reads it at once, and the create event says so", async () => {
+    const before = await auditIds();
+    const beforeActivity = await activityIds();
+    const out = await createItem(ownerCtx(), { projectId: pOn, title: W("Born shared"), visibility: "CLIENT_VISIBLE" });
+    expect(out).toMatchObject({ visibility: "CLIENT_VISIBLE", portalEnabled: true });
+    expect(await visOf(out.id)).toBe("CLIENT_VISIBLE");
+    expect(await carolReads([out.id])).toEqual({ items: [out.id], search: [out.id] });
+    const trail = await trailOf(before, out.id);
+    expect(trail.created).toEqual([{ number: out.number, projectId: pOn, type: "TASK", visibility: "CLIENT_VISIBLE" }]);
+    // A birth has no `from`: no flip is recorded, and no "changed the
+    // visibility" history row sits under "created this task".
+    expect(trail.changed).toBe(0);
+    const history = (await activitySince(beforeActivity)).filter((r) => r.workItemId === out.id);
+    expect(history.map((r) => [r.field, r.visibility])).toEqual([["created", "INTERNAL"]]);
+  }, LONG);
+
+  it("C38: an EMPLOYEE's top-level share is FORBIDDEN, and the refusal waits on no lock — not the counter row a colleague holds", async () => {
+    const title = W("Employee root share");
+    const before = await auditIds();
+    // A colleague holds the project's counter row — the FIRST lock a
+    // create takes. The refusal must settle while it is still held: a
+    // check placed after the counter (or after the project's queue) would
+    // wait here and time out instead.
+    const colleague = holdOpen(member(), (tx) => nextCounter(tx, `work_item:${pOn}`));
+    try {
+      await colleague.isReady;
+      const answer = refusal(createItem(employee(), { projectId: pOn, title, visibility: "CLIENT_VISIBLE" }));
+      const settled = await Promise.race([
+        answer,
+        new Promise<string>((r) => setTimeout(() => r("still waiting on the colleague's lock"), 15_000)),
+      ]);
+      expect(settled).toBe("authz:FORBIDDEN");
+    } finally {
+      colleague.release();
+      await colleague.done;
+    }
+    expect(await f.platform.workItem.count({ where: { tenantId: f.tenantId, title } })).toBe(0);
+    expect((await auditsSince(before)).filter((a) => a.action.startsWith("work_item."))).toEqual([]);
+    // The same member, the same project, "Private to team": created —
+    // hiding the choice never blocks the create itself.
+    const own = await createItem(employee(), { projectId: pOn, title: W("Employee root private"), visibility: "INTERNAL" });
+    expect(own.visibility).toBe("INTERNAL");
+  }, LONG);
+
+  it("the C38 check is ADDITIVE to work_item:create — the Visibility-only seat, which may share, still may not create", async () => {
+    expect(
+      await refusal(createItem(ctxOf(visOnly.actor), { projectId: pOn, title: W("VisOnly root"), visibility: "CLIENT_VISIBLE" })),
+    ).toBe("authz:FORBIDDEN");
+  }, LONG);
+
+  it("decision (8): an EMPLOYEE lowers a subtask under a shared task at birth — the client never sees it, and a make-private has nothing to count", async () => {
+    const parent = await sharedTask("Shared parent (8)");
+    const before = await auditIds();
+    const out = await createItem(employee(), {
+      projectId: pOn,
+      title: W("Lowered child"),
+      parentId: parent,
+      visibility: "INTERNAL",
+    });
+    expect(out.visibility).toBe("INTERNAL");
+    expect(await visOf(out.id)).toBe("INTERNAL");
+    // The positive control: Carol reads the parent — so reading nothing of
+    // the child is the gate, not a broken probe.
+    expect(await carolReads([parent, out.id])).toEqual({ items: [parent], search: [parent] });
+    const trail = await trailOf(before, out.id);
+    expect(trail.created).toEqual([{ number: out.number, projectId: pOn, type: "SUBTASK", visibility: "INTERNAL" }]);
+    expect(trail.changed).toBe(0);
+    expect(await previewMakePrivate(ownerCtx(), [parent])).toMatchObject({ below: 0 });
+  }, LONG);
+
+  it("decision (8): an EMPLOYEE's subtask under a shared task is born shared on work_item:create alone — recorded on the create event, no flip", async () => {
+    const parent = await sharedTask("Shared parent (inherit)");
+    const before = await auditIds();
+    const out = await createItem(employee(), {
+      projectId: pOn,
+      title: W("Inherited child"),
+      parentId: parent,
+      visibility: "CLIENT_VISIBLE",
+    });
+    expect(out.visibility).toBe("CLIENT_VISIBLE");
+    expect(await carolReads([out.id])).toEqual({ items: [out.id], search: [out.id] });
+    const trail = await trailOf(before, out.id);
+    // THE GAP THIS SLICE CLOSES: an Employee's born-shared subtask now
+    // says, in the trail, that it was born shared.
+    expect(trail.created).toEqual([{ number: out.number, projectId: pOn, type: "SUBTASK", visibility: "CLIENT_VISIBLE" }]);
+    expect(trail.changed).toBe(0);
+  }, LONG);
+
+  it("THE CLAMP: a shared ask under a parent that is private now is born private — stored, returned and recorded as INTERNAL, never refused", async () => {
+    const parent = await task("Private parent (clamp)");
+    const before = await auditIds();
+    const out = await createItem(ownerCtx(), {
+      projectId: pOn,
+      title: W("Clamped child"),
+      parentId: parent,
+      visibility: "CLIENT_VISIBLE",
+    });
+    expect(out.visibility).toBe("INTERNAL");
+    expect(await visOf(out.id)).toBe("INTERNAL");
+    // The STORED value, never the ask — a trail that claimed a share that
+    // never happened would be worse than none.
+    expect((await trailOf(before, out.id)).created).toEqual([
+      { number: out.number, projectId: pOn, type: "SUBTASK", visibility: "INTERNAL" },
+    ]);
+  }, LONG);
+
+  it("omitted, a child still inherits — the service callers' behaviour before slice 73", async () => {
+    const parent = await sharedTask("Shared parent (omitted)");
+    const out = await createItem(ownerCtx(), { projectId: pOn, title: W("Omitted child"), parentId: parent });
+    expect(out.visibility).toBe("CLIENT_VISIBLE");
+    const root = await createItem(ownerCtx(), { projectId: pOn, title: W("Omitted root") });
+    expect(root.visibility).toBe("INTERNAL");
+  }, LONG);
+
+  it("a task born shared into a later column writes NO client-visible history — its birth move is INTERNAL; the state audit stands", async () => {
+    const inProgress = await f.platform.workflowState.findFirstOrThrow({
+      where: { tenantId: f.tenantId, projectId: pOn, category: "IN_PROGRESS" },
+      orderBy: { rank: "asc" },
+      select: { id: true },
+    });
+    const before = await auditIds();
+    const beforeActivity = await activityIds();
+    const out = await createItem(ownerCtx(), {
+      projectId: pOn,
+      title: W("Born shared in progress"),
+      stateId: inProgress.id,
+      visibility: "CLIENT_VISIBLE",
+    });
+    expect(out.visibility).toBe("CLIENT_VISIBLE");
+    const history = (await activitySince(beforeActivity)).filter((r) => r.workItemId === out.id);
+    expect(history.map((r) => [r.field, r.visibility])).toEqual([
+      ["created", "INTERNAL"],
+      ["stateCategory", "INTERNAL"],
+    ]);
+    // …and the client reads none of it, though the row itself is shared.
+    const seen = await withTenant(f.tenantId, contactOf(carol), (tx) =>
+      tx.workItemActivity.findMany({ where: { workItemId: out.id }, select: { id: true } }),
+    );
+    expect(seen).toEqual([]);
+    const since = await auditsSince(before);
+    expect(since.filter((a) => a.targetId === out.id).map((a) => a.action)).toEqual([
+      "work_item.created",
+      "work_item.state_changed",
+    ]);
+  }, LONG);
+
+  it("a portal-OFF project stores the share (the row's flag, not the switch's) — and the client reads nothing", async () => {
+    const out = await createItem(ownerCtx(), { projectId: pOff, title: W("Shared, portal off"), visibility: "CLIENT_VISIBLE" });
+    expect(out).toMatchObject({ visibility: "CLIENT_VISIBLE", portalEnabled: false });
+    expect(await carolReads([out.id])).toEqual({ items: [], search: [] });
   }, LONG);
 });

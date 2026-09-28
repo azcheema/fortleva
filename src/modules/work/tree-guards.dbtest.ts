@@ -735,3 +735,123 @@ describe("schema belts", () => {
     await f.platform.workItem.update({ where: { id }, data: { milestoneId: null } });
   });
 });
+
+/**
+ * VISIBILITY AT BIRTH UNDER A RACING PARENT (Phase 3 slice 73). A child's
+ * visibility is decided on the parent read UNDER ITS SHARE LOCK, after the
+ * counter and the queue — so the lock order above is unchanged by an
+ * explicit visibility, and a shared ask racing the parent's make-private
+ * is CLAMPED to private rather than refused by the trigger.
+ */
+describe("a child's visibility at birth is decided under the parent's lock", () => {
+  it("the clamp: a shared ask waits on the parent's make-private, then is born PRIVATE — never PARENT_NOT_VISIBLE", async () => {
+    const parent = await visibleTask("Clamp-race parent");
+    // A colleague's make-private of the parent, held open (a raw UPDATE:
+    // the parent has no children, so the downgrade guard admits it).
+    const holder = holdOpen(member(), (tx) =>
+      tx.workItem.update({ where: { id: parent }, data: { visibility: "INTERNAL" }, select: { id: true } }),
+    );
+    let creating: Promise<{ visibility: string }> | null = null;
+    try {
+      await holder.isReady;
+      creating = createItem(ownerCtx(), {
+        projectId,
+        title: "Shared ask, racing",
+        parentId: parent,
+        visibility: "CLIENT_VISIBLE",
+      });
+      creating.catch(() => undefined); // awaited below — never an unhandled rejection meanwhile
+      // Blocked on the PARENT's row — and already PAST the queue: the
+      // waiting backend itself holds the project's rank lock (the holder
+      // takes none), so the counter and the queue came first. The clamp
+      // can then only be decided on what the parent's lock shows.
+      //
+      // POLLED, and scoped to THIS project's rank key (`lockProjectRanks`:
+      // one bigint key, so objsubid 1 and the low 32 bits in objid) in THIS
+      // database, held by a backend whose own ungranted lock is a ROW wait —
+      // so a concurrent session elsewhere can neither satisfy it nor fail
+      // it (fix-round review and its narrow check, 2026-09-28). A backend
+      // waits on one lock at a time, so a row wait is also "not waiting on
+      // the queue". With the old deadlocking order (parent first, queue
+      // after) the creator holds no rank lock while it waits on the row,
+      // and this never succeeds.
+      const deadline = Date.now() + 10_000;
+      let pastTheQueue = 0;
+      while (Date.now() < deadline) {
+        const rows = await f.platform.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n
+            FROM pg_locks g JOIN pg_locks w ON w.pid = g.pid
+           WHERE g.granted AND g.locktype = 'advisory' AND g.objsubid = 1
+             AND g.database = (SELECT oid FROM pg_database WHERE datname = current_database())
+             AND g.objid::bigint = (hashtext(${`work_rank:${projectId}`})::bigint & 4294967295)
+             AND NOT w.granted AND w.locktype IN ('transactionid', 'tuple')`;
+        pastTheQueue = rows[0]?.n ?? 0;
+        if (pastTheQueue > 0) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(pastTheQueue).toBeGreaterThan(0);
+    } finally {
+      holder.release();
+      await holder.done;
+    }
+    const out = await creating!;
+    expect(out.visibility).toBe("INTERNAL");
+    const child = await f.platform.workItem.findFirstOrThrow({
+      where: { tenantId: f.tenantId, parentId: parent },
+      select: { id: true, visibility: true },
+    });
+    expect(child.visibility).toBe("INTERNAL");
+    const created = await f.platform.auditEvent.findFirstOrThrow({
+      where: { tenantId: f.tenantId, action: "work_item.created", targetId: child.id },
+      select: { metadata: true },
+    });
+    expect(created.metadata).toMatchObject({ visibility: "INTERNAL" });
+  });
+
+  it("a LOWERED child (decision 8) still waits on the rank lock holding no row", async () => {
+    const parent = await visibleTask("Lowered create-race parent");
+    const mover = holdOpen(member(), async (tx) => {
+      await lockProjectRanks(tx, projectId);
+      await lockRow(tx, parent);
+    });
+    let creating: Promise<unknown> = Promise.resolve(null);
+    try {
+      await mover.isReady;
+      creating = settle(
+        createItem(ownerCtx(), { projectId, title: "Queued private subtask", parentId: parent, visibility: "INTERNAL" }),
+      );
+      expect(await waitForLockWaiter()).toEqual(["advisory"]);
+    } finally {
+      mover.release();
+      await mover.done;
+    }
+    expect(await creating).toBeNull();
+    expect(
+      await f.platform.workItem.findFirstOrThrow({
+        where: { tenantId: f.tenantId, parentId: parent },
+        select: { visibility: true },
+      }),
+    ).toEqual({ visibility: "INTERNAL" });
+  });
+
+  it("a LOWERED child still share-locks its parent: a parent deleted meanwhile is NOT_FOUND, never an orphan", async () => {
+    const { id: parent } = await createItem(ownerCtx(), { projectId, title: "Lowered parent being deleted" });
+    await changeItemVisibility(ownerCtx(), parent, "CLIENT_VISIBLE");
+    const holder = holdOpen(member(), (tx) =>
+      tx.workItem.update({ where: { id: parent }, data: { deletedAt: new Date() }, select: { id: true } }),
+    );
+    let creating: Promise<unknown> = Promise.resolve(null);
+    try {
+      await holder.isReady;
+      creating = settle(
+        createItem(ownerCtx(), { projectId, title: "Private orphan-to-be", parentId: parent, visibility: "INTERNAL" }),
+      );
+      await waitForLockWaiter();
+    } finally {
+      holder.release();
+      await holder.done;
+    }
+    expect(await creating).toMatchObject({ name: "AuthzError", reason: "NOT_FOUND" });
+    expect(await f.platform.workItem.count({ where: { tenantId: f.tenantId, parentId: parent } })).toBe(0);
+  });
+});

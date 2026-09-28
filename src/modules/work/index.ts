@@ -24,6 +24,7 @@ export {
   updateItemFields,
   type AssignmentCommitted,
   type ContactAssignmentCommitted,
+  type ItemCreated,
   type ItemDetail,
   type ItemDetailCaps,
   type ItemDetailResult,

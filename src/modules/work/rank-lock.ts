@@ -71,7 +71,9 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
  *     `project` row and `project_portal_enabled_fanout` turns it into
  *     TEN mass UPDATEs — milestone, project_version, service, document,
  *     work_item, work_item_activity, comment, search_index,
- *     project_time_summary, time_report — each in scan order. Joining
+ *     project_time_summary, time_report — each in scan order (ELEVEN
+ *     since `project_update` joined the fan-out in 20260925200000; "ten"
+ *     below is the count this was argued on, and the argument stands). Joining
  *     THIS queue covers exactly one of those ten legs: milestones queue
  *     on `milestone_rank:` and the other eight tables have no queue at
  *     all. And the cost falls in the worst possible place. Turning a

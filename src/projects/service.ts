@@ -645,10 +645,12 @@ export async function setPortalEnabled(
   // choice of cure over prevention is the whole story of this function.
   //
   // It writes ONE `project` row, and `project_portal_enabled_fanout`
-  // turns that into TEN mass UPDATEs — milestone, project_version,
+  // turns that into ELEVEN mass UPDATEs — milestone, project_version,
   // service, document, work_item, work_item_activity, comment,
-  // search_index, project_time_summary, time_report — each `WHERE
-  // project_id = …` in scan order, sharing an order with nobody.
+  // search_index, project_time_summary, time_report and, since
+  // 20260925200000, project_update — each `WHERE project_id = …` in scan
+  // order, sharing an order with nobody. ("Ten" below is the count when
+  // this was written; the eleventh changes none of the argument.)
   // `modules/work/rank-lock.ts` has listed it since slice 7 as a KNOWN
   // LOCKER OUTSIDE THE QUEUE, able to deadlock WITH a queued writer.
   //
@@ -658,8 +660,9 @@ export async function setPortalEnabled(
   // — while converting a targeted wait on the rows that actually
   // conflict into a project-wide wait on anything queued. It would also
   // have made `rank-lock.ts`'s own invariant false, since no queued
-  // writer has ever locked a document or comment row and this one would
-  // lock both.
+  // writer had ever locked a document or comment row and this one would
+  // lock both. (Slice 72's make-private cascade now does — it is the one
+  // queued writer that locks both, and `rank-lock.ts` records it.)
   //
   // THE OTHER SHAPE, which slice 40 named and left open and slice 43
   // closes. Contention here is not always a cycle. A bulk edit holds

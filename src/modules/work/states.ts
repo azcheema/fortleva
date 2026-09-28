@@ -183,6 +183,14 @@ export type TriageWrite = {
  * below lives here too. SINCE C31 (2026-09-25) IT ALSO STAMPS
  * `acceptedAt` on a request's first arrival in live work, for the same
  * reason: an accept by any door is an accept.
+ *
+ * `opts.birth` is `createItem`'s column "+" (Phase 3 slice 73): the
+ * move from the default state into the column the member created in is
+ * part of the task's BIRTH, and a birth writes no client-visible
+ * history — the `created` row is INTERNAL, so this one is too. Without
+ * it, a task born "Client can see" into In progress carried a
+ * client-readable "moved from To do" that nobody ever saw. The audit
+ * event is unchanged.
  */
 export async function transitionState(
   tx: TenantDb,
@@ -190,6 +198,7 @@ export async function transitionState(
   item: ItemRow,
   state: StateRow,
   triage?: TriageWrite,
+  opts?: { readonly birth?: boolean },
 ): Promise<StateChange> {
   if (state.projectId !== item.projectId) deny("NOT_FOUND");
   // Already there: no row, no activity, no audit — and the caller is
@@ -388,8 +397,9 @@ export async function transitionState(
     // A move WITHIN a category (In progress → In review) changes nothing
     // a client is shown — the portal sees categories, never state names
     // — while the row carries two workflow-state ids. Portal-safe is
-    // about the FIELD and the CHANGE, not the field alone.
-    forceInternal: item.stateCategory === to,
+    // about the FIELD and the CHANGE, not the field alone. And a BIRTH
+    // into a column is no change the client saw (`opts.birth`, above).
+    forceInternal: item.stateCategory === to || opts?.birth === true,
   });
   await record(tx, {
     action: "work_item.state_changed",

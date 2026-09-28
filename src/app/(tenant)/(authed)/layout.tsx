@@ -50,6 +50,7 @@ export default async function AuthedLayout({ children }: { children: React.React
   // this member's own rows, so there is nothing here to get wrong.
   let unreadInbox = 0;
   let canCreateTask = false;
+  let canShareTask = false;
   if (membership) {
     const actor = { memberId: membership.memberId, mfa: mfaStateOf(session) };
     const { held, unread } = await withTenant(
@@ -95,6 +96,10 @@ export default async function AuthedLayout({ children }: { children: React.React
     // that opens a dialog and closes it again on a FORBIDDEN toast — an
     // offer the product cannot keep.
     canCreateTask = held.has("work_item:create") && held.has("project:view");
+    // …and whether its dialog offers "Client can see" (slice 73, C38) —
+    // the same read, one more code. `createItem` refuses the share
+    // without it regardless; this only decides what is OFFERED.
+    canShareTask = canCreateTask && held.has("work_item:change_visibility");
     // The pill's initial snapshot (2T): only for members who may track time.
     if (held.has("time:track")) timer = await getTimerStateAction();
   } else {
@@ -116,6 +121,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       timer={timer}
       unreadInbox={unreadInbox}
       canCreateTask={canCreateTask}
+      canShareTask={canShareTask}
       workspaceCount={workspaceCount}
     >
       <PwaRegister />

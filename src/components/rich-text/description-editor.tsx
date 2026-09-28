@@ -62,8 +62,15 @@ const ConvertChecklistItem = Extension.create<{ onConvert: () => boolean }>({
 export type ChecklistConvert = {
   /** What a child of THIS item is — an Epic's are Tasks. The copy's key. */
   readonly level: "TASK" | "SUBTASK";
-  /** Creates the child from the line's text; answers with its human key ("ACME-42"). */
-  readonly run: (title: string) => Promise<ActionResult<{ key: string }>>;
+  /**
+   * Creates the child from the line's text; answers with its human key
+   * ("ACME-42") and what it was BORN with — the visibility the database
+   * stored and its portal switch (slice 73): the done-sentence is said
+   * from those, never from this editor's prop.
+   */
+  readonly run: (
+    title: string,
+  ) => Promise<ActionResult<{ key: string; visibility: "INTERNAL" | "CLIENT_VISIBLE"; portalEnabled: boolean }>>;
 };
 
 /**
@@ -415,8 +422,15 @@ export function DescriptionEditor({
       // an sr-only line only a screen reader would get. Everywhere else
       // the eye already has the answer: the line went and the row
       // arrived, and the region carries the new key for the ear.
-      if (visibility === "CLIENT_VISIBLE") toast.info(t(`convert.doneVisible.${level}`, { key }));
-      else setConverted(t(`convert.done.${level}`, { key }));
+      // Said from the ANSWER (slice 73): the child is born with what the
+      // panel SHOWED for this task, clamped by what the database holds, so
+      // the sentence reads what was stored — and a portal that is off says
+      // so rather than promising the client a view they do not have.
+      if (r.value.visibility === "CLIENT_VISIBLE") {
+        toast.info(
+          t(r.value.portalEnabled ? `convert.doneVisible.${level}` : `convert.doneVisiblePortalOff.${level}`, { key }),
+        );
+      } else setConverted(t(`convert.done.${level}`, { key }));
     });
     return true;
   };

@@ -16,6 +16,7 @@ import {
   type CommentEdited,
   type CommentVisibilityCommitted,
   type DescriptionSaved,
+  type ItemCreated,
   type WorkCtx,
 } from "@/modules/work";
 import { PROJECT_KEY_RE } from "@/projects/service";
@@ -38,8 +39,11 @@ import { ITEM_SURFACES, MAX_TITLE_LENGTH, itemReturnTo } from "@/lib/work-view";
  * (slice 9), and the one create that names a parent. It goes through the
  * same `createItem` as the backlog's row and the board's column "+", so
  * a subtask lands exactly as any task does — numbered, at the bottom of
- * the project's order, in the default state, its visibility defaulted
- * from the parent — and the tree trigger has the last word on nesting.
+ * the project's order, in the default state — and the tree trigger has
+ * the last word on nesting. Its visibility is what the add row SHOWED
+ * (slice 73): the parent's, or "Private to team" when the member chose
+ * the lower-only switch (founder decision (8)) — and never above the
+ * parent as the database holds it now (`createItem`'s clamp).
  */
 
 const Save = z.object({
@@ -94,20 +98,23 @@ const CreateSubtask = z.object({
   projectKey: z.string().regex(PROJECT_KEY_RE),
   surface: z.enum(ITEM_SURFACES),
   title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
+  /** What the add row (or ⌘⇧O) SHOWED — REQUIRED, never inferred here. */
+  visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]),
 });
 
 /**
- * Title-only create under a parent (UI rule 2). Returns the new item's
- * id and number; a refusal — a subtask under a subtask, a parent that is
- * gone, a project out of scope — is a typed message the island toasts,
- * never a silent nothing. Both list surfaces are revalidated: the new
- * row is a backlog row and a board card the moment it exists. The
- * parent binds the project: `createItem` reads it under the project the
- * actor was just scoped to, so a mismatched pair is NOT_FOUND.
+ * Title-only create under a parent (UI rule 2). Returns what was stored
+ * (`ItemCreated` — the visibility can be lower than asked); a refusal —
+ * a subtask under a subtask, a parent that is gone, a project out of
+ * scope — is a typed message the island toasts, never a silent nothing.
+ * Both list surfaces are revalidated: the new row is a backlog row and a
+ * board card the moment it exists. The parent binds the project:
+ * `createItem` reads it under the project the actor was just scoped to,
+ * so a mismatched pair is NOT_FOUND.
  */
 export async function createSubtaskAction(
   input: z.input<typeof CreateSubtask>,
-): Promise<ActionResult<{ id: string; number: number }>> {
+): Promise<ActionResult<ItemCreated>> {
   const { membership, actor } = await requireTenantContext();
   const parsed = CreateSubtask.safeParse(input);
   if (!parsed.success) {
@@ -118,7 +125,10 @@ export async function createSubtaskAction(
   }
   const p = parsed.data;
   const r = await runAction(itemReturnTo(p.surface, p.projectKey, p.parentNumber), () =>
-    createItem({ tenantId: membership.tenantId, actor }, { projectId: p.projectId, title: p.title, parentId: p.parentId }),
+    createItem(
+      { tenantId: membership.tenantId, actor },
+      { projectId: p.projectId, title: p.title, parentId: p.parentId, visibility: p.visibility },
+    ),
   );
   if (r.ok) {
     revalidatePath(`/projects/${p.projectKey}/backlog`);

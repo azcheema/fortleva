@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import { SLOW, createOwnTask, deleteOwnTasks } from "./fixtures/keys";
-import { requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { SLOW, createOwnTask, deleteOwnTasks, picker, rail } from "./fixtures/keys";
+import { readItemVisibility, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
  * THE SUBTASKS SECTION IN A REAL BROWSER (UI.md §5.4, slice 9).
@@ -123,6 +123,55 @@ test("⌘⇧O: the focused checklist item becomes a subtask, the line goes, and 
   await expect(peek.getByTestId("item-properties")).toContainText("0 of 1 done");
   await expect(section.getByTestId("item-subtask-row")).toContainText(converted);
   await expect(peek).toContainText(parent.title);
+});
+
+test("⌘⇧O under a SHARED task: the child is born shared, stored so, and the toast says the client can see it", async ({
+  page,
+}) => {
+  /**
+   * Slice 73 moved this path from a server-side default (the parent's
+   * visibility, read by `createItem`) to a value the PANEL sends — the
+   * parent's visibility as the rail shows it — with the done-sentence
+   * chosen from the ANSWER. Under a shared parent that must still be a
+   * shared child (founder decision (8): born with its parent's
+   * visibility), and the member must be told so on the eye's surface.
+   * The share settles with a reload first: this pins the value sent and
+   * the answer read, not the refresh lag (shown-visibility.test.ts).
+   */
+  await createOwnTask(page, seed, "Convert shared parent", created);
+  const peek = page.getByTestId("item-peek");
+  await rail(page).getByTestId("item-visibility").click();
+  await picker(page).getByTestId("item-visibility-CLIENT_VISIBLE").click();
+  const chip = rail(page).getByTestId("item-visibility").locator('[data-slot="visibility-badge"]');
+  await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE", { timeout: 20_000 * SLOW });
+  await page.reload();
+  await expect(chip).toHaveAttribute("data-visibility", "CLIENT_VISIBLE", { timeout: 20_000 * SLOW });
+
+  const editor = peek.getByTestId("description-editor");
+  const section = peek.getByTestId("item-subtasks");
+  await expect(editor).toBeVisible({ timeout: 20_000 * SLOW });
+  const converted = `share the tiles ${Date.now()}`;
+  await editor.click();
+  // The idle autosave first (the test above says why), so the only writes
+  // left are the chord's.
+  const typingSaved = page.waitForResponse((r) => r.request().method() === "POST", { timeout: 30_000 * SLOW });
+  await page.keyboard.type(`[ ] ${converted}`);
+  await expect(page.getByRole("checkbox", { name: new RegExp(converted) })).toBeVisible();
+  await typingSaved;
+
+  created.unshift(converted);
+  await page.keyboard.press("ControlOrMeta+Shift+O");
+  // The toast FIRST: it is said on the ANSWER, and the row only lands on
+  // the refresh after it — waiting for the row first let the toast expire
+  // unseen (the first run of this test).
+  await expect(
+    page.locator("[data-sonner-toast]", { hasText: "visible to the client, so the new subtask is too" }),
+  ).toBeVisible({ timeout: 20_000 * SLOW });
+  const row = section.getByTestId("item-subtask-row").filter({ hasText: converted });
+  await expect(row).toHaveCount(1, { timeout: 20_000 * SLOW });
+  await expect(row.locator('[data-slot="visibility-badge"]')).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+  const number = Number((await row.textContent())?.match(new RegExp(`${seed.projectKey}-(\\d+)`))?.[1]);
+  expect(await readItemVisibility(seed.projectId, number)).toMatchObject({ visibility: "CLIENT_VISIBLE" });
 });
 
 test("add a subtask from the peek; it lands as a row; opening it stays in the peek and leads back; the full page agrees", async ({

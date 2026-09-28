@@ -28,6 +28,7 @@ import {
   type ItemPrivateResult,
   type VisibilityCommitted,
 } from "../backlog/actions";
+import { publishShownVisibility } from "./shown-visibility";
 import { usePanelCommit } from "./use-panel-commit";
 
 /** What the chip shows, plus what the last commit's announcement must say beyond it. */
@@ -213,6 +214,15 @@ export function VisibilityField({
   useEffect(() => {
     shownNow.current = shown.value;
   });
+
+  // What this rail SHOWS, for the panel's other islands — the Subtasks
+  // add row and `⌘⇧O` decide a new child's visibility from it, never
+  // from the prop that lags a share by the whole refresh
+  // (shown-visibility.ts; slice 73).
+  useEffect(() => {
+    publishShownVisibility(itemId, { base: visibility, shown: shown.value });
+  }, [itemId, visibility, shown.value]);
+  useEffect(() => () => publishShownVisibility(itemId, null), [itemId]);
 
   const followsPrivateParent = parent !== null && parent.visibility === "INTERNAL";
   const parentKey = parent ? `${projectKey}-${parent.number}` : "";

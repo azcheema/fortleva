@@ -29,6 +29,7 @@ import {
   type BulkResult,
   type BulkShareResult,
   type ContactAssignmentCommitted,
+  type ItemCreated,
   type LabelsCommitted,
   type MilestoneAssigned,
   type MovedItem,
@@ -56,6 +57,8 @@ import { isIsoDate } from "@/lib/week";
 
 const uuid = z.uuid();
 const keyShape = z.string().regex(/^[A-Z][A-Z0-9]*$/);
+/** The two tokens and nothing else — a create never coerces an unknown value. */
+const visibilityShape = z.enum(["INTERNAL", "CLIENT_VISIBLE"]);
 
 const ctxOf = async (): Promise<WorkCtx> => {
   const { membership, actor } = await requireTenantContext();
@@ -82,12 +85,19 @@ const revalidate = (key: string) => {
  * `createItemAction` below is this function plus that message, so the
  * backlog's create row and the shell's dialog are one implementation of
  * "create a task here", not two.
+ *
+ * `visibility` is what the surface SHOWED (slice 73): "Private to team"
+ * unless a member who may share picked "Client can see" in a
+ * portal-enabled project. REQUIRED and closed at the boundary, and
+ * POSITIONAL, like the rest: `createItem` enforces who may send the
+ * share (C38), so a forged argument is refused there, not trusted here.
  */
 export async function createItemAnywhereAction(
   projectId: string,
   projectKey: string,
   title: string,
-): Promise<ActionResult<{ id: string; number: number }>> {
+  visibility: "INTERNAL" | "CLIENT_VISIBLE",
+): Promise<ActionResult<ItemCreated>> {
   const ctx = await ctxOf();
   const t = await getTranslations("projects.backlog");
   const parsed = z
@@ -95,15 +105,16 @@ export async function createItemAnywhereAction(
       projectId: uuid,
       projectKey: keyShape,
       title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
+      visibility: visibilityShape,
     })
     // Trimmed and CAPPED before the shape is judged, exactly as the
     // original did: a 400-character title is a title to cut, not a
     // refusal, and `.max()` on the raw string would have refused it.
-    .safeParse({ projectId, projectKey, title: title.trim().slice(0, MAX_TITLE_LENGTH) });
+    .safeParse({ projectId, projectKey, title: title.trim().slice(0, MAX_TITLE_LENGTH), visibility });
   if (!parsed.success) return { ok: false, message: t("invalidTitle") };
   const input = parsed.data;
   const r = await runAction(backlogPath(input.projectKey), () =>
-    createItem(ctx, { projectId: input.projectId, title: input.title }),
+    createItem(ctx, { projectId: input.projectId, title: input.title, visibility: input.visibility }),
   );
   if (r.ok) revalidate(input.projectKey);
   return r;
@@ -113,9 +124,10 @@ export async function createItemAction(
   projectId: string,
   projectKey: string,
   title: string,
+  visibility: "INTERNAL" | "CLIENT_VISIBLE",
 ): Promise<FormResult> {
   const t = await getTranslations("projects.backlog");
-  const r = await createItemAnywhereAction(projectId, projectKey, title);
+  const r = await createItemAnywhereAction(projectId, projectKey, title, visibility);
   if (!r.ok) return r;
   return { ok: true, message: t("created", { key: `${projectKey}-${r.value.number}` }) };
 }
@@ -549,14 +561,15 @@ export async function deleteItemAction(itemId: string, projectKey: string): Prom
  * Board: title-only create straight into a column (UI rule 2). The id +
  * number come back for a caller that wants them; the board itself keeps
  * its optimistic card until the revalidated page replaces it, which is
- * the same round trip.
+ * the same round trip. `visibility` as `createItemAnywhereAction`'s.
  */
 export async function createItemInStateAction(
   projectId: string,
   projectKey: string,
   stateId: string,
   title: string,
-): Promise<ActionResult<{ id: string; number: number }>> {
+  visibility: "INTERNAL" | "CLIENT_VISIBLE",
+): Promise<ActionResult<ItemCreated>> {
   const ctx = await ctxOf();
   const t = await getTranslations("projects.backlog");
   const parsed = z
@@ -565,12 +578,18 @@ export async function createItemInStateAction(
       projectKey: keyShape,
       stateId: uuid,
       title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
+      visibility: visibilityShape,
     })
-    .safeParse({ projectId, projectKey, stateId, title });
+    .safeParse({ projectId, projectKey, stateId, title, visibility });
   if (!parsed.success) return { ok: false, message: t("invalidTitle") };
   const input = parsed.data;
   const r = await runAction(boardPath(input.projectKey), () =>
-    createItem(ctx, { projectId: input.projectId, title: input.title, stateId: input.stateId }),
+    createItem(ctx, {
+      projectId: input.projectId,
+      title: input.title,
+      stateId: input.stateId,
+      visibility: input.visibility,
+    }),
   );
   if (r.ok) revalidate(input.projectKey);
   return r;

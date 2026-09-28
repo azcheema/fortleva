@@ -216,7 +216,9 @@ export async function createRequest(
       triageStatus: "PENDING",
       source: "PORTAL",
       // THE CLIENT MUST BE ABLE TO SEE WHAT THEY SUBMITTED. This is the
-      // one row in the product that is born CLIENT_VISIBLE, and it is
+      // one row a CLIENT'S own act creates shared (a member's can be born
+      // shared too: a subtask under a shared parent, and since slice 73 a
+      // top-level task created "Client can see" under C38), and it is
       // deliberate rather than an exception to the INTERNAL default: a
       // request that vanishes on submit is a form that ate the client's
       // words. `portal_gate` then lets them read it back, and

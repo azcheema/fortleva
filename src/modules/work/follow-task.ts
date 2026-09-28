@@ -17,8 +17,10 @@ import type { WorkCtx } from "./states";
  * when the hand-over is what shares it. Any future path that UPDATEs an
  * existing task to CLIENT_VISIBLE joins this list or the promise breaks.
  * CREATION IS NOT A RAISE: a new row has no comments to bring back, which
- * covers `createItem`'s inheritance from a shared parent today and the
- * composer's create-as-shared (slice 73) tomorrow.
+ * covers `createItem`'s inheritance from a shared parent and, since slice
+ * 73, a task created "Client can see" — whose visibility goes into the
+ * INSERT itself, never an UPDATE after it, so no create ever joins the
+ * list above.
  *
  * WHICH comments, and why the predicate is not simply "private and
  * written by a contact". Today those two sets are the same set, but only

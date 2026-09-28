@@ -36,8 +36,12 @@ export async function createProjectAction(
   return r;
 }
 
-/** A project the member can aim the global `C` at. */
-export type QuickCreateProject = { id: string; key: string; name: string; clientName: string };
+/**
+ * A project the member can aim the global `C` at. `portalEnabled` is the
+ * project switch the dialog decides "who can see it" from (slice 73,
+ * UI.md rule 10: the choice is asked only in a portal-enabled project).
+ */
+export type QuickCreateProject = { id: string; key: string; name: string; clientName: string; portalEnabled: boolean };
 
 /**
  * The projects the shell's quick create offers (UI.md rule 2: "`C`
@@ -66,6 +70,7 @@ export async function quickCreateProjectsAction(): Promise<ActionResult<QuickCre
         key: p.key,
         name: p.name,
         clientName: g.clientName,
+        portalEnabled: p.portalEnabled,
       })),
     );
   });

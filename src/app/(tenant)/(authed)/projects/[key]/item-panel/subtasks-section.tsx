@@ -20,7 +20,8 @@ import { SubtaskAdd } from "./subtask-add";
  * strikes it), the assignee, and the row's own visibility chip and cue
  * — a child is a class-B row like its parent, and it carries its OWN
  * visibility (§3.1 inheritance: defaulted from the parent at creation,
- * never inherited live).
+ * never inherited live — and, since slice 73, LOWERABLE at creation by
+ * the add row's switch, founder decision (8)).
  *
  * The meter is the plan's progress rule: done over everything not
  * cancelled. The add row is a control only for a member who holds
@@ -50,7 +51,7 @@ export async function SubtasksSection({
   subtasks,
   canCreate,
 }: {
-  item: Pick<ResolvedItemDetail, "id" | "number" | "type" | "visibility" | "archivedAt">;
+  item: Pick<ResolvedItemDetail, "id" | "number" | "type" | "visibility" | "archivedAt" | "portalEnabled">;
   /** "ACME-12" — named by the visibility hint under the add row. */
   itemKey: string;
   projectId: string;
@@ -76,6 +77,7 @@ export async function SubtasksSection({
         parentNumber={item.number}
         parentKey={itemKey}
         parentVisibility={item.visibility}
+        portalEnabled={item.portalEnabled}
         projectId={projectId}
         projectKey={projectKey}
         surface={panelSurfaceOf(surface)}

@@ -5,6 +5,7 @@
  */
 export { CalendarGrid } from "./calendar-grid";
 export { Callout, type CalloutTone } from "./callout";
+export { CreateVisibilitySelect } from "./create-visibility-select";
 export { DataTable, ROW_HEIGHT, type Density } from "./data-table";
 export { Disclosure } from "./disclosure";
 export { EntityChip, EntityTile } from "./entity-chip";

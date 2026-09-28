@@ -29,6 +29,7 @@ import {
 import { toast } from "sonner";
 
 import {
+  CreateVisibilitySelect,
   DataTable,
   EmptyState,
   ROW_HEIGHT,
@@ -36,6 +37,7 @@ import {
   MemberAvatar,
   PriorityIndicator,
   RowActions,
+  VisibilityBadge,
   VisibilityInlineEdit,
   visibilityRowCue,
   type RowAction,
@@ -55,6 +57,7 @@ import {
 import { BulkBar } from "@/components/work-view/bulk-bar";
 import { WorkFilterBar } from "@/components/work-view/filter-bar";
 import { LabelChips } from "@/components/work-view/label-chips";
+import { onCreateGroupBlur, useRootCreatePick } from "@/components/work-view/use-create-visibility";
 import { usePrivacyCopy } from "@/components/work-view/use-privacy-copy";
 import { afterClosingLayers } from "@/lib/after-closing-layers";
 import { VisibilityQuestion } from "@/components/visibility-question";
@@ -76,6 +79,7 @@ import {
   bulkShareRefusal,
   bulkStateTargets,
   privatizableIds,
+  rootCreateVisibility,
   selectionKey,
   sharableIds,
   canItemEnterState,
@@ -2051,6 +2055,8 @@ export function BacklogTable({
                 projectId={projectId}
                 projectKey={projectKey}
                 rowIndex={windowed ? count + 2 : undefined}
+                portalEnabled={data.portalEnabled}
+                canShare={data.caps.canChangeVisibility}
               />
             ) : null}
           </TableBody>
@@ -2240,37 +2246,84 @@ function GroupRow({
  * Activating swaps in the focused field; Enter creates and STAYS open
  * for the next title; Escape or an empty blur returns to rest.
  * Deliberately not a <form action> — we clear the value on success,
- * React never resets it mid-flight. */
+ * React never resets it mid-flight.
+ *
+ * WHO CAN SEE IT (Phase 3 slice 73; UI.md rule 10; founder decisions C38,
+ * C39): in a portal-enabled project a member who may share gets the
+ * visibility select beside the title, at "Private to team" — one line, in
+ * the row's own height, its sentence an sr-only description (a second
+ * visible line would break the row pitch the table is built on); one who
+ * may not sees the "Private to team" chip; a portal-off project asks
+ * nothing. The select never creates — only the title does. Enter starts
+ * the next task private again; ⌘⇧Enter keeps the pick.
+ *
+ * THE FIELD STAYS LIVE THROUGH THE ROUND TRIP (the board's shape and
+ * quick create's lesson): `busy` is the action's own flight, never the
+ * transition, which spans the revalidating refresh (seconds); the field
+ * is never `disabled` — a disabled field has already lost focus, so
+ * "Enter starts the next one" silently did not. So only the title that
+ * was SENT is cleared, and Escape does nothing while a create is out: a
+ * field closed then has nowhere to keep a title the server refuses. */
 function CreateRow({
   projectId,
   projectKey,
   rowIndex,
+  portalEnabled,
+  canShare,
 }: {
   projectId: string;
   projectKey: string;
   rowIndex?: number | undefined;
+  /** The project's portal switch (`ItemList.portalEnabled`) — REQUIRED: the choice is asked only with it on. */
+  portalEnabled: boolean;
+  /** `work_item:change_visibility` — REQUIRED: "Client can see" is offered only with it (C38). */
+  canShare: boolean;
 }) {
   const t = useTranslations("projects.backlog");
+  const tVis = useTranslations("visibility.create");
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [, start] = useTransition();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const groupRef = useRef<HTMLDivElement>(null);
+  // Escape hands focus back to the resting button (the board's rule) —
+  // only Escape: an empty blur-close leaves the member's click alone.
+  const returnFocus = useRef(false);
+  const { pick, setPick, afterCreate } = useRootCreatePick({
+    open: editing,
+    scope: projectId,
+    offered: portalEnabled && canShare,
+  });
+  const { offered, send } = rootCreateVisibility({ portalEnabled, canShare, pick });
+  const hinted = offered && pick === "CLIENT_VISIBLE";
 
-  const submit = () => {
+  const submit = (keep: boolean) => {
     const value = title.trim();
-    if (!value || pending) return;
+    if (!value || busy) return;
+    setBusy(true);
+    const sent = send;
     start(async () => {
-      const r = await createItemAction(projectId, projectKey, value).catch(() => ({
+      const r = await createItemAction(projectId, projectKey, value, sent).catch(() => ({
         ok: false as const,
         message: t("actionFailed"),
       }));
+      setBusy(false);
+      // Back to the field only if focus is nowhere or still in this row —
+      // a member who moved on meanwhile is not pulled back.
+      const active = document.activeElement;
+      if (active === null || active === document.body || groupRef.current?.contains(active)) {
+        inputRef.current?.focus();
+      }
       if (!r.ok) {
         toast.error(r.message);
         return;
       }
-      setTitle("");
-      inputRef.current?.focus();
+      // Clear only what was sent (trimmed, as `value` is): a title typed
+      // while this one was out belongs to the member.
+      setTitle((current) => (current.trim() === value ? "" : current));
+      afterCreate(sent, keep);
       router.refresh();
     });
   };
@@ -2288,30 +2341,68 @@ function CreateRow({
       </TableCell>
       <TableCell colSpan={SPAN_AFTER_KEY}>
         {editing ? (
-          <Input
-            ref={inputRef}
-            autoFocus
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+          <div
+            ref={groupRef}
+            className="flex items-center gap-2"
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key !== "Escape") return;
+              e.preventDefault();
+              if (busy) return;
+              returnFocus.current = true;
+              setTitle("");
+              setEditing(false);
+            }}
+            onBlur={(e) =>
+              onCreateGroupBlur(e, () => {
+                if (title.trim() === "" && !busy) setEditing(false);
+              })
+            }
+          >
+            <Input
+              ref={inputRef}
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
                 e.preventDefault();
-                submit();
-              } else if (e.key === "Escape") {
-                setTitle("");
-                setEditing(false);
-              }
-            }}
-            onBlur={() => {
-              if (title.trim() === "" && !pending) setEditing(false);
-            }}
-            placeholder={t("createPlaceholder")}
-            aria-label={t("createLabel")}
-            disabled={pending}
-            className="h-7 border-none bg-transparent px-1 shadow-none"
-          />
+                // ⌘⇧Enter: create another like this one — the pick kept (C39).
+                submit((e.metaKey || e.ctrlKey) && e.shiftKey);
+              }}
+              placeholder={t("createPlaceholder")}
+              aria-label={t("createLabel")}
+              aria-describedby={hinted ? "new-task-visibility-hint" : undefined}
+              className="h-7 min-w-0 flex-1 border-none bg-transparent px-1 shadow-none"
+            />
+            {offered ? (
+              <CreateVisibilitySelect
+                value={pick}
+                onChange={setPick}
+                testId="backlog-create-visibility"
+                describedBy={hinted ? "new-task-visibility-hint" : undefined}
+                density="row"
+              />
+            ) : portalEnabled ? (
+              // No choice for this member (C38) where the client can look:
+              // the state is still drawn (§10.4 — absence is not a state).
+              <span data-testid="backlog-create-visibility-fixed" className="shrink-0">
+                <VisibilityBadge value="INTERNAL" size="sm" />
+              </span>
+            ) : null}
+            {hinted ? (
+              <span id="new-task-visibility-hint" className="sr-only">
+                {tVis("rootHint")}
+              </span>
+            ) : null}
+          </div>
         ) : (
           <button
+            ref={(node) => {
+              if (node && returnFocus.current) {
+                returnFocus.current = false;
+                node.focus();
+              }
+            }}
             type="button"
             onClick={() => setEditing(true)}
             className="flex h-7 w-full items-center rounded-md px-1 text-left text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

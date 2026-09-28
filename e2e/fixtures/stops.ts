@@ -182,6 +182,21 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "projects", path: "/projects" },
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },
+    {
+      // Phase 3 slice 73: the column "+" with "Client can see" picked — the
+      // select in its warm fill and the sentence that says who will see the
+      // task, BEFORE Enter. Never submitted: nothing is created, so the
+      // board every later stop photographs is unchanged. Test ids and an
+      // option VALUE only, so the Swedish walk runs the same drive.
+      name: "project-board-create-shared",
+      path: `${project}/board`,
+      drive: async (page) => {
+        await expect(page.getByTestId("board-card").first()).toBeVisible({ timeout: 20_000 });
+        await page.locator("#board-create").click();
+        await page.getByTestId("board-create-visibility").selectOption("CLIENT_VISIBLE");
+        await expect(page.getByTestId("board-create-visibility")).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+      },
+    },
     { name: "project-backlog", path: `${project}/backlog` },
     // 2W-F: the same list with the view turned on — two ACTIVE chips,
     // the Clear control they reveal, and the group header rows. The
@@ -216,6 +231,23 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // The same panel as a page (2W-P): the shot that shows the two
     // surfaces cannot drift apart.
     { name: "project-item-page", path: `${project}/items/1` },
+    {
+      // Phase 3 slice 73: the Subtasks add row under the seeded SHARED task
+      // (KEY-2) — the lower-only switch at "Client can see" and the sentence
+      // under it (founder decision (8)). The FULL PAGE, deliberately: it has
+      // no DataTable behind it, so the Swedish width walk measures nothing
+      // here and needs no estimated keys. Never typed into, never
+      // submitted: KEY-2's children are counted by the private-question
+      // stop below and by later specs.
+      name: "project-item-subtask-add-shared",
+      path: `${project}/items/2`,
+      drive: async (page) => {
+        await page.getByTestId("item-subtask-add").click();
+        await expect(page.getByTestId("item-subtask-visibility")).toHaveAttribute("data-visibility", "CLIENT_VISIBLE", {
+          timeout: 20_000,
+        });
+      },
+    },
     {
       // Phase 3 slice 72: the rail's make-private QUESTION — "Make this
       // task private, together with 1 comment?" — on the seeded shared
