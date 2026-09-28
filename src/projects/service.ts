@@ -23,6 +23,7 @@ import { fail, isDeadlock, isLockTimeout, isUniqueViolation } from "@/lib/domain
 import { newId } from "@/lib/ids";
 import { latestPublishedHealth } from "@/modules/work/updates";
 import { retryOnContention } from "@/lib/retry";
+import { beginPortalSwitch, reconcilePortalStamps } from "@/projects/portal-gate";
 
 /**
  * Projects (DATA_MODEL.md §6.5, PLAN.md Phase 2). Every list composes
@@ -623,10 +624,25 @@ export async function unarchiveProject(ctx: ProjectCtx, projectId: string): Prom
  * updates but the registry cannot name — it is deliberately not a
  * Prisma model (generated tsvector columns are hand-written DDL), so
  * it is the one leg no list in TypeScript knows about.
+ *
+ * AND ONE MORE WAIT BEFORE THE LEGS, SINCE SLICE 74: the switch GATE
+ * (`beginPortalSwitch`, C40), where the switch waits for writes already
+ * in flight that stamped this project's rows. That is the `+ 1` in
+ * PORTAL_GATED_WAITS. Those writers are now a second kind of holder —
+ * an insert-only transaction used never to delay the fan-out, because
+ * its uncommitted row is invisible to the legs; now it holds the gate
+ * shared until it commits. Most are short; some are not (the bulk
+ * verbs and the make-private cascade stamp early and run to 60 s), and
+ * the gate wait is bounded like every other one — PORTAL_LOCK_WAIT_MS
+ * per attempt, and a writer that outlasts every attempt makes the switch
+ * PORTAL_SWITCH_BUSY. New writers never queue behind a waiting switch
+ * (they fail closed instead), so only writes already running are waited
+ * for.
  */
 const PORTAL_FANOUT_LEGS = PORTAL_ENABLED_FANOUT_TARGETS.length + 1;
+const PORTAL_GATED_WAITS = PORTAL_FANOUT_LEGS + 1;
 export const PORTAL_LOCK_WAIT_MS = 1_500;
-export const PORTAL_TX_MS = PORTAL_FANOUT_LEGS * PORTAL_LOCK_WAIT_MS + 10_000;
+export const PORTAL_TX_MS = PORTAL_GATED_WAITS * PORTAL_LOCK_WAIT_MS + 10_000;
 
 /**
  * THE project-level portal gate (TENANCY.md §7.2). Writes ONLY
@@ -705,7 +721,12 @@ export async function setPortalEnabled(
   // works or does not is worse than one that comes back and says which
   // — typically in about three lock waits (~4.5 s), and bounded by
   // attempts × the transaction budget, not by "seconds", which the
-  // first draft of this claimed (review). The member can press it
+  // first draft of this claimed (review). Since slice 74 the call also
+  // waits, after the last attempt, for the reconcile (`portal-gate.ts`):
+  // up to about a second of polling for writers still in doubt (skipped
+  // when the switch ended OFF), then up to three short passes, each
+  // retried on a lock timeout or deadlock and bounded at the reconcile's
+  // lock wait — normally one short transaction. The member can press it
   // again, and while it waits it
   // holds locks that make everything else on the project slower, which
   // is the opposite of what an emergency control should do. The OFF
@@ -726,12 +747,56 @@ export async function setPortalEnabled(
   // the attempt back — the re-run redoes the permission check, the
   // scope check and the `changed` read from scratch, so the audit row
   // can never describe a transition that did not happen.
+  //
+  // THE GATE, SINCE SLICE 74 (C40; `portal-gate.ts` and migration
+  // 20260928180000). Before it, a row written by a transaction still
+  // open while a DISABLE fanned out kept `portal_enabled = true` after
+  // the portal was off. Now this transaction takes the project's gate
+  // EXCLUSIVE before it reads the switch it decides on: it waits for the
+  // writes already in flight, while every new write fails closed rather
+  // than queue behind it, and the database refuses a flip whose
+  // transaction cannot TAKE the gate (the fan-out tries it; a raw flip
+  // with no writer in flight takes it there and is accepted).
+  //
+  // IT IS TAKEN IN BOTH DIRECTIONS AND BEFORE THE `changed` READ, not
+  // only when the unlocked read says there is work to do. The read after
+  // the gate is the authoritative one: an OFF pressed while another
+  // member's ON is mid-flight is ordered AFTER it and switches the
+  // portal off, instead of reading the old OFF, answering "no change"
+  // and letting the ON land (the design review); and two presses in the
+  // same direction are one transition and one audit row, not two.
+  //
+  // THE RECONCILE RUNS AFTERWARDS, WHATEVER THE OUTCOME, once any
+  // attempt asked for the gate. A write that failed closed while this
+  // held the gate heals itself at its own commit if the gate is free by
+  // then; one whose commit-time heal ran while this still held it is left
+  // `false` in a project that may be ON — after an ENABLE, a no-op, or a
+  // DISABLE that was refused — and the reconcile finds it. ONCE PER CALL,
+  // after the last attempt, in its own transactions, as the SYSTEM;
+  // awaited, never throws. A routine correction writes no audit row —
+  // like the fan-out it re-derives a trigger-maintained copy and changes
+  // nothing anyone decided — and the one exception is the ALARM
+  // (`project.portal_stamp_alarm`), when a pass finds rows of a
+  // switched-off project disagreeing with it.
+  let gateRequested = false;
+  let committedOff = false;
   try {
-    return await retryOnContention(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    const result = await retryOnContention(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
       await requireAccess(tx, ctx.tenantId, ctx.actor, "project:manage_portal");
-      const p = await loadInScope(tx, ctx.actor, projectId);
-      if (p.portalEnabled === enabled) return { changed: false };
-      await tx.project.update({ where: { id: projectId }, data: { portalEnabled: enabled } });
+      await loadInScope(tx, ctx.actor, projectId);
+      gateRequested = true;
+      await beginPortalSwitch(tx, projectId);
+      const now = await tx.project.findFirst({
+        where: { id: projectId },
+        select: { portalEnabled: true },
+      });
+      if (!now) deny("NOT_FOUND", "project");
+      if (now!.portalEnabled === enabled) return { changed: false };
+      await tx.project.update({
+        where: { id: projectId },
+        data: { portalEnabled: enabled },
+        select: { id: true },
+      });
       await record(tx, {
         action: enabled ? "project.portal_enabled" : "project.portal_disabled",
         targetType: "Project",
@@ -739,6 +804,10 @@ export async function setPortalEnabled(
       });
       return { changed: true };
     }, { timeoutMs: PORTAL_TX_MS, lockTimeoutMs: PORTAL_LOCK_WAIT_MS }));
+    // Returned, so the project is now `enabled` — switched to it, or found
+    // already there under the gate.
+    committedOff = !enabled;
+    return result;
   } catch (e) {
     // BOTH shapes `retryOnContention` retried, not just the new one
     // (review): a deadlock that survives three attempts means exactly
@@ -750,10 +819,25 @@ export async function setPortalEnabled(
     if (isLockTimeout(e)) fail("PORTAL_SWITCH_BUSY", "lock timeout");
     if (isDeadlock(e)) fail("PORTAL_SWITCH_BUSY", "deadlock");
     throw e;
+  } finally {
+    if (gateRequested) {
+      await reconcilePortalStamps(ctx.tenantId, projectId, { endedOff: committedOff });
+    }
   }
 }
 
-/** project:manage_portal (was project:edit until 2026-09-21) — CONTACT_PRIMARY hours widget mode. */
+/**
+ * project:manage_portal (was project:edit until 2026-09-21) — CONTACT_PRIMARY hours widget mode.
+ *
+ * NOT GATED LIKE THE PORTAL SWITCH, and recorded rather than fixed (slice
+ * 74's design review, option B): `project_time_summary_stamp_visibility`
+ * reads the mode with the same plain SELECT, so a NEW month's summary row
+ * inserted while a change to NONE is in flight keeps CLIENT_VISIBLE. No
+ * screen shows it — `readPortalHours` re-reads the mode and shows nothing
+ * for NONE and no amount outside BILLABLE_AMOUNT (keep that re-read; it
+ * is the belt) — and the next recompute of that month re-derives it. This
+ * also has no lock bound or retry, unlike `setPortalEnabled`.
+ */
 export async function setHoursSharingMode(
   ctx: ProjectCtx,
   projectId: string,

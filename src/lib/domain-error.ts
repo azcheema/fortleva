@@ -238,6 +238,26 @@ const DEADLOCK_CODES = new Set(["P2010", "P2039", "P2034"]);
  * measurement: nothing in the product yet waits on a lock from a
  * `$queryRaw` under a bound, so there is no way to provoke it without
  * writing a caller that does. Keep it, and do not claim it is proven.
+ *
+ * (CORRECTED 2026-09-28, slice 74. "Nothing in the product yet waits on
+ * a lock from a raw statement under a bound" stopped being true with the
+ * portal request intake (slice 6a, 2026-09-21): `createPortalRequest`
+ * passes `lockTimeoutMs` and takes the raw advisory budget lock and the
+ * rank queue inside it — and then the portal download (slice 69), with
+ * `portal_download:`. The first MEASUREMENT of a raw 55P03 came later,
+ * in slice 72: the make-private cascade queues on the rank lock with
+ * `lockProjectRanks`, a `$executeRaw` advisory wait under
+ * `lockTimeoutMs`, and `visibility.dbtest.ts` ("a cascade that cannot
+ * get its locks is told VISIBILITY_BUSY…") holds that lock until the
+ * bound fires. `VISIBILITY_BUSY` is reachable from a 55P03 only through
+ * this function, so a raw statement's lock timeout IS matched — measured.
+ * What that test does not do is print the arriving code, so "P2010" for
+ * it rests on the raw branch the deadlock note above verified, not on a
+ * printout. Slice 74 adds three more bounded raw advisory waits, all in
+ * `src/projects/portal-gate.ts`: the portal switch's gate entry
+ * (`beginPortalSwitch`, whose timeout must become PORTAL_SWITCH_BUSY on
+ * the emergency control), the request broker's (`enterPortalGateShared`)
+ * and the reconcile's.)
  */
 const LOCK_TIMEOUT_CODES = new Set(["P2010", "P2039"]);
 

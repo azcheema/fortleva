@@ -11,7 +11,14 @@ import type { TenantDb } from "@/db";
  * be copied a third time by the next budget. `work → core` is the
  * allowed import direction, so the work module's `rank-lock.ts` — where
  * every other `pg_advisory_xact_lock` in the product lives — delegates
- * here rather than the other way round.
+ * here rather than the other way round. (Corrected 2026-09-28, slice
+ * 74: not every other. The one-bigint keys also include
+ * `milestone_rank:` in `src/projects/milestones.ts` and the time
+ * module's `tenant:member` in `src/modules/time/ctx.ts`; and the portal
+ * switch GATE's locks — two int4 keys per project, a separate key space
+ * — live in SQL, migration `20260928180000`, wrapped for application
+ * code by `src/projects/portal-gate.ts`. The request intake takes that
+ * gate, shared, BEFORE this key.)
  *
  * WHY IT IS RAW SQL IN A FILE OF ITS OWN: the brokers that call it are
  * scanned by the portal tripwire's AST tier (`src/authz/portal-projections.test.ts`),
@@ -26,7 +33,10 @@ import type { TenantDb } from "@/db";
  * so a collision with an unrelated key serialises two waiters and
  * nothing more. The cycle argument is each caller's: the intake takes
  * this key BEFORE the project's rank key and nothing takes them in the
- * other order; the download takes this key and no other.
+ * other order (and AFTER the portal gate, slice 74 — an order the code
+ * keeps, not the database: the gate's SQL refuses only a transaction
+ * that has written or row-locked something, and cannot see this key);
+ * the download takes this key and no other.
  *
  * THE CLOCK RIDES ALONG because it costs nothing to return it from the
  * statement that takes the lock, and because the alternative compares

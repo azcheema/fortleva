@@ -73,8 +73,10 @@ export const retryOnDeadlock = <T>(fn: () => Promise<T>): Promise<T> =>
  * `lockTimeoutMs` and therefore gets a 55P03 where it would otherwise
  * have waited with no end in sight (`isLockTimeout` has the
  * measurement). Callers: `setPortalEnabled`, the two work-module
- * brokers, the portal download (`src/documents/portal-writes.ts`), and
- * the sharing UI's cascade and bulk share (`src/modules/work/visibility.ts`).
+ * brokers, the portal download (`src/documents/portal-writes.ts`), the
+ * sharing UI's cascade and bulk share (`src/modules/work/visibility.ts`),
+ * and the portal gate's reconcile passes (`src/projects/portal-gate.ts`,
+ * slice 74).
  *
  * THE TWO ARE SEPARATE EXPORTS ON PURPOSE. A lock timeout can only
  * reach a caller that ASKED for the bound, so folding both shapes into

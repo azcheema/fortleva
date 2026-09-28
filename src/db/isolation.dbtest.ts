@@ -491,3 +491,275 @@ describe("posture assertions", () => {
     }
   });
 });
+
+/**
+ * THE PORTAL SWITCH GATE, STRUCTURALLY (Phase 3 slice 74, OPEN_QUESTIONS
+ * C40; migration 20260928180000). The behaviour is measured in
+ * src/projects/portal-switch-gate.dbtest.ts; what is pinned here is what
+ * no row-value test can see and every part of the proof rests on: which
+ * lock each function takes, and in what ORDER; that nothing a writer runs
+ * can WAIT (a blocking stamp or heal closes a wait-for cycle with the
+ * switch — the design review counted ~25 such writers); the READ
+ * COMMITTED and no-xid premises; the volatility a stale snapshot
+ * would hide behind; and that the probes' inline key derivation finds the
+ * lock the product takes.
+ *
+ * Bodies come from pg_get_functiondef with `--` comments stripped first,
+ * so prose in a comment can neither satisfy a pin nor break one.
+ */
+describe("the portal switch gate, structurally (slice 74)", () => {
+  const STAMPED = PORTAL_ENABLED_FANOUT_TARGETS.map(tableNameOf);
+  const ROW_LOCK = /\bFOR\s+(NO\s+KEY\s+UPDATE|KEY\s+SHARE|SHARE|UPDATE)\b/i;
+  const bodyOf = async (fn: string): Promise<string> => {
+    const [row] = await getPlatformClient().$queryRaw<{ src: string }[]>`
+      SELECT pg_get_functiondef(${fn}::regproc) AS src`;
+    return (row?.src ?? "").replace(/--[^\n]*/g, "");
+  };
+
+  it("the stamp and the heal only TRY the gate: no blocking lock, no row lock", async () => {
+    for (const fn of ["stamp_portal_enabled", "portal_heal_in_doubt"]) {
+      const src = await bodyOf(fn);
+      expect(src, `${fn} tries the gate`).toContain("portal_gate_try_shared(");
+      for (const blocking of ["portal_gate_enter_shared(", "portal_switch_begin(", "pg_advisory_xact_lock", "pg_advisory_lock"]) {
+        expect(src, `${fn} must never wait on the gate (${blocking})`).not.toContain(blocking);
+      }
+      expect(src, `${fn} must take no row lock`).not.toMatch(ROW_LOCK);
+    }
+  });
+
+  it("the try helpers call only the non-blocking lock functions, each on its own key", async () => {
+    const tries: [string, number][] = [
+      ["portal_gate_try_shared", 7401],
+      ["portal_gate_try_exclusive", 7401],
+      ["portal_doubt_register", 7402],
+      ["portal_doubt_drained", 7402],
+    ];
+    for (const [fn, seed] of tries) {
+      const src = await bodyOf(fn);
+      expect(src, `${fn} tries`).toMatch(/pg_try_advisory_xact_lock(_shared)?\(/);
+      expect(src, `${fn} keys on ${seed}`).toContain(String(seed));
+      expect(src, `${fn} keys on nothing else`).not.toContain(String(seed === 7401 ? 7402 : 7401));
+      const rest = src.replace(/pg_try_advisory_xact_lock(_shared)?\(/g, "");
+      expect(rest, `${fn} takes no other lock`).not.toMatch(/advisory|portal_switch_begin\(|portal_gate_enter_shared\(/);
+      expect(rest, `${fn} takes no row lock`).not.toMatch(ROW_LOCK);
+    }
+  });
+
+  it("the blocking entries, the drain and the reconcile assert the no-xid rule; all that decides on the switch asserts READ COMMITTED", async () => {
+    for (const fn of ["portal_switch_begin", "portal_gate_enter_shared", "portal_doubt_drained", "portal_switch_reconcile"]) {
+      expect(await bodyOf(fn), `${fn}: no transaction id yet`).toContain("pg_current_xact_id_if_assigned()");
+    }
+    for (const fn of [
+      "portal_switch_begin",
+      "project_portal_enabled_fanout",
+      "portal_switch_reconcile",
+      "stamp_portal_enabled",
+      "portal_heal_in_doubt",
+    ]) {
+      expect(await bodyOf(fn), `${fn}: READ COMMITTED`).toMatch(
+        /current_setting\('transaction_isolation'\)\s*<>\s*'read committed'/,
+      );
+    }
+  });
+
+  it("volatility: nothing that locks or reads the switch may reuse a snapshot, or run in a worker; the key halves are immutable", async () => {
+    const lockers = [
+      "portal_gate_try_shared",
+      "portal_gate_try_exclusive",
+      "portal_doubt_register",
+      "portal_doubt_drained",
+      "portal_switch_begin",
+      "portal_gate_enter_shared",
+    ];
+    const volatile = [...lockers, "stamp_portal_enabled", "portal_heal_in_doubt", "project_portal_enabled_fanout", "portal_switch_reconcile"];
+    const keys = ["portal_gate_key_hi", "portal_gate_key_lo"];
+    const rows = await getPlatformClient().$queryRaw<{ proname: string; provolatile: string; proparallel: string }[]>`
+      SELECT p.proname::text AS proname, p.provolatile::text AS provolatile, p.proparallel::text AS proparallel
+        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname::text = ANY(${[...volatile, ...keys]}::text[])`;
+    // One row each: an overload would make every pin above ambiguous.
+    expect(rows.map((r) => r.proname).sort()).toEqual([...volatile, ...keys].sort());
+    const by = new Map(rows.map((r) => [r.proname, r]));
+    // A STABLE stamp would reuse the outer statement's snapshot.
+    for (const fn of volatile) expect(by.get(fn)?.provolatile, `${fn}: VOLATILE`).toBe("v");
+    // A parallel worker's lock is not its leader's.
+    for (const fn of lockers) expect(by.get(fn)?.proparallel, `${fn}: never PARALLEL SAFE`).not.toBe("s");
+    for (const fn of keys) expect(by.get(fn)?.provolatile, `${fn}: IMMUTABLE`).toBe("i");
+  });
+
+  it("the reconcile names every leg, skips locked rows, and takes the gate BEFORE it reads the switch", async () => {
+    const src = await bodyOf("portal_switch_reconcile");
+    for (const t of [...STAMPED, "search_index"]) {
+      expect(src, `the reconcile must UPDATE ${t}`).toMatch(new RegExp(`UPDATE\\s+${t}\\s`));
+    }
+    // It never waits on a row a writer holds.
+    expect(src.match(/FOR\s+NO\s+KEY\s+UPDATE\s+SKIP\s+LOCKED/g)?.length, "every leg skips locked rows").toBe(
+      STAMPED.length + 1,
+    );
+    // THE ORDER IS THE SAFETY: search_index has no stamp to re-derive a
+    // stale value, so a reconcile that read the switch before holding the
+    // gate could write TRUE over a project a DISABLE just switched off.
+    const lock = src.search(
+      /(pg_advisory_xact_lock_shared\(\s*portal_gate_key_hi\(\s*p_project\s*,\s*7401\s*\)|portal_gate_enter_shared\(\s*p_project\s*\))/,
+    );
+    const read = src.search(/\bFROM\s+project\s/);
+    expect(lock, "the reconcile takes the gate shared").toBeGreaterThanOrEqual(0);
+    expect(read, "…and reads the switch only after it").toBeGreaterThan(lock);
+  });
+
+  it("the fan-out tries the gate before its first leg, and refuses with the retryable SQLSTATE", async () => {
+    const src = await bodyOf("project_portal_enabled_fanout");
+    const tried = src.indexOf("portal_gate_try_exclusive(");
+    const firstLeg = src.search(/\bUPDATE\s+\w+\s+SET\b/);
+    expect(tried, "the fan-out tries the gate exclusive").toBeGreaterThanOrEqual(0);
+    expect(firstLeg, "…before any leg").toBeGreaterThan(tried);
+    expect(src).toMatch(/ERRCODE\s*=\s*'55P03'/);
+  });
+
+  it("the switch changes only through the fan-out: `project` has no BEFORE UPDATE row trigger, and exactly its three AFTER triggers", async () => {
+    // THE PROOF'S THIRD PREMISE. The fan-out is `AFTER UPDATE OF
+    // portal_enabled`, and a column-specific trigger fires only when the
+    // column is in the statement's SET list — a change a BEFORE UPDATE
+    // trigger makes to NEW does not count. So a BEFORE UPDATE trigger that
+    // rewrote NEW.portal_enabled would move the switch WITHOUT the fan-out
+    // and without its gate: every child would keep its old copy, `true`
+    // included. (A BEFORE INSERT one could not: a new project has no
+    // children, and every later stamp reads it fresh.) The exact set is
+    // pinned too, so the next trigger on `project` is a decision someone
+    // makes here, not one this assertion walks past.
+    const rows = await getPlatformClient().$queryRaw<
+      {
+        tgname: string;
+        row_level: boolean;
+        before: boolean;
+        on_update: boolean;
+        events: number;
+        enabled: string;
+        on_switch_only: boolean;
+      }[]
+    >`
+      SELECT t.tgname::text AS tgname,
+             (t.tgtype::int & 1) = 1 AS row_level,
+             (t.tgtype::int & 2) = 2 AS before,
+             (t.tgtype::int & 16) = 16 AS on_update,
+             (t.tgtype::int & 60) AS events,
+             t.tgenabled::text AS enabled,
+             t.tgattr::text = (SELECT a.attnum::text FROM pg_attribute a
+                                WHERE a.attrelid = t.tgrelid AND a.attname = 'portal_enabled') AS on_switch_only
+        FROM pg_trigger t
+       WHERE t.tgrelid = 'project'::regclass AND NOT t.tgisinternal`;
+    expect(
+      rows.filter((r) => r.row_level && r.before && r.on_update).map((r) => r.tgname),
+      "no BEFORE UPDATE row trigger on project",
+    ).toEqual([]);
+    expect(rows.map((r) => r.tgname).sort()).toEqual([
+      "project_hours_sharing_fanout",
+      "project_portal_enabled_fanout",
+      "search_feed_project",
+    ]);
+    // …and none of the three is a BEFORE trigger of any kind.
+    expect(rows.filter((r) => r.before).map((r) => r.tgname)).toEqual([]);
+    // THE FAN-OUT ITSELF, not only its name: a disabled (or replica-only)
+    // fan-out keeps the name set above while the switch moves without
+    // re-deriving a single child — and without the gate the fan-out tries.
+    const fanout = rows.find((r) => r.tgname === "project_portal_enabled_fanout");
+    expect(fanout, "the fan-out exists").toBeDefined();
+    expect(fanout!.enabled, "the fan-out fires on every ordinary UPDATE (tgenabled 'O')").toBe("O");
+    expect(fanout!.row_level && !fanout!.before, "AFTER … FOR EACH ROW").toBe(true);
+    expect(fanout!.events, "UPDATE only (tgtype event bits)").toBe(16);
+    expect(fanout!.on_switch_only, "UPDATE OF portal_enabled, and nothing else").toBe(true);
+  });
+
+  it("every stamped table carries exactly one deferred heal, firing on its stamp's own events", async () => {
+    for (const t of STAMPED) {
+      const rows = await getPlatformClient().$queryRaw<
+        {
+          tgname: string;
+          events: number;
+          row_after: boolean;
+          attrs: string;
+          deferrable: boolean;
+          deferred: boolean;
+          enabled: string;
+          def: string;
+        }[]
+      >`
+        SELECT t.tgname::text AS tgname,
+               (t.tgtype::int & 60) AS events,
+               ((t.tgtype::int & 1) = 1 AND (t.tgtype::int & 2) = 0) AS row_after,
+               t.tgattr::text AS attrs,
+               t.tgdeferrable AS deferrable, t.tginitdeferred AS deferred,
+               t.tgenabled::text AS enabled,
+               pg_get_triggerdef(t.oid) AS def
+          FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND c.relname = ${t} AND NOT t.tgisinternal
+           AND t.tgname IN (${`${t}_portal_heal`}, ${`${t}_stamp_portal_enabled`})`;
+      const heals = rows.filter((r) => r.tgname === `${t}_portal_heal`);
+      const stamp = rows.find((r) => r.tgname === `${t}_stamp_portal_enabled`);
+      expect(heals, `${t}: exactly one heal`).toHaveLength(1);
+      expect(stamp, `${t}: its stamp`).toBeDefined();
+      const heal = heals[0]!;
+      // At the writer's COMMIT, not at its statement.
+      expect(heal.deferrable && heal.deferred, `${t}: DEFERRABLE INITIALLY DEFERRED`).toBe(true);
+      expect(heal.row_after, `${t}: AFTER … FOR EACH ROW`).toBe(true);
+      expect(heal.enabled, `${t}: enabled`).toBe("O");
+      // Armed only by a fail-closed stamp of THIS transaction, and never
+      // by the heal's own UPDATE (trigger depth 1).
+      expect(heal.def).toContain("app.portal_in_doubt");
+      expect(heal.def).toContain("pg_trigger_depth()");
+      expect(heal.def).toContain("EXECUTE FUNCTION portal_heal_in_doubt()");
+      // The same events and columns as the stamp it repairs.
+      expect(heal.events, `${t}: the stamp's events`).toBe(stamp!.events);
+      expect(heal.attrs, `${t}: the stamp's columns`).toBe(stamp!.attrs);
+    }
+  });
+
+  it("the key helpers agree with the inline derivation the probes use — negative halves included", async () => {
+    const platform = getPlatformClient();
+    // One id for each sign combination of the two halves, FOUND rather than
+    // hard-coded (1 in 4 each, from 256 candidates) — the low half is
+    // sign-extended into int4, which is exactly where a probe's unsigned
+    // mask and the helper could disagree.
+    const rows = await platform.$queryRaw<
+      { id: string; seed: number; hi_neg: boolean; lo_neg: boolean; hi_ok: boolean; lo_ok: boolean }[]
+    >`
+      WITH candidates AS (SELECT gen_random_uuid()::text AS id FROM generate_series(1, 256)),
+      picked AS (
+        SELECT DISTINCT ON (portal_gate_key_hi(id, 7401) < 0, portal_gate_key_lo(id, 7401) < 0) id
+          FROM candidates
+         ORDER BY portal_gate_key_hi(id, 7401) < 0, portal_gate_key_lo(id, 7401) < 0, id)
+      SELECT picked.id, s.seed,
+             portal_gate_key_hi(picked.id, s.seed) < 0 AS hi_neg,
+             portal_gate_key_lo(picked.id, s.seed) < 0 AS lo_neg,
+             (portal_gate_key_hi(picked.id, s.seed)::bigint & 4294967295)
+               = ((hashtextextended(picked.id, s.seed) >> 32) & 4294967295) AS hi_ok,
+             (portal_gate_key_lo(picked.id, s.seed)::bigint & 4294967295)
+               = (hashtextextended(picked.id, s.seed) & 4294967295) AS lo_ok
+        FROM picked CROSS JOIN (VALUES (7401), (7402)) AS s(seed)`;
+    const gate = rows.filter((r) => r.seed === 7401);
+    expect(new Set(gate.map((r) => `${r.hi_neg}/${r.lo_neg}`)).size, "every sign combination").toBe(4);
+    expect(rows).toHaveLength(8);
+    for (const r of rows) {
+      expect(r.hi_ok, `${r.id}/${r.seed}: high half`).toBe(true);
+      expect(r.lo_ok, `${r.id}/${r.seed}: low half`).toBe(true);
+    }
+    // And end to end: the lock the product's helpers take is the one the
+    // inline probe finds, for an id whose halves are both negative.
+    const negative = gate.find((r) => r.hi_neg && r.lo_neg)!;
+    const seen = await platform.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(portal_gate_key_hi(${negative.id}, 7401), portal_gate_key_lo(${negative.id}, 7401))`;
+      const [row] = await tx.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM pg_locks
+         WHERE locktype = 'advisory' AND objsubid = 2 AND granted AND mode = 'ExclusiveLock'
+           AND pid = pg_backend_pid()
+           AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+           AND classid::bigint = ((hashtextextended(${negative.id}::text, 7401) >> 32) & 4294967295)
+           AND objid::bigint = (hashtextextended(${negative.id}::text, 7401) & 4294967295)`;
+      return row?.n ?? 0;
+    });
+    expect(seen).toBe(1);
+  });
+});

@@ -134,6 +134,11 @@ export async function createRequest(
   // Nothing LEAKS if it is not: `stamp_portal_enabled` derives the new
   // row's own flag from the project at INSERT, so a request filed into a
   // just-switched-off project would be invisible to the client anyway.
+  // (That sentence stated as fact what was only true of a COMMITTED
+  // switch until slice 74: a row written while a DISABLE was still in
+  // flight kept `true`. The gate — migration 20260928180000 — made it
+  // true, and the broker now takes the gate shared before this read,
+  // so no switch can move between this read and the INSERT's stamp.)
   // What it would be is a request the submitter believes was received
   // and can no longer see — which is the same failure as eating their
   // words, one layer down. Refused instead.

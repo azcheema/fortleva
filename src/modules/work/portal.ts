@@ -395,7 +395,14 @@ export type PortalTaskListOptions = {
  * WHAT THE `where` DOES AND DOES NOT DO. The tenant, the client, the
  * visibility and the project's portal switch are all decided by
  * `portal_gate` under the contact principal — they are repeated in the
- * filter as defence in depth, never as the gate. What is NOT in the
+ * filter as defence in depth, never as the gate. (Precisely, since slice
+ * 74: the switch is decided TWICE. `work_item`'s `portal_gate` reads the
+ * row's COPY of it, and the `project` term below is a read of `project`
+ * under the contact principal, where `project`'s own `portal_gate` reads
+ * the switch itself. Before slice 74 a row written while a DISABLE was
+ * in flight kept its copy `true`, and that second read is what hid it
+ * here; since then the copy can lag the switch only toward `false`.)
+ * What is NOT in the
  * policy and therefore must be here: `deletedAt` (a soft-deleted row is
  * still a row), the item's `archivedAt` — **for live work only, since
  * an ANSWERED request outlives it** — the `CANCELLED` exclusion and its
@@ -527,7 +534,11 @@ export async function listPortalTasks(
     // projects come out in the order their soonest task does. A project
     // whose row came back without its `project` relation cannot happen
     // under this policy set (the item's gate is strictly narrower than
-    // the project's), but it is DROPPED rather than rendered nameless:
+    // the project's — and the `where` requires the project under the
+    // contact principal anyway, which is what made this hold before
+    // slice 74, when a row written during a DISABLE kept its copy of the
+    // switch `true` and its gate was WIDER than the project's), but it is
+    // DROPPED rather than rendered nameless:
     // a task with no project on a client's screen is a task they cannot
     // place, and a `?? ""` would put one there.
     const byProject = new Map<string, { projectKey: string; projectName: string; tasks: PortalTask[] }>();

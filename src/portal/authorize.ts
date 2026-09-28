@@ -43,7 +43,9 @@ const CONTACT_ROW_BY_TX = new WeakMap<
  *      capability                                     → policy.ts;
  *   3. the resource belongs to the contact's client and tenant;
  *   4. …and is CLIENT_VISIBLE on a portal-enabled project — 3 and 4 are
- *      one row read, because they are one RLS predicate;
+ *      one row read, because they are one RLS predicate (and since slice
+ *      74 the by-id probes also read the switch from the PROJECT, not
+ *      only from the row's trigger-maintained copy — below);
  *   5. module gates 1–3                               → policy.ts.
  *
  * BEHIND ALL OF IT, THE DATABASE. Every read here runs under the
@@ -288,24 +290,43 @@ export async function authorizePortal(
     // `id` alone is selected: whether the contact may act on this task
     // is the question, and every other column is the projection's
     // business, not this file's.
-    const row = await tx.workItem.findFirst({ where: { id: ref.workItemId }, select: { id: true } });
+    //
+    // AND THE SWITCH ONCE MORE, FROM THE PROJECT ITSELF (slice 74, C40).
+    // The row's `portal_enabled` is a COPY, and until slice 74 a row
+    // written while a DISABLE was in flight kept `true` after it. The
+    // gate migration (20260928180000) closed that race; this relation
+    // filter makes the by-id probes stop depending on the copy at all.
+    // Under the contact principal it is a read of `project`, so
+    // project's own `portal_gate` answers it — a switched-off project is
+    // simply not there.
+    const row = await tx.workItem.findFirst({
+      where: { id: ref.workItemId, project: { portalEnabled: true } },
+      select: { id: true },
+    });
     if (!row) deny("NOT_FOUND", "work item");
   } else if (ref?.kind === "document") {
     // The same single probe: tenant, client, the row's own CLIENT_VISIBLE
     // and the project's switch are all `portal_gate`'s. The soft-delete
     // term is the projection's, not the policy's, and it is repeated
     // here so a deleted file cannot be downloaded by an id somebody kept.
+    // The project term is restated as for a task (above); a client-level
+    // file has no project and no switch.
     const row = await tx.document.findFirst({
-      where: { id: ref.documentId, deletedAt: null },
+      where: {
+        id: ref.documentId,
+        deletedAt: null,
+        OR: [{ projectId: null }, { project: { portalEnabled: true } }],
+      },
       select: { id: true },
     });
     if (!row) deny("NOT_FOUND", "document");
   } else if (ref?.kind === "project_version") {
     // Tenant, client, SHIPPED and the project's switch are all
     // `portal_gate`'s on this table (the status-structural form); there
-    // is no soft delete on a version, so the probe is the policy alone.
+    // is no soft delete on a version. The project term is restated as
+    // for a task (above).
     const row = await tx.projectVersion.findFirst({
-      where: { id: ref.versionId },
+      where: { id: ref.versionId, project: { portalEnabled: true } },
       select: { id: true },
     });
     if (!row) deny("NOT_FOUND", "project version");

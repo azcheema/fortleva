@@ -97,7 +97,8 @@ const GET_EXPIRES_SEC = 60;
  * The gate's terms, restated on the document row for the system
  * transaction — `portal_gate`'s three (client, CLIENT_VISIBLE, the
  * portal switch, which the stamp trigger sets TRUE for a client-level
- * document) plus the two the policy does not carry and every portal
+ * document — and which is ALSO read from the project, below) plus the
+ * two the policy does not carry and every portal
  * projection adds: the soft delete and the PROJECT's archive
  * (`listPortalTasks` documents the archive gap at length). And one term
  * that is this file's own: an EXPORT is a tenant's data leaving the
@@ -111,7 +112,10 @@ const documentGate = (principal: PortalPrincipal) => ({
   portalEnabled: true,
   deletedAt: null,
   kind: { not: "EXPORT" as const },
-  OR: [{ projectId: null }, { project: { archivedAt: null } }],
+  // The project's archive AND its switch, read from the project itself
+  // rather than trusted to the row's copy (slice 74, C40): as the system
+  // principal a relation filter is not gated by RLS, so both are written.
+  OR: [{ projectId: null }, { project: { archivedAt: null, portalEnabled: true } }],
 });
 
 async function assertDownloadBudget(tx: TenantDb, tenantId: string, contactId: string): Promise<void> {

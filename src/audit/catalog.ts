@@ -84,6 +84,16 @@ export const AUDIT_EVENTS = {
   "project.key_changed": TENANT,
   "project.portal_enabled": TENANT,
   "project.portal_disabled": TENANT,
+  // Slice 74 (C40), actor SYSTEM: written whenever a reconcile pass reads
+  // the project's switch OFF and finds rows of that project disagreeing
+  // with it — in the pass's own transaction when it CORRECTS them (so the
+  // correction and its record commit together), and once more after the
+  // last pass if rows are still held disagreeing. It follows the switch
+  // the pass READ, which need not be the press that ran it. The gate
+  // exists to make that impossible, so the row is the durable trace of a
+  // possible exposure, not a routine event. Metadata is ids and counts
+  // only (`src/projects/portal-gate.ts`).
+  "project.portal_stamp_alarm": TENANT,
   "project.hours_sharing_changed": TENANT,
   "project.viewed_as_contact": TENANT,
   "project_version.created": TENANT,

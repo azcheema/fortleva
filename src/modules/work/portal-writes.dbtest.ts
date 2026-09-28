@@ -8,6 +8,7 @@ import { DomainError } from "@/lib/domain-error";
 import { setupTenant } from "@/members/dbtest-fixture";
 import { resolvePortalModuleGates, type PortalPrincipal } from "@/portal";
 
+import { settle } from "./dbtest-locks";
 import { getItemDetail } from "./items";
 import { listPortalTasks } from "./portal";
 import { createPortalRequest } from "./portal-writes";
@@ -445,6 +446,106 @@ describe("what the gate refuses", () => {
       createPortalRequest(principal(), { projectId: pOn, title: "ok", body: "y".repeat(REQUEST_BODY_MAX + 1) }),
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
     expect(await requestsOf(pOn)).toHaveLength(0);
+  });
+});
+
+/**
+ * THE PORTAL SWITCH GATE (Phase 3 slice 74, C40). Every other writer's
+ * stamp only TRIES the project's gate and writes `false` while a switch is
+ * in flight; a client's own request must not be born invisible to the
+ * person who sent it, so the broker WAITS the switch out on the gate,
+ * shared, before anything else — and `createRequest`'s re-read then sees a
+ * switch no one can move before the request commits.
+ *
+ * The refusal alone could not show that: it is the same `NOT_FOUND` a
+ * DISABLE committed before the call earns from `authorizePortal`. What
+ * shows it is the broker SEEN queued on the gate after the contact's own
+ * read admitted it — the probe is scoped to this database, the mode and
+ * both halves of the project's key, derived inline (isolation.dbtest.ts
+ * pins that derivation against the migration's helpers).
+ */
+describe("the portal switch gate", () => {
+  /** A transaction queued for project P's gate SHARED — the (int4, int4) advisory form, objsubid 2. */
+  const queuedOnGate = async (projectId: string): Promise<boolean> => {
+    const rows = await f.platform.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_locks
+       WHERE locktype = 'advisory' AND objsubid = 2 AND mode = 'ShareLock' AND NOT granted
+         AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+         AND classid::bigint = ((hashtextextended(${projectId}::text, 7401) >> 32) & 4294967295)
+         AND objid::bigint = (hashtextextended(${projectId}::text, 7401) & 4294967295)`;
+    return (rows[0]?.n ?? 0) > 0;
+  };
+
+  it("a request filed while a DISABLE is in flight WAITS on the gate, then is refused — never born invisible", async () => {
+    // ITS OWN project, so `pOn` stays on for the rest of the file.
+    const pGate = randomUUID();
+    await f.platform.project.create({
+      data: {
+        id: pGate,
+        tenantId: f.tenantId,
+        clientId: acme,
+        key: `RQG${run.slice(0, 3).toUpperCase()}`,
+        name: `Gate ${run}`,
+        portalEnabled: true,
+      },
+      select: { id: true },
+    });
+
+    // A colleague's raw DISABLE, held open: the fan-out's own try holds
+    // the project's gate exclusive until it commits.
+    let release!: () => void;
+    let flipped!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    const isFlipped = new Promise<void>((r) => (flipped = r));
+    const disable = withTenant(
+      f.tenantId,
+      { type: "member", id: f.seats.owner.memberId },
+      async (tx) => {
+        await tx.$executeRaw`UPDATE project SET portal_enabled = false WHERE tenant_id = ${f.tenantId} AND id = ${pGate}`;
+        flipped();
+        await released;
+      },
+      { timeoutMs: 60_000 },
+    );
+
+    let filing: Promise<unknown> = Promise.resolve(null);
+    let over = false;
+    try {
+      await Promise.race([
+        isFlipped,
+        disable.then((): never => {
+          throw new Error("the DISABLE ended before it was held");
+        }),
+      ]);
+      // The contact's own read sees the committed switch — still ON — so
+      // `authorizePortal` admits the request; the gate is what stops it.
+      filing = settle(createPortalRequest(principal(), { projectId: pGate, title: `Mid-switch ${run}`, body: null }));
+      const deadline = Date.now() + 10_000;
+      await Promise.race([
+        (async () => {
+          while (!over && Date.now() < deadline) {
+            if (await queuedOnGate(pGate)) return;
+            await new Promise((r) => setTimeout(r, 25));
+          }
+          if (!over) throw new Error("the request never queued on the gate — the race was not exercised");
+        })(),
+        // HEAD: this wins — the old broker never waits, and files the
+        // request TRUE into a project whose switch is going off.
+        filing.then((): never => {
+          throw new Error("the request finished without waiting on the gate — the race was not exercised");
+        }),
+      ]);
+    } finally {
+      over = true;
+      release();
+      await disable;
+    }
+
+    const refusal = await filing;
+    expect(refusal).toBeInstanceOf(AuthzError);
+    expect(refusal).toMatchObject({ reason: "NOT_FOUND" });
+    expect(await requestsOf(pGate)).toHaveLength(0);
+    expect(await f.audits("portal.request_created")).toHaveLength(0);
   });
 });
 

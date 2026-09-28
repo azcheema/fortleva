@@ -161,6 +161,51 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
  * now (a client's own comments follow the task, C37, follow-task.ts) —
  * task first, then comment, the order every comment writer keeps.
  *
+ * THE PORTAL SWITCH GATE, SINCE SLICE 74 (C40; migration
+ * `20260928180000`, `src/projects/portal-gate.ts`), changes this list in
+ * three places:
+ *   • the switch now WAITS FIRST on the project's gate, for every write
+ *     already in flight that stamped one of the project's rows — a
+ *     queued writer that inserts a stamped row (createItem's task, the
+ *     activity rows the bulk verbs and the cascade write) holds the gate
+ *     SHARED to its commit. The gate itself closes no cycle: the switch
+ *     takes it before it has written or row-locked anything (the SQL
+ *     refuses a transaction that already has an xid; it cannot see an
+ *     advisory lock taken earlier, so that half of the order is the
+ *     code's), and a stamp never waits on it — it TRIES, and writes
+ *     `false` when it cannot. So the gate adds no wait and no cycle for
+ *     any writer except the request broker, which waits on it
+ *     deliberately (bounded; REQUEST_BUSY when spent), and the fan-out's
+ *     row locks block and deadlock with the lockers above exactly as
+ *     before. The cost: a stamped writer now delays the switch until it
+ *     commits — the bulk verbs and the cascade can be long — bounded by
+ *     the switch's lock wait per attempt, then PORTAL_SWITCH_BUSY.
+ *   • THE RECONCILE (`portal_switch_reconcile`) is a new locker outside
+ *     the queue: its own transactions after the switch's, once per call,
+ *     as the SYSTEM principal — up to three passes, each retried on a
+ *     lock timeout or deadlock whatever the switch's outcome (an OFF
+ *     skips only the drain) — which take the gate shared and then
+ *     re-derive every row of the
+ *     project whose copy disagrees, on the fan-out's eleven tables in the
+ *     fan-out's order. It never waits on a SOURCE row a writer holds —
+ *     each leg selects `FOR NO KEY UPDATE SKIP LOCKED`, reports what it
+ *     skipped and retries in a later pass — but its document / work_item
+ *     / comment legs fire the search feeds, and a feed's `search_index`
+ *     upsert CAN wait: on a concurrent reconcile's `search_index` leg
+ *     (itself SKIP LOCKED, so it waits on nobody and closes no cycle),
+ *     and on the next entry.
+ *   • `restampSearchLang` (`src/search/rebuild.ts` — a tenant's locale
+ *     change, under `updatePreferences`) is a locker outside the queue
+ *     this list never named: ONE unqueued `UPDATE search_index … WHERE
+ *     tenant_id = …` that locks the tenant's search rows in scan order
+ *     WITHOUT their source rows. A reconcile's feed upsert can wait on
+ *     it, and with two or more stale rows the two can close a 40P01
+ *     cycle. The reconcile's side retries (`retryOnContention`, every
+ *     pass, in every mode); the locale save's does not, so a victim there is a raw error on a save
+ *     that rolled back cleanly and succeeds when repeated. Pre-existing
+ *     with the switch's own fan-out, whose feeds can make the same cycle
+ *     (the switch retries); recorded, not fixed.
+ *
  * The older pair: deleteItem,
  * which locks its item and then the item's attachments and comments,
  * against an attachment's visibility flip, which locks the attachment
@@ -214,6 +259,12 @@ export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise
  * structural. The honest one: this file is where every
  * `pg_advisory_xact_lock` in the product lives, and a fourth key taken
  * somewhere else is a lock nobody reviewing the lock order would find.
+ * (Corrected 2026-09-28, slice 74: it never quite was — `milestone_rank:`
+ * is taken in `src/projects/milestones.ts` and the time module's
+ * `tenant:member` in `src/modules/time/ctx.ts` — and since the files
+ * slice the budget statement itself lives in
+ * `src/portal/contact-budget-lock.ts`. Slice 74's portal switch gate
+ * lives in SQL, below.)
  * The structural one: `requests.ts` is scanned by the portal tripwire's
  * AST tier (`src/authz/portal-projections.test.ts`), which bans raw SQL
  * outright — "raw SQL has no allow-list a reader can check" — and a
@@ -230,6 +281,23 @@ export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise
  * and nothing more — and the CYCLE conclusion is unaffected for a
  * better reason: the intake takes this key BEFORE the project's rank
  * key and nothing anywhere takes them in the other order.
+ *
+ * THE ONE ADVISORY KEY OUTSIDE THAT SPACE (slice 74, C40): the portal
+ * switch GATE uses the TWO-int4 form — `pg_advisory_xact_lock(int4,
+ * int4)` and its shared and try variants — which is a separate space
+ * (`pg_locks.objsubid` 2, not 1), keyed on the high and low halves of a
+ * 64-bit `hashtextextended` of the project id, so it cannot collide with
+ * any key above. It is taken in SQL — the stamp and heal triggers, the
+ * fan-out, the reconcile (migration `20260928180000`) — and wrapped for
+ * application code by `src/projects/portal-gate.ts`, never here. Its
+ * order against these keys: the switch, the reconcile and the request
+ * broker take it before any write or row lock — the SQL refuses a
+ * transaction that already has an xid, and that is ALL it can check: an
+ * advisory lock assigns no xid, so it cannot see this budget key or the
+ * rank queue taken earlier. The intake's order — the gate, then this
+ * budget key, then the rank queue — is kept by the code
+ * (`createPortalRequest`), not by the database; keep it. A stamp only
+ * tries the gate, wherever it falls, and never waits on it.
  *
  * THE CLOCK RIDES ALONG because it costs nothing to return it from the
  * statement that takes the lock, and because the alternative compares

@@ -545,7 +545,13 @@ export type ItemDetail = Omit<ItemListEntry, "type" | "priority" | "labels"> & {
    * (The LIST carries the project's own switch — `ItemList.portalEnabled`.)
    * Until slice 74 closes the stamp race (C40) this copy can disagree
    * with the project's switch, in either direction, for a row inserted
-   * while the switch was being flipped. Marking a task CLIENT_VISIBLE on
+   * while the switch was being flipped. (Since slice 74, 2026-09-28, it
+   * can disagree in ONE direction only, and transiently: a row written
+   * while a switch is in flight is stamped FALSE — fail closed — until
+   * its own commit-time heal or the switch's reconcile re-derives it, or,
+   * in the recorded residuals, until the project is next switched. So
+   * the panel can say the client cannot see a task they will see a
+   * moment later; never the reverse.) Marking a task CLIENT_VISIBLE on
    * a portal-off project has always been allowed — `changeItemVisibility`
    * has never consulted this column, because visibility is the ROW's flag
    * and the portal switch is the PROJECT's — so handing a task to a

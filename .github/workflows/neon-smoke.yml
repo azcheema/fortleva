@@ -14,9 +14,13 @@ name: Neon fidelity smoke
 #     because a pooled connection is not the same backend twice. A stock
 #     container happily permits all three, so it can never catch a
 #     regression that introduces one. The codebase violates the rule
-#     nowhere today: every set_config is is_local = true, and both
-#     advisory locks are pg_advisory_xact_lock (transaction-scoped,
-#     which is what transaction pooling supports).
+#     nowhere today: every set_config is is_local = true, and every
+#     advisory lock is transaction-scoped, which is what transaction
+#     pooling supports — pg_advisory_xact_lock on one-bigint keys (the
+#     rank queues, time's tenant:member, the portal budgets) and, since
+#     Phase 3 slice 74, the portal switch gate's shared/exclusive and
+#     try-only xact locks on two-int4 keys (migration 20260928180000).
+#     ("Both advisory locks" was true when there were two.)
 #   • migrations that carry DML. Against the container every backfill
 #     runs on an EMPTY database and touches zero rows, so a bad join or
 #     a unique violation that only real data provokes is invisible
@@ -151,7 +155,7 @@ jobs:
       #   counters     — 25 parallel transactions; pool behaviour
       #   ordering     — 50 concurrent moves, and the work rank
       #                  pg_advisory_xact_lock under the pooler
-      #   time         — the other advisory lock (tenant:member), plus
+      #   time         — another advisory lock (tenant:member), plus
       #                  one-running-timer and the COST/DEK crypto path
       - name: Real-Neon subset
         run: >-

@@ -169,8 +169,11 @@ describe("portal switch recovery", () => {
     // THE RELEASE DELAY IS THE WHOLE TEST, and the first draft of it
     // got the arithmetic wrong — 1.3 bounds, which still passed at one
     // attempt, because the wait does not begin until `requireAccess`
-    // and `loadInScope` have made their round trips. Writing S for that
-    // setup, attempt k spans [S + (k-1)·bound, S + k·bound]. So:
+    // and `loadInScope` have made their round trips — and, since slice
+    // 74, the switch's gate (`beginPortalSwitch`, uncontended here: the
+    // holder's name edit stamps nothing, so it takes no gate) and the
+    // re-read of the switch under it. Writing S for that setup, attempt
+    // k spans [S + (k-1)·bound, S + k·bound]. So:
     //   • "an attempt definitely FAILED first" needs release > S+bound;
     //   • "an attempt was still alive to succeed" needs release < S+3·bound.
     // TWO bounds satisfies both for every S in [0, bound) — which is

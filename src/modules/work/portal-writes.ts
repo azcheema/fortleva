@@ -6,6 +6,7 @@ import { emit } from "@/notify/emit";
 import { allow } from "@/ratelimit";
 import { retryOnContention } from "@/lib/retry";
 import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal";
+import { enterPortalGateShared } from "@/projects/portal-gate";
 
 import { writeContactActivity } from "./activity";
 import { requestReceivers } from "./notify";
@@ -62,7 +63,11 @@ import { assertRequestBudget, createRequest } from "./requests";
  * the broker cannot produce it. What none of that can do is make the
  * pair atomic: that would need the write to run under the contact's own
  * principal, which is the arrangement the census exists to forbid. The
- * window is one transaction wide and nothing leaks inside it.
+ * window is one transaction wide and nothing leaks inside it — and,
+ * since slice 74, a portal switch cannot move INSIDE the write either:
+ * the request broker takes the project's gate shared before its re-read
+ * (`enterPortalGateShared`), and every by-id re-read below restates the
+ * switch from the project itself rather than trusting the row's copy.
  */
 
 /**
@@ -77,6 +82,9 @@ import { assertRequestBudget, createRequest } from "./requests";
  * above is about who is waiting, not about what they asked for.
  */
 const PORTAL_LOCK_WAIT_MS = 3000;
+
+/** The request broker's transaction budget: its three lock waits at once, plus headroom for the work. */
+const REQUEST_TX_MS = 3 * PORTAL_LOCK_WAIT_MS + 5_000;
 
 /** What a contact may type into the request form, and nothing else. */
 export type PortalRequestInput = {
@@ -151,9 +159,11 @@ export async function createPortalRequest(
   );
 
   // **THE LOCK WAITS ARE BOUNDED, which `createItem` does not do and
-  // this path cannot afford not to.** Two advisory locks are taken
-  // inside: this contact's budget key, then the project's rank queue —
-  // and the queue is one a member's bulk edit or rebalance can be
+  // this path cannot afford not to.** Three advisory locks are taken
+  // inside: the project's portal gate, shared (slice 74 — a portal
+  // switch in flight is waited out), then this contact's budget key,
+  // then the project's rank queue — and the gate is one a switch holds,
+  // the queue one a member's bulk edit or rebalance can be
   // holding. This repo measured that Prisma's transaction budget does
   // NOT end a statement the database has parked on a lock (a blocked
   // fan-out under a 3 s budget was still waiting past 30 s,
@@ -168,6 +178,22 @@ export async function createPortalRequest(
   try {
     return await retryOnContention(() =>
       withTenant(principal.tenantId, { type: "system" }, async (tx) => {
+        // THE PROJECT'S PORTAL GATE, SHARED, BEFORE ANYTHING ELSE (slice
+        // 74, C40). Every other writer's stamp only TRIES the gate and
+        // writes `false` while a switch is in flight — right for a
+        // member's task, wrong for a client's own request, which would
+        // then be born invisible to the person who sent it
+        // (`requests.ts` refuses that outcome). So this one WAITS the
+        // switch out: `createRequest`'s "is the portal on" re-read then
+        // sees a value no switch can change before this commits, and
+        // the stamp's try is a re-acquire. FIRST, before any write, row
+        // lock or other advisory lock, which is what makes the wait
+        // cycle-free. The SQL refuses a transaction that has already
+        // written or row-locked (it has an id); it cannot see an advisory
+        // lock, so keeping this ahead of the budget key and the rank queue
+        // is this code's job. Bounded by the lock wait below.
+        await enterPortalGateShared(tx, input.projectId);
+
         // The rate limit, first thing inside the write: a refusal must
         // not consume a counter value or a rank (`requests.ts` explains
         // why it is a Postgres count and not the fail-open limiter).
@@ -228,7 +254,12 @@ export async function createPortalRequest(
 
         return { id: created.id, projectKey: created.projectKey, number: created.number };
       },
-      { lockTimeoutMs: PORTAL_LOCK_WAIT_MS },
+      // THREE bounded waits now (the gate, the budget key, the rank
+      // queue), so the budget is sized for all three at once plus the
+      // work, as `setPortalEnabled`'s is — otherwise a triple-contended
+      // attempt would end as an untranslated P2028 rather than
+      // REQUEST_BUSY (slice 74's review).
+      { lockTimeoutMs: PORTAL_LOCK_WAIT_MS, timeoutMs: REQUEST_TX_MS },
       ),
     );
   } catch (e) {
@@ -343,7 +374,10 @@ export async function setPortalTaskDone(
             portalEnabled: true,
             deletedAt: null,
             archivedAt: null,
-            project: { archivedAt: null },
+            // The switch from the PROJECT as well as from the row's copy
+            // (slice 74, C40): as the system principal a relation filter
+            // is not gated by RLS, so the term is written out.
+            project: { archivedAt: null, portalEnabled: true },
           },
           select: {
             id: true,

@@ -86,10 +86,16 @@ export function PortalControls({ project }: { project: ProjectDetail }) {
           ) : null}
           {offOnly ? <span className="text-xs text-muted-foreground">{t("archivedHint")}</span> : null}
         </div>
-        {/* The fan-out is ten mass UPDATEs and the transition then waits
+        {/* The fan-out is ten mass UPDATEs (eleven since project_update
+            joined it) and the transition then waits
             for the whole revalidated page — which on THIS tab re-runs the
-            preview's three transactions. Seconds, with the control
-            deliberately not optimistic, so without this the member
+            preview's three transactions. Since slice 74 the pending state
+            also covers the switch's wait on the project's gate and, after
+            its transaction, the drain of in-doubt writers (skipped after
+            an OFF; bounded by DRAIN_DEADLINE_MS, about a second scaled by
+            the link factor) and the reconcile's passes, which
+            setPortalEnabled awaits before it returns. Seconds, with the
+            control deliberately not optimistic, so without this the member
             presses the switch and nothing visibly happens (review). */}
         {pending ? <Pending label={tCommon("loading")} className="mt-2" /> : null}
         <Switch

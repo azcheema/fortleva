@@ -153,6 +153,9 @@ const DBTEST_PREFIXES = [
   // Phase 3, version sign-off — `src/portal/signoff.dbtest.ts`,
   // `setupTenant("psign")`.
   "psign-",
+  // Phase 3 slice 74, the portal switch gate — `src/projects/portal-switch-gate.dbtest.ts`,
+  // `setupTenant("pstamp")`.
+  "pstamp-",
   "pvas-",
   "pview-",
   "pwork-",
