@@ -43,6 +43,27 @@ const PROFILES = ["CONTACT_PRIMARY", "CONTACT_COLLABORATOR"] as const;
 export type SignInLine = { readonly text: string | null };
 
 /**
+ * What the reader may do to a contact row, derived by the page from two
+ * answers for ONE code, `client:manage_contacts` (OPEN_QUESTIONS C48):
+ * the RECORD needs the permission alone — gate 4, what
+ * `authorizeContactRecordWrite` checks — and the PORTAL verbs need it on
+ * all four gates, so they go when the portal is closed and the record
+ * does not. None ever offers more than the service behind it allows
+ * (§3.1's "hidden, never disabled"); `edit` is stricter, keeping an
+ * archived client's records read-only as the tab always has.
+ */
+export type ContactRowAbilities = {
+  /** Change the record's fields: the permission AND a live client. */
+  readonly edit: boolean;
+  /** Erase the record: the permission, whatever the client's status. */
+  readonly erase: boolean;
+  /** Invite / Resend: the portal verbs AND a live client (`inviteContact` refuses an archived one). */
+  readonly invite: boolean;
+  /** Pause / Resume / End access: the portal verbs, whatever the client's status. */
+  readonly takeAccess: boolean;
+};
+
+/**
  * One contact row. A list of people is CONTENT (founder mandate 1): the
  * five permanently-mounted inputs are gone, every value renders as
  * text, and a click, Enter, Space or F2 turns one into the control it
@@ -61,21 +82,13 @@ export function ContactRowForm({
   clientId,
   contact,
   signIn,
-  editable,
-  manageable,
+  can,
 }: {
   clientId: string;
   contact: ContactRow;
   /** `null` when the reader may not see sign-ins (C46): no line at all. */
   signIn: SignInLine | null;
-  /** Permission AND a live client: may change records, may invite. */
-  editable: boolean;
-  /**
-   * `client:manage_contacts` on all four gates, whatever the client's
-   * status: may take access away even on an archived client. Never feed
-   * it the bare permission — the portal module switched off must hide it.
-   */
-  manageable: boolean;
+  can: ContactRowAbilities;
 }) {
   const t = useTranslations("clients.contacts");
   const tCommon = useTranslations("common");
@@ -95,20 +108,20 @@ export function ContactRowForm({
    * disabled" applied so that no control is drawn which
    * `contact-access.ts` would then refuse:
    *
-   * | status | offered | needs |
+   * | status | offered | needs (`can.…`) |
    * |---|---|---|
-   * | NO_ACCESS | Invite | a live client |
-   * | NO_ACCESS | Delete record | the permission |
-   * | INVITED | Resend | a live client |
-   * | INVITED | End access | the permission |
-   * | ACTIVE | Pause · End access | the permission |
-   * | SUSPENDED | Resume · End access | the permission |
-   * | REVOKED | Invite | a live client |
-   * | REVOKED | Delete record | the permission |
+   * | NO_ACCESS | Invite | `invite` — the portal and a live client |
+   * | NO_ACCESS | Delete record | `erase` — the permission |
+   * | INVITED | Resend | `invite` |
+   * | INVITED | End access | `takeAccess` — the portal |
+   * | ACTIVE | Pause · End access | `takeAccess` |
+   * | SUSPENDED | Resume · End access | `takeAccess` |
+   * | REVOKED | Invite | `invite` |
+   * | REVOKED | Delete record | `erase` |
    *
    * The right-hand column is the fix for an archived client losing the
    * only control that ends portal access — see `page.tsx` for why the
-   * page now computes two gates.
+   * page computes the gates it does.
    *
    * **A REVOKED ROW OFFERS INVITE AGAIN** (founder decision, 2026-09-23
    * — OPEN_QUESTIONS C28), which is why its two rows above are identical
@@ -141,10 +154,10 @@ export function ContactRowForm({
    * releases them.
    */
   const items: RowAction[] = [];
-  // INVITING NEEDS A LIVE CLIENT (`editable`) — `inviteContact` refuses
-  // an archived one, so offering it there would be a control that only
-  // ever produces a refusal.
-  if (editable && isInvitableStatus(contact.portalStatus)) {
+  // INVITING NEEDS THE PORTAL AND A LIVE CLIENT (`can.invite`) —
+  // `inviteContact` refuses an archived one, so offering it there would
+  // be a control that only ever produces a refusal.
+  if (can.invite && isInvitableStatus(contact.portalStatus)) {
     // `resend` is INVITED alone: a REVOKED row gets a FRESH invitation,
     // so it reads "Invite", not "Send the invitation again".
     const resend = contact.portalStatus === "INVITED";
@@ -155,10 +168,12 @@ export function ContactRowForm({
       onSelect: () => run(() => inviteContactAction(clientId, contact.id)),
     });
   }
-  // EVERYTHING BELOW NEEDS ONLY THE PERMISSION, because every one of them
-  // TAKES ACCESS AWAY or erases a record, and an archived client must not
-  // be a client whose people cannot be cut off.
-  if (manageable) {
+  // EVERYTHING BELOW IGNORES THE CLIENT'S STATUS, because every one of
+  // them TAKES ACCESS AWAY or erases a record, and an archived client must
+  // not be a client whose people cannot be cut off. The three access
+  // verbs are portal verbs (`can.takeAccess`); erasing the record is not
+  // (`can.erase`, C48).
+  if (can.takeAccess) {
     if (contact.portalStatus === "ACTIVE") {
       // NO `confirm`, and its absence is deliberate rather than an
       // omission. `rowActionNeedsConfirm` asks only for a `tone:
@@ -197,6 +212,8 @@ export function ContactRowForm({
         onSelect: () => run(() => setContactPortalAccessAction(clientId, contact.id, "REMOVE")),
       });
     }
+  }
+  if (can.erase) {
     // NO_ACCESS **or REVOKED**, matching `deleteContact`'s own guard:
     // both mean "no live access". Until the invite slice, REVOKED was
     // unreachable; the moment `portalStatus` had a writer, gating on
@@ -329,7 +346,7 @@ export function ContactRowForm({
     </>
   );
 
-  if (!editable) {
+  if (!can.edit) {
     return (
       <li className={`grid ${CONTACT_GRID} ${align} px-3 py-1.5 text-sm`}>
         {values(true)}
@@ -351,7 +368,18 @@ export function ContactRowForm({
 }
 
 /** Inline add: name + email required; Enter adds the next (UI.md rule 2). */
-export function CreateContactForm({ clientId }: { clientId: string }) {
+export function CreateContactForm({
+  clientId,
+  canInvite,
+}: {
+  clientId: string;
+  /**
+   * The portal verbs are open to this reader (`ContactRowAbilities.invite`).
+   * Without them — the portal switched off (C48) — a contact can still be
+   * added, and the tick is not offered: `inviteContact` would refuse it.
+   */
+  canInvite: boolean;
+}) {
   const t = useTranslations("clients.contacts");
   const [state, action, pending] = useActionState<FormResult | null, FormData>(
     createContactAction,
@@ -415,10 +443,12 @@ export function CreateContactForm({ clientId }: { clientId: string }) {
         folding it into the grid beside "Phone" would read as another
         field to fill in.
       */}
-      <Label className="col-span-2 flex items-center gap-2.5 font-normal sm:col-span-6">
-        <Checkbox name="invite" value="1" disabled={pending} />
-        {t("inviteOnAdd")}
-      </Label>
+      {canInvite ? (
+        <Label className="col-span-2 flex items-center gap-2.5 font-normal sm:col-span-6">
+          <Checkbox name="invite" value="1" disabled={pending} />
+          {t("inviteOnAdd")}
+        </Label>
+      ) : null}
       {state && !state.ok ? <FormMessage state={state} className="col-span-2 sm:col-span-6" /> : null}
     </form>
   );

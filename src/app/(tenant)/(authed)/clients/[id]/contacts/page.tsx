@@ -11,7 +11,7 @@ import { formatDate } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
 
 import { loadClient } from "../data";
-import { ContactRowForm, CreateContactForm, type SignInLine } from "./contact-forms";
+import { ContactRowForm, CreateContactForm, type ContactRowAbilities, type SignInLine } from "./contact-forms";
 import { CONTACT_GRID } from "./grid";
 
 const NBSP = String.fromCharCode(0xa0);
@@ -29,36 +29,45 @@ const NBSP = String.fromCharCode(0xa0);
  * with. An archive is very often exactly the moment somebody wants that
  * verb — the engagement is over.
  *
- * So `manageable` (the permission, whatever the client's status) gates
- * the verbs that TAKE ACCESS AWAY, and `editable` (permission plus a live
- * client) still gates everything that adds or changes: the add card, the
- * inline field editors, and Invite — which `inviteContact` refuses on an
- * archived client anyway (§3.1: hidden, never disabled). Deleting the
- * record stays on `manageable` too, because erasure must not be blocked
+ * So the verbs that TAKE ACCESS AWAY ignore the client's status, and
+ * everything that adds or changes — the add card, the inline field
+ * editors, and Invite, which `inviteContact` refuses on an archived client
+ * anyway (§3.1: hidden, never disabled) — needs a live client. Deleting
+ * the record ignores the status too, because erasure must not be blocked
  * by an archive either. Found by this slice's security review.
  *
- * **"The permission" is all four gates** (`getClient`'s `accessibleCodes`,
- * 2026-09-29). `client:manage_contacts` is a PORTAL-module code and every
- * contact write — a rename included — passes `requireAccess` on it, so a
- * workspace with the portal switched off gets a read-only tab rather than
- * controls that are all refused.
+ * **AND THE RECORD IS NOT THE PORTAL** (OPEN_QUESTIONS C48, 2026-09-29).
+ * `client:manage_contacts` is a PORTAL-module code. Adding, editing and
+ * deleting a contact RECORD check it at gate 4 only
+ * (`authorizeContactRecordWrite`, `caps.manageContactRecords`), so they
+ * work with the portal switched off; the portal verbs and the sign-in
+ * line check it on all four gates (`caps.manageContacts`) and go with the
+ * portal. `ContactRowAbilities` is the four answers per row.
  */
 export default async function ClientContactsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const client = await loadClient(id);
   const t = await getTranslations("clients.contacts");
-  const manageable = client.caps.manageContacts;
-  const editable = manageable && client.status === "ACTIVE";
+  const live = client.status === "ACTIVE";
+  const records = client.caps.manageContactRecords;
+  const portal = client.caps.manageContacts;
+  const editable = records && live;
+  const can: ContactRowAbilities = {
+    edit: editable,
+    erase: records,
+    invite: portal && live,
+    takeAccess: portal,
+  };
 
   // "Last signed in …" is for the people who manage this client's portal
   // access (OPEN_QUESTIONS C46) — `null` for anyone else, and then no row
   // draws the line at all. After `loadClient`, which 404s first.
-  // `manageable` is the same four gates (minus the scope, which
-  // `loadClient` already passed), so without it — or with no contacts to
-  // show — the read is not worth a transaction.
+  // `portal` is the same four gates (minus the scope, which `loadClient`
+  // already passed), so without it — or with no contacts to show — the
+  // read is not worth a transaction.
   const { membership, actor } = await requireTenantContext();
   const signIns =
-    manageable && client.contacts.length > 0
+    portal && client.contacts.length > 0
       ? await readContactSignIns({ tenantId: membership.tenantId, actor }, client.id)
       : null;
   const locale = await getLocale();
@@ -150,8 +159,7 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
                   clientId={client.id}
                   contact={c}
                   signIn={signInLine(c)}
-                  editable={editable}
-                  manageable={manageable}
+                  can={can}
                 />
               ))}
             </ul>
@@ -164,9 +172,11 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
           id="new-contact"
           className="scroll-mt-16"
           title={t("add")}
-          description={t("portalHint")}
+          // The hint is about the invite tick, which is not there without
+          // the portal verbs (C48).
+          description={can.invite ? t("portalHint") : undefined}
         >
-          <CreateContactForm clientId={client.id} />
+          <CreateContactForm clientId={client.id} canInvite={can.invite} />
         </SectionCard>
       ) : null}
     </div>

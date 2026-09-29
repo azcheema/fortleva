@@ -73,6 +73,9 @@ const CHECKS: ReadonlySet<string> = new Set([
   // OPEN on a lost race — so unlike `authorizedCodes` it is never a leg.
   "openModules",
   "accessibleCodes",
+  "heldAndAccessibleCodes",
+  // `authorize` under a name (src/clients/service.ts, C48).
+  "authorizeContactRecordWrite",
   "resolveScope",
   "scopeWhere",
   "assertInScope",

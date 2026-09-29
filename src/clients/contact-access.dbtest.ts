@@ -827,6 +827,61 @@ describe("taking access away, and giving it back", () => {
     expect(await f.platform.contact.count({ where: { tenantId: f.tenantId, id: anna } })).toBe(1);
   });
 
+  describe("refuses to DELETE a contact whose only trace is a SIGN-OFF (slice 79)", () => {
+    // A decision stamps `approvalByContactId` — attribution, no foreign
+    // key — and was not counted, so the delete went through and the
+    // approval read as decided by nobody (slice 79's security review).
+    // Real decisions, in the shape the sign-off writers leave: asked,
+    // decided, attributed.
+    const decided = () => {
+      const at = new Date();
+      return {
+        approvalStatus: "APPROVED" as const,
+        approvalRequestedAt: at,
+        approvalDecidedAt: at,
+        approvalByContactId: anna,
+      };
+    };
+    const refused = async () => {
+      await expect(
+        deleteContact({ tenantId: f.tenantId, actor: f.seats.manager.actor }, anna),
+      ).rejects.toMatchObject({ code: "CONTACT_HAS_HISTORY" });
+      expect(await f.platform.contact.count({ where: { tenantId: f.tenantId, id: anna } })).toBe(1);
+    };
+
+    it("a shipped version they approved", async () => {
+      const { id } = await f.platform.projectVersion.create({
+        data: { tenantId: f.tenantId, clientId: acme, projectId: project, version: `1.0-${run}`, ...decided() },
+        select: { id: true },
+      });
+      try {
+        await refused();
+      } finally {
+        await f.platform.projectVersion.delete({ where: { id } });
+      }
+    });
+
+    it("a deliverable they approved", async () => {
+      const { id } = await f.platform.document.create({
+        data: {
+          tenantId: f.tenantId,
+          clientId: acme,
+          projectId: project,
+          name: `Deliverable ${run}`,
+          kind: "DELIVERABLE",
+          approvalVersionNumber: 1,
+          ...decided(),
+        },
+        select: { id: true },
+      });
+      try {
+        await refused();
+      } finally {
+        await f.platform.document.delete({ where: { id } });
+      }
+    });
+  });
+
   it("refuses a member without the permission", async () => {
     await activate();
     await expect(setContactPortalAccess(ctxOf("employee"), anna, "PAUSE")).rejects.toMatchObject({

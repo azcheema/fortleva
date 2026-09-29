@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RAIL_CODES } from "@/app/(tenant)/(authed)/nav";
-import { STEP_UP_WINDOW_MINUTES, type MemberActor } from "@/authz/authorize";
+import { isAuthorized, STEP_UP_WINDOW_MINUTES, type MemberActor } from "@/authz/authorize";
 import { MODULES, PERMISSIONS } from "@/authz/catalog";
 import type { TenantDb } from "@/db";
 
-import { accessibleCodes, hasAccess } from "./resolver";
+import { accessibleCodes, hasAccess, heldAndAccessibleCodes } from "./resolver";
 
 /**
  * `accessibleCodes` ANSWERS EACH CODE EXACTLY AS `hasAccess` WOULD — all
@@ -190,6 +190,28 @@ describe.each(POSTURES)("accessibleCodes answers each code as hasAccess does —
         if (await hasAccess(tx, TENANT, actor, code)) expected.add(code);
       }
       expect(await accessibleCodes(tx, TENANT, actor, CODES)).toEqual(expected);
+    }
+  });
+});
+
+// Slice 79 (C48): the Contacts tab needs both answers for one code from
+// ONE roles read — `held` for a contact-record write (gate 4, what
+// `authorize` checks), `accessible` for a portal verb (all four).
+// Each half against its SINGLE-code oracle — `accessibleCodes` is now a
+// wrapper over this function, so comparing the two would prove nothing.
+describe.each(POSTURES)("heldAndAccessibleCodes: held as isAuthorized, accessible as hasAccess — %s", (_, actor) => {
+  it.each(WORLDS)("%s", async (_world, world) => {
+    for (const [, held] of HOLDINGS) {
+      const { tx } = txFor(held, world);
+      const permitted = new Set<string>();
+      const reachable = new Set<string>();
+      for (const code of CODES) {
+        if (await isAuthorized(tx, actor, code)) permitted.add(code);
+        if (await hasAccess(tx, TENANT, actor, code)) reachable.add(code);
+      }
+      const both = await heldAndAccessibleCodes(tx, TENANT, actor, CODES);
+      expect(both.held).toEqual(permitted);
+      expect(both.accessible).toEqual(reachable);
     }
   });
 });

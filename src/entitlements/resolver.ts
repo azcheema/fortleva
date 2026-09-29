@@ -164,7 +164,9 @@ const MODULE_BY_CODE = new Map(PERMISSIONS.map((p) => [p.code, p.module]));
 /**
  * The composite every call site uses (AUTHZ.md §5): one call, all four
  * gates, server-side. The permission code resolves to its module for
- * gates 1–3, then gate 4 checks the actor.
+ * gates 1–3, then gate 4 checks the actor. ONE deliberate exception: the
+ * contact-RECORD writes check gate 4 alone, by C48
+ * (`authorizeContactRecordWrite`; AUTHZ.md §3's "Notes on shape").
  */
 export async function requireAccess(
   tx: TenantDb,
@@ -243,20 +245,40 @@ export async function accessibleCodes(
   actor: MemberActor,
   codes: readonly string[],
 ): Promise<ReadonlySet<string>> {
-  const allowed = await authorizedCodes(tx, actor, codes);
+  return (await heldAndAccessibleCodes(tx, tenantId, actor, codes)).accessible;
+}
+
+/**
+ * `accessibleCodes` with the permission answer it was filtered from:
+ * `held` is exactly `authorizedCodes`' (gate 4, what `authorize` checks),
+ * `accessible` exactly `accessibleCodes`' (all four, what `requireAccess`
+ * checks). For a surface whose controls sit on BOTH rules for one code,
+ * without reading the member's roles twice: a client's Contacts tab,
+ * where writing a contact RECORD checks `client:manage_contacts` at gate
+ * 4 and the portal verbs need all four (OPEN_QUESTIONS C48). The same
+ * caveat: NOT FOR ✦ CODES.
+ */
+export async function heldAndAccessibleCodes(
+  tx: TenantDb,
+  tenantId: string,
+  actor: MemberActor,
+  codes: readonly string[],
+): Promise<{ readonly held: ReadonlySet<string>; readonly accessible: ReadonlySet<string> }> {
+  const held = await authorizedCodes(tx, actor, codes);
   const moduleOf = (code: string): Module | undefined => MODULE_BY_CODE.get(code);
   const gated = new Set<EntitlementModule>();
-  for (const code of allowed) {
+  for (const code of held) {
     const mod = moduleOf(code);
     if (mod && isEntitlementModule(mod)) gated.add(mod);
   }
   const open = await openModules(tx, tenantId, [...gated]);
-  return new Set(
-    [...allowed].filter((code) => {
+  const accessible = new Set(
+    [...held].filter((code) => {
       const mod = moduleOf(code);
       return mod !== undefined && (!isEntitlementModule(mod) || open.has(mod));
     }),
   );
+  return { held, accessible };
 }
 
 /**

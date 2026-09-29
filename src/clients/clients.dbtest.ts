@@ -6,6 +6,7 @@ import { getPlatformClient } from "@/db/client";
 import { setupTenant } from "@/members/dbtest-fixture";
 
 import { assignMemberToClient } from "./assignments";
+import { inviteContact, setContactPortalAccess } from "./contact-access";
 import {
   archiveClient,
   createClient,
@@ -215,17 +216,40 @@ describe("the caps a module switch can close follow it, not the bare permission 
     expect(a.caps.viewDocumentsAnyScope).toBe(true);
   });
 
-  it("portal off: no contact management — which the service refuses too — and documents untouched", async () => {
+  it("portal off: no portal verbs — refused by the service too — but the contact RECORD still works (C48); documents untouched", async () => {
     await withModuleOff("portal", async () => {
       const a = await getClient(owner, ids.a);
       expect(a.caps.manageContacts).toBe(false);
+      expect(a.caps.manageContactRecords).toBe(true);
       expect(documentCaps(a)).toEqual([true, true, true, true, true]);
       expect(a.caps.edit).toBe(true);
-      // The tab now hides exactly what this refuses: every contact write
-      // is a portal-module code, a plain record included.
-      await expect(
-        createContact(owner, ids.a, { name: "Nobody", email: `nobody-${randomUUID()}@test.invalid` }),
-      ).rejects.toMatchObject({ reason: "DISABLED_BY_TENANT" });
+
+      // The record, end to end, audited as ever (slice 79).
+      const { id } = await createContact(owner, ids.a, {
+        name: "Nobody",
+        email: `nobody-${randomUUID()}@test.invalid`,
+      });
+      expect((await updateContact(owner, id, { name: "Somebody" })).changed).toEqual(["name"]);
+      // The portal verbs keep all four gates: exactly what the tab hides.
+      await expect(inviteContact(owner, id)).rejects.toMatchObject({ reason: "DISABLED_BY_TENANT" });
+      await expect(setContactPortalAccess(owner, id, "REMOVE")).rejects.toMatchObject({
+        reason: "DISABLED_BY_TENANT",
+      });
+      await deleteContact(owner, id);
+      const audited = async (action: string) => (await t.audits(action)).filter((e) => e.targetId === id).length;
+      expect([await audited("contact.created"), await audited("contact.updated"), await audited("contact.deleted")]).toEqual([
+        1, 1, 1,
+      ]);
+    });
+  });
+
+  it("the record writes still need the permission: an employee is refused with the portal on and off (C48)", async () => {
+    const attempt = () =>
+      createContact(employee, ids.a, { name: "Nope", email: `nope-${randomUUID()}@test.invalid` });
+    await forbidden(attempt());
+    await withModuleOff("portal", async () => {
+      expect((await getClient(employee, ids.a)).caps.manageContactRecords).toBe(false);
+      await forbidden(attempt());
     });
   });
 

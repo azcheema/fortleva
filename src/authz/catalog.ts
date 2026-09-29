@@ -67,7 +67,10 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("client:edit", "core", "Edit client details, internal notes", CMA),
   p("client:delete", "core", "Delete/archive a client", C),
   p("client:manage_assignments", "core", "Assign/unassign members to clients", CMA),
-  p("client:manage_contacts", "portal", "Invite, deactivate portal contacts; set contact profile", CMA),
+  // The description widened with C48 (2026-09-29): the code alone gates the
+  // contact RECORDS too, portal on or off — the role editor shows this
+  // text as each code's hover title (English only).
+  p("client:manage_contacts", "portal", "Add, edit and delete a client's contacts; invite them to the portal, pause or end their access; set contact profile", CMA),
   p("project:view", "core", "View projects, timeline, versions", CMAE),
   p("project:create", "core", "Create projects", CM),
   p("project:edit", "core", "Edit project fields, environments, links", CME),

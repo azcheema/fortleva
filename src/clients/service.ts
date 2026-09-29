@@ -1,12 +1,13 @@
 import { record } from "@/audit/record";
 import {
   assertInScope,
+  authorize,
   scopeWhere,
   type MemberActor,
 } from "@/authz/authorize";
 import { AuthzError, deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
-import { accessibleCodes, enforceLimit, parseEntitlements, requireAccess } from "@/entitlements/resolver";
+import { enforceLimit, heldAndAccessibleCodes, parseEntitlements, requireAccess } from "@/entitlements/resolver";
 import type { ClientStatus, ProjectStatus, VatProfile } from "@/generated/prisma/enums";
 import { fail, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
@@ -199,7 +200,18 @@ export type ClientDetail = {
     edit: boolean;
     delete: boolean;
     manageAssignments: boolean;
+    /**
+     * The portal verbs — Invite, Resend, Pause, Resume, End access:
+     * `client:manage_contacts` on all four gates, so none with the portal
+     * switched off.
+     */
     manageContacts: boolean;
+    /**
+     * Writing a contact RECORD — add, edit, delete: the same code at gate
+     * 4 only, as `authorizeContactRecordWrite` checks it (C48), so with
+     * the portal switched off too.
+     */
+    manageContactRecords: boolean;
     createProject: boolean;
     viewProjects: boolean;
     viewDocuments: boolean;
@@ -225,12 +237,14 @@ export type ClientDetail = {
 
 /**
  * EVERY CODE `ClientDetail.caps` ANSWERS, read ONCE through
- * `accessibleCodes` — all four gates, so a cap whose module a tenant can
- * switch off closes with it: `client:manage_contacts` is `portal` and the
- * five `document:*` are `documentation`; the rest are `core`. None is a ✦
- * code, which is what lets `accessibleCodes` answer them. `CapCode` makes
- * a cap on a code missing from this list a type error, so a new cap
- * cannot quietly go back to the bare permission.
+ * `heldAndAccessibleCodes`. Every cap but one answers all four gates, so
+ * a cap whose module a tenant can switch off closes with it:
+ * `client:manage_contacts` is `portal` and the five `document:*` are
+ * `documentation`; the rest are `core`. The one is `manageContactRecords`,
+ * on gate 4 by C48. None is a ✦ code, which is what lets the helper answer
+ * them. `CapCode` makes `can()` — and `holds()`, the gate-4 answer — on a
+ * code missing from this list a type error; a hand-written permission
+ * check would bypass it, so do not.
  */
 const CAP_CODES = [
   "client:edit",
@@ -258,13 +272,16 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
     await assertInScope(tx, ctx.actor, { clientId, lifted: true });
     // THE CAPS ANSWER ALL FOUR GATES, not the bare permission (2026-09-29).
     // `effectivePermissions` alone drew the Contacts tab's Invite / Pause /
-    // End access — and every contact edit — with the portal switched off,
+    // End access — and, until C48 moved the record writes to gate 4, every
+    // contact edit — with the portal switched off,
     // over services that `requireAccess` then refused; and with
     // documentation off the Files tab opened onto `listDocuments`'
     // refusal, i.e. the error page. In sequence, never a `Promise.all` leg
-    // (AGENTS.md).
-    const open = await accessibleCodes(tx, ctx.tenantId, ctx.actor, CAP_CODES);
-    const can = (code: CapCode): boolean => open.has(code);
+    // (AGENTS.md). The same read's permission-only answer is kept for the
+    // one cap that must follow gate 4: contact records (C48).
+    const answers = await heldAndAccessibleCodes(tx, ctx.tenantId, ctx.actor, CAP_CODES);
+    const can = (code: CapCode): boolean => answers.accessible.has(code);
+    const holds = (code: CapCode): boolean => answers.held.has(code);
     const direct = await inScope(tx, ctx.actor, clientId);
     // The Project table's own project column is "id" (children use "projectId").
     const projectScope = await scopeWhere(tx, ctx.actor, {
@@ -345,6 +362,9 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
         delete: can("client:delete") && direct,
         manageAssignments: can("client:manage_assignments") && direct,
         manageContacts: can("client:manage_contacts"),
+        // The ONE cap on the permission alone, and on purpose (C48): it
+        // must answer exactly as the record writes' gate-4 check does.
+        manageContactRecords: holds("client:manage_contacts"),
         createProject: can("project:create") && direct,
         viewProjects: can("project:view"),
         viewDocuments: can("document:view") && direct,
@@ -523,7 +543,21 @@ export type ContactInput = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** client:manage_contacts; lifted scope (the card includes its contacts). */
+/**
+ * THE GATE FOR A CONTACT *RECORD* WRITE — add, edit, delete — IS THE
+ * PERMISSION ALONE (gate 4), not `requireAccess` (founder decision C48,
+ * 2026-09-29). `client:manage_contacts` is a PORTAL-module code, so
+ * `requireAccess` closed every record write whenever a tenant switched
+ * the portal off — a rename and an erasure included. A contact is a
+ * record of a person at a client and belongs with the client; only the
+ * portal verbs (`inviteContact`, `setContactPortalAccess`) keep all four
+ * gates. Same code, same roles: nothing is granted here that the
+ * permission did not already grant with the portal on.
+ */
+const authorizeContactRecordWrite = (tx: TenantDb, actor: MemberActor): Promise<void> =>
+  authorize(tx, actor, "client:manage_contacts");
+
+/** client:manage_contacts at gate 4 (C48); lifted scope (the card includes its contacts). */
 export async function createContact(
   ctx: ClientCtx,
   clientId: string,
@@ -535,7 +569,7 @@ export async function createContact(
   if (!email || !EMAIL_RE.test(email)) fail("EMAIL_INVALID");
   const id = newId();
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "client:manage_contacts");
+    await authorizeContactRecordWrite(tx, ctx.actor);
     await assertInScope(tx, ctx.actor, { clientId, lifted: true });
     const client = await tx.client.findFirst({ where: { id: clientId }, select: { status: true } });
     if (!client) deny("NOT_FOUND");
@@ -573,7 +607,7 @@ export async function updateContact(
   patch: Partial<ContactInput>,
 ): Promise<{ changed: string[] }> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "client:manage_contacts");
+    await authorizeContactRecordWrite(tx, ctx.actor);
     const current = await tx.contact.findFirst({ where: { id: contactId } });
     if (!current) deny("NOT_FOUND");
     await assertInScope(tx, ctx.actor, { clientId: current!.clientId, lifted: true });
@@ -642,7 +676,7 @@ export async function updateContact(
 /** Records only: a contact with portal access (Phase 3) is revoked, not deleted — refused here. */
 export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "client:manage_contacts");
+    await authorizeContactRecordWrite(tx, ctx.actor);
     const current = await tx.contact.findFirst({
       where: { id: contactId },
       select: { clientId: true, portalStatus: true },
@@ -683,14 +717,35 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
     // `pg` adapter does not serialise concurrent statements inside an
     // interactive transaction, and the leg that loses can resolve
     // `undefined`, taking an unrelated part of the request down with it.
-    // Three cheap counts that short-circuit are worth one round trip
+    // Eight cheap counts that short-circuit are worth one round trip
     // each.
+    //
+    // **A SIGN-OFF IS SOMETHING THEY WROTE, TOO** (slice 79's security
+    // review, 2026-09-29). A client's approve / request-changes stamps
+    // `approvalByContactId` on a shipped version or a deliverable — an
+    // attribution column with no foreign key — and it was not counted
+    // here, so a contact who approved but never commented could be
+    // deleted and the approval would read as decided by nobody: the same
+    // outcome the founder refused for comments.
     const wrote =
       (await tx.comment.count({ where: { tenantId: ctx.tenantId, authorContactId: contactId } })) > 0 ||
       (await tx.workItem.count({ where: { tenantId: ctx.tenantId, reportedByContactId: contactId } })) > 0 ||
       (await tx.workItemActivity.count({
         where: { tenantId: ctx.tenantId, actorContactId: contactId },
-      })) > 0;
+      })) > 0 ||
+      (await tx.projectVersion.count({ where: { tenantId: ctx.tenantId, approvalByContactId: contactId } })) > 0 ||
+      (await tx.document.count({ where: { tenantId: ctx.tenantId, approvalByContactId: contactId } })) > 0 ||
+      // The three a portal UPLOAD will write — no writer yet (checked
+      // 2026-09-29), counted now so the upload slice cannot reopen the
+      // same hole the sign-off opened. With them, all eight `*ContactId`
+      // columns the schema tags "attribution, no FK" are here. The two
+      // other contact references without a foreign key are not the
+      // contact's own writing: `CommentMention.mentionedContactId` (written
+      // ABOUT them, by someone else) and `Notification.receiverId`
+      // (polymorphic; a contact never acts through it).
+      (await tx.document.count({ where: { tenantId: ctx.tenantId, createdByContactId: contactId } })) > 0 ||
+      (await tx.fileVersion.count({ where: { tenantId: ctx.tenantId, uploadedByContactId: contactId } })) > 0 ||
+      (await tx.fileObject.count({ where: { tenantId: ctx.tenantId, createdByContactId: contactId } })) > 0;
     // **AND ITS MESSAGE MAY NOT SAY "end their access instead"**, which
     // is what it said for an afternoon. This guard sits BELOW the status
     // check, so it is reachable only for a NO_ACCESS or REVOKED contact

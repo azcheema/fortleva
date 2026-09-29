@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
+import { AuthzError, type DenialReason } from "@/authz/errors";
 import { assignMemberToClient, unassignMemberFromClient } from "@/clients/assignments";
 import {
   inviteContact,
@@ -191,7 +192,22 @@ export async function createContactAction(
     // and folding them together would put a mail send inside the
     // record-keeping path for every caller of it, including the ones
     // that must never send anything.
-    const { mailed } = await inviteContact(ctx, created.id);
+    // **A PORTAL THAT IS OFF IS NOT A FAILED ADD** (slice 79, C48). The
+    // record needs only the permission and the invitation needs the
+    // portal, so a tick posted after the portal was switched off — a page
+    // loaded before the switch, or a crafted post — now commits the
+    // contact and is refused only for the invite. Saying "could not add"
+    // over a contact who was added would send the member to add them
+    // again and trip the email unique. Any other refusal still fails.
+    let mailed: boolean;
+    try {
+      ({ mailed } = await inviteContact(ctx, created.id));
+    } catch (e) {
+      if (e instanceof AuthzError && PORTAL_CLOSED.has(e.reason)) {
+        return t("addedNotInvited", { name: name.trim() });
+      }
+      throw e;
+    }
     // Recorded, invited, and possibly not DELIVERED — `inviteContact`
     // reports a send failure rather than throwing it, because the
     // invitation itself has committed by then. Resend is the recovery and
@@ -211,6 +227,13 @@ export async function createContactAction(
   revalidatePath(path(clientId.data), "layout");
   return r;
 }
+
+/** The refusals that mean "the portal module is closed", not "you may not" — `requireAccess`'s gates 1–3. */
+const PORTAL_CLOSED: ReadonlySet<DenialReason> = new Set<DenialReason>([
+  "FEATURE_DISABLED",
+  "NOT_ENTITLED",
+  "DISABLED_BY_TENANT",
+]);
 
 /**
  * INVITE, AND RESEND, AND THEY ARE THE SAME CALL. `inviteContact`'s
