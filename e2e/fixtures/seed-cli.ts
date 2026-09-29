@@ -99,6 +99,9 @@ const DBTEST_PREFIXES = [
   "cinv-",
   "clients-",
   "copy-",
+  // Phase 3 slice 77, a contact's last sign-in — `src/clients/contact-sign-ins.dbtest.ts`,
+  // `setupTenant("csign")`.
+  "csign-",
   "ctask-",
   "ctr-a-",
   "ctr-b-",

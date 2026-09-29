@@ -119,6 +119,10 @@ test.describe("portal invitation", () => {
       // before this slice.
       const row = page.locator("li", { hasText: email });
       await expect(row).toContainText("Invited", { timeout: 30_000 * SLOW });
+      // Slice 77: the seat manages portal access, so each address carries
+      // its sign-in line — and a person invited a moment ago has never
+      // signed in.
+      await expect(row.locator("[data-slot=contact-sign-in]")).toHaveText("Never signed in");
     } finally {
       await page.close();
       await member.close();
@@ -285,6 +289,25 @@ test.describe("portal invitation", () => {
       // The first test left them ACTIVE, which is the only state that
       // offers Pause — and the state from which Delete is refused.
       await expect(row).toContainText("Portal active", { timeout: 30_000 * SLOW });
+      // Slice 77: accepting the invitation signed them in, so the line
+      // says today — in the member's zone, which is the tenant's default
+      // unless the seat set one; either reading of "today" is accepted
+      // rather than guessing.
+      const today = (timeZone: string) =>
+        new Intl.DateTimeFormat("en", { year: "numeric", month: "short", day: "numeric", timeZone }).format(
+          new Date(),
+        );
+      // The page writes the date with NO-BREAK spaces (so a phone breaks
+      // the line before the date, not in it), and a regex expectation is
+      // matched against the raw text — so each space may be either.
+      const nbsp = String.fromCharCode(0xa0);
+      const datePattern = (timeZone: string) =>
+        today(timeZone)
+          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+          .replace(/ /g, `[ ${nbsp}]`);
+      await expect(row.locator("[data-slot=contact-sign-in]")).toHaveText(
+        new RegExp(`^Last signed in (${datePattern("Europe/Stockholm")}|${datePattern("UTC")})$`),
+      );
 
       await row.getByRole("button", { name: /Actions for/ }).click();
       await page.getByRole("menuitem", { name: "End access" }).click();

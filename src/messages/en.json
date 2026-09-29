@@ -1339,6 +1339,11 @@
       "portalHint": "Tick the box to send an invitation as soon as the person is added; you can also invite from the row menu later.",
       "columns": {
         "status": "Portal"
+      },
+      "signIn": {
+        "at": "Last signed in {date}",
+        "never": "Never signed in",
+        "notWithinYear": "Not signed in for a year"
       }
     },
     "projects": {

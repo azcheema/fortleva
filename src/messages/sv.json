@@ -1339,6 +1339,11 @@
       "portalHint": "Kryssa i rutan för att skicka en inbjudan direkt när personen läggs till; du kan också bjuda in från radmenyn senare.",
       "columns": {
         "status": "Portal"
+      },
+      "signIn": {
+        "at": "Senast inloggad {date}",
+        "never": "Aldrig inloggad",
+        "notWithinYear": "Inte inloggad på ett år"
       }
     },
     "projects": {

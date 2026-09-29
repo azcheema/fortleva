@@ -1,13 +1,20 @@
 import { PlusIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 
+import { readContactSignIns } from "@/clients/contact-sign-ins";
+import type { ContactRow } from "@/clients/service";
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { resolveTimeZone } from "@/i18n/resolve";
+import { formatDate } from "@/lib/format";
+import { requireTenantContext } from "@/members/tenant-context";
 
 import { loadClient } from "../data";
-import { ContactRowForm, CreateContactForm } from "./contact-forms";
+import { ContactRowForm, CreateContactForm, type SignInLine } from "./contact-forms";
 import { CONTACT_GRID } from "./grid";
+
+const NBSP = String.fromCharCode(0xa0);
 
 /**
  * Contacts tab: the records list with inline edit and inline add, plus
@@ -36,6 +43,44 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
   const t = await getTranslations("clients.contacts");
   const manageable = client.caps.manageContacts;
   const editable = manageable && client.status === "ACTIVE";
+
+  // "Last signed in …" is for the people who manage this client's portal
+  // access (OPEN_QUESTIONS C46) — `null` for anyone else, and then no row
+  // draws the line at all. After `loadClient`, which 404s first. The bare
+  // permission (`manageable`) is necessary for the full gate, so without
+  // it — or with no contacts to show — the read is not worth a transaction.
+  const { membership, actor } = await requireTenantContext();
+  const signIns =
+    manageable && client.contacts.length > 0
+      ? await readContactSignIns({ tenantId: membership.tenantId, actor }, client.id)
+      : null;
+  const locale = await getLocale();
+  // The member's zone (UI.md §8): a sign-in at 00:30 in Stockholm is
+  // that day there, not the day before in UTC.
+  const timeZone = await resolveTimeZone();
+  const signInLine = (c: ContactRow): SignInLine | null => {
+    const state = signIns?.get(c.id);
+    if (state === undefined) return null;
+    switch (state.kind) {
+      case "at":
+        return {
+          text: t("signIn.at", {
+            // No-break spaces inside the date: on a phone the sentence may
+            // take two lines, and it must break before the date, not in it.
+            date: formatDate(locale, state.at, { year: "numeric", month: "short", day: "numeric", timeZone }).replace(
+              /\s/gu,
+              NBSP,
+            ),
+          }),
+        };
+      case "never":
+        return { text: t("signIn.never") };
+      case "notWithin":
+        return { text: t("signIn.notWithinYear") };
+      case "none":
+        return { text: null };
+    }
+  };
 
   const headers = [
     t("name"),
@@ -97,6 +142,7 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
                   key={c.id}
                   clientId={client.id}
                   contact={c}
+                  signIn={signInLine(c)}
                   editable={editable}
                   manageable={manageable}
                 />

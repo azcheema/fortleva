@@ -33,6 +33,16 @@ import { CONTACT_GRID } from "./grid";
 const PROFILES = ["CONTACT_PRIMARY", "CONTACT_COLLABORATOR"] as const;
 
 /**
+ * The "Last signed in …" line under the address, a whole sentence
+ * formatted on the server in the member's locale and zone, its date
+ * unbreakable (a phone's narrow address track wraps it as "Last signed
+ * in / Sep 29, 2026", never mid-date). `text: null` for a contact who
+ * was never given access — the status chip already says so, and the
+ * line keeps its height, so on a desktop every row stays one height.
+ */
+export type SignInLine = { readonly text: string | null };
+
+/**
  * One contact row. A list of people is CONTENT (founder mandate 1): the
  * five permanently-mounted inputs are gone, every value renders as
  * text, and a click, Enter, Space or F2 turns one into the control it
@@ -50,11 +60,14 @@ const PROFILES = ["CONTACT_PRIMARY", "CONTACT_COLLABORATOR"] as const;
 export function ContactRowForm({
   clientId,
   contact,
+  signIn,
   editable,
   manageable,
 }: {
   clientId: string;
   contact: ContactRow;
+  /** `null` when the reader may not see sign-ins (C46): no line at all. */
+  signIn: SignInLine | null;
   /** Permission AND a live client: may change records, may invite. */
   editable: boolean;
   /** Permission alone: may take access away even on an archived client. */
@@ -216,6 +229,30 @@ export function ContactRowForm({
     </span>
   );
 
+  const emailField = (readOnly: boolean) => (
+    <InlineEdit
+      kind="text"
+      name="email"
+      value={contact.email}
+      label={t("email")}
+      placeholder={tCommon("notSet")}
+      readOnly={readOnly}
+      density="table"
+      inputProps={{ required: true, inputMode: "email", autoComplete: "email" }}
+      className={readOnly ? readOnlyClass : undefined}
+    />
+  );
+
+  // With the sign-in line the address cell is two lines tall, so the row
+  // aligns to the TOP: every value shares the first line, and the line
+  // hangs under the address rather than pushing it above its neighbours.
+  const align = signIn === null ? "items-center" : "items-start";
+  // Top-aligned, a READ-ONLY value (an archived client, seen by a manager)
+  // is a bare 20px line beside the 28px chip-and-actions cell, so it sat
+  // 4px high; `min-h-7` gives it the editable resting box's height. Only
+  // with the line: a centred row never needed it.
+  const readOnlyClass = signIn === null ? "px-2.5" : "min-h-7 px-2.5";
+
   const values = (readOnly: boolean) => (
     <>
       <InlineEdit
@@ -229,19 +266,26 @@ export function ContactRowForm({
         inputProps={{ required: true }}
         controlClassName="font-medium"
         display={<span className="font-medium">{contact.name}</span>}
-        className={readOnly ? "px-2.5" : undefined}
+        className={readOnly ? readOnlyClass : undefined}
       />
-      <InlineEdit
-        kind="text"
-        name="email"
-        value={contact.email}
-        label={t("email")}
-        placeholder={tCommon("notSet")}
-        readOnly={readOnly}
-        density="table"
-        inputProps={{ required: true, inputMode: "email", autoComplete: "email" }}
-        className={readOnly ? "px-2.5" : undefined}
-      />
+      {signIn === null ? (
+        emailField(readOnly)
+      ) : (
+        // UNDER THE ADDRESS, NOT A SEVENTH COLUMN. The card is capped near
+        // 1030px and the six tracks are sized to their longest values
+        // (`grid.ts`); a fixed track for the date truncated "PORTAL
+        // PROFILE", the phone number and the name at 1440px. The address
+        // is the widest track and the identity the person signs in with,
+        // and a whole sentence needs no header — so no label trick for a
+        // phone, where the headers are hidden, or for a screen reader,
+        // for which the header row is `aria-hidden`.
+        <div className="flex min-w-0 flex-col">
+          {emailField(readOnly)}
+          <span data-slot="contact-sign-in" className="min-h-4 px-2.5 text-xs text-muted-foreground">
+            {signIn.text}
+          </span>
+        </div>
+      )}
       <InlineEdit
         kind="text"
         name="title"
@@ -250,7 +294,7 @@ export function ContactRowForm({
         placeholder={tCommon("notSet")}
         readOnly={readOnly}
         density="table"
-        className={readOnly ? "px-2.5" : undefined}
+        className={readOnly ? readOnlyClass : undefined}
       />
       <InlineEdit
         kind="text"
@@ -262,7 +306,7 @@ export function ContactRowForm({
         density="table"
         controlClassName="num"
         display={<span className="num">{contact.phone}</span>}
-        className={readOnly ? "px-2.5" : undefined}
+        className={readOnly ? readOnlyClass : undefined}
       />
       <InlineEdit
         kind="select"
@@ -276,14 +320,14 @@ export function ContactRowForm({
         // A setting, not a fact about the person: it reads at hint
         // weight until someone goes looking for it.
         display={<span className="text-xs text-muted-foreground">{profileLabel}</span>}
-        className={readOnly ? "px-2.5" : undefined}
+        className={readOnly ? readOnlyClass : undefined}
       />
     </>
   );
 
   if (!editable) {
     return (
-      <li className={`grid ${CONTACT_GRID} items-center px-3 py-1.5 text-sm`}>
+      <li className={`grid ${CONTACT_GRID} ${align} px-3 py-1.5 text-sm`}>
         {values(true)}
         {trailing}
       </li>
@@ -292,7 +336,7 @@ export function ContactRowForm({
 
   return (
     <li className="px-3 py-1.5">
-      <AutoForm action={updateContactAction} className={`grid ${CONTACT_GRID} items-center`}>
+      <AutoForm action={updateContactAction} className={`grid ${CONTACT_GRID} ${align}`}>
         <input type="hidden" name="clientId" value={clientId} />
         <input type="hidden" name="contactId" value={contact.id} />
         {values(false)}
