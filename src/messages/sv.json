@@ -2655,10 +2655,15 @@
     },
     "actionItems": {
       "title": "Väntar på dig",
-      "description": "Sådant din byrå har bett dig göra eller ta ställning till.",
+      "description": "Sådant din byrå har bett dig göra eller ta ställning till, och svar som väntar på dig.",
       "signoffVersion": "Godkänn version {version}",
       "signoffDeliverable": "Godkänn {name} (version {number})",
-      "review": "Granska"
+      "review": "Granska",
+      "replied": "Din byrå har svarat: {title}",
+      "repliedIn": "{project} · {date}",
+      "repliedOn": "Svarade {date}",
+      "read": "Läs",
+      "readLabel": "Läs svaret på {title}"
     },
     "signoff": {
       "awaitingYou": "Väntar på ditt godkännande",

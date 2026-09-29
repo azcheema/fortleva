@@ -49,8 +49,9 @@ import { describe, expect, it } from "vitest";
  * `AND`, `project`, `portalEnabled` or another spread) can override it.
  *
  * SINCE SLICE 75 the portal's TASK reads join them — `readPortalTask` and
- * `createPortalComment` by id, `listPortalTasks` by the same rule — and
- * those four must carry `project: { archivedAt: null }` as well: the
+ * `createPortalComment` by id, `listPortalTasks` by the same rule, and
+ * since slice 76 `listPortalAgencyReplies` by an id list — and those five
+ * must carry `project: { archivedAt: null }` as well: the
  * shared helper leaves the project term to each caller as a literal, and
  * `project`'s own `portal_gate` has no archive term.
  *
@@ -265,6 +266,8 @@ describe("the portal switch's by-id belts (slice 74, C40)", () => {
     const sites: readonly (readonly [string, string, string, number])[] = [
       [join("modules", "work", "portal.ts"), "readPortalTask", "findFirst", 1],
       [join("modules", "work", "portal.ts"), "listPortalTasks", "findMany", 1],
+      // Slice 76 (C45): the tasks "Your agency replied" may name, by id list.
+      [join("modules", "work", "portal.ts"), "listPortalAgencyReplies", "findMany", 1],
       [join("modules", "work", "portal-comment.ts"), "createPortalComment", "findFirst", 2],
     ];
     const archiveHidden = (where: ts.Expression): boolean => {

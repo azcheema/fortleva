@@ -18,7 +18,7 @@ import {
   getItemDetail,
   setItemArchived,
 } from "./items";
-import { readPortalTask } from "./portal";
+import { PORTAL_REPLY_WINDOW_DAYS, listPortalAgencyReplies, readPortalTask } from "./portal";
 import {
   createPortalComment,
   PORTAL_COMMENT_WINDOW_LIMIT,
@@ -129,6 +129,8 @@ let bo: string;
 /** Eva and Frida — ACTIVE, of acme, the budget case's own two, so no other case's comments are in their counts. */
 let eva: string;
 let frida: string;
+/** The C45 block's own writer, so its comments spend no other case's budget (code review, slice 76). */
+let gil: string;
 
 /** Rows the portal's list does not show — every one refused by the writer and by the page. */
 let hidden: ReadonlyArray<readonly [label: string, id: string]>;
@@ -345,6 +347,7 @@ beforeAll(async () => {
   bo = randomUUID();
   eva = randomUUID();
   frida = randomUUID();
+  gil = randomUUID();
   const up = run.slice(0, 3).toUpperCase();
   projectKey = `PCO${up}`;
   projectName = `Site ${run}`;
@@ -404,6 +407,7 @@ beforeAll(async () => {
       contact(bo, beta, "Bo", "CONTACT_PRIMARY", "ACTIVE"),
       contact(eva, acme, "Eva", "CONTACT_PRIMARY", "ACTIVE"),
       contact(frida, acme, "Frida", "CONTACT_PRIMARY", "ACTIVE"),
+      contact(gil, acme, "Gil", "CONTACT_PRIMARY", "ACTIVE"),
     ],
   });
   gates = await resolvePortalModuleGates(f.tenantId);
@@ -1065,6 +1069,165 @@ describe("the census, measured raw under the contact's own principal", () => {
       );
       expect(await f.platform.comment.count({ where: { tenantId: f.tenantId, subjectId: t.id } })).toBe(1);
       expect(ok.id).toBeTruthy();
+    },
+    CASE_MS,
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// "YOUR AGENCY REPLIED" (Phase 3 slice 76, founder decision C45)
+// ═══════════════════════════════════════════════════════════════════════
+
+describe("your agency replied (listPortalAgencyReplies, C45)", () => {
+  /** The row the reader's card would list for one task — the list is client-wide, and other cases leave rows too. */
+  const rowFor = async (contactId: string, taskId: string, opts?: { projectId?: string; clientId?: string }) =>
+    (
+      await listPortalAgencyReplies(
+        principal(contactId, opts?.clientId ?? acme),
+        opts?.projectId ? { projectId: opts.projectId } : undefined,
+      )
+    ).find((r) => r.taskId === taskId);
+
+  const agencySays = async (taskId: string, text: string, visibility: "INTERNAL" | "CLIENT_VISIBLE" = "CLIENT_VISIBLE") =>
+    (await createComment(ownerCtx(), taskId, { doc: doc(text), visibility })).id;
+
+  it(
+    "an agency comment that is the task's newest raises it — for every contact of the client — and the client's answer clears it",
+    async () => {
+      const t = await newTask("Replied to");
+      const replyId = await agencySays(t.id, `Here is the draft ${run}`);
+      const written = await f.platform.comment.findUniqueOrThrow({ where: { id: replyId }, select: { createdAt: true } });
+
+      const row = await rowFor(carol, t.id);
+      expect(row).toBeDefined();
+      // The exact shape: what the card needs, and nothing that names who.
+      expect(Object.keys(row!).sort()).toEqual(["project", "repliedAt", "taskId", "title"]);
+      expect(Object.keys(row!.project).sort()).toEqual(["key", "name"]);
+      expect(row!.title).toBe(`Replied to ${run}`);
+      expect(row!.project).toEqual({ key: projectKey, name: projectName });
+      expect(row!.repliedAt.getTime()).toBe(written.createdAt.getTime());
+      // Per CLIENT, not per person: a colleague sees it too (C45 chose no "seen" record).
+      expect(await rowFor(dan, t.id)).toBeDefined();
+      // The member who wrote it is nowhere in the answer.
+      const member = await f.platform.member.findUniqueOrThrow({
+        where: { id: f.seats.owner.memberId },
+        select: { id: true, userId: true, user: { select: { name: true, email: true } } },
+      });
+      const json = JSON.stringify(await listPortalAgencyReplies(principal(carol)));
+      for (const secret of [member.id, member.userId, member.user.email]) expect(json).not.toContain(secret);
+      if (member.user.name) expect(json).not.toContain(member.user.name);
+
+      // Somebody at the client answers — the ball is back with the agency, for everyone at the client.
+      await createPortalComment(principal(gil), t.id, `Thanks ${run}`);
+      expect(await rowFor(carol, t.id)).toBeUndefined();
+      expect(await rowFor(dan, t.id)).toBeUndefined();
+
+      // And the agency speaking again raises it again.
+      await agencySays(t.id, `One more thing ${run}`);
+      expect(await rowFor(carol, t.id)).toBeDefined();
+    },
+    CASE_MS,
+  );
+
+  it(
+    "an INTERNAL note neither raises it nor clears it; a deleted reply does not count",
+    async () => {
+      // Client last, then an internal note: nothing is waiting on the client.
+      const quiet = await newTask("Client last");
+      await agencySays(quiet.id, `Question ${run}`);
+      await createPortalComment(principal(gil), quiet.id, `Answer ${run}`);
+      await agencySays(quiet.id, `Internal musing ${run}`, "INTERNAL");
+      expect(await rowFor(carol, quiet.id)).toBeUndefined();
+
+      // Agency last, then an internal note: still waiting on the client.
+      const loud = await newTask("Agency last");
+      await agencySays(loud.id, `Please confirm ${run}`);
+      await agencySays(loud.id, `Internal follow-up ${run}`, "INTERNAL");
+      expect(await rowFor(carol, loud.id)).toBeDefined();
+
+      // A reply the agency deleted leaves the client's word the newest.
+      const undone = await newTask("Reply deleted");
+      await createPortalComment(principal(gil), undone.id, `Opening question ${run}`);
+      const oops = await agencySays(undone.id, `Wrong task ${run}`);
+      expect(await rowFor(carol, undone.id)).toBeDefined();
+      await deleteComment(ownerCtx(), oops);
+      expect(await rowFor(carol, undone.id)).toBeUndefined();
+    },
+    CASE_MS,
+  );
+
+  it(
+    "a reply older than the window no longer stands",
+    async () => {
+      const t = await newTask("Old reply");
+      const id = await agencySays(t.id, `Long ago ${run}`);
+      expect(await rowFor(carol, t.id)).toBeDefined();
+      // Planted past the window — the one way to age a row.
+      await f.platform.comment.update({
+        where: { id },
+        data: { createdAt: new Date(Date.now() - (PORTAL_REPLY_WINDOW_DAYS + 1) * 86_400_000) },
+        select: { id: true },
+      });
+      expect(await rowFor(carol, t.id)).toBeUndefined();
+    },
+    CASE_MS,
+  );
+
+  it(
+    "only tasks the portal shows: never another client's, an archived task, a switched-off project's or a task made private",
+    async () => {
+      const betaTask = await newTask("Beta's", { projectId: pBeta });
+      await agencySays(betaTask.id, `To Beta ${run}`);
+      expect(await rowFor(carol, betaTask.id)).toBeUndefined();
+      expect(await rowFor(bo, betaTask.id, { clientId: beta })).toBeDefined();
+
+      const archived = await newTask("Archived after the reply");
+      await agencySays(archived.id, `Before archiving ${run}`);
+      await setItemArchived(ownerCtx(), archived.id, true);
+      expect(await rowFor(carol, archived.id)).toBeUndefined();
+
+      const off = await newTask("Portal off", { projectId: pOff });
+      await agencySays(off.id, `Behind the switch ${run}`);
+      expect(await rowFor(carol, off.id)).toBeUndefined();
+
+      const privateNow = await newTask("Made private");
+      await agencySays(privateNow.id, `Shared, then not ${run}`);
+      expect(await rowFor(carol, privateNow.id)).toBeDefined();
+      await makeItemPrivate(ownerCtx(), privateNow.id);
+      expect(await rowFor(carol, privateNow.id)).toBeUndefined();
+    },
+    CASE_MS,
+  );
+
+  it(
+    "narrowed to one project for the project page; a project that is not the reader's is refused",
+    async () => {
+      const pExtra = randomUUID();
+      await f.platform.project.create({
+        data: {
+          id: pExtra,
+          tenantId: f.tenantId,
+          clientId: acme,
+          key: `PCX${run.slice(0, 3).toUpperCase()}`,
+          name: `Extra ${run}`,
+          portalEnabled: true,
+        },
+        select: { id: true },
+      });
+      const here = await newTask("Here");
+      const there = await newTask("There", { projectId: pExtra });
+      await agencySays(here.id, `Here ${run}`);
+      await agencySays(there.id, `There ${run}`);
+
+      const narrowed = await listPortalAgencyReplies(principal(carol), { projectId: pOn });
+      expect(narrowed.some((r) => r.taskId === here.id)).toBe(true);
+      expect(narrowed.some((r) => r.taskId === there.id)).toBe(false);
+      expect(narrowed.every((r) => r.project.key === projectKey)).toBe(true);
+      expect(await rowFor(carol, there.id)).toBeDefined();
+
+      expect(await authzReason(listPortalAgencyReplies(principal(carol), { projectId: pBeta }))).toBe("NOT_FOUND");
+      expect(await authzReason(listPortalAgencyReplies(principal(carol), { projectId: pOff }))).toBe("NOT_FOUND");
+      await expect(listPortalAgencyReplies(principal(sue))).rejects.toBeInstanceOf(AuthzError);
     },
     CASE_MS,
   );

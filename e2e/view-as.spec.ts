@@ -153,7 +153,7 @@ test.describe("view-as-contact", () => {
     expect(contactCompanyHtml).not.toContain('data-slot="empty-state"');
     // …the task page: the agency's reply to the client is in the thread,
     // the composer is drawn, and the internal note is not.
-    expect(contactTaskHtml).toContain(seed.portalReplyText);
+    expect(contactTaskHtml).toContain(seed.agencyCommentText);
     expect(contactTaskHtml).toContain('data-slot="portal-comment-composer"');
     expect(contactTaskHtml).not.toContain(seed.internalNoteText);
     expect(contactTaskHtml).not.toContain('data-slot="empty-state"');

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { listPortalDocuments } from "@/documents/portal";
 import { formatDay } from "@/lib/format";
 import { readPortalHours } from "@/modules/time";
-import { listPortalTasks, listPortalTimeline, listPortalUpdates } from "@/modules/work";
+import { listPortalAgencyReplies, listPortalTasks, listPortalTimeline, listPortalUpdates } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 import { fileAnchor, versionAnchor } from "@/portal/signoff-vocabulary";
 import { findPortalProjectByKey, readPortalProjectSummary } from "@/projects/portal";
@@ -15,7 +15,7 @@ import { PortalFileList } from "../../files/file-list";
 import type { PortalFileError } from "../../files/files-view";
 import { PortalFrame } from "../../portal-frame";
 
-import { LatestUpdate, PortalTasksEmpty, ProjectTasks, TaskRow, isWaitingOnYou } from "../../task-list";
+import { AgencyReplyItem, LatestUpdate, PortalTasksEmpty, ProjectTasks, TaskRow, isWaitingOnYou } from "../../task-list";
 import { ProjectHours } from "./project-hours";
 import { PortalTimeline } from "./project-timeline";
 
@@ -40,7 +40,7 @@ import { PortalTimeline } from "./project-timeline";
  * deliverables → hours & retainer. Requests are already on the task
  * list under "Requested" (UI.md §11's sixth category).
  *
- * SEVEN SEQUENTIAL READS, seven transactions, each through
+ * EIGHT SEQUENTIAL READS (the eighth since slice 76), eight transactions, each through
  * `portalReadOrNull` — never `Promise.all`, for the reason
  * `portal-home.tsx` gives (two independent transactions that both
  * reject with something other than `AuthzError` would leave one an
@@ -111,9 +111,24 @@ export async function PortalProjectView({
     ? await portalReadOrNull("readPortalHours", () => readPortalHours(principal, project.id, { timeZone }))
     : null;
 
+  // The eighth (Phase 3 slice 76, C45): this project's tasks whose newest
+  // shared comment is the agency's — "Your agency replied" rows on the
+  // "Waiting on you" card, as on the home. Sequential, like the rest.
+  const replies = project
+    ? await portalReadOrNull("listPortalAgencyReplies", () =>
+        listPortalAgencyReplies(principal, { projectId: project.id }),
+      )
+    : null;
+
   const latest = updates?.[0] ?? null;
   const tasks = list?.projects[0] ?? null;
   const waiting = tasks?.tasks.filter(isWaitingOnYou) ?? [];
+  // ONE ROW PER TASK: a task the reader was handed AND the agency last
+  // spoke on is already on this card as its tick row, whose title opens
+  // the same page — a second row for it would read as two things waiting
+  // (code review). The home's card lists no tick rows, so it keeps both.
+  const waitingIds = new Set(waiting.map((task) => task.id));
+  const replied = (replies ?? []).filter((reply) => !waitingIds.has(reply.taskId));
   const events = timeline?.entries ?? [];
   const documents = files?.documents ?? [];
   // THE ASKS THIS READER MAY ANSWER (the sign-off slice): the shipped
@@ -135,6 +150,11 @@ export async function PortalProjectView({
     !latest &&
     events.length === 0 &&
     !tasks &&
+    // A reply's task passes the list's own rule, so `tasks` is set whenever
+    // a reply is — except for a race between the two reads; stated anyway,
+    // as on the home, so the page can never draw "nothing shared" under a
+    // card listing a reply.
+    replied.length === 0 &&
     documents.length === 0 &&
     !hasHours &&
     !(summary && summary.milestones.total > 0);
@@ -216,7 +236,7 @@ export async function PortalProjectView({
                   row the reader just pressed vanishes with its
                   confirmation (a code review traced it). One instance,
                   on an element that stays, is what "in place" means. */}
-              {asks > 0 || waiting.length > 0 ? (
+              {asks > 0 || waiting.length > 0 || replied.length > 0 ? (
                 <SectionCard
                   title={t("actionItems.title")}
                   description={t("actionItems.description")}
@@ -255,6 +275,9 @@ export async function PortalProjectView({
                     ))}
                     {waiting.map((task) => (
                       <TaskRow key={task.id} task={task} />
+                    ))}
+                    {replied.map((reply) => (
+                      <AgencyReplyItem key={`reply-${reply.taskId}`} reply={reply} showProject={false} />
                     ))}
                   </ul>
                 </SectionCard>

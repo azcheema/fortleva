@@ -170,6 +170,10 @@ export {
   readPortalTask,
   type PortalComment,
   type PortalTaskPage,
+  // Phase 3 slice 76 — "Your agency replied" on the action cards (C45).
+  PORTAL_REPLY_WINDOW_DAYS,
+  listPortalAgencyReplies,
+  type PortalAgencyReply,
 } from "./portal";
 // Phase 3 slice 75 — a contact's comment: a CENSUS write under their own
 // principal (`portal-comment.ts`), not a broker. The input cap is NOT

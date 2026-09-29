@@ -4,13 +4,19 @@ import Link from "next/link";
 import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { listPortalPendingDeliverables } from "@/documents/portal";
-import { listPortalTasks, listPortalUpdates, type PortalProjectTasks, type PortalUpdate } from "@/modules/work";
+import {
+  listPortalAgencyReplies,
+  listPortalTasks,
+  listPortalUpdates,
+  type PortalProjectTasks,
+  type PortalUpdate,
+} from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 import type { PortalPendingApproval } from "@/portal/signoff";
 import { listPortalPendingVersions, listPortalProjects } from "@/projects/portal";
 
 import { PortalFrame } from "./portal-frame";
-import { PortalTasksEmpty, ProjectTasks } from "./task-list";
+import { AgencyReplyItem, PortalTasksEmpty, ProjectTasks } from "./task-list";
 
 /**
  * THE PORTAL HOME, AS A COMPONENT — everything `/portal` is, minus the
@@ -134,7 +140,14 @@ export async function PortalHome({
   const pendingDeliverables = await portalReadOrNull("listPortalPendingDeliverables", () =>
     listPortalPendingDeliverables(principal),
   );
+  // "YOUR AGENCY REPLIED" (Phase 3 slice 76, founder decision C45): the
+  // shared tasks whose newest comment the client can see is the agency's,
+  // from the last two weeks — UI.md §4's "questions awaiting reply".
+  // Sequential, under the same rule as the reads above. A row clears when
+  // somebody at the client writes back on the task.
+  const replies = await portalReadOrNull("listPortalAgencyReplies", () => listPortalAgencyReplies(principal));
   const asks: readonly PortalPendingApproval[] = [...(pendingVersions ?? []), ...(pendingDeliverables ?? [])];
+  const replied = replies ?? [];
   const updateByProject = new Map<string, PortalUpdate>((latest ?? []).map((u) => [u.projectId, u]));
   const projects: PortalProjectTasks[] = [...(list?.projects ?? [])];
   for (const u of latest ?? []) {
@@ -164,7 +177,7 @@ export async function PortalHome({
               ) : null
             }
           />
-          {asks.length > 0 ? (
+          {asks.length > 0 || replied.length > 0 ? (
             <SectionCard
               title={t("actionItems.title")}
               description={t("actionItems.description")}
@@ -204,10 +217,13 @@ export async function PortalHome({
                     </li>
                   );
                 })}
+                {replied.map((reply) => (
+                  <AgencyReplyItem key={`reply-${reply.taskId}`} reply={reply} showProject />
+                ))}
               </ul>
             </SectionCard>
           ) : null}
-          {projects.length === 0 && asks.length === 0 ? (
+          {projects.length === 0 && asks.length === 0 && replied.length === 0 ? (
             // Shared with the member app's Portal tab since 2026-09-21,
             // so the preview there and this page cannot drift apart —
             // see `task-list.tsx` for why the variant and the glyph are

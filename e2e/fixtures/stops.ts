@@ -343,9 +343,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "portal-project", path: `/portal/projects/${seed.projectKey}`, session: "contact" },
     { name: "portal-project-updates", path: `/portal/projects/${seed.projectKey}/updates`, session: "contact" },
     // A shared task's own page (Phase 3 slice 75, C41): the header with
-    // its category and phase, the seeded thread — the client's question
-    // under the contact's name, the reply signed "Your agency" — and the
-    // comment box. The seed's INTERNAL note on the same task is the
+    // its category and phase, the seeded thread — the agency's note signed
+    // "Your agency", then the client's question under the contact's name —
+    // and the comment box. The seed's INTERNAL note on the same task is the
     // photograph's negative control.
     { name: "portal-task", path: `/portal/tasks/${seed.sharedTaskId}`, session: "contact" },
     // The files page and the company page (Phase 3, the portal

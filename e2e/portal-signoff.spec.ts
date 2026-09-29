@@ -55,7 +55,12 @@ test.describe("portal sign-off", () => {
       await expect(page.locator("[data-portal-surface]")).toBeVisible({ timeout: 30_000 * SLOW });
       const card = page.locator('[data-slot="section-card"]', { hasText: "Waiting on you" });
       await expect(card).toBeVisible();
-      const items = card.locator('[data-slot="portal-action-item"]');
+      // THE ASKS, not every row: since slice 76 the card also lists "Your
+      // agency replied" rows (C45), and the seed's shared spec task carries
+      // an agency comment as its newest — a real reply row, not this spec's.
+      const items = card.locator(
+        '[data-slot="portal-action-item"][data-kind="version"], [data-slot="portal-action-item"][data-kind="deliverable"]',
+      );
       await expect(items).toHaveCount(2);
       await expect(card.locator('[data-slot="portal-action-item"][data-kind="version"]')).toContainText(
         `Sign off version ${seed.pendingVersion}`,
@@ -129,10 +134,14 @@ test.describe("portal sign-off", () => {
       // ── After the revalidation, the page says so everywhere: the rail
       //    has both decisions as events, the version's own entry stands
       //    approved with no control, the file row carries the words, and
-      //    the card is gone (nothing is waiting any more). ─────────────
+      //    no ASK is left on the card (nothing waits for a decision). The
+      //    card itself may stay since slice 76: a "Your agency replied"
+      //    row on another task of the project is not this spec's (C45). ─
       await page.reload();
       await expect(page.locator("[data-portal-surface]")).toBeVisible({ timeout: 30_000 * SLOW });
-      await expect(page.locator('[data-slot="section-card"]', { hasText: "Waiting on you" })).toHaveCount(0);
+      await expect(
+        page.locator('[data-slot="portal-action-item"][data-kind="version"], [data-slot="portal-action-item"][data-kind="deliverable"]'),
+      ).toHaveCount(0);
       const decided = rail.locator('[data-slot="portal-event"][data-kind="approval_decided"]');
       await expect(decided).toHaveCount(2);
       const versionDecided = rail.locator('[data-kind="approval_decided"][data-subject="version"]');

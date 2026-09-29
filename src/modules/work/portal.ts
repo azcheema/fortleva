@@ -822,6 +822,114 @@ export async function readPortalTask(principal: PortalPrincipal, taskId: string)
   });
 }
 
+/**
+ * HOW LONG "YOUR AGENCY REPLIED" STANDS WITHOUT AN ANSWER — founder
+ * decision C45 (2026-09-29): the notice goes when somebody at the client
+ * writes back on the task, or when this many days have passed. No record
+ * of what a client has READ exists (C45 chose that over a per-person
+ * "seen" table), so a reply that needs no answer is listed until then.
+ */
+export const PORTAL_REPLY_WINDOW_DAYS = 14;
+
+/**
+ * The most comments one read of the window considers. A client whose
+ * shared comments exceed this in two weeks loses the notice on the
+ * tasks past the cut — it fails QUIET (nothing listed), never wrong
+ * (nothing listed that is not a reply).
+ */
+const PORTAL_REPLY_SCAN = 500;
+
+/** One task whose newest shared comment is the agency's (C45) — a "Waiting on you" row. */
+export type PortalAgencyReply = {
+  readonly taskId: string;
+  readonly title: string;
+  readonly project: { readonly key: string; readonly name: string };
+  /** When the agency's comment — the task's newest the client can see — was written. */
+  readonly repliedAt: Date;
+};
+
+/**
+ * "YOUR AGENCY REPLIED" — UI.md §4's "questions awaiting reply" on the
+ * portal's action cards (Phase 3 slice 76; founder decision C45), the
+ * gap slice 75 left: a client could not tell the agency had answered
+ * without opening every task.
+ *
+ * THE RULE: a task the portal SHOWS (the list's own rule) whose NEWEST
+ * CLIENT_VISIBLE live comment was written by the agency — never by the
+ * client's own people — within `PORTAL_REPLY_WINDOW_DAYS`. Reading only
+ * the window is exact, not an approximation: if the agency's comment is
+ * inside it, so is anything the client wrote after it. An internal note
+ * is invisible here (RLS and the restated terms), so it neither raises
+ * the notice nor clears it; a reply the agency later made private, or a
+ * task made private (C37), simply stops counting.
+ *
+ * NEVER WHO at the agency: the member author column is not selected —
+ * "is the contact author column empty" is the whole question
+ * (`comment_single_author` makes it an exact XOR), as `readPortalTask`
+ * decides a signature.
+ *
+ * Under the contact principal, allow-listed, sequential; `projectId`
+ * narrows to one project for the project page (and makes steps 3–4 of
+ * the pipeline run on it).
+ */
+export async function listPortalAgencyReplies(
+  principal: PortalPrincipal,
+  opts?: { readonly projectId?: string },
+): Promise<readonly PortalAgencyReply[]> {
+  const projectId = opts?.projectId;
+  return withPortalRead(principal, async (tx) => {
+    await authorizePortal(
+      tx,
+      principal,
+      "portal.work_item.view",
+      projectId ? { kind: "project", projectId } : undefined,
+    );
+    const since = new Date(Date.now() - PORTAL_REPLY_WINDOW_DAYS * 86_400_000);
+    // Newest first, so the first row seen per task IS its newest comment.
+    const recent = await tx.comment.findMany({
+      where: {
+        tenantId: principal.tenantId,
+        clientId: principal.clientId,
+        subjectType: "WORK_ITEM",
+        visibility: "CLIENT_VISIBLE",
+        portalEnabled: true,
+        deletedAt: null,
+        createdAt: { gte: since },
+        ...(projectId ? { projectId } : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: PORTAL_REPLY_SCAN,
+      select: { subjectId: true, authorContactId: true, createdAt: true },
+    });
+    const newest = new Map<string, { readonly byAgency: boolean; readonly at: Date }>();
+    for (const c of recent) {
+      if (!newest.has(c.subjectId)) newest.set(c.subjectId, { byAgency: c.authorContactId === null, at: c.createdAt });
+    }
+    const awaiting = [...newest].filter(([, v]) => v.byAgency);
+    if (awaiting.length === 0) return [];
+
+    // Only tasks the portal SHOWS — the list's rule, the project term a
+    // literal beside it (see `portalShownTaskTerms`).
+    const tasks = await tx.workItem.findMany({
+      where: {
+        ...portalShownTaskTerms(principal),
+        id: { in: awaiting.map(([id]) => id) },
+        project: { archivedAt: null, portalEnabled: true },
+        // The narrowing on the TASK as well as on its comments: a comment's
+        // project is a trigger-maintained copy, and "this project only"
+        // must not rest on the copy alone (code review).
+        ...(projectId ? { projectId } : {}),
+      },
+      select: { id: true, title: true, project: { select: { key: true, name: true } } },
+    });
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    return awaiting.flatMap(([id, v]) => {
+      const task = byId.get(id);
+      return task ? [{ taskId: task.id, title: task.title, project: { key: task.project.key, name: task.project.name }, repliedAt: v.at }] : [];
+    });
+  });
+}
+
 /* ────────────────────────────────────────────────────────────────────
  * PROGRESS UPDATES — the portal centrepiece (Phase 3, DATA_MODEL §6.16)
  * ──────────────────────────────────────────────────────────────────── */

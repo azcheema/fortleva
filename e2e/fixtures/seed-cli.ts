@@ -367,16 +367,18 @@ export type E2ESeed = {
 
   /**
    * THE PORTAL'S TASK PAGE FIXTURE (Phase 3 slice 75): the shared
-   * accessibility task and the three comments on it — the contact's own
-   * (Astrid's), the agency's reply to the client, and an INTERNAL note
-   * that no contact surface may ever show.
+   * accessibility task and the three comments on it, oldest first — the
+   * agency's to the client, the contact's own (Astrid's) after it, and an
+   * INTERNAL note that no contact surface may ever show.
    */
   readonly sharedTaskId: string;
   /** Its member-side key ("E1A2-4"), for opening the peek at `backlog?item=`. */
   readonly sharedTaskKey: string;
   readonly sharedTaskTitle: string;
-  readonly portalCommentText: string;
-  readonly portalReplyText: string;
+  /** The agency's comment to the client — the thread's first. */
+  readonly agencyCommentText: string;
+  /** The contact's own comment after it — the newest the client can see. */
+  readonly clientCommentText: string;
   readonly internalNoteText: string;
 
   /**
@@ -967,8 +969,8 @@ async function provision(seedFile: string): Promise<void> {
   await setItemMilestone(ctx, a11yTaskId, datedMilestoneId);
   await updateItemFields(ctx, a11yTaskId, { targetDate: dueIn(10) });
   // A CONVERSATION ON THE SHARED ACCESSIBILITY TASK (Phase 3 slice 75):
-  // the client's question, the agency's reply to the client, and an
-  // internal note the client must never see — so the portal's task page
+  // the agency's note to the client, the client's question after it, and
+  // an internal note the client must never see — so the portal's task page
   // photographs a real thread signed two ways ("Your agency" and the
   // contact's own name), and `portal-comments.spec.ts` has a negative
   // control on the very page it reads. The client's comment is written
@@ -977,12 +979,25 @@ async function provision(seedFile: string): Promise<void> {
   // here would move every inbox count the other specs pin. The two
   // member comments go through the real service; the task has no
   // assignee, so neither notifies anybody.
-  const portalCommentText = "Kan ni också granska kontrasten i sidfoten?";
-  const portalReplyText = "Absolut, vi lägger till sidfoten i granskningen.";
+  //
+  // THE CLIENT'S COMMENT IS THE NEWEST ONE THE CLIENT CAN SEE, ON PURPOSE
+  // (slice 76): "Your agency replied" (C45) is raised by an agency comment
+  // that is newest, and `portal-comments.spec.ts` raises and clears it on
+  // THIS task itself, so it must start with the client's word. (The spec
+  // task above DOES carry an agency comment as its newest, so the portal's
+  // cards show one real reply row by default — which the visual walk
+  // photographs, and which `portal-signoff.spec.ts` counts around: it
+  // counts its own sign-off rows only.)
+  const agencyCommentText = "Vi har börjat granska sidorna – säg till om något särskilt ska kontrolleras.";
+  const clientCommentText = "Kan ni också granska kontrasten i sidfoten?";
   const internalNoteText = "Intern anteckning: sidfoten ingår inte i offerten.";
   const { number: a11yTaskNumber } = await db.workItem.findUniqueOrThrow({
     where: { id: a11yTaskId },
     select: { number: true },
+  });
+  await createComment(ctx, a11yTaskId, {
+    doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: agencyCommentText }] }] },
+    visibility: "CLIENT_VISIBLE",
   });
   await db.comment.create({
     data: {
@@ -990,15 +1005,11 @@ async function provision(seedFile: string): Promise<void> {
       subjectType: "WORK_ITEM",
       subjectId: a11yTaskId,
       authorContactId: contactId,
-      body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: portalCommentText }] }] },
-      bodyText: portalCommentText,
+      body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: clientCommentText }] }] },
+      bodyText: clientCommentText,
       visibility: "CLIENT_VISIBLE",
     },
     select: { id: true },
-  });
-  await createComment(ctx, a11yTaskId, {
-    doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: portalReplyText }] }] },
-    visibility: "CLIENT_VISIBLE",
   });
   await createComment(ctx, a11yTaskId, {
     doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: internalNoteText }] }] },
@@ -1358,8 +1369,8 @@ async function provision(seedFile: string): Promise<void> {
     sharedTaskId: a11yTaskId,
     sharedTaskKey: `${projectKey}-${a11yTaskNumber}`,
     sharedTaskTitle: a11yTaskTitle,
-    portalCommentText,
-    portalReplyText,
+    agencyCommentText,
+    clientCommentText,
     internalNoteText,
     contactInviteToken,
     contactInviteEmail,

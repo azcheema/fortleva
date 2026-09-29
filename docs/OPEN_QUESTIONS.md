@@ -419,6 +419,10 @@ The Swedish/EU labour-law and GDPR track behind decision 11 produced a short lis
 - **Question, as asked.** "Mentions (typing @name in a comment to notify someone) don't exist anywhere yet. The warning about mentioning a client in a private note depends on them. What should happen with mentions?" — later, separately; teammates only, next; or teammates and clients, next, with the warning.
 - **Decided 2026-09-28, with the recommendation: later, separately.** Item (9) shipped the client's side of comments (slice 75); mentions — and with them UI.md §5.6's "mentioning a Contact in an internal note warns inline" — become their own item, unordered. `comment.mentioned` stays catalogued with no writer, as it has been since 2W.
 
+#### C45. ~~When does "Your agency replied" go away on a client's portal?~~ **DECIDED 2026-09-29: WHEN SOMEBODY AT THE CLIENT REPLIES, OR AFTER TWO WEEKS · BUILT the same day (slice 76)** *(asked before building UI.md §4's "questions awaiting reply", the gap slice 75 left)*
+- **Question, as asked.** "When your team replies to a client on a task, the client's portal home will show 'Your agency replied' with a link to the task. When should that notice go away?" — when they open the task (like an unread message, per person; a small new record of what each client person has seen, and a safety review), or when the client replies (no new records; it stays until someone at the client writes back on that task, or two weeks pass).
+- **Decided 2026-09-29, AGAINST the recommendation: when the client replies.** No read record exists: a task raises the notice while its newest comment the client can see is the agency's and under fourteen days old (`PORTAL_REPLY_WINDOW_DAYS`); it is per CLIENT, not per person — a colleague's reply clears it for everyone at the client. An internal note neither raises nor clears it. A reply that needs no answer stays listed for up to two weeks, knowingly.
+
 ---
 
 ## 4. Decide-by schedule (at a glance)
@@ -441,6 +445,7 @@ The Swedish/EU labour-law and GDPR track behind decision 11 produced a short lis
 | C42 | ~~How is the agency's reply signed for the client?~~ | **DECIDED 2026-09-28 · BUILT (slice 75)** | — "Your agency"; a client's own people by name |
 | C43 | ~~Who at the agency hears about a client's comment?~~ | **DECIDED 2026-09-28 · BUILT (slice 75)** | — the task's owner, else the project's people; inbox and email straight away |
 | C44 | ~~Mentions?~~ | **DECIDED 2026-09-28** | — later, as their own piece of work (the mention warning waits with them) |
+| C45 | ~~When does "Your agency replied" go away?~~ | **DECIDED 2026-09-29 · BUILT (slice 76)** | — when somebody at the client replies on the task, or after two weeks; no read record |
 | C30 | ~~Member account recovery: a forgot-password link, and a fresh sign-up link when one runs out~~ | **DECIDED 2026-09-24 · BUILT the same day (slice 59)** | — all five parts; (d) went further than its first option after the review: confirming an address takes the link AND the password — **confirmed by the founder 2026-09-25**. RUNBOOK §8 has the procedures, including the operator's script for a forgotten console password |
 | B1 | ~~Product name~~ (decided: **Fortleva**, 2026-08-05; trademark check outstanding) + domain purchases | **Phase 7 design start** (demoted from Phase 1 day 1 by decision 9) | None — v1 runs on `os.`/`ops.naxdor.com` |
 | B2 | ~~Neon project, Frankfurt, founder's account~~ (done 2026-08-08: `fortleva`, Frankfurt confirmed, PG18; Free plan — upgrade to Launch before tenant-zero data) | ~~Phase 1 day 1~~ — resolved | Settled |

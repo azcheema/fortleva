@@ -3,12 +3,14 @@ import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 
 import { EmptyState, SectionCard, StatusIcon } from "@/components/semantic";
+import { Button } from "@/components/ui/button";
 import { UpdateView } from "@/components/updates/update-view";
 import { formatDate, formatDay } from "@/lib/format";
 import { STATUS_MAP } from "@/lib/enum-map";
 import {
   PORTAL_TASK_CATEGORIES,
   readUpdateBody,
+  type PortalAgencyReply,
   type PortalProjectTasks,
   type PortalTask,
   type PortalTaskCategory,
@@ -302,6 +304,49 @@ export function TaskMeta({ task }: { task: PortalTask }) {
         </span>
       ) : null}
     </>
+  );
+}
+
+/**
+ * "YOUR AGENCY REPLIED" — one row of a "Waiting on you" card (Phase 3
+ * slice 76, founder decision C45): a task whose newest shared comment is
+ * the agency's, with the day it was written and a link to the task's
+ * page, where the reply is and where answering it clears the row. ONE
+ * component for the home's card (across projects, so it names the
+ * project) and the project page's (which does not), because UI.md §12
+ * forbids a second implementation of a list row.
+ *
+ * The date is ABSOLUTE and the text ONE expression per span — the View-as
+ * byte comparison's two rules (a relative time differs a minute later;
+ * adjacent text children differ by a `<!-- -->` marker).
+ */
+export function AgencyReplyItem({ reply, showProject }: { reply: PortalAgencyReply; showProject: boolean }) {
+  const t = useTranslations("portal.actionItems");
+  const format = useFormatter();
+  const date = format.dateTime(reply.repliedAt, { year: "numeric", month: "short", day: "numeric" });
+  return (
+    <li
+      data-slot="portal-action-item"
+      data-kind="reply"
+      className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+    >
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm text-foreground">{t("replied", { title: reply.title })}</span>
+        <span className="text-xs text-muted-foreground">
+          {showProject ? t("repliedIn", { project: reply.project.name, date }) : t("repliedOn", { date })}
+        </span>
+      </span>
+      <Button asChild variant="outline" size="sm">
+        {/* No prefetch: rendered on the member plane too (View-as). */}
+        {/* The accessible name carries the task — every row on the card
+            says "Read" or "Review", and a list of identical names tells a
+            screen reader nothing — and BEGINS with the visible word
+            (WCAG 2.5.3, label in name). */}
+        <Link href={`/portal/tasks/${reply.taskId}`} prefetch={false} aria-label={t("readLabel", { title: reply.title })}>
+          {t("read")}
+        </Link>
+      </Button>
+    </li>
   );
 }
 

@@ -2655,10 +2655,15 @@
     },
     "actionItems": {
       "title": "Waiting on you",
-      "description": "Things your agency has asked you to do or decide.",
+      "description": "Things your agency has asked you to do or decide, and replies waiting for you.",
       "signoffVersion": "Sign off version {version}",
       "signoffDeliverable": "Sign off {name} (version {number})",
-      "review": "Review"
+      "review": "Review",
+      "replied": "Your agency replied: {title}",
+      "repliedIn": "{project} · {date}",
+      "repliedOn": "Replied {date}",
+      "read": "Read",
+      "readLabel": "Read the reply on {title}"
     },
     "signoff": {
       "awaitingYou": "Waiting for your sign-off",
