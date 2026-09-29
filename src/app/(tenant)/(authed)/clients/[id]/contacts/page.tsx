@@ -29,13 +29,19 @@ const NBSP = String.fromCharCode(0xa0);
  * with. An archive is very often exactly the moment somebody wants that
  * verb — the engagement is over.
  *
- * So `manageable` (the permission alone) gates the verbs that TAKE
- * ACCESS AWAY, and `editable` (permission plus a live client) still
- * gates everything that adds or changes: the add card, the inline field
- * editors, and Invite — which `inviteContact` refuses on an archived
- * client anyway (§3.1: hidden, never disabled). Deleting the record
- * stays on `manageable` too, because erasure must not be blocked by an
- * archive either. Found by this slice's security review.
+ * So `manageable` (the permission, whatever the client's status) gates
+ * the verbs that TAKE ACCESS AWAY, and `editable` (permission plus a live
+ * client) still gates everything that adds or changes: the add card, the
+ * inline field editors, and Invite — which `inviteContact` refuses on an
+ * archived client anyway (§3.1: hidden, never disabled). Deleting the
+ * record stays on `manageable` too, because erasure must not be blocked
+ * by an archive either. Found by this slice's security review.
+ *
+ * **"The permission" is all four gates** (`getClient`'s `accessibleCodes`,
+ * 2026-09-29). `client:manage_contacts` is a PORTAL-module code and every
+ * contact write — a rename included — passes `requireAccess` on it, so a
+ * workspace with the portal switched off gets a read-only tab rather than
+ * controls that are all refused.
  */
 export default async function ClientContactsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,9 +52,10 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
 
   // "Last signed in …" is for the people who manage this client's portal
   // access (OPEN_QUESTIONS C46) — `null` for anyone else, and then no row
-  // draws the line at all. After `loadClient`, which 404s first. The bare
-  // permission (`manageable`) is necessary for the full gate, so without
-  // it — or with no contacts to show — the read is not worth a transaction.
+  // draws the line at all. After `loadClient`, which 404s first.
+  // `manageable` is the same four gates (minus the scope, which
+  // `loadClient` already passed), so without it — or with no contacts to
+  // show — the read is not worth a transaction.
   const { membership, actor } = await requireTenantContext();
   const signIns =
     manageable && client.contacts.length > 0

@@ -2,11 +2,11 @@ import { PlusIcon, ReceiptIcon } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
-import { effectivePermissions } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
+import { accessibleCodes } from "@/entitlements/resolver";
 import { resolveTimeZone } from "@/i18n/resolve";
 import { localDateString } from "@/lib/duration";
 import { formatDurationSeconds, formatMoney } from "@/lib/format";
@@ -20,6 +20,9 @@ import { CreateRateCardForm, RateCardTable, type RateCardRow } from "@/app/(tena
 
 import { loadClient } from "../data";
 import { CreateServiceForm, ServicesList } from "../overview-forms";
+
+/** The tab's rate verbs — `time`-module codes, none of them ✦. */
+const AGREEMENT_CODES = ["rate:view_bill", "rate:manage_bill", "time:reprice"] as const;
 
 /**
  * Agreements tab (UI.md §3.1, 2T D4): the client's Service rows
@@ -42,16 +45,22 @@ export default async function ClientAgreementsPage({ params }: { params: Promise
   const timezone = await resolveTimeZone();
   const returnTo = `/clients/${client.id}/agreements`;
 
-  const [services, { held, prefs }] = await Promise.all([
+  const [services, { open, prefs }] = await Promise.all([
     client.caps.viewServices ? listServices(ctx, { clientId: client.id }) : Promise.resolve([]),
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
-      const [held, prefs] = await Promise.all([effectivePermissions(tx, actor.memberId), readPreferences(tx, membership.tenantId)]);
-      return { held, prefs };
+      // IN SEQUENCE on this one transaction (AGENTS.md: a `Promise.all`
+      // leg on one interactive transaction can resolve `undefined`). And
+      // all four gates, not the bare permission: the three are `time`-
+      // module codes, so with time switched off the rate column, "Add a
+      // rate", Close and Reprice were drawn over services that refused.
+      const open = await accessibleCodes(tx, membership.tenantId, actor, AGREEMENT_CODES);
+      const prefs = await readPreferences(tx, membership.tenantId);
+      return { open, prefs };
     }),
   ]);
-  const canViewBill = held.has("rate:view_bill");
-  const canManageBill = held.has("rate:manage_bill");
-  const canReprice = held.has("time:reprice");
+  const canViewBill = open.has("rate:view_bill");
+  const canManageBill = open.has("rate:manage_bill");
+  const canReprice = open.has("time:reprice");
   const canAddService = client.caps.createServices && client.status === "ACTIVE";
   const today = localDateString(new Date(), timezone);
   const month = monthContaining(today);

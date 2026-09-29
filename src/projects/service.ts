@@ -8,7 +8,7 @@ import {
 import { deny } from "@/authz/errors";
 import { clean } from "@/clients/service";
 import { PORTAL_ENABLED_FANOUT_TARGETS, withTenant, type TenantDb } from "@/db";
-import { requireAccess } from "@/entitlements/resolver";
+import { accessibleCodes, requireAccess } from "@/entitlements/resolver";
 import type {
   ApprovalStatus,
   HoursSharingMode,
@@ -221,6 +221,15 @@ export type ProjectDetail = {
   };
 };
 
+/** The project's document caps — `documentation`-module codes, none of them ✦. */
+const PROJECT_DOCUMENT_CODES = [
+  "document:view",
+  "document:upload",
+  "document:edit",
+  "document:delete",
+  "document:change_visibility",
+] as const;
+
 /** project:view; assertInScope({projectId}) ⇒ NOT_FOUND outside scope. */
 export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<ProjectDetail> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
@@ -232,6 +241,16 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
     if (!head) deny("NOT_FOUND");
     await assertInScope(tx, ctx.actor, { projectId: head!.id });
     const held = await effectivePermissions(tx, ctx.actor.memberId);
+    // THE DOCUMENT CAPS ANSWER ALL FOUR GATES (slice 78, 2026-09-29): the
+    // five are `documentation`-module codes, and on the permission alone a
+    // tenant with documentation switched off got a Files tab — and every
+    // task page, and a board or backlog with a task open, called
+    // `listDocuments` and fell into the error page on its refusal. In
+    // sequence, never a `Promise.all` leg. The other caps stay on `held`
+    // on purpose: Triage, Board and Backlog share the `work` module's
+    // gate-4 rule (see the layout), and `managePortal` is only the
+    // layout's short-circuit before its own `hasAccess`.
+    const docs = await accessibleCodes(tx, ctx.tenantId, ctx.actor, PROJECT_DOCUMENT_CODES);
     const p = await tx.project.findFirstOrThrow({
       where: { id: head!.id },
       include: {
@@ -330,13 +349,13 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         // `requireAccess` and 404s for a typed URL (UI.md §3.1: hiding
         // is never the gate).
         triage: held.has("work_item:triage"),
-        viewDocuments: held.has("document:view"),
-        uploadDocuments: held.has("document:upload"),
+        viewDocuments: docs.has("document:view"),
+        uploadDocuments: docs.has("document:upload"),
         // Asking the client to sign a deliverable off is `document:edit`'s
         // (Phase 3): the same code that uploads a new version of it.
-        editDocuments: held.has("document:edit"),
-        deleteDocuments: held.has("document:delete"),
-        changeDocumentVisibility: held.has("document:change_visibility"),
+        editDocuments: docs.has("document:edit"),
+        deleteDocuments: docs.has("document:delete"),
+        changeDocumentVisibility: docs.has("document:change_visibility"),
       },
     };
   });

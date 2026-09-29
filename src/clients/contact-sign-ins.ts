@@ -17,8 +17,9 @@ import { signInState, signInWindowStart, type SignInState } from "./sign-in-wind
  * else. It is a fact about a client's employee that serves those verbs
  * (chase an invite, pause someone who never comes), so an employee who
  * only works on the client's projects sees the contact list without it.
- * `getClient`'s `caps.manageContacts` is NOT that gate: it is the bare
- * permission, blind to the portal module being switched off.
+ * The page also skips this read on `getClient`'s `caps.manageContacts`
+ * (the same four gates, since 2026-09-29); the read checks for itself
+ * all the same, because a service never trusts a page's flag.
  *
  * **THE SOURCE IS THE AUDIT TRAIL, NOT THE SESSION TABLE.** Every
  * successful portal sign-in writes `auth.login_succeeded` with

@@ -187,3 +187,55 @@ describe("archive / restore (client:delete)", () => {
     await notFound(archiveClient(owner, randomUUID()));
   });
 });
+
+describe("the caps a module switch can close follow it, not the bare permission (2026-09-29)", () => {
+  /** A tenant's own switch — the third of the four gates, the one an owner holds. */
+  const withModuleOff = async (module: "portal" | "documentation", fn: () => Promise<void>) => {
+    const db = getPlatformClient();
+    const key = `module.${module}.enabled`;
+    await db.tenantPreference.create({ data: { tenantId, key, value: false } });
+    try {
+      await fn();
+    } finally {
+      await db.tenantPreference.deleteMany({ where: { tenantId, key } });
+    }
+  };
+  const documentCaps = (c: Awaited<ReturnType<typeof getClient>>) => [
+    c.caps.viewDocuments,
+    c.caps.uploadDocuments,
+    c.caps.editDocuments,
+    c.caps.deleteDocuments,
+    c.caps.changeDocumentVisibility,
+  ];
+
+  it("with every module on, the owner holds both families", async () => {
+    const a = await getClient(owner, ids.a);
+    expect(a.caps.manageContacts).toBe(true);
+    expect(documentCaps(a)).toEqual([true, true, true, true, true]);
+    expect(a.caps.viewDocumentsAnyScope).toBe(true);
+  });
+
+  it("portal off: no contact management — which the service refuses too — and documents untouched", async () => {
+    await withModuleOff("portal", async () => {
+      const a = await getClient(owner, ids.a);
+      expect(a.caps.manageContacts).toBe(false);
+      expect(documentCaps(a)).toEqual([true, true, true, true, true]);
+      expect(a.caps.edit).toBe(true);
+      // The tab now hides exactly what this refuses: every contact write
+      // is a portal-module code, a plain record included.
+      await expect(
+        createContact(owner, ids.a, { name: "Nobody", email: `nobody-${randomUUID()}@test.invalid` }),
+      ).rejects.toMatchObject({ reason: "DISABLED_BY_TENANT" });
+    });
+  });
+
+  it("documentation off: no document caps, contacts untouched", async () => {
+    await withModuleOff("documentation", async () => {
+      const a = await getClient(owner, ids.a);
+      expect(documentCaps(a)).toEqual([false, false, false, false, false]);
+      // …and no Files tab at all: the layout draws it on this one.
+      expect(a.caps.viewDocumentsAnyScope).toBe(false);
+      expect(a.caps.manageContacts).toBe(true);
+    });
+  });
+});

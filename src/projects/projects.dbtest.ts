@@ -149,6 +149,10 @@ describe("scoping through the services", () => {
     await notFound(getProjectByKey(employee, "GAM"));
     const card = await getClient(employee, acme);
     expect(card.direct).toBe(false);
+    // Slice 78: the lifted row of the client's Files tab — drawn (to say
+    // the files live under the project), but no client-level files.
+    expect(card.caps.viewDocumentsAnyScope).toBe(true);
+    expect(card.caps.viewDocuments).toBe(false);
     expect(card.projects.map((p) => p.key)).toEqual(["ACME"]);
     expect(card.internalNotes).toBeUndefined();
     await notFound(getClient(employee, gamma));
@@ -396,5 +400,30 @@ describe("project documents + portal gate", () => {
     await expect(
       createUpload(owner, { name: "x.txt", contentType: "text/plain", sizeBytes: 1, sha256: sha("x"), visibility: "CLIENT_VISIBLE" }),
     ).rejects.toMatchObject({ code: "CLIENT_REQUIRED" });
+  });
+});
+
+describe("the project's document caps follow the documentation switch (slice 78)", () => {
+  it("documentation off: no document caps — so no Files tab and no task-page listDocuments — and the rest unchanged", async () => {
+    const db = getPlatformClient();
+    const key = "module.documentation.enabled";
+    const before = await getProjectByKey(owner, "ACME");
+    expect(before.caps.viewDocuments).toBe(true);
+    await db.tenantPreference.create({ data: { tenantId, key, value: false } });
+    try {
+      const p = await getProjectByKey(owner, "ACME");
+      expect([
+        p.caps.viewDocuments,
+        p.caps.uploadDocuments,
+        p.caps.editDocuments,
+        p.caps.deleteDocuments,
+        p.caps.changeDocumentVisibility,
+      ]).toEqual([false, false, false, false, false]);
+      expect(p.caps.edit).toBe(before.caps.edit);
+      expect(p.caps.triage).toBe(before.caps.triage);
+      expect(p.caps.managePortal).toBe(before.caps.managePortal);
+    } finally {
+      await db.tenantPreference.deleteMany({ where: { tenantId, key } });
+    }
   });
 });

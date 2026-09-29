@@ -1,5 +1,6 @@
 import { FileIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { Callout, EmptyState, SectionCard } from "@/components/semantic";
@@ -30,6 +31,11 @@ export default async function ClientFilesPage({
   const tFiles = await getTranslations("files");
   const returnTo = `/clients/${client.id}/files`;
 
+  // No `document:view` on all four gates — the documentation module off,
+  // or no permission — and the layout draws no tab; a typed URL gets what
+  // `loadClient` gives a missing permission, a 404, rather than "the
+  // files live under that project", which is then untrue.
+  if (!client.caps.viewDocumentsAnyScope) notFound();
   if (!client.caps.viewDocuments) {
     return (
       <SectionCard>

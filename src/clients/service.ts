@@ -1,13 +1,12 @@
 import { record } from "@/audit/record";
 import {
   assertInScope,
-  effectivePermissions,
   scopeWhere,
   type MemberActor,
 } from "@/authz/authorize";
 import { AuthzError, deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
-import { enforceLimit, parseEntitlements, requireAccess } from "@/entitlements/resolver";
+import { accessibleCodes, enforceLimit, parseEntitlements, requireAccess } from "@/entitlements/resolver";
 import type { ClientStatus, ProjectStatus, VatProfile } from "@/generated/prisma/enums";
 import { fail, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
@@ -204,6 +203,14 @@ export type ClientDetail = {
     createProject: boolean;
     viewProjects: boolean;
     viewDocuments: boolean;
+    /**
+     * `document:view` on all four gates WHATEVER the scope — whether a
+     * Files tab should exist at all. `viewDocuments` adds the direct
+     * scope; a member who reaches the client through a project gets the
+     * tab only to be told the files live under that project, and not
+     * even that when the documentation module is off.
+     */
+    viewDocumentsAnyScope: boolean;
     uploadDocuments: boolean;
     /** `document:edit` — asking the client to sign a deliverable off rides on it (Phase 3). */
     editDocuments: boolean;
@@ -216,12 +223,48 @@ export type ClientDetail = {
   };
 };
 
+/**
+ * EVERY CODE `ClientDetail.caps` ANSWERS, read ONCE through
+ * `accessibleCodes` — all four gates, so a cap whose module a tenant can
+ * switch off closes with it: `client:manage_contacts` is `portal` and the
+ * five `document:*` are `documentation`; the rest are `core`. None is a ✦
+ * code, which is what lets `accessibleCodes` answer them. `CapCode` makes
+ * a cap on a code missing from this list a type error, so a new cap
+ * cannot quietly go back to the bare permission.
+ */
+const CAP_CODES = [
+  "client:edit",
+  "client:delete",
+  "client:manage_assignments",
+  "client:manage_contacts",
+  "project:create",
+  "project:view",
+  "document:view",
+  "document:upload",
+  "document:edit",
+  "document:delete",
+  "document:change_visibility",
+  "service:view",
+  "service:create",
+  "service:edit",
+  "service:delete",
+] as const;
+type CapCode = (typeof CAP_CODES)[number];
+
 /** client:view; assertInScope(lifted) ⇒ NOT_FOUND outside scope. */
 export async function getClient(ctx: ClientCtx, clientId: string): Promise<ClientDetail> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "client:view");
     await assertInScope(tx, ctx.actor, { clientId, lifted: true });
-    const held = await effectivePermissions(tx, ctx.actor.memberId);
+    // THE CAPS ANSWER ALL FOUR GATES, not the bare permission (2026-09-29).
+    // `effectivePermissions` alone drew the Contacts tab's Invite / Pause /
+    // End access — and every contact edit — with the portal switched off,
+    // over services that `requireAccess` then refused; and with
+    // documentation off the Files tab opened onto `listDocuments`'
+    // refusal, i.e. the error page. In sequence, never a `Promise.all` leg
+    // (AGENTS.md).
+    const open = await accessibleCodes(tx, ctx.tenantId, ctx.actor, CAP_CODES);
+    const can = (code: CapCode): boolean => open.has(code);
     const direct = await inScope(tx, ctx.actor, clientId);
     // The Project table's own project column is "id" (children use "projectId").
     const projectScope = await scopeWhere(tx, ctx.actor, {
@@ -252,7 +295,7 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
     });
     if (!row) deny("NOT_FOUND");
     const c = row!;
-    const canEdit = held.has("client:edit");
+    const canEdit = can("client:edit");
     return {
       id: c.id,
       name: c.name,
@@ -299,20 +342,21 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
       direct,
       caps: {
         edit: canEdit,
-        delete: held.has("client:delete") && direct,
-        manageAssignments: held.has("client:manage_assignments") && direct,
-        manageContacts: held.has("client:manage_contacts"),
-        createProject: held.has("project:create") && direct,
-        viewProjects: held.has("project:view"),
-        viewDocuments: held.has("document:view") && direct,
-        uploadDocuments: held.has("document:upload") && direct,
-        editDocuments: held.has("document:edit") && direct,
-        deleteDocuments: held.has("document:delete") && direct,
-        changeDocumentVisibility: held.has("document:change_visibility") && direct,
-        viewServices: held.has("service:view") && direct,
-        createServices: held.has("service:create") && direct,
-        editServices: held.has("service:edit") && direct,
-        deleteServices: held.has("service:delete") && direct,
+        delete: can("client:delete") && direct,
+        manageAssignments: can("client:manage_assignments") && direct,
+        manageContacts: can("client:manage_contacts"),
+        createProject: can("project:create") && direct,
+        viewProjects: can("project:view"),
+        viewDocuments: can("document:view") && direct,
+        viewDocumentsAnyScope: can("document:view"),
+        uploadDocuments: can("document:upload") && direct,
+        editDocuments: can("document:edit") && direct,
+        deleteDocuments: can("document:delete") && direct,
+        changeDocumentVisibility: can("document:change_visibility") && direct,
+        viewServices: can("service:view") && direct,
+        createServices: can("service:create") && direct,
+        editServices: can("service:edit") && direct,
+        deleteServices: can("service:delete") && direct,
       },
     };
   });

@@ -33,9 +33,10 @@ export default async function ClientLayout({
     { href: base, label: t("tabs.overview"), exact: true },
     ...(client.caps.viewProjects ? [{ href: `${base}/projects`, label: t("tabs.projects") }] : []),
     { href: `${base}/contacts`, label: t("tabs.contacts") },
-    ...(client.caps.viewDocuments || !client.direct
-      ? [{ href: `${base}/files`, label: t("tabs.files") }]
-      : []),
+    // Directly assigned: the files. Through a project only: the tab says
+    // where the files live. Either way only with `document:view` on all
+    // four gates — the documentation module switched off hides it.
+    ...(client.caps.viewDocumentsAnyScope ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),
     // 2T: Service rows presented as agreements, with their rate cards
     // and this month's consumption (UI.md §3.1).
     ...(client.caps.viewServices ? [{ href: `${base}/agreements`, label: t("tabs.agreements") }] : []),

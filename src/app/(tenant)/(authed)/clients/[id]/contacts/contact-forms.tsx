@@ -70,7 +70,11 @@ export function ContactRowForm({
   signIn: SignInLine | null;
   /** Permission AND a live client: may change records, may invite. */
   editable: boolean;
-  /** Permission alone: may take access away even on an archived client. */
+  /**
+   * `client:manage_contacts` on all four gates, whatever the client's
+   * status: may take access away even on an archived client. Never feed
+   * it the bare permission — the portal module switched off must hide it.
+   */
   manageable: boolean;
 }) {
   const t = useTranslations("clients.contacts");
