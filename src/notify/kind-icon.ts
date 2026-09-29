@@ -5,6 +5,7 @@ import {
   GaugeIcon,
   InboxIcon,
   MessageSquareIcon,
+  MessagesSquareIcon,
   UserRoundPlusIcon,
   type LucideProps,
 } from "lucide-react";
@@ -23,6 +24,7 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "work_item.commented": MessageSquareIcon,
   "work_item.request_received": InboxIcon,
   "work_item.completed_by_contact": CircleCheckIcon,
+  "work_item.client_commented": MessagesSquareIcon,
   "approval.decided": ClipboardCheckIcon,
   "budget.threshold_reached": GaugeIcon,
 };

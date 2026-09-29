@@ -32,7 +32,7 @@ import { setTaskDoneAction } from "./actions";
  * same sentence for every authorization refusal (`src/portal/action.ts`).
  *
  * **GUARDED ON ITS OWN `busy`, NEVER ON A TRANSITION'S `isPending`** —
- * AGENTS.md's standing trap. The action revalidates `/portal`, and a
+ * AGENTS.md's standing trap. The action revalidates the `/portal` layout, and a
  * transition around a revalidating action stays pending until the whole
  * page has re-rendered (measured at over two seconds on a task page), so
  * a control disabled by `isPending` would be dead for that entire
@@ -73,7 +73,7 @@ export function PortalTaskDone({
   // **THE LAST VALUE THE SERVER CONFIRMED**, which is what a refusal must
   // unwind to — and NOT `markedDoneAt`, which is the prop as of the
   // render the click happened in. The two diverge for a real window: the
-  // action revalidates `/portal`, and AGENTS.md's standing trap measures
+  // action revalidates the `/portal` layout, and AGENTS.md's standing trap measures
   // that re-render at over two seconds, so a second press inside it would
   // have unwound a REFUSED toggle to the value from before the first,
   // successful one — showing "not done" over a claim the server holds,

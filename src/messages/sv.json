@@ -267,6 +267,7 @@
       "generic": "Något har hänt",
       "requestReceived": "En kund har skickat en förfrågan",
       "completedByContact": "En kund har markerat sin uppgift som klar",
+      "clientCommented": "En kund har kommenterat en uppgift",
       "approvalDecided": "En kund har svarat på en begäran om godkännande"
     },
     "row": {
@@ -1201,6 +1202,7 @@
     "UPDATE_CHANGED": "Utkastet ändrades medan det publicerades. Kontrollera det och publicera igen.",
     "UPDATE_TOO_LARGE": "Ett av avsnitten är för långt för att sparas.",
     "DOWNLOAD_RATE_LIMITED": "Du har laddat ner många filer på kort tid. Vänta några minuter och försök igen.",
+    "COMMENT_RATE_LIMITED": "Du har skickat flera kommentarer på kort tid. Vänta några minuter och försök igen.",
     "DOWNLOAD_BUSY": "Filen kunde inte hämtas just nu. Försök igen om en stund.",
     "SIGNOFF_NOT_SHAREABLE": "Kunden kan inte se detta ännu. Dela det först: en levererad version i ett projekt med portalen på, eller en delad leverans med en uppladdad fil.",
     "SIGNOFF_ALREADY_REQUESTED": "Godkännande har redan begärts från kunden.",
@@ -2766,6 +2768,28 @@
       "reportTotal": "{hours}",
       "reportTotalWithAmount": "{hours} · {amount}",
       "showLines": "Visa rader"
+    },
+    "task": {
+      "title": "Uppgift",
+      "back": "Tillbaka till projektet",
+      "replyTitle": "Svar från din byrå"
+    },
+    "comments": {
+      "title": "Kommentarer",
+      "description": "Ett samtal med din byrå om den här uppgiften.",
+      "empty": "Inga kommentarer ännu.",
+      "agency": "Din byrå",
+      "unknown": "Okänd",
+      "you": "{name} (du)",
+      "edited": "(redigerad)",
+      "truncated": "Visar de senaste {count} kommentarerna.",
+      "label": "Skriv en kommentar",
+      "hint": "Din byrå ser det här. En kommentar kan inte ändras eller tas bort när den har skickats.",
+      "placeholder": "Ställ en fråga eller lämna en anteckning till din byrå.",
+      "send": "Skicka",
+      "sending": "Skickar…",
+      "sent": "Kommentaren har skickats.",
+      "failed": "Det skickades inte. Försök igen."
     }
   },
   "viewAs": {

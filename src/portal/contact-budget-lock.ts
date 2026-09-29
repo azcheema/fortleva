@@ -3,9 +3,10 @@ import type { TenantDb } from "@/db";
 /**
  * THE PER-CONTACT ADVISORY LOCK BEHIND EVERY PORTAL BUDGET — one raw
  * statement, in one core file, for the request intake's budget
- * (`assertRequestBudget`, `src/modules/work/requests.ts`) and the file
- * download's (`assertDownloadBudget`, `src/documents/portal-writes.ts`).
- * The first cut of the download slice copied the statement into a
+ * (`assertRequestBudget`, `src/modules/work/requests.ts`), the file
+ * download's (`assertDownloadBudget`, `src/documents/portal-writes.ts`)
+ * and, since slice 75, a task comment's (`assertCommentBudget`,
+ * `src/modules/work/portal-comment.ts`). The first cut of the download slice copied the statement into a
  * second file; a review pointed out that the CTE trick, the clock-row
  * guard and the key-space caveat were then documented twice and would
  * be copied a third time by the next budget. `work → core` is the
@@ -36,7 +37,9 @@ import type { TenantDb } from "@/db";
  * other order (and AFTER the portal gate, slice 74 — an order the code
  * keeps, not the database: the gate's SQL refuses only a transaction
  * that has written or row-locked something, and cannot see this key);
- * the download takes this key and no other.
+ * the download takes this key and no other; the comment takes it AFTER
+ * the portal gate and BEFORE its task's row lock, and nothing takes a
+ * task row lock and then this key.
  *
  * THE CLOCK RIDES ALONG because it costs nothing to return it from the
  * statement that takes the lock, and because the alternative compares
@@ -44,7 +47,7 @@ import type { TenantDb } from "@/db";
  * window computed from a serverless instance's `Date.now()` silently
  * narrows when that instance runs fast and widens when it runs slow.
  */
-export type ContactBudget = "portal_request" | "portal_download";
+export type ContactBudget = "portal_request" | "portal_download" | "portal_comment";
 
 export async function lockContactBudget(tx: TenantDb, budget: ContactBudget, contactId: string): Promise<Date> {
   // The CTE is what makes this ONE statement: the lock is taken while

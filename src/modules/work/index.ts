@@ -164,7 +164,19 @@ export {
   listPortalTimeline,
   type PortalTimeline,
   type PortalTimelineEntry,
+  // Phase 3 slice 75 — one shared task and its conversation, for the
+  // portal's task page (C41).
+  PORTAL_COMMENT_LIMIT,
+  readPortalTask,
+  type PortalComment,
+  type PortalTaskPage,
 } from "./portal";
+// Phase 3 slice 75 — a contact's comment: a CENSUS write under their own
+// principal (`portal-comment.ts`), not a broker. The input cap is NOT
+// re-exported, for the reason the request form's caps are not (below):
+// the composer island imports `@/modules/work/portal-comment-input`, the
+// leaf, directly.
+export { createPortalComment, type PortalCommentCreated } from "./portal-comment";
 // Phase 3 — progress updates (DATA_MODEL.md §6.16). The body vocabulary
 // and the snapshot's allow-list are leaf modules a client component may
 // import directly (`update-body.ts`, `update-metrics.ts` types); the

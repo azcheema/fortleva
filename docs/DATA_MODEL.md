@@ -2783,6 +2783,19 @@ enum CommentSubjectType {
 /// AND client_id = current_setting('app.client_id') AND author_contact_id
 /// = current_setting('app.principal_id') AND portal_enabled)`; UPDATE/
 /// DELETE by contacts: none in v1 (edit-own is v1.5).
+/// THE CONTACT WRITER SHIPPED 2026-09-28 (Phase 3 slice 75, founder
+/// decisions C41–C43; no migration): `createPortalComment`
+/// (src/modules/work/portal-comment.ts), on a WORK_ITEM subject only, the
+/// task one the portal SHOWS. Plain text in, the document built on the
+/// server; the project's portal gate entered shared before any write, the
+/// task share-locked and re-read, then this INSERT under the contact's own
+/// principal, and `portal.comment_created` audited as the CONTACT in the
+/// same transaction. The history row (`field: "comment"`, the contact as
+/// actor) and `work_item.client_commented` are written after the commit,
+/// as system (`comment-announce.ts`) — a contact may insert neither. Read
+/// back on `/portal/tasks/[id]` through `readPortalTask`: CLIENT_VISIBLE,
+/// live, oldest first, the member author column never selected (a
+/// member's comment is signed "Your agency", C42).
 /// SQL: CHECK (num_nonnulls(author_member_id, author_contact_id) = 1);
 ///   CHECK (visibility <> 'CLIENT_VISIBLE' OR client_id IS NOT NULL);
 ///   TRIGGER comment_subject_guard BEFORE INSERT OR UPDATE OF visibility,

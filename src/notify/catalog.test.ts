@@ -93,8 +93,12 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * that is the line this list draws: a fact only the CLIENT can
    * produce reaches a person, everything the agency does to its own
    * board waits for the digest.
+   *
+   * `work_item.client_commented` is the fifth client-caused kind (Phase
+   * 3 slice 75, founder decision C43): a client who writes to the agency
+   * is waiting on an answer. A MEMBER's comment stays coalesced.
    */
-  it("instant email is assignment, mention and the three client-caused kinds — and nothing else", () => {
+  it("instant email is assignment, mention and the four client-caused kinds — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -105,9 +109,24 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       "approval.decided",
       "comment.mentioned",
       "work_item.assigned",
+      "work_item.client_commented",
       "work_item.completed_by_contact",
       "work_item.request_received",
     ]);
+  });
+
+  /** A client's comment names nobody either (mentions are not built — C44). */
+  it("a client's comment mails at PARTICIPATING, never at MENTIONS — and a member's never mails", () => {
+    expect(emailAllowed("MENTIONS", "work_item.client_commented")).toBe(false);
+    expect(emailAllowed("PARTICIPATING", "work_item.client_commented")).toBe(true);
+    expect(emailAllowed("ALL", "work_item.commented")).toBe(false);
+  });
+
+  /** Contact-CAUSED, member-ADDRESSED, like the request and the tick. */
+  it("a client's comment is a MEMBER kind and carries no client-visibility claim", () => {
+    const spec = NOTIFICATION_KINDS["work_item.client_commented"];
+    expect(spec.audience).toBe("MEMBER");
+    expect(spec.clientVisibleOnly).toBeUndefined();
   });
 
   /**

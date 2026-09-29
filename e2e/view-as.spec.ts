@@ -114,6 +114,7 @@ test.describe("view-as-contact", () => {
     let contactProjectHtml: string;
     let contactFilesHtml: string;
     let contactCompanyHtml: string;
+    let contactTaskHtml: string;
     try {
       const contactPage = await portal.newPage();
       await contactPage.goto("/portal");
@@ -130,6 +131,10 @@ test.describe("view-as-contact", () => {
       contactFilesHtml = await portalSurface(contactPage);
       await contactPage.goto("/portal/company");
       contactCompanyHtml = await portalSurface(contactPage);
+      // …and the fifth (Phase 3 slice 75): a shared task's own page, with
+      // its conversation and the client's comment box.
+      await contactPage.goto(`/portal/tasks/${seed.sharedTaskId}`);
+      contactTaskHtml = await portalSurface(contactPage);
       await contactPage.close();
     } finally {
       await portal.close();
@@ -146,6 +151,12 @@ test.describe("view-as-contact", () => {
     expect(contactCompanyHtml).toContain(seed.serviceName);
     expect(contactCompanyHtml).toContain('data-slot="portal-agreement"');
     expect(contactCompanyHtml).not.toContain('data-slot="empty-state"');
+    // …the task page: the agency's reply to the client is in the thread,
+    // the composer is drawn, and the internal note is not.
+    expect(contactTaskHtml).toContain(seed.portalReplyText);
+    expect(contactTaskHtml).toContain('data-slot="portal-comment-composer"');
+    expect(contactTaskHtml).not.toContain(seed.internalNoteText);
+    expect(contactTaskHtml).not.toContain('data-slot="empty-state"');
     // NOT VACUOUS — and the first cut of this guard did not measure that
     // (code review). It asserted `toContain(seed.contactName)` and a
     // length over 200, both of which the portal CHROME satisfies on its
@@ -231,6 +242,16 @@ test.describe("view-as-contact", () => {
       await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
       await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");
       expect(await portalSurface(page)).toBe(contactCompanyHtml);
+
+      // ── THE TASK PAGE, the same way (slice 75) ───────────────────────
+      // Its comment box is a client component with a form: rendered on
+      // both planes from the same props, so this is also the test that
+      // its markup — the field id derived from the task, never `useId` —
+      // is stable across routes.
+      await page.goto(`/view-as/tasks/${seed.sharedTaskId}`);
+      await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
+      await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");
+      expect(await portalSurface(page)).toBe(contactTaskHtml);
 
       // ── AND LEAVING WORKS, from inside the mode ──────────────────────
       await page.getByRole("button", { name: "Lämna kundvyn" }).click();

@@ -73,6 +73,12 @@ export type DomainErrorCode =
   // spent (55P03) or it lost a deadlock, every attempt. Not disclosable,
   // for the same reason — the contact sees the plane's generic refusal.
   | "DOWNLOAD_BUSY"
+  // This contact has written the most comments the window allows (Phase
+  // 3 slice 75, `src/modules/work/portal-comment.ts`). Disclosed for the
+  // same reason REQUEST_RATE_LIMITED is: a fact about the READER's own
+  // behaviour. A spent lock wait on that path is `REQUEST_BUSY`, which
+  // is not disclosed.
+  | "COMMENT_RATE_LIMITED"
   // Sign-off (Phase 3 — src/projects/versions.ts, src/documents/service.ts).
   // The member's three refusals when ASKING a client to sign off: the row
   // is not something the client can see (a draft version, an INTERNAL or

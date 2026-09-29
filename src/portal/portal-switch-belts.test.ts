@@ -48,6 +48,12 @@ import { describe, expect, it } from "vitest";
  * restating the term, provided nothing after the spread (a later `OR`,
  * `AND`, `project`, `portalEnabled` or another spread) can override it.
  *
+ * SINCE SLICE 75 the portal's TASK reads join them — `readPortalTask` and
+ * `createPortalComment` by id, `listPortalTasks` by the same rule — and
+ * those four must carry `project: { archivedAt: null }` as well: the
+ * shared helper leaves the project term to each caller as a literal, and
+ * `project`'s own `portal_gate` has no archive term.
+ *
  * MUTATIONS CHECKED BY REASONING against the predicate below, each of
  * which fails it: deleting `portalEnabled: true` from any of the five
  * (`switchOn` finds no such property); writing `portalEnabled: false` or a
@@ -243,6 +249,47 @@ describe("the portal switch's by-id belts (slice 74, C40)", () => {
     for (const where of wheres) {
       expect(carries(where), "setPortalTaskDone's re-read carries project: { portalEnabled: true }").toBe(true);
     }
+  });
+
+  it("the task page and the contact's comment writer read the switch from the project (slice 75)", () => {
+    // `readPortalTask` resolves ONE task by the id in the URL; the comment
+    // writer probes it for its project and re-reads it under the row
+    // lock. All three are by-id reads under the contact principal.
+    //
+    // THE PROJECT'S ARCHIVE TOO, on these and on the list they share a rule
+    // with. `portalShownTaskTerms` leaves the project term to each caller
+    // as a LITERAL (so this file can follow it), and `project`'s own
+    // `portal_gate` has no archive term — so a caller that dropped
+    // `archivedAt: null` would show, and take comments on, the tasks of an
+    // archived project with every other pin green (code review, slice 75).
+    const sites: readonly (readonly [string, string, string, number])[] = [
+      [join("modules", "work", "portal.ts"), "readPortalTask", "findFirst", 1],
+      [join("modules", "work", "portal.ts"), "listPortalTasks", "findMany", 1],
+      [join("modules", "work", "portal-comment.ts"), "createPortalComment", "findFirst", 2],
+    ];
+    const archiveHidden = (where: ts.Expression): boolean => {
+      const o = unwrap(where);
+      const project = ts.isObjectLiteralExpression(o) ? prop(o, "project") : undefined;
+      const p = project && unwrap(project);
+      return p !== undefined && ts.isObjectLiteralExpression(p) && isNull(prop(p, "archivedAt"));
+    };
+    for (const [file, name, method, count] of sites) {
+      const body = functionBody(parse(file), name);
+      expect(body, `${name} is found`).toBeDefined();
+      const wheres = callWheres(body!, "workItem", method);
+      expect(wheres.length, `${name} reads the task by the portal's rule`).toBe(count);
+      for (const where of wheres) {
+        expect(carries(where), `${name}'s task read carries project: { portalEnabled: true }`).toBe(true);
+        expect(archiveHidden(where), `${name}'s task read carries project: { archivedAt: null }`).toBe(true);
+      }
+    }
+    // The predicate's own case: it fails the one way it exists for.
+    const filter = (code: string): ts.Expression => {
+      const source = ts.createSourceFile("f.ts", `const f = (${code});`, ts.ScriptTarget.ES2022, true);
+      return (source.statements[0] as ts.VariableStatement).declarationList.declarations[0]!.initializer!;
+    };
+    expect(archiveHidden(filter(`{ id, project: { archivedAt: null, portalEnabled: true } }`))).toBe(true);
+    expect(archiveHidden(filter(`{ id, project: { portalEnabled: true } }`)), "the archive dropped").toBe(false);
   });
 
   it("documentGate reads the switch from the project for every project file, and is used", () => {

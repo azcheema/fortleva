@@ -267,6 +267,7 @@
       "generic": "Something happened",
       "requestReceived": "A client sent a request",
       "completedByContact": "A client marked their task as done",
+      "clientCommented": "A client commented on a task",
       "approvalDecided": "A client answered a sign-off request"
     },
     "row": {
@@ -1201,6 +1202,7 @@
     "UPDATE_CHANGED": "The draft changed while it was being published. Check it and publish again.",
     "UPDATE_TOO_LARGE": "One of the sections is too long to save.",
     "DOWNLOAD_RATE_LIMITED": "You have downloaded a lot of files in a short time. Wait a few minutes and try again.",
+    "COMMENT_RATE_LIMITED": "You have sent several comments in a short time. Wait a few minutes and try again.",
     "DOWNLOAD_BUSY": "That file could not be fetched just now. Try again in a moment.",
     "SIGNOFF_NOT_SHAREABLE": "The client cannot see this yet. Share it first: a shipped version on a project with the portal on, or a shared deliverable with an uploaded file.",
     "SIGNOFF_ALREADY_REQUESTED": "Sign-off has already been requested from the client.",
@@ -2766,6 +2768,28 @@
       "reportTotal": "{hours}",
       "reportTotalWithAmount": "{hours} · {amount}",
       "showLines": "Show lines"
+    },
+    "task": {
+      "title": "Task",
+      "back": "Back to the project",
+      "replyTitle": "Your agency's reply"
+    },
+    "comments": {
+      "title": "Comments",
+      "description": "A conversation with your agency about this task.",
+      "empty": "No comments yet.",
+      "agency": "Your agency",
+      "unknown": "Unknown",
+      "you": "{name} (you)",
+      "edited": "(edited)",
+      "truncated": "Showing the latest {count} comments.",
+      "label": "Write a comment",
+      "hint": "Your agency will see this. A comment can't be edited or deleted once it's sent.",
+      "placeholder": "Ask a question or leave a note for your agency.",
+      "send": "Send",
+      "sending": "Sending…",
+      "sent": "Comment sent.",
+      "failed": "That did not send. Please try again."
     }
   },
   "viewAs": {

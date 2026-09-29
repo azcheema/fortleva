@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { decidePortalDeliverable } from "@/documents/portal-signoff";
-import { setPortalTaskDone } from "@/modules/work";
+import { createPortalComment, setPortalTaskDone } from "@/modules/work";
 import { runPortalAction } from "@/portal/action";
 import { requirePortalContext } from "@/portal/context";
 import { parseSignoffInput, type SignoffDecision } from "@/portal/signoff-vocabulary";
@@ -48,8 +48,13 @@ import { decidePortalVersion } from "@/projects/portal-signoff";
  * answer and not a failure: a double press on a slow link is the
  * ordinary way here, and the service answers with the row's true value.
  *
- * `revalidatePath('/portal')` because the claim is drawn on that page
- * and nowhere else on this plane. NOT a redirect — the client stays
+ * `revalidatePath("/portal", "layout")`, the sign-off actions' shape. The
+ * claim is drawn on the home, the project page and — since slice 75 — the
+ * task's own page; the page the tick was pressed on re-renders in the
+ * action's response whenever anything is revalidated (these pages are
+ * dynamic), so `/portal` alone, as it was until slice 75, already
+ * refreshed it — the layout form is for consistency with the sign-off
+ * actions, not a fix (the fix-pass review measured both). NOT a redirect — the client stays
  * where they are; and the standing trap about a transition around a
  * revalidating action is why the island guards on its own pending flag
  * rather than on the transition (see `task-done.tsx`).
@@ -65,7 +70,7 @@ export async function setTaskDoneAction(
     setPortalTaskDone(principal, itemId, done),
   );
   if (!result.ok) return result;
-  revalidatePath("/portal");
+  revalidatePath("/portal", "layout");
   // An ISO string, never a `Date`: the value crosses a server-action
   // boundary into a client component, and the island renders it through
   // next-intl's formatter on the client.
@@ -129,4 +134,35 @@ export async function decideDeliverableAction(
   revalidatePath("/portal", "layout");
   const v = result.value;
   return { ok: true, status: v.status, decidedAt: v.decidedAt.toISOString(), note: v.note, changed: v.changed };
+}
+
+/**
+ * COMMENT ON A SHARED TASK (Phase 3 slice 75; founder decisions C41–C43)
+ * — the client's words, written under THEIR OWN principal: the census's
+ * one INSERT (`createPortalComment`). The same three rules as the
+ * actions above: the principal is `requirePortalContext()`'s and
+ * nobody's else — so a member inside View-as, whose surface is `inert`
+ * anyway, could not post in a client's name even by calling this; the
+ * TASK id is an argument and that is safe, because the writer re-derives
+ * every identifying term from the principal and writes under the
+ * contact's own principal, where the database refuses a row RLS does
+ * not admit; and `runPortalAction` collapses every refusal into the
+ * plane's one sentence, except the reader's own input (`INVALID_INPUT`)
+ * and their own comment budget (`COMMENT_RATE_LIMITED`).
+ *
+ * The text is handed over as typed; the writer parses it (plain text
+ * only, `portal-comment-input.ts`). `revalidatePath` on the task's page
+ * — the only place the comment is drawn on this plane — keyed on the id
+ * the WRITER returned, never the argument. NOT a redirect: the reader
+ * stays on the page, and the composer clears itself on success.
+ */
+export async function postCommentAction(
+  itemId: string,
+  text: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { principal } = await requirePortalContext();
+  const result = await runPortalAction("postComment", () => createPortalComment(principal, itemId, text));
+  if (!result.ok) return result;
+  revalidatePath(`/portal/tasks/${result.value.itemId}`);
+  return { ok: true };
 }

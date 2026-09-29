@@ -205,6 +205,15 @@ const PORTAL_SURFACES_BY_NAME = [
   // forbidden identifier, prose included, when added.
   join("projects", "portal-signoff.ts"),
   join("documents", "portal-signoff.ts"),
+  // The THIRD census writer (Phase 3 slice 75): a contact's comment on a
+  // shared task, the census's one INSERT, under their own principal. In
+  // the text tier for the reason the two above are — it writes the words
+  // every contact of the client then reads — and verified clean of every
+  // forbidden identifier, prose included, when added. Its after-commit
+  // fan-out (`comment-announce.ts`) is NOT a portal surface: it runs as
+  // system, writes only the agency's side, and is pinned as an announcer
+  // in `src/portal/brokered-writes.test.ts`.
+  join("modules", "work", "portal-comment.ts"),
 ];
 
 /**
@@ -948,6 +957,11 @@ describe("every portal read is an explicit allow-list (memo §2.2)", () => {
     expect(scanned).toContain("app/(portal)/portal/company/page.tsx");
     expect(scanned).toContain("app/(tenant)/view-as/files/page.tsx");
     expect(scanned).toContain("app/(tenant)/view-as/company/page.tsx");
+    // Phase 3 slice 75: the contact's comment writer and the task page on
+    // both planes.
+    expect(scanned).toContain("modules/work/portal-comment.ts");
+    expect(scanned).toContain("app/(portal)/portal/tasks/[id]/page.tsx");
+    expect(scanned).toContain("app/(tenant)/view-as/tasks/[id]/page.tsx");
     // …and never a test, which is where the hazards are named on purpose.
     expect(scanned.filter((f) => f.includes(".dbtest.") || f.includes(".test."))).toEqual([]);
   });

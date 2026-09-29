@@ -207,6 +207,110 @@ const portalCategory = (
 const ANSWERED: ReadonlySet<PortalTaskCategory> = new Set(["CANCELLED", "DECLINED"]);
 
 /**
+ * WHICH TASK ROWS THE PORTAL SHOWS — ONE RULE, three callers since the
+ * portal's task page (Phase 3 slice 75): the list below, `readPortalTask`,
+ * and the contact's comment writer (`portal-comment.ts`), whose rule is
+ * "if you can see the task, you can comment on it". Three copies of the
+ * category branch would be three places for a cancelled task to reach a
+ * client's screen, or a comment box to open under one.
+ *
+ * The tenant, the client, the visibility and the row's copy of the
+ * portal switch are `portal_gate`'s under the contact principal and are
+ * repeated as defence in depth, never as the gate. What is NOT in the
+ * policy and therefore must be here: `deletedAt` (a soft-deleted row is
+ * still a row), and the category branch with its archive terms.
+ *
+ * CANCELLED IS EXCLUDED — except for a REQUEST that carries the agency's
+ * answer, which is shown answered (DECLINED, or CANCELLED when the agency
+ * had accepted it first) with that reason. **THIS CLAUSE IS
+ * `portalCategory`'S PRECONDITION**, not a convenience: that function
+ * maps CANCELLED to an answered category — DECLINED, or CANCELLED on the
+ * acceptance stamp — with no test of its own on kind or reason, because
+ * these two terms guarantee that a cancelled TASK or BUG — and a
+ * cancelled request nobody explained — never leaves Postgres. Loosening
+ * either without the other would put an answer on a client's screen
+ * against work they never asked for, or against work they did ask for
+ * with no answer under it. `kind` is filtered here and never SELECTED —
+ * it is on the portal plane's never-selected list — which is also why
+ * the test lives in `portal.dbtest.ts` rather than in a unit test over
+ * the mapper.
+ *
+ * **AND AN ANSWERED REQUEST OUTLIVES THE ARCHIVE** (founder decision,
+ * 2026-09-22), which is why `archivedAt` is a term of each BRANCH rather
+ * than of the whole filter. Archiving is how an agency tidies its own
+ * board; it must not also delete the explanation a client was given, or
+ * the answer would evaporate the moment somebody filed the row away.
+ * Live work still disappears when archived, as it always has.
+ *
+ * **THE PROJECT TERM IS NOT HERE, ON PURPOSE.** Every caller writes
+ * `project: { archivedAt: null, portalEnabled: true }` as a LITERAL beside
+ * the spread: the project's archive (which `project`'s own `portal_gate`
+ * does not carry — see `listPortalTasks`' header) and the switch read
+ * from the PROJECT rather than from the row's copy (slice 74). Literal,
+ * because `portal-switch-belts.test.ts` follows literals only — a term
+ * behind a helper stops counting, which is the property that makes the
+ * pin worth having.
+ */
+export function portalShownTaskTerms(principal: PortalPrincipal) {
+  return {
+    tenantId: principal.tenantId,
+    clientId: principal.clientId,
+    visibility: "CLIENT_VISIBLE" as const,
+    portalEnabled: true,
+    deletedAt: null,
+    OR: [
+      { stateCategory: { not: "CANCELLED" as const }, archivedAt: null },
+      { stateCategory: "CANCELLED" as const, kind: "REQUEST" as const, triageReason: { not: null } },
+    ],
+  };
+}
+
+/** The columns `toPortalTask` reads — what the list and the task page each select, inline. */
+type ShownTaskRow = {
+  readonly id: string;
+  readonly title: string;
+  readonly stateCategory: keyof typeof PORTAL_CATEGORY;
+  readonly triageReason: string | null;
+  readonly targetDate: Date | null;
+  readonly completedAt: Date | null;
+  readonly assigneeContactId: string | null;
+  readonly contactCompletedAt: Date | null;
+  readonly acceptedAt: Date | null;
+  readonly milestone: { readonly name: string } | null;
+};
+
+/**
+ * ONE ROW, AS A CONTACT READS IT — the list's mapping, shared with the
+ * task page so the two cannot describe one task two ways. Null when the
+ * row has no portal category, which the filter above makes impossible;
+ * the caller drops such a row rather than rendering it.
+ */
+function toPortalTask(row: ShownTaskRow, principal: PortalPrincipal): PortalTask | null {
+  // Safe BECAUSE of `portalShownTaskTerms` — a cancelled row that is not
+  // a REQUEST never reaches this. See `portalCategory`.
+  const category = portalCategory(row.stateCategory, row.acceptedAt !== null);
+  if (!category) return null;
+  return {
+    id: row.id,
+    title: row.title,
+    category,
+    targetDate: row.targetDate,
+    completedAt: row.completedAt,
+    phase: row.milestone?.name ?? null,
+    // GATED ON THE CATEGORY, never on the column being set. The column
+    // cannot be set on anything but a DECLINED/DUPLICATE row (the CHECK),
+    // so today these agree — and if a later writer ever put a reason on a
+    // live task, this line is what keeps it off the client's screen rather
+    // than the constraint being the only thing between them.
+    reply: ANSWERED.has(category) ? row.triageReason : null,
+    // The comparison IS the projection: the id is consumed here and never
+    // put on the returned object.
+    assignedToYou: row.assigneeContactId === principal.contactId,
+    markedDoneAt: row.contactCompletedAt,
+  };
+}
+
+/**
  * One shared task, as a contact sees it. Nothing is here "because the
  * row had it": the title, the category and the phase are §11's table
  * outright, and the two dates are what its "timeline" line implies — §11
@@ -451,48 +555,14 @@ export async function listPortalTasks(
 
     const rows = await tx.workItem.findMany({
       where: {
-        tenantId: principal.tenantId,
-        clientId: principal.clientId,
-        visibility: "CLIENT_VISIBLE",
-        portalEnabled: true,
-        deletedAt: null,
-        // CANCELLED IS STILL EXCLUDED — except for a REQUEST that
-        // carries the agency's answer, which is shown answered (DECLINED,
-        // or CANCELLED when the agency had accepted it first) with that
-        // reason.
-        //
-        // **THIS CLAUSE IS `portalCategory`'S PRECONDITION**, not a
-        // convenience: that function maps CANCELLED to an answered
-        // category — DECLINED, or CANCELLED on the acceptance stamp — with
-        // no test of its own on kind or reason, because these two terms
-        // guarantee that a cancelled TASK or BUG — and a cancelled
-        // request nobody explained — never leaves Postgres. Loosening
-        // either without the other would put an answer on a client's
-        // screen against work they never asked for, or against work they
-        // did ask for with no answer under it. `kind` is filtered here and never
-        // SELECTED — it is on the portal plane's never-selected list —
-        // which is also why the test lives in `portal.dbtest.ts` rather
-        // than in a unit test over the mapper.
-        //
-        // **AND AN ANSWERED REQUEST OUTLIVES THE ARCHIVE** (founder
-        // decision, 2026-09-22), which is why `archivedAt` is a term of
-        // each BRANCH rather than of the whole `where`. Archiving is how
-        // an agency tidies its own board; it must not also delete the
-        // explanation a client was given, or the answer would evaporate
-        // the moment somebody filed the row away — the same
-        // silent-vanish this category exists to end, arriving by a
-        // different door. Live work still disappears when archived, as
-        // it always has.
-        //
-        // The PROJECT's archive is untouched and still hides everything
-        // (the term below): switching a whole project off is a decision
-        // about the relationship, not about one row.
-        OR: [
-          { stateCategory: { not: "CANCELLED" }, archivedAt: null },
-          { stateCategory: "CANCELLED", kind: "REQUEST", triageReason: { not: null } },
-        ],
-        // See the header: `project.portal_gate` has no archive term.
-        project: { archivedAt: null },
+        // The category branch and its archive terms — one rule with the
+        // task page and the comment writer (`portalShownTaskTerms`).
+        ...portalShownTaskTerms(principal),
+        // See the header: `project.portal_gate` has no archive term. The
+        // PROJECT's archive still hides everything: switching a whole
+        // project off is a decision about the relationship, not about one
+        // row. The switch is restated from the project (slice 74).
+        project: { archivedAt: null, portalEnabled: true },
         ...(projectId ? { projectId } : {}),
       },
       select: {
@@ -543,35 +613,15 @@ export async function listPortalTasks(
     // place, and a `?? ""` would put one there.
     const byProject = new Map<string, { projectKey: string; projectName: string; tasks: PortalTask[] }>();
     for (const row of page) {
-      // Safe BECAUSE of the `where` above — a cancelled row that is not
-      // a REQUEST never reaches this loop. See `portalCategory`.
-      const category = portalCategory(row.stateCategory, row.acceptedAt !== null);
+      const task = toPortalTask(row, principal);
       const project = row.project;
-      if (!category || !project) continue;
+      if (!task || !project) continue;
       let group = byProject.get(project.id);
       if (!group) {
         group = { projectKey: project.key, projectName: project.name, tasks: [] };
         byProject.set(project.id, group);
       }
-      group.tasks.push({
-        id: row.id,
-        title: row.title,
-        category,
-        targetDate: row.targetDate,
-        completedAt: row.completedAt,
-        phase: row.milestone?.name ?? null,
-        // GATED ON THE CATEGORY, never on the column being set. The
-        // column cannot be set on anything but a DECLINED/DUPLICATE row
-        // (the CHECK), so today these agree — and if a later writer
-        // ever put a reason on a live task, this line is what keeps it
-        // off the client's screen rather than the constraint being the
-        // only thing between them.
-        reply: ANSWERED.has(category) ? row.triageReason : null,
-        // The comparison IS the projection: the id is consumed here and
-        // never put on the returned object.
-        assignedToYou: row.assigneeContactId === principal.contactId,
-        markedDoneAt: row.contactCompletedAt,
-      });
+      group.tasks.push(task);
     }
 
     const projects = [...byProject].map(([projectId, group]) => ({
@@ -585,6 +635,189 @@ export async function listPortalTasks(
       projects,
       shown: projects.reduce((n, p) => n + p.tasks.length, 0),
       truncated,
+    };
+  });
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * THE TASK PAGE AND ITS COMMENTS (Phase 3 slice 75; founder decisions
+ * C41–C43, 2026-09-28)
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * ONE COMMENT, as a contact reads it (C42).
+ *
+ * WHO WROTE IT, AND ONLY WHAT THE CLIENT MAY BE TOLD. A comment by one of
+ * the client's own people carries that person's name — they typed those
+ * words into a thread their colleagues share, and their company is the
+ * client — and `you` when it is the reader's own. A comment by the
+ * AGENCY carries no person at all: UI.md §11 never shows a contact a
+ * member's name in v1, and the agency's own name is not readable on this
+ * plane yet (`tenant` is `portal_deny`; `portal-frame.tsx` records why),
+ * so the page signs it "Your agency". The member author column is
+ * therefore never selected: the row's author is decided by whether the
+ * CONTACT author column is set, which `comment_single_author` makes an
+ * exact XOR.
+ *
+ * `edited`, not the date of the edit: a member may correct a reply after
+ * the client read it, and the client is owed the word; when is not a fact
+ * the thread needs.
+ */
+export type PortalComment = {
+  readonly id: string;
+  /** The stored ProseMirror document — rendered by the static renderer, never an editor. */
+  readonly body: unknown;
+  readonly author:
+    | { readonly kind: "agency" }
+    | {
+        readonly kind: "contact";
+        /** The person's name; null when the row no longer resolves (the page says "Unknown"). */
+        readonly name: string | null;
+        /** Written by the reader themself. */
+        readonly you: boolean;
+      };
+  readonly createdAt: Date;
+  readonly edited: boolean;
+};
+
+/** The newest this many comments are listed, oldest first; more is `commentsTruncated`. */
+export const PORTAL_COMMENT_LIMIT = 200;
+
+/** Everything `/portal/tasks/[id]` draws (C41: the conversation lives on the task's own page). */
+export type PortalTaskPage = {
+  readonly task: PortalTask;
+  /** The task's project — its key for the way back, its name for the header. */
+  readonly project: { readonly key: string; readonly name: string };
+  /** Oldest first — a thread reads top-down. */
+  readonly comments: readonly PortalComment[];
+  /** More than `PORTAL_COMMENT_LIMIT` exist; only the newest are listed. */
+  readonly commentsTruncated: boolean;
+  /**
+   * May THIS reader write here — `portal.comment.create` on this task,
+   * asked without throwing, the way `canDecide` is. Both profiles hold it
+   * today; the answer is still the pipeline's, never a page's.
+   */
+  readonly canComment: boolean;
+};
+
+/**
+ * ONE SHARED TASK AND ITS CONVERSATION — the portal's task page (C41).
+ *
+ * THE TASK is the list's projection of the same row, by the same rule
+ * (`portalShownTaskTerms`, `toPortalTask`): a task the list would not
+ * show, this refuses — a cancelled task, one archived while live, one on
+ * an archived or switched-off project, another client's, an INTERNAL one.
+ * Every refusal is `NOT_FOUND`, and the page renders all of them as the
+ * plane's one empty state.
+ *
+ * THE COMMENTS are the task's CLIENT_VISIBLE, live ones — `portal_gate`
+ * decides the visibility, the client and the switch's copy under the
+ * contact principal, and the `where` restates them. An internal note on
+ * this very task never leaves Postgres. Names are read under the same
+ * principal: `contact`'s `portal_gate` is the client match alone, so a
+ * colleague's name resolves and nobody else's can.
+ *
+ * SEQUENTIAL READS on the one transaction, never a `Promise.all`
+ * (AGENTS.md's trap).
+ */
+export async function readPortalTask(principal: PortalPrincipal, taskId: string): Promise<PortalTaskPage> {
+  // AN ID THAT IS NOT A NON-EMPTY STRING IS REFUSED HERE: Prisma drops an
+  // `undefined` filter silently and would take an object as a FILTER, and
+  // "the first shared task of the client" is not what the reader asked
+  // for. (The route passes a URL segment; the guard is for the next
+  // caller, as the writer's is.)
+  if (typeof taskId !== "string" || taskId.length === 0) throw new AuthzError("NOT_FOUND", "task");
+  return withPortalRead(principal, async (tx) => {
+    await authorizePortal(tx, principal, "portal.work_item.view", { kind: "work_item", workItemId: taskId });
+
+    const row = await tx.workItem.findFirst({
+      where: {
+        ...portalShownTaskTerms(principal),
+        id: taskId,
+        // Literal, beside the spread (see `portalShownTaskTerms`).
+        project: { archivedAt: null, portalEnabled: true },
+      },
+      // THE LIST'S SELECT, restated inline — the tripwire refuses a shared
+      // select object, and the two must stay the same columns.
+      select: {
+        id: true,
+        title: true,
+        stateCategory: true,
+        triageReason: true,
+        targetDate: true,
+        completedAt: true,
+        // Compared, never returned (the list's note).
+        assigneeContactId: true,
+        contactCompletedAt: true,
+        // Compared to null, never returned (C31, the list's note).
+        acceptedAt: true,
+        project: { select: { key: true, name: true } },
+        milestone: { select: { name: true } },
+      },
+    });
+    const task = row ? toPortalTask(row, principal) : null;
+    if (!row || !task || !row.project) throw new AuthzError("NOT_FOUND", "task");
+
+    // No ref: the task was proven above, and the question left is only
+    // the principal's — its profile and the module gates. A ref would
+    // repeat the task probe for nothing (code review).
+    let canComment = true;
+    try {
+      await authorizePortal(tx, principal, "portal.comment.create");
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      canComment = false;
+    }
+
+    // Newest first off the subject index, then reversed: a thread reads
+    // oldest first, but the newest are the ones a long one must keep.
+    const found = await tx.comment.findMany({
+      where: {
+        tenantId: principal.tenantId,
+        clientId: principal.clientId,
+        subjectType: "WORK_ITEM",
+        subjectId: row.id,
+        visibility: "CLIENT_VISIBLE",
+        portalEnabled: true,
+        deletedAt: null,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: PORTAL_COMMENT_LIMIT + 1,
+      select: { id: true, body: true, authorContactId: true, createdAt: true, editedAt: true },
+    });
+    const commentsTruncated = found.length > PORTAL_COMMENT_LIMIT;
+    const page = (commentsTruncated ? found.slice(0, PORTAL_COMMENT_LIMIT) : found).reverse();
+
+    const contactIds = [...new Set(page.flatMap((c) => (c.authorContactId ? [c.authorContactId] : [])))];
+    const people =
+      contactIds.length > 0
+        ? await tx.contact.findMany({
+            // The tenant and client are `portal_gate`'s, restated as every
+            // read in this file restates them.
+            where: { tenantId: principal.tenantId, clientId: principal.clientId, id: { in: contactIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+    const nameOf = new Map(people.map((p) => [p.id, p.name]));
+
+    return {
+      task,
+      project: { key: row.project.key, name: row.project.name },
+      comments: page.map((c) => ({
+        id: c.id,
+        body: c.body,
+        author: c.authorContactId
+          ? {
+              kind: "contact" as const,
+              name: nameOf.get(c.authorContactId) ?? null,
+              you: c.authorContactId === principal.contactId,
+            }
+          : { kind: "agency" as const },
+        createdAt: c.createdAt,
+        edited: c.editedAt !== null,
+      })),
+      commentsTruncated,
+      canComment,
     };
   });
 }

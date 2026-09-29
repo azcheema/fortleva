@@ -403,6 +403,22 @@ The Swedish/EU labour-law and GDPR track behind decision 11 produced a short lis
 - **Decided 2026-09-28, with the recommendation: its own slice, right after slice 73**, with a `/security-review`. Slice 73 does not widen it.
 - **BUILT 2026-09-28 night (slice 74, PLAN §0's entry).** Every project now has a GATE (migration `20260928180000_portal_switch_gate`): the switch holds it exclusive; every stamp only TRIES it and never waits — a row written while a switch is in flight is written private ("fail closed"), heals itself at its own commit once the switch is done, and anything left is re-derived by a reconcile the switch runs afterwards. A client's request waits the switch out instead, so it is never born invisible; the portal's by-id reads check the project's own switch too. Apart from that request, nothing waits on, or deadlocks with, the switch through the gate (the fan-out's row locks block exactly as before). Recorded, not built: the same plain read in the hours-sharing stamp (no screen shows it; the next recompute heals it).
 
+#### C41. ~~Where does the conversation on a shared task live in the portal?~~ **DECIDED 2026-09-28: ON THE TASK'S OWN PAGE · BUILT the same night (slice 75)** *(asked before building item (9), the comment composer's contact half)*
+- **Question, as asked.** "Clients can't read or write task comments anywhere in the portal today. Where should the conversation on a shared task live?" — its own page (where it stands, then the conversation, then a box to write in; task rows link to it), or a "Comments (3)" toggle that expands under each row.
+- **Decided 2026-09-28, with the recommendation: its own page**, `/portal/tasks/[id]` (by id — a task's NUMBER is the agency's count of work on the project, which the portal has never shown), with a View-as twin at `/view-as/tasks/[id]`. Every task title on the portal links to it. The rule for who may write there is "if you can see the task, you can comment on it".
+
+#### C42. ~~How is a reply from the agency signed on the client's screen?~~ **DECIDED 2026-09-28: "YOUR AGENCY" · BUILT the same night (slice 75)** *(asked with C41)*
+- **Question, as asked.** "Clients never see your team members' names (a v1 rule), and the portal can't show your agency's own name yet. How should a reply from your team be signed on the client's screen?" — "Your agency" ("Din byrå"), the teammate's first name (changes the v1 rule), or the agency's real name now (more safety work: `tenant` is unreadable under a contact, `portal-frame.tsx`).
+- **Decided 2026-09-28, with the recommendation: "Your agency".** The projection never selects the member author column; a comment by one of the client's own people carries that person's name, and "(you)" on the reader's own. The agency's real name can replace the label when portal branding is built.
+
+#### C43. ~~When a client comments, who at the agency is told?~~ **DECIDED 2026-09-28: THE TASK'S OWNER, ELSE THE PROJECT'S PEOPLE, BY INBOX AND EMAIL · BUILT the same night (slice 75)** *(asked with C41)*
+- **Question, as asked.** "When a client posts a comment on a task, who at your agency is told?" — the owner (else the project's people), inbox and email straight away, like a client request; the whole project always; or the owner only, inbox only, grouped, like a colleague's comment.
+- **Decided 2026-09-28, with the recommendation.** A new notification kind, `work_item.client_commented`: INSTANT, emailed at PARTICIPATING, to the task's member assignee when active, otherwise the project's lead and assigned members (`requestReceivers`). A flurry of comments on one task is one unread row, and one email, until it is read. A member's own comment stays `work_item.commented`, coalesced.
+
+#### C44. ~~What happens with mentions?~~ **DECIDED 2026-09-28: LATER, AS THEIR OWN PIECE OF WORK** *(asked with C41; it answers the choice the 2026-09-20 PLAN entry left open)*
+- **Question, as asked.** "Mentions (typing @name in a comment to notify someone) don't exist anywhere yet. The warning about mentioning a client in a private note depends on them. What should happen with mentions?" — later, separately; teammates only, next; or teammates and clients, next, with the warning.
+- **Decided 2026-09-28, with the recommendation: later, separately.** Item (9) shipped the client's side of comments (slice 75); mentions — and with them UI.md §5.6's "mentioning a Contact in an internal note warns inline" — become their own item, unordered. `comment.mentioned` stays catalogued with no writer, as it has been since 2W.
+
 ---
 
 ## 4. Decide-by schedule (at a glance)
@@ -421,6 +437,10 @@ The Swedish/EU labour-law and GDPR track behind decision 11 produced a short lis
 | C38 | ~~Who may create a task the client sees from the start?~~ | **DECIDED 2026-09-28** | — only people who can share tasks; enforced by `createItem`; subtasks keep decision (8) |
 | C39 | ~~After a shared create, what does the next task start as?~~ | **DECIDED 2026-09-28** | — private again; ⌘⇧Enter keeps the choice |
 | C40 | ~~When is the portal-switch race closed?~~ | **DECIDED 2026-09-28 · BUILT the same night (slice 74)** | — slice 74, its own reviewed slice, right after slice 73 |
+| C41 | ~~Where does the conversation on a shared task live in the portal?~~ | **DECIDED 2026-09-28 · BUILT (slice 75)** | — the task's own page, `/portal/tasks/[id]`; every task title links to it |
+| C42 | ~~How is the agency's reply signed for the client?~~ | **DECIDED 2026-09-28 · BUILT (slice 75)** | — "Your agency"; a client's own people by name |
+| C43 | ~~Who at the agency hears about a client's comment?~~ | **DECIDED 2026-09-28 · BUILT (slice 75)** | — the task's owner, else the project's people; inbox and email straight away |
+| C44 | ~~Mentions?~~ | **DECIDED 2026-09-28** | — later, as their own piece of work (the mention warning waits with them) |
 | C30 | ~~Member account recovery: a forgot-password link, and a fresh sign-up link when one runs out~~ | **DECIDED 2026-09-24 · BUILT the same day (slice 59)** | — all five parts; (d) went further than its first option after the review: confirming an address takes the link AND the password — **confirmed by the founder 2026-09-25**. RUNBOOK §8 has the procedures, including the operator's script for a forgotten console password |
 | B1 | ~~Product name~~ (decided: **Fortleva**, 2026-08-05; trademark check outstanding) + domain purchases | **Phase 7 design start** (demoted from Phase 1 day 1 by decision 9) | None — v1 runs on `os.`/`ops.naxdor.com` |
 | B2 | ~~Neon project, Frankfurt, founder's account~~ (done 2026-08-08: `fortleva`, Frankfurt confirmed, PG18; Free plan — upgrade to Launch before tenant-zero data) | ~~Phase 1 day 1~~ — resolved | Settled |

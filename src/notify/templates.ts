@@ -54,6 +54,16 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "En kund uppger att de har slutfört en uppgift ni tilldelat dem. Den väntar på att ni kontrollerar den.",
     },
   },
+  "work_item.client_commented": {
+    en: {
+      subject: "A client commented on a task",
+      body: "A client wrote a comment on a task through the portal. Open the task to read it and reply.",
+    },
+    sv: {
+      subject: "En kund har kommenterat en uppgift",
+      body: "En kund har skrivit en kommentar på en uppgift via portalen. Öppna uppgiften för att läsa den och svara.",
+    },
+  },
   "approval.decided": {
     en: {
       subject: "A client answered a sign-off request",

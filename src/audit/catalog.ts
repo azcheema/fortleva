@@ -214,6 +214,15 @@ export const AUDIT_EVENTS = {
   // is not something anybody greps.
   "portal.task_completed": TENANT,
   "portal.task_completion_withdrawn": TENANT,
+  // A CLIENT's comment on a shared task (Phase 3 slice 75). NOT brokered,
+  // unlike the three above: a comment is the contact-writable census's
+  // one INSERT, written under the contact's OWN principal
+  // (`withCensusWrite`), so `record()` derives actor CONTACT from the
+  // transaction and `portal_audit_insert` admits exactly that row. A
+  // MEMBER's own comment is routine (a history row, no audit — the
+  // 2026-09-12 carve-out); a client's is in this family because it is on
+  // the short list of acts a client can perform on the agency's board.
+  "portal.comment_created": TENANT,
   "workflow.changed": TENANT,
   "label.created": TENANT,
   "label.deleted": TENANT,

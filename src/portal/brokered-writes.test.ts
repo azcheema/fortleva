@@ -239,8 +239,39 @@ const BROKERED_READS: readonly (readonly [string, string])[] = [
  * inline `{type:'system'}`; it never audits (the decision's audit row is
  * the census write's); it never opens a contact transaction; and `emit`
  * is the only writer it calls. A second announcer is added by name.
+ *
+ * `src/modules/work/comment-announce.ts` is the second (Phase 3 slice
+ * 75): it tells the agency about a client's comment after the census
+ * write committed it, and it writes ONE thing besides `emit` — the
+ * task's history row, through `writeContactActivity`, which a contact
+ * may not insert (`portal_no_insert` on `work_item_activity`). What each
+ * announcer may IMPORT is pinned by equality in `ANNOUNCER_IMPORTS`
+ * below — the history writer is on the second's list and nobody else's —
+ * and every other pin applies unchanged.
  */
-const ANNOUNCERS: readonly string[] = [join("portal", "signoff-announce.ts")];
+const ANNOUNCERS: readonly string[] = [
+  join("portal", "signoff-announce.ts"),
+  join("modules", "work", "comment-announce.ts"),
+];
+
+/**
+ * The VALUES each announcer may import — its whole reach, each as
+ * `<module>:<exported name>` (`default` / `*` for those forms). `withTenant`
+ * (the system transaction), `emit` (the one writer every announcer has),
+ * and, per entry, the reads that choose the receivers and any writer
+ * beyond `emit`. Each name is a reviewable entry.
+ */
+const ANNOUNCER_IMPORTS: Readonly<Record<string, readonly string[]>> = {
+  [join("portal", "signoff-announce.ts")]: ["@/db:withTenant", "@/notify/emit:emit"],
+  [join("modules", "work", "comment-announce.ts")]: [
+    "@/db:withTenant",
+    "@/notify/emit:emit",
+    // The receivers' read (the project's people, active only).
+    "./notify:requestReceivers",
+    // The ONE writer beyond `emit`: the task's history row naming the contact.
+    "./activity:writeContactActivity",
+  ],
+};
 
 const isBrokeredRead = (file: string, name: string): boolean =>
   BROKERED_READS.some(([suffix, fn]) => file.endsWith(suffix) && fn === name);
@@ -318,7 +349,7 @@ describe("brokered portal writes", () => {
     }
   });
 
-  it("every announcer runs as `system`, audits nothing, opens no contact transaction, and writes through `emit` alone", () => {
+  it("every announcer runs as `system`, audits nothing, opens no contact transaction, and imports only its admitted names", () => {
     expect(ANNOUNCERS.length).toBeGreaterThan(0);
     for (const suffix of ANNOUNCERS) {
       const file = walk(SRC).find((f) => f.endsWith(suffix));
@@ -338,6 +369,46 @@ describe("brokered portal writes", () => {
       // The only Prisma WRITE verb in the file is none: `emit` writes.
       expect(text, `${suffix} writes through emit alone`).not.toMatch(/\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/);
       expect(text, `${suffix} calls emit`).toContain("emit(");
+      // No raw SQL: a `$executeRaw` would be a writer no list could name.
+      expect(text, `${suffix} writes no raw SQL`).not.toMatch(/\$(execute|query)Raw/);
+      // …and EVERY VALUE IT IMPORTS IS ON ITS LIST (`ANNOUNCER_IMPORTS`),
+      // by equality. A name-pattern walk over the calls (`write…(`) was
+      // the first cut, and the code review listed what walks past it — an
+      // `insertActivity(`, a `notifyItemMembers(`, a namespace import's
+      // `activity.writeContactActivity(`. Every one of those has to be
+      // IMPORTED first, so the import list is the door: a new writer, a
+      // renamed one, or a namespace import all change it, and a reviewer
+      // meets the change here. Type-only imports carry no code and are
+      // not counted.
+      //
+      // Recorded as `<module>:<EXPORTED name>`, never the local one: an
+      // alias (`import { insertActivity as writeContactActivity }`) would
+      // otherwise pass under an admitted name (fix-pass review). A dynamic
+      // `import(` or a `require(` would be a way round the list, so
+      // neither may appear at all.
+      expect(text, `${suffix} imports nothing dynamically`).not.toMatch(/\bimport\(|\brequire\(/);
+      const imported: string[] = [];
+      for (const statement of source.statements) {
+        if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly) continue;
+        const clause = statement.importClause;
+        if (!clause) {
+          // A side-effect import runs a module's code: never admitted.
+          imported.push(`${(statement.moduleSpecifier as ts.StringLiteral).text}:(side effect)`);
+          continue;
+        }
+        const from = (statement.moduleSpecifier as ts.StringLiteral).text;
+        if (clause.name) imported.push(`${from}:default`);
+        const bindings = clause.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings)) imported.push(`${from}:*`);
+        if (bindings && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            if (!element.isTypeOnly) imported.push(`${from}:${(element.propertyName ?? element.name).text}`);
+          }
+        }
+      }
+      expect(imported.sort(), `${suffix} imports only what its entry admits`).toEqual(
+        [...(ANNOUNCER_IMPORTS[suffix] ?? [])].sort(),
+      );
     }
   });
 

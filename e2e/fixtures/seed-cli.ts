@@ -118,6 +118,9 @@ const DBTEST_PREFIXES = [
   "money-",
   "ordering-",
   "pauthz-",
+  // Phase 3 slice 75, a client's comment on a shared task —
+  // `src/modules/work/portal-comment.dbtest.ts`, `setupTenant("pcomm")`.
+  "pcomm-",
   // Phase 3, the portal files slice — `src/documents/portal.dbtest.ts`,
   // `setupTenant("pfil")`.
   "pfil-",
@@ -361,6 +364,20 @@ export type E2ESeed = {
    * to the worker in an env var and signs in with it once. */
   readonly contactEmail: string;
   readonly contactName: string;
+
+  /**
+   * THE PORTAL'S TASK PAGE FIXTURE (Phase 3 slice 75): the shared
+   * accessibility task and the three comments on it — the contact's own
+   * (Astrid's), the agency's reply to the client, and an INTERNAL note
+   * that no contact surface may ever show.
+   */
+  readonly sharedTaskId: string;
+  /** Its member-side key ("E1A2-4"), for opening the peek at `backlog?item=`. */
+  readonly sharedTaskKey: string;
+  readonly sharedTaskTitle: string;
+  readonly portalCommentText: string;
+  readonly portalReplyText: string;
+  readonly internalNoteText: string;
 
   /**
    * A LIVE PORTAL INVITATION — the raw token of a PENDING
@@ -922,7 +939,10 @@ async function provision(seedFile: string): Promise<void> {
   const reviewTaskId = await task(hoursInternalTaskTitle, { priority: "MEDIUM", hours: 1.5, labels: 1 });
   await updateItemFields(ctx, reviewTaskId, { targetDate: dueIn(3) });
   const dnsTaskId = await task("Migrera DNS till ny leverantör", { category: "DONE", hours: 1 });
-  const a11yTaskId = await task("Tillgänglighetsgranskning", { category: "BACKLOG" });
+  // Named once: the portal task-page spec and the visual walk address it
+  // by title, so it is derived rather than typed twice (slice 75).
+  const a11yTaskTitle = "Tillgänglighetsgranskning";
+  const a11yTaskId = await task(a11yTaskTitle, { category: "BACKLOG" });
 
   // ── Phase 3: the portal fixture ────────────────────────────────────
   // Three shared tasks in three different portal categories, so the
@@ -946,6 +966,44 @@ async function provision(seedFile: string): Promise<void> {
   });
   await setItemMilestone(ctx, a11yTaskId, datedMilestoneId);
   await updateItemFields(ctx, a11yTaskId, { targetDate: dueIn(10) });
+  // A CONVERSATION ON THE SHARED ACCESSIBILITY TASK (Phase 3 slice 75):
+  // the client's question, the agency's reply to the client, and an
+  // internal note the client must never see — so the portal's task page
+  // photographs a real thread signed two ways ("Your agency" and the
+  // contact's own name), and `portal-comments.spec.ts` has a negative
+  // control on the very page it reads. The client's comment is written
+  // RAW, as `contact-comment` does: through the portal writer it would
+  // announce itself to the project's people, and an inbox row planted
+  // here would move every inbox count the other specs pin. The two
+  // member comments go through the real service; the task has no
+  // assignee, so neither notifies anybody.
+  const portalCommentText = "Kan ni också granska kontrasten i sidfoten?";
+  const portalReplyText = "Absolut, vi lägger till sidfoten i granskningen.";
+  const internalNoteText = "Intern anteckning: sidfoten ingår inte i offerten.";
+  const { number: a11yTaskNumber } = await db.workItem.findUniqueOrThrow({
+    where: { id: a11yTaskId },
+    select: { number: true },
+  });
+  await db.comment.create({
+    data: {
+      tenantId,
+      subjectType: "WORK_ITEM",
+      subjectId: a11yTaskId,
+      authorContactId: contactId,
+      body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: portalCommentText }] }] },
+      bodyText: portalCommentText,
+      visibility: "CLIENT_VISIBLE",
+    },
+    select: { id: true },
+  });
+  await createComment(ctx, a11yTaskId, {
+    doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: portalReplyText }] }] },
+    visibility: "CLIENT_VISIBLE",
+  });
+  await createComment(ctx, a11yTaskId, {
+    doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: internalNoteText }] }] },
+    visibility: "INTERNAL",
+  });
   // THROUGH THE REAL SWITCH, not a column write: `setPortalEnabled` is
   // the emergency "stop showing this client our data" control, its
   // trigger fans `portal_enabled` out across ten tables, and a fixture
@@ -1297,6 +1355,12 @@ async function provision(seedFile: string): Promise<void> {
     inviteEmail,
     contactEmail,
     contactName,
+    sharedTaskId: a11yTaskId,
+    sharedTaskKey: `${projectKey}-${a11yTaskNumber}`,
+    sharedTaskTitle: a11yTaskTitle,
+    portalCommentText,
+    portalReplyText,
+    internalNoteText,
     contactInviteToken,
     contactInviteEmail,
     contactResetToken,

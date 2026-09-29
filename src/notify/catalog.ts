@@ -131,6 +131,32 @@ const KINDS = {
     email: { atLevel: "PARTICIPATING" },
   },
   /**
+   * Phase 3 slice 75: a CLIENT wrote a comment on a shared task
+   * (`modules/work/portal-comment.ts`, announced after the write by
+   * `modules/work/comment-announce.ts`).
+   *
+   * AUDIENCE IS MEMBER, as for the kinds above: the field names who
+   * RECEIVES. INSTANT, by founder decision C43 (2026-09-28): a client
+   * who writes to the agency is waiting on an answer, and an agency that
+   * finds out in a digest has a client who was ignored — the request
+   * intake's argument. A MEMBER's comment stays `work_item.commented`,
+   * coalesced: a colleague's remark is the team's own conversation.
+   *
+   * THE RECEIVERS are the task's owner — its member assignee, if active
+   * — and otherwise the project's people (its lead and assignees), which
+   * is C43's "owner, else project". PARTICIPATING, matching them: a
+   * member who has turned email down to MENTIONS has said they only want
+   * to be named, and a comment names nobody (mentions are not built,
+   * C44). No `debounceMinutes`, no `cancelledIfRead`: a client cannot
+   * take a comment back. The dedupe key collapses a flurry of comments on
+   * one task into one unread row — and so one email — until it is read.
+   */
+  "work_item.client_commented": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
+  /**
    * Phase 3, sign-off: a CLIENT approved, or asked for changes to, a
    * shipped version or a delivered file the agency asked them to sign
    * off (`src/projects/portal-signoff.ts`, `src/documents/portal-signoff.ts`).

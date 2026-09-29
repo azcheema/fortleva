@@ -114,6 +114,12 @@ export type PortalPrincipal = {
  * What the capability is being exercised ON. Omitted for a list query:
  * a list is bounded by `portal_gate` on every row it returns, so there
  * is no single resource to name and inventing one would be theatre.
+ * Omitted ALSO, on purpose, where the caller's own read of the row —
+ * under this same contact principal, with every term the ref's probe
+ * carries and more — is the resource check (slice 75: the comment
+ * writer's task probe, and the task page's `canComment` after it has
+ * read the task). Passing the ref there would only read the row twice;
+ * its absence is not a missing check.
  *
  * THREE KINDS TODAY, AND THAT IS THE WHOLE COVERAGE (code review,
  * 2026-09-20 — the pipeline comment above used to imply more). A
@@ -399,7 +405,11 @@ export async function withPortalRead<T>(
 export async function withCensusWrite<T>(
   principal: PortalPrincipal,
   fn: (tx: TenantDb) => Promise<T>,
-  opts?: { readonly lockTimeoutMs?: number },
+  // `timeoutMs` since slice 75: the comment writer waits on up to three
+  // bounded locks (the portal gate, its budget key, the task row), and a
+  // transaction budget smaller than their sum would end a contended
+  // attempt as an untranslated P2028 instead of its lock timeout.
+  opts?: { readonly lockTimeoutMs?: number; readonly timeoutMs?: number },
 ): Promise<T> {
   return withTenant(
     principal.tenantId,

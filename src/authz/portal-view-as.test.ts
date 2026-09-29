@@ -184,6 +184,10 @@ const PORTAL_FILES_PAGE = join(SRC, "app", "(portal)", "portal", "files", "page.
 const VIEW_AS_FILES_PAGE = join(SRC, "app", "(tenant)", "view-as", "files", "page.tsx");
 const PORTAL_COMPANY_PAGE = join(SRC, "app", "(portal)", "portal", "company", "page.tsx");
 const VIEW_AS_COMPANY_PAGE = join(SRC, "app", "(tenant)", "view-as", "company", "page.tsx");
+// The task page and its twin (Phase 3 slice 75, C41): the conversation
+// under a shared task, the portal's fifth navigable page.
+const PORTAL_TASK_PAGE = join(SRC, "app", "(portal)", "portal", "tasks", "[id]", "page.tsx");
+const VIEW_AS_TASK_PAGE = join(SRC, "app", "(tenant)", "view-as", "tasks", "[id]", "page.tsx");
 const PORTAL_FRAME = join(SRC, "app", "(portal)", "portal", "portal-frame.tsx");
 const PROJECT_LAYOUT = join(SRC, "app", "(tenant)", "(authed)", "projects", "[key]", "layout.tsx");
 const PORTAL_TAB = join(
@@ -305,6 +309,16 @@ describe("view-as-contact renders the contact's own page", () => {
       expect(importsFrom(text, "@/clients/portal")).toBe(false);
       expect(importsFrom(text, "@/services/portal")).toBe(false);
     }
+    // …and the task page (slice 75): both render <PortalTaskView>, which
+    // resolves the id under the CONTACT principal itself, and neither
+    // reaches the work module or the task list itself.
+    for (const file of [PORTAL_TASK_PAGE, VIEW_AS_TASK_PAGE]) {
+      const text = readFileSync(file, "utf8");
+      expect(importsFrom(text, "task-view")).toBe(true);
+      expect(importsFrom(text, "task-list")).toBe(false);
+      expect(importsFrom(text, "comment-composer")).toBe(false);
+      expect(importsFrom(text, "@/modules/work")).toBe(false);
+    }
   });
 
   it("the view-as pages read nothing of their own", () => {
@@ -316,6 +330,7 @@ describe("view-as-contact renders the contact's own page", () => {
     expect(delegatesOf(VIEW_AS_PROJECT_PAGE).size).toBe(0);
     expect(delegatesOf(VIEW_AS_FILES_PAGE).size).toBe(0);
     expect(delegatesOf(VIEW_AS_COMPANY_PAGE).size).toBe(0);
+    expect(delegatesOf(VIEW_AS_TASK_PAGE).size).toBe(0);
   });
 
   it("the view-as service touches two authorization tables and no work table", () => {
@@ -369,6 +384,7 @@ describe("view-as-contact renders the contact's own page", () => {
     for (const [file, fn, view] of [
       [VIEW_AS_FILES_PAGE, "ViewAsFilesPage", "<PortalFilesView"],
       [VIEW_AS_COMPANY_PAGE, "ViewAsCompanyPage", "<PortalCompanyView"],
+      [VIEW_AS_TASK_PAGE, "ViewAsTaskPage", "<PortalTaskView"],
     ] as const) {
       const text = readFileSync(file, "utf8");
       const body = text.slice(text.indexOf(`export default async function ${fn}`));

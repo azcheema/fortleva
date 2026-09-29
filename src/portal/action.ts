@@ -56,6 +56,9 @@ const PORTAL_DISCLOSABLE: ReadonlySet<DomainErrorCode> = new Set<DomainErrorCode
   // "You have downloaded a lot of files in a short time." — the same
   // shape, for the portal files slice's download budget.
   "DOWNLOAD_RATE_LIMITED",
+  // "You have sent several comments in a short time." — the same shape,
+  // for a task comment's budget (Phase 3 slice 75).
+  "COMMENT_RATE_LIMITED",
   // "Check what you typed." — their own input, echoed back at them.
   "INVALID_INPUT",
 ]);
@@ -64,7 +67,7 @@ const PORTAL_DISCLOSABLE: ReadonlySet<DomainErrorCode> = new Set<DomainErrorCode
  * The disclosure decision, as a PURE function — so that the rule can be
  * tested over every code the product has without a request context, a
  * translation catalogue or a running Next. `action.test.ts` enumerates
- * them and asserts that exactly two get through; a test that could only
+ * them and asserts that exactly the listed four get through; a test that could only
  * reach this rule through `getTranslations` would have covered the
  * translation lookup and not the thing that matters.
  */

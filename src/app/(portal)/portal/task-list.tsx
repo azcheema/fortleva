@@ -199,11 +199,24 @@ export function ProjectTasks({
  */
 export function TaskRow({ task }: { task: PortalTask }) {
   const t = useTranslations("portal.tasks");
-  const locale = useLocale();
-  const format = useFormatter();
   return (
     <li data-slot="portal-task" className="flex flex-col gap-0.5">
-      <span className="text-sm text-foreground">{task.title}</span>
+      {/* THE TITLE OPENS THE TASK'S OWN PAGE, where its conversation is
+          (Phase 3 slice 75, founder decision C41). Rendered on both planes
+          alike — on View-as and the Portal tab the surface is `inert`, so
+          there it is a link that cannot be followed, which is what
+          look-don't-touch means — so the byte comparison is unaffected.
+          No prefetch: on the member plane a prefetch of a portal-gated
+          route carries a member cookie and is answered with a redirect
+          to the client sign-in page. */}
+      <Link
+        href={`/portal/tasks/${task.id}`}
+        prefetch={false}
+        data-slot="portal-task-link"
+        className="w-fit text-sm text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        {task.title}
+      </Link>
       {/* THE AGENCY'S ANSWER, on an answered request only —
           declined at the door, or cancelled after it was
           agreed (slice 6b; C31). It sits directly under the
@@ -240,8 +253,25 @@ export function TaskRow({ task }: { task: PortalTask }) {
           markedDoneAt={task.markedDoneAt?.toISOString() ?? null}
         />
       ) : null}
+      <TaskMeta task={task} />
+    </li>
+  );
+}
+
+/**
+ * A TASK'S FACTS LINE — its phase, its agreed day, when it was finished —
+ * the row's, and since the task page (Phase 3 slice 75) the page header's
+ * too, so the two cannot describe one task two ways. Nothing when there
+ * is nothing to say.
+ */
+export function TaskMeta({ task }: { task: PortalTask }) {
+  const t = useTranslations("portal.tasks");
+  const locale = useLocale();
+  const format = useFormatter();
+  return (
+    <>
       {task.phase || task.targetDate || task.completedAt ? (
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+        <span data-slot="portal-task-meta" className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           {task.phase ? <span>{t("phase", { name: task.phase })}</span> : null}
           {task.targetDate ? (
             <span>{t("due", { date: formatDay(locale, task.targetDate) })}</span>
@@ -271,7 +301,7 @@ export function TaskRow({ task }: { task: PortalTask }) {
           ) : null}
         </span>
       ) : null}
-    </li>
+    </>
   );
 }
 
@@ -290,9 +320,10 @@ export const isWaitingOnYou = (task: PortalTask): boolean =>
  * product and a greyscale screenshot still separates the six. It is not
  * `<StatusBadge>` because that component resolves its own label from
  * `states.<domain>.<value>` and the heading needs the label at heading
- * weight beside its glyph, not inside a chip.
+ * weight beside its glyph, not inside a chip. Exported for the task
+ * page's header (slice 75), which names the one category its task is in.
  */
-function CategoryChip({ category, label }: { category: PortalTaskCategory; label: string }) {
+export function CategoryChip({ category, label }: { category: PortalTaskCategory; label: string }) {
   const spec = STATUS_MAP.portalTaskCategory[category];
   return (
     <span

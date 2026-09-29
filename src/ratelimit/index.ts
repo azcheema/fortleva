@@ -93,6 +93,18 @@ const POLICIES = {
    */
   "portal.sign_off": { limit: 30, window: "15 m" },
   /**
+   * A contact's comments on a shared task (Phase 3 slice 75): the cheap
+   * filter in front of a fail-CLOSED Postgres budget
+   * (`assertCommentBudget`, `src/modules/work/portal-comment.ts`, which
+   * counts the contact's own comments under their principal) — the
+   * request intake's layering, and a no-op until Upstash is provisioned
+   * for the same documented reason. Its limit sits ABOVE the Postgres
+   * one so the honest refusal is normally the one that fires. Keyed on
+   * the contact id: the actor is authenticated, and an office NAT must
+   * not let one client's staff spend another's budget.
+   */
+  "portal.comment_create": { limit: 60, window: "15 m" },
+  /**
    * THE PORTAL'S FILE DOWNLOAD per CONTACT (Phase 3, the portal files
    * slice). The cheap filter in front of a fail-CLOSED Postgres budget
    * (`assertDownloadBudget`, `src/documents/portal-writes.ts`, which
