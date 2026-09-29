@@ -387,7 +387,15 @@ async function visit(
       .soft(craft.tabStrip.hasCurrent, `${at}: the tab strip marks no current tab`)
       .toBe(true);
     if (craft.tabStrip.hasCurrent) {
-      expect.soft(craft.tabStrip.visible, `${at}: current tab is outside the tab strip`).toBe(true);
+      // The offset tells the two failures apart: 0-ish is a strip never
+      // placed (the effect had not run), a value part way along is a strip
+      // measured mid-scroll.
+      expect
+        .soft(
+          craft.tabStrip.visible,
+          `${at}: current tab is outside the tab strip (its left edge is ${craft.tabStrip.current}px into the strip)`,
+        )
+        .toBe(true);
     }
   }
 
