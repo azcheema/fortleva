@@ -40,7 +40,8 @@ import { PortalTimeline } from "./project-timeline";
  * deliverables → hours & retainer. Requests are already on the task
  * list under "Requested" (UI.md §11's sixth category).
  *
- * EIGHT SEQUENTIAL READS (the eighth since slice 76), eight transactions, each through
+ * EIGHT SEQUENTIAL READS (the eighth since slice 76; seven with Milestones
+ * hidden, nine with Tasks hidden — slice 80), one transaction each, each through
  * `portalReadOrNull` — never `Promise.all`, for the reason
  * `portal-home.tsx` gives (two independent transactions that both
  * reject with something other than `AuthzError` would leave one an
@@ -55,6 +56,26 @@ import { PortalTimeline } from "./project-timeline";
  * cannot disagree. A project with no post yet has no chip: health is
  * human-chosen on a post, never computed (DATA_MODEL §6.16), and an
  * inferred "on track" would be the agency's word put in its mouth.
+ *
+ * THE SECTION SWITCHES (Phase 3 slice 80, founder decision C47) take a
+ * section off this page and nothing else — LAYOUT, never a refusal:
+ *  - Tasks hidden: the task section lists the client's own requests
+ *    alone (C47c), from a second, narrowed read; "Waiting on you" is
+ *    drawn from the whole list, so a task handed to the reader stays on
+ *    it (C47b).
+ *  - Updates hidden: no latest-update card and no health chip (the chip
+ *    IS that post's), because the read itself follows the switch; the
+ *    rail drops its update entries.
+ *  - Milestones hidden: no phase, next milestone or meter — the summary
+ *    is not even read — and no milestone entries on the rail.
+ *  - Files hidden: no files section and no delivered versions on the
+ *    rail. The files are still read, because an ask to sign a deliverable
+ *    off is on "Waiting on you" either way; its "Review" then leads to
+ *    the Files page, where the same row carries the control, instead of
+ *    to an anchor this page no longer draws.
+ * A page left with NOTHING DRAWN — no section, no shipped version, no
+ * hours, no request, and nothing waiting — is the plane's one empty page,
+ * as a page with nothing shared is.
  */
 export async function PortalProjectView({
   principal,
@@ -79,22 +100,38 @@ export async function PortalProjectView({
   const project = await portalReadOrNull("findPortalProjectByKey", () =>
     findPortalProjectByKey(principal, projectKey),
   );
-  const summary = project
-    ? await portalReadOrNull("readPortalProjectSummary", () =>
-        readPortalProjectSummary(principal, project.id, { timeZone }),
-      )
-    : null;
+  // Not read at all with Milestones hidden: the header's phase, next
+  // milestone and meter are the only things drawn from it.
+  const summary =
+    project && project.sections.milestones
+      ? await portalReadOrNull("readPortalProjectSummary", () =>
+          readPortalProjectSummary(principal, project.id, { timeZone }),
+        )
+      : null;
+  // Follows the Updates switch, so a hidden section takes the card and the
+  // health chip with it — both are drawn from this one post.
   const updates = project
     ? await portalReadOrNull("listPortalUpdates", () =>
-        listPortalUpdates(principal, { projectId: project.id, latestOnly: true }),
+        listPortalUpdates(principal, { projectId: project.id, latestOnly: true, followSectionSwitches: true }),
       )
     : null;
   const timeline = project
     ? await portalReadOrNull("listPortalTimeline", () => listPortalTimeline(principal, { projectId: project.id }))
     : null;
+  // THE WHOLE LIST, whatever the Tasks switch says: "Waiting on you" is
+  // drawn from it (C47b).
   const list = project
     ? await portalReadOrNull("listPortalTasks", () => listPortalTasks(principal, { projectId: project.id }))
     : null;
+  // …and the task SECTION's list: the same answer while the section is
+  // shown, the client's own requests alone while it is hidden (C47c) —
+  // one more sequential read, only then.
+  const sectionList =
+    project && !project.sections.tasks
+      ? await portalReadOrNull("listPortalTasks", () =>
+          listPortalTasks(principal, { projectId: project.id, followSectionSwitches: true }),
+        )
+      : list;
   // The sixth read (the portal files slice): this project's shared files,
   // for section 6. Sequential, like the five above.
   const files = project
@@ -122,6 +159,7 @@ export async function PortalProjectView({
 
   const latest = updates?.[0] ?? null;
   const tasks = list?.projects[0] ?? null;
+  const sectionTasks = sectionList?.projects[0] ?? null;
   const waiting = tasks?.tasks.filter(isWaitingOnYou) ?? [];
   // ONE ROW PER TASK: a task the reader was handed AND the agency last
   // spoke on is already on this card as its tick row, whose title opens
@@ -131,10 +169,13 @@ export async function PortalProjectView({
   const replied = (replies ?? []).filter((reply) => !waitingIds.has(reply.taskId));
   const events = timeline?.entries ?? [];
   const documents = files?.documents ?? [];
+  const showFiles = project?.sections.files ?? false;
   // THE ASKS THIS READER MAY ANSWER (the sign-off slice): the shipped
   // versions and the deliverables whose `canDecide` the projections set
   // — drawn from the same rows the rail and the files section draw, so
   // the card can never list an ask its row then offers no control for.
+  // (With Files hidden the files section is not drawn here, and the ask
+  // leads to the Files page's copy of the same row instead.)
   const pendingVersions = events.flatMap((e) => (e.kind === "version_shipped" && e.approval.canDecide ? [e] : []));
   const pendingDeliverables = documents.filter((d) => d.approval?.canDecide);
   const asks = pendingVersions.length + pendingDeliverables.length;
@@ -145,17 +186,24 @@ export async function PortalProjectView({
   // "Nothing shared with you yet" under a meter that counts shared
   // milestones would be the page contradicting itself (a review asked
   // the question; this is the answer, on purpose).
+  //
+  // WHAT IS DRAWN, not what exists (slice 80): with a section hidden, its
+  // rows are shared and still not on this page, so they no longer keep the
+  // empty state away — but "Waiting on you" does, because it is drawn
+  // whatever the switches say.
   const hasHours = hours !== null && (hours.live !== null || hours.reports.length > 0);
   const nothing =
+    asks === 0 &&
+    waiting.length === 0 &&
     !latest &&
     events.length === 0 &&
-    !tasks &&
+    !sectionTasks &&
     // A reply's task passes the list's own rule, so `tasks` is set whenever
     // a reply is — except for a race between the two reads; stated anyway,
     // as on the home, so the page can never draw "nothing shared" under a
     // card listing a reply.
     replied.length === 0 &&
-    documents.length === 0 &&
+    !(showFiles && documents.length > 0) &&
     !hasHours &&
     !(summary && summary.milestones.total > 0);
 
@@ -269,7 +317,17 @@ export async function PortalProjectView({
                           {t("actionItems.signoffDeliverable", { name: d.name, number: d.approval?.versionNumber ?? d.version.number })}
                         </span>
                         <Button asChild variant="outline" size="sm">
-                          <a href={`#${fileAnchor(d.id)}`}>{t("actionItems.review")}</a>
+                          {showFiles ? (
+                            <a href={`#${fileAnchor(d.id)}`}>{t("actionItems.review")}</a>
+                          ) : (
+                            // Files hidden: this page draws no row to jump
+                            // to, so the ask leads to the Files page's row,
+                            // which carries the same control. No prefetch:
+                            // rendered on the member plane too (View-as).
+                            <Link href={`/portal/files#${fileAnchor(d.id)}`} prefetch={false}>
+                              {t("actionItems.review")}
+                            </Link>
+                          )}
                         </Button>
                       </li>
                     ))}
@@ -307,19 +365,26 @@ export async function PortalProjectView({
 
               {/* 5. THE SHARED TASKS BY CATEGORY — the home's card, under
                   its own heading, because the h1 already carries the
-                  project's name. */}
-              {list?.truncated ? (
-                <Callout tone="info">{t("tasks.truncated", { count: list.shown })}</Callout>
+                  project's name. With Tasks hidden (C47c) it is the
+                  client's own requests, under a heading that says so. */}
+              {sectionList?.truncated ? (
+                <Callout tone="info">{t("tasks.truncated", { count: sectionList.shown })}</Callout>
               ) : null}
-              {tasks ? <ProjectTasks project={tasks} title={t("tasks.heading")} /> : null}
+              {sectionTasks ? (
+                <ProjectTasks
+                  project={sectionTasks}
+                  title={project.sections.tasks ? t("tasks.heading") : t("tasks.requestsHeading")}
+                />
+              ) : null}
 
               {/* 6. FILES & DELIVERABLES (UI.md §4 item 6; the portal
                   files slice): the project's shared files, deliverables
                   first, each with its download. Omitted when there are
                   none, like the rail. AFTER the tasks, which is §4's
                   order — a refused download returns the reader here
-                  with the banner at the top of the page. */}
-              {documents.length > 0 ? (
+                  with the banner at the top of the page. Absent while
+                  the Files section is hidden (C47). */}
+              {showFiles && documents.length > 0 ? (
                 <SectionCard
                   title={t("files.projectTitle")}
                   description={t("files.projectDescription")}

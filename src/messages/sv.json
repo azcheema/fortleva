@@ -1515,7 +1515,28 @@
         "PORTAL_OFF": "Portalen är av för projektet — brytaren bredvid den här panelen.",
         "PROJECT_ARCHIVED": "Projektet är arkiverat, så de delade uppgifterna förblir dolda tills det återställs.",
         "NO_AUDIENCE": "Ingen kontakt hos kunden har portalåtkomst ännu.",
-        "NOTHING_SHARED": "Inget i projektet är märkt ”Kunden kan se” ännu — märk en uppgift i backloggen, så visas den här."
+        "NOTHING_SHARED": "Inget i projektet är märkt ”Kunden kan se” ännu — märk en uppgift i backloggen, så visas den här.",
+        "SECTIONS_HIDDEN": "Kundens översikt har inget kort för projektet, eftersom det som skulle visas ligger i ett avsnitt du har dolt. Länkar och ”Väntar på dig” leder fortfarande dit."
+      },
+      "sections": {
+        "title": "Avsnitt som kunden ser",
+        "description": "Ett dolt avsnitt försvinner från projektets sida och från dess kort på portalens översikt. Det du har delat går fortfarande att nå via länkar, ”Väntar på dig” och kundens filsida — vill du ta bort något för kunden gör du det privat för teamet.",
+        "tasks": {
+          "label": "Uppgifter",
+          "hint": "Kunden ser fortfarande sina egna förfrågningar och era svar."
+        },
+        "updates": {
+          "label": "Uppdateringar",
+          "hint": "Den senaste uppdateringen och dess läge, och uppdateringar på tidslinjen. Kunden kan fortfarande öppna sidan Alla uppdateringar från en sparad länk."
+        },
+        "milestones": {
+          "label": "Milstolpar",
+          "hint": "Fasen, nästa milstolpe och förloppsmätaren, och milstolpar på tidslinjen."
+        },
+        "files": {
+          "label": "Filer",
+          "hint": "Filer och leveranser på projektets sida, och leveranser på tidslinjen. Kundens filsida visar dem fortfarande."
+        }
       },
       "audience": {
         "title": "Vilka kan logga in",
@@ -2608,6 +2629,7 @@
     "signedInAs": "Inloggad som {name}",
     "tasks": {
       "heading": "Delade uppgifter",
+      "requestsHeading": "Dina förfrågningar",
       "phase": "Fas: {name}",
       "due": "Klart senast {date}",
       "completed": "Slutfördes {date}",

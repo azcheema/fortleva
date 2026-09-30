@@ -465,6 +465,31 @@ export const PORTAL_TASK_LIMIT = 200;
 export type PortalTaskListOptions = {
   /** Restrict the read to one project of the contact's own client. */
   readonly projectId?: string;
+  /**
+   * Draw the list as the portal SHOWS it, section switches and all (Phase
+   * 3 slice 80, founder decision C47): on a project whose Tasks section is
+   * hidden, only the client's own requests come back — whatever state
+   * they are in now, so an accepted request does not vanish from the
+   * page the day the agency takes it on (C47c).
+   *
+   * An OPTION, not the default, because the switch is LAYOUT. The home's
+   * cards, the project page's task section and the Portal tab's preview
+   * of the home card pass it; the project page's "Waiting on you" card
+   * does not — a task the reader was handed stays on that card whatever
+   * the section says (C47b) — and neither does anything that decides
+   * whether a row is reachable.
+   *
+   * THE REQUEST TEST IS A `where` TERM ON `kind`, NEVER A SELECTED FLAG:
+   * `kind` is on the portal plane's never-selected list
+   * (`portal-projections.test.ts`), and a projected "was a request"
+   * boolean would be that column by another name on every row. Filtering
+   * means a hidden task never leaves Postgres, which is what
+   * `portalShownTaskTerms` already does with the same column. "Request"
+   * is `kind = REQUEST`, not "a contact reported it": a request a member
+   * filed on the client's behalf after a phone call is theirs too (the
+   * reasoning `portalShownTaskTerms` gives for its own REQUEST term).
+   */
+  readonly followSectionSwitches?: boolean;
 };
 
 /**
@@ -564,6 +589,14 @@ export async function listPortalTasks(
         // row. The switch is restated from the project (slice 74).
         project: { archivedAt: null, portalEnabled: true },
         ...(projectId ? { projectId } : {}),
+        // The Tasks section's switch (C47), when the caller draws a
+        // section: a project that shows its tasks returns every row, one
+        // that hides them returns the client's requests alone. An `AND`
+        // beside the project literal above, never a spread into it —
+        // `portal-switch-belts.test.ts` follows that literal.
+        ...(opts?.followSectionSwitches
+          ? { AND: [{ OR: [{ project: { portalShowTasks: true } }, { kind: "REQUEST" as const }] }] }
+          : {}),
       },
       select: {
         id: true,
@@ -977,6 +1010,13 @@ export type PortalUpdateListOptions = {
   readonly projectId?: string;
   /** Only the newest post per project — `/portal`'s project cards. */
   readonly latestOnly?: boolean;
+  /**
+   * Leave out the posts of a project whose Updates section is hidden
+   * (Phase 3 slice 80, C47) — the home's cards, the project page's
+   * latest-update card and health chip, and the Portal tab's preview pass
+   * it. The all-updates page does not: it stays reachable at its address.
+   */
+  readonly followSectionSwitches?: boolean;
 };
 
 /**
@@ -1029,6 +1069,9 @@ export async function listPortalUpdates(
         status: "PUBLISHED",
         project: { archivedAt: null },
         ...(projectId ? { projectId } : {}),
+        // The Updates section's switch (C47), as an `AND` beside the
+        // project literal rather than a spread into it.
+        ...(opts?.followSectionSwitches ? { AND: [{ project: { portalShowUpdates: true } }] } : {}),
       },
       select: {
         id: true,
@@ -1247,6 +1290,18 @@ const byNewest = (a: PortalTimelineEntry, b: PortalTimelineEntry): number =>
  * `authorizePortal`'s step 0 keys on the ambient principal). The broker
  * restates the gate's terms on the joined document row, so a version of
  * a document this read did not return cannot come back.
+ *
+ * THE RAIL FOLLOWS THE PROJECT'S SECTION SWITCHES, ALWAYS (Phase 3 slice
+ * 80, founder decision C47) — unlike the task and update lists, which
+ * take an option, because the rail has one consumer and it IS a section
+ * of the page: Updates hidden drops the update branch, Milestones hidden
+ * both milestone branches, Files hidden the document branch and with it
+ * a deliverable's sign-off answer. Shipped versions have no switch. Each
+ * is an `AND` term on the branch's own read, so a hidden branch returns
+ * nothing from Postgres and the cut below is taken over what is drawn —
+ * filtering after the merge could have cut the rail short on entries the
+ * page then threw away. Layout, not a gate: every row is CLIENT_VISIBLE
+ * and stays reachable elsewhere.
  */
 export async function listPortalTimeline(
   principal: PortalPrincipal,
@@ -1287,7 +1342,12 @@ export async function listPortalTimeline(
 
     if (seesUpdates) {
       const updates = await tx.projectUpdate.findMany({
-        where: { ...scope, visibility: "CLIENT_VISIBLE", status: "PUBLISHED" },
+        where: {
+          ...scope,
+          visibility: "CLIENT_VISIBLE",
+          status: "PUBLISHED",
+          AND: [{ project: { portalShowUpdates: true } }],
+        },
         select: { id: true, seq: true, health: true, title: true, publishedAt: true },
         orderBy: [{ publishedAt: "desc" }, { seq: "desc" }],
         take,
@@ -1301,7 +1361,13 @@ export async function listPortalTimeline(
     }
 
     const reached = await tx.milestone.findMany({
-      where: { ...scope, visibility: "CLIENT_VISIBLE", status: "DONE", completedAt: { not: null } },
+      where: {
+        ...scope,
+        visibility: "CLIENT_VISIBLE",
+        status: "DONE",
+        completedAt: { not: null },
+        AND: [{ project: { portalShowMilestones: true } }],
+      },
       select: { id: true, name: true, completedAt: true },
       orderBy: [{ completedAt: "desc" }, { id: "asc" }],
       take,
@@ -1317,6 +1383,7 @@ export async function listPortalTimeline(
         visibility: "CLIENT_VISIBLE",
         status: { in: ["PLANNED", "IN_PROGRESS", "PAUSED"] },
         dueAt: { not: null },
+        AND: [{ project: { portalShowMilestones: true } }],
       },
       select: { id: true, name: true, dueAt: true },
       orderBy: [{ dueAt: "desc" }, { id: "asc" }],
@@ -1386,6 +1453,7 @@ export async function listPortalTimeline(
         visibility: "CLIENT_VISIBLE",
         deletedAt: null,
         kind: { in: [...TIMELINE_DOCUMENT_KINDS] },
+        AND: [{ project: { portalShowFiles: true } }],
       },
       select: {
         id: true,

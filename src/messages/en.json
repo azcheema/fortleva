@@ -1515,7 +1515,28 @@
         "PORTAL_OFF": "The portal is off for this project — the switch beside this panel.",
         "PROJECT_ARCHIVED": "This project is archived, so its shared tasks stay hidden until it is restored.",
         "NO_AUDIENCE": "No contact at this client has portal access yet.",
-        "NOTHING_SHARED": "Nothing on this project is marked “Client can see” yet — mark a task on the Backlog and it appears here."
+        "NOTHING_SHARED": "Nothing on this project is marked “Client can see” yet — mark a task on the Backlog and it appears here.",
+        "SECTIONS_HIDDEN": "The client’s overview has no card for this project, because what it would show is in a section you’ve hidden. Links and “Waiting on you” still lead in."
+      },
+      "sections": {
+        "title": "Sections the client sees",
+        "description": "A hidden section leaves this project’s page and its card on the portal’s overview. Anything you’ve shared stays reachable from links, “Waiting on you” and the client’s Files page — to take something away from the client, make it private to the team.",
+        "tasks": {
+          "label": "Tasks",
+          "hint": "The client still sees their own requests and your replies."
+        },
+        "updates": {
+          "label": "Updates",
+          "hint": "The latest update and its health, and updates on the timeline. The client can still open the All updates page from a saved link."
+        },
+        "milestones": {
+          "label": "Milestones",
+          "hint": "The phase, the next milestone and the progress bar, and milestones on the timeline."
+        },
+        "files": {
+          "label": "Files",
+          "hint": "Files and deliverables on the project page, and deliveries on the timeline. The client’s Files page still lists them."
+        }
       },
       "audience": {
         "title": "Who can sign in",
@@ -2608,6 +2629,7 @@
     "signedInAs": "Signed in as {name}",
     "tasks": {
       "heading": "Shared tasks",
+      "requestsHeading": "Your requests",
       "phase": "Phase: {name}",
       "due": "Due {date}",
       "completed": "Completed {date}",

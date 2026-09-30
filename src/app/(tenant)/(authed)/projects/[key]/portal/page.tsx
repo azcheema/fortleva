@@ -13,7 +13,7 @@ import { requireTenantContext } from "@/members/tenant-context";
 import { readPortalPreview } from "@/projects/portal-preview";
 
 import { loadProject } from "../data";
-import { PortalControls } from "./portal-forms";
+import { PortalControls, PortalSectionControls } from "./portal-forms";
 import { ViewAsButtons } from "./view-as-button";
 
 /**
@@ -176,6 +176,11 @@ export default async function ProjectPortalPage({ params }: { params: Promise<{ 
       <div className="flex flex-col gap-6">
         <SectionCard title={t("controls")}>
           <PortalControls project={project} />
+        </SectionCard>
+        {/* Slice 80 (C47): what the client's pages SHOW — its own card,
+            after the gate, because it is layout and says so. */}
+        <SectionCard title={t("sections.title")} description={t("sections.description")}>
+          <PortalSectionControls project={project} />
         </SectionCard>
         <SectionCard title={t("audience.title")} description={t("audience.hint")}>
           {preview.audience === 0 ? (

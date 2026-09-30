@@ -34,6 +34,7 @@
  *        tsx e2e/fixtures/seed-cli.ts notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-signoffs <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts reset-portal-sections <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
  *        tsx e2e/fixtures/seed-cli.ts sweep-dbtests [maxAgeMinutes]
@@ -153,6 +154,9 @@ const DBTEST_PREFIXES = [
   // keep it CORRECT, and a prefix costs nothing but a `startsWith`.
   "probe-",
   "projects-",
+  // Phase 3 slice 80, the per-section portal switches — `src/projects/portal-sections.dbtest.ts`,
+  // `setupTenant("psect")`.
+  "psect-",
   // Phase 3, the portal files-and-services slice — `src/services/portal.dbtest.ts`,
   // `setupTenant("pser")`.
   "pser-",
@@ -1798,8 +1802,11 @@ async function assertThrowawayTenant(db: PlatformDb, tenantId: string): Promise<
  * so the sweeps can clean their orphans. Every writing command a spec
  * can aim at a row or a tenant takes it before its first write:
  * `set-visibility`, `client-visible-comment`, `big-project` (a
- * caller-supplied tenant id) and `drop-project` (a caller-supplied
- * project id, checked through its tenant).
+ * caller-supplied tenant id), `drop-project` (a caller-supplied
+ * project id, checked through its tenant) and `reset-portal-sections`
+ * (slice 80). The older resets of the seeded tenant — `reset-signoffs`,
+ * `reset-notifications` — still take the looser guard; recorded, not
+ * changed, by slice 80's fix-pass review.
  */
 async function assertE2ETenant(db: PlatformDb, tenantId: string): Promise<void> {
   const tenant = await db.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { slug: true } });
@@ -1892,6 +1899,38 @@ async function resetSignoffs(tenantId: string): Promise<void> {
   });
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"reset":${versions.count + documents.count}}
+`);
+}
+
+/**
+ * Show every portal section of every project of the throwaway tenant
+ * again (Phase 3 slice 80, C47) — `portal-sections.spec.ts`'s teardown.
+ * That spec hides all four on the shared seeded project, and it sorts
+ * before `portal-signoff`, `view-as`, `visual` and the Swedish width
+ * walk, every one of which photographs or byte-compares that project's
+ * page with its sections drawn. Written straight to the columns, as
+ * `resetSignoffs` is, so the undo does not depend on the UI the spec
+ * may have failed in; run from `afterAll`, never a `finally`.
+ */
+async function resetPortalSections(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  // The STRICT guard, `e2e-` only — see the list above `assertE2ETenant`.
+  await assertE2ETenant(db, tenantId);
+  const { count } = await db.project.updateMany({
+    where: {
+      tenantId,
+      OR: [
+        { portalShowTasks: false },
+        { portalShowUpdates: false },
+        { portalShowMilestones: false },
+        { portalShowFiles: false },
+      ],
+    },
+    data: { portalShowTasks: true, portalShowUpdates: true, portalShowMilestones: true, portalShowFiles: true },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"reset":${count}}
 `);
 }
 
@@ -2417,6 +2456,7 @@ const main = async (): Promise<void> => {
   if (command === "notifications") return notifications(argument!);
   if (command === "reset-notifications") return resetNotifications(argument!);
   if (command === "reset-signoffs") return resetSignoffs(argument!);
+  if (command === "reset-portal-sections") return resetPortalSections(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "remove-users") return removeUsers(process.argv.slice(3));

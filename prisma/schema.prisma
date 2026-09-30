@@ -936,6 +936,13 @@ model Project {
   internalNotes      String?          @map("internal_notes") // INTERNAL-ONLY
   portalEnabled      Boolean          @default(false) @map("portal_enabled")
   hoursSharingMode   HoursSharingMode @default(NONE) @map("hours_sharing_mode")
+  // Phase 3 slice 80 (C47): which parts of the project the client's
+  // portal draws — its one-screen page and its card on the home. LAYOUT,
+  // not access control: no policy reads them and no child row copies them.
+  portalShowTasks      Boolean @default(true) @map("portal_show_tasks")
+  portalShowUpdates    Boolean @default(true) @map("portal_show_updates")
+  portalShowMilestones Boolean @default(true) @map("portal_show_milestones")
+  portalShowFiles      Boolean @default(true) @map("portal_show_files")
   billingCurrency    String?          @map("billing_currency") @db.Char(3)
   defaultBillable    Boolean          @default(true) @map("default_billable")
   leadMemberId       String?          @map("lead_member_id") // Member.id, attribution, no FK

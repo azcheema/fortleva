@@ -2,15 +2,17 @@
 
 import { GlobeIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 
 import { Callout, Field, Pending } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
+import { PORTAL_SECTIONS, type PortalSection } from "@/projects/portal-sections";
 import type { ProjectDetail } from "@/projects/service";
 
-import { setHoursSharingAction, setPortalEnabledAction } from "../actions";
+import { setHoursSharingAction, setPortalEnabledAction, setPortalSectionAction } from "../actions";
 import { useRun } from "@/components/use-run";
 
 const HOURS_MODES = ["NONE", "HOURS", "BILLABLE_AMOUNT"] as const;
@@ -128,5 +130,74 @@ export function PortalControls({ project }: { project: ProjectDetail }) {
         </Callout>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * THE SECTION SWITCHES (Phase 3 slice 80, founder decision C47): which
+ * parts of this project the client's portal draws — its page and its
+ * card on the portal's overview. One row per section, the pattern of
+ * Settings → Modules: a label, the one-line consequence, a switch.
+ *
+ * ITS OWN CARD, NOT A ROW UNDER THE MASTER SWITCH, because it is a
+ * different kind of control and the card's words have to say so: the
+ * master switch decides what a client can REACH, and is audited and
+ * fanned out as a gate; these decide what a page SHOWS, and hiding is
+ * never how something is taken away (C47b) — the card's description ends
+ * on that verb, "make it private", so nobody reads a hidden section as a
+ * withdrawn one.
+ *
+ * NOT OPTIMISTIC, like the two controls above: bound to the server value,
+ * a refusal toasted by `useRun` rather than looking like a revert. The
+ * track is NEUTRAL, not the brand fill — four switches all on is a stripe
+ * of `--primary` saying nothing (the reason Settings → Modules gives).
+ * Disabled on an archived project, as hours sharing is: an archived
+ * project publishes nothing, so there is nothing for them to lay out.
+ */
+export function PortalSectionControls({ project }: { project: ProjectDetail }) {
+  const t = useTranslations("projects.portal.sections");
+  const tCommon = useTranslations("common");
+  const { pending, run } = useRun();
+  // Which row was pressed, so the pending mark sits beside it: a press
+  // revalidates this tab, whose preview re-runs up to six transactions
+  // (the member's read, the module gates, two to four projection reads),
+  // so the round trip is seconds and the switch deliberately does not
+  // move early (the master switch's own `Pending` note, above).
+  const [pressed, setPressed] = useState<PortalSection | null>(null);
+  const disabled = !project.caps.managePortal || project.status === "ARCHIVED" || pending;
+
+  return (
+    <ul data-slot="portal-sections" className="flex flex-col divide-y divide-border">
+      {PORTAL_SECTIONS.map((section) => (
+        <li
+          key={section}
+          data-section={section}
+          className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
+        >
+          <div className="flex min-w-0 flex-col gap-1">
+            <Label htmlFor={`p-section-${section}`} className="font-medium">
+              {t(`${section}.label`)}
+            </Label>
+            <p id={`p-section-${section}-hint`} className="text-xs text-muted-foreground">
+              {t(`${section}.hint`)}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-start gap-2">
+            {pending && pressed === section ? <Pending label={tCommon("loading")} className="mt-0.5" /> : null}
+            <Switch
+              id={`p-section-${section}`}
+              aria-describedby={`p-section-${section}-hint`}
+              checked={project.portalSections[section]}
+              disabled={disabled}
+              onCheckedChange={(v) => {
+                setPressed(section);
+                run(() => setPortalSectionAction(project.id, project.key, section, v));
+              }}
+              className="mt-1 data-checked:bg-(--tone-neutral-line)"
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

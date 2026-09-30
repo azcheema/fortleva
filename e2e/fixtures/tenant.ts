@@ -247,6 +247,12 @@ export async function resetSignoffs(tenantId: string): Promise<number> {
   return reset;
 }
 
+/** Every portal section of every seeded project shown again (the section-switch spec's teardown). */
+export async function resetPortalSections(tenantId: string): Promise<number> {
+  const { reset } = await runCli<{ reset: number }>(["reset-portal-sections", tenantId]);
+  return reset;
+}
+
 /** A member's next timer start is their first again: the staff notice shows (time.spec's task-timer test). */
 export async function forgetStaffNotice(tenantId: string, email: string): Promise<number> {
   const { forgotten } = await runCli<{ forgotten: number }>(["forget-notice", tenantId, email]);

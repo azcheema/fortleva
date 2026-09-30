@@ -95,6 +95,10 @@ export const AUDIT_EVENTS = {
   // only (`src/projects/portal-gate.ts`).
   "project.portal_stamp_alarm": TENANT,
   "project.hours_sharing_changed": TENANT,
+  // Phase 3 slice 80 (C47): a section of the project shown or hidden on
+  // the client's portal. Metadata `{ section, shown }` — layout, not a
+  // gate, but it changes what a client is shown, so it is recorded.
+  "project.portal_section_changed": TENANT,
   "project.viewed_as_contact": TENANT,
   "project_version.created": TENANT,
   "project_version.updated": TENANT,

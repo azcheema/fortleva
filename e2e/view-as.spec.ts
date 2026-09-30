@@ -1,5 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
+import { portalSurface } from "./fixtures/portal-surface";
 import { CONTACT_STORAGE_STATE, STORAGE_STATE, requireSeed } from "./fixtures/tenant";
 
 /**
@@ -43,28 +44,6 @@ import { CONTACT_STORAGE_STATE, STORAGE_STATE, requireSeed } from "./fixtures/te
  */
 
 const seed = requireSeed();
-
-/** The compared region, with the attributes React varies per render stripped. */
-async function portalSurface(page: Page): Promise<string> {
-  const surface = page.locator("[data-portal-surface]");
-  await expect(surface).toBeVisible({ timeout: 30_000 });
-  return surface.evaluate((el) => {
-    const clone = el.cloneNode(true) as HTMLElement;
-    // React 19 emits nothing per-render into this subtree today, so this
-    // is a guard rather than a fix: if a future component adds an
-    // `id`/`aria-controls` pair from `useId`, the comparison would start
-    // failing on two documents that are otherwise identical, and the
-    // failure would read as a leak. Stripped by NAME, so anything else
-    // that differs still fails the test.
-    for (const node of clone.querySelectorAll("*")) {
-      for (const attr of ["id", "aria-controls", "aria-labelledby", "aria-describedby"]) {
-        const v = node.getAttribute(attr);
-        if (v && /:r[0-9a-z]+:|«r/i.test(v)) node.removeAttribute(attr);
-      }
-    }
-    return clone.innerHTML;
-  });
-}
 
 test.describe("view-as-contact", () => {
   /**

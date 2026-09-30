@@ -97,7 +97,15 @@ export async function PortalHome({
   name: string;
 }) {
   const t = await getTranslations("portal");
-  const list = await portalReadOrNull("listPortalTasks", () => listPortalTasks(principal));
+  // THE CARDS FOLLOW EACH PROJECT'S SECTION SWITCHES (Phase 3 slice 80,
+  // founder decision C47, and its home answer of 2026-09-30): a project
+  // whose Tasks are hidden lists the client's own requests alone, one
+  // whose Updates are hidden has no excerpt, and a project left with
+  // neither has no card. The "Waiting on you" card above them does not
+  // follow them — every row on it still leads in, as decided.
+  const list = await portalReadOrNull("listPortalTasks", () =>
+    listPortalTasks(principal, { followSectionSwitches: true }),
+  );
   // THE LINK IS SHOWN ONLY WHEN THE SUBMIT WOULD WORK. It asks the same
   // question `/portal/requests/new` asks — the portal-enabled projects
   // of this client, under `portal.request.create` — so a contact whose
@@ -124,7 +132,7 @@ export async function PortalHome({
   // here, in the order the task list already fixed, with update-only
   // projects after it.
   const latest = await portalReadOrNull("listPortalUpdates", () =>
-    listPortalUpdates(principal, { latestOnly: true }),
+    listPortalUpdates(principal, { latestOnly: true, followSectionSwitches: true }),
   );
   // THE OPEN ASKS, ACROSS PROJECTS — UI.md §4's "action items first"
   // (the sign-off slice): the versions and the deliverables waiting on

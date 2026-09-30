@@ -8,6 +8,7 @@ import {
   type PortalPrincipal,
 } from "@/portal";
 import type { PortalPendingApproval } from "@/portal/signoff";
+import type { PortalSections } from "@/projects/portal-sections";
 
 /**
  * THE PROJECTS A CONTACT CAN SEE, AS A CONTACT SEES THEM — two columns.
@@ -54,6 +55,13 @@ export type PortalProjectRef = {
   readonly id: string;
   readonly key: string;
   readonly name: string;
+  /**
+   * Which parts of the project its page draws (Phase 3 slice 80, C47).
+   * LAYOUT, read off the project row the gate already admitted — never a
+   * reason to refuse anything, and never shown to the client as a fact:
+   * a hidden section is simply not on the page.
+   */
+  readonly sections: PortalSections;
 };
 
 /**
@@ -74,7 +82,7 @@ export async function findPortalProjectByKey(
   if (!/^[A-Z][A-Z0-9]{0,7}$/.test(upper)) return null;
   return withPortalRead(principal, async (tx) => {
     await authorizePortal(tx, principal, "portal.project.view");
-    return tx.project.findFirst({
+    const row = await tx.project.findFirst({
       where: {
         tenantId: principal.tenantId,
         clientId: principal.clientId,
@@ -82,8 +90,28 @@ export async function findPortalProjectByKey(
         portalEnabled: true,
         archivedAt: null,
       },
-      select: { id: true, key: true, name: true },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        portalShowTasks: true,
+        portalShowUpdates: true,
+        portalShowMilestones: true,
+        portalShowFiles: true,
+      },
     });
+    if (!row) return null;
+    return {
+      id: row.id,
+      key: row.key,
+      name: row.name,
+      sections: {
+        tasks: row.portalShowTasks,
+        updates: row.portalShowUpdates,
+        milestones: row.portalShowMilestones,
+        files: row.portalShowFiles,
+      },
+    };
   });
 }
 

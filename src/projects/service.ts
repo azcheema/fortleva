@@ -24,6 +24,7 @@ import { newId } from "@/lib/ids";
 import { latestPublishedHealth } from "@/modules/work/updates";
 import { retryOnContention } from "@/lib/retry";
 import { beginPortalSwitch, reconcilePortalStamps } from "@/projects/portal-gate";
+import type { PortalSection, PortalSections } from "@/projects/portal-sections";
 
 /**
  * Projects (DATA_MODEL.md §6.5, PLAN.md Phase 2). Every list composes
@@ -187,6 +188,8 @@ export type ProjectDetail = {
   leadName: string | null;
   portalEnabled: boolean;
   hoursSharingMode: HoursSharingMode;
+  /** Which parts of the project the client's portal draws (C47) — layout, not a gate. */
+  portalSections: PortalSections;
   billingCurrency: string | null;
   defaultBillable: boolean;
   updateCadence: UpdateCadence;
@@ -299,6 +302,12 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
       leadName: lead?.user.name ?? null,
       portalEnabled: p.portalEnabled,
       hoursSharingMode: p.hoursSharingMode,
+      portalSections: {
+        tasks: p.portalShowTasks,
+        updates: p.portalShowUpdates,
+        milestones: p.portalShowMilestones,
+        files: p.portalShowFiles,
+      },
       billingCurrency: p.billingCurrency,
       defaultBillable: p.defaultBillable,
       updateCadence: p.updateCadence,
@@ -872,6 +881,50 @@ export async function setHoursSharingMode(
       targetType: "Project",
       targetId: projectId,
       metadata: { from: p.hoursSharingMode, to: mode },
+    });
+    return { changed: true };
+  });
+}
+
+/** Each section's column on `project` — the one place the name maps to the schema. */
+const PORTAL_SECTION_COLUMN = {
+  tasks: "portalShowTasks",
+  updates: "portalShowUpdates",
+  milestones: "portalShowMilestones",
+  files: "portalShowFiles",
+} as const satisfies Record<PortalSection, string>;
+
+/**
+ * project:manage_portal — show or hide one section of the project on the
+ * client's portal (Phase 3 slice 80, founder decision C47), audited
+ * `project.portal_section_changed` with `{ section, shown }`.
+ *
+ * LAYOUT, NOT A GATE, and so none of `setPortalEnabled`'s machinery: no
+ * advisory gate, no fan-out, no reconcile, no lock bound. Nothing reads
+ * these columns but the portal's projections, off the PROJECT row, so a
+ * press is one small UPDATE and one audit row in one transaction. No
+ * archived guard either, which is `setHoursSharingMode`'s shape: an
+ * archived project publishes nothing whatever these say, and the Portal
+ * tab disables the switches there rather than the service fighting them.
+ */
+export async function setPortalSection(
+  ctx: ProjectCtx,
+  projectId: string,
+  section: PortalSection,
+  shown: boolean,
+): Promise<{ changed: boolean }> {
+  const column = PORTAL_SECTION_COLUMN[section];
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "project:manage_portal");
+    const p = await loadInScope(tx, ctx.actor, projectId);
+    if (p[column] === shown) return { changed: false };
+    // `select` so the UPDATE returns one column, not the row (AGENTS.md).
+    await tx.project.update({ where: { id: projectId }, data: { [column]: shown }, select: { id: true } });
+    await record(tx, {
+      action: "project.portal_section_changed",
+      targetType: "Project",
+      targetId: projectId,
+      metadata: { section, shown },
     });
     return { changed: true };
   });

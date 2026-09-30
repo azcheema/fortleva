@@ -142,7 +142,7 @@ One event model, one capture mechanism, two audiences (brief §9):
 |---|---|
 | Work (2W) | `work_item.created`, `work_item.deleted`, `work_item.state_changed`, `work_item.visibility_changed`, `work_item.triaged`, `work_item.archived`, `work_item.bulk_edited`, `comment.deleted`, `comment.visibility_changed`, `comment.edited_by_other` *(added 2026-09-15 — founder decision 2026-09-12: one's own comment is routine and writes a history row only; editing someone else's is `comment:edit_any` and audits)*, `workflow.changed`, `label.created`, `label.deleted`, `project_template.applied`, `notification.preference_changed`, `search.index_rebuilt` [TENANT] |
 | Time (2T) | `timer.started`, `timer.stopped`, `timer.auto_stopped`, `time_entry.created`, `time_entry.edited_by_other`, `time_entry.deleted`, `time_entry.locked`, `time_entry.unlocked`, `time_entry.repriced`, `time.exported`, `rate_card.created`, `rate_card.closed`, `rate_card.cost_revealed` (aggregate, per session — never per row), `budget.created`, `budget.changed`, `budget.alert_sent`, `staff_notice.published`, `staff_notice.acknowledged` [TENANT]. **Metadata never contains a cost amount** — card id + field only. |
-| Portal & sharing (2, 3) | `project.portal_enabled`, `project.portal_disabled`, `project.portal_stamp_alarm` *(added 2026-09-28, Phase 3 slice 74: actor SYSTEM; written whenever a reconcile pass reads the project's switch OFF and finds rows of that project disagreeing with it — in the pass's own transaction when it corrects them, so the correction and its record commit together, and once more after the last pass if rows are still held disagreeing. The gate should make that impossible, so the row is the durable trace of a possible exposure, never a routine event. It follows the switch the pass READ, which need not be the press that ran it. Metadata ids and counts only — `src/projects/portal-gate.ts`)*, `project.hours_sharing_changed`, `project.key_changed`, `project.viewed_as_contact`, `project_update.published`, `project_update.archived`, `project_update.visibility_changed`, `portal.request_created`, `portal.comment_created`, `portal.task_completed`, `document.approval_requested`, `document.approval_decided` [TENANT] |
+| Portal & sharing (2, 3) | `project.portal_enabled`, `project.portal_disabled`, `project.portal_stamp_alarm` *(added 2026-09-28, Phase 3 slice 74: actor SYSTEM; written whenever a reconcile pass reads the project's switch OFF and finds rows of that project disagreeing with it — in the pass's own transaction when it corrects them, so the correction and its record commit together, and once more after the last pass if rows are still held disagreeing. The gate should make that impossible, so the row is the durable trace of a possible exposure, never a routine event. It follows the switch the pass READ, which need not be the press that ran it. Metadata ids and counts only — `src/projects/portal-gate.ts`)*, `project.hours_sharing_changed`, `project.portal_section_changed` *(added 2026-09-30, Phase 3 slice 80: a section of the project shown or hidden on the client’s portal — layout, not a gate; metadata `{section, shown}`)*, `project.key_changed`, `project.viewed_as_contact`, `project_update.published`, `project_update.archived`, `project_update.visibility_changed`, `portal.request_created`, `portal.comment_created`, `portal.task_completed`, `document.approval_requested`, `document.approval_decided` [TENANT] |
 | Vault & assets (3V) | `credential.created`, `credential.updated`, `credential.deleted`, `credential.revealed`, `credential.copied`, `credential.totp_generated`, `credential.visibility_changed`, `credential.shared`, `credential.share_revoked`, `credential.share_viewed`, `credential.exported`, `credential.rotation_flagged`, `asset.created`, `asset.updated`, `asset.deleted`, `tenant_key.created`, `tenant_key.rotated`, `expiration.reminder_sent`, `vault.step_up_required`, `vault.reveal_budget_exceeded` [TENANT]. Metadata: credential id + field name only, never a secret, never a username. |
 | Auth (1b) | `auth.step_up_required` — the ✦ step-up *challenge* (`MFA_REQUIRED` with `stepUp`), never audited as `authz.escalation_denied` (AUTHZ.md §7.5); the vault path uses `vault.step_up_required` (row above) [TENANT] |
 | Jobs (2W+) | `job.run` — **one summary event per job run** (job name, counts, duration), not one per invocation (TENANCY.md §12 amendment) [PLATFORM; mirrored TENANT when the run touched exactly one tenant] |
@@ -1055,6 +1055,19 @@ enum ProjectStatus {
 /// - hoursSharingMode: what the portal's hours widget may show
 ///   (CONTACT_PRIMARY only): NONE (default) | HOURS | BILLABLE_AMOUNT.
 ///   Drives ProjectTimeSummary.visibility (§6.15). Never per-member.
+/// - portalShowTasks / portalShowUpdates / portalShowMilestones /
+///   portalShowFiles [ADDED 2026-09-30, Phase 3 slice 80, founder
+///   decision C47]: which parts of the project the client's portal DRAWS
+///   — its one-screen page and its card on the portal's home. NOT NULL
+///   DEFAULT true. LAYOUT, NOT A GATE: no policy reads them, no trigger
+///   fans them out, no child row copies them, and a hidden section's rows
+///   stay reachable by link, "Waiting on you" and the Files page, and the
+///   all-updates page opens at its address (C47b); taking a row away is making it INTERNAL.
+///   The portal's projections read them off this row under the contact
+///   principal (`followSectionSwitches` on the task and update lists; the
+///   timeline always). Tasks hidden keeps the client's own `kind =
+///   REQUEST` rows, filtered in the `where`, never selected (C47c).
+///   Written by `setPortalSection` under project:manage_portal.
 /// - billingCurrency / defaultBillable: one billing currency per project
 ///   (no FX in time reports); defaultBillable seeds TimeEntry.billable.
 /// - leadMemberId: the accountable member (shown to staff, not portal).
@@ -1078,7 +1091,7 @@ enum ProjectStatus {
 /// `client_id = app.client_id AND portal_enabled` (a project row is
 /// structural — it has no visibility column of its own).
 /// scope=client  rls=B (projectScoped)  ret=R2  enc=none
-/// audit: project.created | project.updated | project.status_changed | project.archived | project.key_changed | project.portal_enabled | project.portal_disabled | project.portal_stamp_alarm (slice 74, actor SYSTEM — §3.1) | project.hours_sharing_changed | project.viewed_as_contact
+/// audit: project.created | project.updated | project.status_changed | project.archived | project.key_changed | project.portal_enabled | project.portal_disabled | project.portal_stamp_alarm (slice 74, actor SYSTEM — §3.1) | project.hours_sharing_changed | project.portal_section_changed (slice 80, `{section, shown}`) | project.viewed_as_contact
 model Project {
   id            String        @id @default(uuid(7))
   tenantId      String
@@ -1098,6 +1111,10 @@ model Project {
   // ADDED 2026-08-16 (work-management plan):
   portalEnabled      Boolean          @default(false)   // the project-level portal gate; trigger fans out to portal_enabled
   hoursSharingMode   HoursSharingMode @default(NONE)    // portal hours widget mode (CONTACT_PRIMARY only)
+  portalShowTasks      Boolean @default(true)           // ADDED 2026-09-30 (C47): layout only — see above
+  portalShowUpdates    Boolean @default(true)
+  portalShowMilestones Boolean @default(true)
+  portalShowFiles      Boolean @default(true)
   billingCurrency    String?          @db.Char(3)       // one currency per project for time money
   defaultBillable    Boolean          @default(true)    // seeds TimeEntry.billable
   leadMemberId       String?                            // accountable member (staff-only projection)

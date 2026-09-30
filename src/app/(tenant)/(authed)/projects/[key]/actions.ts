@@ -20,10 +20,12 @@ import {
   changeProjectStatus,
   setHoursSharingMode,
   setPortalEnabled,
+  setPortalSection,
   unarchiveProject,
   updateProject,
   type ProjectPatch,
 } from "@/projects/service";
+import { isPortalSection } from "@/projects/portal-sections";
 import { createVersion, requestVersionSignoff, shipVersion, updateVersion } from "@/projects/versions";
 
 /**
@@ -182,6 +184,30 @@ export async function setHoursSharingAction(
   const tCommon = await getTranslations("common");
   const r = await runForm(projectPath(key, "/portal"), async () => {
     await setHoursSharingMode(ctx, projectId, m);
+    return tCommon("saved");
+  });
+  if (r.ok) revalidateProject(key);
+  return r;
+}
+
+/**
+ * Show or hide one section of the project on the client's portal (Phase 3
+ * slice 80, C47). Every argument is checked for its TYPE before anything
+ * reads it: a server action is a public endpoint, and `key` becomes a
+ * path handed to `revalidatePath`.
+ */
+export async function setPortalSectionAction(
+  projectId: string,
+  key: string,
+  section: string,
+  shown: boolean,
+): Promise<FormResult> {
+  if (!uuid.safeParse(projectId).success || typeof key !== "string" || !isPortalSection(section)) return invalid();
+  if (typeof shown !== "boolean") return invalid();
+  const ctx = await ctxOf();
+  const tCommon = await getTranslations("common");
+  const r = await runForm(projectPath(key, "/portal"), async () => {
+    await setPortalSection(ctx, projectId, section, shown);
     return tCommon("saved");
   });
   if (r.ok) revalidateProject(key);

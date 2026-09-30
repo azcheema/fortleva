@@ -108,7 +108,14 @@ export type PortalPreviewBlocker =
    * already live — keeps the panel byte-faithful and still hands the
    * member the verb.
    */
-  | "NOTHING_SHARED";
+  | "NOTHING_SHARED"
+  /**
+   * Something IS shared, and every part of it the card would draw is in a
+   * section this tab has hidden (Phase 3 slice 80, C47) — so the client's
+   * home has no card for this project. Distinct from NOTHING_SHARED,
+   * whose verb (share something) would do nothing here.
+   */
+  | "SECTIONS_HIDDEN";
 
 export type PortalPreviewContact = {
   readonly id: string;
@@ -132,10 +139,12 @@ export type PortalPreview = {
    * The projection's own answer for this project, or null — which is
    * both "nothing is shared" and "the read was refused", exactly as it
    * is for a contact. The blockers above are what tell the two apart,
-   * and they are computed from the member's side.
+   * and they are computed from the member's side. Since slice 80 it is
+   * the list AS THE HOME'S CARD DRAWS IT: with Tasks hidden, the client's
+   * own requests alone.
    */
   readonly tasks: PortalProjectTasks | null;
-  /** The project's newest published update as the contact sees it, or null (Phase 3, §6.16). */
+  /** The project's newest published update as the contact sees it, or null (Phase 3, §6.16) — null too with Updates hidden. */
   readonly update: PortalUpdate | null;
   readonly truncated: boolean;
 };
@@ -162,7 +171,15 @@ export async function readPortalPreview(
       await requireAccess(tx, ctx.tenantId, ctx.actor, "project:manage_portal");
       const project = await tx.project.findFirst({
         where: { id: projectId },
-        select: { id: true, clientId: true, portalEnabled: true, archivedAt: true },
+        select: {
+          id: true,
+          clientId: true,
+          portalEnabled: true,
+          archivedAt: true,
+          // The two section switches the home card follows (slice 80).
+          portalShowTasks: true,
+          portalShowUpdates: true,
+        },
       });
       // NOT_FOUND either way, so a project of another tenant (RLS
       // returns no row), one outside the member's scope (`assertInScope`)
@@ -294,6 +311,34 @@ export async function readPortalPreview(
     update = latest?.[0] ?? null;
   }
 
+  // THE CARD AS THE CLIENT'S HOME DRAWS IT (Phase 3 slice 80, C47): the
+  // panel is that card, and the home's reads follow the section switches,
+  // so the panel follows them too. The two reads above stay WHOLE — they
+  // are what tells "nothing is shared" from "it is all hidden" below.
+  // (`project.portalShow*` is the member's read of the switch; it decides
+  // only whether a second read is worth making.)
+  // Either switch off: the same projection with the same option the home
+  // passes, one more sequential read each, only then — so while a section
+  // is HIDDEN the member's copy of the switch never stands in for the
+  // projection's answer ("a separate preview renderer is how previews
+  // lie", the header). While it is shown the whole read IS the followed
+  // one, because the option's only term today is the switch; an option
+  // that grew a second condition would have to be read here always.
+  let shownList = list;
+  if (principal && !project.portalShowTasks) {
+    shownList = await portalReadOrNull("previewPortalTasks", () =>
+      listPortalTasks(principal, { projectId, followSectionSwitches: true }),
+    );
+  }
+  const shownTasks = shownList?.projects[0] ?? null;
+  let shownUpdate = update;
+  if (principal && !project.portalShowUpdates) {
+    const latest = await portalReadOrNull("previewPortalUpdates", () =>
+      listPortalUpdates(principal, { projectId, latestOnly: true, followSectionSwitches: true }),
+    );
+    shownUpdate = latest?.[0] ?? null;
+  }
+
   // LAST, and only when nothing else is in the way: with a blocker
   // standing, "nothing is shared" is not the reason the panel is empty
   // and saying so would send the member to fix the wrong thing. The
@@ -303,13 +348,16 @@ export async function readPortalPreview(
   // round trip would not close that race either, since the row can
   // change after it too.
   if (!tasks && !update && blockers.length === 0) blockers.push("NOTHING_SHARED");
+  // …and when something IS shared but every part the card draws is in a
+  // hidden section, that is the reason instead (slice 80).
+  else if (!shownTasks && !shownUpdate && blockers.length === 0) blockers.push("SECTIONS_HIDDEN");
 
   return {
     blockers,
-    update,
+    update: shownUpdate,
     contact: as ? { id: as.id, name: as.name, profile: as.portalProfile } : null,
     audience: contacts.length,
-    tasks,
-    truncated: list?.truncated ?? false,
+    tasks: shownTasks,
+    truncated: shownList?.truncated ?? false,
   };
 }
