@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getLocale, getTranslations } from "next-intl/server";
+import { getFormatter, getTranslations } from "next-intl/server";
 
 import { Page, PageHeader, SectionCard } from "@/components/semantic";
 import { UpdateView } from "@/components/updates/update-view";
 import { Button } from "@/components/ui/button";
-import { formatDate } from "@/lib/format";
 import { listPortalUpdates, readUpdateBody } from "@/modules/work";
 import type { PortalSnapshot } from "@/modules/work/update-snapshot";
 import { portalReadOrNull } from "@/portal";
@@ -37,7 +36,8 @@ export default async function PortalProjectUpdatesPage({ params }: { params: Pro
   const { key } = await params;
   const { principal, name } = await requirePortalContext();
   const t = await getTranslations("portal.updates");
-  const locale = await getLocale();
+  // The request's zone, as the post's own "Published" line below it.
+  const format = await getFormatter();
 
   const project = await portalReadOrNull("findPortalProjectByKey", () =>
     findPortalProjectByKey(principal, key),
@@ -74,7 +74,7 @@ export default async function PortalProjectUpdatesPage({ params }: { params: Pro
                 id={`update-${update.id}`}
                 className="scroll-mt-16"
                 title={update.title ?? t("title")}
-                description={t("updatedAgo", { date: formatDate(locale, update.publishedAt) })}
+                description={t("updatedAgo", { date: format.dateTime(update.publishedAt, { year: "numeric", month: "short", day: "numeric" }) })}
               >
                 <UpdateView
                   update={{

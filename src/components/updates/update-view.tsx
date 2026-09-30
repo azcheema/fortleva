@@ -1,9 +1,9 @@
-import { useLocale, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 
 import { RichText } from "@/components/rich-text/render";
 import { Callout, HealthChip } from "@/components/semantic";
 import { MetricTiles, type MetricTileSpec } from "@/components/updates/metric-tiles";
-import { formatDate, formatDay, formatDurationSeconds, formatMoney } from "@/lib/format";
+import { formatDay, formatDurationSeconds, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { UpdateBody, UpdateSection } from "@/modules/work/update-body";
 import type { PortalSnapshot } from "@/modules/work/update-snapshot";
@@ -49,6 +49,22 @@ const SECTION_HEADING: Record<Exclude<UpdateSection["key"], "CUSTOM">, true> = {
   DECISIONS_NEEDED: true,
 };
 
+/**
+ * THE TWO REAL INSTANTS ON A POST — when it was published, and when its
+ * numbers were computed — are formatted by next-intl in the REQUEST's
+ * zone, never by `formatDate`, which uses the process's own. This
+ * component also renders inside the composer, a CLIENT component, where
+ * the process is the browser: a server in UTC and a browser in Stockholm
+ * name different days for as many hours a night as the zones differ (two
+ * in Stockholm's summer, one in winter), and React refused the
+ * hydration (error 418 on the composer's "Numbers as of …", CI run
+ * 36789135756 at 23:0x UTC). next-intl hands the same zone to both sides
+ * (`NextIntlClientProvider` inherits it from `src/i18n/request.ts`). The
+ * period's two days are `@db.Date`s and stay on `formatDay`, which is
+ * pinned to UTC for the opposite reason.
+ */
+const DAY = { year: "numeric", month: "short", day: "numeric" } as const;
+
 export function UpdateView({
   update,
   headingLevel = 3,
@@ -61,6 +77,7 @@ export function UpdateView({
 }) {
   const t = useTranslations("updates");
   const locale = useLocale();
+  const format = useFormatter();
   const Heading = `h${headingLevel}` as const;
   const period =
     update.periodStart && update.periodEnd
@@ -87,7 +104,7 @@ export function UpdateView({
           <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             {period ? <span>{period}</span> : null}
             {update.publishedAt ? (
-              <span>{t("published", { date: formatDate(locale, update.publishedAt) })}</span>
+              <span>{t("published", { date: format.dateTime(update.publishedAt, DAY) })}</span>
             ) : null}
           </p>
         ) : null}
@@ -126,6 +143,7 @@ export function UpdateView({
 function Metrics({ metrics }: { metrics: PortalSnapshot }) {
   const t = useTranslations("updates.metrics");
   const locale = useLocale();
+  const format = useFormatter();
   const tiles: MetricTileSpec[] = [];
 
   if (metrics.tasks) {
@@ -183,7 +201,7 @@ function Metrics({ metrics }: { metrics: PortalSnapshot }) {
       <p className="eyebrow text-muted-foreground">{t("title")}</p>
       <MetricTiles tiles={tiles} className="lg:grid-cols-5" />
       <p className="text-xs text-muted-foreground">
-        {t("asOf", { date: formatDate(locale, new Date(metrics.computedAt)) })}
+        {t("asOf", { date: format.dateTime(new Date(metrics.computedAt), DAY) })}
       </p>
     </section>
   );

@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 import { MegaphoneIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
-import { getLocale, getTranslations } from "next-intl/server";
+import { getFormatter, getTranslations } from "next-intl/server";
 
 import { AuthzError } from "@/authz/errors";
 import { EmptyState, HealthChip, SectionCard } from "@/components/semantic";
 import { UpdateView } from "@/components/updates/update-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDate } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
 import { getUpdate, listUpdates, type UpdateDetail, type UpdateList } from "@/modules/work";
 
@@ -36,7 +35,8 @@ export default async function ProjectUpdatesPage({ params }: { params: Promise<{
   const ctx = { tenantId: membership.tenantId, actor };
   const t = await getTranslations("projects.updates");
   const tCommon = await getTranslations("common");
-  const locale = await getLocale();
+  // The request's zone, as the post's own "Published" line in the card.
+  const format = await getFormatter();
 
   let list: UpdateList | null = null;
   let latest: UpdateDetail | null = null;
@@ -144,7 +144,7 @@ export default async function ProjectUpdatesPage({ params }: { params: Promise<{
                       <HealthChip value={u.health} />
                       <Badge variant={STATUS_VARIANT[u.status]}>{t(`status.${u.status}`)}</Badge>
                       <span className="text-xs text-muted-foreground">
-                        {formatDate(locale, u.publishedAt ?? u.updatedAt)}
+                        {format.dateTime(u.publishedAt ?? u.updatedAt, { year: "numeric", month: "short", day: "numeric" })}
                         {u.authorName ? ` · ${u.authorName}` : ""}
                       </span>
                     </Link>

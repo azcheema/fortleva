@@ -2,7 +2,7 @@
 
 import { CheckIcon, ClockIcon, CopyIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useLocale, useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -10,7 +10,6 @@ import { isGoSequencePending, useScopeKeys } from "@/components/shell/use-hotkey
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { focusedKeyApplies, focusedKeyGuards, keyEventShape, ownsArrows, rovingStep } from "@/lib/keymap";
-import { formatDate } from "@/lib/format";
 
 import { triageAction, triageDuplicateTargetsAction, type DuplicateTarget, type TriageActionInput } from "./actions";
 import { TriageAnswer, type AnswerMode } from "./triage-answer";
@@ -94,7 +93,11 @@ export function TriageLane({
 }) {
   const t = useTranslations("projects.triage");
   const tErrors = useTranslations("errors");
-  const locale = useLocale();
+  // next-intl's formatter, not `formatDate`: this is a CLIENT component and
+  // `createdAt` is an instant, so in the process's own zone a UTC server and
+  // a Stockholm browser name different days for as many hours a night as
+  // the zones differ, and hydration fails (the update composer hit it first, in slice 80's CI).
+  const format = useFormatter();
   const router = useRouter();
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -380,7 +383,7 @@ export function TriageLane({
               <span>{row.reportedBy ? t("reportedBy", { name: row.reportedBy }) : t("reportedByUnknown")}</span>
               <span>
                 {t("askedOn", {
-                  date: formatDate(locale, new Date(row.createdAt), {
+                  date: format.dateTime(new Date(row.createdAt), {
                     day: "numeric",
                     month: "short",
                     year: "numeric",

@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { useLocale, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 
 import { HealthChip, StatusIcon, Timeline, TimelineItem } from "@/components/semantic";
 import { STATUS_MAP } from "@/lib/enum-map";
-import { formatDate, formatDay } from "@/lib/format";
+import { formatDay } from "@/lib/format";
 import type { PortalTimelineEntry } from "@/modules/work";
 
 import { signOffKey, versionAnchor } from "@/portal/signoff-vocabulary";
@@ -66,7 +66,11 @@ function TimelineEntry({
 }) {
   const t = useTranslations("portal.timeline");
   const locale = useLocale();
-  const when = formatDate(locale, entry.at);
+  // An instant, in the REQUEST's zone — the same one `UpdateView` prints a
+  // post's "Published" in, so the rail and the card under it cannot name
+  // two days for one post (`formatDate` would use the process's zone).
+  const format = useFormatter();
+  const when = format.dateTime(entry.at, { year: "numeric", month: "short", day: "numeric" });
 
   switch (entry.kind) {
     case "update": {
@@ -131,8 +135,8 @@ function TimelineEntry({
           <div data-slot="portal-event" data-kind={entry.kind} className="flex flex-col gap-1">
             <span className="text-sm font-medium text-foreground">{entry.name}</span>
             {/* A due date is a DAY encoded as UTC midnight — `formatDay`,
-                as the task list's target date; the other three kinds are
-                instants and take `formatDate` above. */}
+                as the task list's target date; the other kinds are
+                instants and take the request-zone `when` above. */}
             <span className="text-xs text-muted-foreground">
               {t("milestoneDue", { date: formatDay(locale, entry.at) })}
             </span>

@@ -5,7 +5,7 @@ import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { EmptyState, SectionCard, StatusIcon } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { UpdateView } from "@/components/updates/update-view";
-import { formatDate, formatDay } from "@/lib/format";
+import { formatDay } from "@/lib/format";
 import { STATUS_MAP } from "@/lib/enum-map";
 import {
   PORTAL_TASK_CATEGORIES,
@@ -126,7 +126,7 @@ export function ProjectTasks({
   const t = useTranslations("portal.tasks");
   const tUpdates = useTranslations("portal.updates");
   const tStates = useTranslations("states.portalTaskCategory");
-  const locale = useLocale();
+  const format = useFormatter();
 
   const groups = PORTAL_TASK_CATEGORIES.map((category) => ({
     category,
@@ -135,8 +135,9 @@ export function ProjectTasks({
 
   // The home card's subline: when the newest post was, or "Shared tasks".
   // A caller that names the card itself gets no subline unless it asks.
+  // In the request's zone, as the post's own "Published" line under it.
   const defaultDescription = update
-    ? tUpdates("updatedAgo", { date: formatDate(locale, update.publishedAt) })
+    ? tUpdates("updatedAgo", { date: format.dateTime(update.publishedAt, { year: "numeric", month: "short", day: "numeric" }) })
     : t("heading");
 
   return (
