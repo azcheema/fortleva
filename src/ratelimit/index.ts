@@ -1,8 +1,10 @@
+import { createHmac } from "node:crypto";
+
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-import { isProduction, trustedProxyHops, upstashConfig } from "@/config";
-import { clientIpFrom } from "@/lib/client-ip";
+import { isProduction, rateLimitSubjectKey, trustedProxyHops, upstashConfig } from "@/config";
+import { clientIpFrom, rateLimitSource } from "@/lib/client-ip";
 
 /**
  * Rate limiting behind ONE config module (PLAN.md Phase 1b, SECURITY.md
@@ -18,8 +20,10 @@ import { clientIpFrom } from "@/lib/client-ip";
  * floor which holds with or without Upstash.
  *
  * Buckets are named, fixed policies — call sites never invent numbers.
- * Keys are `<bucket>:<subject>` where the subject is an IP or a user id;
- * neither is logged here.
+ * Keys are `<bucket>:<subject>` where the subject is an IP, an email
+ * address or a principal id; none is logged here, and none reaches
+ * Upstash as written — the Upstash leg sends `subjectDigest(subject)`
+ * (below), so the Redis database holds HMACs and nothing else.
  */
 
 export type RateLimitBucket = keyof typeof POLICIES;
@@ -28,6 +32,50 @@ export type RateLimitBucket = keyof typeof POLICIES;
 const POLICIES = {
   /** Password sign-in attempts per IP. */
   "auth.sign_in": { limit: 10, window: "10 m" },
+  /**
+   * PASSWORD SIGN-IN ATTEMPTS AT ONE CREDENTIAL FROM ONE SOURCE (an IPv4
+   * address, an IPv6 /48 — `clientNetwork`) — SECURITY.md
+   * §4's "5 / 15 min per email" as any single source meets it. Room for a
+   * person who mistypes and then remembers; a script on one machine gets
+   * five guesses a quarter of an hour at any one account.
+   *
+   * It exists as its own key, under the per-credential ceiling below,
+   * because a per-credential key ALONE is a lockout anybody can work from
+   * one machine: refused requests are not counted (the sliding window's
+   * script returns before it increments), so five requests every fifteen
+   * minutes would keep the owner out indefinitely while the per-IP bucket
+   * above, at ten, never fired. Found by both fresh reviews of slice 81,
+   * against a first cut that claimed the opposite.
+   */
+  "auth.sign_in_address_ip": { limit: 5, window: "15 m" },
+  /**
+   * PASSWORD SIGN-IN ATTEMPTS AT ONE CREDENTIAL, FROM ANYWHERE — the key an
+   * IP-rotating guesser cannot change (Phase 3's "per-email limits on
+   * login"): they rent addresses by the thousand, each a fresh per-IP
+   * budget, and the account they type is the one thing every guess has in
+   * common. The ceiling is FOUR sources' worth of the bucket above, so a
+   * lockout takes at least four SOURCES guessing inside one window — four
+   * IPv4 addresses or four IPv6 /48s (`clientNetwork` below; one person can
+   * hold thousands of /64s, and a /48 is the usual grant) — a COST FLOOR, not a
+   * count of people: one well-provisioned host can hold several — the distributed attack this key
+   * exists for, and while it runs the owner waits. The windows are fixed,
+   * epoch-aligned quarter-hours (the sliding window weighs the previous
+   * one), so the lock lifts at the first quarter-hour boundary after the
+   * guessing stops. The four-source floor holds only while this bucket and
+   * the one above share their window length (`rate-limit-hook.test.ts`
+   * pins it): a shorter per-source window would let fewer sources fill it.
+   *
+   * Every attempt counts, the right password included. Counting only
+   * failures by checking first and counting after would let a parallel
+   * burst through the check; refunding a success instead would need an
+   * after-hook on all three instances for a case — a person signing in
+   * twenty times in fifteen minutes — that does not arise.
+   *
+   * The key is the CREDENTIAL, not the plane (`rate-limit-hook.ts`): the
+   * member and console planes read one `account` row, so one password gets
+   * one budget across both. Fail-open like the rest of `auth.*`.
+   */
+  "auth.sign_in_address": { limit: 20, window: "15 m" },
   /** Sign-up attempts per IP. */
   "auth.sign_up": { limit: 5, window: "1 h" },
   /** Invite-acceptance attempts per IP (token guessing). */
@@ -196,6 +244,43 @@ const noopLimiter: Limiter = {
   },
 };
 
+/**
+ * What Upstash is told instead of the subject: an HMAC-SHA256 under
+ * `rateLimitSubjectKey` (src/config), base64url. Deterministic, so one
+ * subject is one counter; keyed, so the Redis database — a US-parent
+ * sub-processor's, SECURITY.md §9.2 — cannot be reversed into the IP
+ * addresses, email addresses and principal ids it is counting, not even
+ * by enumerating the IPv4 space or a list of likely addresses, which an
+ * unkeyed hash would allow.
+ *
+ * Applied in the Upstash leg and only there: the in-process floor below
+ * never leaves the process, and the subject's shape stays a call site's
+ * business (`<plane>:<ip>`, `<store>:<address>`, a JSON array, a contact id).
+ */
+export const subjectDigest = (subject: string): string =>
+  createHmac("sha256", rateLimitSubjectKey).update(subject).digest("base64url");
+
+/**
+ * How long ONE question waits for Redis before it is let through. The
+ * library's default is five seconds, and it fails open when it fires —
+ * and a password sign-in asks three questions in turn (IP, credential at
+ * IP, credential; `rate-limit-hook.ts`), so under a degraded Upstash every
+ * sign-in on all three planes would stall fifteen seconds and then be
+ * allowed anyway. A healthy round trip to the EU database is tens of
+ * milliseconds; one second each keeps the same fail-open answer at a
+ * worst case of three.
+ */
+const UPSTASH_TIMEOUT_MS = 1_000;
+
+/** An error as a log line with any URL or Upstash host masked, bounded. */
+const describeError = (e: unknown): string => {
+  const text = e instanceof Error ? `${e.name}: ${e.message}` : typeof e;
+  return text
+    .replace(/https?:\/\/\S+/g, "<url>")
+    .replace(/[\w.-]+\.upstash\.io/g, "<host>")
+    .slice(0, 300);
+};
+
 class UpstashLimiter implements Limiter {
   readonly name = "upstash" as const;
   private readonly limiters = new Map<RateLimitBucket, Ratelimit>();
@@ -210,6 +295,18 @@ class UpstashLimiter implements Limiter {
         limiter: Ratelimit.slidingWindow(p.limit, p.window),
         prefix: `flv:rl:${bucket}`,
         analytics: false,
+        timeout: UPSTASH_TIMEOUT_MS,
+        // NO IN-PROCESS BLOCK CACHE (slice 81's fix-pass review). The
+        // library's default remembers every refused identifier until the
+        // end of the FIXED window the refusal happened in, in a Map with no
+        // bound — so it could keep a locked account refused for most of a
+        // window after Redis's sliding window would have let the owner back
+        // in (fifteen minutes where Redis says forty-five seconds), and an
+        // unauthenticated caller rotating addresses grew it for the life of
+        // the process. Off, Redis decides every time, at
+        // one command per refused request — which, for a flood from one
+        // address, Better Auth's own in-memory limiter mostly absorbs first.
+        ephemeralCache: false,
       });
       this.limiters.set(bucket, l);
     }
@@ -218,12 +315,21 @@ class UpstashLimiter implements Limiter {
 
   async limit(bucket: RateLimitBucket, subject: string): Promise<RateLimitResult> {
     try {
-      const r = await this.for(bucket).limit(subject);
+      const r = await this.for(bucket).limit(subjectDigest(subject));
+      // The library's timeout answers `success: true` and says why only in
+      // `reason` — a fail-open as real as the catch below, and as silent as
+      // the no-op unless somebody says so.
+      if (r.reason === "timeout") {
+        console.error(`[ratelimit] upstash timed out after ${UPSTASH_TIMEOUT_MS} ms — failing open`);
+      }
       return { ok: r.success, remaining: r.remaining, reset: r.reset };
     } catch (e) {
       // Redis unreachable: fail open, loudly. Availability of sign-in
       // beats a stricter limit; the vault budget is fail-closed elsewhere.
-      console.error("[ratelimit] upstash error — failing open", e);
+      // The error's name and a masked message, never the object: a DNS or
+      // connect failure carries the database's host in its `cause`, and the
+      // host is not this log's to print.
+      console.error(`[ratelimit] upstash error — failing open: ${describeError(e)}`);
       return { ok: true, remaining: 0, reset: 0 };
     }
   }
@@ -385,8 +491,23 @@ export function resetLocalLimiter(): void {
  * it, and stopped being survivable the moment `allowStrict` became the
  * only control on an unauthenticated route. Found by a fresh security
  * review of the slice that introduced it.
+ *
+ * **AND AN IPv6 CALLER IS ITS /64** (`rateLimitSource`, slice 81's fix-pass
+ * review): one host is routinely given 2^64 addresses, and counted one by
+ * one each was a fresh budget. Only the limiter's subject is grouped — the
+ * audit row keeps the address the chain gave (`clientIpFrom`).
  */
 export const clientIp = (headers: Headers): string =>
-  clientIpFrom((name) => headers.get(name), trustedProxyHops);
+  rateLimitSource(clientIpFrom((name) => headers.get(name), trustedProxyHops));
+
+/**
+ * The same caller as a wider NETWORK — its /48 for IPv6, the address for
+ * IPv4 — for a budget that is per ACCOUNT, where one person holding many
+ * /64s must still count once (`rateLimitSource`; the sign-in limiter's
+ * per-credential-from-a-source tier). Not for a budget every account on a
+ * plane shares: a /48 can be a whole organisation.
+ */
+export const clientNetwork = (headers: Headers): string =>
+  rateLimitSource(clientIpFrom((name) => headers.get(name), trustedProxyHops), 48);
 
 export const RATE_LIMIT_POLICIES: Readonly<typeof POLICIES> = POLICIES;

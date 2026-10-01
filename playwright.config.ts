@@ -8,6 +8,20 @@ import { config as loadEnv } from "dotenv";
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
 
+// AND THEN NOT THE RATE LIMITER'S REDIS (named in `.env.local` since
+// 2026-10-01): the harness runs on the no-op limiter, as CI does. Its
+// sign-ins all come from one address — ten-odd member sign-ins and the
+// same employee's address across specs — which a real limiter would
+// refuse part way through a run, and Redis would remember into the next.
+// Deleted for this process and the children that inherit its env —
+// though `e2e/fixtures/seed-cli.ts`, run through tsx, reloads `.env.local`
+// and so strips them again itself — and set EMPTY for the server below: `next start` loads `.env.local` itself for
+// every key not already defined, and an empty value is defined
+// (`src/config` reads "" as unset). A server REUSED on the port gets
+// neither — start it with the same two empty values.
+delete process.env["UPSTASH_REDIS_REST_URL"];
+delete process.env["UPSTASH_REDIS_REST_TOKEN"];
+
 /**
  * End-to-end harness (PLAN.md Phase 2). Chromium only — this suite
  * exists to catch behaviour the unit and DB suites structurally cannot
@@ -98,6 +112,13 @@ export default defineConfig({
     // Invite would write the row and then throw, and the acceptance
     // token exists nowhere but that message. See src/config's own note:
     // this is the only place in the repository that sets it.
-    env: { APP_URL: BASE_URL, PORT: String(PORT), MAIL_DEV_OUTBOX: "1" },
+    // The two empty Upstash values: see the note under `loadEnv` above.
+    env: {
+      APP_URL: BASE_URL,
+      PORT: String(PORT),
+      MAIL_DEV_OUTBOX: "1",
+      UPSTASH_REDIS_REST_URL: "",
+      UPSTASH_REDIS_REST_TOKEN: "",
+    },
   },
 });

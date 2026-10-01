@@ -1,5 +1,6 @@
 "use server";
 
+import { APIError } from "better-auth/api";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -113,11 +114,20 @@ export async function reissueBackupCodesAction(
       }),
     );
     codes = (result as { backupCodes?: string[] }).backupCodes ?? [];
-  } catch {
+  } catch (error) {
     // Deliberately one message for both "wrong password" and any other
     // refusal: this form has already proven a second factor, so telling
     // a caller which half they got wrong buys them nothing we want to
     // give. Never log the password or the codes.
+    //
+    // EXCEPT THE RATE LIMIT, which says to wait (slice 81): the endpoint is
+    // one of the six session-gated password checks on the per-IP sign-in
+    // budget (`src/auth/rate-limit-hook.ts`), refused before the guard or
+    // the handler runs — no state changed, the old codes still stand — and
+    // "check your password" would send the member back to retrying into it.
+    if (error instanceof APIError && error.status === "TOO_MANY_REQUESTS") {
+      return { ok: false, message: t("tooManyAttempts") };
+    }
     return { ok: false, message: t("failed") };
   }
   if (codes.length === 0) return { ok: false, message: t("failed") };

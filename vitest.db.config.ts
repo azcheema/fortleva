@@ -5,6 +5,16 @@ import { fileURLToPath } from "node:url";
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
 
+// THE SUITE RUNS ON THE NO-OP LIMITER, AS IN CI — never on the founder's
+// dev Redis, which `.env.local` has named since 2026-10-01. Files here
+// drive `signInEmail` a dozen times from one "unknown" address, and a
+// real limiter would turn the later 200s into 429s — and, since Redis
+// outlives the process, keep doing it into the NEXT run. A test that wants
+// a limit injects one (`setLimiter`). Deleted here, in the parent, so the
+// forked workers never see it.
+delete process.env["UPSTASH_REDIS_REST_URL"];
+delete process.env["UPSTASH_REDIS_REST_TOKEN"];
+
 // Integration suite: runs against a real Postgres as the REAL
 // app_runtime role (TENANCY.md §11 — a local owner/superuser role
 // false-passes RLS). Sequential: shared database state.

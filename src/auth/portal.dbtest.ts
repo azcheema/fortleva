@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 /* eslint-disable no-restricted-imports -- dbtest exercises the raw layer */
 import { getPlatformClient, runtimeClient } from "@/db/client";
 import { setTransport } from "@/mailer";
+import { RATE_LIMIT_POLICIES, setLimiter, type Limiter } from "@/ratelimit";
 
 import { auth } from "./index";
 import {
@@ -172,6 +173,123 @@ describe("portal sign-in", () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
     const db = getPlatformClient();
     expect(await db.contact.count({ where: { email: `e2e-intruder-${run}@test.invalid` } })).toBe(0);
+  });
+});
+
+/**
+ * PHASE 3'S "RATE-LIMIT BEHAVIOR UNDER BRUTE FORCE", through the portal
+ * instance's real handler. The suite runs on the no-op limiter
+ * (`vitest.db.config.ts`), so this injects one that keeps the product's
+ * own policies — what is under test is that the INSTANCE asks it the
+ * right questions with the right keys, before the password is checked.
+ * Two attackers: the one who rents a new IP for every guess (refused at the
+ * credential's ceiling), and the one on a single machine (refused at their
+ * own five — without locking the owner out, which a first cut of this slice
+ * did and both reviews caught).
+ */
+describe("portal sign-in under brute force against one address", () => {
+  /** Counts per bucket and subject against `RATE_LIMIT_POLICIES`; no clock, so nothing lapses mid-test. */
+  const countingLimiter = (): Limiter => {
+    const spent = new Map<string, number>();
+    return {
+      name: "upstash",
+      async limit(bucket, subject) {
+        const key = `${bucket}|${subject}`;
+        const used = spent.get(key) ?? 0;
+        const { limit } = RATE_LIMIT_POLICIES[bucket];
+        if (used >= limit) return { ok: false, remaining: 0, reset: 0 };
+        spent.set(key, used + 1);
+        return { ok: true, remaining: limit - used - 1, reset: 0 };
+      },
+    };
+  };
+
+  let hop = 0;
+  /** A sign-in through the real handler from `ip` — by default a NEW one each time, the attacker who rents IPs. */
+  const signInFrom = (
+    handler: (r: Request) => Promise<Response>,
+    base: string,
+    email: string,
+    pw: string,
+    ip = `203.0.113.${(hop++ % 250) + 1}`,
+  ) =>
+    handler(
+      new Request(`${base}/sign-in/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": ip },
+        body: JSON.stringify({ email, password: pw }),
+      }),
+    );
+  const portalSignIn = (email: string, pw: string, ip?: string) =>
+    signInFrom((r) => portalAuth.handler(r), "http://localhost:3000/api/portal-auth", email, pw, ip);
+
+  afterAll(() => setLimiter(null));
+
+  it("refuses an address past its ceiling from ANY address — the right password included — and mints no session", async () => {
+    setLimiter(countingLimiter());
+    const db = getPlatformClient();
+    const sessionsBefore = await db.contactSession.count({ where: { contactId } });
+    const { limit } = RATE_LIMIT_POLICIES["auth.sign_in_address"];
+
+    // Wrong guesses up to the ceiling, every one from a fresh IP, the
+    // address spelled three ways that must spend ONE budget. The padded
+    // one fails the library's email check (400) — after the hook has
+    // counted it, which is the order that matters: a malformed guess is
+    // still a guess.
+    const spellings: readonly [string, number][] = [
+      [contactEmail, 401],
+      [contactEmail.toUpperCase(), 401],
+      [`  ${contactEmail}  `, 400],
+    ];
+    for (let i = 0; i < limit; i++) {
+      const [spelling, status] = spellings[i % spellings.length] as [string, number];
+      expect((await portalSignIn(spelling, `wrong-${randomUUID()}`)).status).toBe(status);
+    }
+    const refused = await portalSignIn(contactEmail, password);
+    expect(refused.status).toBe(429);
+    expect(await db.contactSession.count({ where: { contactId } })).toBe(sessionsBefore);
+
+    // It was the limit and nothing else: without it, the same request signs in.
+    setLimiter(null);
+    expect((await portalSignIn(contactEmail, password)).status).toBe(200);
+    expect(await db.contactSession.count({ where: { contactId } })).toBe(sessionsBefore + 1);
+  });
+
+  it("stops one machine at its own five without locking the owner out", async () => {
+    setLimiter(countingLimiter());
+    const db = getPlatformClient();
+    const sessionsBefore = await db.contactSession.count({ where: { contactId } });
+    const { limit } = RATE_LIMIT_POLICIES["auth.sign_in_address_ip"];
+    const attacker = "198.51.100.66";
+
+    for (let i = 0; i < limit; i++) {
+      expect((await portalSignIn(contactEmail, `wrong-${randomUUID()}`, attacker)).status).toBe(401);
+    }
+    // The attacker's machine is refused — even holding the right password.
+    expect((await portalSignIn(contactEmail, password, attacker)).status).toBe(429);
+    expect(await db.contactSession.count({ where: { contactId } })).toBe(sessionsBefore);
+    // The owner, anywhere else, signs in.
+    expect((await portalSignIn(contactEmail, password, "192.0.2.10")).status).toBe(200);
+    expect(await db.contactSession.count({ where: { contactId } })).toBe(sessionsBefore + 1);
+    setLimiter(null);
+  });
+
+  it("keeps the portal's budget apart — a portal address being guessed at locks nobody out of the member plane", async () => {
+    setLimiter(countingLimiter());
+    const { limit } = RATE_LIMIT_POLICIES["auth.sign_in_address"];
+    for (let i = 0; i < limit; i++) await portalSignIn(memberEmail, `wrong-${randomUUID()}`);
+    expect((await portalSignIn(memberEmail, `wrong-${randomUUID()}`)).status).toBe(429);
+
+    // The same address on the member plane is another table's credential:
+    // refused as a wrong password (401), never as a limit.
+    const member = await signInFrom(
+      (r) => auth.handler(r),
+      "http://localhost:3000/api/auth",
+      memberEmail,
+      `wrong-${randomUUID()}`,
+    );
+    expect(member.status).toBe(401);
+    setLimiter(null);
   });
 });
 

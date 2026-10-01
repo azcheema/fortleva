@@ -48,6 +48,12 @@ import { config as loadEnv } from "dotenv";
 
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
+// The no-op limiter, as in the server this harness starts and in CI — the
+// fixtures call services that spend a bucket (`portal-requests`), and they
+// must not spend it in the founder's dev Redis. `playwright.config.ts` has
+// the reasoning.
+delete process.env["UPSTASH_REDIS_REST_URL"];
+delete process.env["UPSTASH_REDIS_REST_TOKEN"];
 
 const SLUG_PREFIX = "e2e-";
 const EMAIL_DOMAIN = "@test.invalid";

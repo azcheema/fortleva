@@ -45,8 +45,10 @@ import { AUTH_CONTROL, AuthShell, authLinkClass } from "./auth-shell";
  *    password of their own can tell a new address from a registered one),
  *    and states why closing it would mean lying to every member who has
  *    not yet clicked their link.
- *  - **the rate limiter** (429) says so, for the network, never for an
- *    address.
+ *  - **the rate limiter** (429) says to wait, and never which budget ran
+ *    out — the network's or, since the per-address limit, the address's
+ *    (`src/auth/rate-limit-hook.ts`): the second is a fact about whoever
+ *    owns the address, and this page may be looking at a stranger.
  *  - **a network failure THROWS** out of the auth client — it is built
  *    without `catchAllError` — so both calls are wrapped; unwrapped, a
  *    dropped request left the button disabled on "Signing in…" for good

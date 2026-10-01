@@ -102,3 +102,48 @@ describe("TRUSTED_PROXY_HOPS is what makes a client address trustworthy", () => 
     ).rejects.toThrow();
   });
 });
+
+/**
+ * THE RATE LIMITER'S ENV, pinned because two harnesses depend on it and a
+ * deployment must not (slice 81). Empty means unset — `playwright.config.ts`
+ * keeps `.env.local`'s dev Redis out of the server it starts by setting both
+ * EMPTY, the only override `next start`'s env loader will not replace — but
+ * in production that leniency holds only on loopback, and production never
+ * boots without the secret the limiter's HMAC key derives from.
+ */
+describe("the rate limiter's configuration", () => {
+  it("reads empty Upstash values as unset", async () => {
+    const c = await configWith({ UPSTASH_REDIS_REST_URL: "", UPSTASH_REDIS_REST_TOKEN: "" });
+    expect(c.upstashConfig).toBeNull();
+  });
+
+  it("uses Upstash when both values are given", async () => {
+    const c = await configWith({ UPSTASH_REDIS_REST_URL: "https://rl.example.test", UPSTASH_REDIS_REST_TOKEN: "t" });
+    expect(c.upstashConfig).toEqual({ url: "https://rl.example.test", token: "t" });
+  });
+
+  it("fails closed in production without BETTER_AUTH_SECRET — the module throws at load", async () => {
+    await expect(
+      configWith({ NODE_ENV: "production", APP_URL: "https://os.example.test", BETTER_AUTH_SECRET: "" }),
+    ).rejects.toThrow(/BETTER_AUTH_SECRET/);
+  });
+
+  it("refuses an EMPTY Upstash value in production off loopback, and allows an absent one", async () => {
+    const prod = { NODE_ENV: "production", APP_URL: "https://os.example.test", BETTER_AUTH_SECRET: "s" };
+    await expect(configWith({ ...prod, UPSTASH_REDIS_REST_URL: "" })).rejects.toThrow(/UPSTASH_REDIS_REST_URL/);
+    vi.unstubAllEnvs();
+    const absent = await configWith(prod);
+    expect(absent.upstashConfig).toBeNull();
+  });
+
+  it("allows the empty values on a loopback production build — the e2e server", async () => {
+    const c = await configWith({
+      NODE_ENV: "production",
+      APP_URL: "http://127.0.0.1:3457",
+      BETTER_AUTH_SECRET: "s",
+      UPSTASH_REDIS_REST_URL: "",
+      UPSTASH_REDIS_REST_TOKEN: "",
+    });
+    expect(c.upstashConfig).toBeNull();
+  });
+});

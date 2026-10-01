@@ -1,7 +1,7 @@
 import { APIError } from "better-auth/api";
 
 import { type Plane } from "@/config";
-import { allow, clientIp, type RateLimitBucket } from "@/ratelimit";
+import { allow, clientIp, clientNetwork, type RateLimitBucket } from "@/ratelimit";
 
 /**
  * The per-IP limiter on Better Auth's credential endpoints (SECURITY.md
@@ -53,7 +53,78 @@ export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
   "/request-password-reset": "auth.credential_request",
   "/reset-password": "auth.credential_request",
   "/send-verification-email": "auth.credential_request",
+  // THE SIX PASSWORD CHECKS THAT NEED A SESSION, added 2026-10-01 (slice
+  // 81's reviews — the security review named the first two, the fix-pass
+  // review the four two-factor ones; Better Auth 1.6.26 has no other
+  // mounted endpoint that checks the account password, `/delete-user` being
+  // off here and refusing before it looks). Each answers "was that the
+  // password?", so with a stolen session any of them is a grinder for the
+  // one thing a session does not give — a way back in after the session is
+  // revoked. `/verify-password` is declared `scope: "server"`, which only
+  // shapes the typed client — better-call's router refuses nothing but
+  // `SERVER_ONLY` — so it answers over HTTP, and nothing in this
+  // product calls it. The two-factor four exist on the member and console
+  // instances only (the portal registers no `twoFactor`). They spend the
+  // sign-in budget per IP because they are sign-in's question. Per USER
+  // they are still unbounded (the session is resolved after this hook) —
+  // recorded in PLAN's slice-81 entry.
+  "/change-password": "auth.sign_in",
+  "/verify-password": "auth.sign_in",
+  "/two-factor/enable": "auth.sign_in",
+  "/two-factor/disable": "auth.sign_in",
+  "/two-factor/get-totp-uri": "auth.sign_in",
+  "/two-factor/generate-backup-codes": "auth.sign_in",
 };
+
+/**
+ * The endpoints limited per CREDENTIAL as well as per IP (Phase 3's
+ * "per-email limits on login"; SECURITY.md §4). Only password sign-in:
+ * it is the one endpoint where the body names the account a guess is
+ * aimed at. The reset and confirmation requests already carry a cap per
+ * RECIPIENT counted in Postgres (`src/auth/portal.ts`,
+ * `src/auth/mail-budget.ts`), which holds without Upstash and is the
+ * stronger of the two keys for mail; a second, fail-open one here would
+ * add nothing.
+ */
+export const ADDRESS_LIMITED_PATHS: ReadonlySet<string> = new Set(["/sign-in/email"]);
+
+/**
+ * The address a sign-in names, as the per-credential subject — or null when
+ * the body names none, which the library's own schema then refuses.
+ *
+ * Lower-cased because Better Auth looks the account up by
+ * `email.toLowerCase()`: two spellings that reach one account must spend
+ * one budget, or a guesser alternates `Kane@` and `kane@` for twice the
+ * guesses. Trimmed as well, which can only merge spellings, never split
+ * them — so if a later version of the library trims too, this is already
+ * right. Bounded, because the subject is the caller's string; past 320
+ * characters (RFC 5321's longest address) nothing is an address anyway.
+ */
+export function signInAddress(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const email = (body as { email?: unknown }).email;
+  if (typeof email !== "string") return null;
+  const address = email.trim().toLowerCase().slice(0, 320);
+  return address === "" ? null : address;
+}
+
+/**
+ * WHICH TABLE OF PASSWORDS a plane checks — the key's namespace for the
+ * per-credential buckets, which is deliberately NOT the plane.
+ *
+ * The member and console instances read the SAME `user` and `account`
+ * rows (`./platform`: one credential opens both `/login` and `/ops/login`,
+ * and the console's sign-in answers right-or-wrong for any member's
+ * password before `requirePlatformAdmin` refuses the session). Keyed per
+ * plane, one password had two budgets — ten guesses a quarter of an hour
+ * by alternating the two, a superadmin's included. Keyed per store, it has
+ * one, and the price is stated: guessing at `/login` spends the budget of
+ * `/ops/login` for the same person, because it is the same password. The
+ * portal's contacts are another table (decision #6), so an address that is
+ * both a member and a contact is two credentials with two budgets, and
+ * guessing at the portal locks nobody out of the agency's app.
+ */
+export const credentialStore = (plane: Plane): "user" | "contact" => (plane === "portal" ? "contact" : "user");
 
 /**
  * Fails OPEN when Upstash is unconfigured — `allow()` returns true
@@ -63,9 +134,27 @@ export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
  * here would make an unreachable Redis an outage of the login surface
  * for every plane at once. The fail-closed budgets in this product are
  * the Postgres counters (3V), never this module.
+ *
+ * THREE QUESTIONS, IN THIS ORDER, and each refusal spends nothing of the
+ * questions after it: the IP (the endpoint's own bucket — sign-in's is
+ * 10 / 10 min); then, for a password sign-in, the credential FROM this
+ * source (5 / 15 min); then the credential from anywhere (20 / 15 min). The
+ * middle one is what puts a price on a lockout: one source can put at most
+ * five into the credential's twenty, so keeping an account shut takes four
+ * sources guessing inside one window — four IPv4 addresses or four IPv6
+ * /48s (`clientNetwork`; the per-IP question counts the narrower /64,
+ * `clientIp`, because every account on the plane shares it). A cost floor,
+ * not a count of people: one well-provisioned host can hold several
+ * sources. And a source is SHARED — everyone in the owner's /48, or behind
+ * their carrier's IPv4 NAT, spends the same per-source budget — so a
+ * neighbour there can shut the owner out FROM THAT NETWORK; elsewhere the
+ * owner is unaffected. "Spends nothing" is about the questions AFTER a
+ * refusal: an owner who retries while their account is shut still spends
+ * the per-IP budget and their source's budget each time, so the advice is
+ * to wait, then try once.
  */
 export async function enforceAuthRateLimit(
-  ctx: { readonly path: string; readonly headers?: Headers | undefined },
+  ctx: { readonly path: string; readonly headers?: Headers | undefined; readonly body?: unknown },
   plane: Plane,
 ): Promise<void> {
   const bucket = RATE_LIMITED_PATHS[ctx.path];
@@ -76,8 +165,31 @@ export async function enforceAuthRateLimit(
   // the console's 10-per-10-minutes budget and lock the operator out of
   // the ops console — a lockout vector invented by sharing the limiter,
   // on a plane that previously had none.
-  const subject = `${plane}:${clientIp(ctx.headers ?? new Headers())}`;
-  if (!(await allow(bucket, subject))) {
-    throw new APIError("TOO_MANY_REQUESTS", { message: "Too many attempts. Try again later." });
-  }
+  const headers = ctx.headers ?? new Headers();
+  if (!(await allow(bucket, `${plane}:${clientIp(headers)}`))) throw tooManyAttempts();
+
+  const address = ADDRESS_LIMITED_PATHS.has(ctx.path) ? signInAddress(ctx.body) : null;
+  if (address === null) return;
+  const store = credentialStore(plane);
+  // The SOURCE here is the caller's network — an IPv6 /48, not the /64 the
+  // per-IP question counts — because this budget is per account and one
+  // person can hold thousands of /64s (`clientNetwork`). A JSON array, not a
+  // joined string: an IPv6 prefix has colons and the caller writes the
+  // address, so `a:b` + `c` and `a` + `b:c` must not meet.
+  const source = clientNetwork(headers);
+  if (!(await allow("auth.sign_in_address_ip", JSON.stringify([store, address, source])))) throw tooManyAttempts();
+  if (!(await allow("auth.sign_in_address", `${store}:${address}`))) throw tooManyAttempts();
 }
+
+/**
+ * ONE refusal for every key: the message does not say which budget ran
+ * out. What a 429 can still be made to say is stated rather than denied:
+ * from a fresh source, a refusal on or before the caller's own fifth try means
+ * somebody else has tried that address recently — the owner's own
+ * sign-ins count. That is activity, not existence — an address that
+ * belongs to nobody fills its buckets exactly as a real one does, so it
+ * enumerates no accounts; and learning it costs the prober guesses that
+ * help lock the owner out.
+ */
+const tooManyAttempts = (): APIError =>
+  new APIError("TOO_MANY_REQUESTS", { message: "Too many attempts. Try again later." });

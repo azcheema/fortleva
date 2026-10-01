@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clientIpFrom, UNKNOWN_SUBJECT } from "./client-ip";
+import { clientIpFrom, rateLimitSource, UNKNOWN_SUBJECT } from "./client-ip";
 
 /**
  * The derivation both the rate limiter and the audit trail use. It is
@@ -72,5 +72,56 @@ describe("clientIpFrom", () => {
     // A full IPv6 address with a zone still survives intact.
     const v6 = "2001:0db8:85a3:0000:0000:8a2e:0370:7334";
     expect(clientIpFrom(headers({ "x-forwarded-for": v6 }), 1)).toBe(v6);
+  });
+});
+
+/**
+ * The rate limiter's SOURCE (slice 81's fix-pass review): an IPv6 caller is
+ * its /64, because one host is routinely given one whole; an IPv4-mapped
+ * address is the IPv4 address it carries; anything else is left alone.
+ */
+describe("rateLimitSource", () => {
+  it("leaves an IPv4 address as it is", () => {
+    expect(rateLimitSource("203.0.113.9")).toBe("203.0.113.9");
+  });
+
+  it("puts every address of one /64 in one bucket, whatever the spelling", () => {
+    const prefix = "2001:db8:85a3:42::/64";
+    for (const address of [
+      "2001:db8:85a3:42::1",
+      "2001:0db8:85a3:0042:ffff:ffff:ffff:ffff",
+      "2001:DB8:85A3:42:0:8a2e:370:7334",
+      "[2001:db8:85a3:42::9]",
+      "2001:db8:85a3:42::1%eth0",
+      "2001:db8:85a3:42::192.0.2.1",
+    ]) {
+      expect(rateLimitSource(address), address).toBe(prefix);
+    }
+  });
+
+  it("asked for a /48, puts every /64 of one /48 in one bucket — a tunnel broker's whole allocation", () => {
+    for (const address of ["2001:470:1f0b:1::1", "2001:470:1f0b:ffff::9", "2001:470:1F0B:42:0:8a2e:370:7334"]) {
+      expect(rateLimitSource(address, 48), address).toBe("2001:470:1f0b::/48");
+    }
+    expect(rateLimitSource("2001:470:1f0c::1", 48)).not.toBe(rateLimitSource("2001:470:1f0b::1", 48));
+    // IPv4 is never widened: an IPv4 address is one source either way.
+    expect(rateLimitSource("203.0.113.9", 48)).toBe("203.0.113.9");
+    expect(rateLimitSource("::ffff:192.0.2.1", 48)).toBe("192.0.2.1");
+  });
+
+  it("keeps different /64s apart", () => {
+    expect(rateLimitSource("2001:db8:85a3:42::1")).not.toBe(rateLimitSource("2001:db8:85a3:43::1"));
+    expect(rateLimitSource("::1")).toBe("0:0:0:0::/64");
+  });
+
+  it("reads an IPv4-mapped address as the IPv4 address it carries", () => {
+    expect(rateLimitSource("::ffff:192.0.2.1")).toBe("192.0.2.1");
+    expect(rateLimitSource("::ffff:c000:201")).toBe("192.0.2.1");
+  });
+
+  it("leaves what is not an IP alone — it is already one bucket", () => {
+    for (const value of [UNKNOWN_SUBJECT, "not-an-ip", "2001:db8::1::2", "1.2.3"]) {
+      expect(rateLimitSource(value)).toBe(value);
+    }
   });
 });

@@ -369,7 +369,7 @@
       "reset": "Choose a new one",
       "invalid": "We could not sign you in with that email and password. Check both and try again.",
       "unconfirmed": "{email} is not confirmed yet, so we are emailing it a new confirmation link. We send at most {cap} an hour, and each link works for {minutes} minutes. Open it and enter your password there to confirm and sign in.",
-      "tooMany": "Too many attempts from this network. Wait a few minutes and try again.",
+      "tooMany": "Too many attempts. Wait a few minutes and try again.",
       "unreachable": "The connection failed before we heard back. Check your connection and try again."
     },
     "signup": {
@@ -488,6 +488,7 @@
       "submit": "Sign in",
       "submitting": "Signing in…",
       "failed": "We could not sign you in. Check the address and password, or ask your agency.",
+      "tooMany": "Too many attempts. Wait a few minutes and try again.",
       "forgot": "Forgot your password?",
       "reset": "Choose a new one",
       "unreachable": "The connection failed before we heard back. Check your connection and try again."

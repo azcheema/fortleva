@@ -26,6 +26,14 @@ import { safeNext } from "@/lib/safe-next";
  * than the server's. On this plane a difference is a fact about the
  * agency and its client list.
  *
+ * **EXCEPT THE RATE LIMIT (429), which says to WAIT.** Rendered as "check
+ * the address and password", it sent a contact who had been refused for
+ * too many tries back to typing the right password into a refusal that
+ * would not lift while they kept trying. It tells nobody anything about
+ * an account: the per-address budget fills the same for an address that
+ * belongs to nobody (`src/auth/rate-limit-hook.ts`), and the sentence
+ * does not say which budget it was.
+ *
  * **NO SIGN-UP LINK** — `disableSignUp` is true on the instance and
  * invite-only is the invariant, so a link would advertise a door that is
  * welded shut. **NO SECOND FACTOR**: this instance registers no
@@ -65,7 +73,7 @@ export function PortalLoginForm() {
     // rather than returning `{ error }`, and unwrapped it left the button
     // disabled on "Signing in…" for good — found in the reset screens'
     // review, whose two forms had copied this shape.
-    let err: unknown;
+    let err: { readonly status?: number } | null | undefined;
     try {
       ({ error: err } = await contactAuthClient.signIn.email({ email, password }));
     } catch {
@@ -75,7 +83,7 @@ export function PortalLoginForm() {
     }
     setBusy(false);
     if (err) {
-      setError(t("portal.failed"));
+      setError(err.status === 429 ? t("portal.tooMany") : t("portal.failed"));
       return;
     }
     router.push(next);

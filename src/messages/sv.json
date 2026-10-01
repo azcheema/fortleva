@@ -369,7 +369,7 @@
       "reset": "Välj ett nytt",
       "invalid": "Vi kunde inte logga in dig med den e-postadressen och det lösenordet. Kontrollera båda och försök igen.",
       "unconfirmed": "{email} är inte bekräftad än, så vi mejlar en ny bekräftelselänk dit. Vi skickar högst {cap} i timmen, och varje länk fungerar i {minutes} minuter. Öppna den och ange ditt lösenord där för att bekräfta och logga in.",
-      "tooMany": "För många försök från det här nätverket. Vänta några minuter och försök igen.",
+      "tooMany": "För många försök. Vänta några minuter och försök igen.",
       "unreachable": "Anslutningen bröts innan vi fick svar. Kontrollera anslutningen och försök igen."
     },
     "signup": {
@@ -488,6 +488,7 @@
       "submit": "Logga in",
       "submitting": "Loggar in…",
       "failed": "Vi kunde inte logga in dig. Kontrollera adressen och lösenordet, eller kontakta din byrå.",
+      "tooMany": "För många försök. Vänta några minuter och försök igen.",
       "forgot": "Glömt lösenordet?",
       "reset": "Välj ett nytt",
       "unreachable": "Anslutningen bröts innan vi fick svar. Kontrollera anslutningen och försök igen."
