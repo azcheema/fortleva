@@ -10,8 +10,9 @@ import { clientIpFrom, rateLimitSource } from "@/lib/client-ip";
  * Rate limiting behind ONE config module (PLAN.md Phase 1b, SECURITY.md
  * §3.7). Upstash Redis (EU) when UPSTASH_REDIS_REST_URL/TOKEN are set;
  * otherwise a fail-OPEN no-op that logs once — the auth routes keep
- * Better Auth's built-in limiter, and the vault reveal budget (3V) uses
- * a fail-CLOSED Postgres counter, never this module.
+ * Better Auth's built-in limiter, and the vault reveal budget (3V) is a
+ * fail-CLOSED Postgres count with this module only as its front filter
+ * (`vault.reveal` below).
  *
  * `allowStrict()` is the exception and the reason is written on it: on a
  * path where this bucket is the ONLY control — an unauthenticated Next
@@ -222,6 +223,21 @@ const POLICIES = {
    * costs the table nothing and keeps the walks honest.
    */
   "portal.invite_preview": { limit: 60, window: "1 h" },
+  /**
+   * THE VAULT'S REVEAL / COPY / TOTP CODE per MEMBER (Phase 3V slice 1).
+   * The cheap filter in front of the authority, which is NOT this module:
+   * the vault's reveal path (`src/modules/vault/reveal.ts`, on
+   * `budget.ts`) counts the member's own
+   * `credential.revealed|copied|totp_generated` audit rows for the last
+   * hour under an advisory lock, fails CLOSED by construction, and
+   * records `vault.reveal_budget_exceeded` — the
+   * download budget's layering. Its limit sits ABOVE the tenant setting's
+   * ceiling (`vault.revealBudgetPerHour`, at most 100) so the honest,
+   * recorded refusal is the one that normally fires; this one exists to
+   * stop a scripted loop before it reaches the database. Keyed on the
+   * member id: the actor is authenticated.
+   */
+  "vault.reveal": { limit: 150, window: "1 h" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;
 
 export type RateLimitResult = {

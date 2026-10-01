@@ -90,25 +90,27 @@ export async function enqueueForTenant(
   now: Date,
 ): Promise<number> {
   return withTenant(tenantId, { type: "system" }, async (tx) => {
-    const [prefs, members, settings] = await Promise.all([
-      tx.notificationPreference.findMany({
-        where: { tenantId, receiverType: "MEMBER", receiverId: { in: [...memberIds] } },
-        select: {
-          tenantId: true,
-          receiverId: true,
-          perKind: true,
-          emailLevel: true,
-          timezone: true,
-          digestWeekday: true,
-          digestHour: true,
-        },
-      }),
-      tx.member.findMany({
-        where: { tenantId, id: { in: [...memberIds] }, status: "ACTIVE" },
-        select: { id: true, timezone: true, user: { select: { email: true, locale: true } } },
-      }),
-      readPreferences(tx, tenantId),
-    ]);
+    // In SEQUENCE, never a `Promise.all`: the three reads share this
+    // transaction's one connection, which Prisma over the `pg` adapter
+    // does not serialise, so a losing leg can resolve `undefined`
+    // (AGENTS.md's standing trap; found by the slice-82 fix-pass review).
+    const prefs = await tx.notificationPreference.findMany({
+      where: { tenantId, receiverType: "MEMBER", receiverId: { in: [...memberIds] } },
+      select: {
+        tenantId: true,
+        receiverId: true,
+        perKind: true,
+        emailLevel: true,
+        timezone: true,
+        digestWeekday: true,
+        digestHour: true,
+      },
+    });
+    const members = await tx.member.findMany({
+      where: { tenantId, id: { in: [...memberIds] }, status: "ACTIVE" },
+      select: { id: true, timezone: true, user: { select: { email: true, locale: true } } },
+    });
+    const settings = await readPreferences(tx, tenantId);
     const prefOf = new Map(prefs.map((p) => [p.receiverId, p]));
     const consenting = new Set(selectOptIns(prefs).map((o) => o.memberId));
     const rows = members.flatMap((m) => {

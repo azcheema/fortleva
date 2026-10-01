@@ -74,6 +74,7 @@ export type TenantPreferences = {
   modules: Record<ToggleableModule, boolean>;
   time: TimePreferences;
   finance: FinancePreferences;
+  vault: VaultPreferences;
 };
 
 export const PREF_KEYS = {
@@ -132,7 +133,32 @@ export const FINANCE_PREF_KEYS: Readonly<Record<keyof FinancePreferences, string
 };
 export const FINANCE_DEFAULTS: FinancePreferences = { costRatesEnabled: false };
 
-const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance"> = {
+/**
+ * Vault (Phase 3V — AUTHZ.md §5's preference table, plan §3.4). The other
+ * four `vault.*` keys land with the slices that build their surfaces.
+ */
+export type VaultPreferences = {
+  /** A Reveal, Copy or TOTP code needs a second factor this recent (minutes). */
+  stepUpMinutes: number;
+  /** Reveals + copies + codes one member may take per rolling hour. */
+  revealBudgetPerHour: number;
+};
+export const VAULT_PREF_KEYS: Readonly<Record<keyof VaultPreferences, string>> = {
+  stepUpMinutes: "vault.stepUpMinutes",
+  revealBudgetPerHour: "vault.revealBudgetPerHour",
+};
+export const VAULT_DEFAULTS: VaultPreferences = { stepUpMinutes: 10, revealBudgetPerHour: 30 };
+/**
+ * Bounds the parser enforces (a stored value outside them falls back to
+ * the default). The step-up window can only TIGHTEN the ✦ window every
+ * credential:reveal check already applies (`STEP_UP_WINDOW_MINUTES`, 15),
+ * so a longer one would be a setting that silently did nothing; the
+ * budget is capped so no tenant setting turns it off.
+ */
+export const VAULT_STEP_UP_MINUTES_RANGE = { min: 1, max: 15 } as const;
+export const VAULT_REVEAL_BUDGET_RANGE = { min: 1, max: 100 } as const;
+
+const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance" | "vault"> = {
   timezone: "Europe/Stockholm",
   weekStart: "MONDAY",
   showIsoWeek: true,
@@ -158,6 +184,10 @@ export function materializePreferences(
     const v = map.get(key);
     return typeof v === "boolean" ? v : dflt;
   };
+  const intIn = (key: string, range: { min: number; max: number }, dflt: number): number => {
+    const v = map.get(key);
+    return typeof v === "number" && Number.isInteger(v) && v >= range.min && v <= range.max ? v : dflt;
+  };
   const hours = (key: string, dflt: number): number => {
     const v = map.get(key);
     return typeof v === "number" && Number.isFinite(v) && v >= TIME_HOURS_MIN && v <= TIME_HOURS_MAX ? v : dflt;
@@ -182,5 +212,13 @@ export function materializePreferences(
       shiftAutoStopHours: hours(TIME_PREF_KEYS.shiftAutoStopHours, TIME_DEFAULTS.shiftAutoStopHours),
     },
     finance: { costRatesEnabled: bool(FINANCE_PREF_KEYS.costRatesEnabled, FINANCE_DEFAULTS.costRatesEnabled) },
+    vault: {
+      stepUpMinutes: intIn(VAULT_PREF_KEYS.stepUpMinutes, VAULT_STEP_UP_MINUTES_RANGE, VAULT_DEFAULTS.stepUpMinutes),
+      revealBudgetPerHour: intIn(
+        VAULT_PREF_KEYS.revealBudgetPerHour,
+        VAULT_REVEAL_BUDGET_RANGE,
+        VAULT_DEFAULTS.revealBudgetPerHour,
+      ),
+    },
   };
 }

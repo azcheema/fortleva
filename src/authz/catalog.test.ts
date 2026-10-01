@@ -8,9 +8,15 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 99 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b — bumped deliberately 2026-09-22)", () => {
-    expect(PERMISSIONS).toHaveLength(99);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(99);
+  it("holds exactly 104 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 — bumped deliberately 2026-10-01)", () => {
+    expect(PERMISSIONS).toHaveLength(104);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(104);
+  });
+
+  it("credential:reveal is seeded C M A, never on the employee template (decision 13, CP4)", () => {
+    const def = PERMISSIONS.find((p) => p.code === "credential:reveal");
+    expect(def?.seeded).toEqual(["owner", "manager", "admin"]);
+    expect(def?.requiresMfa).toBe(true);
   });
 
   it("the deprecated set is exactly issue:* — unseeded everywhere, rows kept (first §3.1 deprecation)", () => {
@@ -54,6 +60,8 @@ describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
         // 2T — cost rates are salary-grade data (AUTHZ.md §7.5, SECURITY.md §9.7.4)
         "rate:view_cost",
         "rate:manage_cost",
+        // 3V slice 1 — reveal moves plaintext (decision 13; AUTHZ.md §7.5)
+        "credential:reveal",
       ].sort(),
     );
   });

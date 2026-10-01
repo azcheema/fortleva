@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 import type { TenantDb } from "@/db";
 // context.ts is the pure AsyncLocalStorage helper, not the client: a
 // value import from "@/db" would construct the runtime client at load,
@@ -8,7 +6,8 @@ import { currentTenantId } from "@/db/context";
 
 import { record } from "@/audit/record";
 
-import { activeRootKeyId, decryptField, encryptField } from "./root-keyring";
+import { decryptField } from "./root-keyring";
+import { DEK_BYTES, mintFirstTenantKey } from "./tenant-key-material";
 
 /**
  * Per-tenant envelope keys (SECURITY.md §6, DATA_MODEL.md §4/§6.17).
@@ -20,8 +19,6 @@ import { activeRootKeyId, decryptField, encryptField } from "./root-keyring";
 
 export type TenantDek = { keyId: string; rootKeyId: string; dek: Buffer };
 
-const DEK_BYTES = 32;
-const FIRST_KEY_ID = "t1";
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 type CacheEntry = { value: TenantDek; expiresAt: number };
@@ -80,15 +77,13 @@ export async function getActiveTenantDek(tx: TenantDb, tenantId: string): Promis
   const active = await tx.tenantKey.findFirst({ where: { status: "ACTIVE" } });
   if (active) return cached(tenantId, active.keyId) ?? remember(tenantId, unwrap(active));
 
-  const dek = randomBytes(DEK_BYTES);
-  const rootKeyId = activeRootKeyId();
+  const minted = mintFirstTenantKey();
+  const rootKeyId = minted.rootKeyId;
   const created = await tx.tenantKey.createMany({
     data: [
       {
         tenantId, // == context tenant (asserted above); where-injection re-checks
-        keyId: FIRST_KEY_ID,
-        wrappedDek: encryptField(dek.toString("base64")),
-        rootKeyId,
+        ...minted,
         status: "ACTIVE",
       },
     ],

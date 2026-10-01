@@ -44,7 +44,14 @@ declare global {
  * the two full-row reads narrow themselves (src/modules/work/ordering.ts,
  * states.ts).
  */
-const GLOBAL_OMIT = { rateCard: { amountCiphertext: true } } as const;
+const GLOBAL_OMIT = {
+  rateCard: { amountCiphertext: true },
+  // Phase 3V (DATA_MODEL.md §6.17): the vault's ciphertext — "belt two"
+  // behind the class split. Only src/modules/vault opts back in, and only
+  // on the read that decrypts.
+  credentialSecret: { secretCiphertext: true, totpSecretCiphertext: true },
+  credentialVersion: { secretCiphertext: true },
+} as const;
 
 const buildRuntimeClient = () =>
   new PrismaClient({

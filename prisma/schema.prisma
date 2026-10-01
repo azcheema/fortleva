@@ -309,6 +309,10 @@ model Tenant {
   projectUpdates                 ProjectUpdate[]
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   workTypes                  WorkType[]
+  // Phase 3V — the vault (§6.17):
+  credentialItems    CredentialItem[]
+  credentialSecrets  CredentialSecret[]
+  credentialVersions CredentialVersion[]
 
   @@map("tenant")
 }
@@ -659,6 +663,7 @@ model Client {
   projectTimeSummaries ProjectTimeSummary[]
   timeReports          TimeReport[]
   projectUpdates       ProjectUpdate[]
+  credentials          CredentialItem[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -977,6 +982,8 @@ model Project {
   timeReports    TimeReport[]
   // Phase 3:
   updates        ProjectUpdate[]
+  // Phase 3V:
+  credentials    CredentialItem[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -2618,4 +2625,121 @@ model WorkType {
   @@unique([tenantId, id])
   @@index([tenantId, archivedAt, sortOrder]) // picker: live rows in order
   @@map("work_type")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// 6.17 VAULT (Phase 3V) — module `vault`. Credentials live NEXT TO the
+// client/project, masked by default; reveal is an explicit, audited,
+// step-up act (src/modules/vault/reveal.ts). The split IS the design:
+// metadata on a class-B row, ciphertext on a class-A twin that a
+// contact principal can never SELECT (portal_deny), and the client's
+// global `omit` keeps the ciphertext out of every read but the two that
+// opt back in (src/db/client.ts). Asset links (`assetId`) and portal
+// submission attribution (`submittedByContactId`) land with the slices
+// that build their surfaces. Migration 20261001120000_vault_core.
+// ───────────────────────────────────────────────────────────────────
+
+enum CredentialType {
+  LOGIN
+  SECURE_NOTE
+  API_KEY
+  SSH_KEY
+  DATABASE
+  SERVER
+  WIFI
+  SOFTWARE_LICENSE
+  OTHER
+
+  @@map("credential_type")
+}
+
+/// CredentialItem — METADATA ONLY (class B, clientScoped; `projectId` is
+/// a filter, never a portal gate, so no `portal_enabled`). The secret is
+/// on CredentialSecret. `clientId` NULL = the agency's own login, in
+/// scope only for a member who sees every client (C49). Visibility is
+/// INTERNAL in v1: portal-persistent credentials are behind
+/// `vault.allowPortalCredentials`, default OFF (CP4), and nothing writes
+/// CLIENT_VISIBLE yet.
+model CredentialItem {
+  id                String         @id @default(uuid(7))
+  tenantId          String         @map("tenant_id")
+  clientId          String?        @map("client_id") // NULL = the agency's own (C49)
+  projectId         String?        @map("project_id") // anchor/filter; its client must be clientId (trigger)
+  type              CredentialType
+  name              String
+  username          String? // NON-SECRET by contract
+  url               String? // http(s) only (service)
+  tags              String[]       @default([])
+  notes             String? // NON-SECRET notes
+  secretFieldKeys   String[]       @default([]) @map("secret_field_keys") // keys only, never values
+  hasTotp           Boolean        @default(false) @map("has_totp")
+  expiresAt         DateTime?      @map("expires_at") @db.Timestamptz(6)
+  rotateEveryDays   Int?           @map("rotate_every_days")
+  lastRotatedAt     DateTime?      @map("last_rotated_at") @db.Timestamptz(6)
+  needsRotation     Boolean        @default(false) @map("needs_rotation")
+  compromisedAt     DateTime?      @map("compromised_at") @db.Timestamptz(6)
+  visibility        Visibility     @default(INTERNAL)
+  createdByMemberId String?        @map("created_by_member_id") // attribution, no FK
+  updatedByMemberId String?        @map("updated_by_member_id") // attribution, no FK
+  archivedAt        DateTime?      @map("archived_at") @db.Timestamptz(6)
+  deletedAt         DateTime?      @map("deleted_at") @db.Timestamptz(6)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id])
+  client   Client?             @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict)
+  project  Project?            @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict)
+  secret   CredentialSecret?
+  versions CredentialVersion[]
+
+  @@unique([tenantId, id]) // composite-FK target (secret, versions)
+  @@index([tenantId, clientId, visibility])
+  @@index([tenantId, projectId])
+  @@index([tenantId, expiresAt])
+  @@index([tenantId, needsRotation])
+  @@map("credential_item")
+}
+
+/// CredentialSecret — 1:1 with CredentialItem, CLASS A (portal_deny).
+/// `secretCiphertext` = v2 JSON of the type's secret fields, AAD
+/// `tenantId:credential_secret:<credentialId>:secret`;
+/// `totpSecretCiphertext` = v2 JSON of the TOTP seed and parameters, AAD
+/// `…:totp_secret` — codes are generated server-side, the seed is never
+/// returned. Both are omitted from every read (src/db/client.ts); only
+/// src/modules/vault reads them, and a CHECK refuses anything that is not
+/// v2 ciphertext.
+model CredentialSecret {
+  credentialId         String   @id @map("credential_id")
+  tenantId             String   @map("tenant_id")
+  secretCiphertext     String   @map("secret_ciphertext")
+  totpSecretCiphertext String?  @map("totp_secret_ciphertext")
+  version              Int      @default(1) // bumps on every secret change; CredentialVersion keeps the old one
+  updatedByMemberId    String?  @map("updated_by_member_id") // attribution, no FK
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id])
+  item   CredentialItem @relation(fields: [tenantId, credentialId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, credentialId])
+  @@map("credential_secret")
+}
+
+/// CredentialVersion — the last 10 previous secrets ("what was the old
+/// password"), CLASS A. Re-encrypted under the VERSION row's own AAD
+/// `tenantId:credential_version:<id>:secret`, so a version's ciphertext
+/// cannot be swapped back onto the live row.
+model CredentialVersion {
+  id                String   @id @default(uuid(7))
+  tenantId          String   @map("tenant_id")
+  credentialId      String   @map("credential_id")
+  version           Int
+  secretCiphertext  String   @map("secret_ciphertext")
+  changedByMemberId String?  @map("changed_by_member_id") // attribution, no FK
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id])
+  item   CredentialItem @relation(fields: [tenantId, credentialId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, credentialId, version])
+  @@map("credential_version")
 }

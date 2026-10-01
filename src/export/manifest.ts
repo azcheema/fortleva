@@ -36,6 +36,11 @@ export const EXPORT_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>
   // 2T: the COST rate ciphertext is salary-grade personal data (SECURITY.md
   // §9.7.4) — never leaves in an export; the client omits it globally too.
   rateCard: ["amountCiphertext"],
+  // 3V: vault ciphertext is useless outside this deployment and would put
+  // every secret in one file; plaintext export is its own ✦ act
+  // (`credential:export`, a later slice), never a side effect of this one.
+  credentialSecret: ["secretCiphertext", "totpSecretCiphertext"],
+  credentialVersion: ["secretCiphertext"],
 };
 
 /**

@@ -76,14 +76,15 @@ export default async function RatesPage({ searchParams }: { searchParams: Promis
     });
   const [{ held, prefs, members }, projectGroups, services, clients] = await Promise.all([
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
-      const [held, prefs, members] = await Promise.all([
-        effectivePermissions(tx, actor.memberId),
-        readPreferences(tx, membership.tenantId),
-        tx.member.findMany({
-          select: { id: true, status: true, user: { select: { name: true } } },
-          orderBy: { joinedAt: "asc" },
-        }),
-      ]);
+      // In SEQUENCE on the transaction's one connection — never a
+      // `Promise.all` (AGENTS.md's standing trap; a permission resolution
+      // is never a leg). Found by the slice-82 narrow review.
+      const held = await effectivePermissions(tx, actor.memberId);
+      const prefs = await readPreferences(tx, membership.tenantId);
+      const members = await tx.member.findMany({
+        select: { id: true, status: true, user: { select: { name: true } } },
+        orderBy: { joinedAt: "asc" },
+      });
       return { held, prefs, members };
     }),
     orEmpty(listProjects(ctx, { includeArchived: true })),

@@ -1,0 +1,504 @@
+import { randomUUID } from "node:crypto";
+
+import { record } from "@/audit/record";
+import { resolveScope } from "@/authz/authorize";
+import { deny } from "@/authz/errors";
+import { withTenant, type TenantDb } from "@/db";
+import { requireAccess } from "@/entitlements/resolver";
+import { fail } from "@/lib/domain-error";
+
+import { boundedVaultWrite, guarded, idOf, principalOf, type VaultCtx } from "./ctx";
+import {
+  isCredentialType,
+  normalizeExpiresAt,
+  normalizeName,
+  normalizeNotes,
+  normalizeRotateEveryDays,
+  normalizeSecretFields,
+  normalizeSecretPatch,
+  normalizeTags,
+  normalizeUrl,
+  normalizeUsername,
+  SECRET_FIELDS,
+  type CredentialType,
+} from "./fields";
+import { assertCredentialInScope, credentialScopeWhere, type CredentialAnchor } from "./scope";
+import { insertSecretRow, keepPreviousVersion, readSecret, readTotp, updateSecretRow } from "./secret-store";
+import { parseTotpInput } from "./totp";
+
+/**
+ * Credential METADATA and the secret's lifecycle (DATA_MODEL.md §6.17;
+ * AUTHZ.md §3.2's `credential:*` rows). Every verb is the house recipe:
+ * `requireAccess` → scope → mutate → `record()` in the same transaction.
+ *
+ * Nothing here ever RETURNS a secret. Creating and replacing one take a
+ * value in and encrypt it; reading one is `reveal.ts`'s, behind
+ * `credential:reveal` ✦, a fresh factor and the reveal budget. The view
+ * a caller gets back carries the secret's field NAMES (`secretFieldKeys`)
+ * and whether a TOTP seed exists — enough to draw a masked row — and the
+ * audit metadata carries the same, never a value.
+ */
+
+export type CredentialView = {
+  readonly id: string;
+  readonly clientId: string | null;
+  readonly projectId: string | null;
+  readonly type: CredentialType;
+  readonly name: string;
+  readonly username: string | null;
+  readonly url: string | null;
+  readonly tags: readonly string[];
+  readonly notes: string | null;
+  readonly secretFieldKeys: readonly string[];
+  readonly hasTotp: boolean;
+  readonly expiresAt: Date | null;
+  readonly rotateEveryDays: number | null;
+  readonly lastRotatedAt: Date | null;
+  readonly needsRotation: boolean;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+};
+
+const viewSelect = {
+  id: true,
+  clientId: true,
+  projectId: true,
+  type: true,
+  name: true,
+  username: true,
+  url: true,
+  tags: true,
+  notes: true,
+  secretFieldKeys: true,
+  hasTotp: true,
+  expiresAt: true,
+  rotateEveryDays: true,
+  lastRotatedAt: true,
+  needsRotation: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+/** A live (not deleted) credential's anchor, or NOT_FOUND. */
+async function liveAnchor(tx: TenantDb, tenantId: string, id: string) {
+  const row = await tx.credentialItem.findFirst({
+    where: { tenantId, id, deletedAt: null },
+    select: { id: true, type: true, clientId: true, projectId: true },
+  });
+  if (!row) return deny("NOT_FOUND");
+  return row;
+}
+
+/**
+ * Where a NEW credential hangs. A project wins and brings its own client
+ * (a caller that also names a client must name the same one); a client
+ * alone is a client-level login; neither is the agency's own (C49).
+ * Archived clients and projects take no new credentials.
+ *
+ * SCOPE IS ASKED BEFORE ANYTHING ELSE IS ANSWERED: a client mismatch or
+ * an archived status is a fact about the anchor, and telling it to a
+ * member who cannot reach the anchor would be the existence oracle
+ * NOT_FOUND exists to prevent.
+ */
+async function resolveNewAnchor(
+  tx: TenantDb,
+  ctx: VaultCtx,
+  input: { clientId?: unknown; projectId?: unknown },
+): Promise<CredentialAnchor> {
+  const tenantId = ctx.tenantId;
+  const projectId = input.projectId === undefined || input.projectId === null ? null : idOf(input.projectId, "projectId");
+  const clientId = input.clientId === undefined || input.clientId === null ? null : idOf(input.clientId, "clientId");
+  if (projectId !== null) {
+    const project = await tx.project.findFirst({
+      where: { tenantId, id: projectId },
+      select: { clientId: true, status: true },
+    });
+    if (!project) return deny("NOT_FOUND");
+    const anchor = { clientId: project.clientId, projectId };
+    await assertCredentialInScope(tx, ctx.actor, anchor);
+    if (clientId !== null && clientId !== project.clientId) fail("CLIENT_MISMATCH");
+    if (project.status === "ARCHIVED") fail("ARCHIVED");
+    return anchor;
+  }
+  if (clientId !== null) {
+    const client = await tx.client.findFirst({ where: { tenantId, id: clientId }, select: { status: true } });
+    if (!client) return deny("NOT_FOUND");
+    const anchor = { clientId, projectId: null };
+    await assertCredentialInScope(tx, ctx.actor, anchor);
+    if (client.status === "ARCHIVED") fail("ARCHIVED");
+    return anchor;
+  }
+  const anchor = { clientId: null, projectId: null };
+  await assertCredentialInScope(tx, ctx.actor, anchor);
+  return anchor;
+}
+
+export type CreateCredentialInput = {
+  readonly clientId?: string | null;
+  readonly projectId?: string | null;
+  readonly type: CredentialType;
+  readonly name: string;
+  readonly username?: string | null;
+  readonly url?: string | null;
+  readonly tags?: readonly string[];
+  readonly notes?: string | null;
+  /** The type's secret fields (`SECRET_FIELDS`); empty values are dropped. */
+  readonly secret?: Readonly<Record<string, string>>;
+  /** A base32 seed or an `otpauth://totp/…` URI. */
+  readonly totp?: string | null;
+  readonly expiresAt?: Date | null;
+  readonly rotateEveryDays?: number | null;
+};
+
+/** credential:create — the metadata row, its encrypted secret, and `credential.created`. */
+export async function createCredential(ctx: VaultCtx, input: CreateCredentialInput): Promise<CredentialView> {
+  if (!isCredentialType(input.type)) fail("INVALID_INPUT", "type");
+  const type = input.type;
+  const name = normalizeName(input.name);
+  const username = normalizeUsername(input.username);
+  const url = normalizeUrl(input.url);
+  const tags = normalizeTags(input.tags);
+  const notes = normalizeNotes(input.notes);
+  const fields = normalizeSecretFields(type, input.secret);
+  const totp =
+    input.totp === undefined || input.totp === null || (typeof input.totp === "string" && input.totp.trim() === "")
+      ? null
+      : parseTotpInput(input.totp);
+  const expiresAt = normalizeExpiresAt(input.expiresAt);
+  const rotateEveryDays = normalizeRotateEveryDays(input.rotateEveryDays);
+  if (Object.keys(fields).length === 0 && totp === null) fail("INVALID_INPUT", "a credential needs a secret or a TOTP seed");
+
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
+    guarded(async () => {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:create");
+      const anchor = await resolveNewAnchor(tx, ctx, input);
+
+      // The id is minted here because the AAD binds the ciphertext to it.
+      const id = randomUUID();
+      const secretFieldKeys = Object.keys(fields);
+      const row = await tx.credentialItem.create({
+        data: {
+          id,
+          tenantId: ctx.tenantId,
+          clientId: anchor.clientId,
+          projectId: anchor.projectId,
+          type,
+          name,
+          username,
+          url,
+          tags,
+          notes,
+          secretFieldKeys,
+          hasTotp: totp !== null,
+          expiresAt,
+          rotateEveryDays,
+          lastRotatedAt: new Date(),
+          createdByMemberId: ctx.actor.memberId,
+          updatedByMemberId: ctx.actor.memberId,
+        },
+        select: viewSelect,
+      });
+      await insertSecretRow(tx, { tenantId: ctx.tenantId, credentialId: id, fields, totp, memberId: ctx.actor.memberId });
+      await record(tx, {
+        action: "credential.created",
+        targetType: "CredentialItem",
+        targetId: id,
+        metadata: {
+          clientId: anchor.clientId,
+          projectId: anchor.projectId,
+          type,
+          fields: secretFieldKeys,
+          hasTotp: totp !== null,
+        },
+      });
+      return row;
+    }),
+  );
+}
+
+export type CredentialFilter =
+  /** One client's credentials — client-level and on its projects, as far as scope reaches. */
+  | { readonly clientId: string }
+  /** One project's credentials. */
+  | { readonly projectId: string }
+  /** The agency's own (C49): tenant-wide scope only; anyone else gets an empty list. */
+  | { readonly agencyOwn: true };
+
+/** credential:view — live credentials under one anchor, metadata only, by name. */
+export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): Promise<CredentialView[]> {
+  const anchorWhere =
+    "agencyOwn" in filter
+      ? { clientId: null }
+      : "projectId" in filter
+        ? { projectId: idOf(filter.projectId, "projectId") }
+        : { clientId: idOf(filter.clientId, "clientId") };
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:view");
+    const scope = await resolveScope(tx, ctx.actor);
+    return tx.credentialItem.findMany({
+      where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null, ...anchorWhere }, credentialScopeWhere(scope)] },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      select: viewSelect,
+    });
+  });
+}
+
+/** credential:view — one live credential's metadata; out of scope is NOT_FOUND. */
+export async function getCredential(ctx: VaultCtx, credentialId: string): Promise<CredentialView> {
+  const id = idOf(credentialId, "credentialId");
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:view");
+    const anchor = await liveAnchor(tx, ctx.tenantId, id);
+    await assertCredentialInScope(tx, ctx.actor, anchor);
+    return tx.credentialItem.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id }, select: viewSelect });
+  });
+}
+
+export type CredentialPatch = {
+  readonly name?: string;
+  readonly username?: string | null;
+  readonly url?: string | null;
+  readonly tags?: readonly string[];
+  readonly notes?: string | null;
+  readonly expiresAt?: Date | null;
+  readonly rotateEveryDays?: number | null;
+};
+
+/**
+ * credential:edit — the metadata only. A field absent from the patch is
+ * left alone; `null` clears it. Audited with the NAMES of the fields whose
+ * value actually changed; a patch that changes nothing writes nothing.
+ * Moving a credential to another client or project is not a metadata
+ * edit and is not offered.
+ */
+export async function updateCredential(
+  ctx: VaultCtx,
+  credentialId: string,
+  patch: CredentialPatch,
+): Promise<CredentialView> {
+  const id = idOf(credentialId, "credentialId");
+  const wanted: {
+    name?: string;
+    username?: string | null;
+    url?: string | null;
+    tags?: string[];
+    notes?: string | null;
+    expiresAt?: Date | null;
+    rotateEveryDays?: number | null;
+  } = {};
+  if (patch.name !== undefined) wanted.name = normalizeName(patch.name);
+  if (patch.username !== undefined) wanted.username = normalizeUsername(patch.username);
+  if (patch.url !== undefined) wanted.url = normalizeUrl(patch.url);
+  if (patch.tags !== undefined) wanted.tags = normalizeTags(patch.tags);
+  if (patch.notes !== undefined) wanted.notes = normalizeNotes(patch.notes);
+  if (patch.expiresAt !== undefined) wanted.expiresAt = normalizeExpiresAt(patch.expiresAt);
+  if (patch.rotateEveryDays !== undefined) wanted.rotateEveryDays = normalizeRotateEveryDays(patch.rotateEveryDays);
+
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
+    guarded(async () => {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:edit");
+      const anchor = await liveAnchor(tx, ctx.tenantId, id);
+      await assertCredentialInScope(tx, ctx.actor, anchor);
+      const current = await tx.credentialItem.findFirstOrThrow({
+        where: { tenantId: ctx.tenantId, id },
+        select: viewSelect,
+      });
+      const same = (a: unknown, b: unknown) =>
+        a instanceof Date || b instanceof Date
+          ? (a as Date | null)?.getTime() === (b as Date | null)?.getTime()
+          : JSON.stringify(a) === JSON.stringify(b);
+      const changed = (Object.keys(wanted) as (keyof typeof wanted)[]).filter((k) => !same(wanted[k], current[k]));
+      if (changed.length === 0) return current;
+      const data = Object.fromEntries(changed.map((k) => [k, wanted[k]])) as typeof wanted;
+      // `deletedAt: null` in the WRITE, not only in the read above: a delete
+      // that committed in between must not be edited (and audited) after it.
+      const written = await tx.credentialItem.updateMany({
+        where: { id, tenantId: ctx.tenantId, deletedAt: null },
+        data: { ...data, updatedByMemberId: ctx.actor.memberId },
+      });
+      if (written.count !== 1) return deny("NOT_FOUND");
+      await record(tx, {
+        action: "credential.updated",
+        targetType: "CredentialItem",
+        targetId: id,
+        metadata: { changed },
+      });
+      return tx.credentialItem.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id }, select: viewSelect });
+    }),
+  );
+}
+
+/**
+ * credential:edit — change the secret (the rotate gesture), as a PATCH:
+ * in `secret`, a value sets that field, `null` removes it, an empty string
+ * or an absent key leaves it as it is — so rotating one field of an API
+ * key keeps the other, and a form that posts its blank inputs wipes
+ * nothing. `totp` replaces the seed when a non-empty string, removes it
+ * when `null`, and leaves it alone when absent or empty. The secret being
+ * changed is kept as a version, re-encrypted under the version row's own
+ * AAD, and the newest ten are kept. Changing a secret is not revealing
+ * one: nothing is returned, and the editor never sees the old value.
+ * Only a REPLACED value is a rotation (it clears `needsRotation`) — a
+ * field's or the seed's; an ADDED or REMOVED field or seed is not; a patch
+ * that changes nothing — the same values or seed, blanks, a `null` seed
+ * where there is none — writes and records nothing.
+ */
+export async function replaceCredentialSecret(
+  ctx: VaultCtx,
+  credentialId: string,
+  input: { readonly secret?: Readonly<Record<string, string | null>>; readonly totp?: string | null },
+): Promise<CredentialView> {
+  const id = idOf(credentialId, "credentialId");
+  const seedText = typeof input.totp === "string" ? input.totp.trim() : "";
+  const totpChanged = input.totp === null || seedText !== "";
+  const totp = seedText !== "" ? parseTotpInput(seedText) : null;
+
+  return boundedVaultWrite((opts) =>
+    withTenant(
+      ctx.tenantId,
+      principalOf(ctx),
+      async (tx) =>
+        guarded(async () => {
+          await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:edit");
+          const anchor = await liveAnchor(tx, ctx.tenantId, id);
+          await assertCredentialInScope(tx, ctx.actor, anchor);
+          const patch = normalizeSecretPatch(anchor.type, input.secret);
+          const currentView = () =>
+            tx.credentialItem.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id }, select: viewSelect });
+          // A form that posted only blanks asked for nothing: answered with
+          // the credential as it is, and nothing is locked or written.
+          if (Object.keys(patch).length === 0 && !totpChanged) return currentView();
+          // Lock the item row: two changes of one credential would
+          // otherwise both read version N and both try to keep it.
+          await tx.$queryRaw`SELECT id FROM credential_item WHERE tenant_id = ${ctx.tenantId} AND id = ${id} FOR UPDATE`;
+          // Read AFTER the lock: a change that waited must see the other
+          // one's result, and a delete that landed while it waited.
+          const item = await tx.credentialItem.findFirstOrThrow({
+            where: { tenantId: ctx.tenantId, id },
+            select: { hasTotp: true, deletedAt: true, secretFieldKeys: true },
+          });
+          if (item.deletedAt !== null) deny("NOT_FOUND");
+          // The SAME seed again is not a change; a DIFFERENT seed over an
+          // existing one is a replaced value — a rotation (narrow review).
+          let sameSeed = false;
+          if (totp !== null && item.hasTotp) {
+            const now = await readTotp(tx, ctx.tenantId, id);
+            sameSeed =
+              now !== null &&
+              now.secret === totp.secret &&
+              now.algorithm === totp.algorithm &&
+              now.digits === totp.digits &&
+              now.period === totp.period;
+          }
+
+          // The old secret is decrypted only when a field is being changed
+          // — to merge the patch into it and to keep it as a version; a
+          // seed-only change never touches it.
+          let current: Awaited<ReturnType<typeof readSecret>> = null;
+          let next: Record<string, string> | null = null;
+          // The field NAMES whose value was set, replaced or removed — for
+          // the trail; and whether an EXISTING value was replaced, which is
+          // the only thing that counts as a rotation (adding a field that
+          // was not there, or removing one, rotates nothing — fix-pass review).
+          let changedFields: string[] = [];
+          let rotated = false;
+          if (Object.keys(patch).length > 0) {
+            current = await readSecret(tx, ctx.tenantId, id);
+            if (!current) throw new Error("vault: a live credential has no secret row");
+            const before = current.payload.fields;
+            const merged: Record<string, string> = { ...before };
+            for (const [k, v] of Object.entries(patch)) {
+              if (v === null) delete merged[k];
+              else merged[k] = v;
+            }
+            changedFields = SECRET_FIELDS[anchor.type].filter((k) => before[k] !== merged[k]);
+            rotated = changedFields.some((k) => k in before && k in merged);
+            if (changedFields.length > 0) next = merged;
+          }
+          // A `null` seed on a credential that has none removes nothing.
+          const seedChange = input.totp === null ? item.hasTotp : totpChanged && !sameSeed;
+          const isRotation = rotated || (item.hasTotp && totp !== null && !sameSeed);
+          const fieldKeys = next === null ? item.secretFieldKeys : SECRET_FIELDS[anchor.type].filter((k) => k in next!);
+          const willHaveTotp = seedChange ? totp !== null : item.hasTotp;
+          if (fieldKeys.length === 0 && !willHaveTotp) fail("INVALID_INPUT", "a credential needs a secret or a TOTP seed");
+          // The same values again are not a change: nothing written, nothing recorded.
+          if (next === null && !seedChange) return currentView();
+
+          let newVersion: number | null = null;
+          if (next !== null && current !== null) {
+            await keepPreviousVersion(tx, {
+              tenantId: ctx.tenantId,
+              credentialId: id,
+              previous: current.payload,
+              previousVersion: current.version,
+              changedByMemberId: ctx.actor.memberId,
+            });
+            newVersion = current.version + 1;
+          }
+
+          await updateSecretRow(tx, {
+            tenantId: ctx.tenantId,
+            credentialId: id,
+            ...(next === null || newVersion === null ? {} : { replace: { fields: next, version: newVersion } }),
+            ...(seedChange ? { totp } : {}),
+            memberId: ctx.actor.memberId,
+          });
+          const row = await tx.credentialItem.update({
+            where: { id, tenantId: ctx.tenantId },
+            data: {
+              secretFieldKeys: [...fieldKeys],
+              hasTotp: willHaveTotp,
+              // Only a REPLACED value is a rotation; a new seed, an added
+              // field or a removed one is not.
+              ...(isRotation ? { lastRotatedAt: new Date(), needsRotation: false } : {}),
+              updatedByMemberId: ctx.actor.memberId,
+            },
+            select: viewSelect,
+          });
+          await record(tx, {
+            action: "credential.updated",
+            targetType: "CredentialItem",
+            targetId: id,
+            metadata: {
+              secretChanged: next !== null,
+              changedFields,
+              rotated: isRotation,
+              totpChanged: seedChange,
+              fields: [...fieldKeys],
+              hasTotp: willHaveTotp,
+              ...(newVersion === null ? {} : { version: newVersion }),
+            },
+          });
+          return row;
+        }),
+      opts,
+    ),
+  );
+}
+
+/**
+ * credential:delete — soft delete: the row leaves every list and every
+ * reveal at once, and the secret with its versions is purged with it
+ * after DATA_MODEL §6.17's thirty days (the purge job is a later slice).
+ * Two concurrent deletes record ONE `credential.deleted`: the write is
+ * conditional on the row still being live.
+ */
+export async function deleteCredential(ctx: VaultCtx, credentialId: string): Promise<void> {
+  const id = idOf(credentialId, "credentialId");
+  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:delete");
+    const anchor = await liveAnchor(tx, ctx.tenantId, id);
+    await assertCredentialInScope(tx, ctx.actor, anchor);
+    const written = await tx.credentialItem.updateMany({
+      where: { id, tenantId: ctx.tenantId, deletedAt: null },
+      data: { deletedAt: new Date(), updatedByMemberId: ctx.actor.memberId },
+    });
+    if (written.count !== 1) deny("NOT_FOUND");
+    await record(tx, {
+      action: "credential.deleted",
+      targetType: "CredentialItem",
+      targetId: id,
+      metadata: { clientId: anchor.clientId, projectId: anchor.projectId },
+    });
+  });
+}

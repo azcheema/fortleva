@@ -1,0 +1,19 @@
+/**
+ * The vault module (Phase 3V; DATA_MODEL.md §6.17; plan §3.4). Imported
+ * through this file only. Direction: `vault → core`, never another module.
+ */
+export type { VaultCtx } from "./ctx";
+export { CREDENTIAL_TYPES, SECRET_FIELDS, isCredentialType, type CredentialType } from "./fields";
+export {
+  createCredential,
+  deleteCredential,
+  getCredential,
+  listCredentials,
+  replaceCredentialSecret,
+  updateCredential,
+  type CreateCredentialInput,
+  type CredentialFilter,
+  type CredentialPatch,
+  type CredentialView,
+} from "./items";
+export { copyCredentialField, generateCredentialTotp, revealCredentialField, type RevealKind } from "./reveal";

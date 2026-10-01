@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { record } from "@/audit/record";
-import type { MemberActor } from "@/authz/authorize";
+import { requireRecentMfa, STEP_UP_WINDOW_MINUTES, type MemberActor } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { LOCALES } from "@/i18n/config";
@@ -20,6 +20,9 @@ import {
   TIME_PREF_KEYS,
   TIMEZONES,
   TOGGLEABLE_MODULES,
+  VAULT_PREF_KEYS,
+  VAULT_REVEAL_BUDGET_RANGE,
+  VAULT_STEP_UP_MINUTES_RANGE,
   WEEK_STARTS,
   type TenantPreferences,
   type ToggleableModule,
@@ -55,10 +58,14 @@ const memberPrincipal = (ctx: PreferenceCtx) =>
 
 /** Read inside an existing tenant tx (no permission gate — used by request-time formatting). */
 export async function readPreferences(tx: TenantDb, tenantId: string): Promise<TenantPreferences> {
-  const [tenant, rows] = await Promise.all([
-    tx.tenant.findFirst({ where: { id: tenantId }, select: { defaultLocale: true } }),
-    tx.tenantPreference.findMany({ select: { key: true, value: true } }),
-  ]);
+  // In SEQUENCE, never a `Promise.all`: both reads share the caller's one
+  // transaction connection, which Prisma over the `pg` adapter does not
+  // serialise, so a losing leg can resolve `undefined` (AGENTS.md's
+  // standing trap). Here that threw on `rows.map` inside whatever
+  // transaction called it — since Phase 3V, the vault's reveal, which
+  // reads its step-up window and budget through this (both reviews).
+  const tenant = await tx.tenant.findFirst({ where: { id: tenantId }, select: { defaultLocale: true } });
+  const rows = await tx.tenantPreference.findMany({ select: { key: true, value: true } });
   return materializePreferences(tenant?.defaultLocale ?? "sv", rows);
 }
 
@@ -91,6 +98,13 @@ const patchSchema = z
       })
       .partial(),
     finance: z.object({ costRatesEnabled: z.boolean() }).partial(),
+    // 3V (whole numbers within the bounds the reader also enforces)
+    vault: z
+      .object({
+        stepUpMinutes: z.number().int().min(VAULT_STEP_UP_MINUTES_RANGE.min).max(VAULT_STEP_UP_MINUTES_RANGE.max),
+        revealBudgetPerHour: z.number().int().min(VAULT_REVEAL_BUDGET_RANGE.min).max(VAULT_REVEAL_BUDGET_RANGE.max),
+      })
+      .partial(),
   })
   .partial();
 
@@ -137,6 +151,14 @@ export async function updatePreferences(
   const patch = parsed.data!;
   return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "settings:edit");
+    // The vault's two keys decide how easily its secrets can be read
+    // (the re-check window, the hourly budget): a stolen admin session
+    // must not be able to loosen them without the second factor
+    // (security review, 2026-10-01). Any change to them asks for one —
+    // the ✦ window every step-up code uses.
+    if (patch.vault !== undefined && Object.keys(patch.vault).length > 0) {
+      await requireRecentMfa(ctx.actor, STEP_UP_WINDOW_MINUTES);
+    }
     const changed: string[] = [];
     if (patch.defaultLocale !== undefined) {
       const t = await tx.tenant.findFirst({
@@ -178,6 +200,11 @@ export async function updatePreferences(
     }
     for (const [field, key] of Object.entries(FINANCE_PREF_KEYS) as [keyof typeof FINANCE_PREF_KEYS, string][]) {
       const value = patch.finance?.[field];
+      if (value === undefined) continue;
+      if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
+    }
+    for (const [field, key] of Object.entries(VAULT_PREF_KEYS) as [keyof typeof VAULT_PREF_KEYS, string][]) {
+      const value = patch.vault?.[field];
       if (value === undefined) continue;
       if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
     }

@@ -219,6 +219,23 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     "Decline a client's REQUEST or mark it a duplicate — publishes the agency's reply to the client's portal; supplements work_item:triage, never replaces it",
     CM,
   ),
+  // ── Phase 3V slice 1 (module `vault`, +5; catalog 99 → 104;
+  // TEMPLATE_VERSION 7, 2026-10-01) — AUTHZ.md §3.2's rows, landing with
+  // the services that enforce them (`enforcement.test.ts` refuses a code
+  // that merely exists). The other six vault codes — share, export,
+  // change_visibility and the three `asset:*` — land with their slices.
+  //
+  // `credential:reveal` is C M A, NOT C M A E (decision 13, CP4): seeding
+  // it on the employee template would make the vault silently force MFA
+  // enrolment on every employee. A tenant that wants employees revealing
+  // grants it to a clone, which forces enrolment for exactly those
+  // holders. ✦ — and the vault's own window (`vault.stepUpMinutes`,
+  // default 10) is checked on every Reveal, Copy and code, on top.
+  p("credential:view", "vault", "List/detail credential metadata (masked; ciphertext never selected)", CMAE),
+  p("credential:create", "vault", "Create credential items (incl. the secret)", CMAE),
+  p("credential:edit", "vault", "Edit credential metadata; replace the secret (the old one is kept as a version)", CMA),
+  p("credential:delete", "vault", "Delete credential items", CM),
+  p("credential:reveal", "vault", "Reveal / Copy / TOTP code — one field per call, step-up + reveal budget, audited per call", CMA, true),
 ];
 
 export type RoleTemplate = {
@@ -270,8 +287,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     this bump MUST run `prisma/seed.ts`**: a catalogue entry reaches
  *     an existing tenant's roles only through B3 propagation, and
  *     without it owners and managers would hold a code the code path
- *     requires and the database has never granted. */
-export const TEMPLATE_VERSION = 6;
+ *     requires and the database has never granted.
+ * v7 (2026-10-01): +5 `vault` codes (Phase 3V slice 1 — credential:view,
+ *     create, edit, delete, and credential:reveal ✦). Additive; the ✦
+ *     code reaches the owner/manager/admin SYSTEM roles only, never a
+ *     clone (AUTHZ.md §3.5). The same rule as v6: a release carrying this
+ *     bump MUST run `prisma/seed.ts`. */
+export const TEMPLATE_VERSION = 7;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

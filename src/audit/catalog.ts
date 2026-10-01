@@ -249,6 +249,22 @@ export const AUDIT_EVENTS = {
   "rate_card.created": TENANT,
   "rate_card.closed": TENANT,
   "rate_card.cost_revealed": TENANT, // aggregate, once per session
+  // Phase 3V slice 1 — the vault (DATA_MODEL.md §6.17, SECURITY.md §6.3).
+  // Metadata is the credential's ids, the field NAMES and counts — never
+  // a value, never a seed. Reveal, Copy and a TOTP code are one row each,
+  // per call, written in the transaction that decrypted.
+  "credential.created": TENANT,
+  "credential.updated": TENANT, // metadata edits AND a replaced secret (`secretChanged`)
+  "credential.deleted": TENANT,
+  "credential.revealed": TENANT,
+  "credential.copied": TENANT,
+  "credential.totp_generated": TENANT,
+  // The two refusals the vault records (AUTHZ.md §7.5: a step-up challenge
+  // is never `authz.escalation_denied`). Both commit although the act is
+  // refused — a refusal that left no row would be invisible exactly when
+  // somebody is probing.
+  "vault.step_up_required": TENANT,
+  "vault.reveal_budget_exceeded": TENANT,
   "budget.created": TENANT,
   "budget.changed": TENANT,
   "budget.alert_sent": TENANT,

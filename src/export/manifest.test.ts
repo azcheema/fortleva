@@ -69,11 +69,14 @@ describe("export census covers the model registry", () => {
 });
 
 describe("excluded columns (encrypted / key material never leave)", () => {
-  it("is pinned to the encrypted Tenant bank fields, the wrapped DEK and the COST ciphertext", () => {
+  it("is pinned to the encrypted Tenant bank fields, the wrapped DEK, the COST ciphertext and the vault's ciphertext", () => {
     expect(EXPORT_EXCLUDED_COLUMNS).toEqual({
       tenant: ["bankgiro", "plusgiro", "iban", "bic", "databaseUrl"],
       tenantKey: ["wrappedDek"],
       rateCard: ["amountCiphertext"],
+      // 3V slice 1: plaintext export is its own ✦ act (credential:export)
+      credentialSecret: ["secretCiphertext", "totpSecretCiphertext"],
+      credentialVersion: ["secretCiphertext"],
     });
   });
 

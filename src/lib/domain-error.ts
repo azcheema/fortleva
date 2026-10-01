@@ -79,6 +79,17 @@ export type DomainErrorCode =
   // behaviour. A spent lock wait on that path is `REQUEST_BUSY`, which
   // is not disclosed.
   | "COMMENT_RATE_LIMITED"
+  // The vault (Phase 3V slice 1 — src/modules/vault/reveal.ts): this member
+  // has revealed, copied or generated codes as many times as the tenant's
+  // `vault.revealBudgetPerHour` allows in the last hour. A fact about the
+  // member's own use, recorded (`vault.reveal_budget_exceeded`) — the
+  // budget exists so that bulk exfiltration by a legitimate member is
+  // slow and loud (SECURITY.md §6.3).
+  | "REVEAL_BUDGET_EXCEEDED"
+  // ...and the vault's BUSY: a reveal or a secret change whose lock waits
+  // were spent (55P03) or which lost a deadlock, every attempt. Nothing was
+  // revealed or written; "try again" is the truth and the whole remedy.
+  | "VAULT_BUSY"
   // Sign-off (Phase 3 — src/projects/versions.ts, src/documents/service.ts).
   // The member's three refusals when ASKING a client to sign off: the row
   // is not something the client can see (a draft version, an INTERNAL or

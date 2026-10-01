@@ -6,6 +6,7 @@ import { config as loadEnv } from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PERMISSIONS } from "../src/authz/catalog";
+import { backfillTenantKeys } from "../src/crypto/tenant-key-backfill";
 import { runTemplatePropagation } from "../src/members/templates";
 import { PrismaClient } from "../src/generated/prisma/client";
 
@@ -58,6 +59,21 @@ async function main() {
   console.log(
     `Template propagation: ${propagated.tenants} tenant(s), ${propagated.rolesTouched} role(s) touched, ${propagated.codesGranted} grant(s)`,
   );
+
+  // Phase 3V: every tenant holds an ACTIVE envelope key before the vault
+  // ships (SECURITY.md §6.1) — ONLY WHEN THE RELEASE ASKS (RUNBOOK). This
+  // seed also runs in CI and in neon-smoke.yml, the latter against the
+  // SHARED dev database with a throwaway key. Even when asked, it mints
+  // nothing unless this process's root keyring unwraps keys the
+  // application itself already wrote (`backfillTenantKeys`). The lazy
+  // path mints a tenant's key on its first encrypt, so not running it
+  // costs no correctness.
+  if (process.env["TENANT_KEY_BACKFILL"] === "1") {
+    const keys = await backfillTenantKeys(prisma);
+    console.log(`Tenant keys: ${keys.scanned} tenant(s) without one, ${keys.created} created, keyring ${keys.keyring}`);
+  } else {
+    console.log("Tenant keys: back-fill not requested (TENANT_KEY_BACKFILL=1 runs it — RUNBOOK)");
+  }
 
   await prisma.$disconnect();
 }

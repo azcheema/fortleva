@@ -19,7 +19,10 @@ import type { TenantDb } from "@/db";
  * switch GATE's locks — two int4 keys per project, a separate key space
  * — live in SQL, migration `20260928180000`, wrapped for application
  * code by `src/projects/portal-gate.ts`. The request intake takes that
- * gate, shared, BEFORE this key.)
+ * gate, shared, BEFORE this key. And, since Phase 3V slice 1, the vault's
+ * per-member `vault_reveal:` key in `src/modules/vault/budget.ts` — a
+ * deliberate copy of this statement, for a MEMBER, that takes no other
+ * lock.)
  *
  * WHY IT IS RAW SQL IN A FILE OF ITS OWN: the brokers that call it are
  * scanned by the portal tripwire's AST tier (`src/authz/portal-projections.test.ts`),

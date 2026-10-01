@@ -3800,6 +3800,14 @@ The pattern (Hudu/IT Glue): credentials live **next to** the client/project/asse
 
 Pinned facts (plan §3.4): `TenantKey` per tenant; v2 ciphertext with AAD `tenantId:model:rowId:field`; `CredentialItem` (class B metadata) + `CredentialSecret` (class A ciphertext); `credential:reveal` seeded CMA ✦ (decision 13); share-link token `<tenantId>.<random>`, resolved via `withTenant(tenantId, {type:'system'})` — never `withPlatform` from a portal/tenant route — email-OTP or authenticated contact, `maxViews` 1, TTL ≤ 7 d.
 
+**Built — Phase 3V slice 1, 2026-10-01** (migration `20261001120000_vault_core`; `src/modules/vault`). What the code says where it differs from the block below:
+- **`CredentialItem`, `CredentialSecret`, `CredentialVersion` exist; the rest of this section does not yet.** `assetId` and `submittedByContactId` are NOT columns yet — they arrive with `ClientAsset` and portal submission, with their FKs. `CredentialAccessGrant`, `CredentialShareLink`, `ClientAsset`, `ExpirationReminderSent` are later slices.
+- **The database refuses more than §6.17 listed:** `credential_item_internal_only` (`visibility = 'INTERNAL'` — CP4: no portal-persistent credentials; the slice that builds `vault.allowPortalCredentials` drops it by name); the three ciphertext columns must match the v2 shape (`^v2\.[^.]+\.[^.]+\.<iv 16>\.<ct>\.<tag 22>$`); `url` is `http(s)://` or NULL; length and list-size bounds; and `credential_item_client_match` (a trigger) refuses a project of another client.
+- **Payloads are versioned JSON:** the secret is `{v:1, fields:{<key>: <value>}}` with keys from `SECRET_FIELDS` per type (`src/modules/vault/fields.ts`); the TOTP seed is `{v:1, secret, algorithm, digits, period}` (SHA1/256/512, 6 or 8 digits, 30 or 60 s — an `otpauth://totp` URI or a bare base32 seed). A version row keeps the secret only, never the seed.
+- **The reveal budget's authority is the audit trail, not a counter table:** the member's own `credential.revealed | copied | totp_generated` rows of the last hour, counted under a per-member advisory lock (`src/modules/vault/budget.ts`), with Upstash (`vault.reveal`, 150 / h) as the cheap filter in front — fail-closed by construction, and no "reveal budget fallback" table exists.
+- **Tenant keys are not minted at provisioning:** lazily on a tenant's first v2 encrypt, as before, and back-filled for every tenant without one by `prisma/seed.ts` when the release asks (`TENANT_KEY_BACKFILL=1`, RUNBOOK; `src/crypto/tenant-key-backfill.ts`; ran on the dev database 2026-10-01: 2 tenants).
+- **Scope (C49):** a credential with no client is in scope only for tenant-wide scope; a client-level one (`projectId` NULL) for DIRECT client assignment; a project-anchored one on the project axis (`src/modules/vault/scope.ts`).
+
 ```prisma
 // ───────────────────────────────────────────────────────────────────
 // 6.17 VAULT & ASSETS (TenantKey: Phase 1b; rest: Phase 3V) — module `vault`

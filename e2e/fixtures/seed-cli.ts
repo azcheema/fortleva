@@ -186,6 +186,11 @@ const DBTEST_PREFIXES = [
   "totals-",
   "tree-",
   "triage-",
+  // Phase 3V slice 1, the vault core — `src/modules/vault/vault.dbtest.ts`,
+  // `setupTenant("vault")`, and the tenant-key back-fill —
+  // `src/crypto/tenant-key-backfill.dbtest.ts`, `setupTenant("vkey")`.
+  "vault-",
+  "vkey-",
   // Phase 3 slice 72, the sharing UI — `src/modules/work/visibility.dbtest.ts`,
   // `setupTenant("vshare")`.
   "vshare-",
@@ -1507,6 +1512,9 @@ async function removeTenant(
   await db.milestone.deleteMany({ where: { tenantId } });
   await db.projectVersion.deleteMany({ where: { tenantId } });
   await db.service.deleteMany({ where: { tenantId } });
+  // 3V: a credential RESTRICTs its client, project and tenant; its secret
+  // and versions go with it (ON DELETE CASCADE).
+  await db.credentialItem.deleteMany({ where: { tenantId } });
   await db.memberProject.deleteMany({ where: { tenantId } });
   await db.memberClient.deleteMany({ where: { tenantId } });
   // A contact's password-reset rows have no FK to it — a row is looked up
