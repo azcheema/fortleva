@@ -56,6 +56,15 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
     setError(null);
     const { data, error: err } = await authClient.twoFactor.enable({ password });
     setBusy(false);
+    if (err?.code === "FACTOR_ALREADY_ENROLLED") {
+      // The factor guard (by its code, not the bare 403 an origin check
+      // also answers): this account was enrolled since the page was drawn
+      // (another tab, another device). Say so in the reader's language
+      // until the redraw replaces the form with the enrolled summary.
+      setError(t("alreadyEnrolled"));
+      router.refresh();
+      return;
+    }
     if (err || !data) {
       setError(err?.message ?? t("startFailed"));
       return;
@@ -86,6 +95,20 @@ export function TotpEnrollment({ enabled }: { enabled: boolean }) {
     setError(null);
     const { error: err } = await authClient.twoFactor.verifyTotp({ code });
     setBusy(false);
+    if (err?.status === 429) {
+      // The per-IP limiter, or the factor guard's daily cap on a first
+      // enrolment's confirmation (slice 83). Not a wrong code.
+      setError(t("tooManyAttempts"));
+      return;
+    }
+    if (err?.code === "FACTOR_STEP_UP_ONLY") {
+      // Enrolled in another tab between this tab's start and its verify:
+      // the guard now treats the check as a step-up's. Leave the scan
+      // stage — its QR is dead — so the redraw shows the enrolled state.
+      setStage({ step: "idle" });
+      router.refresh();
+      return;
+    }
     if (err) {
       setError(err.message ?? t("mismatch"));
       return;

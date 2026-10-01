@@ -14,7 +14,7 @@ import { runtimeClient } from "@/db/client";
 import { afterResponse } from "./after-response";
 import { auditPlugin, memberAuditSink, memberDatabaseHooks, onPasswordResetHook } from "./audit-hooks";
 import { refuseClosedEndpoint } from "./closed-endpoints";
-import { guardFactorMutations } from "./factor-guard";
+import { guardFactorEndpoints } from "./factor-guard";
 import {
   afterMemberPasswordReset,
   deliverMemberConfirmation,
@@ -259,12 +259,13 @@ export const auth = betterAuth({
     // ./rate-limit-hook on 2026-09-09 so the PLATFORM instance uses the
     // same function rather than a copy that can drift — it had none.
     //
-    // The factor guard runs here TOO, and that is not belt-and-braces:
-    // `TwoFactor.userId` is @unique, so a SUPERADMIN has ONE factor row
-    // and this plane's /two-factor/disable deletes the very row the
-    // console gate depends on. Guarding only the platform instance would
-    // leave the weak plane able to strip the strong plane's credential.
-    // See ./factor-guard.
+    // The factor guard runs here, and since slice 83 it is what keeps a
+    // MEMBER's own factor — the one every step-up checks — out of reach of
+    // a session plus the password, and keeps a session alone from guessing
+    // codes. It would be needed here even for the operator alone:
+    // `TwoFactor.userId` is @unique, so a SUPERADMIN has ONE factor row and
+    // this plane's /two-factor/disable would delete the very row the
+    // console gate depends on. See ./factor-guard.
     //
     // And FIRST, the endpoints this plane does not serve at all (slice 58
     // and C30, ./closed-endpoints): before the limiter, because they cost us
@@ -283,7 +284,7 @@ export const auth = betterAuth({
       await enforceAuthRateLimit(ctx, "member");
       refuseUnsafeSignUp(ctx);
       await refuseResetOfConsolePrincipal(ctx);
-      await guardFactorMutations(ctx, "member");
+      await guardFactorEndpoints(ctx);
     }),
     // Every successful sign-up answers alike, so the body names nobody
     // (./sign-up-answer). Nothing in it can throw — an after-hook's throw

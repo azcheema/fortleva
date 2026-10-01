@@ -8,7 +8,6 @@ import { z } from "zod";
 import { requireMemberSession } from "@/auth/session";
 import { verifyStepUpWithHeaders } from "@/auth/step-up";
 import { enrolUrl, safeNextPath } from "@/authz/redirects";
-import { allow } from "@/ratelimit";
 
 const schema = z.object({
   code: z.string().trim().min(6).max(32),
@@ -34,12 +33,9 @@ export async function verifyStepUpAction(
   if (!parsed.success) return { ok: false, message: t("enterCode") };
   const next = safeNextPath(parsed.data.next);
 
-  // Per-user attempt budget on the step-up code (SECURITY.md §3.5);
-  // no-op until Upstash env exists (src/ratelimit).
-  const session = await requireMemberSession();
-  if (!(await allow("auth.step_up", session.user.id))) {
-    return { ok: false, message: t("tooManyAttempts") };
-  }
+  // The per-user attempt budget is spent inside `verifyStepUpWithHeaders`
+  // (slice 83), which answers `rate_limited` when it is gone.
+  await requireMemberSession();
 
   const result = await verifyStepUpWithHeaders(parsed.data.code, await headers());
   if (!result.ok) {

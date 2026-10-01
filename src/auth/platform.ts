@@ -12,7 +12,7 @@ import { runtimeClient } from "@/db/client";
 import { auditPlugin, auditRowHooks, isFreshFactorPath, passwordResetHookFor } from "./audit-hooks";
 import { platformAuditSink } from "./platform-audit-hooks";
 import { refuseClosedEndpoint } from "./closed-endpoints";
-import { guardFactorMutations } from "./factor-guard";
+import { guardFactorEndpoints } from "./factor-guard";
 import { SESSION_ADDITIONAL_FIELDS, USER_ADDITIONAL_FIELDS } from "./index";
 import { enforceAuthRateLimit } from "./rate-limit-hook";
 import { MEMBER_MIN_PASSWORD_LENGTH } from "./recovery-policy";
@@ -180,7 +180,8 @@ export const platformAuth = betterAuth({
     // that can drift; this instance had NO limiter at all until
     // 2026-09-09, which made the console the softest of the three
     // sign-in surfaces while SECURITY.md §3.7 presented it as the
-    // hardest. The factor guard is the console-only rule, and it runs
+    // hardest. The factor guard is the same function the member instance
+    // runs (one factor row per user serves both planes), and it runs
     // after the limiter so a grinder pays the limiter first.
     //
     // Before both, the endpoints the console does not serve at all
@@ -190,7 +191,7 @@ export const platformAuth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       refuseClosedEndpoint(ctx, "platform");
       await enforceAuthRateLimit(ctx, "platform");
-      await guardFactorMutations(ctx, "platform");
+      await guardFactorEndpoints(ctx);
     }),
   },
   // admin() IS DELIBERATELY ABSENT HERE. It mounts

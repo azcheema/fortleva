@@ -12,7 +12,6 @@ import { runWithReissueIntent } from "@/auth/reissue-intent";
 import { requireMemberSession } from "@/auth/session";
 import { verifyStepUpWithHeaders } from "@/auth/step-up";
 import { enrolUrl } from "@/authz/redirects";
-import { allow } from "@/ratelimit";
 
 /**
  * SIX DIGITS, i.e. a live TOTP — never a backup code, and the narrowness
@@ -57,15 +56,17 @@ export type ReissueState =
  * alone would hand a password thief a permanent set of second factors,
  * which is the whole control inverted. So this action requires BOTH:
  *
- *   1. a live code from the CURRENT authenticator (or an existing backup
- *      code) — verified here, in this request, by the same helper the
- *      step-up flow uses, which stamps `Session.mfaVerifiedAt`; and
+ *   1. a live code from the CURRENT authenticator — never a backup code
+ *      (the schema above says why) — verified here, in this request, by
+ *      the same helper the step-up flow uses, which stamps
+ *      `Session.mfaVerifiedAt`; and
  *   2. the account password, which the endpoint asks for itself.
  *
- * `guardFactorMutations` (src/auth/factor-guard.ts) then allows the call
- * only because of the stamp step 1 just wrote, inside a tight window.
- * Remove step 1 and the guard refuses — the two halves are meant to be
- * read together.
+ * `guardFactorEndpoints` (src/auth/factor-guard.ts) then allows the call
+ * only because of the stamp step 1 just wrote, inside a tight window,
+ * AND the reissue marker this action opens around the call. Remove
+ * either and the guard refuses — the halves are meant to be read
+ * together.
  *
  * The principal comes from the request cookie, never from the form.
  */
@@ -82,12 +83,9 @@ export async function reissueBackupCodesAction(
 
   const session = await requireMemberSession();
 
-  // Same per-user budget as step-up: this verifies a second factor, so
-  // it is a code-guessing surface like any other (SECURITY.md §3.7).
-  if (!(await allow("auth.step_up", session.user.id))) {
-    return { ok: false, message: t("tooManyAttempts") };
-  }
-
+  // The per-user step-up budget — this verifies a second factor, so it is
+  // a code-guessing surface like any other (SECURITY.md §3.7) — is spent
+  // inside `verifyStepUpWithHeaders` (slice 83): `rate_limited` below.
   const requestHeaders = await headers();
 
   // 1. Prove possession of the CURRENT factor. This is what stamps the
@@ -104,7 +102,7 @@ export async function reissueBackupCodesAction(
   //    as a thrown APIError rather than a rejected promise value.
   let codes: string[];
   try {
-    // The marker is what lets guardFactorMutations tell this call apart
+    // The marker is what lets guardFactorEndpoints tell this call apart
     // from a request to the same endpoint. It is opened HERE, after the
     // factor has been verified above, and closes with this call.
     const result = await runWithReissueIntent(() =>

@@ -38,7 +38,7 @@ import { Input } from "@/components/ui/input";
  * stamped cookie, which is why first enrolment being reachable with the
  * password alone is a real, bounded window (SECURITY.md §3.5), and why
  * replacing an EXISTING factor is refused server-side in
- * src/auth/platform.ts rather than merely being absent from this page.
+ * src/auth/factor-guard.ts rather than merely being absent from this page.
  */
 
 type Stage =
@@ -174,7 +174,7 @@ function OpsLoginInner() {
     // Enrolled. End the password-born session here rather than let the
     // operator walk into a redirect they cannot read (see the note at the
     // top of this file). try/finally, because a rejected signOut must not
-    // strand the form: the factor now EXISTS, guardFactorMutations will
+    // strand the form: the factor now EXISTS, guardFactorEndpoints will
     // refuse a second enrolment, and the only copy of the backup codes is
     // on this screen. Reaching the success stage matters more than the
     // sign-out succeeding.
@@ -186,7 +186,7 @@ function OpsLoginInner() {
       setBusy(false);
       setCode("");
       // Carry the codes forward. They are shown ONCE here: a second
-      // /two-factor/enable is refused for a SUPERADMIN, so this screen is
+      // /two-factor/enable is refused once a factor is enrolled, so this screen is
       // the only copy this flow will ever produce. They can be reissued
       // later from /account, but only on proof of the current factor —
       // which is no help to someone who never wrote these down and then

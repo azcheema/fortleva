@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   REISSUE_WINDOW_MS,
+  SESSION_VERIFY_PATHS,
   factorMutationVerdict,
+  sessionVerifyVerdict,
   type FactorPolicyInput,
   type FactorVerdict,
 } from "./factor-policy";
@@ -10,10 +12,12 @@ import {
 /**
  * What a password holder may do to a second factor (SECURITY.md §3.5).
  *
- * This is the rule standing between "someone learned the ops password"
- * and "someone owns the ops account", so the matrix is exhaustive rather
- * than representative. The plane behind it reaches `app_platform`, a
- * BYPASSRLS cross-tenant role.
+ * This is the rule standing between "someone learned the password" and
+ * "someone owns the account's second factor" — the operator's, whose
+ * plane reaches `app_platform`, a BYPASSRLS cross-tenant role, and since
+ * slice 83 every member's, whose factor is what each ✦ step-up checks
+ * (the vault's reveal among them). So the matrix is exhaustive rather
+ * than representative, and it holds for every account alike.
  */
 
 const NOW = Date.parse("2026-09-10T12:00:00Z");
@@ -21,7 +25,6 @@ const NOW = Date.parse("2026-09-10T12:00:00Z");
 const base: FactorPolicyInput = {
   path: "/two-factor/enable",
   hasSession: true,
-  isPlatformPrincipal: true,
   hasVerifiedFactor: false,
   mfaVerifiedAt: null,
   now: NOW,
@@ -45,9 +48,12 @@ describe("factorMutationVerdict", () => {
     expect(verdict({ path: "/two-factor/enable-something" })).toBe("allow");
   });
 
-  it("leaves ordinary members' 2FA self-service", () => {
+  it("opens no path to an enrolled account on a session and the password alone", () => {
+    // Slice 83's case, for every account: no proof of the factor, no
+    // marker — the shape a stolen session plus a phished password has.
+    // Members used to get "allow" on all four here.
     for (const path of ALL_GUARDED) {
-      expect(verdict({ path, isPlatformPrincipal: false })).toBe("allow");
+      expect(verdict({ path, hasVerifiedFactor: true })).not.toBe("allow");
     }
   });
 
@@ -59,7 +65,7 @@ describe("factorMutationVerdict", () => {
   });
 
   describe("the frozen endpoints", () => {
-    it("never lets a platform principal disable or reveal the factor", () => {
+    it("never lets anyone disable or reveal the factor", () => {
       // Both hand the account over outright: one removes the factor, the
       // other returns the secret. No proof makes them acceptable.
       const fresh = new Date(NOW - 1_000);
@@ -153,11 +159,35 @@ describe("factorMutationVerdict", () => {
     });
   });
 
-  it("never answers allow for a platform principal on a missing input", () => {
+  it("never answers allow on a missing input", () => {
     // Every optional field absent at once: the shape a caller gets wrong.
     for (const path of ALL_GUARDED) {
       const v = factorMutationVerdict({ path, now: NOW });
       expect(v).toBe("no_session");
+      // …and with a session but nothing else (code review, slice 83): an
+      // `enable` whose caller forgot to ask whether a factor exists is
+      // answered as if one did.
+      expect(factorMutationVerdict({ path, hasSession: true, now: NOW })).not.toBe("allow");
     }
+  });
+});
+
+describe("sessionVerifyVerdict — a code checked against a live session", () => {
+  it("lets only the product's own step-up check an enrolled factor", () => {
+    // The security review's medium: with a session, Better Auth counts no
+    // attempts, so an unmarked check is a stolen session guessing codes.
+    expect(sessionVerifyVerdict({ enrolled: true, hasStepUpIntent: false })).toBe("step_up_only");
+    expect(sessionVerifyVerdict({ enrolled: true, hasStepUpIntent: true })).toBe("allow");
+  });
+
+  it("puts a first enrolment's confirmation under the member's daily cap", () => {
+    // The one legitimate HTTP caller: /account's and /ops/login's ramp.
+    expect(sessionVerifyVerdict({ enrolled: false, hasStepUpIntent: false })).toBe("budget");
+  });
+
+  it("guards exactly the two code checks", () => {
+    expect([...SESSION_VERIFY_PATHS].sort()).toEqual(["/two-factor/verify-backup-code", "/two-factor/verify-totp"]);
+    // The mutations are the other rule's; no path is in both.
+    for (const path of ALL_GUARDED) expect(SESSION_VERIFY_PATHS.has(path)).toBe(false);
   });
 });

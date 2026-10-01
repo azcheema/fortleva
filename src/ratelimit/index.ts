@@ -84,6 +84,20 @@ const POLICIES = {
   /** Step-up code attempts per session/user (SECURITY.md §3.5). */
   "auth.step_up": { limit: 6, window: "10 m" },
   /**
+   * Confirmations of a FIRST second-factor enrolment per user (slice 83).
+   * A confirmation is a code checked against a live session, which Better
+   * Auth counts nowhere, and a pending factor can sit for months after an
+   * abandoned enrolment — so a stolen session alone, at the step-up's six
+   * per ten minutes, could guess at it ~864 times a day, and a right guess
+   * enrols the member's own secret and mints a session stamped as fresh.
+   * A daily cap, not a ten-minute rate: ten a day is ample for a person
+   * reading codes off a phone (~3·10⁻⁵ a day for a guesser; a sliding
+   * window can pass up to twice that across a boundary). Spent through
+   * `allowStrict` by src/auth/factor-guard.ts, so the in-process floor
+   * holds even where Upstash is not configured.
+   */
+  "auth.enrol_confirm": { limit: 10, window: "24 h" },
+  /**
    * Password-reset and email-verification REQUESTS per IP. Each one is
    * an unauthenticated call that writes a verification row and asks the
    * product to send mail to an address the caller named, so it is both

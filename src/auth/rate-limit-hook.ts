@@ -67,7 +67,9 @@ export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
   // instances only (the portal registers no `twoFactor`). They spend the
   // sign-in budget per IP because they are sign-in's question. Per USER
   // they are still unbounded (the session is resolved after this hook) —
-  // recorded in PLAN's slice-81 entry.
+  // recorded in PLAN's slice-81 entry — though since slice 83 the factor
+  // guard refuses three of them, and `enable` on an enrolled account,
+  // before the password is ever checked (./factor-guard).
   "/change-password": "auth.sign_in",
   "/verify-password": "auth.sign_in",
   "/two-factor/enable": "auth.sign_in",

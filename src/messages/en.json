@@ -591,7 +591,9 @@
       "activeSummary": "A code from your authenticator app is required at every sign-in.",
       "confirmPasswordHint": "We ask for it once, to prove the account is yours.",
       "backupKeep": "Keep these somewhere safe. They are not shown again.",
-      "qrFailed": "Could not draw the QR code. Enter the key below in your authenticator app instead."
+      "qrFailed": "Could not draw the QR code. Enter the key below in your authenticator app instead.",
+      "alreadyEnrolled": "Two-factor authentication is already set up on this account.",
+      "tooManyAttempts": "Too many attempts. Try again later."
     },
     "stepUp": {
       "title": "Confirm it's you",

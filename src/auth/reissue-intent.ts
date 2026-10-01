@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * A marker saying "this call originated inside the backup-code reissue
  * action", carried across the await chain rather than over the wire.
  *
- * WHY IT EXISTS. `guardFactorMutations` has to distinguish two callers of
+ * WHY IT EXISTS. `guardFactorEndpoints` has to distinguish two callers of
  * the same Better Auth endpoint: our own server action, which has just
  * verified a live second factor AND the password in this very request,
  * and an HTTP request from anyone else. The first attempt keyed that on a
@@ -19,7 +19,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * An AsyncLocalStorage flag cannot be set by a request. Headers, cookies
  * and bodies are all attacker-chosen; this is process-local state that
  * only `reissueBackupCodesAction` opens, so the raw endpoint stays frozen
- * for a platform principal no matter what a caller sends.
+ * for every account (slice 83; once only the operator's) no matter what a
+ * caller sends.
  *
  * It is an ADDITIONAL condition, never a replacement: the policy still
  * requires the fresh factor stamp beside it (src/auth/factor-policy.ts),

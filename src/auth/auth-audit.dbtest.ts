@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { APIError } from "better-auth/api";
 import { symmetricDecrypt } from "better-auth/crypto";
 
 /* eslint-disable no-restricted-imports -- dbtest reads/cleans via the raw layer */
@@ -9,6 +10,7 @@ import { provisionTenant } from "@/members/provisioning";
 
 import { onLoginSucceeded, onMfaChanged, recordForUserMemberships } from "./audit-hooks";
 import { auth } from "./index";
+import { runWithReissueIntent } from "./reissue-intent";
 import { verifyStepUpWithHeaders } from "./step-up";
 
 /**
@@ -25,6 +27,8 @@ const email = `mfa-${run}@test.invalid`;
 // Per run, never a literal: this repository is public, and a run killed before
 // afterAll would leave a verified account behind with its password printed here.
 const password = `pw-${randomUUID()}`;
+// The change-password case's new password, by the same rule (it was a literal).
+const changedPassword = `pw2-${randomUUID()}`;
 let userId: string;
 let tenantId: string;
 let memberId: string;
@@ -323,25 +327,156 @@ describe("wired hooks on the real Better Auth paths", () => {
   });
 
   it("change-password → password_changed(change), no secrets in metadata", async () => {
-    const newPassword = "another-long-passphrase-42";
     await auth.api.changePassword({
-      body: { currentPassword: password, newPassword, revokeOtherSessions: false },
+      body: { currentPassword: password, newPassword: changedPassword, revokeOtherSessions: false },
       headers: withCookie(cookie),
     });
     const rows = await auditRows("auth.password_changed");
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actorType: "MEMBER", actorId: memberId, metadata: { via: "change" } });
-    expect(JSON.stringify(rows[0]!.metadata)).not.toContain(newPassword);
+    expect(JSON.stringify(rows[0]!.metadata)).not.toContain(changedPassword);
   });
 
-  it("disable 2FA → mfa_disabled", async () => {
-    await auth.api.disableTwoFactor({
-      body: { password: "another-long-passphrase-42" },
-      headers: withCookie(cookie),
-    });
-    const rows = await auditRows("auth.mfa_disabled");
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ actorType: "MEMBER", actorId: memberId });
+  /**
+   * SLICE 83, PROVEN ON THE LIVE GUARD rather than the pure policy: a
+   * MEMBER's factor cannot be read, swapped, removed or reissued with a
+   * session and the right password — even straight after a step-up, the
+   * stamp a member's own sudo leaves behind. Until slice 83 all four
+   * answered a member, because the policy (`src/auth/factor-policy.ts`)
+   * said "allow" to anyone the guard did not mark a SUPERADMIN, and each
+   * would have passed the vault's step-up for whoever held the password.
+   */
+  it("a member's factor cannot be read, swapped, removed or reissued with the password — even after a step-up", async () => {
+    const fresh = await verifyStepUpWithHeaders(await currentTotp(), withCookie(cookie));
+    expect(fresh.ok).toBe(true);
+    const before = await platform.twoFactor.findUniqueOrThrow({ where: { userId } });
+    const auditBefore = (await auditRows("auth.mfa_disabled")).length + (await auditRows("auth.mfa_enabled")).length;
+
+    const body = { password: changedPassword };
+    const headers = withCookie(cookie);
+    const frozen = "This account's second factor cannot be changed from here.";
+    const attempts: ReadonlyArray<readonly [string, () => Promise<unknown>, string]> = [
+      ["get-totp-uri", () => auth.api.getTOTPURI({ body, headers }), frozen],
+      [
+        "enable",
+        () => auth.api.enableTwoFactor({ body, headers }),
+        "A second factor is already enrolled and cannot be replaced from here.",
+      ],
+      ["disable", () => auth.api.disableTwoFactor({ body, headers }), frozen],
+      [
+        "generate-backup-codes",
+        () => auth.api.generateBackupCodes({ body, headers }),
+        "Verify your current authenticator code first.",
+      ],
+    ];
+    for (const [name, call, message] of attempts) {
+      // OUR refusal (the guard's own words), not one of Better Auth's: each
+      // would succeed for this session and password without the guard —
+      // the reissue below proves both are good.
+      const error = await call().then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error, name).toBeInstanceOf(APIError);
+      expect((error as APIError).status, name).toBe("FORBIDDEN");
+      expect((error as APIError).message, name).toBe(message);
+    }
+
+    // Nothing moved: the same secret, the same codes, still enrolled, no
+    // session rotated (disable and enable-with-skip would rotate it).
+    const after = await platform.twoFactor.findUniqueOrThrow({ where: { userId } });
+    expect(after).toMatchObject({ id: before.id, secret: before.secret, backupCodes: before.backupCodes, verified: true });
+    expect((await platform.user.findUniqueOrThrow({ where: { id: userId } })).twoFactorEnabled).toBe(true);
+    expect(await auth.api.getSession({ headers })).not.toBeNull();
+    expect((await auditRows("auth.mfa_disabled")).length + (await auditRows("auth.mfa_enabled")).length).toBe(auditBefore);
+  });
+
+  it("the reissue action's door still opens for a member: a live code, then the marker, then the password", async () => {
+    // What `/account`'s reissue does (backup-codes-actions.ts), so the
+    // rule above did not lock members out of the one factor change they
+    // are offered.
+    const fresh = await verifyStepUpWithHeaders(await currentTotp(), withCookie(cookie));
+    expect(fresh.ok).toBe(true);
+    const before = await platform.twoFactor.findUniqueOrThrow({ where: { userId } });
+
+    const result = await runWithReissueIntent(() =>
+      auth.api.generateBackupCodes({ body: { password: changedPassword }, headers: withCookie(cookie) }),
+    );
+    expect((result as { backupCodes?: string[] }).backupCodes).toHaveLength(10);
+
+    const after = await platform.twoFactor.findUniqueOrThrow({ where: { userId } });
+    expect(after.secret).toBe(before.secret);
+    expect(after.backupCodes).not.toBe(before.backupCodes);
+  });
+
+  it("a live session cannot check codes against the factor outside the step-up — not even the right code", async () => {
+    // Slice 83's security review: with a session, Better Auth counts no
+    // attempts, so this was a code oracle to a stolen session alone. The
+    // RIGHT code, so a check that slipped through would answer 200. (No
+    // stamp to watch: a session-mode check of an enrolled factor creates
+    // no session, and only a created one is stamped — the refusal is the
+    // whole proof.)
+    //
+    // AND WITH THE COOKIE VALUE QUOTED (the fix-pass review's HIGH):
+    // better-call unquotes `name="<token>.<sig>"`, and the guard's own
+    // parser did not, so the guard saw no session where the endpoint saw a
+    // live one and the refusal never ran. The guard now reads the cookie
+    // through Better Auth's `getSignedCookie`, which these cases pin.
+    const name = memberSessionCookieName();
+    const quoted = cookie
+      .split("; ")
+      .map((pair) => (pair.startsWith(`${name}=`) ? `${name}="${pair.slice(name.length + 1)}"` : pair))
+      .join("; ");
+    expect(quoted).toContain(`${name}="`);
+
+    const message = "Confirm your code through the step-up form.";
+    const checks: ReadonlyArray<readonly [string, () => Promise<unknown>, string]> = [
+      ["verify-totp", async () => auth.api.verifyTOTP({ body: { code: await currentTotp() }, headers: withCookie(cookie) }), message],
+      ["verify-backup-code", () => auth.api.verifyBackupCode({ body: { code: "AAAAA-BBBBB" }, headers: withCookie(cookie) }), message],
+      ["verify-totp, quoted cookie", async () => auth.api.verifyTOTP({ body: { code: await currentTotp() }, headers: withCookie(quoted) }), message],
+      [
+        "get-totp-uri, quoted cookie",
+        () => auth.api.getTOTPURI({ body: { password: changedPassword }, headers: withCookie(quoted) }),
+        "This account's second factor cannot be changed from here.",
+      ],
+    ];
+    for (const [label, call, expected] of checks) {
+      const error = await call().then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error, label).toBeInstanceOf(APIError);
+      expect((error as APIError).status, label).toBe("FORBIDDEN");
+      expect((error as APIError).message, label).toBe(expected);
+    }
+
+    // The step-up itself — the same check inside its marker — still works.
+    expect((await verifyStepUpWithHeaders(await currentTotp(), withCookie(cookie))).ok).toBe(true);
+  });
+
+  it("a session that survived a half-applied reset cannot plant a factor: the user's flag still says enrolled", async () => {
+    // The security review's low: the guard once asked only the factor
+    // ROW. Delete the row and leave `two_factor_enabled` set — the
+    // database recovery's first statement without its second — and
+    // `enable` with the password would have created a row of the caller's
+    // choosing, which the step-up would then accept.
+    const row = await platform.twoFactor.findUniqueOrThrow({ where: { userId } });
+    await platform.twoFactor.delete({ where: { id: row.id } });
+    try {
+      const error = await auth.api.enableTwoFactor({ body: { password: changedPassword }, headers: withCookie(cookie) }).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(APIError);
+      expect((error as APIError).message).toBe("A second factor is already enrolled and cannot be replaced from here.");
+      expect(await platform.twoFactor.count({ where: { userId } })).toBe(0);
+    } finally {
+      // Put the factor back as it was, for the cases after this one —
+      // clearing first, so a regression that DID create a row fails on the
+      // assertion above rather than on a unique-key error here.
+      await platform.twoFactor.deleteMany({ where: { userId } });
+      await platform.twoFactor.create({ data: row });
+    }
   });
 });
 

@@ -591,7 +591,9 @@
       "activeSummary": "En kod från din autentiseringsapp krävs vid varje inloggning.",
       "confirmPasswordHint": "Vi frågar en gång, för att styrka att kontot är ditt.",
       "backupKeep": "Spara dessa på ett säkert ställe. De visas inte igen.",
-      "qrFailed": "Kunde inte rita QR-koden. Ange nyckeln nedan i din autentiseringsapp i stället."
+      "qrFailed": "Kunde inte rita QR-koden. Ange nyckeln nedan i din autentiseringsapp i stället.",
+      "alreadyEnrolled": "Tvåfaktorsautentisering är redan aktiverad för det här kontot.",
+      "tooManyAttempts": "För många försök. Försök igen senare."
     },
     "stepUp": {
       "title": "Bekräfta att det är du",

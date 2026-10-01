@@ -3,9 +3,11 @@
 import { APIError } from "better-auth/api";
 
 import { runtimeClient } from "@/db/client";
+import { allow } from "@/ratelimit";
 
 import { onMfaVerificationFailed } from "./audit-hooks";
 import { auth } from "./index";
+import { runWithStepUpIntent } from "./step-up-intent";
 
 /**
  * Step-up ("sudo") verification (SECURITY.md §3.5/§3.6, AUTHZ.md §7.5):
@@ -16,6 +18,15 @@ import { auth } from "./index";
  * decrypts the stored secret and verifies (TOTP) or consumes (backup
  * code) exactly as at sign-in, so we never re-implement crypto here.
  * A 6-digit code is tried as TOTP; anything else as a backup code.
+ *
+ * THE ONLY DOOR TO A SESSION-MODE CODE CHECK ON AN ENROLLED ACCOUNT
+ * (slice 83). The two verify calls run inside the step-up marker
+ * (./step-up-intent), and ./factor-guard refuses the same check to
+ * anything without it — a request with a stolen session included, which
+ * could otherwise guess codes with nothing counting. So the per-member
+ * budget is spent HERE, before either call, not left to each caller; and
+ * this is the marker's only opener (./factor-intent.test.ts pins it), so
+ * every marked check has been budgeted.
  */
 
 export type StepUpResult =
@@ -33,14 +44,21 @@ export async function verifyStepUpWithHeaders(
   const enrolled = (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled === true;
   if (!enrolled) return { ok: false, reason: "not_enrolled" };
 
+  // Per-member attempt budget (SECURITY.md §3.5); no-op until Upstash env
+  // exists (src/ratelimit). Moved here from the two actions that called
+  // this, so no future caller can open the marker below unbudgeted.
+  if (!(await allow("auth.step_up", session.user.id))) return { ok: false, reason: "rate_limited" };
+
   const trimmed = code.replace(/\s+/g, "");
   const method = isTotpShape(trimmed) ? "totp" : "backup_code";
   try {
-    if (method === "totp") {
-      await auth.api.verifyTOTP({ body: { code: trimmed }, headers });
-    } else {
-      await auth.api.verifyBackupCode({ body: { code: trimmed }, headers });
-    }
+    await runWithStepUpIntent(async () => {
+      if (method === "totp") {
+        await auth.api.verifyTOTP({ body: { code: trimmed }, headers });
+      } else {
+        await auth.api.verifyBackupCode({ body: { code: trimmed }, headers });
+      }
+    });
   } catch (e) {
     if (e instanceof APIError) {
       // A 429 from the per-IP limiter in front of the verify endpoints is

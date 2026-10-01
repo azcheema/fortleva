@@ -82,6 +82,15 @@ export const onLoginSucceeded = (userId: string, method: LoginMethod) =>
 export const onLoginFailed = (userId: string, reason: string) =>
   recordForUserMemberships(userId, "auth.login_failed", { actor: "system", metadata: { reason } });
 
+/**
+ * Fired by the `user.update` row hook below whenever the plugin flips
+ * `twoFactorEnabled`. The `false` half is DORMANT since slice 83: its only
+ * writer, `/two-factor/disable`, is refused to every account
+ * (./factor-guard), and the operator's two-statement reset is raw SQL that
+ * no hook sees — so a factor removal writes no row (RUNBOOK §8 says to
+ * record it by hand). Kept, so that anything which turns the flag off
+ * through Better Auth again is recorded without anyone remembering to.
+ */
 export const onMfaChanged = (userId: string, enabled: boolean) =>
   recordForUserMemberships(userId, enabled ? "auth.mfa_enabled" : "auth.mfa_disabled");
 

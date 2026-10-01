@@ -27,7 +27,7 @@ export const GUARDED_FACTOR_PATHS = new Set([
 export const REISSUE_WINDOW_MS = 5 * 60_000;
 
 export type FactorVerdict =
-  /** Not a guarded path, or the account is not one this policy protects. */
+  /** Not a guarded path, a first enrolment, or a reissue with proof. */
   | "allow"
   /** No readable session: we cannot tell whose factor this would touch. */
   | "no_session"
@@ -35,14 +35,28 @@ export type FactorVerdict =
   | "needs_recent_factor"
   /** Enable on an account that already holds a verified factor. */
   | "already_enrolled"
-  /** Disable / reveal: never permitted for this account. */
+  /** Disable / reveal: never permitted — to a request or to our own code. */
   | "frozen";
 
+/**
+ * Deliberately says nothing about WHO the account belongs to (slice 83).
+ * Until then a member's factor was self-service — `isPlatformPrincipal:
+ * false` answered "allow" on all four paths — so a stolen member session
+ * plus the password could read the seed, swap the factor, remove it or
+ * mint backup codes, and with any of those pass every ✦ step-up a member
+ * is asked for: the vault's reveal, role changes, the export. The rule
+ * is the operator's rule for everyone now, and with no field for the
+ * principal's kind the guard cannot hand one back an exemption.
+ */
 export interface FactorPolicyInput {
   readonly path: string;
   readonly hasSession?: boolean;
-  /** Only a platform principal's factor is frozen; members self-serve. */
-  readonly isPlatformPrincipal?: boolean;
+  /**
+   * The account counts as ENROLLED — by the user's `twoFactorEnabled` flag
+   * OR a verified factor row, whichever says so. Either alone is how the
+   * plugin decides elsewhere (sign-in and step-up read the flag; `enable`
+   * reads the row), so the guard asks both. Absent reads as enrolled.
+   */
   readonly hasVerifiedFactor?: boolean;
   readonly mfaVerifiedAt?: Date | string | null;
   /**
@@ -56,6 +70,12 @@ export interface FactorPolicyInput {
 
 /**
  * FAILS CLOSED: anything not positively recognised denies.
+ *
+ * It applies to EVERY account with a factor — a member's and the
+ * operator's alike — because what it protects is the step-up, and both
+ * planes step up on the same factor. Nothing a member is offered needs
+ * more: `/account` only enrols a first factor and reissues codes through
+ * the action below; it has never had a "turn off" or "replace" control.
  *
  * The shape of the rule, and the reasoning behind each branch:
  *  - `disable` and `get-totp-uri` are never allowed. Both hand a password
@@ -73,7 +93,8 @@ export interface FactorPolicyInput {
  *    TOTP or an existing backup code. The stamp alone was the first
  *    version and was too loose — every member-plane step-up writes one,
  *    so a stolen member cookie plus the password could reissue inside
- *    the window of an unrelated step-up. Blocking it outright was the
+ *    the window of an unrelated step-up (and a backup code passes the
+ *    vault's step-up as well as a live code does). Blocking it outright was the
  *    version of this policy and was wrong in a way that matters more than
  *    the attack it prevented: codes are shown once, at enrolment, and
  *    nothing else in this product can produce them — so an operator who
@@ -83,9 +104,6 @@ export interface FactorPolicyInput {
 export function factorMutationVerdict(input: FactorPolicyInput): FactorVerdict {
   if (!GUARDED_FACTOR_PATHS.has(input.path)) return "allow";
   if (!input.hasSession) return "no_session";
-  // Ordinary members keep self-service 2FA; only the platform principal's
-  // factor guards `app_platform`.
-  if (!input.isPlatformPrincipal) return "allow";
 
   if (input.path === "/two-factor/generate-backup-codes") {
     // TWO conditions, and the marker is the load-bearing one. Keyed on
@@ -106,8 +124,48 @@ export function factorMutationVerdict(input: FactorPolicyInput): FactorVerdict {
   }
 
   if (input.path === "/two-factor/enable") {
-    return input.hasVerifiedFactor ? "already_enrolled" : "allow";
+    // `=== false`, not falsy: a caller that forgot to ask is answered as
+    // if the account were enrolled, which refuses (code review, slice 83).
+    return input.hasVerifiedFactor === false ? "allow" : "already_enrolled";
   }
 
   return "frozen";
+}
+
+/**
+ * The two code checks, when they run in Better Auth's SESSION mode — a
+ * live session cookie came with them. Without one they finish a sign-in
+ * and the plugin counts attempts per challenge and locks the account; with
+ * one they count nothing (`verify-two-factor.mjs`'s session branch), so
+ * each is an oracle for "is this code right?" to whoever holds a session.
+ */
+export const SESSION_VERIFY_PATHS = new Set(["/two-factor/verify-totp", "/two-factor/verify-backup-code"]);
+
+export type SessionVerifyVerdict =
+  /** The product's own step-up (./step-up), which spent the budget first. */
+  | "allow"
+  /** Confirming a first enrolment: allowed under a daily cap per member. */
+  | "budget"
+  /** An enrolled account asked over HTTP: only the step-up may ask. */
+  | "step_up_only";
+
+/**
+ * Who may check a code against a live session (slice 83, the security
+ * review's medium). Over HTTP the product asks it in one case only: the
+ * enrolment screen confirming a factor that is not yet enrolled
+ * (`/account`, `/ops/login`'s ramp) — answered under a daily cap per
+ * member (`auth.enrol_confirm`), because a pending factor's code is
+ * otherwise guessable with nothing but a session, for as long as the
+ * pending row sits there, and a right guess mints a session stamped as
+ * fresh. Every
+ * check of an ENROLLED factor is the step-up, which runs in-process inside
+ * its marker (./step-up-intent); without the marker it is a stolen
+ * session guessing codes, and it is refused before Better Auth answers.
+ */
+export function sessionVerifyVerdict(input: {
+  readonly enrolled: boolean;
+  readonly hasStepUpIntent: boolean;
+}): SessionVerifyVerdict {
+  if (input.hasStepUpIntent) return "allow";
+  return input.enrolled ? "step_up_only" : "budget";
 }

@@ -634,7 +634,7 @@ export const portalAuth = betterAuth({
     // surface of the three (its users are outside every tenant), so it
     // must never be the one that goes without.
     //
-    // guardFactorMutations is NOT called here, and the asymmetry is
+    // guardFactorEndpoints is NOT called here, and the asymmetry is
     // deliberate rather than an omission: it guards the shared
     // `two_factor` table, and this instance registers no twoFactor
     // plugin, so no /two-factor/* endpoint exists on it to guard.

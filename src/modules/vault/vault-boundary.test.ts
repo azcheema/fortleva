@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { GUARDED_FACTOR_PATHS, factorMutationVerdict } from "@/auth/factor-policy";
+import { GUARDED_FACTOR_PATHS, factorMutationVerdict, sessionVerifyVerdict } from "@/auth/factor-policy";
 
 /**
  * THE VAULT'S CIPHERTEXT HAS ONE READER (SECURITY.md §6.3, "Class split +
@@ -153,45 +153,63 @@ describe("vault ciphertext boundary", () => {
   });
 
   /**
-   * THE ORDER OF THE NEXT TWO SLICES, ENFORCED (fix-pass review). Until
-   * slice 83, a MEMBER may read their authenticator's seed with the
-   * password alone (`/two-factor/get-totp-uri`, `src/auth/factor-policy.ts`),
-   * which defeats every step-up the vault relies on. Nothing reaches the
-   * vault from a page or route today; the day something does, this fails
-   * unless the member's factor is protected by then.
+   * THE VAULT'S PRECONDITION: NO SECOND FACTOR CAN BE HAD WITH THE PASSWORD.
+   * Until slice 83 a MEMBER could read their authenticator's seed, swap
+   * it, remove it or mint backup codes with a session and the password
+   * (`src/auth/factor-policy.ts` froze only a SUPERADMIN's), which defeats
+   * every step-up the vault relies on. This test used to PIN those four
+   * open paths and keep every page and route away from the vault while
+   * any stayed open; slice 83 closed them, so it now asserts none is open
+   * — unconditionally, because a path re-opened later is the same hole
+   * whether or not a screen has reached the vault yet.
    */
-  it("nothing reaches the vault while a member can mint, read or remove a factor with the password alone", () => {
+  it("no factor path opens on a session and the password — not even right after a step-up", () => {
     // EVERY guarded path (narrow review): reading the seed, swapping the
     // factor, removing it, or reissuing backup codes — a backup code also
-    // passes the vault's step-up (`src/auth/step-up.ts`).
-    const open = [...GUARDED_FACTOR_PATHS].filter(
-      (path) =>
-        factorMutationVerdict({
-          path,
-          hasSession: true,
-          isPlatformPrincipal: false,
-          hasVerifiedFactor: true,
-          hasReissueIntent: false,
-          mfaVerifiedAt: null,
-          now: Date.now(),
-        }) === "allow",
-    );
-    // PINNED, so nothing disarms this silently (third narrow review). The
-    // live guard (`src/auth/factor-guard.ts`) builds this policy's input and
-    // today passes `hasVerifiedFactor: false` for every member, so a fix in
-    // the policy alone would close nothing: slice 83 must change THIS list
-    // deliberately, and prove the GUARD closes each path, not only the policy.
-    expect(open.sort()).toEqual([
-      "/two-factor/disable",
-      "/two-factor/enable",
-      "/two-factor/generate-backup-codes",
-      "/two-factor/get-totp-uri",
-    ]);
-    // EVERY importer outside the module, not only pages: a helper a route
-    // imports would reach the vault just the same.
-    const reaching = files.filter(
-      (f) => !rel(f).startsWith("modules/vault/") && importsOf(f, readFileSync(f, "utf8")).some((t) => t !== null && t.startsWith("modules/vault")),
-    );
-    if (open.length > 0) expect(reaching.map(rel), `open factor paths: ${open.join(", ")}`).toEqual([]);
+    // passes the vault's step-up (`src/auth/step-up.ts`). A fresh stamp is
+    // what a member's own step-up leaves behind every ten minutes, so it
+    // must buy nothing without the reissue action's marker.
+    const openWith = (mfaVerifiedAt: Date | null) =>
+      [...GUARDED_FACTOR_PATHS].filter(
+        (path) =>
+          factorMutationVerdict({
+            path,
+            hasSession: true,
+            hasVerifiedFactor: true,
+            hasReissueIntent: false,
+            mfaVerifiedAt,
+            now: Date.now(),
+          }) === "allow",
+      );
+    expect(openWith(null)).toEqual([]);
+    expect(openWith(new Date())).toEqual([]);
+    // Nor may a session ALONE check codes against an enrolled factor (the
+    // security review's medium): only the step-up's marker opens that.
+    expect(sessionVerifyVerdict({ enrolled: true, hasStepUpIntent: false })).not.toBe("allow");
+  });
+
+  it("the live guard tests no role and no plane — the exemption that left members open cannot grow back", () => {
+    // The third narrow review's point: the policy is only half the
+    // answer, because the GUARD builds its input, and it once passed
+    // `hasVerifiedFactor: false` for every member. The policy has no field
+    // a role could fill now; this keeps the guard from testing one — or the
+    // PLANE, the shape of the very first draft (`plane !== "platform"`) —
+    // on its own. A belt, not the proof: `src/auth/auth-audit.dbtest.ts`
+    // drives the live endpoints as an enrolled member, and an early return
+    // of any other shape is only that test's to catch.
+    const source = readFileSync(join(SRC, "auth", "factor-guard.ts"), "utf8");
+    // Comments name the old rule on purpose; only the code is held to it.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(code).toMatch(/factorMutationVerdict\(/);
+    expect(code).toMatch(/sessionVerifyVerdict\(/);
+    expect(code).not.toMatch(/\bplatformRole\b|\bisPlatformPrincipal\b|\bSUPERADMIN\b/);
+    // No plane at all: the guard is not given one (the instance's own
+    // `authCookies` name the cookie), so there is nothing to test it on.
+    expect(code).not.toMatch(/\bplane\b|\bPlane\b|["'`](platform|member)["'`]/);
+    // And it reads the session the way Better Auth does — a hand parser
+    // disagreed with better-call's over a QUOTED cookie value, which
+    // skipped the code-check refusal entirely (the fix-pass review's HIGH).
+    expect(code).toMatch(/ctx\.getSignedCookie\(ctx\.context\.authCookies\.sessionToken\.name, ctx\.context\.secret\)/);
+    expect(code).not.toMatch(/\.get\(["'`]cookie["'`]\)/);
   });
 });
