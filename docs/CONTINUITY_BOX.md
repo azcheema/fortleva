@@ -164,6 +164,8 @@ Two distinct operations, because ritual friction is the enemy of freshness (§7)
 
 ## 3. Trigger model and state machine
 
+> *Amended 2026-10-02 (founder decision C52, `OPEN_QUESTIONS.md`):* the vault's **sealed layer** (Phase 3V) builds the ask → notify → wait → open flow first. When Phase 8 comes, the box **reuses that flow** and adds only what is its own — the card, the trustee, the Shamir custody — never a second state machine. The box's own numbers below (21-day default window, open-once, 7-day download window, platform-reviewed disputes) are not changed by C52; they are revisited when Phase 8 is briefed, beside the vault's (7 + 2 days, open 7 days then relock, no referee).
+
 ### 3.1 Evaluated trigger models (brief Q1)
 
 | Model | How it works | Failure modes | Verdict |
