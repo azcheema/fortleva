@@ -40,7 +40,8 @@ import { isConsolePrincipal } from "./member-recovery";
  *    enrol their own factor and pass the other workspace's step-ups. That
  *    is one tenant's admin reaching into another, which TENANCY.md never
  *    allows; it goes to the operator instead. (Not in C50's text — the
- *    brief did not consider shared accounts; recorded for the founder.)
+ *    brief did not consider shared accounts; founder decision C51,
+ *    2026-10-02, kept it.)
  *  - **a teammate more powerful than the owner** — the grant-subset rule
  *    (AUTHZ.md §7.1): resetting a factor is a step toward being that
  *    person, so the actor must hold every code the target's ROLES carry —
