@@ -295,6 +295,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "project-time", path: `${project}/time` },
     { name: "project-money", path: `${project}/money` },
     { name: "project-files", path: `${project}/files` },
+    // 3V slice 86: the project's Vault tab — the owner's door again (no
+    // authenticator), under the project's tab strip, which it lengthens.
+    { name: "project-vault", path: `${project}/vault` },
     { name: "project-team", path: `${project}/team` },
     // Phase 3 slice 4: the master switch beside a preview that renders
     // through the portal's OWN projection and components. The seed
@@ -309,6 +312,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "project-updates", path: `${project}/updates` },
     { name: "project-update-new", path: `${project}/updates/new` },
     { name: "files", path: "/files" },
+    // 3V slice 86: the tenant's /vault — the door under the page header, as
+    // the owner (no authenticator) meets it. The open page is `vault.spec.ts`'s.
+    { name: "vault", path: "/vault" },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
     { name: "time-team", path: "/time/team" },

@@ -18,6 +18,7 @@ export type NavIcon =
   | "projects"
   | "time"
   | "files"
+  | "vault"
   | "members"
   | "settings"
   | "roles"
@@ -40,6 +41,7 @@ export type NavEntry = {
     | "projects"
     | "time"
     | "files"
+    | "vault"
     | "members"
     | "settings"
     | "roles"
@@ -117,6 +119,18 @@ export const NAV: readonly NavEntry[] = [
     icon: "files",
     permission: "document:view",
     goKey: "F",
+  },
+  // 3V slice 86 (UI.md §3.1 "Vault", §6's `G V`): every login the member's
+  // scope reaches, our own first. On `credential:view` across all four
+  // gates, so it goes with the vault module; the page behind it is the
+  // vault's door, which wants a fresh second factor before the list.
+  {
+    id: "vault",
+    labelKey: "vault",
+    href: "/vault",
+    icon: "vault",
+    permission: "credential:view",
+    goKey: "V",
   },
   {
     id: "members",

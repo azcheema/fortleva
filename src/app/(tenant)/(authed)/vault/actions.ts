@@ -16,20 +16,24 @@ import {
   type CredentialPatch,
 } from "@/modules/vault";
 
+import { vaultPathOf, vaultWhereOf } from "./surface";
+
 /**
- * Server actions for /clients/[id]/vault. Each one only PARSES: tenant and
- * actor come from the session, and the vault's services do everything
- * else — the door (a fresh factor, C52), the permission, the scope, the
- * audit row. A secret value is passed through exactly as typed (never
- * trimmed: a trailing space is part of a password) and never appears in a
- * message — every refusal is translated from its code.
+ * Server actions for every vault page — a client's tab, a project's tab and
+ * the tenant's `/vault` (Phase 3V slices 85–86). Each one only PARSES:
+ * tenant and actor come from the session, and the vault's services do
+ * everything else — the door (a fresh factor, C52), the permission, the
+ * scope, the audit row. A secret value is passed through exactly as typed
+ * (never trimmed: a trailing space is part of a password) and never
+ * appears in a message — every refusal is translated from its code.
  *
- * A stale factor redirects to the step-up page and back here (`runForm`),
- * which re-opens the vault; the typed value is not kept, by design.
+ * The page a form came from is its `surface` (`surface.ts`): one of three
+ * shapes, revalidated on success and the place a stale factor's step-up
+ * returns to, which re-opens the vault; the typed value is not kept, by
+ * design. Anything else is refused before the session is read.
  */
 
 const uuid = z.uuid();
-const vaultPath = (clientId: string) => `/clients/${clientId}/vault`;
 
 const invalid = async (): Promise<FormResult> => ({
   ok: false,
@@ -55,22 +59,19 @@ function secretsOf(formData: FormData): Record<string, string> {
 }
 
 export async function createCredentialAction(_prev: FormResult | null, formData: FormData): Promise<FormResult> {
-  const clientId = uuid.safeParse(formData.get("clientId"));
-  if (!clientId.success) return invalid();
+  const path = vaultPathOf(formData.get("surface"));
+  // Where the login hangs: the agency, a client, or one project — the
+  // service checks scope, that the project is live, and C49.
+  const where = vaultWhereOf(formData.get("where"));
   const type = field(formData, "type");
-  if (!isCredentialType(type)) return invalid();
-  // "Where" is the client itself or one of its projects; the service
-  // checks that the project is this client's and in the member's scope.
-  const where = field(formData, "where") ?? "client";
-  const project = where === "client" ? null : uuid.safeParse(where);
-  if (project && !project.success) return invalid();
+  if (path === null || where === null || !isCredentialType(type)) return invalid();
   const ctx = await ctxOf();
-  const t = await getTranslations("clients.vault");
+  const t = await getTranslations("vault");
   const name = field(formData, "name") ?? "";
-  const r = await runForm(vaultPath(clientId.data), async () => {
+  const r = await runForm(path, async () => {
     await createCredential(ctx, {
-      clientId: clientId.data,
-      projectId: project ? project.data : null,
+      clientId: where.clientId,
+      projectId: where.projectId,
       type,
       name,
       username: field(formData, "username"),
@@ -81,15 +82,15 @@ export async function createCredentialAction(_prev: FormResult | null, formData:
     });
     return t("add.added", { name: name.trim() });
   });
-  if (r.ok) revalidatePath(vaultPath(clientId.data));
+  if (r.ok) revalidatePath(path);
   return r;
 }
 
 /** The row's read-first fields (AutoForm): only the fields the form posted are patched. */
 export async function updateCredentialAction(formData: FormData): Promise<FormResult> {
-  const clientId = uuid.safeParse(formData.get("clientId"));
+  const path = vaultPathOf(formData.get("surface"));
   const credentialId = uuid.safeParse(formData.get("credentialId"));
-  if (!clientId.success || !credentialId.success) return invalid();
+  if (path === null || !credentialId.success) return invalid();
   const ctx = await ctxOf();
   const tCommon = await getTranslations("common");
   const patch: { -readonly [K in keyof CredentialPatch]: CredentialPatch[K] } = {};
@@ -97,11 +98,11 @@ export async function updateCredentialAction(formData: FormData): Promise<FormRe
   if (has(formData, "username")) patch.username = field(formData, "username");
   if (has(formData, "url")) patch.url = field(formData, "url");
   if (has(formData, "notes")) patch.notes = field(formData, "notes");
-  const r = await runForm(vaultPath(clientId.data), async () => {
+  const r = await runForm(path, async () => {
     await updateCredential(ctx, credentialId.data, patch);
     return tCommon("saved");
   });
-  if (r.ok) revalidatePath(vaultPath(clientId.data));
+  if (r.ok) revalidatePath(path);
   return r;
 }
 
@@ -111,32 +112,33 @@ export async function updateCredentialAction(formData: FormData): Promise<FormRe
  * and removed when "remove" is ticked. The old values become a version.
  */
 export async function replaceCredentialSecretAction(_prev: FormResult | null, formData: FormData): Promise<FormResult> {
-  const clientId = uuid.safeParse(formData.get("clientId"));
+  const path = vaultPathOf(formData.get("surface"));
   const credentialId = uuid.safeParse(formData.get("credentialId"));
-  if (!clientId.success || !credentialId.success) return invalid();
+  if (path === null || !credentialId.success) return invalid();
   const ctx = await ctxOf();
-  const t = await getTranslations("clients.vault");
+  const t = await getTranslations("vault");
   const totpText = field(formData, "totp") ?? "";
   const totp = has(formData, "removeTotp") ? null : totpText.trim() === "" ? undefined : totpText;
-  const r = await runForm(vaultPath(clientId.data), async () => {
+  const r = await runForm(path, async () => {
     await replaceCredentialSecret(ctx, credentialId.data, {
       secret: secretsOf(formData),
       ...(totp === undefined ? {} : { totp }),
     });
     return t("secret.changed");
   });
-  if (r.ok) revalidatePath(vaultPath(clientId.data));
+  if (r.ok) revalidatePath(path);
   return r;
 }
 
-export async function deleteCredentialAction(clientId: string, credentialId: string): Promise<FormResult> {
-  if (!uuid.safeParse(clientId).success || !uuid.safeParse(credentialId).success) return invalid();
+export async function deleteCredentialAction(surface: string, credentialId: string): Promise<FormResult> {
+  const path = vaultPathOf(surface);
+  if (path === null || !uuid.safeParse(credentialId).success) return invalid();
   const ctx = await ctxOf();
-  const t = await getTranslations("clients.vault");
-  const r = await runForm(vaultPath(clientId), async () => {
+  const t = await getTranslations("vault");
+  const r = await runForm(path, async () => {
     await deleteCredential(ctx, credentialId);
-    return t("deleted");
+    return t("row.deleted");
   });
-  if (r.ok) revalidatePath(vaultPath(clientId));
+  if (r.ok) revalidatePath(path);
   return r;
 }

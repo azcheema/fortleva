@@ -27,15 +27,15 @@ export async function generateMetadata({
 
 /**
  * /projects/[key] shell (UI.md §3.1): tabs in the fixed order Overview ·
- * Board · Backlog · Triage · Timeline · Time · Files · Team · Portal
- * (Updates arrives with ProjectUpdate). Overview is the landing tab because there
- * is no board to land on for a project with no work yet.
+ * Board · Backlog · Triage · Timeline · Updates · Time · Files · Vault ·
+ * Team · Portal. Overview is the landing tab because there is no board to
+ * land on for a project with no work yet.
  *
- * Four of the nine are conditional, and each is HIDDEN rather than
+ * Five of the eleven are conditional, and each is HIDDEN rather than
  * disabled when its permission is missing (§3.1): Time on
- * `time:view_team`, Files on `document:view`, Portal on
- * `project:manage_portal`, Triage on `work_item:triage`. A hidden tab is
- * not a gate — every one of those pages carries its own.
+ * `time:view_team`, Files on `document:view`, Vault on `credential:view`,
+ * Portal on `project:manage_portal`, Triage on `work_item:triage`. A hidden
+ * tab is not a gate — every one of those pages carries its own.
  *
  * The header is the project's identity in one line: the key in the
  * mono face (it is a code, and it is typed), the name, then the two
@@ -136,6 +136,10 @@ export default async function ProjectLayout({
     { href: `${base}/updates`, label: t("tabs.updates") },
     ...(canViewTime ? [{ href: `${base}/time`, label: t("tabs.time"), also: [`${base}/money`] }] : []),
     ...(project.caps.viewDocuments ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),
+    // Phase 3V slice 86: the project's logins, behind the vault's door.
+    // `credential:view` on all four gates, off the loader's one module
+    // read — hidden with the vault module, as Files is with documentation.
+    ...(project.caps.viewCredentials ? [{ href: `${base}/vault`, label: t("tabs.vault") }] : []),
     { href: `${base}/team`, label: t("tabs.team") },
     // Phase 3: the portal master switch and what the client sees. Hidden
     // rather than disabled when the member lacks project:manage_portal

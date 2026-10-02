@@ -9,6 +9,7 @@ import { withTenant } from "@/db";
 import { DomainError } from "@/lib/domain-error";
 import { actorFor, noMfa, setupTenant } from "@/members/dbtest-fixture";
 import { setModuleEnabled, updatePreferences } from "@/preferences/service";
+import { getProjectByKey } from "@/projects/service";
 
 import {
   copyCredentialField,
@@ -16,11 +17,14 @@ import {
   deleteCredential,
   generateCredentialTotp,
   getCredential,
+  listAllCredentials,
   listCredentials,
   openVault,
   replaceCredentialSecret,
   revealCredentialField,
   updateCredential,
+  vaultIndex,
+  VAULT_LIST_LIMIT,
 } from "./index";
 import { VERSIONS_KEPT } from "./secret-store";
 import { parseTotpInput, totpCode } from "./totp";
@@ -227,6 +231,58 @@ describe("create, list, read — metadata only, scope by anchor (C49)", () => {
     }
   });
 
+  it("everything (the tenant's /vault): our own first, then by client name — each row naming its client and project", async () => {
+    const { rows, cut } = await listAllCredentials(manager());
+    expect(cut).toBeNull();
+    const ownCount = rows.findIndex((r) => r.clientId !== null);
+    expect(ownCount).toBeGreaterThan(0);
+    expect(rows.slice(0, ownCount).every((r) => r.clientId === null && r.client === null && r.project === null)).toBe(true);
+    expect(rows.slice(ownCount).every((r) => r.clientId !== null)).toBe(true);
+    expect(rows.map((r) => r.id)).toEqual(expect.arrayContaining([agencyOwn, p1Login, acmeLevel, betaLogin]));
+    // Client by client, Acme before Beta, never interleaved.
+    const clientOrder = rows.slice(ownCount).map((r) => r.client!.name);
+    expect(clientOrder).toEqual([...clientOrder].sort());
+    expect(rows.find((r) => r.id === p1Login)).toMatchObject({
+      client: { id: acme, name: "Acme" },
+      project: { id: acmeP1, key: "ACA", name: "Acme site" },
+    });
+    expect(rows.find((r) => r.id === acmeLevel)).toMatchObject({ client: { id: acme, name: "Acme" }, project: null });
+    expect(JSON.stringify(rows)).not.toContain(PASSWORD);
+    // The employee on P1 reaches P1's logins and nothing else — no agency
+    // row, no Acme client-level row, no Beta.
+    const { rows: theirs } = await listAllCredentials(employee());
+    expect(theirs.length).toBeGreaterThan(0);
+    expect(theirs.every((r) => r.projectId === acmeP1)).toBe(true);
+    expect(theirs.map((r) => r.id)).toContain(p1Login);
+  });
+
+  it("vaultIndex counts what each member reaches — our own only for tenant-wide scope", async () => {
+    const forManager = await vaultIndex(manager());
+    expect(forManager.agency).toBe((await listCredentials(manager(), { agencyOwn: true })).length);
+    expect(forManager.clients.map((c) => c.name)).toEqual(["Acme", "Beta"]);
+    for (const c of forManager.clients) {
+      expect(c.count, c.name).toBe((await listCredentials(manager(), { clientId: c.id })).length);
+    }
+    const forEmployee = await vaultIndex(employee());
+    expect(forEmployee.agency).toBeNull();
+    expect(forEmployee.clients).toEqual([
+      { id: acme, name: "Acme", count: (await listCredentials(employee(), { clientId: acme })).length },
+    ]);
+    // A deleted login is counted nowhere, and a client left with none drops out.
+    const gamma = randomUUID();
+    await f.platform.client.create({ data: { id: gamma, tenantId: f.tenantId, name: "Gamma" } });
+    const gone = (await createCredential(owner(), { clientId: gamma, type: "WIFI", name: "Gamma wifi", secret: { password: "g" } })).id;
+    expect((await vaultIndex(manager())).clients.find((c) => c.id === gamma)?.count).toBe(1);
+    await deleteCredential(owner(), gone);
+    expect((await vaultIndex(manager())).clients.map((c) => c.id)).not.toContain(gamma);
+    // Another tenant's logins are never this tenant's, by RLS and by count.
+    const otherOwner = { tenantId: other.tenantId, actor: actorFor(other.seats.owner.memberId) };
+    await createCredential(otherOwner, { type: "LOGIN", name: "Their registrar", secret: { password: "theirs" } });
+    expect((await vaultIndex(manager())).agency).toBe(forManager.agency);
+    expect((await listAllCredentials(manager())).rows.map((r) => r.name)).not.toContain("Their registrar");
+    expect(await vaultIndex(otherOwner)).toEqual({ agency: 1, clients: [] });
+  });
+
   it("an employee may create in scope, never out of it, and never an agency-own login", async () => {
     expect(await outcome(createCredential(employee(), { projectId: acmeP1, type: "SERVER", name: "P1 box", secret: { password: "e-pw" } }))).toBe("ok");
     expect(await outcome(createCredential(employee(), { projectId: betaP, type: "SERVER", name: "no", secret: { password: "e" } }))).toBe("NOT_FOUND");
@@ -297,11 +353,16 @@ describe("create, list, read — metadata only, scope by anchor (C49)", () => {
     expect(await audits("credential.deleted", id)).toHaveLength(1);
   });
 
-  it("the module switch closes the vault (gate 3)", async () => {
+  it("the module switch closes the vault (gate 3) — and the project's Vault tab with it", async () => {
+    expect((await getProjectByKey(owner(), "ACA")).caps.viewCredentials).toBe(true);
     await setModuleEnabled(owner(), "vault", false);
     try {
       expect(await outcome(listCredentials(owner(), { clientId: acme }))).toBe("DISABLED_BY_TENANT");
+      expect(await outcome(listAllCredentials(owner()))).toBe("DISABLED_BY_TENANT");
+      expect(await outcome(vaultIndex(owner()))).toBe("DISABLED_BY_TENANT");
       expect(await outcome(revealCredentialField(owner(), p1Login, "password"))).toBe("DISABLED_BY_TENANT");
+      // The tab is drawn on all four gates (slice 86), as Files is.
+      expect((await getProjectByKey(owner(), "ACA")).caps.viewCredentials).toBe(false);
     } finally {
       await setModuleEnabled(owner(), "vault", true);
     }
@@ -762,6 +823,8 @@ describe("the door — the whole vault is locked, the list included (C52 (a))", 
   const everyVerb = (ctx: ReturnType<typeof withActor>) => [
     ["openVault", () => openVault(ctx)],
     ["list", () => listCredentials(ctx, { clientId: acme })],
+    ["listAll", () => listAllCredentials(ctx)],
+    ["index", () => vaultIndex(ctx)],
     ["get", () => getCredential(ctx, inside)],
     ["create", () => createCredential(ctx, { clientId: acme, type: "LOGIN", name: "Should not exist", secret: { password: "x" } })],
     ["update", () => updateCredential(ctx, inside, { name: "Renamed through a stale door" })],
@@ -829,4 +892,75 @@ describe("the door — the whole vault is locked, the list included (C52 (a))", 
     expect((await openVault(admin())).can).toEqual({ create: true, edit: true, delete: false, reveal: true });
     expect((await openVault(employee())).can).toEqual({ create: true, edit: false, delete: false, reveal: false });
   });
+});
+
+describe("the tenant-wide list is capped — our own first, then clients by name (slice 86)", () => {
+  it(`stops at VAULT_LIST_LIMIT (${VAULT_LIST_LIMIT}) and says so; the index still counts every row`, async () => {
+    // On the OTHER tenant, so no list or count in this file moves. Metadata
+    // rows only, inserted directly: a list never reads a secret.
+    const t = other.tenantId;
+    const ownerOfOther = { tenantId: t, actor: actorFor(other.seats.owner.memberId) };
+    const before = (await vaultIndex(ownerOfOther)).agency ?? 0;
+    // Two ids, the SMALLER one Zeta's: ordering by client id instead of by
+    // name would put Zeta first and fail, every run (code review).
+    const [zeta, alpha] = [randomUUID(), randomUUID()].sort();
+    if (!zeta || !alpha) throw new Error("two ids");
+    await other.platform.client.createMany({
+      data: [
+        { id: zeta, tenantId: t, name: "Zeta" },
+        { id: alpha, tenantId: t, name: "Alpha" },
+      ],
+    });
+    const fill = VAULT_LIST_LIMIT - 2 - before;
+    try {
+      await other.platform.credentialItem.createMany({
+        data: [
+          ...Array.from({ length: fill }, (_, i) => ({ tenantId: t, type: "LOGIN" as const, name: `Cap own ${String(i).padStart(3, "0")}` })),
+          { tenantId: t, clientId: zeta, type: "LOGIN" as const, name: "Cap Aaa" },
+          { tenantId: t, clientId: alpha, type: "LOGIN" as const, name: "Cap Alpha 1" },
+          { tenantId: t, clientId: alpha, type: "LOGIN" as const, name: "Cap Alpha 2" },
+        ],
+      });
+      const { rows, cut } = await listAllCredentials(ownerOfOther);
+      expect(rows).toHaveLength(VAULT_LIST_LIMIT);
+      // Answered by the read itself (one row past the cap), not by a count —
+      // and it names where: Zeta's login is the first row left out.
+      expect(cut).toEqual({ clientId: zeta });
+      // Our own fill all but the last two places; the clients follow by
+      // CLIENT name — Alpha's two, though Zeta's login ("Cap Aaa") sorts
+      // first by its own name and Zeta's id sorts first too.
+      expect(rows.slice(0, VAULT_LIST_LIMIT - 2).every((r) => r.clientId === null)).toBe(true);
+      expect(rows.slice(VAULT_LIST_LIMIT - 2).map((r) => r.name)).toEqual(["Cap Alpha 1", "Cap Alpha 2"]);
+      const index = await vaultIndex(ownerOfOther);
+      expect(index.agency).toBe(before + fill);
+      expect(index.clients).toEqual([
+        { id: alpha, name: "Alpha", count: 2 },
+        { id: zeta, name: "Zeta", count: 1 },
+      ]);
+      // One anchor is never capped: Zeta's own list has its row.
+      expect((await listCredentials(ownerOfOther, { clientId: zeta })).map((r) => r.name)).toEqual(["Cap Aaa"]);
+      // Exactly at the cap is not cut: remove Zeta's row and the 200 fit.
+      await other.platform.credentialItem.deleteMany({ where: { tenantId: t, clientId: zeta } });
+      const exact = await listAllCredentials(ownerOfOther);
+      expect(exact.cut).toBeNull();
+      expect(exact.rows).toHaveLength(VAULT_LIST_LIMIT);
+      // Our own alone filling the cap: the clients' read takes the one row
+      // past it, so the cut is Alpha's — and our own card is whole.
+      await other.platform.credentialItem.createMany({
+        data: [0, 1].map((i) => ({ tenantId: t, type: "LOGIN" as const, name: `Cap own extra ${i}` })),
+      });
+      const full = await listAllCredentials(ownerOfOther);
+      expect(full.rows.every((r) => r.clientId === null)).toBe(true);
+      expect(full.cut).toEqual({ clientId: alpha });
+      // …and past it: the clients are never read, and the cut is our own.
+      await other.platform.credentialItem.create({ data: { tenantId: t, type: "LOGIN", name: "Cap own extra 2" } });
+      const over = await listAllCredentials(ownerOfOther);
+      expect(over.rows).toHaveLength(VAULT_LIST_LIMIT);
+      expect(over.rows.every((r) => r.clientId === null)).toBe(true);
+      expect(over.cut).toEqual({ clientId: null });
+    } finally {
+      await other.platform.credentialItem.deleteMany({ where: { tenantId: t, name: { startsWith: "Cap " } } });
+      await other.platform.client.deleteMany({ where: { tenantId: t, id: { in: [zeta, alpha] } } });
+    }
+  }, 120_000);
 });

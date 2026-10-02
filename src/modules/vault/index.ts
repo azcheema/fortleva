@@ -9,12 +9,17 @@ export {
   createCredential,
   deleteCredential,
   getCredential,
+  listAllCredentials,
   listCredentials,
   replaceCredentialSecret,
   updateCredential,
+  vaultIndex,
+  VAULT_LIST_LIMIT,
   type CreateCredentialInput,
   type CredentialFilter,
+  type CredentialListing,
   type CredentialPatch,
   type CredentialView,
+  type VaultIndex,
 } from "./items";
 export { copyCredentialField, generateCredentialTotp, revealCredentialField, type RevealKind } from "./reveal";

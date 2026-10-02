@@ -94,7 +94,8 @@
     "timeSettings": "Tidsregistrering",
     "inbox": "Inkorg",
     "notifications": "Aviseringar",
-    "search": "Sök"
+    "search": "Sök",
+    "vault": "Valv"
   },
   "shell": {
     "palette": {
@@ -1506,55 +1507,6 @@
         "emptyBody": "Lägg till ett priskort på ett avtal; tid på avtalet bär priset.",
         "add": "Lägg till ett avtalspris"
       }
-    },
-    "vault": {
-      "title": "Inloggningar och nycklar",
-      "logged": "Håll in ögat för att visa en hemlighet, eller tryck för att visa den i 10 sekunder. Varje visning, kopiering och kod loggas med ditt namn.",
-      "noReveal": "Du ser vad som är sparat här. För att visa eller kopiera ett lösenord behöver du behörighet att visa hemligheter.",
-      "empty": "Lägg till den första inloggningen",
-      "emptyDescription": "Spara kundens inloggningar, nycklar och licenser här i stället för i mejl och anteckningar.",
-      "emptyReadOnly": "Inget sparat ännu",
-      "emptyReadOnlyDescription": "Det finns inget sparat hos den här kunden som du kan se.",
-      "name": "Namn",
-      "username": "Användarnamn",
-      "url": "Webbadress",
-      "notes": "Anteckningar",
-      "addNote": "Lägg till en anteckning",
-      "openUrl": "Öppna webbadressen för {name}",
-      "needsRotation": "Byt snart",
-      "delete": "Ta bort",
-      "deleteConfirm": "Ta bort {name}?",
-      "deleted": "Borttagen.",
-      "door": {
-        "title": "Valvet är låst",
-        "body": "Ange koden från din autentiseringsapp för att öppna det. Det låser sig självt igen efter några minuter.",
-        "enrolTitle": "Konfigurera en autentiseringsapp först",
-        "enrolBody": "Valvet öppnas bara med en kod från en autentiseringsapp. Konfigurera en på din kontosida och kom sedan tillbaka.",
-        "enrolAction": "Konfigurera en autentiseringsapp"
-      },
-      "add": {
-        "title": "Lägg till en inloggning",
-        "description": "Lämna tomt det du inte har. Hemligheter sparas krypterade och visas aldrig utan att någon ber om dem.",
-        "type": "Typ",
-        "where": "Hör till",
-        "whereClient": "Kunden som helhet",
-        "totp": "Autentiseringsnyckel (valfri)",
-        "totpHint": "Konfigurationsnyckeln, eller otpauth://-länken från QR-koden. Valvet visar sedan den aktuella koden.",
-        "notesHint": "Inte hemligt: alla som kan öppna valvet ser anteckningar. Lägg lösenord i fälten ovanför.",
-        "submit": "Lägg till",
-        "adding": "Lägger till…",
-        "added": "La till {name}"
-      },
-      "secret": {
-        "change": "Byt hemlighet…",
-        "title": "Byt hemligheten för {name}",
-        "description": "Skriv bara det som ändras – ett tomt fält behåller sitt värde. Det gamla värdet sparas i historiken.",
-        "totp": "Ny autentiseringsnyckel",
-        "removeTotp": "Ta bort autentiseringsnyckeln",
-        "submit": "Byt",
-        "changing": "Byter…",
-        "changed": "Bytt. Det gamla värdet sparas i historiken."
-      }
     }
   },
   "projects": {
@@ -1609,6 +1561,7 @@
       "backlog": "Backlogg",
       "timeline": "Tidslinje",
       "files": "Filer",
+      "vault": "Valv",
       "team": "Team",
       "time": "Tid",
       "portal": "Portal",
@@ -3590,6 +3543,85 @@
       "SIGNED_OUT": "Du har loggats ut. Logga in igen för att fortsätta.",
       "SERVER": "Något gick fel. Försök igen.",
       "NETWORK": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
+    },
+    "list": {
+      "title": "Inloggningar och nycklar",
+      "logged": "Håll in ögat för att visa en hemlighet, eller tryck för att visa den i 10 sekunder. Varje visning, kopiering och kod loggas med ditt namn.",
+      "noReveal": "Du ser vad som är sparat här. För att visa eller kopiera ett lösenord behöver du behörighet att visa hemligheter."
+    },
+    "row": {
+      "name": "Namn",
+      "username": "Användarnamn",
+      "url": "Webbadress",
+      "notes": "Anteckningar",
+      "addNote": "Lägg till en anteckning",
+      "openUrl": "Öppna webbadressen för {name}",
+      "needsRotation": "Byt snart",
+      "delete": "Ta bort",
+      "deleteConfirm": "Ta bort {name}?",
+      "deleted": "Borttagen."
+    },
+    "door": {
+      "title": "Valvet är låst",
+      "body": "Ange koden från din autentiseringsapp för att öppna det. Det låser sig självt igen efter några minuter.",
+      "enrolTitle": "Konfigurera en autentiseringsapp först",
+      "enrolBody": "Valvet öppnas bara med en kod från en autentiseringsapp. Konfigurera en på din kontosida och kom sedan tillbaka.",
+      "enrolAction": "Konfigurera en autentiseringsapp"
+    },
+    "add": {
+      "title": "Lägg till en inloggning",
+      "description": "Lämna tomt det du inte har. Hemligheter sparas krypterade och visas aldrig utan att någon ber om dem.",
+      "type": "Typ",
+      "where": "Hör till",
+      "whereClient": "Kunden som helhet",
+      "totp": "Autentiseringsnyckel (valfri)",
+      "totpHint": "Konfigurationsnyckeln, eller otpauth://-länken från QR-koden. Valvet visar sedan den aktuella koden.",
+      "notesHint": "Inte hemligt: alla som kan öppna valvet ser anteckningar. Lägg lösenord i fälten ovanför.",
+      "submit": "Lägg till",
+      "adding": "Lägger till…",
+      "added": "La till {name}",
+      "whereFixed": "Hör till: {place}"
+    },
+    "secret": {
+      "change": "Byt hemlighet…",
+      "title": "Byt hemligheten för {name}",
+      "description": "Skriv bara det som ändras – ett tomt fält behåller sitt värde. Det gamla värdet sparas i historiken.",
+      "totp": "Ny autentiseringsnyckel",
+      "removeTotp": "Ta bort autentiseringsnyckeln",
+      "submit": "Byt",
+      "changing": "Byter…",
+      "changed": "Bytt. Det gamla värdet sparas i historiken."
+    },
+    "client": {
+      "empty": "Lägg till den första inloggningen",
+      "emptyDescription": "Spara kundens inloggningar, nycklar och licenser här i stället för i mejl och anteckningar.",
+      "emptyReadOnly": "Inget sparat ännu",
+      "emptyReadOnlyDescription": "Det finns inget sparat hos den här kunden som du kan se."
+    },
+    "project": {
+      "empty": "Lägg till den första inloggningen",
+      "emptyDescription": "Spara projektets inloggningar – webbhotell, publiceringsverktyg, testmiljö – här i stället för i mejl och anteckningar.",
+      "emptyReadOnly": "Inget sparat ännu",
+      "emptyReadOnlyDescription": "Det finns inget sparat i det här projektet som du kan se."
+    },
+    "tenant": {
+      "title": "Valv",
+      "description": "Alla inloggningar du kan öppna – våra egna först, sedan varje kunds. En kunds inloggningar lägger du till på kundens eller projektets Valv-flik.",
+      "filter": "Visa",
+      "all": "Alla ({count})",
+      "agency": "Våra egna ({count})",
+      "client": "{name} ({count})",
+      "agencyTitle": "Våra egna",
+      "agencyDescription": "Inloggningar som inte hör till någon kund – domänregistratorn, vårt eget webbhotell. Bara de som ser alla kunder kan öppna dem.",
+      "agencyPlace": "Oss – ingen kund",
+      "truncated": "Visar de första {limit} av {total}. Välj en kund för att se resten.",
+      "empty": "Inget sparat ännu",
+      "emptyDescription": "Inloggningar som läggs till på en kunds eller ett projekts Valv-flik visas här.",
+      "emptyAgency": "Lägg till den första av våra egna inloggningar",
+      "emptyAgencyDescription": "Domänregistratorn, vårt eget webbhotell, verktygen vi betalar för – sparade här i stället för i mejl och anteckningar.",
+      "addAgency": "Lägg till en av våra egna inloggningar",
+      "partial": "{shown} av {count} visas här.",
+      "showAll": "Visa alla {count}"
     }
   }
 }

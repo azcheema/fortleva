@@ -453,18 +453,19 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
     { scope: "item" as const, bindings: [binding({ key: "l", label: "Set labels" })] },
   ];
 
-  it("the nav really has a `G P`, a `G A` and a `G M`, and no `G E`, `G D`, `G V` or `G L` (the vault is 3V's)", () => {
-    // The cases below mean something only while this holds.
+  it("the nav really has a `G P`, a `G A`, a `G M` and a `G V`, and no `G E`, `G D` or `G L`", () => {
+    // The cases below mean something only while this holds. `G V` is the
+    // vault's since 3V slice 86 — until then it was a swallowed sequence.
     expect(GO_KEYS).toContain("P");
     expect(GO_KEYS).toContain("A");
     expect(GO_KEYS).toContain("M");
+    expect(GO_KEYS).toContain("V");
     expect(GO_KEYS).not.toContain("E");
     expect(GO_KEYS).not.toContain("D");
-    expect(GO_KEYS).not.toContain("V");
     expect(GO_KEYS).not.toContain("L");
   });
 
-  it("`G P`, `G A` and `G M` navigate with the item's bare `P`, `A` and `M` mounted", () => {
+  it("`G P`, `G A`, `G M` and `G V` navigate with the item's bare `P`, `A`, `M` and `V` mounted", () => {
     expect(decide(ev({ key: "p" }), scopes(...railEntries()), GO_KEYS, true)).toEqual({
       kind: "go",
       key: "P",
@@ -482,13 +483,18 @@ describe("the rail's S A P E D V beside the board and the G sequence (slices 6 a
       kind: "go",
       key: "M",
     });
+    // `G V` is the vault (slice 86); the rail's `V` is visibility — the
+    // same class as `G M`, consulted before the scope walk.
+    expect(decide(ev({ key: "v" }), scopes(...railEntries()), GO_KEYS, true)).toEqual({
+      kind: "go",
+      key: "V",
+    });
   });
 
-  it("`G E`, `G D`, `G V` and `G L` are swallowed — never a bare `E`, `D`, `V` or `L`", () => {
+  it("`G E`, `G D` and `G L` are swallowed — never a bare `E`, `D` or `L`", () => {
     const rail = scopes(...railEntries());
     expect(decide(ev({ key: "e" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
     expect(decide(ev({ key: "d" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
-    expect(decide(ev({ key: "v" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
     expect(decide(ev({ key: "l" }), rail, GO_KEYS, true)).toEqual({ kind: "swallowGo" });
     // Un-armed, they are the rail's own bindings.
     expect(decide(ev({ key: "a" }), rail, GO_KEYS, false).kind).toBe("binding");

@@ -15,6 +15,7 @@ import {
   TimerIcon,
   UserRoundIcon,
   UsersIcon,
+  VaultIcon,
   type LucideProps,
 } from "lucide-react";
 
@@ -29,6 +30,9 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   projects: FolderKanbanIcon,
   time: TimerIcon,
   files: FolderIcon,
+  // Not the key: that glyph is Roles' (and a login row's), and one icon
+  // means one concept (UI.md §10).
+  vault: VaultIcon,
   members: UsersIcon,
   settings: SettingsIcon,
   roles: KeyRoundIcon,

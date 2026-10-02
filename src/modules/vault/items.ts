@@ -82,6 +82,32 @@ const viewSelect = {
   updatedAt: true,
 } as const;
 
+/**
+ * A credential as a LIST draws it: the view, plus the client and project it
+ * hangs on BY NAME — a row on the tenant's `/vault` says whose login it is,
+ * and a row on a client's tab which project. Both names are the member's
+ * to read: a credential in scope hangs on a project or client in scope
+ * (`scope.ts`), whose name every page of that project or client shows.
+ */
+export type CredentialListing = CredentialView & {
+  readonly client: { readonly id: string; readonly name: string } | null;
+  readonly project: { readonly id: string; readonly key: string; readonly name: string } | null;
+};
+
+const listingSelect = {
+  ...viewSelect,
+  client: { select: { id: true, name: true } },
+  project: { select: { id: true, key: true, name: true } },
+} as const;
+
+/**
+ * How many rows the tenant-wide list (`listAllCredentials`) draws at most.
+ * Every row is a set of live controls, so a workspace with more is told so
+ * and narrows by client (`vaultIndex` has the true counts); a list under
+ * ONE anchor is not capped.
+ */
+export const VAULT_LIST_LIMIT = 200;
+
 /** A live (not deleted) credential's anchor, or NOT_FOUND. */
 async function liveAnchor(tx: TenantDb, tenantId: string, id: string) {
   const row = await tx.credentialItem.findFirst({
@@ -228,7 +254,7 @@ export type CredentialFilter =
   | { readonly agencyOwn: true };
 
 /** credential:view — live credentials under one anchor, metadata only, by name. */
-export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): Promise<CredentialView[]> {
+export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): Promise<CredentialListing[]> {
   const anchorWhere =
     "agencyOwn" in filter
       ? { clientId: null }
@@ -241,8 +267,102 @@ export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): 
     return tx.credentialItem.findMany({
       where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null, ...anchorWhere }, credentialScopeWhere(scope)] },
       orderBy: [{ name: "asc" }, { id: "asc" }],
-      select: viewSelect,
+      select: listingSelect,
     });
+  });
+}
+
+/**
+ * credential:view — EVERY live credential the member reaches, for the
+ * tenant's `/vault`: the agency's own first (tenant-wide scope only, C49),
+ * then client by client, by name. At most `VAULT_LIST_LIMIT` rows.
+ *
+ * `cut` says whether there were more, and WHERE the list was cut: the
+ * anchor of the first row past the cap (`clientId`, null for our own). Rows
+ * arrive contiguous per anchor, so the only card that can be short is the
+ * one whose anchor that is — and only when it is also the last one drawn.
+ * Answered by THIS read — one row past the cap is read and dropped — never
+ * by a count taken in another transaction, which a concurrent add or delete
+ * would put out of step (slice 86's reviews, twice).
+ */
+export async function listAllCredentials(ctx: VaultCtx): Promise<{
+  readonly rows: CredentialListing[];
+  readonly cut: { readonly clientId: string | null } | null;
+}> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await enterVault(tx, ctx, "credential:view");
+    const scope = await resolveScope(tx, ctx.actor);
+    const live = { tenantId: ctx.tenantId, deletedAt: null };
+    const over = VAULT_LIST_LIMIT + 1;
+    // TWO reads, in sequence, because the order wants the client-less rows
+    // FIRST and Postgres sorts a missing client's NULL name last. The
+    // agency's own are read only for a member whose scope reaches them,
+    // and through the scope filter as well — C49 on two checks, as in
+    // every other list (slice 86's security review).
+    const own = scope.all
+      ? await tx.credentialItem.findMany({
+          where: { AND: [{ ...live, clientId: null }, credentialScopeWhere(scope)] },
+          orderBy: [{ name: "asc" }, { id: "asc" }],
+          take: over,
+          select: listingSelect,
+        })
+      : [];
+    const clients =
+      own.length >= over
+        ? []
+        : await tx.credentialItem.findMany({
+            where: { AND: [{ ...live, clientId: { not: null } }, credentialScopeWhere(scope)] },
+            orderBy: [{ client: { name: "asc" } }, { clientId: "asc" }, { name: "asc" }, { id: "asc" }],
+            take: over - own.length,
+            select: listingSelect,
+          });
+    const rows = [...own, ...clients];
+    const past = rows[VAULT_LIST_LIMIT];
+    return {
+      rows: rows.slice(0, VAULT_LIST_LIMIT),
+      cut: past === undefined ? null : { clientId: past.clientId },
+    };
+  });
+}
+
+/** What the tenant's `/vault` filters by: whose logins the member can reach, and how many. */
+export type VaultIndex = {
+  /** The agency's own logins (C49) — `null` when the member's scope does not reach them. */
+  readonly agency: number | null;
+  /** Every client with at least one login the member can reach, by name. */
+  readonly clients: readonly { readonly id: string; readonly name: string; readonly count: number }[];
+};
+
+/**
+ * credential:view — the vault's index: per client, how many live logins the
+ * member can reach, and the agency's own count for a member whose scope is
+ * the whole tenant. Behind the door like every other vault read: which
+ * clients have logins, and how many, is part of the map.
+ */
+export async function vaultIndex(ctx: VaultCtx): Promise<VaultIndex> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await enterVault(tx, ctx, "credential:view");
+    const scope = await resolveScope(tx, ctx.actor);
+    const groups = await tx.credentialItem.groupBy({
+      by: ["clientId"],
+      where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null }, credentialScopeWhere(scope)] },
+      _count: { _all: true },
+    });
+    const count = new Map(groups.map((g) => [g.clientId, g._count._all]));
+    const ids = groups.flatMap((g) => (g.clientId === null ? [] : [g.clientId]));
+    // In sequence after the counts (AGENTS.md's `Promise.all` trap).
+    const named =
+      ids.length === 0
+        ? []
+        : await tx.client.findMany({
+            where: { tenantId: ctx.tenantId, id: { in: ids } },
+            orderBy: [{ name: "asc" }, { id: "asc" }],
+            select: { id: true, name: true },
+          });
+    return {
+      agency: scope.all ? (count.get(null) ?? 0) : null,
+      clients: named.map((c) => ({ id: c.id, name: c.name, count: count.get(c.id) ?? 0 })),
+    };
   });
 }
 

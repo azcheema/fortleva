@@ -472,6 +472,8 @@ export type E2ESeed = {
   readonly vaultLoginName: string;
   readonly vaultLoginPassword: string;
   readonly vaultApiKeyName: string;
+  /** One of the AGENCY'S OWN logins (no client — C49), for `/vault` (slice 86). */
+  readonly vaultAgencyLoginName: string;
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -1213,6 +1215,15 @@ async function provision(seedFile: string): Promise<void> {
     name: vaultApiKeyName,
     secret: { apiKey: `pk_test_${run}`, apiSecret: `sk_test_${randomBytes(12).toString("base64url")}` },
   });
+  // Slice 86: one of the agency's OWN logins — no client, no project — which
+  // the manager reaches because their scope is the whole tenant (C49).
+  const vaultAgencyLoginName = `E2E Registrar ${run}`;
+  await createCredential(vaultCtx, {
+    type: "LOGIN",
+    name: vaultAgencyLoginName,
+    username: "hostmaster@e2e.test",
+    secret: { password: `reg-${randomBytes(12).toString("base64url")}` },
+  });
 
   // 2W notifications: the one notification in the standing fixture, and
   // it is PRODUCED rather than inserted — the employee (who now holds
@@ -1490,6 +1501,7 @@ async function provision(seedFile: string): Promise<void> {
     vaultLoginName,
     vaultLoginPassword,
     vaultApiKeyName,
+    vaultAgencyLoginName,
   };
 
   mkdirSync(dirname(seedFile), { recursive: true });

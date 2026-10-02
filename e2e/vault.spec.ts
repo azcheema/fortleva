@@ -2,12 +2,15 @@ import { createHmac } from "node:crypto";
 
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
+import { SLOW } from "./fixtures/keys";
 import { ageVaultFactor, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
- * THE CLIENT'S VAULT TAB IN A BROWSER (Phase 3V slice 85, founder decision
- * C52): the door, the masked list, hold and tap to show, a copy that
- * clears itself, the one-time code, and add / change / delete.
+ * THE VAULT IN A BROWSER (Phase 3V slices 85–86, founder decision C52):
+ * the client's tab — the door, the masked list, hold and tap to show, a
+ * copy that clears itself, the one-time code, and add / change / delete —
+ * then the tenant's `/vault` (our own first, the client filter, `G V`) and
+ * a project's tab, which share its rows, form and door.
  *
  * As the fixture's VAULT MANAGER — the one member with an enrolled
  * authenticator (`E2ESeed.vaultEmail`). Signing in with a code stamps a
@@ -58,7 +61,7 @@ async function signInVaultManager(browser: Browser): Promise<{ context: BrowserC
   return { context, page };
 }
 
-test.describe.serial("the client's vault, as a manager with an authenticator", () => {
+test.describe.serial("the vault — a client's tab, /vault and a project's tab — as a manager with an authenticator", () => {
   let context!: BrowserContext;
   let page!: Page;
 
@@ -161,6 +164,98 @@ test.describe.serial("the client's vault, as a manager with an authenticator", (
     await expect(row.getByTestId("secret-value")).toHaveText(second);
     await page.keyboard.press("Enter"); // a second tap hides it at once
 
+    await row.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await row.getByRole("button", { name: "Yes" }).click();
+    await expect(rowOf(name)).toHaveCount(0);
+  });
+
+  // ── Slice 86: /vault and the project's Vault tab ─────────────────────
+  const group = (key: string) => page.locator(`[data-testid="vault-group"][data-group="${key}"]`);
+  const filter = () => page.getByTestId("vault-filter").locator("select");
+
+  test("G V opens /vault: our own first, then each client's under its name; the filter narrows it", async () => {
+    await page.goto("/home");
+    await expect(page.getByRole("link", { name: "Vault", exact: true }).first()).toBeVisible();
+    // Retried: a key pressed before the shell's one listener has hydrated
+    // is lost, and nothing on the page says when that is. Each attempt
+    // waits long enough for /vault (the door, the index, the list) to
+    // commit: a press during a pending navigation would cancel it.
+    await expect(async () => {
+      await page.keyboard.press("g");
+      await page.keyboard.press("v");
+      await page.waitForURL(/\/vault$/, { timeout: 8_000 * SLOW });
+    }).toPass({ timeout: 30_000 * SLOW });
+    const groups = page.getByTestId("vault-group");
+    await expect(groups.first()).toHaveAttribute("data-group", "agency");
+    await expect(groups.first()).toContainText(seed.vaultAgencyLoginName);
+    await expect(group("agency").getByTestId("vault-item").filter({ hasText: seed.vaultLoginName })).toHaveCount(0);
+    const theirs = group(seed.clientId);
+    await expect(theirs.getByRole("link", { name: seed.clientName, exact: true })).toHaveAttribute(
+      "href",
+      `/clients/${seed.clientId}/vault`,
+    );
+    await expect(theirs.getByTestId("vault-item").filter({ hasText: seed.vaultLoginName })).toBeVisible();
+    // A project's login wears the project's key.
+    await expect(theirs.getByTestId("vault-item").filter({ hasText: seed.vaultApiKeyName })).toContainText(seed.projectKey);
+    expect(await page.content()).not.toContain(seed.vaultLoginPassword);
+
+    await filter().selectOption(seed.clientId);
+    await page.waitForURL(new RegExp(`/vault\\?client=${seed.clientId}$`));
+    await expect(group("agency")).toHaveCount(0);
+    await expect(theirs.getByTestId("vault-item").filter({ hasText: seed.vaultLoginName })).toBeVisible();
+    await filter().selectOption("agency");
+    await page.waitForURL(/\/vault\?client=agency$/);
+    await expect(group(seed.clientId)).toHaveCount(0);
+    await expect(group("agency")).toContainText(seed.vaultAgencyLoginName);
+    await expect(filter()).toHaveValue("agency");
+  });
+
+  test("one of our own logins is added on /vault and deleted there", async () => {
+    await page.goto("/vault");
+    const name = `E2E own ${Date.now()}`;
+    const form = page.getByTestId("add-credential");
+    // One place it can go — ours — so nothing to choose, but it is said.
+    await expect(form.locator("#vc-where")).toHaveCount(0);
+    await expect(form.getByTestId("add-credential-where")).toHaveText("Belongs to: Us — no client");
+    await expect(form.locator("#vc-name")).toHaveAccessibleDescription("Belongs to: Us — no client");
+    await form.locator("#vc-name").fill(name);
+    await form.locator("#vc-secret-password").fill(`own-${Date.now()}`);
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByText(`Added ${name}`)).toBeVisible();
+    const row = group("agency").getByTestId("vault-item").filter({ hasText: name });
+    await expect(row).toBeVisible();
+    await row.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await row.getByRole("button", { name: "Yes" }).click();
+    await expect(row).toHaveCount(0);
+  });
+
+  test("a project's Vault tab lists that project's logins only; one added there is the project's", async () => {
+    await page.goto(`/projects/${seed.projectKey}/vault`);
+    await expect(page.locator('[data-slot="tab-strip"]').getByRole("link", { name: "Vault", exact: true })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(page.getByTestId("vault-lock")).toBeVisible();
+    await expect(rowOf(seed.vaultApiKeyName)).toBeVisible();
+    // The client's own login is the client's, not this project's.
+    await expect(rowOf(seed.vaultLoginName)).toHaveCount(0);
+
+    const name = `E2E project login ${Date.now()}`;
+    const form = page.getByTestId("add-credential");
+    await expect(form.locator("#vc-where")).toHaveCount(0);
+    await expect(form.getByTestId("add-credential-where")).toContainText(seed.projectKey);
+    await form.locator("#vc-name").fill(name);
+    await form.locator("#vc-secret-password").fill(`proj-${Date.now()}`);
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByText(`Added ${name}`)).toBeVisible();
+    await expect(rowOf(name)).toBeVisible();
+
+    // On the client's tab it is one of the client's, badged with the project.
+    await page.goto(vault());
+    const row = rowOf(name);
+    await expect(row).toContainText(seed.projectKey);
     await row.getByRole("button", { name: `Actions for ${name}` }).click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
     await row.getByRole("button", { name: "Yes" }).click();

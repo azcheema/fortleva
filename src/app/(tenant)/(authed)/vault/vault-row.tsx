@@ -29,6 +29,7 @@ import { afterClosingLayers } from "@/lib/after-closing-layers";
 import type { FormResult } from "@/lib/server-actions";
 
 import { deleteCredentialAction, replaceCredentialSecretAction, updateCredentialAction } from "./actions";
+import type { VaultSurface } from "./surface";
 import { fieldLabelKey, isMultilineSecret, type FieldsByType, type VaultItem } from "./vault-shape";
 
 /** What the member may do inside the open vault (`openVault().can`). */
@@ -41,19 +42,26 @@ export type VaultRowAbilities = { readonly edit: boolean; readonly delete: boole
  * copy (C52); its verbs — change the secret, delete — live in the row's
  * menu (MANDATE 2). Moving a login to another client or project is not
  * offered: the service does not either.
+ *
+ * One row for every vault page (slice 86): `surface` names the page, so
+ * its actions revalidate it and a stale factor's step-up returns to it.
+ * `showProject` is the project's badge — noise on a project's own tab,
+ * where every row carries the same one.
  */
 export function VaultRow({
-  clientId,
+  surface,
   item,
   can,
   fieldsByType,
+  showProject,
 }: {
-  clientId: string;
+  surface: VaultSurface;
   item: VaultItem;
   can: VaultRowAbilities;
   fieldsByType: FieldsByType;
+  showProject: boolean;
 }) {
-  const t = useTranslations("clients.vault");
+  const t = useTranslations("vault.row");
   const tVault = useTranslations("vault");
   const tCommon = useTranslations("common");
   const { run } = useRun();
@@ -63,7 +71,7 @@ export function VaultRow({
   if (can.edit) {
     items.push({
       key: "change-secret",
-      label: t("secret.change"),
+      label: tVault("secret.change"),
       icon: RotateCcwKeyIcon,
       onSelect: () => afterClosingLayers(() => setSecretOpen(true)),
     });
@@ -75,7 +83,7 @@ export function VaultRow({
       icon: Trash2Icon,
       tone: "danger",
       confirm: t("deleteConfirm", { name: item.name }),
-      onSelect: () => run(() => deleteCredentialAction(clientId, item.id)),
+      onSelect: () => run(() => deleteCredentialAction(surface, item.id)),
     });
   }
 
@@ -101,7 +109,7 @@ export function VaultRow({
             display={<span className="font-medium">{item.name}</span>}
           />
           <Badge variant="neutral">{tVault(`types.${item.type}`)}</Badge>
-          {item.project ? (
+          {showProject && item.project ? (
             <Badge variant="outline" title={item.project.name}>
               {item.project.key}
             </Badge>
@@ -187,14 +195,14 @@ export function VaultRow({
         <div className="flex flex-col gap-2">{body}</div>
       ) : (
         <AutoForm action={updateCredentialAction} className="flex flex-col gap-2">
-          <input type="hidden" name="clientId" value={clientId} />
+          <input type="hidden" name="surface" value={surface} />
           <input type="hidden" name="credentialId" value={item.id} />
           {body}
         </AutoForm>
       )}
       {can.edit ? (
         <ChangeSecretDialog
-          clientId={clientId}
+          surface={surface}
           item={item}
           fields={fieldsByType[item.type]}
           open={secretOpen}
@@ -219,20 +227,20 @@ export function VaultRow({
  * earlier refusal, survives a close (slice 85's code review).
  */
 function ChangeSecretDialog({
-  clientId,
+  surface,
   item,
   fields,
   open,
   onOpenChange,
 }: {
-  clientId: string;
+  surface: VaultSurface;
   item: VaultItem;
   /** The type's secret field names, in display order. */
   fields: readonly string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const t = useTranslations("clients.vault");
+  const t = useTranslations("vault.secret");
   const focusReturn = useFocusReturn();
   // Stable, so the form's success effect runs once per success.
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
@@ -240,28 +248,27 @@ function ChangeSecretDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent {...focusReturn} className="sm:max-w-md" data-testid="change-secret-dialog">
         <DialogHeader>
-          <DialogTitle>{t("secret.title", { name: item.name })}</DialogTitle>
-          <DialogDescription>{t("secret.description")}</DialogDescription>
+          <DialogTitle>{t("title", { name: item.name })}</DialogTitle>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
-        <ChangeSecretForm clientId={clientId} item={item} fields={fields} onDone={close} />
+        <ChangeSecretForm surface={surface} item={item} fields={fields} onDone={close} />
       </DialogContent>
     </Dialog>
   );
 }
 
 function ChangeSecretForm({
-  clientId,
+  surface,
   item,
   fields,
   onDone,
 }: {
-  clientId: string;
+  surface: VaultSurface;
   item: VaultItem;
   fields: readonly string[];
   onDone: () => void;
 }) {
-  const t = useTranslations("clients.vault");
-  const tVault = useTranslations("vault");
+  const t = useTranslations("vault");
   const tCommon = useTranslations("common");
   const [state, action, pending] = useActionState<FormResult | null, FormData>(replaceCredentialSecretAction, null);
 
@@ -274,10 +281,10 @@ function ChangeSecretForm({
 
   return (
     <form action={action} className="flex flex-col gap-3">
-      <input type="hidden" name="clientId" value={clientId} />
+      <input type="hidden" name="surface" value={surface} />
       <input type="hidden" name="credentialId" value={item.id} />
       {fields.map((key) => (
-        <Field key={key} label={tVault(fieldLabelKey(key))} htmlFor={`cs-${item.id}-${key}`}>
+        <Field key={key} label={t(fieldLabelKey(key))} htmlFor={`cs-${item.id}-${key}`}>
           {isMultilineSecret(key) ? (
             <Textarea
               id={`cs-${item.id}-${key}`}
