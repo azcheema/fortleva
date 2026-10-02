@@ -253,6 +253,16 @@ export async function resetPortalSections(tenantId: string): Promise<number> {
   return reset;
 }
 
+/**
+ * Age the vault member's second factor past the vault window (C52): the
+ * next visit to the Vault tab finds THE DOOR. Returns how many sessions
+ * were aged.
+ */
+export async function ageVaultFactor(tenantId: string, email: string): Promise<number> {
+  const { aged } = await runCli<{ aged: number }>(["age-vault-factor", tenantId, email]);
+  return aged;
+}
+
 /** A member's next timer start is their first again: the staff notice shows (time.spec's task-timer test). */
 export async function forgetStaffNotice(tenantId: string, email: string): Promise<number> {
   const { forgotten } = await runCli<{ forgotten: number }>(["forget-notice", tenantId, email]);

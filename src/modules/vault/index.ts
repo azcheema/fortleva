@@ -3,6 +3,7 @@
  * through this file only. Direction: `vault → core`, never another module.
  */
 export type { VaultCtx } from "./ctx";
+export { openVault, type OpenVault, type VaultAbilities } from "./door";
 export { CREDENTIAL_TYPES, SECRET_FIELDS, isCredentialType, type CredentialType } from "./fields";
 export {
   createCredential,

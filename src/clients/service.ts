@@ -232,6 +232,13 @@ export type ClientDetail = {
     createServices: boolean;
     editServices: boolean;
     deleteServices: boolean;
+    /**
+     * `credential:view` on all four gates — whether a Vault tab exists at
+     * all (Phase 3V). What the tab then shows is the vault module's own
+     * answer: its door wants a fresh factor (C52), and its scope keeps a
+     * member reached through a project to that project's logins.
+     */
+    viewCredentials: boolean;
   };
 };
 
@@ -239,8 +246,8 @@ export type ClientDetail = {
  * EVERY CODE `ClientDetail.caps` ANSWERS, read ONCE through
  * `heldAndAccessibleCodes`. Every cap but one answers all four gates, so
  * a cap whose module a tenant can switch off closes with it:
- * `client:manage_contacts` is `portal` and the five `document:*` are
- * `documentation`; the rest are `core`. The one is `manageContactRecords`,
+ * `client:manage_contacts` is `portal`, the five `document:*` are
+ * `documentation` and `credential:view` is `vault`; the rest are `core`. The one is `manageContactRecords`,
  * on gate 4 by C48. None is a ✦ code, which is what lets the helper answer
  * them. `CapCode` makes `can()` — and `holds()`, the gate-4 answer — on a
  * code missing from this list a type error; a hand-written permission
@@ -262,6 +269,7 @@ const CAP_CODES = [
   "service:create",
   "service:edit",
   "service:delete",
+  "credential:view",
 ] as const;
 type CapCode = (typeof CAP_CODES)[number];
 
@@ -377,6 +385,7 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
         createServices: can("service:create") && direct,
         editServices: can("service:edit") && direct,
         deleteServices: can("service:delete") && direct,
+        viewCredentials: can("credential:view"),
       },
     };
   });

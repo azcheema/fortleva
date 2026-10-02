@@ -17,6 +17,7 @@ import {
   generateCredentialTotp,
   getCredential,
   listCredentials,
+  openVault,
   replaceCredentialSecret,
   revealCredentialField,
   updateCredential,
@@ -747,4 +748,85 @@ describe("no plaintext anywhere: a dump of the tenant, and the logs", () => {
     }
     expect(errors.length).toBeGreaterThan(0); // the failed decrypt did fail
   }, 90_000);
+});
+
+describe("the door — the whole vault is locked, the list included (C52 (a))", () => {
+  let inside: string;
+
+  beforeAll(async () => {
+    inside = (await createCredential(owner(), { clientId: acme, type: "LOGIN", name: "Behind the door", username: "door@acme.test", secret: { password: "d-pw" } })).id;
+  }, 60_000);
+
+  // Every metadata service, as one list, so a verb added later without the
+  // door is a missing row here rather than a hole nobody noticed.
+  const everyVerb = (ctx: ReturnType<typeof withActor>) => [
+    ["openVault", () => openVault(ctx)],
+    ["list", () => listCredentials(ctx, { clientId: acme })],
+    ["get", () => getCredential(ctx, inside)],
+    ["create", () => createCredential(ctx, { clientId: acme, type: "LOGIN", name: "Should not exist", secret: { password: "x" } })],
+    ["update", () => updateCredential(ctx, inside, { name: "Renamed through a stale door" })],
+    ["replaceSecret", () => replaceCredentialSecret(ctx, inside, { secret: { password: "y" } })],
+    ["delete", () => deleteCredential(ctx, inside)],
+  ] as const;
+
+  it("a factor older than vault.stepUpMinutes is MFA_REQUIRED:step_up on every verb, and nothing is written", async () => {
+    const stale: MemberActor = { memberId: f.seats.owner.memberId, mfa: { enrolled: true, verifiedAt: minutesAgo(12) } };
+    const before = await f.audits("credential.created");
+    for (const [verb, call] of everyVerb(withActor(stale))) {
+      expect(`${verb}:${await outcome(call())}`).toBe(`${verb}:MFA_REQUIRED:step_up`);
+    }
+    expect((await f.audits("credential.created")).length).toBe(before.length);
+    expect((await audits("credential.updated", inside)).length).toBe(0);
+    expect((await audits("credential.deleted", inside)).length).toBe(0);
+    expect((await getCredential(owner(), inside)).name).toBe("Behind the door");
+  });
+
+  it("no factor at all is MFA_REQUIRED:enrol on every verb — and an employee who may view must set one up", async () => {
+    for (const [verb, call] of everyVerb(withActor(noMfa(f.seats.manager.memberId)))) {
+      expect(`${verb}:${await outcome(call())}`).toBe(`${verb}:MFA_REQUIRED:enrol`);
+    }
+    // The employee holds view and create only; the verbs they do not hold
+    // stay FORBIDDEN — the permission is answered first.
+    const employeeNoFactor = withActor(noMfa(f.seats.employee.memberId));
+    expect(await outcome(listCredentials(employeeNoFactor, { clientId: acme }))).toBe("MFA_REQUIRED:enrol");
+    expect(await outcome(deleteCredential(employeeNoFactor, inside))).toBe("FORBIDDEN");
+  });
+
+  it("impersonation never enters, even with a fresh factor", async () => {
+    const imp: MemberActor = { ...actorFor(f.seats.owner.memberId), impersonated: true };
+    for (const [verb, call] of everyVerb(withActor(imp))) {
+      expect(`${verb}:${await outcome(call())}`).toBe(`${verb}:FORBIDDEN`);
+    }
+  });
+
+  it("the permission is answered before the factor — a closed module is never 'come back with a code'", async () => {
+    const stale: MemberActor = { memberId: f.seats.owner.memberId, mfa: { enrolled: true, verifiedAt: minutesAgo(12) } };
+    await setModuleEnabled(owner(), "vault", false);
+    try {
+      expect(await outcome(openVault(withActor(stale)))).toBe("DISABLED_BY_TENANT");
+      expect(await outcome(listCredentials(withActor(stale), { clientId: acme }))).toBe("DISABLED_BY_TENANT");
+    } finally {
+      await setModuleEnabled(owner(), "vault", true);
+    }
+  });
+
+  it("the window follows the tenant's setting, and openVault says when it closes", async () => {
+    await updatePreferences(owner(), { vault: { stepUpMinutes: 5 } });
+    try {
+      const at7: MemberActor = { memberId: f.seats.manager.memberId, mfa: { enrolled: true, verifiedAt: minutesAgo(7) } };
+      expect(await outcome(listCredentials(withActor(at7), { clientId: acme }))).toBe("MFA_REQUIRED:step_up");
+      const at3 = minutesAgo(3);
+      const open = await openVault(withActor({ memberId: f.seats.manager.memberId, mfa: { enrolled: true, verifiedAt: at3 } }));
+      expect(open.locksAt.getTime()).toBe(at3.getTime() + 5 * 60_000);
+    } finally {
+      await updatePreferences(owner(), { vault: { stepUpMinutes: 10 } });
+    }
+  });
+
+  it("openVault draws exactly the controls each template's services accept", async () => {
+    expect((await openVault(owner())).can).toEqual({ create: true, edit: true, delete: true, reveal: true });
+    expect((await openVault(manager())).can).toEqual({ create: true, edit: true, delete: true, reveal: true });
+    expect((await openVault(admin())).can).toEqual({ create: true, edit: true, delete: false, reveal: true });
+    expect((await openVault(employee())).can).toEqual({ create: true, edit: false, delete: false, reveal: false });
+  });
 });

@@ -1337,7 +1337,8 @@
       "projects": "Projects",
       "contacts": "Contacts",
       "files": "Files",
-      "agreements": "Agreements"
+      "agreements": "Agreements",
+      "vault": "Vault"
     },
     "overview": {
       "company": "Company",
@@ -1504,6 +1505,55 @@
         "empty": "No agreement rates",
         "emptyBody": "Add a rate card to an agreement; time on that agreement carries it.",
         "add": "Add an agreement rate"
+      }
+    },
+    "vault": {
+      "title": "Logins and keys",
+      "logged": "Hold the eye to show a secret, or tap it to show it for 10 seconds. Every look, copy and code is logged with your name.",
+      "noReveal": "You can see what is stored here. Showing or copying a password needs the permission to reveal them.",
+      "empty": "Add the first login",
+      "emptyDescription": "Keep this client's logins, keys and licences here instead of in emails and notes.",
+      "emptyReadOnly": "Nothing stored yet",
+      "emptyReadOnlyDescription": "Nothing is stored for this client that you can see.",
+      "name": "Name",
+      "username": "Username",
+      "url": "Web address",
+      "notes": "Notes",
+      "addNote": "Add a note",
+      "openUrl": "Open the web address of {name}",
+      "needsRotation": "Change soon",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {name}?",
+      "deleted": "Deleted.",
+      "door": {
+        "title": "The vault is locked",
+        "body": "Enter the code from your authenticator app to open it. It locks itself again after a few minutes.",
+        "enrolTitle": "Set up an authenticator app first",
+        "enrolBody": "The vault opens only with a code from an authenticator app. Set one up on your account page, then come back.",
+        "enrolAction": "Set up an authenticator app"
+      },
+      "add": {
+        "title": "Add a login",
+        "description": "Leave blank what you don't have. Secrets are stored encrypted and never shown unless someone asks.",
+        "type": "Type",
+        "where": "Belongs to",
+        "whereClient": "The client as a whole",
+        "totp": "Authenticator key (optional)",
+        "totpHint": "The setup key, or the otpauth:// link from the QR code. The vault then shows the current code.",
+        "notesHint": "Not secret: everyone who can open the vault sees notes. Keep passwords in the fields above.",
+        "submit": "Add",
+        "adding": "Adding…",
+        "added": "Added {name}"
+      },
+      "secret": {
+        "change": "Change secret…",
+        "title": "Change the secret of {name}",
+        "description": "Type only what changes; a blank field keeps its value. The old value is kept in the history.",
+        "totp": "New authenticator key",
+        "removeTotp": "Remove the authenticator key",
+        "submit": "Change",
+        "changing": "Changing…",
+        "changed": "Changed. The old value is kept in the history."
       }
     }
   },
@@ -3486,6 +3536,60 @@
       "amountInPeriod": "{amount} this period",
       "amountToDate": "{amount} to date",
       "budgetAmount": "Budget {amount}"
+    }
+  },
+  "vault": {
+    "types": {
+      "LOGIN": "Login",
+      "SECURE_NOTE": "Secure note",
+      "API_KEY": "API key",
+      "SSH_KEY": "SSH key",
+      "DATABASE": "Database",
+      "SERVER": "Server",
+      "WIFI": "Wi-Fi",
+      "SOFTWARE_LICENSE": "Software licence",
+      "OTHER": "Other"
+    },
+    "fields": {
+      "password": "Password",
+      "note": "Note",
+      "apiKey": "API key",
+      "apiSecret": "API secret",
+      "privateKey": "Private key",
+      "passphrase": "Passphrase",
+      "connectionString": "Connection string",
+      "licenseKey": "Licence key",
+      "secret": "Secret"
+    },
+    "reveal": {
+      "show": "Show {field}",
+      "hidden": "Hidden"
+    },
+    "copy": {
+      "label": "Copy {field}",
+      "done": "{field} copied. The clipboard is emptied when you come back to this page — in some browsers, at your first click.",
+      "failed": "Your browser did not allow copying. Try again."
+    },
+    "totp": {
+      "label": "One-time code",
+      "show": "Show code",
+      "secondsLeft": "{seconds} s left",
+      "set": "Set. Showing it needs the permission to reveal secrets."
+    },
+    "lock": {
+      "openUntil": "Open. Locks itself at {time}"
+    },
+    "errors": {
+      "MFA_REQUIRED": "The vault locked itself. Open it again to continue.",
+      "NOT_FOUND": "That login is no longer here.",
+      "FORBIDDEN": "You don't have permission to do that.",
+      "REVEAL_BUDGET_EXCEEDED": "You have revealed a lot of secrets in the last hour. Wait a while and try again — every reveal is logged.",
+      "VAULT_BUSY": "The vault is busy right now. Try again in a moment.",
+      "INVALID_INPUT": "That could not be shown.",
+      "CROSS_SITE": "That request did not come from this page.",
+      "SIGNED_OUT": "You have been signed out. Sign in again to continue.",
+      "SERVER": "Something went wrong. Try again.",
+      "NETWORK": "Could not reach Fortleva. Check your connection and try again."
     }
   }
 }

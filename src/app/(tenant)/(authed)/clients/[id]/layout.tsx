@@ -16,7 +16,7 @@ export async function generateMetadata({
   return { title: client.name };
 }
 
-/** /clients/[id] shell: name + status, tabs Overview · Projects · Contacts · Files · Agreements (UI.md §3.1). */
+/** /clients/[id] shell: name + status, tabs Overview · Projects · Contacts · Files · Agreements · Vault (UI.md §3.1). */
 export default async function ClientLayout({
   params,
   children,
@@ -40,6 +40,8 @@ export default async function ClientLayout({
     // 2T: Service rows presented as agreements, with their rate cards
     // and this month's consumption (UI.md §3.1).
     ...(client.caps.viewServices ? [{ href: `${base}/agreements`, label: t("tabs.agreements") }] : []),
+    // 3V: the client's logins and keys, behind the vault's own door (C52).
+    ...(client.caps.viewCredentials ? [{ href: `${base}/vault`, label: t("tabs.vault") }] : []),
   ];
 
   return (

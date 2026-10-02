@@ -552,6 +552,19 @@
   }
 }
 
+/* A SECRET BEING TYPED (the vault's add form and its Change secret…
+   dialog): masked like a password field, but NOT one. A type="password"
+   input makes every browser offer to save — or, on a lone field, to
+   UPDATE — the member's own saved password with a client's secret, which
+   would copy it into the browser profile and its sync, outside the
+   vault's budget and trail (slice 85's security review). A text input
+   masked by this is not offered to the password manager. Where a browser
+   does not support the property, the typed text shows — the member is
+   typing a value they hold. */
+@utility secret-mask {
+  -webkit-text-security: disc;
+}
+
 /* A six-digit one-time code: monospace, centred, opened up so the
    digits are read individually rather than as a number. */
 @utility otp-field {

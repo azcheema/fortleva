@@ -137,10 +137,20 @@ describe("vault ciphertext boundary", () => {
     expect(COLUMNS.test("SELECT SECRET_CIPHERTEXT FROM x")).toBe(true);
   });
 
-  it("the index exports only the gated services — never the store, the budget, the scope or the raw TOTP", () => {
+  it("the index exports only the gated services — never the store, the budget, the scope, the raw TOTP or the bare door", () => {
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
-    expect(targets.sort()).toEqual(["modules/vault/ctx", "modules/vault/fields", "modules/vault/items", "modules/vault/reveal"]);
+    expect(targets.sort()).toEqual([
+      "modules/vault/ctx",
+      "modules/vault/door",
+      "modules/vault/fields",
+      "modules/vault/items",
+      "modules/vault/reveal",
+    ]);
+    // door is re-exported for `openVault` and its types only — never `enterVault`,
+    // which answers a window without a verb behind it.
+    expect(readFileSync(index, "utf8")).toMatch(/export \{ openVault, type OpenVault, type VaultAbilities \} from "\.\/door";/);
+    expect(readFileSync(index, "utf8")).not.toMatch(/\benterVault\b/);
     // ctx is re-exported for its TYPE only.
     expect(readFileSync(index, "utf8")).toMatch(/export type \{ VaultCtx \} from "\.\/ctx";/);
   });

@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
+import { SECURITY_HEADERS } from "./src/config/security-headers";
+
 // Build parallelism knob for a memory-starved machine: `NEXT_BUILD_CPUS=2
 // pnpm build` caps the compile/static-generation workers (each is a Node
 // process that dies with Windows' fail-fast 0xC0000409 when the commit
@@ -12,6 +14,11 @@ const experimental: NextConfig["experimental"] =
 const nextConfig: NextConfig = {
   reactCompiler: true,
   experimental,
+  // Every path, every response: no page of the app may be framed
+  // (src/config/security-headers.ts says why — the vault, first).
+  headers() {
+    return Promise.resolve([{ source: "/:path*", headers: [...SECURITY_HEADERS] }]);
+  },
   // CI already runs `next typegen && tsc --noEmit` over this exact
   // tsconfig project, in the isolation job that the e2e job `needs:`.
   // `next build` then runs tsc over the whole project a SECOND time

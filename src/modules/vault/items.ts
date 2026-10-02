@@ -4,10 +4,10 @@ import { record } from "@/audit/record";
 import { resolveScope } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
-import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 
 import { boundedVaultWrite, guarded, idOf, principalOf, type VaultCtx } from "./ctx";
+import { enterVault } from "./door";
 import {
   isCredentialType,
   normalizeExpiresAt,
@@ -29,7 +29,10 @@ import { parseTotpInput } from "./totp";
 /**
  * Credential METADATA and the secret's lifecycle (DATA_MODEL.md §6.17;
  * AUTHZ.md §3.2's `credential:*` rows). Every verb is the house recipe:
- * `requireAccess` → scope → mutate → `record()` in the same transaction.
+ * `requireAccess` → scope → mutate → `record()` in the same transaction —
+ * the access check through `enterVault` (`door.ts`), which also wants a
+ * factor no older than `vault.stepUpMinutes` (C52: the whole vault is
+ * locked, the list included).
  *
  * Nothing here ever RETURNS a secret. Creating and replacing one take a
  * value in and encrypt it; reading one is `reveal.ts`'s, behind
@@ -170,7 +173,7 @@ export async function createCredential(ctx: VaultCtx, input: CreateCredentialInp
 
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
-      await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:create");
+      await enterVault(tx, ctx, "credential:create");
       const anchor = await resolveNewAnchor(tx, ctx, input);
 
       // The id is minted here because the AAD binds the ciphertext to it.
@@ -233,7 +236,7 @@ export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): 
         ? { projectId: idOf(filter.projectId, "projectId") }
         : { clientId: idOf(filter.clientId, "clientId") };
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:view");
+    await enterVault(tx, ctx, "credential:view");
     const scope = await resolveScope(tx, ctx.actor);
     return tx.credentialItem.findMany({
       where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null, ...anchorWhere }, credentialScopeWhere(scope)] },
@@ -247,7 +250,7 @@ export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): 
 export async function getCredential(ctx: VaultCtx, credentialId: string): Promise<CredentialView> {
   const id = idOf(credentialId, "credentialId");
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:view");
+    await enterVault(tx, ctx, "credential:view");
     const anchor = await liveAnchor(tx, ctx.tenantId, id);
     await assertCredentialInScope(tx, ctx.actor, anchor);
     return tx.credentialItem.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id }, select: viewSelect });
@@ -296,7 +299,7 @@ export async function updateCredential(
 
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
-      await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:edit");
+      await enterVault(tx, ctx, "credential:edit");
       const anchor = await liveAnchor(tx, ctx.tenantId, id);
       await assertCredentialInScope(tx, ctx.actor, anchor);
       const current = await tx.credentialItem.findFirstOrThrow({
@@ -359,7 +362,7 @@ export async function replaceCredentialSecret(
       principalOf(ctx),
       async (tx) =>
         guarded(async () => {
-          await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:edit");
+          await enterVault(tx, ctx, "credential:edit");
           const anchor = await liveAnchor(tx, ctx.tenantId, id);
           await assertCredentialInScope(tx, ctx.actor, anchor);
           const patch = normalizeSecretPatch(anchor.type, input.secret);
@@ -486,7 +489,7 @@ export async function replaceCredentialSecret(
 export async function deleteCredential(ctx: VaultCtx, credentialId: string): Promise<void> {
   const id = idOf(credentialId, "credentialId");
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:delete");
+    await enterVault(tx, ctx, "credential:delete");
     const anchor = await liveAnchor(tx, ctx.tenantId, id);
     await assertCredentialInScope(tx, ctx.actor, anchor);
     const written = await tx.credentialItem.updateMany({

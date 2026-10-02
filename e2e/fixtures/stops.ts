@@ -179,6 +179,11 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // 2T: agreements with their rate and this month's hours, plus the
     // agreement-scoped rate cards.
     { name: "client-agreements", path: `${client}/agreements` },
+    // 3V slice 85 (C52): the Vault tab as the OWNER sees it — no
+    // authenticator, so the door that sends them to set one up. The open
+    // vault needs a fresh factor the shared owner session never has; its
+    // screen is driven by `vault.spec.ts` as the fixture's vault manager.
+    { name: "client-vault", path: `${client}/vault` },
     { name: "projects", path: "/projects" },
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },

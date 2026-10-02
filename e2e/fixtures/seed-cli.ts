@@ -454,6 +454,24 @@ export type E2ESeed = {
    * inviteToken above). */
   readonly employeeEmail: string;
   readonly employeePassword: string;
+
+  /* ── Vault fixture (Phase 3V slice 85, founder decision C52) ────────
+   * A MANAGER with an ENROLLED authenticator, assigned directly to the
+   * client — the one member in the harness who can open the vault (the
+   * owner has no factor, and every spec shares the owner's session). The
+   * spec signs them in with a code computed from `vaultTotpSecret` (the
+   * HMAC key's UTF-8 text, as Better Auth keeps it), which stamps a fresh
+   * factor exactly as a real sign-in does. Two logins are written through
+   * the vault's own service; their values are sentinels the spec looks
+   * for on screen and in the clipboard. All of it is worthless once
+   * teardown deletes the tenant, never printed, and lives only in the
+   * gitignored seed file. */
+  readonly vaultEmail: string;
+  readonly vaultPassword: string;
+  readonly vaultTotpSecret: string;
+  readonly vaultLoginName: string;
+  readonly vaultLoginPassword: string;
+  readonly vaultApiKeyName: string;
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -1133,6 +1151,69 @@ async function provision(seedFile: string): Promise<void> {
     clientId,
   });
 
+  // ── Vault fixture (Phase 3V slice 85, C52) ─────────────────────────
+  // See `E2ESeed.vaultEmail`. The factor row is written the way Better
+  // Auth's own `/two-factor/enable` + verify leave it: the secret and the
+  // backup codes encrypted with `symmetricEncrypt` under the MEMBER
+  // instance's secret config, `verified`, and the user's flag set.
+  const vaultEmail = `e2e-vault-${run}${EMAIL_DOMAIN}`;
+  const vaultPassword = randomBytes(24).toString("base64url");
+  const vaultTotpSecret = randomBytes(24).toString("base64url");
+  const { symmetricEncrypt } = await import("better-auth/crypto");
+  const memberSecretConfig = (await memberAuth.$context).secretConfig;
+  const vaultUser = await db.user.create({
+    data: { name: "E2E Vault Manager", email: vaultEmail, emailVerified: true, locale: "en", twoFactorEnabled: true },
+  });
+  await db.account.create({
+    data: {
+      userId: vaultUser.id,
+      providerId: "credential",
+      accountId: vaultUser.id,
+      password: await hashPassword(vaultPassword),
+    },
+  });
+  await db.twoFactor.create({
+    data: {
+      userId: vaultUser.id,
+      secret: await symmetricEncrypt({ key: memberSecretConfig, data: vaultTotpSecret }),
+      backupCodes: await symmetricEncrypt({
+        key: memberSecretConfig,
+        data: JSON.stringify(Array.from({ length: 10 }, () => randomBytes(5).toString("hex"))),
+      }),
+      verified: true,
+    },
+  });
+  const vaultMember = await db.member.create({ data: { tenantId, userId: vaultUser.id, title: null } });
+  const managerRole = await db.role.findFirst({
+    where: { tenantId, templateKey: "manager" },
+    select: { id: true },
+  });
+  if (!managerRole) throw new Error("provisionTenant seeded no manager role");
+  await db.memberRole.create({ data: { tenantId, memberId: vaultMember.id, roleId: managerRole.id } });
+  await assignMemberToClient({ tenantId, actor: ctx.actor, memberId: vaultMember.id, clientId });
+  // Through the vault's own service, as the manager would — encrypted,
+  // audited — with the fresh factor the door wants.
+  const { createCredential } = await import("../../src/modules/vault");
+  const vaultCtx = { tenantId, actor: { memberId: vaultMember.id, mfa: { enrolled: true, verifiedAt: new Date() } } };
+  const vaultLoginName = `E2E WordPress admin ${run}`;
+  const vaultLoginPassword = `pw-${randomBytes(12).toString("base64url")}`;
+  await createCredential(vaultCtx, {
+    clientId,
+    type: "LOGIN",
+    name: vaultLoginName,
+    username: "admin@wp.e2e.test",
+    url: "https://wp.e2e.test/wp-admin",
+    secret: { password: vaultLoginPassword },
+    totp: "JBSWY3DPEHPK3PXP",
+  });
+  const vaultApiKeyName = `E2E Stripe ${run}`;
+  await createCredential(vaultCtx, {
+    projectId,
+    type: "API_KEY",
+    name: vaultApiKeyName,
+    secret: { apiKey: `pk_test_${run}`, apiSecret: `sk_test_${randomBytes(12).toString("base64url")}` },
+  });
+
   // 2W notifications: the one notification in the standing fixture, and
   // it is PRODUCED rather than inserted — the employee (who now holds
   // the client) assigns a task to the owner, so `notify.emit` runs
@@ -1403,6 +1484,12 @@ async function provision(seedFile: string): Promise<void> {
     memberConfirmToken,
     employeeEmail,
     employeePassword,
+    vaultEmail,
+    vaultPassword,
+    vaultTotpSecret,
+    vaultLoginName,
+    vaultLoginPassword,
+    vaultApiKeyName,
   };
 
   mkdirSync(dirname(seedFile), { recursive: true });
@@ -2444,6 +2531,28 @@ async function removeContact(tenantId: string, email: string): Promise<void> {
   process.stdout.write(`${MARKER}${JSON.stringify({ removed: contact !== null })}\n`);
 }
 
+/**
+ * Age the vault member's second factor past the vault window, so the
+ * spec can drive THE DOOR (C52 (a)) — the step-up form inside the Vault
+ * tab — without waiting ten minutes. Every session of that member in the
+ * fixture tenant gets a factor stamped twenty minutes ago; nothing else
+ * is touched. Guarded to a fixture tenant like every command here.
+ */
+async function ageVaultFactor(tenantId: string, email: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  if (!email.endsWith(EMAIL_DOMAIN)) throw new Error("age-vault-factor: not a fixture address");
+  const member = await db.member.findFirst({ where: { tenantId, user: { email } }, select: { userId: true } });
+  if (!member) throw new Error("age-vault-factor: no such member in the fixture tenant");
+  const { count } = await db.session.updateMany({
+    where: { userId: member.userId },
+    data: { mfaVerifiedAt: new Date(Date.now() - 20 * 60_000) },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ aged: count })}\n`);
+}
+
 /** The DB half of the visibility assertions. */
 async function visibility(documentId: string): Promise<void> {
   const { getPlatformClient } = await import("../../src/db/client");
@@ -2477,6 +2586,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-portal-sections") return resetPortalSections(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
+  if (command === "age-vault-factor") return ageVaultFactor(argument!, process.argv[4]!);
   if (command === "remove-users") return removeUsers(process.argv.slice(3));
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);
