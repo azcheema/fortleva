@@ -16,9 +16,11 @@ import { clientIpFrom, rateLimitSource } from "@/lib/client-ip";
  *
  * `allowStrict()` is the exception and the reason is written on it: on a
  * path where this bucket is the ONLY control — an unauthenticated Next
- * route with no endpoint limiter under it and no row to count — a no-op
- * is no control, so that call also takes an in-process sliding-window
- * floor which holds with or without Upstash.
+ * route with no endpoint limiter under it and no row to count, or a code
+ * checked against a live session, which Better Auth counts nowhere (the
+ * step-up, slice 84; a first enrolment's confirmation, slice 83) — a
+ * no-op is no control, so that call also takes an in-process
+ * sliding-window floor which holds with or without Upstash.
  *
  * Buckets are named, fixed policies — call sites never invent numbers.
  * Keys are `<bucket>:<subject>` where the subject is an IP, an email
@@ -81,7 +83,12 @@ const POLICIES = {
   "auth.sign_up": { limit: 5, window: "1 h" },
   /** Invite-acceptance attempts per IP (token guessing). */
   "auth.invite_accept": { limit: 10, window: "10 m" },
-  /** Step-up code attempts per session/user (SECURITY.md §3.5). */
+  /**
+   * Step-up code attempts per session/user (SECURITY.md §3.5). Spent
+   * through `allowStrict` by src/auth/step-up.ts since slice 84: a code
+   * checked there counts nowhere in Better Auth, so the in-process floor
+   * must hold while Upstash is unset or down.
+   */
   "auth.step_up": { limit: 6, window: "10 m" },
   /**
    * Confirmations of a FIRST second-factor enrolment per user (slice 83).

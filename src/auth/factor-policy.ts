@@ -27,7 +27,7 @@ export const GUARDED_FACTOR_PATHS = new Set([
 export const REISSUE_WINDOW_MS = 5 * 60_000;
 
 export type FactorVerdict =
-  /** Not a guarded path, a first enrolment, or a reissue with proof. */
+  /** Not a guarded path, a first enrolment, or a reissue or replacement with proof. */
   | "allow"
   /** No readable session: we cannot tell whose factor this would touch. */
   | "no_session"
@@ -65,7 +65,26 @@ export interface FactorPolicyInput {
    * loose, because every member-plane step-up writes one.
    */
   readonly hasReissueIntent?: boolean;
+  /**
+   * True only inside the self-service factor replacement (./replace-intent,
+   * slice 84). Like the reissue marker it is an ADDITIONAL condition: the
+   * fresh stamp beside it is still required.
+   */
+  readonly hasReplaceIntent?: boolean;
   readonly now: number;
+}
+
+/**
+ * A factor was PRESENTED within the last `REISSUE_WINDOW_MS` — the stamp
+ * only `verifyStepUpWithHeaders()` (and a sign-in's own code) writes. A
+ * stamp in the future is a clock problem, not proof.
+ */
+function presentedJustNow(raw: Date | string | null | undefined, now: number): boolean {
+  if (!raw) return false;
+  const stamp = raw instanceof Date ? raw.getTime() : Date.parse(raw);
+  if (Number.isNaN(stamp)) return false;
+  const age = now - stamp;
+  return age >= 0 && age <= REISSUE_WINDOW_MS;
 }
 
 /**
@@ -74,18 +93,24 @@ export interface FactorPolicyInput {
  * It applies to EVERY account with a factor — a member's and the
  * operator's alike — because what it protects is the step-up, and both
  * planes step up on the same factor. Nothing a member is offered needs
- * more: `/account` only enrols a first factor and reissues codes through
- * the action below; it has never had a "turn off" or "replace" control.
+ * more: `/account` enrols a first factor, and reissues codes or replaces
+ * the factor only through its two marked actions — never a "turn off".
  *
  * The shape of the rule, and the reasoning behind each branch:
  *  - `disable` and `get-totp-uri` are never allowed. Both hand a password
  *    holder the account outright — one removes the factor, the other
  *    returns the secret.
- *  - `enable` is allowed only when NO verified factor exists. Better Auth
+ *  - `enable` is allowed when NO verified factor exists. Better Auth
  *    otherwise deletes the secret and backup codes and recreates the row
  *    as verified, which is a silent factor swap with no proof of
  *    possession of the old one. First enrolment stays open: it is the
- *    bounded bootstrap window SECURITY.md §3.5 documents.
+ *    bounded bootstrap window SECURITY.md §3.5 documents. Over an
+ *    enrolled factor it is allowed on the reissue rule's two conditions
+ *    (slice 84, C50 — the member who lost their phone): the process-local
+ *    marker only `/account`'s replacement opens
+ *    (./replace-intent, ./factor-replace), and a fresh stamp from proof of the CURRENT
+ *    factor — which that action asks of the step-up, after the password.
+ *    Never the reissue marker: the two doors are not interchangeable.
  *  - `generate-backup-codes` is allowed on TWO conditions together: the
  *    process-local marker only the reissue action opens
  *    (./reissue-intent), and a fresh `mfaVerifiedAt`, which only
@@ -113,20 +138,19 @@ export function factorMutationVerdict(input: FactorPolicyInput): FactorVerdict {
     // be set by a request; the stamp stays as the second condition so a
     // caller that forgets to verify a live code gets nothing either.
     if (!input.hasReissueIntent) return "needs_recent_factor";
-    const raw = input.mfaVerifiedAt;
-    if (!raw) return "needs_recent_factor";
-    const stamp = raw instanceof Date ? raw.getTime() : Date.parse(raw);
-    if (Number.isNaN(stamp)) return "needs_recent_factor";
-    // A stamp in the future is a clock problem, not proof.
-    const age = input.now - stamp;
-    if (age < 0 || age > REISSUE_WINDOW_MS) return "needs_recent_factor";
-    return "allow";
+    return presentedJustNow(input.mfaVerifiedAt, input.now) ? "allow" : "needs_recent_factor";
   }
 
   if (input.path === "/two-factor/enable") {
     // `=== false`, not falsy: a caller that forgot to ask is answered as
     // if the account were enrolled, which refuses (code review, slice 83).
-    return input.hasVerifiedFactor === false ? "allow" : "already_enrolled";
+    if (input.hasVerifiedFactor === false) return "allow";
+    // The replacement (slice 84): its marker AND a factor presented just
+    // now. Either alone is "already enrolled", the same refusal a request
+    // gets, so the endpoint's answer says nothing about which was missing.
+    return input.hasReplaceIntent === true && presentedJustNow(input.mfaVerifiedAt, input.now)
+      ? "allow"
+      : "already_enrolled";
   }
 
   return "frozen";

@@ -45,6 +45,16 @@ export const AUDIT_EVENTS = {
   // the factor, and touches only `two_factor.backup_codes` — which the
   // twoFactorEnabled-keyed hooks above cannot see.
   "auth.backup_codes_reissued": TENANT,
+  // Slice 84 (C50). The member REPLACED their own authenticator from
+  // `/account` — the password plus proof of the current factor (a live
+  // code, or an unused backup code when the phone is gone). Its own action
+  // because nothing else records it: the user's `twoFactorEnabled` stays
+  // true throughout, so `auth.mfa_enabled` never fires. Metadata: the
+  // proof's kind (`totp` | `backup_code`) and the sessions ended.
+  "auth.factor_replaced": TENANT,
+  // The member signed devices out from "Your devices" — one, or every one
+  // but this. Metadata: `scope` (`one` | `others`) and the count.
+  "auth.sessions_revoked": TENANT,
   "auth.password_changed": TENANT,
   "auth.email_changed": TENANT,
   // Impersonation — both identities, always, visible to the tenant
@@ -60,6 +70,12 @@ export const AUDIT_EVENTS = {
   "member.profile_updated": TENANT, // own-row profile fields (timezone …), metadata: field names only
   "member.role_assigned": TENANT,
   "member.role_removed": TENANT,
+  // Slice 84 (C50): an owner reset a teammate's two-factor (the RUNBOOK §8
+  // reset, done by the app — `src/auth/member-reset.ts`), or signed them
+  // out on every device. Actor = the owner, target = the teammate.
+  // Metadata: the sessions ended.
+  "member.two_factor_reset": TENANT,
+  "member.signed_out_everywhere": TENANT,
   "role.created": TENANT,
   "role.updated": TENANT,
   "role.deleted": TENANT,
@@ -344,6 +360,15 @@ export const AUDIT_EVENTS = {
   "platform.mfa_disabled": PLATFORM,
   "platform.password_changed": PLATFORM,
   "platform.email_changed": PLATFORM,
+  // Slice 84 (its code review): an account-level change made from the
+  // MEMBER plane's `/account` — the authenticator replaced, the backup
+  // codes reissued, devices signed out — written here as well when the
+  // account is a console principal (one factor row serves both planes) or
+  // no ACTIVE membership took the `auth.*` row, the silence described
+  // above. `src/auth/audit-hooks.ts`, `recordAccountEvent`.
+  "platform.factor_replaced": PLATFORM,
+  "platform.backup_codes_reissued": PLATFORM,
+  "platform.sessions_revoked": PLATFORM,
   "platform.tenant_access": PLATFORM_MIRRORED,
   "platform.system_job": PLATFORM,
   // Test-only event (used by the isolation and audit suites)

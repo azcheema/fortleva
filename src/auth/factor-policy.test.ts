@@ -90,6 +90,48 @@ describe("factorMutationVerdict", () => {
         "already_enrolled",
       );
     });
+
+    describe("the self-service replacement (slice 84, C50)", () => {
+      // `/account`'s replacement action opens the marker after the
+      // password and a step-up; a request cannot open it.
+      const replace = (over: Partial<FactorPolicyInput>) =>
+        verdict({ hasVerifiedFactor: true, hasReplaceIntent: true, ...over });
+
+      it("allows it only inside the marker with a factor presented just now", () => {
+        expect(replace({ mfaVerifiedAt: new Date(NOW) })).toBe("allow");
+        expect(replace({ mfaVerifiedAt: "2026-09-10T12:00:00Z" })).toBe("allow");
+        expect(replace({ mfaVerifiedAt: new Date(NOW - REISSUE_WINDOW_MS) })).toBe("allow");
+      });
+
+      it("refuses the marker without proof — the password alone is never enough", () => {
+        expect(replace({ mfaVerifiedAt: null })).toBe("already_enrolled");
+        expect(replace({ mfaVerifiedAt: undefined })).toBe("already_enrolled");
+        expect(replace({ mfaVerifiedAt: new Date(NOW - REISSUE_WINDOW_MS - 1) })).toBe("already_enrolled");
+        expect(replace({ mfaVerifiedAt: new Date(NOW + 60_000) })).toBe("already_enrolled");
+        expect(replace({ mfaVerifiedAt: "not a date" })).toBe("already_enrolled");
+      });
+
+      it("refuses a fresh stamp without the marker, and the REISSUE marker is not this one", () => {
+        // A stolen session that just stepped up, posting enable itself.
+        expect(verdict({ hasVerifiedFactor: true, mfaVerifiedAt: new Date(NOW) })).toBe("already_enrolled");
+        expect(
+          verdict({ hasVerifiedFactor: true, hasReissueIntent: true, mfaVerifiedAt: new Date(NOW) }),
+        ).toBe("already_enrolled");
+      });
+
+      it("opens nothing else: the frozen paths stay frozen and the reissue keeps its own marker", () => {
+        const fresh = new Date(NOW);
+        expect(replace({ path: "/two-factor/disable", mfaVerifiedAt: fresh })).toBe("frozen");
+        expect(replace({ path: "/two-factor/get-totp-uri", mfaVerifiedAt: fresh })).toBe("frozen");
+        expect(replace({ path: "/two-factor/generate-backup-codes", mfaVerifiedAt: fresh })).toBe(
+          "needs_recent_factor",
+        );
+      });
+
+      it("still needs a session", () => {
+        expect(replace({ hasSession: false, mfaVerifiedAt: new Date(NOW) })).toBe("no_session");
+      });
+    });
   });
 
   describe("reissuing backup codes", () => {

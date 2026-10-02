@@ -90,6 +90,14 @@ export type DomainErrorCode =
   // were spent (55P03) or which lost a deadlock, every attempt. Nothing was
   // revealed or written; "try again" is the truth and the whole remedy.
   | "VAULT_BUSY"
+  // An owner's reset / sign-out of a teammate (slice 84, C50 —
+  // src/auth/member-reset.ts): aimed at themselves; at a console
+  // principal, whose sign-in is the operator's; a reset of somebody who
+  // belongs to another workspace too; a reset with nothing to reset.
+  | "ACCOUNT_IS_YOURS"
+  | "ACCOUNT_IS_OPERATORS"
+  | "ACCOUNT_IN_OTHER_WORKSPACE"
+  | "TWO_FACTOR_NOT_ENROLLED"
   // Sign-off (Phase 3 — src/projects/versions.ts, src/documents/service.ts).
   // The member's three refusals when ASKING a client to sign off: the row
   // is not something the client can see (a draft version, an INTERNAL or

@@ -94,6 +94,10 @@ const EMAIL_DOMAIN = "@test.invalid";
  * the list.
  */
 const DBTEST_PREFIXES = [
+  // Slice 84, account recovery and "Your devices" — `src/auth/account-security.dbtest.ts`,
+  // `setupTenant("acsec")` and two tenants built directly (`slug: \`acsec-self-…\``,
+  // `slug: \`acsec-other-…\``), all under this one prefix.
+  "acsec-",
   "admin-",
   "bulk-",
   "census-",

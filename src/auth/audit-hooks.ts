@@ -6,6 +6,10 @@ import { record } from "@/audit/record";
 import { withTenant, type Principal } from "@/db";
 import { listMembershipsForUser } from "@/members/service";
 
+import { isConsolePrincipal } from "./member-recovery";
+import { recordPlatformAccountEvent, type PlatformAccountAction } from "./platform-audit-hooks";
+import { trustedSessionAddress } from "./session-address";
+
 /**
  * Auth-layer audit emitters (SECURITY.md §7, DATA_MODEL.md §3 "Auth"
  * row). Identity is global but the audit log is per tenant, so every
@@ -118,13 +122,61 @@ export const onMfaVerificationFailed = (
  * `user.twoFactorEnabled`, which a reissue does not touch — so without
  * this, swapping a SUPERADMIN's entire recovery set left no trace.
  *
- * Inherits this helper's known limit, stated rather than discovered
- * later: the fan-out is per ACTIVE MEMBERSHIP, so a platform principal
- * with no active tenant membership writes NO row. Platform-plane
- * auditing is owed separately (PLAN §0).
+ * Since slice 84 it goes through `recordAccountEvent` (below), so a
+ * console principal, or an account with no active membership, gets a
+ * `platform.backup_codes_reissued` row as well — until then the fan-out
+ * wrote nothing for an account with no active membership. `platformRole`
+ * is REQUIRED for that reason: a caller that left it out would silently
+ * lose the console's row.
  */
-export const onBackupCodesReissued = (userId: string) =>
-  recordForUserMemberships(userId, "auth.backup_codes_reissued");
+export const onBackupCodesReissued = (userId: string, platformRole: unknown) =>
+  recordAccountEvent(userId, "auth.backup_codes_reissued", "platform.backup_codes_reissued", { platformRole });
+
+/**
+ * AN EVENT ABOUT THE ACCOUNT ITSELF — its second factor or its sessions,
+ * which are the person's, not one workspace's (slice 84's code review).
+ * Fanned out to the memberships like every auth event, AND written to the
+ * platform log when the account is a console principal (one factor row
+ * serves both planes, so this changed the console's credential) or when
+ * no membership took a row — a SUPERADMIN with no workspace, or a member
+ * whose every membership is suspended, reaches `/account` all the same,
+ * and the fan-out alone wrote nothing for them and reported success.
+ * Until slice 84 that was true of `auth.backup_codes_reissued` too.
+ */
+async function recordAccountEvent(
+  userId: string,
+  action: AuditAction,
+  platformAction: PlatformAccountAction,
+  opts: { metadata?: Meta; platformRole?: unknown },
+): Promise<void> {
+  const rows = await recordForUserMemberships(userId, action, { metadata: opts.metadata });
+  if (rows === 0 || isConsolePrincipal(opts.platformRole)) {
+    await recordPlatformAccountEvent(platformAction, userId, opts.metadata);
+  }
+}
+
+/**
+ * The member replaced their own authenticator (slice 84, C50). Not seen by
+ * `onMfaChanged`: the flag stays true from the old factor to the new. The
+ * proof's KIND only — never the code.
+ */
+export const onFactorReplaced = (
+  userId: string,
+  method: "totp" | "backup_code",
+  sessionsEnded: number,
+  platformRole: unknown,
+) =>
+  recordAccountEvent(userId, "auth.factor_replaced", "platform.factor_replaced", {
+    metadata: { method, sessionsEnded },
+    platformRole,
+  });
+
+/** The member signed devices out from "Your devices" (slice 84). */
+export const onSessionsRevoked = (userId: string, scope: "one" | "others", count: number, platformRole: unknown) =>
+  recordAccountEvent(userId, "auth.sessions_revoked", "platform.sessions_revoked", {
+    metadata: { scope, count },
+    platformRole,
+  });
 
 export const onPasswordChanged = (userId: string, via: "change" | "reset") =>
   recordForUserMemberships(userId, "auth.password_changed", { metadata: { via } });
@@ -290,10 +342,15 @@ export const auditRowHooks = (
 export const memberDatabaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]> = {
   session: {
     create: {
-      before: async (session, ctx) => {
-        if (!isFreshFactorPath(ctx?.path)) return;
-        return { data: { ...session, mfaVerifiedAt: new Date() } };
-      },
+      // The trusted address for "Your devices" (slice 84, ./session-address),
+      // and the step-up freshness stamp after a fresh factor.
+      before: async (session, ctx) => ({
+        data: {
+          ...session,
+          ipAddress: trustedSessionAddress(ctx?.headers),
+          ...(isFreshFactorPath(ctx?.path) ? { mfaVerifiedAt: new Date() } : {}),
+        },
+      }),
     },
   },
   ...auditRowHooks(memberAuditSink),

@@ -3,10 +3,12 @@ import { MailIcon, UserPlusIcon } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
+import { isConsolePrincipal } from "@/auth/member-recovery";
 import { resolvePermissions } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { requireAccess } from "@/entitlements/resolver";
 import {
+  Callout,
   DataTable,
   EmptyState,
   MemberAvatar,
@@ -29,7 +31,7 @@ import { requireTenantContext } from "@/members/tenant-context";
 import { cn } from "@/lib/utils";
 
 import { InviteForm } from "./invite-form";
-import { MemberRolesForm, MemberStatusForm, RevokeInviteForm } from "./member-admin";
+import { MemberRolesForm, MemberRowActions, RevokeInviteForm } from "./member-admin";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("nav");
@@ -87,7 +89,20 @@ export default async function MembersPage() {
       const [members, invites, roles, perms] = await Promise.all([
         tx.member.findMany({
           include: {
-            user: { select: { name: true, email: true } },
+            // twoFactorEnabled and platformRole decide which of an owner's
+            // security verbs a row offers (slice 84); the service decides
+            // again, so these only shape the menu.
+            user: {
+              select: {
+                name: true,
+                email: true,
+                twoFactorEnabled: true,
+                platformRole: true,
+                // A PENDING factor (a row, the flag unset) is resettable too —
+                // it is the half-applied state the reset exists to clear.
+                twoFactor: { select: { id: true } },
+              },
+            },
             memberRoles: { include: { role: { select: { id: true, name: true } } } },
           },
           orderBy: { joinedAt: "asc" },
@@ -102,6 +117,7 @@ export default async function MembersPage() {
           "member:remove",
           "member:manage_roles",
           "role:view",
+          "member:reset_two_factor",
         ]),
       ]);
       return {
@@ -118,6 +134,10 @@ export default async function MembersPage() {
         canManageRoles:
           perms.allowed.has("member:manage_roles") || perms.afterStepUp.has("member:manage_roles"),
         canViewRoles: perms.allowed.has("role:view"),
+        // ✦ like member:manage_roles, and shown on the same rule: the
+        // step-up is asked at the click, not by hiding the verb.
+        canSecure:
+          perms.allowed.has("member:reset_two_factor") || perms.afterStepUp.has("member:reset_two_factor"),
       };
     },
   );
@@ -141,6 +161,17 @@ export default async function MembersPage() {
 
   const roleOptions = data.roles.map((r) => ({ id: r.id, name: r.name }));
 
+  // A WORKSPACE WITH ONE OWNER (slice 84, C50): if that owner loses their
+  // phone AND their backup codes, nobody in the workspace can reset them —
+  // only the operator. Said to whoever can actually make a second owner:
+  // an owner (holding the owner-only reset code stands in for it — an admin
+  // with `member:manage_roles` cannot grant the owner role, §7.1).
+  const ownerRole = data.roles.find((r) => r.isSystem && r.templateKey === "owner");
+  const activeOwners = ownerRole
+    ? data.members.filter((m) => m.status === "ACTIVE" && m.memberRoles.some((r) => r.role.id === ownerRole.id)).length
+    : 0;
+  const soleOwner = data.canManageRoles && data.canSecure && activeOwners === 1;
+
   return (
     <Page width="wide">
       {/* The h1 is the page noun. The tenant name is in the header and
@@ -161,6 +192,11 @@ export default async function MembersPage() {
       />
 
       <div className="mt-6 flex flex-col gap-6">
+        {soleOwner ? (
+          <Callout tone="caution" title={t("soleOwner.title")}>
+            {t("soleOwner.body")}
+          </Callout>
+        ) : null}
         <SectionCard
           title={t("active.title")}
           description={tCommon("members", { count: data.members.length })}
@@ -244,14 +280,21 @@ export default async function MembersPage() {
                         <StatusBadge domain="memberStatus" value={m.status} />
                       </TableCell>
                       <TableCell pinned className="text-right">
-                        {data.canRemove ? (
-                          <MemberStatusForm
-                            memberId={m.id}
-                            memberName={m.user.name}
-                            status={m.status}
-                            isSelf={isSelf}
-                          />
-                        ) : null}
+                        <MemberRowActions
+                          memberId={m.id}
+                          memberName={m.user.name}
+                          status={m.status}
+                          isSelf={isSelf}
+                          canRemove={data.canRemove}
+                          canSecure={data.canSecure}
+                          // Only for somebody who can act on them: the row
+                          // is a client component, so these reach the page
+                          // data — and who has no factor, or who is the
+                          // operator, is not every member's business (the
+                          // security review's low).
+                          console={data.canSecure && isConsolePrincipal(m.user.platformRole)}
+                          enrolled={data.canSecure && (m.user.twoFactorEnabled || m.user.twoFactor !== null)}
+                        />
                       </TableCell>
                     </TableRow>
                   );

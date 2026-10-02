@@ -646,7 +646,57 @@
       "failed": "Kunde inte utfärda nya koder. Kontrollera lösenordet och försök igen.",
       "newTitle": "Dina nya reservkoder",
       "newHint": "Det här är enda gången de visas. Förvara dem någonstans du når utan den här appen.",
-      "codeHint": "Sex siffror från din autentiseringsapp. En reservkod fungerar inte här — den skulle förbrukas."
+      "codeHint": "Sex siffror från din autentiseringsapp. En reservkod fungerar inte här — den skulle förbrukas.",
+      "lowTitle": "{count, plural, one {# reservkod kvar} other {# reservkoder kvar}}",
+      "lowHint": "Om du blir av med telefonen är en reservkod din väg tillbaka in. Utfärda en ny uppsättning nedan medan du fortfarande har din autentiseringsapp."
+    },
+    "replace": {
+      "lostHint": "Har du blivit av med telefonen, eller byter du till en ny? Byt autentiseringsapp med en kod från den gamla — eller, om den är borta, med en av dina reservkoder.",
+      "open": "Byt autentiseringsapp",
+      "warnTitle": "Detta ersätter din autentiseringsapp",
+      "warnHint": "Din nuvarande autentiseringsapp och dina reservkoder slutar fungera direkt, och alla andra enheter loggas ut. Du får en ny QR-kod och nya reservkoder, som visas en gång.",
+      "codeLabel": "En kod från din nuvarande app, eller en oanvänd reservkod",
+      "codeHint": "Om telefonen är borta, använd en reservkod du inte har använt — inte den du loggade in med.",
+      "passwordLabel": "Ditt lösenord",
+      "confirm": "Byt autentiseringsapp",
+      "working": "Kontrollerar…",
+      "cancel": "Avbryt",
+      "enterBoth": "Ange en kod och ditt lösenord.",
+      "wrongPassword": "Lösenordet stämmer inte. Ingenting ändrades, och ingen reservkod förbrukades.",
+      "mismatch": "Koden stämde inte. Om det var en reservkod, kontrollera att du inte redan har använt den.",
+      "tooManyAttempts": "För många försök. Vänta några minuter och försök igen.",
+      "failed": "Autentiseringsappen kunde inte bytas. Om du angav en reservkod har den förbrukats — försök igen med en annan.",
+      "factorLost": "Något gick fel halvvägs och autentiseringsappen kunde inte ställas in. Be en ägare av arbetsytan att återställa din tvåfaktorsautentisering — per telefon eller personligen.",
+      "replaced": "Autentiseringsappen är bytt och alla andra enheter har loggats ut. Gör klart den nya nedan.",
+      "scan": "Skanna med din nya autentiseringsapp",
+      "codesTitle": "Dina nya reservkoder",
+      "codesHint": "Det här är enda gången de visas. Dina gamla koder fungerar inte längre.",
+      "newCodeLabel": "Kod från den nya appen",
+      "check": "Kontrollera kod",
+      "checking": "Kontrollerar…",
+      "enterNewCode": "Ange den sexsiffriga koden från din nya app.",
+      "newMismatch": "Koden stämde inte. Kontrollera att den nya appen visar Fortleva och prova sedan nästa kod.",
+      "done": "Din nya autentiseringsapp fungerar.",
+      "stayHint": "Stanna på sidan tills steg 3 har godkänts: din gamla autentiseringsapp och dina reservkoder har redan slutat fungera."
+    },
+    "devices": {
+      "title": "Dina enheter",
+      "description": "Enheter där ditt konto är inloggat. Logga ut en som du har blivit av med, eller en som du inte känner igen.",
+      "browserOn": "{browser} på {os}",
+      "unknownDevice": "Okänd enhet",
+      "thisDevice": "Den här enheten",
+      "console": "Plattformskonsolen",
+      "activeNow": "nu",
+      "details": "Inloggad {signedIn} · aktiv {active}",
+      "detailsWithNetwork": "Nätverk {network} · inloggad {signedIn} · aktiv {active}",
+      "signOut": "Logga ut",
+      "signOutQuestion": "Logga ut {device}?",
+      "signedOut": "{device} har loggats ut.",
+      "signOutOthers": "Logga ut alla andra enheter",
+      "signOutOthersQuestion": "Logga ut alla andra enheter?",
+      "signedOutOthers": "{count, plural, one {# enhet utloggad.} other {# enheter utloggade.}}",
+      "gone": "Den enheten är redan utloggad.",
+      "failed": "Det gick inte att logga ut. Försök igen."
     }
   },
   "members": {
@@ -700,7 +750,26 @@
     "active": {
       "title": "Medlemmar"
     },
-    "heading": "Medlemmar"
+    "heading": "Medlemmar",
+    "security": {
+      "signOut": "Logga ut överallt",
+      "signOutConfirm": "Logga ut {name} på alla enheter?",
+      "signedOut": "Utloggad på alla enheter.",
+      "reset": "Återställ tvåfaktor…",
+      "resetTitle": "Återställa tvåfaktorsautentiseringen för {name}?",
+      "resetDescription": "För en kollega som har blivit av med både telefonen och reservkoderna.",
+      "checkTitle": "Se först till att det verkligen är personen själv",
+      "checkBody": "Ring {name} på ett nummer du redan har, eller fråga personligen. Agera aldrig på en begäran via e-post eller chatt — den som skickade den kan ha tagit över kontot.",
+      "effectFactor": "Deras autentiseringsapp och reservkoder slutar fungera.",
+      "effectSessions": "De loggas ut på alla enheter.",
+      "effectPassword": "Tills de har aktiverat tvåfaktor igen räcker lösenordet för att öppna kontot — de bör göra det vid nästa inloggning.",
+      "resetConfirm": "Återställ tvåfaktor",
+      "resetDone": "Tvåfaktor återställd. De har fått ett mejl och kan aktivera den igen vid nästa inloggning."
+    },
+    "soleOwner": {
+      "title": "Arbetsytan har en enda ägare",
+      "body": "Om ägaren blir av med telefonen och reservkoderna kan ingen här återställa tvåfaktorsautentiseringen — bara Fortlevas support kan. Gör ytterligare en person till ägare."
+    }
   },
   "roles": {
     "title": "{tenant} — roller",
@@ -1211,7 +1280,11 @@
     "DOWNLOAD_BUSY": "Filen kunde inte hämtas just nu. Försök igen om en stund.",
     "SIGNOFF_NOT_SHAREABLE": "Kunden kan inte se detta ännu. Dela det först: en levererad version i ett projekt med portalen på, eller en delad leverans med en uppladdad fil.",
     "SIGNOFF_ALREADY_REQUESTED": "Godkännande har redan begärts från kunden.",
-    "SIGNOFF_ALREADY_APPROVED": "Kunden har redan godkänt detta."
+    "SIGNOFF_ALREADY_APPROVED": "Kunden har redan godkänt detta.",
+    "ACCOUNT_IS_YOURS": "Det är ditt eget konto. Hantera din inloggning på sidan Konto.",
+    "ACCOUNT_IS_OPERATORS": "Den här personens inloggning hanteras av Fortlevas operatör, inte härifrån.",
+    "ACCOUNT_IN_OTHER_WORKSPACE": "Den här personen tillhör även en annan arbetsyta i Fortleva, så tvåfaktorsautentiseringen kan inte återställas härifrån. Fortlevas support kan göra det.",
+    "TWO_FACTOR_NOT_ENROLLED": "Den här personen har ingen tvåfaktorsautentisering att återställa."
   },
   "assignments": {
     "title": "Team",

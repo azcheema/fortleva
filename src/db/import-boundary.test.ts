@@ -48,6 +48,12 @@ export const PLATFORM_SEAM_ALLOWED_FILES = [
   // One file may hold it, and that file does nothing but adapt the shared
   // auth hooks to it. If a second appears, decide deliberately whether the
   // plane really needs another writer before widening this list.
+  // (Slice 84, decided: `recordPlatformAccountEvent` there also lets the
+  // MEMBER plane's account changes — a factor replaced, codes reissued,
+  // devices signed out — reach the platform log for a console principal or
+  // an account no workspace recorded. Three fixed actions, actor = target,
+  // and only `auth/audit-hooks.ts` and `auth/platform.ts` may import that
+  // file — pinned below.)
   "auth/platform-audit-hooks.ts",
 ] as const;
 
@@ -106,6 +112,22 @@ describe("ARC-16 import boundary: withPlatform / getPlatformClient", () => {
       // to write an audit row with tenant_id NULL.
       "auth/platform-audit-hooks.ts",
     ]);
+  });
+
+  it("only the auth hooks and the console's instance import the platform audit adapter (slice 84)", () => {
+    // `auth/platform-audit-hooks.ts` holds the seam, and since slice 84 it
+    // also exports `recordPlatformAccountEvent`, which writes platform rows
+    // attributed to whatever user id it is handed. Its importers are the
+    // boundary now: the shared hooks (`recordAccountEvent`) and the console
+    // instance (`platformAuditSink`), nothing on the tenant plane.
+    const importers = files.filter(
+      (rel) =>
+        !isTest(rel) &&
+        moduleRefsOf(readFileSync(join(SRC, rel), "utf8"), rel).some((ref) =>
+          /(^|\/)platform-audit-hooks(\.ts)?$/.test(normalizeSpecifier(ref.specifier)),
+        ),
+    );
+    expect(importers.sort()).toEqual(["auth/audit-hooks.ts", "auth/platform.ts"]);
   });
 
   it("no tenant-plane file imports the seam", () => {

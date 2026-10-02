@@ -3,6 +3,8 @@ import { APIError } from "better-auth/api";
 import { type Plane } from "@/config";
 import { allow, clientIp, clientNetwork, type RateLimitBucket } from "@/ratelimit";
 
+import { hasReplaceIntent } from "./replace-intent";
+
 /**
  * The per-IP limiter on Better Auth's credential endpoints (SECURITY.md
  * §3.7), shared by ALL THREE auth instances (member, platform, portal —
@@ -62,14 +64,16 @@ export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
   // one thing a session does not give — a way back in after the session is
   // revoked. `/verify-password` is declared `scope: "server"`, which only
   // shapes the typed client — better-call's router refuses nothing but
-  // `SERVER_ONLY` — so it answers over HTTP, and nothing in this
-  // product calls it. The two-factor four exist on the member and console
+  // `SERVER_ONLY` — so it answers over HTTP. Its one caller in this
+  // product is the factor replacement (`./factor-replace`, slice 84), which
+  // asks it first, before anything can be spent. The two-factor four exist on the member and console
   // instances only (the portal registers no `twoFactor`). They spend the
   // sign-in budget per IP because they are sign-in's question. Per USER
   // they are still unbounded (the session is resolved after this hook) —
   // recorded in PLAN's slice-81 entry — though since slice 83 the factor
-  // guard refuses three of them, and `enable` on an enrolled account,
-  // before the password is ever checked (./factor-guard).
+  // guard refuses three of them, and `enable` on an enrolled account
+  // outside the replacement's marker, before the password is ever checked
+  // (./factor-guard).
   "/change-password": "auth.sign_in",
   "/verify-password": "auth.sign_in",
   "/two-factor/enable": "auth.sign_in",
@@ -161,6 +165,14 @@ export async function enforceAuthRateLimit(
 ): Promise<void> {
   const bucket = RATE_LIMITED_PATHS[ctx.path];
   if (!bucket) return;
+  // THE REPLACEMENT'S OWN `enable` (slice 84, both reviews' medium) is not
+  // a password guess: `./factor-replace` asked `/verify-password` first,
+  // which spent this same per-IP budget, and then the step-up CONSUMED the
+  // member's backup code. Charging `enable` again could refuse it AFTER the
+  // code was gone — behind an office NAT, one token short — leaving the
+  // member a code down with nothing replaced. A request cannot set the
+  // marker (./replace-intent), so this exempts nothing an attacker can send.
+  if (ctx.path === "/two-factor/enable" && hasReplaceIntent()) return;
   // The subject is namespaced BY PLANE, which matters now that one
   // limiter serves all three instances: without it, ordinary app sign-ins
   // from a shared egress IP (an office NAT, a mobile carrier) would eat

@@ -646,7 +646,57 @@
       "failed": "Could not issue new codes. Check your password and try again.",
       "newTitle": "Your new backup codes",
       "newHint": "This is the only time they are shown. Store them somewhere you can reach without this app.",
-      "codeHint": "Six digits from your authenticator app. A backup code will not work here — entering one would spend it."
+      "codeHint": "Six digits from your authenticator app. A backup code will not work here — entering one would spend it.",
+      "lowTitle": "{count, plural, one {# backup code left} other {# backup codes left}}",
+      "lowHint": "If you lose your phone, a backup code is how you get back in. Issue a new set below while you still have your authenticator app."
+    },
+    "replace": {
+      "lostHint": "Lost your phone, or moving to a new one? Replace your authenticator with a code from it — or, if it is gone, with one of your backup codes.",
+      "open": "Replace authenticator",
+      "warnTitle": "This replaces your authenticator",
+      "warnHint": "Your current authenticator app and backup codes stop working at once, and every other device is signed out. You get a new QR code and new backup codes, shown once.",
+      "codeLabel": "A code from your current app, or an unused backup code",
+      "codeHint": "If your phone is gone, use a backup code you have not used yet — not the one you signed in with.",
+      "passwordLabel": "Your password",
+      "confirm": "Replace authenticator",
+      "working": "Checking…",
+      "cancel": "Cancel",
+      "enterBoth": "Enter a code and your password.",
+      "wrongPassword": "That password is not right. Nothing was changed, and no backup code was used.",
+      "mismatch": "That code didn't match. If it was a backup code, check that you have not used it before.",
+      "tooManyAttempts": "Too many attempts. Wait a few minutes and try again.",
+      "failed": "Your authenticator could not be replaced. If you entered a backup code, it has been used — try again with another one.",
+      "factorLost": "Something went wrong part-way and your authenticator could not be set up. Ask an owner of your workspace to reset your two-factor authentication — by phone or in person.",
+      "replaced": "Your authenticator was replaced and every other device was signed out. Finish setting up the new one below.",
+      "scan": "Scan with your new authenticator app",
+      "codesTitle": "Your new backup codes",
+      "codesHint": "This is the only time they are shown. Your old codes no longer work.",
+      "newCodeLabel": "Code from the new app",
+      "check": "Check code",
+      "checking": "Checking…",
+      "enterNewCode": "Enter the six-digit code from your new app.",
+      "newMismatch": "That code didn't match. Check that the new app shows Fortleva, then try the next code.",
+      "done": "Your new authenticator works.",
+      "stayHint": "Stay on this page until step 3 checks out: your old authenticator and backup codes have already stopped working."
+    },
+    "devices": {
+      "title": "Your devices",
+      "description": "Devices where your account is signed in. Sign out one you have lost, or one you do not recognise.",
+      "browserOn": "{browser} on {os}",
+      "unknownDevice": "Unknown device",
+      "thisDevice": "This device",
+      "console": "Platform console",
+      "activeNow": "now",
+      "details": "Signed in {signedIn} · active {active}",
+      "detailsWithNetwork": "Network {network} · signed in {signedIn} · active {active}",
+      "signOut": "Sign out",
+      "signOutQuestion": "Sign out {device}?",
+      "signedOut": "{device} was signed out.",
+      "signOutOthers": "Sign out everywhere else",
+      "signOutOthersQuestion": "Sign out every other device?",
+      "signedOutOthers": "{count, plural, one {# device signed out.} other {# devices signed out.}}",
+      "gone": "That device is already signed out.",
+      "failed": "Could not sign out. Try again."
     }
   },
   "members": {
@@ -700,7 +750,26 @@
     "active": {
       "title": "Members"
     },
-    "heading": "Members"
+    "heading": "Members",
+    "security": {
+      "signOut": "Sign out everywhere",
+      "signOutConfirm": "Sign {name} out on every device?",
+      "signedOut": "Signed out on every device.",
+      "reset": "Reset two-factor…",
+      "resetTitle": "Reset {name}'s two-factor?",
+      "resetDescription": "For a teammate who has lost their phone and their backup codes.",
+      "checkTitle": "First, make sure it is really them",
+      "checkBody": "Call {name} on a number you already have, or ask in person. Never act on a request by email or chat — whoever sent it may have taken over their account.",
+      "effectFactor": "Their authenticator app and backup codes stop working.",
+      "effectSessions": "They are signed out on every device.",
+      "effectPassword": "Until they set up two-factor again, their password alone opens their account — they should do it at their next sign-in.",
+      "resetConfirm": "Reset two-factor",
+      "resetDone": "Two-factor reset. They have been emailed and can set it up again at their next sign-in."
+    },
+    "soleOwner": {
+      "title": "This workspace has one owner",
+      "body": "If they lose their phone and their backup codes, nobody here can reset their two-factor — only Fortleva support can. Make a second person an owner."
+    }
   },
   "roles": {
     "title": "{tenant} — roles",
@@ -1211,7 +1280,11 @@
     "DOWNLOAD_BUSY": "That file could not be fetched just now. Try again in a moment.",
     "SIGNOFF_NOT_SHAREABLE": "The client cannot see this yet. Share it first: a shipped version on a project with the portal on, or a shared deliverable with an uploaded file.",
     "SIGNOFF_ALREADY_REQUESTED": "Sign-off has already been requested from the client.",
-    "SIGNOFF_ALREADY_APPROVED": "The client has already approved this."
+    "SIGNOFF_ALREADY_APPROVED": "The client has already approved this.",
+    "ACCOUNT_IS_YOURS": "That is your own account. Manage your sign-in on your Account page.",
+    "ACCOUNT_IS_OPERATORS": "This person's sign-in is managed by Fortleva's operator, not from here.",
+    "ACCOUNT_IN_OTHER_WORKSPACE": "This person also belongs to another Fortleva workspace, so their two-factor cannot be reset from here. Fortleva support can do it.",
+    "TWO_FACTOR_NOT_ENROLLED": "This person has no two-factor authentication to reset."
   },
   "assignments": {
     "title": "Team",

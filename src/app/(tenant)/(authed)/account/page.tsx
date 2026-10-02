@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ShieldAlertIcon, ShieldCheckIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
+import { LOW_BACKUP_CODES, backupCodesLeft, listOwnDevices } from "@/auth/account-security";
 import { requireMemberSession } from "@/auth/session";
 import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,8 @@ import { LocaleForm } from "./locale-form";
 import { NameForm } from "./name-form";
 import { TimezoneForm } from "./timezone-form";
 import { BackupCodes } from "./backup-codes";
+import { DevicesCard } from "./devices-card";
+import { ReplaceFactor } from "./replace-factor";
 import { TotpEnrollment } from "./totp-enrollment";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -63,6 +66,14 @@ export default async function AccountPage({
       )
     : null;
 
+  // Slice 84 (C50): where the account is signed in, and — only once a
+  // factor exists — how many backup codes are left (a count, never the
+  // codes). Sequenced, not batched: two reads on the raw client.
+  const now = new Date();
+  const devices = await listOwnDevices(session.user.id, session.session.id);
+  const codesLeft = twoFactorEnabled ? await backupCodesLeft(session.user.id) : null;
+  const codesLow = codesLeft !== null && codesLeft <= LOW_BACKUP_CODES;
+
   const totpCard = (
     <SectionCard
       title={t("totp.title")}
@@ -91,7 +102,13 @@ export default async function AccountPage({
         </Callout>
       ) : null}
       <TotpEnrollment enabled={twoFactorEnabled} />
+      {codesLow ? (
+        <Callout tone="caution" title={t("backupCodes.lowTitle", { count: codesLeft })}>
+          {t("backupCodes.lowHint")}
+        </Callout>
+      ) : null}
       <BackupCodes enabled={twoFactorEnabled} />
+      {twoFactorEnabled ? <ReplaceFactor accountId={session.user.id} /> : null}
     </SectionCard>
   );
 
@@ -107,6 +124,8 @@ export default async function AccountPage({
         </SectionCard>
 
         {steppedUp ? null : totpCard}
+
+        <DevicesCard devices={devices} now={now} />
 
         <SectionCard title={t("profile.title")} description={t("profile.description")}>
           <NameForm current={session.user.name ?? ""} />

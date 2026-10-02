@@ -8,9 +8,16 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 104 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 — bumped deliberately 2026-10-01)", () => {
-    expect(PERMISSIONS).toHaveLength(104);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(104);
+  it("holds exactly 105 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 — bumped deliberately 2026-10-02)", () => {
+    expect(PERMISSIONS).toHaveLength(105);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(105);
+  });
+
+  it("member:reset_two_factor is the owner's alone, behind a fresh factor (slice 84, C50)", () => {
+    const def = PERMISSIONS.find((p) => p.code === "member:reset_two_factor");
+    expect(def?.seeded).toEqual(["owner"]);
+    expect(def?.requiresMfa).toBe(true);
+    expect(def?.module).toBe("core");
   });
 
   it("credential:reveal is seeded C M A, never on the employee template (decision 13, CP4)", () => {
@@ -62,6 +69,8 @@ describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
         "rate:manage_cost",
         // 3V slice 1 — reveal moves plaintext (decision 13; AUTHZ.md §7.5)
         "credential:reveal",
+        // slice 84 — puts a teammate's account back on the password alone (C50)
+        "member:reset_two_factor",
       ].sort(),
     );
   });

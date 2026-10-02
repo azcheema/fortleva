@@ -16,6 +16,7 @@ import { guardFactorEndpoints } from "./factor-guard";
 import { SESSION_ADDITIONAL_FIELDS, USER_ADDITIONAL_FIELDS } from "./index";
 import { enforceAuthRateLimit } from "./rate-limit-hook";
 import { MEMBER_MIN_PASSWORD_LENGTH } from "./recovery-policy";
+import { trustedSessionAddress } from "./session-address";
 
 
 /**
@@ -105,6 +106,9 @@ export const platformAuth = betterAuth({
           data: {
             ...session,
             plane: "PLATFORM" as const,
+            // A console session shows in the operator's "Your devices"
+            // too, with the same trusted address (./session-address).
+            ipAddress: trustedSessionAddress(ctx?.headers),
             ...(isFreshFactorPath(ctx?.path) ? { mfaVerifiedAt: new Date() } : {}),
           },
         }),

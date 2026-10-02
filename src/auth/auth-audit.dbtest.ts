@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { APIError } from "better-auth/api";
 import { symmetricDecrypt } from "better-auth/crypto";
 
@@ -7,6 +7,7 @@ import { symmetricDecrypt } from "better-auth/crypto";
 import { getPlatformClient, runtimeClient } from "@/db/client";
 import { withRequestContext } from "@/lib/request-context";
 import { provisionTenant } from "@/members/provisioning";
+import { resetLocalLimiter } from "@/ratelimit";
 
 import { onLoginSucceeded, onMfaChanged, recordForUserMemberships } from "./audit-hooks";
 import { auth } from "./index";
@@ -78,6 +79,11 @@ const sessionRowFor = async (cookie: string) => {
   expect(s).not.toBeNull();
   return platform.session.findUniqueOrThrow({ where: { id: s!.session.id } });
 };
+
+// The step-up spends its budget through `allowStrict` since slice 84, whose
+// in-process floor counts even on the harness's no-op limiter; this file
+// steps one member up more than six times in ten minutes on purpose.
+beforeEach(() => resetLocalLimiter());
 
 beforeAll(async () => {
   await auth.api.signUpEmail({ body: { email, password, name: "MFA Test" } });

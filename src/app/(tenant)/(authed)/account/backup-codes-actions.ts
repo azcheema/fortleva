@@ -139,7 +139,7 @@ export async function reissueBackupCodesAction(
   // holding neither. A missing audit row is a real cost; it is not worth
   // locking someone out of their own account to avoid.
   try {
-    await onBackupCodesReissued(session.user.id);
+    await onBackupCodesReissued(session.user.id, (session.user as { platformRole?: unknown }).platformRole);
   } catch (e) {
     console.error("[auth-audit] backup_codes_reissued failed", e);
   }

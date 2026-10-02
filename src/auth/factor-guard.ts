@@ -12,6 +12,7 @@ import {
   sessionVerifyVerdict,
 } from "./factor-policy";
 import { hasReissueIntent } from "./reissue-intent";
+import { hasReplaceIntent } from "./replace-intent";
 import { hasStepUpIntent } from "./step-up-intent";
 
 /**
@@ -64,9 +65,16 @@ import { hasStepUpIntent } from "./step-up-intent";
  * BOTH instances.
  *
  * ROTATION AND RECOVERY. A lost authenticator is recovered with a backup
- * code, and backup codes can be reissued from `/account` on proof of the
- * current factor. Replacing the factor OUTRIGHT is a database operation —
- * and it is TWO statements, which is worth stating exactly, because
+ * code; backup codes can be reissued from `/account` on proof of the
+ * current factor; and since slice 84 (C50) the factor itself can be
+ * REPLACED there, on the password plus proof of the current factor — a
+ * live code, or an unused backup code when the phone is gone — through
+ * the replacement marker (./replace-intent). A workspace owner can reset a
+ * teammate's factor from Settings → Members (`./member-reset`), which is
+ * the RUNBOOK reset below done by the app. Anything else — a sole owner,
+ * a console principal, a member of more than one workspace — is the
+ * operator's database reset, and it is
+ * TWO statements at heart, which is worth stating exactly, because
  * getting it wrong bricks the account:
  *
  *     DELETE FROM two_factor WHERE user_id = $1;
@@ -190,6 +198,7 @@ export async function guardFactorEndpoints(ctx: FactorGuardCtx): Promise<void> {
     hasVerifiedFactor,
     mfaVerifiedAt: session?.mfaVerifiedAt ?? null,
     hasReissueIntent: hasReissueIntent(),
+    hasReplaceIntent: hasReplaceIntent(),
     now: Date.now(),
   });
 

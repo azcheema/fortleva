@@ -310,6 +310,21 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // 2T D1: the member's own monthly working-time statement — the page IS the print layout.
     { name: "time-statement", path: "/time/statement" },
     { name: "members", path: "/members" },
+    {
+      // Slice 84 (C50): a teammate's row menu, open — the owner's "Sign out
+      // everywhere" above Suspend. (Its "Reset two-factor…" shows only for
+      // a teammate with a factor, and the fixture's has none.) The first
+      // row that HAS a menu: the owner's own row has none. Attributes and
+      // roles only, so the Swedish walk runs the same drive.
+      name: "members-row-actions",
+      path: "/members",
+      drive: async (page) => {
+        const trigger = page.locator('tr[data-status="ACTIVE"] button[aria-haspopup="menu"]').first();
+        await expect(trigger).toBeVisible({ timeout: 20_000 });
+        await trigger.click();
+        await expect(page.locator('[data-slot="dropdown-menu-content"]')).toBeVisible();
+      },
+    },
     { name: "settings-roles", path: "/settings/roles" },
     { name: "settings-preferences", path: "/settings/preferences" },
     // 2T: bill cards + the ✦ cost section in its "confirm two-factor"

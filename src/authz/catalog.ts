@@ -236,6 +236,20 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("credential:edit", "vault", "Edit credential metadata; replace the secret (the old one is kept as a version)", CMA),
   p("credential:delete", "vault", "Delete credential items", CM),
   p("credential:reveal", "vault", "Reveal / Copy / TOTP code — one field per call, step-up + reveal budget, audited per call", CMA, true),
+  // ── Slice 84 (module `core`, +1; catalog 104 → 105; TEMPLATE_VERSION 8,
+  // 2026-10-02) — founder decision C50: an owner resets a teammate's
+  // two-factor (the answer for a lost phone with no backup codes left) or
+  // signs them out everywhere (`src/auth/member-reset.ts`). C only, ✦: it
+  // lets the holder put a teammate's account back on the password alone,
+  // so it asks the owner's own fresh factor, and it is grant-subset-guarded
+  // against a custom role it is later granted to.
+  p(
+    "member:reset_two_factor",
+    "core",
+    "Reset a teammate's two-factor or sign them out on every device — confirm who is asking by phone or in person first",
+    C,
+    true,
+  ),
 ];
 
 export type RoleTemplate = {
@@ -292,8 +306,11 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     create, edit, delete, and credential:reveal ✦). Additive; the ✦
  *     code reaches the owner/manager/admin SYSTEM roles only, never a
  *     clone (AUTHZ.md §3.5). The same rule as v6: a release carrying this
- *     bump MUST run `prisma/seed.ts`. */
-export const TEMPLATE_VERSION = 7;
+ *     bump MUST run `prisma/seed.ts`.
+ * v8 (2026-10-02): +1 `core` code (member:reset_two_factor ✦ — slice 84,
+ *     founder decision C50). Owner template only; additive. The same rule
+ *     as v6: a release carrying this bump MUST run `prisma/seed.ts`. */
+export const TEMPLATE_VERSION = 8;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

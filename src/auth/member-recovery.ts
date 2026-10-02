@@ -57,8 +57,12 @@ import { RESET_IDENTIFIER_PREFIX, storedResetIdentifierOf } from "./reset-identi
 /** A plausible reset token before anything is hashed or looked up (Better Auth mints 24 alphanumerics). */
 const RESET_TOKEN_SHAPE = /^[A-Za-z0-9_-]{1,128}$/;
 
-/** A console principal — anybody the platform plane would recognise. */
-const isConsolePrincipal = (platformRole: unknown): boolean =>
+/**
+ * A console principal — anybody the platform plane would recognise. Also
+ * what an owner's reset and sign-out refuse (`./member-reset`, slice 84):
+ * the console's credentials are the operator's to manage.
+ */
+export const isConsolePrincipal = (platformRole: unknown): boolean =>
   typeof platformRole === "string" && platformRole !== "";
 
 /** Every reset link of `userId`, in either stored form — and nothing else in the table. */

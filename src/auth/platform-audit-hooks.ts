@@ -113,3 +113,32 @@ export const platformAuditSink: AuthAuditSink = {
       metadata: { via },
     }),
 };
+
+/**
+ * AN ACCOUNT-LEVEL CHANGE, IN THE PLATFORM LOG (slice 84's code review).
+ * A second factor and a session belong to the PERSON, and one factor row
+ * serves both planes — so replacing a console principal's authenticator
+ * from `/account`, reissuing its codes or signing its devices out changes
+ * the console's credential. The member fan-out writes one row per ACTIVE
+ * membership and nothing for an account with none; `./audit-hooks`'
+ * `recordAccountEvent` calls this beside it for a console principal, or
+ * when no membership took a row, so such a change is never unrecorded.
+ * The actor is the account itself: these are its own doors.
+ */
+export type PlatformAccountAction =
+  | "platform.factor_replaced"
+  | "platform.backup_codes_reissued"
+  | "platform.sessions_revoked";
+
+export const recordPlatformAccountEvent = (
+  action: PlatformAccountAction,
+  userId: string,
+  metadata?: Readonly<Record<string, string | number | boolean>>,
+) =>
+  recordPlatformEvent({
+    action,
+    actorUserId: userId,
+    targetType: "user",
+    targetId: userId,
+    ...(metadata ? { metadata } : {}),
+  });

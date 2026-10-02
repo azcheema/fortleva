@@ -12,7 +12,9 @@ import {
   suspendMember,
 } from "@/members/admin";
 import { requireTenantContext } from "@/members/tenant-context";
+import { resetMemberTwoFactor, signOutMemberEverywhere } from "@/auth/member-reset";
 import { AuthzError } from "@/authz/errors";
+import { messageForError } from "@/lib/server-actions";
 import { handleAuthzRedirect } from "@/authz/redirects";
 
 const inviteSchema = z.object({
@@ -141,5 +143,49 @@ export async function revokeInviteAction(
   return runAdmin(async () => {
     await revokeInvite({ tenantId: membership.tenantId, actor, inviteId: inviteId.data });
     return t("pending.revoked");
+  });
+}
+
+/**
+ * An owner's two verbs on a teammate's sign-in (slice 84, founder decision
+ * C50; `@/auth/member-reset`): reset their two-factor, or sign them out
+ * on every device. `member:reset_two_factor` is ✦, so a stale factor
+ * becomes the step-up redirect; every refusal is a localised message.
+ */
+async function runSecurity(fn: () => Promise<string>): Promise<AdminFormState> {
+  try {
+    const message = await fn();
+    revalidatePath("/members");
+    return { ok: true, message };
+  } catch (e) {
+    handleAuthzRedirect(e, "/members");
+    const message = await messageForError(e);
+    if (message) return { ok: false, message };
+    throw e;
+  }
+}
+
+export async function resetMemberTwoFactorAction(memberId: unknown): Promise<AdminFormState> {
+  const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("members.security");
+  const tCommon = await getTranslations("common");
+  // A string first: a server action's argument can decode into an object.
+  const id = uuid.safeParse(typeof memberId === "string" ? memberId : null);
+  if (!id.success) return { ok: false, message: tCommon("invalidInput") };
+  return runSecurity(async () => {
+    await resetMemberTwoFactor({ tenantId: membership.tenantId, actor, memberId: id.data });
+    return t("resetDone");
+  });
+}
+
+export async function signOutMemberEverywhereAction(memberId: unknown): Promise<AdminFormState> {
+  const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("members.security");
+  const tCommon = await getTranslations("common");
+  const id = uuid.safeParse(typeof memberId === "string" ? memberId : null);
+  if (!id.success) return { ok: false, message: tCommon("invalidInput") };
+  return runSecurity(async () => {
+    await signOutMemberEverywhere({ tenantId: membership.tenantId, actor, memberId: id.data });
+    return t("signedOut");
   });
 }

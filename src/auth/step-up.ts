@@ -3,7 +3,7 @@
 import { APIError } from "better-auth/api";
 
 import { runtimeClient } from "@/db/client";
-import { allow } from "@/ratelimit";
+import { allowStrict } from "@/ratelimit";
 
 import { onMfaVerificationFailed } from "./audit-hooks";
 import { auth } from "./index";
@@ -44,10 +44,15 @@ export async function verifyStepUpWithHeaders(
   const enrolled = (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled === true;
   if (!enrolled) return { ok: false, reason: "not_enrolled" };
 
-  // Per-member attempt budget (SECURITY.md §3.5); no-op until Upstash env
-  // exists (src/ratelimit). Moved here from the two actions that called
-  // this, so no future caller can open the marker below unbudgeted.
-  if (!(await allow("auth.step_up", session.user.id))) return { ok: false, reason: "rate_limited" };
+  // Per-member attempt budget (SECURITY.md §3.5). Moved here from the two
+  // actions that called this, so no future caller can open the marker below
+  // unbudgeted. STRICT since slice 84 (the security review's medium): with a
+  // live session Better Auth counts no attempts, and Better Auth's own
+  // limiter never sees an in-process `auth.api` call — so while Upstash is
+  // unset or down (`allow` fails open) nothing else bounded a stolen
+  // session guessing codes here, and the factor replacement made a right
+  // guess a permanent takeover. The in-process floor holds regardless.
+  if (!(await allowStrict("auth.step_up", session.user.id))) return { ok: false, reason: "rate_limited" };
 
   const trimmed = code.replace(/\s+/g, "");
   const method = isTotpShape(trimmed) ? "totp" : "backup_code";
