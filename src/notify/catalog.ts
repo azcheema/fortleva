@@ -189,8 +189,8 @@ const KINDS = {
    * the date, one band at a time (`reminder-bands.ts`):
    *   - `expiration.asset_due` — an asset in use (a domain, a certificate,
    *     a licence…) renews or expires (founder decision C53: to the
-   *     client's people — that project's for a project's asset — and the
-   *     owners when nobody is assigned);
+   *     client's people — that project's for a project's asset — and, by
+   *     C57, the workspace's owners always);
    *   - `expiration.agreement_ending` — an agreement ENDS (C55: a regular
    *     renewal sends nothing; the same people as an asset);
    *   - `expiration.logins_expiring` — logins expire, as a COUNT per client
@@ -199,9 +199,9 @@ const KINDS = {
    *
    * INSTANT, because the date does not wait for a digest — and the point
    * of 60 days' notice is lost if the first word arrives on Friday.
-   * PARTICIPATING, matching the receivers: these are the people who look
-   * after that client, and a member who has turned email down to MENTIONS
-   * has said they only want to be named. No `debounceMinutes` (nothing
+   * PARTICIPATING, matching the receivers: the people who look after that
+   * client and the owners who answer for every client, and a member who
+   * has turned email down to MENTIONS has said they only want to be named. No `debounceMinutes` (nothing
    * retracts a date) and no `cancelledIfRead` (the job and the drain are
    * minutes apart). The job's own table is the dedupe; the notification's
    * key repeats it.

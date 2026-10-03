@@ -30,14 +30,18 @@ import { anchorInScope, type VaultAnchor } from "./scope";
  * WHO HEARS — and this is the part that must not leak:
  *   - an asset or an agreement: the client's people (C53) — that PROJECT's
  *     people (its assignees and its lead) for a project's row, the
- *     client's directly assigned members for a client-level one — each
+ *     client's directly assigned members for a client-level one — AND the
+ *     workspace's owners, always (founder decision C57, 2026-10-03, which
+ *     amended C53's "owners only when nobody is assigned"); each
  *     kept only if, checked as THEMSELVES, they hold the row's code on all
  *     four gates (`asset:view`; for an agreement `service:view`, which is
  *     core — an agreement's end is reminded whether or not the vault module
  *     is on, the code review's medium) AND their scope reaches the row by
  *     the vault's anchor rule (`anchorInScope`, the rule `/expirations`
- *     lists by). Nobody left ⇒ the workspace's owners, held to the same
- *     check. EACH RECEIVER'S MAIL LINKS TO A PAGE THEY CAN OPEN (`linkFor`):
+ *     lists by) — the owners too: the owner role itself is read-only
+ *     and holds every code, but a module switched off, the plan, the
+ *     kill-switch or a template not yet seeded still closes a code to them
+ *     (the C57 review). EACH RECEIVER'S MAIL LINKS TO A PAGE THEY CAN OPEN (`linkFor`):
  *     the asset's line needs `client:view`, an agreement's tab needs direct
  *     assignment too, Renewals needs `asset:view` — so receivers are told in
  *     one fan-out per link, the link a closed token in `params`;
@@ -264,7 +268,7 @@ function linkOf(s: DueSubject, w: Who): ReminderLink {
   return w.codes.has("asset:view") ? "renewals" : "inbox";
 }
 
-/** C53's receivers for an asset or an agreement — see the file's comment. */
+/** C53's receivers and, by C57, the owners — see the file's comment. One row each, however many ways they qualify. */
 async function subjectReceivers(s: DueSubject, people: People, who: (id: string) => Promise<Who>): Promise<Receiver[]> {
   const required = s.type === "ClientAsset" ? "asset:view" : "service:view";
   const keep = async (ids: Iterable<string>) => {
@@ -282,8 +286,7 @@ async function subjectReceivers(s: DueSubject, people: People, who: (id: string)
     s.projectId === null
       ? (people.byClient.get(s.clientId) ?? [])
       : [...(people.byProject.get(s.projectId) ?? []), ...(lead ? [lead] : [])];
-  const receivers = await keep(assigned);
-  return receivers.length > 0 ? receivers : keep(people.owners);
+  return keep([...assigned, ...people.owners]);
 }
 
 /** Send one asset or agreement reminder; true when it went out. */

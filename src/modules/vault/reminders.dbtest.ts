@@ -16,8 +16,9 @@ import { createAsset, createCredential, expirationsFeed, sendExpirationReminders
  * agreement's END, never its renewal — and with the vault module off too,
  * since agreements are core); C53's receivers — the project's people
  * (assignees and lead) for a project's row, the directly assigned for a
- * client-level one, each held to the code on all four gates and to the
- * vault's anchor rule, the owners when nobody is left — and each mail's
+ * client-level one, and the owners ALWAYS (C57, amending C53's "when
+ * nobody is left"), each held to the code on all four gates and to the
+ * vault's anchor rule, one row each however they qualify — and each mail's
  * link a page that receiver may open; C56 (logins as a COUNT per client,
  * each reader told how many THEY can open, never a login's id or name; the
  * agency's own to tenant-wide scope only); idempotence, a re-dated row
@@ -76,6 +77,12 @@ const notes = (kind: string, entityId?: string) =>
   });
 
 const receiversOf = async (kind: string, entityId: string) => (await notes(kind, entityId)).map((n) => n.receiverId).sort();
+/** One receiver's rows for a subject, oldest first. */
+const notesFor = async (kind: string, entityId: string, memberId: string) =>
+  (await notes(kind, entityId)).filter((n) => n.receiverId === memberId);
+/** The bands one receiver was told about for a subject, oldest first. */
+const daysFor = async (kind: string, entityId: string, memberId: string) =>
+  (await notesFor(kind, entityId, memberId)).map((n) => P(n)["days"]);
 
 async function extraMember(roleId: string, label: string): Promise<string> {
   const userId = randomUUID();
@@ -130,6 +137,8 @@ beforeAll(async () => {
   });
   noClient = await extraMember(narrow.id, "noclient");
   await f.platform.memberClient.create({ data: { tenantId: f.tenantId, memberId: noClient, clientId: delta } });
+  // The owner is ALSO assigned to Delta directly: still one copy (C57's "one each").
+  await f.platform.memberClient.create({ data: { tenantId: f.tenantId, memberId: f.seats.owner.memberId, clientId: delta } });
 
   const asset = async (key: string, input: Record<string, unknown>) => {
     ids[key] = (await createAsset(owner(), { type: "DOMAIN", ...input } as Parameters<typeof createAsset>[1])).id;
@@ -202,22 +211,24 @@ afterAll(async () => {
 }, 120_000);
 
 describe("the first run", () => {
-  it("sends each due row's smallest band to C53's people, logins as a count (C56), and records each", async () => {
+  it("sends each due row's smallest band to C53's people and the owners (C57), logins as a count (C56), and records each", async () => {
     const run = await sendExpirationReminders(f.tenantId, at(0));
     expect(run).toEqual({ assets: 6, agreements: 3, logins: 3 });
     const { owner: o, manager: m, employee: e, admin: a } = f.seats;
 
-    // A project's asset → that project's people (the employee), never the owners too.
-    expect(await receiversOf("expiration.asset_due", ids["p1Hosting"]!)).toEqual([e.memberId]);
-    const [hosting] = await notes("expiration.asset_due", ids["p1Hosting"]!);
+    // A project's asset → that project's people (the employee) and, by C57, the owner.
+    expect(await receiversOf("expiration.asset_due", ids["p1Hosting"]!)).toEqual([e.memberId, o.memberId].sort());
+    const [hosting] = await notesFor("expiration.asset_due", ids["p1Hosting"]!, e.memberId);
     // 10 days out: 14, never 60 or 30. The employee holds `client:view`: the asset's own line.
     expect(hosting!.params).toEqual({ clientId: acme, assetId: ids["p1Hosting"], days: "14", link: "asset" });
     expect(hosting!.projectId).toBe(p1);
-    // A client-level asset → the directly assigned (the manager) only.
-    expect(await receiversOf("expiration.asset_due", ids["acmeDomain"]!)).toEqual([m.memberId]);
-    // A project with only a lead → the lead.
-    expect(await receiversOf("expiration.asset_due", ids["p3Site"]!)).toEqual([m.memberId]);
-    // P2: its assignee holds nothing and its lead is not on P2 → the owners.
+    // A client-level asset → the directly assigned (the manager) and the owner —
+    // never the admin, who could see it but is neither (C53, C57).
+    expect(await receiversOf("expiration.asset_due", ids["acmeDomain"]!)).toEqual([m.memberId, o.memberId].sort());
+    expect(P((await notesFor("expiration.asset_due", ids["acmeDomain"]!, o.memberId))[0]!)["link"]).toBe("asset");
+    // A project with only a lead → the lead (and the owner).
+    expect(await receiversOf("expiration.asset_due", ids["p3Site"]!)).toEqual([m.memberId, o.memberId].sort());
+    // P2: its assignee holds nothing and its lead is not on P2 → the owner alone.
     expect(await receiversOf("expiration.asset_due", ids["p2App"]!)).toEqual([o.memberId]);
     expect(P((await notes("expiration.asset_due", ids["p2App"]!))[0]!)["days"]).toBe("60");
     // Nobody assigned to Beta → the owners; one day out is the 1-day band.
@@ -227,21 +238,24 @@ describe("the first run", () => {
     // C55: the END of an agreement, to the same people as an asset — the
     // directly assigned manager linked to the Agreements tab, the employee
     // (on one project) to Renewals.
-    expect(await receiversOf("expiration.agreement_ending", ids["launch"]!)).toEqual([m.memberId]);
-    expect((await notes("expiration.agreement_ending", ids["launch"]!))[0]!.params).toEqual({
+    expect(await receiversOf("expiration.agreement_ending", ids["launch"]!)).toEqual([m.memberId, o.memberId].sort());
+    expect((await notesFor("expiration.agreement_ending", ids["launch"]!, m.memberId))[0]!.params).toEqual({
       clientId: acme,
       serviceId: ids["launch"],
       days: "7",
       link: "agreements",
     });
-    expect(await receiversOf("expiration.agreement_ending", ids["p1Support"]!)).toEqual([e.memberId]);
-    expect(P((await notes("expiration.agreement_ending", ids["p1Support"]!))[0]!)["link"]).toBe("renewals");
+    expect(await receiversOf("expiration.agreement_ending", ids["p1Support"]!)).toEqual([e.memberId, o.memberId].sort());
+    expect(P((await notesFor("expiration.agreement_ending", ids["p1Support"]!, e.memberId))[0]!)["link"]).toBe("renewals");
+    // The owner, whose scope is tenant-wide, opens the Agreements tab itself.
+    expect(P((await notesFor("expiration.agreement_ending", ids["p1Support"]!, o.memberId))[0]!)["link"]).toBe("agreements");
 
     // Without `client:view` no client page opens: both mails go to Renewals.
-    expect(await receiversOf("expiration.asset_due", ids["deltaDomain"]!)).toEqual([noClient]);
-    expect(P((await notes("expiration.asset_due", ids["deltaDomain"]!))[0]!)["link"]).toBe("renewals");
-    expect(await receiversOf("expiration.agreement_ending", ids["deltaEnd"]!)).toEqual([noClient]);
-    expect(P((await notes("expiration.agreement_ending", ids["deltaEnd"]!))[0]!)["link"]).toBe("renewals");
+    // The owner both assigned and an owner: one row, not two.
+    expect(await receiversOf("expiration.asset_due", ids["deltaDomain"]!)).toEqual([noClient, o.memberId].sort());
+    expect(P((await notesFor("expiration.asset_due", ids["deltaDomain"]!, noClient))[0]!)["link"]).toBe("renewals");
+    expect(await receiversOf("expiration.agreement_ending", ids["deltaEnd"]!)).toEqual([noClient, o.memberId].sort());
+    expect(P((await notesFor("expiration.agreement_ending", ids["deltaEnd"]!, noClient))[0]!)["link"]).toBe("renewals");
 
     // C56: Acme's two logins in the 14-day band — everyone who can open them,
     // each told how many THEY reach. The employee reaches P1's login only
@@ -283,18 +297,21 @@ describe("the first run", () => {
 
   it("queues one mail per notification, and audits one row per reminder", async () => {
     const all = await f.platform.notification.findMany({ where: { tenantId: f.tenantId, kind: { startsWith: "expiration." } } });
-    expect(all).toHaveLength(20); // nine subjects to one person each, and 4 + 3 + 4 for logins
+    // Nine subjects: seven to their people AND the owner, two (p2-app, beta.se) to the owner alone; 4 + 3 + 4 for logins.
+    expect(all).toHaveLength(27);
     const mail = await f.platform.emailOutbox.findMany({
       where: { tenantId: f.tenantId, kind: { startsWith: "expiration." } },
       select: { receiverId: true, kind: true, toEmail: true },
     });
-    expect(mail).toHaveLength(20);
+    expect(mail).toHaveLength(27);
     expect(mail.every((r) => r.toEmail.endsWith("@test.invalid"))).toBe(true);
 
     const audits = await f.audits("expiration.reminder_sent");
     expect(audits).toHaveLength(12); // nine subjects + three login groups
     expect(audits.every((x) => x.actorType === "SYSTEM")).toBe(true);
-    expect(audits.find((x) => x.targetId === ids["p1Hosting"])?.metadata).toEqual({ offsetDays: 14, dueOn: iso(10), receivers: 1 });
+    expect(audits.find((x) => x.targetId === ids["p1Hosting"])?.metadata).toEqual({ offsetDays: 14, dueOn: iso(10), receivers: 2 });
+    // An owner who is also assigned counts once (C57's "one copy each").
+    expect(audits.find((x) => x.targetId === ids["deltaDomain"])?.metadata).toEqual({ offsetDays: 30, dueOn: iso(20), receivers: 2 });
     expect(audits.find((x) => x.targetType === "Client" && x.targetId === acme)?.metadata).toEqual({
       subject: "CredentialItem",
       offsetDays: 14,
@@ -336,8 +353,9 @@ describe("later runs", () => {
     const [a, b] = await Promise.all([sendExpirationReminders(f.tenantId, at(3)), sendExpirationReminders(f.tenantId, at(3))]);
     expect(a.assets + b.assets).toBe(2);
     expect(a.agreements + b.agreements + a.logins + b.logins).toBe(0);
-    expect((await notes("expiration.asset_due", ids["p1Hosting"]!)).map((n) => P(n)["days"])).toEqual(["14", "7"]);
-    expect((await notes("expiration.asset_due", ids["far"]!)).map((n) => P(n)["days"])).toEqual(["60"]);
+    expect(await daysFor("expiration.asset_due", ids["p1Hosting"]!, f.seats.employee.memberId)).toEqual(["14", "7"]);
+    expect(await daysFor("expiration.asset_due", ids["p1Hosting"]!, f.seats.owner.memberId)).toEqual(["14", "7"]);
+    expect(await daysFor("expiration.asset_due", ids["far"]!, f.seats.manager.memberId)).toEqual(["60"]);
     expect(await f.platform.expirationReminderSent.count({ where: { tenantId: f.tenantId, dueOn: { lt: day(2) } } })).toBe(0);
   });
 
@@ -348,7 +366,7 @@ describe("later runs", () => {
     expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 2, agreements: 0, logins: 0 });
     const late = await f.platform.expirationReminderSent.findMany({ where: { tenantId: f.tenantId, subjectId: ids["lateCert"]! } });
     expect(late.map((r) => r.offsetDays)).toEqual([14]); // 10 days out: never 60 or 30 after the fact
-    expect((await notes("expiration.asset_due", ids["acmeDomain"]!)).map((n) => P(n)["days"])).toEqual(["30", "60"]); // 37 days out
+    expect(await daysFor("expiration.asset_due", ids["acmeDomain"]!, f.seats.manager.memberId)).toEqual(["30", "60"]); // 37 days out
   });
 
   it("with the vault module off, assets and logins wait unrecorded — agreements (core) still go, linked where each reader can go", async () => {
@@ -368,8 +386,11 @@ describe("later runs", () => {
       expect(await receiversOf("expiration.agreement_ending", ids["betaEnd"]!)).toEqual([f.seats.owner.memberId]);
       expect(P((await notes("expiration.agreement_ending", ids["betaEnd"]!))[0]!)["link"]).toBe("agreements");
       // The employee, on one project, with Renewals closed with the module → the inbox.
-      expect(await receiversOf("expiration.agreement_ending", ids["p1Deal"]!)).toEqual([f.seats.employee.memberId]);
-      expect(P((await notes("expiration.agreement_ending", ids["p1Deal"]!))[0]!)["link"]).toBe("inbox");
+      expect(await receiversOf("expiration.agreement_ending", ids["p1Deal"]!)).toEqual(
+        [f.seats.employee.memberId, f.seats.owner.memberId].sort(),
+      );
+      expect(P((await notesFor("expiration.agreement_ending", ids["p1Deal"]!, f.seats.employee.memberId))[0]!)["link"]).toBe("inbox");
+      expect(P((await notesFor("expiration.agreement_ending", ids["p1Deal"]!, f.seats.owner.memberId))[0]!)["link"]).toBe("agreements");
     } finally {
       await setModuleEnabled(owner(), "vault", true);
     }
@@ -385,8 +406,8 @@ describe("later runs", () => {
     // day 3 — neither would be due.
     const lateEvening = new Date(day(3).getTime() + 22.5 * 3_600_000);
     expect(await sendExpirationReminders(f.tenantId, lateEvening)).toEqual({ assets: 1, agreements: 1, logins: 0 });
-    expect((await notes("expiration.asset_due", ids["zoneEdge"]!)).map((n) => P(n)["days"])).toEqual(["30", "14"]);
-    expect((await notes("expiration.agreement_ending", ids["launch"]!)).map((n) => P(n)["days"])).toEqual(["7", "1"]);
+    expect(await daysFor("expiration.asset_due", ids["zoneEdge"]!, f.seats.employee.memberId)).toEqual(["30", "14"]);
+    expect(await daysFor("expiration.agreement_ending", ids["launch"]!, f.seats.manager.memberId)).toEqual(["7", "1"]);
   });
 });
 
