@@ -77,6 +77,7 @@ export default async function InboxPage({
           archived: r.archivedAt !== null,
           snoozedTill: r.snoozedTill?.toISOString() ?? null,
           subject: r.subject ?? null,
+          reminder: r.reminder,
         }))}
         serverNow={new Date().toISOString()}
         nextHref={

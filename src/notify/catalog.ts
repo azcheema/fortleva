@@ -183,6 +183,44 @@ const KINDS = {
     audience: "MEMBER",
     class: "COALESCED",
   },
+  /**
+   * Phase 3V slice 89 — THE RENEWAL REMINDERS, sent by the daily job
+   * (`src/modules/vault/reminders.ts`) at 60 / 30 / 14 / 7 / 1 days before
+   * the date, one band at a time (`reminder-bands.ts`):
+   *   - `expiration.asset_due` — an asset in use (a domain, a certificate,
+   *     a licence…) renews or expires (founder decision C53: to the
+   *     client's people — that project's for a project's asset — and the
+   *     owners when nobody is assigned);
+   *   - `expiration.agreement_ending` — an agreement ENDS (C55: a regular
+   *     renewal sends nothing; the same people as an asset);
+   *   - `expiration.logins_expiring` — logins expire, as a COUNT per client
+   *     and never by name (C56, C54: which ones stays behind the vault's
+   *     door), to everyone who can open them.
+   *
+   * INSTANT, because the date does not wait for a digest — and the point
+   * of 60 days' notice is lost if the first word arrives on Friday.
+   * PARTICIPATING, matching the receivers: these are the people who look
+   * after that client, and a member who has turned email down to MENTIONS
+   * has said they only want to be named. No `debounceMinutes` (nothing
+   * retracts a date) and no `cancelledIfRead` (the job and the drain are
+   * minutes apart). The job's own table is the dedupe; the notification's
+   * key repeats it.
+   */
+  "expiration.asset_due": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
+  "expiration.agreement_ending": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
+  "expiration.logins_expiring": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

@@ -86,9 +86,13 @@ export default async function ExpirationsPage() {
               title={t("empty")}
               body={t("emptyBody")}
               action={
-                <Button asChild size="sm" variant="secondary">
-                  <Link href="/clients">{t("emptyAction")}</Link>
-                </Button>
+                // `/clients` wants `client:view`: never a way out to a page
+                // that refuses (C34; slice 89's narrow review).
+                feed.clientPages ? (
+                  <Button asChild size="sm" variant="secondary">
+                    <Link href="/clients">{t("emptyAction")}</Link>
+                  </Button>
+                ) : undefined
               }
             />
           </SectionCard>
@@ -107,7 +111,13 @@ export default async function ExpirationsPage() {
             <ul data-testid="expirations-logins">
               {logins.map((l) => {
                 const name = l.client?.name ?? tVault("agencyTitle");
-                const href = l.client ? `/clients/${l.client.id}/vault` : "/vault?client=agency";
+                // A client's Vault tab wants `client:view`; `/vault` filtered
+                // to the client opens on `credential:view` alone.
+                const href = l.client
+                  ? feed.clientPages
+                    ? `/clients/${l.client.id}/vault`
+                    : `/vault?client=${l.client.id}`
+                  : "/vault?client=agency";
                 return (
                   <li key={l.client?.id ?? "agency"} className="border-t border-border first:border-t-0">
                     <Link

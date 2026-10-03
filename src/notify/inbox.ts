@@ -5,6 +5,7 @@ import { accessibleCodes } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { idCursor } from "@/lib/id-cursor";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
+import { isReminderBand, isReminderKind, reminderSubjects } from "@/modules/vault";
 
 import { isNotificationKind, type NotificationKind } from "./catalog";
 
@@ -89,7 +90,16 @@ export type InboxRow = {
   readonly archivedAt: Date | null;
   readonly snoozedTill: Date | null;
   readonly subject: InboxSubject | null;
+  /**
+   * A renewal reminder's band in days, and for logins how many — drawn
+   * into the label ("2 logins expire within 7 days"). Null for every other
+   * kind, and for a reminder whose subject this member may no longer see:
+   * they get the kind's generic label, like any unresolved row.
+   */
+  readonly reminder: InboxReminder | null;
 };
+
+export type InboxReminder = { readonly days: number; readonly count: number | null };
 
 /**
  * What a row is about. `href` is null when the member may read the NAME
@@ -202,6 +212,8 @@ const ROW_SELECT = {
   entityId: true,
   projectId: true,
   clientId: true,
+  // Read for the renewal reminders' band and count only (`reminderOf`).
+  params: true,
 } as const;
 
 export async function listInbox(
@@ -268,7 +280,6 @@ export async function inboxGlance(ctx: InboxCtx, limit: number = INBOX_GLANCE_SI
 }
 
 type RowSource = SubjectSource & {
-  kind: string;
   createdAt: Date;
   readAt: Date | null;
   archivedAt: Date | null;
@@ -277,19 +288,61 @@ type RowSource = SubjectSource & {
 
 async function toInboxRows(tx: TenantDb, ctx: InboxCtx, page: readonly RowSource[]): Promise<InboxRow[]> {
   const subjects = await resolveSubjects(tx, ctx, page);
-  return page.map((n) => ({
-    id: n.id,
-    kind: isNotificationKind(n.kind) ? n.kind : null,
-    createdAt: n.createdAt,
-    readAt: n.readAt,
-    archivedAt: n.archivedAt,
-    snoozedTill: n.snoozedTill,
-    subject: subjects.get(n.id) ?? null,
-  }));
+  return page.map((n) => {
+    const resolved = subjects.get(n.id);
+    return {
+      id: n.id,
+      kind: isNotificationKind(n.kind) ? n.kind : null,
+      createdAt: n.createdAt,
+      readAt: n.readAt,
+      archivedAt: n.archivedAt,
+      snoozedTill: n.snoozedTill,
+      // Title and link only — a reminder's cap stays on the server.
+      subject: resolved ? { title: resolved.title, href: resolved.href } : null,
+      reminder: resolved ? reminderOf(n.kind, n.params, resolved.countCap ?? null) : null,
+    };
+  });
+}
+
+/**
+ * The band and the count a renewal reminder was sent with — integers the
+ * job wrote (`params` holds ids and these, never a name), held to their
+ * closed shapes anyway: a band from `REMINDER_BANDS`, a positive count for
+ * logins only. Anything else is a row this build cannot read, which gets
+ * the generic label rather than a wrong number.
+ */
+function reminderOf(kind: string, params: unknown, countCap: number | null): InboxReminder | null {
+  if (!isReminderKind(kind) || typeof params !== "object" || params === null) return null;
+  const p = params as Record<string, unknown>;
+  const days = bandOf(params);
+  if (days === null) return null;
+  if (kind !== "expiration.logins_expiring") return { days, count: null };
+  const count = typeof p["count"] === "string" && /^[1-9]\d{0,5}$/.test(p["count"]) ? Number(p["count"]) : Number.NaN;
+  // Never more than the reader reaches NOW (`reminderSubjects`' cap): a
+  // reader whose scope narrowed since is not shown the count they were sent.
+  if (!Number.isInteger(count) || countCap === null || countCap < 1) return null;
+  return { days, count: Math.min(count, countCap) };
+}
+
+/** A reminder's band from its `params`, held to `REMINDER_BANDS`; null for anything else. */
+function bandOf(params: unknown): number | null {
+  if (typeof params !== "object" || params === null) return null;
+  const v = (params as Record<string, unknown>)["days"];
+  const days = typeof v === "string" && /^\d{1,2}$/.test(v) ? Number(v) : Number.NaN;
+  return isReminderBand(days) ? days : null;
+}
+
+/** A login reminder's `from` day (the tenant's day it was decided on), `YYYY-MM-DD`; null otherwise. */
+function fromOf(params: unknown): string | null {
+  if (typeof params !== "object" || params === null) return null;
+  const v = (params as Record<string, unknown>)["from"];
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
 }
 
 type SubjectSource = {
   id: string;
+  kind: string;
+  params: unknown;
   entityType: string;
   entityId: string;
   projectId: string | null;
@@ -319,13 +372,36 @@ type SubjectSource = {
  * too, because the backlog its link opens would refuse, and search already
  * hides tasks in that state.
  */
+/** A subject as resolved — a renewal reminder's login cap rides along, server-side only. */
+type ResolvedSubject = InboxSubject & { readonly countCap?: number | null };
+
 async function resolveSubjects(
   tx: TenantDb,
   ctx: InboxCtx,
-  rows: readonly SubjectSource[],
-): Promise<Map<string, InboxSubject>> {
-  const out = new Map<string, InboxSubject>();
+  page: readonly SubjectSource[],
+): Promise<Map<string, ResolvedSubject>> {
+  let rows = page;
+  const out = new Map<string, ResolvedSubject>();
   if (rows.length === 0) return out;
+
+  // RENEWAL REMINDERS ARE THE VAULT'S TO NAME (slice 89): its anchor rule,
+  // its codes, its refusal under impersonation — `reminderSubjects`. Their
+  // rows never reach the project fall-through below, which would otherwise
+  // name a project asset's PROJECT under `project:view` alone.
+  const reminders = rows.filter((r) => isReminderKind(r.kind));
+  if (reminders.length > 0) {
+    const refs = reminders.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      entityType: r.entityType,
+      entityId: r.entityId,
+      days: bandOf(r.params),
+      from: fromOf(r.params),
+    }));
+    for (const [id, subject] of await reminderSubjects(tx, ctx.tenantId, ctx.actor, refs)) out.set(id, subject);
+    rows = rows.filter((r) => !isReminderKind(r.kind));
+    if (rows.length === 0) return out;
+  }
 
   // ONE call for every code the page needs, awaited in turn — never checks
   // as legs of a `Promise.all` on this transaction's one connection

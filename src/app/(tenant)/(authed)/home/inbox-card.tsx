@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { InboxGlance } from "@/notify/inbox";
 import { GENERIC_COPY_KEY, KIND_MESSAGE_KEY } from "@/notify/kind-copy";
 import { KIND_ICON } from "@/notify/kind-icon";
+import { reminderLabel } from "@/notify/reminder-label";
 
 /**
  * `/home`'s inbox card (UI.md rule 8, "inbox top-5"): the newest unread
@@ -36,7 +37,13 @@ export async function InboxCard({ glance, serverNow }: { glance: InboxGlance; se
       <ul data-testid="home-inbox">
         {glance.rows.map((r) => {
           const Icon = r.kind ? KIND_ICON[r.kind] : BellIcon;
-          const label = tInbox(`kind.${r.kind ? KIND_MESSAGE_KEY[r.kind] : GENERIC_COPY_KEY}`);
+          const reminder = reminderLabel(r.kind, r.reminder);
+          const label =
+            reminder === null
+              ? tInbox(`kind.${r.kind ? KIND_MESSAGE_KEY[r.kind] : GENERIC_COPY_KEY}`)
+              : reminder.key === "loginsExpiring"
+                ? tInbox("reminder.loginsExpiring", { count: reminder.count, days: reminder.days })
+                : tInbox(`reminder.${reminder.key}`, { days: reminder.days });
           return (
             <li
               key={r.id}

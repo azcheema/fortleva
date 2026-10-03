@@ -287,6 +287,13 @@ export const AUDIT_EVENTS = {
   "asset.created": TENANT,
   "asset.updated": TENANT,
   "asset.deleted": TENANT,
+  // Phase 3V slice 89 — one row per renewal reminder the daily job sent,
+  // written by the SYSTEM principal in the same transaction as the
+  // reminder and its dedupe row. Target: the asset or agreement, or for
+  // logins (a count per client, C56) the client — or the tenant for our own
+  // logins. Metadata: the band, the day, how many received it, and for
+  // logins how many — never a login's id or name.
+  "expiration.reminder_sent": TENANT,
   "budget.created": TENANT,
   "budget.changed": TENANT,
   "budget.alert_sent": TENANT,

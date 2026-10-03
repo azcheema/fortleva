@@ -7,10 +7,14 @@ import { daysBetween, SOON_DAYS } from "@/app/(tenant)/(authed)/clients/[id]/ass
 import { Badge } from "@/components/ui/badge";
 import type { ExpirationEntry } from "@/modules/vault";
 
-/** Where a row leads: the asset's own line on the client's Assets tab, or the client's Agreements tab. */
+/**
+ * Where a row leads: the asset's own line on the client's Assets tab, or the
+ * client's Agreements tab — only where that page would open for the member
+ * (`linkable`: `client:view`, and direct assignment for an agreement).
+ */
 export function expirationHref(e: ExpirationEntry): string | null {
-  if (e.kind === "asset") return `/clients/${e.client.id}/assets#asset-${e.id}`;
-  return e.linkable ? `/clients/${e.client.id}/agreements` : null;
+  if (!e.linkable) return null;
+  return e.kind === "asset" ? `/clients/${e.client.id}/assets#asset-${e.id}` : `/clients/${e.client.id}/agreements`;
 }
 
 /**
@@ -19,8 +23,9 @@ export function expirationHref(e: ExpirationEntry): string | null {
  * (worked out by the page in the member's zone), so the days left and the
  * date are the server's text and never a second clock's (the process-zone
  * hydration trap). A row is ONE link to where the thing is renewed — the
- * triage card's rule — except an agreement the member may not open (its
- * tab wants direct assignment), which is the line without the link.
+ * triage card's rule — except where that page would refuse the member
+ * (`linkable`: no `client:view`, or an agreement's tab without direct
+ * assignment), which is the line without the link.
  */
 export async function ExpirationList({
   entries,

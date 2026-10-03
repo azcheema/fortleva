@@ -185,6 +185,9 @@ const DBTEST_PREFIXES = [
   "pvas-",
   "pview-",
   "pwork-",
+  // Phase 3V slice 89, the renewal reminders — `src/modules/vault/reminders.dbtest.ts`,
+  // `setupTenant("remind")`.
+  "remind-",
   "reports-",
   "roles-",
   "scope-",
@@ -1671,6 +1674,9 @@ async function removeTenant(
   await db.credentialItem.deleteMany({ where: { tenantId } });
   // 3V slice 87: an asset RESTRICTs its client, project and tenant too.
   await db.clientAsset.deleteMany({ where: { tenantId } });
+  // 3V slice 89: the renewal reminders' dedupe RESTRICTs the tenant (a run
+  // of `POST /api/jobs/run` against a fixture tenant writes it).
+  await db.expirationReminderSent.deleteMany({ where: { tenantId } });
   await db.memberProject.deleteMany({ where: { tenantId } });
   await db.memberClient.deleteMany({ where: { tenantId } });
   // A contact's password-reset rows have no FK to it — a row is looked up

@@ -141,7 +141,12 @@ describe("vault ciphertext boundary", () => {
     // `assets` and `asset-fields` (slice 87) touch no secret: the registry's
     // services gate on `asset:*` themselves, and `asset-fields` is pure.
     // `expirations` (slice 88) reads logins as a COUNT per client only (C54)
-    // and never the secret tables.
+    // and never the secret tables. The renewal reminders (slice 89):
+    // `reminder-bands` is pure; `reminders` runs as SYSTEM over metadata
+    // only — a login's id, anchor and expiry, never its secret — and names
+    // no login in anything it writes (C56); `reminder-subjects` reads names
+    // under the READER's principal on all four gates and the anchor rule,
+    // and refuses logins under impersonation as the door does.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -152,6 +157,9 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/expirations",
       "modules/vault/fields",
       "modules/vault/items",
+      "modules/vault/reminder-bands",
+      "modules/vault/reminder-subjects",
+      "modules/vault/reminders",
       "modules/vault/reveal",
     ]);
     // door is re-exported for `openVault` and its types only — never `enterVault`,
@@ -160,6 +168,21 @@ describe("vault ciphertext boundary", () => {
     expect(readFileSync(index, "utf8")).not.toMatch(/\benterVault\b/);
     // ctx is re-exported for its TYPE only.
     expect(readFileSync(index, "utf8")).toMatch(/export type \{ VaultCtx \} from "\.\/ctx";/);
+  });
+
+  /**
+   * THE ONE UNGATED EXPORT (slice 89's security review). Every other export
+   * of the index gates itself; `sendExpirationReminders(tenantId)` runs as
+   * SYSTEM for whatever tenant it is handed, with no actor — it is the
+   * daily job's per-tenant body, and only the job may call it, with an id
+   * the job discovered. A member-plane action reaching it with an id from a
+   * form would be a cross-tenant write. So its name may appear in product
+   * source only where it is defined, re-exported and called by the job.
+   */
+  it("only the reminder job calls the reminders' system entry point", () => {
+    const allowed = ["modules/vault/reminders.ts", "modules/vault/index.ts", "jobs/expiration-reminders.ts"];
+    const callers = files.filter((f) => /\bsendExpirationReminders\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(callers.sort()).toEqual(allowed.sort());
   });
 
   it("the vault module never logs", () => {

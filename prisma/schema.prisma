@@ -314,6 +314,7 @@ model Tenant {
   credentialSecrets  CredentialSecret[]
   credentialVersions CredentialVersion[]
   clientAssets       ClientAsset[]
+  expirationReminders ExpirationReminderSent[]
 
   @@map("tenant")
 }
@@ -2824,4 +2825,31 @@ model ClientAsset {
   @@index([tenantId, projectId])
   @@index([tenantId, expiresAt]) // the expirations feed (slice 88)
   @@map("client_asset")
+}
+
+/// ExpirationReminderSent — class A, the renewal reminders' dedupe (Phase
+/// 3V slice 89; DATA_MODEL.md §6.17). One row per reminder that went out:
+/// the subject, the DAY it was about, and the band (60/30/14/7/1 days
+/// before). The primary key IS the dedupe — the daily job INSERTs ... ON
+/// CONFLICT DO NOTHING, and a conflict means "already sent". `dueOn` is in
+/// the key so a changed date re-arms by itself (a renewed domain's new
+/// date has sent nothing), with no writer of the subject having to clear
+/// anything. Logins are deduplicated per LOGIN even though they are
+/// announced as a count per client (C56): a login that enters a band later
+/// than its neighbours is still told once. No FK to the subject (the column
+/// is polymorphic): the job's own sweep deletes a row once its day has
+/// passed, which is when it can no longer matter.
+model ExpirationReminderSent {
+  tenantId    String   @map("tenant_id")
+  subjectType String   @map("subject_type") // "ClientAsset" | "Service" | "CredentialItem" (CHECK)
+  subjectId   String   @map("subject_id")
+  dueOn       DateTime @map("due_on") @db.Date // the UTC day of the date reminded about
+  offsetDays  Int      @map("offset_days") // 60 | 30 | 14 | 7 | 1 (CHECK)
+  sentAt      DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@id([tenantId, subjectType, subjectId, dueOn, offsetDays])
+  @@index([tenantId, dueOn]) // the sweep
+  @@map("expiration_reminder_sent")
 }

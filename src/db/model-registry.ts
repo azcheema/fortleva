@@ -72,6 +72,7 @@ export const MODEL_CLASSES = {
     "credentialSecret",
     "credentialVersion",
     "clientAsset",
+    "expirationReminderSent",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -166,6 +167,9 @@ export const RLS_CLASSES = {
     // contact principal gets zero rows here even for a CLIENT_VISIBLE item.
     "credentialSecret",
     "credentialVersion",
+    // Phase 3V slice 89 — the renewal reminders' dedupe (ids, a day, a
+    // band): staff bookkeeping no contact has any business reading.
+    "expirationReminderSent",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

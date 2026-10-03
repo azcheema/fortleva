@@ -36,6 +36,16 @@ export {
   type LoginExpirations,
 } from "./expirations";
 export { openVault, type OpenVault, type VaultAbilities } from "./door";
+export { REMINDER_BANDS, isReminderBand, type ReminderBand } from "./reminder-bands";
+export {
+  REMINDER_KINDS,
+  isReminderKind,
+  reminderSubjects,
+  type ReminderKind,
+  type ReminderRef,
+  type ReminderSubject,
+} from "./reminder-subjects";
+export { sendExpirationReminders, type ReminderRun } from "./reminders";
 export { CREDENTIAL_TYPES, SECRET_FIELDS, isCredentialType, type CredentialType } from "./fields";
 export {
   createCredential,

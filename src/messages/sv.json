@@ -270,7 +270,15 @@
       "requestReceived": "En kund har skickat en förfrågan",
       "completedByContact": "En kund har markerat sin uppgift som klar",
       "clientCommented": "En kund har kommenterat en uppgift",
-      "approvalDecided": "En kund har svarat på en begäran om godkännande"
+      "approvalDecided": "En kund har svarat på en begäran om godkännande",
+      "assetDue": "En förnyelse närmar sig",
+      "agreementEnding": "Ett avtal löper ut",
+      "loginsExpiring": "Inloggningar går ut"
+    },
+    "reminder": {
+      "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",
+      "agreementEnding": "Upphör inom {days, plural, one {# dag} other {# dagar}}",
+      "loginsExpiring": "{count, plural, one {# inloggning går ut} other {# inloggningar går ut}} inom {days, plural, one {# dag} other {# dagar}}"
     },
     "row": {
       "markRead": "Markera som läst",

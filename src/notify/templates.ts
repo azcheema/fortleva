@@ -1,4 +1,5 @@
 import { appUrl } from "@/config";
+import { isUuid } from "@/db/context";
 import { isNotificationKind, type NotificationKind } from "./catalog";
 import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
 
@@ -78,6 +79,40 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
     en: { subject: "A project budget reached a threshold", body: "A project budget in Fortleva reached one of its thresholds." },
     sv: { subject: "En projektbudget har nått en tröskel", body: "En projektbudget i Fortleva har nått en av sina trösklar." },
   },
+  // Phase 3V slice 89 — the renewal reminders. LINKS, NOT DATA, as every
+  // mail here: no asset, agreement, client or login is named, and the
+  // count and the days stay in the inbox, which renders them under the
+  // reader's own principal.
+  "expiration.asset_due": {
+    en: {
+      subject: "A renewal is coming up",
+      body: "A domain, certificate, licence or other service your agency looks after for a client is due for renewal soon. Open it to check the date.",
+    },
+    sv: {
+      subject: "En förnyelse närmar sig",
+      body: "En domän, ett certifikat, en licens eller en annan tjänst som ni sköter åt en kund ska snart förnyas. Öppna den för att se datumet.",
+    },
+  },
+  "expiration.agreement_ending": {
+    en: {
+      subject: "An agreement is ending",
+      body: "An agreement with a client ends soon. Decide whether to extend it.",
+    },
+    sv: {
+      subject: "Ett avtal löper ut",
+      body: "Ett avtal med en kund upphör snart. Bestäm om det ska förlängas.",
+    },
+  },
+  "expiration.logins_expiring": {
+    en: {
+      subject: "Logins are expiring",
+      body: "Some logins you can open in the Vault expire soon. Open the Vault to see which.",
+    },
+    sv: {
+      subject: "Inloggningar går ut",
+      body: "Några inloggningar som du kan öppna i valvet går snart ut. Öppna valvet för att se vilka.",
+    },
+  },
   "time.weekly_reminder": {
     en: {
       subject: "Your weekly time reminder",
@@ -93,6 +128,12 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
 export const isEmailTemplate = (key: string): key is EmailTemplateKey =>
   isNotificationKind(key) || (EXTRA_TEMPLATES as readonly string[]).includes(key);
 
+/** A param that is a uuid, or null. */
+const uuidParam = (params: Readonly<Record<string, unknown>> | null, key: string): string | null => {
+  const v = params?.[key];
+  return typeof v === "string" && isUuid(v) ? v : null;
+};
+
 /** Where each template sends the reader. Item-scoped kinds deep-link to
  * the peek when `params` names one; everything else has one home. */
 const linkFor = (
@@ -100,6 +141,34 @@ const linkFor = (
   params: Readonly<Record<string, unknown>> | null,
 ): URL => {
   if (key === "time.weekly_reminder") return new URL("/time", appUrl);
+  // The renewal reminders (slice 89). The job chose, per receiver, a page
+  // that receiver may open (`linkOf`, src/modules/vault/reminders.ts) and
+  // fanned out once per choice, with the choice as a closed token in
+  // `link`: an asset's own line on the client's Assets tab (`client:view`)
+  // or Renewals (`asset:view`, which every asset receiver holds); an
+  // agreement's Agreements tab (direct assignment and `client:view`), or
+  // Renewals, or the inbox. Logins open on `/vault` filtered to the client
+  // — `credential:view`, which every login receiver holds, opens it — or to
+  // our own when there is no client (C49). The ids came from the job,
+  // never a person, and are still held to a uuid's shape before they reach
+  // a path; anything unexpected falls back to a page with no id in it.
+  if (key === "expiration.asset_due") {
+    const clientId = uuidParam(params, "clientId");
+    const assetId = uuidParam(params, "assetId");
+    return new URL(
+      params?.["link"] === "asset" && clientId && assetId ? `/clients/${clientId}/assets#asset-${assetId}` : "/expirations",
+      appUrl,
+    );
+  }
+  if (key === "expiration.agreement_ending") {
+    const clientId = uuidParam(params, "clientId");
+    if (params?.["link"] === "agreements" && clientId) return new URL(`/clients/${clientId}/agreements`, appUrl);
+    return new URL(params?.["link"] === "renewals" ? "/expirations" : "/inbox", appUrl);
+  }
+  if (key === "expiration.logins_expiring") {
+    const clientId = uuidParam(params, "clientId");
+    return new URL(clientId ? `/vault?client=${clientId}` : "/vault?client=agency", appUrl);
+  }
   const projectKey = typeof params?.["projectKey"] === "string" ? params["projectKey"] : null;
   const itemNumber = typeof params?.["itemNumber"] === "string" ? params["itemNumber"] : null;
   // A sign-off decision lands on the project's Timeline tab (a version)

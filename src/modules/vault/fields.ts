@@ -118,8 +118,16 @@ export function normalizeName(raw: unknown): string {
 export const normalizeUsername = (raw: unknown): string | null => trimmedOrNull(raw, USERNAME_MAX, "username");
 export const normalizeNotes = (raw: unknown): string | null => trimmedOrNull(raw, NOTES_MAX, "notes");
 
-/** An `@` in the authority — the pattern `client_asset_url_http` refuses. */
-const USERINFO = /^[A-Za-z]+:\/\/[^/?#]*@/;
+/**
+ * An `@` in the authority — EXACTLY the pattern `client_asset_url_http` and
+ * `credential_item_url_http` refuse (migration 20261003180000): after the
+ * scheme's colon, any run of `/`, `\`, tab, LF or CR — a URL parser treats
+ * `\` as `/` and strips tabs and newlines — then anything but `/`, `?` or
+ * `#` up to an `@`. Kept identical so the database never refuses a url the
+ * service let through, which would surface as an unmapped constraint error
+ * instead of this message (slice 89's migration review).
+ */
+const USERINFO = /^[A-Za-z]+:[/\\\t\n\r]*[^/?#]*@/;
 
 /**
  * http(s) only: the URL is rendered as a link on the member's screen, and
@@ -144,9 +152,9 @@ export function normalizeUrl(raw: unknown): string | null {
   // likeliest way a secret ends up outside the ciphertext (both reviews).
   if (parsed.username !== "" || parsed.password !== "") fail("INVALID_INPUT", "url must not carry a username or password");
   // …and an `@` anywhere before the path, even one the parser reads
-  // another way (`https://@host`, `https://a\@host`): the asset table's
-  // CHECK refuses exactly this pattern, and the service must refuse it
-  // first, with a message (slice 87's migration review).
+  // another way (`https://@host`, `https://a\@host`, `https:///u:p@host`):
+  // both tables' CHECKs refuse exactly this pattern, and the service must
+  // refuse it first, with a message (slice 87's and 89's migration reviews).
   if (USERINFO.test(v)) fail("INVALID_INPUT", "url must not carry a username or password");
   return v;
 }

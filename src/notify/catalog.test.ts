@@ -98,7 +98,7 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * 3 slice 75, founder decision C43): a client who writes to the agency
    * is waiting on an answer. A MEMBER's comment stays coalesced.
    */
-  it("instant email is assignment, mention and the four client-caused kinds — and nothing else", () => {
+  it("instant email is assignment, mention, the four client-caused kinds and the three renewal reminders — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -108,6 +108,11 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       // waiting on the answer, the same argument as the tick's.
       "approval.decided",
       "comment.mentioned",
+      // The renewal reminders (Phase 3V slice 89, C53/C55/C56): a date does
+      // not wait for a digest, and 60 days' notice is the point.
+      "expiration.agreement_ending",
+      "expiration.asset_due",
+      "expiration.logins_expiring",
       "work_item.assigned",
       "work_item.client_commented",
       "work_item.completed_by_contact",

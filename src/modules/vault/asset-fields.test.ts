@@ -158,7 +158,21 @@ describe("money, renewal day, auto-renew, url", () => {
   });
 
   it("a url never carries a user or password before the host — the pattern the database refuses too", () => {
-    for (const bad of ["https://admin:pw@acme.se", "https://@acme.se", "https://a\\@acme.se", "https://www.acme@evil.test/"]) {
+    for (const bad of [
+      "https://admin:pw@acme.se",
+      "https://@acme.se",
+      "https://a\\@acme.se",
+      "https://www.acme@evil.test/",
+      // Slice 89: extra slashes, a backslash, or a tab between them — and
+      // the empty user the parser itself would let through.
+      "https:///u:p@acme.se",
+      "https://\\u:p@acme.se",
+      "https://\t/u:p@acme.se",
+      "https://\n/u:p@acme.se",
+      "https://\r/u:p@acme.se",
+      "https:///@acme.se",
+      "https:///:@acme.se",
+    ]) {
       expect(code(() => normalizeUrl(bad)), bad).toBe("INVALID_INPUT");
     }
     for (const good of ["https://medium.com/@acme", "https://acme.se/?mail=a@b.se", "https://acme.se/#a@b"]) {

@@ -87,6 +87,9 @@ export async function setupTenant(label: string) {
     // outlive the tenant unattributable. Swept here, by tenant, so no
     // dbtest that feeds the index has to remember (a73cd12's class).
     await platform.$executeRaw`DELETE FROM search_index WHERE tenant_id = ${tenantId}`;
+    // The renewal reminders' dedupe (3V slice 89) has no FK to its subject
+    // and RESTRICTs the tenant: any dbtest that runs the job leaves rows.
+    await platform.expirationReminderSent.deleteMany({ where: { tenantId } });
     await platform.memberInvite.deleteMany({ where: { tenantId } });
     await platform.memberRole.deleteMany({ where: { tenantId } });
     await platform.rolePermission.deleteMany({ where: { tenantId } });

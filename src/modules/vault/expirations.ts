@@ -67,9 +67,12 @@ export type ExpirationEntry = {
   readonly autoRenew: boolean | null;
   /**
    * Whether the member may open the client's own page for this row's tab.
-   * An asset is always reachable there (the client's page opens on the
-   * lifted scope); an agreement's tab wants DIRECT assignment, so a member
-   * reached through one project gets the line without the link.
+   * Every `/clients/[id]` page wants `client:view` (slice 89's fix-pass
+   * review: a custom role may hold `asset:view` without it, and the reminder
+   * mails send exactly that member here). With it, an asset is reachable
+   * there (the client's page opens on the lifted scope); an agreement's tab
+   * wants DIRECT assignment too, so a member reached through one project
+   * gets the line without the link.
    */
   readonly linkable: boolean;
 };
@@ -98,6 +101,8 @@ export type ExpirationsFeed = {
    * client, by name, our own first.
    */
   readonly logins: readonly LoginExpirations[] | null;
+  /** The member holds `client:view`: a client's own pages (its Vault tab) open for them. */
+  readonly clientPages: boolean;
 };
 
 
@@ -133,7 +138,8 @@ async function readFeed(
   const { start, until, before } = span(today, opts.days);
   const { limit } = opts;
   // One read for the two optional sources' gates (all four gates each).
-  const open = await accessibleCodes(tx, ctx.tenantId, ctx.actor, ["service:view", "credential:view"]);
+  const open = await accessibleCodes(tx, ctx.tenantId, ctx.actor, ["service:view", "credential:view", "client:view"]);
+  const clientPages = open.has("client:view");
   const scope = await resolveScope(tx, ctx.actor);
   const inScope = anchorScopeWhere(scope);
   const direct = (clientId: string) => scope.all || scope.directClientIds.includes(clientId);
@@ -159,7 +165,7 @@ async function readFeed(
       project: a.project,
       assetType: a.type,
       autoRenew: a.autoRenew,
-      linkable: true,
+      linkable: clientPages,
     })),
   });
 
@@ -171,7 +177,7 @@ async function readFeed(
       project: s.project,
       assetType: null,
       autoRenew: null,
-      linkable: direct(s.client.id),
+      linkable: clientPages && direct(s.client.id),
     });
     // RENEWALS FROM TODAY ON. A running agreement past its renewal date has,
     // in practice, renewed — and nothing in the product rolls `renewsAt`
@@ -238,7 +244,7 @@ async function readFeed(
   // dropped — "soonest first" would be false (the code review). Complete
   // for every day BEFORE `cutAt` (`expirations-merge.ts`).
   const { entries, cutAt } = mergeSources(sources);
-  return { until, entries, truncated: cutAt !== null, cutAt, logins };
+  return { until, entries, truncated: cutAt !== null, cutAt, logins, clientPages };
 }
 
 /**

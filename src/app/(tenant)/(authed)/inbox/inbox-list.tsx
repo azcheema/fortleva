@@ -17,6 +17,7 @@ import type { NotificationKind } from "@/notify/catalog";
 import { GENERIC_COPY_KEY, KIND_MESSAGE_KEY } from "@/notify/kind-copy";
 import { KIND_ICON } from "@/notify/kind-icon";
 import type { InboxFilter } from "@/notify/inbox";
+import { reminderLabel } from "@/notify/reminder-label";
 
 import {
   archiveAction,
@@ -56,6 +57,8 @@ export type InboxRowView = {
   snoozedTill: string | null;
   /** Null when the member may no longer see what this is about. */
   subject: { title: string; href: string | null } | null;
+  /** A renewal reminder's band and count (`reminderLabel`); null otherwise. */
+  reminder: { days: number; count: number | null } | null;
 };
 
 type Patch = { ids: readonly string[]; read?: boolean; archived?: boolean; snoozed?: boolean };
@@ -198,9 +201,13 @@ export function InboxList({
           // The key map and its catalogue coverage live in
           // `@/notify/kind-copy` — a kind added without copy in BOTH
           // languages fails `kind-copy.test.ts`, not a member's page.
-          const label = t(
-            `kind.${r.kind ? KIND_MESSAGE_KEY[r.kind] : GENERIC_COPY_KEY}`,
-          );
+          const reminder = reminderLabel(r.kind, r.reminder);
+          const label =
+            reminder === null
+              ? t(`kind.${r.kind ? KIND_MESSAGE_KEY[r.kind] : GENERIC_COPY_KEY}`)
+              : reminder.key === "loginsExpiring"
+                ? t("reminder.loginsExpiring", { count: reminder.count, days: reminder.days })
+                : t(`reminder.${reminder.key}`, { days: reminder.days });
           return (
             <li
               key={r.id}

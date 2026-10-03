@@ -28,7 +28,10 @@ type KindCopyKey =
   | "requestReceived"
   | "completedByContact"
   | "clientCommented"
-  | "approvalDecided";
+  | "approvalDecided"
+  | "assetDue"
+  | "agreementEnding"
+  | "loginsExpiring";
 
 export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.assigned": "assigned",
@@ -39,6 +42,9 @@ export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.client_commented": "clientCommented",
   "approval.decided": "approvalDecided",
   "budget.threshold_reached": "budgetThreshold",
+  "expiration.asset_due": "assetDue",
+  "expiration.agreement_ending": "agreementEnding",
+  "expiration.logins_expiring": "loginsExpiring",
 };
 
 /** The label for a row whose kind this build does not know — a row

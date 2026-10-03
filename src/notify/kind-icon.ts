@@ -1,9 +1,12 @@
 import {
   AtSignIcon,
+  CalendarClockIcon,
   CircleCheckIcon,
   ClipboardCheckIcon,
+  FileClockIcon,
   GaugeIcon,
   InboxIcon,
+  KeyRoundIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
   UserRoundPlusIcon,
@@ -27,4 +30,8 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "work_item.client_commented": MessagesSquareIcon,
   "approval.decided": ClipboardCheckIcon,
   "budget.threshold_reached": GaugeIcon,
+  // The Renewals rail entry's glyph, so the reminder and the page match.
+  "expiration.asset_due": CalendarClockIcon,
+  "expiration.agreement_ending": FileClockIcon,
+  "expiration.logins_expiring": KeyRoundIcon,
 };

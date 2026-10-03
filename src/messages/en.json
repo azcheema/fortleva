@@ -270,7 +270,15 @@
       "requestReceived": "A client sent a request",
       "completedByContact": "A client marked their task as done",
       "clientCommented": "A client commented on a task",
-      "approvalDecided": "A client answered a sign-off request"
+      "approvalDecided": "A client answered a sign-off request",
+      "assetDue": "A renewal is coming up",
+      "agreementEnding": "An agreement is ending",
+      "loginsExpiring": "Logins are expiring"
+    },
+    "reminder": {
+      "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",
+      "agreementEnding": "Ends within {days, plural, one {# day} other {# days}}",
+      "loginsExpiring": "{count, plural, one {# login expires} other {# logins expire}} within {days, plural, one {# day} other {# days}}"
     },
     "row": {
       "markRead": "Mark as read",

@@ -565,7 +565,8 @@ Tenants with staff in the US (and any future US tenant) get a **one-page electro
 | CredentialItem / CredentialSecret | Life of client relationship | Included in **client export** (secrets decrypted only via `credential:export` ✦); deleted on tenant instruction | Exported (✦), then deleted; tenant DEK retired ⇒ any stray ciphertext is unrecoverable | — |
 | **CredentialVersion** | **Last N versions** (`vault.versionsToKeep`, default 5); older versions hard-deleted on write | With the item | With the item | — |
 | CredentialShareLink | TTL ≤ 7 d; consumed/expired rows kept 90 d for audit correlation, then deleted | — | Deleted | Recipient email hashed at expiry |
-| ClientAsset / ExpirationReminderSent | Life of client relationship; box auto-fill reads it at seal time | Included in export | Deleted | — |
+| ClientAsset | Life of client relationship; box auto-fill reads it at seal time | Included in export | Deleted | — |
+| ExpirationReminderSent *(slice 89)* | Until its `due_on` is before the tenant's yesterday — the reminder job's own sweep (no FK to the subject; a deleted subject's rows go within about two months). Ids, a day and a band only | Included in export | Deleted | — |
 | TenantKey | Life of tenancy; RETIRED keys kept until no ciphertext references them | — | **Destroyed at day 90** — the cryptographic erasure of every vault/cost ciphertext | — |
 | search_index | Derived; `lang` restamped in the locale-change transaction (`search.index_rebuilt`) — no on-demand full rebuild exists *(2026-09-07)*; no independent retention | Follows source rows | Deleted | Follows source rows |
 | ContinuityBox / ContinuityOpenRequest | Life of client relationship; quarterly reseal ritual | Contact change forces reseal | **Survives lapse and offboarding sealed for a defined window — proposed 12 months** (final number in `OPEN_QUESTIONS.md`), then destroyed with notice | Sealed blob is ciphertext; erasure = destroy blob + shares |
