@@ -24,6 +24,17 @@ export {
   type CreateAssetInput,
 } from "./assets";
 export type { VaultCtx } from "./ctx";
+export {
+  EXPIRATIONS_DAYS,
+  expirationsFeed,
+  expirationsGlance,
+  GLANCE_DAYS,
+  type ExpirationEntry,
+  type ExpirationKind,
+  type ExpirationsFeed,
+  type ExpirationsGlance,
+  type LoginExpirations,
+} from "./expirations";
 export { openVault, type OpenVault, type VaultAbilities } from "./door";
 export { CREDENTIAL_TYPES, SECRET_FIELDS, isCredentialType, type CredentialType } from "./fields";
 export {

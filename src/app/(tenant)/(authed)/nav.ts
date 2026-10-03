@@ -19,6 +19,7 @@ export type NavIcon =
   | "time"
   | "files"
   | "vault"
+  | "renewals"
   | "members"
   | "settings"
   | "roles"
@@ -42,6 +43,7 @@ export type NavEntry = {
     | "time"
     | "files"
     | "vault"
+    | "renewals"
     | "members"
     | "settings"
     | "roles"
@@ -131,6 +133,18 @@ export const NAV: readonly NavEntry[] = [
     icon: "vault",
     permission: "credential:view",
     goKey: "V",
+  },
+  // 3V slice 88: RENEWALS (`/expirations`, UI.md §3.1's Vault row) — what
+  // renews, expires or ends soon across every client the member reaches.
+  // On `asset:view` across all four gates, so it goes with the vault
+  // module; NOT behind the vault's door (logins are only counted there,
+  // C54). No `G` key: `G E` stays swallowed (keymap.test.ts).
+  {
+    id: "renewals",
+    labelKey: "renewals",
+    href: "/expirations",
+    icon: "renewals",
+    permission: "asset:view",
   },
   {
     id: "members",

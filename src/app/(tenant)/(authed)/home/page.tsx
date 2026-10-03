@@ -6,6 +6,7 @@ import { Page, PageHeader } from "@/components/semantic";
 import { requireTenantContext } from "@/members/tenant-context";
 import { isoDateOf } from "@/lib/duration";
 import { canTrackTime, getCurrentTimerOnce, myTimeTotals } from "@/modules/time";
+import { expirationsGlance } from "@/modules/vault";
 import { listMyWork, resolveRowState, triageGlance, waitingOnClient } from "@/modules/work";
 import { inboxGlance } from "@/notify/inbox";
 
@@ -14,6 +15,7 @@ import { labelOf } from "../time/label";
 import { resolveWeekContext } from "../time/week-context";
 import { InboxCard } from "./inbox-card";
 import { MyWorkQueue, type QueueRow } from "./my-work-queue";
+import { RenewalsCard } from "./renewals-card";
 import { TriageCard } from "./triage-card";
 import { WaitingCard } from "./waiting-card";
 import { HomeTimeStrip, type HomeTimeStripProps } from "./time-strip";
@@ -73,6 +75,13 @@ const greetingKey = (hour: number): "morning" | "afternoon" | "evening" =>
  * snapshot the strip and the layout's pill read (`getCurrentTimerOnce`),
  * not a second query — and `null` otherwise, where the rows show no
  * control and claim no key.
+ *
+ * RENEWALS (Phase 3V slice 88): what is past its date or due within 30
+ * days, from the expirations feed, for a member with `asset:view` —
+ * started after the first batch, which gives it the member's `today`, and
+ * run beside the time strip's — and drawn only while it has a row. Below "waiting on client", above
+ * the member's own queue: a lapsing domain is nobody else's to notice
+ * either, but it is rarely today's work.
  */
 export default async function HomePage() {
   // Still required, and still first: a user with no ACTIVE membership is
@@ -91,6 +100,13 @@ export default async function HomePage() {
       triageGlance(ctx),
       waitingOnClient(ctx),
     ]);
+  // Started now and awaited after the time strip's batch: it needs `today`
+  // from the batch above, and it is its own transaction, so it runs beside
+  // the strip's reads rather than in front of them (the code review).
+  const renewalsRead = expirationsGlance(ctx, today);
+  // Handled here so an early failure is not an unhandled rejection while
+  // the strip's batch is in flight; the `await` below still throws it.
+  renewalsRead.catch(() => {});
   const firstName = session.user.name.split(/\s+/)[0] || userEmail;
   // The viewer's clock: Member.timezone → tenant `ui.timezone` → Europe/Stockholm (UI.md §8).
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: timezone }).format(new Date()));
@@ -124,6 +140,8 @@ export default async function HomePage() {
       weekLabel,
     };
   }
+
+  const renewals = await renewalsRead;
 
   const queue: QueueRow[] | null = myWork
     ? myWork.items.map((item) => {
@@ -180,6 +198,7 @@ export default async function HomePage() {
         {waiting && (waiting.ticked.length > 0 || waiting.waiting.length > 0) ? (
           <WaitingCard glance={waiting} />
         ) : null}
+        {renewals && renewals.entries.length > 0 ? <RenewalsCard glance={renewals} today={today} /> : null}
         {queue && myWork ? <MyWorkQueue rows={queue} truncated={myWork.truncated} today={today} timer={queueTimer} /> : null}
       </div>
     </Page>

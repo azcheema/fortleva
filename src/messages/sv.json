@@ -95,7 +95,8 @@
     "inbox": "Inkorg",
     "notifications": "Aviseringar",
     "search": "Sök",
-    "vault": "Valv"
+    "vault": "Valv",
+    "renewals": "Förnyelser"
   },
   "shell": {
     "palette": {
@@ -3736,6 +3737,45 @@
       "submit": "Lägg till",
       "adding": "Lägger till…",
       "added": "La till {name}"
+    }
+  },
+  "expirations": {
+    "title": "Förnyelser",
+    "description": "Det som förnyas, går ut eller upphör inom 90 dagar – och det som redan passerat sitt datum – för kunderna du arbetar med.",
+    "groups": {
+      "lapsed": "Har passerat sitt datum",
+      "soon": "Inom 30 dagar",
+      "later": "Inom 90 dagar"
+    },
+    "kinds": {
+      "agreementRenews": "Avtalet förnyas",
+      "agreementEnds": "Avtalet upphör"
+    },
+    "cue": {
+      "expired": "Har gått ut",
+      "expiresToday": "Går ut i dag",
+      "expiresIn": "Går ut om {days, plural, one {# dag} other {# dagar}}",
+      "renewsToday": "Förnyas i dag",
+      "renewsIn": "Förnyas om {days, plural, one {# dag} other {# dagar}}",
+      "endsToday": "Upphör i dag",
+      "endsIn": "Upphör om {days, plural, one {# dag} other {# dagar}}",
+      "endPassed": "Slutdatumet har passerat"
+    },
+    "truncated": "Det finns mer än sidan kan visa: den listar allt före {date}, och en del av det som infaller den dagen.",
+    "empty": "Inget att förnya",
+    "emptyBody": "Inget förnyas, går ut eller upphör inom 90 dagar. Lägg till förnyelsedatum på en kunds flik Tillgångar.",
+    "emptyAction": "Till kunderna",
+    "logins": {
+      "title": "Inloggningar i valvet",
+      "description": "Vilka inloggningar det gäller stannar i valvet – öppna det för att se dem och byta lösenorden.",
+      "row": "{count, plural, one {# inloggning} other {# inloggningar}} med utgångsdatum till och med {date}"
+    },
+    "card": {
+      "title": "Förnyelser som närmar sig",
+      "description": "Har passerat sitt datum eller förfaller inom 30 dagar.",
+      "all": "Alla förnyelser",
+      "more": "{count} till",
+      "moreAtLeast": "Minst {count} till"
     }
   }
 }

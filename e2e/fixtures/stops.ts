@@ -319,6 +319,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // 3V slice 86: the tenant's /vault — the door under the page header, as
     // the owner (no authenticator) meets it. The open page is `vault.spec.ts`'s.
     { name: "vault", path: "/vault" },
+    // 3V slice 88: Renewals — the lapsed licence, the domain due in 20 days
+    // and the agreement renewing in ~30, as the owner (no door).
+    { name: "expirations", path: "/expirations" },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
     { name: "time-team", path: "/time/team" },

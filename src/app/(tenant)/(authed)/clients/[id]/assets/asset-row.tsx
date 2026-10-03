@@ -1,21 +1,6 @@
 "use client";
 
-import {
-  AppWindowIcon,
-  ArchiveIcon,
-  ArchiveRestoreIcon,
-  BadgeCheckIcon,
-  BoxIcon,
-  ExternalLinkIcon,
-  GlobeIcon,
-  type LucideIcon,
-  MailIcon,
-  NetworkIcon,
-  PlugIcon,
-  ServerIcon,
-  ShieldCheckIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, ExternalLinkIcon, Trash2Icon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -28,6 +13,7 @@ import { withCurrentOption } from "@/lib/inline-edit";
 import type { AssetType } from "@/modules/vault";
 
 import { deleteAssetAction, setAssetStatusAction, updateAssetAction } from "./actions";
+import { ASSET_ICON } from "./asset-icons";
 import {
   assetFieldLabelKey,
   assetFieldText,
@@ -40,18 +26,6 @@ import {
 
 /** What the member may do with a row (the client loader's `asset:*` caps). */
 export type AssetRowAbilities = { readonly manage: boolean; readonly delete: boolean };
-
-const ICON: Record<AssetType, LucideIcon> = {
-  DOMAIN: GlobeIcon,
-  HOSTING: ServerIcon,
-  DNS_ZONE: NetworkIcon,
-  SSL_CERT: ShieldCheckIcon,
-  EMAIL: MailIcon,
-  CMS_APP: AppWindowIcon,
-  THIRD_PARTY_SERVICE: PlugIcon,
-  LICENSE: BadgeCheckIcon,
-  CUSTOM: BoxIcon,
-};
 
 /**
  * ONE ASSET, read-first (FOUNDER MANDATE 1): every value is text until
@@ -97,7 +71,7 @@ export function AssetRow({
   const t = useTranslations("assets");
   const tCommon = useTranslations("common");
   const { run } = useRun();
-  const Icon = ICON[item.type];
+  const Icon = ASSET_ICON[item.type];
   const cue = expiryCue(item.status, item.daysLeft);
   const readOnly = !can.manage;
 

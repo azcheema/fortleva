@@ -125,6 +125,9 @@ const DBTEST_PREFIXES = [
   "enc-b-",
   "exp-a-",
   "exp-b-",
+  // Phase 3V slice 88, the expirations feed — `src/modules/vault/expirations.dbtest.ts`,
+  // `setupTenant("expir")`.
+  "expir-",
   "export-",
   "gate-",
   "inbox-",

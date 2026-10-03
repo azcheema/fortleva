@@ -95,7 +95,8 @@
     "inbox": "Inbox",
     "notifications": "Notifications",
     "search": "Search",
-    "vault": "Vault"
+    "vault": "Vault",
+    "renewals": "Renewals"
   },
   "shell": {
     "palette": {
@@ -3736,6 +3737,45 @@
       "submit": "Add",
       "adding": "Adding…",
       "added": "Added {name}"
+    }
+  },
+  "expirations": {
+    "title": "Renewals",
+    "description": "What renews, expires or ends within 90 days — and anything already past its date — across the clients you work with.",
+    "groups": {
+      "lapsed": "Past their date",
+      "soon": "Within 30 days",
+      "later": "Within 90 days"
+    },
+    "kinds": {
+      "agreementRenews": "Agreement renews",
+      "agreementEnds": "Agreement ends"
+    },
+    "cue": {
+      "expired": "Expired",
+      "expiresToday": "Expires today",
+      "expiresIn": "Expires in {days, plural, one {# day} other {# days}}",
+      "renewsToday": "Renews today",
+      "renewsIn": "Renews in {days, plural, one {# day} other {# days}}",
+      "endsToday": "Ends today",
+      "endsIn": "Ends in {days, plural, one {# day} other {# days}}",
+      "endPassed": "End date passed"
+    },
+    "truncated": "There is more than this page can show: it lists everything before {date}, and some of what falls on it.",
+    "empty": "Nothing to renew",
+    "emptyBody": "Nothing renews, expires or ends within 90 days. Add renewal dates on a client's Assets tab.",
+    "emptyAction": "Go to clients",
+    "logins": {
+      "title": "Logins in the Vault",
+      "description": "Which logins they are stays in the Vault — open it to see them and change the passwords.",
+      "row": "{count, plural, one {# login} other {# logins}} with an expiry date up to {date}"
+    },
+    "card": {
+      "title": "Renewals coming up",
+      "description": "Past their date or due within 30 days.",
+      "all": "All renewals",
+      "more": "{count} more",
+      "moreAtLeast": "At least {count} more"
     }
   }
 }

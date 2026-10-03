@@ -6,6 +6,7 @@ import {
   FolderKanbanIcon,
   HouseIcon,
   BellIcon,
+  CalendarClockIcon,
   InboxIcon,
   SearchIcon,
   KeyRoundIcon,
@@ -33,6 +34,7 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   // Not the key: that glyph is Roles' (and a login row's), and one icon
   // means one concept (UI.md §10).
   vault: VaultIcon,
+  renewals: CalendarClockIcon,
   members: UsersIcon,
   settings: SettingsIcon,
   roles: KeyRoundIcon,

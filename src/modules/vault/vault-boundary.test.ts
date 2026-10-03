@@ -140,6 +140,8 @@ describe("vault ciphertext boundary", () => {
   it("the index exports only the gated services — never the store, the budget, the scope, the raw TOTP or the bare door", () => {
     // `assets` and `asset-fields` (slice 87) touch no secret: the registry's
     // services gate on `asset:*` themselves, and `asset-fields` is pure.
+    // `expirations` (slice 88) reads logins as a COUNT per client only (C54)
+    // and never the secret tables.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -147,6 +149,7 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/assets",
       "modules/vault/ctx",
       "modules/vault/door",
+      "modules/vault/expirations",
       "modules/vault/fields",
       "modules/vault/items",
       "modules/vault/reveal",
