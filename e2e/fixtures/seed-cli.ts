@@ -99,6 +99,9 @@ const DBTEST_PREFIXES = [
   // `slug: \`acsec-other-…\``), all under this one prefix.
   "acsec-",
   "admin-",
+  // Phase 3V slice 87, the asset registry — `src/modules/vault/assets.dbtest.ts`,
+  // `setupTenant("assets")`.
+  "assets-",
   "bulk-",
   "census-",
   // Phase 3, the invite slice — `src/clients/contact-access.dbtest.ts`,
@@ -1225,6 +1228,51 @@ async function provision(seedFile: string): Promise<void> {
     secret: { password: `reg-${randomBytes(12).toString("base64url")}` },
   });
 
+  // 3V slice 87: the client's Assets tab, through the registry's own service
+  // as the owner — a domain renewing in 20 days (the "coming up" strip's
+  // caution line), the project's hosting, which renews by itself, and a
+  // licence that lapsed three days ago. No factor needed: assets are not
+  // behind the vault's door.
+  const { createAsset } = await import("../../src/modules/vault");
+  const utcDayFromNow = (days: number) => {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d;
+  };
+  await createAsset(ctx, {
+    clientId,
+    type: "DOMAIN",
+    name: "e2e-acme.se",
+    provider: "Loopia",
+    identifier: "e2e-acme.se",
+    url: "https://e2e-acme.se",
+    expiresAt: utcDayFromNow(20),
+    autoRenew: false,
+    renewalCost: "149",
+    fields: { nameservers: "ns1.loopia.se, ns2.loopia.se" },
+  });
+  await createAsset(ctx, {
+    clientId,
+    projectId,
+    type: "HOSTING",
+    name: "E2E website hosting",
+    provider: "Hetzner",
+    expiresAt: utcDayFromNow(200),
+    autoRenew: true,
+    renewalCost: "1200",
+    fields: { plan: "CX22", server: "web1.e2e.test" },
+  });
+  await createAsset(ctx, {
+    clientId,
+    type: "LICENSE",
+    name: "E2E Elementor Pro",
+    provider: "Elementor",
+    expiresAt: utcDayFromNow(-3),
+    autoRenew: false,
+    fields: { seats: 3 },
+  });
+
   // 2W notifications: the one notification in the standing fixture, and
   // it is PRODUCED rather than inserted — the employee (who now holds
   // the client) assigns a task to the owner, so `notify.emit` runs
@@ -1618,6 +1666,8 @@ async function removeTenant(
   // 3V: a credential RESTRICTs its client, project and tenant; its secret
   // and versions go with it (ON DELETE CASCADE).
   await db.credentialItem.deleteMany({ where: { tenantId } });
+  // 3V slice 87: an asset RESTRICTs its client, project and tenant too.
+  await db.clientAsset.deleteMany({ where: { tenantId } });
   await db.memberProject.deleteMany({ where: { tenantId } });
   await db.memberClient.deleteMany({ where: { tenantId } });
   // A contact's password-reset rows have no FK to it — a row is looked up

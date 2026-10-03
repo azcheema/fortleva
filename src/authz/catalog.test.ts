@@ -8,9 +8,20 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 105 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 — bumped deliberately 2026-10-02)", () => {
-    expect(PERMISSIONS).toHaveLength(105);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(105);
+  it("holds exactly 108 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 — bumped deliberately 2026-10-03)", () => {
+    expect(PERMISSIONS).toHaveLength(108);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(108);
+  });
+
+  it("the asset codes are vault-module, never ✦, and seeded C M A E / C M A / C M (slice 87)", () => {
+    const seeded = (code: string) => PERMISSIONS.find((p) => p.code === code);
+    expect(seeded("asset:view")?.seeded).toEqual(["owner", "manager", "admin", "employee"]);
+    expect(seeded("asset:manage")?.seeded).toEqual(["owner", "manager", "admin"]);
+    expect(seeded("asset:delete")?.seeded).toEqual(["owner", "manager"]);
+    for (const code of ["asset:view", "asset:manage", "asset:delete"]) {
+      expect(seeded(code)?.module, code).toBe("vault");
+      expect(seeded(code)?.requiresMfa, code).toBe(false);
+    }
   });
 
   it("member:reset_two_factor is the owner's alone, behind a fresh factor (slice 84, C50)", () => {

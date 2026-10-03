@@ -250,6 +250,15 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     C,
     true,
   ),
+  // ── Phase 3V slice 87 (module `vault`, +3; catalog 105 → 108;
+  // TEMPLATE_VERSION 9, 2026-10-03) — AUTHZ.md §3.2's `asset:*` rows,
+  // landing with the client's Assets tab that enforces them. Assets are
+  // NON-SECRET records (a domain, its registrar, its renewal date), so
+  // none is ✦ and none is behind the vault's door: a login is the vault's,
+  // never an asset's. Scoped like credentials (`src/modules/vault/scope.ts`).
+  p("asset:view", "vault", "View a client's asset registry (domains, hosting, certificates, licences) and its renewal dates", CMAE),
+  p("asset:manage", "vault", "Add and edit assets, their renewal dates and costs, and retire them", CMA),
+  p("asset:delete", "vault", "Delete assets", CM),
 ];
 
 export type RoleTemplate = {
@@ -309,8 +318,12 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     bump MUST run `prisma/seed.ts`.
  * v8 (2026-10-02): +1 `core` code (member:reset_two_factor ✦ — slice 84,
  *     founder decision C50). Owner template only; additive. The same rule
- *     as v6: a release carrying this bump MUST run `prisma/seed.ts`. */
-export const TEMPLATE_VERSION = 8;
+ *     as v6: a release carrying this bump MUST run `prisma/seed.ts`.
+ * v9 (2026-10-03): +3 `vault` codes (asset:view, asset:manage,
+ *     asset:delete — Phase 3V slice 87, the Assets tab). None is ✦, so
+ *     clones gain them too; additive. The same rule as v6: a release
+ *     carrying this bump MUST run `prisma/seed.ts`. */
+export const TEMPLATE_VERSION = 9;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

@@ -10,7 +10,7 @@ import { allow } from "@/ratelimit";
 import { lockRevealBudget, revealsInLastHour } from "./budget";
 import { boundedVaultWrite, idOf, principalOf, type VaultCtx } from "./ctx";
 import { SECRET_FIELDS, type CredentialType } from "./fields";
-import { assertCredentialInScope } from "./scope";
+import { assertAnchorInScope } from "./scope";
 import { readSecret, readTotp } from "./secret-store";
 import { totpCode } from "./totp";
 
@@ -74,7 +74,7 @@ async function gated<T>(
       select: { id: true, type: true, hasTotp: true, clientId: true, projectId: true },
     });
     if (!item) return deny("NOT_FOUND");
-    await assertCredentialInScope(tx, ctx.actor, item);
+    await assertAnchorInScope(tx, ctx.actor, item);
 
     const prefs = await readPreferences(tx, ctx.tenantId);
     try {

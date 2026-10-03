@@ -184,6 +184,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // vault needs a fresh factor the shared owner session never has; its
     // screen is driven by `vault.spec.ts` as the fixture's vault manager.
     { name: "client-vault", path: `${client}/vault` },
+    // 3V slice 87: the Assets tab — not behind the door, so the owner sees
+    // it open: the "coming up" strip (a domain due in 20 days, a licence
+    // lapsed 3 days ago), read-first rows, and the inline add form.
+    { name: "client-assets", path: `${client}/assets` },
     { name: "projects", path: "/projects" },
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },

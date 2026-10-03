@@ -1339,7 +1339,8 @@
       "contacts": "Kontakter",
       "files": "Filer",
       "agreements": "Avtal",
-      "vault": "Valv"
+      "vault": "Valv",
+      "assets": "Tillgångar"
     },
     "overview": {
       "company": "Företag",
@@ -3622,6 +3623,119 @@
       "addAgency": "Lägg till en av våra egna inloggningar",
       "partial": "{shown} av {count} visas här.",
       "showAll": "Visa alla {count}"
+    }
+  },
+  "assets": {
+    "types": {
+      "DOMAIN": "Domän",
+      "HOSTING": "Webbhotell",
+      "DNS_ZONE": "DNS-zon",
+      "SSL_CERT": "SSL-certifikat",
+      "EMAIL": "E-post",
+      "CMS_APP": "CMS eller app",
+      "THIRD_PARTY_SERVICE": "Tredjepartstjänst",
+      "LICENSE": "Licens",
+      "CUSTOM": "Annat"
+    },
+    "status": {
+      "ACTIVE": "I bruk",
+      "RETIRED": "Ur bruk"
+    },
+    "autoRenew": {
+      "unknown": "Okänt",
+      "yes": "Ja",
+      "no": "Nej"
+    },
+    "fields": {
+      "nameservers": "Namnservrar",
+      "plan": "Abonnemang",
+      "server": "Server",
+      "domains": "Omfattar",
+      "mailboxes": "Brevlådor",
+      "platform": "Plattform",
+      "version": "Version",
+      "seats": "Platser"
+    },
+    "expiry": {
+      "expired": "Har gått ut",
+      "today": "Går ut i dag",
+      "expiresIn": "Går ut om {days, plural, one {# dag} other {# dagar}}",
+      "renewsIn": "Förnyas om {days, plural, one {# dag} other {# dagar}}",
+      "renewsToday": "Förnyas i dag"
+    },
+    "coming": {
+      "title": "{count, plural, one {# förnyelse närmar sig} other {# förnyelser närmar sig}}",
+      "expired": "gick ut {date}",
+      "expiresIn": "går ut om {days, plural, one {# dag} other {# dagar}}",
+      "renewsIn": "förnyas om {days, plural, one {# dag} other {# dagar}}",
+      "today": "går ut i dag",
+      "renewsToday": "förnyas i dag"
+    },
+    "list": {
+      "title": "Tillgångar",
+      "description": "Domäner, webbhotell, certifikat och licenser – och när var och en förnyas. Inloggningar hör hemma i valvet, aldrig här.",
+      "empty": "Inga tillgångar än",
+      "emptyDescription": "Samla kundens domäner, webbhotell, certifikat och licenser här, med förnyelsedatum, så att inget går ut obemärkt.",
+      "emptyReadOnly": "Inga tillgångar du kan se",
+      "emptyReadOnlyDescription": "Tillgångar du kan se visas här när de läggs till.",
+      "emptyArchived": "Kunden är arkiverad, så inga tillgångar kan läggas till."
+    },
+    "row": {
+      "name": "Namn",
+      "type": "Typ",
+      "provider": "Leverantör",
+      "identifier": "Identifierare",
+      "url": "Webbadress",
+      "expiresAt": "Förnyas den",
+      "autoRenew": "Förnyas automatiskt",
+      "renewalCost": "Förnyelsekostnad",
+      "currency": "Valuta",
+      "notes": "Anteckningar",
+      "addNote": "Lägg till en anteckning – aldrig ett lösenord",
+      "openUrl": "Öppna webbadressen för {name}",
+      "retire": "Ta ur bruk",
+      "reactivate": "Ta i bruk igen",
+      "retired": "Tagen ur bruk",
+      "reactivated": "I bruk igen",
+      "delete": "Ta bort",
+      "deleteConfirm": "Ta bort {name}? Ta den ur bruk i stället om du vill behålla uppgifterna.",
+      "deleted": "Borttagen"
+    },
+    "add": {
+      "title": "Lägg till en tillgång",
+      "description": "Lämna tomt det du inte vet. Ange förnyelsedatumet så blir du varnad innan den går ut.",
+      "type": "Typ",
+      "where": "Hör till",
+      "whereClient": "Kunden som helhet",
+      "whereFixed": "Hör till: {place}",
+      "nameHint": {
+        "DOMAIN": "Till exempel acme.se",
+        "HOSTING": "Till exempel Acmes webbhotell",
+        "DNS_ZONE": "Till exempel zonen acme.se",
+        "SSL_CERT": "Till exempel certifikatet för acme.se",
+        "EMAIL": "Till exempel Acmes Google Workspace",
+        "CMS_APP": "Till exempel Acmes WordPress",
+        "THIRD_PARTY_SERVICE": "Till exempel Acmes Mailchimp",
+        "LICENSE": "Till exempel Elementor Pro",
+        "CUSTOM": "Vad det är"
+      },
+      "providerHint": "Registraren, webbhotellet eller leverantören.",
+      "identifierHint": {
+        "DOMAIN": "Domännamnet. Auktoriseringskoden (EPP) hör hemma i valvet, aldrig här.",
+        "HOSTING": "Konto- eller kundnumret.",
+        "DNS_ZONE": "Zonens namn, till exempel acme.se.",
+        "SSL_CERT": "Certifikatets serienummer eller huvudnamn.",
+        "EMAIL": "Konto- eller kundnumret.",
+        "CMS_APP": "Webbplatsen eller instansen, till exempel dess adminadress.",
+        "THIRD_PARTY_SERVICE": "Konto-id:t.",
+        "LICENSE": "Order- eller kontonumret – aldrig licensnyckeln, den hör hemma i valvet.",
+        "CUSTOM": "Det som identifierar den – aldrig ett lösenord eller en nyckel."
+      },
+      "listHint": "Skilj flera åt med kommatecken.",
+      "notesHint": "Inte hemligt: alla som ser tillgångar ser anteckningar. Inloggningar hör hemma i valvet.",
+      "submit": "Lägg till",
+      "adding": "Lägger till…",
+      "added": "La till {name}"
     }
   }
 }

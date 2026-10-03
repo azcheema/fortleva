@@ -239,6 +239,16 @@ export type ClientDetail = {
      * member reached through a project to that project's logins.
      */
     viewCredentials: boolean;
+    /**
+     * `asset:*` on all four gates (Phase 3V slice 87) — whether an Assets
+     * tab exists, and which controls it draws. The module is `vault`, so
+     * switching the vault off closes the tab too. No `&& direct`: a member
+     * reached through a project sees and keeps that project's assets, and
+     * the registry's own scope decides the rest (`src/modules/vault/assets.ts`).
+     */
+    viewAssets: boolean;
+    manageAssets: boolean;
+    deleteAssets: boolean;
   };
 };
 
@@ -247,7 +257,7 @@ export type ClientDetail = {
  * `heldAndAccessibleCodes`. Every cap but one answers all four gates, so
  * a cap whose module a tenant can switch off closes with it:
  * `client:manage_contacts` is `portal`, the five `document:*` are
- * `documentation` and `credential:view` is `vault`; the rest are `core`. The one is `manageContactRecords`,
+ * `documentation`, and `credential:view` and the three `asset:*` are `vault`; the rest are `core`. The one is `manageContactRecords`,
  * on gate 4 by C48. None is a ✦ code, which is what lets the helper answer
  * them. `CapCode` makes `can()` — and `holds()`, the gate-4 answer — on a
  * code missing from this list a type error; a hand-written permission
@@ -270,6 +280,9 @@ const CAP_CODES = [
   "service:edit",
   "service:delete",
   "credential:view",
+  "asset:view",
+  "asset:manage",
+  "asset:delete",
 ] as const;
 type CapCode = (typeof CAP_CODES)[number];
 
@@ -386,6 +399,9 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
         editServices: can("service:edit") && direct,
         deleteServices: can("service:delete") && direct,
         viewCredentials: can("credential:view"),
+        viewAssets: can("asset:view"),
+        manageAssets: can("asset:manage"),
+        deleteAssets: can("asset:delete"),
       },
     };
   });

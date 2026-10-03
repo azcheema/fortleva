@@ -1339,7 +1339,8 @@
       "contacts": "Contacts",
       "files": "Files",
       "agreements": "Agreements",
-      "vault": "Vault"
+      "vault": "Vault",
+      "assets": "Assets"
     },
     "overview": {
       "company": "Company",
@@ -3622,6 +3623,119 @@
       "addAgency": "Add one of our own logins",
       "partial": "{shown} of {count} shown here.",
       "showAll": "Show all {count}"
+    }
+  },
+  "assets": {
+    "types": {
+      "DOMAIN": "Domain",
+      "HOSTING": "Hosting",
+      "DNS_ZONE": "DNS zone",
+      "SSL_CERT": "SSL certificate",
+      "EMAIL": "Email",
+      "CMS_APP": "CMS or app",
+      "THIRD_PARTY_SERVICE": "Third-party service",
+      "LICENSE": "Licence",
+      "CUSTOM": "Other"
+    },
+    "status": {
+      "ACTIVE": "In use",
+      "RETIRED": "Retired"
+    },
+    "autoRenew": {
+      "unknown": "Not known",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "fields": {
+      "nameservers": "Nameservers",
+      "plan": "Plan",
+      "server": "Server",
+      "domains": "Covers",
+      "mailboxes": "Mailboxes",
+      "platform": "Platform",
+      "version": "Version",
+      "seats": "Seats"
+    },
+    "expiry": {
+      "expired": "Expired",
+      "today": "Expires today",
+      "expiresIn": "Expires in {days, plural, one {# day} other {# days}}",
+      "renewsIn": "Renews in {days, plural, one {# day} other {# days}}",
+      "renewsToday": "Renews today"
+    },
+    "coming": {
+      "title": "{count, plural, one {# renewal coming up} other {# renewals coming up}}",
+      "expired": "expired {date}",
+      "expiresIn": "expires in {days, plural, one {# day} other {# days}}",
+      "renewsIn": "renews in {days, plural, one {# day} other {# days}}",
+      "today": "expires today",
+      "renewsToday": "renews today"
+    },
+    "list": {
+      "title": "Assets",
+      "description": "Domains, hosting, certificates and licences — and when each renews. Logins belong in the Vault, never here.",
+      "empty": "No assets yet",
+      "emptyDescription": "Keep this client's domains, hosting, certificates and licences here, with their renewal dates, so nothing lapses unnoticed.",
+      "emptyReadOnly": "No assets you can see",
+      "emptyReadOnlyDescription": "Assets you can see appear here when they are added.",
+      "emptyArchived": "This client is archived, so no assets can be added."
+    },
+    "row": {
+      "name": "Name",
+      "type": "Type",
+      "provider": "Provider",
+      "identifier": "Identifier",
+      "url": "Web address",
+      "expiresAt": "Renews on",
+      "autoRenew": "Renews automatically",
+      "renewalCost": "Renewal cost",
+      "currency": "Currency",
+      "notes": "Notes",
+      "addNote": "Add a note — never a password",
+      "openUrl": "Open the web address of {name}",
+      "retire": "Retire",
+      "reactivate": "Put back in use",
+      "retired": "Retired",
+      "reactivated": "Back in use",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {name}? To keep the record, retire it instead.",
+      "deleted": "Deleted"
+    },
+    "add": {
+      "title": "Add an asset",
+      "description": "Leave blank what you don't know. Add the renewal date to be warned before it lapses.",
+      "type": "Type",
+      "where": "Belongs to",
+      "whereClient": "The client as a whole",
+      "whereFixed": "Belongs to: {place}",
+      "nameHint": {
+        "DOMAIN": "For example acme.se",
+        "HOSTING": "For example Acme website hosting",
+        "DNS_ZONE": "For example the acme.se zone",
+        "SSL_CERT": "For example the acme.se certificate",
+        "EMAIL": "For example Acme Google Workspace",
+        "CMS_APP": "For example Acme WordPress",
+        "THIRD_PARTY_SERVICE": "For example Acme Mailchimp",
+        "LICENSE": "For example Elementor Pro",
+        "CUSTOM": "What it is"
+      },
+      "providerHint": "The registrar, host or vendor.",
+      "identifierHint": {
+        "DOMAIN": "The domain name. Its transfer (EPP) code goes in the Vault, never here.",
+        "HOSTING": "The account or customer number.",
+        "DNS_ZONE": "The zone's name, for example acme.se.",
+        "SSL_CERT": "The certificate's serial number or main name.",
+        "EMAIL": "The account or customer number.",
+        "CMS_APP": "The site or instance, for example its admin address.",
+        "THIRD_PARTY_SERVICE": "The account ID.",
+        "LICENSE": "The order or account number — never the licence key, which goes in the Vault.",
+        "CUSTOM": "Whatever identifies it — never a password or a key."
+      },
+      "listHint": "Separate several with commas.",
+      "notesHint": "Not secret: everyone who can see assets sees notes. Logins go in the Vault.",
+      "submit": "Add",
+      "adding": "Adding…",
+      "added": "Added {name}"
     }
   }
 }

@@ -71,6 +71,7 @@ export const MODEL_CLASSES = {
     "credentialItem",
     "credentialSecret",
     "credentialVersion",
+    "clientAsset",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -166,9 +167,10 @@ export const RLS_CLASSES = {
     "credentialSecret",
     "credentialVersion",
   ],
-  // credentialItem (Phase 3V): metadata only; `projectId` is a filter,
-  // never a portal gate, so it is clientScoped with no portal_enabled.
-  B_clientScoped: ["client", "contact", "credentialItem"],
+  // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
+  // and a filter, never a portal gate, so both are clientScoped with no
+  // portal_enabled. Both are INTERNAL-only in the database for now.
+  B_clientScoped: ["client", "contact", "credentialItem", "clientAsset"],
   B_projectScoped: [
     "project",
     "projectVersion",

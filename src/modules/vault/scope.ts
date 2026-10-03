@@ -3,9 +3,10 @@ import { deny } from "@/authz/errors";
 import type { TenantDb } from "@/db";
 
 /**
- * WHICH CREDENTIALS A MEMBER CAN REACH (AUTHZ.md §4; C49).
+ * WHICH CREDENTIALS — AND ASSETS — A MEMBER CAN REACH (AUTHZ.md §4; C49).
  *
- * A credential hangs off one of three anchors, and each has its own rule:
+ * A credential hangs off one of three anchors, and each has its own rule
+ * (an asset off the first two only: it always has a client, slice 87):
  *   - a PROJECT (`projectId` set): the project axis — MemberProject, or a
  *     direct assignment to the project's client;
  *   - a CLIENT only (`projectId` NULL): DIRECT client assignment only — a
@@ -24,20 +25,20 @@ import type { TenantDb } from "@/db";
  * pins it on real rows.
  */
 
-export type CredentialAnchor = { readonly clientId: string | null; readonly projectId: string | null };
+export type VaultAnchor = { readonly clientId: string | null; readonly projectId: string | null };
 
 /** True when `scope` reaches `anchor` (a pure check over a resolved scope). */
-export function anchorInScope(scope: ScopeResolution, anchor: CredentialAnchor): boolean {
+export function anchorInScope(scope: ScopeResolution, anchor: VaultAnchor): boolean {
   if (scope.all) return true;
   if (anchor.projectId !== null) return scope.projectIds.includes(anchor.projectId);
   if (anchor.clientId !== null) return scope.directClientIds.includes(anchor.clientId);
   return false; // the agency's own: tenant-wide scope only (C49)
 }
 
-export async function assertCredentialInScope(
+export async function assertAnchorInScope(
   tx: TenantDb,
   actor: MemberActor,
-  anchor: CredentialAnchor,
+  anchor: VaultAnchor,
 ): Promise<ScopeResolution> {
   const scope = await resolveScope(tx, actor);
   if (!anchorInScope(scope, anchor)) deny("NOT_FOUND");
@@ -51,7 +52,7 @@ export async function assertCredentialInScope(
  * directly assigned client. A NULL client matches neither term, which is
  * what keeps the agency's own logins out of a scoped member's list.
  */
-export function credentialScopeWhere(scope: ScopeResolution) {
+export function anchorScopeWhere(scope: ScopeResolution) {
   if (scope.all) return {};
   return {
     OR: [

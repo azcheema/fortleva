@@ -281,6 +281,12 @@ export const AUDIT_EVENTS = {
   // somebody is probing.
   "vault.step_up_required": TENANT,
   "vault.reveal_budget_exceeded": TENANT,
+  // Phase 3V slice 87 — the asset registry. Metadata is the asset's
+  // client, project and type, and on an edit the NAMES of the fields that
+  // changed — never a value (a note is free text).
+  "asset.created": TENANT,
+  "asset.updated": TENANT,
+  "asset.deleted": TENANT,
   "budget.created": TENANT,
   "budget.changed": TENANT,
   "budget.alert_sent": TENANT,

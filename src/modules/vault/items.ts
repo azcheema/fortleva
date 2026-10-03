@@ -22,7 +22,7 @@ import {
   SECRET_FIELDS,
   type CredentialType,
 } from "./fields";
-import { assertCredentialInScope, credentialScopeWhere, type CredentialAnchor } from "./scope";
+import { assertAnchorInScope, anchorScopeWhere, type VaultAnchor } from "./scope";
 import { insertSecretRow, keepPreviousVersion, readSecret, readTotp, updateSecretRow } from "./secret-store";
 import { parseTotpInput } from "./totp";
 
@@ -133,7 +133,7 @@ async function resolveNewAnchor(
   tx: TenantDb,
   ctx: VaultCtx,
   input: { clientId?: unknown; projectId?: unknown },
-): Promise<CredentialAnchor> {
+): Promise<VaultAnchor> {
   const tenantId = ctx.tenantId;
   const projectId = input.projectId === undefined || input.projectId === null ? null : idOf(input.projectId, "projectId");
   const clientId = input.clientId === undefined || input.clientId === null ? null : idOf(input.clientId, "clientId");
@@ -144,7 +144,7 @@ async function resolveNewAnchor(
     });
     if (!project) return deny("NOT_FOUND");
     const anchor = { clientId: project.clientId, projectId };
-    await assertCredentialInScope(tx, ctx.actor, anchor);
+    await assertAnchorInScope(tx, ctx.actor, anchor);
     if (clientId !== null && clientId !== project.clientId) fail("CLIENT_MISMATCH");
     if (project.status === "ARCHIVED") fail("ARCHIVED");
     return anchor;
@@ -153,12 +153,12 @@ async function resolveNewAnchor(
     const client = await tx.client.findFirst({ where: { tenantId, id: clientId }, select: { status: true } });
     if (!client) return deny("NOT_FOUND");
     const anchor = { clientId, projectId: null };
-    await assertCredentialInScope(tx, ctx.actor, anchor);
+    await assertAnchorInScope(tx, ctx.actor, anchor);
     if (client.status === "ARCHIVED") fail("ARCHIVED");
     return anchor;
   }
   const anchor = { clientId: null, projectId: null };
-  await assertCredentialInScope(tx, ctx.actor, anchor);
+  await assertAnchorInScope(tx, ctx.actor, anchor);
   return anchor;
 }
 
@@ -265,7 +265,7 @@ export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): 
     await enterVault(tx, ctx, "credential:view");
     const scope = await resolveScope(tx, ctx.actor);
     return tx.credentialItem.findMany({
-      where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null, ...anchorWhere }, credentialScopeWhere(scope)] },
+      where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null, ...anchorWhere }, anchorScopeWhere(scope)] },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: listingSelect,
     });
@@ -301,7 +301,7 @@ export async function listAllCredentials(ctx: VaultCtx): Promise<{
     // every other list (slice 86's security review).
     const own = scope.all
       ? await tx.credentialItem.findMany({
-          where: { AND: [{ ...live, clientId: null }, credentialScopeWhere(scope)] },
+          where: { AND: [{ ...live, clientId: null }, anchorScopeWhere(scope)] },
           orderBy: [{ name: "asc" }, { id: "asc" }],
           take: over,
           select: listingSelect,
@@ -311,7 +311,7 @@ export async function listAllCredentials(ctx: VaultCtx): Promise<{
       own.length >= over
         ? []
         : await tx.credentialItem.findMany({
-            where: { AND: [{ ...live, clientId: { not: null } }, credentialScopeWhere(scope)] },
+            where: { AND: [{ ...live, clientId: { not: null } }, anchorScopeWhere(scope)] },
             orderBy: [{ client: { name: "asc" } }, { clientId: "asc" }, { name: "asc" }, { id: "asc" }],
             take: over - own.length,
             select: listingSelect,
@@ -345,7 +345,7 @@ export async function vaultIndex(ctx: VaultCtx): Promise<VaultIndex> {
     const scope = await resolveScope(tx, ctx.actor);
     const groups = await tx.credentialItem.groupBy({
       by: ["clientId"],
-      where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null }, credentialScopeWhere(scope)] },
+      where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null }, anchorScopeWhere(scope)] },
       _count: { _all: true },
     });
     const count = new Map(groups.map((g) => [g.clientId, g._count._all]));
@@ -372,7 +372,7 @@ export async function getCredential(ctx: VaultCtx, credentialId: string): Promis
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await enterVault(tx, ctx, "credential:view");
     const anchor = await liveAnchor(tx, ctx.tenantId, id);
-    await assertCredentialInScope(tx, ctx.actor, anchor);
+    await assertAnchorInScope(tx, ctx.actor, anchor);
     return tx.credentialItem.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id }, select: viewSelect });
   });
 }
@@ -421,7 +421,7 @@ export async function updateCredential(
     guarded(async () => {
       await enterVault(tx, ctx, "credential:edit");
       const anchor = await liveAnchor(tx, ctx.tenantId, id);
-      await assertCredentialInScope(tx, ctx.actor, anchor);
+      await assertAnchorInScope(tx, ctx.actor, anchor);
       const current = await tx.credentialItem.findFirstOrThrow({
         where: { tenantId: ctx.tenantId, id },
         select: viewSelect,
@@ -484,7 +484,7 @@ export async function replaceCredentialSecret(
         guarded(async () => {
           await enterVault(tx, ctx, "credential:edit");
           const anchor = await liveAnchor(tx, ctx.tenantId, id);
-          await assertCredentialInScope(tx, ctx.actor, anchor);
+          await assertAnchorInScope(tx, ctx.actor, anchor);
           const patch = normalizeSecretPatch(anchor.type, input.secret);
           const currentView = () =>
             tx.credentialItem.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id }, select: viewSelect });
@@ -611,7 +611,7 @@ export async function deleteCredential(ctx: VaultCtx, credentialId: string): Pro
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await enterVault(tx, ctx, "credential:delete");
     const anchor = await liveAnchor(tx, ctx.tenantId, id);
-    await assertCredentialInScope(tx, ctx.actor, anchor);
+    await assertAnchorInScope(tx, ctx.actor, anchor);
     const written = await tx.credentialItem.updateMany({
       where: { id, tenantId: ctx.tenantId, deletedAt: null },
       data: { deletedAt: new Date(), updatedByMemberId: ctx.actor.memberId },

@@ -16,7 +16,7 @@ export async function generateMetadata({
   return { title: client.name };
 }
 
-/** /clients/[id] shell: name + status, tabs Overview · Projects · Contacts · Files · Agreements · Vault (UI.md §3.1). */
+/** /clients/[id] shell: name + status, tabs Overview · Projects · Contacts · Files · Agreements · Vault · Assets (UI.md §3.1). */
 export default async function ClientLayout({
   params,
   children,
@@ -42,6 +42,9 @@ export default async function ClientLayout({
     ...(client.caps.viewServices ? [{ href: `${base}/agreements`, label: t("tabs.agreements") }] : []),
     // 3V: the client's logins and keys, behind the vault's own door (C52).
     ...(client.caps.viewCredentials ? [{ href: `${base}/vault`, label: t("tabs.vault") }] : []),
+    // 3V: the client's domains, hosting, certificates and licences — not
+    // behind the vault's door, since nothing on it is a secret.
+    ...(client.caps.viewAssets ? [{ href: `${base}/assets`, label: t("tabs.assets") }] : []),
   ];
 
   return (

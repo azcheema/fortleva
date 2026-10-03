@@ -99,7 +99,8 @@ export function normalizeSecretPatch(type: CredentialType, raw: unknown): Record
   return Object.fromEntries(allowed.filter((k) => k in out).map((k) => [k, out[k] as string | null]));
 }
 
-const trimmedOrNull = (raw: unknown, max: number, what: string): string | null => {
+/** A trimmed string within `max`, or null for nothing; anything else is refused. Shared with `asset-fields.ts`. */
+export const trimmedOrNull = (raw: unknown, max: number, what: string): string | null => {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "string") fail("INVALID_INPUT", `${what} must be a string`);
   const v = (raw as string).trim();
@@ -116,6 +117,9 @@ export function normalizeName(raw: unknown): string {
 
 export const normalizeUsername = (raw: unknown): string | null => trimmedOrNull(raw, USERNAME_MAX, "username");
 export const normalizeNotes = (raw: unknown): string | null => trimmedOrNull(raw, NOTES_MAX, "notes");
+
+/** An `@` in the authority — the pattern `client_asset_url_http` refuses. */
+const USERINFO = /^[A-Za-z]+:\/\/[^/?#]*@/;
 
 /**
  * http(s) only: the URL is rendered as a link on the member's screen, and
@@ -139,6 +143,11 @@ export function normalizeUrl(raw: unknown): string | null {
   // field every credential:view holder lists and the export carries — the
   // likeliest way a secret ends up outside the ciphertext (both reviews).
   if (parsed.username !== "" || parsed.password !== "") fail("INVALID_INPUT", "url must not carry a username or password");
+  // …and an `@` anywhere before the path, even one the parser reads
+  // another way (`https://@host`, `https://a\@host`): the asset table's
+  // CHECK refuses exactly this pattern, and the service must refuse it
+  // first, with a message (slice 87's migration review).
+  if (USERINFO.test(v)) fail("INVALID_INPUT", "url must not carry a username or password");
   return v;
 }
 

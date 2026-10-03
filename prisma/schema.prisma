@@ -313,6 +313,7 @@ model Tenant {
   credentialItems    CredentialItem[]
   credentialSecrets  CredentialSecret[]
   credentialVersions CredentialVersion[]
+  clientAssets       ClientAsset[]
 
   @@map("tenant")
 }
@@ -664,6 +665,7 @@ model Client {
   timeReports          TimeReport[]
   projectUpdates       ProjectUpdate[]
   credentials          CredentialItem[]
+  assets               ClientAsset[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -984,6 +986,7 @@ model Project {
   updates        ProjectUpdate[]
   // Phase 3V:
   credentials    CredentialItem[]
+  assets         ClientAsset[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -2742,4 +2745,83 @@ model CredentialVersion {
 
   @@unique([tenantId, credentialId, version])
   @@map("credential_version")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// 6.17 ASSETS (Phase 3V slice 87) — module `vault`. The client's asset
+// registry: domains, hosting, DNS zones, SSL certificates, mailboxes,
+// CMS/apps, third-party services, licences — what the agency looks
+// after for the client, with renewal dates and costs. NON-SECRET by
+// contract: a password or a licence KEY is a credential (the vault),
+// never an asset field, and assets are NOT behind the vault's door.
+// Feeds the expirations feed (slice 88). Migration
+// 20261003120000_client_asset.
+// ───────────────────────────────────────────────────────────────────
+
+enum AssetType {
+  DOMAIN
+  HOSTING
+  DNS_ZONE
+  SSL_CERT
+  EMAIL
+  CMS_APP
+  THIRD_PARTY_SERVICE
+  LICENSE
+  CUSTOM
+
+  @@map("asset_type")
+}
+
+/// Set by a person, never derived: "expiring" and "expired" are computed
+/// from `expiresAt` where they are shown, so they cannot go stale between
+/// job runs (DATA_MODEL §6.17's EXPIRING/EXPIRED were dropped, slice 87).
+enum AssetStatus {
+  ACTIVE // in use — on the expirations feed when it has a date
+  RETIRED // kept for the record (a moved domain, a cancelled plan); off the feed
+
+  @@map("asset_status")
+}
+
+/// ClientAsset — class B, clientScoped (`projectId` is an anchor and a
+/// filter, never a portal gate, so no `portal_enabled`). Scope follows
+/// the vault's anchor rules: a project's asset on the project axis, a
+/// client-level one (`projectId` NULL) for DIRECT client assignment only
+/// (AUTHZ §4). `fields` holds the type's few extra facts (nameservers,
+/// plan, seats…), validated per type by zod in `asset-fields.ts`.
+/// Visibility is INTERNAL in v1 (`client_asset_internal_only`): no portal
+/// surface shows assets yet. A renewal cost and its currency are set or
+/// cleared together (CHECK).
+model ClientAsset {
+  id                String      @id @default(uuid(7))
+  tenantId          String      @map("tenant_id")
+  clientId          String      @map("client_id")
+  projectId         String?     @map("project_id") // anchor/filter; its client must be clientId (trigger)
+  type              AssetType
+  name              String
+  provider          String? // the registrar, host or vendor
+  url               String? // http(s) only (service + CHECK)
+  identifier        String? // the domain name, account id, certificate serial…
+  status            AssetStatus @default(ACTIVE)
+  expiresAt         DateTime?   @map("expires_at") @db.Timestamptz(6) // a renewal DATE, stored as UTC midnight
+  autoRenew         Boolean?    @map("auto_renew") // NULL = not known
+  renewalCost       Decimal?    @map("renewal_cost") @db.Decimal(12, 2)
+  currency          String?     @db.Char(3)
+  fields            Json        @default("{}") // per type, zod-validated (asset-fields.ts)
+  notes             String? // NON-SECRET notes
+  tags              String[]    @default([])
+  visibility        Visibility  @default(INTERNAL)
+  createdByMemberId String?     @map("created_by_member_id") // attribution, no FK
+  updatedByMemberId String?     @map("updated_by_member_id") // attribution, no FK
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  client  Client   @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict)
+  project Project? @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, clientId, visibility])
+  @@index([tenantId, projectId])
+  @@index([tenantId, expiresAt]) // the expirations feed (slice 88)
+  @@map("client_asset")
 }
