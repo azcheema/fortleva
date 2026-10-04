@@ -135,19 +135,40 @@ export const FINANCE_DEFAULTS: FinancePreferences = { costRatesEnabled: false };
 
 /**
  * Vault (Phase 3V — AUTHZ.md §5's preference table, plan §3.4). The other
- * four `vault.*` keys land with the slices that build their surfaces.
+ * two `vault.*` keys land with the slices that build their surfaces.
  */
 export type VaultPreferences = {
   /** A Reveal, Copy or TOTP code needs a second factor this recent (minutes). */
   stepUpMinutes: number;
   /** Reveals + copies + codes one member may take per rolling hour. */
   revealBudgetPerHour: number;
+  /** The longest a share link may live (hours; slice 90). The database caps it at 7 days whatever this says. */
+  shareLinkMaxTtlHours: number;
+  /** Share links on or off for the whole workspace (slice 90; CP4: on). */
+  allowExternalShareLinks: boolean;
+  /**
+   * When share links were last switched OFF (slice 90, the security
+   * review's medium): every link made before this moment is dead for good,
+   * so switching links back on never revives one that was live when they
+   * were stopped. Written only by the preference service, on the true →
+   * false change, from the database's clock; never part of a patch.
+   */
+  shareLinksStoppedAt: Date | null;
 };
 export const VAULT_PREF_KEYS: Readonly<Record<keyof VaultPreferences, string>> = {
   stepUpMinutes: "vault.stepUpMinutes",
   revealBudgetPerHour: "vault.revealBudgetPerHour",
+  shareLinkMaxTtlHours: "vault.shareLinkMaxTtlHours",
+  allowExternalShareLinks: "vault.allowExternalShareLinks",
+  shareLinksStoppedAt: "vault.shareLinksStoppedAt",
 };
-export const VAULT_DEFAULTS: VaultPreferences = { stepUpMinutes: 10, revealBudgetPerHour: 30 };
+export const VAULT_DEFAULTS: VaultPreferences = {
+  stepUpMinutes: 10,
+  revealBudgetPerHour: 30,
+  shareLinkMaxTtlHours: 168,
+  allowExternalShareLinks: true,
+  shareLinksStoppedAt: null,
+};
 /**
  * Bounds the parser enforces (a stored value outside them falls back to
  * the default). The step-up window can only TIGHTEN the ✦ window every
@@ -157,6 +178,26 @@ export const VAULT_DEFAULTS: VaultPreferences = { stepUpMinutes: 10, revealBudge
  */
 export const VAULT_STEP_UP_MINUTES_RANGE = { min: 1, max: 15 } as const;
 export const VAULT_REVEAL_BUDGET_RANGE = { min: 1, max: 100 } as const;
+/**
+ * THE SHARE-LINK SWITCH'S ADVISORY LOCK KEY (slice 90's fix-pass review).
+ * Switching links OFF takes it EXCLUSIVELY and stamps
+ * `shareLinksStoppedAt` after it; making a link takes it SHARED before it
+ * reads the switch. So a link is either made before the switch-off begins
+ * stamping (and is stopped by the stamp, which is later than its birth),
+ * or waits for the switch-off to commit and is then refused — links are
+ * off, or, if they were switched on again meanwhile, its transaction began
+ * before the stamp (`createShareLink` checks) — never a link born while
+ * the switch was going off that escapes the stamp. The exclusive wait has
+ * no `lock_timeout`: switching is a rare owner act, and links being made
+ * meanwhile wait out their own bounded attempts and answer VAULT_BUSY. One
+ * key per tenant; the single-argument 64-bit space every
+ * `pg_advisory_xact_lock(hashtext(…))` in the product shares
+ * (`src/modules/vault/budget.ts` says why that is acceptable).
+ */
+export const shareSwitchLockKey = (tenantId: string): string => `vault_share_switch:${tenantId}`;
+
+/** A share link lives an hour at least and seven days at most (CP4; the table's CHECK says 7 days too). */
+export const VAULT_SHARE_TTL_HOURS_RANGE = { min: 1, max: 168 } as const;
 
 const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance" | "vault"> = {
   timezone: "Europe/Stockholm",
@@ -187,6 +228,13 @@ export function materializePreferences(
   const intIn = (key: string, range: { min: number; max: number }, dflt: number): number => {
     const v = map.get(key);
     return typeof v === "number" && Number.isInteger(v) && v >= range.min && v <= range.max ? v : dflt;
+  };
+  /** An ISO instant, or null for anything else. */
+  const instant = (key: string): Date | null => {
+    const v = map.get(key);
+    if (typeof v !== "string") return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
   };
   const hours = (key: string, dflt: number): number => {
     const v = map.get(key);
@@ -219,6 +267,13 @@ export function materializePreferences(
         VAULT_REVEAL_BUDGET_RANGE,
         VAULT_DEFAULTS.revealBudgetPerHour,
       ),
+      shareLinkMaxTtlHours: intIn(
+        VAULT_PREF_KEYS.shareLinkMaxTtlHours,
+        VAULT_SHARE_TTL_HOURS_RANGE,
+        VAULT_DEFAULTS.shareLinkMaxTtlHours,
+      ),
+      allowExternalShareLinks: bool(VAULT_PREF_KEYS.allowExternalShareLinks, VAULT_DEFAULTS.allowExternalShareLinks),
+      shareLinksStoppedAt: instant(VAULT_PREF_KEYS.shareLinksStoppedAt),
     },
   };
 }

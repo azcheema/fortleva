@@ -887,10 +887,18 @@ describe("the door — the whole vault is locked, the list included (C52 (a))", 
   });
 
   it("openVault draws exactly the controls each template's services accept", async () => {
-    expect((await openVault(owner())).can).toEqual({ create: true, edit: true, delete: true, reveal: true });
-    expect((await openVault(manager())).can).toEqual({ create: true, edit: true, delete: true, reveal: true });
-    expect((await openVault(admin())).can).toEqual({ create: true, edit: true, delete: false, reveal: true });
-    expect((await openVault(employee())).can).toEqual({ create: true, edit: false, delete: false, reveal: false });
+    // `share` (slice 90): `credential:share` ✦ AND `credential:reveal` ✦, with share links on.
+    expect((await openVault(owner())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true });
+    expect((await openVault(manager())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true });
+    expect((await openVault(admin())).can).toEqual({ create: true, edit: true, delete: false, reveal: true, share: true });
+    expect((await openVault(employee())).can).toEqual({ create: true, edit: false, delete: false, reveal: false, share: false });
+    expect((await openVault(owner())).shareMaxHours).toBe(168);
+    await updatePreferences(owner(), { vault: { allowExternalShareLinks: false } });
+    try {
+      expect((await openVault(owner())).can.share).toBe(false);
+    } finally {
+      await updatePreferences(owner(), { vault: { allowExternalShareLinks: true } });
+    }
   });
 });
 

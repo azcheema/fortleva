@@ -20,3 +20,17 @@ export const SECURITY_HEADERS: readonly { readonly key: string; readonly value: 
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
   { key: "X-Frame-Options", value: "DENY" },
 ];
+
+/**
+ * A VAULT SHARE LINK'S PAGE (Phase 3V slice 90, `/portal/share/[token]`)
+ * carries its bearer token in its own URL, so no request it causes may
+ * send that URL on (`Referrer-Policy: no-referrer` — as a HEADER, which a
+ * streamed `<meta>` might come too late to be) and no crawler may keep it
+ * (`X-Robots-Tag`). The page is dynamic, so Next already answers it
+ * `no-store`; the security review's suggestion of a Cache-Control here is
+ * left to Next, which overwrites one set this way on a page.
+ */
+export const SHARE_PAGE_HEADERS: readonly { readonly key: string; readonly value: string }[] = [
+  { key: "Referrer-Policy", value: "no-referrer" },
+  { key: "X-Robots-Tag", value: "noindex, nofollow" },
+];

@@ -65,3 +65,24 @@ export {
   type VaultIndex,
 } from "./items";
 export { copyCredentialField, generateCredentialTotp, revealCredentialField, type RevealKind } from "./reveal";
+export {
+  createShareLink,
+  listShareLinks,
+  revokeShareLink,
+  SHARE_LIST_LIMIT,
+  SHARE_STEP_UP_MINUTES,
+  type CreatedShareLink,
+  type CreateShareLinkInput,
+  type ShareLinkStatus,
+  type ShareLinkView,
+} from "./share-links";
+export {
+  openShareLink,
+  previewShareLink,
+  sendShareCode,
+  type ShareCodeMail,
+  type ShareCodeOutcome,
+  type SharedSecret,
+  type ShareOpenOutcome,
+  type SharePreview,
+} from "./share-open";

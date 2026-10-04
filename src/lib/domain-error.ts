@@ -90,6 +90,11 @@ export type DomainErrorCode =
   // were spent (55P03) or which lost a deadlock, every attempt. Nothing was
   // revealed or written; "try again" is the truth and the whole remedy.
   | "VAULT_BUSY"
+  // Share links (Phase 3V slice 90 — src/modules/vault/share-links.ts):
+  // the workspace has them switched off (`vault.allowExternalShareLinks`),
+  // and a revoke of a link that has already been opened or revoked.
+  | "SHARE_LINKS_OFF"
+  | "SHARE_LINK_CLOSED"
   // An owner's reset / sign-out of a teammate (slice 84, C50 —
   // src/auth/member-reset.ts): aimed at themselves; at a console
   // principal, whose sign-in is the operator's; a reset of somebody who

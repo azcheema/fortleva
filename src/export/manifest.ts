@@ -41,6 +41,11 @@ export const EXPORT_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>
   // (`credential:export`, a later slice), never a side effect of this one.
   credentialSecret: ["secretCiphertext", "totpSecretCiphertext"],
   credentialVersion: ["secretCiphertext"],
+  // 3V slice 90: a share link's token and code HASHES are its live keys
+  // (the code's is keyed, but the export is not where to test that); the
+  // rest of the row — who, which login, when, opened or not — is the
+  // tenant's record and leaves with it.
+  credentialShareLink: ["tokenHash", "codeHash"],
 };
 
 /**

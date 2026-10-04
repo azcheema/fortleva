@@ -8,9 +8,16 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 108 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 — bumped deliberately 2026-10-03)", () => {
-    expect(PERMISSIONS).toHaveLength(108);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(108);
+  it("holds exactly 109 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 — bumped deliberately 2026-10-04)", () => {
+    expect(PERMISSIONS).toHaveLength(109);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(109);
+  });
+
+  it("credential:share is vault-module, ✦, and seeded C M A — never the employee template (slice 90)", () => {
+    const def = PERMISSIONS.find((p) => p.code === "credential:share");
+    expect(def?.seeded).toEqual(["owner", "manager", "admin"]);
+    expect(def?.requiresMfa).toBe(true);
+    expect(def?.module).toBe("vault");
   });
 
   it("the asset codes are vault-module, never ✦, and seeded C M A E / C M A / C M (slice 87)", () => {
@@ -80,6 +87,8 @@ describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
         "rate:manage_cost",
         // 3V slice 1 — reveal moves plaintext (decision 13; AUTHZ.md §7.5)
         "credential:reveal",
+        // 3V slice 90 — a share link hands a secret to someone outside (CP4: always step up)
+        "credential:share",
         // slice 84 — puts a teammate's account back on the password alone (C50)
         "member:reset_two_factor",
       ].sort(),

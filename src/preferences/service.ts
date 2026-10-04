@@ -22,6 +22,8 @@ import {
   TOGGLEABLE_MODULES,
   VAULT_PREF_KEYS,
   VAULT_REVEAL_BUDGET_RANGE,
+  VAULT_SHARE_TTL_HOURS_RANGE,
+  shareSwitchLockKey,
   VAULT_STEP_UP_MINUTES_RANGE,
   WEEK_STARTS,
   type TenantPreferences,
@@ -103,12 +105,26 @@ const patchSchema = z
       .object({
         stepUpMinutes: z.number().int().min(VAULT_STEP_UP_MINUTES_RANGE.min).max(VAULT_STEP_UP_MINUTES_RANGE.max),
         revealBudgetPerHour: z.number().int().min(VAULT_REVEAL_BUDGET_RANGE.min).max(VAULT_REVEAL_BUDGET_RANGE.max),
+        shareLinkMaxTtlHours: z
+          .number()
+          .int()
+          .min(VAULT_SHARE_TTL_HOURS_RANGE.min)
+          .max(VAULT_SHARE_TTL_HOURS_RANGE.max),
+        allowExternalShareLinks: z.boolean(),
       })
       .partial(),
   })
   .partial();
 
 export type PreferencePatch = z.infer<typeof patchSchema>;
+
+/** The vault keys a patch may write; `shareLinksStoppedAt` is this service's own stamp. */
+const PATCHABLE_VAULT_KEYS = [
+  "stepUpMinutes",
+  "revealBudgetPerHour",
+  "shareLinkMaxTtlHours",
+  "allowExternalShareLinks",
+] as const satisfies readonly (keyof NonNullable<PreferencePatch["vault"]>)[];
 
 async function upsertPreference(
   tx: TenantDb,
@@ -159,6 +175,21 @@ export async function updatePreferences(
     if (patch.vault !== undefined && Object.keys(patch.vault).length > 0) {
       await requireRecentMfa(ctx.actor, STEP_UP_WINDOW_MINUTES);
     }
+    // Turning share links ON is a privilege decision, not a settings tweak
+    // (AUTHZ.md §5: `vault.allowExternalShareLinks` sits under
+    // `settings:manage_modules` ✦ as well). Turning them OFF is the
+    // incident's direction and stays with `settings:edit`, so whoever is
+    // looking after the settings can stop every link at once (the fix-pass
+    // review: gating both ways kept an admin from pulling the plug).
+    if (patch.vault?.allowExternalShareLinks === true) {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "settings:manage_modules");
+    }
+    // Any change of the switch serialises with every link being made
+    // (`shareSwitchLockKey`'s note): taken here, before the switch is read.
+    if (patch.vault?.allowExternalShareLinks !== undefined) {
+      // `$executeRaw`: the lock returns `void`, which `$queryRaw` cannot read.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${shareSwitchLockKey(ctx.tenantId)}))`;
+    }
     const changed: string[] = [];
     if (patch.defaultLocale !== undefined) {
       const t = await tx.tenant.findFirst({
@@ -203,9 +234,28 @@ export async function updatePreferences(
       if (value === undefined) continue;
       if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
     }
-    for (const [field, key] of Object.entries(VAULT_PREF_KEYS) as [keyof typeof VAULT_PREF_KEYS, string][]) {
+    for (const field of PATCHABLE_VAULT_KEYS) {
+      const key = VAULT_PREF_KEYS[field];
       const value = patch.vault?.[field];
       if (value === undefined) continue;
+      // SWITCHING SHARE LINKS OFF STOPS EVERY LINK FOR GOOD (slice 90, the
+      // security review's medium). The switch is read on every visit, so
+      // without this an agency that stopped links in an incident and turned
+      // them on again a day later would revive every one still in date. The
+      // moment is the DATABASE's, the clock the links' `created_at` is on —
+      // and the WALL clock read after the switch's lock (`clock_timestamp`,
+      // not `now()`, which is this transaction's start): every link that
+      // could have been made before the lock was ours has a `created_at`
+      // before it (the fix-pass review).
+      if (field === "allowExternalShareLinks" && value === false) {
+        if ((await readPreferences(tx, ctx.tenantId)).vault.allowExternalShareLinks) {
+          const rows = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
+          const stoppedAt = rows[0]?.now;
+          if (!stoppedAt) throw new Error("preferences: the database returned no clock");
+          await upsertPreference(tx, ctx, VAULT_PREF_KEYS.shareLinksStoppedAt, stoppedAt.toISOString());
+          changed.push(VAULT_PREF_KEYS.shareLinksStoppedAt);
+        }
+      }
       if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
     }
     return changed;

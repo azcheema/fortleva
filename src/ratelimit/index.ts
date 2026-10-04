@@ -259,6 +259,37 @@ const POLICIES = {
    * member id: the actor is authenticated.
    */
   "vault.reveal": { limit: 150, window: "1 h" },
+  /**
+   * THE SHARE PAGE (Phase 3V slice 90, `/portal/share/[token]`), per
+   * client ADDRESS — the visitor has no session and presents nothing but
+   * a token. Three questions, each spent through `allowStrict` (the
+   * in-process floor holds without Upstash), and NONE of them the
+   * authority: that is the link's own row, which allows at most five
+   * codes and five code checks in its life and fails closed
+   * (`src/modules/vault/share-open.ts`). These stop a scripted loop
+   * before it reaches the database.
+   *
+   *   `vault.share_open`   — resolving a token for display. Writes
+   *                          nothing; bounds the reads. Sized above any
+   *                          walk's visits for the reason
+   *                          `portal.invite_preview` gives.
+   *   `vault.share_code`   — mailing a code (each send is a mail to a
+   *                          real person, which is the harm to bound).
+   *   `vault.share_verify` — checking a code: SECURITY.md §4's 20 an
+   *                          hour per address.
+   *
+   * And one keyed on the RECIPIENT, not the visitor (the security review):
+   *   `vault.share_code_to` — codes mailed to one email address across
+   *                          every link made for it; five per link would
+   *                          otherwise let ten links send fifty mails to one
+   *                          person in the agency's name. The subject is an
+   *                          email address, HMAC'd before Upstash sees it
+   *                          (`subjectDigest`) as every subject is.
+   */
+  "vault.share_open": { limit: 120, window: "1 h" },
+  "vault.share_code": { limit: 20, window: "1 h" },
+  "vault.share_verify": { limit: 20, window: "1 h" },
+  "vault.share_code_to": { limit: 6, window: "1 h" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;
 
 export type RateLimitResult = {

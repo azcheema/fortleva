@@ -88,6 +88,18 @@ const PORTAL_INVITE_PREFIX = "/portal/invite/";
 const PORTAL_RESET = "/portal/reset-password";
 const PORTAL_RESET_PREFIX = `${PORTAL_RESET}/`;
 /**
+ * A VAULT SHARE LINK (Phase 3V slice 90, `/portal/share/[token]`): the
+ * person it was made for is somebody outside the agency, with no session
+ * on any plane — often not a contact at all. A prefix for the reason
+ * `PORTAL_INVITE_PREFIX` gives (the token is a path segment; the slash
+ * anchors it), and like that one it opens the page's Server Actions too —
+ * mailing a code and checking it — which is why both spend through
+ * `allowStrict`, and why their authority is the link's own row, which
+ * allows five codes and five checks in its life. Below the host/plane
+ * branches, so the ops host sweeps it under /ops and 404s it.
+ */
+const PORTAL_SHARE_PREFIX = "/portal/share/";
+/**
  * Member INVITATION acceptance (`/invite/[token]`), a prefix for the
  * reason `PORTAL_INVITE_PREFIX` gives — and, like it, it opens the page's
  * Server Action too, which needs a member session and meters itself
@@ -259,7 +271,8 @@ export function proxy(request: NextRequest): NextResponse {
     pathname.startsWith(MEMBER_RESET_PREFIX) ||
     pathname.startsWith(CONFIRM_EMAIL_PREFIX) ||
     pathname.startsWith(PORTAL_INVITE_PREFIX) ||
-    pathname.startsWith(PORTAL_RESET_PREFIX)
+    pathname.startsWith(PORTAL_RESET_PREFIX) ||
+    pathname.startsWith(PORTAL_SHARE_PREFIX)
   ) {
     return pass();
   }

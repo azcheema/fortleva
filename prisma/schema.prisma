@@ -315,6 +315,7 @@ model Tenant {
   credentialVersions CredentialVersion[]
   clientAssets       ClientAsset[]
   expirationReminders ExpirationReminderSent[]
+  credentialShareLinks CredentialShareLink[]
 
   @@map("tenant")
 }
@@ -2693,10 +2694,11 @@ model CredentialItem {
   tenant   Tenant              @relation(fields: [tenantId], references: [id])
   client   Client?             @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict)
   project  Project?            @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict)
-  secret   CredentialSecret?
-  versions CredentialVersion[]
+  secret     CredentialSecret?
+  versions   CredentialVersion[]
+  shareLinks CredentialShareLink[]
 
-  @@unique([tenantId, id]) // composite-FK target (secret, versions)
+  @@unique([tenantId, id]) // composite-FK target (secret, versions, share links)
   @@index([tenantId, clientId, visibility])
   @@index([tenantId, projectId])
   @@index([tenantId, expiresAt])
@@ -2746,6 +2748,53 @@ model CredentialVersion {
 
   @@unique([tenantId, credentialId, version])
   @@map("credential_version")
+}
+
+/// CredentialShareLink — CLASS A (portal_deny), Phase 3V slice 90. A
+/// view-once link to ONE secret field of one login, for somebody outside
+/// the agency. The URL carries `<tenantId>.<random>`; only the sha256 of
+/// the random part is stored (`tokenHash`), so the table leaks nothing
+/// usable. Resolved under `withTenant(tenantId, {type:'system'})` — never
+/// `withPlatform` — and opened only with a 6-digit code mailed to
+/// `recipientEmail` (always: founder decision C52 (k) — a portal password
+/// alone opens no secret). The value is decrypted at the moment of
+/// viewing, and only while the login's secret is still `secretVersion`.
+/// Every bound is the database's: at most 5 codes and 5 code checks per
+/// link, a lifetime of at most 168 hours from a `createdAt` the guard
+/// holds to NOW, `viewedAt` / `revokedAt` one-way, and who writes which
+/// column (a member makes and revokes, as themselves; only the share
+/// page's SYSTEM principal sends, checks and opens) — the
+/// `credential_share_link_guard` trigger. No secret is ever stored here,
+/// and a code only as an HMAC under a key the database never holds.
+/// src/modules/vault/share-links.ts and share-open.ts. Migration
+/// 20261004120000_credential_share_link.
+model CredentialShareLink {
+  id                String    @id @default(uuid(7))
+  tenantId          String    @map("tenant_id")
+  credentialId      String    @map("credential_id")
+  tokenHash         String    @unique @map("token_hash") // sha256 hex of the token's random part
+  field             String // the ONE secret field shared (a key of SECRET_FIELDS)
+  includeUsername   Boolean   @default(true) @map("include_username")
+  recipientEmail    String    @map("recipient_email") // lowercase; where the code goes
+  secretVersion     Int       @map("secret_version") // CredentialSecret.version when shared
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(6) // <= createdAt + 168 hours (CHECK)
+  codeHash          String?   @map("code_hash") // HMAC-SHA256(`${id}:${code}`) under shareCodeKey, the live code
+  codeExpiresAt     DateTime? @map("code_expires_at") @db.Timestamptz(6)
+  codeSentAt        DateTime? @map("code_sent_at") @db.Timestamptz(6)
+  codesSent         Int       @default(0) @map("codes_sent") // <= 5 (CHECK)
+  codeAttempts      Int       @default(0) @map("code_attempts") // every check counts; 5 ends the link
+  viewedAt          DateTime? @map("viewed_at") @db.Timestamptz(6) // one-way (trigger)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(6) // one-way (trigger)
+  revokedByMemberId String?   @map("revoked_by_member_id") // attribution, no FK
+  createdByMemberId String    @map("created_by_member_id") // attribution, no FK
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id])
+  item   CredentialItem @relation(fields: [tenantId, credentialId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, credentialId, createdAt]) // a login's links, newest first
+  @@index([expiresAt]) // the retention sweep (later)
+  @@map("credential_share_link")
 }
 
 // ───────────────────────────────────────────────────────────────────

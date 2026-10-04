@@ -114,6 +114,7 @@ export const rowAbilitiesOf = (open: OpenVault): VaultRowAbilities => ({
   edit: open.can.edit,
   delete: open.can.delete,
   reveal: open.can.reveal,
+  share: open.can.share ? { maxHours: open.shareMaxHours } : null,
 });
 
 /** "You can see what is stored here…" — drawn above a list for a member who may not reveal. */

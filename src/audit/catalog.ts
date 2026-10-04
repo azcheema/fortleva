@@ -281,6 +281,18 @@ export const AUDIT_EVENTS = {
   // somebody is probing.
   "vault.step_up_required": TENANT,
   "vault.reveal_budget_exceeded": TENANT,
+  // Phase 3V slice 90 — share links. Target: the LINK (CredentialShareLink),
+  // so one link's whole life reads as one thread; metadata names the
+  // credential and the field — never the token, the code, the address or a
+  // value. `shared` and `share_revoked` are a member's acts; the other three
+  // are the share page's, written by the SYSTEM principal with the visitor's
+  // ip and user agent from the request: a code mailed, a wrong code (with
+  // the attempt's number), and the one view.
+  "credential.shared": TENANT,
+  "credential.share_revoked": TENANT,
+  "credential.share_code_sent": TENANT,
+  "credential.share_code_refused": TENANT,
+  "credential.share_viewed": TENANT,
   // Phase 3V slice 87 — the asset registry. Metadata is the asset's
   // client, project and type, and on an edit the NAMES of the fields that
   // changed — never a value (a note is free text).

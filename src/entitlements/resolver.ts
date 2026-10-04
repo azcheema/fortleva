@@ -159,6 +159,36 @@ async function openModules(
   );
 }
 
+/**
+ * GATES 1–3 FOR ONE MODULE, WITH NO MEMBER TO ASK — the share page's
+ * question (Phase 3V slice 90, `src/modules/vault/share-open.ts`): is the
+ * vault open for this tenant at all? A link must die when the plan, the
+ * kill-switch or the tenant's own switch closes the vault, exactly as
+ * every member-plane door does.
+ *
+ * ONLY UNDER THE SYSTEM PRINCIPAL, and it refuses anything else rather
+ * than answering. `openModules` trusts what the transaction can read, and
+ * under a CONTACT principal all three tables read as empty, which it
+ * answers as "open" (its own note); a member principal has
+ * `requireAccess` for this. A wrong caller is a bug, so it throws. It asks
+ * the TRANSACTION which principal it is — the GUC every policy keys on —
+ * rather than importing `@/db/context`: this module sits in client
+ * components' import graphs (for its types and schema), and that file's
+ * `node:async_hooks` broke the browser build when it was imported here.
+ */
+export async function moduleOpenUnderSystem(
+  tx: TenantDb,
+  tenantId: string,
+  module: keyof Entitlements["modules"],
+): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ principal: string | null }[]>`
+    SELECT current_setting('app.principal', true) AS principal`;
+  if (rows[0]?.principal !== "system") {
+    throw new Error("moduleOpenUnderSystem: only a system-principal transaction may ask");
+  }
+  return (await openModules(tx, tenantId, [module])).has(module);
+}
+
 const MODULE_BY_CODE = new Map(PERMISSIONS.map((p) => [p.code, p.module]));
 
 /**

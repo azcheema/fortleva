@@ -259,6 +259,15 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("asset:view", "vault", "View a client's asset registry (domains, hosting, certificates, licences) and its renewal dates", CMAE),
   p("asset:manage", "vault", "Add and edit assets, their renewal dates and costs, and retire them", CMA),
   p("asset:delete", "vault", "Delete assets", CM),
+  // ── Phase 3V slice 90 (module `vault`, +1; catalog 108 → 109;
+  // TEMPLATE_VERSION 10, 2026-10-04) — AUTHZ.md §3.2's `credential:share`
+  // row, landing with the share links that enforce it
+  // (`src/modules/vault/share-links.ts`). ✦, and ALWAYS a fresh factor
+  // (AUTHZ.md §7.5, CP4: "always step-up for share"): the share form
+  // carries the member's authenticator code. Making a link also needs
+  // `credential:reveal` — a link to oneself would otherwise be a reveal
+  // that the reveal code never granted.
+  p("credential:share", "vault", "Create and revoke view-once share links to one secret field — always a fresh factor, audited", CMA, true),
 ];
 
 export type RoleTemplate = {
@@ -322,8 +331,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  * v9 (2026-10-03): +3 `vault` codes (asset:view, asset:manage,
  *     asset:delete — Phase 3V slice 87, the Assets tab). None is ✦, so
  *     clones gain them too; additive. The same rule as v6: a release
- *     carrying this bump MUST run `prisma/seed.ts`. */
-export const TEMPLATE_VERSION = 9;
+ *     carrying this bump MUST run `prisma/seed.ts`.
+ * v10 (2026-10-04): +1 `vault` code (credential:share ✦ — Phase 3V
+ *     slice 90, share links). C M A; as a ✦ code it reaches the
+ *     owner/manager/admin SYSTEM roles only, never a clone (AUTHZ.md
+ *     §3.5). The same rule as v6: a release carrying this bump MUST run
+ *     `prisma/seed.ts`. */
+export const TEMPLATE_VERSION = 10;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

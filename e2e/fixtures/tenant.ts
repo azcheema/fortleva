@@ -341,6 +341,17 @@ export function countMemberConfirmMails(email: string): number {
   return messagesTo(email, MEMBER_CONFIRM_LINK).length;
 }
 
+/**
+ * THE LAST SHARE-LINK CODE mailed to `email` (3V slice 90), read out of the
+ * dev outbox the way the recipient reads their mail. The share page mails
+ * it after its transaction commits, before it answers — but a caller polls
+ * anyway, as every outbox reader here does. English or Swedish, whichever
+ * the visitor's page was in.
+ */
+export function readShareCode(email: string): string | null {
+  return lastLinkTokenTo(email, /(?:Your code is|Din kod är) (\d{6})/);
+}
+
 /** The bodies of every message to `email` whose text matches `pattern`, oldest first. */
 function messagesTo(email: string, pattern: RegExp): string[] {
   const file = join(process.cwd(), ".dev-outbox", "outbox.jsonl");

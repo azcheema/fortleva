@@ -554,6 +554,50 @@
       "unavailableTitle": "Invitation not available",
       "unavailable": "This invitation cannot be used. Try again later, or ask your agency to send you a new link — and sign in instead if you have set your password already.",
       "signIn": "Sign in"
+    },
+    "portalShare": {
+      "metaTitle": "A login shared with you",
+      "eyebrow": "Shared login",
+      "title": "{tenant} has shared a login with you",
+      "subtitle": "To see it, ask for a code: we email it to the address this link was made for. The login can be shown once.",
+      "sendCode": "Email me a code",
+      "sending": "Sending…",
+      "sent": "A code is on its way to the address this link was made for. It works for 10 minutes.",
+      "haveCode": "I already have a code",
+      "code": "Code from the email",
+      "codeHint": "Six digits.",
+      "open": "Show the login",
+      "opening": "Checking…",
+      "resend": "Send a new code",
+      "onceNote": "The login is shown once. Have somewhere ready to keep it.",
+      "wait": "A code went out a moment ago. Check your email, or ask again in half a minute.",
+      "noCodes": "No more codes can be sent for this link. Use the last one, or ask whoever sent the link for a new one.",
+      "mailFailed": "We could not send the email just now. Try again in a minute.",
+      "busy": "That did not go through. Try again in a moment.",
+      "limited": "Too many tries from here. Try again later.",
+      "malformed": "Enter the six digits from the email.",
+      "noCode": "That code has expired, or none has been sent yet. Ask for a new one.",
+      "wrongCode": "That code is not right. {left, plural, one {# try left} other {# tries left}}.",
+      "deadTitle": "This link cannot be opened",
+      "dead": "It may have been opened already, have expired or have been withdrawn. Ask whoever sent it to you for a new link. If you have a client portal account with your agency, you can sign in instead.",
+      "signIn": "Sign in to the client portal",
+      "shown": {
+        "once": "This is the only time it is shown. Copy what you need now — when you leave or reload this page, it is gone.",
+        "name": "Login",
+        "url": "Web address",
+        "username": "Username",
+        "show": "Show",
+        "hide": "Hide",
+        "copy": "Copy",
+        "copyUsername": "Copy the username",
+        "copied": "Copied. It clears from your clipboard in 30 seconds.",
+        "copyFailed": "That could not be copied. Show it and copy it by hand."
+      },
+      "mail": {
+        "subject": "Your code for a login from {tenant}",
+        "body": "Your code is {code}\n\nIt works for {minutes} minutes, on the page where you asked for it. {tenant} has shared a login with you, and the link opens once.\n\nIf you did not ask for this code, you can ignore this email: nobody can open the link without it."
+      },
+      "addressBusy": "Many codes have gone to this address lately. Try again in an hour."
     }
   },
   "account": {
@@ -1294,7 +1338,9 @@
     "ACCOUNT_IS_YOURS": "That is your own account. Manage your sign-in on your Account page.",
     "ACCOUNT_IS_OPERATORS": "This person's sign-in is managed by Fortleva's operator, not from here.",
     "ACCOUNT_IN_OTHER_WORKSPACE": "This person also belongs to another Fortleva workspace, so their two-factor cannot be reset from here. Fortleva support can do it.",
-    "TWO_FACTOR_NOT_ENROLLED": "This person has no two-factor authentication to reset."
+    "TWO_FACTOR_NOT_ENROLLED": "This person has no two-factor authentication to reset.",
+    "SHARE_LINKS_OFF": "Share links are switched off for this workspace.",
+    "SHARE_LINK_CLOSED": "That link has already been opened or revoked."
   },
   "assignments": {
     "title": "Team",
@@ -3632,6 +3678,53 @@
       "addAgency": "Add one of our own logins",
       "partial": "{shown} of {count} shown here.",
       "showAll": "Show all {count}"
+    },
+    "share": {
+      "menu": "Share…",
+      "title": "Share {name}",
+      "description": "Make a link that shows one secret, once. You send the link yourself; when it is opened, we email a 6-digit code to the address you give here.",
+      "field": "What to share",
+      "fieldFixed": "What it shares: {field}",
+      "email": "Their email address",
+      "emailHint": "The code goes to this address, and only here.",
+      "lifetime": "Stops working after",
+      "lifetimes": {
+        "1": "1 hour",
+        "24": "1 day",
+        "72": "3 days",
+        "168": "7 days"
+      },
+      "includeUsername": "Include the username",
+      "code": "Your authenticator code",
+      "codeHint": "Sharing always asks for a fresh code — or a backup code.",
+      "enterCode": "Enter the 6-digit code from your authenticator app.",
+      "submit": "Create link",
+      "submitting": "Creating…",
+      "created": {
+        "link": "The link — shown only now",
+        "body": "Copy it now: it cannot be shown again. Send it to them yourself, by chat or email. When they open it, we email a 6-digit code to {email}. It opens once, and stops working {date}."
+      },
+      "copy": "Copy link",
+      "copiedShort": "Copied",
+      "copied": "Link copied.",
+      "copyFailed": "The link could not be copied. Select it and copy it by hand.",
+      "done": "Done",
+      "links": {
+        "title": "Links for this login",
+        "loading": "Loading…",
+        "empty": "No links yet."
+      },
+      "status": {
+        "waiting": "Not opened yet — works until {date}",
+        "viewed": "Opened {date}",
+        "revoked": "Revoked {date}",
+        "expired": "Expired {date}",
+        "locked": "Locked — too many wrong codes, or no codes left",
+        "changed": "Stopped — the secret has changed since",
+        "stopped": "Stopped — share links were switched off"
+      },
+      "revoke": "Revoke",
+      "revoked": "Link revoked. It can no longer be opened."
     }
   },
   "assets": {

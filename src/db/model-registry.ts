@@ -73,6 +73,7 @@ export const MODEL_CLASSES = {
     "credentialVersion",
     "clientAsset",
     "expirationReminderSent",
+    "credentialShareLink",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -170,6 +171,10 @@ export const RLS_CLASSES = {
     // Phase 3V slice 89 — the renewal reminders' dedupe (ids, a day, a
     // band): staff bookkeeping no contact has any business reading.
     "expirationReminderSent",
+    // Phase 3V slice 90 — share links: a token HASH, a code hash, the
+    // recipient's address and the counters. Read by members and by the
+    // share page's SYSTEM principal; a contact gets zero rows.
+    "credentialShareLink",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

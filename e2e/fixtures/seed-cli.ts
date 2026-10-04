@@ -204,6 +204,9 @@ const DBTEST_PREFIXES = [
   // `src/crypto/tenant-key-backfill.dbtest.ts`, `setupTenant("vkey")`.
   "vault-",
   "vkey-",
+  // Phase 3V slice 90, share links — `src/modules/vault/share.dbtest.ts`,
+  // `setupTenant("vlink")`.
+  "vlink-",
   // Phase 3 slice 72, the sharing UI — `src/modules/work/visibility.dbtest.ts`,
   // `setupTenant("vshare")`.
   "vshare-",
@@ -483,6 +486,11 @@ export type E2ESeed = {
   readonly vaultApiKeyName: string;
   /** One of the AGENCY'S OWN logins (no client — C49), for `/vault` (slice 86). */
   readonly vaultAgencyLoginName: string;
+  /**
+   * A LIVE SHARE LINK's token (3V slice 90) to the vault login's password,
+   * for the visual walk's share page. Never pressed: a visit previews only.
+   */
+  readonly vaultShareToken: string;
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -1208,7 +1216,7 @@ async function provision(seedFile: string): Promise<void> {
   const vaultCtx = { tenantId, actor: { memberId: vaultMember.id, mfa: { enrolled: true, verifiedAt: new Date() } } };
   const vaultLoginName = `E2E WordPress admin ${run}`;
   const vaultLoginPassword = `pw-${randomBytes(12).toString("base64url")}`;
-  await createCredential(vaultCtx, {
+  const vaultLogin = await createCredential(vaultCtx, {
     clientId,
     type: "LOGIN",
     name: vaultLoginName,
@@ -1224,6 +1232,22 @@ async function provision(seedFile: string): Promise<void> {
     name: vaultApiKeyName,
     secret: { apiKey: `pk_test_${run}`, apiSecret: `sk_test_${randomBytes(12).toString("base64url")}` },
   });
+  // 3V slice 90: ONE LIVE SHARE LINK to that login's password, made through
+  // the share service as the manager would (a fresh factor, `credential:
+  // share`), so the visual walk has a share page that stands still. A visit
+  // only previews — loading the page never mails a code or opens it — and
+  // no spec may press anything on it: `vault-share.spec.ts` makes its own.
+  const { createShareLink } = await import("../../src/modules/vault");
+  // Its OWN fresh factor: a share wants one no older than a minute, and
+  // `vaultCtx`'s was stamped before the two logins above were written.
+  const shareCtx = { tenantId, actor: { memberId: vaultMember.id, mfa: { enrolled: true, verifiedAt: new Date() } } };
+  const vaultShare = await createShareLink(shareCtx, vaultLogin.id, {
+    field: "password",
+    recipientEmail: `e2e-share-seed-${run}${EMAIL_DOMAIN}`,
+    expiresInHours: 168,
+    includeUsername: true,
+  });
+  const vaultShareToken = vaultShare.url.slice(vaultShare.url.indexOf("/portal/share/") + "/portal/share/".length);
   // Slice 86: one of the agency's OWN logins — no client, no project — which
   // the manager reaches because their scope is the whole tenant (C49).
   const vaultAgencyLoginName = `E2E Registrar ${run}`;
@@ -1556,6 +1580,7 @@ async function provision(seedFile: string): Promise<void> {
     vaultLoginPassword,
     vaultApiKeyName,
     vaultAgencyLoginName,
+    vaultShareToken,
   };
 
   mkdirSync(dirname(seedFile), { recursive: true });

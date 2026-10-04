@@ -1,19 +1,27 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
-import { field, has, runForm, type FormResult } from "@/lib/server-actions";
+import { verifyStepUpWithHeaders } from "@/auth/step-up";
+import { enrolUrl } from "@/authz/redirects";
+import { field, has, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   createCredential,
+  createShareLink,
   deleteCredential,
   isCredentialType,
+  listShareLinks,
   replaceCredentialSecret,
+  revokeShareLink,
   SECRET_FIELDS,
   updateCredential,
   type CredentialPatch,
+  type ShareLinkView,
 } from "@/modules/vault";
 
 import { vaultPathOf, vaultWhereOf } from "./surface";
@@ -35,7 +43,7 @@ import { vaultPathOf, vaultWhereOf } from "./surface";
 
 const uuid = z.uuid();
 
-const invalid = async (): Promise<FormResult> => ({
+const invalid = async (): Promise<{ ok: false; message: string }> => ({
   ok: false,
   message: (await getTranslations("common"))("invalidInput"),
 });
@@ -141,4 +149,94 @@ export async function deleteCredentialAction(surface: string, credentialId: stri
   });
   if (r.ok) revalidatePath(path);
   return r;
+}
+
+/** What the share form gets back: the link to copy — once — or why not. */
+export type ShareCreateState =
+  | { readonly ok: true; readonly url: string; readonly expiresAt: Date; readonly email: string }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * MAKE A SHARE LINK (slice 90). Sharing ALWAYS asks for a fresh factor
+ * (AUTHZ.md §7.5, CP4), so the form carries the member's authenticator
+ * code, verified HERE — through the product's one step-up door, on the
+ * member's step-up budget — immediately before the service runs; the
+ * service then wants a factor no older than a minute. The member's
+ * session is stamped by the verification, and the actor handed on carries
+ * that stamp (`requireTenantContext` read the session before it).
+ *
+ * The link comes back to this member ONCE: only its hash is kept. Nothing
+ * is revalidated — the page shows no links; the dialog re-reads its list.
+ */
+export async function createShareLinkAction(_prev: ShareCreateState | null, formData: FormData): Promise<ShareCreateState> {
+  const path = vaultPathOf(formData.get("surface"));
+  const credentialId = uuid.safeParse(formData.get("credentialId"));
+  const hours = Number(field(formData, "hours"));
+  const shareField = field(formData, "field");
+  const email = field(formData, "email");
+  if (
+    path === null ||
+    !credentialId.success ||
+    !Number.isInteger(hours) ||
+    hours < 1 ||
+    hours > 168 ||
+    shareField === null ||
+    shareField.length === 0 ||
+    shareField.length > 64 ||
+    email === null
+  ) {
+    return invalid();
+  }
+  // THE FREE CHECKS BEFORE THE CODE IS SPENT (the code review): the step-up
+  // below costs one of the member's six attempts in ten minutes, so a typo
+  // in the address must not reach it. The service checks all of this again.
+  if (!z.email().max(320).safeParse(email.trim().toLowerCase()).success) {
+    return { ok: false, message: (await getTranslations("domainErrors"))("EMAIL_INVALID") };
+  }
+  const t = await getTranslations("vault.share");
+  const code = (field(formData, "code") ?? "").trim();
+  if (code.length < 6 || code.length > 32) return { ok: false, message: t("enterCode") };
+
+  const { membership, actor } = await requireTenantContext();
+  const verified = await verifyStepUpWithHeaders(code, await headers());
+  if (!verified.ok) {
+    if (verified.reason === "no_session") redirect("/login");
+    if (verified.reason === "not_enrolled") redirect(enrolUrl(path));
+    const tStep = await getTranslations("account.stepUp");
+    return { ok: false, message: verified.reason === "rate_limited" ? tStep("tooManyAttempts") : tStep("mismatch") };
+  }
+  const ctx = {
+    tenantId: membership.tenantId,
+    actor: { ...actor, mfa: { enrolled: true, verifiedAt: verified.verifiedAt } },
+  };
+  const r = await runAction(path, () =>
+    createShareLink(ctx, credentialId.data, {
+      field: shareField,
+      recipientEmail: email,
+      expiresInHours: hours,
+      includeUsername: has(formData, "includeUsername"),
+    }),
+  );
+  if (!r.ok) return r;
+  return { ok: true, url: r.value.url, expiresAt: r.value.expiresAt, email: email.trim().toLowerCase() };
+}
+
+/** A login's share links, for the share dialog (read on open). */
+export async function listShareLinksAction(surface: string, credentialId: string): Promise<ActionResult<readonly ShareLinkView[]>> {
+  const path = vaultPathOf(surface);
+  if (path === null || !uuid.safeParse(credentialId).success) return invalid();
+  const ctx = await ctxOf();
+  return runAction(path, () => listShareLinks(ctx, credentialId));
+}
+
+/** End a link nobody has opened yet. */
+export async function revokeShareLinkAction(surface: string, linkId: string): Promise<FormResult> {
+  const path = vaultPathOf(surface);
+  if (path === null || !uuid.safeParse(linkId).success) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("vault.share");
+  return runForm(path, async () => {
+    await revokeShareLink(ctx, linkId);
+    return t("revoked");
+  });
 }

@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
-import { SECURITY_HEADERS } from "./src/config/security-headers";
+import { SECURITY_HEADERS, SHARE_PAGE_HEADERS } from "./src/config/security-headers";
 
 // Build parallelism knob for a memory-starved machine: `NEXT_BUILD_CPUS=2
 // pnpm build` caps the compile/static-generation workers (each is a Node
@@ -17,7 +17,11 @@ const nextConfig: NextConfig = {
   // Every path, every response: no page of the app may be framed
   // (src/config/security-headers.ts says why — the vault, first).
   headers() {
-    return Promise.resolve([{ source: "/:path*", headers: [...SECURITY_HEADERS] }]);
+    return Promise.resolve([
+      { source: "/:path*", headers: [...SECURITY_HEADERS] },
+      // A share link's page holds its token in its URL (slice 90).
+      { source: "/portal/share/:path*", headers: [...SHARE_PAGE_HEADERS] },
+    ]);
   },
   // CI already runs `next typegen && tsc --noEmit` over this exact
   // tsconfig project, in the isolation job that the e2e job `needs:`.

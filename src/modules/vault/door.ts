@@ -53,15 +53,28 @@ export type VaultAbilities = {
   readonly delete: boolean;
   /** `credential:reveal` ✦ — the eye, the copy and the TOTP code. */
   readonly reveal: boolean;
+  /**
+   * Share links (slice 90): `credential:share` ✦ AND `credential:reveal` ✦
+   * (`share-links.ts` asks both), with share links on for the workspace.
+   */
+  readonly share: boolean;
 };
 
 export type OpenVault = {
   /** When the window this member entered under closes — the page locks itself then. */
   readonly locksAt: Date;
   readonly can: VaultAbilities;
+  /** The longest a share link may live here (`vault.shareLinkMaxTtlHours`), for the share form's choices. */
+  readonly shareMaxHours: number;
 };
 
-const ABILITY_CODES = ["credential:create", "credential:edit", "credential:delete", "credential:reveal"] as const;
+const ABILITY_CODES = [
+  "credential:create",
+  "credential:edit",
+  "credential:delete",
+  "credential:reveal",
+  "credential:share",
+] as const;
 
 /**
  * The door itself, for a page: enter with `credential:view` (refused
@@ -70,7 +83,7 @@ const ABILITY_CODES = ["credential:create", "credential:edit", "credential:delet
  * where its service would accept the member — §3.1's "hidden, never
  * disabled".
  *
- * `credential:reveal` IS A ✦ CODE, which `heldAndAccessibleCodes` normally
+ * `credential:reveal` (and `credential:share`) ARE ✦ CODES, which `heldAndAccessibleCodes` normally
  * cannot answer (a stale factor reads as "not held"). Here it can: the door
  * has just proved a factor no older than `vault.stepUpMinutes`, which the
  * preference schema caps at 15 — the ✦ window `authorize()` applies — so
@@ -84,6 +97,7 @@ export async function openVault(ctx: VaultCtx): Promise<OpenVault> {
     // lock time must never be computed from nothing.
     if (!verifiedAt) return deny("MFA_REQUIRED", "step_up");
     const { accessible } = await heldAndAccessibleCodes(tx, ctx.tenantId, ctx.actor, ABILITY_CODES);
+    const prefs = await readPreferences(tx, ctx.tenantId);
     return {
       locksAt: new Date(verifiedAt.getTime() + stepUpMinutes * 60_000),
       can: {
@@ -91,7 +105,12 @@ export async function openVault(ctx: VaultCtx): Promise<OpenVault> {
         edit: accessible.has("credential:edit"),
         delete: accessible.has("credential:delete"),
         reveal: accessible.has("credential:reveal"),
+        share:
+          accessible.has("credential:share") &&
+          accessible.has("credential:reveal") &&
+          prefs.vault.allowExternalShareLinks,
       },
+      shareMaxHours: prefs.vault.shareLinkMaxTtlHours,
     };
   });
 }

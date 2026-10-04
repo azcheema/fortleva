@@ -235,3 +235,48 @@ describe("the database seam never reaches a browser module", () => {
     expect(pathToSeam(probe)).toEqual(["modules/work/portal-writes.ts", "db/index.ts"]);
   });
 });
+
+/**
+ * NOR ANY NODE BUILTIN (slice 90). The walk above watches the database
+ * seam, and that let one through: `src/entitlements/resolver.ts` — in
+ * client graphs for its schema and types — took a value import of
+ * `@/db/context`, whose `node:async_hooks` passed typecheck, ESLint and
+ * every unit test and then failed `pnpm build` with "the chunking context
+ * does not support external modules (request: node:async_hooks)". The
+ * same walk, asked for a `node:` specifier anywhere in a client module's
+ * graph, finds that in seconds instead of minutes into a build.
+ */
+const nodeBuiltinPath = (entry: string): string[] | null => {
+  const seen = new Set<string>([entry]);
+  const queue: { file: string; trail: string[] }[] = [{ file: entry, trail: [rel(entry)] }];
+  while (queue.length > 0) {
+    const { file, trail } = queue.shift()!;
+    for (const ref of moduleRefsOf(readFileSync(file, "utf8"), file)) {
+      if (!ref.bindsValue || ref.computed) continue;
+      if (ref.specifier.startsWith("node:")) return [...trail, ref.specifier];
+    }
+    for (const next of valueImportsOf(file)) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      if (isServerBoundary(next)) continue;
+      queue.push({ file: next, trail: [...trail, rel(next)] });
+    }
+  }
+  return null;
+};
+
+describe("no node builtin reaches a browser module", () => {
+  it("no `use client` module's import graph imports a `node:` specifier", () => {
+    const offences = clientEntries()
+      .map((entry) => nodeBuiltinPath(entry))
+      .filter((trail): trail is string[] => trail !== null)
+      .map((trail) => trail.join(" → "));
+    expect(offences).toEqual([]);
+  });
+
+  it("sees one when it is there (control)", () => {
+    // `db/context.ts` imports `node:async_hooks` — the very file that broke
+    // the build — so a walk started there must find it.
+    expect(nodeBuiltinPath(join(SRC, "db", "context.ts"))).toEqual(["db/context.ts", "node:async_hooks"]);
+  });
+});

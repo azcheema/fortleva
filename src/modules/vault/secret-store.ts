@@ -157,6 +157,20 @@ export async function readSecret(
   return { payload: parseSecret(json), version: row.version };
 }
 
+/**
+ * The live secret's VERSION only — no ciphertext read, nothing decrypted.
+ * A share link pins it when it is made (`share-links.ts`) and the share
+ * page compares it before showing anything (`share-open.ts`): a link
+ * shares the secret as it was, and a changed secret ends it.
+ */
+export async function readSecretVersion(tx: TenantDb, tenantId: string, credentialId: string): Promise<number | null> {
+  const row = await tx.credentialSecret.findFirst({
+    where: { tenantId, credentialId },
+    select: { version: true },
+  });
+  return row?.version ?? null;
+}
+
 /** The TOTP parameters of one credential, decrypted, or null when it has none. */
 export async function readTotp(tx: TenantDb, tenantId: string, credentialId: string): Promise<TotpParams | null> {
   const row = await tx.credentialSecret.findFirst({

@@ -11,7 +11,8 @@ import type { TenantDb } from "@/db";
  * authority behind it, on every call, whether or not Upstash exists. It
  * counts the member's OWN `credential.revealed | copied | totp_generated`
  * audit rows of the last hour — the rows each reveal writes in the same
- * transaction that decrypts — so there is no counter to drift, no second
+ * transaction that decrypts — and, since slice 90, `credential.shared`
+ * (a share link is a reveal by another door) — so there is no counter to drift, no second
  * clock, and nothing that can fail open: if the database cannot answer,
  * there is no reveal to make either.
  *
@@ -23,9 +24,11 @@ import type { TenantDb } from "@/db";
  * 64-bit key space every single-argument `pg_advisory_xact_lock` in the
  * product shares (`src/portal/contact-budget-lock.ts` says why that is
  * acceptable): the `vault_reveal:` prefix changes the hash input, and a
- * collision serialises two waiters and nothing more. Nothing else takes
- * this key, and the reveal takes no other advisory lock, so it can close
- * no cycle.
+ * collision serialises two waiters and nothing more. The reveal path and,
+ * since slice 90, `createShareLink` take this key — the latter after the
+ * share switch's SHARED lock and before a share lock on the login's row,
+ * always in that one order; the reveal takes no other lock, and nothing
+ * takes these in the other order, so no cycle can close.
  *
  * THE CLOCK is Postgres's — `now()`, the TRANSACTION's start, returned
  * by the statement that takes the lock — because the rows being counted
@@ -34,7 +37,17 @@ import type { TenantDb } from "@/db";
  * two more, never fewer: the safe direction.
  */
 
-export const REVEAL_ACTIONS = ["credential.revealed", "credential.copied", "credential.totp_generated"] as const;
+/**
+ * What counts against the hour. `credential.shared` since slice 90 (the
+ * security review): a share link to one's own address is a reveal by
+ * another door, so a tenant that lowers the budget lowers links with it.
+ */
+export const REVEAL_ACTIONS = [
+  "credential.revealed",
+  "credential.copied",
+  "credential.totp_generated",
+  "credential.shared",
+] as const;
 
 const WINDOW_MS = 60 * 60_000;
 

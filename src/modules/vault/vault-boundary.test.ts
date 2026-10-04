@@ -146,7 +146,10 @@ describe("vault ciphertext boundary", () => {
     // only — a login's id, anchor and expiry, never its secret — and names
     // no login in anything it writes (C56); `reminder-subjects` reads names
     // under the READER's principal on all four gates and the anchor rule,
-    // and refuses logins under impersonation as the door does.
+    // and refuses logins under impersonation as the door does. Share links
+    // (slice 90): `share-links` gates every verb on the door, `credential:
+    // share` ✦ and the anchor rule; `share-open` takes a TOKEN and nothing
+    // else that names a tenant — its callers are pinned below.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -161,6 +164,8 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/reminder-subjects",
       "modules/vault/reminders",
       "modules/vault/reveal",
+      "modules/vault/share-links",
+      "modules/vault/share-open",
     ]);
     // door is re-exported for `openVault` and its types only — never `enterVault`,
     // which answers a window without a verb behind it.
@@ -182,6 +187,27 @@ describe("vault ciphertext boundary", () => {
   it("only the reminder job calls the reminders' system entry point", () => {
     const allowed = ["modules/vault/reminders.ts", "modules/vault/index.ts", "jobs/expiration-reminders.ts"];
     const callers = files.filter((f) => /\bsendExpirationReminders\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * THE SHARE PAGE'S THREE ENTRY POINTS (slice 90) take a token and no
+   * actor: the token IS the credential, and they run as SYSTEM in the
+   * tenant the token names. Reached from anywhere but the share page they
+   * would be a door with no wall around it — so, like the reminders' entry
+   * point, their names may appear only where they are defined, re-exported
+   * and called by that page.
+   */
+  it("only the share page calls the share links' token entry points", () => {
+    const allowed = [
+      "modules/vault/share-open.ts",
+      "modules/vault/index.ts",
+      "app/(portal)/portal/share/[token]/page.tsx",
+      "app/(portal)/portal/share/[token]/actions.ts",
+    ];
+    const callers = files
+      .filter((f) => /\b(previewShareLink|sendShareCode|openShareLink)\b/.test(readFileSync(f, "utf8")))
+      .map(rel);
     expect(callers.sort()).toEqual(allowed.sort());
   });
 

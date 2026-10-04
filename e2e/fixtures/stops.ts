@@ -421,6 +421,14 @@ export const stops = (seed: E2ESeed): Stop[] => {
       path: "/portal/reset-password/expired-or-unknown-token",
       anon: true,
     },
+    // 3V slice 90: A VAULT SHARE LINK, both states a visitor can land on —
+    // the live page over the fixture's link (`vaultShareToken`; loading it
+    // only previews — no code is mailed and nothing opens until the
+    // visitor presses, so the walk spends nothing on the link) and the
+    // dead-link state. Metered by `vault.share_open`, sized at 120 an hour
+    // so these four visits per walk, twice over, cannot exhaust it.
+    { name: "portal-share", path: `/portal/share/${seed.vaultShareToken}`, anon: true },
+    { name: "portal-share-unavailable", path: "/portal/share/expired-or-unknown-token", anon: true },
 
     // ── the states nobody designs twice ─────────────────────────────
     // An unmatched path resolves to the ROOT not-found (the auth lockup),

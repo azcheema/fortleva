@@ -206,6 +206,19 @@ describe("proxy: the portal plane (Phase 3)", () => {
     );
   });
 
+  it("serves a vault SHARE LINK without a cookie — its recipient is outside every plane (slice 90)", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}` });
+    expect(dest(proxy(req(APP, "/portal/share/abc123")))).toBe("next");
+    // Segment-anchored: a sibling route is not swept in, nor the bare path.
+    expect(dest(proxy(req(APP, "/portal/shared")))).toBe("redirect:/portal/login");
+    expect(dest(proxy(req(APP, "/portal/share")))).toBe("redirect:/portal/login");
+  });
+
+  it("keeps share links OFF the ops host", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    expect(dest(proxy(req(OPS, "/portal/share/abc123")))).toBe("redirect:/ops/portal/share/abc123");
+  });
+
   it("does not accept a MEMBER cookie as entry to the portal", async () => {
     const proxy = await proxyWith({ APP_URL: `https://${APP}` });
     expect(dest(proxy(req(APP, "/portal/projects", `${MEMBER_COOKIE}=x`)))).toBe(

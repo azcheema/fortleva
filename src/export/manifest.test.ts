@@ -77,6 +77,8 @@ describe("excluded columns (encrypted / key material never leave)", () => {
       // 3V slice 1: plaintext export is its own ✦ act (credential:export)
       credentialSecret: ["secretCiphertext", "totpSecretCiphertext"],
       credentialVersion: ["secretCiphertext"],
+      // 3V slice 90: a share link's live keys (token and code hashes)
+      credentialShareLink: ["tokenHash", "codeHash"],
     });
   });
 

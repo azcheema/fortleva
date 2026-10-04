@@ -1,9 +1,8 @@
-import { createHmac } from "node:crypto";
-
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import { SLOW } from "./fixtures/keys";
 import { ageVaultFactor, requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { signInVaultManager, totpNow } from "./fixtures/vault-session";
 
 /**
  * THE VAULT IN A BROWSER (Phase 3V slices 85–86, founder decision C52):
@@ -14,9 +13,9 @@ import { ageVaultFactor, requireSeed, type E2ESeed } from "./fixtures/tenant";
  *
  * As the fixture's VAULT MANAGER — the one member with an enrolled
  * authenticator (`E2ESeed.vaultEmail`). Signing in with a code stamps a
- * fresh factor, which is what opens the vault; the codes are computed here
- * from the fixture's secret, the way Better Auth computes them (HMAC-SHA1
- * keyed by the secret's UTF-8 text, 30-second steps, six digits).
+ * fresh factor, which is what opens the vault; the codes are computed from
+ * the fixture's secret the way Better Auth computes them
+ * (`fixtures/vault-session.ts`, shared with the share-link spec).
  *
  * The services' guarantees — the door on every verb, the budget, the
  * audit rows, the scope — are `vault.dbtest.ts`'s; the edge's refusals
@@ -30,44 +29,13 @@ import { ageVaultFactor, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 let seed!: E2ESeed;
 
-const totpNow = (secret: string): string => {
-  const step = Buffer.alloc(8);
-  step.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
-  const h = createHmac("sha1", Buffer.from(secret, "utf8")).update(step).digest();
-  const o = h[h.length - 1]! & 15;
-  const n = ((h[o]! & 0x7f) << 24) | (h[o + 1]! << 16) | (h[o + 2]! << 8) | h[o + 3]!;
-  return String(n % 1_000_000).padStart(6, "0");
-};
-
-async function signInVaultManager(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
-    storageState: { cookies: [], origins: [] },
-    serviceWorkers: "block",
-    permissions: ["clipboard-read", "clipboard-write"],
-  });
-  const page = await context.newPage();
-  await expect(async () => {
-    if (/\/home(?:$|[?#])/.test(page.url())) return;
-    await page.goto("/login");
-    await page.locator("#email").fill(seed.vaultEmail);
-    await page.locator("#password").fill(seed.vaultPassword);
-    await page.locator('form button[type="submit"]').click();
-    await page.locator("#totp").waitFor({ timeout: 15_000 });
-    await page.locator("#totp").fill(totpNow(seed.vaultTotpSecret));
-    await page.locator('form button[type="submit"]').click();
-    await page.waitForURL("**/home", { timeout: 15_000 });
-  }).toPass({ timeout: 90_000, intervals: [2_000, 4_000, 6_000] });
-  return { context, page };
-}
-
 test.describe.serial("the vault — a client's tab, /vault and a project's tab — as a manager with an authenticator", () => {
   let context!: BrowserContext;
   let page!: Page;
 
   test.beforeAll(async ({ browser }) => {
     seed = requireSeed();
-    ({ context, page } = await signInVaultManager(browser));
+    ({ context, page } = await signInVaultManager(browser, seed));
   });
 
   test.afterAll(async () => {

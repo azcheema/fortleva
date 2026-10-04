@@ -345,3 +345,18 @@ export const upstashConfig: { readonly url: string; readonly token: string } | n
 export const rateLimitSubjectKey: Buffer = createHash("sha256")
   .update(`${env.BETTER_AUTH_SECRET ?? ""}:ratelimit-subject`)
   .digest();
+
+/**
+ * The key a share link's six-digit code is HMAC'd under before it is
+ * stored (Phase 3V slice 90, `src/modules/vault/share-token.ts`). A plain
+ * hash of a six-digit code is the code — a million candidates reverse in
+ * a second — so a database dump plus a forwarded link would open a link
+ * with a live code without the recipient's inbox (the migration's
+ * pre-apply review). Keyed by a secret the database never holds, the dump
+ * alone answers nothing. Derived from BETTER_AUTH_SECRET as the two keys
+ * above are, for their reasons; rotating it voids every live code, and the
+ * visitor asks for a new one — a reset, never a lockout.
+ */
+export const shareCodeKey: Buffer = createHash("sha256")
+  .update(`${env.BETTER_AUTH_SECRET ?? ""}:vault-share-code`)
+  .digest();

@@ -503,13 +503,23 @@ describe("brokered portal writes", () => {
    * this one it is exactly the value a caller would want to substitute:
    * the address the new session is minted for must come from the token.
    */
+  //
+  // **THE SECOND ENTRY** (Phase 3V slice 90, 2026-10-04): a vault SHARE
+  // LINK's page. Its visitor is somebody the agency gave one secret to —
+  // usually outside the agency, on no plane, never a session — and the
+  // token resolves the tenant exactly as an invitation's does. The same
+  // rule binds it below: it reads only the token and the typed code, and
+  // the address a code goes to is the LINK's (`src/modules/vault/
+  // share-open.ts`).
   const SESSIONLESS_ACTIONS: readonly string[] = [
     join("app", "(portal)", "portal", "invite", "[token]", "actions.ts"),
+    join("app", "(portal)", "portal", "share", "[token]", "actions.ts"),
   ];
 
-  it("the sessionless allowlist is pinned (one entry — widen only deliberately)", () => {
+  it("the sessionless allowlist is pinned (two entries — widen only deliberately)", () => {
     expect(SESSIONLESS_ACTIONS).toEqual([
       join("app", "(portal)", "portal", "invite", "[token]", "actions.ts"),
+      join("app", "(portal)", "portal", "share", "[token]", "actions.ts"),
     ]);
     for (const rel of SESSIONLESS_ACTIONS) {
       expect(readFileSync(join(SRC, rel), "utf8")).toContain("use server");

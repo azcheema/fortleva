@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLinkIcon, KeyRoundIcon, RotateCcwKeyIcon, Trash2Icon } from "lucide-react";
+import { ExternalLinkIcon, KeyRoundIcon, RotateCcwKeyIcon, Share2Icon, Trash2Icon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -29,11 +29,18 @@ import { afterClosingLayers } from "@/lib/after-closing-layers";
 import type { FormResult } from "@/lib/server-actions";
 
 import { deleteCredentialAction, replaceCredentialSecretAction, updateCredentialAction } from "./actions";
+import { ShareDialog } from "./share-dialog";
 import type { VaultSurface } from "./surface";
 import { fieldLabelKey, isMultilineSecret, type FieldsByType, type VaultItem } from "./vault-shape";
 
 /** What the member may do inside the open vault (`openVault().can`). */
-export type VaultRowAbilities = { readonly edit: boolean; readonly delete: boolean; readonly reveal: boolean };
+export type VaultRowAbilities = {
+  readonly edit: boolean;
+  readonly delete: boolean;
+  readonly reveal: boolean;
+  /** Share links (slice 90): the longest a link may live here, or null when this member may not make one. */
+  readonly share: { readonly maxHours: number } | null;
+};
 
 /**
  * ONE LOGIN, read-first (FOUNDER MANDATE 1): its name, username, web
@@ -66,8 +73,19 @@ export function VaultRow({
   const tCommon = useTranslations("common");
   const { run } = useRun();
   const [secretOpen, setSecretOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  // A login with only an authenticator key has no field a link could share.
+  const canShare = can.share !== null && item.secretFieldKeys.length > 0;
 
   const items: RowAction[] = [];
+  if (canShare) {
+    items.push({
+      key: "share",
+      label: tVault("share.menu"),
+      icon: Share2Icon,
+      onSelect: () => afterClosingLayers(() => setShareOpen(true)),
+    });
+  }
   if (can.edit) {
     items.push({
       key: "change-secret",
@@ -200,6 +218,15 @@ export function VaultRow({
           {body}
         </AutoForm>
       )}
+      {canShare && can.share ? (
+        <ShareDialog
+          surface={surface}
+          item={item}
+          maxHours={can.share.maxHours}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      ) : null}
       {can.edit ? (
         <ChangeSecretDialog
           surface={surface}

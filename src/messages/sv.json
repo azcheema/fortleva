@@ -554,6 +554,50 @@
       "unavailableTitle": "Inbjudan är inte tillgänglig",
       "unavailable": "Den här inbjudan går inte att använda. Försök igen senare, eller be din byrå skicka en ny länk — och logga in i stället om du redan har valt ett lösenord.",
       "signIn": "Logga in"
+    },
+    "portalShare": {
+      "metaTitle": "En inloggning som delats med dig",
+      "eyebrow": "Delad inloggning",
+      "title": "{tenant} har delat en inloggning med dig",
+      "subtitle": "Be om en kod för att se den: vi mejlar den till adressen som länken skapades för. Inloggningen kan visas en gång.",
+      "sendCode": "Mejla mig en kod",
+      "sending": "Skickar…",
+      "sent": "En kod är på väg till adressen som länken skapades för. Den gäller i 10 minuter.",
+      "haveCode": "Jag har redan en kod",
+      "code": "Koden från mejlet",
+      "codeHint": "Sex siffror.",
+      "open": "Visa inloggningen",
+      "opening": "Kontrollerar…",
+      "resend": "Skicka en ny kod",
+      "onceNote": "Inloggningen visas en gång. Se till att du har någonstans att spara den.",
+      "wait": "En kod skickades alldeles nyss. Titta i din e-post, eller be om en ny om en halv minut.",
+      "noCodes": "Det går inte att skicka fler koder för den här länken. Använd den senaste, eller be den som skickade länken om en ny.",
+      "mailFailed": "Vi kunde inte skicka mejlet just nu. Försök igen om en minut.",
+      "busy": "Det gick inte igenom. Försök igen om en stund.",
+      "limited": "För många försök härifrån. Försök igen senare.",
+      "malformed": "Ange de sex siffrorna från mejlet.",
+      "noCode": "Koden har gått ut, eller så har ingen skickats än. Be om en ny.",
+      "wrongCode": "Koden stämmer inte. {left, plural, one {# försök kvar} other {# försök kvar}}.",
+      "deadTitle": "Länken går inte att öppna",
+      "dead": "Den kan redan ha öppnats, ha gått ut eller ha återkallats. Be den som skickade den till dig om en ny länk. Har du ett konto i din byrås kundportal kan du logga in i stället.",
+      "signIn": "Logga in i kundportalen",
+      "shown": {
+        "once": "Det här är enda gången den visas. Kopiera det du behöver nu – när du lämnar eller laddar om sidan är den borta.",
+        "name": "Inloggning",
+        "url": "Webbadress",
+        "username": "Användarnamn",
+        "show": "Visa",
+        "hide": "Dölj",
+        "copy": "Kopiera",
+        "copyUsername": "Kopiera användarnamnet",
+        "copied": "Kopierat. Det rensas från urklipp om 30 sekunder.",
+        "copyFailed": "Det gick inte att kopiera. Visa det och kopiera för hand."
+      },
+      "mail": {
+        "subject": "Din kod för en inloggning från {tenant}",
+        "body": "Din kod är {code}\n\nDen gäller i {minutes} minuter, på sidan där du bad om den. {tenant} har delat en inloggning med dig, och länken kan öppnas en gång.\n\nOm du inte bad om koden kan du strunta i det här mejlet: ingen kan öppna länken utan den."
+      },
+      "addressBusy": "Många koder har skickats till den här adressen den senaste tiden. Försök igen om en timme."
     }
   },
   "account": {
@@ -1294,7 +1338,9 @@
     "ACCOUNT_IS_YOURS": "Det är ditt eget konto. Hantera din inloggning på sidan Konto.",
     "ACCOUNT_IS_OPERATORS": "Den här personens inloggning hanteras av Fortlevas operatör, inte härifrån.",
     "ACCOUNT_IN_OTHER_WORKSPACE": "Den här personen tillhör även en annan arbetsyta i Fortleva, så tvåfaktorsautentiseringen kan inte återställas härifrån. Fortlevas support kan göra det.",
-    "TWO_FACTOR_NOT_ENROLLED": "Den här personen har ingen tvåfaktorsautentisering att återställa."
+    "TWO_FACTOR_NOT_ENROLLED": "Den här personen har ingen tvåfaktorsautentisering att återställa.",
+    "SHARE_LINKS_OFF": "Delningslänkar är avstängda i den här arbetsytan.",
+    "SHARE_LINK_CLOSED": "Länken har redan öppnats eller återkallats."
   },
   "assignments": {
     "title": "Team",
@@ -3632,6 +3678,53 @@
       "addAgency": "Lägg till en av våra egna inloggningar",
       "partial": "{shown} av {count} visas här.",
       "showAll": "Visa alla {count}"
+    },
+    "share": {
+      "menu": "Dela…",
+      "title": "Dela {name}",
+      "description": "Skapa en länk som visar en hemlighet, en gång. Du skickar länken själv; när den öppnas mejlar vi en sexsiffrig kod till adressen du anger här.",
+      "field": "Vad som delas",
+      "fieldFixed": "Delar: {field}",
+      "email": "Mottagarens e-postadress",
+      "emailHint": "Koden skickas till den här adressen och ingen annan.",
+      "lifetime": "Slutar fungera efter",
+      "lifetimes": {
+        "1": "1 timme",
+        "24": "1 dygn",
+        "72": "3 dygn",
+        "168": "7 dygn"
+      },
+      "includeUsername": "Ta med användarnamnet",
+      "code": "Din kod från autentiseringsappen",
+      "codeHint": "Att dela kräver alltid en ny kod – eller en reservkod.",
+      "enterCode": "Ange den sexsiffriga koden från din autentiseringsapp.",
+      "submit": "Skapa länk",
+      "submitting": "Skapar…",
+      "created": {
+        "link": "Länken – visas bara nu",
+        "body": "Kopiera den nu: den kan inte visas igen. Skicka den själv, i chatt eller mejl. När den öppnas mejlar vi en sexsiffrig kod till {email}. Den kan öppnas en gång och slutar fungera {date}."
+      },
+      "copy": "Kopiera länken",
+      "copiedShort": "Kopierad",
+      "copied": "Länken är kopierad.",
+      "copyFailed": "Länken gick inte att kopiera. Markera den och kopiera för hand.",
+      "done": "Klar",
+      "links": {
+        "title": "Länkar för den här inloggningen",
+        "loading": "Hämtar…",
+        "empty": "Inga länkar än."
+      },
+      "status": {
+        "waiting": "Inte öppnad än – fungerar till {date}",
+        "viewed": "Öppnad {date}",
+        "revoked": "Återkallad {date}",
+        "expired": "Gick ut {date}",
+        "locked": "Låst – för många felaktiga koder, eller inga koder kvar",
+        "changed": "Stoppad – hemligheten har bytts sedan dess",
+        "stopped": "Stoppad – delningslänkar stängdes av"
+      },
+      "revoke": "Återkalla",
+      "revoked": "Länken är återkallad. Den går inte längre att öppna."
     }
   },
   "assets": {
