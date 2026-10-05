@@ -226,6 +226,15 @@ const BROKERED_READS: readonly (readonly [string, string])[] = [
   // session, and until when — a time, read from the class-A door row;
   // asking is not opening, so nothing is audited.
   [join("modules", "vault", "portal-writes.ts"), "readPortalLoginsDoor"],
+  // Phase 3V slice 93: where the client's SEALED logins stand (a count, the
+  // newest ask and what became of it), the one bit the portal's nav asks,
+  // and — behind an open door, while an ask has them open — the sealed
+  // logins' names. Class-A rows and INTERNAL logins a contact's own
+  // transaction cannot read; reading is not looking (each look at a field
+  // is `lookAtSealedLogin`, audited), so nothing here is.
+  [join("modules", "vault", "sealed-portal-writes.ts"), "readSealedPortalState"],
+  [join("modules", "vault", "sealed-portal-writes.ts"), "portalHasSealedLogins"],
+  [join("modules", "vault", "sealed-portal-writes.ts"), "listSealedPortalLogins"],
 ];
 
 /**

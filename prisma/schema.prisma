@@ -317,6 +317,7 @@ model Tenant {
   expirationReminders ExpirationReminderSent[]
   credentialShareLinks CredentialShareLink[]
   contactVaultUnlocks  ContactVaultUnlock[]
+  sealedOpenRequests   SealedOpenRequest[]
 
   @@map("tenant")
 }
@@ -669,6 +670,7 @@ model Client {
   projectUpdates       ProjectUpdate[]
   credentials          CredentialItem[]
   assets               ClientAsset[]
+  sealedOpenRequests   SealedOpenRequest[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -2838,6 +2840,57 @@ model ContactVaultUnlock {
 
   @@index([tenantId, contactId, sessionId, createdAt]) // this session's door, newest first
   @@map("contact_vault_unlock")
+}
+
+/// SealedOpenRequest — A CLIENT ASKS TO OPEN THE LOGINS THEIR AGENCY KEEPS
+/// SEALED FOR THEM (Phase 3V slice 93; founder decisions C52 (f)–(j), C61).
+/// One row per ask: a main contact asks with their portal password and a
+/// reason; everyone who may answer (`credential:unseal`) is mailed on day
+/// 0, 3, 6 and then daily; an answerer APPROVES (it opens at once, for 7
+/// days) or DENIES (the client may ask again after 30 days) until the
+/// moment it opens; after `waitDays` of silence the client CONFIRMS with
+/// their password and a mailed code, and it opens 48 hours later (unless
+/// denied in between); a confirmation not made within 30 days of the wait
+/// lapses. THE STATE IS DERIVED AT READ TIME FROM THESE STAMPS
+/// (`src/lib/ask-and-wait.ts` — the one ask-and-wait machine, C52 (j)); the
+/// daily job only mails, so a missed run never delays or extends an
+/// opening. `waitDays` is the agency's `vault.sealedWaitDays` when the ask
+/// was made, frozen. Every bound is the database's
+/// (`sealed_open_request_guard`): who writes which column, the wait, the
+/// 48 hours, the 7 days, the 30-day lapse and cool-down, one live ask per
+/// client. Class A: the client's view of it is the portal's brokered read.
+/// Migration 20261005220000.
+/// scope=tenant  rls=A (portal_deny)  ret=with the client (FK cascade)  enc=none
+/// audit: credential.open_requested | open_request_refused | open_request_withdrawn | open_request_confirmed | open_request_approved | open_request_denied | open_request_reminded
+model SealedOpenRequest {
+  id                   String    @id @default(uuid(7))
+  tenantId             String    @map("tenant_id")
+  clientId             String    @map("client_id")
+  askedByContactId     String    @map("asked_by_contact_id") // attribution, no FK
+  reason               String // the client's words, 1–1000 characters
+  waitDays             Int       @map("wait_days") // 7–60, frozen when asked
+  askedAt              DateTime  @default(now()) @map("asked_at") @db.Timestamptz(6)
+  confirmedAt          DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  confirmedByContactId String?   @map("confirmed_by_contact_id") // attribution, no FK
+  approvedAt           DateTime? @map("approved_at") @db.Timestamptz(6)
+  approvedByMemberId   String?   @map("approved_by_member_id") // attribution, no FK
+  deniedAt             DateTime? @map("denied_at") @db.Timestamptz(6)
+  deniedByMemberId     String?   @map("denied_by_member_id") // attribution, no FK
+  denyReason           String?   @map("deny_reason") // shown to the client; ≤ 1000
+  withdrawnAt          DateTime? @map("withdrawn_at") @db.Timestamptz(6)
+  withdrawnByContactId String?   @map("withdrawn_by_contact_id") // attribution, no FK
+  opensAt              DateTime? @map("opens_at") @db.Timestamptz(6) // approved: then; confirmed: + 48 hours
+  openUntil            DateTime? @map("open_until") @db.Timestamptz(6) // opensAt + 7 days
+  remindersSent        Int       @default(0) @map("reminders_sent") // the answerers' mails so far (day 0 included)
+  lastRemindedAt       DateTime? @map("last_reminded_at") @db.Timestamptz(6)
+  openedNoticeAt       DateTime? @map("opened_notice_at") @db.Timestamptz(6) // the agency told it opened
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  client Client @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, clientId, askedAt]) // a client's asks, newest first
+  @@map("sealed_open_request")
 }
 
 // ───────────────────────────────────────────────────────────────────

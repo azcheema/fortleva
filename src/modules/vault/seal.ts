@@ -14,8 +14,13 @@ import { assertAnchorInScope } from "./scope";
  * the agency keeps FOR its client and does not want opened without real
  * need: staff use it exactly as before (C52 (e): "staff never ask"), and
  * the client is kept out — no "client can see" (slice 91), no share link
- * (C60 (a)). Slice 93 lets the client ASK to open their sealed logins,
- * every owner told, and wait; nothing here knows about that yet.
+ * (C60 (a)). Slice 93 lets the client ASK to open their sealed logins —
+ * everyone who holds `credential:unseal` told — and wait
+ * (`sealed-requests.ts`, `sealed-portal-writes.ts`); nothing here knows
+ * about that: an open ask shows the client the logins that were sealed when
+ * it was DECIDED (approved, or confirmed after the wait) — a login sealed
+ * here while it is open stays shut, as sealing promises (both slice-93
+ * reviews' medium) — and unsealing or deleting one takes it out.
  *
  * SEALING (`credential:edit` — "anyone who can edit a login can seal it"):
  *   1. the vault's door for `credential:edit` (no impersonation, the code

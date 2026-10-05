@@ -213,6 +213,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 92, the sealed layer's staff side —
   // `src/modules/vault/seal.dbtest.ts`, `setupTenant("vseal")`.
   "vseal-",
+  // Phase 3V slice 93, the client's ask and the wait —
+  // `src/modules/vault/sealed.dbtest.ts`, `setupTenant("vsask")`.
+  "vsask-",
   // Phase 3 slice 72, the sharing UI — `src/modules/work/visibility.dbtest.ts`,
   // `setupTenant("vshare")`.
   "vshare-",
@@ -492,6 +495,12 @@ export type E2ESeed = {
   readonly vaultApiKeyName: string;
   /** One of the AGENCY'S OWN logins (no client — C49), for `/vault` (slice 86). */
   readonly vaultAgencyLoginName: string;
+  /**
+   * A login SEALED for the client (3V slice 93), so Astrid's Logins page has
+   * a sealed section — a count and the way to ask (C61 (a)). Its name must
+   * never reach the portal before an ask opens it.
+   */
+  readonly vaultSealedLoginName: string;
   /**
    * A LIVE SHARE LINK's token (3V slice 90) to the vault login's password,
    * for the visual walk's share page. Never pressed: a visit previews only.
@@ -1273,6 +1282,25 @@ async function provision(seedFile: string): Promise<void> {
     username: "hostmaster@e2e.test",
     secret: { password: `reg-${randomBytes(12).toString("base64url")}` },
   });
+  // 3V slice 93: ONE login SEALED for the client, through the vault's own
+  // services as the manager would (anyone who may edit a login seals it,
+  // C52 (e)), so Astrid's Logins page has a sealed section — a count and the
+  // way to ask (C61 (a)). `portal-logins.spec.ts` asks and withdraws again;
+  // nothing approves it, so its name never reaches the portal.
+  const { sealLogin } = await import("../../src/modules/vault");
+  const vaultSealedLoginName = `E2E Hosting panel ${run}`;
+  const sealedLogin = await createCredential(vaultCtx, {
+    clientId,
+    type: "LOGIN",
+    name: vaultSealedLoginName,
+    username: "root@host.e2e.test",
+    url: "https://panel.e2e.test",
+    secret: { password: `host-${randomBytes(12).toString("base64url")}` },
+  });
+  await sealLogin(
+    { tenantId, actor: { memberId: vaultMember.id, mfa: { enrolled: true, verifiedAt: new Date() } } },
+    sealedLogin.id,
+  );
 
   // 3V slice 87: the client's Assets tab, through the registry's own service
   // as the owner — a domain renewing in 20 days (the "coming up" strip's
@@ -1596,6 +1624,7 @@ async function provision(seedFile: string): Promise<void> {
     vaultLoginPassword,
     vaultApiKeyName,
     vaultAgencyLoginName,
+    vaultSealedLoginName,
     vaultShareToken,
   };
 

@@ -30,6 +30,7 @@ describe("the portal capability union", () => {
       "portal.continuity.view_status",
       "portal.contract.sign",
       "portal.contract.view",
+      "portal.credential.request_open",
       "portal.credential.submit",
       "portal.credential.view",
       "portal.deliverable.approve",
@@ -111,6 +112,7 @@ describe("the portal capability union", () => {
       "portal.credential.submit": "vault",
       "portal.share_link.view": "vault",
       "portal.credential.view": "vault",
+      "portal.credential.request_open": "vault",
       "portal.invoice.view": "invoicing",
       "portal.invoice.pay": "invoicing",
       "portal.contract.view": "contracts",
@@ -151,7 +153,7 @@ describe("the two v1 contact profiles", () => {
     // adding a row to the union is otherwise a silent grant to every
     // primary contact in the product.
     expect([...PORTAL_PROFILES.CONTACT_PRIMARY].sort()).toEqual([...PORTAL_CAPABILITIES].sort());
-    expect(PORTAL_PROFILES.CONTACT_PRIMARY.length).toBe(24);
+    expect(PORTAL_PROFILES.CONTACT_PRIMARY.length).toBe(25);
   });
 
   it("CONTACT_COLLABORATOR holds exactly the collaborator bundle", () => {
@@ -189,6 +191,8 @@ describe("the two v1 contact profiles", () => {
       // The logins the agency shows the client: main contacts only
       // (founder decision C59 (a), Phase 3V slice 91).
       "portal.credential.view",
+      // …and asking to open the sealed ones (C61 (e), slice 93).
+      "portal.credential.request_open",
     ]) {
       expect(profileHolds("CONTACT_COLLABORATOR", withheld), withheld).toBe(false);
       expect(profileHolds("CONTACT_PRIMARY", withheld), withheld).toBe(true);

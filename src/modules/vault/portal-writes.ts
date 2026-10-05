@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { record } from "@/audit/record";
 import { secretsEqual } from "@/crypto/field-encryption";
 import { withTenant, type TenantDb } from "@/db";
-import { moduleOpenUnderSystem } from "@/entitlements/resolver";
 import { DomainError } from "@/lib/domain-error";
 import { send } from "@/mailer";
 import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal";
@@ -13,6 +12,8 @@ import { allow, allowStrict } from "@/ratelimit";
 
 import { doorClock, doorOpenUntil, doorWaitingForCode, lockPendingDoor } from "./client-door";
 import { boundedVaultWrite } from "./ctx";
+import { contactStanding } from "./contact-standing";
+import { sealedNeedsDoor } from "./sealed-door";
 import { readSecret } from "./secret-store";
 import {
   hashShareCode,
@@ -49,10 +50,16 @@ import {
  * for a look, that the login is one their own transaction can read
  * (`portal_gate` + `portal_vault_switch`); only then does it open a SYSTEM
  * transaction, which RESTATES what it relies on because RLS no longer does
- * (`openForContacts`: the switch, both modules, and the contact still a
- * main, active, invited contact of this client — the security review's low:
- * a demotion between the two transactions must not buy one more look; and,
- * for a look, the login still this client's, CLIENT_VISIBLE, live). The
+ * (`contactStanding`: both modules, and the contact still a main, active,
+ * invited contact of this client — the security review's low: a demotion
+ * between the two transactions must not buy one more look; for a look,
+ * `openForContacts` adds the switch, and the login still this client's,
+ * CLIENT_VISIBLE, live). THE DOOR ITSELF (slice 93) opens when there is
+ * something behind it (`doorHasPurpose`): logins shown with the switch on,
+ * OR the client's SEALED logins open, OR an ask waiting for the client's
+ * confirmation — the sealed layer does not hang on the switch (C61 (d));
+ * what the door then opens onto for the sealed layer is the sealed broker's
+ * (`sealed-portal-writes.ts`). The
  * switch and the vault module are measured on their own
  * (`portal-logins.dbtest.ts` runs them with the contact's stale open
  * gates); the contact's standing cannot be separated from the contact's own
@@ -186,29 +193,29 @@ const validSession = (sessionId: unknown): boolean =>
   typeof sessionId === "string" && sessionId.length > 0 && sessionId.length <= 64;
 
 /**
- * THE RESTATEMENT every system transaction here makes before it acts:
- * client logins on, the `portal` and `vault` modules open (gates 1–3, read
- * under the system principal as `share-open.ts` does), and the contact still
- * an ACTIVE, invited MAIN contact of this client — what the contact's own
- * `authorizePortal` proved a moment ago, read again where it is relied on.
+ * THE RESTATEMENT for a look at a SHOWN login: client logins switched on,
+ * and the contact's standing.
  */
 async function openForContacts(tx: TenantDb, principal: PortalPrincipal): Promise<boolean> {
   const prefs = await readPreferences(tx, principal.tenantId);
   if (!prefs.vault.allowPortalCredentials) return false;
-  if (!(await moduleOpenUnderSystem(tx, principal.tenantId, "portal"))) return false;
-  if (!(await moduleOpenUnderSystem(tx, principal.tenantId, "vault"))) return false;
-  const contact = await tx.contact.findFirst({
-    where: {
-      tenantId: principal.tenantId,
-      id: principal.contactId,
-      clientId: principal.clientId,
-      portalProfile: "CONTACT_PRIMARY",
-      portalStatus: "ACTIVE",
-      invitedAt: { not: null },
-    },
-    select: { id: true },
-  });
-  return contact !== null;
+  return contactStanding(tx, principal);
+}
+
+/**
+ * THE DOOR'S RESTATEMENT (slice 93): the contact's standing, and something
+ * behind the door — logins shown (client logins switched on), OR this
+ * client's SEALED logins open right now, OR an ask of theirs waiting for
+ * the client's confirmation, which is made through this door (C52 (f): the
+ * password AND a mailed code). The sealed layer does not hang on the
+ * client-logins switch (C61 (d)). Nothing is mailed, checked or opened for
+ * a door that would open onto nothing.
+ */
+async function doorHasPurpose(tx: TenantDb, principal: PortalPrincipal): Promise<boolean> {
+  if (!(await contactStanding(tx, principal))) return false;
+  const prefs = await readPreferences(tx, principal.tenantId);
+  if (prefs.vault.allowPortalCredentials) return true;
+  return sealedNeedsDoor(tx, principal.tenantId, principal.clientId);
 }
 
 /**
@@ -236,7 +243,7 @@ export async function startPortalLoginsDoor(
         principal.tenantId,
         { type: "system" },
         async (tx): Promise<Counted> => {
-          if (!(await openForContacts(tx, principal))) return "off";
+          if (!(await doorHasPurpose(tx, principal))) return "off";
           const now = await lockContactBudget(tx, "portal_logins", principal.contactId);
           const started = (since: number) =>
             tx.auditEvent.count({
@@ -293,7 +300,7 @@ export async function startPortalLoginsDoor(
         principal.tenantId,
         { type: "system" },
         async (tx): Promise<Made> => {
-          if (!(await openForContacts(tx, principal))) return { ok: false, reason: "off" };
+          if (!(await doorHasPurpose(tx, principal))) return { ok: false, reason: "off" };
           const now = await lockContactBudget(tx, "portal_logins", principal.contactId);
           const sent = await tx.auditEvent.count({
             where: {
@@ -379,7 +386,7 @@ export async function resendPortalLoginsCode(ctx: PortalLoginsCtx, compose: Logi
         { type: "system" },
         async (tx): Promise<Sent> => {
           // Nothing is mailed for a door that would open onto nothing.
-          if (!(await openForContacts(tx, principal))) return { ok: false, reason: "off" };
+          if (!(await doorHasPurpose(tx, principal))) return { ok: false, reason: "off" };
           // The budget's lock BEFORE the door's row lock, always (the
           // order `contact-budget-lock.ts` records).
           const now = await lockContactBudget(tx, "portal_logins", principal.contactId);
@@ -470,8 +477,9 @@ export async function openPortalLoginsDoor(ctx: PortalLoginsCtx, rawCode: unknow
         { type: "system" },
         async (tx): Promise<DoorOpenOutcome> => {
           // Nothing opens onto nothing: a door left waiting when client logins
-          // were switched off stays shut (and its checks are not spent).
-          if (!(await openForContacts(tx, principal))) return { ok: false, reason: "off" };
+          // were switched off (and nothing sealed needs it) stays shut, and
+          // its checks are not spent.
+          if (!(await doorHasPurpose(tx, principal))) return { ok: false, reason: "off" };
           const doorId = await lockPendingDoor(tx, principal.tenantId, principal.contactId, sessionId);
           if (doorId === null) return { ok: false, reason: "start_again" };
           // Read AFTER the lock: a second check that waited must see the first's count.
@@ -539,7 +547,7 @@ export async function readPortalLoginsDoor(ctx: PortalLoginsCtx): Promise<Portal
   if (!validSession(sessionId)) throw new Error(SYSTEM_GUARD);
   await withPortalRead(principal, (tx) => authorizePortal(tx, principal, "portal.credential.view"));
   return withTenant(principal.tenantId, { type: "system" }, async (tx): Promise<PortalDoorState> => {
-    if (!(await openForContacts(tx, principal))) return { state: "closed" };
+    if (!(await doorHasPurpose(tx, principal))) return { state: "closed" };
     const openUntil = await doorOpenUntil(tx, principal.tenantId, principal.contactId, sessionId);
     if (openUntil !== null) return { state: "open", door: { openUntil } as OpenPortalDoor };
     return (await doorWaitingForCode(tx, principal.tenantId, principal.contactId, sessionId))

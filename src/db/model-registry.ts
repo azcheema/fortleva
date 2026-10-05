@@ -75,6 +75,7 @@ export const MODEL_CLASSES = {
     "expirationReminderSent",
     "credentialShareLink",
     "contactVaultUnlock",
+    "sealedOpenRequest",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -181,6 +182,11 @@ export const RLS_CLASSES = {
     // portal's vault broker as SYSTEM; the contact it belongs to gets zero
     // rows of it like everyone on their plane.
     "contactVaultUnlock",
+    // Phase 3V slice 93 — a client asking to open their SEALED logins: the
+    // reason, the answers and the timers. Written by the portal's vault
+    // broker as SYSTEM, the daily job and an answering member; the client
+    // reads it only through the broker (a brokered read), never as rows.
+    "sealedOpenRequest",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

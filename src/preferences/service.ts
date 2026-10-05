@@ -23,6 +23,7 @@ import {
   TOGGLEABLE_MODULES,
   VAULT_PREF_KEYS,
   VAULT_REVEAL_BUDGET_RANGE,
+  VAULT_SEALED_WAIT_DAYS_RANGE,
   VAULT_SHARE_TTL_HOURS_RANGE,
   shareSwitchLockKey,
   VAULT_STEP_UP_MINUTES_RANGE,
@@ -113,6 +114,11 @@ const patchSchema = z
           .max(VAULT_SHARE_TTL_HOURS_RANGE.max),
         allowExternalShareLinks: z.boolean(),
         allowPortalCredentials: z.boolean(),
+        sealedWaitDays: z
+          .number()
+          .int()
+          .min(VAULT_SEALED_WAIT_DAYS_RANGE.min)
+          .max(VAULT_SEALED_WAIT_DAYS_RANGE.max),
       })
       .partial(),
   })
@@ -127,6 +133,7 @@ const PATCHABLE_VAULT_KEYS = [
   "shareLinkMaxTtlHours",
   "allowExternalShareLinks",
   "allowPortalCredentials",
+  "sealedWaitDays",
 ] as const satisfies readonly (keyof NonNullable<PreferencePatch["vault"]>)[];
 
 async function upsertPreference(

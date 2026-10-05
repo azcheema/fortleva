@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { isProduction } from "@/config";
 import { runExpirationReminders } from "@/jobs/expiration-reminders";
 import { drainOutbox } from "@/jobs/outbox";
+import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
 import { runWeeklyReminders } from "@/jobs/weekly-reminders";
 
@@ -15,8 +16,10 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * budget-threshold check and the opt-in weekly time reminder (2T D6 —
  * once per member per ISO week, the idempotency key being the whole
  * guard) and the renewal reminders (3V slice 89 — at 60/30/14/7/1 days,
- * once per band, `ExpirationReminderSent` being the guard), until Vercel
- * Pro crons exist. Whenever a
+ * once per band, `ExpirationReminderSent` being the guard) and the
+ * sealed asks' mail (3V slice 93 — the answerers' reminders, day 3, 6, then
+ * daily, and "it has opened"; the ask's own stamps being the guard), until
+ * Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
  * convenience) — a preview/staging deployment without a token is closed.
@@ -42,5 +45,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   // the queue behind a convenience.
   const weeklyReminders = await runWeeklyReminders();
   const expirationReminders = await runExpirationReminders();
-  return NextResponse.json({ outbox, timeSweep, budgets, weeklyReminders, expirationReminders });
+  const sealedAsks = await runSealedAskMail();
+  return NextResponse.json({ outbox, timeSweep, budgets, weeklyReminders, expirationReminders, sealedAsks });
 }

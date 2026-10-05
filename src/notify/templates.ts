@@ -1,6 +1,7 @@
 import { appUrl } from "@/config";
 import { isUuid } from "@/db/context";
 import { isNotificationKind, type NotificationKind } from "./catalog";
+import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
 import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
 
 /**
@@ -24,7 +25,7 @@ import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
 type Copy = { readonly subject: string; readonly body: string };
 
 /** Templates that are not also a fan-out kind. */
-const EXTRA_TEMPLATES = [WEEKLY_REMINDER_KIND] as const;
+const EXTRA_TEMPLATES = [WEEKLY_REMINDER_KIND, ...SEALED_MAIL_KEYS] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
 
@@ -113,6 +114,79 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Några inloggningar som du kan öppna i valvet går snart ut. Öppna valvet för att se vilka.",
     },
   },
+  // Phase 3V slice 93 — a client's ask to open their SEALED logins
+  // (`sealed-mail-keys.ts`). Security notices, sent whatever the reader's
+  // email level; LINKS, NOT DATA — no client, login or reason is named.
+  [SEALED_MEMBER_MAIL.asked]: {
+    en: {
+      subject: "A client asked to open their sealed logins",
+      body: "A client asked to open the logins your agency keeps sealed for them. Approve or deny the request in Fortleva. If nobody answers, the client can open them after the waiting period.",
+    },
+    sv: {
+      subject: "En kund vill öppna sina förseglade inloggningar",
+      body: "En kund har bett att få öppna de inloggningar som ni håller förseglade åt dem. Godkänn eller avslå begäran i Fortleva. Om ingen svarar kan kunden öppna dem när väntetiden har gått.",
+    },
+  },
+  [SEALED_MEMBER_MAIL.reminder]: {
+    en: {
+      subject: "Reminder: a client is waiting for an answer",
+      body: "Nobody has answered a client's request to open the logins your agency keeps sealed for them. If nobody answers, the client can open them after the waiting period. Approve or deny the request in Fortleva.",
+    },
+    sv: {
+      subject: "Påminnelse: en kund väntar på svar",
+      body: "Ingen har svarat på en kunds begäran om att öppna de inloggningar som ni håller förseglade åt dem. Om ingen svarar kan kunden öppna dem när väntetiden har gått. Godkänn eller avslå begäran i Fortleva.",
+    },
+  },
+  [SEALED_MEMBER_MAIL.confirmable]: {
+    en: {
+      subject: "A client can now open their sealed logins",
+      body: "Nobody answered a client's request to open the logins your agency keeps sealed for them within the waiting period. The client can now confirm it, and the logins open 48 hours after they do. You can still approve or deny the request in Fortleva.",
+    },
+    sv: {
+      subject: "En kund kan nu öppna sina förseglade inloggningar",
+      body: "Ingen svarade inom väntetiden på en kunds begäran om att öppna de inloggningar som ni håller förseglade åt dem. Kunden kan nu bekräfta den, och inloggningarna öppnas 48 timmar efter det. Ni kan fortfarande godkänna eller avslå begäran i Fortleva.",
+    },
+  },
+  [SEALED_MEMBER_MAIL.opening]: {
+    en: {
+      subject: "A client's sealed logins open soon",
+      body: "A client confirmed their request to open the logins your agency keeps sealed for them. They open 48 hours after the confirmation unless someone denies the request first. Approve or deny it in Fortleva.",
+    },
+    sv: {
+      subject: "En kunds förseglade inloggningar öppnas snart",
+      body: "En kund har bekräftat sin begäran om att öppna de inloggningar som ni håller förseglade åt dem. De öppnas 48 timmar efter bekräftelsen om ingen avslår begäran innan dess. Godkänn eller avslå den i Fortleva.",
+    },
+  },
+  [SEALED_MEMBER_MAIL.confirmed]: {
+    en: {
+      subject: "A client's sealed logins open in 48 hours",
+      body: "Nobody answered a client's request to open the logins your agency keeps sealed for them, and the client has now confirmed it. They open in 48 hours unless someone denies the request before then.",
+    },
+    sv: {
+      subject: "En kunds förseglade inloggningar öppnas om 48 timmar",
+      body: "Ingen svarade på en kunds begäran om att öppna de inloggningar som ni håller förseglade åt dem, och nu har kunden bekräftat den. De öppnas om 48 timmar om ingen avslår begäran innan dess.",
+    },
+  },
+  [SEALED_MEMBER_MAIL.opened]: {
+    en: {
+      subject: "A client's sealed logins are open",
+      body: "A client can now open the logins your agency keeps sealed for them, for 7 days. Every look is logged. Once they have locked again, change those passwords.",
+    },
+    sv: {
+      subject: "En kunds förseglade inloggningar är öppna",
+      body: "En kund kan nu öppna de inloggningar som ni håller förseglade åt dem, i 7 dagar. Varje visning loggas. Byt lösenorden när de har låsts igen.",
+    },
+  },
+  [SEALED_CONTACT_MAIL]: {
+    en: {
+      subject: "News about your request to open your sealed logins",
+      body: "There is news about your request to open the logins your agency keeps sealed for you. Sign in to the portal to see it.",
+    },
+    sv: {
+      subject: "Nytt om din begäran att öppna dina förseglade inloggningar",
+      body: "Det finns nytt om din begäran att öppna de inloggningar som din byrå håller förseglade åt dig. Logga in i kundportalen för att se det.",
+    },
+  },
   "time.weekly_reminder": {
     en: {
       subject: "Your weekly time reminder",
@@ -141,6 +215,15 @@ const linkFor = (
   params: Readonly<Record<string, unknown>> | null,
 ): URL => {
   if (key === "time.weekly_reminder") return new URL("/time", appUrl);
+  // A sealed ask (slice 93): an answerer's mail opens the ask itself —
+  // `credential:unseal`, which every answerer holds, reads it; the id came
+  // from the vault, never a person, and is held to a uuid's shape. The
+  // client's opens their Logins page.
+  if (key === SEALED_CONTACT_MAIL) return new URL("/portal/logins", appUrl);
+  if ((Object.values(SEALED_MEMBER_MAIL) as string[]).includes(key)) {
+    const requestId = uuidParam(params, "requestId");
+    return new URL(requestId ? `/vault/requests/${requestId}` : "/vault", appUrl);
+  }
   // The renewal reminders (slice 89). The job chose, per receiver, a page
   // that receiver may open (`linkOf`, src/modules/vault/reminders.ts) and
   // fanned out once per choice, with the choice as a closed token in

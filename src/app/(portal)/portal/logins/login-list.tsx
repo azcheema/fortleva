@@ -7,7 +7,7 @@ import { fieldLabelKey, isMultilineSecret } from "@/app/(tenant)/(authed)/vault/
 import { Button } from "@/components/ui/button";
 import { SecretField, type SecretFieldCall } from "@/components/vault/secret-field";
 
-import { lookAtLoginAction } from "./actions";
+import { lookAtLoginAction, lookAtSealedLoginAction } from "./actions";
 
 /** One shown login, as the page hands it down — names, never a value. */
 export type PortalLoginRow = {
@@ -25,20 +25,33 @@ export type PortalLoginRow = {
  * page's action, so every look is the CLIENT's: their open door, their
  * hourly budget, audited to them. No one-time codes (C59 (d)).
  */
-export function PortalLoginList({ logins }: { logins: readonly PortalLoginRow[] }) {
+export function PortalLoginList({
+  logins,
+  kind,
+}: {
+  logins: readonly PortalLoginRow[];
+  /**
+   * Which logins these are — the ones the agency SHOWS (slice 91) or the
+   * SEALED ones an ask has opened (slice 93) — and so which broker each
+   * look goes through. Required: a sealed row looked at as a shown one
+   * would be refused, and the reverse too.
+   */
+  kind: "shown" | "sealed";
+}) {
   return (
-    <ul className="divide-y divide-border" data-testid="portal-logins">
+    <ul className="divide-y divide-border" data-testid={kind === "shown" ? "portal-logins" : "portal-sealed-logins"}>
       {logins.map((login) => (
-        <PortalLogin key={login.id} login={login} />
+        <PortalLogin key={login.id} login={login} kind={kind} />
       ))}
     </ul>
   );
 }
 
-function PortalLogin({ login }: { login: PortalLoginRow }) {
+function PortalLogin({ login, kind }: { login: PortalLoginRow; kind: "shown" | "sealed" }) {
   const t = useTranslations("portal.logins.row");
   const tVault = useTranslations("vault");
-  const call: SecretFieldCall = (kind, field) => lookAtLoginAction(login.id, field, kind);
+  const call: SecretFieldCall = (look, field) =>
+    kind === "shown" ? lookAtLoginAction(login.id, field, look) : lookAtSealedLoginAction(login.id, field, look);
   return (
     <li className="flex flex-col gap-2 px-4 py-3" data-testid="portal-login" data-name={login.name}>
       <div className="flex min-w-0 items-center gap-2">

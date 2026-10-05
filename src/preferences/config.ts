@@ -163,6 +163,15 @@ export type VaultPreferences = {
    * anything but `true`.
    */
   allowPortalCredentials: boolean;
+  /**
+   * How long a client's ask to open their SEALED logins waits for an answer
+   * before the client may confirm it themselves (slice 93; founder decision
+   * C52 (g): 7 days by default, then the 48-hour notice — "7 + 2"; an agency
+   * may lengthen it, a Swedish summer closure being longer than nine days).
+   * Frozen on each ask when it is made, so changing it never moves an ask
+   * already waiting.
+   */
+  sealedWaitDays: number;
 };
 export const VAULT_PREF_KEYS: Readonly<Record<keyof VaultPreferences, string>> = {
   stepUpMinutes: "vault.stepUpMinutes",
@@ -172,6 +181,7 @@ export const VAULT_PREF_KEYS: Readonly<Record<keyof VaultPreferences, string>> =
   shareLinksStoppedAt: "vault.shareLinksStoppedAt",
   // Spelled out in migration 20261005120000 too (the policy's function).
   allowPortalCredentials: "vault.allowPortalCredentials",
+  sealedWaitDays: "vault.sealedWaitDays",
 };
 export const VAULT_DEFAULTS: VaultPreferences = {
   stepUpMinutes: 10,
@@ -180,6 +190,7 @@ export const VAULT_DEFAULTS: VaultPreferences = {
   allowExternalShareLinks: true,
   shareLinksStoppedAt: null,
   allowPortalCredentials: false,
+  sealedWaitDays: 7,
 };
 /**
  * Bounds the parser enforces (a stored value outside them falls back to
@@ -190,6 +201,8 @@ export const VAULT_DEFAULTS: VaultPreferences = {
  */
 export const VAULT_STEP_UP_MINUTES_RANGE = { min: 1, max: 15 } as const;
 export const VAULT_REVEAL_BUDGET_RANGE = { min: 1, max: 100 } as const;
+/** A sealed ask's wait (days): never shorter than C52 (g)'s seven, at most sixty — the database's CHECK says the same. */
+export const VAULT_SEALED_WAIT_DAYS_RANGE = { min: 7, max: 60 } as const;
 /**
  * THE SHARE-LINK SWITCH'S ADVISORY LOCK KEY (slice 90's fix-pass review).
  * Switching links OFF takes it EXCLUSIVELY and stamps
@@ -299,6 +312,7 @@ export function materializePreferences(
       allowExternalShareLinks: bool(VAULT_PREF_KEYS.allowExternalShareLinks, VAULT_DEFAULTS.allowExternalShareLinks),
       shareLinksStoppedAt: instant(VAULT_PREF_KEYS.shareLinksStoppedAt),
       allowPortalCredentials: bool(VAULT_PREF_KEYS.allowPortalCredentials, VAULT_DEFAULTS.allowPortalCredentials),
+      sealedWaitDays: intIn(VAULT_PREF_KEYS.sealedWaitDays, VAULT_SEALED_WAIT_DAYS_RANGE, VAULT_DEFAULTS.sealedWaitDays),
     },
   };
 }

@@ -17,6 +17,7 @@ import {
 } from "@/modules/vault";
 
 import { AddCredentialForm } from "./add-credential";
+import { SealedAsksBanner } from "./sealed-asks-banner";
 import { AGENCY_WHERE, TENANT_SURFACE } from "./surface";
 import { VaultFilter, type VaultFilterOption } from "./vault-filter";
 import { openVaultPage, rowAbilitiesOf, VaultList } from "./vault-page";
@@ -80,7 +81,10 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
     return (
       <Page width="wide">
         {header(null)}
-        <div className="mt-6">{opened.door}</div>
+        <div className="mt-6 flex flex-col gap-6">
+          <SealedAsksBanner />
+          {opened.door}
+        </div>
       </Page>
     );
   }
@@ -126,6 +130,7 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
       {header(<VaultLockTimer locksAt={open.locksAt.toISOString()} msLeft={msLeft} />)}
 
       <div className="mt-6 flex flex-col gap-6">
+        <SealedAsksBanner />
         <div className="flex flex-col gap-2">
           <VaultFilter value={pick ?? ""} options={options} />
           <p className="text-xs text-muted-foreground">{t("list.logged")}</p>

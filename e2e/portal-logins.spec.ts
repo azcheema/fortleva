@@ -102,4 +102,50 @@ test.describe.serial("logins shown to a client — behind the client's door", ()
       page.getByTestId("portal-login").filter({ hasText: seed.vaultLoginName }).getByTestId("secret-value"),
     ).toHaveAttribute("data-shown", "false");
   });
+
+  /**
+   * THE SEALED LOGINS (3V slice 93; C52 (f), C61). The seed sealed one login
+   * for Astrid's client: she sees a COUNT and never its name (C61 (a)),
+   * asks with a reason and her password, sees the ask waiting with her own
+   * words, and withdraws it — which leaves the way to ask again. The
+   * guarantees underneath (one live ask, the cool-down, who answers, the
+   * guard, the opening behind the door) are `sealed.dbtest.ts`'s; nobody
+   * here answers, so the login's name never reaches the portal. One more of
+   * her hourly password checks (three in all with the test above).
+   */
+  test("a sealed login: a count only; she asks with a reason and her password, sees it waiting, and withdraws it", async ({
+    page,
+  }) => {
+    const password = process.env["E2E_CONTACT_PASSWORD"];
+    expect(password, "global setup hands the contact's password to the workers").toBeTruthy();
+    await page.goto("/portal/logins");
+    const section = page.getByTestId("sealed-section");
+    await expect(section).toBeVisible({ timeout: 30_000 });
+    // C61 (a): how many, never which (another spec may seal one more).
+    await expect(page.getByText(/keeps \d+ logins? sealed for you/)).toBeVisible();
+    expect(await page.content()).not.toContain(seed.vaultSealedLoginName);
+
+    // A RETRY may find the first attempt's ask still waiting: withdraw it first.
+    if ((await section.getAttribute("data-state")) === "waiting") {
+      await section.getByRole("button", { name: "Withdraw the request" }).click();
+      await section.getByRole("button", { name: "Yes" }).click();
+      await expect(section).toHaveAttribute("data-state", "withdrawn", { timeout: 15_000 });
+    }
+
+    const form = section.getByTestId("sealed-ask-form");
+    await form.getByLabel("Why do you need them?").fill("E2E: our developer left and we need the hosting panel.");
+    await form.getByLabel("Your portal password").fill(password!);
+    await form.getByRole("button", { name: "Ask to open them" }).click();
+    await expect(section).toHaveAttribute("data-state", "waiting", { timeout: 15_000 });
+    await expect(section.getByTestId("sealed-reason")).toHaveText("E2E: our developer left and we need the hosting panel.");
+    await expect(section).toContainText("Waiting for your agency's answer.");
+    await expect(section.getByTestId("sealed-ask-form")).toHaveCount(0);
+    expect(await page.content()).not.toContain(seed.vaultSealedLoginName);
+
+    // Withdrawn, asked first in place; the way to ask comes back.
+    await section.getByRole("button", { name: "Withdraw the request" }).click();
+    await section.getByRole("button", { name: "Yes" }).click();
+    await expect(section).toHaveAttribute("data-state", "withdrawn", { timeout: 15_000 });
+    await expect(section.getByTestId("sealed-ask-form")).toBeVisible();
+  });
 });

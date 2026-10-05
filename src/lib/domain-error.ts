@@ -107,6 +107,11 @@ export type DomainErrorCode =
   // it is never shown to the client nor sent with a share link. (Sealing
   // one with no client is LOGIN_HAS_NO_CLIENT.)
   | "LOGIN_SEALED"
+  // A client's ask to open their sealed logins (Phase 3V slice 93 —
+  // src/modules/vault/sealed-requests.ts; C61 (c)) can be approved or denied
+  // only until it opens: an answer to one that has opened, closed, lapsed,
+  // or been denied or withdrawn meanwhile is refused, and says so.
+  | "SEALED_REQUEST_SETTLED"
   // An owner's reset / sign-out of a teammate (slice 84, C50 —
   // src/auth/member-reset.ts): aimed at themselves; at a console
   // principal, whose sign-in is the operator's; a reset of somebody who

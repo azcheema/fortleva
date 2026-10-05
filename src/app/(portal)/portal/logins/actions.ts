@@ -7,17 +7,24 @@ import { checkContactPassword } from "@/auth/portal-password";
 import { AuthzError } from "@/authz/errors";
 import type { VaultAnswer } from "@/components/vault/vault-call";
 import {
+  askToOpenSealedLogins,
+  confirmSealedAsk,
   lookAtPortalLogin,
+  lookAtSealedLogin,
   openPortalLoginsDoor,
   resendPortalLoginsCode,
   startPortalLoginsDoor,
+  withdrawSealedAsk,
   type LoginsCodeMail,
+  type SealedActOutcome,
 } from "@/modules/vault";
 import { requirePortalContext } from "@/portal/context";
 
 /**
- * THE CLIENT'S LOGINS PAGE, ITS FOUR WRITES (Phase 3V slice 91; C52 (d)
- * and (k), C59). Every one takes its principal AND its portal session from
+ * THE CLIENT'S LOGINS PAGE, ITS WRITES (Phase 3V slice 91; C52 (d) and
+ * (k), C59 — and, since slice 93, the SEALED logins: the ask, its
+ * withdrawal, the confirmation after the silent wait, and a look at one
+ * that opened; C52 (f)–(h), C61). Every one takes its principal AND its portal session from
  * `requirePortalContext()` — never from what was posted (the
  * brokered-writes pin) — and hands them to the vault's portal broker,
  * which proves the contact may first, then works as SYSTEM.
@@ -162,6 +169,135 @@ export async function lookAtLoginAction(
   }
   try {
     const r = await lookAtPortalLogin({ principal, sessionId }, credentialId, field, kind);
+    if (r.ok) return { ok: true, value: { value: r.value } };
+    switch (r.reason) {
+      case "locked":
+        return { ok: false, error: "MFA_REQUIRED" };
+      case "not_found":
+        return { ok: false, error: "NOT_FOUND" };
+      case "budget":
+        return { ok: false, error: "REVEAL_BUDGET_EXCEEDED" };
+      case "invalid":
+        return { ok: false, error: "INVALID_INPUT" };
+      case "busy":
+        return { ok: false, error: "VAULT_BUSY" };
+    }
+  } catch (e) {
+    if (e instanceof AuthzError) return { ok: false, error: "NOT_FOUND" };
+    throw e;
+  }
+}
+
+/** What the sealed section's buttons and form get back: a sentence, and whether it went through. */
+export type SealedActionResult = { readonly ok: boolean; readonly message: string };
+
+/**
+ * ASK to open the logins the agency keeps sealed for this client (slice 93,
+ * C52 (f)) — the portal password and a reason. Everyone at the agency who
+ * may answer is mailed at once.
+ */
+export async function askToOpenSealedAction(password: unknown, reason: unknown): Promise<SealedActionResult> {
+  const { principal, sessionId } = await requirePortalContext();
+  const t = await getTranslations("portal.logins.sealed");
+  if (typeof password !== "string" || password.length === 0 || password.length > 1024) {
+    return { ok: false, message: t("passwordRequired") };
+  }
+  const requestHeaders = await headers();
+  try {
+    const r = await askToOpenSealedLogins(
+      { principal, sessionId },
+      () => checkContactPassword(requestHeaders, password),
+      reason,
+    );
+    if (r.ok) return { ok: true, message: t("asked") };
+    switch (r.reason) {
+      case "invalid":
+        return { ok: false, message: t("reasonRequired") };
+      case "wrong_password":
+        return { ok: false, message: t("wrongPassword") };
+      case "limited":
+        return { ok: false, message: t("limited") };
+      case "nothing":
+      case "off":
+        return { ok: false, message: t("unavailable") };
+      case "already":
+        return { ok: false, message: t("already") };
+      case "cooling":
+        return { ok: false, message: t("cooling") };
+      case "busy":
+        return { ok: false, message: t("busy") };
+    }
+  } catch (e) {
+    if (e instanceof AuthzError) return { ok: false, message: t("unavailable") };
+    throw e;
+  }
+}
+
+/** The sentence for a withdrawal's or a confirmation's refusal. */
+async function actMessage(r: Exclude<SealedActOutcome, { ok: true }>): Promise<string> {
+  const t = await getTranslations("portal.logins.sealed");
+  switch (r.reason) {
+    case "locked":
+      return t("doorFirst");
+    case "not_yet":
+      return t("notYet");
+    case "settled":
+    case "not_found":
+    case "invalid":
+      return t("settled");
+    case "off":
+      return t("unavailable");
+    case "busy":
+      return t("busy");
+  }
+}
+
+/** WITHDRAW this client's ask before it opens. */
+export async function withdrawSealedAskAction(requestId: unknown): Promise<SealedActionResult> {
+  const { principal, sessionId } = await requirePortalContext();
+  const t = await getTranslations("portal.logins.sealed");
+  try {
+    const r = await withdrawSealedAsk({ principal, sessionId }, requestId);
+    return r.ok ? { ok: true, message: t("withdrawn") } : { ok: false, message: await actMessage(r) };
+  } catch (e) {
+    if (e instanceof AuthzError) return { ok: false, message: t("unavailable") };
+    throw e;
+  }
+}
+
+/**
+ * CONFIRM after the silent wait (C52 (f)) — the door must be open in this
+ * session: the password and the mailed code a moment ago. It opens 48
+ * hours later unless the agency denies it first.
+ */
+export async function confirmSealedAskAction(requestId: unknown): Promise<SealedActionResult> {
+  const { principal, sessionId } = await requirePortalContext();
+  const t = await getTranslations("portal.logins.sealed");
+  try {
+    const r = await confirmSealedAsk({ principal, sessionId }, requestId);
+    return r.ok ? { ok: true, message: t("confirmed") } : { ok: false, message: await actMessage(r) };
+  } catch (e) {
+    if (e instanceof AuthzError) return { ok: false, message: t("unavailable") };
+    throw e;
+  }
+}
+
+/**
+ * One look at one field of a SEALED login that an ask has opened — the
+ * shown logins' look (`lookAtLoginAction`) in every other respect,
+ * answered in the shape the shared secret field reads.
+ */
+export async function lookAtSealedLoginAction(
+  credentialId: unknown,
+  field: unknown,
+  kind: unknown,
+): Promise<VaultAnswer<{ value: string }>> {
+  const { principal, sessionId } = await requirePortalContext();
+  if (typeof credentialId !== "string" || typeof field !== "string" || (kind !== "reveal" && kind !== "copy")) {
+    return { ok: false, error: "INVALID_INPUT" };
+  }
+  try {
+    const r = await lookAtSealedLogin({ principal, sessionId }, credentialId, field, kind);
     if (r.ok) return { ok: true, value: { value: r.value } };
     switch (r.reason) {
       case "locked":

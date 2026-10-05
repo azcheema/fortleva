@@ -126,6 +126,8 @@ describe("portalPrincipalVerdict — the contact half", () => {
       // The logins an agency shows its client: main contacts only
       // (founder decision C59 (a), Phase 3V slice 91).
       "portal.credential.view",
+      // …and asking to open the sealed ones (C61 (e), slice 93).
+      "portal.credential.request_open",
     ]);
     for (const capability of PORTAL_CAPABILITIES) {
       expect(

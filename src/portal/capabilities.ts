@@ -124,6 +124,14 @@ export const PORTAL_CAPABILITY_DEFS = {
   // absent from the collaborator bundle below, so a helper at the client
   // sees no logins.
   "portal.credential.view": { modules: ["portal", "vault"] },
+  // ASKING TO OPEN the logins the agency keeps SEALED for the client (Phase
+  // 3V slice 93; founder decisions C52 (f)–(j), C61): how many there are, the
+  // ask, its withdrawal and the confirmation after the silent wait
+  // (`src/modules/vault/sealed-portal-writes.ts`). What opens is then read
+  // under `portal.credential.view`, behind the same door. PRIMARY ONLY
+  // (C61 (e)): absent from the collaborator bundle below. Not tied to the
+  // agency's "show logins to clients" switch (C61 (d)).
+  "portal.credential.request_open": { modules: ["portal", "vault"] },
   // ── money (P4) ───────────────────────────────────────────────────
   "portal.invoice.view": { modules: ["portal", "invoicing"] },
   "portal.invoice.pay": { modules: ["portal", "invoicing"] },

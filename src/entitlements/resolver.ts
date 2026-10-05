@@ -189,6 +189,28 @@ export async function moduleOpenUnderSystem(
   return (await openModules(tx, tenantId, [module])).has(module);
 }
 
+/**
+ * GATES 1–3 FOR ONE MODULE, UNDER A MEMBER PRINCIPAL — for the one read
+ * that checks a ✦ code's gate 4 with the second factor set aside and so
+ * cannot lean on `requireAccess` (Phase 3V slice 93: who may read and DENY
+ * a client's sealed ask, founder decision C61 (b), `src/modules/vault/
+ * sealed-requests.ts`). The twin of `moduleOpenUnderSystem`, and refusing
+ * any other principal for the same reason: under a contact every table
+ * here reads empty, which `openModules` answers as "open".
+ */
+export async function moduleOpenForMember(
+  tx: TenantDb,
+  tenantId: string,
+  module: keyof Entitlements["modules"],
+): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ principal: string | null }[]>`
+    SELECT current_setting('app.principal', true) AS principal`;
+  if (rows[0]?.principal !== "member") {
+    throw new Error("moduleOpenForMember: only a member-principal transaction may ask");
+  }
+  return (await openModules(tx, tenantId, [module])).has(module);
+}
+
 const MODULE_BY_CODE = new Map(PERMISSIONS.map((p) => [p.code, p.module]));
 
 /**

@@ -6,8 +6,9 @@ import { AuthzError } from "@/authz/errors";
 import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
-import { getPreferences, type TenantPreferences } from "@/preferences/service";
+import { getPreferences, VAULT_SEALED_WAIT_DAYS_RANGE, type TenantPreferences } from "@/preferences/service";
 
+import { SealedWaitForm } from "./sealed-wait-form";
 import { VaultSwitch } from "./vault-switch";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -22,7 +23,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * switching it off hides every shown login for good). `settings:view`
  * reads the page; `settings:edit` switches either off; switching either on
  * also takes `settings:manage_modules` ✦ (AUTHZ.md §5) — the service checks
- * all of it, and any change asks a fresh factor.
+ * all of it, and any change asks a fresh factor. Since slice 93, also the
+ * wait a client's ask to open their SEALED logins runs before they may
+ * confirm it themselves (C52 (g): 7 days by default; `settings:edit`).
  */
 export default async function VaultSettingsPage() {
   const { membership, actor } = await requireTenantContext();
@@ -72,6 +75,14 @@ export default async function VaultSettingsPage() {
             on={prefs.vault.allowPortalCredentials}
             canEdit={canEdit}
             canTurnOn={canTurnOn}
+          />
+        </SectionCard>
+        <SectionCard title={t("sealedWait.title")} description={t("sealedWait.description")}>
+          <SealedWaitForm
+            days={prefs.vault.sealedWaitDays}
+            canEdit={canEdit}
+            min={VAULT_SEALED_WAIT_DAYS_RANGE.min}
+            max={VAULT_SEALED_WAIT_DAYS_RANGE.max}
           />
         </SectionCard>
       </div>

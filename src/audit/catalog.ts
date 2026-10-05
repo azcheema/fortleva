@@ -325,6 +325,33 @@ export const AUDIT_EVENTS = {
   "portal.logins_code_sent": TENANT,
   "portal.logins_code_refused": TENANT,
   "portal.logins_opened": TENANT,
+  // Phase 3V slice 93 — A CLIENT ASKS TO OPEN THEIR SEALED LOGINS (founder
+  // decisions C52 (f)–(j), C61). Target: the ask (SealedOpenRequest), so one
+  // ask's whole life reads as one thread; metadata names the client — never
+  // the reason's or a denial's words, which live on the row and nowhere else.
+  // The client's acts are brokered under the system principal with the
+  // CONTACT as actor (`brokeredForContactId`): the ask (`open_requested`,
+  // the wait it was frozen with), a withdrawal, the confirmation after the
+  // silent wait (it opens 48 hours later). The password check in front of
+  // an ask is counted as the door's is — `portal.logins_unlock_started`
+  // before it and `portal.logins_password_refused` after a wrong one, with
+  // `purpose: "ask"` — so asking and opening share one per-contact budget.
+  // An answer is a MEMBER's own (`credential:unseal`): approved — it opens
+  // at once — or denied. The daily job writes `open_request_reminded` as
+  // SYSTEM for each mail it sends the answerers (a reminder, or "it has
+  // opened"), with how many it reached. What the contact then looks at is
+  // `credential.revealed | copied` with the CONTACT as actor and
+  // `sealed: true`. An ask refused AFTER a right password — nothing sealed,
+  // one already in play, the cool-down, the day's three — is
+  // `open_request_refused` with that reason code (target the contact), so
+  // the trail never shows a password check that went nowhere.
+  "credential.open_requested": TENANT,
+  "credential.open_request_refused": TENANT,
+  "credential.open_request_withdrawn": TENANT,
+  "credential.open_request_confirmed": TENANT,
+  "credential.open_request_approved": TENANT,
+  "credential.open_request_denied": TENANT,
+  "credential.open_request_reminded": TENANT,
   // Phase 3V slice 87 — the asset registry. Metadata is the asset's
   // client, project and type, and on an edit the NAMES of the fields that
   // changed — never a value (a note is free text).

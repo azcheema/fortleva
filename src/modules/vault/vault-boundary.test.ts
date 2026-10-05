@@ -158,7 +158,15 @@ describe("vault ciphertext boundary", () => {
     // pinned below too. The sealed layer (slice 92): `seal` gates sealing on
     // the door and `credential:edit` (plus `credential:change_visibility`
     // for a shown login) and unsealing on `credential:unseal` ✦; it reads
-    // and writes metadata and share links only, never a secret.
+    // and writes metadata and share links only, never a secret. The client's
+    // ask and the wait (slice 93): `sealed-requests` reads and answers an ask
+    // on `credential:unseal` and the anchor rule (an approval with a fresh
+    // factor, a denial with the factor set aside, C61 (b)), never a secret;
+    // `sealed-portal-writes` is the portal's broker for it — the contact's
+    // own proof first, then SYSTEM with the standing restated, the secret
+    // one field per audited look while an ask has the layer open — and its
+    // callers are pinned below; `sealed-reminders` is the daily job's
+    // per-tenant body (pinned below); `sealed-rules` is figures.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -176,6 +184,10 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/reminders",
       "modules/vault/reveal",
       "modules/vault/seal",
+      "modules/vault/sealed-portal-writes",
+      "modules/vault/sealed-reminders",
+      "modules/vault/sealed-requests",
+      "modules/vault/sealed-rules",
       "modules/vault/share-links",
       "modules/vault/share-open",
       "modules/vault/visibility",
@@ -243,6 +255,44 @@ describe("vault ciphertext boundary", () => {
     const callers = files
       .filter((f) =>
         /\b(startPortalLoginsDoor|resendPortalLoginsCode|openPortalLoginsDoor|readPortalLoginsDoor|lookAtPortalLogin|listPortalLogins)\b/.test(
+          readFileSync(f, "utf8"),
+        ),
+      )
+      .map(rel);
+    expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * THE SEALED ASK'S SYSTEM ENTRY POINT (slice 93) runs as SYSTEM for the
+   * tenant it is handed, like the renewal reminders' — so only the daily
+   * job may call it, with an id the job discovered.
+   */
+  it("only the sealed-ask job calls the sealed asks' system entry point", () => {
+    const allowed = ["modules/vault/sealed-reminders.ts", "modules/vault/index.ts", "jobs/sealed-requests.ts"];
+    const callers = files.filter((f) => /\bsendSealedAskMail\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * THE CLIENT'S ASK AND WHAT IT OPENS (slice 93) run as SYSTEM after the
+   * contact's own proof, and take the portal SESSION's id — except the
+   * nav's one bit (`portalHasSealedLogins`), which the portal frame asks
+   * through `logins-shown.ts`. Reached from the member plane they would be
+   * View-as asking for, or reading, a client's sealed logins — so their
+   * names may appear only where they are defined, re-exported and called by
+   * the portal's logins page, its actions and the frame's helper.
+   */
+  it("only the portal's logins page (and the frame's one bit) calls the sealed ask's broker", () => {
+    const allowed = [
+      "modules/vault/sealed-portal-writes.ts",
+      "modules/vault/index.ts",
+      "app/(portal)/portal/logins/page.tsx",
+      "app/(portal)/portal/logins/actions.ts",
+      "app/(portal)/portal/logins-shown.ts",
+    ];
+    const callers = files
+      .filter((f) =>
+        /\b(readSealedPortalState|portalHasSealedLogins|askToOpenSealedLogins|withdrawSealedAsk|confirmSealedAsk|listSealedPortalLogins|lookAtSealedLogin)\b/.test(
           readFileSync(f, "utf8"),
         ),
       )
