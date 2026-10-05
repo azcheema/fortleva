@@ -71,10 +71,11 @@ test.describe("time tracking settings (owner)", () => {
     await expect(page.getByRole("heading", { name: "Time tracking", level: 1 })).toBeVisible();
     await expect(page.getByText(/Version 1, published/)).toBeVisible();
     // Every fixture member is listed with their standing against version 1:
-    // the owner, the employee and (slice 85) the vault manager.
+    // the owner, the employee, (slice 85) the vault manager and (slice 93b)
+    // the vault owner.
     const ackRows = page.getByTestId("notice-ack-row");
-    await expect(ackRows).toHaveCount(3);
-    await expect(page.getByText(/of 3 members have read version 1/)).toBeVisible();
+    await expect(ackRows).toHaveCount(4);
+    await expect(page.getByText(/of 4 members have read version 1/)).toBeVisible();
     // The publish editor waits behind the disclosure; opening it reveals both locales' fields.
     await page.locator('summary[data-slot="disclosure-trigger"]', { hasText: "Edit the text and publish" }).click();
     await expect(page.getByTestId("notice-publish-form")).toBeVisible();

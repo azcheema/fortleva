@@ -28,6 +28,28 @@ export async function signInVaultManager(
   browser: Browser,
   seed: E2ESeed,
 ): Promise<{ context: BrowserContext; page: Page }> {
+  return signInWithFactor(browser, seed.vaultEmail, seed.vaultPassword, seed.vaultTotpSecret);
+}
+
+/**
+ * A fresh context signed in as the fixture's second OWNER — the one with an
+ * authenticator (3V slice 93b, `E2ESeed.vaultOwnerEmail`) — for the owner-only
+ * and ✦ vault verbs: show to client, unseal, delete a sealed login, answer a
+ * client's ask.
+ */
+export async function signInVaultOwner(
+  browser: Browser,
+  seed: E2ESeed,
+): Promise<{ context: BrowserContext; page: Page }> {
+  return signInWithFactor(browser, seed.vaultOwnerEmail, seed.vaultOwnerPassword, seed.vaultOwnerTotpSecret);
+}
+
+async function signInWithFactor(
+  browser: Browser,
+  email: string,
+  password: string,
+  totpSecret: string,
+): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({
     baseURL: test.info().project.use.baseURL,
     storageState: { cookies: [], origins: [] },
@@ -38,11 +60,11 @@ export async function signInVaultManager(
   await expect(async () => {
     if (/\/home(?:$|[?#])/.test(page.url())) return;
     await page.goto("/login");
-    await page.locator("#email").fill(seed.vaultEmail);
-    await page.locator("#password").fill(seed.vaultPassword);
+    await page.locator("#email").fill(email);
+    await page.locator("#password").fill(password);
     await page.locator('form button[type="submit"]').click();
     await page.locator("#totp").waitFor({ timeout: 15_000 });
-    await page.locator("#totp").fill(totpNow(seed.vaultTotpSecret));
+    await page.locator("#totp").fill(totpNow(totpSecret));
     await page.locator('form button[type="submit"]').click();
     await page.waitForURL("**/home", { timeout: 15_000 });
   }).toPass({ timeout: 90_000, intervals: [2_000, 4_000, 6_000] });

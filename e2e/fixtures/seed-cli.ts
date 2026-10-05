@@ -34,6 +34,7 @@
  *        tsx e2e/fixtures/seed-cli.ts notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-signoffs <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts reset-sealed-asks <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-portal-sections <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -216,6 +217,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 93, the client's ask and the wait —
   // `src/modules/vault/sealed.dbtest.ts`, `setupTenant("vsask")`.
   "vsask-",
+  // Phase 3V slice 93b, the silent path in time (CI only) —
+  // `src/modules/vault/sealed-time.dbtest.ts`, `setupTenant("vstime")`.
+  "vstime-",
   // Phase 3 slice 72, the sharing UI — `src/modules/work/visibility.dbtest.ts`,
   // `setupTenant("vshare")`.
   "vshare-",
@@ -490,6 +494,17 @@ export type E2ESeed = {
   readonly vaultEmail: string;
   readonly vaultPassword: string;
   readonly vaultTotpSecret: string;
+  /* ── A second OWNER with an enrolled authenticator (3V slice 93b) ────
+   * The fixture's first owner has no factor and every spec shares that
+   * session; the owner-only and ✦ vault verbs — show a login to the client
+   * (C59), unseal and delete a sealed login (C60), answer a client's ask
+   * (C61) — need an owner who can step up. Named "E2E Vault Owner" so no
+   * spec's `/E2E Owner/` match reaches it. It is the fourth fixture member:
+   * `settings.spec.ts` counts four. Never printed; worthless after
+   * teardown; in the gitignored seed file only. */
+  readonly vaultOwnerEmail: string;
+  readonly vaultOwnerPassword: string;
+  readonly vaultOwnerTotpSecret: string;
   readonly vaultLoginName: string;
   readonly vaultLoginPassword: string;
   readonly vaultApiKeyName: string;
@@ -1225,6 +1240,39 @@ async function provision(seedFile: string): Promise<void> {
   if (!managerRole) throw new Error("provisionTenant seeded no manager role");
   await db.memberRole.create({ data: { tenantId, memberId: vaultMember.id, roleId: managerRole.id } });
   await assignMemberToClient({ tenantId, actor: ctx.actor, memberId: vaultMember.id, clientId });
+
+  // ── A second owner with an authenticator (3V slice 93b) ─────────────
+  // See `E2ESeed.vaultOwnerEmail`. The factor row as the manager's above.
+  const vaultOwnerEmail = `e2e-vault-owner-${run}${EMAIL_DOMAIN}`;
+  const vaultOwnerPassword = randomBytes(24).toString("base64url");
+  const vaultOwnerTotpSecret = randomBytes(24).toString("base64url");
+  const vaultOwnerUser = await db.user.create({
+    data: { name: "E2E Vault Owner", email: vaultOwnerEmail, emailVerified: true, locale: "en", twoFactorEnabled: true },
+  });
+  await db.account.create({
+    data: {
+      userId: vaultOwnerUser.id,
+      providerId: "credential",
+      accountId: vaultOwnerUser.id,
+      password: await hashPassword(vaultOwnerPassword),
+    },
+  });
+  await db.twoFactor.create({
+    data: {
+      userId: vaultOwnerUser.id,
+      secret: await symmetricEncrypt({ key: memberSecretConfig, data: vaultOwnerTotpSecret }),
+      backupCodes: await symmetricEncrypt({
+        key: memberSecretConfig,
+        data: JSON.stringify(Array.from({ length: 10 }, () => randomBytes(5).toString("hex"))),
+      }),
+      verified: true,
+    },
+  });
+  const vaultOwnerMember = await db.member.create({ data: { tenantId, userId: vaultOwnerUser.id, title: null } });
+  const ownerRole = await db.role.findFirst({ where: { tenantId, templateKey: "owner" }, select: { id: true } });
+  if (!ownerRole) throw new Error("provisionTenant seeded no owner role");
+  await db.memberRole.create({ data: { tenantId, memberId: vaultOwnerMember.id, roleId: ownerRole.id } });
+
   // Through the vault's own service, as the manager would — encrypted,
   // audited — with the fresh factor the door wants.
   const { createCredential } = await import("../../src/modules/vault");
@@ -1620,6 +1668,9 @@ async function provision(seedFile: string): Promise<void> {
     vaultEmail,
     vaultPassword,
     vaultTotpSecret,
+    vaultOwnerEmail,
+    vaultOwnerPassword,
+    vaultOwnerTotpSecret,
     vaultLoginName,
     vaultLoginPassword,
     vaultApiKeyName,
@@ -2145,6 +2196,38 @@ async function resetSignoffs(tenantId: string): Promise<void> {
   });
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"reset":${versions.count + documents.count}}
+`);
+}
+
+/**
+ * Delete every ask to open sealed logins in the throwaway tenant (3V slice
+ * 93b): `portal-logins.spec.ts` asks, has the ask denied and approved, and
+ * a denial shuts asking for 30 days and three asks fill the day — so each
+ * of its sealed tests, and a retry of any, starts from none. The guard has
+ * no DELETE rule (rows go with their client); the platform connection may
+ * delete, and only in an `e2e-` tenant (`assertThrowawayTenant`).
+ *
+ * It also deletes the tenant's COUNTED PASSWORD CHECKS at the client's door
+ * (`portal.logins_unlock_started` / `portal.logins_password_refused` — the
+ * audit rows the per-contact hourly budget of ten counts): one pass of the
+ * spec spends up to six, and a retry of the serial group would otherwise
+ * run Astrid out for a reason unrelated to the product (the review's low).
+ * Audit rows are append-only; this is the fixture's own maintenance switch,
+ * as the dbtest fixture's teardown uses it, in a throwaway tenant only.
+ */
+async function resetSealedAsks(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertThrowawayTenant(db, tenantId);
+  const { count } = await db.sealedOpenRequest.deleteMany({ where: { tenantId } });
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
+    await tx.auditEvent.deleteMany({
+      where: { tenantId, action: { in: ["portal.logins_unlock_started", "portal.logins_password_refused"] } },
+    });
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"reset":${count}}
 `);
 }
 
@@ -2724,6 +2807,7 @@ const main = async (): Promise<void> => {
   if (command === "notifications") return notifications(argument!);
   if (command === "reset-notifications") return resetNotifications(argument!);
   if (command === "reset-signoffs") return resetSignoffs(argument!);
+  if (command === "reset-sealed-asks") return resetSealedAsks(argument!);
   if (command === "reset-portal-sections") return resetPortalSections(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);

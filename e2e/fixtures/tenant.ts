@@ -241,6 +241,16 @@ export async function resetNotifications(tenantId: string): Promise<number> {
   return reset;
 }
 
+/**
+ * Delete the throwaway tenant's asks to open sealed logins, and the
+ * contact's counted password checks with them (3V slice 93b) — see
+ * seed-cli's `resetSealedAsks`.
+ */
+export async function resetSealedAsks(tenantId: string): Promise<number> {
+  const { reset } = await runCli<{ reset: number }>(["reset-sealed-asks", tenantId]);
+  return reset;
+}
+
 /** Every decided sign-off of the standing fixture back to PENDING (the sign-off spec's teardown). */
 export async function resetSignoffs(tenantId: string): Promise<number> {
   const { reset } = await runCli<{ reset: number }>(["reset-signoffs", tenantId]);
