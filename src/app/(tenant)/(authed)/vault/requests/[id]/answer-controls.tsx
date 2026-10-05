@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { startTransition, useActionState, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { Field, FormMessage } from "@/components/semantic";
+import { Field, FormMessage, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,6 +34,14 @@ import { approveSealedAskAction, denySealedAskAction } from "./actions";
  * action, a refusal included — AGENTS.md's standing trap). Each dialog has
  * its button as a trigger-less origin, so focus comes back through
  * `useFocusReturn`.
+ *
+ * MOUNTED ACROSS THE REVALIDATION (slice 93b — the browser test caught it):
+ * an answer re-renders the page, and the ask is then no longer answerable,
+ * so a card the PAGE drew only while it was would unmount this component —
+ * and with it the form whose effect raises the toast and closes the
+ * dialog — the moment the answer landed. So the page draws this always;
+ * the Answer card comes and goes inside it, the dialogs stay (slice 91's
+ * `show-to-client-dialog.tsx` rule).
  */
 export function AnswerControls({
   requestId,
@@ -48,20 +56,26 @@ export function AnswerControls({
   const [open, setOpen] = useState<"approve" | "deny" | null>(null);
   const close = useCallback(() => setOpen(null), []);
   return (
-    <div className="flex flex-wrap gap-2" data-testid="sealed-answer">
-      {canApprove ? (
-        <Button type="button" onClick={() => setOpen("approve")}>
-          {t("approve")}
-        </Button>
-      ) : null}
-      {canDeny ? (
-        <Button type="button" variant="outline" onClick={() => setOpen("deny")}>
-          {t("deny")}
-        </Button>
+    <>
+      {canApprove || canDeny ? (
+        <SectionCard title={t("answerTitle")} description={t("answerDescription")}>
+          <div className="flex flex-wrap gap-2" data-testid="sealed-answer">
+            {canApprove ? (
+              <Button type="button" onClick={() => setOpen("approve")}>
+                {t("approve")}
+              </Button>
+            ) : null}
+            {canDeny ? (
+              <Button type="button" variant="outline" onClick={() => setOpen("deny")}>
+                {t("deny")}
+              </Button>
+            ) : null}
+          </div>
+        </SectionCard>
       ) : null}
       <AnswerDialog kind="approve" open={open === "approve"} onClose={close} requestId={requestId} />
       <AnswerDialog kind="deny" open={open === "deny"} onClose={close} requestId={requestId} />
-    </div>
+    </>
   );
 }
 

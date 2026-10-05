@@ -125,11 +125,9 @@ export default async function SealedRequestPage({ params }: { params: Promise<{ 
           ) : null}
         </SectionCard>
 
-        {answerable ? (
-          <SectionCard title={t("answerTitle")} description={t("answerDescription")}>
-            <AnswerControls requestId={view.id} canApprove={view.can.approve} canDeny={view.can.deny} />
-          </SectionCard>
-        ) : null}
+        {/* Always drawn: it keeps its dialogs mounted across the answer's
+            revalidation, and draws the Answer card only while there is one. */}
+        <AnswerControls requestId={view.id} canApprove={view.can.approve} canDeny={view.can.deny} />
       </div>
     </Page>
   );
