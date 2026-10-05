@@ -102,6 +102,11 @@ export type DomainErrorCode =
   // shown to.
   | "CLIENT_LOGINS_OFF"
   | "LOGIN_HAS_NO_CLIENT"
+  // A SEALED login (Phase 3V slice 92 — src/modules/vault/seal.ts; founder
+  // decision C60 (a)): kept for its client, who gets it only by asking, so
+  // it is never shown to the client nor sent with a share link. (Sealing
+  // one with no client is LOGIN_HAS_NO_CLIENT.)
+  | "LOGIN_SEALED"
   // An owner's reset / sign-out of a teammate (slice 84, C50 —
   // src/auth/member-reset.ts): aimed at themselves; at a console
   // principal, whose sign-in is the operator's; a reset of somebody who

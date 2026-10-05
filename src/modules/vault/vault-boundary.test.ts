@@ -155,7 +155,10 @@ describe("vault ciphertext boundary", () => {
     // principal, names and field NAMES only; `portal-writes` is the portal's
     // broker — the contact's own proof first, then SYSTEM with every term
     // restated, the secret one field per audited look — and its callers are
-    // pinned below too.
+    // pinned below too. The sealed layer (slice 92): `seal` gates sealing on
+    // the door and `credential:edit` (plus `credential:change_visibility`
+    // for a shown login) and unsealing on `credential:unseal` ✦; it reads
+    // and writes metadata and share links only, never a secret.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -172,6 +175,7 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/reminder-subjects",
       "modules/vault/reminders",
       "modules/vault/reveal",
+      "modules/vault/seal",
       "modules/vault/share-links",
       "modules/vault/share-open",
       "modules/vault/visibility",

@@ -101,7 +101,7 @@ async function dbNow(tx: TenantDb): Promise<Date> {
 async function liveItem(tx: TenantDb, tenantId: string, id: string) {
   const item = await tx.credentialItem.findFirst({
     where: { tenantId, id, deletedAt: null },
-    select: { id: true, type: true, clientId: true, projectId: true, secretFieldKeys: true },
+    select: { id: true, type: true, clientId: true, projectId: true, secretFieldKeys: true, sealedAt: true },
   });
   if (!item) return deny("NOT_FOUND");
   return item;
@@ -138,6 +138,10 @@ export async function createShareLink(
 
     const item = await liveItem(tx, ctx.tenantId, id);
     await assertAnchorInScope(tx, ctx.actor, item);
+    // Sealed (slice 92, C60 (a)): the client gets it only by asking, and a
+    // link could reach the client's own address around that. Read again
+    // under the share lock below, which a seal waits out.
+    if (item.sealedAt !== null) fail("LOGIN_SEALED");
 
     // The switch's lock, SHARED, before the switch is read: a link is made
     // wholly before a switch-off stamps (and is stopped by it) or after it
@@ -181,9 +185,14 @@ export async function createShareLink(
     // waits above: a secret being replaced (`replaceCredentialSecret` holds
     // the row FOR UPDATE) is waited out, so the link pins the version it
     // will actually show, never one already gone (the fix-pass review).
-    const held = await tx.$queryRaw<{ deleted_at: Date | null; secret_field_keys: string[] }[]>`
-      SELECT deleted_at, secret_field_keys FROM credential_item WHERE tenant_id = ${ctx.tenantId} AND id = ${id} FOR SHARE`;
+    // The same lock orders this link against a SEAL (slice 92): a seal's
+    // `FOR UPDATE` of the row (`lockedState`) waits for this transaction
+    // and then revokes the link; a seal that committed first is seen here
+    // and refused.
+    const held = await tx.$queryRaw<{ deleted_at: Date | null; secret_field_keys: string[]; sealed_at: Date | null }[]>`
+      SELECT deleted_at, secret_field_keys, sealed_at FROM credential_item WHERE tenant_id = ${ctx.tenantId} AND id = ${id} FOR SHARE`;
     if (!held[0] || held[0].deleted_at !== null) return deny("NOT_FOUND");
+    if (held[0].sealed_at !== null) fail("LOGIN_SEALED");
     // ...and the field still set after those waits: a replacement that
     // removed it would leave a link to nothing (the narrow round).
     if (!held[0].secret_field_keys.includes(input.field)) fail("INVALID_INPUT", "field is not set");

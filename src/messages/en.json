@@ -1370,7 +1370,8 @@
     "TWO_FACTOR_NOT_ENROLLED": "This person has no two-factor authentication to reset.",
     "SHARE_LINKS_OFF": "Share links are switched off for this workspace.",
     "CLIENT_LOGINS_OFF": "Showing logins to clients is switched off for this workspace.",
-    "LOGIN_HAS_NO_CLIENT": "This login belongs to your agency, so there is no client to show it to.",
+    "LOGIN_HAS_NO_CLIENT": "This login belongs to your agency, so there is no client to show it to or seal it for.",
+    "LOGIN_SEALED": "This login is sealed for the client, so it cannot be shared or shown to them. An owner can unseal it.",
     "SHARE_LINK_CLOSED": "That link has already been opened or revoked."
   },
   "assignments": {
@@ -3701,6 +3702,7 @@
       "needsRotation": "Change soon",
       "delete": "Delete",
       "deleteConfirm": "Delete {name}?",
+      "deleteSealedConfirm": "Delete {name}? It is sealed for the client, and deleting it ends the seal too.",
       "deleted": "Deleted."
     },
     "door": {
@@ -3828,6 +3830,23 @@
       "enterCode": "Enter the code from your authenticator app.",
       "shown": "The client can now see this login.",
       "hidden": "The client can no longer see this login."
+    },
+    "seal": {
+      "menu": "Seal…",
+      "menuUnseal": "Unseal",
+      "badge": "Sealed",
+      "badgeHint": "Kept for the client. Only an owner can unseal or delete it.",
+      "title": "Seal {name}?",
+      "description": "A sealed login is kept for the client and opened only on real need.",
+      "pointTeam": "Your team uses it as before.",
+      "pointClient": "The client can't see it, and it can't be sent with a share link. Its open share links end now.",
+      "pointShown": "The client can see it today — sealing hides it from them.",
+      "pointOwners": "Only an owner can unseal it or delete it.",
+      "submit": "Seal",
+      "submitting": "Sealing…",
+      "sealed": "Sealed. Only an owner can unseal it.",
+      "unsealConfirm": "Unseal {name}? It will no longer be kept for the client.",
+      "unsealed": "Unsealed."
     }
   },
   "assets": {

@@ -2692,6 +2692,10 @@ model CredentialItem {
   needsRotation     Boolean        @default(false) @map("needs_rotation")
   compromisedAt     DateTime?      @map("compromised_at") @db.Timestamptz(6)
   visibility        Visibility     @default(INTERNAL)
+  /// Sealed for its client (slice 92, founder decisions C52 (e), C60): the
+  /// client is kept out until they ask and wait; staff use it as usual.
+  /// CHECKs: a sealed login has a client, is INTERNAL and is not binned.
+  sealedAt          DateTime?      @map("sealed_at") @db.Timestamptz(6)
   createdByMemberId String?        @map("created_by_member_id") // attribution, no FK
   updatedByMemberId String?        @map("updated_by_member_id") // attribution, no FK
   archivedAt        DateTime?      @map("archived_at") @db.Timestamptz(6)

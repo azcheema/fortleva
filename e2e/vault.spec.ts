@@ -148,6 +148,45 @@ test.describe.serial("the vault — a client's tab, /vault and a project's tab �
     await expect(rowOf(name)).toHaveCount(0);
   });
 
+  test("seal a login (slice 92): it says so, and neither shares nor deletes — only an owner unseals", async () => {
+    // Its own login: a manager cannot delete a sealed one afterwards (C60
+    // (b)) and the fixture has no owner with an authenticator, so this row
+    // stays in the e2e tenant — named so it is never mistaken for a seed row.
+    const name = `E2E sealed ${Date.now()}`;
+    const form = page.getByTestId("add-credential");
+    await form.locator("#vc-name").fill(name);
+    await form.locator("#vc-secret-password").fill(`sealed-${Date.now()}`);
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByText(`Added ${name}`)).toBeVisible();
+    const row = rowOf(name);
+    await expect(row.getByTestId("sealed")).toHaveCount(0);
+
+    await row.getByRole("button", { name: `Actions for ${name}` }).click();
+    await page.getByRole("menuitem", { name: "Seal…" }).click();
+    const dialog = page.getByTestId("seal-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Only an owner can unseal it or delete it.");
+    await dialog.getByRole("button", { name: "Seal", exact: true }).click();
+    await expect(page.getByText("Sealed. Only an owner can unseal it.")).toBeVisible();
+    await expect(dialog).toBeHidden();
+    await expect(row.getByTestId("sealed")).toHaveText("Sealed");
+
+    // The team keeps using it: the eye and Change secret… are still there.
+    await expect(
+      row.locator('[data-slot="secret-field"][data-field="password"]').getByRole("button", { name: "Show Password" }),
+    ).toBeVisible();
+    await row.getByRole("button", { name: `Actions for ${name}` }).click();
+    const menu = page.getByRole("menu");
+    await expect(menu.getByRole("menuitem", { name: "Change secret…" })).toBeVisible();
+    // Never shared (C60 (a)); deleted and unsealed by an owner only (C60 (b)).
+    await expect(menu.getByRole("menuitem", { name: "Share…" })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: "Unseal" })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: "Seal…" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+  });
+
   // ── Slice 86: /vault and the project's Vault tab ─────────────────────
   const group = (key: string) => page.locator(`[data-testid="vault-group"][data-group="${key}"]`);
   const filter = () => page.getByTestId("vault-filter").locator("select");

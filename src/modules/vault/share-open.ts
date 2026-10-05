@@ -159,8 +159,10 @@ async function liveLink(tx: TenantDb, tenantId: string, tokenHash: string, lock:
   if (!prefs.vault.allowExternalShareLinks) return null;
   const version = await readSecretVersion(tx, tenantId, link.credentialId);
   if (shareLinkStatus(link, version, now, prefs.vault.shareLinksStoppedAt) !== "waiting") return null;
+  // A sealed login's link opens nothing (slice 92, C60 (a)) — a belt:
+  // sealing revoked every open link in its own transaction.
   const item = await tx.credentialItem.findFirst({
-    where: { tenantId, id: link.credentialId, deletedAt: null },
+    where: { tenantId, id: link.credentialId, deletedAt: null, sealedAt: null },
     select: { name: true, url: true, username: true, secretFieldKeys: true },
   });
   if (!item || !item.secretFieldKeys.includes(link.field)) return null;

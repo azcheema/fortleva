@@ -895,10 +895,11 @@ describe("the door — the whole vault is locked, the list included (C52 (a))", 
     // `share` (slice 90): `credential:share` ✦ AND `credential:reveal` ✦, with share links on.
     // `showToClient` / `hideFromClient` (slice 91): `credential:change_visibility` ✦ (C A);
     // showing also needs client logins on, which this file's tenant never switches on.
-    const none = { showToClient: false, hideFromClient: false };
-    expect((await openVault(owner())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true, showToClient: false, hideFromClient: true });
+    // `unseal` (slice 92): `credential:unseal` ✦ — the owner's alone (C52 (e), C60 (b)).
+    const none = { showToClient: false, hideFromClient: false, unseal: false };
+    expect((await openVault(owner())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true, showToClient: false, hideFromClient: true, unseal: true });
     expect((await openVault(manager())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true, ...none });
-    expect((await openVault(admin())).can).toEqual({ create: true, edit: true, delete: false, reveal: true, share: true, showToClient: false, hideFromClient: true });
+    expect((await openVault(admin())).can).toEqual({ create: true, edit: true, delete: false, reveal: true, share: true, showToClient: false, hideFromClient: true, unseal: false });
     expect((await openVault(employee())).can).toEqual({ create: true, edit: false, delete: false, reveal: false, share: false, ...none });
     expect((await openVault(owner())).shareMaxHours).toBe(168);
     await updatePreferences(owner(), { vault: { allowExternalShareLinks: false } });

@@ -19,8 +19,10 @@ import {
   listShareLinks,
   replaceCredentialSecret,
   revokeShareLink,
+  sealLogin,
   SECRET_FIELDS,
   showLoginToClient,
+  unsealLogin,
   updateCredential,
   type CredentialPatch,
   type ShareLinkView,
@@ -275,6 +277,38 @@ export async function hideLoginFromClientAction(surface: string, credentialId: s
   const r = await runForm(path, async () => {
     await hideLoginFromClient(ctx, credentialId);
     return t("hidden");
+  });
+  if (r.ok) revalidatePath(path);
+  return r;
+}
+
+/**
+ * Seal a login for its client (slice 92, C52 (e)) — the vault's window, no
+ * code: anyone who may edit it may seal it. A shown login is hidden by the
+ * seal and its open share links end (C60 (a)); the service says which.
+ */
+export async function sealLoginAction(surface: string, credentialId: string): Promise<FormResult> {
+  const path = vaultPathOf(surface);
+  if (path === null || !uuid.safeParse(credentialId).success) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("vault.seal");
+  const r = await runForm(path, async () => {
+    await sealLogin(ctx, credentialId);
+    return t("sealed");
+  });
+  if (r.ok) revalidatePath(path);
+  return r;
+}
+
+/** Unseal a login — an owner's act (`credential:unseal`), the vault's window, no code: it takes access away. */
+export async function unsealLoginAction(surface: string, credentialId: string): Promise<FormResult> {
+  const path = vaultPathOf(surface);
+  if (path === null || !uuid.safeParse(credentialId).success) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("vault.seal");
+  const r = await runForm(path, async () => {
+    await unsealLogin(ctx, credentialId);
+    return t("unsealed");
   });
   if (r.ok) revalidatePath(path);
   return r;

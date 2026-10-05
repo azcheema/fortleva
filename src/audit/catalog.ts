@@ -299,6 +299,16 @@ export const AUDIT_EVENTS = {
   // on the rows written when switching client logins OFF un-marked every
   // login (C59 (b)) — one row per login, so each login's thread says why.
   "credential.visibility_changed": TENANT,
+  // Phase 3V slice 92 — the sealed layer's staff side (founder decisions
+  // C52 (e), C60). A member seals a login for its client
+  // (`credential:edit`; metadata the client and `wasShown` — a shown login
+  // is hidden by the seal, which also writes a `credential.visibility_
+  // changed` with `cause: "sealed"`, and every open share link is revoked,
+  // one `credential.share_revoked` each with `cause: "sealed"`); an owner
+  // unseals one (`credential:unseal`). Deleting a sealed login is
+  // `credential.deleted` with `sealed: true`.
+  "credential.sealed": TENANT,
+  "credential.unsealed": TENANT,
   // THE CLIENT'S DOOR to those logins (C52 (k): their portal password AND
   // a code mailed each time), in the portal family because a CONTACT
   // caused each row: brokered under the system principal, actor the

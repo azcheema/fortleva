@@ -20,6 +20,8 @@ export type VaultItem = {
   readonly needsRotation: boolean;
   /** Shown to the client's main contacts in their portal (slice 91, C52 (d)). */
   readonly shownToClient: boolean;
+  /** Sealed for its client (slice 92, C52 (e)): never shown, never shared; only an owner unseals or deletes it. */
+  readonly sealed: boolean;
   /** Whether it hangs on a client at all — the agency's own logins (C49) can never be shown. */
   readonly hasClient: boolean;
   /** The project it hangs on, or null for a client-level login. */

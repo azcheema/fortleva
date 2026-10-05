@@ -4,6 +4,8 @@ import {
   EyeOffIcon,
   ExternalLinkIcon,
   KeyRoundIcon,
+  LockIcon,
+  LockOpenIcon,
   RotateCcwKeyIcon,
   Share2Icon,
   Trash2Icon,
@@ -40,8 +42,10 @@ import {
   deleteCredentialAction,
   hideLoginFromClientAction,
   replaceCredentialSecretAction,
+  unsealLoginAction,
   updateCredentialAction,
 } from "./actions";
+import { SealDialog } from "./seal-dialog";
 import { ShareDialog } from "./share-dialog";
 import { ShowToClientDialog } from "./show-to-client-dialog";
 import type { VaultSurface } from "./surface";
@@ -61,6 +65,12 @@ export type VaultRowAbilities = {
    */
   readonly showToClient: boolean;
   readonly hideFromClient: boolean;
+  /**
+   * The sealed layer (slice 92, C52 (e)): `edit` seals; `unseal` —
+   * `credential:unseal` ✦, owners — unseals and deletes a sealed login
+   * (C60 (b)).
+   */
+  readonly unseal: boolean;
 };
 
 /**
@@ -96,8 +106,10 @@ export function VaultRow({
   const [secretOpen, setSecretOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [showOpen, setShowOpen] = useState(false);
-  // A login with only an authenticator key has no field a link could share.
-  const canShare = can.share !== null && item.secretFieldKeys.length > 0;
+  const [sealOpen, setSealOpen] = useState(false);
+  // A login with only an authenticator key has no field a link could share;
+  // a SEALED one is never shared (C60 (a)).
+  const canShare = can.share !== null && item.secretFieldKeys.length > 0 && !item.sealed;
 
   const items: RowAction[] = [];
   if (canShare) {
@@ -113,7 +125,7 @@ export function VaultRow({
   // makes it "shown" cannot unmount it before its success is said (slice
   // 70's lesson); only the menu verb follows the state.
   const canShow = can.showToClient && item.hasClient;
-  if (canShow && !item.shownToClient) {
+  if (canShow && !item.shownToClient && !item.sealed) {
     items.push({
       key: "show-to-client",
       label: tVault("clientView.menuShow"),
@@ -131,6 +143,29 @@ export function VaultRow({
       onSelect: () => run(() => hideLoginFromClientAction(surface, item.id)),
     });
   }
+  // Sealing (slice 92): anyone who may edit — but a login the client can
+  // see now is HIDDEN by the seal, which asks who may hide it too. The
+  // dialog stays mounted whatever the state, as the show dialog does.
+  const canSeal = can.edit && item.hasClient && (!item.shownToClient || can.hideFromClient);
+  if (canSeal && !item.sealed) {
+    items.push({
+      key: "seal",
+      label: tVault("seal.menu"),
+      icon: LockIcon,
+      onSelect: () => afterClosingLayers(() => setSealOpen(true)),
+    });
+  }
+  if (can.unseal && item.sealed) {
+    // Danger, with its question: it takes the client's claim to the login away.
+    items.push({
+      key: "unseal",
+      label: tVault("seal.menuUnseal"),
+      icon: LockOpenIcon,
+      tone: "danger",
+      confirm: tVault("seal.unsealConfirm", { name: item.name }),
+      onSelect: () => run(() => unsealLoginAction(surface, item.id)),
+    });
+  }
   if (can.edit) {
     items.push({
       key: "change-secret",
@@ -139,13 +174,14 @@ export function VaultRow({
       onSelect: () => afterClosingLayers(() => setSecretOpen(true)),
     });
   }
-  if (can.delete) {
+  // A sealed login is deleted by an owner only (C60 (b)).
+  if (can.delete && (!item.sealed || can.unseal)) {
     items.push({
       key: "delete",
       label: t("delete"),
       icon: Trash2Icon,
       tone: "danger",
-      confirm: t("deleteConfirm", { name: item.name }),
+      confirm: item.sealed ? t("deleteSealedConfirm", { name: item.name }) : t("deleteConfirm", { name: item.name }),
       onSelect: () => run(() => deleteCredentialAction(surface, item.id)),
     });
   }
@@ -181,6 +217,12 @@ export function VaultRow({
           {item.shownToClient ? (
             <Badge variant="brand" data-testid="client-can-see">
               {tVault("clientView.badge")}
+            </Badge>
+          ) : null}
+          {item.sealed ? (
+            <Badge variant="neutral" data-testid="sealed" title={tVault("seal.badgeHint")}>
+              <LockIcon aria-hidden="true" />
+              {tVault("seal.badge")}
             </Badge>
           ) : null}
         </div>
@@ -280,6 +322,7 @@ export function VaultRow({
       {canShow ? (
         <ShowToClientDialog surface={surface} item={item} open={showOpen} onOpenChange={setShowOpen} />
       ) : null}
+      {canSeal ? <SealDialog surface={surface} item={item} open={sealOpen} onOpenChange={setSealOpen} /> : null}
       {can.edit ? (
         <ChangeSecretDialog
           surface={surface}

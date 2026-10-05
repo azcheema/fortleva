@@ -91,6 +91,7 @@ export {
   showLoginToClient,
   SHOW_STEP_UP_MINUTES,
 } from "./visibility";
+export { sealLogin, unsealLogin } from "./seal";
 export { listPortalLogins, PORTAL_LOGIN_LIMIT, portalLoginsShown, type PortalLogin } from "./portal";
 export {
   LOGINS_CODES_PER_HOUR,

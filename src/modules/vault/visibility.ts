@@ -30,7 +30,10 @@ import { assertAnchorInScope } from "./scope";
  *      nothing after this can tell an out-of-scope id from a missing one);
  *   4. a client to show it to — the agency's own logins (C49) have none,
  *      and the database refuses one shown without a client anyway
- *      (`credential_item_client_visible_needs_client`);
+ *      (`credential_item_client_visible_needs_client`) — and a login that
+ *      is not SEALED (slice 92, C60 (a): a sealed login reaches the client
+ *      only by their asking; `LOGIN_SEALED`, and the database's
+ *      `credential_item_sealed_is_internal`);
  *   5. the switch's lock SHARED, then the switch itself
  *      (`portalCredentialsSwitchLockKey`): a login is shown wholly before a
  *      switch-off begins — and is hidden by it — or after it commits, and
@@ -58,7 +61,7 @@ export const SHOW_STEP_UP_MINUTES = 1;
 async function liveLogin(tx: TenantDb, tenantId: string, id: string) {
   const item = await tx.credentialItem.findFirst({
     where: { tenantId, id, deletedAt: null },
-    select: { id: true, clientId: true, projectId: true, visibility: true },
+    select: { id: true, clientId: true, projectId: true, visibility: true, sealedAt: true },
   });
   if (!item) return deny("NOT_FOUND");
   return item;
@@ -74,6 +77,8 @@ export async function showLoginToClient(ctx: VaultCtx, credentialId: string): Pr
     const item = await liveLogin(tx, ctx.tenantId, id);
     await assertAnchorInScope(tx, ctx.actor, item);
     if (item.clientId === null) fail("LOGIN_HAS_NO_CLIENT");
+    // Sealed (slice 92, C60 (a)): the client gets it only by asking.
+    if (item.sealedAt !== null) fail("LOGIN_SEALED");
 
     // `$executeRaw`: the lock returns `void`, which `$queryRaw` cannot read.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtext(${portalCredentialsSwitchLockKey(ctx.tenantId)}))`;
@@ -84,12 +89,14 @@ export async function showLoginToClient(ctx: VaultCtx, credentialId: string): Pr
     // concurrent show that committed in between must not be shown (or
     // recorded) twice.
     const written = await tx.credentialItem.updateMany({
-      where: { id, tenantId: ctx.tenantId, deletedAt: null, visibility: "INTERNAL" },
+      where: { id, tenantId: ctx.tenantId, deletedAt: null, visibility: "INTERNAL", sealedAt: null },
       data: { visibility: "CLIENT_VISIBLE", updatedByMemberId: ctx.actor.memberId },
     });
     if (written.count !== 1) {
       const now = await liveLogin(tx, ctx.tenantId, id);
       if (now.visibility === "CLIENT_VISIBLE") return;
+      // Sealed in between (the database's `credential_item_sealed_is_internal` besides).
+      if (now.sealedAt !== null) fail("LOGIN_SEALED");
       return deny("NOT_FOUND");
     }
     await record(tx, {

@@ -8,9 +8,16 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 110 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 — bumped deliberately 2026-10-05)", () => {
-    expect(PERMISSIONS).toHaveLength(110);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(110);
+  it("holds exactly 111 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 — bumped deliberately 2026-10-05)", () => {
+    expect(PERMISSIONS).toHaveLength(111);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(111);
+  });
+
+  it("credential:unseal is vault-module, ✦, and the owner's alone (slice 92, C52 (e), C60 (b))", () => {
+    const def = PERMISSIONS.find((p) => p.code === "credential:unseal");
+    expect(def?.seeded).toEqual(["owner"]);
+    expect(def?.requiresMfa).toBe(true);
+    expect(def?.module).toBe("vault");
   });
 
   it("credential:change_visibility is vault-module, ✦, and seeded C A — never a manager or employee (slice 91)", () => {
@@ -98,6 +105,8 @@ describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
         "credential:share",
         // 3V slice 91 — showing a login to a client (CP4: always step up)
         "credential:change_visibility",
+        // 3V slice 92 — unsealing takes a client's right to ask away; an owner's act (C52 (e))
+        "credential:unseal",
         // slice 84 — puts a teammate's account back on the password alone (C50)
         "member:reset_two_factor",
       ].sort(),

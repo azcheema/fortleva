@@ -4,6 +4,7 @@ import { record } from "@/audit/record";
 import { resolveScope } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
+import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 
 import { boundedVaultWrite, guarded, idOf, principalOf, type VaultCtx } from "./ctx";
@@ -23,6 +24,7 @@ import {
   type CredentialType,
 } from "./fields";
 import { assertAnchorInScope, anchorScopeWhere, type VaultAnchor } from "./scope";
+import { lockedState } from "./seal";
 import { insertSecretRow, keepPreviousVersion, readSecret, readTotp, updateSecretRow } from "./secret-store";
 import { parseTotpInput } from "./totp";
 
@@ -60,6 +62,8 @@ export type CredentialView = {
   readonly needsRotation: boolean;
   /** CLIENT_VISIBLE = shown to the client's main contacts (slice 91, C52 (d)). */
   readonly visibility: "INTERNAL" | "CLIENT_VISIBLE";
+  /** When it was sealed for its client, or null (slice 92, C52 (e) — `seal.ts`). */
+  readonly sealedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -81,6 +85,7 @@ const viewSelect = {
   lastRotatedAt: true,
   needsRotation: true,
   visibility: true,
+  sealedAt: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -606,28 +611,44 @@ export async function replaceCredentialSecret(
  * credential:delete — soft delete: the row leaves every list and every
  * reveal at once, and the secret with its versions is purged with it
  * after DATA_MODEL §6.17's thirty days (the purge job is a later slice).
- * Two concurrent deletes record ONE `credential.deleted`: the write is
- * conditional on the row still being live. A binned login is never shown to
+ * Two concurrent deletes record ONE `credential.deleted` (below: the row
+ * lock). A binned login is never shown to
  * a client (slice 91's security review): the delete puts it back to
  * INTERNAL, so a restore — none exists yet — could never bring one back
  * shown without a member deciding again, with their authenticator.
+ *
+ * A SEALED login (slice 92) is deleted by an owner only — founder decision
+ * C60 (b): deleting it takes away the client's right to ask for it, as
+ * unsealing does — so it also asks `credential:unseal`, and the write
+ * clears the seal (the database's `credential_item_sealed_is_live`: the
+ * bin holds no seal). The seal state is read with the row LOCKED
+ * (`lockedState`), so the permission is checked against the state the
+ * write changes — a seal or unseal waits for the delete, or the delete for
+ * it, inside `boundedVaultWrite` (the reviews: the delete waits on a
+ * seal's row, so its wait is bounded as the seal's, share's and show's
+ * are; `createCredential` and `updateCredential` are not wrapped — an edit
+ * waiting behind a seal is bounded only by the seal's own lock waits).
+ * Two concurrent deletes still record ONE `credential.deleted`: the second
+ * finds the row binned under the lock and is NOT_FOUND.
  */
 export async function deleteCredential(ctx: VaultCtx, credentialId: string): Promise<void> {
   const id = idOf(credentialId, "credentialId");
-  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+  await boundedVaultWrite((opts) => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await enterVault(tx, ctx, "credential:delete");
     const anchor = await liveAnchor(tx, ctx.tenantId, id);
     await assertAnchorInScope(tx, ctx.actor, anchor);
-    const written = await tx.credentialItem.updateMany({
-      where: { id, tenantId: ctx.tenantId, deletedAt: null },
-      data: { deletedAt: new Date(), visibility: "INTERNAL", updatedByMemberId: ctx.actor.memberId },
+    const { sealed } = await lockedState(tx, ctx.tenantId, id);
+    if (sealed) await requireAccess(tx, ctx.tenantId, ctx.actor, "credential:unseal");
+    await tx.credentialItem.update({
+      where: { id, tenantId: ctx.tenantId },
+      data: { deletedAt: new Date(), visibility: "INTERNAL", sealedAt: null, updatedByMemberId: ctx.actor.memberId },
+      select: { id: true },
     });
-    if (written.count !== 1) deny("NOT_FOUND");
     await record(tx, {
       action: "credential.deleted",
       targetType: "CredentialItem",
       targetId: id,
-      metadata: { clientId: anchor.clientId, projectId: anchor.projectId },
+      metadata: { clientId: anchor.clientId, projectId: anchor.projectId, ...(sealed ? { sealed: true } : {}) },
     });
-  });
+  }, opts));
 }

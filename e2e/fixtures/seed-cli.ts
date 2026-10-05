@@ -210,6 +210,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 91, the logins shown to a client —
   // `src/modules/vault/portal-logins.dbtest.ts`, `setupTenant("vport")`.
   "vport-",
+  // Phase 3V slice 92, the sealed layer's staff side —
+  // `src/modules/vault/seal.dbtest.ts`, `setupTenant("vseal")`.
+  "vseal-",
   // Phase 3 slice 72, the sharing UI — `src/modules/work/visibility.dbtest.ts`,
   // `setupTenant("vshare")`.
   "vshare-",

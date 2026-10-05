@@ -107,6 +107,7 @@ export const toVaultItem = (c: CredentialListing): VaultItem => ({
   hasTotp: c.hasTotp,
   needsRotation: c.needsRotation,
   shownToClient: c.visibility === "CLIENT_VISIBLE",
+  sealed: c.sealedAt !== null,
   hasClient: c.clientId !== null,
   project: c.project === null ? null : { key: c.project.key, name: c.project.name },
 });
@@ -119,6 +120,7 @@ export const rowAbilitiesOf = (open: OpenVault): VaultRowAbilities => ({
   share: open.can.share ? { maxHours: open.shareMaxHours } : null,
   showToClient: open.can.showToClient,
   hideFromClient: open.can.hideFromClient,
+  unseal: open.can.unseal,
 });
 
 /** "You can see what is stored here…" — drawn above a list for a member who may not reveal. */

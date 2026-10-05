@@ -1370,7 +1370,8 @@
     "TWO_FACTOR_NOT_ENROLLED": "Den här personen har ingen tvåfaktorsautentisering att återställa.",
     "SHARE_LINKS_OFF": "Delningslänkar är avstängda i den här arbetsytan.",
     "CLIENT_LOGINS_OFF": "Att visa inloggningar för kunder är avstängt i den här arbetsytan.",
-    "LOGIN_HAS_NO_CLIENT": "Inloggningen tillhör er byrå, så det finns ingen kund att visa den för.",
+    "LOGIN_HAS_NO_CLIENT": "Inloggningen tillhör er byrå, så det finns ingen kund att visa den för eller försegla den åt.",
+    "LOGIN_SEALED": "Inloggningen är förseglad för kunden, så den kan inte delas eller visas för kunden. En ägare kan häva förseglingen.",
     "SHARE_LINK_CLOSED": "Länken har redan öppnats eller återkallats."
   },
   "assignments": {
@@ -3701,6 +3702,7 @@
       "needsRotation": "Byt snart",
       "delete": "Ta bort",
       "deleteConfirm": "Ta bort {name}?",
+      "deleteSealedConfirm": "Ta bort {name}? Den är förseglad för kunden, och förseglingen upphör också.",
       "deleted": "Borttagen."
     },
     "door": {
@@ -3828,6 +3830,23 @@
       "enterCode": "Ange koden från din autentiseringsapp.",
       "shown": "Kunden kan nu se inloggningen.",
       "hidden": "Kunden kan inte längre se inloggningen."
+    },
+    "seal": {
+      "menu": "Försegla…",
+      "menuUnseal": "Häv förseglingen",
+      "badge": "Förseglad",
+      "badgeHint": "Förvaras åt kunden. Bara en ägare kan häva förseglingen eller ta bort inloggningen.",
+      "title": "Försegla {name}?",
+      "description": "En förseglad inloggning förvaras åt kunden och öppnas bara när det verkligen behövs.",
+      "pointTeam": "Ert team använder den som tidigare.",
+      "pointClient": "Kunden kan inte se den, och den kan inte skickas med en delningslänk. Dess öppna delningslänkar slutar fungera nu.",
+      "pointShown": "Kunden kan se den i dag — förseglingen döljer den för kunden.",
+      "pointOwners": "Bara en ägare kan häva förseglingen eller ta bort inloggningen.",
+      "submit": "Försegla",
+      "submitting": "Förseglar…",
+      "sealed": "Förseglad. Bara en ägare kan häva förseglingen.",
+      "unsealConfirm": "Häva förseglingen av {name}? Den förvaras då inte längre åt kunden.",
+      "unsealed": "Förseglingen är hävd."
     }
   },
   "assets": {

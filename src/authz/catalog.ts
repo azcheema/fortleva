@@ -278,6 +278,15 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // hiding it again asks only the vault's window, as revoking a share link
   // does. Showing also needs `vault.allowPortalCredentials` on.
   p("credential:change_visibility", "vault", "Show a login to the client's main contacts, or hide it again — showing always asks a fresh factor, audited", CA, true),
+  // ── Phase 3V slice 92 (module `vault`, +1; catalog 110 → 111;
+  // TEMPLATE_VERSION 12, 2026-10-05) — the sealed layer's staff side
+  // (founder decisions C52 (e), C60; `src/modules/vault/seal.ts`). Anyone
+  // who can edit a login SEALS it (`credential:edit`); only an OWNER
+  // unseals one or deletes a sealed one (C52 (e), C60 (b)) — taking away
+  // the client's right to ask for it. C only, ✦: an owner's act, and the
+  // owner role holds every code. It asks the vault's window, no fresh
+  // authenticator code: it takes access away, as hiding a login does.
+  p("credential:unseal", "vault", "Unseal a login sealed for its client, or delete a sealed one — the client can then no longer ask for it, audited", C, true),
 ];
 
 export type RoleTemplate = {
@@ -351,8 +360,12 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     Phase 3V slice 91, the client side of the everyday vault). C A; as
  *     a ✦ code it reaches the owner/admin SYSTEM roles only, never a
  *     clone (AUTHZ.md §3.5). The same rule as v6: a release carrying this
- *     bump MUST run `prisma/seed.ts`. */
-export const TEMPLATE_VERSION = 11;
+ *     bump MUST run `prisma/seed.ts`.
+ * v12 (2026-10-05): +1 `vault` code (credential:unseal ✦ — Phase 3V
+ *     slice 92, the sealed layer's staff side). Owner template only;
+ *     additive. The same rule as v6: a release carrying this bump MUST run
+ *     `prisma/seed.ts`. */
+export const TEMPLATE_VERSION = 12;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));
