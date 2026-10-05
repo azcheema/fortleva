@@ -13,8 +13,11 @@ import type { VaultRefusalCode } from "./vault-call";
  * vault has locked itself, so the refresh draws the door; a credential
  * that is gone leaves the list; a session that ended goes to sign-in.
  */
-export function useVaultFailure(): (code: VaultRefusalCode) => void {
-  const t = useTranslations("vault.errors");
+export function useVaultFailure(
+  /** Whose words: the staff vault's, or the client's logins page (slice 91), where "vault" is not a word they know. */
+  namespace: "vault.errors" | "portal.logins.errors" = "vault.errors",
+): (code: VaultRefusalCode) => void {
+  const t = useTranslations(namespace);
   const router = useRouter();
   return useCallback(
     (code: VaultRefusalCode) => {

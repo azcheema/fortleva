@@ -76,7 +76,7 @@ export async function PortalFilesView({
   }
 
   return (
-    <PortalFrame name={name} nav="files">
+    <PortalFrame name={name} principal={principal} nav="files">
       <Page>
         <div className="flex flex-col gap-6">
           <PageHeader title={t("title")} description={t("description")} />

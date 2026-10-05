@@ -316,6 +316,7 @@ model Tenant {
   clientAssets       ClientAsset[]
   expirationReminders ExpirationReminderSent[]
   credentialShareLinks CredentialShareLink[]
+  contactVaultUnlocks  ContactVaultUnlock[]
 
   @@map("tenant")
 }
@@ -753,6 +754,8 @@ model Contact {
   // measure again before assuming they still are.
   portalAccounts ContactAccount[]
   portalSessions ContactSession[]
+  // Phase 3V slice 91 — the client's door to the logins shown to them.
+  vaultUnlocks ContactVaultUnlock[]
 
   @@unique([tenantId, email])
   @@unique([tenantId, id]) // composite-FK target
@@ -2661,10 +2664,15 @@ enum CredentialType {
 /// CredentialItem — METADATA ONLY (class B, clientScoped; `projectId` is
 /// a filter, never a portal gate, so no `portal_enabled`). The secret is
 /// on CredentialSecret. `clientId` NULL = the agency's own login, in
-/// scope only for a member who sees every client (C49). Visibility is
-/// INTERNAL in v1: portal-persistent credentials are behind
-/// `vault.allowPortalCredentials`, default OFF (CP4), and nothing writes
-/// CLIENT_VISIBLE yet.
+/// scope only for a member who sees every client (C49). CLIENT_VISIBLE
+/// since slice 91 (C52 (d)): marked by `credential:change_visibility` ✦,
+/// read by the client's MAIN contacts (C59 (a)) only while
+/// `vault.allowPortalCredentials` is on. The database's
+/// `portal_vault_switch` policy gives a CONTACT principal zero rows unless
+/// the switch is on, the contact is CONTACT_PRIMARY and the login is
+/// neither binned nor archived; a SYSTEM read (the reveal broker) restates
+/// those terms itself. Switching it off un-marks every login for good
+/// (C59 (b)).
 model CredentialItem {
   id                String         @id @default(uuid(7))
   tenantId          String         @map("tenant_id")
@@ -2795,6 +2803,37 @@ model CredentialShareLink {
   @@index([tenantId, credentialId, createdAt]) // a login's links, newest first
   @@index([expiresAt]) // the retention sweep (later)
   @@map("credential_share_link")
+}
+
+/// ContactVaultUnlock — A CLIENT'S DOOR to the logins their agency shows
+/// them (Phase 3V slice 91; founder decisions C52 (k) and C59 (c)). One row
+/// per opening: created after the contact's portal password was checked,
+/// with the first mailed six-digit code (keyed HMAC, as share links keep
+/// theirs), then open for the vault's step-up window once the right code
+/// comes back. Bound to the portal SESSION it was opened in. Written only
+/// by the portal's vault broker as SYSTEM (`contact_vault_unlock_guard`);
+/// class A, so no contact reads it. Migration 20261005120000.
+/// scope=tenant  rls=A (portal_deny)  ret=with the contact (FK cascade)  enc=none (code_hash is a keyed HMAC)
+/// audit: portal.logins_code_sent | portal.logins_code_refused | portal.logins_opened
+model ContactVaultUnlock {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  contactId     String    @map("contact_id")
+  sessionId     String    @map("session_id") // the contact_session row it was opened in (no FK: an auth table)
+  codeHash      String?   @map("code_hash") // HMAC-SHA256(`${id}:${code}`) under shareCodeKey, the live code
+  codeExpiresAt DateTime? @map("code_expires_at") @db.Timestamptz(6)
+  codeSentAt    DateTime  @map("code_sent_at") @db.Timestamptz(6)
+  codesSent     Int       @default(1) @map("codes_sent") // 1..5 (CHECK)
+  codeAttempts  Int       @default(0) @map("code_attempts") // every check counts; <= 5
+  openedAt      DateTime? @map("opened_at") @db.Timestamptz(6) // once (trigger)
+  openUntil     DateTime? @map("open_until") @db.Timestamptz(6) // <= openedAt + 15 minutes (CHECK)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  contact Contact @relation(fields: [tenantId, contactId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, contactId, sessionId, createdAt]) // this session's door, newest first
+  @@map("contact_vault_unlock")
 }
 
 // ───────────────────────────────────────────────────────────────────

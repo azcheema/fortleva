@@ -221,7 +221,7 @@ export async function PortalProjectView({
   else if (next) facts.push(t("project.nextMilestone", { name: next.name, date: formatDay(locale, next.dueAt) }));
 
   return (
-    <PortalFrame name={name} nav="home">
+    <PortalFrame name={name} principal={principal} nav="home">
       <Page>
         <div className="flex flex-col gap-6">
           <PageHeader

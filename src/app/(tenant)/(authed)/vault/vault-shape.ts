@@ -18,6 +18,10 @@ export type VaultItem = {
   readonly secretFieldKeys: readonly string[];
   readonly hasTotp: boolean;
   readonly needsRotation: boolean;
+  /** Shown to the client's main contacts in their portal (slice 91, C52 (d)). */
+  readonly shownToClient: boolean;
+  /** Whether it hangs on a client at all — the agency's own logins (C49) can never be shown. */
+  readonly hasClient: boolean;
   /** The project it hangs on, or null for a client-level login. */
   readonly project: { readonly key: string; readonly name: string } | null;
 };

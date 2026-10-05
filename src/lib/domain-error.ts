@@ -95,6 +95,13 @@ export type DomainErrorCode =
   // and a revoke of a link that has already been opened or revoked.
   | "SHARE_LINKS_OFF"
   | "SHARE_LINK_CLOSED"
+  // Logins shown to clients (Phase 3V slice 91 — src/modules/vault/
+  // visibility.ts): the workspace has them switched off
+  // (`vault.allowPortalCredentials`), so a login cannot be shown; and a
+  // login with no client (the agency's own, C49), which has nobody to be
+  // shown to.
+  | "CLIENT_LOGINS_OFF"
+  | "LOGIN_HAS_NO_CLIENT"
   // An owner's reset / sign-out of a teammate (slice 84, C50 —
   // src/auth/member-reset.ts): aimed at themselves; at a console
   // principal, whose sign-in is the operator's; a reset of somebody who

@@ -293,6 +293,28 @@ export const AUDIT_EVENTS = {
   "credential.share_code_sent": TENANT,
   "credential.share_code_refused": TENANT,
   "credential.share_viewed": TENANT,
+  // Phase 3V slice 91 — logins shown to a client (founder decisions C52
+  // (d)/(k), C59). A member's mark or un-mark (`credential:change_
+  // visibility`); metadata the new `visibility`, and `cause: "switch_off"`
+  // on the rows written when switching client logins OFF un-marked every
+  // login (C59 (b)) — one row per login, so each login's thread says why.
+  "credential.visibility_changed": TENANT,
+  // THE CLIENT'S DOOR to those logins (C52 (k): their portal password AND
+  // a code mailed each time), in the portal family because a CONTACT
+  // caused each row: brokered under the system principal, actor the
+  // contact (`brokeredForContactId`), target the door (ContactVaultUnlock)
+  // once there is one and the contact before. `unlock_started` is written
+  // BEFORE the password is checked — it is what the per-contact budget
+  // counts, so concurrent guesses cannot all slip under it — and
+  // `password_refused` after a wrong one; then a code mailed (first or
+  // again), a wrong code (with the attempt's number), and the opening.
+  // What the contact then looks at is `credential.revealed | copied` with
+  // the CONTACT as actor — the same two actions a member's look writes.
+  "portal.logins_unlock_started": TENANT,
+  "portal.logins_password_refused": TENANT,
+  "portal.logins_code_sent": TENANT,
+  "portal.logins_code_refused": TENANT,
+  "portal.logins_opened": TENANT,
   // Phase 3V slice 87 — the asset registry. Metadata is the asset's
   // client, project and type, and on an edit the NAMES of the fields that
   // changed — never a value (a note is free text).

@@ -96,7 +96,8 @@
     "notifications": "Aviseringar",
     "search": "Sök",
     "vault": "Valv",
-    "renewals": "Förnyelser"
+    "renewals": "Förnyelser",
+    "vaultSettings": "Valv"
   },
   "shell": {
     "palette": {
@@ -1159,6 +1160,34 @@
         "hint": "Måndag morgon, i din egen tidszon. E-posten är en mening och en länk – den innehåller varken timmar eller uppgiftsnamn.",
         "emailOff": "E-post är avstängd ovan, så påminnelsen skickas inte. Välj någon annan e-postinställning för att få den."
       }
+    },
+    "vault": {
+      "title": "Valv",
+      "description": "Inställningar för hela arbetsytan om att dela inloggningar utanför byrån.",
+      "noPermission": "Du har inte behörighet att se valvets inställningar.",
+      "ownerOnly": "Bara den som får slå på och av moduler kan slå på det här.",
+      "shareLinks": {
+        "title": "Delningslänkar",
+        "on": "Delningslänkar är på",
+        "off": "Delningslänkar är av",
+        "hint": "Den som får dela kan skicka ett lösenord till någon utanför byrån, som en länk som öppnas en gång efter en mejlad kod.",
+        "confirmTitle": "Stänga av delningslänkar?",
+        "confirmBody": "Alla länkar som inte har öppnats ännu slutar fungera, för gott. Att slå på delningslänkar igen tar inte tillbaka någon av dem.",
+        "confirmSubmit": "Stäng av",
+        "switchedOn": "Delningslänkar är på.",
+        "switchedOff": "Delningslänkar är av. Alla öppna länkar har slutat fungera."
+      },
+      "clientLogins": {
+        "title": "Inloggningar som visas för kunder",
+        "on": "Kunder kan se inloggningar som ni visar dem",
+        "off": "Kunder ser inga inloggningar",
+        "hint": "När det här är på kan en medlem med rätt behörighet visa en inloggning för kunden. Kundens huvudkontakter öppnar den i sin kundportal med sitt lösenord och en mejlad kod.",
+        "confirmTitle": "Sluta visa inloggningar för kunder?",
+        "confirmBody": "Alla inloggningar som nu visas för en kund döljs, för gott. Att slå på det här igen visar ingen av dem förrän var och en visas igen.",
+        "confirmSubmit": "Stäng av",
+        "switchedOn": "Kunder kan nu se inloggningarna som ni visar dem.",
+        "switchedOff": "Kunder ser inga inloggningar. Alla visade inloggningar är dolda."
+      }
     }
   },
   "files": {
@@ -1340,6 +1369,8 @@
     "ACCOUNT_IN_OTHER_WORKSPACE": "Den här personen tillhör även en annan arbetsyta i Fortleva, så tvåfaktorsautentiseringen kan inte återställas härifrån. Fortlevas support kan göra det.",
     "TWO_FACTOR_NOT_ENROLLED": "Den här personen har ingen tvåfaktorsautentisering att återställa.",
     "SHARE_LINKS_OFF": "Delningslänkar är avstängda i den här arbetsytan.",
+    "CLIENT_LOGINS_OFF": "Att visa inloggningar för kunder är avstängt i den här arbetsytan.",
+    "LOGIN_HAS_NO_CLIENT": "Inloggningen tillhör er byrå, så det finns ingen kund att visa den för.",
     "SHARE_LINK_CLOSED": "Länken har redan öppnats eller återkallats."
   },
   "assignments": {
@@ -2870,7 +2901,8 @@
       "label": "Kundportal",
       "home": "Översikt",
       "files": "Filer",
-      "company": "Ditt företag"
+      "company": "Ditt företag",
+      "logins": "Inloggningar"
     },
     "files": {
       "title": "Filer",
@@ -2960,6 +2992,60 @@
       "sending": "Skickar…",
       "sent": "Kommentaren har skickats.",
       "failed": "Det skickades inte. Försök igen."
+    },
+    "logins": {
+      "title": "Inloggningar",
+      "description": "Inloggningar som er byrå sparar åt er och har valt att visa er. För att öppna dem bekräftar du att det är du med ditt lösenord och en kod som vi mejlar dig — varje gång.",
+      "logged": "Håll ned ögat för att visa ett lösenord, eller tryck för att visa det i 10 sekunder. Varje visning och kopiering loggas med ditt namn, och er byrå kan se det.",
+      "unavailable": "Det finns inget att öppna här just nu.",
+      "door": {
+        "title": "Bekräfta att det är du",
+        "passwordIntro": "Ange ditt lösenord till kundportalen. Sedan mejlar vi dig en sexsiffrig kod.",
+        "codeIntro": "Vi har mejlat dig en sexsiffrig kod. Ange den för att öppna dina inloggningar. De är öppna i några minuter och låses sedan igen.",
+        "password": "Ditt lösenord till kundportalen",
+        "continue": "Fortsätt",
+        "checking": "Kontrollerar…",
+        "code": "Koden från mejlet",
+        "codeHint": "Sex siffror. Den gäller i 10 minuter.",
+        "open": "Öppna mina inloggningar",
+        "opening": "Öppnar…",
+        "resend": "Skicka en ny kod",
+        "sending": "Skickar…",
+        "passwordRequired": "Ange ditt lösenord.",
+        "sent": "En kod är på väg till din e-postadress. Den gäller i 10 minuter.",
+        "wrongPassword": "Lösenordet stämmer inte.",
+        "limited": "För många försök. Vänta en stund och försök igen.",
+        "addressBusy": "Många koder har skickats till din e-postadress den senaste tiden. Försök igen om en timme.",
+        "mailFailed": "Vi kunde inte skicka mejlet just nu. Försök igen om en minut.",
+        "busy": "Det gick inte igenom. Försök igen om en stund.",
+        "startAgain": "Koden går inte längre att använda. Ange ditt lösenord igen för att få en ny.",
+        "wait": "En kod skickades alldeles nyss. Titta i din e-post, eller be om en ny om en halv minut.",
+        "malformed": "Ange de sex siffrorna från mejlet.",
+        "noCode": "Koden har gått ut. Be om en ny.",
+        "wrongCode": "Koden stämmer inte. {left, plural, one {# försök kvar} other {# försök kvar}}."
+      },
+      "row": {
+        "username": "Användarnamn",
+        "url": "Webbadress",
+        "notSet": "Inte angivet",
+        "openUrl": "Öppna webbadressen för {name}"
+      },
+      "errors": {
+        "MFA_REQUIRED": "Dina inloggningar har låst sig. Bekräfta att det är du igen för att fortsätta.",
+        "NOT_FOUND": "Inloggningen visas inte längre för dig.",
+        "FORBIDDEN": "Det går inte att öppna här.",
+        "REVEAL_BUDGET_EXCEEDED": "Du har öppnat många lösenord den senaste timmen. Vänta en stund och försök igen — varje visning loggas.",
+        "VAULT_BUSY": "Det gick inte igenom. Försök igen om en stund.",
+        "INVALID_INPUT": "Det gick inte att visa.",
+        "CROSS_SITE": "Begäran kom inte från den här sidan.",
+        "SIGNED_OUT": "Du har loggats ut. Logga in igen för att fortsätta.",
+        "SERVER": "Något gick fel. Försök igen.",
+        "NETWORK": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
+      },
+      "mail": {
+        "subject": "Din kod för att öppna dina inloggningar från {tenant}",
+        "body": "Din kod är {code}\n\nDen gäller i {minutes} minuter, på sidan där du bad om den. Ange den för att öppna inloggningarna som {tenant} sparar åt dig.\n\nOm du inte bad om koden kan någon känna till ditt lösenord till kundportalen: byt det, och berätta för {tenant}."
+      }
     }
   },
   "viewAs": {
@@ -3725,6 +3811,23 @@
       },
       "revoke": "Återkalla",
       "revoked": "Länken är återkallad. Den går inte längre att öppna."
+    },
+    "clientView": {
+      "menuShow": "Visa för kunden…",
+      "menuHide": "Dölj för kunden",
+      "badge": "Kunden kan se",
+      "title": "Visa {name} för kunden?",
+      "description": "Kundens huvudkontakter kommer att kunna öppna inloggningen i sin kundportal.",
+      "pointWho": "Bara kundens huvudkontakter ser den — inte kundens övriga kontakter.",
+      "pointDoor": "Varje gång öppnar de den med sitt lösenord till kundportalen och en kod som vi mejlar dem.",
+      "pointLogged": "Varje visning och kopiering loggas med deras namn. Du kan dölja den igen när som helst.",
+      "code": "Din kod från autentiseringsappen",
+      "codeHint": "Att visa en inloggning för en kund kräver alltid koden.",
+      "submit": "Visa för kunden",
+      "submitting": "Visar…",
+      "enterCode": "Ange koden från din autentiseringsapp.",
+      "shown": "Kunden kan nu se inloggningen.",
+      "hidden": "Kunden kan inte längre se inloggningen."
     }
   },
   "assets": {

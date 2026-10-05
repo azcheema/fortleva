@@ -268,6 +268,16 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // `credential:reveal` — a link to oneself would otherwise be a reveal
   // that the reveal code never granted.
   p("credential:share", "vault", "Create and revoke view-once share links to one secret field — always a fresh factor, audited", CMA, true),
+  // ── Phase 3V slice 91 (module `vault`, +1; catalog 109 → 110;
+  // TEMPLATE_VERSION 11, 2026-10-05) — AUTHZ.md §3.2's
+  // `credential:change_visibility` row, landing with the client side of
+  // the everyday vault (founder decisions C52 (d), C59;
+  // `src/modules/vault/visibility.ts`). C A, ✦: showing a login to a
+  // client is a privilege decision, and ALWAYS a fresh factor (AUTHZ.md
+  // §7.5, CP4 — the dialog carries the member's authenticator code);
+  // hiding it again asks only the vault's window, as revoking a share link
+  // does. Showing also needs `vault.allowPortalCredentials` on.
+  p("credential:change_visibility", "vault", "Show a login to the client's main contacts, or hide it again — showing always asks a fresh factor, audited", CA, true),
 ];
 
 export type RoleTemplate = {
@@ -336,8 +346,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     slice 90, share links). C M A; as a ✦ code it reaches the
  *     owner/manager/admin SYSTEM roles only, never a clone (AUTHZ.md
  *     §3.5). The same rule as v6: a release carrying this bump MUST run
- *     `prisma/seed.ts`. */
-export const TEMPLATE_VERSION = 10;
+ *     `prisma/seed.ts`.
+ * v11 (2026-10-05): +1 `vault` code (credential:change_visibility ✦ —
+ *     Phase 3V slice 91, the client side of the everyday vault). C A; as
+ *     a ✦ code it reaches the owner/admin SYSTEM roles only, never a
+ *     clone (AUTHZ.md §3.5). The same rule as v6: a release carrying this
+ *     bump MUST run `prisma/seed.ts`. */
+export const TEMPLATE_VERSION = 11;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

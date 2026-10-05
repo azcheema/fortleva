@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { useVaultFailure } from "./use-vault-failure";
-import { VaultRefusal, vaultCall, type VaultRefusalCode } from "./vault-call";
+import { VaultRefusal, vaultCall, type VaultAnswer, type VaultRefusalCode } from "./vault-call";
 import { vaultClipboard } from "./vault-clipboard";
 
 /** A press longer than this is a HOLD (hidden on release); shorter is a TAP. */
@@ -26,6 +26,9 @@ const MASK = "••••••••••";
 const swallowRepeat = (e: React.KeyboardEvent<HTMLButtonElement>) => {
   if (e.repeat && (e.key === "Enter" || e.key === " ")) e.preventDefault();
 };
+
+/** How a field is fetched: the staff vault's routes by default, or the portal's actions (slice 91). */
+export type SecretFieldCall = (kind: "reveal" | "copy", field: string) => Promise<VaultAnswer<{ value: string }>>;
 
 /**
  * ONE SECRET FIELD, masked (C52 (b) and (c)). Nothing is fetched until the
@@ -61,6 +64,8 @@ export function SecretField({
   label,
   canReveal,
   multiline = false,
+  call,
+  failureNamespace,
 }: {
   credentialId: string;
   field: string;
@@ -68,9 +73,33 @@ export function SecretField({
   canReveal: boolean;
   /** A note or a private key: shown wrapped, in its own scroll box. */
   multiline?: boolean;
+  /**
+   * The CLIENT'S logins page (slice 91) fetches through its own server
+   * actions — the contact's door, their budget, audited to them — instead
+   * of the staff routes. Absent: `POST /api/vault/[id]/reveal|copy`.
+   */
+  call?: SecretFieldCall;
+  /** Whose words a refusal is said in (`useVaultFailure`). */
+  failureNamespace?: "vault.errors" | "portal.logins.errors";
 }) {
   const t = useTranslations("vault");
-  const fail = useVaultFailure();
+  const fail = useVaultFailure(failureNamespace);
+  // The staff path never rejects (`vaultCall` turns every failure into a
+  // code); a SERVER ACTION does — the network, a server error, an ended
+  // session's redirect (which the router follows by itself either way). So
+  // a rejection here is a refusal too, or the eye would stay busy for good
+  // (slice 91's code review).
+  const fetchField = async (kind: "reveal" | "copy"): Promise<VaultAnswer<{ value: string }>> => {
+    if (!call) return vaultCall<{ value: string }>(credentialId, kind, field);
+    try {
+      return await call(kind, field);
+    } catch (e) {
+      // An ended session's redirect is Next's own error (its digest says
+      // so): "signed out", which refreshes — not "something went wrong".
+      const digest = typeof e === "object" && e !== null ? (e as { digest?: unknown }).digest : undefined;
+      return { ok: false, error: typeof digest === "string" && digest.startsWith("NEXT_REDIRECT") ? "SIGNED_OUT" : "SERVER" };
+    }
+  };
   const [value, setValue] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // The value as the handlers see it NOW: a release can land between the
@@ -124,8 +153,12 @@ export function SecretField({
 
   const fetchValue = async (): Promise<string | null> => {
     setBusy(true);
-    const r = await vaultCall<{ value: string }>(credentialId, "reveal", field);
-    setBusy(false);
+    let r: VaultAnswer<{ value: string }>;
+    try {
+      r = await fetchField("reveal");
+    } finally {
+      setBusy(false);
+    }
     if (!r.ok) {
       fail(r.error);
       return null;
@@ -196,7 +229,7 @@ export function SecretField({
     // HERE, not read off the rejection: WebKit rejects `clipboard.write`
     // with its own error, not the reason the item's promise rejected with.
     let refused: VaultRefusalCode | null = null;
-    const promised = vaultCall<{ value: string }>(credentialId, "copy", field).then((r) => {
+    const promised = fetchField("copy").then((r) => {
       if (!r.ok) {
         refused = r.error;
         throw new VaultRefusal(r.error);

@@ -117,6 +117,13 @@ export const PORTAL_CAPABILITY_DEFS = {
   // ── vault (3V) ───────────────────────────────────────────────────
   "portal.credential.submit": { modules: ["portal", "vault"] },
   "portal.share_link.view": { modules: ["portal", "vault"] },
+  // The logins the agency SHOWS the client (Phase 3V slice 91; founder
+  // decisions C52 (d) and (k), C59): the list and one secret field at a
+  // time, behind the client's door — their password AND a code mailed each
+  // time (`src/modules/vault/portal-writes.ts`). PRIMARY ONLY (C59 (a)):
+  // absent from the collaborator bundle below, so a helper at the client
+  // sees no logins.
+  "portal.credential.view": { modules: ["portal", "vault"] },
   // ── money (P4) ───────────────────────────────────────────────────
   "portal.invoice.view": { modules: ["portal", "invoicing"] },
   "portal.invoice.pay": { modules: ["portal", "invoicing"] },
@@ -155,7 +162,8 @@ export const isPortalCapability = (value: unknown): value is PortalCapability =>
  * `CONTACT_COLLABORATOR` is written out: no money, no signatures, no
  * continuity, no hours, no deliverable sign-off, no version approval —
  * and no agreements (`portal.service.view`), because an agreement row
- * carries the fee the client pays, which is money.
+ * carries the fee the client pays, which is money — and no logins
+ * (`portal.credential.view`, founder decision C59 (a), 2026-10-05).
  */
 export const PORTAL_PROFILES = {
   CONTACT_PRIMARY: PORTAL_CAPABILITIES,

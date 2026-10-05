@@ -45,6 +45,12 @@ export default async function globalSetup(): Promise<void> {
   if (swept > 0) console.log(`[e2e] swept ${swept} orphaned throwaway tenant(s)`);
   const { password, contactPassword, tenantSlug } = await provisionE2ETenant();
   console.log(`[e2e] throwaway tenant ${tenantSlug} provisioned`);
+  // THE CONTACT'S PASSWORD, for the one spec that must TYPE it (3V slice
+  // 91: the client's door to their logins asks it again, every time).
+  // Workers inherit the environment this process has when they start, which
+  // is after global setup; it is never printed, and the account is the
+  // throwaway tenant's own.
+  process.env["E2E_CONTACT_PASSWORD"] = contactPassword;
 
   try {
     mkdirSync(AUTH_DIR, { recursive: true });

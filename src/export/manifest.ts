@@ -46,6 +46,10 @@ export const EXPORT_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>
   // rest of the row — who, which login, when, opened or not — is the
   // tenant's record and leaves with it.
   credentialShareLink: ["tokenHash", "codeHash"],
+  // 3V slice 91: a client's door to their logins — its live code's hash
+  // stays here for the reason a share link's does; when and how often the
+  // client opened their logins leaves with the tenant's record.
+  contactVaultUnlock: ["codeHash"],
 };
 
 /**

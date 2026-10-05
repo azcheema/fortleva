@@ -56,7 +56,7 @@ export default async function NewPortalRequest() {
   );
 
   return (
-    <PortalFrame name={name} nav="home">
+    <PortalFrame name={name} principal={principal} nav="home">
       <Page>
         <div className="flex flex-col gap-6">
           <PageHeader

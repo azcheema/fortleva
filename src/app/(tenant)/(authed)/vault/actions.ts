@@ -14,11 +14,13 @@ import {
   createCredential,
   createShareLink,
   deleteCredential,
+  hideLoginFromClient,
   isCredentialType,
   listShareLinks,
   replaceCredentialSecret,
   revokeShareLink,
   SECRET_FIELDS,
+  showLoginToClient,
   updateCredential,
   type CredentialPatch,
   type ShareLinkView,
@@ -227,6 +229,55 @@ export async function listShareLinksAction(surface: string, credentialId: string
   if (path === null || !uuid.safeParse(credentialId).success) return invalid();
   const ctx = await ctxOf();
   return runAction(path, () => listShareLinks(ctx, credentialId));
+}
+
+/**
+ * SHOW A LOGIN TO THE CLIENT (slice 91; C52 (d)). Showing ALWAYS asks for
+ * a fresh factor (AUTHZ.md §7.5, CP4: "always step-up for visibility"), so
+ * the dialog carries the member's authenticator code, verified HERE through
+ * the product's one step-up door just before the service runs — the share
+ * form's shape; the service then wants a factor no older than a minute.
+ */
+export async function showLoginToClientAction(_prev: FormResult | null, formData: FormData): Promise<FormResult> {
+  const path = vaultPathOf(formData.get("surface"));
+  const credentialId = uuid.safeParse(formData.get("credentialId"));
+  if (path === null || !credentialId.success) return invalid();
+  const t = await getTranslations("vault.clientView");
+  const code = (field(formData, "code") ?? "").trim();
+  if (code.length < 6 || code.length > 32) return { ok: false, message: t("enterCode") };
+
+  const { membership, actor } = await requireTenantContext();
+  const verified = await verifyStepUpWithHeaders(code, await headers());
+  if (!verified.ok) {
+    if (verified.reason === "no_session") redirect("/login");
+    if (verified.reason === "not_enrolled") redirect(enrolUrl(path));
+    const tStep = await getTranslations("account.stepUp");
+    return { ok: false, message: verified.reason === "rate_limited" ? tStep("tooManyAttempts") : tStep("mismatch") };
+  }
+  const ctx = {
+    tenantId: membership.tenantId,
+    actor: { ...actor, mfa: { enrolled: true, verifiedAt: verified.verifiedAt } },
+  };
+  const r = await runForm(path, async () => {
+    await showLoginToClient(ctx, credentialId.data);
+    return t("shown");
+  });
+  if (r.ok) revalidatePath(path);
+  return r;
+}
+
+/** Hide a shown login from the client again — the vault's window, no code (it takes access away). */
+export async function hideLoginFromClientAction(surface: string, credentialId: string): Promise<FormResult> {
+  const path = vaultPathOf(surface);
+  if (path === null || !uuid.safeParse(credentialId).success) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("vault.clientView");
+  const r = await runForm(path, async () => {
+    await hideLoginFromClient(ctx, credentialId);
+    return t("hidden");
+  });
+  if (r.ok) revalidatePath(path);
+  return r;
 }
 
 /** End a link nobody has opened yet. */

@@ -187,6 +187,36 @@ describe("portal sign-in", () => {
  * own five — without locking the owner out, which a first cut of this slice
  * did and both reviews caught).
  */
+describe("the portal's password checks answer the server only (Phase 3V slice 91)", () => {
+  it("refuses /verify-password and /change-password over HTTP with a live session — and still answers the server's own check", async () => {
+    const res = await portalAuth.api.signInEmail({ body: { email: contactEmail, password }, asResponse: true });
+    const value = cookieValueOf(res, "__Host-flv.portal");
+    expect(value).toBeTruthy();
+    for (const [path, body] of [
+      ["verify-password", { password }],
+      ["change-password", { currentPassword: password, newPassword: `${password}-next` }],
+    ] as const) {
+      const http = await portalAuth.handler(
+        new Request(`http://localhost:3000/api/portal-auth/${path}`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            cookie: `__Host-flv.portal=${value}`,
+            origin: "http://localhost:3000",
+          },
+          body: JSON.stringify(body),
+        }),
+      );
+      expect(http.status, path).toBe(404);
+    }
+    // The client's door asks through the server-side API, which carries no
+    // request: answered — the right password passes, a wrong one does not.
+    const headers = headersWith("__Host-flv.portal", value as string);
+    await expect(portalAuth.api.verifyPassword({ body: { password }, headers })).resolves.toBeDefined();
+    await expect(portalAuth.api.verifyPassword({ body: { password: "not-the-password-1" }, headers })).rejects.toThrow();
+  });
+});
+
 describe("portal sign-in under brute force against one address", () => {
   /** Counts per bucket and subject against `RATE_LIMIT_POLICIES`; no clock, so nothing lapses mid-test. */
   const countingLimiter = (): Limiter => {

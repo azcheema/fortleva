@@ -1,8 +1,11 @@
 import { GlobeIcon } from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
 
 import { cn } from "@/lib/utils";
+import type { PortalPrincipal } from "@/portal";
+
+import { loginsShown } from "./logins-shown";
 
 /**
  * THE PORTAL'S CHROME, and UI.md §11 makes it a short list: tenant
@@ -49,7 +52,7 @@ import { cn } from "@/lib/utils";
  * carries a member cookie and is answered with a redirect to the client
  * sign-in page on every render.
  */
-export type PortalNav = "home" | "files" | "company";
+export type PortalNav = "home" | "files" | "company" | "logins";
 
 const NAV: readonly { readonly key: PortalNav; readonly href: string }[] = [
   { key: "home", href: "/portal" },
@@ -57,18 +60,36 @@ const NAV: readonly { readonly key: PortalNav; readonly href: string }[] = [
   { key: "company", href: "/portal/company" },
 ];
 
-export function PortalFrame({
+/**
+ * THE FOURTH ENTRY, "Logins" (Phase 3V slice 91; C52 (d), C59 (a)), is
+ * drawn only when there is something behind it for THIS contact: the
+ * capability (main contacts only, the vault and portal modules open) and at
+ * least one login shown — a count under the contact's own principal, where
+ * the database's gate and switch decide (`portalLoginsShown`, once per
+ * request through `./logins-shown`). So the frame takes the PRINCIPAL and
+ * asks. On the member plane View-as hands it the
+ * synthesised principal of the contact being looked through, which answers
+ * the same — the byte comparison holds — while the logins page itself
+ * never renders there.
+ */
+const LOGINS = { key: "logins", href: "/portal/logins" } as const;
+
+export async function PortalFrame({
   name,
   nav,
+  principal,
   children,
 }: {
   name: string;
   /** The page's own entry — required, so a page cannot forget to say. */
   nav: PortalNav;
+  /** Whose portal this is — for the entries that depend on it ("Logins"). */
+  principal: PortalPrincipal;
   children: React.ReactNode;
 }) {
-  const t = useTranslations("portal");
-  const tCommon = useTranslations("common");
+  const t = await getTranslations("portal");
+  const tCommon = await getTranslations("common");
+  const entries = (await loginsShown(principal)) ? [...NAV, LOGINS] : NAV;
   return (
     <div data-portal-surface="" className="flex min-h-svh flex-col bg-background">
       <header className="border-b border-border bg-card">
@@ -90,11 +111,11 @@ export function PortalFrame({
                 be able to tell at a glance. */}
             <span className="truncate text-xs text-muted-foreground">{t("signedInAs", { name })}</span>
           </div>
-          {/* No overflow scroller: three short entries fit a phone, and
+          {/* No overflow scroller: four short entries fit a phone, and
               a scroll region needs a name and a tab stop the craft audit
               would otherwise flag (`e2e/audit.ts`). */}
           <nav aria-label={t("nav.label")} data-slot="portal-nav" className="-mb-px flex flex-wrap gap-x-4">
-            {NAV.map((entry) => {
+            {entries.map((entry) => {
               const current = entry.key === nav;
               return (
                 <Link

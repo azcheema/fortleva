@@ -79,6 +79,7 @@ describe("excluded columns (encrypted / key material never leave)", () => {
       credentialVersion: ["secretCiphertext"],
       // 3V slice 90: a share link's live keys (token and code hashes)
       credentialShareLink: ["tokenHash", "codeHash"],
+      contactVaultUnlock: ["codeHash"],
     });
   });
 

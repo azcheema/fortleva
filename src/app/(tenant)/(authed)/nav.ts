@@ -26,6 +26,7 @@ export type NavIcon =
   | "preferences"
   | "rates"
   | "timeSettings"
+  | "vaultSettings"
   | "export"
   | "design"
   | "account";
@@ -50,6 +51,7 @@ export type NavEntry = {
     | "preferences"
     | "rates"
     | "timeSettings"
+    | "vaultSettings"
     | "export"
     | "design"
     | "account";
@@ -182,6 +184,15 @@ export const NAV: readonly NavEntry[] = [
         labelKey: "timeSettings",
         href: "/settings/time",
         icon: "timeSettings",
+        permission: "settings:view",
+      },
+      // Phase 3V slice 91: the vault's two workspace switches — share links
+      // and logins shown to clients.
+      {
+        id: "vaultSettings",
+        labelKey: "vaultSettings",
+        href: "/settings/vault",
+        icon: "vaultSettings",
         permission: "settings:view",
       },
       // No permission: every other Settings page administers the

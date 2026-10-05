@@ -25,6 +25,15 @@ const gatesFor = cache(resolvePortalModuleGates);
 
 export type PortalContext = {
   readonly principal: PortalPrincipal;
+  /**
+   * The `contact_session` row this request rides on (Phase 3V slice 91):
+   * the client's door to the logins shown to them is bound to it, so a
+   * second device — or the same password signed in again — opens nothing
+   * without its own mailed code. Only a session has one: a View-as
+   * principal (`synthesise.ts`) has none, which is one of the two reasons
+   * no logins page renders there.
+   */
+  readonly sessionId: string;
   readonly email: string;
   readonly name: string;
   readonly locale: string | null;
@@ -52,6 +61,7 @@ export async function requirePortalContext(): Promise<PortalContext> {
       clientId: contact.clientId,
       gates: await gatesFor(contact.tenantId),
     },
+    sessionId: session.session.id,
     email: contact.email,
     name: contact.name,
     locale: contact.locale ?? null,

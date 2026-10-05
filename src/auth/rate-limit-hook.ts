@@ -64,9 +64,11 @@ export const RATE_LIMITED_PATHS: Readonly<Record<string, RateLimitBucket>> = {
   // one thing a session does not give — a way back in after the session is
   // revoked. `/verify-password` is declared `scope: "server"`, which only
   // shapes the typed client — better-call's router refuses nothing but
-  // `SERVER_ONLY` — so it answers over HTTP. Its one caller in this
-  // product is the factor replacement (`./factor-replace`, slice 84), which
-  // asks it first, before anything can be spent. The two-factor four exist on the member and console
+  // `SERVER_ONLY` — so it answers over HTTP. Its callers in this
+  // product are the factor replacement (`./factor-replace`, slice 84), which
+  // asks it first, before anything can be spent, and — on the portal — the
+  // client's door to their logins (`./portal-password`, slice 91), where it
+  // is server-only: the portal refuses it over HTTP (`./closed-endpoints`). The two-factor four exist on the member and console
   // instances only (the portal registers no `twoFactor`). They spend the
   // sign-in budget per IP because they are sign-in's question. Per USER
   // they are still unbounded (the session is resolved after this hook) —

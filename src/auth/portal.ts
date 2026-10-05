@@ -4,6 +4,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 
 import { afterResponse } from "./after-response";
+import { refusePortalServerOnlyOverHttp } from "./closed-endpoints";
 import { auditPlugin, passwordResetHookFor } from "./audit-hooks";
 import { portalAuditSink } from "./portal-audit";
 
@@ -641,6 +642,9 @@ export const portalAuth = betterAuth({
     // Contact MFA is v2 (DATA_MODEL.md §6.4, Pushback P5); the day it
     // lands, this line needs revisiting with it.
     before: createAuthMiddleware(async (ctx) => {
+      // First, before any of our work: the two password checks answer only
+      // the server's own calls on this plane (`./closed-endpoints`, slice 91).
+      refusePortalServerOnlyOverHttp(ctx);
       await enforceAuthRateLimit(ctx, "portal");
       // After the limiter, so a refused request spends no lookup. The GET
       // callback `/reset-password/:token` has a different `ctx.path` and

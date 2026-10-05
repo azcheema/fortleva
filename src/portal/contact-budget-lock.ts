@@ -49,8 +49,19 @@ import type { TenantDb } from "@/db";
  * two clocks: the rows each budget counts are stamped by Postgres, so a
  * window computed from a serverless instance's `Date.now()` silently
  * narrows when that instance runs fast and widens when it runs slow.
+ *
+ * Since Phase 3V slice 91, two more: `portal_logins` — the client's door to
+ * the logins shown to them (password checks and mailed codes,
+ * `src/modules/vault/portal-writes.ts`), taken BEFORE that door's row lock
+ * and never after it — and `portal_logins_reveal`, a look at one of them,
+ * which takes no other lock.
  */
-export type ContactBudget = "portal_request" | "portal_download" | "portal_comment";
+export type ContactBudget =
+  | "portal_request"
+  | "portal_download"
+  | "portal_comment"
+  | "portal_logins"
+  | "portal_logins_reveal";
 
 export async function lockContactBudget(tx: TenantDb, budget: ContactBudget, contactId: string): Promise<Date> {
   // The CTE is what makes this ONE statement: the lock is taken while

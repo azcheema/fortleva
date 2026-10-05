@@ -42,6 +42,8 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   rates: CoinsIcon,
   // Same glyph as the rail's Time entry: one icon per concept.
   timeSettings: TimerIcon,
+  // The vault's switches wear the vault's glyph, as Time's settings wear Time's.
+  vaultSettings: VaultIcon,
   // A bell is "reach me", the inbox tray is "what reached me": two
   // concepts, two glyphs.
   notifications: BellIcon,

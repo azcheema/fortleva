@@ -43,7 +43,7 @@ export async function PortalCompanyView({ principal, name }: { principal: Portal
     : null;
 
   return (
-    <PortalFrame name={name} nav="company">
+    <PortalFrame name={name} principal={principal} nav="company">
       <Page>
         <div className="flex flex-col gap-6">
           <PageHeader title={company ? company.name : t("title")} description={t("description")} />

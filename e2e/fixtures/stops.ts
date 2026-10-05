@@ -349,6 +349,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // state (the fixture owner has no factor); notice status + work types.
     { name: "settings-rates", path: "/settings/rates" },
     { name: "settings-time", path: "/settings/time" },
+    // 3V slice 91: the vault's two workspace switches (share links, logins
+    // shown to clients) — both on in the fixture.
+    { name: "settings-vault", path: "/settings/vault" },
     // 2W/2T: the member's own notification settings — the one Settings
     // page with no permission gate.
     { name: "settings-notifications", path: "/settings/notifications" },
@@ -387,6 +390,11 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // the record and the one shared agreement with its fee.
     { name: "portal-files", path: "/portal/files", session: "contact" },
     { name: "portal-company", path: "/portal/company", session: "contact" },
+    // 3V slice 91: the logins the agency shows Astrid — the door (her
+    // password, then a mailed code), or, when `portal-logins.spec.ts` has
+    // opened it in this same session within the staff window, the list
+    // behind it with every value masked. Either is a page a client sees.
+    { name: "portal-logins", path: "/portal/logins", session: "contact" },
     // INVITATION ACCEPTANCE, both states, mirroring the member plane's
     // pair at the top of this list. The live one needs a token that
     // stands still, which is why the fixture seeds one

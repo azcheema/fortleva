@@ -111,6 +111,32 @@ export const isClosedEndpoint = (plane: ClosablePlane, path: string): boolean =>
   CLOSED_ENDPOINTS[plane].has(path);
 
 /**
+ * **THE PORTAL'S PASSWORD CHECKS ARE SERVER-ONLY** (Phase 3V slice 91, its
+ * security review's medium). Better Auth mounts `/verify-password` and
+ * `/change-password` on every instance and answers them over HTTP —
+ * `scope: "server"` shapes only the typed client — so with a contact's
+ * stolen session either one answers "was that the password?" as fast as the
+ * per-IP sign-in budget allows, which is unbounded per contact. Since slice
+ * 91 the portal's password is half of the client's door to the logins their
+ * agency shows them (C52 (k)), and that door counts its checks per contact
+ * BEFORE making them (`src/modules/vault/portal-writes.ts`); a side door
+ * that counts nothing would make the count decoration.
+ *
+ * So on the PORTAL plane both are refused when they arrive as an HTTP
+ * REQUEST (the router hands the endpoint `ctx.request`; a server-side
+ * `portalAuth.api.verifyPassword({ headers })` call carries none) — the
+ * door's own check (`./portal-password.ts`) keeps working, and the portal
+ * has no change-password screen to break. The member and console planes are
+ * untouched: their `/change-password` is `/account`'s form.
+ */
+export const PORTAL_SERVER_ONLY_ENDPOINTS: ReadonlySet<string> = new Set(["/verify-password", "/change-password"]);
+
+/** For the portal instance's `hooks.before`, first: an HTTP call to a server-only check is NOT_FOUND. */
+export function refusePortalServerOnlyOverHttp(ctx: { readonly path: string; readonly request?: Request | undefined }): void {
+  if (PORTAL_SERVER_ONLY_ENDPOINTS.has(ctx.path) && ctx.request !== undefined) throw new APIError("NOT_FOUND");
+}
+
+/**
  * For an instance's `hooks.before`, called first: a closed endpoint costs
  * none of OUR work — no limiter round trip, no lookup. (The library's router
  * has already parsed the body and run its origin check by then; a hook

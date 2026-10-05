@@ -56,6 +56,16 @@ test.describe.serial("the vault — a client's tab, /vault and a project's tab �
     // Nothing secret reached the page: not in the DOM, not in the RSC payload's text.
     expect(await page.content()).not.toContain(seed.vaultLoginPassword);
     await expect(row.getByTestId("secret-value")).toHaveAttribute("data-shown", "false");
+    // Slice 91: the seed shows this login to the client — the row says so,
+    // and a manager (no `credential:change_visibility`) gets no verb for it.
+    await expect(row.getByTestId("client-can-see")).toHaveText("Client can see");
+    await expect(rowOf(seed.vaultApiKeyName).getByTestId("client-can-see")).toHaveCount(0);
+    await row.getByRole("button", { name: `Actions for ${seed.vaultLoginName}` }).click();
+    const menu = page.getByRole("menu");
+    await expect(menu.getByRole("menuitem", { name: "Share…" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: /client/ })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
   });
 
   test("held, the eye shows the password until release; tapped, for a while; the answer is never cached", async () => {

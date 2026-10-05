@@ -3,7 +3,14 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { CLOSED_ENDPOINTS, isClosedEndpoint, isSignUpLink, refuseClosedEndpoint } from "./closed-endpoints";
+import {
+  CLOSED_ENDPOINTS,
+  isClosedEndpoint,
+  isSignUpLink,
+  PORTAL_SERVER_ONLY_ENDPOINTS,
+  refuseClosedEndpoint,
+  refusePortalServerOnlyOverHttp,
+} from "./closed-endpoints";
 
 /**
  * The list is the control, so both of its halves are pinned: what it
@@ -41,6 +48,36 @@ describe("what the member plane does not serve", () => {
     "/two-factor/generate-backup-codes",
   ])("still serves %s", (path) => {
     expect(isClosedEndpoint("member", path)).toBe(false);
+  });
+});
+
+describe("the portal's password checks answer the server only (slice 91)", () => {
+  const request = new Request("https://app.example.test/api/portal-auth/verify-password", { method: "POST" });
+
+  it("pins exactly the two checks", () => {
+    expect([...PORTAL_SERVER_ONLY_ENDPOINTS].sort()).toEqual(["/change-password", "/verify-password"]);
+  });
+
+  it.each(["/verify-password", "/change-password"])("refuses %s over HTTP", (path) => {
+    expect(() => refusePortalServerOnlyOverHttp({ path, request })).toThrow();
+  });
+
+  it.each(["/verify-password", "/change-password"])("serves %s to a server-side call", (path) => {
+    expect(() => refusePortalServerOnlyOverHttp({ path })).not.toThrow();
+  });
+
+  it.each(["/sign-in/email", "/sign-out", "/get-session", "/reset-password"])("leaves %s alone", (path) => {
+    expect(() => refusePortalServerOnlyOverHttp({ path, request })).not.toThrow();
+  });
+
+  it("is wired first into the portal instance's hook", () => {
+    const source = readFileSync(join(__dirname, "portal.ts"), "utf8");
+    const hook = source.indexOf("before: createAuthMiddleware(");
+    expect(hook).toBeGreaterThan(-1);
+    const refuse = source.indexOf("refusePortalServerOnlyOverHttp(ctx)", hook);
+    const limit = source.indexOf("enforceAuthRateLimit(ctx", hook);
+    expect(refuse).toBeGreaterThan(hook);
+    expect(refuse).toBeLessThan(limit);
   });
 });
 

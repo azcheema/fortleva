@@ -149,7 +149,13 @@ describe("vault ciphertext boundary", () => {
     // and refuses logins under impersonation as the door does. Share links
     // (slice 90): `share-links` gates every verb on the door, `credential:
     // share` ✦ and the anchor rule; `share-open` takes a TOKEN and nothing
-    // else that names a tenant — its callers are pinned below.
+    // else that names a tenant — its callers are pinned below. The client
+    // side (slice 91): `visibility` gates both verbs on the door and
+    // `credential:change_visibility` ✦; `portal` reads under the CONTACT's
+    // principal, names and field NAMES only; `portal-writes` is the portal's
+    // broker — the contact's own proof first, then SYSTEM with every term
+    // restated, the secret one field per audited look — and its callers are
+    // pinned below too.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -160,12 +166,15 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/expirations",
       "modules/vault/fields",
       "modules/vault/items",
+      "modules/vault/portal",
+      "modules/vault/portal-writes",
       "modules/vault/reminder-bands",
       "modules/vault/reminder-subjects",
       "modules/vault/reminders",
       "modules/vault/reveal",
       "modules/vault/share-links",
       "modules/vault/share-open",
+      "modules/vault/visibility",
     ]);
     // door is re-exported for `openVault` and its types only — never `enterVault`,
     // which answers a window without a verb behind it.
@@ -207,6 +216,32 @@ describe("vault ciphertext boundary", () => {
     ];
     const callers = files
       .filter((f) => /\b(previewShareLink|sendShareCode|openShareLink)\b/.test(readFileSync(f, "utf8")))
+      .map(rel);
+    expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * THE CLIENT'S DOOR AND ITS LOOKS (slice 91) run as SYSTEM after the
+   * contact's own proof, and take the portal SESSION's id — which only a
+   * contact's own request has. Reached from the member plane they would be
+   * View-as reading a client's logins (C52: never under View-as) — so their
+   * names, and the projection's, may appear only where they are defined,
+   * re-exported and called by the portal's logins page and its actions.
+   */
+  it("only the portal's logins page calls the client's door, its looks and its list", () => {
+    const allowed = [
+      "modules/vault/portal.ts",
+      "modules/vault/portal-writes.ts",
+      "modules/vault/index.ts",
+      "app/(portal)/portal/logins/page.tsx",
+      "app/(portal)/portal/logins/actions.ts",
+    ];
+    const callers = files
+      .filter((f) =>
+        /\b(startPortalLoginsDoor|resendPortalLoginsCode|openPortalLoginsDoor|readPortalLoginsDoor|lookAtPortalLogin|listPortalLogins)\b/.test(
+          readFileSync(f, "utf8"),
+        ),
+      )
       .map(rel);
     expect(callers.sort()).toEqual(allowed.sort());
   });

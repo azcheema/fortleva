@@ -154,6 +154,15 @@ export type VaultPreferences = {
    * false change, from the database's clock; never part of a patch.
    */
   shareLinksStoppedAt: Date | null;
+  /**
+   * Logins shown to clients on or off for the whole workspace (slice 91;
+   * C52 (d): default OFF). Switching it ON is `settings:manage_modules` ✦;
+   * switching it OFF un-marks every shown login for good (C59 (b)). The
+   * database reads this key itself (`vault_portal_credentials_on()`, the
+   * `portal_vault_switch` policy): a contact sees no login while it is
+   * anything but `true`.
+   */
+  allowPortalCredentials: boolean;
 };
 export const VAULT_PREF_KEYS: Readonly<Record<keyof VaultPreferences, string>> = {
   stepUpMinutes: "vault.stepUpMinutes",
@@ -161,6 +170,8 @@ export const VAULT_PREF_KEYS: Readonly<Record<keyof VaultPreferences, string>> =
   shareLinkMaxTtlHours: "vault.shareLinkMaxTtlHours",
   allowExternalShareLinks: "vault.allowExternalShareLinks",
   shareLinksStoppedAt: "vault.shareLinksStoppedAt",
+  // Spelled out in migration 20261005120000 too (the policy's function).
+  allowPortalCredentials: "vault.allowPortalCredentials",
 };
 export const VAULT_DEFAULTS: VaultPreferences = {
   stepUpMinutes: 10,
@@ -168,6 +179,7 @@ export const VAULT_DEFAULTS: VaultPreferences = {
   shareLinkMaxTtlHours: 168,
   allowExternalShareLinks: true,
   shareLinksStoppedAt: null,
+  allowPortalCredentials: false,
 };
 /**
  * Bounds the parser enforces (a stored value outside them falls back to
@@ -195,6 +207,18 @@ export const VAULT_REVEAL_BUDGET_RANGE = { min: 1, max: 100 } as const;
  * (`src/modules/vault/budget.ts` says why that is acceptable).
  */
 export const shareSwitchLockKey = (tenantId: string): string => `vault_share_switch:${tenantId}`;
+
+/**
+ * THE CLIENT-LOGINS SWITCH'S ADVISORY LOCK KEY (slice 91), the share
+ * switch's protocol for C59 (b): switching client logins OFF takes it
+ * EXCLUSIVELY and then un-marks every shown login; showing a login takes it
+ * SHARED before it reads the switch. So a login is shown wholly before a
+ * switch-off begins (and is un-marked by it) or after it commits (and is
+ * then refused, the switch being off) — never shown in between and left
+ * behind for the next switch-on to reveal. Same key space and the same
+ * no-`lock_timeout` stance on the exclusive side as `shareSwitchLockKey`.
+ */
+export const portalCredentialsSwitchLockKey = (tenantId: string): string => `vault_portal_switch:${tenantId}`;
 
 /** A share link lives an hour at least and seven days at most (CP4; the table's CHECK says 7 days too). */
 export const VAULT_SHARE_TTL_HOURS_RANGE = { min: 1, max: 168 } as const;
@@ -274,6 +298,7 @@ export function materializePreferences(
       ),
       allowExternalShareLinks: bool(VAULT_PREF_KEYS.allowExternalShareLinks, VAULT_DEFAULTS.allowExternalShareLinks),
       shareLinksStoppedAt: instant(VAULT_PREF_KEYS.shareLinksStoppedAt),
+      allowPortalCredentials: bool(VAULT_PREF_KEYS.allowPortalCredentials, VAULT_DEFAULTS.allowPortalCredentials),
     },
   };
 }

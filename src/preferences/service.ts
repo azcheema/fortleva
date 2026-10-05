@@ -14,6 +14,7 @@ import {
   FINANCE_PREF_KEYS,
   materializePreferences,
   moduleKey,
+  portalCredentialsSwitchLockKey,
   PREF_KEYS,
   TIME_HOURS_MAX,
   TIME_HOURS_MIN,
@@ -111,6 +112,7 @@ const patchSchema = z
           .min(VAULT_SHARE_TTL_HOURS_RANGE.min)
           .max(VAULT_SHARE_TTL_HOURS_RANGE.max),
         allowExternalShareLinks: z.boolean(),
+        allowPortalCredentials: z.boolean(),
       })
       .partial(),
   })
@@ -124,6 +126,7 @@ const PATCHABLE_VAULT_KEYS = [
   "revealBudgetPerHour",
   "shareLinkMaxTtlHours",
   "allowExternalShareLinks",
+  "allowPortalCredentials",
 ] as const satisfies readonly (keyof NonNullable<PreferencePatch["vault"]>)[];
 
 async function upsertPreference(
@@ -151,6 +154,51 @@ async function upsertPreference(
     metadata: { key },
   });
   return true;
+}
+
+/**
+ * SWITCHING CLIENT LOGINS OFF HIDES THEM FOR GOOD (Phase 3V slice 91;
+ * founder decision C59 (b)) — the one write this service makes into the
+ * vault's tables, kept here rather than in `@/modules/vault`, whose index
+ * already imports this service (a cycle) and whose internals nothing
+ * outside it may import (`vault-boundary.test.ts`). It touches only
+ * `credential_item.visibility`, never a secret.
+ *
+ * Every login marked CLIENT_VISIBLE goes back to INTERNAL in the
+ * transaction that switches `vault.allowPortalCredentials` off, after it
+ * took the switch's lock EXCLUSIVELY (`portalCredentialsSwitchLockKey`):
+ * showing a login (`src/modules/vault/visibility.ts`) takes it SHARED
+ * before reading the switch, so no login is shown while this runs and
+ * survives it. Switching on again therefore shows nothing until a member
+ * marks each login again — the share links' rule (a switch-off is a stop,
+ * never a pause). The vault MODULE switched off, by the tenant or the plan,
+ * stays a pause: nothing here runs for it, and the database's
+ * `portal_vault_switch` policy and the portal's module gates keep contacts
+ * out meanwhile.
+ *
+ * Deleted (binned) logins are un-marked too, so a restore can never bring
+ * one back shown. Each login writes its own `credential.visibility_changed`
+ * row (`cause: "switch_off"`), so its own trail says why. Tenant-wide by
+ * design — the switch is the workspace's, not one member's scope.
+ */
+async function hideEveryShownLogin(tx: TenantDb, ctx: PreferenceCtx): Promise<void> {
+  // ONE statement that changes and names the rows it changed, so a login
+  // hidden or deleted by someone else in between is not recorded as this
+  // sweep's (the fix-pass review).
+  const hidden = await tx.credentialItem.updateManyAndReturn({
+    where: { tenantId: ctx.tenantId, visibility: "CLIENT_VISIBLE" },
+    data: { visibility: "INTERNAL", updatedByMemberId: ctx.actor.memberId },
+    select: { id: true },
+  });
+  // In turn, never a `Promise.all` on one interactive transaction (AGENTS.md).
+  for (const { id } of hidden) {
+    await record(tx, {
+      action: "credential.visibility_changed",
+      targetType: "CredentialItem",
+      targetId: id,
+      metadata: { visibility: "INTERNAL", cause: "switch_off" },
+    });
+  }
 }
 
 /**
@@ -189,6 +237,17 @@ export async function updatePreferences(
     if (patch.vault?.allowExternalShareLinks !== undefined) {
       // `$executeRaw`: the lock returns `void`, which `$queryRaw` cannot read.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${shareSwitchLockKey(ctx.tenantId)}))`;
+    }
+    // Showing logins to clients (slice 91, AUTHZ.md §5): ON is a privilege
+    // decision like share links'; OFF stays with `settings:edit`. Any change
+    // serialises with every login being shown
+    // (`portalCredentialsSwitchLockKey`'s note) — taken before the switch is
+    // read, and after the share switch's lock: one fixed order.
+    if (patch.vault?.allowPortalCredentials === true) {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "settings:manage_modules");
+    }
+    if (patch.vault?.allowPortalCredentials !== undefined) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${portalCredentialsSwitchLockKey(ctx.tenantId)}))`;
     }
     const changed: string[] = [];
     if (patch.defaultLocale !== undefined) {
@@ -255,6 +314,15 @@ export async function updatePreferences(
           await upsertPreference(tx, ctx, VAULT_PREF_KEYS.shareLinksStoppedAt, stoppedAt.toISOString());
           changed.push(VAULT_PREF_KEYS.shareLinksStoppedAt);
         }
+      }
+      // SWITCHING CLIENT LOGINS OFF HIDES EVERY SHOWN LOGIN FOR GOOD
+      // (slice 91, founder decision C59 (b)): on again shows nothing until
+      // each is marked again. Under the switch's exclusive lock (above).
+      // On EVERY "off", not only a change of it: a shown login left behind
+      // while the switch was already off (nothing writes one, but nothing
+      // could tell) goes too, and with none the sweep writes nothing.
+      if (field === "allowPortalCredentials" && value === false) {
+        await hideEveryShownLogin(tx, ctx);
       }
       if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
     }

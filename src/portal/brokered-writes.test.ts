@@ -222,6 +222,10 @@ const WORK_BROKER = join(SRC, "modules", "work", "portal-writes.ts");
  */
 const BROKERED_READS: readonly (readonly [string, string])[] = [
   [join("documents", "portal-writes.ts"), "readPortalFileVersions"],
+  // Phase 3V slice 91: is the client's door to their logins open in this
+  // session, and until when — a time, read from the class-A door row;
+  // asking is not opening, so nothing is audited.
+  [join("modules", "vault", "portal-writes.ts"), "readPortalLoginsDoor"],
 ];
 
 /**

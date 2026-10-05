@@ -207,6 +207,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 90, share links — `src/modules/vault/share.dbtest.ts`,
   // `setupTenant("vlink")`.
   "vlink-",
+  // Phase 3V slice 91, the logins shown to a client —
+  // `src/modules/vault/portal-logins.dbtest.ts`, `setupTenant("vport")`.
+  "vport-",
   // Phase 3 slice 72, the sharing UI — `src/modules/work/visibility.dbtest.ts`,
   // `setupTenant("vshare")`.
   "vshare-",
@@ -1225,6 +1228,16 @@ async function provision(seedFile: string): Promise<void> {
     secret: { password: vaultLoginPassword },
     totp: "JBSWY3DPEHPK3PXP",
   });
+  // 3V slice 91: client logins switched ON for the workspace and this login
+  // SHOWN to the client, through the services as the owner would — with the
+  // fresh factor showing always asks — so Astrid (CONTACT_PRIMARY) has a
+  // Logins entry and one login behind her door for the whole run. No spec
+  // may switch it off: that hides every shown login for good (C59 (b)).
+  const { showLoginToClient } = await import("../../src/modules/vault");
+  const { updatePreferences } = await import("../../src/preferences/service");
+  const ownerFresh = { tenantId, actor: { memberId: ownerMemberId, mfa: { enrolled: true, verifiedAt: new Date() } } };
+  await updatePreferences(ownerFresh, { vault: { allowPortalCredentials: true } });
+  await showLoginToClient(ownerFresh, vaultLogin.id);
   const vaultApiKeyName = `E2E Stripe ${run}`;
   await createCredential(vaultCtx, {
     projectId,

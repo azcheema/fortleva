@@ -58,6 +58,13 @@ export type VaultAbilities = {
    * (`share-links.ts` asks both), with share links on for the workspace.
    */
   readonly share: boolean;
+  /**
+   * Logins shown to clients (slice 91): `credential:change_visibility` ✦.
+   * `show` also needs the workspace's switch on; `hide` never does — a
+   * login left shown must always be hideable.
+   */
+  readonly showToClient: boolean;
+  readonly hideFromClient: boolean;
 };
 
 export type OpenVault = {
@@ -74,6 +81,7 @@ const ABILITY_CODES = [
   "credential:delete",
   "credential:reveal",
   "credential:share",
+  "credential:change_visibility",
 ] as const;
 
 /**
@@ -83,7 +91,7 @@ const ABILITY_CODES = [
  * where its service would accept the member — §3.1's "hidden, never
  * disabled".
  *
- * `credential:reveal` (and `credential:share`) ARE ✦ CODES, which `heldAndAccessibleCodes` normally
+ * `credential:reveal` (and `credential:share`, `credential:change_visibility`) ARE ✦ CODES, which `heldAndAccessibleCodes` normally
  * cannot answer (a stale factor reads as "not held"). Here it can: the door
  * has just proved a factor no older than `vault.stepUpMinutes`, which the
  * preference schema caps at 15 — the ✦ window `authorize()` applies — so
@@ -109,6 +117,8 @@ export async function openVault(ctx: VaultCtx): Promise<OpenVault> {
           accessible.has("credential:share") &&
           accessible.has("credential:reveal") &&
           prefs.vault.allowExternalShareLinks,
+        showToClient: accessible.has("credential:change_visibility") && prefs.vault.allowPortalCredentials,
+        hideFromClient: accessible.has("credential:change_visibility"),
       },
       shareMaxHours: prefs.vault.shareLinkMaxTtlHours,
     };

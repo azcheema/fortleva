@@ -96,7 +96,8 @@
     "notifications": "Notifications",
     "search": "Search",
     "vault": "Vault",
-    "renewals": "Renewals"
+    "renewals": "Renewals",
+    "vaultSettings": "Vault"
   },
   "shell": {
     "palette": {
@@ -1159,6 +1160,34 @@
         "hint": "Monday morning, in your own time zone. The email is one sentence and a link — it contains no hours and no task names.",
         "emailOff": "Email is switched off above, so this reminder will not be sent. Choose any other email setting to receive it."
       }
+    },
+    "vault": {
+      "title": "Vault",
+      "description": "Workspace-wide switches for sharing logins outside the agency.",
+      "noPermission": "You don't have permission to view the vault's settings.",
+      "ownerOnly": "Only a member who can switch modules on and off can switch this on.",
+      "shareLinks": {
+        "title": "Share links",
+        "on": "Share links are on",
+        "off": "Share links are off",
+        "hint": "Members who may share can send one password to someone outside the agency, as a link that opens once after an emailed code.",
+        "confirmTitle": "Switch share links off?",
+        "confirmBody": "Every link that has not been opened yet stops working, for good. Switching share links on again does not bring any of them back.",
+        "confirmSubmit": "Switch off",
+        "switchedOn": "Share links are on.",
+        "switchedOff": "Share links are off. Every open link has stopped."
+      },
+      "clientLogins": {
+        "title": "Logins shown to clients",
+        "on": "Clients can see logins you show them",
+        "off": "Clients see no logins",
+        "hint": "When this is on, a member with the right permission can show a login to its client. The client's main contacts open it in their portal with their password and an emailed code.",
+        "confirmTitle": "Stop showing logins to clients?",
+        "confirmBody": "Every login now shown to a client is hidden, for good. Switching this on again shows none of them until each is shown again.",
+        "confirmSubmit": "Switch off",
+        "switchedOn": "Clients can now see the logins you show them.",
+        "switchedOff": "Clients see no logins. Every shown login is hidden."
+      }
     }
   },
   "files": {
@@ -1340,6 +1369,8 @@
     "ACCOUNT_IN_OTHER_WORKSPACE": "This person also belongs to another Fortleva workspace, so their two-factor cannot be reset from here. Fortleva support can do it.",
     "TWO_FACTOR_NOT_ENROLLED": "This person has no two-factor authentication to reset.",
     "SHARE_LINKS_OFF": "Share links are switched off for this workspace.",
+    "CLIENT_LOGINS_OFF": "Showing logins to clients is switched off for this workspace.",
+    "LOGIN_HAS_NO_CLIENT": "This login belongs to your agency, so there is no client to show it to.",
     "SHARE_LINK_CLOSED": "That link has already been opened or revoked."
   },
   "assignments": {
@@ -2870,7 +2901,8 @@
       "label": "Client portal",
       "home": "Overview",
       "files": "Files",
-      "company": "Your company"
+      "company": "Your company",
+      "logins": "Logins"
     },
     "files": {
       "title": "Files",
@@ -2960,6 +2992,60 @@
       "sending": "Sending…",
       "sent": "Comment sent.",
       "failed": "That did not send. Please try again."
+    },
+    "logins": {
+      "title": "Logins",
+      "description": "Logins your agency keeps for you and has chosen to show you. To open them, confirm it is you with your password and a code we email you — each time.",
+      "logged": "Hold the eye to show a password, or tap it to show it for 10 seconds. Every look and copy is logged with your name, and your agency can see it.",
+      "unavailable": "There is nothing to open here right now.",
+      "door": {
+        "title": "Confirm it is you",
+        "passwordIntro": "Enter your portal password. We then email you a six-digit code.",
+        "codeIntro": "We emailed you a six-digit code. Enter it to open your logins. They stay open for a few minutes, then lock again.",
+        "password": "Your portal password",
+        "continue": "Continue",
+        "checking": "Checking…",
+        "code": "Code from the email",
+        "codeHint": "Six digits. It works for 10 minutes.",
+        "open": "Open my logins",
+        "opening": "Opening…",
+        "resend": "Send a new code",
+        "sending": "Sending…",
+        "passwordRequired": "Enter your password.",
+        "sent": "A code is on its way to your email address. It works for 10 minutes.",
+        "wrongPassword": "That password is not right.",
+        "limited": "Too many tries. Wait a while and try again.",
+        "addressBusy": "Many codes have gone to your email address lately. Try again in an hour.",
+        "mailFailed": "We could not send the email just now. Try again in a minute.",
+        "busy": "That did not go through. Try again in a moment.",
+        "startAgain": "That code can no longer be used. Enter your password again to get a new one.",
+        "wait": "A code went out a moment ago. Check your email, or ask again in half a minute.",
+        "malformed": "Enter the six digits from the email.",
+        "noCode": "That code has expired. Ask for a new one.",
+        "wrongCode": "That code is not right. {left, plural, one {# try left} other {# tries left}}."
+      },
+      "row": {
+        "username": "Username",
+        "url": "Web address",
+        "notSet": "Not set",
+        "openUrl": "Open the web address of {name}"
+      },
+      "errors": {
+        "MFA_REQUIRED": "Your logins locked themselves. Confirm it is you again to continue.",
+        "NOT_FOUND": "That login is no longer shown to you.",
+        "FORBIDDEN": "That cannot be opened here.",
+        "REVEAL_BUDGET_EXCEEDED": "You have opened a lot of passwords in the last hour. Wait a while and try again — every look is logged.",
+        "VAULT_BUSY": "That did not go through. Try again in a moment.",
+        "INVALID_INPUT": "That could not be shown.",
+        "CROSS_SITE": "That request did not come from this page.",
+        "SIGNED_OUT": "You have been signed out. Sign in again to continue.",
+        "SERVER": "Something went wrong. Try again.",
+        "NETWORK": "Could not reach Fortleva. Check your connection and try again."
+      },
+      "mail": {
+        "subject": "Your code to open your logins from {tenant}",
+        "body": "Your code is {code}\n\nIt works for {minutes} minutes, on the page where you asked for it. Enter it to open the logins {tenant} keeps for you.\n\nIf you did not ask for this code, someone may know your portal password: change it, and tell {tenant}."
+      }
     }
   },
   "viewAs": {
@@ -3725,6 +3811,23 @@
       },
       "revoke": "Revoke",
       "revoked": "Link revoked. It can no longer be opened."
+    },
+    "clientView": {
+      "menuShow": "Show to client…",
+      "menuHide": "Hide from client",
+      "badge": "Client can see",
+      "title": "Show {name} to the client?",
+      "description": "The client's main contacts will be able to open this login in their portal.",
+      "pointWho": "Only the client's main contacts see it — not the client's other contacts.",
+      "pointDoor": "Each time, they open it with their portal password and a code we email them.",
+      "pointLogged": "Every look and copy is logged with their name. You can hide it again at any time.",
+      "code": "Your authenticator code",
+      "codeHint": "Showing a login to a client always asks for it.",
+      "submit": "Show to client",
+      "submitting": "Showing…",
+      "enterCode": "Enter the code from your authenticator app.",
+      "shown": "The client can now see this login.",
+      "hidden": "The client can no longer see this login."
     }
   },
   "assets": {

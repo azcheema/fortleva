@@ -166,7 +166,7 @@ export async function PortalHome({
   const canRequest = (requestTargets?.length ?? 0) > 0;
 
   return (
-    <PortalFrame name={name} nav="home">
+    <PortalFrame name={name} principal={principal} nav="home">
       <Page>
         <div className="flex flex-col gap-6">
           <PageHeader

@@ -738,10 +738,15 @@ describe("what the database itself refuses", () => {
     ]);
   });
 
-  it("CLIENT_VISIBLE is refused in v1 (CP4), and a plaintext can never sit in a ciphertext column", async () => {
+  it("CLIENT_VISIBLE needs a client (the agency's own logins are never shown), and a plaintext can never sit in a ciphertext column", async () => {
     const id = (await createCredential(owner(), { clientId: acme, type: "LOGIN", name: "Belts", secret: { password: PASSWORD } })).id;
-    await expect(f.platform.credentialItem.update({ where: { id }, data: { visibility: "CLIENT_VISIBLE" } })).rejects.toThrow(
-      /credential_item_internal_only/,
+    // Slice 91 dropped `credential_item_internal_only` by name (C52 (d)): a
+    // client's login may be shown to them — and put back.
+    await f.platform.credentialItem.update({ where: { id }, data: { visibility: "CLIENT_VISIBLE" } });
+    await f.platform.credentialItem.update({ where: { id }, data: { visibility: "INTERNAL" } });
+    const own = (await createCredential(owner(), { type: "LOGIN", name: "Our own belt", secret: { password: PASSWORD } })).id;
+    await expect(f.platform.credentialItem.update({ where: { id: own }, data: { visibility: "CLIENT_VISIBLE" } })).rejects.toThrow(
+      /credential_item_client_visible_needs_client/,
     );
     await expect(f.platform.credentialSecret.update({ where: { credentialId: id }, data: { secretCiphertext: PASSWORD } })).rejects.toThrow(
       /credential_secret_is_v2/,
@@ -888,16 +893,26 @@ describe("the door — the whole vault is locked, the list included (C52 (a))", 
 
   it("openVault draws exactly the controls each template's services accept", async () => {
     // `share` (slice 90): `credential:share` ✦ AND `credential:reveal` ✦, with share links on.
-    expect((await openVault(owner())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true });
-    expect((await openVault(manager())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true });
-    expect((await openVault(admin())).can).toEqual({ create: true, edit: true, delete: false, reveal: true, share: true });
-    expect((await openVault(employee())).can).toEqual({ create: true, edit: false, delete: false, reveal: false, share: false });
+    // `showToClient` / `hideFromClient` (slice 91): `credential:change_visibility` ✦ (C A);
+    // showing also needs client logins on, which this file's tenant never switches on.
+    const none = { showToClient: false, hideFromClient: false };
+    expect((await openVault(owner())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true, showToClient: false, hideFromClient: true });
+    expect((await openVault(manager())).can).toEqual({ create: true, edit: true, delete: true, reveal: true, share: true, ...none });
+    expect((await openVault(admin())).can).toEqual({ create: true, edit: true, delete: false, reveal: true, share: true, showToClient: false, hideFromClient: true });
+    expect((await openVault(employee())).can).toEqual({ create: true, edit: false, delete: false, reveal: false, share: false, ...none });
     expect((await openVault(owner())).shareMaxHours).toBe(168);
     await updatePreferences(owner(), { vault: { allowExternalShareLinks: false } });
     try {
       expect((await openVault(owner())).can.share).toBe(false);
     } finally {
       await updatePreferences(owner(), { vault: { allowExternalShareLinks: true } });
+    }
+    await updatePreferences(owner(), { vault: { allowPortalCredentials: true } });
+    try {
+      expect((await openVault(owner())).can.showToClient).toBe(true);
+      expect((await openVault(manager())).can.showToClient).toBe(false);
+    } finally {
+      await updatePreferences(owner(), { vault: { allowPortalCredentials: false } });
     }
   });
 });

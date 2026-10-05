@@ -58,6 +58,8 @@ export type CredentialView = {
   readonly rotateEveryDays: number | null;
   readonly lastRotatedAt: Date | null;
   readonly needsRotation: boolean;
+  /** CLIENT_VISIBLE = shown to the client's main contacts (slice 91, C52 (d)). */
+  readonly visibility: "INTERNAL" | "CLIENT_VISIBLE";
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -78,6 +80,7 @@ const viewSelect = {
   rotateEveryDays: true,
   lastRotatedAt: true,
   needsRotation: true,
+  visibility: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -604,7 +607,10 @@ export async function replaceCredentialSecret(
  * reveal at once, and the secret with its versions is purged with it
  * after DATA_MODEL §6.17's thirty days (the purge job is a later slice).
  * Two concurrent deletes record ONE `credential.deleted`: the write is
- * conditional on the row still being live.
+ * conditional on the row still being live. A binned login is never shown to
+ * a client (slice 91's security review): the delete puts it back to
+ * INTERNAL, so a restore — none exists yet — could never bring one back
+ * shown without a member deciding again, with their authenticator.
  */
 export async function deleteCredential(ctx: VaultCtx, credentialId: string): Promise<void> {
   const id = idOf(credentialId, "credentialId");
@@ -614,7 +620,7 @@ export async function deleteCredential(ctx: VaultCtx, credentialId: string): Pro
     await assertAnchorInScope(tx, ctx.actor, anchor);
     const written = await tx.credentialItem.updateMany({
       where: { id, tenantId: ctx.tenantId, deletedAt: null },
-      data: { deletedAt: new Date(), updatedByMemberId: ctx.actor.memberId },
+      data: { deletedAt: new Date(), visibility: "INTERNAL", updatedByMemberId: ctx.actor.memberId },
     });
     if (written.count !== 1) deny("NOT_FOUND");
     await record(tx, {

@@ -123,6 +123,9 @@ describe("portalPrincipalVerdict — the contact half", () => {
       // An agreement row carries the fee (the portal files-and-services
       // slice): money, so PRIMARY only.
       "portal.service.view",
+      // The logins an agency shows its client: main contacts only
+      // (founder decision C59 (a), Phase 3V slice 91).
+      "portal.credential.view",
     ]);
     for (const capability of PORTAL_CAPABILITIES) {
       expect(

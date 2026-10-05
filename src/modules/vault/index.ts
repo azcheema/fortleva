@@ -86,3 +86,28 @@ export {
   type ShareOpenOutcome,
   type SharePreview,
 } from "./share-open";
+export {
+  hideLoginFromClient,
+  showLoginToClient,
+  SHOW_STEP_UP_MINUTES,
+} from "./visibility";
+export { listPortalLogins, PORTAL_LOGIN_LIMIT, portalLoginsShown, type PortalLogin } from "./portal";
+export {
+  LOGINS_CODES_PER_HOUR,
+  LOGINS_UNLOCKS_PER_DAY,
+  LOGINS_UNLOCKS_PER_HOUR,
+  lookAtPortalLogin,
+  openPortalLoginsDoor,
+  readPortalLoginsDoor,
+  resendPortalLoginsCode,
+  startPortalLoginsDoor,
+  type DoorOpenOutcome,
+  type DoorResendOutcome,
+  type DoorStartOutcome,
+  type LoginsCodeMail,
+  type OpenPortalDoor,
+  type PasswordCheck,
+  type PortalDoorState,
+  type PortalLoginsCtx,
+  type PortalLookOutcome,
+} from "./portal-writes";

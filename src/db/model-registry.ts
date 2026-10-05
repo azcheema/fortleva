@@ -74,6 +74,7 @@ export const MODEL_CLASSES = {
     "clientAsset",
     "expirationReminderSent",
     "credentialShareLink",
+    "contactVaultUnlock",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -175,10 +176,17 @@ export const RLS_CLASSES = {
     // recipient's address and the counters. Read by members and by the
     // share page's SYSTEM principal; a contact gets zero rows.
     "credentialShareLink",
+    // Phase 3V slice 91 — a client's door to the logins shown to them: a
+    // code hash, the counters and the open window, written only by the
+    // portal's vault broker as SYSTEM; the contact it belongs to gets zero
+    // rows of it like everyone on their plane.
+    "contactVaultUnlock",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no
-  // portal_enabled. Both are INTERNAL-only in the database for now.
+  // portal_enabled. `clientAsset` is INTERNAL-only in the database; a
+  // `credentialItem` may be CLIENT_VISIBLE since slice 91, read by a
+  // contact only while the tenant's switch is on (`portal_vault_switch`).
   B_clientScoped: ["client", "contact", "credentialItem", "clientAsset"],
   B_projectScoped: [
     "project",

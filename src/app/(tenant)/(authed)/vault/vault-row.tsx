@@ -1,6 +1,14 @@
 "use client";
 
-import { ExternalLinkIcon, KeyRoundIcon, RotateCcwKeyIcon, Share2Icon, Trash2Icon } from "lucide-react";
+import {
+  EyeOffIcon,
+  ExternalLinkIcon,
+  KeyRoundIcon,
+  RotateCcwKeyIcon,
+  Share2Icon,
+  Trash2Icon,
+  UsersIcon,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -28,8 +36,14 @@ import { TotpField } from "@/components/vault/totp-field";
 import { afterClosingLayers } from "@/lib/after-closing-layers";
 import type { FormResult } from "@/lib/server-actions";
 
-import { deleteCredentialAction, replaceCredentialSecretAction, updateCredentialAction } from "./actions";
+import {
+  deleteCredentialAction,
+  hideLoginFromClientAction,
+  replaceCredentialSecretAction,
+  updateCredentialAction,
+} from "./actions";
 import { ShareDialog } from "./share-dialog";
+import { ShowToClientDialog } from "./show-to-client-dialog";
 import type { VaultSurface } from "./surface";
 import { fieldLabelKey, isMultilineSecret, type FieldsByType, type VaultItem } from "./vault-shape";
 
@@ -40,6 +54,13 @@ export type VaultRowAbilities = {
   readonly reveal: boolean;
   /** Share links (slice 90): the longest a link may live here, or null when this member may not make one. */
   readonly share: { readonly maxHours: number } | null;
+  /**
+   * Logins shown to clients (slice 91): `credential:change_visibility` ✦ —
+   * `showToClient` only while the workspace has client logins on;
+   * `hideFromClient` always, so a shown login can always be hidden.
+   */
+  readonly showToClient: boolean;
+  readonly hideFromClient: boolean;
 };
 
 /**
@@ -74,6 +95,7 @@ export function VaultRow({
   const { run } = useRun();
   const [secretOpen, setSecretOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [showOpen, setShowOpen] = useState(false);
   // A login with only an authenticator key has no field a link could share.
   const canShare = can.share !== null && item.secretFieldKeys.length > 0;
 
@@ -84,6 +106,29 @@ export function VaultRow({
       label: tVault("share.menu"),
       icon: Share2Icon,
       onSelect: () => afterClosingLayers(() => setShareOpen(true)),
+    });
+  }
+  // Showable: the agency's own logins have no client (C49). The DIALOG
+  // stays mounted whatever the login's state, so the revalidation that
+  // makes it "shown" cannot unmount it before its success is said (slice
+  // 70's lesson); only the menu verb follows the state.
+  const canShow = can.showToClient && item.hasClient;
+  if (canShow && !item.shownToClient) {
+    items.push({
+      key: "show-to-client",
+      label: tVault("clientView.menuShow"),
+      icon: UsersIcon,
+      onSelect: () => afterClosingLayers(() => setShowOpen(true)),
+    });
+  }
+  if (can.hideFromClient && item.shownToClient) {
+    // One click: it takes access away, as revoking a share link does — no
+    // confirm (a confirm on a non-danger action is dead string).
+    items.push({
+      key: "hide-from-client",
+      label: tVault("clientView.menuHide"),
+      icon: EyeOffIcon,
+      onSelect: () => run(() => hideLoginFromClientAction(surface, item.id)),
     });
   }
   if (can.edit) {
@@ -133,6 +178,11 @@ export function VaultRow({
             </Badge>
           ) : null}
           {item.needsRotation ? <Badge variant="caution">{t("needsRotation")}</Badge> : null}
+          {item.shownToClient ? (
+            <Badge variant="brand" data-testid="client-can-see">
+              {tVault("clientView.badge")}
+            </Badge>
+          ) : null}
         </div>
         {items.length > 0 ? <RowActions label={tCommon("actionsFor", { name: item.name })} items={items} /> : null}
       </div>
@@ -226,6 +276,9 @@ export function VaultRow({
           open={shareOpen}
           onOpenChange={setShareOpen}
         />
+      ) : null}
+      {canShow ? (
+        <ShowToClientDialog surface={surface} item={item} open={showOpen} onOpenChange={setShowOpen} />
       ) : null}
       {can.edit ? (
         <ChangeSecretDialog
