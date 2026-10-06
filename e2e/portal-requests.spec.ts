@@ -70,8 +70,20 @@ test.describe("portal request intake", () => {
     await cta.click();
 
     await expect(page.getByRole("heading", { name: "Ask for something" })).toBeVisible();
-    await page.getByLabel("What do you need?").fill(title);
+    // A REFUSAL FIRST: a title of spaces passes the browser's `required`
+    // and is refused by the server. The form now dispatches from `onSubmit`
+    // in a transition (slice 96's review — React's form-action reset put the
+    // project picker back on its first option), so this is the refusal
+    // branch of that path: the message shows, the page stays, and what was
+    // typed is still there to fix and send.
+    await page.getByLabel("What do you need?").fill("   ");
     await page.getByLabel("More detail").fill(body);
+    await page.getByRole("button", { name: "Send request" }).click();
+    await expect(page.getByText("Invalid input.")).toBeVisible({ timeout: 30_000 });
+    await expect(page).toHaveURL(/\/portal\/requests\/new$/);
+    await expect(page.getByLabel("More detail")).toHaveValue(body);
+
+    await page.getByLabel("What do you need?").fill(title);
     await page.getByRole("button", { name: "Send request" }).click();
 
     // Success navigates back to the portal home, where the new row is in

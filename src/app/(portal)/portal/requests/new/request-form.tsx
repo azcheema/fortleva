@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 
 import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
@@ -30,8 +30,25 @@ import { submitRequestAction } from "./actions";
  * long, and on any refusal the plane collapses into one message — that
  * would mean the client watches everything they typed disappear and
  * reads "something went wrong" over an empty form. Controlled state
- * survives the reset, so a refusal leaves the words in place and the
- * client can fix one and send again.
+ * survived that reset for the INPUT and the TEXTAREA (when the form still
+ * went through its action path), so a refusal left the words in place and
+ * the client could fix one and send again.
+ *
+ * …BUT NOT FOR THE SELECT, which this comment used to claim too (slice
+ * 96's code review found it): React keeps a controlled option's
+ * `selected`, never its `defaultSelected`, so the reset puts the picker
+ * back on its FIRST project while state keeps the client's pick — and a
+ * resend after a refusal posts what the picker shows, filing the request
+ * against the wrong project. So the form DISPATCHES FROM `onSubmit` in a
+ * transition (`send-login-form.tsx`'s shape), which queues no reset: when
+ * a submit's default is prevented and its handler started a transition,
+ * React runs the form's own action path as a no-op — no second call. The
+ * form KEEPS `action={action}`, which is its path before hydration (a
+ * POST to the server action; without it the browser would GET this page
+ * with the fields in the query string). Proven in a browser on the
+ * send-login form, whose spec picks two selects, is refused, and asserts
+ * both held; here the fixture's client has one portal project, so the
+ * request spec cannot see the picker move.
  *
  * NO TOAST, AND NO SUCCESS BRANCH AT ALL. Sonner is mounted on the
  * member app's shell, not on the portal's, and the portal's chrome is
@@ -61,7 +78,15 @@ export function RequestForm({ projects }: { projects: readonly PortalProjectOpti
   const [body, setBody] = useState("");
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form
+      action={action}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        startTransition(() => action(fd));
+      }}
+      className="flex flex-col gap-4"
+    >
       <Field label={t("project")} htmlFor="request-project">
         <NativeSelect
           id="request-project"
