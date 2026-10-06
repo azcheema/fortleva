@@ -352,6 +352,13 @@ export const AUDIT_EVENTS = {
   "credential.open_request_approved": TENANT,
   "credential.open_request_denied": TENANT,
   "credential.open_request_reminded": TENANT,
+  // Phase 3V slice 94 — offboarding flags (plan §3.4, SECURITY.md §6.3).
+  // Suspending a member marks every login they could know the secret of
+  // — revealed, copied, shared or typed in the last 90 days — "Change
+  // soon": one row per login, newly flagged only, written in the
+  // suspension's transaction with the remover as actor; metadata the
+  // departed `memberId` and `cause: "member_removed"`.
+  "credential.rotation_flagged": TENANT,
   // Phase 3V slice 87 — the asset registry. Metadata is the asset's
   // client, project and type, and on an edit the NAMES of the fields that
   // changed — never a value (a note is free text).

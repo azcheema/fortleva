@@ -64,6 +64,7 @@ export {
   type CredentialView,
   type VaultIndex,
 } from "./items";
+export { flagLoginsKnownBy, ROTATION_WINDOW_DAYS } from "./offboarding";
 export { copyCredentialField, generateCredentialTotp, revealCredentialField, type RevealKind } from "./reveal";
 export {
   createShareLink,

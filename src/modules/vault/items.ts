@@ -7,6 +7,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 
+import { lockSecretWrite } from "./budget";
 import { boundedVaultWrite, guarded, idOf, principalOf, type VaultCtx } from "./ctx";
 import { enterVault } from "./door";
 import {
@@ -205,10 +206,13 @@ export async function createCredential(ctx: VaultCtx, input: CreateCredentialInp
   const rotateEveryDays = normalizeRotateEveryDays(input.rotateEveryDays);
   if (Object.keys(fields).length === 0 && totp === null) fail("INVALID_INPUT", "a credential needs a secret or a TOTP seed");
 
-  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
+  return boundedVaultWrite((opts) => withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
       await enterVault(tx, ctx, "credential:create");
       const anchor = await resolveNewAnchor(tx, ctx, input);
+      // The member types the secret: a removal racing this must see it or
+      // refuse it (`lockSecretWrite`, slice 94's security review).
+      await lockSecretWrite(tx, ctx.tenantId, ctx.actor.memberId);
 
       // The id is minted here because the AAD binds the ciphertext to it.
       const id = randomUUID();
@@ -250,7 +254,7 @@ export async function createCredential(ctx: VaultCtx, input: CreateCredentialInp
       });
       return row;
     }),
-  );
+  opts));
 }
 
 export type CredentialFilter =
@@ -293,14 +297,19 @@ export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): 
  * by a count taken in another transaction, which a concurrent add or delete
  * would put out of step (slice 86's reviews, twice).
  */
-export async function listAllCredentials(ctx: VaultCtx): Promise<{
+export async function listAllCredentials(
+  ctx: VaultCtx,
+  only: { readonly changeSoon?: boolean } = {},
+): Promise<{
   readonly rows: CredentialListing[];
   readonly cut: { readonly clientId: string | null } | null;
 }> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await enterVault(tx, ctx, "credential:view");
     const scope = await resolveScope(tx, ctx.actor);
-    const live = { tenantId: ctx.tenantId, deletedAt: null };
+    // `changeSoon` narrows to the logins marked for a change (slice 94's
+    // offboarding flags) — the same order, cap and cut.
+    const live = { tenantId: ctx.tenantId, deletedAt: null, ...(only.changeSoon ? { needsRotation: true } : {}) };
     const over = VAULT_LIST_LIMIT + 1;
     // TWO reads, in sequence, because the order wants the client-less rows
     // FIRST and Postgres sorts a missing client's NULL name last. The
@@ -339,6 +348,8 @@ export type VaultIndex = {
   readonly agency: number | null;
   /** Every client with at least one login the member can reach, by name. */
   readonly clients: readonly { readonly id: string; readonly name: string; readonly count: number }[];
+  /** How many of those logins are marked for a change ("Change soon" — slice 94). */
+  readonly changeSoon: number;
 };
 
 /**
@@ -367,9 +378,13 @@ export async function vaultIndex(ctx: VaultCtx): Promise<VaultIndex> {
             orderBy: [{ name: "asc" }, { id: "asc" }],
             select: { id: true, name: true },
           });
+    const changeSoon = await tx.credentialItem.count({
+      where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null, needsRotation: true }, anchorScopeWhere(scope)] },
+    });
     return {
       agency: scope.all ? (count.get(null) ?? 0) : null,
       clients: named.map((c) => ({ id: c.id, name: c.name, count: count.get(c.id) ?? 0 })),
+      changeSoon,
     };
   });
 }
@@ -499,6 +514,11 @@ export async function replaceCredentialSecret(
           // A form that posted only blanks asked for nothing: answered with
           // the credential as it is, and nothing is locked or written.
           if (Object.keys(patch).length === 0 && !totpChanged) return currentView();
+          // The member types the secret: a removal racing this must see it or
+          // refuse it — and must not have its flag cleared by a change that
+          // was queued behind it (slice 94's security review). The key comes
+          // BEFORE the row lock, the one order every holder of it keeps.
+          await lockSecretWrite(tx, ctx.tenantId, ctx.actor.memberId);
           // Lock the item row: two changes of one credential would
           // otherwise both read version N and both try to keep it.
           await tx.$queryRaw`SELECT id FROM credential_item WHERE tenant_id = ${ctx.tenantId} AND id = ${id} FOR UPDATE`;
@@ -626,8 +646,9 @@ export async function replaceCredentialSecret(
  * write changes — a seal or unseal waits for the delete, or the delete for
  * it, inside `boundedVaultWrite` (the reviews: the delete waits on a
  * seal's row, so its wait is bounded as the seal's, share's and show's
- * are; `createCredential` and `updateCredential` are not wrapped — an edit
- * waiting behind a seal is bounded only by the seal's own lock waits).
+ * are; `updateCredential` is not wrapped — an edit waiting behind a seal
+ * is bounded only by the seal's own lock waits; `createCredential` is since
+ * slice 94, for the member's key it now takes).
  * Two concurrent deletes still record ONE `credential.deleted`: the second
  * finds the row binned under the lock and is NOT_FOUND.
  */

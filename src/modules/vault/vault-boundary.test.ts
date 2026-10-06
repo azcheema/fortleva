@@ -166,7 +166,10 @@ describe("vault ciphertext boundary", () => {
     // own proof first, then SYSTEM with the standing restated, the secret
     // one field per audited look while an ask has the layer open — and its
     // callers are pinned below; `sealed-reminders` is the daily job's
-    // per-tenant body (pinned below); `sealed-rules` is figures.
+    // per-tenant body (pinned below); `sealed-rules` is figures. Offboarding
+    // flags (slice 94): `offboarding` takes a transaction and is gated by its
+    // ONE caller's `member:remove` (pinned below); it writes a flag and its
+    // audit rows, and reads the audit trail and ids — never a secret.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -177,6 +180,7 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/expirations",
       "modules/vault/fields",
       "modules/vault/items",
+      "modules/vault/offboarding",
       "modules/vault/portal",
       "modules/vault/portal-writes",
       "modules/vault/reminder-bands",
@@ -212,6 +216,20 @@ describe("vault ciphertext boundary", () => {
   it("only the reminder job calls the reminders' system entry point", () => {
     const allowed = ["modules/vault/reminders.ts", "modules/vault/index.ts", "jobs/expiration-reminders.ts"];
     const callers = files.filter((f) => /\bsendExpirationReminders\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * THE OFFBOARDING FLAGS (slice 94) take the caller's transaction and gate
+   * nothing themselves: the gate is the removal's `member:remove`, inside
+   * that transaction, with the tenant row locked. Called from anywhere else
+   * they would write flags and audit rows in a member's name for a removal
+   * that never happened — so the name appears only where it is defined,
+   * re-exported and called by the suspension.
+   */
+  it("only the member suspension flags the logins a member could know", () => {
+    const allowed = ["modules/vault/offboarding.ts", "modules/vault/index.ts", "members/admin.ts"];
+    const callers = files.filter((f) => /\bflagLoginsKnownBy\b/.test(readFileSync(f, "utf8"))).map(rel);
     expect(callers.sort()).toEqual(allowed.sort());
   });
 

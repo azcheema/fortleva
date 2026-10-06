@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import { SLOW } from "./fixtures/keys";
-import { ageVaultFactor, requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { ageVaultFactor, flagLogin, requireSeed, type E2ESeed } from "./fixtures/tenant";
 import { signInVaultManager, totpNow } from "./fixtures/vault-session";
 
 /**
@@ -226,6 +226,65 @@ test.describe.serial("the vault — a client's tab, /vault and a project's tab �
     await expect(group(seed.clientId)).toHaveCount(0);
     await expect(group("agency")).toContainText(seed.vaultAgencyLoginName);
     await expect(filter()).toHaveValue("agency");
+  });
+
+  test("logins marked to change (slice 94): /vault says how many and lists them; changing a secret clears its mark", async () => {
+    const stamp = Date.now();
+    const names = [`E2E change soon A ${stamp}`, `E2E change soon B ${stamp}`] as const;
+    await page.goto(vault());
+    const form = page.getByTestId("add-credential");
+    for (const name of names) {
+      await form.locator("#vc-name").fill(name);
+      await form.locator("#vc-secret-password").fill(`first-${stamp}`);
+      await form.getByRole("button", { name: "Add" }).click();
+      await expect(page.getByText(`Added ${name}`)).toBeVisible();
+      // Removing a member is what marks a login (`offboarding.dbtest.ts`); the
+      // fixture's members must stay, so the mark is set straight on the row.
+      expect(await flagLogin(seed.tenantId, name)).toBe(1);
+    }
+
+    await page.goto("/vault");
+    const line = page.getByTestId("vault-change-soon");
+    await expect(line).toContainText("2 logins need changing");
+    await line.getByRole("link", { name: "Show the list" }).click();
+    await page.waitForURL(/\/vault\?client=change-soon$/);
+    await expect(filter()).toHaveValue("change-soon");
+    await expect(page.getByTestId("vault-change-soon")).toHaveCount(0);
+    await expect(page.getByTestId("vault-item")).toHaveCount(2);
+    for (const name of names) await expect(rowOf(name).getByTestId("needs-rotation")).toHaveText("Change soon");
+
+    const changeSecret = async (name: string) => {
+      await rowOf(name).getByRole("button", { name: `Actions for ${name}` }).click();
+      await page.getByRole("menuitem", { name: "Change secret…" }).click();
+      const dialog = page.getByTestId("change-secret-dialog");
+      await dialog.getByLabel("Password").fill(`second-${stamp}`);
+      await dialog.getByRole("button", { name: "Change" }).click();
+      await expect(dialog).toBeHidden();
+    };
+    // The first change takes its row OFF this list with the revalidation —
+    // the dialog and form with it — and still says it worked (the code
+    // review's medium: the toast used to live in an effect of that form).
+    await changeSecret(names[0]);
+    // Exactly once: nothing else on this page carries the text.
+    await expect(page.getByText("Changed. The old value is kept in the history.")).toHaveCount(1);
+    await expect(rowOf(names[0])).toHaveCount(0);
+    await expect(page.getByTestId("vault-item")).toHaveCount(1);
+    await expect(filter()).toHaveValue("change-soon");
+    // The last one: with none left the view is all of them again, unmarked.
+    await changeSecret(names[1]);
+    await expect(filter()).toHaveValue("");
+    for (const name of names) {
+      await expect(rowOf(name)).toBeVisible();
+      await expect(rowOf(name).getByTestId("needs-rotation")).toHaveCount(0);
+    }
+
+    for (const name of names) {
+      const row = rowOf(name);
+      await row.getByRole("button", { name: `Actions for ${name}` }).click();
+      await page.getByRole("menuitem", { name: "Delete" }).click();
+      await row.getByRole("button", { name: "Yes" }).click();
+      await expect(rowOf(name)).toHaveCount(0);
+    }
   });
 
   test("one of our own logins is added on /vault and deleted there", async () => {

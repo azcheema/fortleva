@@ -1,3 +1,4 @@
+import { deny } from "@/authz/errors";
 import type { TenantDb } from "@/db";
 
 /**
@@ -30,6 +31,21 @@ import type { TenantDb } from "@/db";
  * always in that one order; the reveal takes no other lock, and nothing
  * takes these in the other order, so no cycle can close.
  *
+ * A REMOVAL TAKES IT TOO (slice 94, `holdRevealsOf`): suspending a member
+ * takes THEIR key after the tenant row's lock (and their own row's) and
+ * before it flags the logins they could know. And EVERY way a member comes
+ * to know a secret takes their key first: a reveal, a copy, a code and a
+ * share link (`lockRevealBudget`), and typing one — creating a login or
+ * changing its secret (`lockSecretWrite`, before the login's row lock;
+ * slice 94's security review). Nothing that holds the key waits on the
+ * tenant or member row in a mode the removal's non-key UPDATEs block (an
+ * insert's foreign keys take KEY SHARE). So any of these racing the
+ * removal either commits first — and the removal, waiting on the key,
+ * then reads its row and flags the login — or waits for the removal and
+ * then finds the member no longer active: the standing is re-read AFTER
+ * the lock, in a new statement, because every gate before the lock was
+ * answered while they still were.
+ *
  * THE CLOCK is Postgres's — `now()`, the TRANSACTION's start, returned
  * by the statement that takes the lock — because the rows being counted
  * are stamped by Postgres too. A transaction that waited for the lock
@@ -51,14 +67,49 @@ export const REVEAL_ACTIONS = [
 
 const WINDOW_MS = 60 * 60_000;
 
-/** Take the member's reveal lock; returns the database clock. */
+const revealKey = (tenantId: string, memberId: string) => `vault_reveal:${tenantId}:${memberId}`;
+
+/**
+ * Take the member's reveal lock; returns the database clock. Refuses a
+ * member who is no longer active once the lock is theirs — a removal
+ * that committed while this waited (`holdRevealsOf`).
+ */
 export async function lockRevealBudget(tx: TenantDb, tenantId: string, memberId: string): Promise<Date> {
   const rows = await tx.$queryRaw<{ now: Date }[]>`
-    WITH locked AS (SELECT pg_advisory_xact_lock(hashtext(${`vault_reveal:${tenantId}:${memberId}`})))
+    WITH locked AS (SELECT pg_advisory_xact_lock(hashtext(${revealKey(tenantId, memberId)})))
     SELECT now() AS now FROM locked`;
   const clock = rows[0];
   if (!clock) throw new Error("vault: the reveal budget lock returned no clock");
+  // A NEW statement, so it sees what committed while the lock was awaited:
+  // the statement above took its snapshot before it began to wait.
+  const active = await tx.member.findFirst({
+    where: { tenantId, id: memberId, status: "ACTIVE" },
+    select: { id: true },
+  });
+  if (!active) deny("FORBIDDEN", "the member is no longer active");
   return clock.now;
+}
+
+/**
+ * A secret TYPED by the member — a new login, a changed secret or seed —
+ * takes the same key and the same re-read (slice 94): a removal counts
+ * what they typed as known, so a write racing it must land before its
+ * read or be refused after its commit. Call it before any row lock on the
+ * login, so the order is always key → row, as `createShareLink`'s is.
+ */
+export async function lockSecretWrite(tx: TenantDb, tenantId: string, memberId: string): Promise<void> {
+  await lockRevealBudget(tx, tenantId, memberId);
+}
+
+/**
+ * The removal's half of the lock (slice 94): hold `memberId`'s reveal key
+ * until this transaction ends, so none of their reveals or typed secrets
+ * can commit unseen between the read of what they could know and the
+ * suspension's commit.
+ */
+export async function holdRevealsOf(tx: TenantDb, tenantId: string, memberId: string): Promise<void> {
+  // `$executeRaw`: the lock returns `void`, which `$queryRaw` cannot read.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${revealKey(tenantId, memberId)}))`;
 }
 
 /** The member's reveals, copies and codes in the hour before `now`. */

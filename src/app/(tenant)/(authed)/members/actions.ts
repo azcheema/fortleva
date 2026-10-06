@@ -123,8 +123,11 @@ export async function setMemberStatusAction(
   }
   return runAdmin(async () => {
     if (op === "suspend") {
-      await suspendMember({ tenantId: membership.tenantId, actor, memberId: memberId.data });
-      return t("status.suspended");
+      const { flagged } = await suspendMember({ tenantId: membership.tenantId, actor, memberId: memberId.data });
+      // No number: it would count logins across the whole workspace, some
+      // past a scoped remover's reach. `/vault` gives each reader their own
+      // count (slice 94's reviews).
+      return flagged === 0 ? t("status.suspended") : t("status.suspendedFlagged");
     }
     await reactivateMember({ tenantId: membership.tenantId, actor, memberId: memberId.data });
     return t("status.reactivated");

@@ -12,7 +12,7 @@ import {
   UsersIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useActionState, useCallback, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { toast } from "sonner";
 
 import { AutoForm } from "@/components/auto-form";
@@ -213,7 +213,11 @@ export function VaultRow({
               {item.project.key}
             </Badge>
           ) : null}
-          {item.needsRotation ? <Badge variant="caution">{t("needsRotation")}</Badge> : null}
+          {item.needsRotation ? (
+            <Badge variant="caution" data-testid="needs-rotation" title={t("needsRotationHint")}>
+              {t("needsRotation")}
+            </Badge>
+          ) : null}
           {item.shownToClient ? (
             <Badge variant="brand" data-testid="client-can-see">
               {tVault("clientView.badge")}
@@ -365,8 +369,7 @@ function ChangeSecretDialog({
 }) {
   const t = useTranslations("vault.secret");
   const focusReturn = useFocusReturn();
-  // Stable, so the form's success effect runs once per success.
-  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  const close = () => onOpenChange(false);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent {...focusReturn} className="sm:max-w-md" data-testid="change-secret-dialog">
@@ -393,14 +396,19 @@ function ChangeSecretForm({
 }) {
   const t = useTranslations("vault");
   const tCommon = useTranslations("common");
-  const [state, action, pending] = useActionState<FormResult | null, FormData>(replaceCredentialSecretAction, null);
-
-  useEffect(() => {
-    if (state?.ok) {
-      toast.success(state.message);
+  // The success is said HERE, in the action, not in an effect on its state:
+  // on `/vault`'s "Change soon" list a change un-marks the login, and the
+  // revalidation drops its row — this form with it — in the same commit,
+  // so an effect would never run (slice 94's code review; slice 93b's
+  // lesson). A toast is not React state; it outlives the row.
+  const [state, action, pending] = useActionState<FormResult | null, FormData>(async (prev, formData) => {
+    const result = await replaceCredentialSecretAction(prev, formData);
+    if (result?.ok) {
+      toast.success(result.message);
       onDone();
     }
-  }, [state, onDone]);
+    return result;
+  }, null);
 
   return (
     <form action={action} className="flex flex-col gap-3">

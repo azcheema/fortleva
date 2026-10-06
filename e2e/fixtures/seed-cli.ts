@@ -35,6 +35,7 @@
  *        tsx e2e/fixtures/seed-cli.ts reset-notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-signoffs <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-sealed-asks <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts flag-login <tenantId> <loginName>
  *        tsx e2e/fixtures/seed-cli.ts reset-portal-sections <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -208,6 +209,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 90, share links — `src/modules/vault/share.dbtest.ts`,
   // `setupTenant("vlink")`.
   "vlink-",
+  // Phase 3V slice 94, offboarding flags — `src/modules/vault/offboarding.dbtest.ts`,
+  // `setupTenant("voff")`.
+  "voff-",
   // Phase 3V slice 91, the logins shown to a client —
   // `src/modules/vault/portal-logins.dbtest.ts`, `setupTenant("vport")`.
   "vport-",
@@ -2777,6 +2781,27 @@ async function ageVaultFactor(tenantId: string, email: string): Promise<void> {
   process.stdout.write(`${MARKER}${JSON.stringify({ aged: count })}\n`);
 }
 
+/**
+ * Mark a login "Change soon" (slice 94) by its name, as removing a member
+ * who saw it would — the fixture's members stay, so `vault.spec.ts` sets
+ * the mark straight on the row, then clears it through the UI by changing
+ * the secret. Live logins of the fixture tenant only.
+ */
+async function flagLogin(tenantId: string, name: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  // An absent name would be DROPPED from the where clause and mark every
+  // login in the tenant (the undefined-where trap).
+  if (typeof name !== "string" || name.length === 0) throw new Error("flag-login: a login name is required");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { count } = await db.credentialItem.updateMany({
+    where: { tenantId, name, deletedAt: null },
+    data: { needsRotation: true },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ flagged: count })}\n`);
+}
+
 /** The DB half of the visibility assertions. */
 async function visibility(documentId: string): Promise<void> {
   const { getPlatformClient } = await import("../../src/db/client");
@@ -2812,6 +2837,7 @@ const main = async (): Promise<void> => {
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "age-vault-factor") return ageVaultFactor(argument!, process.argv[4]!);
+  if (command === "flag-login") return flagLogin(argument!, process.argv[4]!);
   if (command === "remove-users") return removeUsers(process.argv.slice(3));
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);

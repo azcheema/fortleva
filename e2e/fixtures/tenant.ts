@@ -273,6 +273,12 @@ export async function ageVaultFactor(tenantId: string, email: string): Promise<n
   return aged;
 }
 
+/** Mark a live login of the fixture tenant "Change soon", by name (vault.spec's slice 94 test). */
+export async function flagLogin(tenantId: string, name: string): Promise<number> {
+  const { flagged } = await runCli<{ flagged: number }>(["flag-login", tenantId, name]);
+  return flagged;
+}
+
 /** A member's next timer start is their first again: the staff notice shows (time.spec's task-timer test). */
 export async function forgetStaffNotice(tenantId: string, email: string): Promise<number> {
   const { forgotten } = await runCli<{ forgotten: number }>(["forget-notice", tenantId, email]);

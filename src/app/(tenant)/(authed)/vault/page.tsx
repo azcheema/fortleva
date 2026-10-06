@@ -28,6 +28,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The filter's "Change soon" view (slice 94): every login marked for a change. */
+const CHANGE_SOON = "change-soon";
 
 /**
  * THE TENANT'S VAULT — `/vault` (Phase 3V slice 86; UI.md §3.1's rail item).
@@ -42,13 +44,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * list is capped at `VAULT_LIST_LIMIT` rows; past it the page says how many
  * there are and asks for a client.
  *
+ * LOGINS TO CHANGE (slice 94): removing a member marks the logins they
+ * could know "Change soon". While any are marked, a line above the list
+ * says how many and the filter offers them on their own (`?client=change-
+ * soon` — the filter's one parameter, as "our own" is), grouped as ever.
+ *
  * Adding here adds one of OUR OWN logins, and only for a member who reaches
  * them and may create: a client's logins are added where they belong, on
  * the client's or the project's Vault tab, which every client card links to.
  */
 export default async function VaultPage({ searchParams }: { searchParams: Promise<{ client?: string | string[] }> }) {
   const { client: raw } = await searchParams;
-  const asked = typeof raw === "string" && (raw === AGENCY_WHERE || UUID.test(raw)) ? raw.toLowerCase() : null;
+  const asked =
+    typeof raw === "string" && (raw === AGENCY_WHERE || raw === CHANGE_SOON || UUID.test(raw)) ? raw.toLowerCase() : null;
   const t = await getTranslations("vault");
 
   const opened = await openVaultPage(asked === null ? "/vault" : `/vault?client=${asked}`, async (ctx) => {
@@ -60,13 +68,17 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
         ? index.agency === null
           ? null
           : AGENCY_WHERE
-        : asked !== null && index.clients.some((c) => c.id === asked)
-          ? asked
-          : null;
-    // The cap belongs to the everything view; one anchor is never capped.
+        : asked === CHANGE_SOON
+          ? index.changeSoon === 0
+            ? null
+            : CHANGE_SOON
+          : asked !== null && index.clients.some((c) => c.id === asked)
+            ? asked
+            : null;
+    // The cap belongs to the views across clients; one anchor is never capped.
     const listed =
-      pick === null
-        ? await listAllCredentials(ctx)
+      pick === null || pick === CHANGE_SOON
+        ? await listAllCredentials(ctx, { changeSoon: pick === CHANGE_SOON })
         : {
             rows: await listCredentials(ctx, pick === AGENCY_WHERE ? { agencyOwn: true } : { clientId: pick }),
             cut: null,
@@ -97,9 +109,11 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
   const can = rowAbilitiesOf(open);
   const total = (index.agency ?? 0) + index.clients.reduce((n, c) => n + c.count, 0);
   const countOf = new Map(index.clients.map((c) => [c.id, c.count]));
+  const changeSoonView = pick === CHANGE_SOON;
 
-  const showOwn = index.agency !== null && (pick === null || pick === AGENCY_WHERE);
-  const canAddOwn = showOwn && open.can.create;
+  const showOwn = index.agency !== null && (pick === null || pick === AGENCY_WHERE || changeSoonView);
+  // Adding belongs to the views of a place, not to a list of logins to change.
+  const canAddOwn = showOwn && open.can.create && !changeSoonView;
   const own = items.filter((c) => c.client === null);
   // The client rows arrive ordered by client name; group them in that order.
   const byClient = new Map<string, { name: string; rows: CredentialListing[] }>();
@@ -112,6 +126,7 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
 
   const options: VaultFilterOption[] = [
     { value: "", label: t("tenant.all", { count: total }) },
+    ...(index.changeSoon === 0 ? [] : [{ value: CHANGE_SOON, label: t("tenant.changeSoon", { count: index.changeSoon }) }]),
     ...(index.agency === null ? [] : [{ value: AGENCY_WHERE, label: t("tenant.agency", { count: index.agency }) }]),
     ...index.clients.map((c) => ({ value: c.id, label: t("tenant.client", { name: c.name, count: c.count }) })),
   ];
@@ -138,11 +153,33 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
           {can.reveal || items.length === 0 ? null : <p className="text-xs text-muted-foreground">{t("list.noReveal")}</p>}
         </div>
 
+        {index.changeSoon > 0 && !changeSoonView ? (
+          <div data-testid="vault-change-soon">
+            <Callout tone="caution">
+              <span>{t("tenant.changeSoonLine", { count: index.changeSoon })} </span>
+              <Link
+                href={`/vault?client=${CHANGE_SOON}`}
+                className="rounded-sm text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                {t("tenant.changeSoonShow")}
+              </Link>
+            </Callout>
+          </div>
+        ) : null}
+
         {truncated ? (
           <Callout tone="caution" role="status">
             {/* The total is the index's, read a moment apart from the list:
                 never let it claim fewer rows than the list just proved. */}
-            {t("tenant.truncated", { limit: VAULT_LIST_LIMIT, total: Math.max(total, VAULT_LIST_LIMIT + 1) })}
+            {/* On the "Change soon" list a client's view would mix in logins
+                that need nothing, and a card cut part way says nothing: the
+                rest come into this list as these are changed. */}
+            {changeSoonView
+              ? t("tenant.changeSoonTruncated", {
+                  limit: VAULT_LIST_LIMIT,
+                  total: Math.max(index.changeSoon, VAULT_LIST_LIMIT + 1),
+                })
+              : t("tenant.truncated", { limit: VAULT_LIST_LIMIT, total: Math.max(total, VAULT_LIST_LIMIT + 1) })}
           </Callout>
         ) : null}
 
@@ -162,7 +199,7 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
               ) : (
                 <>
                   <VaultList surface={TENANT_SURFACE} items={own} can={can} showProject />
-                  {cutThrough(null) ? (
+                  {cutThrough(null) && !changeSoonView ? (
                     <PartialLine shown={own.length} count={index.agency ?? 0} href={`/vault?client=${AGENCY_WHERE}`} />
                   ) : null}
                 </>
@@ -185,7 +222,7 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
               contentClassName="p-0"
             >
               <VaultList surface={TENANT_SURFACE} items={group.rows} can={can} showProject />
-              {cutThrough(clientId) ? (
+              {cutThrough(clientId) && !changeSoonView ? (
                 <PartialLine shown={group.rows.length} count={countOf.get(clientId) ?? 0} href={`/vault?client=${clientId}`} />
               ) : null}
             </SectionCard>

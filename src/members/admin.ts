@@ -3,6 +3,7 @@ import type { MemberActor } from "@/authz/authorize";
 import { AuthzError, deny } from "@/authz/errors";
 import { requireAccess } from "@/entitlements/resolver";
 import { record } from "@/audit/record";
+import { flagLoginsKnownBy } from "@/modules/vault";
 
 import {
   EscalationDenied,
@@ -197,18 +198,27 @@ export async function setMemberRoles(input: {
   });
 }
 
-/** member:remove — status → SUSPENDED (roles kept), last-owner-guarded. */
+/**
+ * member:remove — status → SUSPENDED (roles kept), last-owner-guarded.
+ *
+ * Since slice 94 it also marks every vault login the member could know
+ * the secret of (the last 90 days) as needing a change, in this same
+ * transaction (`flagLoginsKnownBy`): a consequence of the removal, not a
+ * vault act, so it asks no vault permission — it reveals nothing, and a
+ * closed vault module only hides the flag until it opens. Returns how
+ * many logins were newly flagged, for the confirmation.
+ */
 export async function suspendMember(input: {
   tenantId: string;
   actor: MemberActor;
   memberId: string;
-}): Promise<void> {
-  await runGuarded(input.tenantId, input.actor, async (tx) => {
+}): Promise<{ flagged: number }> {
+  return runGuarded(input.tenantId, input.actor, async (tx) => {
     await requireAccess(tx, input.tenantId, input.actor, "member:remove");
     await bumpPermissionsVersion(tx, input.tenantId);
     if (input.memberId === input.actor.memberId) deny("FORBIDDEN", "you cannot suspend yourself");
     const member = await loadMember(tx, input.memberId);
-    if (member.status === "SUSPENDED") return;
+    if (member.status === "SUSPENDED") return { flagged: 0 };
     const owner = await ownerRoleId(tx);
     const holdsOwner = await tx.memberRole.findFirst({
       where: { memberId: input.memberId, roleId: owner },
@@ -230,6 +240,7 @@ export async function suspendMember(input: {
       targetType: "Member",
       targetId: input.memberId,
     });
+    return { flagged: await flagLoginsKnownBy(tx, input.tenantId, input.memberId) };
   });
 }
 

@@ -280,7 +280,7 @@ describe("create, list, read — metadata only, scope by anchor (C49)", () => {
     await createCredential(otherOwner, { type: "LOGIN", name: "Their registrar", secret: { password: "theirs" } });
     expect((await vaultIndex(manager())).agency).toBe(forManager.agency);
     expect((await listAllCredentials(manager())).rows.map((r) => r.name)).not.toContain("Their registrar");
-    expect(await vaultIndex(otherOwner)).toEqual({ agency: 1, clients: [] });
+    expect(await vaultIndex(otherOwner)).toEqual({ agency: 1, clients: [], changeSoon: 0 });
   });
 
   it("an employee may create in scope, never out of it, and never an agency-own login", async () => {
