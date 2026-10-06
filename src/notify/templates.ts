@@ -115,6 +115,19 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Några inloggningar som du kan öppna i valvet går snart ut. Öppna valvet för att se vilka.",
     },
   },
+  // Phase 3V slice 96 — a client handed a login over through the portal.
+  // LINKS, NOT DATA: neither the client nor the login is named; the inbox
+  // names the client under the reader's own principal.
+  "credential.submitted": {
+    en: {
+      subject: "A client sent you a login",
+      body: "A client handed a login over through the portal. It is in your Vault, for your team only. Open the Vault to see it.",
+    },
+    sv: {
+      subject: "En kund har skickat en inloggning",
+      body: "En kund har lämnat över en inloggning via portalen. Den finns i ert valv och syns bara för ert team. Öppna valvet för att se den.",
+    },
+  },
   // Phase 3V slice 93 — a client's ask to open their SEALED logins
   // (`sealed-mail-keys.ts`). Security notices, sent whatever the reader's
   // email level; LINKS, NOT DATA — no client, login or reason is named.
@@ -269,6 +282,13 @@ const linkFor = (
   if (key === "expiration.logins_expiring") {
     const clientId = uuidParam(params, "clientId");
     return new URL(clientId ? `/vault?client=${clientId}` : "/vault?client=agency", appUrl);
+  }
+  // A login a client handed over (slice 96): `/vault` filtered to that
+  // client — `credential:view`, which every receiver holds, opens it. The id
+  // came from the broker, never a person, and is held to a uuid's shape.
+  if (key === "credential.submitted") {
+    const clientId = uuidParam(params, "clientId");
+    return new URL(clientId ? `/vault?client=${clientId}` : "/vault", appUrl);
   }
   const projectKey = typeof params?.["projectKey"] === "string" ? params["projectKey"] : null;
   const itemNumber = typeof params?.["itemNumber"] === "string" ? params["itemNumber"] : null;

@@ -2644,9 +2644,10 @@ model WorkType {
 // metadata on a class-B row, ciphertext on a class-A twin that a
 // contact principal can never SELECT (portal_deny), and the client's
 // global `omit` keeps the ciphertext out of every read but the two that
-// opt back in (src/db/client.ts). Asset links (`assetId`) and portal
-// submission attribution (`submittedByContactId`) land with the slices
-// that build their surfaces. Migration 20261001120000_vault_core.
+// opt back in (src/db/client.ts). Asset links (`assetId`) land with the
+// slice that builds their surface; portal submission attribution
+// (`submittedByContactId`) landed with slice 96 (migration
+// 20261006180000). Migration 20261001120000_vault_core.
 // ───────────────────────────────────────────────────────────────────
 
 enum CredentialType {
@@ -2700,6 +2701,15 @@ model CredentialItem {
   sealedAt          DateTime?      @map("sealed_at") @db.Timestamptz(6)
   createdByMemberId String?        @map("created_by_member_id") // attribution, no FK
   updatedByMemberId String?        @map("updated_by_member_id") // attribution, no FK
+  /// Handed over by this contact through the portal (slice 96, founder
+  /// decision C64; `submission-portal-writes.ts`). Set only by the SYSTEM
+  /// principal, never changed; the login is then born INTERNAL with no
+  /// member author (migration 20261006180000's guard and CHECKs).
+  submittedByContactId String?     @map("submitted_by_contact_id") // attribution, no FK
+  /// The name AS THE CLIENT SENT IT (slice 96) — never changes; the client's
+  /// own list of what they sent shows this, never `name`, which the team may
+  /// rename. Set exactly when `submittedByContactId` is (CHECK).
+  submittedName     String?        @map("submitted_name")
   archivedAt        DateTime?      @map("archived_at") @db.Timestamptz(6)
   deletedAt         DateTime?      @map("deleted_at") @db.Timestamptz(6)
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -2717,6 +2727,7 @@ model CredentialItem {
   @@index([tenantId, projectId])
   @@index([tenantId, expiresAt])
   @@index([tenantId, needsRotation])
+  @@index([tenantId, submittedByContactId])
   @@map("credential_item")
 }
 

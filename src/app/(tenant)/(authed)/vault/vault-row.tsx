@@ -229,6 +229,16 @@ export function VaultRow({
               {tVault("seal.badge")}
             </Badge>
           ) : null}
+          {/* Handed over by the client (slice 96, C64): who sent it — where
+              the login came from, not who last touched it; the hint says the
+              team may have edited it since (the security review's low). */}
+          {item.sentBy ? (
+            <Badge variant="outline" data-testid="sent-by-client" title={t("sentByHint")} className="max-w-60">
+              <span className="truncate">
+                {item.sentBy.name ? t("sentBy", { name: item.sentBy.name }) : t("sentByClient")}
+              </span>
+            </Badge>
+          ) : null}
         </div>
         {items.length > 0 ? <RowActions label={tCommon("actionsFor", { name: item.name })} items={items} /> : null}
       </div>

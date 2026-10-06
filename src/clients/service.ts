@@ -702,12 +702,26 @@ export async function updateContact(
 export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await authorizeContactRecordWrite(tx, ctx.actor);
+    // The id is held to its shape before it reaches SQL or a `where`
+    // (Prisma drops an `undefined` filter silently — the 2026-08-31 lesson).
+    if (typeof contactId !== "string" || contactId.length === 0 || contactId.length > 64) deny("NOT_FOUND");
+    const found = await tx.contact.findFirst({ where: { id: contactId }, select: { clientId: true } });
+    if (!found) deny("NOT_FOUND");
+    await assertInScope(tx, ctx.actor, { clientId: found!.clientId, lifted: true });
+    // THE ROW, LOCKED BEFORE ITS STATUS IS READ (slice 96's design review),
+    // and only once the member is known to reach it: the status read and
+    // the counts below must still hold at the DELETE. A portal hand-over
+    // locks this row `FOR SHARE` before it writes (the migration's guard,
+    // 20261006180000), and a re-invitation is an UPDATE of it — so with the
+    // row held, neither can commit between this read and the delete: a
+    // hand-over either committed before it (and is counted below) or finds
+    // no contact. Under the member's own RLS; `app_runtime` holds UPDATE.
+    await tx.$executeRaw`SELECT 1 FROM contact WHERE id = ${contactId} FOR UPDATE`;
     const current = await tx.contact.findFirst({
       where: { id: contactId },
       select: { clientId: true, portalStatus: true },
     });
     if (!current) deny("NOT_FOUND");
-    await assertInScope(tx, ctx.actor, { clientId: current!.clientId, lifted: true });
     // **NO_ACCESS OR REVOKED — both mean "no live access", which is what
     // this guard is actually protecting.** It read `!== "NO_ACCESS"`
     // until the invite slice gave `portalStatus` its first writer, at
@@ -763,14 +777,28 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
       // The three a portal UPLOAD will write — no writer yet (checked
       // 2026-09-29), counted now so the upload slice cannot reopen the
       // same hole the sign-off opened. With them, all eight `*ContactId`
-      // columns the schema tags "attribution, no FK" are here. The two
+      // columns the schema then tagged "attribution, no FK" were here (twelve
+      // since slice 96, below — every one pinned by
+      // `attribution-columns.test.ts`). The two
       // other contact references without a foreign key are not the
       // contact's own writing: `CommentMention.mentionedContactId` (written
       // ABOUT them, by someone else) and `Notification.receiverId`
       // (polymorphic; a contact never acts through it).
       (await tx.document.count({ where: { tenantId: ctx.tenantId, createdByContactId: contactId } })) > 0 ||
       (await tx.fileVersion.count({ where: { tenantId: ctx.tenantId, uploadedByContactId: contactId } })) > 0 ||
-      (await tx.fileObject.count({ where: { tenantId: ctx.tenantId, createdByContactId: contactId } })) > 0;
+      (await tx.fileObject.count({ where: { tenantId: ctx.tenantId, createdByContactId: contactId } })) > 0 ||
+      // A client's ask to open their sealed logins (slice 93) — who asked,
+      // confirmed or withdrew it, and the reason they wrote. Slice 93 added
+      // three attribution columns and none was counted here, which reopened
+      // the hole above for a contact who only ever asked (found by slice
+      // 96); `attribution-columns.test.ts` now fails the unit suite on the
+      // next one.
+      (await tx.sealedOpenRequest.count({ where: { tenantId: ctx.tenantId, askedByContactId: contactId } })) > 0 ||
+      (await tx.sealedOpenRequest.count({ where: { tenantId: ctx.tenantId, confirmedByContactId: contactId } })) > 0 ||
+      (await tx.sealedOpenRequest.count({ where: { tenantId: ctx.tenantId, withdrawnByContactId: contactId } })) > 0 ||
+      // A login they handed over through the portal (slice 96, C64): the
+      // vault row says who sent it. Binned ones too — a bin is restorable.
+      (await tx.credentialItem.count({ where: { tenantId: ctx.tenantId, submittedByContactId: contactId } })) > 0;
     // **AND ITS MESSAGE MAY NOT SAY "end their access instead"**, which
     // is what it said for an afternoon. This guard sits BELOW the status
     // check, so it is reachable only for a NO_ACCESS or REVOKED contact

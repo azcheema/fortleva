@@ -26,6 +26,8 @@ export async function generateMetadata(): Promise<Metadata> {
  * all of it, and any change asks a fresh factor. Since slice 93, also the
  * wait a client's ask to open their SEALED logins runs before they may
  * confirm it themselves (C52 (g): 7 days by default; `settings:edit`).
+ * Since slice 96, also whether clients may hand logins over through their
+ * portal (C64; default on; `settings:edit` both ways — a pause, not a stop).
  */
 export default async function VaultSettingsPage() {
   const { membership, actor } = await requireTenantContext();
@@ -67,6 +69,7 @@ export default async function VaultSettingsPage() {
             on={prefs.vault.allowExternalShareLinks}
             canEdit={canEdit}
             canTurnOn={canTurnOn}
+            offIsForGood
           />
         </SectionCard>
         <SectionCard title={t("clientLogins.title")}>
@@ -75,6 +78,18 @@ export default async function VaultSettingsPage() {
             on={prefs.vault.allowPortalCredentials}
             canEdit={canEdit}
             canTurnOn={canTurnOn}
+            offIsForGood
+          />
+        </SectionCard>
+        {/* Slice 96 (C64): clients handing logins over through their portal —
+            a pause either way, `settings:edit` both ways (AUTHZ.md §5). */}
+        <SectionCard title={t("clientSubmissions.title")}>
+          <VaultSwitch
+            name="clientSubmissions"
+            on={prefs.vault.allowContactSubmission}
+            canEdit={canEdit}
+            canTurnOn={canEdit}
+            offIsForGood={false}
           />
         </SectionCard>
         <SectionCard title={t("sealedWait.title")} description={t("sealedWait.description")}>

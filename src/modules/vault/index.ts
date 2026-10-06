@@ -151,3 +151,21 @@ export {
   type PortalLoginsCtx,
   type PortalLookOutcome,
 } from "./portal-writes";
+export {
+  portalCanSendLogins,
+  readPortalSubmissions,
+  SENT_LIST_LIMIT,
+  submitPortalCredential,
+  SUBMISSIONS_PER_DAY,
+  SUBMISSIONS_PER_HOUR,
+  type PortalLoginInput,
+  type PortalSubmissions,
+  type SentLogin,
+} from "./submission-portal-writes";
+export {
+  isSubmissionKind,
+  SUBMISSION_KIND,
+  submissionSubjects,
+  type SubmissionRef,
+  type SubmissionSubject,
+} from "./submission-subjects";

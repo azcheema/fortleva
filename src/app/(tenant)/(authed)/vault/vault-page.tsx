@@ -110,6 +110,7 @@ export const toVaultItem = (c: CredentialListing): VaultItem => ({
   sealed: c.sealedAt !== null,
   hasClient: c.clientId !== null,
   project: c.project === null ? null : { key: c.project.key, name: c.project.name },
+  sentBy: c.submittedBy,
 });
 
 /** The row controls the open vault allows (`openVault().can`). */

@@ -175,6 +175,16 @@ const POLICIES = {
    */
   "portal.comment_create": { limit: 60, window: "15 m" },
   /**
+   * A contact handing a login over through the portal (Phase 3V slice 96):
+   * the cheap filter in front of a fail-CLOSED Postgres budget (the
+   * contact's own `credential.submitted` audit rows, counted under their
+   * budget lock in `src/modules/vault/submission-portal-writes.ts`) — the
+   * request intake's layering. Above the Postgres limits (20 an hour, 60 a
+   * day) so the honest refusal is normally the one that fires; keyed on the
+   * contact id, as the others are.
+   */
+  "portal.credential_submit": { limit: 30, window: "15 m" },
+  /**
    * THE PORTAL'S FILE DOWNLOAD per CONTACT (Phase 3, the portal files
    * slice). The cheap filter in front of a fail-CLOSED Postgres budget
    * (`assertDownloadBudget`, `src/documents/portal-writes.ts`, which

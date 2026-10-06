@@ -274,7 +274,8 @@
       "approvalDecided": "A client answered a sign-off request",
       "assetDue": "A renewal is coming up",
       "agreementEnding": "An agreement is ending",
-      "loginsExpiring": "Logins are expiring"
+      "loginsExpiring": "Logins are expiring",
+      "loginSubmitted": "A client sent a login"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",
@@ -1198,6 +1199,17 @@
         "save": "Save",
         "saving": "Saving…",
         "saved": "Clients now wait {days} days for an answer."
+      },
+      "clientSubmissions": {
+        "title": "Logins sent by clients",
+        "on": "Clients can send you logins",
+        "off": "Clients cannot send logins",
+        "hint": "When this is on, the people at your clients can hand a login over through their portal. It lands in that client's vault, for your team only, and the people looking after the client are told.",
+        "confirmTitle": "Stop taking logins from clients?",
+        "confirmBody": "Clients can no longer send logins through their portal. What they already sent stays in the vault.",
+        "confirmSubmit": "Switch off",
+        "switchedOn": "Clients can now send you logins.",
+        "switchedOff": "Clients can no longer send logins. What they sent stays in the vault."
       }
     }
   },
@@ -1386,7 +1398,8 @@
     "SEALED_REQUEST_SETTLED": "This request can no longer be answered — it has opened, ended or been answered already. Reload to see where it stands.",
     "SHARE_LINK_CLOSED": "That link has already been opened or revoked.",
     "NOTHING_TO_EXPORT": "There are no logins to export there.",
-    "EXPORT_TOO_LARGE": "That is more logins than one file can hold. Export one client at a time."
+    "EXPORT_TOO_LARGE": "That is more logins than one file can hold. Export one client at a time.",
+    "SUBMISSION_RATE_LIMITED": "You have sent several logins in a short time. Wait a while and try again."
   },
   "assignments": {
     "title": "Team",
@@ -3109,6 +3122,36 @@
         "tooOften": "You have asked {max} times in the last day. You can ask again tomorrow.",
         "countWhileOpen": "Your agency keeps {count, plural, one {# login} other {# logins}} sealed for you. Your request opens the ones that were sealed when it was decided."
       }
+    },
+    "sendLogin": {
+      "cta": "Send us a login",
+      "title": "Send us a login",
+      "description": "Hand a password or key to your agency safely. It goes straight into their vault — never send passwords by email or in a comment.",
+      "back": "Back to your projects",
+      "sent": "Sent.",
+      "sentBody": "Your agency has it now, in their vault. You can send another below.",
+      "formTitle": "The login",
+      "formDescription": "Only your agency's team can open it. You will not see the password here again.",
+      "form": {
+        "type": "What is it?",
+        "project": "For",
+        "noProject": "Your company in general",
+        "name": "Name",
+        "nameHint": "So your agency knows what it is for — for example “WordPress admin” or “Hosting account”.",
+        "notes": "Note",
+        "notesHint": "Optional. Anything your agency should know — for example which login this one replaces. Never put the password itself here.",
+        "submit": "Send to your agency",
+        "sending": "Sending…"
+      },
+      "errors": {
+        "name": "Give the login a name.",
+        "secret": "Enter the password or key you want to send."
+      },
+      "list": {
+        "title": "What you have sent",
+        "description": "Only the names — the passwords are with your agency.",
+        "sentOn": "Sent {date}"
+      }
     }
   },
   "viewAs": {
@@ -3766,7 +3809,10 @@
       "delete": "Delete",
       "deleteConfirm": "Delete {name}?",
       "deleteSealedConfirm": "Delete {name}? It is sealed for the client, and deleting it ends the seal too.",
-      "deleted": "Deleted."
+      "deleted": "Deleted.",
+      "sentBy": "Sent by {name}",
+      "sentByClient": "Sent by the client",
+      "sentByHint": "Handed over by the client through their portal — your team may have edited it since. Check the web address before you use it."
     },
     "door": {
       "title": "The vault is locked",

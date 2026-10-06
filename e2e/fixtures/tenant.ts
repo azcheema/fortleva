@@ -273,6 +273,32 @@ export async function ageVaultFactor(tenantId: string, email: string): Promise<n
   return aged;
 }
 
+/** A login the fixture contact handed over through the portal, as the database holds it (3V slice 96). */
+export type PortalSubmissionRecord = {
+  id: string;
+  name: string;
+  submittedName: string | null;
+  submittedByContactId: string | null;
+  type: string;
+  visibility: string;
+  clientId: string | null;
+  projectId: string | null;
+  url: string | null;
+  createdByMemberId: string | null;
+  auditActorType: string | null;
+  auditActorId: string | null;
+};
+
+export async function readPortalSubmissions(tenantId: string, contactEmail: string): Promise<PortalSubmissionRecord[]> {
+  return runCli(["portal-submissions", tenantId, contactEmail]);
+}
+
+/** Hand back what `portal-send-login.spec.ts` sent — from `afterAll`, never a `finally`. */
+export async function clearPortalSubmissions(tenantId: string, contactEmail: string): Promise<number> {
+  const { cleared } = await runCli<{ cleared: number }>(["clear-portal-submissions", tenantId, contactEmail]);
+  return cleared;
+}
+
 /** Mark a live login of the fixture tenant "Change soon", by name (vault.spec's slice 94 test). */
 export async function flagLogin(tenantId: string, name: string): Promise<number> {
   const { flagged } = await runCli<{ flagged: number }>(["flag-login", tenantId, name]);

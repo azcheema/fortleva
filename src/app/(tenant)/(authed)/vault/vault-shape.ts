@@ -26,6 +26,12 @@ export type VaultItem = {
   readonly hasClient: boolean;
   /** The project it hangs on, or null for a client-level login. */
   readonly project: { readonly key: string; readonly name: string } | null;
+  /**
+   * Handed over by the client through their portal (slice 96, C64), by the
+   * sender's name (null when the contact's record is gone), or null for a
+   * login the team added.
+   */
+  readonly sentBy: { readonly name: string | null } | null;
 };
 
 export type FieldsByType = Readonly<Record<CredentialType, readonly string[]>>;

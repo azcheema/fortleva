@@ -54,7 +54,9 @@ const encryptTotp = (tx: TenantDb, tenantId: string, credentialId: string, param
 /**
  * The secret row of a NEW credential: its fields and, when given, its TOTP
  * seed, each encrypted under this credential's id (which is why the id is
- * minted before the item row is written).
+ * minted before the item row is written). `memberId` is null for a login a
+ * client's contact handed over through the portal (slice 96 —
+ * `submission.ts`): no member wrote it.
  */
 export async function insertSecretRow(
   tx: TenantDb,
@@ -63,7 +65,7 @@ export async function insertSecretRow(
     readonly credentialId: string;
     readonly fields: Record<string, string>;
     readonly totp: TotpParams | null;
-    readonly memberId: string;
+    readonly memberId: string | null;
   },
 ): Promise<void> {
   const secretCiphertext = await encryptSecret(tx, args.tenantId, args.credentialId, args.fields);

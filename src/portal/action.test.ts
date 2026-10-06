@@ -43,7 +43,13 @@ const domainCodes = (): string[] => {
 };
 
 /** Exactly the codes `action.ts` may reveal. Changing this is a decision. */
-const DISCLOSABLE = ["COMMENT_RATE_LIMITED", "DOWNLOAD_RATE_LIMITED", "INVALID_INPUT", "REQUEST_RATE_LIMITED"];
+const DISCLOSABLE = [
+  "COMMENT_RATE_LIMITED",
+  "DOWNLOAD_RATE_LIMITED",
+  "INVALID_INPUT",
+  "REQUEST_RATE_LIMITED",
+  "SUBMISSION_RATE_LIMITED",
+];
 
 describe("what a contact may be told about a failed write", () => {
   it("the catalogue is not empty, so the walk below cannot pass vacuously", () => {
@@ -55,14 +61,14 @@ describe("what a contact may be told about a failed write", () => {
     for (const code of DISCLOSABLE) expect(codes).toContain(code);
   });
 
-  it("exactly four codes are disclosable, over every code the product has", () => {
+  it("exactly five codes are disclosable, over every code the product has", () => {
     const disclosed = domainCodes().filter((code) =>
       portalDisclosableCode(new DomainError(code as DomainErrorCode)),
     );
     expect(disclosed).toEqual(DISCLOSABLE);
   });
 
-  it("the four are returned as themselves, so the message is the code's own", () => {
+  it("the five are returned as themselves, so the message is the code's own", () => {
     for (const code of DISCLOSABLE) {
       expect(portalDisclosableCode(new DomainError(code as DomainErrorCode))).toBe(code);
     }

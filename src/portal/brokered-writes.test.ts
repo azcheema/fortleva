@@ -235,6 +235,13 @@ const BROKERED_READS: readonly (readonly [string, string])[] = [
   [join("modules", "vault", "sealed-portal-writes.ts"), "readSealedPortalState"],
   [join("modules", "vault", "sealed-portal-writes.ts"), "portalHasSealedLogins"],
   [join("modules", "vault", "sealed-portal-writes.ts"), "listSealedPortalLogins"],
+  // Phase 3V slice 96 (C64): whether this contact may hand a login over now
+  // (a tenant preference and their standing — the home's one bit), and the
+  // logins THEY handed over, by name and date — INTERNAL rows a contact's
+  // own transaction cannot read. Reading is not handing over (that is
+  // `submitPortalCredential`, audited), so nothing here is.
+  [join("modules", "vault", "submission-portal-writes.ts"), "portalCanSendLogins"],
+  [join("modules", "vault", "submission-portal-writes.ts"), "readPortalSubmissions"],
 ];
 
 /**

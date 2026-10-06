@@ -119,6 +119,7 @@ const patchSchema = z
           .int()
           .min(VAULT_SEALED_WAIT_DAYS_RANGE.min)
           .max(VAULT_SEALED_WAIT_DAYS_RANGE.max),
+        allowContactSubmission: z.boolean(),
       })
       .partial(),
   })
@@ -134,6 +135,7 @@ const PATCHABLE_VAULT_KEYS = [
   "allowExternalShareLinks",
   "allowPortalCredentials",
   "sealedWaitDays",
+  "allowContactSubmission",
 ] as const satisfies readonly (keyof NonNullable<PreferencePatch["vault"]>)[];
 
 async function upsertPreference(

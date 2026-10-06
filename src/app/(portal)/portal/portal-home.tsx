@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { listPortalPendingDeliverables } from "@/documents/portal";
+import { portalCanSendLogins } from "@/modules/vault";
 import {
   listPortalAgencyReplies,
   listPortalTasks,
@@ -164,6 +165,12 @@ export async function PortalHome({
     }
   }
   const canRequest = (requestTargets?.length ?? 0) > 0;
+  // "SEND US A LOGIN" (Phase 3V slice 96, C64 (a)) — drawn only when the page
+  // it opens would take one: the capability, both modules, the agency's
+  // switch, the contact's standing. One more sequential read, under the same
+  // rule as those above; View-as asks it for the contact being looked
+  // through and gets the same answer, so the byte comparison holds.
+  const canSendLogins = (await portalReadOrNull("portalCanSendLogins", () => portalCanSendLogins(principal))) === true;
 
   return (
     <PortalFrame name={name} principal={principal} nav="home">
@@ -173,15 +180,27 @@ export async function PortalHome({
             title={t("title")}
             description={t("description")}
             actions={
-              canRequest ? (
-                <Button asChild size="sm">
-                  {/* No prefetch: on `/view-as` a prefetch of a portal-gated
-                      route carries a member cookie and is answered with a
-                      redirect to the client sign-in page on every render. */}
-                  <Link href="/portal/requests/new" prefetch={false}>
-                    {t("requests.cta")}
-                  </Link>
-                </Button>
+              canRequest || canSendLogins ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {canSendLogins ? (
+                    <Button asChild variant="outline" size="sm">
+                      {/* No prefetch: rendered on the member plane too (View-as). */}
+                      <Link href="/portal/send-login" prefetch={false}>
+                        {t("sendLogin.cta")}
+                      </Link>
+                    </Button>
+                  ) : null}
+                  {canRequest ? (
+                    <Button asChild size="sm">
+                      {/* No prefetch: on `/view-as` a prefetch of a portal-gated
+                          route carries a member cookie and is answered with a
+                          redirect to the client sign-in page on every render. */}
+                      <Link href="/portal/requests/new" prefetch={false}>
+                        {t("requests.cta")}
+                      </Link>
+                    </Button>
+                  ) : null}
+                </div>
               ) : null
             }
           />

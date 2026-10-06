@@ -221,6 +221,31 @@ const KINDS = {
     class: "INSTANT",
     email: { atLevel: "PARTICIPATING" },
   },
+  /**
+   * Phase 3V slice 96 — a CLIENT handed a login over through the portal
+   * (`src/modules/vault/submission-portal-writes.ts`; founder decision
+   * C64 (c)). AUDIENCE IS MEMBER: the field names who RECEIVES.
+   *
+   * THE ENTITY IS THE CLIENT, NEVER THE LOGIN: the inbox names the client
+   * to a reader who can open one of its handed-over logins
+   * (`submissionSubjects`), and which one stays behind the vault's door
+   * (C54). The receivers are the client's people — that project's for a
+   * login sent for a project, else those assigned to the client — and the
+   * owners, always, each held to `credential:view` and the vault's anchor rule
+   * (`submission-receivers.ts`).
+   *
+   * INSTANT and PARTICIPATING, the request intake's reasoning: a client
+   * who hands something over is waiting for the agency to use it, and the
+   * receivers are the people looking after that client. No
+   * `debounceMinutes` and no `cancelledIfRead` — nothing retracts a
+   * hand-over; the dedupe key (one per client) folds a client sending a
+   * dozen logins in one sitting into one unread row, and so one mail.
+   */
+  "credential.submitted": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

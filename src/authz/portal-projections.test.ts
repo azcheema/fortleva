@@ -272,6 +272,13 @@ const STRUCTURAL_ONLY_SURFACES = [
   // only, like `requests.ts` and `view-as`, because its prose
   // necessarily spells out the text tier's own list.
   join("modules", "work", "triage.ts"),
+  // …and the vault's `submission.ts` (Phase 3V slice 96, C64), for
+  // `requests.ts`'s reason exactly: it performs the contact-caused INSERT
+  // behind the portal's submission broker (`submission-portal-writes.ts`),
+  // kept out of the broker's file because the write names columns a portal
+  // surface may not. Structural tier only, so a select-less read or an
+  // include added there later trips this file.
+  join("modules", "vault", "submission.ts"),
 ];
 
 /**
@@ -313,7 +320,12 @@ const LANE_READERS = [
 
 const isProjection = (full: string, entry: string): boolean =>
   entry === "portal.ts" ||
-  entry === "portal-writes.ts" ||
+  // EVERY broker file, not only one named exactly `portal-writes.ts` (slice
+  // 96's design review): the vault's `sealed-portal-writes.ts` (slice 93)
+  // and `submission-portal-writes.ts` (slice 96) carry the broker's suffix
+  // — which is what `brokered-writes.test.ts` walks — and had been read by
+  // the structural tier only, because they happen to say `withPortalRead`.
+  entry.endsWith("portal-writes.ts") ||
   full.includes(PORTAL_ROUTES) ||
   PORTAL_SURFACES_BY_NAME.some((suffix) => full.endsWith(suffix));
 

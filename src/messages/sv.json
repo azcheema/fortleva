@@ -274,7 +274,8 @@
       "approvalDecided": "En kund har svarat på en begäran om godkännande",
       "assetDue": "En förnyelse närmar sig",
       "agreementEnding": "Ett avtal löper ut",
-      "loginsExpiring": "Inloggningar går ut"
+      "loginsExpiring": "Inloggningar går ut",
+      "loginSubmitted": "En kund har skickat en inloggning"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",
@@ -1198,6 +1199,17 @@
         "save": "Spara",
         "saving": "Sparar…",
         "saved": "Kunder väntar nu {days} dagar på svar."
+      },
+      "clientSubmissions": {
+        "title": "Inloggningar som kunder skickar",
+        "on": "Kunder kan skicka inloggningar till er",
+        "off": "Kunder kan inte skicka inloggningar",
+        "hint": "När det här är på kan personerna hos era kunder lämna över en inloggning via sin kundportal. Den hamnar i kundens valv, synlig bara för ert team, och de som sköter kunden får veta det.",
+        "confirmTitle": "Sluta ta emot inloggningar från kunder?",
+        "confirmBody": "Kunder kan inte längre skicka inloggningar via sin kundportal. Det de redan har skickat finns kvar i valvet.",
+        "confirmSubmit": "Stäng av",
+        "switchedOn": "Kunder kan nu skicka inloggningar till er.",
+        "switchedOff": "Kunder kan inte längre skicka inloggningar. Det de har skickat finns kvar i valvet."
       }
     }
   },
@@ -1386,7 +1398,8 @@
     "SEALED_REQUEST_SETTLED": "Begäran kan inte längre besvaras – den har öppnats, avslutats eller redan besvarats. Ladda om sidan för att se läget.",
     "SHARE_LINK_CLOSED": "Länken har redan öppnats eller återkallats.",
     "NOTHING_TO_EXPORT": "Det finns inga inloggningar att exportera där.",
-    "EXPORT_TOO_LARGE": "Det är fler inloggningar än en fil rymmer. Exportera en kund i taget."
+    "EXPORT_TOO_LARGE": "Det är fler inloggningar än en fil rymmer. Exportera en kund i taget.",
+    "SUBMISSION_RATE_LIMITED": "Du har skickat flera inloggningar på kort tid. Vänta en stund och försök igen."
   },
   "assignments": {
     "title": "Team",
@@ -3109,6 +3122,36 @@
         "tooOften": "Du har frågat {max} gånger det senaste dygnet. Du kan fråga igen i morgon.",
         "countWhileOpen": "Er byrå håller {count, plural, one {# inloggning förseglad} other {# inloggningar förseglade}} åt er. Er begäran öppnar de som var förseglade när den avgjordes."
       }
+    },
+    "sendLogin": {
+      "cta": "Skicka en inloggning",
+      "title": "Skicka en inloggning",
+      "description": "Lämna över ett lösenord eller en nyckel till din byrå på ett säkert sätt. Det hamnar direkt i deras valv — skicka aldrig lösenord via mejl eller i en kommentar.",
+      "back": "Tillbaka till dina projekt",
+      "sent": "Skickat.",
+      "sentBody": "Din byrå har den nu, i sitt valv. Du kan skicka en till nedan.",
+      "formTitle": "Inloggningen",
+      "formDescription": "Bara din byrås team kan öppna den. Du ser inte lösenordet här igen.",
+      "form": {
+        "type": "Vad är det?",
+        "project": "Gäller",
+        "noProject": "Ert företag i allmänhet",
+        "name": "Namn",
+        "nameHint": "Så att din byrå vet vad den gäller — till exempel ”WordPress-admin” eller ”Webbhotellkonto”.",
+        "notes": "Anteckning",
+        "notesHint": "Frivilligt. Sådant din byrå bör veta — till exempel vilken inloggning den här ersätter. Skriv aldrig själva lösenordet här.",
+        "submit": "Skicka till din byrå",
+        "sending": "Skickar…"
+      },
+      "errors": {
+        "name": "Ge inloggningen ett namn.",
+        "secret": "Fyll i lösenordet eller nyckeln du vill skicka."
+      },
+      "list": {
+        "title": "Det du har skickat",
+        "description": "Bara namnen — lösenorden finns hos din byrå.",
+        "sentOn": "Skickad {date}"
+      }
     }
   },
   "viewAs": {
@@ -3766,7 +3809,10 @@
       "delete": "Ta bort",
       "deleteConfirm": "Ta bort {name}?",
       "deleteSealedConfirm": "Ta bort {name}? Den är förseglad för kunden, och förseglingen upphör också.",
-      "deleted": "Borttagen."
+      "deleted": "Borttagen.",
+      "sentBy": "Skickad av {name}",
+      "sentByClient": "Skickad av kunden",
+      "sentByHint": "Lämnad av kunden via kundportalen — ert team kan ha ändrat den sedan dess. Kontrollera webbadressen innan du använder den."
     },
     "door": {
       "title": "Valvet är låst",

@@ -174,7 +174,14 @@ describe("vault ciphertext boundary", () => {
     // export` ✦ AND `credential:reveal` ✦, a factor this minute, the
     // member's reveal key and the anchor rule, writes one audit row per
     // login and mails the holders; its history read gates on the door, the
-    // code and a tenant-wide scope; `export-csv` is a pure formatter.
+    // code and a tenant-wide scope; `export-csv` is a pure formatter. Portal
+    // submission (slice 96, C64): `submission-portal-writes` is the portal's
+    // broker for a login a client hands over — the contact's own proof first,
+    // then SYSTEM with the standing restated; it WRITES a secret (encrypted,
+    // through the store) and never reads one; its callers are pinned below.
+    // `submission-subjects` names the CLIENT in the reader's inbox under
+    // their own principal, `credential:view` and the anchor rule, never a
+    // login and never under impersonation.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -201,6 +208,8 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/sealed-rules",
       "modules/vault/share-links",
       "modules/vault/share-open",
+      "modules/vault/submission-portal-writes",
+      "modules/vault/submission-subjects",
       "modules/vault/visibility",
     ]);
     // door is re-exported for `openVault` and its types only — never `enterVault`,
@@ -353,6 +362,48 @@ describe("vault ciphertext boundary", () => {
     const allowed = ["modules/vault/export.ts", "modules/vault/index.ts", "app/(tenant)/(authed)/vault/export-actions.ts"];
     const callers = files.filter((f) => /\bexportCredentials\b/.test(readFileSync(f, "utf8"))).map(rel);
     expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * PORTAL SUBMISSION'S CALLERS (slice 96, C64). The broker takes a portal
+   * principal and writes as SYSTEM after the contact's own proof; its write
+   * is called only by the "Send us a login" action — which takes the
+   * principal from the contact's session and nothing else — and its two
+   * reads only by that page and the portal's home. The row shaper behind it
+   * writes with no gate of its own (a client-attributed login, as SYSTEM),
+   * so only the broker calls it, and it is never on the index.
+   */
+  it("only the send-login action writes through the submission broker, and only the broker shapes its row", () => {
+    const writers = files.filter((f) => /\bsubmitPortalCredential\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(writers.sort()).toEqual(
+      [
+        "modules/vault/submission-portal-writes.ts",
+        "modules/vault/index.ts",
+        "app/(portal)/portal/send-login/actions.ts",
+      ].sort(),
+    );
+    // The list of what a contact sent is read only by the send-login page,
+    // which needs a real portal session — never by the home, which View-as
+    // also renders under a MEMBER session (the design review's low): the
+    // home asks the one bit.
+    const listReaders = files.filter((f) => /\breadPortalSubmissions\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(listReaders.sort()).toEqual(
+      [
+        "modules/vault/submission-portal-writes.ts",
+        "modules/vault/index.ts",
+        "app/(portal)/portal/send-login/page.tsx",
+      ].sort(),
+    );
+    const bitReaders = files.filter((f) => /\bportalCanSendLogins\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(bitReaders.sort()).toEqual(
+      [
+        "modules/vault/submission-portal-writes.ts",
+        "modules/vault/index.ts",
+        "app/(portal)/portal/portal-home.tsx",
+      ].sort(),
+    );
+    const shapers = files.filter((f) => /\binsertSubmittedCredential\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(shapers.sort()).toEqual(["modules/vault/submission.ts", "modules/vault/submission-portal-writes.ts"].sort());
   });
 
   it("the vault module never logs", () => {

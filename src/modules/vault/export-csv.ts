@@ -42,9 +42,15 @@ import type { TotpParams } from "./totp";
  * SPREADSHEET FORMULAS. A spreadsheet runs a cell that starts with `=`,
  * `+`, `-`, `@`, a tab or a carriage return as a formula — and anyone who
  * may ADD a login can type one into it, so a file opened in a spreadsheet
- * could hand that person every other secret in it. The SIGN-IN columns —
- * username, password, authenticator, web address — are written exactly as
- * stored: a leading `'` would change the password or an "@handle"
+ * could hand that person every other secret in it. Since slice 96 that
+ * includes people OUTSIDE the agency: a client's contact who hands a login
+ * over through the portal types its name, username, web address (http(s)
+ * only), notes AND its secret fields — the password column among them,
+ * written unprefixed (C64; the slice's reviews). The count and the warning
+ * described below cover all of it, whoever typed it.
+ *
+ * The SIGN-IN columns — username, password, authenticator, web address —
+ * are written exactly as stored: a leading `'` would change the password or an "@handle"
  * username a password manager imports, which defeats the file. The LABEL
  * columns (folder, name) take OWASP's leading `'`; the notes cell starts
  * with the line this file writes — though a spreadsheet whose list

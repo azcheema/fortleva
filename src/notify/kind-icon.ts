@@ -7,6 +7,7 @@ import {
   GaugeIcon,
   InboxIcon,
   KeyRoundIcon,
+  KeySquareIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
   UserRoundPlusIcon,
@@ -34,4 +35,5 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "expiration.asset_due": CalendarClockIcon,
   "expiration.agreement_ending": FileClockIcon,
   "expiration.logins_expiring": KeyRoundIcon,
+  "credential.submitted": KeySquareIcon,
 };

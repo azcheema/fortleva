@@ -61,7 +61,12 @@ export type ContactBudget =
   | "portal_download"
   | "portal_comment"
   | "portal_logins"
-  | "portal_logins_reveal";
+  | "portal_logins_reveal"
+  // Phase 3V slice 96: a login handed over through the portal
+  // (`src/modules/vault/submission-portal-writes.ts`) — taken first in its
+  // system transaction, BEFORE the contact's row lock and the new login's
+  // rows, and nothing takes those and then this key.
+  | "portal_credential_submit";
 
 export async function lockContactBudget(tx: TenantDb, budget: ContactBudget, contactId: string): Promise<Date> {
   // The CTE is what makes this ONE statement: the lock is taken while

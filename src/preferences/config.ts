@@ -172,6 +172,14 @@ export type VaultPreferences = {
    * already waiting.
    */
   sealedWaitDays: number;
+  /**
+   * Clients may hand logins over through their portal (slice 96; founder
+   * decision C64; PLAN Phase 3V: default ON). Off, the portal offers no
+   * "Send us a login" and the broker refuses — a pause on intake, never a
+   * disclosure control: what was sent stays in the vault, for the team only.
+   * `settings:edit` both ways (AUTHZ.md §5: a behavioural key).
+   */
+  allowContactSubmission: boolean;
 };
 export const VAULT_PREF_KEYS: Readonly<Record<keyof VaultPreferences, string>> = {
   stepUpMinutes: "vault.stepUpMinutes",
@@ -182,6 +190,7 @@ export const VAULT_PREF_KEYS: Readonly<Record<keyof VaultPreferences, string>> =
   // Spelled out in migration 20261005120000 too (the policy's function).
   allowPortalCredentials: "vault.allowPortalCredentials",
   sealedWaitDays: "vault.sealedWaitDays",
+  allowContactSubmission: "vault.allowContactSubmission",
 };
 export const VAULT_DEFAULTS: VaultPreferences = {
   stepUpMinutes: 10,
@@ -191,6 +200,7 @@ export const VAULT_DEFAULTS: VaultPreferences = {
   shareLinksStoppedAt: null,
   allowPortalCredentials: false,
   sealedWaitDays: 7,
+  allowContactSubmission: true,
 };
 /**
  * Bounds the parser enforces (a stored value outside them falls back to
@@ -313,6 +323,7 @@ export function materializePreferences(
       shareLinksStoppedAt: instant(VAULT_PREF_KEYS.shareLinksStoppedAt),
       allowPortalCredentials: bool(VAULT_PREF_KEYS.allowPortalCredentials, VAULT_DEFAULTS.allowPortalCredentials),
       sealedWaitDays: intIn(VAULT_PREF_KEYS.sealedWaitDays, VAULT_SEALED_WAIT_DAYS_RANGE, VAULT_DEFAULTS.sealedWaitDays),
+      allowContactSubmission: bool(VAULT_PREF_KEYS.allowContactSubmission, VAULT_DEFAULTS.allowContactSubmission),
     },
   };
 }

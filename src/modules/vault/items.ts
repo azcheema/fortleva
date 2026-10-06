@@ -102,13 +102,45 @@ const viewSelect = {
 export type CredentialListing = CredentialView & {
   readonly client: { readonly id: string; readonly name: string } | null;
   readonly project: { readonly id: string; readonly key: string; readonly name: string } | null;
+  /**
+   * Handed over by a client's contact through the portal (slice 96, C64),
+   * by name — the row says "Sent by Anna Berg through the portal" — or null
+   * for a login a member added. The name is null only if the contact row is
+   * gone, which `deleteContact` refuses while the login exists.
+   */
+  readonly submittedBy: { readonly name: string | null } | null;
 };
 
 const listingSelect = {
   ...viewSelect,
   client: { select: { id: true, name: true } },
   project: { select: { id: true, key: true, name: true } },
+  submittedByContactId: true,
 } as const;
+
+type ListedRow = CredentialView & {
+  readonly client: CredentialListing["client"];
+  readonly project: CredentialListing["project"];
+  readonly submittedByContactId: string | null;
+};
+
+/**
+ * The listings with their sender's NAME (slice 96): one read of the
+ * contacts the page's rows name, in sequence after the list (AGENTS.md's
+ * trap), under the member's own principal. The raw contact id is not
+ * handed on.
+ */
+async function withSenders(tx: TenantDb, tenantId: string, rows: readonly ListedRow[]): Promise<CredentialListing[]> {
+  const ids = [...new Set(rows.flatMap((r) => (r.submittedByContactId === null ? [] : [r.submittedByContactId])))];
+  const contacts = ids.length
+    ? await tx.contact.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, name: true } })
+    : [];
+  const nameOf = new Map(contacts.map((c) => [c.id, c.name]));
+  return rows.map(({ submittedByContactId, ...row }) => ({
+    ...row,
+    submittedBy: submittedByContactId === null ? null : { name: nameOf.get(submittedByContactId) ?? null },
+  }));
+}
 
 /**
  * How many rows the tenant-wide list (`listAllCredentials`) draws at most.
@@ -277,11 +309,12 @@ export async function listCredentials(ctx: VaultCtx, filter: CredentialFilter): 
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await enterVault(tx, ctx, "credential:view");
     const scope = await resolveScope(tx, ctx.actor);
-    return tx.credentialItem.findMany({
+    const rows = await tx.credentialItem.findMany({
       where: { AND: [{ tenantId: ctx.tenantId, deletedAt: null, ...anchorWhere }, anchorScopeWhere(scope)] },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: listingSelect,
     });
+    return withSenders(tx, ctx.tenantId, rows);
   });
 }
 
@@ -337,7 +370,7 @@ export async function listAllCredentials(
     const rows = [...own, ...clients];
     const past = rows[VAULT_LIST_LIMIT];
     return {
-      rows: rows.slice(0, VAULT_LIST_LIMIT),
+      rows: await withSenders(tx, ctx.tenantId, rows.slice(0, VAULT_LIST_LIMIT)),
       cut: past === undefined ? null : { clientId: past.clientId },
     };
   });

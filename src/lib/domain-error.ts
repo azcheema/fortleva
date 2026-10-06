@@ -79,6 +79,12 @@ export type DomainErrorCode =
   // behaviour. A spent lock wait on that path is `REQUEST_BUSY`, which
   // is not disclosed.
   | "COMMENT_RATE_LIMITED"
+  // This contact has handed over the most logins the window allows (Phase
+  // 3V slice 96, `src/modules/vault/submission-portal-writes.ts`).
+  // Disclosed for the same reason REQUEST_RATE_LIMITED is: a fact about the
+  // READER's own behaviour. A spent lock wait on that path is VAULT_BUSY,
+  // which is not disclosed.
+  | "SUBMISSION_RATE_LIMITED"
   // The vault (Phase 3V slice 1 — src/modules/vault/reveal.ts): this member
   // has revealed, copied or generated codes as many times as the tenant's
   // `vault.revealBudgetPerHour` allows in the last hour. A fact about the

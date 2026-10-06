@@ -395,6 +395,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // opened it in this same session within the staff window, the list
     // behind it with every value masked. Either is a page a client sees.
     { name: "portal-logins", path: "/portal/logins", session: "contact" },
+    // 3V slice 96 (C64): "Send us a login" — the form, and Astrid's own list
+    // of what she sent when there is one (`portal-send-login.spec.ts` hands
+    // its logins back in `afterAll`, so the walk draws the form alone).
+    { name: "portal-send-login", path: "/portal/send-login", session: "contact" },
     // INVITATION ACCEPTANCE, both states, mirroring the member plane's
     // pair at the top of this list. The live one needs a token that
     // stands still, which is why the fixture seeds one

@@ -227,6 +227,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 93b, the silent path in time (CI only) —
   // `src/modules/vault/sealed-time.dbtest.ts`, `setupTenant("vstime")`.
   "vstime-",
+  // Phase 3V slice 96, portal submission — `src/modules/vault/submission.dbtest.ts`,
+  // `setupTenant("vsub")`.
+  "vsub-",
   // Phase 3 slice 72, the sharing UI — `src/modules/work/visibility.dbtest.ts`,
   // `setupTenant("vshare")`.
   "vshare-",
@@ -2785,6 +2788,81 @@ async function ageVaultFactor(tenantId: string, email: string): Promise<void> {
 }
 
 /**
+ * THE LOGINS A CONTACT HANDED OVER (3V slice 96, C64) — the DB half of
+ * `portal-send-login.spec.ts`: what the portal never shows (visibility, the
+ * member author, the audit actor), read for the fixture contact only.
+ */
+async function portalSubmissions(tenantId: string, contactEmail: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const contact = await db.contact.findFirst({ where: { tenantId, email: contactEmail }, select: { id: true } });
+  const rows = contact
+    ? await db.credentialItem.findMany({
+        where: { tenantId, submittedByContactId: contact.id },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          name: true,
+          submittedName: true,
+          submittedByContactId: true,
+          type: true,
+          visibility: true,
+          clientId: true,
+          projectId: true,
+          url: true,
+          createdByMemberId: true,
+        },
+      })
+    : [];
+  const events = await db.auditEvent.findMany({
+    where: { tenantId, action: "credential.submitted", targetId: { in: rows.map((r) => r.id) } },
+    select: { targetId: true, actorType: true, actorId: true },
+  });
+  const byTarget = new Map(events.map((e) => [e.targetId, e]));
+  await db.$disconnect();
+  process.stdout.write(
+    `${MARKER}${JSON.stringify(
+      rows.map((r) => ({
+        ...r,
+        auditActorType: byTarget.get(r.id)?.actorType ?? null,
+        auditActorId: byTarget.get(r.id)?.actorId ?? null,
+      })),
+    )}\n`,
+  );
+}
+
+/**
+ * Hand the fixture back after `portal-send-login.spec.ts` (3V slice 96):
+ * the logins the fixture contact handed over (their secrets and versions go
+ * with them, FK cascade), their audit rows, and the agency's
+ * `credential.submitted` notifications and mails — scoped by SUBMITTER,
+ * never a clock (`clearPortalRequests`' reasoning). Runs from `afterAll`:
+ * the vault tab, the inbox and the walks sort after the spec.
+ */
+async function clearPortalSubmissions(tenantId: string, contactEmail: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const contact = await db.contact.findFirst({ where: { tenantId, email: contactEmail }, select: { id: true } });
+  const rows = contact
+    ? await db.credentialItem.findMany({ where: { tenantId, submittedByContactId: contact.id }, select: { id: true } })
+    : [];
+  const ids = rows.map((r) => r.id);
+  await db.emailOutbox.deleteMany({ where: { tenantId, kind: "credential.submitted" } });
+  await db.notification.deleteMany({ where: { tenantId, kind: "credential.submitted" } });
+  if (ids.length > 0) {
+    await db.credentialItem.deleteMany({ where: { tenantId, id: { in: ids } } });
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
+      await tx.auditEvent.deleteMany({ where: { tenantId, action: "credential.submitted", targetId: { in: ids } } });
+    });
+  }
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ cleared: ids.length })}\n`);
+}
+
+/**
  * Mark a login "Change soon" (slice 94) by its name, as removing a member
  * who saw it would — the fixture's members stay, so `vault.spec.ts` sets
  * the mark straight on the row, then clears it through the UI by changing
@@ -2841,6 +2919,8 @@ const main = async (): Promise<void> => {
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "age-vault-factor") return ageVaultFactor(argument!, process.argv[4]!);
   if (command === "flag-login") return flagLogin(argument!, process.argv[4]!);
+  if (command === "portal-submissions") return portalSubmissions(argument!, process.argv[4]!);
+  if (command === "clear-portal-submissions") return clearPortalSubmissions(argument!, process.argv[4]!);
   if (command === "remove-users") return removeUsers(process.argv.slice(3));
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);

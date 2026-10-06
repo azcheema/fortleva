@@ -5,7 +5,7 @@ import { accessibleCodes } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { idCursor } from "@/lib/id-cursor";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
-import { isReminderBand, isReminderKind, reminderSubjects } from "@/modules/vault";
+import { isReminderBand, isReminderKind, isSubmissionKind, reminderSubjects, submissionSubjects } from "@/modules/vault";
 
 import { isNotificationKind, type NotificationKind } from "./catalog";
 
@@ -400,6 +400,20 @@ async function resolveSubjects(
     }));
     for (const [id, subject] of await reminderSubjects(tx, ctx.tenantId, ctx.actor, refs)) out.set(id, subject);
     rows = rows.filter((r) => !isReminderKind(r.kind));
+    if (rows.length === 0) return out;
+  }
+
+  // A CLIENT'S HAND-OVER IS THE VAULT'S TO NAME TOO (slice 96, C64 (c)): the
+  // client, never the login, under `credential:view`, the anchor rule and
+  // never under impersonation — `submissionSubjects`. Its rows never reach
+  // the fall-through below either.
+  const submissions = rows.filter((r) => isSubmissionKind(r.kind));
+  if (submissions.length > 0) {
+    const refs = submissions.map((r) => ({ id: r.id, kind: r.kind, entityType: r.entityType, entityId: r.entityId }));
+    for (const [id, subject] of await submissionSubjects(tx, ctx.tenantId, ctx.actor, refs)) {
+      out.set(id, { title: subject.title, href: subject.href });
+    }
+    rows = rows.filter((r) => !isSubmissionKind(r.kind));
     if (rows.length === 0) return out;
   }
 

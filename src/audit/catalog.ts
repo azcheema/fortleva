@@ -369,6 +369,13 @@ export const AUDIT_EVENTS = {
   // one client), and `seed: true` when the login's authenticator seed was
   // in the file (C63 (e)) — never a value.
   "credential.exported": TENANT,
+  // Phase 3V slice 96 — portal submission (founder decision C64): a
+  // client's contact handed a login over through the portal, brokered —
+  // written by the SYSTEM principal with the CONTACT as actor
+  // (`brokeredForContactId`), target the new login; metadata its client,
+  // project, type and the secret field NAMES — never a value, never its
+  // name. Also the contact's own hand-over budget (a count of these rows).
+  "credential.submitted": TENANT,
   // Phase 3V slice 87 — the asset registry. Metadata is the asset's
   // client, project and type, and on an edit the NAMES of the fields that
   // changed — never a value (a note is free text).

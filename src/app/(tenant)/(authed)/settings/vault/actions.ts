@@ -21,11 +21,21 @@ const PATH = "/settings/vault";
  * hides every shown login for good (C59 (b)).
  */
 const switchSchema = z.object({
-  key: z.enum(["shareLinks", "clientLogins"]),
+  key: z.enum(["shareLinks", "clientLogins", "clientSubmissions"]),
   on: z.boolean(),
 });
 
-export async function setVaultSwitchAction(raw: { key: "shareLinks" | "clientLogins"; on: boolean }): Promise<FormResult> {
+/** Which preference each switch writes (slice 96 added clients sending logins, C64 — `settings:edit` both ways). */
+const SWITCH_PATCH = {
+  shareLinks: (on: boolean) => ({ vault: { allowExternalShareLinks: on } }),
+  clientLogins: (on: boolean) => ({ vault: { allowPortalCredentials: on } }),
+  clientSubmissions: (on: boolean) => ({ vault: { allowContactSubmission: on } }),
+} as const;
+
+export async function setVaultSwitchAction(raw: {
+  key: "shareLinks" | "clientLogins" | "clientSubmissions";
+  on: boolean;
+}): Promise<FormResult> {
   const tCommon = await getTranslations("common");
   const parsed = switchSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, message: tCommon("invalidInput") };
@@ -34,10 +44,7 @@ export async function setVaultSwitchAction(raw: { key: "shareLinks" | "clientLog
   const t = await getTranslations("settings.vault");
   const { key, on } = parsed.data;
   const r = await runForm(PATH, async () => {
-    await updatePreferences(
-      ctx,
-      key === "shareLinks" ? { vault: { allowExternalShareLinks: on } } : { vault: { allowPortalCredentials: on } },
-    );
+    await updatePreferences(ctx, SWITCH_PATCH[key](on));
     return t(`${key}.${on ? "switchedOn" : "switchedOff"}`);
   });
   if (r.ok) {

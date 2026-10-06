@@ -31,15 +31,24 @@ import { setVaultSwitchAction } from "./actions";
  * The thumb moves only when the server agreed: a refusal never looks like
  * a revert (AGENTS.md's standing trap — the action's message is toasted,
  * and a stale factor is the step-up page, through `runForm`).
+ *
+ * Slice 96 adds the third: clients sending logins through their portal
+ * (`vault.allowContactSubmission`, C64; default ON). Switching it off is a
+ * PAUSE — nothing already sent is touched and on again simply takes logins
+ * again — so it acts at once, without the question (`offIsForGood`), and
+ * either direction is `settings:edit` (AUTHZ.md §5: a behavioural key).
  */
 export function VaultSwitch({
   name,
   on,
   canEdit,
   canTurnOn,
+  offIsForGood,
 }: {
-  name: "shareLinks" | "clientLogins";
+  name: "shareLinks" | "clientLogins" | "clientSubmissions";
   on: boolean;
+  /** Switching off ends something for good, so it asks first (share links, client logins); a pause acts at once. */
+  offIsForGood: boolean;
   /** `settings:edit` — may switch it off (and, with `canTurnOn`, on). */
   canEdit: boolean;
   /** `settings:manage_modules` ✦ — switching either ON is a privilege decision (AUTHZ.md §5). */
@@ -81,7 +90,7 @@ export function VaultSwitch({
           aria-busy={pending}
           onCheckedChange={(next) => {
             if (pending) return;
-            if (next) send(true);
+            if (next || !offIsForGood) send(next);
             else setConfirming(true);
           }}
           aria-describedby={`${id}-hint`}
