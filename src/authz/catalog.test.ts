@@ -8,9 +8,16 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 111 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 — bumped deliberately 2026-10-05)", () => {
-    expect(PERMISSIONS).toHaveLength(111);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(111);
+  it("holds exactly 112 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 + 1 vault @ slice 95 — bumped deliberately 2026-10-06)", () => {
+    expect(PERMISSIONS).toHaveLength(112);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(112);
+  });
+
+  it("credential:export is vault-module, ✦, and the owner's alone (slice 95, C63; AUTHZ.md §3.2)", () => {
+    const def = PERMISSIONS.find((p) => p.code === "credential:export");
+    expect(def?.seeded).toEqual(["owner"]);
+    expect(def?.requiresMfa).toBe(true);
+    expect(def?.module).toBe("vault");
   });
 
   it("credential:unseal is vault-module, ✦, and the owner's alone (slice 92, C52 (e), C60 (b))", () => {
@@ -107,6 +114,8 @@ describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
         "credential:change_visibility",
         // 3V slice 92 — unsealing takes a client's right to ask away; an owner's act (C52 (e))
         "credential:unseal",
+        // 3V slice 95 — a file of every secret in plain text (CP4: always step up; C63)
+        "credential:export",
         // slice 84 — puts a teammate's account back on the password alone (C50)
         "member:reset_two_factor",
       ].sort(),

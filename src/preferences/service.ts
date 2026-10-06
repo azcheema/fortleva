@@ -189,6 +189,14 @@ async function upsertPreference(
  * design — the switch is the workspace's, not one member's scope.
  */
 async function hideEveryShownLogin(tx: TenantDb, ctx: PreferenceCtx): Promise<void> {
+  // The shown logins locked first, in id order — the order a member's
+  // removal locks logins in (the vault's offboarding flags, slice 95): an
+  // unordered update crossing it on two logins would deadlock one of the two.
+  await tx.$queryRaw`
+    SELECT id FROM credential_item
+    WHERE tenant_id = ${ctx.tenantId} AND visibility = 'CLIENT_VISIBLE'
+    ORDER BY id
+    FOR NO KEY UPDATE`;
   // ONE statement that changes and names the rows it changed, so a login
   // hidden or deleted by someone else in between is not recorded as this
   // sweep's (the fix-pass review).

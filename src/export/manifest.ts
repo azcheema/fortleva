@@ -38,7 +38,8 @@ export const EXPORT_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>
   rateCard: ["amountCiphertext"],
   // 3V: vault ciphertext is useless outside this deployment and would put
   // every secret in one file; plaintext export is its own ✦ act
-  // (`credential:export`, a later slice), never a side effect of this one.
+  // (`credential:export`, slice 95 — `src/modules/vault/export.ts`, a CSV
+  // handed to the member and never stored), never a side effect of this one.
   credentialSecret: ["secretCiphertext", "totpSecretCiphertext"],
   credentialVersion: ["secretCiphertext"],
   // 3V slice 90: a share link's token and code HASHES are its live keys

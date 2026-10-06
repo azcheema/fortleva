@@ -270,7 +270,7 @@ export const AUDIT_EVENTS = {
   // a value, never a seed. Reveal, Copy and a TOTP code are one row each,
   // per call, written in the transaction that decrypted.
   "credential.created": TENANT,
-  "credential.updated": TENANT, // metadata edits AND a replaced secret (`secretChanged`)
+  "credential.updated": TENANT, // metadata edits AND a replaced secret (`secretChanged`); `heldBySeed` when every field was made new but a seed a leaver exported kept "Change soon" (C63 (e), slice 95)
   "credential.deleted": TENANT,
   "credential.revealed": TENANT,
   "credential.copied": TENANT,
@@ -361,6 +361,14 @@ export const AUDIT_EVENTS = {
   // suspension's transaction with the remover as actor; metadata the
   // departed `memberId` and `cause: "member_removed"`.
   "credential.rotation_flagged": TENANT,
+  // Phase 3V slice 95 — the plaintext export (`credential:export` ✦,
+  // founder decision C63). ONE row PER LOGIN in the file, target the login,
+  // so a login's trail and the offboarding flags (slice 94) read an export
+  // as they read a reveal; metadata the `exportId` grouping one export and
+  // what was asked for (`scope`: all | client | agency, the `clientId` for
+  // one client), and `seed: true` when the login's authenticator seed was
+  // in the file (C63 (e)) — never a value.
+  "credential.exported": TENANT,
   // Phase 3V slice 87 — the asset registry. Metadata is the asset's
   // client, project and type, and on an edit the NAMES of the fields that
   // changed — never a value (a note is free text).

@@ -112,6 +112,12 @@ export type DomainErrorCode =
   // only until it opens: an answer to one that has opened, closed, lapsed,
   // or been denied or withdrawn meanwhile is refused, and says so.
   | "SEALED_REQUEST_SETTLED"
+  // The export (Phase 3V slice 95 — src/modules/vault/export.ts; C63): the
+  // member asked for logins they reach none of (an empty choice, or our
+  // own without a tenant-wide scope — the same answer, C49), or for more
+  // than one file carries (`EXPORT_MAX`) — export one client at a time.
+  | "NOTHING_TO_EXPORT"
+  | "EXPORT_TOO_LARGE"
   // An owner's reset / sign-out of a teammate (slice 84, C50 —
   // src/auth/member-reset.ts): aimed at themselves; at a console
   // principal, whose sign-in is the operator's; a reset of somebody who

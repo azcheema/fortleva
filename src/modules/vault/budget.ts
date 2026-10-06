@@ -34,8 +34,9 @@ import type { TenantDb } from "@/db";
  * A REMOVAL TAKES IT TOO (slice 94, `holdRevealsOf`): suspending a member
  * takes THEIR key after the tenant row's lock (and their own row's) and
  * before it flags the logins they could know. And EVERY way a member comes
- * to know a secret takes their key first: a reveal, a copy, a code and a
- * share link (`lockRevealBudget`), and typing one — creating a login or
+ * to know a secret takes their key first: a reveal, a copy, a code, a
+ * share link and an export (`lockRevealBudget` — the export, slice 95,
+ * without spending the hour's budget), and typing one — creating a login or
  * changing its secret (`lockSecretWrite`, before the login's row lock;
  * slice 94's security review). Nothing that holds the key waits on the
  * tenant or member row in a mode the removal's non-key UPDATEs block (an
@@ -47,10 +48,12 @@ import type { TenantDb } from "@/db";
  * answered while they still were.
  *
  * THE CLOCK is Postgres's — `now()`, the TRANSACTION's start, returned
- * by the statement that takes the lock — because the rows being counted
- * are stamped by Postgres too. A transaction that waited for the lock
- * measures its hour from before the wait, which can only count a row or
- * two more, never fewer: the safe direction.
+ * by the statement that takes the lock. The rows being counted are stamped
+ * by the APP at their insert (Prisma's `@default(now())` — measured in
+ * slice 95, which corrected this note), so the hour's edge moves by the
+ * clocks' drift; a transaction that waited for the lock measures its hour
+ * from before the wait, which can only count a row or two more, never
+ * fewer: the safe direction.
  */
 
 /**

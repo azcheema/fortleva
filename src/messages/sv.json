@@ -964,7 +964,7 @@
       "title": "Export",
       "commitment": "Er data är er: allt den här arbetsytan innehåller kan när som helst exporteras som ett öppet, dokumenterat arkiv — det är vårt kontinuitetslöfte.",
       "newExport": "Ny export",
-      "contents": "En JSONL-fil per tabell (kunder, projekt, milstolpar, medlemmar, roller, dokument, granskningslogg …), en versionsmärkt manifest.json och filinnehåll när det ryms inom 200 MB — annars pekare till varje fil.",
+      "contents": "En JSONL-fil per tabell (kunder, projekt, milstolpar, medlemmar, roller, dokument, granskningslogg …), en versionsmärkt manifest.json och filinnehåll när det ryms inom 200 MB — annars pekare till varje fil. Lösenord i valvet ingår inte — exportera dem från valvet.",
       "generate": "Skapa export",
       "generating": "Skapar…",
       "generated": "Exporten {name} finns klar nedan.",
@@ -1384,7 +1384,9 @@
     "LOGIN_HAS_NO_CLIENT": "Inloggningen tillhör er byrå, så det finns ingen kund att visa den för eller försegla den åt.",
     "LOGIN_SEALED": "Inloggningen är förseglad för kunden, så den kan inte delas eller visas för kunden. En ägare kan häva förseglingen.",
     "SEALED_REQUEST_SETTLED": "Begäran kan inte längre besvaras – den har öppnats, avslutats eller redan besvarats. Ladda om sidan för att se läget.",
-    "SHARE_LINK_CLOSED": "Länken har redan öppnats eller återkallats."
+    "SHARE_LINK_CLOSED": "Länken har redan öppnats eller återkallats.",
+    "NOTHING_TO_EXPORT": "Det finns inga inloggningar att exportera där.",
+    "EXPORT_TOO_LARGE": "Det är fler inloggningar än en fil rymmer. Exportera en kund i taget."
   },
   "assignments": {
     "title": "Team",
@@ -3760,7 +3762,7 @@
       "addNote": "Lägg till en anteckning",
       "openUrl": "Öppna webbadressen för {name}",
       "needsRotation": "Byt snart",
-      "needsRotationHint": "Någon som hade tillgång har slutat. Byt den där den används och fyll sedan i alla nya värden här på en gång.",
+      "needsRotationHint": "Någon som hade tillgång har slutat. Byt den där den används och fyll sedan i alla nya värden här på en gång – och om personen exporterade dess autentiseringsnyckel, ställ in tvåstegsverifieringen igen och fyll i den nya nyckeln också.",
       "delete": "Ta bort",
       "deleteConfirm": "Ta bort {name}?",
       "deleteSealedConfirm": "Ta bort {name}? Den är förseglad för kunden, och förseglingen upphör också.",
@@ -3968,6 +3970,59 @@
         "opening": "– bekräftad; den öppnas {date} om ingen avslår.",
         "open": "– öppen till {date}."
       }
+    },
+    "export": {
+      "open": "Exportera…",
+      "title": "Exportera inloggningar",
+      "description": "En fil med inloggningarna och deras lösenord, att importera i en lösenordshanterare.",
+      "pointPlain": "Lösenorden står i klartext: den som har filen kan logga in på allt i den. Importera den i er lösenordshanterare och radera den sedan. Öppna den inte i ett kalkylprogram.",
+      "pointMail": "Alla som kan exportera inloggningar får ett mejl om att du har gjort det.",
+      "pointLeaving": "Varje inloggning i filen loggas på dig. Om du slutar inom 90 dagar markeras alla med ”Byt snart” – och en inloggning med en autentiseringsnyckel behåller markeringen tills även nyckeln har bytts.",
+      "which": "Vad ska exporteras",
+      "code": "Din kod från autentiseringsappen",
+      "codeHint": "Export kräver alltid koden.",
+      "enterCode": "Ange koden från din autentiseringsapp.",
+      "submit": "Exportera",
+      "submitting": "Exporterar…",
+      "done": "{count, plural, one {# inloggning exporterad} other {# inloggningar exporterade}}. Importera filen och radera den sedan.",
+      "history": "Tidigare exporter",
+      "file": {
+        "product": "Fortleva",
+        "project": "Projekt",
+        "username": "Användarnamn",
+        "url": "Webbadress",
+        "totp": "Autentisering",
+        "tags": "Taggar",
+        "expires": "Går ut",
+        "rotateEvery": "Byt med {days, plural, one {# dags} other {# dagars}} mellanrum",
+        "changeSoon": "Byt snart",
+        "sealed": "Förseglad för kunden",
+        "archived": "Arkiverad",
+        "lastChanged": "Senast bytt",
+        "shownToClient": "Visas för kunden"
+      },
+      "formulaWarning": "Några värden i filen börjar med ett tecken som ett kalkylprogram kör som en formel. Importera den bara i en lösenordshanterare – öppna den aldrig i ett kalkylprogram.",
+      "tooLongWarning": "För långa för att vissa lösenordshanterare ska kunna importera dem – kopiera för hand: {names}"
+    },
+    "exports": {
+      "title": "Exporter",
+      "description": "Alla exporter av inloggningar de senaste {days} dagarna, nyaste först. Varje export mejlades till alla som kan exportera inloggningar.",
+      "empty": "Inga exporter",
+      "emptyDescription": "När någon exporterar inloggningar visas det här.",
+      "columns": {
+        "when": "När",
+        "who": "Vem",
+        "what": "Vad",
+        "count": "Inloggningar"
+      },
+      "scopeAll": "Allt de kunde se",
+      "scopeAgency": "Våra egna",
+      "scopeGoneClient": "En kund som har tagits bort",
+      "someoneGone": "Någon som har slutat",
+      "back": "Tillbaka till valvet",
+      "scopedTitle": "Bara för dem som ser alla kunder",
+      "scopedDescription": "Listan över exporter visar hur många inloggningar byrån har och vilka kunders inloggningar som exporterades, så bara de som ser alla kunder kan öppna den. Fråga en ägare vem som exporterade och när.",
+      "limited": "Visar de senaste {limit}."
     }
   },
   "assets": {

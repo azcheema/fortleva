@@ -25,6 +25,7 @@ import {
   type CredentialType,
 } from "./fields";
 import { assertAnchorInScope, anchorScopeWhere, type VaultAnchor } from "./scope";
+import { fieldsClearedSinceMarked, seedTakenByLeaver } from "./offboarding";
 import { lockedState } from "./seal";
 import { insertSecretRow, keepPreviousVersion, readSecret, readTotp, updateSecretRow } from "./secret-store";
 import { parseTotpInput } from "./totp";
@@ -527,7 +528,7 @@ export async function replaceCredentialSecret(
           // one's result, and a delete that landed while it waited.
           const item = await tx.credentialItem.findFirstOrThrow({
             where: { tenantId: ctx.tenantId, id },
-            select: { hasTotp: true, deletedAt: true, secretFieldKeys: true },
+            select: { hasTotp: true, deletedAt: true, secretFieldKeys: true, needsRotation: true },
           });
           if (item.deletedAt !== null) deny("NOT_FOUND");
           // The SAME seed again is not a change; a DIFFERENT seed over an
@@ -585,8 +586,24 @@ export async function replaceCredentialSecret(
           // that had no fields, where it is the only part, and must itself
           // be replaced or removed (slice 94b's review: adding a password to
           // a seed-only login left the old seed and cleared the mark).
+          // AND (C63 (e), slice 95): a seed that a member who has since LEFT
+          // exported is a part they still hold, so a login keeping that seed
+          // keeps its mark until the seed is replaced (or removed) too. Asked
+          // only of a marked login that would otherwise clear and keeps its seed
+          // — and such a save says so (`heldBySeed`), so that a LATER change of
+          // the seed alone finishes it (the fix-round review: the hint's two
+          // saves, fields first, must clear; `fieldsClearedSinceMarked`).
           const hadFields = item.secretFieldKeys.length > 0;
-          const clearsMark = hadFields ? next !== null && !oldValueSurvives : seedChange;
+          const fieldsClear = hadFields ? next !== null && !oldValueSurvives : seedChange;
+          const keepsTakenSeed =
+            fieldsClear && item.needsRotation && willHaveTotp && !seedChange
+              ? await seedTakenByLeaver(tx, ctx.tenantId, id)
+              : false;
+          const finishesHeld =
+            !fieldsClear && hadFields && item.needsRotation && seedChange
+              ? await fieldsClearedSinceMarked(tx, ctx.tenantId, id)
+              : false;
+          const clearsMark = (fieldsClear && !keepsTakenSeed) || finishesHeld;
           // The same values again are not a change: nothing written, nothing recorded.
           if (next === null && !seedChange) return currentView();
 
@@ -631,6 +648,8 @@ export async function replaceCredentialSecret(
               changedFields,
               rotated: isRotation,
               totpChanged: seedChange,
+              // Every field new, the mark kept for a seed a leaver took (C63 (e)).
+              ...(keepsTakenSeed ? { heldBySeed: true } : {}),
               fields: [...fieldKeys],
               hasTotp: willHaveTotp,
               ...(newVersion === null ? {} : { version: newVersion }),

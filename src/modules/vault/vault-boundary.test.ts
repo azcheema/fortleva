@@ -169,7 +169,12 @@ describe("vault ciphertext boundary", () => {
     // per-tenant body (pinned below); `sealed-rules` is figures. Offboarding
     // flags (slice 94): `offboarding` takes a transaction and is gated by its
     // ONE caller's `member:remove` (pinned below); it writes a flag and its
-    // audit rows, and reads the audit trail and ids — never a secret.
+    // audit rows, and reads the audit trail and ids — never a secret. The
+    // export (slice 95): `export` gates the file on the door, `credential:
+    // export` ✦ AND `credential:reveal` ✦, a factor this minute, the
+    // member's reveal key and the anchor rule, writes one audit row per
+    // login and mails the holders; its history read gates on the door, the
+    // code and a tenant-wide scope; `export-csv` is a pure formatter.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -178,6 +183,8 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/ctx",
       "modules/vault/door",
       "modules/vault/expirations",
+      "modules/vault/export",
+      "modules/vault/export-csv",
       "modules/vault/fields",
       "modules/vault/items",
       "modules/vault/offboarding",
@@ -316,6 +323,35 @@ describe("vault ciphertext boundary", () => {
         ),
       )
       .map(rel);
+    expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * THE EXPORT'S BULK READ (slice 95) decrypts every listed login's secret
+   * and seed in one call, with none of the export's gates — the door, two ✦
+   * codes, a factor this minute, the member's reveal key, the scope and an
+   * audit row per login all live in its one caller. So its name appears
+   * only where it is defined and in that caller, and never in the index.
+   */
+  it("only the export calls the secret store's bulk read", () => {
+    const allowed = ["modules/vault/secret-store.ts", "modules/vault/export.ts"];
+    const callers = files.filter((f) => /\breadSecretsForExport\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * THE EXPORT'S ONE CALLER (slice 95's security review). "Always a fresh
+   * code" (AUTHZ.md §7.5, CP4) holds because the export ACTION verifies the
+   * member's authenticator code in the same request and hands the service
+   * that stamp; the service itself only checks a factor is under a minute
+   * old, which a vault-door step-up a moment earlier would also satisfy. So
+   * another page or action calling it with the session's own actor would
+   * export without a code — its name appears only where it is defined,
+   * re-exported and called by that action.
+   */
+  it("only the export action calls the export", () => {
+    const allowed = ["modules/vault/export.ts", "modules/vault/index.ts", "app/(tenant)/(authed)/vault/export-actions.ts"];
+    const callers = files.filter((f) => /\bexportCredentials\b/.test(readFileSync(f, "utf8"))).map(rel);
     expect(callers.sort()).toEqual(allowed.sort());
   });
 

@@ -36,6 +36,19 @@ export {
   type LoginExpirations,
 } from "./expirations";
 export { openVault, type OpenVault, type VaultAbilities } from "./door";
+export {
+  EXPORT_HISTORY_DAYS,
+  EXPORT_HISTORY_LIMIT,
+  EXPORT_MAX,
+  EXPORT_STEP_UP_MINUTES,
+  exportCredentials,
+  listVaultExports,
+  type ExportScope,
+  type VaultExportFile,
+  type VaultExportHistory,
+  type VaultExportRecord,
+} from "./export";
+export { MAIN_SECRET, type ExportLabels } from "./export-csv";
 export { REMINDER_BANDS, isReminderBand, type ReminderBand } from "./reminder-bands";
 export {
   REMINDER_KINDS,

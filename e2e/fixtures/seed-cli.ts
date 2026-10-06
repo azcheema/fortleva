@@ -205,6 +205,9 @@ const DBTEST_PREFIXES = [
   // `setupTenant("vault")`, and the tenant-key back-fill —
   // `src/crypto/tenant-key-backfill.dbtest.ts`, `setupTenant("vkey")`.
   "vault-",
+  // Phase 3V slice 95, the plaintext export — `src/modules/vault/export.dbtest.ts`,
+  // `setupTenant("vexp")`.
+  "vexp-",
   "vkey-",
   // Phase 3V slice 90, share links — `src/modules/vault/share.dbtest.ts`,
   // `setupTenant("vlink")`.

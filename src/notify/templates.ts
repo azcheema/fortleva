@@ -2,6 +2,7 @@ import { appUrl } from "@/config";
 import { isUuid } from "@/db/context";
 import { isNotificationKind, type NotificationKind } from "./catalog";
 import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
+import { VAULT_EXPORTED_MAIL } from "./vault-export-mail-key";
 import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
 
 /**
@@ -25,7 +26,7 @@ import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
 type Copy = { readonly subject: string; readonly body: string };
 
 /** Templates that are not also a fan-out kind. */
-const EXTRA_TEMPLATES = [WEEKLY_REMINDER_KIND, ...SEALED_MAIL_KEYS] as const;
+const EXTRA_TEMPLATES = [WEEKLY_REMINDER_KIND, ...SEALED_MAIL_KEYS, VAULT_EXPORTED_MAIL] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
 
@@ -187,6 +188,20 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Det finns nytt om din begäran att öppna de inloggningar som din byrå håller förseglade åt dig. Logga in i kundportalen för att se det.",
     },
   },
+  // Phase 3V slice 95 — somebody exported logins (C63 (b); `vault-export-
+  // mail-key.ts`). A security notice to every holder of `credential:export`,
+  // the exporter included, whatever their email level; LINKS, NOT DATA — no
+  // name, count or client: the exports page says who, how many and when.
+  [VAULT_EXPORTED_MAIL]: {
+    en: {
+      subject: "Logins were exported from your vault",
+      body: "Someone in your workspace exported logins from the Vault, with their passwords in plain text. See who and when in Fortleva. If you did not expect this, change those passwords.",
+    },
+    sv: {
+      subject: "Inloggningar har exporterats från ert valv",
+      body: "Någon i er arbetsyta har exporterat inloggningar från valvet, med lösenorden i klartext. Se vem och när i Fortleva. Om ni inte väntade er detta, byt de lösenorden.",
+    },
+  },
   "time.weekly_reminder": {
     en: {
       subject: "Your weekly time reminder",
@@ -215,6 +230,9 @@ const linkFor = (
   params: Readonly<Record<string, unknown>> | null,
 ): URL => {
   if (key === "time.weekly_reminder") return new URL("/time", appUrl);
+  // An export (slice 95): the exports page, behind the vault's door, says
+  // who exported what and when — the mail itself names nothing.
+  if (key === VAULT_EXPORTED_MAIL) return new URL("/vault/exports", appUrl);
   // A sealed ask (slice 93): an answerer's mail opens the ask itself —
   // `credential:unseal`, which every answerer holds, reads it; the id came
   // from the vault, never a person, and is held to a uuid's shape. The

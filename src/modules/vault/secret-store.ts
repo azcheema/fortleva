@@ -8,10 +8,12 @@ import type { TotpParams } from "./totp";
 /**
  * THE ONLY FILE THAT TOUCHES VAULT CIPHERTEXT (SECURITY.md §6.1–§6.3;
  * DATA_MODEL.md §6.17). `src/db/client.ts` omits the three ciphertext
- * columns from every read in the product; the two reads below are the
- * only opt-ins for them (`omit: { …: false }`, never alongside a
- * `select`, which Prisma refuses), and `vault-boundary.test.ts` fails the
- * unit suite if a ciphertext column is named anywhere else in `src/`.
+ * columns from every read in the product; the reads below are the only
+ * opt-ins for them (`omit: { …: false }`, never alongside a `select`,
+ * which Prisma refuses) — `readSecret`, `readTotp`, and since slice 95 the
+ * export's bulk read, whose only caller is pinned — and
+ * `vault-boundary.test.ts` fails the unit suite if a ciphertext column is
+ * named anywhere else in `src/`.
  *
  * Every ciphertext is v2 under the tenant's DEK with AAD
  * `tenantId:<table>:<rowId>:<field>` (the normative convention):
@@ -20,7 +22,8 @@ import type { TotpParams } from "./totp";
  *   credential_version:<versionId>:secret         — a previous secret
  * so a ciphertext copied to another row, another tenant or the other
  * column fails authentication instead of decrypting. Plaintext exists in
- * this process only between a decrypt and the caller's use of ONE field;
+ * this process only between a decrypt and the caller's use of ONE field —
+ * the export aside, which decrypts every login it writes into the file;
  * nothing here logs, and no error message carries a value.
  */
 
@@ -132,7 +135,14 @@ function parseDecrypted(json: string, what: string): unknown {
 
 const parseSecret = (json: string): SecretPayload => {
   const parsed = parseDecrypted(json, "secret") as Partial<SecretPayload> | null;
-  if (parsed?.v !== 1 || typeof parsed.fields !== "object" || parsed.fields === null) {
+  if (parsed?.v !== 1 || typeof parsed.fields !== "object" || parsed.fields === null || Array.isArray(parsed.fields)) {
+    throw new Error("vault: stored secret has an unknown shape");
+  }
+  // Every value a string (slice 95's security review): a number written by
+  // a path that skipped `normalizeSecretPatch` would otherwise reach a
+  // caller — and a Node error that prints its argument — as a value. The
+  // error names no value.
+  if (Object.values(parsed.fields).some((v) => typeof v !== "string")) {
     throw new Error("vault: stored secret has an unknown shape");
   }
   return { v: 1, fields: parsed.fields };
@@ -183,6 +193,10 @@ export async function readTotp(tx: TenantDb, tenantId: string, credentialId: str
     { tenantId, model: SECRET_MODEL, rowId: credentialId, field: "totp_secret" },
     row.totpSecretCiphertext,
   );
+  return parseTotp(json);
+}
+
+function parseTotp(json: string): TotpParams {
   const parsed = parseDecrypted(json, "TOTP seed") as Partial<TotpPayload> | null;
   if (parsed?.v !== 1 || typeof parsed.secret !== "string") {
     throw new Error("vault: stored TOTP seed has an unknown shape");
@@ -193,6 +207,51 @@ export async function readTotp(tx: TenantDb, tenantId: string, credentialId: str
     digits: parsed.digits ?? 6,
     period: parsed.period ?? 30,
   };
+}
+
+/** One login's whole secret, as the export writes it. */
+export type ExportedSecret = { readonly fields: Readonly<Record<string, string>>; readonly totp: TotpParams | null };
+
+/**
+ * THE EXPORT'S READ (slice 95, `export.ts`): every listed credential's
+ * secret AND seed, in ONE statement — a vault of hundreds of logins must
+ * not cost a round trip each inside the export's transaction — each
+ * decrypted under its own AAD exactly as `readSecret` / `readTotp` do (the
+ * tenant's DEK is cached, so the decrypts are in-process). Its only caller
+ * is the export, which has passed every gate and writes one audit row per
+ * login in the same transaction. A listed id with no secret row is
+ * absent from the map, and the caller refuses the export rather than
+ * writing a login without its secret.
+ */
+export async function readSecretsForExport(
+  tx: TenantDb,
+  tenantId: string,
+  credentialIds: readonly string[],
+): Promise<Map<string, ExportedSecret>> {
+  const out = new Map<string, ExportedSecret>();
+  if (credentialIds.length === 0) return out;
+  const rows = await tx.credentialSecret.findMany({
+    where: { tenantId, credentialId: { in: [...credentialIds] } },
+    omit: { secretCiphertext: false, totpSecretCiphertext: false },
+  });
+  for (const row of rows) {
+    const json = await decryptFieldV2(
+      tx,
+      { tenantId, model: SECRET_MODEL, rowId: row.credentialId, field: "secret" },
+      row.secretCiphertext,
+    );
+    const totp = row.totpSecretCiphertext
+      ? parseTotp(
+          await decryptFieldV2(
+            tx,
+            { tenantId, model: SECRET_MODEL, rowId: row.credentialId, field: "totp_secret" },
+            row.totpSecretCiphertext,
+          ),
+        )
+      : null;
+    out.set(row.credentialId, { fields: parseSecret(json).fields, totp });
+  }
+  return out;
 }
 
 /**

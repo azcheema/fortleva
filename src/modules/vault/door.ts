@@ -71,6 +71,11 @@ export type VaultAbilities = {
    * unseals one and deletes a sealed one (C60 (b)).
    */
   readonly unseal: boolean;
+  /**
+   * The export (slice 95, C63): `credential:export` ✦ AND
+   * `credential:reveal` ✦ (`export.ts` asks both).
+   */
+  readonly export: boolean;
 };
 
 export type OpenVault = {
@@ -89,6 +94,7 @@ const ABILITY_CODES = [
   "credential:share",
   "credential:change_visibility",
   "credential:unseal",
+  "credential:export",
 ] as const;
 
 /**
@@ -98,7 +104,7 @@ const ABILITY_CODES = [
  * where its service would accept the member — §3.1's "hidden, never
  * disabled".
  *
- * `credential:reveal` (and `credential:share`, `credential:change_visibility`, `credential:unseal`) ARE ✦ CODES, which `heldAndAccessibleCodes` normally
+ * `credential:reveal` (and `credential:share`, `credential:change_visibility`, `credential:unseal`, `credential:export`) ARE ✦ CODES, which `heldAndAccessibleCodes` normally
  * cannot answer (a stale factor reads as "not held"). Here it can: the door
  * has just proved a factor no older than `vault.stepUpMinutes`, which the
  * preference schema caps at 15 — the ✦ window `authorize()` applies — so
@@ -127,6 +133,7 @@ export async function openVault(ctx: VaultCtx): Promise<OpenVault> {
         showToClient: accessible.has("credential:change_visibility") && prefs.vault.allowPortalCredentials,
         hideFromClient: accessible.has("credential:change_visibility"),
         unseal: accessible.has("credential:unseal"),
+        export: accessible.has("credential:export") && accessible.has("credential:reveal"),
       },
       shareMaxHours: prefs.vault.shareLinkMaxTtlHours,
     };

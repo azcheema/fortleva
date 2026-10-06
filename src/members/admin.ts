@@ -238,13 +238,18 @@ export async function suspendMember(input: {
       where: { id: input.memberId },
       data: { status: "SUSPENDED", suspendedAt: new Date() },
     });
+    const flagged = await flagLoginsKnownBy(tx, input.tenantId, input.memberId);
+    const revoked = await revokeShareLinksMadeBy(tx, input.tenantId, input.memberId, input.actor.memberId);
+    // Recorded AFTER the flags, which wait on the member's reveal key: an
+    // audit row is stamped at its insert, so this one then postdates every
+    // save or reveal of theirs the removal waited on — which is what the
+    // vault reads it for (`fieldsClearedSinceMarked`, C63 (e); slice 95's
+    // third review: recorded first, it was older than the leaver's own save).
     await record(tx, {
       action: "member.suspended",
       targetType: "Member",
       targetId: input.memberId,
     });
-    const flagged = await flagLoginsKnownBy(tx, input.tenantId, input.memberId);
-    const revoked = await revokeShareLinksMadeBy(tx, input.tenantId, input.memberId, input.actor.memberId);
     return { flagged, revoked };
   });
 }

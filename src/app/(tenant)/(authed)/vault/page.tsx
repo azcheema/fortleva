@@ -17,6 +17,7 @@ import {
 } from "@/modules/vault";
 
 import { AddCredentialForm } from "./add-credential";
+import { ExportDialog, type ExportOption } from "./export-dialog";
 import { SealedAsksBanner } from "./sealed-asks-banner";
 import { AGENCY_WHERE, TENANT_SURFACE } from "./surface";
 import { VaultFilter, type VaultFilterOption } from "./vault-filter";
@@ -48,6 +49,11 @@ const CHANGE_SOON = "change-soon";
  * could know "Change soon". While any are marked, a line above the list
  * says how many and the filter offers them on their own (`?client=change-
  * soon` — the filter's one parameter, as "our own" is), grouped as ever.
+ *
+ * EXPORT (slice 95, C63): a member who may export (`open.can.export`) gets
+ * "Export…" beside the lock timer — everything they reach, our own, or one
+ * client, as a file for a password manager (`export-dialog.tsx`); its link
+ * to the exports page shows for a tenant-wide scope only.
  *
  * Adding here adds one of OUR OWN logins, and only for a member who reaches
  * them and may create: a client's logins are added where they belong, on
@@ -131,6 +137,15 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
     ...index.clients.map((c) => ({ value: c.id, label: t("tenant.client", { name: c.name, count: c.count }) })),
   ];
 
+  // The export's choices (slice 95, C63 (c)): everything, our own (where the
+  // member reaches them), or one client — the filter's own, without the
+  // "Change soon" view, which is a list to work through, not a place.
+  const exportOptions: ExportOption[] = [
+    { value: "", label: t("tenant.all", { count: total }) },
+    ...(index.agency === null ? [] : [{ value: AGENCY_WHERE, label: t("tenant.agency", { count: index.agency }) }]),
+    ...index.clients.map((c) => ({ value: c.id, label: t("tenant.client", { name: c.name, count: c.count }) })),
+  ];
+
   const addOwnLink = (
     <Button asChild size="sm">
       <Link href="#new-credential">
@@ -142,7 +157,16 @@ export default async function VaultPage({ searchParams }: { searchParams: Promis
 
   return (
     <Page width="wide">
-      {header(<VaultLockTimer locksAt={open.locksAt.toISOString()} msLeft={msLeft} />)}
+      {header(
+        <div className="flex flex-wrap items-center gap-2">
+          {open.can.export && total > 0 ? (
+            // The exports page is for a tenant-wide scope only (`listVaultExports`),
+            // which is exactly when the index reaches our own logins.
+            <ExportDialog options={exportOptions} historyHref={index.agency === null ? null : "/vault/exports"} />
+          ) : null}
+          <VaultLockTimer locksAt={open.locksAt.toISOString()} msLeft={msLeft} />
+        </div>,
+      )}
 
       <div className="mt-6 flex flex-col gap-6">
         <SealedAsksBanner />

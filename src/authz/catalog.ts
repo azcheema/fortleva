@@ -287,6 +287,15 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // owner role holds every code. It asks the vault's window, no fresh
   // authenticator code: it takes access away, as hiding a login does.
   p("credential:unseal", "vault", "Unseal a login sealed for its client, or delete a sealed one — the client can then no longer ask for it, audited", C, true),
+  // ── Phase 3V slice 95 (module `vault`, +1; catalog 111 → 112;
+  // TEMPLATE_VERSION 13, 2026-10-06) — AUTHZ.md §3.2's `credential:export`
+  // row, landing with the export that enforces it (founder decision C63;
+  // `src/modules/vault/export.ts`). C only, ✦, and ALWAYS a fresh factor
+  // (AUTHZ.md §7.5, CP4: "always step-up for export") — the export dialog
+  // carries the member's authenticator code. Exporting also needs
+  // `credential:reveal`: a file of every secret is every reveal at once,
+  // which a role holding export without reveal was never granted.
+  p("credential:export", "vault", "Export logins with their secrets in plain text, as a file for a password manager — always a fresh factor, every holder is emailed, audited", C, true),
 ];
 
 export type RoleTemplate = {
@@ -364,8 +373,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  * v12 (2026-10-05): +1 `vault` code (credential:unseal ✦ — Phase 3V
  *     slice 92, the sealed layer's staff side). Owner template only;
  *     additive. The same rule as v6: a release carrying this bump MUST run
- *     `prisma/seed.ts`. */
-export const TEMPLATE_VERSION = 12;
+ *     `prisma/seed.ts`.
+ * v13 (2026-10-06): +1 `vault` code (credential:export ✦ — Phase 3V
+ *     slice 95, the plaintext export, founder decision C63). Owner
+ *     template only; additive. The same rule as v6: a release carrying
+ *     this bump MUST run `prisma/seed.ts` — until it runs, nobody can
+ *     export. */
+export const TEMPLATE_VERSION = 13;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

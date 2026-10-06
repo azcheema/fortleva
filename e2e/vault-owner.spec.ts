@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import { requireSeed, type E2ESeed } from "./fixtures/tenant";
@@ -8,7 +10,9 @@ import { signInVaultOwner, totpNow } from "./fixtures/vault-session";
  * coverage owed since slices 91 and 92): show a login to the client with
  * an authenticator code and hide it in one click (C59); Settings → Vault,
  * whose switches stand on for an owner and whose sealed-login wait saves
- * (C52 (g)); seal, unseal and an owner's delete of a sealed login (C60).
+ * (C52 (g)); seal, unseal and an owner's delete of a sealed login (C60);
+ * and (slice 95) the export — the code every time, the saved CSV, the
+ * exports page (C63).
  *
  * As the fixture's SECOND owner — the one with an enrolled authenticator
  * (`E2ESeed.vaultOwnerEmail`); the first owner has none, and every other
@@ -120,6 +124,48 @@ test.describe.serial("the vault's owner-only verbs, as an owner with an authenti
     const again = await menuOf(name);
     await again.getByRole("menuitem", { name: "Delete" }).click();
     await expect(row).toContainText("deleting it ends the seal too");
+    await row.getByRole("button", { name: "Yes" }).click();
+    await expect(rowOf(name)).toHaveCount(0);
+  });
+
+  test("Export… asks the code every time, saves one CSV in Bitwarden's layout, never cached, and lists the export (C63)", async () => {
+    const { name, row } = await addLogin("export");
+    await page.goto("/vault");
+    await page.getByTestId("vault-export-open").click();
+    const dialog = page.getByTestId("vault-export-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("The passwords are in plain text");
+    await dialog.getByLabel("What to export").selectOption(seed.clientId);
+    // No wrong-code round here: the show test above proves the same step-up
+    // door refuses one, and this owner's codes share one budget (six in ten
+    // minutes) with that test and `portal-logins.spec.ts`'s approval.
+    await dialog.getByLabel("Your authenticator code").fill(totpNow(seed.vaultOwnerTotpSecret));
+    const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined);
+    const saved = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "Export", exact: true }).click();
+    const [file, response] = await Promise.all([saved, answered]);
+    // The file travels in the action's answer: never kept by a browser or a proxy.
+    expect(response.headers()["cache-control"]).toContain("no-store");
+    expect(file.suggestedFilename()).toMatch(/^fortleva-logins-\d{4}-\d{2}-\d{2}\.csv$/);
+    const text = await readFile((await file.path())!, "utf8");
+    expect(text.startsWith("folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\r\n")).toBe(true);
+    // `includes`, never `toContain`: a failing `toContain` prints the whole
+    // file — every secret in it — into the public CI log.
+    expect(text.includes(name)).toBe(true);
+    expect(text.includes(seed.clientName)).toBe(true);
+    await expect(page.getByText(/exported\. Import the file, then delete it\./)).toBeVisible();
+    await expect(dialog).toBeHidden();
+
+    // Where every holder's notice lands: who exported what, and when.
+    await page.goto("/vault/exports");
+    const latest = page.getByTestId("vault-export-row").first();
+    await expect(latest).toBeVisible({ timeout: 30_000 });
+    await expect(latest).toContainText("E2E Vault Owner");
+    await expect(latest).toContainText(seed.clientName);
+
+    await page.goto(vault());
+    const menu = await menuOf(name);
+    await menu.getByRole("menuitem", { name: "Delete" }).click();
     await row.getByRole("button", { name: "Yes" }).click();
     await expect(rowOf(name)).toHaveCount(0);
   });

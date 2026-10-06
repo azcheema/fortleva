@@ -964,7 +964,7 @@
       "title": "Export",
       "commitment": "Your data is yours: everything this workspace holds can be exported at any time as an open, documented archive — that is our continuity commitment.",
       "newExport": "New export",
-      "contents": "One JSONL file per table (clients, projects, milestones, members, roles, documents, audit log …), a schema-versioned manifest.json, and file contents when they fit within 200 MB — otherwise pointers to each file.",
+      "contents": "One JSONL file per table (clients, projects, milestones, members, roles, documents, audit log …), a schema-versioned manifest.json, and file contents when they fit within 200 MB — otherwise pointers to each file. Passwords kept in the Vault are not in it — export those from the Vault.",
       "generate": "Generate export",
       "generating": "Generating…",
       "generated": "Export {name} is ready below.",
@@ -1384,7 +1384,9 @@
     "LOGIN_HAS_NO_CLIENT": "This login belongs to your agency, so there is no client to show it to or seal it for.",
     "LOGIN_SEALED": "This login is sealed for the client, so it cannot be shared or shown to them. An owner can unseal it.",
     "SEALED_REQUEST_SETTLED": "This request can no longer be answered — it has opened, ended or been answered already. Reload to see where it stands.",
-    "SHARE_LINK_CLOSED": "That link has already been opened or revoked."
+    "SHARE_LINK_CLOSED": "That link has already been opened or revoked.",
+    "NOTHING_TO_EXPORT": "There are no logins to export there.",
+    "EXPORT_TOO_LARGE": "That is more logins than one file can hold. Export one client at a time."
   },
   "assignments": {
     "title": "Team",
@@ -3760,7 +3762,7 @@
       "addNote": "Add a note",
       "openUrl": "Open the web address of {name}",
       "needsRotation": "Change soon",
-      "needsRotationHint": "Someone who had access has left. Change it where it is used, then enter all its new values here in one go.",
+      "needsRotationHint": "Someone who had access has left. Change it where it is used, then enter all its new values here in one go — and if they exported its authenticator key, set up two-factor again and enter the new key too.",
       "delete": "Delete",
       "deleteConfirm": "Delete {name}?",
       "deleteSealedConfirm": "Delete {name}? It is sealed for the client, and deleting it ends the seal too.",
@@ -3968,6 +3970,59 @@
         "opening": "— confirmed; it opens on {date} unless someone denies it.",
         "open": "— open until {date}."
       }
+    },
+    "export": {
+      "open": "Export…",
+      "title": "Export logins",
+      "description": "A file with the logins and their passwords, for a password manager to import.",
+      "pointPlain": "The passwords are in plain text: anyone with the file can sign in to everything in it. Import it into your password manager, then delete it. Don't open it in a spreadsheet.",
+      "pointMail": "Everyone who can export logins is emailed that you did.",
+      "pointLeaving": "Each login in the file is logged against you. If you leave within 90 days, they are all marked “Change soon” — and a login with an authenticator key keeps the mark until the key is replaced too.",
+      "which": "What to export",
+      "code": "Your authenticator code",
+      "codeHint": "Exporting always asks for it.",
+      "enterCode": "Enter the code from your authenticator app.",
+      "submit": "Export",
+      "submitting": "Exporting…",
+      "done": "{count, plural, one {# login exported} other {# logins exported}}. Import the file, then delete it.",
+      "history": "Earlier exports",
+      "file": {
+        "product": "Fortleva",
+        "project": "Project",
+        "username": "Username",
+        "url": "Web address",
+        "totp": "Authenticator",
+        "tags": "Tags",
+        "expires": "Expires",
+        "rotateEvery": "Change every {days, plural, one {# day} other {# days}}",
+        "changeSoon": "Change soon",
+        "sealed": "Sealed for the client",
+        "archived": "Archived",
+        "lastChanged": "Last changed",
+        "shownToClient": "Shown to the client"
+      },
+      "formulaWarning": "Some values in this file start with a character a spreadsheet runs as a formula. Only import it into a password manager — never open it in a spreadsheet.",
+      "tooLongWarning": "Too long for some password managers to import — copy by hand: {names}"
+    },
+    "exports": {
+      "title": "Exports",
+      "description": "Every export of logins in the last {days} days, newest first. Each one was emailed to everyone who can export logins.",
+      "empty": "No exports",
+      "emptyDescription": "When someone exports logins, it is listed here.",
+      "columns": {
+        "when": "When",
+        "who": "Who",
+        "what": "What",
+        "count": "Logins"
+      },
+      "scopeAll": "Everything they could see",
+      "scopeAgency": "Our own",
+      "scopeGoneClient": "A client since deleted",
+      "someoneGone": "Someone who has left",
+      "back": "Back to the vault",
+      "scopedTitle": "Only for people who see every client",
+      "scopedDescription": "The list of exports shows how many logins the agency keeps and which clients were exported, so only people who see every client can open it. Ask an owner who exported, and when.",
+      "limited": "Showing the latest {limit}."
     }
   },
   "assets": {
