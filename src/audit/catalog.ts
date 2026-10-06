@@ -284,7 +284,9 @@ export const AUDIT_EVENTS = {
   // Phase 3V slice 90 — share links. Target: the LINK (CredentialShareLink),
   // so one link's whole life reads as one thread; metadata names the
   // credential and the field — never the token, the code, the address or a
-  // value. `shared` and `share_revoked` are a member's acts; the other three
+  // value. `shared` and `share_revoked` are a member's acts (a revoke caused
+  // by a seal carries `cause: "sealed"`, by a member's removal `cause:
+  // "member_removed"` with the departed `memberId` — C62 (a)); the other three
   // are the share page's, written by the SYSTEM principal with the visitor's
   // ip and user agent from the request: a code mailed, a wrong code (with
   // the attempt's number), and the one view.

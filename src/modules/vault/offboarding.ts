@@ -9,8 +9,10 @@ import { holdRevealsOf } from "./budget";
  * login whose secret they could know — from what they did in the last 90
  * days — as needing a change (`needsRotation`, the vault's "Change
  * soon"), one `credential.rotation_flagged` per login, in the removal's own
- * transaction. The agency changes the secret at the source and saves the
- * new value here, which clears the flag (`replaceCredentialSecret`).
+ * transaction — and cancels the share links they made that are still
+ * open (`revokeShareLinksMadeBy`, C62 (a)). The agency changes the secret
+ * at the source and saves the new values here; the flag goes once no old
+ * secret value is left (`replaceCredentialSecret`, C62 (b)).
  *
  * WHAT COUNTS AS KNOWING IT, read from the member's OWN audit rows — the
  * reveal budget's authority (`budget.ts`), so there is no second record
@@ -88,4 +90,58 @@ export async function flagLoginsKnownBy(tx: TenantDb, tenantId: string, memberId
     })),
   );
   return flagged.length;
+}
+
+/**
+ * Removing a member CANCELS every share link they made that is still open
+ * (founder decision C62 (a), 2026-10-06): not opened, not revoked, still in
+ * date — revoked as the REMOVER (the link guard's "a member revokes as
+ * themselves"), one `credential.share_revoked` each with `cause:
+ * "member_removed"`, as a seal revokes a login's links. A link meant for
+ * a client or contractor is sent again by a colleague.
+ *
+ * Call it AFTER `flagLoginsKnownBy`, in the same transaction: the member's
+ * key is then held, so no link of theirs can be born unseen, and the order
+ * is login rows before link rows — the order a seal keeps (each link's
+ * login is locked first, below); opening a link locks only the link.
+ * Stamped by the database's clock, read now.
+ */
+export async function revokeShareLinksMadeBy(
+  tx: TenantDb,
+  tenantId: string,
+  memberId: string,
+  /** The remover — the transaction's own member principal, as the guard requires. */
+  byMemberId: string,
+): Promise<number> {
+  const rows = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
+  const now = rows[0]?.now;
+  if (!now) throw new Error("vault: no clock");
+  // The links' LOGINS first, in id order — a seal locks its login and then
+  // its links, and a login already marked was never locked by the flags
+  // above (slice 94b's review: a removal and a seal of one login could
+  // otherwise take two of its links in opposite orders and deadlock).
+  await tx.$queryRaw`
+    SELECT c.id FROM credential_item c
+    WHERE c.tenant_id = ${tenantId}
+      AND c.id IN (
+        SELECT l.credential_id FROM credential_share_link l
+        WHERE l.tenant_id = ${tenantId} AND l.created_by_member_id = ${memberId}
+          AND l.viewed_at IS NULL AND l.revoked_at IS NULL AND l.expires_at > ${now})
+    ORDER BY c.id
+    FOR SHARE`;
+  const revoked = await tx.credentialShareLink.updateManyAndReturn({
+    where: { tenantId, createdByMemberId: memberId, viewedAt: null, revokedAt: null, expiresAt: { gt: now } },
+    data: { revokedAt: now, revokedByMemberId: byMemberId },
+    select: { id: true, credentialId: true },
+  });
+  await recordMany(
+    tx,
+    revoked.map((link) => ({
+      action: "credential.share_revoked" as const,
+      targetType: "CredentialShareLink",
+      targetId: link.id,
+      metadata: { credentialId: link.credentialId, memberId, cause: "member_removed" },
+    })),
+  );
+  return revoked.length;
 }

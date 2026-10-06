@@ -16,6 +16,7 @@ import {
   listAllCredentials,
   replaceCredentialSecret,
   revealCredentialField,
+  revokeShareLink,
   updateCredential,
   vaultIndex,
 } from "./index";
@@ -126,6 +127,9 @@ afterAll(async () => {
 
 describe("removing a member flags what they could know", () => {
   const L: Record<string, string> = {};
+  let adminLink: string;
+  let adminRevokedLink: string;
+  let colleagueLink: string;
 
   beforeAll(async () => {
     for (const name of ["revealed", "copied", "shared", "rotatedBy", "seedSet", "seedRemoved", "renamed", "codeOnly", "colleague", "old", "recent", "already", "binned"]) {
@@ -134,12 +138,24 @@ describe("removing a member flags what they could know", () => {
     // What the leaving admin did, through the real services.
     await revealCredentialField(admin(), L.revealed!, "password");
     await copyCredentialField(admin(), L.copied!, "password");
-    await createShareLink(admin(), L.shared!, {
-      field: "password",
-      recipientEmail: "someone@test.invalid",
-      expiresInHours: 1,
-      includeUsername: false,
-    });
+    adminLink = (
+      await createShareLink(admin(), L.shared!, {
+        field: "password",
+        recipientEmail: "someone@test.invalid",
+        expiresInHours: 1,
+        includeUsername: false,
+      })
+    ).id;
+    // A link of theirs they revoked themselves: the removal leaves it as it is.
+    adminRevokedLink = (
+      await createShareLink(admin(), L.shared!, {
+        field: "password",
+        recipientEmail: "someone@test.invalid",
+        expiresInHours: 1,
+        includeUsername: false,
+      })
+    ).id;
+    await revokeShareLink(admin(), adminRevokedLink);
     await replaceCredentialSecret(admin(), L.rotatedBy!, { secret: { password: "typed-by-the-admin" } });
     // A seed typed in (secretChanged false, a seed left) counts; one removed does not.
     await replaceCredentialSecret(admin(), L.seedSet!, { totp: TOTP_SEED });
@@ -147,6 +163,14 @@ describe("removing a member flags what they could know", () => {
     await updateCredential(admin(), L.renamed!, { name: "renamed again" });
     await generateCredentialTotp(admin(), L.codeOnly!);
     await revealCredentialField(manager(), L.colleague!, "password");
+    colleagueLink = (
+      await createShareLink(manager(), L.colleague!, {
+        field: "password",
+        recipientEmail: "someone-else@test.invalid",
+        expiresInHours: 1,
+        includeUsername: false,
+      })
+    ).id;
     await plantReveal(f.seats.admin.memberId, L.old!, daysAgo(91));
     await plantReveal(f.seats.admin.memberId, L.recent!, daysAgo(89));
     await f.platform.credentialItem.update({ where: { id: L.already! }, data: { needsRotation: true } });
@@ -158,6 +182,7 @@ describe("removing a member flags what they could know", () => {
   it("flags each login they revealed, copied, shared or typed in the last 90 days — and returns how many", async () => {
     expect(await suspendMember({ tenantId: f.tenantId, actor: owner().actor, memberId: f.seats.admin.memberId })).toEqual({
       flagged: 7,
+      revoked: 1,
     });
     for (const name of ["revealed", "copied", "shared", "rotatedBy", "seedSet", "recent", "binned"]) {
       expect(await flagOf(L[name]!), name).toBe(true);
@@ -187,15 +212,34 @@ describe("removing a member flags what they could know", () => {
     expect(await flagOf(L.already!)).toBe(true);
   });
 
+  it("cancels every open share link the member made, as the remover — and leaves a colleague's (C62 (a))", async () => {
+    const theirs = await f.platform.credentialShareLink.findUniqueOrThrow({ where: { id: adminLink } });
+    expect(theirs.revokedAt).not.toBeNull();
+    expect(theirs.revokedByMemberId).toBe(f.seats.owner.memberId);
+    const rows = (await f.audits("credential.share_revoked")).filter((a) => a.targetId === adminLink);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actorType: "MEMBER", actorId: f.seats.owner.memberId, targetType: "CredentialShareLink" });
+    // Exactly these keys: never the token, the code, the address or a value.
+    expect(rows[0]!.metadata).toEqual({ credentialId: L.shared, memberId: f.seats.admin.memberId, cause: "member_removed" });
+    const colleagues = await f.platform.credentialShareLink.findUniqueOrThrow({ where: { id: colleagueLink } });
+    expect(colleagues.revokedAt).toBeNull();
+    // One they had revoked themselves stays theirs, with its one row.
+    const own = await f.platform.credentialShareLink.findUniqueOrThrow({ where: { id: adminRevokedLink } });
+    expect(own.revokedByMemberId).toBe(f.seats.admin.memberId);
+    expect((await f.audits("credential.share_revoked")).filter((a) => a.targetId === adminRevokedLink)).toHaveLength(1);
+  });
+
   it("a second removal flags nothing again; reactivating keeps the flags", async () => {
     const before = (await flaggedRows()).length;
     expect(await suspendMember({ tenantId: f.tenantId, actor: owner().actor, memberId: f.seats.admin.memberId })).toEqual({
       flagged: 0,
+      revoked: 0,
     });
     await reactivateMember({ tenantId: f.tenantId, actor: owner().actor, memberId: f.seats.admin.memberId });
     expect(await flagOf(L.revealed!)).toBe(true);
     expect(await suspendMember({ tenantId: f.tenantId, actor: owner().actor, memberId: f.seats.admin.memberId })).toEqual({
       flagged: 0,
+      revoked: 0,
     });
     expect(await flaggedRows()).toHaveLength(before);
   });
@@ -218,8 +262,42 @@ describe("removing a member flags what they could know", () => {
     ).id;
     expect(await suspendMember({ tenantId: f.tenantId, actor: owner().actor, memberId: f.seats.employee.memberId })).toEqual({
       flagged: 1,
+      revoked: 0,
     });
     expect(await flagOf(theirs)).toBe(true);
+  });
+});
+
+describe("the mark goes only when every secret part is new (C62 (b))", () => {
+  it("one field of two changed keeps it — a rotation for the schedule all the same; both at once clears it", async () => {
+    const id = (
+      await createCredential(owner(), { clientId: acme, type: "API_KEY", name: "two parts", secret: { apiKey: "pk-1", apiSecret: "sk-1" } })
+    ).id;
+    await f.platform.credentialItem.update({ where: { id }, data: { needsRotation: true } });
+    const stamped = (await f.platform.credentialItem.findUniqueOrThrow({ where: { id } })).lastRotatedAt!;
+    const half = await replaceCredentialSecret(owner(), id, { secret: { apiSecret: "sk-2" } });
+    expect(half.needsRotation).toBe(true);
+    expect(half.lastRotatedAt!.getTime()).toBeGreaterThan(stamped.getTime());
+    expect((await replaceCredentialSecret(owner(), id, { secret: { apiKey: "pk-2", apiSecret: "sk-3" } })).needsRotation).toBe(false);
+  });
+
+  it("on a login with only a seed, an added password keeps it (the old seed is left); a new seed clears it", async () => {
+    const seedOnly = async (name: string) => {
+      const id = (await createCredential(owner(), { clientId: acme, type: "LOGIN", name, totp: TOTP_SEED })).id;
+      await f.platform.credentialItem.update({ where: { id }, data: { needsRotation: true } });
+      return id;
+    };
+    const added = await seedOnly("seed only, password added");
+    expect((await replaceCredentialSecret(owner(), added, { secret: { password: "added" } })).needsRotation).toBe(true);
+    const reseeded = await seedOnly("seed only, seed replaced");
+    expect((await replaceCredentialSecret(owner(), reseeded, { totp: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" })).needsRotation).toBe(false);
+  });
+
+  it("on a login with a password and a seed, a new seed alone keeps it; a new password clears it", async () => {
+    const id = await login("password and seed", { totp: TOTP_SEED });
+    await f.platform.credentialItem.update({ where: { id }, data: { needsRotation: true } });
+    expect((await replaceCredentialSecret(owner(), id, { totp: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" })).needsRotation).toBe(true);
+    expect((await replaceCredentialSecret(owner(), id, { secret: { password: "brand-new" } })).needsRotation).toBe(false);
   });
 });
 

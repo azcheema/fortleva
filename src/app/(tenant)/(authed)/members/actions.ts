@@ -123,10 +123,12 @@ export async function setMemberStatusAction(
   }
   return runAdmin(async () => {
     if (op === "suspend") {
-      const { flagged } = await suspendMember({ tenantId: membership.tenantId, actor, memberId: memberId.data });
+      const { flagged, revoked } = await suspendMember({ tenantId: membership.tenantId, actor, memberId: memberId.data });
       // No number: it would count logins across the whole workspace, some
       // past a scoped remover's reach. `/vault` gives each reader their own
-      // count (slice 94's reviews).
+      // count (slice 94's reviews). Cancelled links are SAID (C62 (a)): a
+      // link meant for a client is sent again by a colleague, who must know.
+      if (revoked > 0) return t("status.suspendedLinks");
       return flagged === 0 ? t("status.suspended") : t("status.suspendedFlagged");
     }
     await reactivateMember({ tenantId: membership.tenantId, actor, memberId: memberId.data });

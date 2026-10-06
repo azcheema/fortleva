@@ -780,6 +780,7 @@
       "cannotSuspendSelf": "Du kan inte stänga av dig själv",
       "suspended": "Medlemmen har stängts av",
       "suspendedFlagged": "Medlemmen har stängts av. Inloggningarna som medlemmen kunde se är nu märkta ”Byt snart” i valvet.",
+      "suspendedLinks": "Medlemmen har stängts av. Inloggningarna som medlemmen kunde se är nu märkta ”Byt snart” i valvet, och delningslänkarna som medlemmen skapade har avbrutits.",
       "reactivated": "Medlemmen har återaktiverats",
       "suspendConfirm": "Stäng av {name}?"
     },
@@ -3759,7 +3760,7 @@
       "addNote": "Lägg till en anteckning",
       "openUrl": "Öppna webbadressen för {name}",
       "needsRotation": "Byt snart",
-      "needsRotationHint": "Någon som hade tillgång har slutat. Byt den där den används och spara sedan det nya värdet här.",
+      "needsRotationHint": "Någon som hade tillgång har slutat. Byt den där den används och fyll sedan i alla nya värden här på en gång.",
       "delete": "Ta bort",
       "deleteConfirm": "Ta bort {name}?",
       "deleteSealedConfirm": "Ta bort {name}? Den är förseglad för kunden, och förseglingen upphör också.",

@@ -484,8 +484,9 @@ export async function updateCredential(
  * changed is kept as a version, re-encrypted under the version row's own
  * AAD, and the newest ten are kept. Changing a secret is not revealing
  * one: nothing is returned, and the editor never sees the old value.
- * Only a REPLACED value is a rotation (it clears `needsRotation`) — a
- * field's or the seed's; an ADDED or REMOVED field or seed is not; a patch
+ * Only a REPLACED value is a rotation (it stamps `lastRotatedAt`) — a
+ * field's or the seed's; an ADDED or REMOVED field or seed is not. It clears
+ * `needsRotation` only when no old value survives (C62 (b), below); a patch
  * that changes nothing — the same values or seed, blanks, a `null` seed
  * where there is none — writes and records nothing.
  */
@@ -553,6 +554,9 @@ export async function replaceCredentialSecret(
           // was not there, or removing one, rotates nothing — fix-pass review).
           let changedFields: string[] = [];
           let rotated = false;
+          // Whether a field value the login carried before survives into
+          // the changed secret (C62 (b), below).
+          let oldValueSurvives = false;
           if (Object.keys(patch).length > 0) {
             current = await readSecret(tx, ctx.tenantId, id);
             if (!current) throw new Error("vault: a live credential has no secret row");
@@ -564,6 +568,7 @@ export async function replaceCredentialSecret(
             }
             changedFields = SECRET_FIELDS[anchor.type].filter((k) => before[k] !== merged[k]);
             rotated = changedFields.some((k) => k in before && k in merged);
+            oldValueSurvives = Object.keys(before).some((k) => k in merged && merged[k] === before[k]);
             if (changedFields.length > 0) next = merged;
           }
           // A `null` seed on a credential that has none removes nothing.
@@ -572,6 +577,16 @@ export async function replaceCredentialSecret(
           const fieldKeys = next === null ? item.secretFieldKeys : SECRET_FIELDS[anchor.type].filter((k) => k in next!);
           const willHaveTotp = seedChange ? totp !== null : item.hasTotp;
           if (fieldKeys.length === 0 && !willHaveTotp) fail("INVALID_INPUT", "a credential needs a secret or a TOTP seed");
+          // "Change soon" goes only when NO old secret value is left (founder
+          // decision C62 (b), 2026-10-06): a field changed while another
+          // keeps the value a departed member saw is still a rotation (the
+          // schedule's), but the mark stays. The parts are the login's
+          // FIELDS; the seed is not a part anyone sees — except on a login
+          // that had no fields, where it is the only part, and must itself
+          // be replaced or removed (slice 94b's review: adding a password to
+          // a seed-only login left the old seed and cleared the mark).
+          const hadFields = item.secretFieldKeys.length > 0;
+          const clearsMark = hadFields ? next !== null && !oldValueSurvives : seedChange;
           // The same values again are not a change: nothing written, nothing recorded.
           if (next === null && !seedChange) return currentView();
 
@@ -600,8 +615,9 @@ export async function replaceCredentialSecret(
               secretFieldKeys: [...fieldKeys],
               hasTotp: willHaveTotp,
               // Only a REPLACED value is a rotation; a new seed, an added
-              // field or a removed one is not.
-              ...(isRotation ? { lastRotatedAt: new Date(), needsRotation: false } : {}),
+              // field or a removed one is not. The mark is `clearsMark`'s.
+              ...(isRotation ? { lastRotatedAt: new Date() } : {}),
+              ...(clearsMark ? { needsRotation: false } : {}),
               updatedByMemberId: ctx.actor.memberId,
             },
             select: viewSelect,

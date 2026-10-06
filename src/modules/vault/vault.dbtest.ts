@@ -620,7 +620,9 @@ describe("the secret's history — replaced, kept as a version under its own AAD
     const OTHER_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
     const stampedBefore = (await getCredential(owner(), id)).lastRotatedAt;
     const rotatedView = await replaceCredentialSecret(owner(), id, { totp: OTHER_SEED });
-    expect(rotatedView).toMatchObject({ hasTotp: true, needsRotation: false });
+    // A rotation for the schedule — but the password, an old value, survives,
+    // so "Change soon" stays (founder decision C62 (b)).
+    expect(rotatedView).toMatchObject({ hasTotp: true, needsRotation: true });
     expect(rotatedView.lastRotatedAt!.getTime()).toBeGreaterThan(stampedBefore!.getTime());
     // A whitespace-only seed is a blank input: nothing changes.
     expect((await replaceCredentialSecret(owner(), id, { totp: "   " })).hasTotp).toBe(true);

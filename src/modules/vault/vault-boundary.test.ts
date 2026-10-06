@@ -220,16 +220,17 @@ describe("vault ciphertext boundary", () => {
   });
 
   /**
-   * THE OFFBOARDING FLAGS (slice 94) take the caller's transaction and gate
+   * THE OFFBOARDING FLAGS (slice 94) and the cancelling of the departing
+   * member's share links (C62 (a)) take the caller's transaction and gate
    * nothing themselves: the gate is the removal's `member:remove`, inside
    * that transaction, with the tenant row locked. Called from anywhere else
    * they would write flags and audit rows in a member's name for a removal
    * that never happened — so the name appears only where it is defined,
    * re-exported and called by the suspension.
    */
-  it("only the member suspension flags the logins a member could know", () => {
+  it("only the member suspension flags the logins a member could know and cancels their links", () => {
     const allowed = ["modules/vault/offboarding.ts", "modules/vault/index.ts", "members/admin.ts"];
-    const callers = files.filter((f) => /\bflagLoginsKnownBy\b/.test(readFileSync(f, "utf8"))).map(rel);
+    const callers = files.filter((f) => /\b(flagLoginsKnownBy|revokeShareLinksMadeBy)\b/.test(readFileSync(f, "utf8"))).map(rel);
     expect(callers.sort()).toEqual(allowed.sort());
   });
 

@@ -780,6 +780,7 @@
       "cannotSuspendSelf": "You cannot suspend yourself",
       "suspended": "Member suspended",
       "suspendedFlagged": "Member suspended. The logins they could see are now marked “Change soon” in the Vault.",
+      "suspendedLinks": "Member suspended. The logins they could see are now marked “Change soon” in the Vault, and the share links they made are cancelled.",
       "reactivated": "Member reactivated",
       "suspendConfirm": "Suspend {name}?"
     },
@@ -3759,7 +3760,7 @@
       "addNote": "Add a note",
       "openUrl": "Open the web address of {name}",
       "needsRotation": "Change soon",
-      "needsRotationHint": "Someone who had access has left. Change it where it is used, then save the new value here.",
+      "needsRotationHint": "Someone who had access has left. Change it where it is used, then enter all its new values here in one go.",
       "delete": "Delete",
       "deleteConfirm": "Delete {name}?",
       "deleteSealedConfirm": "Delete {name}? It is sealed for the client, and deleting it ends the seal too.",
