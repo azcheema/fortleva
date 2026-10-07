@@ -66,7 +66,14 @@ export type ContactBudget =
   // (`src/modules/vault/submission-portal-writes.ts`) — taken first in its
   // system transaction, BEFORE the contact's row lock and the new login's
   // rows, and nothing takes those and then this key.
-  | "portal_credential_submit";
+  | "portal_credential_submit"
+  // Phase 3V slice 99: the door's ALARM (`src/modules/vault/door-alarm.ts`)
+  // — taken FIRST in a system transaction of its own, opened only after the
+  // refusal it follows has committed; after it that transaction only reads
+  // and INSERTS (its audit row, the inbox rows, the mails) and takes no
+  // other key, so it waits on nobody but another alarm check of the same
+  // contact.
+  | "portal_logins_alarm";
 
 export async function lockContactBudget(tx: TenantDb, budget: ContactBudget, contactId: string): Promise<Date> {
   // The CTE is what makes this ONE statement: the lock is taken while

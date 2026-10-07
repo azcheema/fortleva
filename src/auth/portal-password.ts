@@ -16,17 +16,26 @@ import { portalAuth } from "./portal";
  * `limited`, not a wrong password. The per-CONTACT count is the caller's
  * (the vault's portal broker, which counts the check before it is made).
  *
- * Any other failure — a wrong password, an ended session, the library's
- * own refusal — is `wrong`: the door stays shut, and the page says one
- * thing for all of them.
+ * `wrong` is ONLY the library's own "invalid password" answer (or nothing
+ * typed). Since slice 99 a wrong password is something people are TOLD
+ * about — five in a day raise the door's alarm, to the owners and the
+ * contact (founder decision C67 (b)) — so a failure that says nothing about
+ * the password (a database hiccup, a session ended mid-request) is
+ * `unavailable`: the broker records no refusal for it and answers "try
+ * again" (the code and the security reviews' low). The check was still
+ * counted before it was made, so no bound is loosened.
  */
-export async function checkContactPassword(headers: Headers, password: string): Promise<"ok" | "wrong" | "limited"> {
+export async function checkContactPassword(
+  headers: Headers,
+  password: string,
+): Promise<"ok" | "wrong" | "limited" | "unavailable"> {
   if (typeof password !== "string" || password.length === 0 || password.length > 1024) return "wrong";
   try {
     await portalAuth.api.verifyPassword({ body: { password }, headers });
     return "ok";
   } catch (error) {
     if (error instanceof APIError && error.status === "TOO_MANY_REQUESTS") return "limited";
-    return "wrong";
+    if (error instanceof APIError && error.body?.code === "INVALID_PASSWORD") return "wrong";
+    return "unavailable";
   }
 }

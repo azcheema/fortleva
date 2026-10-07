@@ -2717,6 +2717,21 @@ model CredentialItem {
   submittedName     String?        @map("submitted_name")
   archivedAt        DateTime?      @map("archived_at") @db.Timestamptz(6)
   deletedAt         DateTime?      @map("deleted_at") @db.Timestamptz(6)
+  /// Erased by the retention job (slice 99, founder decision C67 (a), (f)):
+  /// a login binned 30 days whose secret and versions are gone but whose ROW
+  /// is kept — a login a contact SENT, for good, as the client's record of it
+  /// (its client, the sender, `submittedName` as its name, `createdAt`); a
+  /// login nobody sent, under its own name, only while one of its share
+  /// links' records is within its 12 months. Everything else emptied; never
+  /// changes again (migrations 20261007220000 and 20261007230000: the CHECK
+  /// and the guards). A binned login nobody sent with no such link is deleted
+  /// outright instead. Two hand-written PARTIAL indexes Prisma cannot model —
+  /// `credential_item_bin_idx` on (tenant_id, deleted_at) WHERE deleted_at IS
+  /// NOT NULL AND purged_at IS NULL, and `credential_item_kept_for_links_idx`
+  /// on (tenant_id, purged_at) WHERE purged_at IS NOT NULL AND
+  /// submitted_by_contact_id IS NULL (the job's picks): a generated
+  /// `migrate diff` proposes dropping them; keep them.
+  purgedAt          DateTime?      @map("purged_at") @db.Timestamptz(6)
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -2823,7 +2838,7 @@ model CredentialShareLink {
   item   CredentialItem @relation(fields: [tenantId, credentialId], references: [tenantId, id], onDelete: Cascade)
 
   @@index([tenantId, credentialId, createdAt]) // a login's links, newest first
-  @@index([expiresAt]) // the retention sweep (later)
+  @@index([expiresAt]) // the retention sweep (slice 99, `src/modules/vault/retention.ts`)
   @@map("credential_share_link")
 }
 

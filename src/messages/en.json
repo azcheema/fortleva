@@ -276,7 +276,8 @@
       "agreementEnding": "An agreement is ending",
       "loginsExpiring": "Logins are expiring",
       "loginSubmitted": "A client sent a login",
-      "loginAskDeclined": "A client can't send a login you asked for"
+      "loginAskDeclined": "A client can't send a login you asked for",
+      "loginsAlarm": "Repeated failed attempts to open a client's logins"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",

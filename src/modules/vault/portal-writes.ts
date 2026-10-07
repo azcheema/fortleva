@@ -13,6 +13,7 @@ import { allow, allowStrict } from "@/ratelimit";
 import { doorClock, doorOpenUntil, doorWaitingForCode, lockPendingDoor } from "./client-door";
 import { boundedVaultWrite } from "./ctx";
 import { contactStanding } from "./contact-standing";
+import { raiseDoorAlarm } from "./door-alarm";
 import { sealedNeedsDoor } from "./sealed-door";
 import { readSecret } from "./secret-store";
 import {
@@ -101,6 +102,11 @@ import {
  * A REFUSAL THAT SPENT SOMETHING COMMITS: a wrong code, a wrong password
  * and a spent budget are returned out of their transaction, never thrown
  * inside it, so their count and their audit row land (`reveal.ts`'s rule).
+ * AFTER a wrong password or a wrong code has committed, the door's ALARM
+ * is checked in a transaction of its own (slice 99, C67 (b)–(e);
+ * `door-alarm.ts`): five wrong passwords in a day, or five wrong codes in a
+ * day, tell the owners and the contact — never inside the refusal's
+ * transaction, whose count must not wait on anything new.
  * Nothing here logs, and no answer carries a value except one look's.
  */
 
@@ -126,7 +132,12 @@ export type LoginsCodeMail = (args: {
 }) => { readonly subject: string; readonly text: string };
 
 /** The password check, made by the caller against the contact's own session (`src/auth/portal-password.ts`). */
-export type PasswordCheck = () => Promise<"ok" | "wrong" | "limited">;
+/**
+ * `unavailable` (slice 99): the check failed for a reason that says nothing
+ * about the password — it records no refusal and raises no alarm, and the
+ * door answers `busy` ("try again").
+ */
+export type PasswordCheck = () => Promise<"ok" | "wrong" | "limited" | "unavailable">;
 
 export type DoorStartOutcome =
   | { readonly ok: true }
@@ -277,6 +288,7 @@ export async function startPortalLoginsDoor(
 
   const verdict = await checkPassword();
   if (verdict === "limited") return { ok: false, reason: "limited" };
+  if (verdict === "unavailable") return { ok: false, reason: "busy" };
   if (verdict !== "ok") {
     await withTenant(principal.tenantId, { type: "system" }, (tx) =>
       record(tx, {
@@ -287,6 +299,9 @@ export async function startPortalLoginsDoor(
         metadata: {},
       }),
     );
+    // The refusal is committed; whether it calls for the alarm is decided
+    // from what is stored, in a transaction of its own (`door-alarm.ts`).
+    await raiseDoorAlarm(principal);
     return { ok: false, reason: "wrong_password" };
   }
 
@@ -470,12 +485,18 @@ export async function openPortalLoginsDoor(ctx: PortalLoginsCtx, rawCode: unknow
   if (code === null) return { ok: false, reason: "malformed" };
   await withPortalRead(principal, (tx) => authorizePortal(tx, principal, "portal.credential.view"));
 
+  // Set when THIS attempt counted a wrong code (reset per attempt: the
+  // bounded write may run the callback again). Internal only — the answer
+  // keeps `start_again` as ambiguous as it is meant to be.
+  let refused = false;
+  let outcome: DoorOpenOutcome;
   try {
-    return await boundedVaultWrite((opts) =>
+    outcome = await boundedVaultWrite((opts) =>
       withTenant(
         principal.tenantId,
         { type: "system" },
         async (tx): Promise<DoorOpenOutcome> => {
+          refused = false;
           // Nothing opens onto nothing: a door left waiting when client logins
           // were switched off (and nothing sealed needs it) stays shut, and
           // its checks are not spent.
@@ -506,6 +527,7 @@ export async function openPortalLoginsDoor(ctx: PortalLoginsCtx, rawCode: unknow
               brokeredForContactId: principal.contactId,
               metadata: { attempt },
             });
+            refused = true;
             const attemptsLeft = SHARE_MAX_CODE_ATTEMPTS - attempt;
             return attemptsLeft > 0 ? { ok: false, reason: "wrong_code", attemptsLeft } : { ok: false, reason: "start_again" };
           }
@@ -534,6 +556,12 @@ export async function openPortalLoginsDoor(ctx: PortalLoginsCtx, rawCode: unknow
     if (isBusy(e)) return { ok: false, reason: "busy" };
     throw e;
   }
+  // A wrong code is committed; whether it calls for the alarm — the day's
+  // fifth wrong code, or an earlier refusal's check could not run — is
+  // decided from what is stored, in a transaction of its own that never
+  // fails this answer (`door-alarm.ts`).
+  if (refused) await raiseDoorAlarm(principal);
+  return outcome;
 }
 
 /**

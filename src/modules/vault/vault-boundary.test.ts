@@ -32,7 +32,9 @@ import { GUARDED_FACTOR_PATHS, factorMutationVerdict, sessionVerifyVerdict } fro
  *
  * And the module itself never logs (the "log-scrub" half that a static
  * scan can carry; `vault.dbtest.ts` spies on the console through a whole
- * lifecycle for the other half): no `console.` anywhere in it.
+ * lifecycle for the other half): no `console.` anywhere in it — but ONE
+ * admitted line (slice 99): the door's alarm, when its own check fails,
+ * logs the error's name and code, pinned by its exact text below.
  */
 
 const SRC = join(process.cwd(), "src");
@@ -186,6 +188,12 @@ describe("vault ciphertext boundary", () => {
     // door's verdict as open / locked / closed, which opens nothing — and
     // names logins for search hits only after entering the door itself,
     // by the anchor rule on the live row: names and places, never a secret.
+    // The clean-up (slice 99, C67): `retention` is the retention job's
+    // per-tenant body — SYSTEM, ungated, so its callers are pinned below; it
+    // deletes and erases, and reads no secret. `door-alarm-subjects` names the
+    // door's alarm in the reader's inbox (a person and their client, the
+    // client card's rule under `client:view`) — never a login. The alarm
+    // itself (`door-alarm`) is NOT on the index: only the two brokers call it.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -198,6 +206,7 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/assets",
       "modules/vault/ctx",
       "modules/vault/door",
+      "modules/vault/door-alarm-subjects",
       "modules/vault/expirations",
       "modules/vault/export",
       "modules/vault/export-csv",
@@ -209,6 +218,7 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/reminder-bands",
       "modules/vault/reminder-subjects",
       "modules/vault/reminders",
+      "modules/vault/retention",
       "modules/vault/reveal",
       "modules/vault/seal",
       "modules/vault/sealed-portal-writes",
@@ -243,6 +253,86 @@ describe("vault ciphertext boundary", () => {
     const allowed = ["modules/vault/reminders.ts", "modules/vault/index.ts", "jobs/expiration-reminders.ts"];
     const callers = files.filter((f) => /\bsendExpirationReminders\b/.test(readFileSync(f, "utf8"))).map(rel);
     expect(callers.sort()).toEqual(allowed.sort());
+  });
+
+  /**
+   * THE SECOND UNGATED EXPORT (slice 99, C67): `purgeVaultRetention(tenantId)`
+   * runs as SYSTEM for whatever tenant it is handed and DELETES — the bin's
+   * logins past their 30 days, share links' records past their 12 months. It
+   * is the retention job's per-tenant body; reached from a member-plane action
+   * with an id from a form it would erase another workspace's bin. And the
+   * store's `eraseSecretsOf` — the one deleter of secrets and versions that is
+   * not a cascade — is the retention module's alone.
+   */
+  it("only the retention job runs the vault's retention, and only retention erases a secret", () => {
+    const entry = files.filter((f) => /\bpurgeVaultRetention\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(entry.sort()).toEqual(["jobs/vault-retention.ts", "modules/vault/index.ts", "modules/vault/retention.ts"].sort());
+    const erasers = files.filter((f) => /\beraseSecretsOf\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(erasers.sort()).toEqual(["modules/vault/retention.ts", "modules/vault/secret-store.ts"].sort());
+  });
+
+  /**
+   * WHO DELETES A LOGIN OR A SHARE LINK'S RECORD (slice 99): the retention
+   * module, and nothing else in product code — a member's delete is the SOFT
+   * one (`deleted_at`), and a link otherwise only ever dies by its own
+   * columns. The database says the same (`credential_item_delete_guard`,
+   * `credential_share_link_delete_guard`, migration 20261007220000); this is
+   * the reviewable half — a new deleter fails here before it reaches a guard.
+   */
+  it("only the retention module deletes a login or a share link's record", () => {
+    const DELETES =
+      /\b(credentialItem|credentialShareLink)\s*\.\s*(delete|deleteMany)\s*\(|\bDELETE\s+FROM\s+"?(credential_item|credential_share_link)\b/i;
+    const deleters = files.filter((f) => DELETES.test(readFileSync(f, "utf8"))).map(rel);
+    expect(deleters).toEqual(["modules/vault/retention.ts"]);
+    // Controls: the pattern bites on each spelling, and not on a soft delete.
+    expect(DELETES.test("tx.credentialItem.deleteMany({ where })")).toBe(true);
+    expect(DELETES.test("tx.credentialShareLink.delete({ where })")).toBe(true);
+    expect(DELETES.test("DELETE FROM credential_share_link WHERE")).toBe(true);
+    expect(DELETES.test('DELETE FROM "credential_item" WHERE')).toBe(true);
+    expect(DELETES.test("deleteCredential(ctx, id)")).toBe(false);
+  });
+
+  /**
+   * EVERY BULK WRITER OF `credential_item`, BY NAME (slice 99, the design
+   * review's low). An erased login a client sent stays as a tombstone that
+   * the database refuses to change (`credential_item_purge_guard`) — so a
+   * bulk UPDATE whose WHERE can match one aborts the whole transaction it is
+   * in: the member's removal would have, before `flagLoginsKnownBy` learned
+   * `purgedAt: null`. Each writer here says why it cannot match a tombstone;
+   * a new one fails this test until it says so too.
+   */
+  it("every bulk update of the logins table is listed with the reason it never touches an erased login", () => {
+    const BULK = /\bcredentialItem\s*\.\s*(updateMany|updateManyAndReturn)\s*\(|\bUPDATE\s+"?credential_item\b/i;
+    const reasons: Record<string, string> = {
+      // `updateCredential`'s compare-and-set: `deletedAt: null` in the WHERE.
+      "modules/vault/items.ts": "live rows only (deletedAt: null)",
+      // The removal's flags: `purgedAt: null` in the WHERE.
+      "modules/vault/offboarding.ts": "never an erased login (purgedAt: null)",
+      // Unsealing: `deletedAt: null` and `sealedAt` set in the WHERE.
+      "modules/vault/seal.ts": "live rows only (deletedAt: null)",
+      // Show / hide: `deletedAt: null` in both WHEREs.
+      "modules/vault/visibility.ts": "live rows only (deletedAt: null)",
+      // Switching client logins off hides every SHOWN login: a tombstone is
+      // INTERNAL by `credential_item_purged_shape`.
+      "preferences/service.ts": "CLIENT_VISIBLE rows only; a tombstone is INTERNAL",
+      // The purge itself: `purged_at IS NULL` in the WHERE.
+      "modules/vault/retention.ts": "makes the tombstone (purged_at IS NULL)",
+    };
+    const writers = files.filter((f) => BULK.test(readFileSync(f, "utf8"))).map(rel);
+    expect(writers.sort()).toEqual(Object.keys(reasons).sort());
+  });
+
+  /**
+   * THE DOOR'S ALARM (slice 99, C67 (b)) runs as SYSTEM for the principal it
+   * is handed and mails the owners and the contact. Only the two portal
+   * brokers whose refusals it follows may call it — after their own
+   * transaction, with a principal the contact's own proof just established.
+   */
+  it("only the client's door and the sealed ask raise the door's alarm", () => {
+    const callers = files.filter((f) => /\braiseDoorAlarm\b/.test(readFileSync(f, "utf8"))).map(rel);
+    expect(callers.sort()).toEqual(
+      ["modules/vault/door-alarm.ts", "modules/vault/portal-writes.ts", "modules/vault/sealed-portal-writes.ts"].sort(),
+    );
   });
 
   /**
@@ -416,11 +506,25 @@ describe("vault ciphertext boundary", () => {
     expect(shapers.sort()).toEqual(["modules/vault/submission.ts", "modules/vault/submission-portal-writes.ts"].sort());
   });
 
-  it("the vault module never logs", () => {
+  it("the vault module never logs — but for the door's alarm's own failure, its name and code only", () => {
     const vault = files.filter((f) => rel(f).startsWith("modules/vault/"));
     expect(vault.length).toBeGreaterThan(5);
     const loggers = vault.filter((f) => /\bconsole\s*\./.test(readFileSync(f, "utf8"))).map(rel);
-    expect(loggers).toEqual([]);
+    // ONE exception (slice 99, the fix-pass review's low): an alarm check
+    // that fails is swallowed so the client still gets their answer, and a
+    // failure that repeats must not mean "no alarm, ever" in silence. The
+    // file reads no secret; its one line carries the error's name and code.
+    expect(loggers).toEqual(["modules/vault/door-alarm.ts"]);
+    const text = readFileSync(join(SRC, "modules", "vault", "door-alarm.ts"), "utf8");
+    expect(text.match(/\bconsole\s*\./g)).toEqual(["console."]);
+    expect(text).toMatch(/console\.error\(`vault: the door's alarm check failed: \$\{e instanceof Error \? e\.name : typeof e\}\$\{code\}`\)/);
+    // …and what `code` is, too: `String(e)` would be "Name: message" (the
+    // fix-pass review's nit).
+    expect(text).toContain(
+      'const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";',
+    );
+    expect(text.match(/\bconst code\b/g)).toHaveLength(1);
+    expect(text).not.toMatch(/\.message\b|\.stack\b|\.meta\b|\.cause\b|JSON\.stringify|String\(e\)|\$\{e\}/);
   });
 
   /**

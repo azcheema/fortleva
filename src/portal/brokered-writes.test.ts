@@ -301,6 +301,77 @@ const ANNOUNCER_IMPORTS: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+/**
+ * THE ALARMS — the closed set of files that open a SYSTEM transaction
+ * because a contact FAILED at something, once the refusal has committed
+ * (Phase 3V slice 99, founder decision C67 (b), (c); its design review asked
+ * for this pin).
+ *
+ * `src/modules/vault/door-alarm.ts` decides, from stored rows, whether a
+ * client person's repeated failures at their logins page call for telling
+ * the owners and the person. It is neither a broker (nothing in it is
+ * authorized: the brokers that call it already proved the contact, and it
+ * acts for no contact) nor an announcer: it AUDITS — as SYSTEM, because the
+ * contact did not raise it, so it never names `brokeredForContactId` — and
+ * it writes the OUTBOX itself, because its mails are security notices sent
+ * whatever a member's email level (`emit` writes the inbox rows). What
+ * binds it is pinned here: the principal literal is inline
+ * `{type:'system'}`; it never opens a contact transaction; it never names
+ * `brokeredForContactId`; no raw SQL (its one lock is the core helper's);
+ * and every VALUE it imports is on its list, by equality — the announcers'
+ * door, for the announcers' reason. Its callers are pinned in
+ * `src/modules/vault/vault-boundary.test.ts`.
+ */
+const ALARMS: readonly string[] = [join("modules", "vault", "door-alarm.ts")];
+
+const ALARM_IMPORTS: Readonly<Record<string, readonly string[]>> = {
+  [join("modules", "vault", "door-alarm.ts")]: [
+    "@/db:withTenant",
+    // The one audit row — the alarm, as SYSTEM — that the one-a-day rule counts.
+    "@/audit/record:record",
+    // The owners' inbox rows.
+    "@/notify/emit:emit",
+    // The two security notices' template keys (the outbox rows are its own writes).
+    "@/notify/door-alarm-mail-keys:DOOR_ALARM_CONTACT_MAIL",
+    "@/notify/door-alarm-mail-keys:DOOR_ALARM_MEMBER_MAIL",
+    // The alarm's own advisory key, taken before any read.
+    "@/portal/contact-budget-lock:lockContactBudget",
+    // The bounded lock wait.
+    "./ctx:boundedVaultWrite",
+    // The alarm's id, which both mails are keyed by.
+    "@/lib/ids:newId",
+  ],
+};
+
+/**
+ * Every VALUE a file imports, as `<module>:<EXPORTED name>` (`default` / `*`
+ * for those forms; a side-effect import as `(side effect)`). Type-only
+ * imports carry no code and are not counted. Shared by the announcer and
+ * alarm pins — see the announcer pin for why the import list is the door.
+ */
+const valueImports = (source: ts.SourceFile): string[] => {
+  const imported: string[] = [];
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly) continue;
+    const clause = statement.importClause;
+    if (!clause) {
+      // A side-effect import runs a module's code: never admitted.
+      imported.push(`${(statement.moduleSpecifier as ts.StringLiteral).text}:(side effect)`);
+      continue;
+    }
+    const from = (statement.moduleSpecifier as ts.StringLiteral).text;
+    if (clause.name) imported.push(`${from}:default`);
+    const bindings = clause.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) imported.push(`${from}:*`);
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        if (!element.isTypeOnly) imported.push(`${from}:${(element.propertyName ?? element.name).text}`);
+      }
+    }
+  }
+  return imported;
+};
+
 const isBrokeredRead = (file: string, name: string): boolean =>
   BROKERED_READS.some(([suffix, fn]) => file.endsWith(suffix) && fn === name);
 
@@ -415,27 +486,32 @@ describe("brokered portal writes", () => {
       // `import(` or a `require(` would be a way round the list, so
       // neither may appear at all.
       expect(text, `${suffix} imports nothing dynamically`).not.toMatch(/\bimport\(|\brequire\(/);
-      const imported: string[] = [];
-      for (const statement of source.statements) {
-        if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly) continue;
-        const clause = statement.importClause;
-        if (!clause) {
-          // A side-effect import runs a module's code: never admitted.
-          imported.push(`${(statement.moduleSpecifier as ts.StringLiteral).text}:(side effect)`);
-          continue;
-        }
-        const from = (statement.moduleSpecifier as ts.StringLiteral).text;
-        if (clause.name) imported.push(`${from}:default`);
-        const bindings = clause.namedBindings;
-        if (bindings && ts.isNamespaceImport(bindings)) imported.push(`${from}:*`);
-        if (bindings && ts.isNamedImports(bindings)) {
-          for (const element of bindings.elements) {
-            if (!element.isTypeOnly) imported.push(`${from}:${(element.propertyName ?? element.name).text}`);
-          }
-        }
-      }
-      expect(imported.sort(), `${suffix} imports only what its entry admits`).toEqual(
+      expect(valueImports(source).sort(), `${suffix} imports only what its entry admits`).toEqual(
         [...(ANNOUNCER_IMPORTS[suffix] ?? [])].sort(),
+      );
+    }
+  });
+
+  it("every alarm runs as `system`, opens no contact transaction, names no contact as actor, and imports only its admitted names", () => {
+    expect(ALARMS.length).toBeGreaterThan(0);
+    for (const suffix of ALARMS) {
+      const file = walk(SRC).find((f) => f.endsWith(suffix));
+      expect(file, suffix).toBeDefined();
+      const source = parse(file!);
+      const principals = withTenantPrincipals(source);
+      expect(principals.length, suffix).toBeGreaterThan(0);
+      for (const principal of principals) {
+        expect(ts.isObjectLiteralExpression(principal), suffix).toBe(true);
+        expect(principal.getText(source).replace(/\s|"|'/g, ""), suffix).toBe("{type:system}");
+      }
+      const text = readFileSync(file!, "utf8");
+      expect(text, `${suffix} must not open a contact transaction`).not.toContain("withPortalRead(");
+      expect(text, `${suffix} must not open a contact transaction`).not.toContain("withCensusWrite(");
+      expect(namesIdentifier(source, "brokeredForContactId"), `${suffix} must not name brokeredForContactId`).toBe(false);
+      expect(text, `${suffix} writes no raw SQL`).not.toMatch(/\$(execute|query)Raw/);
+      expect(text, `${suffix} imports nothing dynamically`).not.toMatch(/\bimport\(|\brequire\(/);
+      expect(valueImports(source).sort(), `${suffix} imports only what its entry admits`).toEqual(
+        [...(ALARM_IMPORTS[suffix] ?? [])].sort(),
       );
     }
   });

@@ -307,3 +307,37 @@ export async function keepPreviousVersion(
     });
   }
 }
+
+/**
+ * ERASE the secret and every previous version of logins the retention job
+ * has just made tombstones of (slice 99, founder decision C67 (a), (f): a
+ * login a client sent keeps its row — the client's record of it — and one
+ * whose share links' records are still young keeps a bare row for them, but
+ * nothing secret). A login deleted outright takes these rows with it by the
+ * FKs' cascade, so it never comes here.
+ *
+ * BOUNDED IN SQL to logins the database already holds as erased
+ * (`purged_at` set — the purge guard made sure of who and when): an id
+ * list that named a live login by mistake erases nothing of it (the design
+ * review's nit). One statement per table, in this transaction; returns how
+ * many rows went. Its one caller is pinned (`vault-boundary.test.ts`).
+ */
+export async function eraseSecretsOf(
+  tx: TenantDb,
+  tenantId: string,
+  credentialIds: readonly string[],
+): Promise<{ readonly secrets: number; readonly versions: number }> {
+  if (credentialIds.length === 0) return { secrets: 0, versions: 0 };
+  const ids = [...credentialIds];
+  const secrets = await tx.$executeRaw`
+    DELETE FROM credential_secret s
+     USING credential_item c
+     WHERE s.tenant_id = ${tenantId} AND c.tenant_id = s.tenant_id AND c.id = s.credential_id
+       AND c.purged_at IS NOT NULL AND s.credential_id = ANY(${ids}::text[])`;
+  const versions = await tx.$executeRaw`
+    DELETE FROM credential_version v
+     USING credential_item c
+     WHERE v.tenant_id = ${tenantId} AND c.tenant_id = v.tenant_id AND c.id = v.credential_id
+       AND c.purged_at IS NOT NULL AND v.credential_id = ANY(${ids}::text[])`;
+  return { secrets, versions };
+}

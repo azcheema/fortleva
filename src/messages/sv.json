@@ -276,7 +276,8 @@
       "agreementEnding": "Ett avtal löper ut",
       "loginsExpiring": "Inloggningar går ut",
       "loginSubmitted": "En kund har skickat en inloggning",
-      "loginAskDeclined": "En kund kan inte skicka en inloggning ni bad om"
+      "loginAskDeclined": "En kund kan inte skicka en inloggning ni bad om",
+      "loginsAlarm": "Upprepade misslyckade försök att öppna en kunds inloggningar"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",

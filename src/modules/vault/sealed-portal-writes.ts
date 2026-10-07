@@ -20,6 +20,7 @@ import { allow } from "@/ratelimit";
 import { doorOpenUntil } from "./client-door";
 import { contactStanding } from "./contact-standing";
 import { boundedVaultWrite } from "./ctx";
+import { raiseDoorAlarm } from "./door-alarm";
 import { PORTAL_LOGIN_LIMIT, type PortalLogin } from "./portal";
 import {
   LOGINS_UNLOCKS_PER_DAY,
@@ -347,6 +348,7 @@ export async function askToOpenSealedLogins(
 
   const verdict = await checkPassword();
   if (verdict === "limited") return { ok: false, reason: "limited" };
+  if (verdict === "unavailable") return { ok: false, reason: "busy" };
   if (verdict !== "ok") {
     await withTenant(principal.tenantId, { type: "system" }, (tx) =>
       record(tx, {
@@ -357,6 +359,9 @@ export async function askToOpenSealedLogins(
         metadata: { purpose: "ask" },
       }),
     );
+    // Counted toward the door's alarm with the door's own wrong passwords
+    // (one action) — checked once this refusal has committed (`door-alarm.ts`).
+    await raiseDoorAlarm(principal);
     return { ok: false, reason: "wrong_password" };
   }
 

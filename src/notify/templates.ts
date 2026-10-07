@@ -1,6 +1,7 @@
 import { appUrl } from "@/config";
 import { isUuid } from "@/db/context";
 import { isNotificationKind, type NotificationKind } from "./catalog";
+import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MAIL_KEYS, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
 import { VAULT_EXPORTED_MAIL } from "./vault-export-mail-key";
@@ -27,7 +28,13 @@ import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
 type Copy = { readonly subject: string; readonly body: string };
 
 /** Templates that are not also a fan-out kind. */
-const EXTRA_TEMPLATES = [WEEKLY_REMINDER_KIND, ...SEALED_MAIL_KEYS, VAULT_EXPORTED_MAIL, LOGIN_ASK_MAIL] as const;
+const EXTRA_TEMPLATES = [
+  WEEKLY_REMINDER_KIND,
+  ...SEALED_MAIL_KEYS,
+  VAULT_EXPORTED_MAIL,
+  LOGIN_ASK_MAIL,
+  ...DOOR_ALARM_MAIL_KEYS,
+] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
 
@@ -243,6 +250,43 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Någon i er arbetsyta har exporterat inloggningar från valvet, med lösenorden i klartext. Se vem och när i Fortleva. Om ni inte väntade er detta, byt de lösenorden.",
     },
   },
+  // Phase 3V slice 99 — the client's door's alarm (C67 (b), (c);
+  // `door-alarm-mail-keys.ts`). The owners' is a security notice, sent
+  // whatever their email level; the client person's tells them what to do.
+  // LINKS, NOT DATA — no client, person, login or attempt is named. The
+  // kind's own copy below is never mailed (`contact.logins_alarm` has no
+  // `email` block — the notice IS its mail); it is here because every kind
+  // must have copy.
+  [DOOR_ALARM_MEMBER_MAIL]: {
+    en: {
+      subject: "Someone keeps failing to open a client's logins",
+      body: "Someone signed in to a client's portal account kept getting the password or the emailed code wrong on the logins page. It may not be that person. See who in Fortleva, and pause their portal access if you need to.",
+    },
+    sv: {
+      subject: "Någon misslyckas upprepade gånger med att öppna en kunds inloggningar",
+      body: "Någon som är inloggad på en kunds portalkonto har upprepade gånger angett fel lösenord eller fel kod från e-posten på sidan med inloggningar. Det kanske inte är den personen. Se vem i Fortleva och pausa personens tillgång till portalen om det behövs.",
+    },
+  },
+  [DOOR_ALARM_CONTACT_MAIL]: {
+    en: {
+      subject: "Was this you? Failed attempts to open your logins",
+      body: "Someone signed in to your client portal account kept getting the password or the emailed code wrong when opening the logins your agency keeps for you. If this wasn't you, set a new password with the link below — that also signs everyone else out of your account.",
+    },
+    sv: {
+      subject: "Var det du? Misslyckade försök att öppna dina inloggningar",
+      body: "Någon som är inloggad på ditt konto i kundportalen har upprepade gånger angett fel lösenord eller fel kod från e-posten när de försökte öppna de inloggningar som din byrå har åt dig. Om det inte var du, välj ett nytt lösenord via länken nedan – då loggas också alla andra ut från ditt konto.",
+    },
+  },
+  "contact.logins_alarm": {
+    en: {
+      subject: "Someone keeps failing to open a client's logins",
+      body: "Someone signed in to a client's portal account kept getting the answers wrong on the logins page.",
+    },
+    sv: {
+      subject: "Någon misslyckas upprepade gånger med att öppna en kunds inloggningar",
+      body: "Någon som är inloggad på en kunds portalkonto har upprepade gånger svarat fel på sidan med inloggningar.",
+    },
+  },
   "time.weekly_reminder": {
     en: {
       subject: "Your weekly time reminder",
@@ -279,6 +323,16 @@ const linkFor = (
   // from the vault, never a person, and is held to a uuid's shape. The
   // client's opens their Logins page.
   if (key === SEALED_CONTACT_MAIL) return new URL("/portal/logins", appUrl);
+  // The door's alarm (slice 99): the owners' opens the client's Contacts
+  // tab, where that person's portal access is paused — the id came from the
+  // vault, never a person, and is held to a uuid's shape. The client
+  // person's opens the portal's "forgot your password" page: a reset there
+  // signs every other session out.
+  if (key === DOOR_ALARM_MEMBER_MAIL) {
+    const clientId = uuidParam(params, "clientId");
+    return new URL(clientId ? `/clients/${clientId}/contacts` : "/clients", appUrl);
+  }
+  if (key === DOOR_ALARM_CONTACT_MAIL) return new URL("/portal/reset-password", appUrl);
   // A login asked of a contact (slice 98): the ask's own page in their
   // portal, which answers only to the one contact asked. The id came from
   // the vault, never a person, and is held to a uuid's shape.

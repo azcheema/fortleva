@@ -97,8 +97,15 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * `work_item.client_commented` is the fifth client-caused kind (Phase
    * 3 slice 75, founder decision C43): a client who writes to the agency
    * is waiting on an answer. A MEMBER's comment stays coalesced.
+   *
+   * `contact.logins_alarm` (Phase 3V slice 99, C67) is the one INSTANT kind
+   * that does NOT mail through this catalogue, and the exception is argued
+   * where it is declared: its mail is a security notice the vault enqueues
+   * itself, whatever the owner's level, so the kind is the inbox row only
+   * — INSTANT because an alarm must not wait for a digest. The next test
+   * pins that it never mails through `emailAllowed`, at any level.
    */
-  it("instant email is assignment, mention, the six client-caused kinds and the three renewal reminders — and nothing else", () => {
+  it("the instant set is assignment, mention, the six client-caused kinds, the three renewal reminders and the door's alarm — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -108,6 +115,9 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       // waiting on the answer, the same argument as the tick's.
       "approval.decided",
       "comment.mentioned",
+      // Someone kept failing at a client's logins page (Phase 3V slice 99,
+      // C67): inbox only — its mail is the vault's own security notice.
+      "contact.logins_alarm",
       // A client said they do not have a login the agency asked for (Phase
       // 3V slice 98, C66 (c)): the team was waiting on it and must now find
       // it another way — the hand-over's argument, the other way round.
@@ -126,6 +136,11 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       "work_item.completed_by_contact",
       "work_item.request_received",
     ]);
+  });
+
+  /** The door's alarm mails as the vault's security notice, never as a kind (slice 99). */
+  it("the door's alarm never mails through the catalogue, at any level", () => {
+    for (const level of EMAIL_LEVELS) expect(emailAllowed(level, "contact.logins_alarm")).toBe(false);
   });
 
   /** A client's comment names nobody either (mentions are not built — C44). */

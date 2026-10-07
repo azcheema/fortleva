@@ -7,7 +7,9 @@ import { idCursor } from "@/lib/id-cursor";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
 import {
   askDeclineSubjects,
+  doorAlarmSubjects,
   isAskDeclineKind,
+  isDoorAlarmKind,
   isReminderBand,
   isReminderKind,
   isSubmissionKind,
@@ -436,6 +438,20 @@ async function resolveSubjects(
       out.set(id, { title: subject.title, href: subject.href });
     }
     rows = rows.filter((r) => !isAskDeclineKind(r.kind));
+    if (rows.length === 0) return out;
+  }
+
+  // …AND THE DOOR'S ALARM (slice 99, C67 (c)): the person and their client,
+  // linked to the client's Contacts tab, under the reader's `client:view`
+  // and the client card's reach — `doorAlarmSubjects`. Never the
+  // fall-through below.
+  const alarms = rows.filter((r) => isDoorAlarmKind(r.kind));
+  if (alarms.length > 0) {
+    const refs = alarms.map((r) => ({ id: r.id, kind: r.kind, entityType: r.entityType, entityId: r.entityId }));
+    for (const [id, subject] of await doorAlarmSubjects(tx, ctx.tenantId, ctx.actor, refs)) {
+      out.set(id, { title: subject.title, href: subject.href });
+    }
+    rows = rows.filter((r) => !isDoorAlarmKind(r.kind));
     if (rows.length === 0) return out;
   }
 

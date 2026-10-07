@@ -33,7 +33,8 @@ type KindCopyKey =
   | "agreementEnding"
   | "loginsExpiring"
   | "loginSubmitted"
-  | "loginAskDeclined";
+  | "loginAskDeclined"
+  | "loginsAlarm";
 
 export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.assigned": "assigned",
@@ -49,6 +50,7 @@ export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "expiration.logins_expiring": "loginsExpiring",
   "credential.submitted": "loginSubmitted",
   "credential.ask_declined": "loginAskDeclined",
+  "contact.logins_alarm": "loginsAlarm",
 };
 
 /** The label for a row whose kind this build does not know — a row

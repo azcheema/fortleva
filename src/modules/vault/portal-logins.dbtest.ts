@@ -212,6 +212,11 @@ beforeEach(() => resetLocalLimiter());
 afterAll(async () => {
   if (previousTransport) setTransport(previousTransport);
   if (f) {
+    // The door's ALARM (slice 99): the five wrong codes and the day's wrong
+    // passwords below raise it, so the owners' inbox rows and both mails
+    // exist — and RESTRICT the tenant.
+    await f.platform.notification.deleteMany({ where: { tenantId: f.tenantId } });
+    await f.platform.emailOutbox.deleteMany({ where: { tenantId: f.tenantId } });
     // Doors go with their contact (FK cascade).
     await f.platform.contact.deleteMany({ where: { tenantId: f.tenantId } });
     await f.platform.credentialItem.deleteMany({ where: { tenantId: f.tenantId } });

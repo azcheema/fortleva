@@ -262,6 +262,26 @@ const KINDS = {
     class: "INSTANT",
     email: { atLevel: "PARTICIPATING" },
   },
+  /**
+   * Phase 3V slice 99 (founder decision C67 (b), (c)): someone kept failing
+   * at a client's logins page while signed in as that client person — the
+   * portal password wrong five times in a day, or the mailed code wrong
+   * five times in a day — so it is probably not them. To the OWNERS, who can
+   * pause that person's access. INSTANT with NO `email` block, on purpose:
+   * the owners' mail is a SECURITY NOTICE sent whatever their email level,
+   * straight into the outbox under its own template key
+   * (`door-alarm-mail-keys.ts` — the export's notice and the sealed asks'
+   * mails are the precedent), so this kind is only the inbox row beside it:
+   * mailing it here as well would send two, and a COALESCED kind would fold
+   * an alarm into a later digest. Entity: the CONTACT; the row names the
+   * person and their client under the READER's own `client:view` and scope
+   * (`src/modules/vault/door-alarm-subjects.ts`). One row per alarm, at
+   * most one alarm per sign per person a day (`door-alarm.ts`).
+   */
+  "contact.logins_alarm": {
+    audience: "MEMBER",
+    class: "INSTANT",
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

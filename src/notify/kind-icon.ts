@@ -10,6 +10,7 @@ import {
   KeySquareIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
+  ShieldAlertIcon,
   UserRoundPlusIcon,
   type LucideProps,
 } from "lucide-react";
@@ -37,4 +38,5 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "expiration.logins_expiring": KeyRoundIcon,
   "credential.submitted": KeySquareIcon,
   "credential.ask_declined": KeySquareIcon,
+  "contact.logins_alarm": ShieldAlertIcon,
 };

@@ -7,6 +7,7 @@ import { runExpirationReminders } from "@/jobs/expiration-reminders";
 import { drainOutbox } from "@/jobs/outbox";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
+import { runVaultRetention } from "@/jobs/vault-retention";
 import { runWeeklyReminders } from "@/jobs/weekly-reminders";
 
 /**
@@ -18,8 +19,11 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * guard) and the renewal reminders (3V slice 89 — at 60/30/14/7/1 days,
  * once per band, `ExpirationReminderSent` being the guard) and the
  * sealed asks' mail (3V slice 93 — the answerers' reminders, day 3, 6, then
- * daily, and "it has opened"; the ask's own stamps being the guard), until
- * Vercel Pro crons exist. Whenever a
+ * daily, and "it has opened"; the ask's own stamps being the guard) and the
+ * vault's retention (3V slice 99 — a login 30 days in the bin is erased, a
+ * share link's record 12 months after it expired; THE ONE JOB HERE THAT
+ * DELETES DATA, in every tenant of the database this server points at),
+ * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
  * convenience) — a preview/staging deployment without a token is closed.
@@ -46,5 +50,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   const weeklyReminders = await runWeeklyReminders();
   const expirationReminders = await runExpirationReminders();
   const sealedAsks = await runSealedAskMail();
-  return NextResponse.json({ outbox, timeSweep, budgets, weeklyReminders, expirationReminders, sealedAsks });
+  const vaultRetention = await runVaultRetention();
+  return NextResponse.json({
+    outbox,
+    timeSweep,
+    budgets,
+    weeklyReminders,
+    expirationReminders,
+    sealedAsks,
+    vaultRetention,
+  });
 }

@@ -797,7 +797,10 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
       (await tx.sealedOpenRequest.count({ where: { tenantId: ctx.tenantId, confirmedByContactId: contactId } })) > 0 ||
       (await tx.sealedOpenRequest.count({ where: { tenantId: ctx.tenantId, withdrawnByContactId: contactId } })) > 0 ||
       // A login they handed over through the portal (slice 96, C64): the
-      // vault row says who sent it. Binned ones too — a bin is restorable.
+      // vault row says who sent it. Binned and ERASED ones too: once its 30
+      // days in the bin are up, the row stays as the client's record of what
+      // they sent — their name for it and the date, nothing else (slice 99,
+      // C67 (a)) — and that record is their writing.
       (await tx.credentialItem.count({ where: { tenantId: ctx.tenantId, submittedByContactId: contactId } })) > 0 ||
       // An ask of the agency they DECLINED, with a note (slice 98, C66 (c)).
       // An ask they never answered, or one the team cancelled, is not their

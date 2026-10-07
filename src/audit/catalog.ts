@@ -327,6 +327,16 @@ export const AUDIT_EVENTS = {
   "portal.logins_code_sent": TENANT,
   "portal.logins_code_refused": TENANT,
   "portal.logins_opened": TENANT,
+  // Phase 3V slice 99 — THE DOOR'S ALARM (founder decision C67 (b)–(e)):
+  // someone typed a wrong mailed code five times in a day (over any number
+  // of openings), or the portal password wrong five times in a day (at the
+  // door or in front of a sealed ask), so the owners and the contact are
+  // told. Written by the SYSTEM principal — the contact did not raise it —
+  // target the CONTACT; metadata the client, the `alarmId` both mails are
+  // keyed by, and the signs it newly reports (`passwords`, `codes`). At most
+  // one per SIGN per contact per 24 hours: these rows are what that rule
+  // counts.
+  "portal.logins_alarm_raised": TENANT,
   // Phase 3V slice 93 — A CLIENT ASKS TO OPEN THEIR SEALED LOGINS (founder
   // decisions C52 (f)–(j), C61). Target: the ask (SealedOpenRequest), so one
   // ask's whole life reads as one thread; metadata names the client — never
@@ -361,6 +371,18 @@ export const AUDIT_EVENTS = {
   // suspension's transaction with the remover as actor; metadata the
   // departed `memberId` and `cause: "member_removed"`.
   "credential.rotation_flagged": TENANT,
+  // Phase 3V slice 99 — the vault's retention (DATA_MODEL §5 R2; founder
+  // decision C67 (a), (f)). The daily job, as SYSTEM, erases a login 30 days
+  // after it was binned — its secret and versions, always: one row per
+  // login, target the login; metadata its client and project, and, when
+  // its row is KEPT bare, why: `kept: "sent"` (a client sent it — the
+  // client's record of it stays for good, named as they sent it) or
+  // `kept: "links"` (one of its share links' records is within its 12
+  // months — the row stays, under its own name, until none is). Not
+  // audited: such a row's later release, and a share link's record
+  // leaving 12 months after it expired — the audit rows of their lives are
+  // the evidence, and outlive them.
+  "credential.purged": TENANT,
   // Phase 3V slice 95 — the plaintext export (`credential:export` ✦,
   // founder decision C63). ONE row PER LOGIN in the file, target the login,
   // so a login's trail and the offboarding flags (slice 94) read an export

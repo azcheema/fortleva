@@ -201,6 +201,9 @@ const DBTEST_PREFIXES = [
   "totals-",
   "tree-",
   "triage-",
+  // Phase 3V slice 99, the door's alarm — `src/modules/vault/door-alarm.dbtest.ts`,
+  // `setupTenant("valarm")`.
+  "valarm-",
   // Phase 3V slice 98, the agency asking a client for a login —
   // `src/modules/vault/asks.dbtest.ts`, `setupTenant("vask")`.
   "vask-",
@@ -224,6 +227,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 91, the logins shown to a client —
   // `src/modules/vault/portal-logins.dbtest.ts`, `setupTenant("vport")`.
   "vport-",
+  // Phase 3V slice 99, the vault's retention — `src/modules/vault/retention.dbtest.ts`,
+  // `setupTenant("vret")`.
+  "vret-",
   // Phase 3V slice 92, the sealed layer's staff side —
   // `src/modules/vault/seal.dbtest.ts`, `setupTenant("vseal")`.
   "vseal-",

@@ -101,8 +101,13 @@ export async function flagLoginsKnownBy(tx: TenantDb, tenantId: string, memberId
     WHERE tenant_id = ${tenantId} AND id = ANY(${known.map((k) => k.id)}::text[])
     ORDER BY id
     FOR NO KEY UPDATE`;
+  // Never an ERASED login (slice 99): the tombstone of one a client sent is
+  // kept for the client's record and holds no secret to change — and the
+  // purge guard refuses any write to it, which would abort this removal
+  // (the design review's low). A binned login not yet erased is still
+  // flagged, as before.
   const flagged = await tx.credentialItem.updateManyAndReturn({
-    where: { tenantId, id: { in: known.map((k) => k.id) }, needsRotation: false },
+    where: { tenantId, id: { in: known.map((k) => k.id) }, needsRotation: false, purgedAt: null },
     data: { needsRotation: true },
     select: { id: true },
   });
