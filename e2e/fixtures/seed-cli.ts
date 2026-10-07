@@ -37,6 +37,7 @@
  *        tsx e2e/fixtures/seed-cli.ts reset-sealed-asks <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts flag-login <tenantId> <loginName>
  *        tsx e2e/fixtures/seed-cli.ts reset-portal-sections <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts client-summary-link <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
  *        tsx e2e/fixtures/seed-cli.ts sweep-dbtests [maxAgeMinutes]
@@ -118,6 +119,9 @@ const DBTEST_PREFIXES = [
   // Phase 3 slice 77, a contact's last sign-in — `src/clients/contact-sign-ins.dbtest.ts`,
   // `setupTenant("csign")`.
   "csign-",
+  // Phase 5 slice 101, the clients' weekly summary — `src/notify/client-digests.dbtest.ts`,
+  // `setupTenant("csum")`.
+  "csum-",
   "ctask-",
   "ctr-a-",
   "ctr-b-",
@@ -2938,6 +2942,25 @@ async function clearLoginAsks(tenantId: string, contactEmail: string): Promise<v
 }
 
 /**
+ * THE FIXTURE CONTACT'S WEEKLY-SUMMARY LINK (Phase 5 slice 101): their summary
+ * set back ON (their own setting removed — no row is the default) and the
+ * link that stops it printed, minted with the server's own key from the same
+ * environment. `client-summary.spec.ts` opens it signed in as nobody, then as
+ * the person. The link can only ever stop or start this one throwaway
+ * contact's summary.
+ */
+async function clientSummaryLink(tenantId: string, contactEmail: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const { clientSummaryToken } = await import("../../src/notify/client-summary-token");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const contact = await db.contact.findFirstOrThrow({ where: { tenantId, email: contactEmail }, select: { id: true } });
+  await db.notificationPreference.deleteMany({ where: { tenantId, receiverType: "CONTACT", receiverId: contact.id } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ token: clientSummaryToken(tenantId, contact.id) })}\n`);
+}
+
+/**
  * Mark a login "Change soon" (slice 94) by its name, as removing a member
  * who saw it would — the fixture's members stay, so `vault.spec.ts` sets
  * the mark straight on the row, then clears it through the UI by changing
@@ -2997,6 +3020,7 @@ const main = async (): Promise<void> => {
   if (command === "portal-submissions") return portalSubmissions(argument!, process.argv[4]!);
   if (command === "clear-portal-submissions") return clearPortalSubmissions(argument!, process.argv[4]!);
   if (command === "clear-login-asks") return clearLoginAsks(argument!, process.argv[4]!);
+  if (command === "client-summary-link") return clientSummaryLink(argument!, process.argv[4]!);
   if (command === "remove-users") return removeUsers(process.argv.slice(3));
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);

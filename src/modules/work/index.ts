@@ -148,6 +148,7 @@ export {
   PORTAL_TASK_CATEGORIES,
   PORTAL_TASK_LIMIT,
   listPortalTasks,
+  isWaitingOnYou,
   type PortalProjectTasks,
   type PortalTask,
   type PortalTaskCategory,

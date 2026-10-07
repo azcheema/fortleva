@@ -1,6 +1,7 @@
 import { appUrl } from "@/config";
 import { isUuid } from "@/db/context";
 import { isNotificationKind, type NotificationKind } from "./catalog";
+import { CONTACT_DIGEST_MAIL } from "./client-digest";
 import { MEMBER_DIGEST_MAIL, renderMemberDigest } from "./digest";
 import { REPLY_ADDRESS_CHANGED_MAIL } from "./reply-address-mail-key";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MAIL_KEYS, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
@@ -38,6 +39,7 @@ const EXTRA_TEMPLATES = [
   ...DOOR_ALARM_MAIL_KEYS,
   MEMBER_DIGEST_MAIL,
   REPLY_ADDRESS_CHANGED_MAIL,
+  CONTACT_DIGEST_MAIL,
 ] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
@@ -318,6 +320,21 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Svar på arbetsytans e-post – från ert team och era kunder – går nu till en ny adress. Se den i Fortleva under Inställningar, Preferenser. Om ni inte väntade er detta, ändra den där.",
     },
   },
+  // Phase 5 slice 101 — a client person's weekly summary (C69;
+  // `client-digest.ts`). The real mail is `renderContactDigest`, rendered by
+  // the outbox with the person's own unsubscribe link; this copy is only what
+  // a row would read with that branch bypassed — kept because every template
+  // has copy, and it names nothing.
+  [CONTACT_DIGEST_MAIL]: {
+    en: {
+      subject: "Your weekly summary from your agency",
+      body: "There is news in your agency's client portal. Sign in to see it.",
+    },
+    sv: {
+      subject: "Din veckosammanfattning från din byrå",
+      body: "Det finns nytt i din byrås kundportal. Logga in för att se det.",
+    },
+  },
   "time.weekly_reminder": {
     en: {
       subject: "Your weekly time reminder",
@@ -347,6 +364,7 @@ const linkFor = (
 ): URL => {
   if (key === "time.weekly_reminder") return new URL("/time", appUrl);
   if (key === MEMBER_DIGEST_MAIL) return new URL("/inbox", appUrl);
+  if (key === CONTACT_DIGEST_MAIL) return new URL("/portal", appUrl);
   if (key === REPLY_ADDRESS_CHANGED_MAIL) return new URL("/settings/preferences", appUrl);
   // An export (slice 95): the exports page, behind the vault's door, says
   // who exported what and when — the mail itself names nothing.

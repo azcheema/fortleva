@@ -12,7 +12,13 @@ import { getPreferences, type TenantPreferences } from "@/preferences/service";
 
 import { ReplyAddressCard } from "./reply-address-card";
 
-import { FormatPreferencesForm, ModuleToggles, RegionalPreferencesForm, TimePreferencesForm } from "./preference-forms";
+import {
+  ClientMailPreferencesForm,
+  FormatPreferencesForm,
+  ModuleToggles,
+  RegionalPreferencesForm,
+  TimePreferencesForm,
+} from "./preference-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("nav");
@@ -86,6 +92,14 @@ export default async function PreferencesPage() {
         <SectionCard title={t("replies.title")} description={t("replies.description")}>
           <ReplyAddressCard settings={replies} editable={held.has("settings:edit")} />
         </SectionCard>
+        {/* Phase 5 slice 101 (C69 (d)): mail to the workspace's clients — whenever
+            the plan includes the portal, switched on or not, so an agency can
+            turn the summary off BEFORE it opens the portal to anyone. */}
+        {entitled.portal ? (
+          <SectionCard title={t("clientMail.title")} description={t("clientMail.description")}>
+            <ClientMailPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
+          </SectionCard>
+        ) : null}
         <SectionCard title={t("modulesTitle")} description={t("modulesDescription")}>
           {/* ✦ code: shown to holders; a stale factor becomes step-up on the first flip. */}
           <ModuleToggles

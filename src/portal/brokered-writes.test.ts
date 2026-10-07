@@ -615,15 +615,24 @@ describe("brokered portal writes", () => {
   // rule binds it below: it reads only the token and the typed code, and
   // the address a code goes to is the LINK's (`src/modules/vault/
   // share-open.ts`).
+  //
+  // **THE THIRD ENTRY** (Phase 5 slice 101, 2026-10-07): the page a client
+  // person's weekly summary links to, to stop it — or start it again. Its
+  // visitor holds a mailbox and must never need a password to stop mail
+  // (RFC 8058's spirit, C69). It reads only the token, whose signed ids name
+  // the workspace and the person (`src/notify/client-summary-token.ts`), and
+  // a boolean; it writes one setting of that one person.
   const SESSIONLESS_ACTIONS: readonly string[] = [
     join("app", "(portal)", "portal", "invite", "[token]", "actions.ts"),
     join("app", "(portal)", "portal", "share", "[token]", "actions.ts"),
+    join("app", "(portal)", "portal", "unsubscribe", "[token]", "actions.ts"),
   ];
 
-  it("the sessionless allowlist is pinned (two entries — widen only deliberately)", () => {
+  it("the sessionless allowlist is pinned (three entries — widen only deliberately)", () => {
     expect(SESSIONLESS_ACTIONS).toEqual([
       join("app", "(portal)", "portal", "invite", "[token]", "actions.ts"),
       join("app", "(portal)", "portal", "share", "[token]", "actions.ts"),
+      join("app", "(portal)", "portal", "unsubscribe", "[token]", "actions.ts"),
     ]);
     for (const rel of SESSIONLESS_ACTIONS) {
       expect(readFileSync(join(SRC, rel), "utf8")).toContain("use server");

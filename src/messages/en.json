@@ -988,6 +988,12 @@
         "cancelled": "Request cancelled. The link we sent no longer works.",
         "removed": "Replies now go to the owner's address.",
         "unreachable": "That didn't go through — check your connection and try again."
+      },
+      "clientMail": {
+        "title": "Emails to your clients",
+        "description": "What Fortleva emails the people at your clients who have portal access.",
+        "summary": "Send a weekly summary every Monday morning",
+        "summaryHint": "Each person gets an email at 08:00 your workspace's time when something in their portal is new or waiting for them — numbers and a link, never names. Each person can stop their own."
       }
     },
     "export": {
@@ -4374,5 +4380,23 @@
     "tooManyTitle": "Too many tries",
     "tooMany": "Too many attempts from your network. Wait a few minutes and try again.",
     "unreachable": "The connection failed before we heard back. Check your connection and try again."
+  },
+  "clientSummary": {
+    "metaTitle": "Weekly summary emails",
+    "onTitle": "You get a weekly summary",
+    "on": "Every Monday morning we email you what's new in your agency's client portal and what's waiting for you.",
+    "offTitle": "Your weekly summary is stopped",
+    "off": "You won't get these emails any more. You can still sign in to your client portal whenever you like.",
+    "stop": "Stop these emails",
+    "stopping": "Stopping…",
+    "start": "Start them again",
+    "starting": "Starting…",
+    "unavailableTitle": "This link doesn't work",
+    "unavailable": "It may come from an old email. If you still get the weekly summary, use the link in the newest one.",
+    "tooManyTitle": "Too many tries",
+    "tooMany": "Wait a few minutes and try again.",
+    "unreachable": "We couldn't reach Fortleva. Check your connection and try again.",
+    "signInToStart": "Only you can start them again: sign in to your client portal, and you'll come back here.",
+    "signIn": "Sign in"
   }
 }

@@ -273,3 +273,32 @@ export function TimePreferencesForm({ prefs, editable }: { prefs: TenantPreferen
     </AutoForm>
   );
 }
+
+/**
+ * Phase 5 slice 101 — mail to the workspace's CLIENTS (founder decision C69
+ * (d)): the weekly summary each person with portal access gets on Monday
+ * morning, ON by default. One checkbox with the time form's hidden marker, so
+ * "unchecked" posts as a real value. Off stops every client's summary; it
+ * cannot start one a person stopped themselves (`src/notify/client-summary.ts`).
+ */
+export function ClientMailPreferencesForm({ prefs, editable }: { prefs: TenantPreferences; editable: boolean }) {
+  const t = useTranslations("settings.preferences.clientMail");
+  return (
+    <AutoForm action={updatePreferencesAction} className="flex flex-col gap-4">
+      <div className="flex items-start gap-2">
+        <input type="hidden" name="mail.clientSummaryMarker" value="1" />
+        <NativeCheckbox
+          id="p-mail-clientSummary"
+          name="mail.clientSummary"
+          defaultChecked={prefs.mail.clientSummary}
+          disabled={!editable}
+          className="mt-0.5"
+        />
+        <div className="flex flex-col">
+          <Label htmlFor="p-mail-clientSummary">{t("summary")}</Label>
+          <span className="text-xs text-muted-foreground">{t("summaryHint")}</span>
+        </div>
+      </div>
+    </AutoForm>
+  );
+}

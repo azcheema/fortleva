@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { listPortalDocuments } from "@/documents/portal";
 import { formatDay } from "@/lib/format";
 import { readPortalHours } from "@/modules/time";
-import { listPortalAgencyReplies, listPortalTasks, listPortalTimeline, listPortalUpdates } from "@/modules/work";
+import { isWaitingOnYou, listPortalAgencyReplies, listPortalTasks, listPortalTimeline, listPortalUpdates } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 import { fileAnchor, versionAnchor } from "@/portal/signoff-vocabulary";
 import { findPortalProjectByKey, readPortalProjectSummary } from "@/projects/portal";
@@ -15,7 +15,7 @@ import { PortalFileList } from "../../files/file-list";
 import type { PortalFileError } from "../../files/files-view";
 import { PortalFrame } from "../../portal-frame";
 
-import { AgencyReplyItem, LatestUpdate, PortalTasksEmpty, ProjectTasks, TaskRow, isWaitingOnYou } from "../../task-list";
+import { AgencyReplyItem, LatestUpdate, PortalTasksEmpty, ProjectTasks, TaskRow } from "../../task-list";
 import { ProjectHours } from "./project-hours";
 import { PortalTimeline } from "./project-timeline";
 

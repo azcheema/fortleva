@@ -57,7 +57,9 @@ const PRINCIPAL_BUILDERS = [
   join("portal", "context.ts"),
   // The member plane's only one: gates resolved from the CONTACT ROW's
   // own tenant, by a function that takes no tenant id to get them wrong
-  // with (Phase 3 slice 5).
+  // with (Phase 3 slice 5). Since Phase 5 slice 101 the clients' weekly
+  // summary CALLS it too, from a job and the outbox — callers, not builders,
+  // so this set stays two.
   //
   // IT USED TO BE `projects/portal-preview.ts`, and slice 5 moved it
   // rather than adding a third entry. View-as-Contact needed to

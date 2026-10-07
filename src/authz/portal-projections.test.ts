@@ -223,6 +223,18 @@ const PORTAL_SURFACES_BY_NAME = [
   // system, writes only the agency's side, and is pinned as an announcer
   // in `src/portal/brokered-writes.test.ts`.
   join("modules", "work", "portal-comment.ts"),
+  // The clients' weekly summary's job (Phase 5 slice 101). It never says
+  // `withPortalRead` — it calls `src/portal/weekly-summary.ts`, which does —
+  // but it synthesises a contact principal for every client person and reads
+  // CONTACT rows, addresses included: the case `portal-preview.ts` and
+  // `clients/view-as.ts` were listed for (slice 101's design review). Both
+  // tiers, every read an allow-list. Verified clean of every forbidden
+  // identifier, prose included, when added. The OUTBOX, which counts each
+  // summary again at send through the same function, is NOT listed: it is the
+  // mail drain for every kind (its claim is raw SQL by necessity), its one
+  // contact read is an explicit select of standing and address, and what it
+  // counts is `weekly-summary.ts`'s, which both tiers already read.
+  join("jobs", "client-digests.ts"),
 ];
 
 /**

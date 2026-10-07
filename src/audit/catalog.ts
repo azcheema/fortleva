@@ -145,6 +145,12 @@ export const AUDIT_EVENTS = {
   // reading a log, it is guessing from one.
   "contact.access_restored": TENANT,
   "contact.access_revoked": TENANT,
+  // The person's own weekly summary stopped or started again (Phase 5 slice
+  // 101, C69) — from the link in their mail, never by anyone at the agency.
+  // Actor SYSTEM, target the Contact; metadata says only which door
+  // (`one_click` from the mail's header, `page` from the link's page).
+  "contact.summary_stopped": TENANT,
+  "contact.summary_started": TENANT,
   // Files & visibility
   "document.created": TENANT,
   "document.renamed": TENANT,

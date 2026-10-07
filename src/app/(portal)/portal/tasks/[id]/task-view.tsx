@@ -4,12 +4,12 @@ import { getFormatter, getTranslations } from "next-intl/server";
 import { RichText } from "@/components/rich-text/render";
 import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { readPortalTask, type PortalComment } from "@/modules/work";
+import { isWaitingOnYou, readPortalTask, type PortalComment } from "@/modules/work";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 
 import { PortalFrame } from "../../portal-frame";
 import { PortalTaskDone } from "../../task-done";
-import { CategoryChip, PortalTasksEmpty, TaskMeta, isWaitingOnYou } from "../../task-list";
+import { CategoryChip, PortalTasksEmpty, TaskMeta } from "../../task-list";
 import { PortalCommentComposer } from "./comment-composer";
 
 /**

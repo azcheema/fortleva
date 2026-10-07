@@ -812,6 +812,13 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
     // — somebody who already cannot sign in. Advice to end their access
     // would name a verb the row does not even offer them.
     if (wrote) fail("CONTACT_HAS_HISTORY", "contact has portal history");
+    // Their own mail settings go with them (Phase 5 slice 101): a stopped
+    // weekly summary is a setting ABOUT the person — polymorphic, no foreign
+    // key — never their writing, so nothing above counts it and nothing
+    // should outlive them.
+    await tx.notificationPreference.deleteMany({
+      where: { tenantId: ctx.tenantId, receiverType: "CONTACT", receiverId: contactId },
+    });
     await tx.contact.delete({ where: { id: contactId } });
     await record(tx, {
       action: "contact.deleted",

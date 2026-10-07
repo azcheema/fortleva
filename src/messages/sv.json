@@ -988,6 +988,12 @@
         "cancelled": "Begäran avbruten. Länken vi skickade fungerar inte längre.",
         "removed": "Svar går nu till ägarens adress.",
         "unreachable": "Det gick inte igenom – kontrollera anslutningen och försök igen."
+      },
+      "clientMail": {
+        "title": "E-post till era kunder",
+        "description": "Vad Fortleva mejlar till personerna hos era kunder som har tillgång till kundportalen.",
+        "summary": "Skicka en veckosammanfattning varje måndag morgon",
+        "summaryHint": "Varje person får ett mejl klockan 08.00 enligt arbetsytans tid när något i deras portal är nytt eller väntar på dem – siffror och en länk, aldrig namn. Var och en kan stänga av sin egen."
       }
     },
     "export": {
@@ -4374,5 +4380,23 @@
     "tooManyTitle": "För många försök",
     "tooMany": "För många försök från ditt nätverk. Vänta några minuter och försök igen.",
     "unreachable": "Anslutningen bröts innan vi fick svar. Kontrollera anslutningen och försök igen."
+  },
+  "clientSummary": {
+    "metaTitle": "Veckosammanfattning via e-post",
+    "onTitle": "Du får en veckosammanfattning",
+    "on": "Varje måndag morgon mejlar vi dig vad som är nytt i din byrås kundportal och vad som väntar på dig.",
+    "offTitle": "Din veckosammanfattning har stoppats",
+    "off": "Du får inte de här mejlen längre. Du kan fortfarande logga in i kundportalen när du vill.",
+    "stop": "Sluta skicka dem",
+    "stopping": "Stoppar…",
+    "start": "Börja skicka dem igen",
+    "starting": "Startar…",
+    "unavailableTitle": "Länken fungerar inte",
+    "unavailable": "Den kan komma från ett gammalt mejl. Får du fortfarande veckosammanfattningen, använd länken i det senaste.",
+    "tooManyTitle": "För många försök",
+    "tooMany": "Vänta några minuter och försök igen.",
+    "unreachable": "Vi kunde inte nå Fortleva. Kontrollera anslutningen och försök igen.",
+    "signInToStart": "Bara du kan börja få dem igen: logga in i kundportalen, så kommer du tillbaka hit.",
+    "signIn": "Logga in"
   }
 }

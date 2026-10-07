@@ -12,6 +12,7 @@ import {
   CURRENCIES,
   DURATION_STYLES,
   FINANCE_PREF_KEYS,
+  MAIL_PREF_KEYS,
   materializePreferences,
   moduleKey,
   portalCredentialsSwitchLockKey,
@@ -122,6 +123,8 @@ const patchSchema = z
         allowContactSubmission: z.boolean(),
       })
       .partial(),
+    // Phase 5 slice 101 (C69 (d)): the clients' weekly summary.
+    mail: z.object({ clientSummary: z.boolean() }).partial(),
   })
   .partial();
 
@@ -307,6 +310,11 @@ export async function updatePreferences(
     }
     for (const [field, key] of Object.entries(FINANCE_PREF_KEYS) as [keyof typeof FINANCE_PREF_KEYS, string][]) {
       const value = patch.finance?.[field];
+      if (value === undefined) continue;
+      if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
+    }
+    for (const [field, key] of Object.entries(MAIL_PREF_KEYS) as [keyof typeof MAIL_PREF_KEYS, string][]) {
+      const value = patch.mail?.[field];
       if (value === undefined) continue;
       if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
     }

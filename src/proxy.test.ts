@@ -288,6 +288,23 @@ describe("proxy: the member plane's public doors (C30)", () => {
     expect(dest(both(req(OPS, "/reply-address/abc123")))).toBe("redirect:/ops/reply-address/abc123");
   });
 
+  it("serves the weekly summary's unsubscribe page and one-click address without a cookie, segment-anchored, and never on the ops host (slice 101)", async () => {
+    const app = await proxyWith({ APP_URL: `https://${APP}` });
+    const token = "abc.def.ghi";
+    expect(dest(app(req(APP, `/portal/unsubscribe/${token}`)))).toBe("next");
+    expect(dest(app(req(APP, `/api/client-summary/unsubscribe/${token}`)))).toBe("next");
+    // Segment-anchored: neither bare path nor a sibling is swept in.
+    expect(dest(app(req(APP, "/portal/unsubscribe")))).toBe("redirect:/portal/login");
+    expect(dest(app(req(APP, "/portal/unsubscribed")))).toBe("redirect:/portal/login");
+    expect(dest(app(req(APP, "/api/client-summary/unsubscribe")))).toBe("redirect:/login");
+    expect(dest(app(req(APP, "/api/client-summary/other")))).toBe("redirect:/login");
+    const both = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    expect(dest(both(req(OPS, `/portal/unsubscribe/${token}`)))).toBe(`redirect:/ops/portal/unsubscribe/${token}`);
+    expect(dest(both(req(OPS, `/api/client-summary/unsubscribe/${token}`)))).toBe(
+      `redirect:/ops/api/client-summary/unsubscribe/${token}`,
+    );
+  });
+
   it("serves a member invitation without a cookie, and nothing that merely begins like one", async () => {
     const proxy = await proxyWith({ APP_URL: `https://${APP}` });
     expect(dest(proxy(req(APP, "/invite/abc123")))).toBe("next");

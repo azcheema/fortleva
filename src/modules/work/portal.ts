@@ -439,6 +439,18 @@ export type PortalTaskList = {
 export const PORTAL_TASK_LIMIT = 200;
 
 /**
+ * A task the READER has been asked to do and can still act on — exactly
+ * the set the tick is offered on, and the set the project page's
+ * "Waiting on you" card lists. One predicate for both, so the card can
+ * never list a task whose row then offers no control. Here rather than in
+ * the portal's `task-list.tsx` since slice 101: the clients' weekly summary
+ * counts the same set (minus the ones already ticked) and a job cannot
+ * import a component.
+ */
+export const isWaitingOnYou = (task: Pick<PortalTask, "assignedToYou" | "category">): boolean =>
+  task.assignedToYou && (task.category === "PLANNED" || task.category === "IN_PROGRESS");
+
+/**
  * Narrowing, and the ONE caller that needs it is on the MEMBER plane.
  *
  * `/portal` asks for everything the contact's client has been shared and
@@ -1017,6 +1029,12 @@ export type PortalUpdateListOptions = {
    * it. The all-updates page does not: it stays reachable at its address.
    */
   readonly followSectionSwitches?: boolean;
+  /**
+   * Only the posts published at or after this moment — the clients' weekly
+   * summary counts what is NEW (Phase 5 slice 101). A narrowing in the same
+   * `where`, so it can only ever return fewer of the rows the list returns.
+   */
+  readonly publishedSince?: Date;
 };
 
 /**
@@ -1069,6 +1087,7 @@ export async function listPortalUpdates(
         status: "PUBLISHED",
         project: { archivedAt: null },
         ...(projectId ? { projectId } : {}),
+        ...(opts?.publishedSince ? { publishedAt: { gte: opts.publishedSince } } : {}),
         // The Updates section's switch (C47), as an `AND` beside the
         // project literal rather than a spread into it.
         ...(opts?.followSectionSwitches ? { AND: [{ project: { portalShowUpdates: true } }] } : {}),

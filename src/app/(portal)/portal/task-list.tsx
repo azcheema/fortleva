@@ -9,6 +9,7 @@ import { formatDay } from "@/lib/format";
 import { STATUS_MAP } from "@/lib/enum-map";
 import {
   PORTAL_TASK_CATEGORIES,
+  isWaitingOnYou,
   readUpdateBody,
   type PortalAgencyReply,
   type PortalProjectTasks,
@@ -350,15 +351,6 @@ export function AgencyReplyItem({ reply, showProject }: { reply: PortalAgencyRep
     </li>
   );
 }
-
-/**
- * A task the READER has been asked to do and can still act on — exactly
- * the set the tick is offered on, and the set the project page's
- * "Waiting on you" card lists. One predicate for both, so the card can
- * never list a task whose row then offers no control.
- */
-export const isWaitingOnYou = (task: PortalTask): boolean =>
-  task.assignedToYou && (task.category === "PLANNED" || task.category === "IN_PROGRESS");
 
 /**
  * The category, drawn the way every other enum in the product is drawn —

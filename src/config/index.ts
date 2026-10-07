@@ -360,3 +360,17 @@ export const rateLimitSubjectKey: Buffer = createHash("sha256")
 export const shareCodeKey: Buffer = createHash("sha256")
   .update(`${env.BETTER_AUTH_SECRET ?? ""}:vault-share-code`)
   .digest();
+
+/**
+ * The key a client's weekly-summary UNSUBSCRIBE link is signed with (Phase 5
+ * slice 101, founder decision C69; RFC 8058; `src/notify/client-summary-token.ts`).
+ * The link is stateless — the person and their workspace, and an HMAC over
+ * both — so every old mail's link keeps working and nothing is stored to look
+ * it up; what makes it unforgeable is a secret the database never holds.
+ * Derived from BETTER_AUTH_SECRET as the keys above are, for their reasons;
+ * rotating it voids every link already mailed, and the person's page then
+ * says so and points them at their portal — a reset, never a lockout.
+ */
+export const clientSummaryLinkKey: Buffer = createHash("sha256")
+  .update(`${env.BETTER_AUTH_SECRET ?? ""}:client-summary-link`)
+  .digest();

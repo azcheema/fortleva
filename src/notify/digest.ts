@@ -189,9 +189,16 @@ export const digestSince = (
   // review). A first summary likewise starts a minute before the previous
   // period's time.
   const start = previousAt.getTime() - DIGEST_SETTLE_MS;
-  const reach = start - CHAIN_REACH_MS[cadence];
+  const reach = digestChainFloor(previousAt, cadence).getTime();
   return lastSummaryAt && lastSummaryAt.getTime() >= reach ? lastSummaryAt : new Date(start);
 };
+
+/**
+ * The oldest a last summary may be and still chain (`digestSince`): a query
+ * for the last summary need read nothing older (slice 101's code review).
+ */
+export const digestChainFloor = (previousAt: Date, cadence: "DAILY" | "WEEKLY"): Date =>
+  new Date(previousAt.getTime() - DIGEST_SETTLE_MS - CHAIN_REACH_MS[cadence]);
 
 /** The outbox idempotency key — DATA_MODEL §6.18's `digest:<receiver>:<periodKey>`. */
 export const memberDigestKey = (memberId: string, periodKey: string): string =>

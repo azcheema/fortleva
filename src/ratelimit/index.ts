@@ -328,6 +328,30 @@ const POLICIES = {
    * from being free to repeat — the confirm-email page's reasoning.
    */
   "mail.reply_address_confirm": { limit: 10, window: "10 m" },
+  /**
+   * THE CLIENTS' WEEKLY SUMMARY'S STOP LINK (Phase 5 slice 101). Every one
+   * is spent only for a token whose signature has already held — a forged one
+   * is refused by one HMAC first — and each is keyed by WHO PRESSES, so that
+   * nobody else holding the link (the agency's mailbox, through a quoted
+   * reply; a forward) can use up the person's own way to stop their mail
+   * (the security review's low).
+   *
+   * RENDERS of `/portal/unsubscribe/<token>`, per NETWORK (`clientIp`): it
+   * writes nothing, but opens a tenant transaction — the reply-address page's
+   * reasoning.
+   */
+  "mail.client_summary_open": { limit: 60, window: "1 h" },
+  /** PRESSES of that page's Stop / Start again, per NETWORK; a Start without the person's session spends nothing. */
+  "mail.client_summary_switch": { limit: 20, window: "10 m" },
+  /**
+   * RFC 8058 one-click POSTs to `/api/client-summary/unsubscribe/<token>`, per
+   * PERSON (`<tenantId>:<contactId>`), never per network (the design review's
+   * medium): mailbox providers send every reader's POST from a few servers of
+   * their own. Another holder can spend it only by stopping the summary, which
+   * is the outcome the person wanted; a refused (429) POST is retried by the
+   * provider.
+   */
+  "mail.client_summary_one_click": { limit: 20, window: "10 m" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;
 
 export type RateLimitResult = {

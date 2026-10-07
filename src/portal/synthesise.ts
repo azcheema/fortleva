@@ -53,6 +53,15 @@ import { resolvePortalModuleGates } from "./module-gates";
  * this belt inline; it is the same belt, in the place that cannot be
  * bypassed by the next caller.
  *
+ * A THIRD CALLER, AND NOT A THIRD BUILDER (Phase 5 slice 101). The clients'
+ * weekly summary counts each person's portal AS that person — the job that
+ * decides whether there is anything to say (`src/jobs/client-digests.ts`)
+ * and the outbox that counts again at send — under a SYSTEM principal, with
+ * no member at all. They call this, so the gates still come from the
+ * contact's own tenant and the belt still holds; what authorises them is
+ * that the contact is one of that tenant's own people with portal access,
+ * which each re-reads first. "Member plane" below is the first two callers'.
+ *
  * WHAT THIS DELIBERATELY DOES NOT DO. It does not authorise the MEMBER
  * — no permission, no scope, no contact admission. Those are the
  * caller's, because they differ: the tab needs `project:manage_portal`

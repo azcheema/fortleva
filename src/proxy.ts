@@ -163,6 +163,25 @@ const CONFIRM_EMAIL_PREFIX = "/confirm-email/";
  * other exemption, so the ops host never serves it.
  */
 const REPLY_ADDRESS_PREFIX = "/reply-address/";
+/**
+ * A CLIENT PERSON STOPS THEIR WEEKLY SUMMARY (Phase 5 slice 101, founder
+ * decision C69; RFC 8058) — two doors, both without a session, because
+ * stopping mail must never need a password. The PAGE the mail's body links to
+ * (`/portal/unsubscribe/<token>`), which changes nothing on GET and whose one
+ * action flips the setting; and the ONE-CLICK address in the mail's
+ * `List-Unsubscribe` header (`/api/client-summary/unsubscribe/<token>`), which
+ * a mailbox provider POSTs to and whose GET only redirects to the page.
+ *
+ * **THESE OPEN THE PAGE'S SERVER ACTION AND THE ROUTE'S POST TOO**: both trust
+ * nothing but the token — an HMAC over the workspace and the person, checked
+ * before anything else — and all a token can ever do is stop or start that
+ * one person's summary. The page's renders and presses are limited per
+ * network, the one-click POST per person (`src/ratelimit/index.ts`). Prefixes,
+ * segment-anchored, for the reason above; below the host/plane branches, so
+ * the ops host never serves either.
+ */
+const PORTAL_UNSUBSCRIBE_PREFIX = "/portal/unsubscribe/";
+const CLIENT_SUMMARY_API_PREFIX = "/api/client-summary/unsubscribe/";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
@@ -287,6 +306,8 @@ export function proxy(request: NextRequest): NextResponse {
     pathname.startsWith(MEMBER_RESET_PREFIX) ||
     pathname.startsWith(CONFIRM_EMAIL_PREFIX) ||
     pathname.startsWith(REPLY_ADDRESS_PREFIX) ||
+    pathname.startsWith(PORTAL_UNSUBSCRIBE_PREFIX) ||
+    pathname.startsWith(CLIENT_SUMMARY_API_PREFIX) ||
     pathname.startsWith(PORTAL_INVITE_PREFIX) ||
     pathname.startsWith(PORTAL_RESET_PREFIX) ||
     pathname.startsWith(PORTAL_SHARE_PREFIX)

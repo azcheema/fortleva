@@ -305,6 +305,15 @@ export async function clearLoginAsks(tenantId: string, contactEmail: string): Pr
   return cleared;
 }
 
+/**
+ * The fixture contact's weekly-summary link, their summary set back on first
+ * (client-summary.spec's tests, Phase 5 slice 101).
+ */
+export async function clientSummaryLink(tenantId: string, contactEmail: string): Promise<string> {
+  const { token } = await runCli<{ token: string }>(["client-summary-link", tenantId, contactEmail]);
+  return token;
+}
+
 /** Mark a live login of the fixture tenant "Change soon", by name (vault.spec's slice 94 test). */
 export async function flagLogin(tenantId: string, name: string): Promise<number> {
   const { flagged } = await runCli<{ flagged: number }>(["flag-login", tenantId, name]);

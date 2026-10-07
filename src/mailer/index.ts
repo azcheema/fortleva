@@ -34,6 +34,17 @@ export type MailMessage = {
    * Fortleva ACCOUNT, which is not any one agency's.
    */
   readonly replyTo?: string;
+  /**
+   * RFC 8058 one-click unsubscribe (Phase 5 slice 101): an https URL the
+   * mailbox provider POSTs `List-Unsubscribe=One-Click` to. A transport that
+   * sends real mail sets BOTH headers from it — `List-Unsubscribe: <url>` and
+   * `List-Unsubscribe-Post: List-Unsubscribe=One-Click` — and the message
+   * must be DKIM-signed with those headers covered (RFC 8058 §4; SES's own
+   * signing does). Only the clients' weekly summary carries one: it is the
+   * one mail sent to a person on a schedule rather than because something
+   * happened to them.
+   */
+  readonly listUnsubscribe?: string;
 };
 
 export type MailTransport = (msg: MailMessage & { from: string }) => Promise<void>;

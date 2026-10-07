@@ -75,6 +75,7 @@ export type TenantPreferences = {
   time: TimePreferences;
   finance: FinancePreferences;
   vault: VaultPreferences;
+  mail: MailPreferences;
 };
 
 export const PREF_KEYS = {
@@ -246,7 +247,28 @@ export const portalCredentialsSwitchLockKey = (tenantId: string): string => `vau
 /** A share link lives an hour at least and seven days at most (CP4; the table's CHECK says 7 days too). */
 export const VAULT_SHARE_TTL_HOURS_RANGE = { min: 1, max: 168 } as const;
 
-const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance" | "vault"> = {
+/**
+ * Mail the workspace sends on its own initiative (Phase 5). The reply address
+ * (`mail.replyTo`, slice 100) is deliberately NOT here: only its confirmation
+ * writes it (DATA_MODEL §6.18 item 8).
+ */
+export type MailPreferences = {
+  /**
+   * Each person at a client with portal access gets a summary every Monday
+   * morning (slice 101; founder decision C69 (d): ON by default — an agency
+   * that does not want Fortleva emailing its clients switches it off).
+   * `settings:edit` both ways (AUTHZ.md §5: a behavioural key). Off stops
+   * every client's; each person may also stop their own, and nobody at the
+   * agency can start a person's again (`src/notify/client-summary.ts`).
+   */
+  clientSummary: boolean;
+};
+export const MAIL_PREF_KEYS: Readonly<Record<keyof MailPreferences, string>> = {
+  clientSummary: "mail.clientSummary",
+};
+export const MAIL_DEFAULTS: MailPreferences = { clientSummary: true };
+
+const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance" | "vault" | "mail"> = {
   timezone: "Europe/Stockholm",
   weekStart: "MONDAY",
   showIsoWeek: true,
@@ -325,5 +347,6 @@ export function materializePreferences(
       sealedWaitDays: intIn(VAULT_PREF_KEYS.sealedWaitDays, VAULT_SEALED_WAIT_DAYS_RANGE, VAULT_DEFAULTS.sealedWaitDays),
       allowContactSubmission: bool(VAULT_PREF_KEYS.allowContactSubmission, VAULT_DEFAULTS.allowContactSubmission),
     },
+    mail: { clientSummary: bool(MAIL_PREF_KEYS.clientSummary, MAIL_DEFAULTS.clientSummary) },
   };
 }

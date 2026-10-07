@@ -53,17 +53,20 @@ const PREFERENCE_KEYS = PORTAL_MODULES.map(preferenceKey);
 
 export async function resolvePortalModuleGates(tenantId: string): Promise<PortalModuleGates> {
   return withTenant(tenantId, { type: "system" }, async (tx) => {
-    const [tenant, flags, preferences] = await Promise.all([
-      tx.tenant.findFirst({ where: { id: tenantId }, select: { entitlements: true } }),
-      tx.featureFlag.findMany({
-        where: { key: { in: FLAG_KEYS } },
-        select: { key: true, defaultOn: true, tenantOverrides: true },
-      }),
-      tx.tenantPreference.findMany({
-        where: { tenantId, key: { in: PREFERENCE_KEYS } },
-        select: { key: true, value: true },
-      }),
-    ]);
+    // In SEQUENCE, never a `Promise.all` (AGENTS.md's standing trap): the
+    // legs would share this transaction's one connection, and a losing leg
+    // can resolve `undefined`. It was a three-leg batch until slice 101's
+    // design review — which found it newly hot: the clients' weekly summary
+    // resolves the gates once per client person, twice.
+    const tenant = await tx.tenant.findFirst({ where: { id: tenantId }, select: { entitlements: true } });
+    const flags = await tx.featureFlag.findMany({
+      where: { key: { in: FLAG_KEYS } },
+      select: { key: true, defaultOn: true, tenantOverrides: true },
+    });
+    const preferences = await tx.tenantPreference.findMany({
+      where: { tenantId, key: { in: PREFERENCE_KEYS } },
+      select: { key: true, value: true },
+    });
 
     const flagOff = new Set<string>();
     for (const flag of flags) {
