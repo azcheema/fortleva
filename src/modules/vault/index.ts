@@ -106,6 +106,7 @@ export {
   SHOW_STEP_UP_MINUTES,
 } from "./visibility";
 export { sealLogin, unsealLogin } from "./seal";
+export { liveLoginHits, vaultSearchGate, type LoginHit, type VaultSearchGate } from "./search";
 export {
   approveSealedAsk,
   denySealedAsk,

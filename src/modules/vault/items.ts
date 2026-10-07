@@ -450,6 +450,13 @@ export type CredentialPatch = {
  * value actually changed; a patch that changes nothing writes nothing.
  * Moving a credential to another client or project is not a metadata
  * edit and is not offered.
+ *
+ * BOUNDED, like the vault's other writes (slice 97's migration review): an
+ * edit of what a login is found by re-feeds its search row
+ * (`search_feed_credential_item`), so it can meet a locale save that also
+ * hides every shown login in a 40P01 (rank-lock.ts's ledger, "THE LOGIN
+ * FEED"). Each attempt re-reads the login and recomputes what changed, so
+ * a retry writes and audits once; a spent retry is VAULT_BUSY, never a 500.
  */
 export async function updateCredential(
   ctx: VaultCtx,
@@ -474,7 +481,7 @@ export async function updateCredential(
   if (patch.expiresAt !== undefined) wanted.expiresAt = normalizeExpiresAt(patch.expiresAt);
   if (patch.rotateEveryDays !== undefined) wanted.rotateEveryDays = normalizeRotateEveryDays(patch.rotateEveryDays);
 
-  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
+  return boundedVaultWrite((opts) => withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
       await enterVault(tx, ctx, "credential:edit");
       const anchor = await liveAnchor(tx, ctx.tenantId, id);
@@ -505,7 +512,7 @@ export async function updateCredential(
       });
       return tx.credentialItem.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id }, select: viewSelect });
     }),
-  );
+  opts));
 }
 
 /**
@@ -714,9 +721,8 @@ export async function replaceCredentialSecret(
  * write changes — a seal or unseal waits for the delete, or the delete for
  * it, inside `boundedVaultWrite` (the reviews: the delete waits on a
  * seal's row, so its wait is bounded as the seal's, share's and show's
- * are; `updateCredential` is not wrapped — an edit waiting behind a seal
- * is bounded only by the seal's own lock waits; `createCredential` is since
- * slice 94, for the member's key it now takes).
+ * are; `updateCredential` is too since slice 97, for its search feed;
+ * `createCredential` since slice 94, for the member's key it now takes).
  * Two concurrent deletes still record ONE `credential.deleted`: the second
  * finds the row binned under the lock and is NOT_FOUND.
  */

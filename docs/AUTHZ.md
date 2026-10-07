@@ -298,6 +298,8 @@ scopeWhere(actor)                        →  Prisma where-fragment composing bo
 
 Search, notifications and the ⌘K palette use the same `scopeWhere` — a search hit or an inbox row for a P2 item never reaches E1.
 
+*(Slice 97, 2026-10-07, founder decision C65 — LOGINS IN SEARCH.)* A login's index row (`CREDENTIAL_ITEM`) is not gated by a permission but by the vault's DOOR (`vaultSearchGate`, `src/modules/vault/search.ts`: not impersonating, `credential:view` on all four gates, a factor no older than `vault.stepUpMinutes` — C52 (a)), and it is scoped by the vault's ANCHOR rule above, not the general term: a project's login through the project axis, a client's own login through a DIRECT assignment only, the agency's own logins to `client:view_all` only (C49) — so E1 finds P1's logins, never Acme's client-level ones, and no scoped member finds ours, although the general term would hand them a tenant-internal FILE. Both halves are SQL terms in `src/search/query.ts` and are checked again on the LIVE login by the hydrate (`liveLoginHits`, which enters the door itself). A member who could open the vault but has not is told "Logins aren't searched while the vault is locked" on every search, whether or not a login matches (C65 (a)); a page showing a login locks itself when the window closes (`/search`'s `VaultLockTimer`, ⌘K dropping its login rows); one who cannot — viewing as someone else, the module off — is told nothing about logins. Pinned by `src/modules/vault/search.dbtest.ts`.
+
 ## 5. The four gates (§4)
 
 Four different questions, four records, four single-purpose functions — never conflated:

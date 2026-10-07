@@ -10,10 +10,11 @@
  * site. Same shape as `notify/weekly-reminder.ts` beside its job.
  */
 
-/** The entity types the feed writes today. `project_update`,
- * `credential_item` and `client_asset` are named in DATA_MODEL §6.19
- * but those tables do not exist yet, so nothing can be indexed under
- * them. */
+/** The entity types the feed writes today. `project_update` and
+ * `client_asset` are named in DATA_MODEL §6.19 but have no feed, so
+ * nothing is indexed under them. `CREDENTIAL_ITEM` (slice 97, C65) is
+ * fed by migration 20261007120000 and read only through the vault's
+ * door (`query.ts`). */
 export const SEARCH_ENTITY_TYPES = [
   "WORK_ITEM",
   "COMMENT",
@@ -21,6 +22,7 @@ export const SEARCH_ENTITY_TYPES = [
   "PROJECT",
   "CLIENT",
   "CONTACT",
+  "CREDENTIAL_ITEM",
 ] as const;
 
 export type SearchEntityType = (typeof SEARCH_ENTITY_TYPES)[number];
@@ -31,7 +33,10 @@ export const isSearchEntityType = (v: string): v is SearchEntityType =>
 /** Per type, so one noisy type cannot crowd out the rest (§6.19's
  * "per-type capped UNION"). */
 export const PER_TYPE_LIMIT = 5;
-/** The whole answer, across types — the palette shows a handful. */
-export const TOTAL_LIMIT = 30;
+/** The whole answer, across types: every type's cap, so the total never
+ * cuts a type's last rows for another's (35 since slice 97 added logins —
+ * a seventh type over a total of 30 would have let rows a client named
+ * push others out; its security review). */
+export const TOTAL_LIMIT = PER_TYPE_LIMIT * SEARCH_ENTITY_TYPES.length;
 /** Longer than this is not a query, it is a paste. */
 export const MAX_QUERY_CHARS = 200;

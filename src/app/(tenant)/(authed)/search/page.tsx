@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Page, PageHeader } from "@/components/semantic";
 import { requireTenantContext } from "@/members/tenant-context";
+import type { VaultSearchGate } from "@/modules/vault";
 import { search } from "@/search/query";
 
 import { SearchInput } from "./search-input";
@@ -25,9 +26,9 @@ export async function generateMetadata(): Promise<Metadata> {
  *
  * The page holds no gate of its own. `search()` carries all of them —
  * the scope filter, the per-type permission gate through
- * `requireAccess`, and the hydrate that drops anything whose source is
- * gone — so a surface cannot forget one by rendering results it was
- * handed.
+ * `requireAccess`, the vault's door for logins, and the hydrate that
+ * drops anything whose source is gone — so a surface cannot forget one
+ * by rendering results it was handed.
  */
 export default async function SearchPage({
   searchParams,
@@ -42,6 +43,7 @@ export default async function SearchPage({
   const outcome = q.trim().length
     ? await search({ tenantId: membership.tenantId, actor }, q)
     : null;
+  const lock = outcome?.kind === "results" ? vaultLockOf(outcome.vault) : null;
 
   return (
     <Page>
@@ -56,6 +58,8 @@ export default async function SearchPage({
                 ? { kind: "empty-query" }
                 : {
                     kind: "results",
+                    vault: outcome.vault.state,
+                    vaultLock: lock,
                     hits: outcome.hits.map((h) => ({
                       entityType: h.entityType,
                       entityId: h.entityId,
@@ -70,4 +74,15 @@ export default async function SearchPage({
       </div>
     </Page>
   );
+}
+
+/**
+ * When the open vault this answer was searched under locks — and how long
+ * that is on the SERVER's clock, which `VaultLockTimer` lays on the
+ * browser's (as every vault page does, `vault-page.tsx`). Only an open
+ * vault has one; the results draw the timer only over a login.
+ */
+function vaultLockOf(vault: VaultSearchGate): { locksAt: string; msLeft: number } | null {
+  if (vault.state !== "open") return null;
+  return { locksAt: vault.locksAt.toISOString(), msLeft: vault.locksAt.getTime() - Date.now() };
 }

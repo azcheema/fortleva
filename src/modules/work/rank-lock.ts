@@ -205,6 +205,28 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
  *     that rolled back cleanly and succeeds when repeated. Pre-existing
  *     with the switch's own fan-out, whose feeds can make the same cycle
  *     (the switch retries); recorded, not fixed.
+ *   • THE LOGIN FEED, since Phase 3V slice 97 (`search_feed_credential_item`,
+ *     migration `20261007120000`): a login write that changes what it is
+ *     found by (name, username, address, tags, anchor, the bin) locks the
+ *     `credential_item` row, then its `search_index` row. It fires on no
+ *     other column — deliberately not `updated_at` (the pre-apply review) —
+ *     so the multi-row login writers (the offboarding flags on a member's
+ *     removal, `offboarding.ts` — named there only, by the vault boundary
+ *     test's caller pin — and `hideEveryShownLogin` when client logins are
+ *     switched off) lock no
+ *     index row and close no cycle with the fan-out's search leg or the
+ *     restamp. ONE residual: a single `updatePreferences` save that changes
+ *     the language (`restampSearchLang` holds every search row) AND switches
+ *     client logins off (`hideEveryShownLogin` then wants each shown login's
+ *     row) against a concurrent write to one SHOWN login that holds its row
+ *     and then wants its search row — an edit of its name, username, address
+ *     or tags (`updateCredential`), or binning it (`deleteCredential`, whose
+ *     `deleted_at` fires the feed's delete). Postgres breaks it (40P01). The
+ *     login side retries — both run in `boundedVaultWrite` (`updateCredential`
+ *     since slice 97, for this), VAULT_BUSY when spent; the save does not,
+ *     and its victim is a raw error on a save that rolled back cleanly.
+ *     Recorded, not fixed: it needs both settings in one save during that
+ *     write.
  *
  * The older pair: deleteItem,
  * which locks its item and then the item's attachments and comments,

@@ -181,7 +181,11 @@ describe("vault ciphertext boundary", () => {
     // through the store) and never reads one; its callers are pinned below.
     // `submission-subjects` names the CLIENT in the reader's inbox under
     // their own principal, `credential:view` and the anchor rule, never a
-    // login and never under impersonation.
+    // login and never under impersonation. Search (slice 97, C65):
+    // `search` answers WHETHER a member's search may include logins — the
+    // door's verdict as open / locked / closed, which opens nothing — and
+    // names logins for search hits only after entering the door itself,
+    // by the anchor rule on the live row: names and places, never a secret.
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
@@ -206,6 +210,7 @@ describe("vault ciphertext boundary", () => {
       "modules/vault/sealed-reminders",
       "modules/vault/sealed-requests",
       "modules/vault/sealed-rules",
+      "modules/vault/search",
       "modules/vault/share-links",
       "modules/vault/share-open",
       "modules/vault/submission-portal-writes",

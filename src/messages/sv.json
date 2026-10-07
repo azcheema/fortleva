@@ -332,7 +332,8 @@
       "document": "Filer",
       "project": "Projekt",
       "client": "Kunder",
-      "contact": "Kontakter"
+      "contact": "Kontakter",
+      "credential": "Inloggningar"
     },
     "idle": {
       "title": "Skriv för att söka",
@@ -344,7 +345,12 @@
     },
     "none": {
       "title": "Inget matchade",
-      "body": "Ingen uppgift, fil, projekt, kund eller kontakt som du kan se matchar det."
+      "body": "Ingen uppgift, fil, projekt, kund eller kontakt som du kan se matchar det.",
+      "bodyWithLogins": "Ingen uppgift, fil, projekt, kund, kontakt eller inloggning som du kan se matchar det."
+    },
+    "vaultLocked": {
+      "line": "Inloggningar söks inte medan valvet är låst.",
+      "open": "Öppna valvet"
     }
   },
   "dashboard": {

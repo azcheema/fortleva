@@ -314,7 +314,15 @@ export function VaultRow({
   );
 
   return (
-    <li className="px-3 py-3" data-testid="vault-item" data-name={item.name} data-credential-id={item.id}>
+    // `id` is the address a search hit opens (`#credential-<id>`, the vault's
+    // `liveLoginHits`, slice 97); `scroll-mt-16` clears the sticky header.
+    <li
+      id={`credential-${item.id}`}
+      className="scroll-mt-16 px-3 py-3"
+      data-testid="vault-item"
+      data-name={item.name}
+      data-credential-id={item.id}
+    >
       {readOnly ? (
         <div className="flex flex-col gap-2">{body}</div>
       ) : (

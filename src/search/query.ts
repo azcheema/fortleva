@@ -3,6 +3,7 @@ import type { MemberActor } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
+import { liveLoginHits, vaultSearchGate, type LoginHit, type VaultSearchGate } from "@/modules/vault";
 
 import {
   MAX_QUERY_CHARS,
@@ -65,6 +66,20 @@ import {
  * filter over the rows afterwards: a post-filter lets forbidden rows
  * occupy the per-type cap and the total limit, so a permitted row could
  * be pushed out of the answer by one the member may not see.
+ *
+ * LOGINS ARE BEHIND THE VAULT'S DOOR (slice 97; founder decisions C52 (a),
+ * C65). A `CREDENTIAL_ITEM` row holds a login's name, username, web
+ * address and tags — the vault's LIST, which sits behind a fresh second
+ * factor — so the type is not gated by a permission here but by the
+ * vault itself (`vaultSearchGate`: not impersonating, `credential:view`
+ * on all four gates, a factor no older than `vault.stepUpMinutes`). A
+ * member who could open the vault but has not is told so on every
+ * search (`vault.state === "locked"`), whether or not a login matches; one
+ * whose vault is open gets the window's end (`vault.locksAt`), so a page
+ * showing a login locks itself when the vault does. The type has
+ * its OWN scope term too — the vault's anchor rule (C49), under which
+ * our own logins reach a tenant-wide scope only — and its hydrate is
+ * the vault's (`liveLoginHits`), checked against the live row.
  */
 
 export type SearchCtx = { readonly tenantId: string; readonly actor: MemberActor };
@@ -87,8 +102,11 @@ export {
  * A COMMENT is read under `work_item:view` because a comment's index
  * row is a work item's conversation, and there is no `comment:view`
  * code — the two `comment:*` codes are edit_any and delete.
+ *
+ * `CREDENTIAL_ITEM` is not here, deliberately: its gate is the vault's
+ * door, of which `credential:view` is only the first half (see the header).
  */
-export const PERMISSION_BY_TYPE: Readonly<Record<SearchEntityType, string>> = {
+export const PERMISSION_BY_TYPE: Readonly<Record<Exclude<SearchEntityType, "CREDENTIAL_ITEM">, string>> = {
   WORK_ITEM: "work_item:view",
   COMMENT: "work_item:view",
   DOCUMENT: "document:view",
@@ -154,7 +172,19 @@ type Row = {
  * results" for that is worse than telling them the query was too vague.
  */
 export type SearchOutcome =
-  | { readonly kind: "results"; readonly hits: readonly SearchHit[] }
+  | {
+      readonly kind: "results";
+      readonly hits: readonly SearchHit[];
+      /**
+       * The vault's verdict, asked BEFORE the query and never from its
+       * answer (C65 (a)): `open` — logins were searched, and the window
+       * closes at `locksAt`, when a surface showing one must lock itself;
+       * `locked` — the member could open the vault but has not, so logins
+       * were not searched and they are told so on EVERY search, whatever the
+       * query; `closed` — logins are never mentioned.
+       */
+      readonly vault: VaultSearchGate;
+    }
   | { readonly kind: "empty-query" };
 
 export async function search(ctx: SearchCtx, raw: string): Promise<SearchOutcome> {
@@ -206,8 +236,11 @@ export async function search(ctx: SearchCtx, raw: string): Promise<SearchOutcome
     if ((parsed[0]?.lexemes ?? 0) === 0) return { kind: "empty-query" } as const;
 
     const allowed = await allowedTypes(tx, ctx);
-    if (allowed.length === 0) return { kind: "results", hits: [] } as const;
-    return { kind: "results", hits: await runSearch(tx, ctx, q, allowed) } as const;
+    // After the others, in sequence on this one connection.
+    const vault = await vaultSearchGate(tx, ctx);
+    const types: SearchEntityType[] = vault.state === "open" ? [...allowed, "CREDENTIAL_ITEM"] : allowed;
+    if (types.length === 0) return { kind: "results", hits: [], vault } as const;
+    return { kind: "results", hits: await runSearch(tx, ctx, q, types), vault } as const;
   });
 }
 
@@ -230,7 +263,7 @@ export async function search(ctx: SearchCtx, raw: string): Promise<SearchOutcome
  * (`authz-batches.test.ts` keeps a check from coming back as a leg).
  */
 async function allowedTypes(tx: TenantDb, ctx: SearchCtx): Promise<SearchEntityType[]> {
-  const codes = [...new Set(Object.values(PERMISSION_BY_TYPE))];
+  const codes = [...new Set<string>(Object.values(PERMISSION_BY_TYPE))];
   const held = new Set<string>();
   for (const code of codes) {
     try {
@@ -245,7 +278,10 @@ async function allowedTypes(tx: TenantDb, ctx: SearchCtx): Promise<SearchEntityT
       if (!(e instanceof AuthzError)) throw e;
     }
   }
-  return SEARCH_ENTITY_TYPES.filter((t) => held.has(PERMISSION_BY_TYPE[t]));
+  // Logins are the vault's to answer (`vaultSearchGate`), never a permission's.
+  return SEARCH_ENTITY_TYPES.filter(
+    (t): t is Exclude<SearchEntityType, "CREDENTIAL_ITEM"> => t !== "CREDENTIAL_ITEM" && held.has(PERMISSION_BY_TYPE[t]),
+  );
 }
 
 async function runSearch(
@@ -319,7 +355,7 @@ async function runSearch(
          -- occupy a cap slot that a permitted one would have taken.
          AND si.entity_type = ANY(${types}::text[])
          AND si.search @@ t.tsq
-         AND (
+         AND ((si.entity_type <> 'CREDENTIAL_ITEM' AND (
            ${unscoped}
            OR si.client_id = ANY(${clientIds}::text[])
            OR si.project_id = ANY(${projectIds}::text[])
@@ -333,7 +369,19 @@ async function runSearch(
            -- ("zero assignments => only tenant-internal"). Without this,
            -- search disagreed with the page it is a lens over.
            OR (si.client_id IS NULL AND si.project_id IS NULL)
-         )
+         ))
+         -- A LOGIN by the vault's own anchor rule (scope.ts, C49) and no
+         -- other term: a project's login through the project axis, a
+         -- client's own login through a DIRECT assignment only, and our
+         -- own logins — no client, no project — to a tenant-wide scope
+         -- only. The general term above would have shown our own logins
+         -- to every member who may open the vault, as it shows a
+         -- tenant-internal file.
+         OR (si.entity_type = 'CREDENTIAL_ITEM' AND (
+           ${unscoped}
+           OR (si.project_id IS NOT NULL AND si.project_id = ANY(${projectIds}::text[]))
+           OR (si.project_id IS NULL AND si.client_id = ANY(${clientIds}::text[]))
+         )))
     )
     SELECT entity_type, entity_id, title, subtitle, project_id, client_id,
            state_category, updated_at, rank
@@ -452,6 +500,18 @@ async function hydrate(
     ...[...itemById.keys()],
   ]);
 
+  // LOGINS, through the vault (`liveLoginHits`): the live row, the
+  // member's reach by ITS anchor, the address and the place line — and
+  // the vault's door asked again, so a window that closed since the gate
+  // was asked drops them. IN SEQUENCE after the batch above, never a
+  // fourth leg of it: a new read inside an existing transaction goes
+  // after the batch (AGENTS.md's standing trap — the leg that loses the
+  // race is the one that breaks).
+  const credentialIds = idsOf("CREDENTIAL_ITEM");
+  const loginById: ReadonlyMap<string, LoginHit> = credentialIds.length
+    ? await liveLoginHits(tx, ctx, credentialIds)
+    : new Map();
+
   const live: Record<SearchEntityType, Set<string> | null> = {
     WORK_ITEM: new Set(liveItems.map((i) => i.id)),
     // Liveness is checked for WORK_ITEM parents only. Comments on other
@@ -478,6 +538,9 @@ async function hydrate(
     PROJECT: null,
     CLIENT: null,
     CONTACT: null,
+    // Live, unbinned AND reached by this member through the login's own
+    // anchor — the index's copy of the anchor is not trusted for a login.
+    CREDENTIAL_ITEM: new Set(loginById.keys()),
   };
   const survivors = hits.filter((h) => {
     const set = live[h.entityType];
@@ -510,6 +573,13 @@ async function hydrate(
   // cannot open is worse than one you never saw — it reads as the
   // product losing your work.
   return survivors.flatMap((h) => {
+    // A login's address and second line are the vault's, from the live row
+    // (the index holds no subtitle for one: a client's rename would leave
+    // it stale).
+    if (h.entityType === "CREDENTIAL_ITEM") {
+      const login = loginById.get(h.entityId);
+      return login ? [{ ...h, subtitle: login.place, href: login.href }] : [];
+    }
     const href = addressOf(h, itemById, commentSubject, keyOf);
     return href === null ? [] : [{ ...h, href }];
   });
@@ -560,6 +630,10 @@ function addressOf(
       return `/clients/${h.entityId}`;
     case "CONTACT":
       return h.clientId ? `/clients/${h.clientId}/contacts` : null;
+    case "CREDENTIAL_ITEM":
+      // Never asked: the hydrate takes a login's address from the vault
+      // (`liveLoginHits`) before it gets here.
+      return null;
   }
 }
 

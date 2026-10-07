@@ -208,6 +208,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 95, the plaintext export — `src/modules/vault/export.dbtest.ts`,
   // `setupTenant("vexp")`.
   "vexp-",
+  // Phase 3V slice 97, logins in search — `src/modules/vault/search.dbtest.ts`,
+  // `setupTenant("vfind")`.
+  "vfind-",
   "vkey-",
   // Phase 3V slice 90, share links — `src/modules/vault/share.dbtest.ts`,
   // `setupTenant("vlink")`.

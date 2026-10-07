@@ -332,7 +332,8 @@
       "document": "Files",
       "project": "Projects",
       "client": "Clients",
-      "contact": "Contacts"
+      "contact": "Contacts",
+      "credential": "Logins"
     },
     "idle": {
       "title": "Type to search",
@@ -344,7 +345,12 @@
     },
     "none": {
       "title": "Nothing matched",
-      "body": "No task, file, project, client or contact you can see matches that."
+      "body": "No task, file, project, client or contact you can see matches that.",
+      "bodyWithLogins": "No task, file, project, client, contact or login you can see matches that."
+    },
+    "vaultLocked": {
+      "line": "Logins aren't searched while the vault is locked.",
+      "open": "Open the vault"
     }
   },
   "dashboard": {

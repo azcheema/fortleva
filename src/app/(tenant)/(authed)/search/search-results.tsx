@@ -4,6 +4,8 @@ import {
   Building2Icon,
   FileTextIcon,
   FolderKanbanIcon,
+  KeyRoundIcon,
+  LockIcon,
   MessageSquareIcon,
   SearchIcon,
   SquareCheckIcon,
@@ -15,6 +17,7 @@ import { useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/semantic";
 import { StatusIcon } from "@/components/semantic";
+import { VaultLockTimer } from "@/components/vault/vault-lock-timer";
 import { STATUS_MAP, type StatusValue } from "@/lib/enum-map";
 import type { SearchEntityType } from "@/search/shape";
 
@@ -42,6 +45,7 @@ const ICON: Record<SearchEntityType, React.ComponentType<LucideProps>> = {
   PROJECT: FolderKanbanIcon,
   CLIENT: Building2Icon,
   CONTACT: UserRoundIcon,
+  CREDENTIAL_ITEM: KeyRoundIcon,
 };
 
 /** Type -> the `search.types.*` message key. An explicit map, so adding
@@ -54,6 +58,7 @@ const TYPE_KEY: Record<SearchEntityType, string> = {
   PROJECT: "project",
   CLIENT: "client",
   CONTACT: "contact",
+  CREDENTIAL_ITEM: "credential",
 };
 
 export type SearchResultView = {
@@ -68,9 +73,59 @@ export type SearchResultView = {
 export type ResultsOutcome =
   | { kind: "idle" }
   | { kind: "empty-query" }
-  | { kind: "results"; hits: SearchResultView[] };
+  | {
+      kind: "results";
+      hits: SearchResultView[];
+      /** The vault's verdict for this search (`search()`'s `vault`, C65). */
+      vault: "open" | "locked" | "closed";
+      /** When an open vault locks, on the server's clock — null unless open. */
+      vaultLock: { locksAt: string; msLeft: number } | null;
+    };
 
 export function SearchResults({ outcome }: { outcome: ResultsOutcome }) {
+  if (outcome.kind !== "results") return <ResultsBody outcome={outcome} />;
+  // A login on screen means the vault is open: say until when, and LOCK
+  // the page then (slice 97's security review) — `VaultLockTimer` refreshes
+  // it at the window's end, on Back and on return, as every vault page
+  // does, and the server's answer then has no login in it.
+  const showsLogin = outcome.hits.some((h) => h.entityType === "CREDENTIAL_ITEM");
+  const lock = showsLogin ? outcome.vaultLock : null;
+  if (outcome.vault !== "locked" && lock === null) return <ResultsBody outcome={outcome} />;
+  return (
+    <div className="flex flex-col gap-4">
+      {outcome.vault === "locked" ? <VaultLockedLine /> : null}
+      {lock ? <VaultLockTimer locksAt={lock.locksAt} msLeft={lock.msLeft} /> : null}
+      <ResultsBody outcome={outcome} />
+    </div>
+  );
+}
+
+/**
+ * Logins were not searched because the vault is locked (founder decision
+ * C65 (a)). Drawn on EVERY answered search by a member who could open the
+ * vault — with results, with none — and never conditioned on a login
+ * matching, so it says nothing about what the vault holds. The link is
+ * the vault, whose door asks for the code.
+ */
+function VaultLockedLine() {
+  const t = useTranslations("search.vaultLocked");
+  return (
+    <p className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="search-vault-locked">
+      <LockIcon aria-hidden="true" className="size-3.5 shrink-0" />
+      <span>
+        <span>{t("line")} </span>
+        <Link
+          href="/vault"
+          className="rounded-sm text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          {t("open")}
+        </Link>
+      </span>
+    </p>
+  );
+}
+
+function ResultsBody({ outcome }: { outcome: ResultsOutcome }) {
   const t = useTranslations("search");
 
   if (outcome.kind === "idle") {
@@ -92,8 +147,15 @@ export function SearchResults({ outcome }: { outcome: ResultsOutcome }) {
     );
   }
   if (outcome.hits.length === 0) {
+    // "…or login" only when logins WERE searched: under a locked vault the
+    // line above says they were not, and this must not say none matched
+    // (C65 (a)'s reason for the line); under a closed one, never a word.
     return (
-      <EmptyState variant="filtered" title={t("none.title")} body={t("none.body")} />
+      <EmptyState
+        variant="filtered"
+        title={t("none.title")}
+        body={outcome.vault === "open" ? t("none.bodyWithLogins") : t("none.body")}
+      />
     );
   }
 

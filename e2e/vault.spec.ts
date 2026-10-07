@@ -338,6 +338,49 @@ test.describe.serial("the vault — a client's tab, /vault and a project's tab �
     await expect(rowOf(name)).toHaveCount(0);
   });
 
+  test("search finds a login while the vault is open (slice 97): ⌘K opens it on its own row; /search says until when", async () => {
+    const find = async (name: string) => {
+      await page.goto("/home");
+      const dialog = page.getByRole("dialog");
+      // Retried, as G V is: a key pressed before the shell's one listener
+      // has hydrated is lost, and nothing on the page says when that is.
+      await expect(async () => {
+        await page.keyboard.press("ControlOrMeta+k");
+        await expect(dialog).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 * SLOW });
+      await dialog.getByRole("combobox").fill(name);
+      const hit = dialog.getByRole("option").filter({ hasText: name });
+      await expect(hit.first()).toBeVisible({ timeout: 20_000 * SLOW });
+      // The vault is open: logins were searched, so no line says otherwise.
+      await expect(page.getByTestId("palette-vault-locked")).toHaveCount(0);
+      return hit.first();
+    };
+
+    // A client's login: under the client's name, onto /vault's view of
+    // that client (it needs only the door — never a 404 for a custom role).
+    const clientHit = await find(seed.vaultLoginName);
+    await expect(clientHit).toContainText(seed.clientName);
+    await clientHit.click();
+    await expect(page).toHaveURL(new RegExp(`/vault\\?client=${seed.clientId}#credential-[0-9a-f-]{36}$`));
+    const clientRow = page.locator(`#credential-${new URL(page.url()).hash.slice("#credential-".length)}`);
+    await expect(clientRow).toHaveAttribute("data-name", seed.vaultLoginName);
+    await expect(clientRow).toBeInViewport();
+    expect(await page.content()).not.toContain(seed.vaultLoginPassword);
+
+    // One of our own: onto /vault's "our own" view.
+    await (await find(seed.vaultAgencyLoginName)).click();
+    await expect(page).toHaveURL(/\/vault\?client=agency#credential-[0-9a-f-]{36}$/);
+    const ownRow = page.locator(`#credential-${new URL(page.url()).hash.slice("#credential-".length)}`);
+    await expect(ownRow).toHaveAttribute("data-name", seed.vaultAgencyLoginName);
+
+    // /search shows the login too — and, with a login on screen, when the
+    // vault locks: the page locks itself then, as every vault page does.
+    await page.goto(`/search?q=${encodeURIComponent(seed.vaultLoginName)}`);
+    await expect(page.locator('[data-testid="search-hit"][data-entity-type="CREDENTIAL_ITEM"]')).toContainText(seed.vaultLoginName);
+    await expect(page.getByTestId("vault-lock")).toBeVisible();
+    await expect(page.getByTestId("search-vault-locked")).toHaveCount(0);
+  });
+
   test("a stale factor locks the whole vault — the list included — and a code opens it again", async () => {
     // A REAL login's id, read while the vault is still open: the reveal
     // path answers NOT_FOUND for an unknown id before it asks for a factor,
@@ -346,6 +389,14 @@ test.describe.serial("the vault — a client's tab, /vault and a project's tab �
     const realId = await rowOf(seed.vaultLoginName).getAttribute("data-credential-id");
     expect(realId).toMatch(/^[0-9a-f-]{36}$/);
     expect(await ageVaultFactor(seed.tenantId, seed.vaultEmail)).toBeGreaterThan(0);
+    // Search stops naming logins, and says why (slice 97, C65 (a)).
+    await page.goto(`/search?q=${encodeURIComponent(seed.vaultLoginName)}`);
+    await expect(page.getByTestId("search-vault-locked")).toBeVisible();
+    await expect(page.locator('[data-testid="search-hit"][data-entity-type="CREDENTIAL_ITEM"]')).toHaveCount(0);
+    await expect(page.getByTestId("search-vault-locked").getByRole("link", { name: "Open the vault" })).toHaveAttribute(
+      "href",
+      "/vault",
+    );
     await page.goto(vault());
     const door = page.getByTestId("vault-door");
     await expect(door).toHaveAttribute("data-remedy", "step_up");
@@ -375,6 +426,59 @@ test("the owner, with no authenticator, finds the door and is sent to set one up
     "href",
     /^\/account\?notice=mfa_required&next=/,
   );
+});
+
+test("the owner, with no authenticator: ⌘K says logins were not searched, on any query, and never names one (slice 97, C65 (a))", async ({
+  page,
+}) => {
+  seed = requireSeed();
+  await page.goto("/home");
+  const dialog = page.getByRole("dialog");
+  // Retried, as G V is: a key pressed before the shell's one listener has
+  // hydrated is lost.
+  await expect(async () => {
+    await page.keyboard.press("ControlOrMeta+k");
+    await expect(dialog).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 * SLOW });
+  // A LINE under the list, never a row: it is not a result.
+  const line = dialog.getByTestId("palette-vault-locked");
+
+  await dialog.getByRole("combobox").fill(seed.vaultLoginName);
+  await expect(line).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(line).toContainText("Logins aren't searched while the vault is locked.");
+  await expect(dialog.getByRole("option").filter({ hasText: seed.vaultLoginName })).toHaveCount(0);
+
+  // A query nothing matches gets the same line — it says nothing about what
+  // the vault holds — and still says "No results.", and Enter there goes
+  // nowhere (the review: as a row, the line was what Enter opened).
+  await dialog.getByRole("combobox").fill(`zzqqnothing${Date.now()}`);
+  await expect(line).toBeVisible({ timeout: 20_000 * SLOW });
+  await expect(dialog.getByText("No results.")).toBeVisible();
+  await page.keyboard.press("Enter");
+  // `data-state`, not "visible": Radix flips it to `closed` at once, while
+  // the content stays visible through its exit animation (the review — a
+  // visibility check here could not have failed).
+  await expect(dialog).toHaveAttribute("data-state", "open");
+  await expect(dialog.getByRole("combobox")).toBeFocused();
+  await expect(page).toHaveURL(/\/home$/);
+
+  // The link is the next tab stop, outside cmdk's key handling: a single
+  // key there must not act on the page behind the palette (the review: `T`
+  // stopped a running timer) — `?` opens no shortcut overlay.
+  const link = line.getByRole("link", { name: "Open the vault" });
+  await page.keyboard.press("Tab");
+  await expect(link).toBeFocused();
+  await page.keyboard.press("?");
+  // A key's update is a discrete one, committed before the press returns;
+  // one more frame so a check here cannot pass before the overlay could open.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  await expect(page.getByRole("dialog", { name: /shortcut/i })).toHaveCount(0);
+  await expect(dialog).toHaveAttribute("data-state", "open");
+
+  await link.click();
+  await expect(page).toHaveURL(/\/vault$/);
+  await expect(page.getByTestId("vault-door")).toHaveAttribute("data-remedy", "enrol");
+  await expect(dialog).toHaveCount(0);
 });
 
 test("the reveal edge refuses a request that did not come from the page", async ({ page }) => {

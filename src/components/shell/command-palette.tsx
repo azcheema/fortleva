@@ -5,13 +5,16 @@ import {
   FileTextIcon,
   FolderKanbanIcon,
   KeyboardIcon,
+  KeyRoundIcon,
   LanguagesIcon,
+  LockIcon,
   LogOutIcon,
   MessageSquareIcon,
   SquareCheckIcon,
   UserRoundIcon,
   type LucideProps,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
@@ -29,9 +32,10 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
+import { useVaultDeadline } from "@/components/vault/use-vault-deadline";
 import { LOCALES } from "@/i18n/config";
 import { overlaySections } from "@/lib/keymap";
-import { emptyScopes, runScopeBinding, scopeSnapshot, subscribeScopes } from "./use-hotkeys";
+import { emptyScopes, runScopeBinding, scopeSnapshot, subscribeScopes, useScopeKeys } from "./use-hotkeys";
 import { matchesQuery } from "@/lib/text-match";
 import { paletteSearchAction, type PaletteHit } from "@/app/(tenant)/(authed)/search/actions";
 import type { SearchEntityType } from "@/search/shape";
@@ -70,7 +74,18 @@ const ENTITY_ICON: Record<SearchEntityType, React.ComponentType<LucideProps>> = 
   PROJECT: FolderKanbanIcon,
   CLIENT: Building2Icon,
   CONTACT: UserRoundIcon,
+  CREDENTIAL_ITEM: KeyRoundIcon,
 };
+
+type Answered = {
+  q: string;
+  rows: PaletteHit[];
+  vaultLocked: boolean;
+  /** The open vault's window an answer holding a LOGIN was searched under. */
+  lock: { key: string; msLeft: number } | null;
+};
+
+const NOTHING_ANSWERED: Answered = { q: "", rows: [], vaultLocked: false, lock: null };
 
 export function CommandPalette({
   open,
@@ -98,6 +113,7 @@ export function CommandPalette({
   const t = useTranslations("shell.palette");
   const tNav = useTranslations("nav");
   const tCommon = useTranslations("common");
+  const tVault = useTranslations("search.vaultLocked");
   const locale = useLocale();
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -116,7 +132,10 @@ export function CommandPalette({
   // they are replaced, so without this a result row for the PREVIOUS
   // query stays on screen — and selectable — through the next 200 ms of
   // typing.
-  const [answered, setAnswered] = useState<{ q: string; rows: PaletteHit[] }>({ q: "", rows: [] });
+  // `vaultLocked` and `lock` travel WITH the rows, for the same reason:
+  // they answer that query, and a line left over from the previous one
+  // would mean nothing.
+  const [answered, setAnswered] = useState<Answered>(NOTHING_ANSWERED);
   // SELECTION IS CONTROLLED, and it has to be. cmdk moves its highlight
   // on a SEARCH change only; item registration re-selects nothing when
   // something is already selected. Entity rows mount 200 ms after the
@@ -170,12 +189,39 @@ export function CommandPalette({
     setWasOpen(open);
     if (!open) {
       setQuery("");
-      setAnswered({ q: "", rows: [] });
+      setAnswered(NOTHING_ANSWERED);
       setSelected("");
     }
   }
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  // When the open vault an answer was searched under locks, its LOGIN rows
+  // leave the palette and the locked line takes their place (slice 97's
+  // reviews: a palette left open must not keep login names on a screen
+  // past the window). The vault pages' own rule (`useVaultDeadline`) — at
+  // the deadline, every 15 s and on return — because a bare timeout is
+  // delayed by however long a laptop slept.
+  useVaultDeadline(answered.lock, (expired) => {
+    // Only the answer held under THAT window: a late check of an old one
+    // must never strip a newer answer's logins.
+    setAnswered((a) =>
+      a.lock?.key === expired
+        ? { ...a, rows: a.rows.filter((r) => r.entityType !== "CREDENTIAL_ITEM"), vaultLocked: true, lock: null }
+        : a,
+    );
+    // No highlight reset here: when the lit login row unmounts, cmdk lights
+    // the first row itself, and an unguarded reset could clear a NEWER
+    // answer's highlight (the last review).
+  });
+
+  // While it is open the palette owns the keyboard — quick-create's and the
+  // stop confirm's reason: its input and list are inert to single keys
+  // (`inMenuLayer`), but the vault line's link below the cmdk root is
+  // neither, and `T` there stopped the member's timer behind the scrim
+  // (slice 97's fix-round review). `exclusive` FOLLOWS `open` — the standing
+  // trap: register one unconditionally and every key in the app dies.
+  useScopeKeys("modal", [], { exclusive: open });
 
   const onQueryChange = (next: string) => {
     setQuery(next);
@@ -183,16 +229,23 @@ export function CommandPalette({
     const trimmed = next.trim();
     if (trimmed.length === 0) {
       issued.current += 1;
-      setAnswered({ q: "", rows: [] });
+      setAnswered(NOTHING_ANSWERED);
       return;
     }
     timer.current = window.setTimeout(() => {
       if (!openRef.current) return; // closed since it was scheduled
       const ticket = ++issued.current;
       void paletteSearchAction(trimmed)
-        .then((rows) => {
+        .then(({ hits: rows, vaultLocked, vaultMsLeft, vaultLocksAt }) => {
           if (ticket !== issued.current || !openRef.current) return;
-          setAnswered({ q: trimmed, rows });
+          // Keyed by the WINDOW (its lock instant, as the vault pages key
+          // theirs), measured on the server's clock: one window, one
+          // deadline, however often the palette remounts.
+          const lock =
+            vaultMsLeft !== null && vaultLocksAt !== null && rows.some((r) => r.entityType === "CREDENTIAL_ITEM")
+              ? { key: vaultLocksAt, msLeft: vaultMsLeft }
+              : null;
+          setAnswered({ q: trimmed, rows, vaultLocked, lock });
           // Put the highlight on the first result the moment it exists,
           // which is the one thing cmdk will not do for us.
           if (rows[0]) setSelected(rows[0].value);
@@ -200,13 +253,15 @@ export function CommandPalette({
         // A failed search must not blank the navigation rows underneath
         // it: the palette is how someone gets somewhere.
         .catch(() => {
-          if (ticket === issued.current && openRef.current) setAnswered({ q: trimmed, rows: [] });
+          if (ticket === issued.current && openRef.current) setAnswered({ ...NOTHING_ANSWERED, q: trimmed });
         });
     }, 200);
   };
 
   // Rows are shown only while they answer the query on screen.
-  const hits = answered.q === query.trim() ? answered.rows : [];
+  const current = answered.q === query.trim();
+  const hits = current ? answered.rows : [];
+  const vaultLocked = current && answered.vaultLocked;
 
   const navRows = flatNav(nav).filter((entry) =>
     matchesQuery(`${tNav(entry.labelKey)} ${entry.href}`, query),
@@ -259,6 +314,9 @@ export function CommandPalette({
         .filter((b) => matchesQuery(b.label, query))
     : [];
 
+  // Independent of the vault line, which is not a result: a query that
+  // matched nothing says so, and the line below the list says why logins
+  // were not among it (the review: "No results." must not vanish).
   const nothing =
     navRows.length === 0 && hits.length === 0 && !hasActions && pageRows.length === 0;
 
@@ -268,6 +326,9 @@ export function CommandPalette({
       onOpenChange={onOpenChange}
       title={t("title")}
       description={t("description")}
+      // The dialog content is a `gap-4` grid: the vault line after the cmdk
+      // root would otherwise float 16px below it, over a blank band.
+      className="gap-0"
     >
       {/* The cmdk root. `CommandDialog` deliberately does not render one
           (see command.tsx): `shouldFilter` both filters and RE-SORTS by
@@ -424,6 +485,32 @@ export function CommandPalette({
           ) : null}
         </CommandList>
       </Command>
+      {vaultLocked ? (
+        // Logins were not searched: the vault is locked (founder decision
+        // C65 (a)). Drawn on EVERY answered search by a member who could
+        // open the vault, never because a login matched. A LINE, not a
+        // row (the review): as the only row it was what cmdk lit, so Enter
+        // on a query that matched nothing went to /vault. And AFTER the
+        // cmdk root, because that root's onKeyDown owns Enter for every
+        // descendant (AGENTS.md) — inside it, Enter on the focused link
+        // would have fired the lit row instead. Reached by Tab or a click.
+        <p
+          data-testid="palette-vault-locked"
+          className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground"
+        >
+          <LockIcon aria-hidden="true" className="size-3.5 shrink-0" />
+          <span>
+            <span>{tVault("line")} </span>
+            <Link
+              href="/vault"
+              onClick={() => onOpenChange(false)}
+              className="rounded-sm text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {tVault("open")}
+            </Link>
+          </span>
+        </p>
+      ) : null}
     </CommandDialog>
   );
 }
