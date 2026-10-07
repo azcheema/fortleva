@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { readReplyAddressMailLink, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
  * The 2T settings surfaces in a browser (PLAN.md 2T screens; UI.md §3.1
@@ -236,6 +236,91 @@ test.describe("notification settings", () => {
       .toBe(true);
     // Neither form clobbered the other.
     await expect(level(page)).toHaveValue("NONE");
+  });
+});
+
+/**
+ * THE SUMMARY EMAIL's controls (Phase 5 slice 100; C68 (b)): how often, on
+ * what day when weekly, at what hour of the member's own day — each asserted
+ * through a reload, as above. The weekday select exists only while "Every
+ * week" is chosen, and "Never" leaves no time to choose.
+ */
+test.describe("summary email settings", () => {
+  type P = import("@playwright/test").Page;
+  const cadence = (page: P) => page.locator("#n-summary-cadence");
+  const hour = (page: P) => page.locator("#n-summary-hour");
+  const weekday = (page: P) => page.locator("#n-summary-weekday");
+  const saved = async (page: P, field: (p: P) => import("@playwright/test").Locator, value: string) => {
+    await field(page).selectOption(value);
+    await expect
+      .poll(
+        async () => {
+          await page.reload();
+          return field(page).inputValue();
+        },
+        { timeout: 20_000 * SLOW },
+      )
+      .toBe(value);
+  };
+
+  test.afterEach(async ({ page }) => {
+    // Back to the defaults — every day at 08:00, Monday when weekly — pass or
+    // fail: the shared owner's summary must not move for later specs.
+    await page.goto("/settings/notifications");
+    if ((await cadence(page).inputValue()) !== "WEEKLY") await saved(page, cadence, "WEEKLY");
+    if ((await weekday(page).inputValue()) !== "1") await saved(page, weekday, "1");
+    if ((await hour(page).inputValue()) !== "8") await saved(page, hour, "8");
+    await saved(page, cadence, "DAILY");
+  });
+
+  test("cadence, weekday and hour survive a reload; the weekday shows only when weekly; Never leaves no time", async ({
+    page,
+  }) => {
+    await page.goto("/settings/notifications");
+    await expect(page.getByRole("heading", { name: "Summary email" })).toBeVisible();
+    await expect(cadence(page)).toHaveValue("DAILY");
+    await expect(hour(page)).toHaveValue("8");
+    await expect(weekday(page)).toHaveCount(0);
+    await expect(page.getByText("Your time zone:", { exact: false })).toBeVisible();
+
+    await saved(page, cadence, "WEEKLY");
+    await expect(weekday(page)).toHaveValue("1");
+    await saved(page, weekday, "5");
+    await saved(page, hour, "16");
+    await expect(weekday(page)).toHaveValue("5");
+    await expect(cadence(page)).toHaveValue("WEEKLY");
+
+    await cadence(page).selectOption("NONE");
+    await expect(hour(page)).toHaveCount(0);
+    await expect(weekday(page)).toHaveCount(0);
+    await expect
+      .poll(
+        async () => {
+          await page.reload();
+          return cadence(page).inputValue();
+        },
+        { timeout: 20_000 * SLOW },
+      )
+      .toBe("NONE");
+  });
+});
+
+/**
+ * THE WORKSPACE'S REPLY ADDRESS (Phase 5 slice 100; C68 (k)): asking for one
+ * takes a FRESH second factor, and this shared owner has no authenticator at
+ * all — so the press sends them to set one up, and nothing is mailed. The
+ * whole flow, with a factor, is `vault-owner.spec.ts`'s.
+ */
+test.describe("reply address (owner without an authenticator)", () => {
+  test("shows where replies go, and asking for an address sends them to set up an authenticator first", async ({ page }) => {
+    const address = `replies-nofactor-${Date.now()}@test.invalid`;
+    await page.goto("/settings/preferences");
+    const card = page.getByTestId("reply-address");
+    await expect(card.getByTestId("reply-address-now")).toContainText("the owner's address");
+    await card.getByLabel("New address for replies").fill(address);
+    await card.getByRole("button", { name: "Send confirmation link" }).click();
+    await page.waitForURL(/\/account\?notice=mfa_required/, { timeout: 15_000 * SLOW });
+    expect(readReplyAddressMailLink(address)).toBeNull();
   });
 });
 

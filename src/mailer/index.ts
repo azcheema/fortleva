@@ -23,6 +23,17 @@ export type MailMessage = {
   readonly subject: string;
   readonly text: string;
   readonly html?: string;
+  /**
+   * Where a reply goes (Phase 5 slice 100, founder decision C68 (c), (f), (j)):
+   * the workspace's own confirmed reply address, else its owner's — never the
+   * sending domain, which receives nothing. Resolved by the caller through
+   * `resolveReplyAddress` (src/notify/reply-address-resolve.ts) for mail that
+   * belongs to a workspace — EXCEPT mail carrying a client's live link or code
+   * and the security notices to a workspace's own members (that module's
+   * `MAIL_WITHOUT_REPLY_TO` note) — and absent on mail about a person's
+   * Fortleva ACCOUNT, which is not any one agency's.
+   */
+  readonly replyTo?: string;
 };
 
 export type MailTransport = (msg: MailMessage & { from: string }) => Promise<void>;

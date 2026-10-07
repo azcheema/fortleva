@@ -6,6 +6,7 @@ import { AuthzError, deny } from "@/authz/errors";
 import { record } from "@/audit/record";
 import { inviteUrl } from "@/auth";
 import { send } from "@/mailer";
+import { resolveReplyAddress } from "@/notify/reply-address-resolve";
 
 /**
  * Member invitations (ours, not Better Auth's — DATA_MODEL §6.1).
@@ -30,7 +31,7 @@ export async function createInvite(input: {
   const token = randomBytes(32).toString("base64url");
   const actorMemberId = input.actor.memberId;
 
-  const inviteId = await withTenant(
+  const { inviteId, replyTo } = await withTenant(
     input.tenantId,
     { type: "member", id: actorMemberId },
     async (tx) => {
@@ -87,7 +88,9 @@ export async function createInvite(input: {
         metadata: { email, roleCount: input.roleIds.length },
       });
 
-      return invite.id;
+      // Where a reply to the invitation goes: the workspace's own address
+      // (Phase 5 slice 100, C68 (c)).
+      return { inviteId: invite.id, replyTo: await resolveReplyAddress(tx, input.tenantId) };
     },
   );
 
@@ -95,6 +98,7 @@ export async function createInvite(input: {
     to: email,
     subject: "You have been invited to Fortleva",
     text: `You have been invited to a Fortleva workspace.\n\nAccept the invitation: ${inviteUrl(token)}\n\nThis link expires in 7 days.`,
+    ...(replyTo ? { replyTo } : {}),
   });
 
   return { inviteId };

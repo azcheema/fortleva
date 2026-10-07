@@ -278,6 +278,16 @@ describe("proxy: the member plane's public doors (C30)", () => {
     expect(dest(proxy(req(OPS, "/confirm-email/abc123")))).toBe("redirect:/ops/confirm-email/abc123");
   });
 
+  it("serves the reply-address confirmation without a cookie, segment-anchored, and never on the ops host (slice 100)", async () => {
+    const app = await proxyWith({ APP_URL: `https://${APP}` });
+    const token = `0192f3a4-5b6c-7d8e-9f01-23456789abcd.${"a".repeat(43)}`;
+    expect(dest(app(req(APP, `/reply-address/${token}`)))).toBe("next");
+    expect(dest(app(req(APP, "/reply-address")))).toBe("redirect:/login");
+    expect(dest(app(req(APP, "/reply-addresses")))).toBe("redirect:/login");
+    const both = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    expect(dest(both(req(OPS, "/reply-address/abc123")))).toBe("redirect:/ops/reply-address/abc123");
+  });
+
   it("serves a member invitation without a cookie, and nothing that merely begins like one", async () => {
     const proxy = await proxyWith({ APP_URL: `https://${APP}` });
     expect(dest(proxy(req(APP, "/invite/abc123")))).toBe("next");

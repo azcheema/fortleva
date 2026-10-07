@@ -1,4 +1,4 @@
-import { localDateString, startOfLocalDay } from "@/lib/duration";
+import { localDateString, localHourInstant } from "@/lib/duration";
 import { addDays, weekContaining } from "@/lib/week";
 
 import { isEmailLevel } from "./catalog";
@@ -23,9 +23,10 @@ import { isEmailLevel } from "./catalog";
  */
 export const WEEKLY_REMINDER_KIND = "time.weekly_reminder";
 
-/** `NotificationPreference.digestWeekday` is 1 = Monday; unset = Monday. */
+/** The reminder's day: Monday (1 = Monday, ISO). Its own, not the summary's
+ * `digestWeekday` (Phase 5 slice 100). */
 export const DEFAULT_WEEKDAY = 1;
-/** `digestHour` defaults to 8 in the schema; restated for an unset row. */
+/** The reminder's hour, local: 08:00. Its own, not the summary's `digestHour`. */
 export const DEFAULT_HOUR = 8;
 
 export type OptIn = { tenantId: string; memberId: string };
@@ -80,10 +81,11 @@ export function dueAt(
   const today = localDateString(now, timeZone);
   const week = weekContaining(today, "MONDAY");
   const day = addDays(week.from, weekday - 1);
-  // Local midnight of that day plus the hour. A DST shift *inside* that
-  // day would move a late-evening reminder by an hour; a morning one is
-  // never affected, and an hour of drift on a weekly nudge is not worth
-  // a second zone conversion.
-  const at = new Date(startOfLocalDay(day, timeZone).getTime() + hour * 3_600_000);
+  // The hour ON THE WALL CLOCK that day. It used to be local midnight plus
+  // the hour, with a note that a DST shift inside the day moved only a
+  // late-evening reminder — but Europe's shifts are at 02:00/03:00, so on
+  // a change day it moved every hour after that, 08:00 included (found
+  // building slice 100's summary, which shares this).
+  const at = localHourInstant(day, hour, timeZone);
   return { at, isoYear: week.isoYear, isoWeek: week.isoWeek };
 }

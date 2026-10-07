@@ -147,6 +147,22 @@ const MEMBER_RESET_PREFIX = `${MEMBER_RESET}/`;
  * host/plane branches, like every other exemption.
  */
 const CONFIRM_EMAIL_PREFIX = "/confirm-email/";
+/**
+ * THE WORKSPACE'S NEW REPLY ADDRESS, CONFIRMED FROM ITS OWN MAILBOX (Phase 5
+ * slice 100, founder decision C68 (f)). The link is mailed to an address an
+ * owner or admin typed — often a shared one, read by somebody with no seat in
+ * the workspace — so the page cannot ask for a session. A prefix,
+ * segment-anchored, for the reason above.
+ *
+ * **THIS OPENS THE PAGE'S SERVER ACTION TOO**: the page changes nothing on GET
+ * (a business inbox's scanner opens every link), and its one action trusts
+ * nothing the call carries — it re-checks the link's hash, its age and the
+ * asker's standing under a row lock, and is limited per network
+ * (`confirmReplyAddressAction`). All a token can ever do is confirm the
+ * address the asker already chose. Below the host/plane branches, like every
+ * other exemption, so the ops host never serves it.
+ */
+const REPLY_ADDRESS_PREFIX = "/reply-address/";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
@@ -270,6 +286,7 @@ export function proxy(request: NextRequest): NextResponse {
     pathname.startsWith(MEMBER_INVITE_PREFIX) ||
     pathname.startsWith(MEMBER_RESET_PREFIX) ||
     pathname.startsWith(CONFIRM_EMAIL_PREFIX) ||
+    pathname.startsWith(REPLY_ADDRESS_PREFIX) ||
     pathname.startsWith(PORTAL_INVITE_PREFIX) ||
     pathname.startsWith(PORTAL_RESET_PREFIX) ||
     pathname.startsWith(PORTAL_SHARE_PREFIX)

@@ -300,6 +300,34 @@ const POLICIES = {
   "vault.share_code": { limit: 20, window: "1 h" },
   "vault.share_verify": { limit: 20, window: "1 h" },
   "vault.share_code_to": { limit: 6, window: "1 h" },
+  /**
+   * CONFIRMATION MAILS FOR A NEW REPLY ADDRESS, per WORKSPACE (Phase 5 slice
+   * 100, `src/notify/reply-address.ts`). Each one is the product's own domain
+   * mailing an address a member typed, so a member with `settings:edit` must
+   * not be able to turn it into a mailer: five a day is room for a typo and
+   * two second thoughts. Spent through `allowStrict`, so the in-process floor
+   * holds while Upstash is unset.
+   */
+  "mail.reply_address_request": { limit: 5, window: "24 h" },
+  /**
+   * The same mails, per RECIPIENT address, from every workspace together —
+   * the share code's `vault.share_code_to`: one workspace (or several) must
+   * not be able to mail the same stranger every day indefinitely.
+   */
+  "mail.reply_address_to": { limit: 3, window: "24 h" },
+  /**
+   * RENDERS of the public `/reply-address/<token>` page, per network. The
+   * render writes nothing, but it opens a tenant transaction for whoever
+   * asks — the share page's and the invite preview's reasoning.
+   */
+  "mail.reply_address_open": { limit: 60, window: "1 h" },
+  /**
+   * PRESSES OF "CONFIRM" ON THE PUBLIC `/reply-address/<token>` PAGE, per
+   * network (`clientIp`). The token is 32 random bytes, so this is not what
+   * stops guessing; it keeps an unauthenticated POST that opens a transaction
+   * from being free to repeat — the confirm-email page's reasoning.
+   */
+  "mail.reply_address_confirm": { limit: 10, window: "10 m" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;
 
 export type RateLimitResult = {

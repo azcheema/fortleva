@@ -967,6 +967,27 @@
         "nudgeHoursHint": "The pill marks a long-running timer after this many hours.",
         "shiftAutoStopHours": "Auto-close shifts after (hours)",
         "shiftAutoStopHoursHint": "A forgotten shift closes at this bound and stays provisional until confirmed."
+      },
+      "replies": {
+        "title": "Replies to your emails",
+        "description": "When someone replies to an email Fortleva sends for your workspace — your team or your clients — the reply goes here.",
+        "nowConfirmed": "Replies go to <strong>{email}</strong>, confirmed on {date}.",
+        "nowOwner": "Until you set an address, replies go to the owner's address, <strong>{email}</strong>.",
+        "nowNone": "Until you set an address, replies have nowhere to go.",
+        "waiting": "Waiting for <strong>{email}</strong> to be confirmed. We emailed it a link that works until {date}; replies keep going where they go now until someone opens it and confirms.",
+        "cancel": "Cancel request",
+        "label": "New address for replies",
+        "hint": "We'll email this address a link. Replies go there only after someone opens it and confirms, and every owner is told. You'll be asked for your authenticator code.",
+        "send": "Send confirmation link",
+        "remove": "Stop using this address",
+        "removeTitle": "Stop using this address?",
+        "removeBody": "Replies will go to the owner's address, {email}, from now on.",
+        "removeBodyNone": "Replies will have nowhere to go until you set a new address.",
+        "removeSubmit": "Stop using it",
+        "sent": "We emailed a confirmation link to {email}.",
+        "cancelled": "Request cancelled. The link we sent no longer works.",
+        "removed": "Replies now go to the owner's address.",
+        "unreachable": "That didn't go through — check your connection and try again."
       }
     },
     "export": {
@@ -1163,6 +1184,30 @@
           "MENTIONS": "Only when someone mentions me",
           "NONE": "Nothing — no email at all"
         }
+      },
+      "summary": {
+        "title": "Summary email",
+        "description": "One email that counts what is new and still unread in your inbox since your last summary. It names no clients, projects or tasks — just how many, and a link.",
+        "cadenceLabel": "Send me a summary",
+        "cadence": {
+          "DAILY": "Every day",
+          "WEEKLY": "Every week",
+          "NONE": "Never"
+        },
+        "hourLabel": "At",
+        "weekdayLabel": "On",
+        "weekdays": {
+          "1": "Monday",
+          "2": "Tuesday",
+          "3": "Wednesday",
+          "4": "Thursday",
+          "5": "Friday",
+          "6": "Saturday",
+          "7": "Sunday"
+        },
+        "zoneHint": "Your time zone: {zone}. You can change it on your account page.",
+        "nothingNew": "Nothing is sent when there is nothing new.",
+        "emailOff": "Email is switched off above, so no summary is sent. Choose any other email setting to receive it."
       },
       "weekly": {
         "title": "Weekly time reminder",
@@ -1411,7 +1456,12 @@
     "LOGIN_ASKS_OFF": "Clients can't send logins right now, so they can't be asked for one. Turn on \"Logins sent by clients\" in Settings → Vault.",
     "LOGIN_ASK_CONTACT": "That person can't be asked for a login. Only someone at this client with access to the portal can.",
     "LOGIN_ASK_LIMIT": "That person already has many open asks. Cancel some, or wait for answers, before asking for more.",
-    "LOGIN_ASK_ENDED": "This ask has already been answered or cancelled. Reload to see where it stands."
+    "LOGIN_ASK_ENDED": "This ask has already been answered or cancelled. Reload to see where it stands.",
+    "REPLY_ADDRESS_INVALID": "Enter an email address that can receive replies.",
+    "REPLY_ADDRESS_UNCHANGED": "Replies already go to that address.",
+    "REPLY_ADDRESS_UNDELIVERABLE": "Email to that address has bounced before, so we can't send to it.",
+    "REPLY_ADDRESS_LIMIT": "Too many confirmation emails today. Try again tomorrow.",
+    "REPLY_ADDRESS_MAIL_FAILED": "We couldn't send the confirmation email. Nothing changed — try again."
   },
   "assignments": {
     "title": "Team",
@@ -4309,5 +4359,20 @@
       "more": "{count} more",
       "moreAtLeast": "At least {count} more"
     }
+  },
+  "replyAddress": {
+    "metaTitle": "Confirm reply address",
+    "title": "Confirm this reply address",
+    "subtitle": "Replies to emails from <strong>{workspace}</strong> in Fortleva will go to <strong>{email}</strong>.",
+    "submit": "Confirm",
+    "submitting": "Confirming…",
+    "notYou": "If you don't know what this is, just close this page — nothing changes.",
+    "confirmedTitle": "Address confirmed",
+    "confirmed": "Replies to emails from <strong>{workspace}</strong> now go to <strong>{email}</strong>. You can close this page.",
+    "unavailableTitle": "This link can't be used",
+    "unavailable": "It may have expired, been replaced by a newer request, or already been used. Ask whoever set it up in Fortleva to send a new one.",
+    "tooManyTitle": "Too many tries",
+    "tooMany": "Too many attempts from your network. Wait a few minutes and try again.",
+    "unreachable": "The connection failed before we heard back. Check your connection and try again."
   }
 }

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
-import { requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { readReplyAddressMailLink, requireSeed, type E2ESeed } from "./fixtures/tenant";
 import { signInVaultOwner, totpNow } from "./fixtures/vault-session";
 
 /**
@@ -188,5 +188,98 @@ test.describe.serial("the vault's owner-only verbs, as an owner with an authenti
     await days.fill("7");
     await form.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Clients now wait 7 days for an answer.")).toBeVisible();
+  });
+
+  /**
+   * THE WORKSPACE'S REPLY ADDRESS (Phase 5 slice 100; C68 (c), (f), (i), (k)),
+   * end to end — here because asking for one takes a FRESH second factor
+   * (C68 (k)), which only this spec's owner has. The owner asks on
+   * /settings/preferences; the link goes to THAT address (read out of the dev
+   * outbox — its secret exists nowhere else); somebody holding that mailbox,
+   * with no Fortleva session at all, opens it, reads which workspace asked,
+   * and confirms; the link is then spent; the owner sees the address in
+   * force, and stopping it sends replies to the owner's own address again.
+   * Whatever happens, it ends with no address set or waiting: the e2e
+   * tenant's mail must not keep a reply address for later specs.
+   */
+  test("the reply address: asked with the code, confirmed from a session-less browser, spent, shown, and stopped", async ({
+    browser,
+  }) => {
+    const address = `replies-${Date.now()}@test.invalid`;
+    const card = page.getByTestId("reply-address");
+    const ask = async () => {
+      await page.goto("/settings/preferences");
+      await card.getByLabel("New address for replies").fill(address);
+      await card.getByRole("button", { name: "Send confirmation link" }).click();
+    };
+    try {
+      await ask();
+      // The factor from the sign-in may have aged past its window by now:
+      // then the action sends the owner to the step-up page first.
+      const where = await Promise.race([
+        page.waitForURL("**/account/step-up**", { timeout: 15_000 }).then(() => "step-up" as const),
+        page.getByText(`We emailed a confirmation link to ${address}.`).waitFor({ timeout: 15_000 }).then(() => "sent" as const),
+      ]);
+      if (where === "step-up") {
+        await page.locator("#step-up-code").fill(totpNow(seed.vaultOwnerTotpSecret));
+        await page.getByRole("button", { name: "Verify" }).click();
+        await page.waitForURL("**/settings/preferences**", { timeout: 15_000 });
+        await ask();
+        await expect(page.getByText(`We emailed a confirmation link to ${address}.`)).toBeVisible();
+      }
+      await expect(card.getByTestId("reply-address-pending")).toContainText(address);
+      // Nothing changed yet: replies still go to the owner.
+      await expect(card.getByTestId("reply-address-now")).toContainText("the owner's address");
+
+      let link: string | null = null;
+      await expect.poll(() => (link = readReplyAddressMailLink(address)), { timeout: 10_000 }).not.toBeNull();
+
+      const outsider = await browser.newContext({ storageState: { cookies: [], origins: [] }, serviceWorkers: "block" });
+      try {
+        const mailbox = await outsider.newPage();
+        await mailbox.goto(link!);
+        await expect(mailbox.getByRole("heading", { name: "Confirm this reply address" })).toBeVisible();
+        await expect(mailbox.getByText(address)).toBeVisible();
+        await mailbox.getByRole("button", { name: "Confirm" }).click();
+        await expect(mailbox.getByRole("heading", { name: "Address confirmed" })).toBeVisible();
+        // Spent: the same link opens nothing now.
+        await mailbox.goto(link!);
+        await expect(mailbox.getByRole("heading", { name: "This link can't be used" })).toBeVisible();
+      } finally {
+        await outsider.close();
+      }
+
+      await page.reload();
+      await expect(card.getByTestId("reply-address-now")).toContainText(address);
+      await expect(card.getByTestId("reply-address-now")).toContainText("confirmed on");
+      await expect(card.getByTestId("reply-address-pending")).toHaveCount(0);
+
+      await card.getByRole("button", { name: "Stop using this address" }).click();
+      const confirm = page.getByTestId("reply-address-remove-confirm");
+      await expect(confirm).toBeVisible();
+      await confirm.getByRole("button", { name: "Stop using it" }).click();
+      await expect(page.getByText("Replies now go to the owner's address.")).toBeVisible();
+      await expect(card.getByTestId("reply-address-now")).toContainText("the owner's address");
+    } finally {
+      // Back to no address, whatever failed above (the code review's low) —
+      // each click waited out, and a cleanup failure never replaces the
+      // test's own error (the fix-pass review's low).
+      try {
+        await page.goto("/settings/preferences");
+        const cancel = card.getByRole("button", { name: "Cancel request" });
+        if (await cancel.isVisible()) {
+          await cancel.click();
+          await expect(card.getByTestId("reply-address-pending")).toHaveCount(0);
+        }
+        const stop = card.getByRole("button", { name: "Stop using this address" });
+        if (await stop.isVisible()) {
+          await stop.click();
+          await page.getByTestId("reply-address-remove-confirm").getByRole("button", { name: "Stop using it" }).click();
+          await expect(card.getByTestId("reply-address-now")).toContainText("the owner's address");
+        }
+      } catch (cleanup) {
+        console.warn("reply-address cleanup did not finish:", cleanup);
+      }
+    }
   });
 });

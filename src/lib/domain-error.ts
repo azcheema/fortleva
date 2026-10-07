@@ -220,7 +220,13 @@ export type DomainErrorCode =
   | "UPDATE_RETRACT_WINDOW_CLOSED" // more than 15 minutes since publishing
   | "UPDATE_CHANGED" // the draft was saved by somebody else between the two publish transactions
   | "UPDATE_EMPTY" // publishing a post whose sections say nothing
-  | "UPDATE_TOO_LARGE"; // a section's JSON or its extracted text is past its cap
+  | "UPDATE_TOO_LARGE" // a section's JSON or its extracted text is past its cap
+  // The workspace's reply address (Phase 5 slice 100 — src/notify/reply-address.ts).
+  | "REPLY_ADDRESS_INVALID" // not an address, or one on the domain Fortleva sends from (it receives nothing)
+  | "REPLY_ADDRESS_UNCHANGED" // already the confirmed address
+  | "REPLY_ADDRESS_UNDELIVERABLE" // the address bounced or complained before: mail to it is suppressed
+  | "REPLY_ADDRESS_LIMIT" // five confirmation mails a day per workspace, or three a day to one address
+  | "REPLY_ADDRESS_MAIL_FAILED"; // the confirmation mail could not be sent; nothing waits on a link nobody got
 
 export class DomainError extends Error {
   constructor(

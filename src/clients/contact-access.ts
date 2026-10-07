@@ -237,6 +237,9 @@ export async function inviteContact(
   // Raised by this slice's review.
   let mailed = true;
   try {
+    // NO `Reply-To`, deliberately (founder decision C68 (j)): this mail carries a
+    // live invitation link (it sets the password), and a reply quoting it would put it in the agency's mailbox
+    // (`MAIL_WITHOUT_REPLY_TO`'s note, src/notify/reply-address-resolve.ts).
     await send({
       to: email,
       subject: `${tenantName} has invited you to their client portal`,

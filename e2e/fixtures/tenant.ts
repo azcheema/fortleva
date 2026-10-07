@@ -400,6 +400,16 @@ export function readShareCode(email: string): string | null {
   return lastLinkTokenTo(email, /(?:Your code is|Din kod är) (\d{6})/);
 }
 
+/**
+ * THE LAST REPLY-ADDRESS CONFIRMATION LINK mailed to `email` (Phase 5 slice
+ * 100), whole, as the mailbox's holder would click it. The secret exists
+ * nowhere else: only its hash is stored. Anchored on the origin, like the
+ * member links above. Mailed before the action answers, but a caller polls.
+ */
+export function readReplyAddressMailLink(email: string): string | null {
+  return lastLinkTokenTo(email, /(https?:\/\/[^/\s]+\/reply-address\/[A-Za-z0-9_.-]+)/);
+}
+
 /** The bodies of every message to `email` whose text matches `pattern`, oldest first. */
 function messagesTo(email: string, pattern: RegExp): string[] {
   const file = join(process.cwd(), ".dev-outbox", "outbox.jsonl");

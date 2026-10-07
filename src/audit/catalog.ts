@@ -248,6 +248,19 @@ export const AUDIT_EVENTS = {
   "label.deleted": TENANT,
   "project_template.applied": TENANT,
   "notification.preference_changed": TENANT,
+  // Phase 5 slice 100 (founder decision C68 (c), (f)) — where replies to the
+  // workspace's mail go (`src/notify/reply-address.ts`). `requested`,
+  // `request_cancelled` and `removed` are a member's (`settings:edit`);
+  // `confirmed` is a SYSTEM row — whoever pressed Confirm on the mailed link
+  // holds a mailbox, not a seat — naming the member who asked in its
+  // metadata. Each carries the ADDRESS: it is the workspace's own setting,
+  // and an owner asking later where clients' replies went needs the trail to
+  // say. A cancellation because the confirmation mail could not be sent says
+  // so (`reason: "mail_failed"`).
+  "reply_address.requested": TENANT,
+  "reply_address.request_cancelled": TENANT,
+  "reply_address.confirmed": TENANT,
+  "reply_address.removed": TENANT,
   "search.index_rebuilt": TENANT,
   // Time (Phase 2T — DATA_MODEL.md §6.15; metadata NEVER carries a cost
   // amount, SECURITY.md §9.7.4)

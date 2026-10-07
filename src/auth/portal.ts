@@ -321,6 +321,9 @@ export async function deliverPortalReset(
   );
   const minutes = Math.round(RESET_TTL_SECONDS / 60);
   try {
+    // NO `Reply-To`, deliberately (founder decision C68 (j)): this mail carries a
+    // live password-reset link, and a reply quoting it would put it in the agency's mailbox
+    // (`MAIL_WITHOUT_REPLY_TO`'s note, src/notify/reply-address-resolve.ts).
     await send({
       to: user.email,
     subject: `Reset your password for ${tenantName}'s client portal`,

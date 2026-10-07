@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { isProduction } from "@/config";
+import { runMemberDigests } from "@/jobs/digests";
 import { runExpirationReminders } from "@/jobs/expiration-reminders";
 import { drainOutbox } from "@/jobs/outbox";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
@@ -23,6 +24,8 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * vault's retention (3V slice 99 — a login 30 days in the bin is erased, a
  * share link's record 12 months after it expired; THE ONE JOB HERE THAT
  * DELETES DATA, in every tenant of the database this server points at),
+ * and the team's summary email (Phase 5 slice 100 — once per member per
+ * period, only in the hours after their own hour; the outbox key the guard),
  * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
@@ -51,6 +54,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   const expirationReminders = await runExpirationReminders();
   const sealedAsks = await runSealedAskMail();
   const vaultRetention = await runVaultRetention();
+  // Phase 5 slice 100: the team's summary email — enqueued here, sent by the
+  // NEXT drain, like the reminders above.
+  const digests = await runMemberDigests();
   return NextResponse.json({
     outbox,
     timeSweep,
@@ -59,5 +65,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     expirationReminders,
     sealedAsks,
     vaultRetention,
+    digests,
   });
 }

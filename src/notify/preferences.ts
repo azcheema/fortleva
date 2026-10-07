@@ -3,6 +3,13 @@ import type { MemberActor } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
 
 import { isEmailLevel, type EmailLevelValue } from "./catalog";
+import {
+  DEFAULT_DIGEST_CADENCE,
+  DEFAULT_DIGEST_HOUR,
+  DEFAULT_DIGEST_WEEKDAY,
+  isDigestCadence,
+  type DigestCadenceValue,
+} from "./digest";
 import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
 
 /**
@@ -23,13 +30,17 @@ import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
  * permission code either: there is no seat in this product that may
  * decide, on someone else's behalf, whether that person is emailed.
  *
- * WHAT THIS EXPOSES IS WHAT IS WIRED, and nothing else. The model
- * carries `inAppLevel`, `digestCadence`, `digestHour`, `digestWeekday`,
- * quiet hours and a timezone; digests are Phase 5 and NOTHING reads
- * them today, so offering them would be a page of controls that change
- * nothing. `inAppLevel` is deliberately absent for a stronger reason:
- * the inbox is where an assignment is found, and a setting that can
- * silence it silently is how someone misses work.
+ * WHAT THIS EXPOSES IS WHAT IS WIRED, and nothing else. Since Phase 5
+ * slice 100 that includes the SUMMARY EMAIL's cadence, hour and weekday
+ * (`digestCadence`, `digestHour`, `digestWeekday` — read by
+ * `src/jobs/digests.ts`). The model also carries `inAppLevel` and quiet
+ * hours, which nothing reads, so they are not offered — a control that
+ * changes nothing is worse than none. Its `timezone` IS read, first, by the
+ * summary and the weekly reminder, but nothing writes it: the zone that
+ * decides is the member's own on `/account` (`Member.timezone`), else the
+ * workspace's — which is what the page names. `inAppLevel` is deliberately absent for
+ * a stronger reason: the inbox is where an assignment is found, and a
+ * setting that can silence it silently is how someone misses work.
  */
 
 export type NotifyCtx = { readonly tenantId: string; readonly actor: MemberActor };
@@ -41,13 +52,26 @@ export const DEFAULT_EMAIL_LEVEL: EmailLevelValue = "PARTICIPATING";
 export type MemberNotificationPreferences = {
   readonly emailLevel: EmailLevelValue;
   readonly weeklyTimeReminder: boolean;
+  /** The summary email (slice 100): how often, at what local hour, on what weekday when weekly. */
+  readonly digestCadence: DigestCadenceValue;
+  readonly digestHour: number;
+  /** 1 = Monday … 7 = Sunday. */
+  readonly digestWeekday: number;
 };
 
 /** Only the fields the page can actually change. */
 export type NotificationPreferencePatch = {
   readonly emailLevel?: EmailLevelValue;
   readonly weeklyTimeReminder?: boolean;
+  readonly digestCadence?: DigestCadenceValue;
+  readonly digestHour?: number;
+  readonly digestWeekday?: number;
 };
+
+export const isDigestHour = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 23;
+export const isDigestWeekday = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 7;
 
 type PerKind = Record<string, { email?: boolean; inApp?: boolean } | undefined>;
 
@@ -75,11 +99,19 @@ export async function readOwnPreferences(
 async function loadOwn(tx: TenantDb, ctx: NotifyCtx): Promise<MemberNotificationPreferences> {
   const row = await tx.notificationPreference.findFirst({
     where: { tenantId: ctx.tenantId, receiverType: "MEMBER", receiverId: ctx.actor.memberId },
-    select: { emailLevel: true, perKind: true },
+    select: { emailLevel: true, perKind: true, digestCadence: true, digestHour: true, digestWeekday: true },
   });
   return {
     emailLevel: isEmailLevel(row?.emailLevel) ? row.emailLevel : DEFAULT_EMAIL_LEVEL,
     weeklyTimeReminder: weeklyFrom(row?.perKind),
+    // A stored value this build would not write (none can be written through
+    // this module, which range-checks) reads as the default here, so the page
+    // offers a choice the member can save; the job (`src/jobs/digests.ts`)
+    // meanwhile skips such a member rather than guess — the one case where
+    // page and job disagree, until the member saves.
+    digestCadence: isDigestCadence(row?.digestCadence) ? row.digestCadence : DEFAULT_DIGEST_CADENCE,
+    digestHour: isDigestHour(row?.digestHour) ? row.digestHour : DEFAULT_DIGEST_HOUR,
+    digestWeekday: isDigestWeekday(row?.digestWeekday) ? row.digestWeekday : DEFAULT_DIGEST_WEEKDAY,
   };
 }
 
@@ -106,6 +138,19 @@ export async function updateOwnPreferences(
     const next: MemberNotificationPreferences = {
       emailLevel: patch.emailLevel ?? current.emailLevel,
       weeklyTimeReminder: patch.weeklyTimeReminder ?? current.weeklyTimeReminder,
+      digestCadence: patch.digestCadence ?? current.digestCadence,
+      digestHour: patch.digestHour ?? current.digestHour,
+      digestWeekday: patch.digestWeekday ?? current.digestWeekday,
+    };
+    // The action validates; this is the belt, because these become a
+    // schedule a job acts on.
+    if (!isDigestCadence(next.digestCadence) || !isDigestHour(next.digestHour) || !isDigestWeekday(next.digestWeekday)) {
+      throw new Error("notify: a summary setting out of range");
+    }
+    const summary = {
+      digestCadence: next.digestCadence,
+      digestHour: next.digestHour,
+      digestWeekday: next.digestWeekday,
     };
 
     const existing = await tx.notificationPreference.findFirst({
@@ -123,7 +168,7 @@ export async function updateOwnPreferences(
     if (existing) {
       await tx.notificationPreference.update({
         where: { id: existing.id },
-        data: { emailLevel: next.emailLevel, perKind },
+        data: { emailLevel: next.emailLevel, perKind, ...summary },
       });
     } else {
       await tx.notificationPreference.create({
@@ -133,6 +178,7 @@ export async function updateOwnPreferences(
           receiverId: ctx.actor.memberId,
           emailLevel: next.emailLevel,
           perKind,
+          ...summary,
         },
       });
     }
@@ -141,7 +187,7 @@ export async function updateOwnPreferences(
       action: "notification.preference_changed",
       targetType: "Member",
       targetId: ctx.actor.memberId,
-      metadata: { emailLevel: next.emailLevel, weeklyTimeReminder: next.weeklyTimeReminder },
+      metadata: { ...next },
     });
     return next;
   });

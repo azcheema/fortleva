@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EMAIL_LEVELS } from "@/notify/catalog";
+import { DIGEST_CADENCES } from "@/notify/digest";
 import type { MemberNotificationPreferences } from "@/notify/preferences";
 
 import { updateNotificationPreferencesAction } from "./actions";
@@ -19,10 +20,11 @@ import { updateNotificationPreferencesAction } from "./actions";
  * its own fields, so the two halves cannot clobber each other.
  *
  * ONLY WIRED SETTINGS APPEAR HERE. `NotificationPreference` also holds
- * `inAppLevel`, a digest cadence, a digest hour and weekday, quiet
- * hours and a timezone; digests are Phase 5 and nothing reads them, so
- * rendering them would be a page of controls that change nothing.
- * `notify/preferences.ts` carries the same list and the reason for each.
+ * `inAppLevel`, quiet hours and a timezone, which nothing reads, so
+ * rendering them would be controls that change nothing (the summary's
+ * cadence, hour and weekday are read since Phase 5 slice 100, and are
+ * here). `notify/preferences.ts` carries the same list and the reason
+ * for each.
  */
 export function EmailLevelForm({ prefs }: { prefs: MemberNotificationPreferences }) {
   const t = useTranslations("settings.notifications");
@@ -38,6 +40,85 @@ export function EmailLevelForm({ prefs }: { prefs: MemberNotificationPreferences
         </NativeSelect>
       </Field>
       <p className="mt-3 text-xs text-muted-foreground">{t("email.inAppNote")}</p>
+    </AutoForm>
+  );
+}
+
+/** 00:00 … 23:00 — a 24-hour clock reads the same in both languages. */
+const HOURS = Array.from({ length: 24 }, (_, h) => ({ value: h, label: `${String(h).padStart(2, "0")}:00` }));
+const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+/**
+ * The SUMMARY EMAIL (Phase 5 slice 100; founder decision C68 (b), (e)): how
+ * often, at what hour of the member's own day, and on what weekday when
+ * weekly. Native selects inside the `AutoForm`, like the email level above.
+ *
+ * The weekday select is RENDERED only while "every week" is chosen, and that
+ * is what keeps the auto-save honest: `AutoForm` posts every field the form
+ * holds, so a hidden-but-present weekday would be re-saved on every change of
+ * the hour. Absent, the action leaves it as it was. `cadence` is mirrored only
+ * to decide that — the selects stay uncontrolled (the React 19 form-reset
+ * trap does not bite an `AutoForm`, which never uses `<form action>`).
+ */
+export function SummaryForm({
+  prefs,
+  zone,
+}: {
+  prefs: MemberNotificationPreferences;
+  /** The zone the hour is read in — the member's own, else the workspace's. */
+  zone: string;
+}) {
+  const t = useTranslations("settings.notifications.summary");
+  const [cadence, setCadence] = useState(prefs.digestCadence);
+  return (
+    <AutoForm action={updateNotificationPreferencesAction}>
+      <div className="flex flex-col gap-4">
+        <Field htmlFor="n-summary-cadence" label={t("cadenceLabel")} hint={t("nothingNew")}>
+          <NativeSelect
+            id="n-summary-cadence"
+            name="digestCadence"
+            defaultValue={prefs.digestCadence}
+            onChange={(e) => setCadence(e.currentTarget.value as typeof cadence)}
+          >
+            {DIGEST_CADENCES.map((c) => (
+              <option key={c} value={c}>
+                {t(`cadence.${c}`)}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+        {cadence !== "NONE" ? (
+          <div className="flex flex-wrap gap-4">
+            {cadence === "WEEKLY" ? (
+              <Field htmlFor="n-summary-weekday" label={t("weekdayLabel")}>
+                <NativeSelect id="n-summary-weekday" name="digestWeekday" defaultValue={String(prefs.digestWeekday)}>
+                  {WEEKDAYS.map((d) => (
+                    <option key={d} value={d}>
+                      {t(`weekdays.${d}`)}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+            ) : null}
+            <Field htmlFor="n-summary-hour" label={t("hourLabel")} hint={t("zoneHint", { zone })}>
+              <NativeSelect id="n-summary-hour" name="digestHour" defaultValue={String(prefs.digestHour)}>
+                {HOURS.map((h) => (
+                  <option key={h.value} value={h.value}>
+                    {h.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+          </div>
+        ) : null}
+      </div>
+      {cadence !== "NONE" && prefs.emailLevel === "NONE" ? (
+        <div className="mt-3">
+          {/* The weekly reminder's precedent: the member's own two settings
+              disagree, and the one that says "no email" wins. */}
+          <Callout tone="caution">{t("emailOff")}</Callout>
+        </div>
+      ) : null}
     </AutoForm>
   );
 }

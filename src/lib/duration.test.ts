@@ -10,6 +10,7 @@ import {
   isZeroDurationText,
   isoDateOf,
   localDateString,
+  localHourInstant,
   monthStartOf,
   parseDurationSeconds,
   parseEstimateMinutes,
@@ -169,4 +170,32 @@ describe("parseEstimateMinutes (UI.md §5.2 — the shared grammar without the e
       expect(parseEstimateMinutes(durationInputText(m * 60))).toBe(m);
     },
   );
+});
+
+describe("localHourInstant (Phase 5 slice 100)", () => {
+  it("is the hour on the zone's wall clock on an ordinary day", () => {
+    expect(localHourInstant("2026-10-07", 8, "Europe/Stockholm").toISOString()).toBe("2026-10-07T06:00:00.000Z");
+    expect(localHourInstant("2026-01-20", 8, "Europe/Stockholm").toISOString()).toBe("2026-01-20T07:00:00.000Z");
+    expect(localHourInstant("2026-10-07", 0, "UTC").toISOString()).toBe("2026-10-07T00:00:00.000Z");
+  });
+
+  it("stays on the wall clock across a clock change, where midnight + hours does not", () => {
+    // 25 Oct 2026, CEST → CET at 03:00: a 25-hour day. 08:00 CET = 07:00 UTC.
+    expect(localHourInstant("2026-10-25", 8, "Europe/Stockholm").toISOString()).toBe("2026-10-25T07:00:00.000Z");
+    expect(startOfLocalDay("2026-10-25", "Europe/Stockholm").getTime() + 8 * 3_600_000).toBe(
+      Date.parse("2026-10-25T06:00:00.000Z"),
+    );
+    // 29 Mar 2026, CET → CEST at 02:00: a 23-hour day. 08:00 CEST = 06:00 UTC.
+    expect(localHourInstant("2026-03-29", 8, "Europe/Stockholm").toISOString()).toBe("2026-03-29T06:00:00.000Z");
+  });
+
+  it("resolves an hour inside a spring-forward gap to an hour later on the wall clock", () => {
+    // 02:00 does not exist in Stockholm on 29 Mar 2026; 03:00 CEST = 01:00 UTC.
+    expect(localHourInstant("2026-03-29", 2, "Europe/Stockholm").toISOString()).toBe("2026-03-29T01:00:00.000Z");
+  });
+
+  it("works west of UTC too", () => {
+    // 1 Nov 2026, New York EDT → EST at 02:00. 08:00 EST = 13:00 UTC.
+    expect(localHourInstant("2026-11-01", 8, "America/New_York").toISOString()).toBe("2026-11-01T13:00:00.000Z");
+  });
 });

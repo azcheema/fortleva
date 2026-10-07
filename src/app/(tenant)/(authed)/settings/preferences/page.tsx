@@ -7,7 +7,10 @@ import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic
 import { withTenant } from "@/db";
 import { parseEntitlements } from "@/entitlements/resolver";
 import { requireTenantContext } from "@/members/tenant-context";
+import { readReplyAddressSettings } from "@/notify/reply-address";
 import { getPreferences, type TenantPreferences } from "@/preferences/service";
+
+import { ReplyAddressCard } from "./reply-address-card";
 
 import { FormatPreferencesForm, ModuleToggles, RegionalPreferencesForm, TimePreferencesForm } from "./preference-forms";
 
@@ -61,6 +64,7 @@ export default async function PreferencesPage() {
       return { held, entitled: parseEntitlements(tenant?.entitlements).modules };
     },
   );
+  const replies = await readReplyAddressSettings({ tenantId: membership.tenantId, actor });
 
   return (
     <Page width="form">
@@ -78,6 +82,10 @@ export default async function PreferencesPage() {
             <TimePreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
           </SectionCard>
         ) : null}
+        {/* Phase 5 slice 100 (C68 (c), (f)): where replies to the workspace's mail go. */}
+        <SectionCard title={t("replies.title")} description={t("replies.description")}>
+          <ReplyAddressCard settings={replies} editable={held.has("settings:edit")} />
+        </SectionCard>
         <SectionCard title={t("modulesTitle")} description={t("modulesDescription")}>
           {/* ✦ code: shown to holders; a stale factor becomes step-up on the first flip. */}
           <ModuleToggles

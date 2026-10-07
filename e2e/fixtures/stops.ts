@@ -140,6 +140,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
       },
     },
     { name: "confirm-email-unavailable", path: "/confirm-email/not-a-token", anon: true },
+    // Phase 5 slice 100: the reply-address link's dead state — the one an
+    // expired, replaced or used link meets (its live state needs a mailed
+    // secret; `settings.spec.ts` walks it).
+    { name: "reply-address-unavailable", path: "/reply-address/not-a-token", anon: true },
     // Signed out, an unknown path never reaches a 404: the proxy gates
     // every non-public route to /login (src/proxy.ts). That redirect is
     // the state an anonymous visitor actually gets.

@@ -967,6 +967,27 @@
         "nudgeHoursHint": "Timerpillret markerar en långkörande timer efter så här många timmar.",
         "shiftAutoStopHours": "Avsluta pass automatiskt efter (timmar)",
         "shiftAutoStopHoursHint": "Ett bortglömt pass stängs vid gränsen och är preliminärt tills det bekräftas."
+      },
+      "replies": {
+        "title": "Svar på er e-post",
+        "description": "När någon svarar på ett mejl som Fortleva skickar för er arbetsyta – ert team eller era kunder – hamnar svaret här.",
+        "nowConfirmed": "Svar går till <strong>{email}</strong>, bekräftad {date}.",
+        "nowOwner": "Tills ni anger en adress går svar till ägarens adress, <strong>{email}</strong>.",
+        "nowNone": "Tills ni anger en adress har svar ingenstans att ta vägen.",
+        "waiting": "Väntar på att <strong>{email}</strong> ska bekräftas. Vi har mejlat en länk dit som fungerar till och med {date}; svar går dit de går nu tills någon öppnar länken och bekräftar.",
+        "cancel": "Avbryt begäran",
+        "label": "Ny adress för svar",
+        "hint": "Vi mejlar en länk till adressen. Svar går dit först när någon har öppnat den och bekräftat, och alla ägare får veta det. Du får ange koden från din autentiseringsapp.",
+        "send": "Skicka bekräftelselänk",
+        "remove": "Sluta använda adressen",
+        "removeTitle": "Sluta använda adressen?",
+        "removeBody": "Svar går från och med nu till ägarens adress, {email}.",
+        "removeBodyNone": "Svar har ingenstans att ta vägen tills ni anger en ny adress.",
+        "removeSubmit": "Sluta använda den",
+        "sent": "Vi har mejlat en bekräftelselänk till {email}.",
+        "cancelled": "Begäran avbruten. Länken vi skickade fungerar inte längre.",
+        "removed": "Svar går nu till ägarens adress.",
+        "unreachable": "Det gick inte igenom – kontrollera anslutningen och försök igen."
       }
     },
     "export": {
@@ -1163,6 +1184,30 @@
           "MENTIONS": "Bara när någon nämner mig",
           "NONE": "Inget – ingen e-post alls"
         }
+      },
+      "summary": {
+        "title": "Sammanfattning via e-post",
+        "description": "Ett mejl som räknar det som är nytt och fortfarande oläst i din inkorg sedan förra sammanfattningen. Det nämner inga kunder, projekt eller uppgifter – bara hur många, och en länk.",
+        "cadenceLabel": "Skicka mig en sammanfattning",
+        "cadence": {
+          "DAILY": "Varje dag",
+          "WEEKLY": "Varje vecka",
+          "NONE": "Aldrig"
+        },
+        "hourLabel": "Klockan",
+        "weekdayLabel": "På",
+        "weekdays": {
+          "1": "måndag",
+          "2": "tisdag",
+          "3": "onsdag",
+          "4": "torsdag",
+          "5": "fredag",
+          "6": "lördag",
+          "7": "söndag"
+        },
+        "zoneHint": "Din tidszon: {zone}. Du kan ändra den på din kontosida.",
+        "nothingNew": "Inget skickas när det inte finns något nytt.",
+        "emailOff": "E-post är avstängd ovan, så ingen sammanfattning skickas. Välj någon annan e-postinställning för att få den."
       },
       "weekly": {
         "title": "Veckopåminnelse om tid",
@@ -1411,7 +1456,12 @@
     "LOGIN_ASKS_OFF": "Kunder kan inte skicka inloggningar just nu, så de kan inte heller bli ombedda om en. Slå på ”Inloggningar som kunder skickar” under Inställningar → Valv.",
     "LOGIN_ASK_CONTACT": "Den personen kan inte bli ombedd om en inloggning. Det kan bara någon hos kunden som har tillgång till portalen.",
     "LOGIN_ASK_LIMIT": "Den personen har redan många obesvarade förfrågningar. Avbryt några, eller vänta på svar, innan du ber om fler.",
-    "LOGIN_ASK_ENDED": "Förfrågan har redan besvarats eller avbrutits. Ladda om sidan för att se läget."
+    "LOGIN_ASK_ENDED": "Förfrågan har redan besvarats eller avbrutits. Ladda om sidan för att se läget.",
+    "REPLY_ADDRESS_INVALID": "Ange en e-postadress som kan ta emot svar.",
+    "REPLY_ADDRESS_UNCHANGED": "Svar går redan till den adressen.",
+    "REPLY_ADDRESS_UNDELIVERABLE": "E-post till den adressen har studsat tidigare, så vi kan inte skicka dit.",
+    "REPLY_ADDRESS_LIMIT": "För många bekräftelsemejl i dag. Försök igen i morgon.",
+    "REPLY_ADDRESS_MAIL_FAILED": "Vi kunde inte skicka bekräftelsemejlet. Ingenting ändrades – försök igen."
   },
   "assignments": {
     "title": "Team",
@@ -4309,5 +4359,20 @@
       "more": "{count} till",
       "moreAtLeast": "Minst {count} till"
     }
+  },
+  "replyAddress": {
+    "metaTitle": "Bekräfta svarsadress",
+    "title": "Bekräfta den här svarsadressen",
+    "subtitle": "Svar på mejl från <strong>{workspace}</strong> i Fortleva kommer att gå till <strong>{email}</strong>.",
+    "submit": "Bekräfta",
+    "submitting": "Bekräftar…",
+    "notYou": "Om du inte vet vad det här är kan du bara stänga sidan – ingenting ändras.",
+    "confirmedTitle": "Adressen är bekräftad",
+    "confirmed": "Svar på mejl från <strong>{workspace}</strong> går nu till <strong>{email}</strong>. Du kan stänga sidan.",
+    "unavailableTitle": "Länken kan inte användas",
+    "unavailable": "Den kan ha gått ut, ersatts av en nyare begäran eller redan ha använts. Be den som ordnade det i Fortleva att skicka en ny.",
+    "tooManyTitle": "För många försök",
+    "tooMany": "För många försök från ditt nätverk. Vänta några minuter och försök igen.",
+    "unreachable": "Anslutningen bröts innan vi fick svar. Kontrollera anslutningen och försök igen."
   }
 }

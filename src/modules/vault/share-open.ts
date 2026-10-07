@@ -250,6 +250,9 @@ export async function sendShareCode(token: string, compose: ShareCodeMail): Prom
   // visitor is told to try again; the mailer's error is not theirs.
   const words = compose({ code: sent.code, tenantName: sent.tenantName, minutes: SHARE_CODE_TTL_MS / 60_000 });
   try {
+    // NO `Reply-To`, deliberately (founder decision C68 (j)): this mail carries a
+    // live code that opens a shared login, and a reply quoting it would put it in the agency's mailbox
+    // (`MAIL_WITHOUT_REPLY_TO`'s note, src/notify/reply-address-resolve.ts).
     await send({ to: sent.to, subject: words.subject, text: words.text });
   } catch {
     return { ok: false, reason: "mail_failed" };

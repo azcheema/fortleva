@@ -122,6 +122,9 @@ const DBTEST_PREFIXES = [
   "ctr-a-",
   "ctr-b-",
   "desc-",
+  // Phase 5 slice 100, the team's summary email — `src/notify/digests.dbtest.ts`,
+  // `setupTenant("digest")`.
+  "digest-",
   "docs-",
   "enc-a-",
   "enc-b-",
@@ -190,6 +193,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 89, the renewal reminders — `src/modules/vault/reminders.dbtest.ts`,
   // `setupTenant("remind")`.
   "remind-",
+  // Phase 5 slice 100, the workspace's reply address — `src/notify/reply-address.dbtest.ts`,
+  // `setupTenant("replyto")`.
+  "replyto-",
   "reports-",
   "roles-",
   "scope-",

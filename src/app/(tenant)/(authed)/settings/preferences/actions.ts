@@ -7,6 +7,7 @@ import { z } from "zod";
 import { LOCALES } from "@/i18n/config";
 import { field, has, runForm, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
+import { cancelReplyAddressRequest, removeReplyAddress, requestReplyAddressAndMail } from "@/notify/reply-address";
 import {
   CURRENCIES,
   DURATION_STYLES,
@@ -90,5 +91,46 @@ export async function setModuleEnabledAction(raw: {
     return tCommon("saved");
   });
   if (r.ok) revalidatePath("/", "layout");
+  return r;
+}
+
+/**
+ * THE WORKSPACE'S REPLY ADDRESS (Phase 5 slice 100; founder decision C68 (c),
+ * (f), (i)) — three verbs, each only parsing: `src/notify/reply-address.ts`
+ * checks `settings:edit`, the address, the budgets, and audits. Asking for an
+ * address MAILS a link to it and changes nothing else until somebody holding
+ * that mailbox confirms; the answer says so. A refusal is a typed result the
+ * card toasts, never a revert.
+ */
+export async function requestReplyAddressAction(rawEmail: unknown): Promise<FormResult> {
+  const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("settings.preferences.replies");
+  const r = await runForm(PATH, async () => {
+    const made = await requestReplyAddressAndMail({ tenantId: membership.tenantId, actor }, rawEmail);
+    return t("sent", { email: made.email });
+  });
+  if (r.ok) revalidatePath(PATH);
+  return r;
+}
+
+export async function cancelReplyAddressRequestAction(): Promise<FormResult> {
+  const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("settings.preferences.replies");
+  const r = await runForm(PATH, async () => {
+    await cancelReplyAddressRequest({ tenantId: membership.tenantId, actor });
+    return t("cancelled");
+  });
+  if (r.ok) revalidatePath(PATH);
+  return r;
+}
+
+export async function removeReplyAddressAction(): Promise<FormResult> {
+  const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("settings.preferences.replies");
+  const r = await runForm(PATH, async () => {
+    await removeReplyAddress({ tenantId: membership.tenantId, actor });
+    return t("removed");
+  });
+  if (r.ok) revalidatePath(PATH);
   return r;
 }

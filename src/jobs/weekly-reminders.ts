@@ -102,8 +102,6 @@ export async function enqueueForTenant(
         perKind: true,
         emailLevel: true,
         timezone: true,
-        digestWeekday: true,
-        digestHour: true,
       },
     });
     const members = await tx.member.findMany({
@@ -122,7 +120,11 @@ export async function enqueueForTenant(
       // none of them would otherwise be reminded at 08:00 UTC, which is
       // the middle of the night for half the world.
       const zone = pref?.timezone ?? m.timezone ?? settings.timezone;
-      const due = dueAt(now, zone, pref?.digestWeekday ?? DEFAULT_WEEKDAY, pref?.digestHour ?? DEFAULT_HOUR);
+      // ALWAYS Monday 08:00 in the member's zone (Phase 5 slice 100). It
+      // used to read `digestWeekday`/`digestHour`, which nothing wrote until
+      // the summary email made them the SUMMARY's day and hour on
+      // `/settings/notifications`; moving one's summary must not move this.
+      const due = dueAt(now, zone, DEFAULT_WEEKDAY, DEFAULT_HOUR);
       if (due === null || now < due.at) return [];
       return [
         {

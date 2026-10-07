@@ -84,6 +84,22 @@ export function startOfLocalDay(isoDate: string, timeZone: string): Date {
   return guess;
 }
 
+/**
+ * The instant a local wall-clock HOUR falls at, on a date, in a zone —
+ * DST-safe on the day of a change, which "local midnight + N hours" is not:
+ * on the last Sunday of October that put Stockholm's 08:00 at 07:00 local,
+ * because the day is 25 hours long. Resolved like `startOfLocalDay`, by
+ * probing the zone's offset at the instant itself. An hour that does not
+ * exist that day (inside a spring-forward gap) resolves to the instant an
+ * hour later on the wall clock; a doubled one (fall-back) to its second
+ * occurrence.
+ */
+export function localHourInstant(isoDate: string, hour: number, timeZone: string): Date {
+  const naive = Date.parse(`${isoDate}T${String(hour).padStart(2, "0")}:00:00.000Z`);
+  const first = naive - zoneOffsetMinutes(new Date(naive), timeZone) * 60_000;
+  return new Date(naive - zoneOffsetMinutes(new Date(first), timeZone) * 60_000);
+}
+
 /** Offset of a zone at an instant, in minutes east of UTC. */
 export function zoneOffsetMinutes(instant: Date, timeZone: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {

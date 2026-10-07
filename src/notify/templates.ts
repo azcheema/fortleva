@@ -1,6 +1,8 @@
 import { appUrl } from "@/config";
 import { isUuid } from "@/db/context";
 import { isNotificationKind, type NotificationKind } from "./catalog";
+import { MEMBER_DIGEST_MAIL, renderMemberDigest } from "./digest";
+import { REPLY_ADDRESS_CHANGED_MAIL } from "./reply-address-mail-key";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MAIL_KEYS, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
@@ -34,6 +36,8 @@ const EXTRA_TEMPLATES = [
   VAULT_EXPORTED_MAIL,
   LOGIN_ASK_MAIL,
   ...DOOR_ALARM_MAIL_KEYS,
+  MEMBER_DIGEST_MAIL,
+  REPLY_ADDRESS_CHANGED_MAIL,
 ] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
@@ -287,6 +291,33 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Någon som är inloggad på en kunds portalkonto har upprepade gånger svarat fel på sidan med inloggningar.",
     },
   },
+  // Phase 5 slice 100 — a member's summary (C68 (b), (e); `digest.ts`). The
+  // real mail is `renderMemberDigest`, from counts the outbox takes at send;
+  // this copy is only what renders if those counts arrive empty, which the
+  // outbox SKIPS before rendering — kept because every template has copy.
+  [MEMBER_DIGEST_MAIL]: {
+    en: {
+      subject: "Fortleva: new updates in your inbox",
+      body: "There is news in your Fortleva inbox. Open it to see what is new.",
+    },
+    sv: {
+      subject: "Fortleva: nya uppdateringar i din inkorg",
+      body: "Det finns nytt i din inkorg i Fortleva. Öppna den för att se vad som är nytt.",
+    },
+  },
+  // Phase 5 slice 100 — a new reply address was confirmed (C68 (i);
+  // `reply-address-mail-key.ts`). A security notice to every owner, whatever
+  // their level; LINKS, NOT DATA — the address is not in it.
+  [REPLY_ADDRESS_CHANGED_MAIL]: {
+    en: {
+      subject: "Your workspace's reply address was changed",
+      body: "Replies to your workspace's emails — from your team and your clients — now go to a new address. See it in Fortleva, under Settings, Preferences. If you did not expect this, change it there.",
+    },
+    sv: {
+      subject: "Svarsadressen för er arbetsyta har ändrats",
+      body: "Svar på arbetsytans e-post – från ert team och era kunder – går nu till en ny adress. Se den i Fortleva under Inställningar, Preferenser. Om ni inte väntade er detta, ändra den där.",
+    },
+  },
   "time.weekly_reminder": {
     en: {
       subject: "Your weekly time reminder",
@@ -315,6 +346,8 @@ const linkFor = (
   params: Readonly<Record<string, unknown>> | null,
 ): URL => {
   if (key === "time.weekly_reminder") return new URL("/time", appUrl);
+  if (key === MEMBER_DIGEST_MAIL) return new URL("/inbox", appUrl);
+  if (key === REPLY_ADDRESS_CHANGED_MAIL) return new URL("/settings/preferences", appUrl);
   // An export (slice 95): the exports page, behind the vault's door, says
   // who exported what and when — the mail itself names nothing.
   if (key === VAULT_EXPORTED_MAIL) return new URL("/vault/exports", appUrl);
@@ -418,6 +451,15 @@ export function renderEmail(
   locale: string,
   params: Readonly<Record<string, unknown>> | null,
 ): { subject: string; text: string } {
+  if (key === MEMBER_DIGEST_MAIL) {
+    // Counts, never names (C68 (e)): the outbox puts `{ counts }` here from
+    // the linked rows still unread at send.
+    const digest = renderMemberDigest(locale, params?.["counts"], {
+      inbox: new URL("/inbox", appUrl).toString(),
+      settings: new URL("/settings/notifications", appUrl).toString(),
+    });
+    if (digest) return digest;
+  }
   const copy = COPY[key][locale === "sv" ? "sv" : "en"];
   return { subject: copy.subject, text: `${copy.body}\n\n${linkFor(key, params).toString()}` };
 }
