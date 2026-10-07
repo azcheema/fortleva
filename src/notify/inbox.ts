@@ -5,7 +5,15 @@ import { accessibleCodes } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { idCursor } from "@/lib/id-cursor";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
-import { isReminderBand, isReminderKind, isSubmissionKind, reminderSubjects, submissionSubjects } from "@/modules/vault";
+import {
+  askDeclineSubjects,
+  isAskDeclineKind,
+  isReminderBand,
+  isReminderKind,
+  isSubmissionKind,
+  reminderSubjects,
+  submissionSubjects,
+} from "@/modules/vault";
 
 import { isNotificationKind, type NotificationKind } from "./catalog";
 
@@ -414,6 +422,20 @@ async function resolveSubjects(
       out.set(id, { title: subject.title, href: subject.href });
     }
     rows = rows.filter((r) => !isSubmissionKind(r.kind));
+    if (rows.length === 0) return out;
+  }
+
+  // …AND A DECLINED ASK (slice 98, C66 (c)): the client (and a project's
+  // key), never what was asked, by the same three rules —
+  // `askDeclineSubjects`. Never the fall-through below, which would name a
+  // project's ask's PROJECT under `project:view` alone (the design review).
+  const declines = rows.filter((r) => isAskDeclineKind(r.kind));
+  if (declines.length > 0) {
+    const refs = declines.map((r) => ({ id: r.id, kind: r.kind, entityType: r.entityType, entityId: r.entityId }));
+    for (const [id, subject] of await askDeclineSubjects(tx, ctx.tenantId, ctx.actor, refs)) {
+      out.set(id, { title: subject.title, href: subject.href });
+    }
+    rows = rows.filter((r) => !isAskDeclineKind(r.kind));
     if (rows.length === 0) return out;
   }
 

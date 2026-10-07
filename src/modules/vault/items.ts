@@ -170,8 +170,11 @@ async function liveAnchor(tx: TenantDb, tenantId: string, id: string) {
  * an archived status is a fact about the anchor, and telling it to a
  * member who cannot reach the anchor would be the existence oracle
  * NOT_FOUND exists to prevent.
+ *
+ * Shared with the asks (`asks.ts`, slice 98): an ask is placed where the
+ * login it asks for will land, by the same rule.
  */
-async function resolveNewAnchor(
+export async function resolveNewAnchor(
   tx: TenantDb,
   ctx: VaultCtx,
   input: { clientId?: unknown; projectId?: unknown },

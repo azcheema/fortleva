@@ -246,6 +246,22 @@ const KINDS = {
     class: "INSTANT",
     email: { atLevel: "PARTICIPATING" },
   },
+  /**
+   * Phase 3V slice 98 (founder decision C66 (c)): the contact the agency
+   * asked for a login pressed "We don't have this". To the people a sent
+   * login would have been told to (`submissionReceivers`) and the member
+   * who asked. INSTANT and PARTICIPATING, as a hand-over is: the team was
+   * waiting on it and now has to find the login another way. Entity: the
+   * ASK, so the inbox can lead to where it is listed (the client's or the
+   * project's Vault tab); the row names the client, never what was asked
+   * (C54 — what a client's logins are called stays behind the door). One
+   * row per ask: a decline happens once.
+   */
+  "credential.ask_declined": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

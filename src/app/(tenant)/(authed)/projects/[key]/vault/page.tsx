@@ -4,12 +4,13 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { AddCredentialForm } from "@/app/(tenant)/(authed)/vault/add-credential";
+import { LoginAsksSection } from "@/app/(tenant)/(authed)/vault/login-asks";
 import { projectSurface, projectWhere } from "@/app/(tenant)/(authed)/vault/surface";
 import { NoRevealLine, openVaultPage, rowAbilitiesOf, VaultList } from "@/app/(tenant)/(authed)/vault/vault-page";
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { VaultLockTimer } from "@/components/vault/vault-lock-timer";
-import { CREDENTIAL_TYPES, listCredentials, SECRET_FIELDS } from "@/modules/vault";
+import { CREDENTIAL_TYPES, listCredentials, listLoginAsks, loginAskTargets, SECRET_FIELDS } from "@/modules/vault";
 
 import { loadProject } from "../data";
 
@@ -34,11 +35,20 @@ export default async function ProjectVaultPage({ params }: { params: Promise<{ k
   if (!project.caps.viewCredentials) notFound();
   const surface = projectSurface(project.key);
 
-  const opened = await openVaultPage(`/projects/${project.key}/vault`, (ctx) =>
-    listCredentials(ctx, { projectId: project.id }),
-  );
+  // The logins, then this project's asks and what an ask may offer here
+  // (slice 98) — each through the same door, in sequence.
+  const opened = await openVaultPage(`/projects/${project.key}/vault`, async (ctx) => {
+    const credentials = await listCredentials(ctx, { projectId: project.id });
+    const asks = await listLoginAsks(ctx, { projectId: project.id });
+    const targets = await loginAskTargets(ctx, { clientId: project.client.id, projectId: project.id });
+    return { credentials, asks, targets };
+  });
   if (opened.kind === "door") return opened.door;
-  const { open, data: credentials, msLeft } = opened;
+  const {
+    open,
+    data: { credentials, asks, targets },
+    msLeft,
+  } = opened;
 
   const t = await getTranslations("vault");
   const canAdd = open.can.create && project.status !== "ARCHIVED";
@@ -85,6 +95,14 @@ export default async function ProjectVaultPage({ params }: { params: Promise<{ k
           </>
         )}
       </SectionCard>
+
+      <LoginAsksSection
+        surface={surface}
+        clientId={project.client.id}
+        clientName={project.client.name}
+        asks={asks}
+        targets={targets}
+      />
 
       {canAdd ? (
         <SectionCard id="new-credential" className="scroll-mt-16" title={t("add.title")} description={t("add.description")}>

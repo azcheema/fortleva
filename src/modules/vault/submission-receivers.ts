@@ -33,8 +33,13 @@ export async function submissionReceivers(
   tx: TenantDb,
   tenantId: string,
   anchor: { readonly clientId: string; readonly projectId: string | null },
+  /**
+   * More candidates, held to the same rule (slice 98: the member who ASKED
+   * for this login, when it answers an ask — `ask-rows.ts`).
+   */
+  also: readonly string[] = [],
 ): Promise<string[]> {
-  const candidates: string[] = [];
+  const candidates: string[] = [...also];
   if (anchor.projectId !== null) {
     const assigned = await tx.memberProject.findMany({
       where: { tenantId, projectId: anchor.projectId },
@@ -59,6 +64,30 @@ export async function submissionReceivers(
   });
   candidates.push(...owners.map((o) => o.memberId));
   return keep(tx, tenantId, anchor, candidates);
+}
+
+/**
+ * WHO IS TOLD THAT AN ASK WAS ANSWERED — sent or declined (slice 98; C66
+ * (c): "your team is told"): the people a hand-over at the ask's anchor
+ * tells (above — the client's or the project's people, and the owners)
+ * AND the member who asked, each held to the same rule. The ask is read
+ * bounded by the principal: this tenant, this client, this contact. Here,
+ * beside `submissionReceivers`, for its reason: it reads a member column
+ * (who asked) that no portal surface may name.
+ */
+export async function askReceivers(
+  tx: TenantDb,
+  principal: { readonly tenantId: string; readonly clientId: string; readonly contactId: string },
+  askId: string,
+): Promise<string[]> {
+  const ask = await tx.credentialAsk.findFirst({
+    where: { tenantId: principal.tenantId, id: askId, clientId: principal.clientId, contactId: principal.contactId },
+    select: { clientId: true, projectId: true, requestedByMemberId: true },
+  });
+  if (!ask) return [];
+  return submissionReceivers(tx, principal.tenantId, { clientId: ask.clientId, projectId: ask.projectId }, [
+    ask.requestedByMemberId,
+  ]);
 }
 
 /** The active members among `ids` who may open the login — one row each, in a stable order. */

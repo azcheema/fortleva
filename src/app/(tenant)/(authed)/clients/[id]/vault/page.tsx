@@ -4,12 +4,13 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { AddCredentialForm, type WhereOption } from "@/app/(tenant)/(authed)/vault/add-credential";
+import { LoginAsksSection } from "@/app/(tenant)/(authed)/vault/login-asks";
 import { clientSurface, clientWhere, projectWhere } from "@/app/(tenant)/(authed)/vault/surface";
 import { NoRevealLine, openVaultPage, rowAbilitiesOf, VaultList } from "@/app/(tenant)/(authed)/vault/vault-page";
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { VaultLockTimer } from "@/components/vault/vault-lock-timer";
-import { CREDENTIAL_TYPES, listCredentials, SECRET_FIELDS } from "@/modules/vault";
+import { CREDENTIAL_TYPES, listCredentials, listLoginAsks, loginAskTargets, SECRET_FIELDS } from "@/modules/vault";
 
 import { loadClient } from "../data";
 
@@ -33,9 +34,20 @@ export default async function ClientVaultPage({ params }: { params: Promise<{ id
   if (!client.caps.viewCredentials) notFound();
   const surface = clientSurface(client.id);
 
-  const opened = await openVaultPage(`/clients/${client.id}/vault`, (ctx) => listCredentials(ctx, { clientId: client.id }));
+  // The logins, then the asks of the client and what an ask may offer
+  // (slice 98) — each through the same door, in sequence.
+  const opened = await openVaultPage(`/clients/${client.id}/vault`, async (ctx) => {
+    const credentials = await listCredentials(ctx, { clientId: client.id });
+    const asks = await listLoginAsks(ctx, { clientId: client.id });
+    const targets = await loginAskTargets(ctx, { clientId: client.id, projectId: null });
+    return { credentials, asks, targets };
+  });
   if (opened.kind === "door") return opened.door;
-  const { open, data: credentials, msLeft } = opened;
+  const {
+    open,
+    data: { credentials, asks, targets },
+    msLeft,
+  } = opened;
 
   const t = await getTranslations("vault");
   // Where a NEW login may hang: the client itself only for a member
@@ -95,6 +107,8 @@ export default async function ClientVaultPage({ params }: { params: Promise<{ id
           </>
         )}
       </SectionCard>
+
+      <LoginAsksSection surface={surface} clientId={client.id} clientName={client.name} asks={asks} targets={targets} />
 
       {canAdd ? (
         <SectionCard id="new-credential" className="scroll-mt-16" title={t("add.title")} description={t("add.description")}>

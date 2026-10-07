@@ -36,4 +36,5 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "expiration.agreement_ending": FileClockIcon,
   "expiration.logins_expiring": KeyRoundIcon,
   "credential.submitted": KeySquareIcon,
+  "credential.ask_declined": KeySquareIcon,
 };

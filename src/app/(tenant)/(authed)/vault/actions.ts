@@ -11,6 +11,9 @@ import { enrolUrl } from "@/authz/redirects";
 import { field, has, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
+  ASK_MAIL_EVERY_HOURS,
+  askForLogin,
+  cancelLoginAsk,
   createCredential,
   createShareLink,
   deleteCredential,
@@ -324,4 +327,59 @@ export async function revokeShareLinkAction(surface: string, linkId: string): Pr
     await revokeShareLink(ctx, linkId);
     return t("revoked");
   });
+}
+
+/**
+ * Ask one of the client's people for a login (slice 98, C66) — the "Ask for
+ * a login…" dialog. Where it lands is a closed-set `where` (the client, or
+ * one of its projects — never our own); the person is a contact id; the
+ * service checks the door, the code, the scope, that the person may be
+ * asked and that the client could answer at all.
+ */
+export async function askForLoginAction(_prev: FormResult | null, formData: FormData): Promise<FormResult> {
+  const path = vaultPathOf(formData.get("surface"));
+  const where = vaultWhereOf(formData.get("where"));
+  const contactId = uuid.safeParse(formData.get("contactId"));
+  const type = field(formData, "type");
+  if (path === null || where === null || (where.clientId === null && where.projectId === null)) return invalid();
+  if (!contactId.success || !isCredentialType(type)) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("vault.asks");
+  const r = await runForm(path, async () => {
+    const { mail } = await askForLogin(ctx, {
+      clientId: where.clientId,
+      projectId: where.projectId,
+      contactId: contactId.data,
+      type,
+      name: field(formData, "name") ?? "",
+      note: field(formData, "note"),
+    });
+    // The truth about the mail (the code review's low).
+    return mail === "sent"
+      ? t("asked")
+      : mail === "recent"
+        ? t("askedRecent", { hours: ASK_MAIL_EVERY_HOURS })
+        : t("askedNoMail");
+  });
+  if (r.ok) revalidatePath(path);
+  return r;
+}
+
+/**
+ * Cancel an open ask (slice 98) — one click: nothing is lost (the client no
+ * longer sees it, and the team can ask again), so it is not a danger verb
+ * and asks no question (AGENTS.md: a `confirm` on a non-danger action is
+ * dead string anyway).
+ */
+export async function cancelLoginAskAction(surface: string, askId: string): Promise<FormResult> {
+  const path = vaultPathOf(surface);
+  if (path === null || !uuid.safeParse(askId).success) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("vault.asks");
+  const r = await runForm(path, async () => {
+    await cancelLoginAsk(ctx, askId);
+    return t("cancelled");
+  });
+  if (r.ok) revalidatePath(path);
+  return r;
 }

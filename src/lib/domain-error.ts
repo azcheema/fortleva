@@ -118,6 +118,18 @@ export type DomainErrorCode =
   // only until it opens: an answer to one that has opened, closed, lapsed,
   // or been denied or withdrawn meanwhile is refused, and says so.
   | "SEALED_REQUEST_SETTLED"
+  // Asking a client for a login (Phase 3V slice 98 — src/modules/vault/
+  // asks.ts; founder decision C66), said to the MEMBER: the workspace has
+  // "Logins sent by clients" switched off, or the portal module is closed,
+  // so nobody at the client could answer; the person picked cannot receive
+  // an ask (no portal access now, or not that client's); they already have
+  // the most open asks one person may hold (`ASKS_OPEN_PER_CONTACT`); and
+  // a cancellation of an ask that has already been sent, declined or
+  // cancelled — which says so.
+  | "LOGIN_ASKS_OFF"
+  | "LOGIN_ASK_CONTACT"
+  | "LOGIN_ASK_LIMIT"
+  | "LOGIN_ASK_ENDED"
   // The export (Phase 3V slice 95 — src/modules/vault/export.ts; C63): the
   // member asked for logins they reach none of (an empty choice, or our
   // own without a tenant-wide scope — the same answer, C49), or for more

@@ -4,8 +4,8 @@ import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 
 import { field, type FormResult } from "@/lib/server-actions";
-import { submitPortalCredential } from "@/modules/vault";
-import { runPortalForm } from "@/portal/action";
+import { declinePortalLoginAsk, submitPortalCredential } from "@/modules/vault";
+import { runPortalAction } from "@/portal/action";
 import { requirePortalContext } from "@/portal/context";
 
 /**
@@ -17,14 +17,16 @@ import { requirePortalContext } from "@/portal/context";
  * nothing that names a tenant, a client or a contact is read out of the
  * form, and a member inside View-as — who has no contact session — is sent
  * to the client sign-in page. The client the login lands on is the
- * principal's; the PROJECT is the one id the form may carry, and the broker
- * proves it is this contact's to name (`authorizePortal` on the project)
- * and re-reads it as this client's.
+ * principal's; the form may carry two ids — the PROJECT, which the broker
+ * proves is this contact's to name (`authorizePortal` on the project) and
+ * re-reads as this client's, or, in answer to an ask (slice 98), the ASK,
+ * which the broker accepts only as one of this contact's own open asks and
+ * whose project then wins over any on the form.
  *
  * TWO REFUSALS ARE SAID HERE, BEFORE THE BROKER, because they are about
  * what the reader typed and a plain "check what you typed" would not tell
  * them which: no name, and no secret. Everything else is the broker's —
- * `runPortalForm` turns every refusal about the agency into the plane's one
+ * `runPortalAction` turns every refusal about the agency into the plane's one
  * message and says only the reader's own (`INVALID_INPUT`,
  * `SUBMISSION_RATE_LIMITED`).
  *
@@ -46,12 +48,16 @@ export async function sendLoginAction(_prev: FormResult | null, formData: FormDa
   const name = field(formData, "name") ?? "";
   if (name.trim() === "") return { ok: false, message: t("name") };
   if (!Object.values(secret).some((v) => v.length > 0)) return { ok: false, message: t("secret") };
+  // An answer to one of the agency's asks (slice 98, C66): the broker lands
+  // it where the ASK says and ignores any project on the form.
+  const askId = field(formData, "askId");
 
-  const result = await runPortalForm("sendLogin", async () => {
+  const result = await runPortalAction("sendLogin", async () => {
     await submitPortalCredential(principal, {
       type: field(formData, "type"),
       name,
       projectId: field(formData, "projectId"),
+      askId,
       username: field(formData, "username"),
       url: field(formData, "url"),
       notes: field(formData, "notes"),
@@ -61,5 +67,31 @@ export async function sendLoginAction(_prev: FormResult | null, formData: FormDa
     return "";
   });
   if (result.ok) redirect("/portal/send-login?sent=1");
-  return result;
+  // IN ANSWER TO AN ASK, a refusal about the agency most likely means the
+  // ask closed while the form was open (the team cancelled it, or it was
+  // answered in another tab) — the design review's nit: say so, and the
+  // typed values stay in the form. It discloses nothing new: the page
+  // itself says "no longer open" for every ask it cannot show, whatever
+  // the reason. A disclosable refusal (what they typed, their pace) keeps
+  // its own words.
+  if (askId && !result.code) return { ok: false, message: (await getTranslations("portal.sendLogin.ask"))("refused") };
+  return { ok: false, message: result.message };
+}
+
+/**
+ * "WE DON'T HAVE THIS" (Phase 3V slice 98; founder decision C66 (c)) — the
+ * contact the agency asked declines, with an optional note. The principal
+ * comes from `requirePortalContext()` and nowhere else; the form carries
+ * the ask's id, which the broker accepts only as one of THIS contact's own
+ * open asks. Success redirects to the page with `?declined=1`.
+ */
+export async function declineLoginAskAction(_prev: FormResult | null, formData: FormData): Promise<FormResult> {
+  const { principal } = await requirePortalContext();
+  const result = await runPortalAction("declineLoginAsk", async () => {
+    await declinePortalLoginAsk(principal, field(formData, "askId"), field(formData, "note"));
+    return "";
+  });
+  if (result.ok) redirect("/portal/send-login?declined=1");
+  if (!result.code) return { ok: false, message: (await getTranslations("portal.sendLogin.decline"))("refused") };
+  return { ok: false, message: result.message };
 }

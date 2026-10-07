@@ -189,6 +189,18 @@ export const STATUS_MAP = {
     TASK: spec("neutral", "square-check", "text"),
     SUBTASK: spec("neutral", "corner-down-right", "text"),
   },
+  /**
+   * Phase 3V slice 98 (C66): where an ask the agency made of a client's
+   * contact for a login stands, as the team's Vault tab lists it. OPEN is
+   * waiting on the client; DECLINED is the client saying they do not have
+   * it — something for the team to act on, so caution, not danger.
+   */
+  loginAsk: {
+    OPEN: spec("caution", "clock"),
+    SENT: spec("success", "check"),
+    DECLINED: spec("caution", "circle-x"),
+    CANCELLED: spec("quiet", "minus", "outline"),
+  },
 } as const satisfies Record<string, Record<string, StatusSpec>>;
 
 export type StatusDomain = keyof typeof STATUS_MAP;

@@ -242,6 +242,14 @@ const BROKERED_READS: readonly (readonly [string, string])[] = [
   // `submitPortalCredential`, audited), so nothing here is.
   [join("modules", "vault", "submission-portal-writes.ts"), "portalCanSendLogins"],
   [join("modules", "vault", "submission-portal-writes.ts"), "readPortalSubmissions"],
+  // Phase 3V slice 98 (C66): the agency's open asks of THIS contact (the
+  // home's count, the send page's list) and one of them by id — class-A
+  // rows a contact's own transaction cannot read, bounded by the principal.
+  // Answering is the send (above) or the decline (`declinePortalLoginAsk`,
+  // audited); reading is neither.
+  [join("modules", "vault", "submission-portal-writes.ts"), "countPortalLoginAsks"],
+  [join("modules", "vault", "submission-portal-writes.ts"), "listPortalLoginAsks"],
+  [join("modules", "vault", "submission-portal-writes.ts"), "readPortalLoginAsk"],
 ];
 
 /**

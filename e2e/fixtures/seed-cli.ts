@@ -201,6 +201,9 @@ const DBTEST_PREFIXES = [
   "totals-",
   "tree-",
   "triage-",
+  // Phase 3V slice 98, the agency asking a client for a login —
+  // `src/modules/vault/asks.dbtest.ts`, `setupTenant("vask")`.
+  "vask-",
   // Phase 3V slice 1, the vault core — `src/modules/vault/vault.dbtest.ts`,
   // `setupTenant("vault")`, and the tenant-key back-fill —
   // `src/crypto/tenant-key-backfill.dbtest.ts`, `setupTenant("vkey")`.
@@ -2866,6 +2869,63 @@ async function clearPortalSubmissions(tenantId: string, contactEmail: string): P
 }
 
 /**
+ * Hand the fixture back after `portal-login-ask.spec.ts` (3V slice 98): the
+ * asks made of the fixture contact (whatever their ending), their audit
+ * rows, the contact's ask mails, and the agency's `credential.ask_declined`
+ * notifications and mails — scoped by the CONTACT asked, never a clock. The
+ * logins sent in answer are `clearPortalSubmissions`'. Runs from
+ * `afterAll`: the vault tabs, the portal home and the walks sort after the
+ * spec. The platform connection may delete (`credential_ask` grants the
+ * runtime no DELETE); a throwaway `e2e-` tenant only.
+ */
+async function clearLoginAsks(tenantId: string, contactEmail: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const contact = await db.contact.findFirst({ where: { tenantId, email: contactEmail }, select: { id: true } });
+  const asks = contact
+    ? await db.credentialAsk.findMany({ where: { tenantId, contactId: contact.id }, select: { id: true } })
+    : [];
+  const ids = asks.map((a) => a.id);
+  // Scoped by the contact and their asks (the code review's nit): the ask
+  // mails TO them, and the declines' notifications ON their asks with the
+  // mails those notifications carried.
+  if (contact) {
+    await db.emailOutbox.deleteMany({
+      where: { tenantId, kind: "portal.login_asked", receiverType: "CONTACT", receiverId: contact.id },
+    });
+  }
+  const declines = ids.length
+    ? await db.notification.findMany({
+        where: { tenantId, kind: "credential.ask_declined", entityType: "CredentialAsk", entityId: { in: ids } },
+        select: { id: true },
+      })
+    : [];
+  if (declines.length > 0) {
+    const noticeIds = declines.map((n) => n.id);
+    await db.emailOutbox.deleteMany({
+      where: { tenantId, kind: "credential.ask_declined", notificationIds: { hasSome: noticeIds } },
+    });
+    await db.notification.deleteMany({ where: { tenantId, id: { in: noticeIds } } });
+  }
+  if (ids.length > 0) {
+    await db.credentialAsk.deleteMany({ where: { tenantId, id: { in: ids } } });
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.audit_maintenance', 'on', true)`;
+      await tx.auditEvent.deleteMany({
+        where: {
+          tenantId,
+          action: { in: ["credential.asked", "credential.ask_cancelled", "credential.ask_declined"] },
+          targetId: { in: ids },
+        },
+      });
+    });
+  }
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ cleared: ids.length })}\n`);
+}
+
+/**
  * Mark a login "Change soon" (slice 94) by its name, as removing a member
  * who saw it would — the fixture's members stay, so `vault.spec.ts` sets
  * the mark straight on the row, then clears it through the UI by changing
@@ -2924,6 +2984,7 @@ const main = async (): Promise<void> => {
   if (command === "flag-login") return flagLogin(argument!, process.argv[4]!);
   if (command === "portal-submissions") return portalSubmissions(argument!, process.argv[4]!);
   if (command === "clear-portal-submissions") return clearPortalSubmissions(argument!, process.argv[4]!);
+  if (command === "clear-login-asks") return clearLoginAsks(argument!, process.argv[4]!);
   if (command === "remove-users") return removeUsers(process.argv.slice(3));
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);

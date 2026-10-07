@@ -59,8 +59,8 @@ const deleteContactBody = (): string => {
 describe("contact attribution columns", () => {
   it("the schema walk finds them all (a floor, so it cannot pass vacuously)", () => {
     const columns = attributionColumns();
-    // Eight by slice 79, three by slice 93, one by slice 96.
-    expect(columns.length).toBeGreaterThanOrEqual(12);
+    // Eight by slice 79, three by slice 93, one by slice 96, one by slice 98.
+    expect(columns.length).toBeGreaterThanOrEqual(13);
     expect(columns).toContainEqual(["credentialItem", "submittedByContactId"]);
     expect(columns).toContainEqual(["sealedOpenRequest", "askedByContactId"]);
   });

@@ -99,6 +99,13 @@ export function normalizeSecretPatch(type: CredentialType, raw: unknown): Record
   return Object.fromEntries(allowed.filter((k) => k in out).map((k) => [k, out[k] as string | null]));
 }
 
+/**
+ * The one character Postgres refuses in TEXT: let through, its raw error
+ * escaped every refusal mapping and showed an error page instead of "check
+ * what you typed" (slice 98's security review, for every field read here).
+ */
+const NUL = String.fromCharCode(0);
+
 /** A trimmed string within `max`, or null for nothing; anything else is refused. Shared with `asset-fields.ts`. */
 export const trimmedOrNull = (raw: unknown, max: number, what: string): string | null => {
   if (raw === undefined || raw === null) return null;
@@ -106,6 +113,7 @@ export const trimmedOrNull = (raw: unknown, max: number, what: string): string |
   const v = (raw as string).trim();
   if (v.length === 0) return null;
   if (v.length > max) fail("INVALID_INPUT", `${what} is too long`);
+  if (v.includes(NUL)) fail("INVALID_INPUT", `${what} holds a character that cannot be stored`);
   return v;
 };
 

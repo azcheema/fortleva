@@ -105,6 +105,15 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   // — so the one member id on that table is named here, where a
   // brokered select would meet it.
   "uploadedByMemberId",
+  // Phase 3V slice 98 (C66), the agency's asks for a login: the two member
+  // columns on `credential_ask` — who asked, who cancelled (the client's
+  // side says "your agency", C42) — and the login an answered ask became,
+  // whose id never reaches the client (the design review's low). The
+  // broker's helpers that must name them (`ask-rows.ts`, structural tier;
+  // `submission-receivers.ts`, outside both) keep them out of the broker.
+  "requestedByMemberId",
+  "cancelledByMemberId",
+  "sentCredentialId",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -279,6 +288,12 @@ const STRUCTURAL_ONLY_SURFACES = [
   // surface may not. Structural tier only, so a select-less read or an
   // include added there later trips this file.
   join("modules", "vault", "submission.ts"),
+  // …and `ask-rows.ts` (slice 98, C66), for the same reason: the broker's
+  // reads of the agency's asks and the send's stamp naming the login it
+  // became, which the broker's file may not name. (Its row lock is raw SQL
+  // this tier refuses, so it is `ask-lock.ts`'s, outside both tiers, as
+  // `contact-budget-lock.ts` is.)
+  join("modules", "vault", "ask-rows.ts"),
 ];
 
 /**
@@ -399,6 +414,9 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "projectUpdateInternalSnapshot",
       "byMember",
       "uploadedByMemberId",
+      "requestedByMemberId",
+      "cancelledByMemberId",
+      "sentCredentialId",
     ]);
   });
 
@@ -477,6 +495,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
     expect(PORTAL_NEVER_SELECTED_EXCEPT).toEqual({
       kind: ["Document", "Service"],
       description: ["Service"],
+      type: ["CredentialAsk"],
     });
   });
 
@@ -654,6 +673,10 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
  *  - `description` on `WorkItem` is the 512 KB ProseMirror body; on
  *    `Service` it is the one-line text DATA_MODEL §6.6 marks
  *    "client-visible".
+ *  - `type` (slice 98) on `CredentialAsk` is the kind of login the agency
+ *    asked the client for (a website login, an API key…) — the agency
+ *    wrote it FOR that client, who sends one of that kind (C66). On every
+ *    other model it stays banned.
  *
  * The exemption is by MODEL, resolved through the schema like every
  * other key here, so `kind` selected through a relation to `WorkItem`
@@ -662,6 +685,7 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
 const PORTAL_NEVER_SELECTED_EXCEPT: Readonly<Record<string, readonly string[]>> = {
   kind: ["Document", "Service"],
   description: ["Service"],
+  type: ["CredentialAsk"],
 };
 
 const neverSelected = (key: string, model: string | null): boolean =>

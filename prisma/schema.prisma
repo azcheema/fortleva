@@ -318,6 +318,7 @@ model Tenant {
   credentialShareLinks CredentialShareLink[]
   contactVaultUnlocks  ContactVaultUnlock[]
   sealedOpenRequests   SealedOpenRequest[]
+  credentialAsks       CredentialAsk[]
 
   @@map("tenant")
 }
@@ -671,6 +672,7 @@ model Client {
   credentials          CredentialItem[]
   assets               ClientAsset[]
   sealedOpenRequests   SealedOpenRequest[]
+  credentialAsks       CredentialAsk[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -758,6 +760,8 @@ model Contact {
   portalSessions ContactSession[]
   // Phase 3V slice 91 — the client's door to the logins shown to them.
   vaultUnlocks ContactVaultUnlock[]
+  // Phase 3V slice 98 — logins the agency asked this person for.
+  credentialAsks CredentialAsk[]
 
   @@unique([tenantId, email])
   @@unique([tenantId, id]) // composite-FK target
@@ -994,6 +998,7 @@ model Project {
   // Phase 3V:
   credentials    CredentialItem[]
   assets         ClientAsset[]
+  credentialAsks CredentialAsk[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -2902,6 +2907,56 @@ model SealedOpenRequest {
 
   @@index([tenantId, clientId, askedAt]) // a client's asks, newest first
   @@map("sealed_open_request")
+}
+
+/// CredentialAsk — THE AGENCY ASKS A CLIENT FOR A NAMED LOGIN (Phase 3V
+/// slice 98; founder decision C66, C64 (a)'s later slice). A member who may
+/// add a login there asks ONE contact of the client — a main contact or a
+/// helper — for something they need ("Hosting control panel"), with an
+/// optional note; both are SHOWN TO THAT CONTACT. The contact is mailed
+/// once (a link, naming nothing) and sees the ask under "Waiting on you";
+/// they SEND it (a slice-96 hand-over, anchored where the ask says) or
+/// DECLINE it with a short note; the team may CANCEL it. Exactly one of
+/// the three ends it; nothing expires. Every bound is the database's
+/// (`credential_ask_guard`): a member asks and cancels as themselves, only
+/// the portal's broker (SYSTEM) records a send or a decline, and nothing
+/// that was asked ever changes. Class A: the contact reads it only through
+/// the portal's brokered reads. Migration 20261007180000, which also adds a
+/// hand-written partial UNIQUE Prisma cannot model —
+/// `credential_ask_sent_credential_unique` on (tenant_id, sent_credential_id)
+/// WHERE sent_credential_id IS NOT NULL (one login answers one ask): a
+/// generated `migrate diff` proposes dropping it, like the other partial
+/// uniques; keep it.
+/// scope=tenant  rls=A (portal_deny)  ret=with its client, project or contact (FK cascade)  enc=none
+/// audit: credential.asked | ask_cancelled | ask_declined (a send is `credential.submitted` with `askId`)
+model CredentialAsk {
+  id                   String         @id @default(uuid(7))
+  tenantId             String         @map("tenant_id")
+  clientId             String         @map("client_id")
+  projectId            String?        @map("project_id") // where the login will land; the guard holds it to the client
+  contactId            String         @map("contact_id") // the ONE person asked (C66 (a)); FK — an unanswered ask goes with them
+  type                 CredentialType // what kind the team expects; the client may send another
+  name                 String // what the team needs — SHOWN TO THE CLIENT; 1–200
+  note                 String? // the team's note — SHOWN TO THE CLIENT; ≤ 1000
+  requestedByMemberId  String         @map("requested_by_member_id") // attribution, no FK
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  sentAt               DateTime?      @map("sent_at") @db.Timestamptz(6)
+  sentCredentialId     String?        @map("sent_credential_id") // the login it became; no FK (a login may be purged later)
+  declinedAt           DateTime?      @map("declined_at") @db.Timestamptz(6)
+  declinedByContactId  String?        @map("declined_by_contact_id") // attribution, no FK
+  declineNote          String?        @map("decline_note") // the client's words to the team; ≤ 500
+  cancelledAt          DateTime?      @map("cancelled_at") @db.Timestamptz(6)
+  cancelledByMemberId  String?        @map("cancelled_by_member_id") // attribution, no FK
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  client  Client   @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade)
+  project Project? @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  contact Contact  @relation(fields: [tenantId, contactId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, clientId, createdAt]) // a client's asks, newest first
+  @@index([tenantId, contactId, createdAt]) // the asked person's own, and the per-contact cap
+  @@index([tenantId, projectId])
+  @@map("credential_ask")
 }
 
 // ───────────────────────────────────────────────────────────────────

@@ -189,6 +189,11 @@ describe("vault ciphertext boundary", () => {
     const index = join(SRC, "modules", "vault", "index.ts");
     const targets = importsOf(index, readFileSync(index, "utf8"));
     expect(targets.sort()).toEqual([
+      // `ask-subjects` names a declined ask in the inbox (the client, never
+      // what was asked) and `asks` is the team's side of asking a client for
+      // a login (slice 98, C66): every verb through the door, metadata only.
+      "modules/vault/ask-subjects",
+      "modules/vault/asks",
       "modules/vault/asset-fields",
       "modules/vault/assets",
       "modules/vault/ctx",

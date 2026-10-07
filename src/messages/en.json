@@ -275,7 +275,8 @@
       "assetDue": "A renewal is coming up",
       "agreementEnding": "An agreement is ending",
       "loginsExpiring": "Logins are expiring",
-      "loginSubmitted": "A client sent a login"
+      "loginSubmitted": "A client sent a login",
+      "loginAskDeclined": "A client can't send a login you asked for"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",
@@ -1405,7 +1406,11 @@
     "SHARE_LINK_CLOSED": "That link has already been opened or revoked.",
     "NOTHING_TO_EXPORT": "There are no logins to export there.",
     "EXPORT_TOO_LARGE": "That is more logins than one file can hold. Export one client at a time.",
-    "SUBMISSION_RATE_LIMITED": "You have sent several logins in a short time. Wait a while and try again."
+    "SUBMISSION_RATE_LIMITED": "You have sent several logins in a short time. Wait a while and try again.",
+    "LOGIN_ASKS_OFF": "Clients can't send logins right now, so they can't be asked for one. Turn on \"Logins sent by clients\" in Settings → Vault.",
+    "LOGIN_ASK_CONTACT": "That person can't be asked for a login. Only someone at this client with access to the portal can.",
+    "LOGIN_ASK_LIMIT": "That person already has many open asks. Cancel some, or wait for answers, before asking for more.",
+    "LOGIN_ASK_ENDED": "This ask has already been answered or cancelled. Reload to see where it stands."
   },
   "assignments": {
     "title": "Team",
@@ -2893,7 +2898,9 @@
       "repliedIn": "{project} · {date}",
       "repliedOn": "Replied {date}",
       "read": "Read",
-      "readLabel": "Read the reply on {title}"
+      "readLabel": "Read the reply on {title}",
+      "loginAsks": "Your agency asked you for {count, plural, one {# login} other {# logins}}",
+      "loginAsksOpen": "Open"
     },
     "signoff": {
       "awaitingYou": "Waiting for your sign-off",
@@ -3157,6 +3164,33 @@
         "title": "What you have sent",
         "description": "Only the names — the passwords are with your agency.",
         "sentOn": "Sent {date}"
+      },
+      "asks": {
+        "title": "Your agency asked you for",
+        "description": "Send each one here, or tell them if you don't have it.",
+        "askedOn": "Asked {date}",
+        "answer": "Answer"
+      },
+      "ask": {
+        "title": "Your agency asked for: {name}",
+        "forProject": "It is for {project}.",
+        "forCompany": "It is for your company in general.",
+        "note": "Their note",
+        "formDescription": "Only your agency's team can open what you send. You will not see the password here again.",
+        "gone": "This request is no longer open.",
+        "goneBody": "Your agency may have cancelled it, or it has been answered. You can still send a login below.",
+        "refused": "This couldn't be sent. The request may no longer be open — reload the page to check."
+      },
+      "decline": {
+        "title": "We don't have this",
+        "description": "If you can't send it, tell your agency here. They will be told, and the request closes.",
+        "note": "Note",
+        "noteHint": "Optional — for example who might have it.",
+        "submit": "We don't have this",
+        "sending": "Sending…",
+        "refused": "This couldn't be sent. The request may no longer be open — reload the page to check.",
+        "done": "Your agency has been told.",
+        "doneBody": "The request is closed."
       }
     }
   },
@@ -3252,6 +3286,12 @@
       "EPIC": "Epic",
       "TASK": "Task",
       "SUBTASK": "Subtask"
+    },
+    "loginAsk": {
+      "OPEN": "Waiting",
+      "SENT": "Sent",
+      "DECLINED": "They don't have it",
+      "CANCELLED": "Cancelled"
     },
     "priority": {
       "NONE": "No priority",
@@ -3746,6 +3786,46 @@
     }
   },
   "vault": {
+    "asks": {
+      "title": "Logins asked of the client",
+      "description": "What your team asked the client's people to send, and how they answered.",
+      "empty": "Nothing asked yet.",
+      "nobody": "Nobody at this client can sign in to the portal yet, so nobody can be asked. Invite someone from the Contacts tab first.",
+      "someone": "someone",
+      "askedOf": "Asked of {contact} by {member}, {date}",
+      "sentOn": "Sent {date}.",
+      "showLogin": "Show the login",
+      "declinedOn": "{contact} doesn't have it ({date}).",
+      "declinedNote": "{contact} doesn't have it ({date}): “{note}”",
+      "cancelledBy": "Cancelled by {member}, {date}.",
+      "stuck": "{contact} can't answer this now — they have no portal access, or the client can't send logins here at the moment.",
+      "cancel": "Cancel",
+      "cancelLabel": "Cancel the ask for {name}",
+      "asked": "Asked. They'll get an email.",
+      "askedRecent": "Asked. They already had an email about your asks in the last {hours} hours, so no new one is sent — it's waiting in their portal.",
+      "askedNoMail": "Asked. Their address doesn't receive our emails, so let them know yourself — it's waiting in their portal.",
+      "cancelled": "Ask cancelled.",
+      "dialog": {
+        "open": "Ask for a login…",
+        "title": "Ask the client for a login",
+        "description": "Ask one person at {client} to send you a login through their portal.",
+        "name": "What do you need?",
+        "nameHint": "The client sees this — for example “Hosting control panel”.",
+        "type": "Kind",
+        "place": "For",
+        "placeClient": "{client} in general",
+        "placeOnly": "For {place}.",
+        "contact": "Ask",
+        "contactPrimary": "{name} — main contact ({email})",
+        "contactPrimaryNoEmail": "{name} — main contact",
+        "contactOther": "{name} ({email})",
+        "note": "Note",
+        "noteHint": "Optional. The client sees this too — for example why you need it.",
+        "footer": "{name} is emailed — at most once every {hours} hours — and asked to sign in to the portal, where they can send it or tell you they don't have it.",
+        "submit": "Ask",
+        "submitting": "Asking…"
+      }
+    },
     "types": {
       "LOGIN": "Login",
       "SECURE_NOTE": "Secure note",

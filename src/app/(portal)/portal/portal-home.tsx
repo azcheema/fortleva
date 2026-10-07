@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { listPortalPendingDeliverables } from "@/documents/portal";
-import { portalCanSendLogins } from "@/modules/vault";
+import { countPortalLoginAsks, portalCanSendLogins } from "@/modules/vault";
 import {
   listPortalAgencyReplies,
   listPortalTasks,
@@ -171,6 +171,18 @@ export async function PortalHome({
   // rule as those above; View-as asks it for the contact being looked
   // through and gets the same answer, so the byte comparison holds.
   const canSendLogins = (await portalReadOrNull("portalCanSendLogins", () => portalCanSendLogins(principal))) === true;
+  // THE AGENCY'S ASKS FOR A LOGIN (Phase 3V slice 98, C66 (a)) — the open
+  // asks of THIS contact, as a COUNT only, never their names (the design
+  // review's medium): this component is rendered by View-as under a MEMBER
+  // session, which never passed the vault's door, and what a client's
+  // logins are called stays behind it. The names are on
+  // `/portal/send-login`, which only a contact reaches. Sequential, under
+  // the same rule as the reads above.
+  // Asked only while sending is open: both answer from the same standing
+  // and switch, so a closed one is 0 without two more transactions.
+  const loginAsks = canSendLogins
+    ? ((await portalReadOrNull("countPortalLoginAsks", () => countPortalLoginAsks(principal))) ?? 0)
+    : 0;
 
   return (
     <PortalFrame name={name} principal={principal} nav="home">
@@ -204,13 +216,28 @@ export async function PortalHome({
               ) : null
             }
           />
-          {asks.length > 0 || replied.length > 0 ? (
+          {asks.length > 0 || replied.length > 0 || loginAsks > 0 ? (
             <SectionCard
               title={t("actionItems.title")}
               description={t("actionItems.description")}
               contentClassName="p-4"
             >
               <ul data-slot="portal-action-items" className="flex flex-col gap-2">
+                {loginAsks > 0 ? (
+                  <li
+                    data-slot="portal-action-item"
+                    data-kind="login-ask"
+                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+                  >
+                    <span className="text-sm text-foreground">{t("actionItems.loginAsks", { count: loginAsks })}</span>
+                    <Button asChild variant="outline" size="sm">
+                      {/* No prefetch: rendered on the member plane too (View-as). */}
+                      <Link href="/portal/send-login" prefetch={false}>
+                        {t("actionItems.loginAsksOpen")}
+                      </Link>
+                    </Button>
+                  </li>
+                ) : null}
                 {asks.map((ask) => {
                   const href = ask.project ? `/portal/projects/${ask.project.key}` : "/portal/files";
                   return (
@@ -250,7 +277,7 @@ export async function PortalHome({
               </ul>
             </SectionCard>
           ) : null}
-          {projects.length === 0 && asks.length === 0 && replied.length === 0 ? (
+          {projects.length === 0 && asks.length === 0 && replied.length === 0 && loginAsks === 0 ? (
             // Shared with the member app's Portal tab since 2026-09-21,
             // so the preview there and this page cannot drift apart —
             // see `task-list.tsx` for why the variant and the glyph are

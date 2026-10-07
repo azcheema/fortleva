@@ -1,6 +1,7 @@
 import { record } from "@/audit/record";
 import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
+import { isUuid } from "@/db/context";
 import { fail } from "@/lib/domain-error";
 import { emit } from "@/notify/emit";
 import { authorizePortal, withPortalRead, type PortalPrincipal, type PortalScopeRef } from "@/portal";
@@ -8,6 +9,8 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
 import { readPreferences } from "@/preferences/service";
 import { allow } from "@/ratelimit";
 
+import { lockAskOf } from "./ask-lock";
+import { markAskSent, projectKeyOf, readAskOf, type HeldAsk } from "./ask-rows";
 import { submitterStanding } from "./contact-standing";
 import { boundedVaultWrite } from "./ctx";
 import {
@@ -22,7 +25,7 @@ import {
   type CredentialType,
 } from "./fields";
 import { insertSubmittedCredential } from "./submission";
-import { submissionReceivers } from "./submission-receivers";
+import { askReceivers, submissionReceivers } from "./submission-receivers";
 
 /**
  * A CLIENT HANDS A LOGIN OVER — THE PORTAL'S SUBMISSION BROKER (Phase 3V
@@ -85,8 +88,18 @@ const DAY_MS = 24 * HOUR_MS;
 export type PortalLoginInput = {
   readonly type: unknown;
   readonly name: unknown;
-  /** A project of the contact's own client, or null for the company itself. */
+  /**
+   * A project of the contact's own client, or null for the company itself.
+   * IGNORED when `askId` is set: a login sent for an ask lands where the
+   * ASK says (slice 98), never where a form says.
+   */
   readonly projectId: unknown;
+  /**
+   * The agency's ask this answers (slice 98, C66) — one of THIS contact's
+   * own open asks, or the send is refused as the plane refuses everything
+   * about the agency.
+   */
+  readonly askId?: unknown;
   readonly username: unknown;
   readonly url: unknown;
   readonly notes: unknown;
@@ -113,6 +126,7 @@ type Parsed = {
   readonly type: CredentialType;
   readonly name: string;
   readonly projectId: string | null;
+  readonly askId: string | null;
   readonly username: string | null;
   readonly url: string | null;
   readonly notes: string | null;
@@ -133,6 +147,18 @@ function portalUrl(raw: unknown): string | null {
 }
 
 /**
+ * An optional id from the form: absent or empty is null; anything that is
+ * not a non-empty string of an id's length is refused, never passed on —
+ * Prisma drops an `undefined` filter silently, and the re-reads below run
+ * under a principal no policy narrows.
+ */
+function optionalId(raw: unknown, what: string): string | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (typeof raw !== "string" || raw.length > 64) fail("INVALID_INPUT", what);
+  return raw as string;
+}
+
+/**
  * THE INPUT, PARSED BEFORE ANYTHING IS AUTHORIZED — the request broker's
  * one deviation from "authorize first", for its reason: what the reader
  * typed is theirs to be told about (`INVALID_INPUT` is disclosable), and an
@@ -143,20 +169,17 @@ function parseInput(input: PortalLoginInput): Parsed {
   const type = input.type as CredentialType;
   const name = trimmedOrNull(input.name, NAME_MAX, "name");
   if (name === null) fail("INVALID_INPUT", "name");
-  // An id that is not a non-empty string is refused, never passed on:
-  // Prisma drops an `undefined` filter silently, and the re-read below runs
-  // under a principal no policy narrows.
-  let projectId: string | null = null;
-  if (input.projectId !== null && input.projectId !== undefined && input.projectId !== "") {
-    if (typeof input.projectId !== "string" || input.projectId.length > 64) fail("INVALID_INPUT", "project");
-    projectId = input.projectId as string;
-  }
+  const askId = optionalId(input.askId, "ask");
+  // An answer to an ask lands where the ASK says; a project on the form is
+  // not read at all then (the page posts none).
+  const projectId = askId === null ? optionalId(input.projectId, "project") : null;
   const fields = normalizeSecretFields(type, input.secret);
   if (Object.keys(fields).length === 0) fail("INVALID_INPUT", "a login needs a secret");
   return {
     type,
     name: name as string,
     projectId,
+    askId,
     username: normalizeUsername(input.username),
     url: portalUrl(input.url),
     notes: normalizeNotes(input.notes),
@@ -206,6 +229,14 @@ async function projectOpen(tx: TenantDb, principal: PortalPrincipal, projectId: 
 }
 
 /**
+ * The held ask is still this contact's to answer, where it was when the
+ * request began. Its project never changes (`credential_ask_guard`); the
+ * comparison only refuses to trust that across the two reads.
+ */
+const askStillOpen = (held: HeldAsk | null, projectId: string | null): boolean =>
+  held !== null && held.open && held.projectId === projectId;
+
+/**
  * Has this contact spent their budget as of `now`? Their own
  * `credential.submitted` rows in the last hour, then the last day.
  */
@@ -239,10 +270,28 @@ export async function submitPortalCredential(principal: PortalPrincipal, input: 
   if (!(await allow("portal.credential_submit", principal.contactId))) {
     fail("SUBMISSION_RATE_LIMITED", "front filter");
   }
+  // AN ANSWER TO AN ASK (slice 98, C66) lands where the ASK says. The
+  // capability is proved on the company first — every ask of this contact
+  // is their own client's — and only then is the ask read, as SYSTEM but
+  // bounded by the principal (`readAskOf`: this tenant, this client, THIS
+  // contact), so an id from a URL names nothing but one of their own open
+  // asks; anything else is the plane's one refusal.
+  let projectId = parsed.projectId;
+  const askId = parsed.askId;
+  // An ask id is a uuid or no ask of anyone's: refused as the plane refuses
+  // an unknown one, before it can reach Postgres (a NUL in it was a raw
+  // error page — the fix-pass review's nit).
+  if (askId !== null && !isUuid(askId)) return deny("NOT_FOUND", "no open ask of this contact");
+  if (askId !== null) {
+    await withPortalRead(principal, (tx) =>
+      authorizePortal(tx, principal, "portal.credential.submit", { kind: "client", clientId: principal.clientId }),
+    );
+    const held = await withTenant(principal.tenantId, { type: "system" }, (tx) => readAskOf(tx, principal, askId));
+    if (held === null || !held.open) return deny("NOT_FOUND", "no open ask of this contact");
+    projectId = held.projectId;
+  }
   const ref: PortalScopeRef =
-    parsed.projectId === null
-      ? { kind: "client", clientId: principal.clientId }
-      : { kind: "project", projectId: parsed.projectId };
+    projectId === null ? { kind: "client", clientId: principal.clientId } : { kind: "project", projectId };
   await withPortalRead(principal, (tx) => authorizePortal(tx, principal, "portal.credential.submit", ref));
 
   // WHO WILL BE TOLD, read before the write and outside its locks (the
@@ -257,12 +306,15 @@ export async function submitPortalCredential(principal: PortalPrincipal, input: 
   // refused attempt, which writes nothing and so is never counted, never
   // pays for the lookup either. The locked re-checks inside the write stay
   // the ones that hold.
-  const anchor = { clientId: principal.clientId, projectId: parsed.projectId };
+  const anchor = { clientId: principal.clientId, projectId };
   const pre = await withTenant(principal.tenantId, { type: "system" }, async (tx) => {
     if (!(await takingLogins(tx, principal, false))) return "closed" as const;
-    if (parsed.projectId !== null && !(await projectOpen(tx, principal, parsed.projectId))) return "closed" as const;
+    if (projectId !== null && !(await projectOpen(tx, principal, projectId))) return "closed" as const;
     if (await overBudget(tx, principal, new Date())) return "limited" as const;
-    return submissionReceivers(tx, principal.tenantId, anchor);
+    // An answer tells the member who asked as well (`askReceivers`).
+    return askId === null
+      ? submissionReceivers(tx, principal.tenantId, anchor)
+      : askReceivers(tx, principal, askId);
   });
   if (pre === "limited") return fail("SUBMISSION_RATE_LIMITED", "budget spent");
   if (pre === "closed") return deny("NOT_FOUND", "not taking logins from this contact");
@@ -277,7 +329,11 @@ export async function submitPortalCredential(principal: PortalPrincipal, input: 
         // `takingLogins`), then the login's rows — one order, always.
         const now = await lockContactBudget(tx, "portal_credential_submit", principal.contactId);
         if (!(await takingLogins(tx, principal, true))) return "closed";
-        if (parsed.projectId !== null && !(await projectOpen(tx, principal, parsed.projectId))) return "closed";
+        // The ask's row next, before any login row (`lockAskOf`): two sends
+        // of one ask, or a send racing the team's cancellation, are decided
+        // one after the other — the loser finds it ended and writes nothing.
+        if (askId !== null && !askStillOpen(await lockAskOf(tx, principal, askId), projectId)) return "closed";
+        if (projectId !== null && !(await projectOpen(tx, principal, projectId))) return "closed";
         if (await overBudget(tx, principal, now)) return "limited";
 
         const created = await insertSubmittedCredential(tx, {
@@ -292,6 +348,8 @@ export async function submitPortalCredential(principal: PortalPrincipal, input: 
           notes: parsed.notes,
           fields: parsed.fields,
         });
+        // The ask ends here, naming the login it became (`markAskSent`).
+        if (askId !== null) await markAskSent(tx, askId, created.id);
         await record(tx, {
           action: "credential.submitted",
           targetType: "CredentialItem",
@@ -299,12 +357,14 @@ export async function submitPortalCredential(principal: PortalPrincipal, input: 
           // The CONTACT is the actor — the system transaction only carried it.
           brokeredForContactId: principal.contactId,
           // Ids, the type and the field NAMES — never a value, never the name
-          // (an audit row outlives the login and is read by operators).
+          // (an audit row outlives the login and is read by operators); the
+          // ask it answers, when it answers one (slice 98).
           metadata: {
             clientId: anchor.clientId,
             projectId: anchor.projectId,
             type: parsed.type,
             fields: Object.keys(parsed.fields),
+            ...(askId !== null ? { askId } : {}),
           },
         });
         await emit(tx, principal.tenantId, {
@@ -376,4 +436,212 @@ export async function readPortalSubmissions(principal: PortalPrincipal): Promise
       sent: rows.flatMap((r) => (r.submittedName === null ? [] : [{ name: r.submittedName, sentAt: r.createdAt }])),
     };
   });
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * THE AGENCY'S ASKS, AS THE ONE CONTACT ASKED SEES THEM (Phase 3V slice
+ * 98; founder decision C66). A member asked THIS contact for a login
+ * (`asks.ts`); they see it under "Waiting on you" and on "Send us a login",
+ * and answer by sending it (`submitPortalCredential` with `askId`) or by
+ * saying they do not have it (`declinePortalLoginAsk`). Nobody else at the
+ * client sees it (C66 (a)).
+ * ──────────────────────────────────────────────────────────────────── */
+
+/** How many open asks the contact's home and page show — the per-person bound (`ASKS_OPEN_PER_CONTACT`). */
+export const PORTAL_ASK_LIMIT = 20;
+/** The contact's note when they decline. */
+export const DECLINE_NOTE_MAX = 500;
+
+/**
+ * One ask as the contact asked sees it: what the agency needs, the kind it
+ * expects, the agency's note, where it will land and when it was asked —
+ * never who at the agency asked (C42: the client's side says "your
+ * agency"), never anything about the login it becomes.
+ */
+export type PortalLoginAsk = {
+  readonly id: string;
+  readonly type: CredentialType;
+  readonly name: string;
+  readonly note: string | null;
+  readonly project: { readonly name: string } | null;
+  readonly askedAt: Date;
+};
+
+/**
+ * The asks a contact can answer NOW: their own, open, and — for a
+ * project's — while that project's portal is on and it is not archived
+ * (the rule a send is held to, `projectOpen`). One `where`, bounded by the
+ * principal; the agency's switch and the client are `takingLogins`'.
+ */
+const answerableWhere = (principal: PortalPrincipal, askId?: string) => ({
+  tenantId: principal.tenantId,
+  ...(askId !== undefined ? { id: askId } : {}),
+  clientId: principal.clientId,
+  contactId: principal.contactId,
+  sentAt: null,
+  declinedAt: null,
+  cancelledAt: null,
+  OR: [
+    { projectId: null },
+    // The project restated as THIS client's too (the security review's low:
+    // defence in depth — nothing moves a project between clients today).
+    {
+      project: {
+        clientId: principal.clientId,
+        portalEnabled: true,
+        archivedAt: null,
+        status: { not: "ARCHIVED" as const },
+      },
+    },
+  ],
+});
+
+type AskRow = {
+  id: string;
+  type: string;
+  name: string;
+  note: string | null;
+  createdAt: Date;
+  project: { name: string } | null;
+};
+
+const portalAskOf = (r: AskRow): PortalLoginAsk => ({
+  id: r.id,
+  type: r.type as CredentialType,
+  name: r.name,
+  note: r.note,
+  project: r.project ? { name: r.project.name } : null,
+  askedAt: r.createdAt,
+});
+
+/**
+ * THIS CONTACT'S OPEN ASKS (the portal home's "Waiting on you"; rendered by
+ * View-as too, for the contact being looked through). A brokered READ: the
+ * asks are class A, so a contact's own transaction reads none. Empty for
+ * every refusal — the plane's quiet answer — and while the agency takes no
+ * logins. Nothing happened, so nothing is audited.
+ */
+export async function listPortalLoginAsks(principal: PortalPrincipal): Promise<PortalLoginAsk[]> {
+  await withPortalRead(principal, (tx) => authorizePortal(tx, principal, "portal.credential.submit"));
+  return withTenant(principal.tenantId, { type: "system" }, async (tx) => {
+    if (!(await takingLogins(tx, principal, false))) return [];
+    const rows = await tx.credentialAsk.findMany({
+      where: answerableWhere(principal),
+      select: { id: true, type: true, name: true, note: true, createdAt: true, project: { select: { name: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: PORTAL_ASK_LIMIT,
+    });
+    return rows.map(portalAskOf);
+  });
+}
+
+/**
+ * HOW MANY open asks this contact can answer — ALL the portal home shows
+ * (the design review's medium). The home is rendered by View-as too, under
+ * a MEMBER session that never passed the vault's door, and what a client's
+ * logins are called stays behind that door (C52 (a)); so the home says
+ * "your agency asked you for 2 logins" and the names are on
+ * `/portal/send-login`, which only a contact reaches. A brokered READ, as
+ * above; 0 for every refusal.
+ */
+export async function countPortalLoginAsks(principal: PortalPrincipal): Promise<number> {
+  await withPortalRead(principal, (tx) => authorizePortal(tx, principal, "portal.credential.submit"));
+  return withTenant(principal.tenantId, { type: "system" }, async (tx) => {
+    if (!(await takingLogins(tx, principal, false))) return 0;
+    return tx.credentialAsk.count({ where: answerableWhere(principal) });
+  });
+}
+
+/**
+ * ONE OF THIS CONTACT'S OPEN ASKS, for `/portal/send-login?ask=<id>` — or
+ * null for every other id (another contact's, another client's, answered,
+ * cancelled, malformed, none): the page says the same "no longer open"
+ * for all of them. A brokered READ, as above.
+ */
+export async function readPortalLoginAsk(principal: PortalPrincipal, askId: unknown): Promise<PortalLoginAsk | null> {
+  if (typeof askId !== "string" || !isUuid(askId)) return null;
+  await withPortalRead(principal, (tx) => authorizePortal(tx, principal, "portal.credential.submit"));
+  return withTenant(principal.tenantId, { type: "system" }, async (tx) => {
+    if (!(await takingLogins(tx, principal, false))) return null;
+    const row = await tx.credentialAsk.findFirst({
+      where: answerableWhere(principal, askId),
+      select: { id: true, type: true, name: true, note: true, createdAt: true, project: { select: { name: true } } },
+    });
+    return row ? portalAskOf(row) : null;
+  });
+}
+
+/**
+ * "WE DON'T HAVE THIS" (C66 (c)) — the contact asked declines, with an
+ * optional short note the team reads. The ask ends; the people a sent login
+ * would have told, and the member who asked, are told
+ * (`credential.ask_declined`, naming the client only). Refuses
+ * INVALID_INPUT (the note), VAULT_BUSY, and the plane's one NOT_FOUND for
+ * everything else — the ask is not theirs, has ended, or the agency takes
+ * no logins now.
+ *
+ * The broker's shape (`submitPortalCredential` above): the contact proves
+ * the capability in their own transaction, the receivers are read before
+ * the locks, and the write runs as SYSTEM after re-reading what it relies
+ * on — the contact's standing (their row `FOR SHARE`), the agency's
+ * switch, the ask (`FOR UPDATE`, still theirs and open), its project. No
+ * budget: each ask is declined at most once, and only a member makes one.
+ */
+export async function declinePortalLoginAsk(principal: PortalPrincipal, askId: unknown, note: unknown): Promise<void> {
+  const id = typeof askId === "string" && isUuid(askId) ? askId : null;
+  if (id === null) return deny("NOT_FOUND", "no open ask of this contact");
+  const declineNote = trimmedOrNull(note, DECLINE_NOTE_MAX, "note");
+  await withPortalRead(principal, (tx) =>
+    authorizePortal(tx, principal, "portal.credential.submit", { kind: "client", clientId: principal.clientId }),
+  );
+
+  const pre = await withTenant(principal.tenantId, { type: "system" }, async (tx) => {
+    if (!(await takingLogins(tx, principal, false))) return null;
+    const held = await readAskOf(tx, principal, id);
+    if (held === null || !held.open) return null;
+    if (held.projectId !== null && !(await projectOpen(tx, principal, held.projectId))) return null;
+    const receivers = await askReceivers(tx, principal, id);
+    const projectKey = await projectKeyOf(tx, principal.tenantId, held.projectId);
+    return { held, receivers, projectKey };
+  });
+  if (pre === null) return deny("NOT_FOUND", "no open ask of this contact");
+
+  const outcome = await boundedVaultWrite((opts) =>
+    withTenant(
+      principal.tenantId,
+      { type: "system" },
+      async (tx): Promise<"ok" | "closed"> => {
+        // The contact's row first, then the ask's — the send's order.
+        if (!(await takingLogins(tx, principal, true))) return "closed";
+        if (!askStillOpen(await lockAskOf(tx, principal, id), pre.held.projectId)) return "closed";
+        if (pre.held.projectId !== null && !(await projectOpen(tx, principal, pre.held.projectId))) return "closed";
+        await tx.credentialAsk.update({
+          where: { id },
+          data: { declinedAt: new Date(), declinedByContactId: principal.contactId, declineNote },
+          select: { id: true },
+        });
+        await record(tx, {
+          action: "credential.ask_declined",
+          targetType: "CredentialAsk",
+          targetId: id,
+          brokeredForContactId: principal.contactId,
+          // Ids only — never the note (the client's words; the ask keeps them).
+          metadata: { clientId: pre.held.clientId, projectId: pre.held.projectId },
+        });
+        await emit(tx, principal.tenantId, {
+          kind: "credential.ask_declined",
+          // The ASK, so the inbox can lead to where it is listed; the row
+          // names the client only (`askDeclineSubjects`).
+          entity: { type: "CredentialAsk", id },
+          clientId: pre.held.clientId,
+          memberIds: pre.receivers,
+          params: { clientId: pre.held.clientId, ...(pre.projectKey ? { projectKey: pre.projectKey } : {}) },
+          dedupeKey: `credential_ask_declined:${id}`,
+        });
+        return "ok";
+      },
+      opts,
+    ),
+  );
+  if (outcome === "closed") deny("NOT_FOUND", "no open ask of this contact");
 }

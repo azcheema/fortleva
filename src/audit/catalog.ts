@@ -375,7 +375,20 @@ export const AUDIT_EVENTS = {
   // (`brokeredForContactId`), target the new login; metadata its client,
   // project, type and the secret field NAMES — never a value, never its
   // name. Also the contact's own hand-over budget (a count of these rows).
+  // Slice 98: a hand-over that answers an ask carries its `askId` too — the
+  // send IS this row; the ask's own row records only that it was sent.
   "credential.submitted": TENANT,
+  // Phase 3V slice 98 — the agency asks a client for a named login (founder
+  // decision C66). Target the ASK (`CredentialAsk`); metadata its client,
+  // project, the contact asked and the type — never what the team wrote
+  // (its name and note; an audit row outlives the ask and is read by
+  // operators). `asked` and `ask_cancelled` are the member's;
+  // `ask_declined` is the asked contact's, brokered — written by the SYSTEM
+  // principal with the CONTACT as actor (`brokeredForContactId`), and never
+  // carries the client's note either.
+  "credential.asked": TENANT,
+  "credential.ask_cancelled": TENANT,
+  "credential.ask_declined": TENANT,
   // Phase 3V slice 87 — the asset registry. Metadata is the asset's
   // client, project and type, and on an edit the NAMES of the fields that
   // changed — never a value (a note is free text).

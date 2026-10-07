@@ -1,6 +1,7 @@
 import { appUrl } from "@/config";
 import { isUuid } from "@/db/context";
 import { isNotificationKind, type NotificationKind } from "./catalog";
+import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
 import { VAULT_EXPORTED_MAIL } from "./vault-export-mail-key";
 import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
@@ -26,7 +27,7 @@ import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
 type Copy = { readonly subject: string; readonly body: string };
 
 /** Templates that are not also a fan-out kind. */
-const EXTRA_TEMPLATES = [WEEKLY_REMINDER_KIND, ...SEALED_MAIL_KEYS, VAULT_EXPORTED_MAIL] as const;
+const EXTRA_TEMPLATES = [WEEKLY_REMINDER_KIND, ...SEALED_MAIL_KEYS, VAULT_EXPORTED_MAIL, LOGIN_ASK_MAIL] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
 
@@ -126,6 +127,33 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
     sv: {
       subject: "En kund har skickat en inloggning",
       body: "En kund har lämnat över en inloggning via portalen. Den finns i ert valv och syns bara för ert team. Öppna valvet för att se den.",
+    },
+  },
+  // Phase 3V slice 98 — the contact asked for a login pressed "We don't
+  // have this" (C66 (c)). LINKS, NOT DATA: neither the client nor what was
+  // asked is named; the Vault tab it opens lists the ask and the client's
+  // note, behind the vault's door.
+  "credential.ask_declined": {
+    en: {
+      subject: "A client can't send a login you asked for",
+      body: "A client says they don't have a login your team asked them for, and may have left a note. Open the Vault tab to read it.",
+    },
+    sv: {
+      subject: "En kund kan inte skicka en inloggning ni bad om",
+      body: "En kund säger att de inte har en inloggning som ert team bad dem om, och kan ha lämnat en kommentar. Öppna fliken Valv för att läsa den.",
+    },
+  },
+  // Phase 3V slice 98 — to the ONE contact the agency asked for a login
+  // (C66 (b); `login-ask-mail-key.ts`). At most one per person per 12 hours. LINKS, NOT DATA: the
+  // portal page says what the agency needs.
+  [LOGIN_ASK_MAIL]: {
+    en: {
+      subject: "Your agency asked you for a login",
+      body: "Your agency has asked you to send them a login through your client portal. Sign in to see what they need and send it securely there. Never send a password by email.",
+    },
+    sv: {
+      subject: "Din byrå har bett dig om en inloggning",
+      body: "Din byrå har bett dig skicka en inloggning till dem via kundportalen. Logga in för att se vad de behöver och skicka den säkert där. Skicka aldrig ett lösenord via e-post.",
     },
   },
   // Phase 3V slice 93 — a client's ask to open their SEALED logins
@@ -251,6 +279,27 @@ const linkFor = (
   // from the vault, never a person, and is held to a uuid's shape. The
   // client's opens their Logins page.
   if (key === SEALED_CONTACT_MAIL) return new URL("/portal/logins", appUrl);
+  // A login asked of a contact (slice 98): the ask's own page in their
+  // portal, which answers only to the one contact asked. The id came from
+  // the vault, never a person, and is held to a uuid's shape.
+  if (key === LOGIN_ASK_MAIL) {
+    const askId = uuidParam(params, "askId");
+    return new URL(askId ? `/portal/send-login?ask=${askId}` : "/portal", appUrl);
+  }
+  // A decline (slice 98): the Vault tab where the ask is listed — the
+  // project's for a project's ask, else the client's. The fan-out chose
+  // receivers who reach that anchor; the ids are held to their shapes.
+  if (key === "credential.ask_declined") {
+    // `PROJECT_KEY_RE`'s shape (src/projects/service.ts), restated: that
+    // module reaches the database.
+    const projectKey =
+      typeof params?.["projectKey"] === "string" && /^[A-Z][A-Z0-9]{0,7}$/.test(params["projectKey"])
+        ? params["projectKey"]
+        : null;
+    if (projectKey) return new URL(`/projects/${projectKey}/vault`, appUrl);
+    const clientId = uuidParam(params, "clientId");
+    return new URL(clientId ? `/clients/${clientId}/vault` : "/vault", appUrl);
+  }
   if ((Object.values(SEALED_MEMBER_MAIL) as string[]).includes(key)) {
     const requestId = uuidParam(params, "requestId");
     return new URL(requestId ? `/vault/requests/${requestId}` : "/vault", appUrl);

@@ -63,16 +63,25 @@ export function SendLoginForm({
   types,
   fieldsByType,
   projects,
+  ask,
 }: {
   types: readonly CredentialType[];
   fieldsByType: FieldsByType;
   projects: readonly PortalProjectOption[];
+  /**
+   * The agency's ask this form answers (slice 98, C66), or null for a
+   * hand-over the client starts. With one, the kind and the name start as
+   * the agency wrote them (both still the client's to change), the ask's
+   * id rides along, and there is no project picker: the login lands where
+   * the ASK says, which the page states above the form.
+   */
+  ask: { readonly id: string; readonly type: CredentialType; readonly name: string } | null;
 }) {
   const t = useTranslations("portal.sendLogin.form");
   const tVault = useTranslations("vault");
   const [state, action, pending] = useActionState<FormResult | null, FormData>(sendLoginAction, null);
-  const [type, setType] = useState<CredentialType>("LOGIN");
-  const [name, setName] = useState("");
+  const [type, setType] = useState<CredentialType>(ask?.type ?? "LOGIN");
+  const [name, setName] = useState(ask?.name ?? "");
   const [projectId, setProjectId] = useState("");
   const [username, setUsername] = useState("");
   const [url, setUrl] = useState("");
@@ -106,7 +115,8 @@ export function SendLoginForm({
           ))}
         </NativeSelect>
       </Field>
-      {projects.length > 0 ? (
+      {ask ? <input type="hidden" name="askId" value={ask.id} /> : null}
+      {!ask && projects.length > 0 ? (
         <Field label={t("project")} htmlFor="sl-project">
           <NativeSelect
             id="sl-project"

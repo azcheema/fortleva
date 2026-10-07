@@ -98,7 +98,7 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * 3 slice 75, founder decision C43): a client who writes to the agency
    * is waiting on an answer. A MEMBER's comment stays coalesced.
    */
-  it("instant email is assignment, mention, the five client-caused kinds and the three renewal reminders — and nothing else", () => {
+  it("instant email is assignment, mention, the six client-caused kinds and the three renewal reminders — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -108,6 +108,10 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       // waiting on the answer, the same argument as the tick's.
       "approval.decided",
       "comment.mentioned",
+      // A client said they do not have a login the agency asked for (Phase
+      // 3V slice 98, C66 (c)): the team was waiting on it and must now find
+      // it another way — the hand-over's argument, the other way round.
+      "credential.ask_declined",
       // A client handed a login over through the portal (Phase 3V slice 96,
       // C64 (c)): they are waiting for the agency to use it — the request's
       // argument.

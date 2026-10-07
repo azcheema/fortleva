@@ -275,7 +275,8 @@
       "assetDue": "En förnyelse närmar sig",
       "agreementEnding": "Ett avtal löper ut",
       "loginsExpiring": "Inloggningar går ut",
-      "loginSubmitted": "En kund har skickat en inloggning"
+      "loginSubmitted": "En kund har skickat en inloggning",
+      "loginAskDeclined": "En kund kan inte skicka en inloggning ni bad om"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",
@@ -1405,7 +1406,11 @@
     "SHARE_LINK_CLOSED": "Länken har redan öppnats eller återkallats.",
     "NOTHING_TO_EXPORT": "Det finns inga inloggningar att exportera där.",
     "EXPORT_TOO_LARGE": "Det är fler inloggningar än en fil rymmer. Exportera en kund i taget.",
-    "SUBMISSION_RATE_LIMITED": "Du har skickat flera inloggningar på kort tid. Vänta en stund och försök igen."
+    "SUBMISSION_RATE_LIMITED": "Du har skickat flera inloggningar på kort tid. Vänta en stund och försök igen.",
+    "LOGIN_ASKS_OFF": "Kunder kan inte skicka inloggningar just nu, så de kan inte heller bli ombedda om en. Slå på ”Inloggningar som kunder skickar” under Inställningar → Valv.",
+    "LOGIN_ASK_CONTACT": "Den personen kan inte bli ombedd om en inloggning. Det kan bara någon hos kunden som har tillgång till portalen.",
+    "LOGIN_ASK_LIMIT": "Den personen har redan många obesvarade förfrågningar. Avbryt några, eller vänta på svar, innan du ber om fler.",
+    "LOGIN_ASK_ENDED": "Förfrågan har redan besvarats eller avbrutits. Ladda om sidan för att se läget."
   },
   "assignments": {
     "title": "Team",
@@ -2893,7 +2898,9 @@
       "repliedIn": "{project} · {date}",
       "repliedOn": "Svarade {date}",
       "read": "Läs",
-      "readLabel": "Läs svaret på {title}"
+      "readLabel": "Läs svaret på {title}",
+      "loginAsks": "Din byrå har bett dig om {count, plural, one {# inloggning} other {# inloggningar}}",
+      "loginAsksOpen": "Öppna"
     },
     "signoff": {
       "awaitingYou": "Väntar på ditt godkännande",
@@ -3157,6 +3164,33 @@
         "title": "Det du har skickat",
         "description": "Bara namnen — lösenorden finns hos din byrå.",
         "sentOn": "Skickad {date}"
+      },
+      "asks": {
+        "title": "Din byrå har bett dig om",
+        "description": "Skicka var och en här, eller berätta för dem om du inte har den.",
+        "askedOn": "Efterfrågad {date}",
+        "answer": "Svara"
+      },
+      "ask": {
+        "title": "Din byrå har bett om: {name}",
+        "forProject": "Den gäller {project}.",
+        "forCompany": "Den gäller ert företag i allmänhet.",
+        "note": "Deras kommentar",
+        "formDescription": "Bara din byrås team kan öppna det du skickar. Du ser inte lösenordet här igen.",
+        "gone": "Förfrågan är inte längre öppen.",
+        "goneBody": "Din byrå kan ha avbrutit den, eller så har den redan besvarats. Du kan fortfarande skicka en inloggning nedan.",
+        "refused": "Det gick inte att skicka. Förfrågan kanske inte längre är öppen — ladda om sidan för att se."
+      },
+      "decline": {
+        "title": "Vi har inte den här",
+        "description": "Om du inte kan skicka den, berätta det för din byrå här. De får veta det, och förfrågan stängs.",
+        "note": "Kommentar",
+        "noteHint": "Valfritt — till exempel vem som kan ha den.",
+        "submit": "Vi har inte den här",
+        "sending": "Skickar…",
+        "refused": "Det gick inte att skicka. Förfrågan kanske inte längre är öppen — ladda om sidan för att se.",
+        "done": "Din byrå har fått veta det.",
+        "doneBody": "Förfrågan är stängd."
       }
     }
   },
@@ -3252,6 +3286,12 @@
       "EPIC": "Epik",
       "TASK": "Uppgift",
       "SUBTASK": "Deluppgift"
+    },
+    "loginAsk": {
+      "OPEN": "Väntar",
+      "SENT": "Skickad",
+      "DECLINED": "De har den inte",
+      "CANCELLED": "Avbruten"
     },
     "priority": {
       "NONE": "Ingen prioritet",
@@ -3746,6 +3786,46 @@
     }
   },
   "vault": {
+    "asks": {
+      "title": "Inloggningar ni bett kunden om",
+      "description": "Det ert team har bett kundens personer att skicka, och vad de svarade.",
+      "empty": "Inget efterfrågat än.",
+      "nobody": "Ingen hos den här kunden kan logga in i portalen än, så ingen kan tillfrågas. Bjud in någon under fliken Kontakter först.",
+      "someone": "någon",
+      "askedOf": "{contact} tillfrågad av {member}, {date}",
+      "sentOn": "Skickad {date}.",
+      "showLogin": "Visa inloggningen",
+      "declinedOn": "{contact} har den inte ({date}).",
+      "declinedNote": "{contact} har den inte ({date}): ”{note}”",
+      "cancelledBy": "Avbruten av {member}, {date}.",
+      "stuck": "{contact} kan inte svara på den här just nu — de har ingen tillgång till portalen, eller så kan kunden inte skicka inloggningar hit för tillfället.",
+      "cancel": "Avbryt",
+      "cancelLabel": "Avbryt förfrågan om {name}",
+      "asked": "Förfrågan skickad. De får ett mejl.",
+      "askedRecent": "Förfrågan skickad. De har redan fått ett mejl om era förfrågningar de senaste {hours} timmarna, så inget nytt skickas — den väntar i deras portal.",
+      "askedNoMail": "Förfrågan skickad. Deras adress tar inte emot våra mejl, så meddela dem själv — den väntar i deras portal.",
+      "cancelled": "Förfrågan avbruten.",
+      "dialog": {
+        "open": "Be om en inloggning…",
+        "title": "Be kunden om en inloggning",
+        "description": "Be en person hos {client} att skicka en inloggning till er via kundportalen.",
+        "name": "Vad behöver ni?",
+        "nameHint": "Kunden ser detta — till exempel ”Kontrollpanel för webbhotellet”.",
+        "type": "Typ",
+        "place": "Gäller",
+        "placeClient": "{client} i allmänhet",
+        "placeOnly": "Gäller {place}.",
+        "contact": "Fråga",
+        "contactPrimary": "{name} — huvudkontakt ({email})",
+        "contactPrimaryNoEmail": "{name} — huvudkontakt",
+        "contactOther": "{name} ({email})",
+        "note": "Kommentar",
+        "noteHint": "Valfritt. Kunden ser även detta — till exempel varför ni behöver den.",
+        "footer": "{name} får ett mejl — högst ett var {hours}:e timme — med en uppmaning att logga in i portalen, där de kan skicka den eller berätta att de inte har den.",
+        "submit": "Fråga",
+        "submitting": "Frågar…"
+      }
+    },
     "types": {
       "LOGIN": "Inloggning",
       "SECURE_NOTE": "Säker anteckning",

@@ -798,7 +798,11 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
       (await tx.sealedOpenRequest.count({ where: { tenantId: ctx.tenantId, withdrawnByContactId: contactId } })) > 0 ||
       // A login they handed over through the portal (slice 96, C64): the
       // vault row says who sent it. Binned ones too — a bin is restorable.
-      (await tx.credentialItem.count({ where: { tenantId: ctx.tenantId, submittedByContactId: contactId } })) > 0;
+      (await tx.credentialItem.count({ where: { tenantId: ctx.tenantId, submittedByContactId: contactId } })) > 0 ||
+      // An ask of the agency they DECLINED, with a note (slice 98, C66 (c)).
+      // An ask they never answered, or one the team cancelled, is not their
+      // writing: it goes with them (the FK cascade).
+      (await tx.credentialAsk.count({ where: { tenantId: ctx.tenantId, declinedByContactId: contactId } })) > 0;
     // **AND ITS MESSAGE MAY NOT SAY "end their access instead"**, which
     // is what it said for an afternoon. This guard sits BELOW the status
     // check, so it is reachable only for a NO_ACCESS or REVOKED contact

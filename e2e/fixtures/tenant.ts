@@ -299,6 +299,12 @@ export async function clearPortalSubmissions(tenantId: string, contactEmail: str
   return cleared;
 }
 
+/** Hand back the asks `portal-login-ask.spec.ts` made of the fixture contact (3V slice 98) — from `afterAll`. */
+export async function clearLoginAsks(tenantId: string, contactEmail: string): Promise<number> {
+  const { cleared } = await runCli<{ cleared: number }>(["clear-login-asks", tenantId, contactEmail]);
+  return cleared;
+}
+
 /** Mark a live login of the fixture tenant "Change soon", by name (vault.spec's slice 94 test). */
 export async function flagLogin(tenantId: string, name: string): Promise<number> {
   const { flagged } = await runCli<{ flagged: number }>(["flag-login", tenantId, name]);
