@@ -5,6 +5,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { dateColumn, isoDateOf, localDateString, monthStartOf } from "@/lib/duration";
 import { fail } from "@/lib/domain-error";
 import { emit } from "@/notify/emit";
+import type { NotificationReason } from "@/notify/reasons";
 import { readPreferences } from "@/preferences/service";
 
 import { guarded, idsOnly, principalOf, type TimeCtx } from "./ctx";
@@ -358,10 +359,12 @@ export async function checkBudgetAlerts(
         });
         if (count === 0) continue; // already sent for this period + threshold
         alerts += 1;
-        let receivers = b.notifyMemberIds;
-        if (receivers.length === 0) {
+        // Each with WHY (slice 104, C72 (d)): the budget's own alert list, else
+        // the project's lead — the two never mix.
+        let receivers = new Map<string, NotificationReason>(b.notifyMemberIds.map((id) => [id, "BUDGET_WATCHER"]));
+        if (receivers.size === 0) {
           const project = await tx.project.findFirst({ where: { id: b.projectId }, select: { leadMemberId: true } });
-          receivers = project?.leadMemberId ? [project.leadMemberId] : [];
+          receivers = new Map(project?.leadMemberId ? [[project.leadMemberId, "PROJECT_LEAD"]] : []);
         }
         const project = await tx.project.findFirst({ where: { id: b.projectId }, select: { clientId: true } });
         await emit(tx, tenantId, {
@@ -369,7 +372,7 @@ export async function checkBudgetAlerts(
           entity: { type: BUDGET_ALERT_ENTITY, id: b.id },
           clientId: project?.clientId,
           projectId: b.projectId,
-          memberIds: receivers,
+          receivers,
           params: { projectId: b.projectId, budgetId: b.id, threshold: String(threshold), periodKey: burn.periodKey },
           dedupeKey: `budget:${b.id}:${burn.periodKey}:${threshold}`,
         });
@@ -377,7 +380,7 @@ export async function checkBudgetAlerts(
           action: "budget.alert_sent",
           targetType: "ProjectBudget",
           targetId: b.id,
-          metadata: { threshold, periodKey: burn.periodKey, percent: burn.percent, receivers: receivers.length },
+          metadata: { threshold, periodKey: burn.periodKey, percent: burn.percent, receivers: receivers.size },
         });
       }
     }

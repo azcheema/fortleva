@@ -33,6 +33,8 @@
  *        tsx e2e/fixtures/seed-cli.ts clear-portal-requests <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-notifications <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts plant-notifications <tenantId> <memberId>
+ *        tsx e2e/fixtures/seed-cli.ts clear-planted-notifications <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-signoffs <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-sealed-asks <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts flag-login <tenantId> <loginName>
@@ -147,6 +149,9 @@ const DBTEST_PREFIXES = [
   "export-",
   "gate-",
   "inbox-",
+  // Phase 5 slice 104, the inbox's reasons and housekeeping —
+  // `src/notify/inbox-polish.dbtest.ts`, `setupTenant("inbx")` twice.
+  "inbx-",
   "iso-a-",
   "iso-b-",
   // Phase 5 slice 103, real email sending — `src/jobs/mail-feedback.dbtest.ts`,
@@ -2213,6 +2218,69 @@ async function resetNotifications(tenantId: string): Promise<void> {
 }
 
 /**
+ * Two MORE notifications for one member (slice 104, the inbox's day groups
+ * and reason tags): one now, "You lead this project", and one 40 days old —
+ * in "Older" whatever the hour, so no assertion depends on midnight. Each id
+ * is a UUIDv7 carrying its OWN row's instant: the inbox orders on the id,
+ * and an old row with today's id would sort above the standing fixture's
+ * row and drag it under "Older" (the groups are clamped down the list).
+ * Marked by `dedupeKey`, which `clear-planted-notifications` deletes by —
+ * the standing row is never touched. `e2e-` tenants only.
+ */
+const PLANTED = "e2e-planted:";
+
+const uuidV7At = (ms: number): string => {
+  const b = randomBytes(16);
+  b.writeUIntBE(ms, 0, 6);
+  b[6] = 0x70 | ((b[6] ?? 0) & 0x0f);
+  b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+  const h = b.toString("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+};
+
+async function plantNotifications(tenantId: string, memberId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  if (typeof memberId !== "string" || memberId.length === 0) throw new Error("plant-notifications: a member id is required");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const now = Date.now();
+  const old = now - 40 * 86_400_000;
+  const rows = [
+    { id: uuidV7At(now), at: now, kind: "work_item.request_received", reason: "PROJECT_LEAD", key: "today" },
+    { id: uuidV7At(old), at: old, kind: "work_item.commented", reason: "ASSIGNEE", key: "older" },
+  ];
+  for (const r of rows) {
+    await db.notification.create({
+      data: {
+        id: r.id,
+        tenantId,
+        receiverType: "MEMBER",
+        receiverId: memberId,
+        kind: r.kind,
+        class: "INSTANT",
+        entityType: "WorkItem",
+        // Nothing this member can open: the row draws its kind, no title.
+        entityId: randomUUID(),
+        reason: r.reason,
+        dedupeKey: `${PLANTED}${r.key}`,
+        createdAt: new Date(r.at),
+      },
+    });
+  }
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ today: rows[0]!.id, older: rows[1]!.id })}\n`);
+}
+
+async function clearPlantedNotifications(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { count } = await db.notification.deleteMany({ where: { tenantId, dedupeKey: { startsWith: PLANTED } } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ cleared: count })}\n`);
+}
+
+/**
  * Put every decided sign-off of the standing fixture back to PENDING —
  * the seeded ask on version 1.1 and on the shared deliverable, which
  * `portal-signoff.spec.ts` decides. A contact cannot undo a decision and
@@ -3100,6 +3168,8 @@ const main = async (): Promise<void> => {
   if (command === "clear-portal-requests") return clearPortalRequests(argument!, process.argv[4]!);
   if (command === "notifications") return notifications(argument!);
   if (command === "reset-notifications") return resetNotifications(argument!);
+  if (command === "plant-notifications") return plantNotifications(argument!, process.argv[4]!);
+  if (command === "clear-planted-notifications") return clearPlantedNotifications(argument!);
   if (command === "reset-signoffs") return resetSignoffs(argument!);
   if (command === "reset-sealed-asks") return resetSealedAsks(argument!);
   if (command === "reset-portal-sections") return resetPortalSections(argument!);

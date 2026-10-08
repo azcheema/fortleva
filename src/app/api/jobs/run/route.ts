@@ -6,6 +6,7 @@ import { isProduction } from "@/config";
 import { runClientDigests } from "@/jobs/client-digests";
 import { runMemberDigests } from "@/jobs/digests";
 import { runExpirationReminders } from "@/jobs/expiration-reminders";
+import { runNotificationRetention } from "@/jobs/notification-retention";
 import { drainOutbox } from "@/jobs/outbox";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
@@ -24,15 +25,18 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * sealed asks' mail (3V slice 93 — the answerers' reminders, day 3, 6, then
  * daily, and "it has opened"; the ask's own stamps being the guard) and the
  * vault's retention (3V slice 99 — a login 30 days in the bin is erased, a
- * share link's record 12 months after it expired; THE ONE JOB HERE THAT
- * DELETES DATA, in every tenant of the database this server points at),
+ * share link's record 12 months after it expired — it DELETES DATA, in every
+ * tenant of the database this server points at),
  * and the team's summary email (Phase 5 slice 100 — once per member per
  * period, only in the hours after their own hour; the outbox key the guard)
  * and the clients' weekly summary (slice 101 — once per client person per ISO
  * week, Monday morning in the workspace's time; the outbox key the guard)
  * and the progress-update reminders (slice 102 — the due day and the next
  * two working days, each once, 09:00–17:00 workspace time;
- * `ProjectUpdateReminderSent` the guard), until Vercel Pro crons exist. Whenever a
+ * `ProjectUpdateReminderSent` the guard) and the inbox's housekeeping (slice
+ * 104 — a notification over 90 days old or beyond its receiver's newest 500
+ * is archived, an archived one DELETED a year later; the second job here that
+ * deletes data, in every tenant), until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
  * convenience) — a preview/staging deployment without a token is closed.
@@ -108,6 +112,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Phase 5 slice 102: progress-update reminders — on the due day and the
   // next two working days, 09:00–17:00 workspace time; sent by the NEXT drain.
   const updateReminders = await runUpdateReminders();
+  // Phase 5 slice 104: the inbox's housekeeping. LAST, and its failure is its
+  // own: every job above has already run and reports below either way.
+  let notificationRetention: Awaited<ReturnType<typeof runNotificationRetention>> | { failed: "discovery" };
+  try {
+    notificationRetention = await runNotificationRetention();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: notification retention failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    notificationRetention = { failed: "discovery" };
+  }
   return NextResponse.json({
     outbox,
     timeSweep,
@@ -119,5 +133,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     digests,
     clientDigests,
     updateReminders,
+    notificationRetention,
   });
 }

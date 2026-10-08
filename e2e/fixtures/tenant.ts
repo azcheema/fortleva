@@ -241,6 +241,17 @@ export async function resetNotifications(tenantId: string): Promise<number> {
   return reset;
 }
 
+/** Two more rows for one member — one now, one 40 days old (slice 104). */
+export async function plantNotifications(tenantId: string, memberId: string): Promise<{ today: string; older: string }> {
+  return runCli(["plant-notifications", tenantId, memberId]);
+}
+
+/** Delete what `plantNotifications` planted, and nothing else. */
+export async function clearPlantedNotifications(tenantId: string): Promise<number> {
+  const { cleared } = await runCli<{ cleared: number }>(["clear-planted-notifications", tenantId]);
+  return cleared;
+}
+
 /**
  * Delete the throwaway tenant's asks to open sealed logins, and the
  * contact's counted password checks with them (3V slice 93b) — see

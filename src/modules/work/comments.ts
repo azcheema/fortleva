@@ -294,7 +294,7 @@ export async function createComment(
       // CHECK since 20260912120000 — whatever the comment's visibility.
       await writeActivity(tx, ctx, item, { field: "comment", newValue: "created", commentId: created.id });
       if (item.assigneeMemberId) {
-        await notifyItemMembers(tx, ctx, item, "work_item.commented", [item.assigneeMemberId], "commented");
+        await notifyItemMembers(tx, ctx, item, "work_item.commented", new Map([[item.assigneeMemberId, "ASSIGNEE"]]), "commented");
       }
       return created;
     }),

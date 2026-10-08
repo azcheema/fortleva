@@ -6,6 +6,7 @@ import { dateColumn, isoDateOf, localDateString, localHourInstant } from "@/lib/
 import { addDays } from "@/lib/week";
 import { DIGEST_SENDING_TENANT_STATUSES } from "@/notify/digest";
 import { emit } from "@/notify/emit";
+import type { NotificationReason } from "@/notify/reasons";
 import { readPreferences } from "@/preferences/service";
 
 import {
@@ -309,7 +310,11 @@ async function send(tenantId: string, o: Owed, timeZone: string, chosen: readonl
       entity: { type: "Project", id: project.id },
       clientId: project.clientId,
       projectId: project.id,
-      memberIds: receivers,
+      // Each with WHY (slice 104, C72 (d)): the lead as the lead, anyone else
+      // as one of the project's people (C70 (a), (f) chose them).
+      receivers: new Map(
+        receivers.map((id): [string, NotificationReason] => [id, id === project.leadMemberId ? "PROJECT_LEAD" : "PROJECT_MEMBER"]),
+      ),
       // The key for the link; the step and whether the update is late, for
       // the mail's wording (a later round's first reminder is late too — the
       // code review's low) — no name.

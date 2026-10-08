@@ -251,7 +251,7 @@
     "title": "Inbox",
     "description": "What happened to your work — assignments, mentions and budget alerts.",
     "markAllRead": "Mark all as read",
-    "older": "Older",
+    "nextPage": "Next page",
     "failed": "That did not go through — try again.",
     "unreadLabel": "unread",
     "subjectUnavailable": "No longer available to you",
@@ -290,12 +290,13 @@
       "markUnread": "Mark as unread",
       "archive": "Archive",
       "restore": "Move back to inbox",
-      "unsnooze": "Un-snooze",
+      "unsnooze": "Bring it back now",
       "snooze": {
         "inThreeHours": "Snooze for 3 hours",
         "tomorrow": "Snooze until tomorrow morning",
         "nextWeek": "Snooze until next Monday"
-      }
+      },
+      "snoozeFor": "Snooze: {name}"
     },
     "empty": {
       "seeAll": "See all notifications",
@@ -321,6 +322,30 @@
         "body": "This page has no notifications left on it — they may have been read or archived since the link was made.",
         "action": "Back to the newest"
       }
+    },
+    "listLabel": "Notifications",
+    "groups": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "week": "This week",
+      "older": "Older"
+    },
+    "reason": {
+      "ASSIGNEE": "Assigned to you",
+      "REQUESTER": "You asked",
+      "PROJECT_LEAD": "You lead this project",
+      "PROJECT_MEMBER": "Your project",
+      "CLIENT_MEMBER": "Your client",
+      "BUDGET_WATCHER": "On the alert list",
+      "VAULT_ACCESS": "Logins you can open",
+      "OWNER": "You're an owner"
+    },
+    "keys": {
+      "navigate": "Move between notifications",
+      "archive": "Archive the focused notification",
+      "restore": "Move the focused notification back to the inbox",
+      "read": "Mark the focused notification read or unread",
+      "snooze": "Snooze the focused notification"
     }
   },
   "search": {

@@ -238,7 +238,7 @@ export async function createPortalRequest(
           // what we want, because the person who acted is not among them.
           clientId: created.clientId,
           projectId: created.projectId,
-          memberIds: receivers,
+          receivers,
           // IDS ONLY (emit's rule), and this comment used to claim the
           // wrong mechanism for it (code review): the in-app inbox
           // rebuilds its link from `entityId`/`projectId` under the
@@ -470,7 +470,7 @@ export async function setPortalTaskDone(
             // is not among them.
             clientId: item.clientId,
             projectId: item.projectId,
-            memberIds: receivers,
+            receivers,
             // IDS ONLY (emit's rule): these travel to an inbox outside
             // this product. `projectKey` is the agency's own label,
             // never the client's words.

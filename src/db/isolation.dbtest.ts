@@ -459,6 +459,17 @@ describe("posture assertions", () => {
       expect(p.policies, `${p.table}: principalScoped needs portal_insert_deny`).toContain(
         "portal_insert_deny",
       );
+      // Slice 104: `app_runtime` may DELETE here, held by two RESTRICTIVE
+      // policies — contacts never, and otherwise only SYSTEM on a row
+      // archived over a year ago (the inbox's housekeeping). Losing either
+      // turns the grant into a delete any member could make.
+      expect(p.policies, `${p.table}: principalScoped needs portal_delete_deny`).toContain(
+        "portal_delete_deny",
+      );
+      expect(p.policies, `${p.table}: principalScoped needs retention_delete`).toContain(
+        "retention_delete",
+      );
+      expect(p.quals["retention_delete"] ?? "", `${p.table}: retention_delete is SYSTEM-only`).toContain("'system'");
       const scope = p.quals["principal_scope"] ?? "";
       expect(scope, `${p.table}: principal_scope binds to app.principal_id`).toContain(
         "app.principal_id",

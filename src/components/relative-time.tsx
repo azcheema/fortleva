@@ -18,7 +18,7 @@ import { useServerNow } from "@/components/shell/use-server-now";
  * patches — can render it too; it holds no state of its own beyond the
  * clock hook, and with `live` off that hook does no work.
  */
-export function RelativeTime({ at, now, className }: { at: string; now: string; className?: string }) {
+export function RelativeTime({ at, now, className, id }: { at: string; now: string; className?: string; id?: string }) {
   const format = useFormatter();
   const reference = useServerNow(now, false);
   const date = new Date(at);
@@ -29,6 +29,7 @@ export function RelativeTime({ at, now, className }: { at: string; now: string; 
   const shown = date.getTime() > reference ? new Date(reference) : date;
   return (
     <time
+      id={id}
       dateTime={at}
       title={format.dateTime(date, { dateStyle: "medium", timeStyle: "short" })}
       className={className}

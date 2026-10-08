@@ -1,6 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-import { readNotifications, requireSeed, resetNotifications, type E2ESeed } from "./fixtures/tenant";
+import {
+  clearPlantedNotifications,
+  plantNotifications,
+  readNotifications,
+  requireSeed,
+  resetNotifications,
+  type E2ESeed,
+} from "./fixtures/tenant";
 
 /**
  * `/inbox` in a browser (UI.md §3.1 — "Core; unread badge").
@@ -32,8 +39,33 @@ test.beforeAll(() => {
 });
 
 test.afterEach(async () => {
+  // The planted rows first (slice 104): the rail badge counts ONE unread in
+  // every screenshot, and a planted row left behind would make it three.
+  await clearPlantedNotifications(seed.tenantId);
   await resetNotifications(seed.tenantId);
 });
+
+/** The focused element's notification id — or its name or tag, to say where focus went instead. */
+const focused = (page: Page) =>
+  page.evaluate(() => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement)) return null;
+    return el.dataset["notificationId"] ?? el.getAttribute("aria-label") ?? el.tagName;
+  });
+
+/**
+ * `J` is the registry's ENTRY into the list — it acts only when no row holds
+ * focus. Clicking the page heading puts focus nowhere in particular (a
+ * heading is not focusable), and the loop covers hydration: a press before
+ * the scope mounts does nothing.
+ */
+const enterList = async (page: Page, first: string) => {
+  await expect(async () => {
+    await page.getByRole("heading", { level: 1, name: "Inbox" }).click();
+    await page.keyboard.press("j");
+    expect(await focused(page)).toBe(first);
+  }).toPass({ timeout: 30_000 * SLOW });
+};
 
 test.describe("inbox (owner)", () => {
   test("the rail badge counts it, the row says what it is about, and the subject is a link to the task", async ({
@@ -116,8 +148,13 @@ test.describe("inbox (owner)", () => {
 
   test("a snooze parks it in the Snoozed tab and out of the unread count", async ({ page }) => {
     await page.goto("/inbox");
-    await page.getByTestId("inbox-row").getByRole("button", { name: /Actions for/ }).click();
+    // The row's own CLOCK, not `⋯` (slice 104).
+    await page.getByTestId("inbox-row").getByRole("button", { name: /^Snooze:/ }).click();
     await page.getByRole("menuitem", { name: "Snooze until tomorrow morning" }).click();
+    // The only row left the tab through a MENU: focus is on the list, never
+    // on the page — where every single key would act (Radix would have
+    // returned it to a trigger that no longer exists).
+    await expect.poll(() => focused(page)).toBe("Notifications");
 
     await expect
       .poll(async () => (await readNotifications(seed.tenantId))[0]?.snoozed, {
@@ -133,6 +170,104 @@ test.describe("inbox (owner)", () => {
     await page.goto("/home");
     const inboxLink = page.getByRole("navigation", { name: "Menu" }).getByRole("link", { name: /Inbox/ });
     await expect(inboxLink.first()).not.toContainText("unread");
+  });
+
+  test("day headings, and why each row reached you", async ({ page }) => {
+    const planted = await plantNotifications(seed.tenantId, seed.memberId);
+    await page.goto("/inbox");
+    await expect(page.getByTestId("inbox-row")).toHaveCount(3);
+
+    // The 40-day-old row is under "Older" whatever the hour — no assertion
+    // here depends on which side of midnight the run is.
+    const olderRow = page.locator(`[data-notification-id="${planted.older}"]`);
+    const olderGroup = page.getByTestId("inbox-group").filter({ has: olderRow });
+    await expect(olderGroup).toHaveAttribute("data-group", "older");
+    await expect(olderGroup.getByRole("heading", { level: 2 })).toHaveText("Older");
+    // …and it is the LAST group: the list stays newest first.
+    await expect(page.getByTestId("inbox-group").last()).toHaveAttribute("data-group", "older");
+
+    // The reason tag — and none where it would repeat the row's own label.
+    await expect(page.locator(`[data-notification-id="${planted.today}"]`).getByTestId("inbox-reason")).toHaveText(
+      "You lead this project",
+    );
+    await expect(olderRow.getByTestId("inbox-reason")).toHaveText("Assigned to you");
+    const standing = page.getByTestId("inbox-row").filter({ hasText: "A task was assigned to you" });
+    await expect(standing).toHaveCount(1);
+    await expect(standing.getByTestId("inbox-reason")).toHaveCount(0);
+  });
+
+  test("J and K walk the rows; E archives the focused one and focus moves to the next", async ({ page }) => {
+    const planted = await plantNotifications(seed.tenantId, seed.memberId);
+    await page.goto("/inbox");
+    await expect(page.getByTestId("inbox-row")).toHaveCount(3);
+    const standingId = await page
+      .getByTestId("inbox-row")
+      .filter({ hasText: "A task was assigned to you" })
+      .getAttribute("data-notification-id");
+
+    // Newest first: the planted "now" row, the standing one, the old one.
+    await enterList(page, planted.today);
+    await page.keyboard.press("j");
+    await expect.poll(() => focused(page)).toBe(standingId);
+    await page.keyboard.press("j");
+    await expect.poll(() => focused(page)).toBe(planted.older);
+    // The end is the end — a letter there is consumed, never a jump to the top.
+    await page.keyboard.press("j");
+    await expect.poll(() => focused(page)).toBe(planted.older);
+    await page.keyboard.press("k");
+    await page.keyboard.press("k");
+    await expect.poll(() => focused(page)).toBe(planted.today);
+
+    await page.keyboard.press("e");
+    await expect(page.locator(`[data-notification-id="${planted.today}"]`)).toHaveCount(0);
+    await expect.poll(() => focused(page)).toBe(standingId);
+    await expect
+      .poll(async () => (await readNotifications(seed.tenantId)).find((n) => n.id === planted.today)?.archived, {
+        timeout: 20_000 * SLOW,
+      })
+      .toBe(true);
+  });
+
+  test("U toggles read; S opens the snooze choices, and the keyboard alone snoozes", async ({ page }) => {
+    // In All, neither verb takes the row away.
+    await page.goto("/inbox?filter=all");
+    const row = page.getByTestId("inbox-row");
+    await expect(row).toHaveCount(1);
+    const id = await row.getAttribute("data-notification-id");
+    await enterList(page, id!);
+
+    await page.keyboard.press("u");
+    await expect
+      .poll(async () => (await readNotifications(seed.tenantId))[0]?.read, { timeout: 20_000 * SLOW })
+      .toBe(true);
+    await expect(row).toHaveAttribute("data-read", "1");
+    await page.keyboard.press("u");
+    await expect
+      .poll(async () => (await readNotifications(seed.tenantId))[0]?.read, { timeout: 20_000 * SLOW })
+      .toBe(false);
+
+    // S opens the clock's menu; Escape puts focus back INSIDE the row, so
+    // the row's keys still work.
+    await page.keyboard.press("s");
+    await expect(page.getByRole("menuitem", { name: "Snooze for 3 hours" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.closest("[data-inbox-row]") !== null))
+      .toBe(true);
+
+    await page.keyboard.press("s");
+    await expect(page.getByRole("menuitem", { name: "Snooze for 3 hours" })).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(async () => (await readNotifications(seed.tenantId))[0]?.snoozed, { timeout: 20_000 * SLOW })
+      .toBe(true);
+    // A snoozed row stays in All, and its clock now offers to bring it back.
+    await expect(row).toHaveCount(1);
+    await row.getByRole("button", { name: /^Snooze:/ }).click();
+    await expect(page.getByRole("menuitem", { name: "Bring it back now" })).toBeVisible();
+    await page.keyboard.press("Escape");
   });
 
   test("empty buckets are `filtered`, not dead ends — each offers the bucket next to it", async ({

@@ -4,6 +4,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { accessibleCodes } from "@/entitlements/resolver";
 import { dateColumn, isoDateOf, localDateString } from "@/lib/duration";
 import { emit } from "@/notify/emit";
+import { reasonsFor, type NotificationReason } from "@/notify/reasons";
 import { readPreferences } from "@/preferences/service";
 
 import { REMINDER_HORIZON_DAYS, addDays, bandFor, dayStart, daysUntil, utcDayOf, type ReminderBand } from "./reminder-bands";
@@ -251,7 +252,8 @@ function whoResolver(tenantId: string): (memberId: string) => Promise<Who> {
   };
 }
 
-type Receiver = { readonly memberId: string; readonly link: ReminderLink };
+/** One receiver, where their mail may send them, and WHY they get it (slice 104, C72 (d)). */
+type Receiver = { readonly memberId: string; readonly link: ReminderLink; readonly reason: NotificationReason };
 
 /**
  * Where this receiver's mail may send them — never a page that would refuse
@@ -271,22 +273,34 @@ function linkOf(s: DueSubject, w: Who): ReminderLink {
 /** C53's receivers and, by C57, the owners — see the file's comment. One row each, however many ways they qualify. */
 async function subjectReceivers(s: DueSubject, people: People, who: (id: string) => Promise<Who>): Promise<Receiver[]> {
   const required = s.type === "ClientAsset" ? "asset:view" : "service:view";
-  const keep = async (ids: Iterable<string>) => {
+  const keep = async (reasons: ReadonlyMap<string, NotificationReason>) => {
     const out: Receiver[] = [];
     // In turn: each `who` may open a transaction of its own.
-    for (const memberId of new Set(ids)) {
+    for (const [memberId, reason] of reasons) {
       if (!people.active.has(memberId)) continue;
       const w = await who(memberId);
-      if (w.codes.has(required) && anchorInScope(w.scope, s)) out.push({ memberId, link: linkOf(s, w) });
+      if (w.codes.has(required) && anchorInScope(w.scope, s)) out.push({ memberId, link: linkOf(s, w), reason });
     }
     return out;
   };
   const lead = s.projectId === null ? null : (people.leadOf.get(s.projectId) ?? null);
-  const assigned =
-    s.projectId === null
-      ? (people.byClient.get(s.clientId) ?? [])
-      : [...(people.byProject.get(s.projectId) ?? []), ...(lead ? [lead] : [])];
-  return keep([...assigned, ...people.owners]);
+  // Each with WHY (slice 104, C72 (d); the design review's high): the
+  // client's people, or the project's people and its lead, and the owners —
+  // the most specific reason when someone is more than one (`reasonsFor`).
+  return keep(
+    reasonsFor(
+      s.projectId === null
+        ? [
+            ["CLIENT_MEMBER", people.byClient.get(s.clientId) ?? []],
+            ["OWNER", people.owners],
+          ]
+        : [
+            ["PROJECT_MEMBER", people.byProject.get(s.projectId) ?? []],
+            ["PROJECT_LEAD", lead ? [lead] : []],
+            ["OWNER", people.owners],
+          ],
+    ),
+  );
 }
 
 /** Send one asset or agreement reminder; true when it went out. */
@@ -314,15 +328,15 @@ async function sendSubject(tenantId: string, s: DueSubject, receivers: readonly 
     if (count === 0) return false; // already sent — a concurrent run got there first
     const asset = s.type === "ClientAsset";
     // One fan-out per link, so each mail opens a page its reader may open.
-    const byLink = new Map<ReminderLink, string[]>();
-    for (const r of receivers) byLink.set(r.link, [...(byLink.get(r.link) ?? []), r.memberId]);
-    for (const [link, memberIds] of byLink) {
+    const byLink = new Map<ReminderLink, Map<string, NotificationReason>>();
+    for (const r of receivers) byLink.set(r.link, (byLink.get(r.link) ?? new Map()).set(r.memberId, r.reason));
+    for (const [link, linkReceivers] of byLink) {
       await emit(tx, tenantId, {
         kind: asset ? "expiration.asset_due" : "expiration.agreement_ending",
         entity: { type: s.type, id: s.id },
         clientId: s.clientId,
         ...(s.projectId === null ? {} : { projectId: s.projectId }),
-        memberIds,
+        receivers: linkReceivers,
         // IDS ONLY, the band and the link's closed token: emit's rule.
         params: { clientId: s.clientId, [asset ? "assetId" : "serviceId"]: s.id, days: String(s.band), link },
         dedupeKey: `expiration:${s.type}:${s.id}:${s.dueOn}:${s.band}`,
@@ -400,7 +414,10 @@ async function sendLogins(
         kind: "expiration.logins_expiring",
         entity: g.clientId === null ? { type: "Tenant", id: tenantId } : { type: "Client", id: g.clientId },
         ...(g.clientId === null ? {} : { clientId: g.clientId }),
-        memberIds,
+        // WHY (slice 104, C72 (d); the design review's high): everyone here
+        // can open these logins — the vault's own reach, owners and
+        // tenant-wide admins included — which no narrower reason is true for.
+        receivers: new Map(memberIds.map((id) => [id, "VAULT_ACCESS" as const])),
         // A count, the band and the tenant's day it was decided on — never a
         // login's id or name (C54, C56). `from` bounds which logins the inbox
         // may later count for this row (`reminderSubjects`' window).

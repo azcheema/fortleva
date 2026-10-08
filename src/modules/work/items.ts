@@ -1325,7 +1325,7 @@ export async function assignItem(
         forceInternal: true,
       });
     }
-    if (memberId) await notifyItemMembers(tx, ctx, item, "work_item.assigned", [memberId], "assigned");
+    if (memberId) await notifyItemMembers(tx, ctx, item, "work_item.assigned", new Map([[memberId, "ASSIGNEE"]]), "assigned");
     return { id: row.id, assigneeMemberId: row.assigneeMemberId, assigneeName, changed: true };
   });
 }

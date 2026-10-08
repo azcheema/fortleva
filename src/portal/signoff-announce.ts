@@ -1,5 +1,6 @@
 import { withTenant, type TenantDb } from "@/db";
 import { emit } from "@/notify/emit";
+import type { NotificationReason } from "@/notify/reasons";
 
 import type { PortalPrincipal } from "./authorize";
 import type { SignoffDecision } from "./signoff-vocabulary";
@@ -34,32 +35,39 @@ export type SignoffSubject = {
  * members only, decided in one statement. Sequential reads on the one
  * connection, never `Promise.all` (AGENTS.md's trap).
  */
-async function decisionReceivers(tx: TenantDb, tenantId: string, subject: SignoffSubject): Promise<string[]> {
-  const candidates = new Set<string>();
+async function decisionReceivers(
+  tx: TenantDb,
+  tenantId: string,
+  subject: SignoffSubject,
+): Promise<Map<string, NotificationReason>> {
+  // Each with WHY (slice 104, C72 (d)) — written as literals, the lead set
+  // LAST so the lead is tagged as the lead even when also assigned: this file's
+  // value imports are pinned (`brokered-writes.test.ts`), so no `reasonsFor`.
+  const candidates = new Map<string, NotificationReason>();
   if (subject.projectId) {
     const assigned = await tx.memberProject.findMany({
       where: { tenantId, projectId: subject.projectId },
       select: { memberId: true },
     });
-    for (const row of assigned) candidates.add(row.memberId);
+    for (const row of assigned) candidates.set(row.memberId, "PROJECT_MEMBER");
     const project = await tx.project.findFirst({
       where: { tenantId, id: subject.projectId },
       select: { leadMemberId: true },
     });
-    if (project?.leadMemberId) candidates.add(project.leadMemberId);
+    if (project?.leadMemberId) candidates.set(project.leadMemberId, "PROJECT_LEAD");
   } else {
     const assigned = await tx.memberClient.findMany({
       where: { tenantId, clientId: subject.clientId },
       select: { memberId: true },
     });
-    for (const row of assigned) candidates.add(row.memberId);
+    for (const row of assigned) candidates.set(row.memberId, "CLIENT_MEMBER");
   }
-  if (candidates.size === 0) return [];
+  if (candidates.size === 0) return new Map();
   const active = await tx.member.findMany({
-    where: { tenantId, id: { in: [...candidates] }, status: "ACTIVE" },
+    where: { tenantId, id: { in: [...candidates.keys()] }, status: "ACTIVE" },
     select: { id: true },
   });
-  return active.map((m) => m.id);
+  return new Map(active.map((m) => [m.id, candidates.get(m.id)!]));
 }
 
 /**
@@ -95,7 +103,7 @@ export async function announceDecision(
       // a member (the tick makes the same point).
       clientId: subject.clientId,
       ...(subject.projectId ? { projectId: subject.projectId } : {}),
-      memberIds: receivers,
+      receivers,
       params: { projectKey: subject.projectKey ?? "", clientId: subject.clientId, subject: subject.kind, decision },
       // One unread row per subject however many times the same ask is
       // decided and re-asked while nobody has read the first.

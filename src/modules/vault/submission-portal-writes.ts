@@ -375,7 +375,7 @@ export async function submitPortalCredential(principal: PortalPrincipal, input: 
           // client sending a dozen logins in a sitting is one message.
           entity: { type: "Client", id: anchor.clientId },
           clientId: anchor.clientId,
-          memberIds: receivers,
+          receivers,
           params: { clientId: anchor.clientId },
           dedupeKey: `credential_submitted:${anchor.clientId}`,
         });
@@ -634,7 +634,7 @@ export async function declinePortalLoginAsk(principal: PortalPrincipal, askId: u
           // names the client only (`askDeclineSubjects`).
           entity: { type: "CredentialAsk", id },
           clientId: pre.held.clientId,
-          memberIds: pre.receivers,
+          receivers: pre.receivers,
           params: { clientId: pre.held.clientId, ...(pre.projectKey ? { projectKey: pre.projectKey } : {}) },
           dedupeKey: `credential_ask_declined:${id}`,
         });

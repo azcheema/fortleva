@@ -1,6 +1,7 @@
 import type { TenantDb } from "@/db";
 import { newId } from "@/lib/ids";
 import { NOTIFICATION_KINDS, emailAllowed, isEmailLevel, type NotificationKind } from "./catalog";
+import type { NotificationReason } from "./reasons";
 
 /**
  * notify.emit — THE one fan-out seam (§6.18): called inside the same
@@ -30,6 +31,11 @@ import { NOTIFICATION_KINDS, emailAllowed, isEmailLevel, type NotificationKind }
  *   thing here. The IN-APP row is never gated: an assignment you cannot
  *   see is work you never find out about, and the inbox is the surface
  *   the emails are only a pointer to.
+ * - EVERY RECEIVER CARRIES ITS REASON (slice 104, founder decision C72 (d);
+ *   `notification.reason`): the receivers are one map, member → why they get
+ *   this, so a call site cannot name a receiver without saying why (the
+ *   design review's medium — two parallel lists would drift). Build it with
+ *   `reasonsFor` (src/notify/reasons.ts) where someone may qualify twice.
  */
 
 export type EmitInput = {
@@ -38,8 +44,11 @@ export type EmitInput = {
   readonly actorMemberId?: string;
   readonly clientId?: string;
   readonly projectId?: string;
-  /** Member receivers (contact receivers arrive with Phase 3). */
-  readonly memberIds: readonly string[];
+  /**
+   * Member receivers, each with WHY it reaches them (the inbox's reason tag;
+   * contact receivers arrive with Phase 3).
+   */
+  readonly receivers: ReadonlyMap<string, NotificationReason>;
   /** IDS ONLY (zod-checked shape per kind lands with more kinds). */
   readonly params?: Readonly<Record<string, string>>;
   readonly dedupeKey?: string;
@@ -47,7 +56,7 @@ export type EmitInput = {
 
 export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Promise<void> {
   const spec = NOTIFICATION_KINDS[input.kind];
-  const receivers = [...new Set(input.memberIds)].filter((id) => id !== input.actorMemberId);
+  const receivers = [...input.receivers.keys()].filter((id) => id !== input.actorMemberId);
   if (receivers.length === 0) return;
 
   // Dedupe is a DB constraint (notification_dedupe_unread partial
@@ -80,6 +89,7 @@ export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Pr
       actorId: input.actorMemberId ?? null,
       params: input.params ?? undefined,
       dedupeKey: input.dedupeKey ?? null,
+      reason: input.receivers.get(receiverId)!,
     };
     const { count } = await tx.notification.createMany({ data: [row], skipDuplicates: true });
     if (count === 1) {

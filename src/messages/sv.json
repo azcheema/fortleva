@@ -251,7 +251,7 @@
     "title": "Inkorg",
     "description": "Vad som hänt i ditt arbete – tilldelningar, omnämnanden och budgetvarningar.",
     "markAllRead": "Markera allt som läst",
-    "older": "Äldre",
+    "nextPage": "Nästa sida",
     "failed": "Det gick inte – försök igen.",
     "unreadLabel": "oläst",
     "subjectUnavailable": "Inte längre tillgängligt för dig",
@@ -290,12 +290,13 @@
       "markUnread": "Markera som oläst",
       "archive": "Arkivera",
       "restore": "Flytta tillbaka till inkorgen",
-      "unsnooze": "Avbryt snooze",
+      "unsnooze": "Visa den igen nu",
       "snooze": {
         "inThreeHours": "Snooza i 3 timmar",
         "tomorrow": "Snooza till i morgon bitti",
         "nextWeek": "Snooza till nästa måndag"
-      }
+      },
+      "snoozeFor": "Snooza: {name}"
     },
     "empty": {
       "seeAll": "Visa alla aviseringar",
@@ -321,6 +322,30 @@
         "body": "Den här sidan har inga aviseringar kvar — de kan ha lästs eller arkiverats sedan länken skapades.",
         "action": "Till de senaste"
       }
+    },
+    "listLabel": "Aviseringar",
+    "groups": {
+      "today": "I dag",
+      "yesterday": "I går",
+      "week": "Den här veckan",
+      "older": "Äldre"
+    },
+    "reason": {
+      "ASSIGNEE": "Tilldelad dig",
+      "REQUESTER": "Du bad om den",
+      "PROJECT_LEAD": "Du leder projektet",
+      "PROJECT_MEMBER": "Ditt projekt",
+      "CLIENT_MEMBER": "Din kund",
+      "BUDGET_WATCHER": "På larmlistan",
+      "VAULT_ACCESS": "Inloggningar du kan öppna",
+      "OWNER": "Du är ägare"
+    },
+    "keys": {
+      "navigate": "Flytta mellan aviseringar",
+      "archive": "Arkivera den markerade aviseringen",
+      "restore": "Flytta tillbaka den markerade aviseringen till inkorgen",
+      "read": "Växla läst/oläst för den markerade aviseringen",
+      "snooze": "Snooza den markerade aviseringen"
     }
   },
   "search": {

@@ -38,9 +38,10 @@
  *
  * `backlog` arrived with that surface's first region key, `X` (panel
  * slice 14, 2026-09-15) — until then it was absent, because an unused
- * scope name is dead weight. `inbox` and `triage` are declared and empty
- * on purpose, so the slices that fill them are a registration rather
- * than a redesign.
+ * scope name is dead weight. `inbox` and `triage` were declared and empty
+ * on purpose, so the slices that filled them (triage, Phase 3 slice 6b;
+ * the inbox, Phase 5 slice 104) were a registration rather than a
+ * redesign.
  */
 export type KeyScope = "global" | "board" | "backlog" | "home" | "inbox" | "triage" | "item" | "modal";
 
@@ -296,8 +297,7 @@ export function focusedKeyGuards(
  * keep for range selection. ONE table, so the lists that read it cannot
  * drift on which keys are a one-row move: the backlog today; the board
  * when its handler migrates to these guards (PLAN §0 records that as
- * owed — it still keeps its own `switch`); the inbox and triage lists to
- * come.
+ * owed — it still keeps its own `switch`); the triage lane; the inbox.
  */
 export type RovingStep = { delta: 1 | -1; arrow: boolean };
 const ROVING_STEPS: Record<string, RovingStep> = {

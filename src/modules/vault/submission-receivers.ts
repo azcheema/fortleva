@@ -1,6 +1,7 @@
 import { resolveScope, type MemberActor } from "@/authz/authorize";
 import type { TenantDb } from "@/db";
 import { accessibleCodes } from "@/entitlements/resolver";
+import { reasonsFor, type NotificationReason } from "@/notify/reasons";
 
 import { anchorInScope, type VaultAnchor } from "./scope";
 
@@ -38,32 +39,35 @@ export async function submissionReceivers(
    * for this login, when it answers an ask — `ask-rows.ts`).
    */
   also: readonly string[] = [],
-): Promise<string[]> {
-  const candidates: string[] = [...also];
+): Promise<Map<string, NotificationReason>> {
+  // Each with WHY (slice 104, C72 (d); the design review's high): the asker
+  // as REQUESTER, the project's people (the lead as the lead) or the client's,
+  // and the owners — the most specific reason when someone is several.
+  const groups: [NotificationReason, string[]][] = [["REQUESTER", [...also]]];
   if (anchor.projectId !== null) {
     const assigned = await tx.memberProject.findMany({
       where: { tenantId, projectId: anchor.projectId },
       select: { memberId: true },
     });
-    candidates.push(...assigned.map((r) => r.memberId));
+    groups.push(["PROJECT_MEMBER", assigned.map((r) => r.memberId)]);
     const project = await tx.project.findFirst({
       where: { tenantId, id: anchor.projectId },
       select: { leadMemberId: true },
     });
-    if (project?.leadMemberId) candidates.push(project.leadMemberId);
+    if (project?.leadMemberId) groups.push(["PROJECT_LEAD", [project.leadMemberId]]);
   } else {
     const assigned = await tx.memberClient.findMany({
       where: { tenantId, clientId: anchor.clientId },
       select: { memberId: true },
     });
-    candidates.push(...assigned.map((r) => r.memberId));
+    groups.push(["CLIENT_MEMBER", assigned.map((r) => r.memberId)]);
   }
   const owners = await tx.memberRole.findMany({
     where: { tenantId, role: { isSystem: true, templateKey: "owner" } },
     select: { memberId: true },
   });
-  candidates.push(...owners.map((o) => o.memberId));
-  return keep(tx, tenantId, anchor, candidates);
+  groups.push(["OWNER", owners.map((o) => o.memberId)]);
+  return keep(tx, tenantId, anchor, reasonsFor(groups));
 }
 
 /**
@@ -79,33 +83,38 @@ export async function askReceivers(
   tx: TenantDb,
   principal: { readonly tenantId: string; readonly clientId: string; readonly contactId: string },
   askId: string,
-): Promise<string[]> {
+): Promise<Map<string, NotificationReason>> {
   const ask = await tx.credentialAsk.findFirst({
     where: { tenantId: principal.tenantId, id: askId, clientId: principal.clientId, contactId: principal.contactId },
     select: { clientId: true, projectId: true, requestedByMemberId: true },
   });
-  if (!ask) return [];
+  if (!ask) return new Map();
   return submissionReceivers(tx, principal.tenantId, { clientId: ask.clientId, projectId: ask.projectId }, [
     ask.requestedByMemberId,
   ]);
 }
 
 /** The active members among `ids` who may open the login — one row each, in a stable order. */
-async function keep(tx: TenantDb, tenantId: string, anchor: VaultAnchor, ids: readonly string[]): Promise<string[]> {
-  const unique = [...new Set(ids)];
-  if (unique.length === 0) return [];
+async function keep(
+  tx: TenantDb,
+  tenantId: string,
+  anchor: VaultAnchor,
+  reasons: ReadonlyMap<string, NotificationReason>,
+): Promise<Map<string, NotificationReason>> {
+  const unique = [...reasons.keys()];
+  if (unique.length === 0) return new Map();
   const active = await tx.member.findMany({
     where: { tenantId, id: { in: unique }, status: "ACTIVE" },
     select: { id: true },
     orderBy: { id: "asc" },
   });
-  const out: string[] = [];
+  const out = new Map<string, NotificationReason>();
   for (const { id } of active) {
     const actor: MemberActor = { memberId: id };
     const codes = await accessibleCodes(tx, tenantId, actor, ["credential:view"]);
     if (!codes.has("credential:view")) continue;
     const scope = await resolveScope(tx, actor);
-    if (anchorInScope(scope, anchor)) out.push(id);
+    if (anchorInScope(scope, anchor)) out.set(id, reasons.get(id)!);
   }
   return out;
 }

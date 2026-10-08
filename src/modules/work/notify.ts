@@ -1,6 +1,7 @@
 import type { TenantDb } from "@/db";
 import { emit } from "@/notify/emit";
 import type { NotificationKind } from "@/notify/catalog";
+import { reasonsFor, type NotificationReason } from "@/notify/reasons";
 
 import type { WorkCtx } from "./states";
 
@@ -17,10 +18,11 @@ export async function notifyItemMembers(
   ctx: WorkCtx,
   item: { readonly id: string; readonly number: number; readonly clientId: string; readonly projectId: string },
   kind: NotificationKind,
-  memberIds: readonly string[],
+  /** Each receiver with WHY it reaches them (slice 104, C72 (d)). */
+  receivers: ReadonlyMap<string, NotificationReason>,
   dedupePrefix: string,
 ): Promise<void> {
-  if (memberIds.length === 0) return;
+  if (receivers.size === 0) return;
   const project = await tx.project.findFirst({
     where: { tenantId: ctx.tenantId, id: item.projectId },
     select: { key: true },
@@ -31,7 +33,7 @@ export async function notifyItemMembers(
     actorMemberId: ctx.actor.memberId,
     clientId: item.clientId,
     projectId: item.projectId,
-    memberIds,
+    receivers,
     params: { projectKey: project?.key ?? "", itemNumber: String(item.number) },
     dedupeKey: `${dedupePrefix}:${item.id}`,
   });
@@ -73,7 +75,7 @@ export async function requestReceivers(
   tx: TenantDb,
   tenantId: string,
   projectId: string,
-): Promise<string[]> {
+): Promise<Map<string, NotificationReason>> {
   // SEQUENTIAL, NOT `Promise.all`: these run on ONE interactive
   // transaction, which is ONE connection, so the parallel form is a
   // queue wearing concurrency's clothes.
@@ -85,13 +87,17 @@ export async function requestReceivers(
     where: { tenantId, id: projectId },
     select: { leadMemberId: true },
   });
-  const candidates = new Set(assigned.map((row) => row.memberId));
-  if (project?.leadMemberId) candidates.add(project.leadMemberId);
-  if (candidates.size === 0) return [];
+  // Each with WHY (slice 104, C72 (d)): the lead as the lead even when also
+  // assigned — the more specific reason (`reasonsFor`).
+  const candidates = reasonsFor([
+    ["PROJECT_MEMBER", assigned.map((row) => row.memberId)],
+    ["PROJECT_LEAD", project?.leadMemberId ? [project.leadMemberId] : []],
+  ]);
+  if (candidates.size === 0) return new Map();
   // One statement decides liveness for both sets.
   const active = await tx.member.findMany({
-    where: { tenantId, id: { in: [...candidates] }, status: "ACTIVE" },
+    where: { tenantId, id: { in: [...candidates.keys()] }, status: "ACTIVE" },
     select: { id: true },
   });
-  return active.map((row) => row.id);
+  return new Map(active.map((row) => [row.id, candidates.get(row.id)!]));
 }

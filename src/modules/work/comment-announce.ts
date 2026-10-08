@@ -1,5 +1,6 @@
 import { withTenant } from "@/db";
 import { emit } from "@/notify/emit";
+import type { NotificationReason } from "@/notify/reasons";
 import type { PortalPrincipal } from "@/portal";
 
 import { writeContactActivity } from "./activity";
@@ -74,15 +75,17 @@ export async function announcePortalComment(
     if (!item) return;
 
     // SEQUENTIAL, never `Promise.all` — one transaction, one connection.
-    let receivers: string[] = [];
+    // Each with WHY (slice 104, C72 (d)): the task's assignee as such, else
+    // the project's people (the lead as the lead).
+    let receivers: Map<string, NotificationReason> = new Map();
     if (item.assigneeMemberId) {
       const owner = await tx.member.findFirst({
         where: { tenantId: principal.tenantId, id: item.assigneeMemberId, status: "ACTIVE" },
         select: { id: true },
       });
-      if (owner) receivers = [owner.id];
+      if (owner) receivers = new Map([[owner.id, "ASSIGNEE"]]);
     }
-    if (receivers.length === 0) receivers = await requestReceivers(tx, principal.tenantId, item.projectId);
+    if (receivers.size === 0) receivers = await requestReceivers(tx, principal.tenantId, item.projectId);
 
     await writeContactActivity(tx, principal.tenantId, principal.contactId, item, {
       field: "comment",
@@ -97,7 +100,7 @@ export async function announcePortalComment(
       // a member (the request intake makes the same point).
       clientId: item.clientId,
       projectId: item.projectId,
-      memberIds: receivers,
+      receivers,
       // IDS ONLY (emit's rule): these travel to an inbox outside the
       // product. `projectKey` is the agency's own label, never the
       // client's words — the words reach the member through the row.

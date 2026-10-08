@@ -4,6 +4,9 @@ import { withTenant, type TenantDb } from "@/db";
 import { accessibleCodes } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { idCursor } from "@/lib/id-cursor";
+import type { WeekStart } from "@/lib/week";
+import { readPreferences } from "@/preferences/service";
+import { DEFAULT_TIMEZONE } from "@/i18n/config";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
 import {
   askDeclineSubjects,
@@ -18,6 +21,8 @@ import {
 } from "@/modules/vault";
 
 import { isNotificationKind, type NotificationKind } from "./catalog";
+import { INBOX_GROUPS, inboxGroupOf, type InboxGroup } from "./inbox-groups";
+import { isNotificationReason, type NotificationReason } from "./reasons";
 
 /**
  * The member inbox (`/inbox`, UI.md §3.1 "Inbox — core; unread badge";
@@ -103,6 +108,11 @@ export type InboxRow = {
   readonly snoozedTill: Date | null;
   readonly subject: InboxSubject | null;
   /**
+   * WHY it reached this member (slice 104, C72 (d)) — null for a row written
+   * before the column existed, or with a word this build does not know.
+   */
+  readonly reason: NotificationReason | null;
+  /**
    * A renewal reminder's band in days, and for logins how many — drawn
    * into the label ("2 logins expire within 7 days"). Null for every other
    * kind, and for a reminder whose subject this member may no longer see:
@@ -122,7 +132,8 @@ export type InboxReminder = { readonly days: number; readonly count: number | nu
 export type InboxSubject = { readonly title: string; readonly href: string | null };
 
 export type InboxPage = {
-  readonly rows: readonly InboxRow[];
+  /** Each row with its day group (slice 104, C72 (c)), decided on the server. */
+  readonly rows: readonly (InboxRow & { readonly group: InboxGroup })[];
   readonly nextCursor: string | null;
 };
 
@@ -226,14 +237,22 @@ const ROW_SELECT = {
   clientId: true,
   // Read for the renewal reminders' band and count only (`reminderOf`).
   params: true,
+  reason: true,
 } as const;
 
 export async function listInbox(
   ctx: InboxCtx,
-  opts: { filter: InboxFilter; cursor?: string | null } = { filter: "unread" },
+  opts: {
+    filter: InboxFilter;
+    cursor?: string | null;
+    /** The member's zone (`resolveTimeZone`) — the day groups' calendar; the product's default when omitted. */
+    timeZone?: string;
+    /** One clock for the page: the groups and the relative times agree. */
+    now?: Date;
+  } = { filter: "unread" },
 ): Promise<InboxPage> {
   return withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
-    const now = new Date();
+    const now = opts.now ?? new Date();
     const cursor = decodeCursor(opts.cursor);
     // Keyset, not offset: an offset page shifts under the member the
     // moment they mark something read.
@@ -252,8 +271,13 @@ export async function listInbox(
     const hasMore = found.length > INBOX_PAGE_SIZE;
     const page = hasMore ? found.slice(0, INBOX_PAGE_SIZE) : found;
     const rows = await toInboxRows(tx, ctx, page);
+    // In sequence after the batch above (one transaction, one connection).
+    const { weekStart } = await readPreferences(tx, ctx.tenantId);
     const last = page.at(-1);
-    return { rows, nextCursor: hasMore && last ? last.id : null };
+    return {
+      rows: withGroups(rows, now, opts.timeZone ?? DEFAULT_TIMEZONE, weekStart),
+      nextCursor: hasMore && last ? last.id : null,
+    };
   });
 }
 
@@ -292,11 +316,34 @@ export async function inboxGlance(ctx: InboxCtx, limit: number = INBOX_GLANCE_SI
 }
 
 type RowSource = SubjectSource & {
+  reason: string | null;
   createdAt: Date;
   readAt: Date | null;
   archivedAt: Date | null;
   snoozedTill: Date | null;
 };
+
+/**
+ * Each row's day group — CLAMPED to never go back up the list (the design
+ * review's low): the order is the row's UUIDv7 id (the app's clock at
+ * insert), the group its `created_at` (the transaction's start), so a
+ * transaction that began before midnight and inserted after it could put a
+ * "yesterday" row above a "today" one and draw a heading twice. A row never
+ * sits under a NEWER heading than the row above it.
+ */
+function withGroups(
+  rows: readonly InboxRow[],
+  now: Date,
+  timeZone: string,
+  weekStart: WeekStart,
+): (InboxRow & { readonly group: InboxGroup })[] {
+  let floor = 0;
+  return rows.map((r) => {
+    const index = Math.max(floor, INBOX_GROUPS.indexOf(inboxGroupOf(r.createdAt, now, timeZone, weekStart)));
+    floor = index;
+    return { ...r, group: INBOX_GROUPS[index]! };
+  });
+}
 
 async function toInboxRows(tx: TenantDb, ctx: InboxCtx, page: readonly RowSource[]): Promise<InboxRow[]> {
   const subjects = await resolveSubjects(tx, ctx, page);
@@ -309,6 +356,7 @@ async function toInboxRows(tx: TenantDb, ctx: InboxCtx, page: readonly RowSource
       readAt: n.readAt,
       archivedAt: n.archivedAt,
       snoozedTill: n.snoozedTill,
+      reason: isNotificationReason(n.reason) ? n.reason : null,
       // Title and link only — a reminder's cap stays on the server.
       subject: resolved ? { title: resolved.title, href: resolved.href } : null,
       reminder: resolved ? reminderOf(n.kind, n.params, resolved.countCap ?? null) : null,

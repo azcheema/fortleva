@@ -173,7 +173,8 @@ async function alarmIfDue(tx: TenantDb, principal: PortalPrincipal): Promise<voi
     kind: "contact.logins_alarm",
     entity: { type: "Contact", id: contactId },
     clientId,
-    memberIds: owners.map((o) => o.id),
+    // Each with WHY (slice 104, C72 (d)): the owners, as owners.
+    receivers: new Map(owners.map((o) => [o.id, "OWNER" as const])),
     params: { clientId },
     dedupeKey: `logins_alarm:${alarmId}`,
   });

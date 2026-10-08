@@ -2022,6 +2022,8 @@ model Notification {
   actorId      String?           @map("actor_id")
   params       Json? // ids only, zod-validated per kind
   dedupeKey    String?           @map("dedupe_key")
+  /// Why it reached the receiver (slice 104, C72 (d); src/notify/reasons.ts): a closed set held by a CHECK; NULL before this column existed and for contacts. Written once by `emit` — the runtime role cannot UPDATE it.
+  reason       String?
   readAt       DateTime?         @map("read_at") @db.Timestamptz(6)
   archivedAt   DateTime?         @map("archived_at") @db.Timestamptz(6)
   snoozedTill  DateTime?         @map("snoozed_till") @db.Timestamptz(6)

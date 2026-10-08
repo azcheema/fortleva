@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Page, PageHeader } from "@/components/semantic";
 import { TabNav, type TabLink } from "@/components/tab-nav";
+import { resolveTimeZone } from "@/i18n/resolve";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   INBOX_FILTERS,
@@ -49,7 +50,12 @@ export default async function InboxPage({
 
   const { membership, actor } = await requireTenantContext();
   const t = await getTranslations("inbox");
-  const page = await listInbox({ tenantId: membership.tenantId, actor }, { filter, cursor });
+  // ONE clock for the page (the design review's nit): the day groups, decided
+  // on the server in the member's zone (slice 104, C72 (c)), and the relative
+  // times the list measures from it, agree.
+  const now = new Date();
+  const timeZone = await resolveTimeZone();
+  const page = await listInbox({ tenantId: membership.tenantId, actor }, { filter, cursor, timeZone, now });
 
   const tabs: TabLink[] = INBOX_FILTERS.map((f) => ({
     href: f === "unread" ? "/inbox" : `/inbox?filter=${f}`,
@@ -78,8 +84,10 @@ export default async function InboxPage({
           snoozedTill: r.snoozedTill?.toISOString() ?? null,
           subject: r.subject ?? null,
           reminder: r.reminder,
+          reason: r.reason,
+          group: r.group,
         }))}
-        serverNow={new Date().toISOString()}
+        serverNow={now.toISOString()}
         nextHref={
           page.nextCursor
             ? `/inbox?${new URLSearchParams(
