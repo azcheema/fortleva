@@ -280,6 +280,12 @@ export async function resetUpdateSchedule(tenantId: string, projectKey: string):
   return reset;
 }
 
+/** Remove every progress-update layout of the e2e workspace (slice 105). Returns how many. */
+export async function resetUpdateLayouts(tenantId: string): Promise<number> {
+  const { deleted } = await runCli<{ deleted: number }>(["reset-update-layouts", tenantId]);
+  return deleted;
+}
+
 /**
  * Age the vault member's second factor past the vault window (C52): the
  * next visit to the Vault tab finds THE DOOR. Returns how many sessions

@@ -57,4 +57,13 @@ export const { mapDbError, guarded } = dbErrorMapper([
   // belt catching a race — two members acting on one post in the same
   // second — and it is worth a sentence rather than a stack.
   ["UPDATE_IMMUTABLE", "UPDATE_IMMUTABLE"],
+  // The progress-update layouts (20261008200000, slice 105): a name the
+  // workspace already uses, whatever its case (the expression UNIQUE —
+  // `update-templates.ts` asks first, so this is the race); two members
+  // making different layouts the default at once (the partial UNIQUE); a
+  // layout deleted while a project was picking it (the project's RESTRICT
+  // key). Each a sentence, not a stack (the migration review's L1).
+  ["project_update_template_name_key", "LAYOUT_NAME_TAKEN"],
+  ["project_update_template_one_default", "LAYOUT_BUSY"],
+  ["project_tenant_id_update_template_id_fkey", "LAYOUT_BUSY"],
 ]);

@@ -14,6 +14,7 @@ import {
   periodDueNow,
   summarisedKinds,
 } from "@/notify/digest";
+import { usableZone } from "@/notify/zone";
 import { readPreferences } from "@/preferences/service";
 
 /**
@@ -89,21 +90,6 @@ export async function runMemberDigests(
     }
   }
   return out;
-}
-
-/** The first zone Intl accepts. A stored zone this build did not write must
- * not throw a whole tenant's summaries away. */
-function usableZone(...candidates: (string | null | undefined)[]): string {
-  for (const zone of candidates) {
-    if (!zone) continue;
-    try {
-      new Intl.DateTimeFormat("en-CA", { timeZone: zone });
-      return zone;
-    } catch {
-      // try the next
-    }
-  }
-  return "UTC";
 }
 
 type Due = {

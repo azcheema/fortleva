@@ -136,6 +136,16 @@ export type DomainErrorCode =
   // than one file carries (`EXPORT_MAX`) — export one client at a time.
   | "NOTHING_TO_EXPORT"
   | "EXPORT_TOO_LARGE"
+  // Quiet hours (Phase 5 slice 105 — src/notify/preferences.ts; C73 (f)):
+  // a start and an end on the same hour is no window at all. The form never
+  // offers it; a hand-made request is told so.
+  | "QUIET_HOURS_SAME"
+  // Progress-update layouts (slice 105 — src/modules/work/update-templates.ts;
+  // C73 (c), (d), (g)): a name the workspace already uses (whatever its
+  // case); a layout another member changed or deleted while this one was
+  // saving it (the default swap, a delete racing a project's pick).
+  | "LAYOUT_NAME_TAKEN"
+  | "LAYOUT_BUSY"
   // An owner's reset / sign-out of a teammate (slice 84, C50 —
   // src/auth/member-reset.ts): aimed at themselves; at a console
   // principal, whose sign-in is the operator's; a reset of somebody who

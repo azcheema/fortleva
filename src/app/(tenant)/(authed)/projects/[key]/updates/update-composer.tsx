@@ -19,15 +19,15 @@ import { MAX_TITLE_LENGTH } from "@/lib/work-view/model";
 import type { ComposerContext } from "@/modules/work/updates";
 import {
   UPDATE_METRIC_GROUPS,
-  UPDATE_SECTION_KEYS,
+  UPDATE_SECTIONS_MAX,
   UPDATE_TITLE_MAX,
   bulletListOf,
   sharedDoneLines,
   type UpdateBody,
-  type UpdateFixedSectionKey,
   type UpdateMetricGroup,
   type UpdateMetricsInclude,
 } from "@/modules/work/update-body";
+import { bodyOfFrame, layoutFrame } from "@/modules/work/update-layout";
 import type { PortalSnapshot } from "@/modules/work/update-snapshot";
 
 import {
@@ -52,13 +52,23 @@ import { SectionEditor } from "./section-editor";
  * what the author sees is what the client will read, apart from the
  * numbers' freezing at publish.
  *
+ * THE HEADINGS ARE THE PROJECT'S LAYOUT (slice 105, founder decision C73):
+ * the composer lays the draft out under the layout's headings in its order
+ * (`layoutFrame`), then under any heading the draft holds that the layout
+ * does not — so a draft never loses text when the layout changes. A heading
+ * of the workspace's own is shown with its title and saved as a CUSTOM
+ * section; a heading left empty is never saved, so it never reaches the
+ * client. The frame is fixed for the life of the page: re-asking the server
+ * for new dates never re-lays a draft out under someone's cursor.
+ *
  * THE NUMBERS FOLLOW THE DATES. The metrics card and the pull-in panel
  * both cover the window publish will use (`metricsWindowFor`); when the
  * author changes a date the composer re-asks the server, which is the
  * one place that rule is written.
  */
 
-type SectionDocs = Partial<Record<UpdateFixedSectionKey, unknown>>;
+/** What each heading holds, by the frame's slot id (a fixed key, or `custom-<n>`). */
+type SectionDocs = Readonly<Record<string, unknown>>;
 
 export type ComposerDraft = {
   readonly id: string | null;
@@ -68,19 +78,6 @@ export type ComposerDraft = {
   readonly periodEnd: string | null;
   readonly body: UpdateBody;
 };
-
-const docsOf = (body: UpdateBody): SectionDocs => {
-  const out: SectionDocs = {};
-  for (const s of body.sections) {
-    if (s.key !== "CUSTOM") out[s.key] = s.body;
-  }
-  return out;
-};
-
-const bodyOf = (docs: SectionDocs, include: UpdateMetricsInclude): UpdateBody => ({
-  sections: UPDATE_SECTION_KEYS.filter((k) => docs[k] != null).map((k) => ({ key: k, title: null, body: docs[k] })),
-  metrics: { include },
-});
 
 const withInclude = (metrics: PortalSnapshot, include: UpdateMetricsInclude): PortalSnapshot => {
   const out: Record<string, unknown> = { ...metrics };
@@ -112,7 +109,11 @@ export function UpdateComposer({
   const [title, setTitle] = useState(draft.title ?? "");
   const [periodStart, setPeriodStart] = useState(draft.periodStart ?? "");
   const [periodEnd, setPeriodEnd] = useState(draft.periodEnd ?? "");
-  const [docs, setDocs] = useState<SectionDocs>(() => docsOf(draft.body));
+  // The frame, once (see the header): the project's layout, then what the
+  // draft holds beyond it.
+  const [frame] = useState(() => layoutFrame(initialContext.layout, draft.body));
+  const slots = frame.slots;
+  const [docs, setDocs] = useState<SectionDocs>(frame.docs);
   const [include, setInclude] = useState<UpdateMetricsInclude>(draft.body.metrics.include);
   const [context, setContext] = useState(initialContext);
   // A NEW update that opened pre-filled (C70 (d)) holds text nobody has
@@ -125,7 +126,7 @@ export function UpdateComposer({
   const [privateNamed, setPrivateNamed] = useState<readonly string[]>([]);
   const [checking, setChecking] = useState(false);
   const checkSeq = useRef(0);
-  const editors = useRef<Partial<Record<UpdateFixedSectionKey, Editor | null>>>({});
+  const editors = useRef<Record<string, Editor | null>>({});
 
   const period = { periodStart: periodStart || null, periodEnd: periodEnd || null };
 
@@ -147,12 +148,12 @@ export function UpdateComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the window is the two dates
   }, [periodStart, periodEnd]);
 
-  const onSection = useCallback((key: UpdateFixedSectionKey) => (doc: unknown | null) => {
-    setDocs((prev) => ({ ...prev, [key]: doc }));
+  const onSection = useCallback((slotId: string) => (doc: unknown | null) => {
+    setDocs((prev) => ({ ...prev, [slotId]: doc }));
     setDirty(true);
   }, []);
-  const onEditor = useCallback((key: UpdateFixedSectionKey) => (editor: Editor | null) => {
-    editors.current[key] = editor;
+  const onEditor = useCallback((slotId: string) => (editor: Editor | null) => {
+    editors.current[slotId] = editor;
   }, []);
 
   const input = () => ({
@@ -162,11 +163,19 @@ export function UpdateComposer({
     health,
     title: title.trim() === "" ? null : title.trim(),
     ...period,
-    body: bodyOf(docs, include),
+    body: bodyOfFrame(slots, docs, include),
   });
 
   const save = (): Promise<string | null> =>
     new Promise((resolve) => {
+      // More headings with text than a post holds — reachable only when a
+      // draft keeps headings its layout has since dropped (the design
+      // review's L7): said plainly, rather than the server's "invalid input".
+      if (bodyOfFrame(slots, docs, include).sections.length > UPDATE_SECTIONS_MAX) {
+        toast.error(t("tooManySections", { max: UPDATE_SECTIONS_MAX }));
+        resolve(null);
+        return;
+      }
       start(async () => {
         const r = await saveUpdateDraftAction(input()).catch(() => ({ ok: false as const, message: t("failed") }));
         if (!r.ok) {
@@ -243,6 +252,9 @@ export function UpdateComposer({
   const openPublish = () => {
     const lines = [
       title,
+      // The workspace's own headings that carry text are lines of the post
+      // too (the design review's nit) — an admin may have named one after work.
+      ...bodyOfFrame(slots, docs, include).sections.flatMap((s) => (s.key === "CUSTOM" && s.title ? [s.title] : [])),
       ...Object.values(editors.current).flatMap((e) => (e ? e.getText({ blockSeparator: "\n" }).split("\n") : [])),
     ]
       .map((l) => l.trim())
@@ -289,7 +301,7 @@ export function UpdateComposer({
     periodStart: periodStart ? new Date(`${periodStart}T00:00:00Z`) : null,
     periodEnd: periodEnd ? new Date(`${periodEnd}T00:00:00Z`) : null,
     publishedAt: null,
-    body: bodyOf(docs, include),
+    body: bodyOfFrame(slots, docs, include),
     metrics: withInclude(context.metrics, include),
     editNote: null,
   };
@@ -383,23 +395,30 @@ export function UpdateComposer({
 
         <SectionCard title={t("sections")}>
           <div className="flex flex-col gap-5">
-            {UPDATE_SECTION_KEYS.map((key) => (
-              <div key={key} className="flex flex-col gap-1.5">
-                <label htmlFor={`update-section-${key}`} className="text-sm font-medium text-foreground">
-                  {tSections(key)}
-                </label>
-                <SectionEditor
-                  id={`update-section-${key}`}
-                  initialDoc={docs[key] ?? null}
-                  placeholder={t(`placeholders.${key}`)}
-                  ariaLabel={t("sectionEditor", { section: tSections(key) })}
-                  toolbarLabel={t("toolbar", { section: tSections(key) })}
-                  onChange={onSection(key)}
-                  onEditor={onEditor(key)}
-                  testId={`update-section-${key}`}
-                />
-              </div>
-            ))}
+            {slots.map((slot) => {
+              // A fixed heading is titled in the reader's language; one of
+              // the workspace's own carries its title, and a generic hint —
+              // the writing hints stay Fortleva's own (C73 (d)).
+              const heading = slot.key === "CUSTOM" ? (slot.title ?? "") : tSections(slot.key);
+              const placeholder = slot.key === "CUSTOM" ? t("placeholders.CUSTOM") : t(`placeholders.${slot.key}`);
+              return (
+                <div key={slot.id} className="flex flex-col gap-1.5">
+                  <label htmlFor={`update-section-${slot.id}`} className="text-sm font-medium text-foreground">
+                    {heading}
+                  </label>
+                  <SectionEditor
+                    id={`update-section-${slot.id}`}
+                    initialDoc={docs[slot.id] ?? null}
+                    placeholder={placeholder}
+                    ariaLabel={t("sectionEditor", { section: heading })}
+                    toolbarLabel={t("toolbar", { section: heading })}
+                    onChange={onSection(slot.id)}
+                    onEditor={onEditor(slot.id)}
+                    testId={`update-section-${slot.id}`}
+                  />
+                </div>
+              );
+            })}
           </div>
         </SectionCard>
 

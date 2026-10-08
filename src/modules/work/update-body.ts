@@ -89,6 +89,10 @@ export function normalizeUpdateBody(input: unknown): NormalizedUpdateBody {
   if (list.length > UPDATE_SECTIONS_MAX) fail("INVALID_INPUT", "too many sections");
 
   const seenFixed = new Set<string>();
+  // A heading of the workspace's own appears once, whatever its case (slice
+  // 105, the design review's L6): the composer lays a draft out by title
+  // (`layoutFrame`), and two under one title would read as one heading.
+  const seenCustom = new Set<string>();
   const sections: UpdateSection[] = [];
   const texts: string[] = [];
   for (const raw of list) {
@@ -102,6 +106,9 @@ export function normalizeUpdateBody(input: unknown): NormalizedUpdateBody {
       if (trimmed.length === 0 || trimmed.length > UPDATE_CUSTOM_TITLE_MAX || /[\t\r\n]/.test(trimmed)) {
         fail("INVALID_INPUT", "custom section title");
       }
+      const folded = trimmed.toLocaleLowerCase();
+      if (seenCustom.has(folded)) fail("INVALID_INPUT", "duplicate custom section");
+      seenCustom.add(folded);
       title = trimmed;
     } else {
       if (seenFixed.has(key)) fail("INVALID_INPUT", `duplicate section ${key}`);
@@ -110,6 +117,10 @@ export function normalizeUpdateBody(input: unknown): NormalizedUpdateBody {
     const n = normalizeUpdateSection(section["body"] ?? null);
     if (n.doc === null || n.text === null) continue;
     sections.push({ key, title, body: n.doc });
+    // The section's text only — never a heading of the workspace's own (slice
+    // 105's fix-pass review): `bodyText` is read for the list's excerpt, which
+    // would otherwise open every post of a layout beginning with its own
+    // heading on that heading ("SEO this month") instead of the author's words.
     texts.push(n.text);
   }
 
@@ -222,13 +233,20 @@ export const UPDATE_PREFILL_MAX_TASKS = 20;
  * with two hundred bullets (the design review); milestones and shipped
  * versions, which are few, all go in. The panel beside it still lists
  * everything. Nothing is saved until the person saves — the draft row is
- * created on the first save, as before.
+ * created on the first save, as before. The numbers start as the project's
+ * LAYOUT ticks them (slice 105, C73 (d) — `update-layout.ts`); every one when
+ * the layout is Fortleva standard. The headings themselves are the composer's
+ * frame (`layoutFrame`), not part of the body: an empty heading is never stored.
  */
-export function newUpdateBody(changes: ChangesSinceLast, shows: SharedSections): UpdateBody {
+export function newUpdateBody(
+  changes: ChangesSinceLast,
+  shows: SharedSections,
+  include: UpdateMetricsInclude = ALL_METRICS_INCLUDED,
+): UpdateBody {
   const lines = sharedDoneLines(changes, shows, UPDATE_PREFILL_MAX_TASKS);
   return {
     sections:
       lines.length > 0 ? [{ key: "DONE", title: null, body: { type: "doc", content: [bulletListOf(lines)] } }] : [],
-    metrics: { include: ALL_METRICS_INCLUDED },
+    metrics: { include },
   };
 }

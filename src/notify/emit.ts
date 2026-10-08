@@ -1,7 +1,10 @@
 import type { TenantDb } from "@/db";
 import { newId } from "@/lib/ids";
+import { readPreferences } from "@/preferences/service";
 import { NOTIFICATION_KINDS, emailAllowed, isEmailLevel, type NotificationKind } from "./catalog";
+import { hasQuietTime, quietHoursOf, quietRelease } from "./quiet-hours";
 import type { NotificationReason } from "./reasons";
+import { usableZone } from "./zone";
 
 /**
  * notify.emit — THE one fan-out seam (§6.18): called inside the same
@@ -36,6 +39,13 @@ import type { NotificationReason } from "./reasons";
  *   this, so a call site cannot name a receiver without saying why (the
  *   design review's medium — two parallel lists would drift). Build it with
  *   `reasonsFor` (src/notify/reasons.ts) where someone may qualify twice.
+ * - QUIET HOURS (slice 105, founder decision C73 (e), (f)): a receiver's mail
+ *   that would leave inside their quiet hours is timed for the moment those
+ *   end (`send_after`) and marked `quiet_held`, so the drain can skip it if
+ *   the notification was read in the inbox meanwhile. Read on the receiver's
+ *   own wall clock (`usableZone`, the summary's three fallbacks). The drain
+ *   asks again at send (`src/jobs/outbox.ts`), so this is the common case
+ *   made cheap, not the guarantee.
  */
 
 export type EmitInput = {
@@ -103,11 +113,18 @@ export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Pr
   // receiver's emailLevel for THIS kind, and the global suppression list.
   const members = await tx.member.findMany({
     where: { tenantId, id: { in: targets } },
-    select: { id: true, user: { select: { email: true, locale: true } } },
+    select: { id: true, timezone: true, user: { select: { email: true, locale: true } } },
   });
   const prefs = await tx.notificationPreference.findMany({
     where: { tenantId, receiverType: "MEMBER", receiverId: { in: targets } },
-    select: { receiverId: true, emailLevel: true },
+    select: {
+      receiverId: true,
+      emailLevel: true,
+      quietHoursFrom: true,
+      quietHoursTo: true,
+      quietWeekends: true,
+      timezone: true,
+    },
   });
   // The schema default, restated here because "no row" and "a row with
   // the default" must answer identically — a member who has never
@@ -117,7 +134,7 @@ export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Pr
   );
   const emails = members
     .filter((m) => m.user.email && emailAllowed(levelOf.get(m.id) ?? "PARTICIPATING", input.kind))
-    .map((m) => ({ memberId: m.id, email: m.user.email.toLowerCase(), locale: m.user.locale ?? "en" }));
+    .map((m) => ({ memberId: m.id, email: m.user.email.toLowerCase(), locale: m.user.locale ?? "en", zone: m.timezone }));
   if (emails.length === 0) return;
 
   const suppressed = new Set(
@@ -128,21 +145,35 @@ export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Pr
       })
     ).map((s) => s.email),
   );
-  const sendAfter = new Date(Date.now() + (spec.email?.debounceMinutes ?? 0) * 60_000);
+  const base = new Date(Date.now() + (spec.email?.debounceMinutes ?? 0) * 60_000);
+  const prefOf = new Map(prefs.map((p) => [p.receiverId, p]));
+  // The workspace's zone only when someone here keeps quiet time — every
+  // other emit stays the reads it was (in SEQUENCE: this transaction's one
+  // connection, AGENTS.md's standing trap).
+  const quiet = new Map(emails.map((e) => [e.memberId, quietHoursOf(prefOf.get(e.memberId))]));
+  const workspaceZone = [...quiet.values()].some(hasQuietTime) ? (await readPreferences(tx, tenantId)).timezone : null;
   const outbox = emails
     .filter((e) => !suppressed.has(e.email) && byMember.has(e.memberId))
-    .map((e) => ({
-      tenantId,
-      idempotencyKey: `${input.kind}:${byMember.get(e.memberId)!}`,
-      receiverType: "MEMBER" as const,
-      receiverId: e.memberId,
-      toEmail: e.email,
-      kind: input.kind,
-      locale: e.locale === "sv" ? "sv" : "en",
-      params: input.params ?? undefined,
-      notificationIds: [byMember.get(e.memberId)!],
-      sendAfter,
-    }));
+    .map((e) => {
+      const q = quiet.get(e.memberId)!;
+      const release =
+        workspaceZone !== null && hasQuietTime(q)
+          ? quietRelease(base, q, usableZone(prefOf.get(e.memberId)?.timezone, e.zone, workspaceZone))
+          : null;
+      return {
+        tenantId,
+        idempotencyKey: `${input.kind}:${byMember.get(e.memberId)!}`,
+        receiverType: "MEMBER" as const,
+        receiverId: e.memberId,
+        toEmail: e.email,
+        kind: input.kind,
+        locale: e.locale === "sv" ? "sv" : "en",
+        params: input.params ?? undefined,
+        notificationIds: [byMember.get(e.memberId)!],
+        sendAfter: release ?? base,
+        quietHeld: release !== null,
+      };
+    });
   if (outbox.length > 0) {
     await tx.emailOutbox.createMany({ data: outbox, skipDuplicates: true });
   }

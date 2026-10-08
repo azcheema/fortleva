@@ -40,6 +40,7 @@
  *        tsx e2e/fixtures/seed-cli.ts flag-login <tenantId> <loginName>
  *        tsx e2e/fixtures/seed-cli.ts reset-portal-sections <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-update-schedule <tenantId> <projectKey>
+ *        tsx e2e/fixtures/seed-cli.ts reset-update-layouts <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts client-summary-link <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -154,6 +155,9 @@ const DBTEST_PREFIXES = [
   "inbx-",
   "iso-a-",
   "iso-b-",
+  // Phase 5 slice 105, the progress-update layouts —
+  // `src/modules/work/update-templates.dbtest.ts`, `setupTenant("layout")` twice.
+  "layout-",
   // Phase 5 slice 103, real email sending — `src/jobs/mail-feedback.dbtest.ts`,
   // `setupTenant("mailfb")` (the outbox's blocked-at-send branch).
   "mailfb-",
@@ -209,6 +213,9 @@ const DBTEST_PREFIXES = [
   "pvas-",
   "pview-",
   "pwork-",
+  // Phase 5 slice 105, quiet hours — `src/notify/quiet-hours.dbtest.ts`,
+  // `setupTenant("quiet")`.
+  "quiet-",
   // Phase 3V slice 89, the renewal reminders — `src/modules/vault/reminders.dbtest.ts`,
   // `setupTenant("remind")`.
   "remind-",
@@ -1862,6 +1869,9 @@ async function removeTenant(
   await db.contactVerification.deleteMany({ where: { value: { in: contactIds } } });
   await db.contact.deleteMany({ where: { tenantId } });
   await db.project.deleteMany({ where: { tenantId } });
+  // The update layouts (slice 105): after the projects, whose pick of one
+  // RESTRICTs it, and before the tenant, which they RESTRICT.
+  await db.projectUpdateTemplate.deleteMany({ where: { tenantId } });
   await db.client.deleteMany({ where: { tenantId } });
   await db.memberInvite.deleteMany({ where: { tenantId } });
   await db.memberRole.deleteMany({ where: { tenantId } });
@@ -2396,6 +2406,23 @@ async function resetUpdateSchedule(tenantId: string, projectKey: string): Promis
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"reset":${count}}
 `);
+}
+
+/**
+ * Put the workspace's progress-update layouts back to none (Phase 5 slice
+ * 105): every project's pick cleared, then every layout deleted — so new
+ * updates start from Fortleva standard again, which `updates.spec.ts` and the
+ * visual sweep expect. `update-layouts.spec.ts` calls it before and after
+ * each test, pass or fail. Throwaway tenant only, like every write here.
+ */
+async function resetUpdateLayouts(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  await db.project.updateMany({ where: { tenantId, updateTemplateId: { not: null } }, data: { updateTemplateId: null } });
+  const { count } = await db.projectUpdateTemplate.deleteMany({ where: { tenantId } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"deleted":${count}}\n`);
 }
 
 /**
@@ -3174,6 +3201,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-sealed-asks") return resetSealedAsks(argument!);
   if (command === "reset-portal-sections") return resetPortalSections(argument!);
   if (command === "reset-update-schedule") return resetUpdateSchedule(argument!, process.argv[4]!);
+  if (command === "reset-update-layouts") return resetUpdateLayouts(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "age-vault-factor") return ageVaultFactor(argument!, process.argv[4]!);

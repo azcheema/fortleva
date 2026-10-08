@@ -8,6 +8,7 @@ import { requireTenantContext } from "@/members/tenant-context";
 import { isEmailLevel } from "@/notify/catalog";
 import { isDigestCadence } from "@/notify/digest";
 import { isDigestHour, isDigestWeekday, updateOwnPreferences } from "@/notify/preferences";
+import { isQuietHour } from "@/notify/quiet-hours";
 
 /** A whole number from the form, or null — never NaN, never "". */
 const numberField = (fd: FormData, name: string): number | null => {
@@ -35,6 +36,8 @@ export async function updateNotificationPreferencesAction(
   const cadence = field(formData, "digestCadence");
   const hour = numberField(formData, "digestHour");
   const weekday = numberField(formData, "digestWeekday");
+  const quietFrom = numberField(formData, "quietHoursFrom");
+  const quietTo = numberField(formData, "quietHoursTo");
   return runForm("/settings/notifications", async () => {
     await updateOwnPreferences(
       { tenantId: membership.tenantId, actor },
@@ -53,6 +56,22 @@ export async function updateNotificationPreferencesAction(
         ...(has(formData, "weeklyTimeReminderPresent")
           ? { weeklyTimeReminder: field(formData, "weeklyTimeReminder") === "on" }
           : {}),
+        // Quiet hours (slice 105, C73 (f)), the same marker pattern. UNTICKED
+        // IS OFF, whatever hours the form also carried: at the change that
+        // switches them off the two selects are still on the page and post
+        // their values, which must not switch them straight back on (the
+        // design review's M1). Ticked with no hours — the change that
+        // switches them on, before the selects exist — keeps the saved hours,
+        // else 19:00–07:00 (the service's rule).
+        ...(has(formData, "quietHoursPresent")
+          ? {
+              quietHours:
+                field(formData, "quietHours") === "on"
+                  ? { ...(isQuietHour(quietFrom) ? { from: quietFrom } : {}), ...(isQuietHour(quietTo) ? { to: quietTo } : {}) }
+                  : null,
+            }
+          : {}),
+        ...(has(formData, "quietWeekendsPresent") ? { quietWeekends: field(formData, "quietWeekends") === "on" } : {}),
       },
     );
     revalidatePath("/settings/notifications");

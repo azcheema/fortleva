@@ -276,6 +276,16 @@ const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "
   currencyDefault: "SEK",
 };
 
+/**
+ * The workspace's time zone from its stored `ui.timezone` value — the same
+ * reading `materializePreferences` makes (an unknown or missing value is the
+ * default), for a reader that has only that one row: the outbox drain, which
+ * runs under the platform principal across tenants and must not read every
+ * tenant's preferences to find one (slice 105's design review: a raw read fell
+ * back to UTC while `notify.emit`, through `readPreferences`, got Stockholm).
+ */
+export const workspaceTimezoneOf = (stored: unknown): Timezone => (isTimezone(stored) ? stored : DEFAULTS.timezone);
+
 /** Parse the stored TenantPreference rows into the typed view (unknown values fall back). */
 export function materializePreferences(
   defaultLocale: string,

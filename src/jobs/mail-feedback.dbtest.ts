@@ -288,7 +288,7 @@ describe("the outbox at send: a row blocked meanwhile, a transport that is down,
     // a slow round trip, would leave the same rows — so the margin must be
     // what refuses it, with time to spare for nothing else.
     const out = await drainOutbox(50, { tenantId: f.tenantId, sendUntil: Date.now() + 14_000 });
-    expect(out).toEqual({ sent: 0, skipped: 0, suppressed: 0, failed: 0, dead: 0 });
+    expect(out).toEqual({ sent: 0, skipped: 0, suppressed: 0, failed: 0, dead: 0, held: 0 });
     expect((await statusOf(ids)).every((r) => r.status === "QUEUED" && r.lockedAt === null)).toBe(true);
     expect(handed).toEqual([]);
     await f.platform.emailOutbox.deleteMany({ where: { tenantId: f.tenantId } });

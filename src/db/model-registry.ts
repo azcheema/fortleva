@@ -69,6 +69,8 @@ export const MODEL_CLASSES = {
     "projectUpdateInternalSnapshot",
     // Phase 5 slice 102 — the progress-update reminders' dedupe:
     "projectUpdateReminderSent",
+    // Phase 5 slice 105 — the workspace's progress-update layouts:
+    "projectUpdateTemplate",
     // Phase 3V — the vault (DATA_MODEL.md §6.17):
     "credentialItem",
     "credentialSecret",
@@ -172,6 +174,10 @@ export const RLS_CLASSES = {
     // id, a day, a step): staff bookkeeping no contact has any business
     // reading.
     "projectUpdateReminderSent",
+    // Phase 5 slice 105 — the workspace's progress-update LAYOUTS (C73): a
+    // workspace setting (headings and numbers a new update opens with). A
+    // client reads the posts written from one, never the layout itself.
+    "projectUpdateTemplate",
     // Phase 3V — a credential's SECRET and its history (DATA_MODEL.md
     // §6.17): the ciphertext twin of the class-B metadata row, so a
     // contact principal gets zero rows here even for a CLIENT_VISIBLE item.

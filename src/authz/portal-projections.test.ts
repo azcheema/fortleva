@@ -502,6 +502,8 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "updateCadence",
         "updateWeekday",
         "updateScheduleSince",
+        "updateTemplateId",
+        "updateTemplate",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -676,6 +678,11 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   "updateCadence",
   "updateWeekday",
   "updateScheduleSince",
+  // Phase 5 slice 105 (C73 (c)): the progress-update LAYOUT a project picked —
+  // how the agency lays its posts out. The client reads the posts, never the
+  // choice.
+  "updateTemplateId",
+  "updateTemplate",
 ]);
 
 /**

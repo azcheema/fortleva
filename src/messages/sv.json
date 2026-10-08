@@ -97,7 +97,8 @@
     "search": "Sök",
     "vault": "Valv",
     "renewals": "Förnyelser",
-    "vaultSettings": "Valv"
+    "vaultSettings": "Valv",
+    "updateSettings": "Projektuppdateringar"
   },
   "shell": {
     "palette": {
@@ -1220,6 +1221,17 @@
           "NONE": "Inget – ingen e-post alls"
         }
       },
+      "quiet": {
+        "title": "Tysta timmar",
+        "description": "Timmar då Fortleva inte mejlar dig om arbetet.",
+        "toggle": "Vänta med jobbmejl under tysta timmar",
+        "fromLabel": "Från",
+        "toLabel": "Till",
+        "zoneHint": "I din tidszon: {zone}.",
+        "weekends": "Hela helgen (lördag och söndag)",
+        "note": "Jobbmejl väntar tills dina tysta timmar är slut, och mejl om sådant du redan har läst i inkorgen skickas inte alls. Inkorgen fylls på som vanligt. Inloggningskoder, lösenordsåterställningar och säkerhetsvarningar kommer alltid direkt; din sammanfattning och veckopåminnelsen om tid kommer på de tider du har valt.",
+        "summaryInside": "Din sammanfattning är inställd på {hour}, under din tysta tid. Den skickas ändå då."
+      },
       "summary": {
         "title": "Sammanfattning via e-post",
         "description": "Ett mejl som räknar det som är nytt och fortfarande oläst i din inkorg sedan förra sammanfattningen. Det nämner inga kunder, projekt eller uppgifter – bara hur många, och en länk.",
@@ -1298,6 +1310,68 @@
         "confirmSubmit": "Stäng av",
         "switchedOn": "Kunder kan nu skicka inloggningar till er.",
         "switchedOff": "Kunder kan inte längre skicka inloggningar. Det de har skickat finns kvar i valvet."
+      }
+    },
+    "updates": {
+      "title": "Projektuppdateringar",
+      "description": "Mallar avgör vilka rubriker en ny projektuppdatering börjar med, i vilken ordning, och vilka siffror som är ikryssade från början. En rubrik som lämnas tom skickas aldrig till kunden.",
+      "noPermission": "Du har inte behörighet att se arbetsytans inställningar.",
+      "saved": "Mallen sparades.",
+      "created": "Mallen skapades.",
+      "deleted": "Mallen togs bort.",
+      "defaultChanged": "Standardmallen ändrades.",
+      "failed": "Det sparades inte. Försök igen.",
+      "default": {
+        "title": "Standardmall",
+        "label": "Nya uppdateringar börjar från",
+        "hint": "Gäller alla projekt som inte har valt en egen mall. Ett projekt väljer mall på sin översikt, bredvid uppdateringsdagen.",
+        "standard": "Fortlevas standard"
+      },
+      "layouts": {
+        "title": "Mallar",
+        "new": "Ny mall",
+        "empty": "Inga mallar än",
+        "emptyBody": "Nya uppdateringar börjar med Fortlevas standardmall: Sammanfattning, Klart, Nästa steg, Hinder och Beslut som behövs, med alla siffror. Skapa en mall för att ändra rubrikerna, deras ordning eller siffrorna.",
+        "columns": {
+          "name": "Namn",
+          "headings": "Rubriker",
+          "numbers": "Siffror",
+          "projects": "Projekt"
+        },
+        "defaultBadge": "Standard",
+        "noNumbers": "Inga",
+        "projectCount": "{count, plural, one {# projekt} other {# projekt}}",
+        "actions": {
+          "edit": "Redigera…",
+          "makeDefault": "Gör till standard",
+          "delete": "Ta bort"
+        },
+        "deleteQuestion": "Ta bort ”{name}”? Utkast och publicerade uppdateringar behåller sina rubriker.",
+        "deleteQuestionUsed": "Ta bort ”{name}”? {count, plural, one {# projekt använder den och går} other {# projekt använder den och går}} tillbaka till standardmallen. Utkast och publicerade uppdateringar behåller sina rubriker."
+      },
+      "dialog": {
+        "newTitle": "Ny mall",
+        "editTitle": "Redigera mall",
+        "description": "Nya uppdateringar öppnas med de här rubrikerna, i den här ordningen. En rubrik som lämnas tom skickas aldrig till kunden.",
+        "name": "Namn",
+        "namePlaceholder": "Veckoavstämning",
+        "headings": "Rubriker",
+        "doneAlways": "Alltid med: det som blev klart fylls i här.",
+        "ownHeadingNumbered": "Din rubrik {n}",
+        "ownHeadingPlaceholder": "SEO den här månaden",
+        "untitled": "din rubrik",
+        "moveUp": "Flytta upp {heading}",
+        "moveDown": "Flytta ned {heading}",
+        "remove": "Ta bort {heading}",
+        "add": "Lägg till en egen rubrik",
+        "addLimit": "Högst {max} egna.",
+        "numbers": "Siffror som är ikryssade från början",
+        "numbersHint": "Den som skriver uppdateringen kan fortfarande bocka i eller ur varje grupp.",
+        "save": "Spara mallen",
+        "create": "Skapa mallen",
+        "nameRequired": "Ge mallen ett namn.",
+        "titleRequired": "Ge var och en av dina egna rubriker ett namn.",
+        "titleTwice": "Två av dina rubriker har samma namn."
       }
     }
   },
@@ -1487,6 +1561,9 @@
     "SHARE_LINK_CLOSED": "Länken har redan öppnats eller återkallats.",
     "NOTHING_TO_EXPORT": "Det finns inga inloggningar att exportera där.",
     "EXPORT_TOO_LARGE": "Det är fler inloggningar än en fil rymmer. Exportera en kund i taget.",
+    "QUIET_HOURS_SAME": "Tysta timmar behöver en start och ett slut som skiljer sig åt.",
+    "LAYOUT_NAME_TAKEN": "Det finns redan en mall med det namnet.",
+    "LAYOUT_BUSY": "Någon ändrade mallarna i samma stund. Ladda om sidan och försök igen.",
     "SUBMISSION_RATE_LIMITED": "Du har skickat flera inloggningar på kort tid. Vänta en stund och försök igen.",
     "LOGIN_ASKS_OFF": "Kunder kan inte skicka inloggningar just nu, så de kan inte heller bli ombedda om en. Slå på ”Inloggningar som kunder skickar” under Inställningar → Valv.",
     "LOGIN_ASK_CONTACT": "Den personen kan inte bli ombedd om en inloggning. Det kan bara någon hos kunden som har tillgång till portalen.",
@@ -1877,6 +1954,9 @@
         "MONTHLY": "Månadsvis"
       },
       "updateWeekday": "Uppdateringsdag",
+      "updateLayout": "Uppdateringsmall",
+      "updateLayoutDefault": "Arbetsytans standard ({name})",
+      "updateLayoutStandard": "Fortlevas standard",
       "weekdays": {
         "mon": "Måndag",
         "tue": "Tisdag",
@@ -2826,10 +2906,12 @@
           "DONE": "Vad teamet blev klart med. Hämta rader från panelen till höger.",
           "NEXT": "Vad som händer härnäst, och ungefär när.",
           "BLOCKERS": "Vad som står i vägen.",
-          "DECISIONS_NEEDED": "Vad du behöver från kunden, och när."
+          "DECISIONS_NEEDED": "Vad du behöver från kunden, och när.",
+          "CUSTOM": "Skriv här."
         },
         "sectionEditor": "{section} – text",
         "toolbar": "Formatering för {section}",
+        "tooManySections": "En uppdatering rymmer högst {max} rubriker med text. Töm en innan du sparar.",
         "metricsTitle": "Siffror kunden får se",
         "metricsHint": "Fryses i samma stund som du publicerar. Bocka ur en grupp för att utelämna den i det här inlägget.",
         "include": {

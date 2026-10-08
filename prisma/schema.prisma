@@ -309,6 +309,7 @@ model Tenant {
   projectUpdates                 ProjectUpdate[]
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   projectUpdateReminders         ProjectUpdateReminderSent[]
+  projectUpdateTemplates         ProjectUpdateTemplate[]
   workTypes                  WorkType[]
   // Phase 3V — the vault (§6.17):
   credentialItems    CredentialItem[]
@@ -979,6 +980,10 @@ model Project {
   autoStartParent    Boolean          @default(false) @map("auto_start_parent")
   autoCompleteParent Boolean          @default(false) @map("auto_complete_parent")
   defaultServiceId   String?          @map("default_service_id") // 2T (D4): seeds TimeEntry.serviceId; the per-entry picker overrides
+  // Phase 5 slice 105 (founder decision C73 (c)): the layout this project's
+  // NEW progress updates start from; NULL = the workspace's default layout,
+  // else Fortleva standard. INTERNAL-ONLY (never in a portal projection).
+  updateTemplateId   String?          @map("update_template_id")
   archivedAt         DateTime?        @map("archived_at") @db.Timestamptz(6)
   createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1007,6 +1012,9 @@ model Project {
   updates        ProjectUpdate[]
   // Phase 5 slice 102:
   updateReminders ProjectUpdateReminderSent[]
+  // Phase 5 slice 105 — RESTRICT, as `defaultService`: deleting a layout
+  // first points its projects back at the default (update-templates.ts).
+  updateTemplate ProjectUpdateTemplate? @relation(fields: [tenantId, updateTemplateId], references: [tenantId, id], onDelete: Restrict)
   // Phase 3V:
   credentials    CredentialItem[]
   assets         ClientAsset[]
@@ -1016,6 +1024,7 @@ model Project {
   @@unique([tenantId, key])
   @@index([tenantId, clientId, status])
   @@index([tenantId, status])
+  @@index([tenantId, updateTemplateId])
   @@map("project")
 }
 
@@ -1250,6 +1259,39 @@ model ProjectUpdateReminderSent {
   @@id([tenantId, projectId, dueOn, step])
   @@index([tenantId, dueOn]) // the sweep
   @@map("project_update_reminder_sent")
+}
+
+/// ProjectUpdateTemplate — class A, a workspace's named LAYOUT for new
+/// progress updates (Phase 5 slice 105; founder decision C73 (c), (d), (g);
+/// DATA_MODEL.md §6.16). `sections` is the ordered list of headings a new
+/// update opens with — `[{ "key": "SUMMARY" } | { "key": "CUSTOM", "title":
+/// "…" }, …]`: each of the five fixed keys at most once, DONE always (C73
+/// (g)), at most three CUSTOM with distinct titles, eight in all;
+/// `metricsIncluded` is which numbers start ticked (`{ tasks, milestones,
+/// versions, requests, hours }`). The app validates both on write and on
+/// read (`src/modules/work/update-layout.ts`); the CHECKs hold the outline.
+/// At most one per tenant `isDefault` (partial UNIQUE); with none, the
+/// default is Fortleva standard. Names unique per tenant, case-insensitively
+/// (an expression UNIQUE in the migration). Edited under `settings:edit`.
+/// A layout is copied into an update when it is written: editing or
+/// deleting it never changes a draft or a post.
+/// scope=tenant  rls=A (portal_deny)  ret=with the tenant  enc=none
+/// audit: project_update_template.created|updated|deleted|default_changed
+model ProjectUpdateTemplate {
+  id              String   @id @default(uuid(7))
+  tenantId        String   @map("tenant_id")
+  name            String
+  sections        Json
+  metricsIncluded Json     @map("metrics_included")
+  isDefault       Boolean  @default(false) @map("is_default")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  projects Project[]
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@map("project_update_template")
 }
 
 /// What the client buys — a RECORD with renewal dates, not a billing
@@ -2096,8 +2138,14 @@ model NotificationPreference {
   digestCadence        DigestCadence @default(DAILY) @map("digest_cadence")
   digestHour           Int           @default(8) @map("digest_hour")
   digestWeekday        Int?          @map("digest_weekday") // 1 = Monday (WEEKLY)
+  // Phase 5 slice 105 (founder decision C73 (e), (f)): QUIET HOURS — whole
+  // local hours, `from` inclusive, `to` exclusive (19 → 7 spans midnight);
+  // both set and different, or neither (CHECK); `quietWeekends` adds all of
+  // Saturday and Sunday. Work emails wait until they end
+  // (src/notify/quiet-hours.ts); nothing else does.
   quietHoursFrom       Int?          @map("quiet_hours_from") // 0-23 local
   quietHoursTo         Int?          @map("quiet_hours_to")
+  quietWeekends        Boolean       @default(false) @map("quiet_weekends")
   timezone             String?
   perKind              Json?         @map("per_kind") // { "<kind>": {email, inApp} }
   unsubscribeTokenHash String?       @map("unsubscribe_token_hash") // RFC 8058 (digests, Phase 5)
@@ -2137,7 +2185,11 @@ model EmailOutbox {
   params          Json? // nulled at 90 d
   notificationIds String[]          @default([]) @map("notification_ids")
   configSet       String?           @map("config_set") // SES configuration set
-  sendAfter       DateTime          @default(now()) @map("send_after") @db.Timestamptz(6) // debounce / digest scheduling
+  sendAfter       DateTime          @default(now()) @map("send_after") @db.Timestamptz(6) // debounce / digest scheduling / quiet hours
+  // Phase 5 slice 105 (C73 (e), (h)): this work email was held by its
+  // receiver's quiet hours — at its release it is SKIPPED when every
+  // notification behind it was read (or is snoozed) in the inbox meanwhile.
+  quietHeld       Boolean           @default(false) @map("quiet_held")
   status          EmailOutboxStatus @default(QUEUED)
   attempts        Int               @default(0)
   lastError       String?           @map("last_error")

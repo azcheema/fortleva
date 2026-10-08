@@ -1,7 +1,7 @@
 import { appUrl } from "@/config";
 import { withPlatform, withTenant } from "@/db";
 import { isRecipientRefusal, send, type SendOutcome } from "@/mailer";
-import { isNotificationKind, NOTIFICATION_KINDS } from "@/notify/catalog";
+import { isEmailLevel, isNotificationKind, NOTIFICATION_KINDS } from "@/notify/catalog";
 import { CONTACT_DIGEST_MAIL, renderContactDigest } from "@/notify/client-digest";
 import { clientSummaryToken } from "@/notify/client-summary-token";
 import { synthesiseContactPrincipal } from "@/portal";
@@ -14,15 +14,21 @@ import {
   DIGEST_SENDING_TENANT_STATUSES,
   MEMBER_DIGEST_MAIL,
 } from "@/notify/digest";
+import { quietHoursOf } from "@/notify/quiet-hours";
 import { MAIL_WITHOUT_REPLY_TO, resolveReplyAddress } from "@/notify/reply-address-resolve";
 import { isEmailTemplate, renderEmail } from "@/notify/templates";
-import { MAIL_PREF_KEYS } from "@/preferences/config";
+import { isSeen, isWorkMail, reminderOvertaken, workMailVerdict, type WorkMailReceiver } from "@/notify/work-mail";
+import { usableZone } from "@/notify/zone";
+import { MAIL_PREF_KEYS, PREF_KEYS, workspaceTimezoneOf } from "@/preferences/config";
 
 /**
  * The outbox drain (ARC-21; §6.18): claims due rows with FOR UPDATE SKIP
  * LOCKED under the platform system principal, resolves each one INSIDE
- * the claim transaction (unknown kind → DEAD, debounce cancelled → SKIPPED,
- * suppressed address → SUPPRESSED, template rendered), then sends each
+ * the claim transaction (unknown kind → DEAD, a work email no longer wanted
+ * or seen while its receiver's quiet hours held it → SKIPPED, one inside
+ * their quiet hours now → back to the queue until they end (slice 105,
+ * `src/notify/work-mail.ts`), debounce cancelled → SKIPPED, suppressed
+ * address → SUPPRESSED, template rendered), then sends each
  * remaining message OUTSIDE any database transaction and finalises it in
  * its own short transaction. Invoked by a Vercel Cron every 2 minutes
  * (Pro) later; today by after() kicks and the authenticated
@@ -77,6 +83,8 @@ type ClaimedRow = {
   attempts: number;
   created_at: Date;
   send_after: Date;
+  /** Held by the receiver's quiet hours at least once (slice 105). */
+  quiet_held: boolean;
   /**
    * The claim's own lease stamp, AS POSTGRES WROTE IT (`locked_at::text`) —
    * the same `now()` for every row of one claim. Text, never a JS `Date`: a
@@ -129,8 +137,10 @@ export async function drainOutbox(
      */
     readonly sendUntil?: number;
   },
-): Promise<{ sent: number; skipped: number; suppressed: number; failed: number; dead: number }> {
-  const out = { sent: 0, skipped: 0, suppressed: 0, failed: 0, dead: 0 };
+): Promise<{ sent: number; skipped: number; suppressed: number; failed: number; dead: number; held: number }> {
+  // `held`: claimed inside its receiver's quiet hours and put back until they
+  // end (slice 105) — claimed, so the jobs route counts it towards a full batch.
+  const out = { sent: 0, skipped: 0, suppressed: 0, failed: 0, dead: 0, held: 0 };
   const only = opts?.tenantId;
   // The lease starts at the claim (`locked_at = now()` in it); every budget
   // below is measured from just before it, so it can only err early.
@@ -159,7 +169,7 @@ export async function drainOutbox(
           LIMIT ${limit}
           FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, tenant_id, receiver_type, receiver_id, kind, locale, to_email, params, notification_ids, attempts, created_at, send_after, locked_at::text AS lease
+        RETURNING id, tenant_id, receiver_type, receiver_id, kind, locale, to_email, params, notification_ids, attempts, created_at, send_after, quiet_held, locked_at::text AS lease
       )
       SELECT * FROM claimed ORDER BY send_after, id`
         : await tx.$queryRaw<ClaimedRow[]>`
@@ -173,7 +183,7 @@ export async function drainOutbox(
           LIMIT ${limit}
           FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, tenant_id, receiver_type, receiver_id, kind, locale, to_email, params, notification_ids, attempts, created_at, send_after, locked_at::text AS lease
+        RETURNING id, tenant_id, receiver_type, receiver_id, kind, locale, to_email, params, notification_ids, attempts, created_at, send_after, quiet_held, locked_at::text AS lease
       )
       SELECT * FROM claimed ORDER BY send_after, id`;
       const toSend: Prepared[] = [];
@@ -251,6 +261,141 @@ export async function drainOutbox(
           if (pref.value === false) clientSummaryOff.add(pref.tenantId);
         }
       }
+      // WORK EMAIL (slice 105, founder decision C73; src/notify/work-mail.ts):
+      // each receiver's standing, email level, quiet hours and zone; what the
+      // held rows point at, and whether it has been seen; and, for a held
+      // "update due" reminder, whether a newer reminder or a post has overtaken it —
+      // read ONCE per claim, in sequence, keyed by tenant (the ids are uuids,
+      // the key is the belt). The workspace's zone is its `ui.timezone` row
+      // read the way `materializePreferences` reads it (`workspaceTimezoneOf`),
+      // never a tenant-less preference read: this transaction is the
+      // platform's and sees every tenant (the design review's high).
+      const claimNow = new Date();
+      const workRows = claimed.filter((r) => r.receiver_type === "MEMBER" && isWorkMail(r.kind));
+      const workReceivers = new Map<string, WorkMailReceiver>();
+      const workspaceZones = new Map<string, string>();
+      const unseen = new Set<string>();
+      const overtaken = new Set<string>();
+      if (workRows.length > 0) {
+        const ids = [...new Set(workRows.map((r) => r.receiver_id))];
+        const tenantIds = [...new Set(workRows.map((r) => r.tenant_id))];
+        for (const z of await tx.tenantPreference.findMany({
+          where: { tenantId: { in: tenantIds }, key: PREF_KEYS.timezone },
+          select: { tenantId: true, value: true },
+        })) {
+          workspaceZones.set(z.tenantId, workspaceTimezoneOf(z.value));
+        }
+        const zoneOfTenant = (tenantId: string): string => workspaceZones.get(tenantId) ?? workspaceTimezoneOf(undefined);
+        const prefOf = new Map<
+          string,
+          { emailLevel: string; quietHoursFrom: number | null; quietHoursTo: number | null; quietWeekends: boolean; timezone: string | null }
+        >();
+        for (const p of await tx.notificationPreference.findMany({
+          where: { receiverType: "MEMBER", receiverId: { in: ids }, tenantId: { in: tenantIds } },
+          select: {
+            tenantId: true,
+            receiverId: true,
+            emailLevel: true,
+            quietHoursFrom: true,
+            quietHoursTo: true,
+            quietWeekends: true,
+            timezone: true,
+          },
+        })) {
+          prefOf.set(`${p.tenantId}:${p.receiverId}`, p);
+        }
+        for (const m of await tx.member.findMany({
+          // The tenant filter is a second belt beside the tenant-keyed maps
+          // (the security review's nit): this transaction sees every tenant.
+          where: { id: { in: ids }, tenantId: { in: tenantIds } },
+          select: {
+            id: true,
+            tenantId: true,
+            status: true,
+            timezone: true,
+            tenant: { select: { status: true } },
+            user: { select: { email: true } },
+          },
+        })) {
+          const pref = prefOf.get(`${m.tenantId}:${m.id}`);
+          workReceivers.set(`${m.tenantId}:${m.id}`, {
+            memberStatus: m.status,
+            tenantStatus: m.tenant.status,
+            // No row is the schema default (`emit`'s reading).
+            emailLevel: isEmailLevel(pref?.emailLevel) ? pref.emailLevel : "PARTICIPATING",
+            quiet: quietHoursOf(pref),
+            zone: usableZone(pref?.timezone, m.timezone, zoneOfTenant(m.tenantId)),
+            email: (m.user.email ?? "").toLowerCase(),
+          });
+        }
+        const held = workRows.filter((r) => r.quiet_held && r.notification_ids.length > 0);
+        if (held.length > 0) {
+          const notes = await tx.notification.findMany({
+            where: { id: { in: [...new Set(held.flatMap((r) => r.notification_ids))] }, tenantId: { in: tenantIds } },
+            select: { id: true, tenantId: true, entityId: true, readAt: true, archivedAt: true, snoozedTill: true },
+          });
+          const noteOf = new Map(notes.map((n) => [`${n.tenantId}:${n.id}`, n]));
+          for (const n of notes) if (!isSeen(n, claimNow)) unseen.add(`${n.tenantId}:${n.id}`);
+          // A held "update due" reminder's project (its notification's
+          // entity); the newest post since that counts for it — PUBLISHED,
+          // and the client's to see while the portal is on (C70 (g),
+          // `lastCountingPostAt`); and any NEWER reminder for that project to
+          // the same member (the code review's L4: newer, never "another day").
+          const dueRows = held.filter((r) => r.kind === "project_update.due");
+          const projectOfRow = new Map<string, string>();
+          for (const r of dueRows) {
+            const n = noteOf.get(`${r.tenant_id}:${r.notification_ids[0]}`);
+            if (n) projectOfRow.set(r.id, n.entityId);
+          }
+          if (projectOfRow.size > 0) {
+            const projectIds = [...new Set(projectOfRow.values())];
+            const portalOn = new Map(
+              (
+                await tx.project.findMany({
+                  where: { id: { in: projectIds }, tenantId: { in: tenantIds } },
+                  select: { id: true, tenantId: true, portalEnabled: true },
+                })
+              ).map((p) => [`${p.tenantId}:${p.id}`, p.portalEnabled]),
+            );
+            const earliest = new Date(Math.min(...dueRows.map((r) => r.created_at.getTime())));
+            const posts = await tx.projectUpdate.findMany({
+              where: { projectId: { in: projectIds }, tenantId: { in: tenantIds }, status: "PUBLISHED", publishedAt: { gt: earliest } },
+              select: { tenantId: true, projectId: true, visibility: true, publishedAt: true },
+            });
+            const later = await tx.notification.findMany({
+              where: {
+                tenantId: { in: tenantIds },
+                kind: "project_update.due",
+                receiverType: "MEMBER",
+                receiverId: { in: [...new Set(dueRows.map((r) => r.receiver_id))] },
+                entityId: { in: projectIds },
+                createdAt: { gt: earliest },
+              },
+              select: { id: true, tenantId: true, receiverId: true, entityId: true, createdAt: true },
+            });
+            for (const r of dueRows) {
+              const projectId = projectOfRow.get(r.id);
+              if (projectId === undefined) continue;
+              const shared = portalOn.get(`${r.tenant_id}:${projectId}`) ?? false;
+              let last: Date | null = null;
+              for (const p of posts) {
+                if (p.tenantId !== r.tenant_id || p.projectId !== projectId || p.publishedAt === null) continue;
+                if (shared && p.visibility !== "CLIENT_VISIBLE") continue;
+                if (last === null || p.publishedAt > last) last = p.publishedAt;
+              }
+              const newer = later.some(
+                (n) =>
+                  n.tenantId === r.tenant_id &&
+                  n.receiverId === r.receiver_id &&
+                  n.entityId === projectId &&
+                  n.createdAt.getTime() > r.created_at.getTime() &&
+                  !r.notification_ids.includes(n.id),
+              );
+              if (reminderOvertaken(r.created_at, last, newer)) overtaken.add(r.id);
+            }
+          }
+        }
+      }
       for (const row of claimed) {
         // TEMPLATE key, not notification kind (see notify/templates.ts):
         // outbox rows exist that no fan-out produced — the 2T weekly
@@ -261,6 +406,38 @@ export async function drainOutbox(
           continue;
         }
         const kind = row.kind;
+        if (row.receiver_type === "MEMBER" && isWorkMail(kind)) {
+          const verdict = workMailVerdict(
+            {
+              kind,
+              toEmail: row.to_email,
+              quietHeld: row.quiet_held,
+              notificationCount: row.notification_ids.length,
+              unseenCount: row.notification_ids.filter((id) => unseen.has(`${row.tenant_id}:${id}`)).length,
+              overtaken: overtaken.has(row.id),
+            },
+            workReceivers.get(`${row.tenant_id}:${row.receiver_id}`),
+            claimNow,
+          );
+          if (verdict.action === "hold") {
+            await tx.emailOutbox.update({
+              where: { id: row.id },
+              data: { status: "QUEUED", sendAfter: verdict.until, quietHeld: true, lockedAt: null },
+              select: { id: true },
+            });
+            out.held += 1;
+            continue;
+          }
+          if (verdict.action === "skip") {
+            await tx.emailOutbox.update({
+              where: { id: row.id },
+              data: { status: "SKIPPED", lockedAt: null, lastError: verdict.why },
+              select: { id: true },
+            });
+            out.skipped += 1;
+            continue;
+          }
+        }
         // Debounce cancellation: an assignment read within the window is
         // SKIPPED, not sent (§6.18). Only a fan-out kind has one — a row
         // with no notification behind it has nothing that could be read.

@@ -94,6 +94,10 @@ export async function setupTenant(label: string) {
     // tenant too — gone with their project, but a suite that leaves its
     // projects would otherwise fail here on this table first.
     await platform.projectUpdateReminderSent.deleteMany({ where: { tenantId } });
+    // The update LAYOUTS (Phase 5 slice 105) RESTRICT the tenant, and a
+    // project that picked one RESTRICTs the layout — so this relies on the
+    // suite having deleted its projects, as the tenant's own delete does.
+    await platform.projectUpdateTemplate.deleteMany({ where: { tenantId } });
     await platform.memberInvite.deleteMany({ where: { tenantId } });
     await platform.memberRole.deleteMany({ where: { tenantId } });
     await platform.rolePermission.deleteMany({ where: { tenantId } });

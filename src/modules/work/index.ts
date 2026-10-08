@@ -231,6 +231,17 @@ export {
   type MetricsWindow,
   type PortalSnapshot,
 } from "./update-metrics";
+// Phase 5 slice 105 — the workspace's progress-update LAYOUTS (C73). The
+// rules (`update-layout.ts`) are a leaf a client component imports directly.
+export {
+  createUpdateTemplate,
+  deleteUpdateTemplate,
+  listUpdateTemplates,
+  setDefaultUpdateTemplate,
+  updateUpdateTemplate,
+  type UpdateTemplateInput,
+  type UpdateTemplateRow,
+} from "./update-templates";
 // Phase 3 — the brokered writes (`portal-writes.ts`: authorize under
 // the contact's own principal, write under a system one). The row
 // shaping they delegate to (`requests.ts`) is deliberately NOT on the

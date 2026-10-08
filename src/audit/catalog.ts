@@ -494,6 +494,15 @@ export const AUDIT_EVENTS = {
   // step (0 the due day, 1 and 2 the working days after) and how many
   // received it — never a name.
   "project_update.reminder_sent": TENANT,
+  // Phase 5 slice 105 (C73 (c), (d), (g)): the workspace's progress-update
+  // LAYOUTS, edited under `settings:edit`. Target: the layout. Metadata:
+  // field names on an edit; on a delete, how many projects went back to the
+  // default; on a default change, the layout ids before and after (null =
+  // Fortleva standard). Never a heading's text.
+  "project_update_template.created": TENANT,
+  "project_update_template.updated": TENANT,
+  "project_update_template.deleted": TENANT,
+  "project_update_template.default_changed": TENANT,
   // D5 work types
   "work_type.created": TENANT,
   "work_type.updated": TENANT,

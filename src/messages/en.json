@@ -97,7 +97,8 @@
     "search": "Search",
     "vault": "Vault",
     "renewals": "Renewals",
-    "vaultSettings": "Vault"
+    "vaultSettings": "Vault",
+    "updateSettings": "Progress updates"
   },
   "shell": {
     "palette": {
@@ -1220,6 +1221,17 @@
           "NONE": "Nothing — no email at all"
         }
       },
+      "quiet": {
+        "title": "Quiet hours",
+        "description": "Hours when Fortleva doesn't email you about work.",
+        "toggle": "Hold work emails during quiet hours",
+        "fromLabel": "From",
+        "toLabel": "Until",
+        "zoneHint": "In your time zone: {zone}.",
+        "weekends": "All weekend (Saturday and Sunday)",
+        "note": "Work emails wait until your quiet hours end, and any about something you've already read in your inbox aren't sent at all. Your inbox fills up as usual. Sign-in codes, password resets and security warnings always arrive at once; your summary email and weekly time reminder go at the times you chose.",
+        "summaryInside": "Your summary email is set for {hour}, during your quiet time. It still goes then."
+      },
       "summary": {
         "title": "Summary email",
         "description": "One email that counts what is new and still unread in your inbox since your last summary. It names no clients, projects or tasks — just how many, and a link.",
@@ -1298,6 +1310,68 @@
         "confirmSubmit": "Switch off",
         "switchedOn": "Clients can now send you logins.",
         "switchedOff": "Clients can no longer send logins. What they sent stays in the vault."
+      }
+    },
+    "updates": {
+      "title": "Progress updates",
+      "description": "Layouts decide which headings a new progress update starts with, in what order, and which numbers start ticked. A heading left empty is never sent to the client.",
+      "noPermission": "You don't have permission to view the workspace's settings.",
+      "saved": "Layout saved.",
+      "created": "Layout created.",
+      "deleted": "Layout deleted.",
+      "defaultChanged": "Default layout changed.",
+      "failed": "That didn't save. Try again.",
+      "default": {
+        "title": "Default layout",
+        "label": "New updates start from",
+        "hint": "Used by every project that hasn't picked its own layout. A project picks one on its Overview, beside its update day.",
+        "standard": "Fortleva standard"
+      },
+      "layouts": {
+        "title": "Layouts",
+        "new": "New layout",
+        "empty": "No layouts yet",
+        "emptyBody": "New updates start with Fortleva's standard layout: Summary, Done, Next, Blockers and Decisions needed, with every number. Make a layout to change the headings, their order or the numbers.",
+        "columns": {
+          "name": "Name",
+          "headings": "Headings",
+          "numbers": "Numbers",
+          "projects": "Projects"
+        },
+        "defaultBadge": "Default",
+        "noNumbers": "None",
+        "projectCount": "{count, plural, one {# project} other {# projects}}",
+        "actions": {
+          "edit": "Edit…",
+          "makeDefault": "Make default",
+          "delete": "Delete"
+        },
+        "deleteQuestion": "Delete “{name}”? Drafts and published updates keep their headings.",
+        "deleteQuestionUsed": "Delete “{name}”? {count, plural, one {# project uses it and goes} other {# projects use it and go}} back to the default layout. Drafts and published updates keep their headings."
+      },
+      "dialog": {
+        "newTitle": "New layout",
+        "editTitle": "Edit layout",
+        "description": "New updates open with these headings, in this order. A heading left empty is never sent to the client.",
+        "name": "Name",
+        "namePlaceholder": "Weekly check-in",
+        "headings": "Headings",
+        "doneAlways": "Always included: what got done fills it.",
+        "ownHeadingNumbered": "Your heading {n}",
+        "ownHeadingPlaceholder": "SEO this month",
+        "untitled": "your heading",
+        "moveUp": "Move {heading} up",
+        "moveDown": "Move {heading} down",
+        "remove": "Remove {heading}",
+        "add": "Add your own heading",
+        "addLimit": "Up to {max} of your own.",
+        "numbers": "Numbers ticked at the start",
+        "numbersHint": "Whoever writes the update can still tick or untick any group.",
+        "save": "Save layout",
+        "create": "Create layout",
+        "nameRequired": "Give the layout a name.",
+        "titleRequired": "Give each of your own headings a name.",
+        "titleTwice": "Two of your headings have the same name."
       }
     }
   },
@@ -1487,6 +1561,9 @@
     "SHARE_LINK_CLOSED": "That link has already been opened or revoked.",
     "NOTHING_TO_EXPORT": "There are no logins to export there.",
     "EXPORT_TOO_LARGE": "That is more logins than one file can hold. Export one client at a time.",
+    "QUIET_HOURS_SAME": "Quiet hours need a start and an end that differ.",
+    "LAYOUT_NAME_TAKEN": "There is already a layout with that name.",
+    "LAYOUT_BUSY": "Someone changed the layouts at the same moment. Reload the page and try again.",
     "SUBMISSION_RATE_LIMITED": "You have sent several logins in a short time. Wait a while and try again.",
     "LOGIN_ASKS_OFF": "Clients can't send logins right now, so they can't be asked for one. Turn on \"Logins sent by clients\" in Settings → Vault.",
     "LOGIN_ASK_CONTACT": "That person can't be asked for a login. Only someone at this client with access to the portal can.",
@@ -1877,6 +1954,9 @@
         "MONTHLY": "Monthly"
       },
       "updateWeekday": "Update day",
+      "updateLayout": "Update layout",
+      "updateLayoutDefault": "Workspace default ({name})",
+      "updateLayoutStandard": "Fortleva standard",
       "weekdays": {
         "mon": "Monday",
         "tue": "Tuesday",
@@ -2826,10 +2906,12 @@
           "DONE": "What the team finished. Pull lines in from the panel on the right.",
           "NEXT": "What happens next, and roughly when.",
           "BLOCKERS": "What is in the way.",
-          "DECISIONS_NEEDED": "What you need from the client, and by when."
+          "DECISIONS_NEEDED": "What you need from the client, and by when.",
+          "CUSTOM": "Write here."
         },
         "sectionEditor": "{section} — text",
         "toolbar": "{section} formatting",
+        "tooManySections": "An update can hold at most {max} headings with text. Empty one before saving.",
         "metricsTitle": "Numbers the client will see",
         "metricsHint": "Frozen the moment you publish. Untick a group to leave it out of this post.",
         "include": {

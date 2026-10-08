@@ -21,6 +21,7 @@ import type {
 } from "@/generated/prisma/enums";
 import { fail, isDeadlock, isLockTimeout, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
+import { guarded as guardLayoutKey } from "@/modules/work/db-errors";
 import { readUpdateSchedule } from "@/modules/work/update-reminders";
 import { isUpdateWeekday, type UpdateScheduleStatus } from "@/modules/work/update-schedule";
 import { latestPublishedHealth } from "@/modules/work/updates";
@@ -205,6 +206,19 @@ export type ProjectDetail = {
    * updates to be late with). Staff only; never on a portal projection.
    */
   updateSchedule: UpdateScheduleStatus | null;
+  /**
+   * Slice 105 (C73 (c)): the progress-update LAYOUT this project picked (null =
+   * the workspace's default), and the workspace's layouts to pick from — names
+   * only, read here under `project:view` so whoever may change the project can
+   * see the choice (the design review's M2: the layouts' own page is
+   * `settings:view`, which an Employee does not hold).
+   */
+  updateTemplateId: string | null;
+  updateLayouts: {
+    readonly choices: readonly { readonly id: string; readonly name: string }[];
+    /** The workspace's default layout's name, or null for Fortleva standard. */
+    readonly defaultName: string | null;
+  };
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -315,6 +329,11 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
           select: { user: { select: { name: true } } },
         })
       : null;
+    // The layouts to pick from (slice 105) — a handful of names, in sequence.
+    const layouts = await tx.projectUpdateTemplate.findMany({
+      select: { id: true, name: true, isDefault: true },
+      orderBy: { name: "asc" },
+    });
     return {
       id: p.id,
       key: p.key,
@@ -344,6 +363,11 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
       updateCadence: p.updateCadence,
       updateWeekday: p.updateWeekday,
       updateSchedule,
+      updateTemplateId: p.updateTemplateId,
+      updateLayouts: {
+        choices: layouts.map((l) => ({ id: l.id, name: l.name })),
+        defaultName: layouts.find((l) => l.isDefault)?.name ?? null,
+      },
       archivedAt: p.archivedAt,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
@@ -493,6 +517,7 @@ export const PROJECT_FIELDS = [
   "defaultBillable",
   "updateCadence",
   "updateWeekday",
+  "updateTemplateId",
 ] as const;
 export type ProjectField = (typeof PROJECT_FIELDS)[number];
 
@@ -504,6 +529,7 @@ export const PROJECT_INTERNAL_FIELDS: readonly ProjectField[] = [
   "leadMemberId",
   "updateCadence",
   "updateWeekday",
+  "updateTemplateId",
 ];
 
 export type ProjectPatch = Partial<{
@@ -523,6 +549,8 @@ export type ProjectPatch = Partial<{
   updateCadence: UpdateCadence;
   /** Phase 5 slice 102 (C70 (b)): the day an update is due, ISO 1 = Monday … 5 = Friday. */
   updateWeekday: number;
+  /** Phase 5 slice 105 (C73 (c)): the layout new updates start from; null = the workspace's default. */
+  updateTemplateId: string | null;
 }>;
 
 const sameDate = (a: Date | null, b: Date | null): boolean =>
@@ -572,6 +600,16 @@ export async function updateProject(
           next = clean(patch.billingCurrency)?.toUpperCase() ?? null;
           if (next !== null && !/^[A-Z]{3}$/.test(next as string)) fail("INVALID_INPUT", "currency");
           break;
+        case "updateTemplateId": {
+          // A layout of THIS workspace (the composite key says so too, and a
+          // layout deleted meanwhile is the key's refusal, mapped below).
+          next = clean(patch.updateTemplateId);
+          if (next) {
+            const layout = await tx.projectUpdateTemplate.findFirst({ where: { id: next as string }, select: { id: true } });
+            if (!layout) fail("INVALID_INPUT", "update layout");
+          }
+          break;
+        }
         case "leadMemberId": {
           next = clean(patch.leadMemberId);
           if (next) {
@@ -592,7 +630,9 @@ export async function updateProject(
       }
     }
     if (changed.length === 0) return { changed };
-    await tx.project.update({ where: { id: projectId }, data });
+    // A layout deleted between the check above and this write is the
+    // project's RESTRICT key refusing it — LAYOUT_BUSY, a sentence (slice 105).
+    await guardLayoutKey(() => tx.project.update({ where: { id: projectId }, data, select: { id: true } }));
     await record(tx, {
       action: "project.updated",
       targetType: "Project",

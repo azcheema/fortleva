@@ -62,6 +62,8 @@ beforeEach(async () => {
 
 const ownerCtx = () => ({ tenantId: f.tenantId, actor: f.seats.owner.actor });
 const SUMMARY_DEFAULTS = { digestCadence: "DAILY", digestHour: 8, digestWeekday: 1 } as const;
+/** Quiet hours (slice 105): off, and no weekend — the shape a member with no row reads. */
+const QUIET_DEFAULTS = { quietHoursFrom: null, quietHoursTo: null, quietWeekends: false } as const;
 const employeeCtx = () => ({ tenantId: f.tenantId, actor: f.seats.employee.actor });
 
 const outboxKinds = async () =>
@@ -85,7 +87,7 @@ describe("notification preferences", () => {
       emailLevel: "PARTICIPATING",
       weeklyTimeReminder: false,
       // The summary email's defaults (slice 100, C68 (b)): every day at 08:00.
-      ...SUMMARY_DEFAULTS,
+      ...SUMMARY_DEFAULTS, ...QUIET_DEFAULTS,
     });
     expect(await f.platform.notificationPreference.count({ where: { tenantId: f.tenantId } })).toBe(0);
   });
@@ -93,7 +95,7 @@ describe("notification preferences", () => {
   it("an update creates the row, settles both fields and audits the RESULT", async () => {
     const before = (await f.audits("notification.preference_changed")).length;
     const saved = await updateOwnPreferences(ownerCtx(), { emailLevel: "MENTIONS" });
-    expect(saved).toEqual({ emailLevel: "MENTIONS", weeklyTimeReminder: false, ...SUMMARY_DEFAULTS });
+    expect(saved).toEqual({ emailLevel: "MENTIONS", weeklyTimeReminder: false, ...SUMMARY_DEFAULTS, ...QUIET_DEFAULTS });
     expect(await readOwnPreferences(ownerCtx())).toEqual(saved);
 
     const events = await f.audits("notification.preference_changed");
@@ -114,7 +116,7 @@ describe("notification preferences", () => {
     expect(await readOwnPreferences(ownerCtx())).toEqual({
       emailLevel: "NONE",
       weeklyTimeReminder: true,
-      ...SUMMARY_DEFAULTS,
+      ...SUMMARY_DEFAULTS, ...QUIET_DEFAULTS,
     });
   });
 

@@ -92,6 +92,10 @@ export async function updateProjectAction(formData: FormData): Promise<FormResul
   // The day an update is due (slice 102, C70 (b)): a closed set the service
   // checks again — anything but 1–5 is refused there, never guessed here.
   if (has(formData, "updateWeekday")) patch.updateWeekday = Number(field(formData, "updateWeekday"));
+  // The layout new updates start from (slice 105, C73 (c)): "" is the
+  // workspace's default; any id is checked by the service to be one of this
+  // workspace's layouts.
+  if (has(formData, "updateTemplateId")) patch.updateTemplateId = field(formData, "updateTemplateId") || null;
   // Checkbox: present ⇒ on; the form always carries a marker so "off" is distinguishable.
   if (has(formData, "defaultBillableMarker")) patch.defaultBillable = formData.get("defaultBillable") === "on";
   const r = await runForm(projectPath(key), async () => {

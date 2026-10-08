@@ -96,6 +96,10 @@ export function ProjectDetailsForm({
   const date = (value: Date | null) =>
     value ? format.dateTime(value, { dateStyle: "medium" }) : "";
   const lead = members.find((m) => m.memberId === project.leadMemberId);
+  // "Workspace default (Weekly check-in)", or "(Fortleva standard)" with none set.
+  const layoutDefaultLabel = t("updateLayoutDefault", {
+    name: project.updateLayouts.defaultName ?? t("updateLayoutStandard"),
+  });
 
   // Each property states whether it is worth a line at rest. Everything
   // that is set stays; everything blank moves behind the disclosure.
@@ -290,6 +294,34 @@ export function ProjectDetailsForm({
                   label={t("updateWeekday")}
                   placeholder={t("weekdays.fri")}
                   options={UPDATE_WEEKDAYS.map((d) => ({ value: String(d), label: t(`weekdays.${WEEKDAY_KEYS[d]}`) }))}
+                  readOnly={ro}
+                  className="-ml-2.5"
+                />
+              </Prop>
+            ),
+          },
+        ]
+      : []),
+    // The progress-update LAYOUT new updates start from (Phase 5 slice 105,
+    // C73 (c)) — only once the workspace has a layout to pick; until then
+    // every update starts from the default, and there is nothing to choose.
+    ...(project.updateLayouts.choices.length > 0
+      ? [
+          {
+            key: "updateTemplateId",
+            filled: true,
+            node: (
+              <Prop label={t("updateLayout")}>
+                <InlineEdit
+                  kind="select"
+                  name="updateTemplateId"
+                  value={project.updateTemplateId ?? ""}
+                  label={t("updateLayout")}
+                  placeholder={layoutDefaultLabel}
+                  options={[
+                    { value: "", label: layoutDefaultLabel },
+                    ...project.updateLayouts.choices.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
                   readOnly={ro}
                   className="-ml-2.5"
                 />

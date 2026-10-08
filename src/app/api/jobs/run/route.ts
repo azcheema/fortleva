@@ -79,7 +79,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   // transactions apiece. A pass that THROWS ends the drain, never the kick
   // (the code review's low): the jobs below — the summaries among them, whose
   // window is three hours — still run, and the next kick drains again.
-  const outbox = { sent: 0, skipped: 0, suppressed: 0, failed: 0, dead: 0 };
+  const outbox = { sent: 0, skipped: 0, suppressed: 0, failed: 0, dead: 0, held: 0 };
   const drainStarted = Date.now();
   for (let pass = 0; pass < DRAIN_PASSES; pass += 1) {
     let r: Awaited<ReturnType<typeof drainOutbox>>;
@@ -91,7 +91,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       break;
     }
     for (const k of Object.keys(outbox) as (keyof typeof outbox)[]) outbox[k] += r[k];
-    const claimed = r.sent + r.skipped + r.suppressed + r.failed + r.dead;
+    const claimed = r.sent + r.skipped + r.suppressed + r.failed + r.dead + r.held;
     if (claimed < DRAIN_BATCH || Date.now() - drainStarted > DRAIN_BUDGET_MS) break;
   }
   const timeSweep = await runTimeSweep();

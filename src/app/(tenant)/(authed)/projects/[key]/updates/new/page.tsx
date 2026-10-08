@@ -59,8 +59,9 @@ export default async function NewUpdatePage({ params }: { params: Promise<{ key:
           periodStart: null,
           periodEnd: null,
           // "What got done" opens pre-filled with what the client can
-          // already see (founder decision C70 (d)); saved only on Save.
-          body: newUpdateBody(context.changes, context.project.shows),
+          // already see (founder decision C70 (d)); saved only on Save. The
+          // numbers start as the project's layout ticks them (C73 (d)).
+          body: newUpdateBody(context.changes, context.project.shows, context.layout.metrics),
         }}
         context={context}
       />

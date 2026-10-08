@@ -21,6 +21,7 @@ import {
   readUpdateBody,
   type UpdateBody,
 } from "./update-body";
+import type { UpdateLayout } from "./update-layout";
 import {
   changeIdsOf,
   computeInternalSnapshot,
@@ -33,6 +34,7 @@ import {
   type InternalSnapshot,
   type PortalSnapshot,
 } from "./update-metrics";
+import { resolveUpdateLayout } from "./update-templates";
 
 /**
  * PROGRESS UPDATES — the portal centrepiece (DATA_MODEL.md §6.16, PLAN
@@ -278,6 +280,8 @@ type ProjectRow = {
   createdAt: Date;
   portalShowTasks: boolean;
   portalShowMilestones: boolean;
+  /** The layout a new update opens with (slice 105); null = the workspace's default. */
+  updateTemplateId: string | null;
 };
 
 const projectSelect = {
@@ -292,6 +296,7 @@ const projectSelect = {
   // The portal's sections (C47) — what a new update's pre-fill may name (slice 102).
   portalShowTasks: true,
   portalShowMilestones: true,
+  updateTemplateId: true,
 } as const;
 
 async function loadProject(tx: TenantDb, ctx: WorkCtx, projectId: string): Promise<ProjectRow> {
@@ -467,6 +472,13 @@ export type ComposerContext = {
     /** The portal's Tasks and Milestones sections (C47) — what the pre-fill may name (slice 102). */
     readonly shows: { readonly tasks: boolean; readonly milestones: boolean };
   };
+  /**
+   * The project's progress-update LAYOUT (slice 105, C73): the headings the
+   * composer lays a draft out under and the numbers a new update starts with
+   * ticked — the project's pick, else the workspace's default, else Fortleva
+   * standard (`resolveUpdateLayout`).
+   */
+  readonly layout: UpdateLayout;
 };
 
 /**
@@ -507,7 +519,10 @@ export async function readComposerContext(
     // live (the same rule as `getUpdate`); publish freezes the complete
     // block for the client regardless, which the toggle's copy says.
     const access = hoursAccessOf(await heldCodes(tx, ctx));
+    // In sequence, after the batch above (AGENTS.md's standing trap).
+    const { layout } = await resolveUpdateLayout(tx, ctx.tenantId, project.updateTemplateId);
     return {
+      layout,
       changes,
       metrics: redactHoursFor(metrics, access),
       previousHealth: previous?.health ?? null,

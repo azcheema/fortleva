@@ -123,7 +123,7 @@ Seeding column: **C** = CEO (owner-equivalent), **M** = Manager, **A** = Admin, 
 | `billing:view` | core | See plan, platform invoices, usage vs limits | C A | — | v1 (Phase 7) |
 | `billing:manage` | core | Change plan, payment method, cancel ✦ | C | — | v1 (Phase 7) |
 | `settings:view` | core | View tenant settings | C M A | — | v1 |
-| `settings:edit` | core | Edit tenant profile, branding, locale | C A | — | v1 |
+| `settings:edit` | core | Edit tenant profile, branding, locale *(and, since Phase 5 slice 105 — founder decision C73 (c) — the workspace's progress-update LAYOUTS on `/settings/updates`: create, edit, delete, choose the default; `settings:view` lists them. A project's own pick is `project:edit` on its Overview, and its page reads the layouts' names under `project:view`)* | C A | — | v1 |
 | `settings:manage_modules` | core | Toggle `TenantPreference` module switches ✦ | C | — | v1 |
 | `audit:view` | core | View the tenant's own audit log | C A | — | v1 |
 | `tenant:export` | core | Full tenant data export ✦ | C | — | v1 (Phase 8 for scheduled; ad-hoc earlier) |

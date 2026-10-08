@@ -10,6 +10,7 @@ import {
   InboxIcon,
   SearchIcon,
   KeyRoundIcon,
+  MegaphoneIcon,
   PaletteIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
@@ -44,6 +45,8 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   timeSettings: TimerIcon,
   // The vault's switches wear the vault's glyph, as Time's settings wear Time's.
   vaultSettings: VaultIcon,
+  // The project's Updates tab wears the megaphone; its layouts do too.
+  updateSettings: MegaphoneIcon,
   // A bell is "reach me", the inbox tray is "what reached me": two
   // concepts, two glyphs.
   notifications: BellIcon,

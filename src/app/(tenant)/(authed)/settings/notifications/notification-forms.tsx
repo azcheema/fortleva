@@ -11,6 +11,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { EMAIL_LEVELS } from "@/notify/catalog";
 import { DIGEST_CADENCES } from "@/notify/digest";
 import type { MemberNotificationPreferences } from "@/notify/preferences";
+import { DEFAULT_QUIET_FROM, DEFAULT_QUIET_TO, summaryInQuietTime } from "@/notify/quiet-hours";
 
 import { updateNotificationPreferencesAction } from "./actions";
 
@@ -20,11 +21,11 @@ import { updateNotificationPreferencesAction } from "./actions";
  * its own fields, so the two halves cannot clobber each other.
  *
  * ONLY WIRED SETTINGS APPEAR HERE. `NotificationPreference` also holds
- * `inAppLevel`, quiet hours and a timezone, which nothing reads, so
+ * `inAppLevel` and a timezone, which nothing on this page sets, so
  * rendering them would be controls that change nothing (the summary's
- * cadence, hour and weekday are read since Phase 5 slice 100, and are
- * here). `notify/preferences.ts` carries the same list and the reason
- * for each.
+ * cadence, hour and weekday are read since Phase 5 slice 100, quiet hours
+ * since slice 105, and are here). `notify/preferences.ts` carries the same
+ * list and the reason for each.
  */
 export function EmailLevelForm({ prefs }: { prefs: MemberNotificationPreferences }) {
   const t = useTranslations("settings.notifications");
@@ -169,6 +170,127 @@ export function WeeklyReminderForm({ prefs }: { prefs: MemberNotificationPrefere
               the one that says "no email" wins. Saying so beats a
               reminder that silently never arrives. */}
           <Callout tone="caution">{t("weekly.emailOff")}</Callout>
+        </div>
+      ) : null}
+    </AutoForm>
+  );
+}
+
+/**
+ * QUIET HOURS (Phase 5 slice 105; founder decision C73 (e), (f)): hours of the
+ * member's own day — and, ticked, the whole weekend — in which work emails
+ * wait. One `AutoForm`, native controls, two hidden markers (the weekly
+ * reminder's pattern: an unticked box posts nothing, so the marker is what
+ * makes its absence mean "off").
+ *
+ * WHAT EACH CHANGE POSTS, because `AutoForm` builds its FormData in the
+ * CAPTURE phase, before this component's own `onChange` re-renders:
+ *   - ticking the box posts the box alone — the hour selects are not on the
+ *     page yet — and the service keeps the saved hours, else 19:00–07:00,
+ *     which are exactly what the selects then open on;
+ *   - unticking it posts the box's absence AND both selects, still on the
+ *     page — the action reads that as OFF and ignores them (the design
+ *     review's M1);
+ *   - a select posts both hours. The hour the other select holds is DISABLED
+ *     in it, so the same hour twice cannot be chosen (the server refuses it
+ *     too, `QUIET_HOURS_SAME`).
+ */
+export function QuietHoursForm({
+  prefs,
+  zone,
+}: {
+  prefs: MemberNotificationPreferences;
+  /** The zone the hours are read in — the member's own, else the workspace's. */
+  zone: string;
+}) {
+  const t = useTranslations("settings.notifications.quiet");
+  const [on, setOn] = useState(prefs.quietHoursFrom !== null);
+  const [from, setFrom] = useState(prefs.quietHoursFrom ?? DEFAULT_QUIET_FROM);
+  const [to, setTo] = useState(prefs.quietHoursTo ?? DEFAULT_QUIET_TO);
+  const [weekends, setWeekends] = useState(prefs.quietWeekends);
+  const summaryInside = summaryInQuietTime(
+    { from: on ? from : null, to: on ? to : null, weekends },
+    prefs.digestCadence,
+    prefs.digestHour,
+    prefs.digestWeekday,
+  );
+  const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
+  return (
+    <AutoForm action={updateNotificationPreferencesAction}>
+      <input type="hidden" name="quietHoursPresent" value="1" />
+      <input type="hidden" name="quietWeekendsPresent" value="1" />
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start gap-2">
+          <NativeCheckbox
+            id="n-quiet"
+            name="quietHours"
+            defaultChecked={on}
+            onChange={(e) => {
+              const checked = e.currentTarget.checked;
+              setOn(checked);
+              // The selects open on what the server is saving right now: the
+              // saved hours, else 19:00–07:00 — never hours this page still
+              // remembers from before they were switched off (off saves none).
+              if (checked) {
+                setFrom(prefs.quietHoursFrom ?? DEFAULT_QUIET_FROM);
+                setTo(prefs.quietHoursTo ?? DEFAULT_QUIET_TO);
+              }
+            }}
+            className="mt-0.5"
+            data-testid="quiet-hours"
+          />
+          <Label htmlFor="n-quiet">{t("toggle")}</Label>
+        </div>
+        {on ? (
+          <div className="flex flex-wrap gap-4">
+            <Field htmlFor="n-quiet-from" label={t("fromLabel")}>
+              <NativeSelect
+                id="n-quiet-from"
+                name="quietHoursFrom"
+                defaultValue={String(from)}
+                onChange={(e) => setFrom(Number(e.currentTarget.value))}
+                data-testid="quiet-from"
+              >
+                {HOURS.map((h) => (
+                  <option key={h.value} value={h.value} disabled={h.value === to}>
+                    {h.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field htmlFor="n-quiet-to" label={t("toLabel")} hint={t("zoneHint", { zone })}>
+              <NativeSelect
+                id="n-quiet-to"
+                name="quietHoursTo"
+                defaultValue={String(to)}
+                onChange={(e) => setTo(Number(e.currentTarget.value))}
+                data-testid="quiet-to"
+              >
+                {HOURS.map((h) => (
+                  <option key={h.value} value={h.value} disabled={h.value === from}>
+                    {h.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+          </div>
+        ) : null}
+        <div className="flex items-start gap-2">
+          <NativeCheckbox
+            id="n-quiet-weekends"
+            name="quietWeekends"
+            defaultChecked={prefs.quietWeekends}
+            onChange={(e) => setWeekends(e.currentTarget.checked)}
+            className="mt-0.5"
+            data-testid="quiet-weekends"
+          />
+          <Label htmlFor="n-quiet-weekends">{t("weekends")}</Label>
+        </div>
+        <p className="text-xs text-muted-foreground">{t("note")}</p>
+      </div>
+      {summaryInside ? (
+        <div className="mt-3">
+          <Callout tone="caution">{t("summaryInside", { hour: hourLabel(prefs.digestHour) })}</Callout>
         </div>
       ) : null}
     </AutoForm>

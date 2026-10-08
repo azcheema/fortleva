@@ -1,6 +1,8 @@
 import { record } from "@/audit/record";
 import type { MemberActor } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
+import { fail } from "@/lib/domain-error";
+import { readPreferences } from "@/preferences/service";
 
 import { isEmailLevel, type EmailLevelValue } from "./catalog";
 import {
@@ -10,7 +12,9 @@ import {
   isDigestCadence,
   type DigestCadenceValue,
 } from "./digest";
+import { DEFAULT_QUIET_FROM, DEFAULT_QUIET_TO, isQuietHour, quietHoursOf, quietRelease } from "./quiet-hours";
 import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
+import { usableZone } from "./zone";
 
 /**
  * A member's own notification preferences (`/settings/notifications`;
@@ -33,12 +37,15 @@ import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
  * WHAT THIS EXPOSES IS WHAT IS WIRED, and nothing else. Since Phase 5
  * slice 100 that includes the SUMMARY EMAIL's cadence, hour and weekday
  * (`digestCadence`, `digestHour`, `digestWeekday` — read by
- * `src/jobs/digests.ts`). The model also carries `inAppLevel` and quiet
- * hours, which nothing reads, so they are not offered — a control that
- * changes nothing is worse than none. Its `timezone` IS read, first, by the
- * summary and the weekly reminder, but nothing writes it: the zone that
- * decides is the member's own on `/account` (`Member.timezone`), else the
- * workspace's — which is what the page names. `inAppLevel` is deliberately absent for
+ * `src/jobs/digests.ts`), and since slice 105 the QUIET HOURS
+ * (`quietHoursFrom`, `quietHoursTo`, `quietWeekends` — read by `notify.emit`
+ * and the outbox drain, src/notify/quiet-hours.ts; founder decision C73).
+ * The model also carries `inAppLevel`, which nothing reads, so it is not
+ * offered — a control that changes nothing is worse than none. Its `timezone`
+ * IS read, first, by the summary, the weekly reminder and quiet hours, but
+ * nothing writes it: the zone that decides is the member's own on `/account`
+ * (`Member.timezone`), else the workspace's — which is what the page names.
+ * `inAppLevel` is deliberately absent for
  * a stronger reason: the inbox is where an assignment is found, and a
  * setting that can silence it silently is how someone misses work.
  */
@@ -57,6 +64,10 @@ export type MemberNotificationPreferences = {
   readonly digestHour: number;
   /** 1 = Monday … 7 = Sunday. */
   readonly digestWeekday: number;
+  /** Quiet hours (slice 105): both set or both null — null is "off". */
+  readonly quietHoursFrom: number | null;
+  readonly quietHoursTo: number | null;
+  readonly quietWeekends: boolean;
 };
 
 /** Only the fields the page can actually change. */
@@ -66,6 +77,14 @@ export type NotificationPreferencePatch = {
   readonly digestCadence?: DigestCadenceValue;
   readonly digestHour?: number;
   readonly digestWeekday?: number;
+  /**
+   * Quiet hours: `null` switches them off; an object switches them on — an
+   * hour it leaves out keeps the one saved, else 19:00–07:00 (the form posts
+   * no hours on the change that switches them on: they are not on the page
+   * yet). The same hour twice is refused (`QUIET_HOURS_SAME`).
+   */
+  readonly quietHours?: { readonly from?: number; readonly to?: number } | null;
+  readonly quietWeekends?: boolean;
 };
 
 export const isDigestHour = (v: unknown): v is number =>
@@ -99,8 +118,18 @@ export async function readOwnPreferences(
 async function loadOwn(tx: TenantDb, ctx: NotifyCtx): Promise<MemberNotificationPreferences> {
   const row = await tx.notificationPreference.findFirst({
     where: { tenantId: ctx.tenantId, receiverType: "MEMBER", receiverId: ctx.actor.memberId },
-    select: { emailLevel: true, perKind: true, digestCadence: true, digestHour: true, digestWeekday: true },
+    select: {
+      emailLevel: true,
+      perKind: true,
+      digestCadence: true,
+      digestHour: true,
+      digestWeekday: true,
+      quietHoursFrom: true,
+      quietHoursTo: true,
+      quietWeekends: true,
+    },
   });
+  const quiet = quietHoursOf(row);
   return {
     emailLevel: isEmailLevel(row?.emailLevel) ? row.emailLevel : DEFAULT_EMAIL_LEVEL,
     weeklyTimeReminder: weeklyFrom(row?.perKind),
@@ -112,7 +141,24 @@ async function loadOwn(tx: TenantDb, ctx: NotifyCtx): Promise<MemberNotification
     digestCadence: isDigestCadence(row?.digestCadence) ? row.digestCadence : DEFAULT_DIGEST_CADENCE,
     digestHour: isDigestHour(row?.digestHour) ? row.digestHour : DEFAULT_DIGEST_HOUR,
     digestWeekday: isDigestWeekday(row?.digestWeekday) ? row.digestWeekday : DEFAULT_DIGEST_WEEKDAY,
+    quietHoursFrom: quiet.from,
+    quietHoursTo: quiet.to,
+    quietWeekends: quiet.weekends,
   };
+}
+
+/** The hours a patch settles on, against what is saved (see the patch's note). */
+function settleQuietHours(
+  current: MemberNotificationPreferences,
+  patch: NotificationPreferencePatch["quietHours"],
+): { from: number | null; to: number | null } {
+  if (patch === undefined) return { from: current.quietHoursFrom, to: current.quietHoursTo };
+  if (patch === null) return { from: null, to: null };
+  const from = patch.from ?? current.quietHoursFrom ?? DEFAULT_QUIET_FROM;
+  const to = patch.to ?? current.quietHoursTo ?? DEFAULT_QUIET_TO;
+  if (!isQuietHour(from) || !isQuietHour(to)) fail("INVALID_INPUT", "quiet hours out of range");
+  if (from === to) fail("QUIET_HOURS_SAME");
+  return { from, to };
 }
 
 /**
@@ -135,12 +181,16 @@ export async function updateOwnPreferences(
 ): Promise<MemberNotificationPreferences> {
   return withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
     const current = await loadOwn(tx, ctx);
+    const hours = settleQuietHours(current, patch.quietHours);
     const next: MemberNotificationPreferences = {
       emailLevel: patch.emailLevel ?? current.emailLevel,
       weeklyTimeReminder: patch.weeklyTimeReminder ?? current.weeklyTimeReminder,
       digestCadence: patch.digestCadence ?? current.digestCadence,
       digestHour: patch.digestHour ?? current.digestHour,
       digestWeekday: patch.digestWeekday ?? current.digestWeekday,
+      quietHoursFrom: hours.from,
+      quietHoursTo: hours.to,
+      quietWeekends: patch.quietWeekends ?? current.quietWeekends,
     };
     // The action validates; this is the belt, because these become a
     // schedule a job acts on.
@@ -151,6 +201,9 @@ export async function updateOwnPreferences(
       digestCadence: next.digestCadence,
       digestHour: next.digestHour,
       digestWeekday: next.digestWeekday,
+      quietHoursFrom: next.quietHoursFrom,
+      quietHoursTo: next.quietHoursTo,
+      quietWeekends: next.quietWeekends,
     };
 
     const existing = await tx.notificationPreference.findFirst({
@@ -183,6 +236,12 @@ export async function updateOwnPreferences(
       });
     }
 
+    const quietChanged =
+      next.quietHoursFrom !== current.quietHoursFrom ||
+      next.quietHoursTo !== current.quietHoursTo ||
+      next.quietWeekends !== current.quietWeekends;
+    if (quietChanged) await retimeHeldMail(tx, ctx, next);
+
     await record(tx, {
       action: "notification.preference_changed",
       targetType: "Member",
@@ -190,5 +249,40 @@ export async function updateOwnPreferences(
       metadata: { ...next },
     });
     return next;
+  });
+}
+
+/**
+ * The member's work emails ALREADY WAITING on their quiet hours follow the
+ * new ones (slice 105): switched off at 23:00, what waited goes at the next
+ * drain; the end moved, they move with it. Only their own rows, only those
+ * still QUEUED and held — a row a drain holds right now (SENDING) is not
+ * touched, and that drain asks the quiet hours again itself. `email_outbox`
+ * is class A with full runtime grants (2W); the filter on the actor's own id
+ * is the gate, as the preference row's is.
+ */
+async function retimeHeldMail(tx: TenantDb, ctx: NotifyCtx, next: MemberNotificationPreferences): Promise<void> {
+  // In SEQUENCE (AGENTS.md's standing trap).
+  const member = await tx.member.findFirst({ where: { id: ctx.actor.memberId }, select: { timezone: true } });
+  const pref = await tx.notificationPreference.findFirst({
+    where: { tenantId: ctx.tenantId, receiverType: "MEMBER", receiverId: ctx.actor.memberId },
+    select: { timezone: true },
+  });
+  const zone = usableZone(pref?.timezone, member?.timezone, (await readPreferences(tx, ctx.tenantId)).timezone);
+  const now = new Date();
+  const release = quietRelease(
+    now,
+    { from: next.quietHoursFrom, to: next.quietHoursTo, weekends: next.quietWeekends },
+    zone,
+  );
+  await tx.emailOutbox.updateMany({
+    where: {
+      tenantId: ctx.tenantId,
+      receiverType: "MEMBER",
+      receiverId: ctx.actor.memberId,
+      status: "QUEUED",
+      quietHeld: true,
+    },
+    data: { sendAfter: release ?? now },
   });
 }

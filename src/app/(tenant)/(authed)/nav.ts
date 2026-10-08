@@ -27,6 +27,7 @@ export type NavIcon =
   | "rates"
   | "timeSettings"
   | "vaultSettings"
+  | "updateSettings"
   | "export"
   | "design"
   | "account";
@@ -52,6 +53,7 @@ export type NavEntry = {
     | "rates"
     | "timeSettings"
     | "vaultSettings"
+    | "updateSettings"
     | "export"
     | "design"
     | "account";
@@ -193,6 +195,14 @@ export const NAV: readonly NavEntry[] = [
         labelKey: "vaultSettings",
         href: "/settings/vault",
         icon: "vaultSettings",
+        permission: "settings:view",
+      },
+      // Phase 5 slice 105 (C73 (c)): the workspace's progress-update layouts.
+      {
+        id: "updateSettings",
+        labelKey: "updateSettings",
+        href: "/settings/updates",
+        icon: "updateSettings",
         permission: "settings:view",
       },
       // No permission: every other Settings page administers the

@@ -7,7 +7,7 @@ import { requireTenantContext } from "@/members/tenant-context";
 import { readOwnPreferences } from "@/notify/preferences";
 import { readPreferences } from "@/preferences/service";
 
-import { EmailLevelForm, SummaryForm, WeeklyReminderForm } from "./notification-forms";
+import { EmailLevelForm, QuietHoursForm, SummaryForm, WeeklyReminderForm } from "./notification-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("nav");
@@ -25,9 +25,10 @@ export async function generateMetadata(): Promise<Metadata> {
  * emailed. That is also why nothing here takes a member id: the row is
  * the actor's, by construction (`notify/preferences.ts`).
  *
- * The SUMMARY's hour is read in the member's own zone (`Member.timezone`,
- * set on /account), else the workspace's — the job's own fallbacks
- * (`src/jobs/digests.ts`), so the page never names a zone the job does not use.
+ * The SUMMARY's hour and the QUIET HOURS are read in the member's own zone
+ * (`Member.timezone`, set on /account), else the workspace's — the jobs' own
+ * fallbacks (`src/notify/zone.ts`), so the page never names a zone the job
+ * does not use.
  */
 export default async function NotificationSettingsPage() {
   const { membership, actor } = await requireTenantContext();
@@ -47,6 +48,9 @@ export default async function NotificationSettingsPage() {
       <div className="mt-6 flex flex-col gap-4">
         <SectionCard title={t("email.title")} description={t("email.description")}>
           <EmailLevelForm prefs={prefs} />
+        </SectionCard>
+        <SectionCard title={t("quiet.title")} description={t("quiet.description")}>
+          <QuietHoursForm prefs={prefs} zone={zone} />
         </SectionCard>
         <SectionCard title={t("summary.title")} description={t("summary.description")}>
           <SummaryForm prefs={prefs} zone={zone} />
