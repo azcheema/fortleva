@@ -1,6 +1,7 @@
 import { scopeWhere } from "@/authz/authorize";
 import type { MemberActor } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
+import { isUuid } from "@/db/context";
 import { accessibleCodes } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { idCursor } from "@/lib/id-cursor";
@@ -278,6 +279,29 @@ export async function listInbox(
       rows: withGroups(rows, now, opts.timeZone ?? DEFAULT_TIMEZONE, weekStart),
       nextCursor: hasMore && last ? last.id : null,
     };
+  });
+}
+
+/**
+ * WHERE A TAP ON A PHONE NOTIFICATION GOES (Phase 5 slice 106; C74 (a)): the
+ * push carries a notification id and nothing else (`src/push/payload.ts`), and
+ * this re-resolves it for whoever is signed in — the row must be THEIR OWN, in
+ * the workspace they are in (`receiverWhere` under the member principal, and
+ * `principal_scope` again in the database), and its link is the inbox's own,
+ * through the same scope-filtered resolution the list uses: a subject the
+ * member may no longer open gets no link, exactly as its inbox row would.
+ *
+ * `null` = no such notification here (another person's, another workspace's,
+ * deleted, or not an id at all); `{ href: null }` = theirs, with nothing to
+ * open — the caller lands on the inbox either way.
+ */
+export async function notificationTarget(ctx: InboxCtx, id: string): Promise<{ readonly href: string | null } | null> {
+  if (!isUuid(id)) return null;
+  return withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
+    const row = await tx.notification.findFirst({ where: { ...receiverWhere(ctx), id }, select: ROW_SELECT });
+    if (row === null) return null;
+    const [resolved] = await toInboxRows(tx, ctx, [row]);
+    return { href: resolved?.subject?.href ?? null };
   });
 }
 

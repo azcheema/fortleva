@@ -45,6 +45,40 @@ export function EmailLevelForm({ prefs }: { prefs: MemberNotificationPreferences
   );
 }
 
+/**
+ * The PHONE's own level (Phase 5 slice 106; founder decision C74 (b)): the same
+ * four steps as email, set separately, auto-saved like it. Nothing reaches a
+ * device until it is turned on below (`PushDevices`); "Nothing" says so while
+ * it is chosen.
+ */
+export function PushLevelForm({ prefs }: { prefs: MemberNotificationPreferences }) {
+  const t = useTranslations("settings.notifications.push");
+  const [level, setLevel] = useState(prefs.pushLevel);
+  return (
+    <AutoForm action={updateNotificationPreferencesAction}>
+      <Field htmlFor="n-push-level" label={t("label")} hint={t("hint")}>
+        <NativeSelect
+          id="n-push-level"
+          name="pushLevel"
+          defaultValue={prefs.pushLevel}
+          onChange={(e) => setLevel(e.currentTarget.value as typeof level)}
+        >
+          {EMAIL_LEVELS.map((l) => (
+            <option key={l} value={l}>
+              {t(`levels.${l}`)}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+      {level === "NONE" ? (
+        <div className="mt-3">
+          <Callout tone="caution">{t("levelOff")}</Callout>
+        </div>
+      ) : null}
+    </AutoForm>
+  );
+}
+
 /** 00:00 … 23:00 — a 24-hour clock reads the same in both languages. */
 const HOURS = Array.from({ length: 24 }, (_, h) => ({ value: h, label: `${String(h).padStart(2, "0")}:00` }));
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;

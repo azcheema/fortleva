@@ -1,6 +1,8 @@
 import type { TenantDb } from "@/db";
 import { newId } from "@/lib/ids";
 import { readPreferences } from "@/preferences/service";
+import { kickPushes } from "@/push/kick";
+import { isPushKind } from "@/push/payload";
 import { NOTIFICATION_KINDS, emailAllowed, isEmailLevel, type NotificationKind } from "./catalog";
 import { hasQuietTime, quietHoursOf, quietRelease } from "./quiet-hours";
 import type { NotificationReason } from "./reasons";
@@ -107,6 +109,13 @@ export async function emit(tx: TenantDb, tenantId: string, input: EmitInput): Pr
       byMember.set(receiverId, row.id);
     }
   }
+  // PHONE AND BROWSER NOTIFICATIONS (slice 106, founder decision C74): the
+  // rows just written that may push go to the kick, which delivers them once
+  // this request's response has gone — after this transaction committed
+  // (`src/push/kick.ts`; nothing outside a request). Whether each one buzzes —
+  // the member's phone level, quiet hours, a live device — is the drain's
+  // question, asked at send.
+  if (isPushKind(input.kind)) kickPushes(tenantId, [...byMember.values()]);
   if (targets.length === 0 || spec.class !== "INSTANT") return;
 
   // Email enqueue: resolve address + locale per member, honour the

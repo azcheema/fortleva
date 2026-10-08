@@ -33,6 +33,7 @@ export async function updateNotificationPreferencesAction(
   const { membership, actor } = await requireTenantContext();
   const t = await getTranslations("common");
   const level = field(formData, "emailLevel");
+  const pushLevel = field(formData, "pushLevel");
   const cadence = field(formData, "digestCadence");
   const hour = numberField(formData, "digestHour");
   const weekday = numberField(formData, "digestWeekday");
@@ -43,6 +44,8 @@ export async function updateNotificationPreferencesAction(
       { tenantId: membership.tenantId, actor },
       {
         ...(isEmailLevel(level) ? { emailLevel: level } : {}),
+        // The phone's own level (slice 106, C74 (b)): the same four steps.
+        ...(isEmailLevel(pushLevel) ? { pushLevel } : {}),
         // The summary (slice 100). Each only when the form carried it and it
         // is in range: the weekday select exists only while "every week" is
         // chosen, and an absent field means "unchanged".

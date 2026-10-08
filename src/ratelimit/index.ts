@@ -352,6 +352,16 @@ const POLICIES = {
    * provider.
    */
   "mail.client_summary_one_click": { limit: 20, window: "10 m" },
+  /**
+   * TURN-ONS of phone and browser notifications for a device (Phase 5 slice
+   * 106, `src/push/devices.ts`), per MEMBER (`<tenantId>:<memberId>`): each
+   * one encrypts and writes a row, and the ten-device cap alone would let a
+   * script churn one device's row forever. Twenty an hour is far beyond a
+   * person trying a few browsers. The quiet re-link on each sign-in
+   * (`resumePushDevices`) spends nothing — it writes only a row the member
+   * already turned on.
+   */
+  "push.register": { limit: 20, window: "1 h" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;
 
 export type RateLimitResult = {

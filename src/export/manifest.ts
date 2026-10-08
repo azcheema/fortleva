@@ -51,6 +51,12 @@ export const EXPORT_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>
   // stays here for the reason a share link's does; when and how often the
   // client opened their logins leaves with the tenant's record.
   contactVaultUnlock: ["codeHash"],
+  // Phase 5 slice 106: a device's push endpoint is its address at Apple,
+  // Google, Mozilla or Microsoft, its keys (ciphertext) are what a push is
+  // encrypted for, and the session id names a live sign-in — none of it is the
+  // tenant's record. The exporter's own devices' label and dates leave (the
+  // export runs as them, and `own_device` shows nobody else's).
+  pushSubscription: ["endpoint", "keysCiphertext", "sessionId"],
 };
 
 /**

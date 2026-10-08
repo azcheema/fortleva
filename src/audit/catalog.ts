@@ -254,6 +254,16 @@ export const AUDIT_EVENTS = {
   "label.deleted": TENANT,
   "project_template.applied": TENANT,
   "notification.preference_changed": TENANT,
+  // Phase 5 slice 106 (founder decision C74) — a member turned phone
+  // notifications on for a device, or removed one (`src/push/devices.ts`).
+  // Metadata: the device's id and label ("Chrome · Android"), never its
+  // endpoint or keys. Re-linking a device the same person turned on to their
+  // next sign-in writes NONE (C74 (k), AGENTS.md): the sign-in is audited, and
+  // the device's choices did not change. Nor do the drain's own deletes (a
+  // device its push service says is gone, three refusals, 90 days dormant, a
+  // member no longer active) — the inbox's housekeeping precedent.
+  "push_device.added": TENANT,
+  "push_device.removed": TENANT,
   // Phase 5 slice 100 (founder decision C68 (c), (f)) — where replies to the
   // workspace's mail go (`src/notify/reply-address.ts`). `requested`,
   // `request_cancelled` and `removed` are a member's (`settings:edit`);

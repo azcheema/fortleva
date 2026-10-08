@@ -347,6 +347,9 @@
       "restore": "Flytta tillbaka den markerade aviseringen till inkorgen",
       "read": "Växla läst/oläst för den markerade aviseringen",
       "snooze": "Snooza den markerade aviseringen"
+    },
+    "open": {
+      "opening": "Öppnar…"
     }
   },
   "search": {
@@ -1221,15 +1224,50 @@
           "NONE": "Inget – ingen e-post alls"
         }
       },
+      "push": {
+        "title": "Mobil och webbläsare",
+        "description": "Aviseringar på dina enheter när något behöver dig. De säger vad som har hänt – aldrig namnet på en uppgift, kund, ett projekt eller en person.",
+        "label": "Avisera mina enheter om",
+        "hint": "Separat från e-posten, så att det ena kan höras mer än det andra.",
+        "levels": {
+          "ALL": "Allt",
+          "PARTICIPATING": "Arbete som rör mig – tilldelningar och omnämnanden",
+          "MENTIONS": "Bara när någon nämner mig",
+          "NONE": "Inget – inga aviseringar alls"
+        },
+        "levelOff": "Dina enheter får ingenting så länge det här står på Inget.",
+        "thisDevice": "Den här enheten",
+        "on": "Aviseringar är på för den här enheten.",
+        "off": "Aviseringar är av för den här enheten.",
+        "turnOn": "Slå på för den här enheten",
+        "turnOff": "Stäng av för den här enheten",
+        "turnedOn": "Aviseringar är på för den här enheten.",
+        "turnedOff": "Aviseringar är av för den här enheten.",
+        "unsupported": "Den här webbläsaren kan inte visa aviseringar från Fortleva.",
+        "iosInstall": "På iPhone och iPad lägger du först till Fortleva på hemskärmen (Dela, sedan Lägg till på hemskärmen), öppnar den därifrån och slår på aviseringar.",
+        "notConfigured": "Aviseringar till mobil och webbläsare är inte tillgängliga på den här servern ännu.",
+        "blocked": "Aviseringar är blockerade för Fortleva i den här webbläsaren. Tillåt dem i webbläsarens inställningar för den här webbplatsen och kom sedan tillbaka.",
+        "denied": "Aviseringar tilläts inte, så inget ändrades.",
+        "failed": "Den här enheten kunde inte slås på. Försök igen.",
+        "devices": "Enheter som får aviseringar",
+        "noDevices": "Inga ännu.",
+        "added": "Tillagd {date}",
+        "remove": "Ta bort",
+        "removeLabel": "Ta bort {device}",
+        "removed": "Enheten togs bort.",
+        "stops": "En enhet slutar få dem när du loggar ut från den, loggar ut den under Dina enheter eller inte öppnar Fortleva på den på en vecka. Loggar du in där igen slås de på igen.",
+        "unknownDevice": "Okänd enhet",
+        "signedOutLine": "{added} · Utloggad där – de kommer tillbaka när du loggar in på den igen."
+      },
       "quiet": {
         "title": "Tysta timmar",
-        "description": "Timmar då Fortleva inte mejlar dig om arbetet.",
-        "toggle": "Vänta med jobbmejl under tysta timmar",
+        "description": "Timmar då Fortleva inte mejlar dig om arbetet eller aviserar dina enheter.",
+        "toggle": "Använd tysta timmar",
         "fromLabel": "Från",
         "toLabel": "Till",
         "zoneHint": "I din tidszon: {zone}.",
         "weekends": "Hela helgen (lördag och söndag)",
-        "note": "Jobbmejl väntar tills dina tysta timmar är slut, och mejl om sådant du redan har läst i inkorgen skickas inte alls. Inkorgen fylls på som vanligt. Inloggningskoder, lösenordsåterställningar och säkerhetsvarningar kommer alltid direkt; din sammanfattning och veckopåminnelsen om tid kommer på de tider du har valt.",
+        "note": "Jobbmejl väntar tills dina tysta timmar är slut, och mejl om sådant du redan har läst i inkorgen skickas inte alls. Dina enheter får inga aviseringar under tysta timmar, och inga skickas efteråt. Inkorgen fylls på som vanligt. Inloggningskoder, lösenordsåterställningar och säkerhetsvarningar kommer alltid direkt; din sammanfattning och veckopåminnelsen om tid kommer på de tider du har valt.",
         "summaryInside": "Din sammanfattning är inställd på {hour}, under din tysta tid. Den skickas ändå då."
       },
       "summary": {
@@ -1573,7 +1611,11 @@
     "REPLY_ADDRESS_UNCHANGED": "Svar går redan till den adressen.",
     "REPLY_ADDRESS_UNDELIVERABLE": "E-post till den adressen kommer inte fram, så vi kan inte skicka dit. Välj en annan adress.",
     "REPLY_ADDRESS_LIMIT": "För många bekräftelsemejl i dag. Försök igen i morgon.",
-    "REPLY_ADDRESS_MAIL_FAILED": "Vi kunde inte skicka bekräftelsemejlet. Ingenting ändrades – försök igen."
+    "REPLY_ADDRESS_MAIL_FAILED": "Vi kunde inte skicka bekräftelsemejlet. Ingenting ändrades – försök igen.",
+    "PUSH_UNAVAILABLE": "Aviseringar till mobil och webbläsare är inte tillgängliga på den här servern ännu.",
+    "PUSH_DEVICE_INVALID": "Webbläsaren gav Fortleva något som det inte går att skicka aviseringar till. Försök igen, eller prova en annan webbläsare.",
+    "PUSH_DEVICE_LIMIT": "Du kan ha upp till 10 enheter. Ta bort en först.",
+    "PUSH_RATE_LIMITED": "För många försök den senaste timmen. Försök igen senare."
   },
   "assignments": {
     "title": "Team",
@@ -4531,5 +4573,8 @@
     "unreachable": "Vi kunde inte nå Fortleva. Kontrollera anslutningen och försök igen.",
     "signInToStart": "Bara du kan börja få dem igen: logga in i kundportalen, så kommer du tillbaka hit.",
     "signIn": "Logga in"
+  },
+  "push": {
+    "title": "Fortleva"
   }
 }

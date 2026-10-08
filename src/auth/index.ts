@@ -28,6 +28,7 @@ import {
   MEMBER_RESET_TTL_SECONDS,
 } from "./recovery-policy";
 import { RESET_IDENTIFIER_PREFIX, storedResetIdentifier } from "./reset-identifier";
+import { replacedSessionPlugin } from "./replaced-session";
 import { answerSignUpAlike, refuseUnsafeSignUp } from "./sign-up-answer";
 
 /**
@@ -292,6 +293,15 @@ export const auth = betterAuth({
     after: createAuthMiddleware(async (ctx) => answerSignUpAlike(ctx)),
   },
   plugins: [
+    // A new sign-in ends a DIFFERENT person's session the browser still
+    // carried (Phase 5 slice 106, C74 (l); ./replaced-session). BEFORE
+    // twoFactor on purpose — the opposite of the audit plugin below: on an
+    // account with a second factor, twoFactor's after-hook deletes the
+    // password step's pending session and nulls `newSession`, and only a hook
+    // that runs first still sees whose correct password it was (the fix-pass
+    // review's medium). Plugin after-hooks run in this array's order
+    // (better-auth api/dispatch.mjs `getHooks`).
+    replacedSessionPlugin(),
     twoFactor({
       issuer: "Fortleva",
       totpOptions: { digits: 6, period: 30 },

@@ -347,6 +347,9 @@
       "restore": "Move the focused notification back to the inbox",
       "read": "Mark the focused notification read or unread",
       "snooze": "Snooze the focused notification"
+    },
+    "open": {
+      "opening": "Opening…"
     }
   },
   "search": {
@@ -1221,15 +1224,50 @@
           "NONE": "Nothing — no email at all"
         }
       },
+      "push": {
+        "title": "Phone and browser",
+        "description": "Notifications on your devices when something needs you. They say what happened — never the name of a task, client, project or person.",
+        "label": "Notify my devices about",
+        "hint": "Separate from email, so one can be louder than the other.",
+        "levels": {
+          "ALL": "Everything",
+          "PARTICIPATING": "Work involving me — assignments and mentions",
+          "MENTIONS": "Only when someone mentions me",
+          "NONE": "Nothing — no notifications at all"
+        },
+        "levelOff": "Your devices get nothing while this is set to Nothing.",
+        "thisDevice": "This device",
+        "on": "Notifications are on for this device.",
+        "off": "Notifications are off for this device.",
+        "turnOn": "Turn on for this device",
+        "turnOff": "Turn off for this device",
+        "turnedOn": "Notifications are on for this device.",
+        "turnedOff": "Notifications are off for this device.",
+        "unsupported": "This browser can't show notifications from Fortleva.",
+        "iosInstall": "On iPhone and iPad, add Fortleva to your Home Screen first (Share, then Add to Home Screen), open it from there, and turn notifications on.",
+        "notConfigured": "Phone and browser notifications aren't available on this server yet.",
+        "blocked": "Notifications are blocked for Fortleva in this browser. Allow them in the browser's settings for this site, then come back.",
+        "denied": "Notifications weren't allowed, so nothing changed.",
+        "failed": "This device couldn't be turned on. Try again.",
+        "devices": "Devices that get notifications",
+        "noDevices": "None yet.",
+        "added": "Added {date}",
+        "remove": "Remove",
+        "removeLabel": "Remove {device}",
+        "removed": "Device removed.",
+        "stops": "A device stops getting them when you sign out of it, sign it out under Your devices, or don't open Fortleva on it for a week. Signing in there again turns them back on.",
+        "unknownDevice": "Unknown device",
+        "signedOutLine": "{added} · Signed out there — they come back when you sign in on it again."
+      },
       "quiet": {
         "title": "Quiet hours",
-        "description": "Hours when Fortleva doesn't email you about work.",
-        "toggle": "Hold work emails during quiet hours",
+        "description": "Hours when Fortleva doesn't email you about work or notify your devices.",
+        "toggle": "Use quiet hours",
         "fromLabel": "From",
         "toLabel": "Until",
         "zoneHint": "In your time zone: {zone}.",
         "weekends": "All weekend (Saturday and Sunday)",
-        "note": "Work emails wait until your quiet hours end, and any about something you've already read in your inbox aren't sent at all. Your inbox fills up as usual. Sign-in codes, password resets and security warnings always arrive at once; your summary email and weekly time reminder go at the times you chose.",
+        "note": "Work emails wait until your quiet hours end, and any about something you've already read in your inbox aren't sent at all. Your devices get no notifications during quiet hours, and none are sent afterwards. Your inbox fills up as usual. Sign-in codes, password resets and security warnings always arrive at once; your summary email and weekly time reminder go at the times you chose.",
         "summaryInside": "Your summary email is set for {hour}, during your quiet time. It still goes then."
       },
       "summary": {
@@ -1573,7 +1611,11 @@
     "REPLY_ADDRESS_UNCHANGED": "Replies already go to that address.",
     "REPLY_ADDRESS_UNDELIVERABLE": "Emails to that address aren't being delivered, so we can't send to it. Choose another address.",
     "REPLY_ADDRESS_LIMIT": "Too many confirmation emails today. Try again tomorrow.",
-    "REPLY_ADDRESS_MAIL_FAILED": "We couldn't send the confirmation email. Nothing changed — try again."
+    "REPLY_ADDRESS_MAIL_FAILED": "We couldn't send the confirmation email. Nothing changed — try again.",
+    "PUSH_UNAVAILABLE": "Phone and browser notifications are not available on this server yet.",
+    "PUSH_DEVICE_INVALID": "This browser gave Fortleva something it can't send notifications to. Try again, or try another browser.",
+    "PUSH_DEVICE_LIMIT": "You can have up to 10 devices. Remove one first.",
+    "PUSH_RATE_LIMITED": "Too many tries in the last hour. Try again later."
   },
   "assignments": {
     "title": "Team",
@@ -4531,5 +4573,8 @@
     "unreachable": "We couldn't reach Fortleva. Check your connection and try again.",
     "signInToStart": "Only you can start them again: sign in to your client portal, and you'll come back here.",
     "signIn": "Sign in"
+  },
+  "push": {
+    "title": "Fortleva"
   }
 }

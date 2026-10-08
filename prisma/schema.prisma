@@ -294,6 +294,7 @@ model Tenant {
   subscriptions           Subscription[]
   notificationPreferences NotificationPreference[]
   emailOutbox             EmailOutbox[]
+  pushSubscriptions       PushSubscription[]
   // 2T (time):
   timeEntries                TimeEntry[]
   rateCards                  RateCard[]
@@ -439,6 +440,8 @@ model Member {
   shifts                     Shift[]
   shiftBreaks                ShiftBreak[]
   staffNoticeAcknowledgments StaffNoticeAcknowledgment[]
+  // Phase 5 slice 106: the devices that get this member's phone notifications.
+  pushSubscriptions          PushSubscription[]
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id]) // composite-FK target
@@ -2023,8 +2026,9 @@ model ProjectTemplate {
 // as the write. Static kind catalog (TS module) fixes audience/class/
 // template per kind; every CONTACT-audience kind is clientVisibleOnly
 // (CI-tested). Worker drains EmailOutbox under the platform system
-// principal with FOR UPDATE SKIP LOCKED. PushSubscription/InboundEmail
-// are Phase 5.
+// principal with FOR UPDATE SKIP LOCKED. PushSubscription is Phase 5
+// slice 106 (src/jobs/push.ts drains by `notification.pushed_at`);
+// InboundEmail is later, if ever.
 // ───────────────────────────────────────────────────────────────────
 
 enum ReceiverType {
@@ -2070,6 +2074,10 @@ model Notification {
   archivedAt   DateTime?         @map("archived_at") @db.Timestamptz(6)
   snoozedTill  DateTime?         @map("snoozed_till") @db.Timestamptz(6)
   emailedAt    DateTime?         @map("emailed_at") @db.Timestamptz(6) // set by the outbox worker
+  // Phase 5 slice 106 (C74): the push drain has DEALT with this notification —
+  // sent, or decided not to — and never reconsiders it (at most once). Only the
+  // SYSTEM principal may change it (trigger `notification_pushed_at_guard`).
+  pushedAt     DateTime?         @map("pushed_at") @db.Timestamptz(6)
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
   tenant Tenant  @relation(fields: [tenantId], references: [id])
@@ -2146,6 +2154,9 @@ model NotificationPreference {
   quietHoursFrom       Int?          @map("quiet_hours_from") // 0-23 local
   quietHoursTo         Int?          @map("quiet_hours_to")
   quietWeekends        Boolean       @default(false) @map("quiet_weekends")
+  // Phase 5 slice 106 (founder decision C74 (b)): the PHONE's own level — the
+  // email ladder's four steps, set separately (src/push/verdict.ts).
+  pushLevel            EmailLevel    @default(PARTICIPATING) @map("push_level")
   timezone             String?
   perKind              Json?         @map("per_kind") // { "<kind>": {email, inApp} }
   unsubscribeTokenHash String?       @map("unsubscribe_token_hash") // RFC 8058 (digests, Phase 5)
@@ -2155,6 +2166,48 @@ model NotificationPreference {
 
   @@unique([tenantId, receiverType, receiverId])
   @@map("notification_preference")
+}
+
+/// PushSubscription [Phase 5 slice 106; founder decision C74] — one browser
+/// (or installed app) that gets ONE member's phone and browser notifications
+/// (Web Push, RFC 8030/8291/8292; ARC-25 Stage B). Content-free on the lock
+/// screen: what happened, never a name (src/push/payload.ts).
+///
+/// LIVE ONLY WHILE ITS SIGN-IN IS (C74 (d)): `sessionId` is the member-plane
+/// session it was turned on or last resumed under — no FK, Better Auth deletes
+/// sessions on sign-out, "Your devices" and an owner's reset, and lets them
+/// expire after a week unused; the drain sends only to a row whose session is
+/// still alive, is the member's own user's, and is not impersonated. The same
+/// person signing in there again re-links it (`resumePushDevices`). Dormant
+/// for 90 days, or its member no longer ACTIVE: deleted (src/jobs/push.ts).
+///
+/// `vapidKey` is the fingerprint of OUR public key the browser subscribed with:
+/// a server sends only to rows made with its own key (another environment's
+/// rows on a shared or copied database are invisible to its sends — never
+/// counted against; only the housekeeping's member/session rules reach them). `keysCiphertext` = v2 {p256dh, auth}, AAD
+/// `tenantId:push_subscription:<id>:keys`. One browser may hold rows for two
+/// members (a shared computer) — `(tenant, member, endpoint)` is the key.
+/// scope=tenant  rls=A (+ RESTRICTIVE own_device)  ret=§10  enc=keysCiphertext
+model PushSubscription {
+  id             String    @id @default(uuid(7))
+  tenantId       String    @map("tenant_id")
+  memberId       String    @map("member_id")
+  endpoint       String
+  keysCiphertext String    @map("keys_ciphertext")
+  vapidKey       String    @map("vapid_key")
+  label          String
+  sessionId      String    @map("session_id")
+  boundAt        DateTime  @map("bound_at") @db.Timestamptz(6)
+  failCount      Int       @default(0) @map("fail_count")
+  lastSentAt     DateTime? @map("last_sent_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  member Member @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, memberId, endpoint])
+  @@map("push_subscription")
 }
 
 enum EmailOutboxStatus {

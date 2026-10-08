@@ -185,6 +185,9 @@ const DBTEST_PREFIXES = [
   // Phase 3, the Client Timeline — `src/modules/work/portal-timeline.dbtest.ts`,
   // `setupTenant("ptl")`.
   "ptl-",
+  // Phase 5 slice 106, phone and browser notifications — `src/push/push.dbtest.ts`,
+  // `setupTenant("pushd")`.
+  "pushd-",
   // **A HISTORICAL PREFIX WITH NO LIVE CREATOR — do not delete it when
   // regenerating this list.** Nothing in `src/`, `e2e/` or `scripts/`
   // creates a `probe-` tenant today, so BOTH greps above come back
@@ -1833,6 +1836,8 @@ async function removeTenant(
   await db.emailOutbox.deleteMany({ where: { tenantId } });
   await db.subscription.deleteMany({ where: { tenantId } });
   await db.notificationPreference.deleteMany({ where: { tenantId } });
+  // Phone-notification devices (Phase 5 slice 106): RESTRICT the tenant.
+  await db.pushSubscription.deleteMany({ where: { tenantId } });
   await db.workflowPreset.deleteMany({ where: { tenantId } });
   await db.projectTemplate.deleteMany({ where: { tenantId } });
   // RESTRICTs the tenant. The browser fixture never writes one, so this

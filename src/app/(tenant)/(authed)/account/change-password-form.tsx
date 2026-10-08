@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/input";
 
 export function ChangePasswordForm() {
   const t = useTranslations("account.password");
+  const router = useRouter();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; message: string } | null>(null);
@@ -32,6 +34,10 @@ export function ChangePasswordForm() {
     setCurrent("");
     setNext("");
     setMessage({ ok: true, message: t("changed") });
+    // Signing out the other devices gave THIS one a new session: the layout
+    // re-reads it, so this browser's phone notifications follow it (Phase 5
+    // slice 106, `PwaRegister` — the fix-pass review's nit).
+    router.refresh();
   }
 
   // The change revokes every other session (below), which is a

@@ -236,7 +236,12 @@ export type DomainErrorCode =
   | "REPLY_ADDRESS_UNCHANGED" // already the confirmed address
   | "REPLY_ADDRESS_UNDELIVERABLE" // the address bounced or complained before: mail to it is suppressed
   | "REPLY_ADDRESS_LIMIT" // five confirmation mails a day per workspace, or three a day to one address
-  | "REPLY_ADDRESS_MAIL_FAILED"; // the confirmation mail could not be sent; nothing waits on a link nobody got
+  | "REPLY_ADDRESS_MAIL_FAILED" // the confirmation mail could not be sent; nothing waits on a link nobody got
+  // Phone and browser notifications (Phase 5 slice 106 — src/push/devices.ts).
+  | "PUSH_UNAVAILABLE" // this server has no VAPID key pair: nothing can be turned on
+  | "PUSH_DEVICE_INVALID" // not one of the four push services, or keys no push could use
+  | "PUSH_DEVICE_LIMIT" // ten devices already — remove one first
+  | "PUSH_RATE_LIMITED"; // twenty turn-ons an hour per member: a fact about the reader's own behaviour
 
 export class DomainError extends Error {
   constructor(

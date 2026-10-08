@@ -74,7 +74,15 @@ const CENSUS: Readonly<
   // per-principal column rule still needs a trigger. `snoozed_till` is
   // granted alongside the two columns the documents name — a drift in
   // the docs, not in the schema.
-  notification: { UPDATE: ["archived_at", "read_at", "snoozed_till"] },
+  //
+  // `pushed_at` (Phase 5 slice 106) is granted to the same role so the push
+  // drain, as the tenant's SYSTEM principal, can stamp and release the push
+  // ledger under RLS — and a column grant cannot tell a member or a contact
+  // from the system. `notification_pushed_at_guard` (BEFORE INSERT OR UPDATE
+  // OF pushed_at) refuses ANY change to it by a principal other than SYSTEM;
+  // `push.dbtest.ts` measures the refusal for a member AND a contact. Listed
+  // here, never quietly exempted: the census reads grants, not triggers.
+  notification: { UPDATE: ["archived_at", "pushed_at", "read_at", "snoozed_till"] },
   // NOT a census entry in the principal sense: the feed trigger that
   // fires underneath the one permitted contact INSERT (the comment)
   // writes here, under the contact's own principal. `search_upsert` is

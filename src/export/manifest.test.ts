@@ -80,6 +80,8 @@ describe("excluded columns (encrypted / key material never leave)", () => {
       // 3V slice 90: a share link's live keys (token and code hashes)
       credentialShareLink: ["tokenHash", "codeHash"],
       contactVaultUnlock: ["codeHash"],
+      // Phase 5 slice 106: a device's push address, its keys, its live sign-in
+      pushSubscription: ["endpoint", "keysCiphertext", "sessionId"],
     });
   });
 

@@ -8,8 +8,10 @@ import { accessibleCodes } from "@/entitlements/resolver";
 import { getThemePreference } from "@/lib/theme-server";
 import { getActiveMembership, membershipsFor, mfaStateOf } from "@/members/tenant-context";
 import { countUnreadIn } from "@/notify/inbox";
+import { serverVapidPublicKey } from "@/push/keys";
 
 import { switchLocaleAction } from "./account/actions";
+import { resumePushDevicesAction } from "./settings/notifications/push-actions";
 import { NAV, RAIL_CODES, visibleNav, type NavEntry } from "./nav";
 import { getTimerStateAction, type TimerPillState } from "./time/actions";
 
@@ -124,7 +126,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       canShareTask={canShareTask}
       workspaceCount={workspaceCount}
     >
-      <PwaRegister />
+      <PwaRegister vapidPublicKey={serverVapidPublicKey()} sessionId={session.session.id} onResume={resumePushDevicesAction} />
       {children}
     </AppShell>
   );

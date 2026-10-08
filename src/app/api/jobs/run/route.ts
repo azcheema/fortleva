@@ -8,6 +8,7 @@ import { runMemberDigests } from "@/jobs/digests";
 import { runExpirationReminders } from "@/jobs/expiration-reminders";
 import { runNotificationRetention } from "@/jobs/notification-retention";
 import { drainOutbox } from "@/jobs/outbox";
+import { runPushes } from "@/jobs/push-sweep";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
 import { runUpdateReminders } from "@/jobs/update-reminders";
@@ -36,7 +37,11 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * `ProjectUpdateReminderSent` the guard) and the inbox's housekeeping (slice
  * 104 — a notification over 90 days old or beyond its receiver's newest 500
  * is archived, an archived one DELETED a year later; the second job here that
- * deletes data, in every tenant), until Vercel Pro crons exist. Whenever a
+ * deletes data, in every tenant), and phone and browser notifications (slice 106
+ * — the backstop for a lost kick, SENDING REAL PUSHES to devices registered
+ * against this server's key in every tenant, and forgetting device records:
+ * gone, refused three times, a member no longer active, 90 days dormant),
+ * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
  * convenience) — a preview/staging deployment without a token is closed.
@@ -46,6 +51,8 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
 const DRAIN_BATCH = 50;
 const DRAIN_PASSES = 10;
 const DRAIN_BUDGET_MS = 60_000;
+/** How long the pushes' backstop may go on starting sends, across every workspace. */
+const PUSH_BUDGET_MS = 60_000;
 
 /**
  * THE FUNCTION'S LIFETIME, declared (slice 103, the code review's medium):
@@ -112,6 +119,20 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Phase 5 slice 102: progress-update reminders — on the due day and the
   // next two working days, 09:00–17:00 workspace time; sent by the NEXT drain.
   const updateReminders = await runUpdateReminders();
+  // Phase 5 slice 106 (founder decision C74): phone and browser notifications —
+  // the BACKSTOP for a push whose kick was lost (each is due for fifteen
+  // minutes, then never), and the jobs above's own notifications, which their
+  // kicks will also try after this response. Then the devices' housekeeping:
+  // a device its member is no longer active for, or dormant 90 days, is
+  // forgotten. Its failure is its own.
+  let pushes: Awaited<ReturnType<typeof runPushes>> | { failed: "discovery" };
+  try {
+    pushes = await runPushes({ budgetMs: PUSH_BUDGET_MS });
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: pushes failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    pushes = { failed: "discovery" };
+  }
   // Phase 5 slice 104: the inbox's housekeeping. LAST, and its failure is its
   // own: every job above has already run and reports below either way.
   let notificationRetention: Awaited<ReturnType<typeof runNotificationRetention>> | { failed: "discovery" };
@@ -133,6 +154,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     digests,
     clientDigests,
     updateReminders,
+    pushes,
     notificationRetention,
   });
 }

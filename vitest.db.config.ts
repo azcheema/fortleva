@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { config as loadEnv } from "dotenv";
+import { createECDH } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 loadEnv({ path: ".env.local" });
@@ -24,6 +25,20 @@ delete process.env["MAIL_SEND_TO_ANYONE"];
 delete process.env["AMAZON_SES_ACCESS_KEY_ID"];
 delete process.env["AMAZON_SES_SECRET_ACCESS_KEY"];
 delete process.env["AMAZON_SES_FEEDBACK_TOPIC_ARN"];
+// AND NEVER A REAL PUSH (Phase 5 slice 106): a throwaway VAPID pair of this
+// run's own, and the dev transport — so a founder's `.env.local` pair can never
+// sign a push to a real device from a dbtest. The push dbtests inject their own
+// transport anyway (`deliverPushes(…, {transport})`), and a dbtest's `emit` runs
+// outside any request, where the kick does nothing.
+{
+  const vapid = createECDH("prime256v1");
+  vapid.generateKeys();
+  const scalar = vapid.getPrivateKey();
+  process.env["WEB_PUSH_VAPID_PUBLIC_KEY"] = vapid.getPublicKey().toString("base64url");
+  process.env["WEB_PUSH_VAPID_PRIVATE_KEY"] = Buffer.concat([Buffer.alloc(32 - scalar.length), scalar]).toString("base64url");
+  process.env["WEB_PUSH_SUBJECT"] = "mailto:dbtest@fortleva.invalid";
+  process.env["PUSH_TRANSPORT"] = "dev";
+}
 
 // Integration suite: runs against a real Postgres as the REAL
 // app_runtime role (TENANCY.md §11 — a local owner/superuser role

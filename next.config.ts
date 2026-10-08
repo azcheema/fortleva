@@ -14,6 +14,10 @@ const experimental: NextConfig["experimental"] =
 const nextConfig: NextConfig = {
   reactCompiler: true,
   experimental,
+  // `next dev` prints every server action's ARGUMENTS by default — a device's
+  // push endpoint and keys (Phase 5 slice 106), and before them a vault
+  // login's typed secret — into the terminal. Off: the security review's nit.
+  logging: { serverFunctions: false },
   // Every path, every response: no page of the app may be framed
   // (src/config/security-headers.ts says why — the vault, first).
   headers() {

@@ -377,6 +377,20 @@ describe("posture assertions", () => {
       expect(p.columns, `${p.table}: class A must NEVER have visibility`).not.toContain("visibility");
       expect(p.columns, `${p.table}: class A must NEVER have portal_enabled`).not.toContain("portal_enabled");
     }
+    // Class A's extra RESTRICTIVE policies that something depends on, pinned
+    // BY NAME — `toContain` above cannot see one dropped (the design review
+    // of slice 106, L8). `push_subscription`'s `own_device` is the only thing
+    // keeping a member's devices from their colleagues (Phase 5 slice 106).
+    const CLASS_A_REQUIRED_EXTRA: Readonly<Record<string, readonly string[]>> = {
+      pushSubscription: ["own_device"],
+    };
+    for (const [m, names] of Object.entries(CLASS_A_REQUIRED_EXTRA)) {
+      const p = of(m);
+      for (const name of names) {
+        expect(p.policies, `${p.table}: needs ${name}`).toContain(name);
+        expect(p.quals[name] ?? "", `${p.table}: ${name} must key on the principal`).toContain("app.principal_id");
+      }
+    }
     // Class B, both subclasses: tenant_isolation + portal_gate, the
     // client column, and the visibility term unless a declared variant.
     const classB = [

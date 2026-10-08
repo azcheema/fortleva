@@ -1,3 +1,5 @@
+import { createECDH } from "node:crypto";
+
 import { defineConfig, devices } from "@playwright/test";
 import { config as loadEnv } from "dotenv";
 
@@ -30,6 +32,20 @@ delete process.env["MAIL_SEND_TO_ANYONE"];
 delete process.env["AMAZON_SES_ACCESS_KEY_ID"];
 delete process.env["AMAZON_SES_SECRET_ACCESS_KEY"];
 delete process.env["AMAZON_SES_FEEDBACK_TOPIC_ARN"];
+// AND NEVER A REAL PUSH (Phase 5 slice 106): the server gets a throwaway VAPID
+// pair made here and `PUSH_TRANSPORT=dev`, so it offers "Turn on for this
+// device" and writes each push to `.dev-outbox/push.jsonl` (which
+// `push.spec.ts` decrypts) instead of sending it. A server REUSED on the port
+// has whatever pair it was started with — the spec reads the page, not this.
+const E2E_VAPID = (() => {
+  const vapid = createECDH("prime256v1");
+  vapid.generateKeys();
+  const scalar = vapid.getPrivateKey();
+  return {
+    publicKey: vapid.getPublicKey().toString("base64url"),
+    privateKey: Buffer.concat([Buffer.alloc(32 - scalar.length), scalar]).toString("base64url"),
+  };
+})();
 
 /**
  * End-to-end harness (PLAN.md Phase 2). Chromium only — this suite
@@ -134,6 +150,10 @@ export default defineConfig({
       AMAZON_SES_ACCESS_KEY_ID: "",
       AMAZON_SES_SECRET_ACCESS_KEY: "",
       AMAZON_SES_FEEDBACK_TOPIC_ARN: "",
+      WEB_PUSH_VAPID_PUBLIC_KEY: E2E_VAPID.publicKey,
+      WEB_PUSH_VAPID_PRIVATE_KEY: E2E_VAPID.privateKey,
+      WEB_PUSH_SUBJECT: "mailto:e2e@fortleva.invalid",
+      PUSH_TRANSPORT: "dev",
     },
   },
 });

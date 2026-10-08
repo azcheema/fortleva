@@ -39,7 +39,9 @@ import { usableZone } from "./zone";
  * (`digestCadence`, `digestHour`, `digestWeekday` — read by
  * `src/jobs/digests.ts`), and since slice 105 the QUIET HOURS
  * (`quietHoursFrom`, `quietHoursTo`, `quietWeekends` — read by `notify.emit`
- * and the outbox drain, src/notify/quiet-hours.ts; founder decision C73).
+ * and the outbox drain, src/notify/quiet-hours.ts; founder decision C73), and
+ * since slice 106 the PHONE's own level (`pushLevel` — read by the push drain,
+ * src/jobs/push.ts; founder decision C74 (b)).
  * The model also carries `inAppLevel`, which nothing reads, so it is not
  * offered — a control that changes nothing is worse than none. Its `timezone`
  * IS read, first, by the summary, the weekly reminder and quiet hours, but
@@ -68,6 +70,8 @@ export type MemberNotificationPreferences = {
   readonly quietHoursFrom: number | null;
   readonly quietHoursTo: number | null;
   readonly quietWeekends: boolean;
+  /** The PHONE's own level (slice 106, C74 (b)) — the email ladder, read by the push drain. */
+  readonly pushLevel: EmailLevelValue;
 };
 
 /** Only the fields the page can actually change. */
@@ -85,6 +89,7 @@ export type NotificationPreferencePatch = {
    */
   readonly quietHours?: { readonly from?: number; readonly to?: number } | null;
   readonly quietWeekends?: boolean;
+  readonly pushLevel?: EmailLevelValue;
 };
 
 export const isDigestHour = (v: unknown): v is number =>
@@ -127,6 +132,7 @@ async function loadOwn(tx: TenantDb, ctx: NotifyCtx): Promise<MemberNotification
       quietHoursFrom: true,
       quietHoursTo: true,
       quietWeekends: true,
+      pushLevel: true,
     },
   });
   const quiet = quietHoursOf(row);
@@ -144,6 +150,7 @@ async function loadOwn(tx: TenantDb, ctx: NotifyCtx): Promise<MemberNotification
     quietHoursFrom: quiet.from,
     quietHoursTo: quiet.to,
     quietWeekends: quiet.weekends,
+    pushLevel: isEmailLevel(row?.pushLevel) ? row.pushLevel : DEFAULT_EMAIL_LEVEL,
   };
 }
 
@@ -191,6 +198,7 @@ export async function updateOwnPreferences(
       quietHoursFrom: hours.from,
       quietHoursTo: hours.to,
       quietWeekends: patch.quietWeekends ?? current.quietWeekends,
+      pushLevel: patch.pushLevel ?? current.pushLevel,
     };
     // The action validates; this is the belt, because these become a
     // schedule a job acts on.
@@ -204,6 +212,7 @@ export async function updateOwnPreferences(
       quietHoursFrom: next.quietHoursFrom,
       quietHoursTo: next.quietHoursTo,
       quietWeekends: next.quietWeekends,
+      pushLevel: next.pushLevel,
     };
 
     const existing = await tx.notificationPreference.findFirst({

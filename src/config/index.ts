@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createECDH, createHash } from "node:crypto";
 
 import { z } from "zod";
 
@@ -108,6 +108,15 @@ const envSchema = z.object({
   // "1" in the production deployment's environment ONLY: it may mail anyone
   // (`mailTransportKind`). Anything else is off.
   MAIL_SEND_TO_ANYONE: z.string().optional(),
+  // Web Push (Phase 5 slice 106, founder decision C74) — read and checked
+  // below (`webPushConfig`). Our VAPID pair, base64url (RFC 8292): a pair or
+  // neither. Empty is unset, for the Upstash reason above.
+  WEB_PUSH_VAPID_PUBLIC_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  WEB_PUSH_VAPID_PRIVATE_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  // `mailto:` or `https:` — who a push service contacts about our pushes.
+  WEB_PUSH_SUBJECT: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  // Only the literal "dev" means anything (`pushTransportKind`).
+  PUSH_TRANSPORT: z.string().optional(),
 });
 
 const env = envSchema.parse(process.env);
@@ -443,6 +452,139 @@ if (mailFeedbackConfig !== null && mailTransportKind === "amazon-ses" && amazonS
   console.warn(
     "[config] AMAZON_SES_FEEDBACK_TOPIC_ARN is set but AMAZON_SES_CONFIGURATION_SET is not — bounces reach the topic only if the identity's own feedback notifications publish to it (RUNBOOK §9)",
   );
+}
+
+/**
+ * WEB PUSH (Phase 5 slice 106; founder decision C74; ARC-25 Stage B). Our VAPID
+ * key pair (RFC 8292) — `scripts/generate-vapid-keys.ts` prints one; a separate
+ * pair per environment (RUNBOOK §1). A browser subscribes against our PUBLIC
+ * key and then accepts only pushes signed with the matching private key, so a
+ * process's keys can only ever reach devices that opted in on a deployment
+ * holding the same pair.
+ *
+ * A PAIR OR NEITHER, and a pair that BELONGS TOGETHER (the private scalar must
+ * derive the public point): anything else stops the boot with a sentence — a
+ * mismatched pair would let every device subscribe and then refuse every push.
+ * Neither: phone notifications are simply not offered (Settings says so).
+ */
+const vapidHalves = [env.WEB_PUSH_VAPID_PUBLIC_KEY, env.WEB_PUSH_VAPID_PRIVATE_KEY].filter((k) => k !== undefined).length;
+if (vapidHalves === 1) {
+  throw new Error(
+    "WEB_PUSH_VAPID_PUBLIC_KEY and WEB_PUSH_VAPID_PRIVATE_KEY must be set together (src/config): `pnpm tsx scripts/generate-vapid-keys.ts` prints a pair",
+  );
+}
+const vapidPairMatches = (publicKey: string, privateKey: string): boolean => {
+  const pub = Buffer.from(publicKey, "base64url");
+  const priv = Buffer.from(privateKey, "base64url");
+  if (pub.length !== 65 || pub[0] !== 0x04 || priv.length !== 32) return false;
+  try {
+    const ecdh = createECDH("prime256v1");
+    ecdh.setPrivateKey(priv);
+    return ecdh.getPublicKey().equals(pub);
+  } catch {
+    return false;
+  }
+};
+if (
+  env.WEB_PUSH_VAPID_PUBLIC_KEY !== undefined &&
+  env.WEB_PUSH_VAPID_PRIVATE_KEY !== undefined &&
+  !vapidPairMatches(env.WEB_PUSH_VAPID_PUBLIC_KEY, env.WEB_PUSH_VAPID_PRIVATE_KEY)
+) {
+  throw new Error(
+    "WEB_PUSH_VAPID_PUBLIC_KEY and WEB_PUSH_VAPID_PRIVATE_KEY are not one P-256 key pair (src/config): base64url, 65 and 32 bytes, generated together",
+  );
+}
+const webPushSubject = env.WEB_PUSH_SUBJECT ?? `mailto:${mailFrom.address}`;
+if (!/^(mailto:[^\s@]+@[^\s@]+|https:\/\/[^\s]+)$/.test(webPushSubject)) {
+  throw new Error("WEB_PUSH_SUBJECT must be a mailto: address or an https: URL (src/config; RFC 8292 §2.1)");
+}
+
+export type WebPushConfig = {
+  /** base64url, 65 bytes uncompressed — what browsers subscribe with (`applicationServerKey`). */
+  readonly publicKey: string;
+  /** base64url, 32 bytes. Never leaves the server. */
+  readonly privateKey: string;
+  readonly subject: string;
+};
+
+export const webPushConfig: WebPushConfig | null =
+  env.WEB_PUSH_VAPID_PUBLIC_KEY !== undefined && env.WEB_PUSH_VAPID_PRIVATE_KEY !== undefined
+    ? { publicKey: env.WEB_PUSH_VAPID_PUBLIC_KEY, privateKey: env.WEB_PUSH_VAPID_PRIVATE_KEY, subject: webPushSubject }
+    : null;
+
+/**
+ * HOW PUSHES LEAVE (`src/push/send.ts`):
+ * - `"none"` — no key pair: nothing is offered and nothing is sent.
+ * - `"dev"` — `PUSH_TRANSPORT=dev`: each request is written to
+ *   `.dev-outbox/push.jsonl` (gitignored) instead of being POSTed — the e2e
+ *   harness reads and decrypts it. Never on a production build off loopback:
+ *   there a forgotten flag would turn every push into a silent drop, so it
+ *   stops the boot instead (the mail outbox's rule).
+ * - `"web-push"` — otherwise: POST to the browser's push service (Apple,
+ *   Google, Mozilla, Microsoft — `pushEndpointUrl` below).
+ * Both harnesses generate a throwaway pair of their own with
+ * `PUSH_TRANSPORT=dev` (`vitest.db.config.ts`, `playwright.config.ts`); the
+ * dbtests also inject their own transport.
+ */
+if (env.PUSH_TRANSPORT === "dev" && isProduction && !LOOPBACK_HOSTS.has(appUrl.hostname)) {
+  throw new Error("PUSH_TRANSPORT=dev on a production build off loopback (src/config): pushes would be written to a file, never sent");
+}
+export const pushTransportKind: "none" | "dev" | "web-push" =
+  webPushConfig === null ? "none" : env.PUSH_TRANSPORT === "dev" ? "dev" : "web-push";
+
+// Real pushes signed as a placeholder (the code and security reviews' low): the
+// default subject is `mailto:<MAIL_FROM_ADDRESS>`, whose default is a `.invalid`
+// address, and a push service may refuse every signature that names one (Apple
+// answers 403) — so the boot says so instead, as SES's sender check does.
+if (pushTransportKind === "web-push" && /(\.invalid|\.test|\.example|\.localhost|@localhost)$/i.test(webPushSubject)) {
+  throw new Error(
+    `WEB_PUSH_SUBJECT is a placeholder (${webPushSubject}) while phone notifications are sent for real (src/config): set it, or MAIL_FROM_ADDRESS, to a real address — or PUSH_TRANSPORT=dev`,
+  );
+}
+
+/**
+ * THE PUSH SERVICES A DEVICE MAY NAME (C74 (g); SECURITY.md §9.2). A push
+ * subscription's endpoint is a URL the member's BROWSER chose and the server
+ * then POSTs to — so it is fenced like any outbound URL a user supplies: HTTPS,
+ * no credentials, the default port, no fragment, and a host that IS one of the
+ * four vendors' push services — exactly, or (Apple, Microsoft) a subdomain of
+ * theirs, never a name that merely ends in the same letters. Checked when a
+ * device is registered AND before every send (a row written under an older
+ * list). An IP literal, a trailing dot or a lookalike matches nothing.
+ */
+const PUSH_SERVICE_HOSTS: readonly string[] = [
+  // Google — Chrome, Edge on Android, Samsung Internet, Opera, Brave.
+  "fcm.googleapis.com",
+  // Mozilla — Firefox.
+  "updates.push.services.mozilla.com",
+  // Apple — Safari on macOS, and iPhone/iPad home-screen apps.
+  "web.push.apple.com",
+];
+const PUSH_SERVICE_SUFFIXES: readonly string[] = [
+  // Apple's other push hosts, should a browser hand one out.
+  ".push.apple.com",
+  // Microsoft — Edge on Windows (Windows Push Notification Services).
+  ".notify.windows.com",
+];
+const MAX_PUSH_ENDPOINT_LENGTH = 1024;
+
+/** The endpoint as a URL when it is one of the push services above; null otherwise. */
+export function pushEndpointUrl(raw: string): URL | null {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_PUSH_ENDPOINT_LENGTH) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username !== "" || url.password !== "" || url.port !== "" || url.hash !== "") {
+    return null;
+  }
+  const host = url.hostname;
+  const known =
+    PUSH_SERVICE_HOSTS.includes(host) ||
+    PUSH_SERVICE_SUFFIXES.some((suffix) => host.endsWith(suffix) && host.length > suffix.length && /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host));
+  return known ? url : null;
 }
 
 /** Build an absolute URL on the canonical app origin. Deep links in email

@@ -52,6 +52,8 @@ export const MODEL_CLASSES = {
     "subscription",
     "notificationPreference",
     "emailOutbox",
+    // Phase 5 slice 106 — the devices that get a member's phone notifications:
+    "pushSubscription",
     // 2T — time (DATA_MODEL.md §6.15):
     "timeEntry",
     "rateCard",
@@ -155,6 +157,12 @@ export const RLS_CLASSES = {
     "subscription",
     "notificationPreference",
     "emailOutbox",
+    // Phase 5 slice 106 — one browser that gets ONE member's phone
+    // notifications (C74): a push service's endpoint and the browser's
+    // encrypted keys. Beside portal_deny, a RESTRICTIVE `own_device` policy
+    // gives the member their own rows and the SYSTEM principal (the drain)
+    // all of them; `isolation.dbtest.ts` pins it by name.
+    "pushSubscription",
     // 2T (never portal-reachable; the never-list is enforced by
     // absence of columns AND by portal_deny here):
     "timeEntry",
