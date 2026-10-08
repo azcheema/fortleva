@@ -10,7 +10,7 @@ import { resolvePortalModuleGates, type PortalPrincipal } from "@/portal";
 import { completeMilestone, createMilestone } from "@/projects/milestones";
 import { createVersion, shipVersion } from "@/projects/versions";
 
-import { changeItemVisibility, createItem } from "./items";
+import { changeItemVisibility, createItem, deleteItem } from "./items";
 import { listPortalUpdates } from "./portal";
 import { createPortalRequest } from "./portal-writes";
 import { changeState } from "./states";
@@ -22,6 +22,7 @@ import {
   discardUpdateDraft,
   getUpdate,
   listUpdates,
+  privateWorkNamed,
   publishUpdate,
   readComposerContext,
   retractUpdate,
@@ -470,6 +471,47 @@ describe("what the contact reads", () => {
     await expect(
       f.platform.projectUpdate.update({ where: { id: first.id }, data: { status: "PUBLISHED", visibility: "CLIENT_VISIBLE" } }),
     ).rejects.toThrow(/UPDATE_IMMUTABLE/);
+  });
+});
+
+describe("the publish dialog's warning: private work a post names (slice 102)", () => {
+  it("answers the project's INTERNAL tasks and milestones that are a whole line of the post — never a shared one, never a substring", async () => {
+    const named = await privateWorkNamed(ctxOf("employee"), pOn, [
+      "Weekly update",
+      `  ${S.internalTask}  `,
+      S.sharedTask,
+      S.internalMilestone,
+      `Notes on ${S.internalTask} and more`, // a substring: not a line of its own
+      "",
+    ]);
+    expect(named.sort()).toEqual([S.internalMilestone, S.internalTask].sort());
+    expect(await privateWorkNamed(ctxOf("employee"), pOn, [S.sharedTask, S.sharedMilestone])).toEqual([]);
+  });
+
+  it("strips a leading task key — the line a draft written before slice 102 holds — and still matches a key-shaped TITLE as written", async () => {
+    expect(await privateWorkNamed(ctxOf("employee"), pOn, [`PON-17 ${S.internalTask}`])).toEqual([S.internalTask]);
+    const keyShaped = `ISO-27001 audit ${run}`;
+    await createItem(ctxOf("owner"), { projectId: pOn, title: keyShaped }); // INTERNAL by default
+    expect(await privateWorkNamed(ctxOf("employee"), pOn, [keyShaped])).toEqual([keyShaped]);
+  });
+
+  it("names only THIS project's live private work: never another project's, never a deleted task", async () => {
+    const elsewhere = `Private elsewhere ${run}`;
+    await createItem(ctxOf("owner"), { projectId: pBeta, title: elsewhere }); // INTERNAL by default
+    expect(await privateWorkNamed(ctxOf("owner"), pBeta, [elsewhere])).toEqual([elsewhere]); // the positive control
+    const gone = `Deleted private ${run}`;
+    const goneId = (await createItem(ctxOf("owner"), { projectId: pOn, title: gone })).id;
+    expect(await privateWorkNamed(ctxOf("owner"), pOn, [gone])).toEqual([gone]);
+    await deleteItem(ctxOf("owner"), goneId);
+    expect(await privateWorkNamed(ctxOf("owner"), pOn, [elsewhere, gone])).toEqual([]);
+  });
+
+  it("answers nothing about a project outside the member's scope", async () => {
+    expect(await authzReason(privateWorkNamed(ctxOf("employee"), pBeta, [S.internalTask]))).toBe("NOT_FOUND");
+  });
+
+  it("is a writer's question: a member who cannot draft an update is refused", async () => {
+    expect(await authzReason(privateWorkNamed(ctxOf("admin"), pOn, [S.internalTask]))).toBe("FORBIDDEN");
   });
 });
 

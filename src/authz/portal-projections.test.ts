@@ -499,6 +499,9 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "internalSnapshot",
         "bodyText",
         "uploadedByMemberId",
+        "updateCadence",
+        "updateWeekday",
+        "updateScheduleSince",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -667,6 +670,12 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   "bodyText",
   // Phase 3, the portal files slice: the file layer's member column.
   "uploadedByMemberId",
+  // Phase 5 slice 102 (C70): the project's update schedule — when the
+  // agency means to write, and since when. The team's rhythm, never the
+  // client's: no portal surface shows a due date or "late".
+  "updateCadence",
+  "updateWeekday",
+  "updateScheduleSince",
 ]);
 
 /**

@@ -99,12 +99,3 @@ export function SectionEditor({
     </div>
   );
 }
-
-/** A bullet list of plain lines, as the JSON the editor's schema accepts. */
-export const bulletListOf = (lines: readonly string[]) => ({
-  type: "bulletList",
-  content: lines.map((text) => ({
-    type: "listItem",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  })),
-});

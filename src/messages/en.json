@@ -277,7 +277,8 @@
       "loginsExpiring": "Logins are expiring",
       "loginSubmitted": "A client sent a login",
       "loginAskDeclined": "A client can't send a login you asked for",
-      "loginsAlarm": "Repeated failed attempts to open a client's logins"
+      "loginsAlarm": "Repeated failed attempts to open a client's logins",
+      "updateDue": "A project update is due"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",
@@ -1844,6 +1845,14 @@
         "BIWEEKLY": "Every two weeks",
         "MONTHLY": "Monthly"
       },
+      "updateWeekday": "Update day",
+      "weekdays": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday"
+      },
       "archive": "Archive project",
       "archiveConfirm": "Archive this project?",
       "unarchive": "Restore project",
@@ -2829,6 +2838,7 @@
         "internalHint": "Only the team sees it. You can share it with the client later.",
         "clientHint": "Your client reads it on the portal the moment it is published.",
         "portalOffHint": "The portal is off for this project — the client will see it once the switch is on (Portal tab).",
+        "privateNamed": "Before your client reads it, take out what only your team can see: {names}",
         "confirm": "Publish",
         "back": "Go back",
         "publishedVisible": "Update #{seq} published. Your client can read it.",
@@ -2883,6 +2893,15 @@
           "noteCleared": "Note removed.",
           "failed": "That did not work."
         }
+      },
+      "schedule": {
+        "dueBadge": "Update due today",
+        "lateBadge": "Update late",
+        "next": "Next update due {date}",
+        "due": "An update is due today",
+        "late": "Update late — it was due {date}",
+        "write": "Write the update",
+        "continue": "Continue the draft"
       }
     }
   },

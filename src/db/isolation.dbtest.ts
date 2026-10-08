@@ -616,7 +616,7 @@ describe("the portal switch gate, structurally (slice 74)", () => {
     expect(src).toMatch(/ERRCODE\s*=\s*'55P03'/);
   });
 
-  it("the switch changes only through the fan-out: `project` has no BEFORE UPDATE row trigger, and exactly its three AFTER triggers", async () => {
+  it("the switch changes only through the fan-out: no BEFORE trigger on `project` writes the switch, and its trigger set is exactly the four pinned here", async () => {
     // THE PROOF'S THIRD PREMISE. The fan-out is `AFTER UPDATE OF
     // portal_enabled`, and a column-specific trigger fires only when the
     // column is in the statement's SET list — a change a BEFORE UPDATE
@@ -627,6 +627,15 @@ describe("the portal switch gate, structurally (slice 74)", () => {
     // children, and every later stamp reads it fresh.) The exact set is
     // pinned too, so the next trigger on `project` is a decision someone
     // makes here, not one this assertion walks past.
+    //
+    // THAT DECISION WAS MADE ONCE (Phase 5 slice 102, its migration
+    // reviewed before it was applied): `project_update_schedule_stamp`, a
+    // BEFORE INSERT OR UPDATE row trigger that ASSIGNS ONLY
+    // `NEW.update_schedule_since` — it LISTENS to the switch (turning the
+    // portal on restarts a project's update schedule) and never writes it.
+    // So the premise is pinned by MEANING now, not by the absence of BEFORE
+    // triggers: no BEFORE trigger's function on `project` assigns
+    // `NEW.portal_enabled`, and the one BEFORE trigger is exactly that one.
     const rows = await getPlatformClient().$queryRaw<
       {
         tgname: string;
@@ -650,15 +659,80 @@ describe("the portal switch gate, structurally (slice 74)", () => {
        WHERE t.tgrelid = 'project'::regclass AND NOT t.tgisinternal`;
     expect(
       rows.filter((r) => r.row_level && r.before && r.on_update).map((r) => r.tgname),
-      "no BEFORE UPDATE row trigger on project",
-    ).toEqual([]);
+      "the one BEFORE UPDATE row trigger on project is the update schedule's stamp",
+    ).toEqual(["project_update_schedule_stamp"]);
     expect(rows.map((r) => r.tgname).sort()).toEqual([
       "project_hours_sharing_fanout",
       "project_portal_enabled_fanout",
+      "project_update_schedule_stamp",
       "search_feed_project",
     ]);
-    // …and none of the three is a BEFORE trigger of any kind.
-    expect(rows.filter((r) => r.before).map((r) => r.tgname)).toEqual([]);
+    // …and it is the only BEFORE trigger of any kind.
+    expect(rows.filter((r) => r.before).map((r) => r.tgname)).toEqual(["project_update_schedule_stamp"]);
+    // THE PREMISE BY MEANING: no BEFORE trigger's function on `project`
+    // assigns NEW.portal_enabled (comments stripped by `bodyOf`).
+    const beforeFns = await getPlatformClient().$queryRaw<{ fn: string }[]>`
+      SELECT t.tgfoid::regproc::text AS fn
+        FROM pg_trigger t
+       WHERE t.tgrelid = 'project'::regclass AND NOT t.tgisinternal AND (t.tgtype::int & 2) = 2`;
+    expect(beforeFns.map((r) => r.fn)).toEqual(["project_update_schedule_stamp"]);
+    for (const { fn } of beforeFns) {
+      const src = await bodyOf(fn);
+      expect(src, `${fn} exists`).toMatch(/update_schedule_since/);
+      expect(src, `${fn} never writes the switch`).not.toMatch(/NEW\s*\.\s*"?portal_enabled"?\s*:?=/i);
+      // …nor the whole record, nor by `SELECT … INTO NEW…` (the re-check's nits).
+      expect(src, `${fn} never assigns the whole record`).not.toMatch(/\bNEW\s*:?=/i);
+      expect(src, `${fn} never selects into NEW`).not.toMatch(/\bINTO\s+(STRICT\s+)?NEW\b/i);
+      // (Not a bare INSERT: the body compares `TG_OP = 'INSERT'`.)
+      expect(src, `${fn} runs no statement of its own`).not.toMatch(
+        /\b(INSERT\s+INTO|DELETE\s+FROM|PERFORM|EXECUTE)\b|\bUPDATE\s+\w+\s+SET\b/i,
+      );
+      // …and, closing the indirect ways (slice 102's security review): every
+      // RETURN hands back NEW itself — never `jsonb_populate_record(NEW, …)`
+      // or a copy — and every assignment is to one column of NEW other than
+      // the switch, never to a record variable that could be returned.
+      const returns = src.match(/\bRETURN\b[^;]*;/gi) ?? [];
+      expect(returns.length, `${fn} returns`).toBeGreaterThan(0);
+      for (const r of returns) expect(r.trim(), `${fn} returns NEW itself`).toMatch(/^RETURN\s+NEW\s*;$/i);
+      const assigned = [...src.matchAll(/([\w."]+)\s*:=/g)].map((m) => m[1]!);
+      for (const a of assigned) {
+        expect(a, `${fn} assigns only a column of NEW, never the switch`).toMatch(/^NEW\.(?!"?portal_enabled\b)"?\w+"?$/i);
+      }
+    }
+    // AND BY BEHAVIOUR, in a transaction that is rolled back: a project whose
+    // every schedule column changes keeps its switch, and the switch itself
+    // still moves only when it is written.
+    const rollback = new Error("rollback");
+    await getPlatformClient()
+      .$transaction(
+        async (tx) => {
+          const clientId = randomUUID();
+          const projectId = randomUUID();
+          await tx.client.create({ data: { id: clientId, tenantId: A.id, name: "Trigger probe" } });
+          await tx.project.create({
+            data: { id: projectId, tenantId: A.id, clientId, key: "TPROBE", name: "Trigger probe", updateCadence: "WEEKLY" },
+          });
+          const sw = async () =>
+            (await tx.project.findUniqueOrThrow({ where: { id: projectId }, select: { portalEnabled: true } })).portalEnabled;
+          for (const data of [
+            { updateCadence: "MONTHLY" as const },
+            { updateWeekday: 2 },
+            { status: "ACTIVE" as const },
+            { updateScheduleSince: new Date(0) },
+            { updateCadence: "NONE" as const },
+          ]) {
+            await tx.project.update({ where: { id: projectId }, data, select: { id: true } });
+            expect(await sw(), `the switch after ${Object.keys(data)[0]}`).toBe(false);
+          }
+          await tx.project.update({ where: { id: projectId }, data: { portalEnabled: true }, select: { id: true } });
+          expect(await sw()).toBe(true);
+          throw rollback;
+        },
+        { timeout: 60_000 },
+      )
+      .catch((e: unknown) => {
+        if (e !== rollback) throw e;
+      });
     // THE FAN-OUT ITSELF, not only its name: a disabled (or replica-only)
     // fan-out keeps the name set above while the switch moves without
     // re-deriving a single child — and without the gate the fan-out tries.

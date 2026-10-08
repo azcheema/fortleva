@@ -37,6 +37,7 @@
  *        tsx e2e/fixtures/seed-cli.ts reset-sealed-asks <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts flag-login <tenantId> <loginName>
  *        tsx e2e/fixtures/seed-cli.ts reset-portal-sections <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts reset-update-schedule <tenantId> <projectKey>
  *        tsx e2e/fixtures/seed-cli.ts client-summary-link <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -211,6 +212,9 @@ const DBTEST_PREFIXES = [
   "totals-",
   "tree-",
   "triage-",
+  // Phase 5 slice 102, the progress-update reminders —
+  // `src/modules/work/update-reminders.dbtest.ts`, `setupTenant("updrem")`.
+  "updrem-",
   // Phase 3V slice 99, the door's alarm — `src/modules/vault/door-alarm.dbtest.ts`,
   // `setupTenant("valarm")`.
   "valarm-",
@@ -1830,6 +1834,9 @@ async function removeTenant(
   // 3V slice 89: the renewal reminders' dedupe RESTRICTs the tenant (a run
   // of `POST /api/jobs/run` against a fixture tenant writes it).
   await db.expirationReminderSent.deleteMany({ where: { tenantId } });
+  // Phase 5 slice 102: the update reminders' dedupe RESTRICTs the tenant too
+  // (it also goes with its project, which is deleted below).
+  await db.projectUpdateReminderSent.deleteMany({ where: { tenantId } });
   await db.memberProject.deleteMany({ where: { tenantId } });
   await db.memberClient.deleteMany({ where: { tenantId } });
   // A contact's password-reset rows have no FK to it — a row is looked up
@@ -2289,6 +2296,25 @@ async function resetPortalSections(tenantId: string): Promise<void> {
       ],
     },
     data: { portalShowTasks: true, portalShowUpdates: true, portalShowMilestones: true, portalShowFiles: true },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"reset":${count}}
+`);
+}
+
+/**
+ * One seeded project's update schedule back to none — the cadence NONE and
+ * the day Friday (Phase 5 slice 102; the schedule spec's setup and
+ * teardown, so a retry starts where the first attempt did). The STRICT
+ * guard, `e2e-` only, like every write here.
+ */
+async function resetUpdateSchedule(tenantId: string, projectKey: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { count } = await db.project.updateMany({
+    where: { tenantId, key: projectKey },
+    data: { updateCadence: "NONE", updateWeekday: 5 },
   });
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"reset":${count}}
@@ -3013,6 +3039,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-signoffs") return resetSignoffs(argument!);
   if (command === "reset-sealed-asks") return resetSealedAsks(argument!);
   if (command === "reset-portal-sections") return resetPortalSections(argument!);
+  if (command === "reset-update-schedule") return resetUpdateSchedule(argument!, process.argv[4]!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "age-vault-factor") return ageVaultFactor(argument!, process.argv[4]!);

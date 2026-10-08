@@ -335,6 +335,20 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Det finns nytt i din byrås kundportal. Logga in för att se det.",
     },
   },
+  // Phase 5 slice 102 — a project's progress update is due today (C70).
+  // LINKS, NOT DATA: neither the project nor its client is named; the inbox
+  // names the project under the reader's own principal. The late reminders'
+  // copy is `UPDATE_LATE_COPY` below, chosen by `params.late`.
+  "project_update.due": {
+    en: {
+      subject: "A project update is due today",
+      body: "A project you look after is due a progress update today. Open its Updates tab to write it.",
+    },
+    sv: {
+      subject: "En projektuppdatering ska skrivas i dag",
+      body: "Ett projekt du ansvarar för ska ha en lägesuppdatering i dag. Öppna fliken Uppdateringar i projektet för att skriva den.",
+    },
+  },
   "time.weekly_reminder": {
     en: {
       subject: "Your weekly time reminder",
@@ -344,6 +358,22 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       subject: "Din veckopåminnelse om tid",
       body: "Du har bett Fortleva påminna dig en gång i veckan om att se över din tidrapportering. Öppna veckan och fyll i det som saknas.",
     },
+  },
+};
+
+/**
+ * A progress-update reminder once the update is LATE (slice 102): the same
+ * mail, saying so. `params.late` is the job's own flag, never a person's —
+ * anything but "1" reads as due today.
+ */
+const UPDATE_LATE_COPY: Record<"en" | "sv", Copy> = {
+  en: {
+    subject: "A project update is late",
+    body: "A project you look after was due a progress update and none has been published yet. Open its Updates tab to write it.",
+  },
+  sv: {
+    subject: "En projektuppdatering är försenad",
+    body: "Ett projekt du ansvarar för skulle ha haft en lägesuppdatering, och ingen har publicerats ännu. Öppna fliken Uppdateringar i projektet för att skriva den.",
   },
 };
 
@@ -444,6 +474,18 @@ const linkFor = (
     const clientId = uuidParam(params, "clientId");
     return new URL(clientId ? `/vault?client=${clientId}` : "/vault", appUrl);
   }
+  // A progress update due (slice 102): the project's Updates tab, which
+  // `project_update:view` opens — every receiver holds it on all four gates
+  // (`RECEIVER_CODES`, src/modules/work/update-reminders.ts).
+  // The key came from the job, never a person, and is held to
+  // `PROJECT_KEY_RE`'s shape (src/projects/service.ts reaches the database).
+  if (key === "project_update.due") {
+    const projectKey =
+      typeof params?.["projectKey"] === "string" && /^[A-Z][A-Z0-9]{0,7}$/.test(params["projectKey"])
+        ? params["projectKey"]
+        : null;
+    return new URL(projectKey ? `/projects/${projectKey}/updates` : "/inbox", appUrl);
+  }
   const projectKey = typeof params?.["projectKey"] === "string" ? params["projectKey"] : null;
   const itemNumber = typeof params?.["itemNumber"] === "string" ? params["itemNumber"] : null;
   // A sign-off decision lands on the project's Timeline tab (a version)
@@ -478,6 +520,8 @@ export function renderEmail(
     });
     if (digest) return digest;
   }
-  const copy = COPY[key][locale === "sv" ? "sv" : "en"];
+  const lang = locale === "sv" ? "sv" : "en";
+  const late = key === "project_update.due" && params?.["late"] === "1";
+  const copy = late ? UPDATE_LATE_COPY[lang] : COPY[key][lang];
   return { subject: copy.subject, text: `${copy.body}\n\n${linkFor(key, params).toString()}` };
 }

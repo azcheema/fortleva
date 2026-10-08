@@ -263,6 +263,12 @@ export async function resetPortalSections(tenantId: string): Promise<number> {
   return reset;
 }
 
+/** One seeded project's update schedule back to none (slice 102 — the schedule spec's setup and teardown). */
+export async function resetUpdateSchedule(tenantId: string, projectKey: string): Promise<number> {
+  const { reset } = await runCli<{ reset: number }>(["reset-update-schedule", tenantId, projectKey]);
+  return reset;
+}
+
 /**
  * Age the vault member's second factor past the vault window (C52): the
  * next visit to the Vault tab finds THE DOOR. Returns how many sessions

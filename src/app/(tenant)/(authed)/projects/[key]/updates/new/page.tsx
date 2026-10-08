@@ -8,7 +8,7 @@ import { handleAuthzRedirect } from "@/authz/redirects";
 import { Button } from "@/components/ui/button";
 import { requireTenantContext } from "@/members/tenant-context";
 import { readComposerContext } from "@/modules/work";
-import { ALL_METRICS_INCLUDED } from "@/modules/work/update-body";
+import { newUpdateBody } from "@/modules/work/update-body";
 
 import { loadProject } from "../../data";
 import { UpdateComposer } from "../update-composer";
@@ -17,7 +17,9 @@ import { UpdateComposer } from "../update-composer";
  * A NEW UPDATE. The context read is the gate (`project_update:create`
  * + scope) and a refusal is a 404, the way a typed URL to any hidden
  * surface answers (UI.md §7.3). The draft row is created on the first
- * save, not on arrival: a composer opened and abandoned leaves nothing.
+ * save, not on arrival: a composer opened and abandoned leaves nothing —
+ * which is also why the pre-filled "What got done" (C70 (d), slice 102)
+ * costs nothing until the person keeps it.
  */
 export async function generateMetadata({ params }: { params: Promise<{ key: string }> }): Promise<Metadata> {
   const { key } = await params;
@@ -56,7 +58,9 @@ export default async function NewUpdatePage({ params }: { params: Promise<{ key:
           title: null,
           periodStart: null,
           periodEnd: null,
-          body: { sections: [], metrics: { include: ALL_METRICS_INCLUDED } },
+          // "What got done" opens pre-filled with what the client can
+          // already see (founder decision C70 (d)); saved only on Save.
+          body: newUpdateBody(context.changes, context.project.shows),
         }}
         context={context}
       />

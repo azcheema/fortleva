@@ -67,6 +67,8 @@ export const MODEL_CLASSES = {
     // Phase 3 — progress updates (DATA_MODEL.md §6.16):
     "projectUpdate",
     "projectUpdateInternalSnapshot",
+    // Phase 5 slice 102 — the progress-update reminders' dedupe:
+    "projectUpdateReminderSent",
     // Phase 3V — the vault (DATA_MODEL.md §6.17):
     "credentialItem",
     "credentialSecret",
@@ -166,6 +168,10 @@ export const RLS_CLASSES = {
     // update, 1:1 with the class-B row and NEVER contact-reachable
     // (DATA_MODEL.md §6.16, SECURITY.md §T9 "ProjectUpdate snapshots").
     "projectUpdateInternalSnapshot",
+    // Phase 5 slice 102 — the progress-update reminders' dedupe (a project
+    // id, a day, a step): staff bookkeeping no contact has any business
+    // reading.
+    "projectUpdateReminderSent",
     // Phase 3V — a credential's SECRET and its history (DATA_MODEL.md
     // §6.17): the ciphertext twin of the class-B metadata row, so a
     // contact principal gets zero rows here even for a CLIENT_VISIBLE item.

@@ -199,6 +199,7 @@ export {
   retractUpdate,
   setUpdateVisibility,
   updateUpdateDraft,
+  privateWorkNamed,
   type ComposerContext,
   type InternalView,
   type UpdateCaps,

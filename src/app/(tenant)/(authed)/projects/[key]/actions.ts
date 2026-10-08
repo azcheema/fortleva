@@ -89,6 +89,9 @@ export async function updateProjectAction(formData: FormData): Promise<FormResul
   if (has(formData, "updateCadence")) {
     patch.updateCadence = oneOf(CADENCES, field(formData, "updateCadence")) ?? "NONE";
   }
+  // The day an update is due (slice 102, C70 (b)): a closed set the service
+  // checks again — anything but 1–5 is refused there, never guessed here.
+  if (has(formData, "updateWeekday")) patch.updateWeekday = Number(field(formData, "updateWeekday"));
   // Checkbox: present ⇒ on; the form always carries a marker so "off" is distinguishable.
   if (has(formData, "defaultBillableMarker")) patch.defaultBillable = formData.get("defaultBillable") === "on";
   const r = await runForm(projectPath(key), async () => {

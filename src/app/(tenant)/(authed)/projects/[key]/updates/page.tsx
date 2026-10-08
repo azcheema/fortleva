@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
 import { AuthzError } from "@/authz/errors";
-import { EmptyState, HealthChip, SectionCard } from "@/components/semantic";
+import { Callout, EmptyState, HealthChip, SectionCard } from "@/components/semantic";
 import { UpdateView } from "@/components/updates/update-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,12 +58,34 @@ export default async function ProjectUpdatesPage({ params }: { params: Promise<{
   const canWrite = list.caps.create && project.status !== "ARCHIVED";
   const base = `/projects/${project.key}/updates`;
 
+  // The update schedule (Phase 5 slice 102, C70): where it stands, from the
+  // rule the reminder job sends by. `dueOn` is a civil date in the
+  // workspace's zone, formatted at UTC so it never shifts a day.
+  const schedule = project.updateSchedule;
+  const dueDate = schedule
+    ? format.dateTime(new Date(`${schedule.dueOn}T00:00:00Z`), {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      })
+    : null;
+  // When it is due or late, the way in is the newest draft if there is one —
+  // a second draft beside a half-written one helps nobody.
+  const draft = list.updates.find((u) => u.status === "DRAFT") ?? null;
+  const writeHref = draft ? `${base}/${draft.id}` : `${base}/new`;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-foreground">{t("title")}</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">{t("description")}</p>
+          {schedule?.state === "scheduled" ? (
+            <p className="mt-1 text-sm text-muted-foreground" data-testid="update-schedule">
+              {t("schedule.next", { date: dueDate ?? "" })}
+            </p>
+          ) : null}
         </div>
         {canWrite ? (
           <Button asChild size="sm">
@@ -74,6 +96,19 @@ export default async function ProjectUpdatesPage({ params }: { params: Promise<{
           </Button>
         ) : null}
       </div>
+
+      {schedule && schedule.state !== "scheduled" ? (
+        <Callout tone={schedule.state === "late" ? "caution" : "info"} role="status">
+          <div className="flex flex-wrap items-center justify-between gap-3" data-testid="update-schedule">
+            <span>{schedule.state === "late" ? t("schedule.late", { date: dueDate ?? "" }) : t("schedule.due")}</span>
+            {canWrite ? (
+              <Button asChild size="sm">
+                <Link href={writeHref}>{draft ? t("schedule.continue") : t("schedule.write")}</Link>
+              </Button>
+            ) : null}
+          </div>
+        </Callout>
+      ) : null}
 
       {list.updates.length === 0 ? (
         <SectionCard>

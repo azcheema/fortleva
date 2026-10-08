@@ -191,6 +191,19 @@ export default async function ProjectLayout({
                 the first post is published: an empty chip would be a
                 health nobody chose. */}
             {project.health ? <HealthChip value={project.health} /> : null}
+            {/* The update schedule (Phase 5 slice 102, C70): staff only, and
+                only while the project is ACTIVE with a cadence — the same
+                rule the reminder job sends by. Nothing while it is ahead:
+                "on schedule" is the resting state. */}
+            {project.updateSchedule?.state === "late" ? (
+              <Badge variant="caution" data-testid="update-late">
+                {t("updates.schedule.lateBadge")}
+              </Badge>
+            ) : project.updateSchedule?.state === "due" ? (
+              <Badge variant="outline" data-testid="update-due">
+                {t("updates.schedule.dueBadge")}
+              </Badge>
+            ) : null}
           </>
         }
         actions={

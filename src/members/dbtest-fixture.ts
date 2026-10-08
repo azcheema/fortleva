@@ -90,6 +90,10 @@ export async function setupTenant(label: string) {
     // The renewal reminders' dedupe (3V slice 89) has no FK to its subject
     // and RESTRICTs the tenant: any dbtest that runs the job leaves rows.
     await platform.expirationReminderSent.deleteMany({ where: { tenantId } });
+    // …and the update reminders' (Phase 5 slice 102), which RESTRICT the
+    // tenant too — gone with their project, but a suite that leaves its
+    // projects would otherwise fail here on this table first.
+    await platform.projectUpdateReminderSent.deleteMany({ where: { tenantId } });
     await platform.memberInvite.deleteMany({ where: { tenantId } });
     await platform.memberRole.deleteMany({ where: { tenantId } });
     await platform.rolePermission.deleteMany({ where: { tenantId } });

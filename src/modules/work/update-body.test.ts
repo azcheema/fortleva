@@ -5,10 +5,14 @@ import { DomainError } from "@/lib/domain-error";
 import {
   ALL_METRICS_INCLUDED,
   UPDATE_SECTIONS_MAX,
+  UPDATE_PREFILL_MAX_TASKS,
   UPDATE_SECTION_KEYS,
+  newUpdateBody,
   normalizeUpdateBody,
   readUpdateBody,
+  sharedDoneLines,
 } from "./update-body";
+import type { ChangesSinceLast } from "./update-snapshot";
 
 const doc = (...content: unknown[]) => ({ type: "doc", content });
 const para = (...content: unknown[]) => ({ type: "paragraph", content });
@@ -119,5 +123,74 @@ describe("readUpdateBody", () => {
       sections: [],
       metrics: { include: ALL_METRICS_INCLUDED },
     });
+  });
+});
+
+describe("a new update's pre-filled 'What got done' (founder decision C70 (d))", () => {
+  const changes: ChangesSinceLast = {
+    window: { from: "2026-10-02T00:00:00.000Z", to: "2026-10-09T00:00:00.000Z" },
+    doneItems: [
+      { id: "i1", key: "ACME-1", title: "Shared task", visibility: "CLIENT_VISIBLE" },
+      { id: "i2", key: "ACME-2", title: "SECRET internal task", visibility: "INTERNAL" },
+    ],
+    milestonesHit: [
+      { id: "m1", name: "Shared milestone", visibility: "CLIENT_VISIBLE" },
+      { id: "m2", name: "SECRET internal milestone", visibility: "INTERNAL" },
+    ],
+    versionsShipped: [
+      { id: "v1", version: "1.2", title: "Checkout" },
+      { id: "v2", version: "1.3", title: null },
+    ],
+    requestsReceived: [{ id: "r1", key: "ACME-3", title: "SECRET request title" }],
+  };
+  const ALL = { tasks: true, milestones: true } as const;
+
+  it("carries only what the client can already see — never an internal task or milestone, never a request, never a task number", () => {
+    const lines = sharedDoneLines(changes, ALL);
+    expect(lines).toEqual(["Shared task", "Shared milestone", "1.2 — Checkout", "1.3"]);
+    expect(lines.join(" ")).not.toContain("ACME-");
+    expect(JSON.stringify(newUpdateBody(changes, ALL))).not.toContain("SECRET");
+  });
+
+  it("leaves out a section the client's portal does not draw (C47's switches)", () => {
+    expect(sharedDoneLines(changes, { tasks: false, milestones: true })).toEqual(["Shared milestone", "1.2 — Checkout", "1.3"]);
+    expect(sharedDoneLines(changes, { tasks: true, milestones: false })).toEqual(["Shared task", "1.2 — Checkout", "1.3"]);
+  });
+
+  it("opens with one DONE section holding them as a bullet list, every metric included", () => {
+    const body = newUpdateBody(changes, ALL);
+    expect(body.metrics.include).toEqual(ALL_METRICS_INCLUDED);
+    expect(body.sections).toHaveLength(1);
+    expect(body.sections[0]!.key).toBe("DONE");
+    // …in a shape the service's normaliser keeps, so a save keeps it too.
+    const normalized = normalizeUpdateBody(body);
+    expect(normalized.text).toContain("Shared task");
+    expect(normalized.text).not.toContain("SECRET");
+  });
+
+  it("opens with at most the newest twenty TASKS, in the order they finished — and every milestone and version", () => {
+    const many: ChangesSinceLast = {
+      ...changes,
+      doneItems: Array.from({ length: 30 }, (_, n) => ({
+        id: `t${n}`,
+        key: `ACME-${n}`,
+        title: `Task ${n}`,
+        visibility: "CLIENT_VISIBLE" as const,
+      })),
+    };
+    expect(UPDATE_PREFILL_MAX_TASKS).toBe(20);
+    const text = normalizeUpdateBody(newUpdateBody(many, ALL)).text ?? "";
+    // The ten oldest are left out ("Task 9" is no substring of "Task 19" or "Task 29").
+    expect(text).not.toContain("Task 0");
+    expect(text).not.toContain("Task 9");
+    expect(text).toContain("Task 10");
+    expect(text.indexOf("Task 10")).toBeLessThan(text.indexOf("Task 29"));
+    expect(text).toContain("Shared milestone");
+    expect(text).toContain("1.2 — Checkout");
+  });
+
+  it("opens empty when nothing shared was finished", () => {
+    const quiet: ChangesSinceLast = { ...changes, doneItems: [changes.doneItems[1]!], milestonesHit: [], versionsShipped: [] };
+    expect(newUpdateBody(quiet, ALL)).toEqual({ sections: [], metrics: { include: ALL_METRICS_INCLUDED } });
   });
 });

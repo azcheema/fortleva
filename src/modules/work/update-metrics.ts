@@ -300,9 +300,14 @@ export async function readChanges(
       completedAt: between(window),
     },
     select: { id: true, number: true, title: true, visibility: true },
-    orderBy: [{ completedAt: "asc" }, { id: "asc" }],
+    // The NEWEST 200, then back into the order they happened: a first
+    // update's window runs from the project's creation, and a cut that kept
+    // the oldest would drop exactly the work the update is about (slice 102's
+    // design review — every new update now opens pre-filled from this list).
+    orderBy: [{ completedAt: "desc" }, { id: "desc" }],
     take: 200,
   });
+  done.reverse();
   const milestones = await tx.milestone.findMany({
     where: { tenantId, projectId, status: "DONE", completedAt: between(window) },
     select: { id: true, name: true, visibility: true },

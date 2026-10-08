@@ -9,6 +9,7 @@ import { runExpirationReminders } from "@/jobs/expiration-reminders";
 import { drainOutbox } from "@/jobs/outbox";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
+import { runUpdateReminders } from "@/jobs/update-reminders";
 import { runVaultRetention } from "@/jobs/vault-retention";
 import { runWeeklyReminders } from "@/jobs/weekly-reminders";
 
@@ -28,8 +29,10 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * and the team's summary email (Phase 5 slice 100 — once per member per
  * period, only in the hours after their own hour; the outbox key the guard)
  * and the clients' weekly summary (slice 101 — once per client person per ISO
- * week, Monday morning in the workspace's time; the outbox key the guard),
- * until Vercel Pro crons exist. Whenever a
+ * week, Monday morning in the workspace's time; the outbox key the guard)
+ * and the progress-update reminders (slice 102 — the due day and the next
+ * two working days, each once, 09:00–17:00 workspace time;
+ * `ProjectUpdateReminderSent` the guard), until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
  * convenience) — a preview/staging deployment without a token is closed.
@@ -93,6 +96,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Phase 5 slice 101: the clients' weekly summary — Monday morning in each
   // workspace's time, enqueued here and sent by the NEXT drain.
   const clientDigests = await runClientDigests();
+  // Phase 5 slice 102: progress-update reminders — on the due day and the
+  // next two working days, 09:00–17:00 workspace time; sent by the NEXT drain.
+  const updateReminders = await runUpdateReminders();
   return NextResponse.json({
     outbox,
     timeSweep,
@@ -103,5 +109,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     vaultRetention,
     digests,
     clientDigests,
+    updateReminders,
   });
 }

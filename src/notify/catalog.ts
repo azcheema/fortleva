@@ -282,6 +282,32 @@ const KINDS = {
     audience: "MEMBER",
     class: "INSTANT",
   },
+  /**
+   * Phase 5 slice 102 (founder decision C70): a project's progress update
+   * is due today, or one or two working days late — sent by the hourly job
+   * (`src/modules/work/update-reminders.ts`) once on each of those three
+   * days, never on a weekend. To the project's LEAD, or, with no lead able
+   * to hear it, to the project's people who can (C70 (a), (f)) — each held,
+   * as themselves, to `RECEIVER_CODES` (`project_update:publish` and
+   * `:view`, `update-reminders.ts`) on all four gates and to the project's
+   * scope: only a publish clears the reminder.
+   *
+   * INSTANT and PARTICIPATING: it is the receiver's own job, on a day — a
+   * digest the next morning is a day late by construction — and a member
+   * who has turned email down to MENTIONS has said they only want to be
+   * named. No `debounceMinutes` and no `cancelledIfRead`: the job re-reads
+   * the project in the sending transaction, so a post published since sends
+   * nothing. Entity: the PROJECT; the row names it under the reader's own
+   * `project:view` and scope and links to its Updates tab when the reader
+   * holds `project_update:view` (C34). The job's own table is the dedupe;
+   * the notification's key — one per day and step — repeats it, so an
+   * unread due-day row never swallows the next day's reminder.
+   */
+  "project_update.due": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

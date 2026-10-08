@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { isoDate } from "@/lib/server-actions";
+import { UPDATE_WEEKDAYS } from "@/modules/work/update-schedule";
 import type { ProjectDetail } from "@/projects/service";
 
 import {
@@ -33,6 +34,8 @@ import { useRun } from "@/components/use-run";
 
 const STATUSES = ["PLANNED", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
 const CADENCES = ["NONE", "WEEKLY", "BIWEEKLY", "MONTHLY"] as const;
+/** The `projects.overview.weekdays.*` key of each ISO weekday an update may fall on (slice 102). */
+const WEEKDAY_KEYS = { 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri" } as const;
 
 /** A field label that carries the INTERNAL lock glyph (UI.md §10.4). */
 function PrivateLabel({ children }: { children: React.ReactNode }) {
@@ -270,6 +273,31 @@ export function ProjectDetailsForm({
         </Prop>
       ),
     },
+    // The day an update is due (Phase 5 slice 102, C70 (b)): Monday to
+    // Friday, Friday by default — only once the project has a cadence, since
+    // without one there is nothing to be due.
+    ...(project.updateCadence !== "NONE"
+      ? [
+          {
+            key: "updateWeekday",
+            filled: true,
+            node: (
+              <Prop label={t("updateWeekday")}>
+                <InlineEdit
+                  kind="select"
+                  name="updateWeekday"
+                  value={String(project.updateWeekday)}
+                  label={t("updateWeekday")}
+                  placeholder={t("weekdays.fri")}
+                  options={UPDATE_WEEKDAYS.map((d) => ({ value: String(d), label: t(`weekdays.${WEEKDAY_KEYS[d]}`) }))}
+                  readOnly={ro}
+                  className="-ml-2.5"
+                />
+              </Prop>
+            ),
+          },
+        ]
+      : []),
   ];
 
   const shown = props.filter((p) => p.filled);

@@ -308,6 +308,7 @@ model Tenant {
   // Phase 3 — progress updates (§6.16):
   projectUpdates                 ProjectUpdate[]
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
+  projectUpdateReminders         ProjectUpdateReminderSent[]
   workTypes                  WorkType[]
   // Phase 3V — the vault (§6.17):
   credentialItems    CredentialItem[]
@@ -920,7 +921,8 @@ enum HoursSharingMode {
   BILLABLE_AMOUNT
 }
 
-/// Progress-update cadence intent (Phase 3); ProjectUpdateSchedule (Phase 5) enforces it.
+/// Progress-update cadence (Phase 3); enforced since Phase 5 slice 102 by
+/// the reminder job with `Project.updateWeekday` and `updateScheduleSince`.
 enum UpdateCadence {
   NONE
   WEEKLY
@@ -965,6 +967,14 @@ model Project {
   defaultBillable    Boolean          @default(true) @map("default_billable")
   leadMemberId       String?          @map("lead_member_id") // Member.id, attribution, no FK
   updateCadence      UpdateCadence    @default(NONE) @map("update_cadence")
+  // Phase 5 slice 102 (founder decision C70): the day a progress update is
+  // due — ISO 1 = Monday … 5 = Friday (CHECK), Friday by default — and the
+  // moment the schedule last (re)started, which ONLY the trigger
+  // `project_update_schedule_stamp` writes: on a change of cadence or day,
+  // on becoming ACTIVE, on the portal switching on; NULL exactly when the
+  // cadence is NONE (CHECK). INTERNAL-ONLY (never in a portal projection).
+  updateWeekday       Int              @default(5) @map("update_weekday") @db.SmallInt
+  updateScheduleSince DateTime?        @map("update_schedule_since") @db.Timestamptz(6)
   autoArchiveMonths  Int?             @map("auto_archive_months")
   autoStartParent    Boolean          @default(false) @map("auto_start_parent")
   autoCompleteParent Boolean          @default(false) @map("auto_complete_parent")
@@ -995,6 +1005,8 @@ model Project {
   timeReports    TimeReport[]
   // Phase 3:
   updates        ProjectUpdate[]
+  // Phase 5 slice 102:
+  updateReminders ProjectUpdateReminderSent[]
   // Phase 3V:
   credentials    CredentialItem[]
   assets         ClientAsset[]
@@ -1213,6 +1225,31 @@ model ProjectUpdateInternalSnapshot {
 
   @@unique([tenantId, updateId])
   @@map("project_update_internal_snapshot")
+}
+
+/// ProjectUpdateReminderSent — class A, the progress-update reminders'
+/// dedupe (Phase 5 slice 102; founder decision C70; DATA_MODEL.md §6.16's
+/// `ProjectUpdateSchedule`, built as the project's two columns above plus
+/// this). One row per reminder that went out: the project, the scheduled
+/// DAY whose round it belongs to and the step (0 that day, 1 and 2 the
+/// working days after). The primary key IS the dedupe — the job INSERTs …
+/// ON CONFLICT DO NOTHING in the transaction that writes the inbox rows and
+/// the audit row, and a conflict means "already sent". Deleted with its
+/// project (FK cascade) and by the job's own sweep 60 days after its day.
+/// scope=tenant  rls=A (portal_deny)  ret=60 days, or with the project (FK cascade)  enc=none
+model ProjectUpdateReminderSent {
+  tenantId  String   @map("tenant_id")
+  projectId String   @map("project_id")
+  dueOn     DateTime @map("due_on") @db.Date // the round's day, in the workspace's zone
+  step      Int      @db.SmallInt // 0 | 1 | 2 (CHECK)
+  sentAt    DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, projectId, dueOn, step])
+  @@index([tenantId, dueOn]) // the sweep
+  @@map("project_update_reminder_sent")
 }
 
 /// What the client buys — a RECORD with renewal dates, not a billing

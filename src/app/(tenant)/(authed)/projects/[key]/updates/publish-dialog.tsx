@@ -31,12 +31,18 @@ import { cn } from "@/lib/utils";
 export function PublishDialog({
   open,
   portalEnabled,
+  privateNamed,
+  checking,
   busy,
   onCancel,
   onConfirm,
 }: {
   open: boolean;
   portalEnabled: boolean;
+  /** Titles of private work the post's text names (slice 102) — warned about before a client reads it. */
+  privateNamed: readonly string[];
+  /** The private-work check is still out — Confirm waits for it (slice 102). */
+  checking: boolean;
   busy: boolean;
   onCancel: () => void;
   onConfirm: (visibility: VisibilityValue) => void;
@@ -83,13 +89,28 @@ export function PublishDialog({
           </div>
           <p className="text-xs text-muted-foreground">{audience === "CLIENT_VISIBLE" ? t("clientHint") : t("internalHint")}</p>
           {audience === "CLIENT_VISIBLE" && !portalEnabled ? <Callout tone="caution">{t("portalOffHint")}</Callout> : null}
+          {audience === "CLIENT_VISIBLE" && privateNamed.length > 0 ? (
+            <Callout tone="caution" role="status">
+              <span data-testid="publish-private-named">
+                {t("privateNamed", {
+                  names: privateNamed.slice(0, 5).join(", ") + (privateNamed.length > 5 ? ", …" : ""),
+                })}
+              </span>
+            </Callout>
+          ) : null}
         </div>
         <DialogFooter>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
             {t("back")}
           </Button>
-          <Button type="button" size="sm" onClick={() => onConfirm(audience)} disabled={busy} data-testid="publish-confirm">
-            {busy ? <Pending label={tCommon("loading")} /> : t("confirm")}
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onConfirm(audience)}
+            disabled={busy || checking}
+            data-testid="publish-confirm"
+          >
+            {busy || checking ? <Pending label={tCommon("loading")} /> : t("confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

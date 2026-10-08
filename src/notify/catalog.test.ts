@@ -105,7 +105,7 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * — INSTANT because an alarm must not wait for a digest. The next test
    * pins that it never mails through `emailAllowed`, at any level.
    */
-  it("the instant set is assignment, mention, the six client-caused kinds, the three renewal reminders and the door's alarm — and nothing else", () => {
+  it("the instant set is assignment, mention, the six client-caused kinds, the three renewal reminders, the door's alarm and the update reminder — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -131,11 +131,20 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       "expiration.agreement_ending",
       "expiration.asset_due",
       "expiration.logins_expiring",
+      // A project's progress update is due or late (Phase 5 slice 102,
+      // C70): the receiver's own job on a day — a digest is a day late.
+      "project_update.due",
       "work_item.assigned",
       "work_item.client_commented",
       "work_item.completed_by_contact",
       "work_item.request_received",
     ]);
+  });
+
+  /** An update reminder is the receiver's own job, not a mention (slice 102). */
+  it("an update reminder mails at PARTICIPATING, never at MENTIONS", () => {
+    expect(emailAllowed("MENTIONS", "project_update.due")).toBe(false);
+    expect(emailAllowed("PARTICIPATING", "project_update.due")).toBe(true);
   });
 
   /** The door's alarm mails as the vault's security notice, never as a kind (slice 99). */

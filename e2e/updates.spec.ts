@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 
-import { CONTACT_STORAGE_STATE, STORAGE_STATE, requireSeed } from "./fixtures/tenant";
+import { CONTACT_STORAGE_STATE, STORAGE_STATE, requireSeed, resetUpdateSchedule } from "./fixtures/tenant";
 import { SLOW } from "./fixtures/keys";
 
 /** The one toast that says `text` — never the whole stack (see the note at the first use). */
@@ -132,5 +132,77 @@ test.describe("progress updates", () => {
     await page.getByTestId("update-composer").getByRole("button", { name: "Yes" }).click();
     await expect(toast(page, "Draft discarded.")).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(new RegExp(`/projects/${seed.projectKey}/updates$`), { timeout: 30_000 });
+  });
+});
+
+/**
+ * THE UPDATE SCHEDULE (Phase 5 slice 102, founder decision C70): a cadence
+ * and a day set on the Overview, and the Updates tab saying when the next
+ * one is due. On the seed's ACTIVE project — a schedule exists only while a
+ * project is active — with no post yet, so the next due day is the chosen
+ * weekday after today: always ahead, never "late", whatever day CI runs on.
+ * The reminders themselves are `update-reminders.dbtest.ts`'s (a clock a
+ * browser cannot move), and the pre-filled "What got done" is
+ * `update-body.test.ts`'s (the seed's one update leaves an empty window, so
+ * a browser test of it would prove nothing). The schedule is reset by the
+ * fixture before AND after — not through the UI this test may have failed
+ * in — so a retry starts where the first attempt did and the project is
+ * left as the seed made it.
+ */
+test.describe("the update schedule", () => {
+  test.beforeAll(async () => {
+    await resetUpdateSchedule(seed.tenantId, seed.activeProjectKey);
+  });
+  test.afterAll(async () => {
+    await resetUpdateSchedule(seed.tenantId, seed.activeProjectKey);
+  });
+
+  /** Pick an option and wait for AutoForm's save to come back, before anything reloads. */
+  const choose = async (page: Page, field: string, value: string) => {
+    // The form's own save — a server action whose body carries the field —
+    // never the timer pill's state check, which also posts on focus.
+    const saved = page.waitForResponse(
+      (r) =>
+        r.request().method() === "POST" &&
+        Boolean(r.request().headers()["next-action"]) &&
+        (r.request().postData() ?? "").includes(field),
+    );
+    await page.locator(`select[name="${field}"]`).selectOption(value);
+    await saved;
+  };
+  // AutoForm saves on change and shows no toast: reload until the server has it.
+  const settles = async (page: Page, name: string) =>
+    expect(async () => {
+      await page.reload();
+      await expect(page.getByRole("button", { name })).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 60_000 * SLOW });
+
+  test("a weekly cadence on a Monday shows the next Monday on the Updates tab", async ({ page }) => {
+    const key = seed.activeProjectKey;
+    await page.goto(`/projects/${key}`);
+    // A blank cadence sits behind "Add details" — a native <details>, whose
+    // <summary> is no button to the accessibility tree.
+    await page.locator("summary", { hasText: "Add details" }).click();
+    await page.getByRole("button", { name: "Edit Update cadence, currently None" }).click();
+    await choose(page, "updateCadence", "WEEKLY");
+    // Set, it moves out from behind the disclosure — and the day appears, Friday by default.
+    await settles(page, "Edit Update day, currently Friday");
+    await page.getByRole("button", { name: "Edit Update day, currently Friday" }).click();
+    await choose(page, "updateWeekday", "1");
+    await settles(page, "Edit Update day, currently Monday");
+
+    await page.goto(`/projects/${key}/updates`);
+    await expect(page.getByTestId("update-schedule")).toContainText(/Next update due Mon/, { timeout: 30_000 });
+    await expect(page.getByTestId("update-late")).toHaveCount(0);
+    await expect(page.getByTestId("update-due")).toHaveCount(0);
+
+    // Back to None through the UI: the line goes (the fixture resets the day too).
+    await page.goto(`/projects/${key}`);
+    await page.getByRole("button", { name: "Edit Update cadence, currently Weekly" }).click();
+    await choose(page, "updateCadence", "NONE");
+    await expect(async () => {
+      await page.goto(`/projects/${key}/updates`);
+      await expect(page.getByTestId("update-schedule")).toHaveCount(0, { timeout: 5_000 });
+    }).toPass({ timeout: 60_000 * SLOW });
   });
 });

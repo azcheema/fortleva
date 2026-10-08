@@ -487,6 +487,13 @@ export const AUDIT_EVENTS = {
   // deletion is never routine, and because a draft can hold an hour's
   // writing.
   "project_update.draft_discarded": TENANT,
+  // Phase 5 slice 102 (C70): the hourly job reminded a project's lead (or
+  // its people) that its progress update is due today or late — one row
+  // per reminder, written as SYSTEM in the transaction with its dedupe row
+  // and its inbox rows. Target: the project. Metadata: the due day, the
+  // step (0 the due day, 1 and 2 the working days after) and how many
+  // received it — never a name.
+  "project_update.reminder_sent": TENANT,
   // D5 work types
   "work_type.created": TENANT,
   "work_type.updated": TENANT,

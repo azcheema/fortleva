@@ -21,6 +21,8 @@ import type {
 } from "@/generated/prisma/enums";
 import { fail, isDeadlock, isLockTimeout, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
+import { readUpdateSchedule } from "@/modules/work/update-reminders";
+import { isUpdateWeekday, type UpdateScheduleStatus } from "@/modules/work/update-schedule";
 import { latestPublishedHealth } from "@/modules/work/updates";
 import { retryOnContention } from "@/lib/retry";
 import { beginPortalSwitch, reconcilePortalStamps } from "@/projects/portal-gate";
@@ -193,6 +195,16 @@ export type ProjectDetail = {
   billingCurrency: string | null;
   defaultBillable: boolean;
   updateCadence: UpdateCadence;
+  /** Phase 5 slice 102: the day an update is due, ISO 1 = Monday … 5 = Friday. */
+  updateWeekday: number;
+  /**
+   * Where the update schedule stands (slice 102, C70): the next due day and
+   * whether it is ahead, today or past — null with no cadence, for a project
+   * that is not ACTIVE, or for a reader without `project_update:view` on all
+   * four gates (the Updates tab's own code: with Work off there are no
+   * updates to be late with). Staff only; never on a portal projection.
+   */
+  updateSchedule: UpdateScheduleStatus | null;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -232,8 +244,9 @@ export type ProjectDetail = {
 
 /**
  * The project's MODULE caps, answered on all four gates in one read: the
- * five `documentation` codes and the `vault`'s view — none of them ✦,
- * which is what lets `accessibleCodes` answer them.
+ * five `documentation` codes, the `vault`'s view and the Updates tab's
+ * (`work`; slice 102 — whether the update schedule's state is read) — none
+ * of them ✦, which is what lets `accessibleCodes` answer them.
  */
 const PROJECT_MODULE_CODES = [
   "document:view",
@@ -242,6 +255,8 @@ const PROJECT_MODULE_CODES = [
   "document:delete",
   "document:change_visibility",
   "credential:view",
+  // Slice 102: whether the update schedule's state is read at all.
+  "project_update:view",
 ] as const;
 
 /** project:view; assertInScope({projectId}) ⇒ NOT_FOUND outside scope. */
@@ -283,6 +298,9 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
     // newest published post's health, through the one helper that
     // knows which post that is.
     const latestUpdate = await latestPublishedHealth(tx, ctx.tenantId, head!.id);
+    // …and where its update schedule stands (slice 102), from the rule the
+    // reminder job sends by — only for a reader the Updates tab would admit.
+    const updateSchedule = modules.has("project_update:view") ? await readUpdateSchedule(tx, ctx.tenantId, p) : null;
     // …and the names of the contacts who signed a version off (Phase 3):
     // `approvalByContactId` is attribution with no FK, so a name is a
     // second, sequential read — one statement for every decided version.
@@ -324,6 +342,8 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
       billingCurrency: p.billingCurrency,
       defaultBillable: p.defaultBillable,
       updateCadence: p.updateCadence,
+      updateWeekday: p.updateWeekday,
+      updateSchedule,
       archivedAt: p.archivedAt,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
@@ -472,6 +492,7 @@ export const PROJECT_FIELDS = [
   "billingCurrency",
   "defaultBillable",
   "updateCadence",
+  "updateWeekday",
 ] as const;
 export type ProjectField = (typeof PROJECT_FIELDS)[number];
 
@@ -481,6 +502,8 @@ export const PROJECT_INTERNAL_FIELDS: readonly ProjectField[] = [
   "hostingNotes",
   "internalNotes",
   "leadMemberId",
+  "updateCadence",
+  "updateWeekday",
 ];
 
 export type ProjectPatch = Partial<{
@@ -498,6 +521,8 @@ export type ProjectPatch = Partial<{
   billingCurrency: string | null;
   defaultBillable: boolean;
   updateCadence: UpdateCadence;
+  /** Phase 5 slice 102 (C70 (b)): the day an update is due, ISO 1 = Monday … 5 = Friday. */
+  updateWeekday: number;
 }>;
 
 const sameDate = (a: Date | null, b: Date | null): boolean =>
@@ -537,6 +562,11 @@ export async function updateProject(
           break;
         case "updateCadence":
           next = patch.updateCadence ?? "NONE";
+          break;
+        case "updateWeekday":
+          // Monday to Friday only (C70 (b)); the column's CHECK says the same.
+          if (!isUpdateWeekday(patch.updateWeekday)) fail("INVALID_INPUT", "update weekday");
+          next = patch.updateWeekday;
           break;
         case "billingCurrency":
           next = clean(patch.billingCurrency)?.toUpperCase() ?? null;

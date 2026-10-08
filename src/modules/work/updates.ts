@@ -6,6 +6,7 @@ import { accessibleCodes, requireAccess } from "@/entitlements/resolver";
 import type { ProjectHealth } from "@/generated/prisma/enums";
 import { fail } from "@/lib/domain-error";
 import { dateColumn, isoDateOf, localDateString } from "@/lib/duration";
+import { MAX_TITLE_LENGTH } from "@/lib/work-view/model";
 import { revealCostRates } from "@/modules/time/rates";
 import { loadProjectEntries, type EntryRow } from "@/modules/time/rollup";
 import { readPreferences } from "@/preferences/service";
@@ -275,6 +276,8 @@ type ProjectRow = {
   billingCurrency: string | null;
   archivedAt: Date | null;
   createdAt: Date;
+  portalShowTasks: boolean;
+  portalShowMilestones: boolean;
 };
 
 const projectSelect = {
@@ -286,6 +289,9 @@ const projectSelect = {
   billingCurrency: true,
   archivedAt: true,
   createdAt: true,
+  // The portal's sections (C47) — what a new update's pre-fill may name (slice 102).
+  portalShowTasks: true,
+  portalShowMilestones: true,
 } as const;
 
 async function loadProject(tx: TenantDb, ctx: WorkCtx, projectId: string): Promise<ProjectRow> {
@@ -455,7 +461,12 @@ export type ComposerContext = {
   readonly metrics: PortalSnapshot;
   /** What the previous post chose, for the composer's defaults. */
   readonly previousHealth: ProjectHealth | null;
-  readonly project: { readonly portalEnabled: boolean; readonly hoursSharingMode: ProjectRow["hoursSharingMode"] };
+  readonly project: {
+    readonly portalEnabled: boolean;
+    readonly hoursSharingMode: ProjectRow["hoursSharingMode"];
+    /** The portal's Tasks and Milestones sections (C47) — what the pre-fill may name (slice 102). */
+    readonly shows: { readonly tasks: boolean; readonly milestones: boolean };
+  };
 };
 
 /**
@@ -500,8 +511,69 @@ export async function readComposerContext(
       changes,
       metrics: redactHoursFor(metrics, access),
       previousHealth: previous?.health ?? null,
-      project: { portalEnabled: project.portalEnabled, hoursSharingMode: project.hoursSharingMode },
+      project: {
+        portalEnabled: project.portalEnabled,
+        hoursSharingMode: project.hoursSharingMode,
+        shows: { tasks: project.portalShowTasks, milestones: project.portalShowMilestones },
+      },
     };
+  });
+}
+
+/** How many lines `privateWorkNamed` looks at — a post's worth — and how long: a task title's limit. */
+const NAMED_MAX_LINES = 500;
+/** A leading task key ("ACME-12 ") — what the panel's Add and "Add all shared" inserted before slice 102. */
+const KEY_PREFIX = /^[A-Z][A-Z0-9]{0,7}-\d+\s+/;
+
+/**
+ * project_update:create — which PRIVATE work of the project a post names:
+ * every INTERNAL task (not deleted) whose title, and every INTERNAL
+ * milestone whose name, is one WHOLE LINE of the post (its title included).
+ * The composer asks just before the publish dialog opens (slice 102's
+ * security and fix-pass reviews): every new update now opens pre-filled,
+ * and a draft can sit for days while a pre-filled task is made private —
+ * so the check reads the project as it stands NOW, with no window, rather
+ * than the composer's possibly stale and window-limited context. A whole
+ * line, not a substring: a pre-filled or inserted line is the title
+ * verbatim — matched as written AND with a leading task key stripped
+ * (drafts written before slice 102 hold "ACME-12 Title" lines; a title that
+ * itself starts key-shaped, "ISO-27001 audit", still matches as written —
+ * the final check's medium) — and a substring would flag "Login" inside
+ * "Login page redesign".
+ * Advisory — the dialog warns, the member decides; publish does not refuse.
+ */
+export async function privateWorkNamed(
+  ctx: WorkCtx,
+  projectId: string,
+  lines: readonly string[],
+): Promise<string[]> {
+  const wanted = [
+    ...new Set(
+      lines
+        .slice(0, NAMED_MAX_LINES)
+        .flatMap((l) => {
+          const line = l.trim();
+          const unkeyed = line.replace(KEY_PREFIX, "");
+          return unkeyed === line ? [line] : [line, unkeyed];
+        })
+        .filter((l) => l.length > 0 && l.length <= MAX_TITLE_LENGTH),
+    ),
+  ];
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:create");
+    const project = await loadProject(tx, ctx, projectId);
+    if (wanted.length === 0) return [];
+    const tasks = await tx.workItem.findMany({
+      where: { tenantId: ctx.tenantId, projectId: project.id, visibility: "INTERNAL", deletedAt: null, title: { in: wanted } },
+      select: { title: true },
+      take: 50,
+    });
+    const milestones = await tx.milestone.findMany({
+      where: { tenantId: ctx.tenantId, projectId: project.id, visibility: "INTERNAL", name: { in: wanted } },
+      select: { name: true },
+      take: 50,
+    });
+    return [...new Set([...tasks.map((t) => t.title), ...milestones.map((m) => m.name)])];
   });
 }
 

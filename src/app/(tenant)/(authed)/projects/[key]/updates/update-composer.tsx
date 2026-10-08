@@ -15,11 +15,14 @@ import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { PROJECT_HEALTHS, STATUS_MAP, type ProjectHealth } from "@/lib/enum-map";
 import { TONE_CHIP } from "@/lib/tones";
 import { cn } from "@/lib/utils";
+import { MAX_TITLE_LENGTH } from "@/lib/work-view/model";
 import type { ComposerContext } from "@/modules/work/updates";
 import {
   UPDATE_METRIC_GROUPS,
   UPDATE_SECTION_KEYS,
   UPDATE_TITLE_MAX,
+  bulletListOf,
+  sharedDoneLines,
   type UpdateBody,
   type UpdateFixedSectionKey,
   type UpdateMetricGroup,
@@ -30,11 +33,12 @@ import type { PortalSnapshot } from "@/modules/work/update-snapshot";
 import {
   composerContextAction,
   discardUpdateDraftAction,
+  privateNamedAction,
   publishUpdateAction,
   saveUpdateDraftAction,
 } from "./actions";
 import { PublishDialog } from "./publish-dialog";
-import { SectionEditor, bulletListOf } from "./section-editor";
+import { SectionEditor } from "./section-editor";
 
 /**
  * THE COMPOSER (PLAN Phase 3: "health picker, sections with default
@@ -111,8 +115,16 @@ export function UpdateComposer({
   const [docs, setDocs] = useState<SectionDocs>(() => docsOf(draft.body));
   const [include, setInclude] = useState<UpdateMetricsInclude>(draft.body.metrics.include);
   const [context, setContext] = useState(initialContext);
-  const [dirty, setDirty] = useState(false);
+  // A NEW update that opened pre-filled (C70 (d)) holds text nobody has
+  // saved yet, so it says "unsaved" from the start.
+  const [dirty, setDirty] = useState(draft.id === null && draft.body.sections.length > 0);
   const [publishing, setPublishing] = useState(false);
+  // Work the post NAMES that only the team can see — asked of the server as
+  // the publish dialog opens (slice 102's reviews: every new update now opens
+  // pre-filled, and a draft can sit while a task turns private).
+  const [privateNamed, setPrivateNamed] = useState<readonly string[]>([]);
+  const [checking, setChecking] = useState(false);
+  const checkSeq = useRef(0);
   const editors = useRef<Partial<Record<UpdateFixedSectionKey, Editor | null>>>({});
 
   const period = { periodStart: periodStart || null, periodEnd: periodEnd || null };
@@ -219,10 +231,51 @@ export function UpdateComposer({
       router.refresh();
     });
 
-  const addToDone = (lines: readonly string[]) => {
-    if (lines.length === 0) return;
+  // The post's lines — the title and every section's — sent to the server,
+  // which answers with the PRIVATE work of the project they name, as it
+  // stands now (`privateWorkNamed`). The dialog opens AT ONCE — the Publish
+  // button is never disabled under the focus (that drops focus to <body>,
+  // the re-check's medium) — and its Confirm waits for the answer, which
+  // lands in a `role="status"` callout. Advisory: a failed ask shows no
+  // warning rather than blocking a publish. Lines the server would not look
+  // at (blank, or longer than any title) are not sent, so one long paragraph
+  // can never get the whole ask refused.
+  const openPublish = () => {
+    const lines = [
+      title,
+      ...Object.values(editors.current).flatMap((e) => (e ? e.getText({ blockSeparator: "\n" }).split("\n") : [])),
+    ]
+      .map((l) => l.trim())
+      // A title's length plus room for a leading task key ("ACME-1234 ").
+      .filter((l) => l.length > 0 && l.length <= MAX_TITLE_LENGTH + 16)
+      .slice(0, 500);
+    const seq = ++checkSeq.current;
+    setPrivateNamed([]);
+    setChecking(true);
+    setPublishing(true);
+    // A check that hangs must not hold Publish: after 8 s it counts as no answer.
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000));
+    void Promise.race([privateNamedAction({ projectId, projectKey, lines }).catch(() => null), timeout])
+      .then((r) => {
+        if (seq !== checkSeq.current) return;
+        setPrivateNamed(r && r.ok ? r.value : []);
+        setChecking(false);
+      });
+  };
+
+  const addToDone = (all: readonly string[]) => {
     const editor = editors.current.DONE;
     if (!editor) return;
+    // A line already in the section — the pre-fill's (C70 (d)) or an earlier
+    // press — is not added twice.
+    const present = new Set(
+      editor
+        .getText({ blockSeparator: "\n" })
+        .split("\n")
+        .map((l) => l.trim()),
+    );
+    const lines = all.filter((l) => !present.has(l.trim()));
+    if (lines.length === 0) return;
     const list = bulletListOf(lines);
     if (editor.isEmpty) editor.commands.setContent({ type: "doc", content: [list] }, { emitUpdate: true });
     else editor.chain().focus("end").insertContent(list).run();
@@ -388,7 +441,7 @@ export function UpdateComposer({
             <Button type="button" variant="outline" size="sm" onClick={onSaveDraft} disabled={pending} data-testid="save-draft">
               {t("saveDraft")}
             </Button>
-            <Button type="button" size="sm" onClick={() => setPublishing(true)} disabled={pending} data-testid="open-publish">
+            <Button type="button" size="sm" onClick={openPublish} disabled={pending} data-testid="open-publish">
               {t("publish")}
             </Button>
           </div>
@@ -407,6 +460,10 @@ export function UpdateComposer({
                   rows={changes.doneItems.map((i) => ({
                     id: i.id,
                     text: `${i.key} ${i.title}`,
+                    // Inserted by its TITLE: the portal never shows the
+                    // agency's task numbers (slice 102), and a title line is
+                    // what the publish dialog's private-work check matches.
+                    insert: i.title,
                     visibility: i.visibility,
                   }))}
                   addLabel={(text) => t("addLine", { title: text })}
@@ -446,13 +503,7 @@ export function UpdateComposer({
                 variant="outline"
                 size="sm"
                 className="self-start"
-                onClick={() =>
-                  addToDone([
-                    ...changes.doneItems.filter((i) => i.visibility === "CLIENT_VISIBLE").map((i) => `${i.key} ${i.title}`),
-                    ...changes.milestonesHit.filter((m) => m.visibility === "CLIENT_VISIBLE").map((m) => m.name),
-                    ...changes.versionsShipped.map((v) => (v.title ? `${v.version} — ${v.title}` : v.version)),
-                  ])
-                }
+                onClick={() => addToDone(sharedDoneLines(changes, context.project.shows))}
               >
                 {t("addAllShared")}
               </Button>
@@ -471,6 +522,8 @@ export function UpdateComposer({
         <PublishDialog
           open
           portalEnabled={context.project.portalEnabled}
+          privateNamed={privateNamed}
+          checking={checking}
           busy={pending}
           onCancel={() => setPublishing(false)}
           onConfirm={(visibility) => void onPublish(visibility)}
@@ -490,7 +543,7 @@ function ChangeGroup({
   onAdd,
 }: {
   heading: string;
-  rows: readonly { id: string; text: string; visibility: "INTERNAL" | "CLIENT_VISIBLE" | null }[];
+  rows: readonly { id: string; text: string; insert?: string; visibility: "INTERNAL" | "CLIENT_VISIBLE" | null }[];
   addLabel: ((text: string) => string) | null;
   onAdd: ((text: string) => void) | null;
 }) {
@@ -511,7 +564,7 @@ function ChangeGroup({
                 variant="ghost"
                 size="xs"
                 aria-label={addLabel(row.text)}
-                onClick={() => onAdd(row.text)}
+                onClick={() => onAdd(row.insert ?? row.text)}
               >
                 {tCommon("add")}
               </Button>

@@ -284,6 +284,10 @@ export const SUMMARY_LINES: Readonly<Record<NotificationKind, Line | null>> = {
       "# varningar om misslyckade försök att öppna kunders inloggningar",
     ],
   ),
+  "project_update.due": line(
+    ["1 reminder to write a project update", "# reminders to write project updates"],
+    ["1 påminnelse om att skriva en projektuppdatering", "# påminnelser om att skriva projektuppdateringar"],
+  ),
 };
 
 const OTHER: Line = line(["1 other update", "# other updates"], ["1 annan uppdatering", "# andra uppdateringar"]);

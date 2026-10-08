@@ -88,6 +88,8 @@ export const INBOX_PAGE_SIZE = 50;
 export const MAX_INBOX_IDS = 100;
 /** A snooze may not park a row past this — 90 days, in ms. */
 const MAX_SNOOZE_MS = 90 * 24 * 60 * 60 * 1000;
+/** A progress-update reminder (slice 102): a PROJECT row whose link is the Updates tab. */
+const UPDATE_DUE_KIND: NotificationKind = "project_update.due";
 
 /** What the UI needs to draw one row. `subject` is null when the
  * receiver may no longer see the thing the notification is about. */
@@ -467,6 +469,10 @@ async function resolveSubjects(
   const linksMoney = rows.some((r) => r.entityType === BUDGET_ALERT_ENTITY);
   const linksFiles = rows.some((r) => r.entityType === "Document");
   const namesClients = rows.some((r) => r.entityType === "Document" && r.projectId === null);
+  // An update reminder (slice 102) links to the project's Updates tab, which
+  // `project_update:view` gates (C34: a link only where the page would not
+  // refuse); its NAME is the project's, under `project:view` like any row.
+  const linksUpdates = rows.some((r) => r.kind === UPDATE_DUE_KIND);
   const may = await accessibleCodes(tx, ctx.tenantId, ctx.actor, [
     "project:view",
     ...(namesTasks ? ["work_item:view"] : []),
@@ -479,12 +485,14 @@ async function resolveSubjects(
     // may read a client's name, never `project:view` (the fix-pass review).
     ...(linksFiles ? ["document:view"] : []),
     ...(namesClients ? ["client:view"] : []),
+    ...(linksUpdates ? ["project_update:view"] : []),
   ]);
   const mayViewProjects = may.has("project:view");
   const mayViewItems = may.has("work_item:view");
   const mayOpenMoney = PROJECT_MONEY_CODES.every((code) => may.has(code));
   const mayOpenFiles = may.has("document:view");
   const mayViewClients = may.has("client:view");
+  const mayOpenUpdates = may.has("project_update:view");
 
   // A task row's project is wanted only for a task's link, which needs
   // `work_item:view` too — with Work off it can name nothing.
@@ -584,7 +592,11 @@ async function resolveSubjects(
         href:
           r.entityType === BUDGET_ALERT_ENTITY && mayOpenMoney
             ? `/projects/${project.key}/money`
-            : r.entityType === "ProjectVersion"
+            : r.kind === UPDATE_DUE_KIND
+              ? mayOpenUpdates
+                ? `/projects/${project.key}/updates`
+                : null
+              : r.entityType === "ProjectVersion"
               ? `/projects/${project.key}/timeline`
               : r.entityType === "Document" && mayOpenFiles
                 ? `/projects/${project.key}/files`

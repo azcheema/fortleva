@@ -277,7 +277,8 @@
       "loginsExpiring": "Inloggningar går ut",
       "loginSubmitted": "En kund har skickat en inloggning",
       "loginAskDeclined": "En kund kan inte skicka en inloggning ni bad om",
-      "loginsAlarm": "Upprepade misslyckade försök att öppna en kunds inloggningar"
+      "loginsAlarm": "Upprepade misslyckade försök att öppna en kunds inloggningar",
+      "updateDue": "Dags för en projektuppdatering"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",
@@ -1844,6 +1845,14 @@
         "BIWEEKLY": "Varannan vecka",
         "MONTHLY": "Månadsvis"
       },
+      "updateWeekday": "Uppdateringsdag",
+      "weekdays": {
+        "mon": "Måndag",
+        "tue": "Tisdag",
+        "wed": "Onsdag",
+        "thu": "Torsdag",
+        "fri": "Fredag"
+      },
       "archive": "Arkivera projekt",
       "archiveConfirm": "Arkivera projektet?",
       "unarchive": "Återställ projekt",
@@ -2829,6 +2838,7 @@
         "internalHint": "Bara teamet ser den. Du kan dela den med kunden senare.",
         "clientHint": "Kunden läser den i portalen i samma stund som den publiceras.",
         "portalOffHint": "Portalen är av för projektet – kunden ser den när brytaren slås på (fliken Portal).",
+        "privateNamed": "Innan kunden läser den, ta bort det som bara ert team ser: {names}",
         "confirm": "Publicera",
         "back": "Gå tillbaka",
         "publishedVisible": "Uppdatering #{seq} publicerad. Kunden kan läsa den.",
@@ -2883,6 +2893,15 @@
           "noteCleared": "Anteckningen borttagen.",
           "failed": "Det gick inte."
         }
+      },
+      "schedule": {
+        "dueBadge": "Dags för uppdatering",
+        "lateBadge": "Uppdatering försenad",
+        "next": "Nästa uppdatering: {date}",
+        "due": "En uppdatering ska skrivas i dag",
+        "late": "Uppdateringen är försenad – den skulle ha kommit {date}",
+        "write": "Skriv uppdateringen",
+        "continue": "Fortsätt på utkastet"
       }
     }
   },

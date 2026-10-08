@@ -1,6 +1,8 @@
 import { fail } from "@/lib/domain-error";
 import { normalizeUpdateSection } from "@/lib/rich-text/normalize";
 
+import type { ChangesSinceLast } from "./update-snapshot";
+
 /**
  * THE SHAPE OF A PROGRESS UPDATE'S BODY, and the one place it is decided
  * (DATA_MODEL.md §6.16: `body Json = { sections: [{ key, title?, body
@@ -161,3 +163,72 @@ export function readUpdateBody(stored: unknown): UpdateBody {
 
 /** The fifteen-minute retraction window (DATA_MODEL.md §6.16) — the trigger applies the same number. */
 export const UPDATE_RETRACT_WINDOW_MS = 15 * 60 * 1000;
+
+/** A bullet list of plain lines, as the JSON the editor's schema accepts. */
+export const bulletListOf = (lines: readonly string[]) => ({
+  type: "bulletList",
+  content: lines.map((text) => ({
+    type: "listItem",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  })),
+});
+
+/**
+ * Which parts of the project the client's portal draws (C47's section
+ * switches — layout, not access): a task or milestone the client can see
+ * but whose section is hidden is not something they "can already see".
+ */
+export type SharedSections = { readonly tasks: boolean; readonly milestones: boolean };
+
+/**
+ * The lines "What got done" may carry for a CLIENT: what the "what changed"
+ * panel's "Add all shared" button inserts, and what every NEW update opens
+ * with (founder decision C70 (d), slice 102) — finished tasks and reached
+ * milestones the client can already see (CLIENT_VISIBLE, in a section the
+ * portal draws — the code review's low), and shipped versions (a shipped
+ * version is on the client's Timeline whatever else is shared). ONE
+ * definition for both, so the pre-fill can never carry a line the button
+ * would not. A task is named by its TITLE only: the portal never shows the
+ * agency's task numbers ("ACME-347" says how many tasks the agency keeps —
+ * the slice-102 design review), and the button used to insert them. At most
+ * the NEWEST `limitTasks` tasks (the list arrives oldest first). Empty lines
+ * are dropped: a text node may not be empty.
+ */
+export function sharedDoneLines(
+  changes: ChangesSinceLast,
+  shows: SharedSections,
+  limitTasks: number = Number.POSITIVE_INFINITY,
+): string[] {
+  const tasks = shows.tasks
+    ? changes.doneItems.filter((i) => i.visibility === "CLIENT_VISIBLE").map((i) => i.title)
+    : [];
+  return [
+    ...(Number.isFinite(limitTasks) ? tasks.slice(-limitTasks) : tasks),
+    ...(shows.milestones
+      ? changes.milestonesHit.filter((m) => m.visibility === "CLIENT_VISIBLE").map((m) => m.name)
+      : []),
+    ...changes.versionsShipped.map((v) => (v.title ? `${v.version} — ${v.title}` : v.version)),
+  ].filter((line) => line.trim().length > 0);
+}
+
+/** At most this many pre-filled TASK lines — the newest, in the order they finished. */
+export const UPDATE_PREFILL_MAX_TASKS = 20;
+
+/**
+ * A new update's starting body: "What got done" pre-filled with
+ * `sharedDoneLines` when there are any (C70 (d)), every metric included —
+ * at most the newest `UPDATE_PREFILL_MAX_TASKS` tasks, because a FIRST
+ * update's window runs from the project's creation and could otherwise open
+ * with two hundred bullets (the design review); milestones and shipped
+ * versions, which are few, all go in. The panel beside it still lists
+ * everything. Nothing is saved until the person saves — the draft row is
+ * created on the first save, as before.
+ */
+export function newUpdateBody(changes: ChangesSinceLast, shows: SharedSections): UpdateBody {
+  const lines = sharedDoneLines(changes, shows, UPDATE_PREFILL_MAX_TASKS);
+  return {
+    sections:
+      lines.length > 0 ? [{ key: "DONE", title: null, body: { type: "doc", content: [bulletListOf(lines)] } }] : [],
+    metrics: { include: ALL_METRICS_INCLUDED },
+  };
+}

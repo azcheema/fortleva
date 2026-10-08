@@ -8,6 +8,7 @@ import {
   InboxIcon,
   KeyRoundIcon,
   KeySquareIcon,
+  MegaphoneIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
   ShieldAlertIcon,
@@ -39,4 +40,6 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "credential.submitted": KeySquareIcon,
   "credential.ask_declined": KeySquareIcon,
   "contact.logins_alarm": ShieldAlertIcon,
+  // The Updates tab's own glyph (its empty state), so the reminder and the tab match.
+  "project_update.due": MegaphoneIcon,
 };

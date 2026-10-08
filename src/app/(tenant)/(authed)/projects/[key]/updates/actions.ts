@@ -10,6 +10,7 @@ import {
   archiveUpdate,
   createUpdateDraft,
   discardUpdateDraft,
+  privateWorkNamed,
   publishUpdate,
   readComposerContext,
   retractUpdate,
@@ -170,6 +171,25 @@ const contextInput = z.object({
   periodEnd: isoDate,
   excludeId: uuid.nullable(),
 });
+
+/**
+ * Which private work the post's lines name (slice 102) — asked as the publish
+ * dialog opens. Lines are bounded here and again in the service.
+ */
+export async function privateNamedAction(raw: {
+  projectId: string;
+  projectKey: string;
+  lines: readonly string[];
+}): Promise<ActionResult<string[]>> {
+  const parsed = z
+    .object({ projectId: uuid, projectKey: keyShape, lines: z.array(z.string().max(2000)).max(2000) })
+    .safeParse(raw);
+  if (!parsed.success) return invalid();
+  const ctx = await ctxOf();
+  return runAction(updatesPath(parsed.data.projectKey), () =>
+    privateWorkNamed(ctx, parsed.data.projectId, parsed.data.lines),
+  );
+}
 
 /** The composer's window-dependent context, re-asked when the dates change. */
 export async function composerContextAction(raw: {
