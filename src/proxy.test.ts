@@ -305,6 +305,16 @@ describe("proxy: the member plane's public doors (C30)", () => {
     );
   });
 
+  it("serves Amazon SES's feedback webhook without a cookie, exactly that path, and never on the ops host (slice 103)", async () => {
+    const app = await proxyWith({ APP_URL: `https://${APP}` });
+    expect(dest(app(req(APP, "/api/mail-feedback")))).toBe("next");
+    // An exact path: nothing beneath or beside it is swept in.
+    expect(dest(app(req(APP, "/api/mail-feedback/x")))).toBe("redirect:/login");
+    expect(dest(app(req(APP, "/api/mail-feedbacks")))).toBe("redirect:/login");
+    const both = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    expect(dest(both(req(OPS, "/api/mail-feedback")))).toBe("redirect:/ops/api/mail-feedback");
+  });
+
   it("serves a member invitation without a cookie, and nothing that merely begins like one", async () => {
     const proxy = await proxyWith({ APP_URL: `https://${APP}` });
     expect(dest(proxy(req(APP, "/invite/abc123")))).toBe("next");

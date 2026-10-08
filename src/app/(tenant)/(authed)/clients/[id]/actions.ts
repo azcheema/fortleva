@@ -21,7 +21,8 @@ import {
   updateContact,
   type ClientCardPatch,
 } from "@/clients/service";
-import { dateField, field, has, runForm, type FormResult } from "@/lib/server-actions";
+import { caution, dateField, field, has, runForm, type FormResult } from "@/lib/server-actions";
+import type { DeliveryOutcome } from "@/mailer";
 import { requireTenantContext } from "@/members/tenant-context";
 import { createProject } from "@/projects/service";
 import { createService, deleteService, endService } from "@/services/service";
@@ -199,7 +200,7 @@ export async function createContactAction(
     // contact and is refused only for the invite. Saying "could not add"
     // over a contact who was added would send the member to add them
     // again and trip the email unique. Any other refusal still fails.
-    let mailed: boolean;
+    let mailed: DeliveryOutcome;
     try {
       ({ mailed } = await inviteContact(ctx, created.id));
     } catch (e) {
@@ -211,10 +212,13 @@ export async function createContactAction(
     // Recorded, invited, and possibly not DELIVERED — `inviteContact`
     // reports a send failure rather than throwing it, because the
     // invitation itself has committed by then. Resend is the recovery and
-    // it lives in the row's own menu.
-    return mailed
+    // it lives in the row's own menu — unless the address is one Fortleva no
+    // longer mails (slice 103), when fixing the address is.
+    // A caution, never a green tick, when the invitation's mail did not go.
+    if (mailed === "suppressed") return caution(t("addedUndeliverable", { name: name.trim() }));
+    return mailed === "sent"
       ? t("addedAndInvited", { name: name.trim() })
-      : t("addedNotSent", { name: name.trim() });
+      : caution(t("addedNotSent", { name: name.trim() }));
   });
   // **REVALIDATED EVEN ON FAILURE, and the tick is why.** `createContact`
   // and `inviteContact` are two transactions, so the second can refuse
@@ -251,11 +255,14 @@ export async function inviteContactAction(
   const ctx = await ctxOf();
   const t = await getTranslations("clients.contacts");
   const r = await runForm(path(clientId, "/contacts"), async () => {
-    // `mailed` is false when the transport refused AFTER the invitation
-    // committed. Saying "sent" then would be a lie the member could only
-    // discover by asking the client whether anything arrived.
+    // `mailed` is "failed" when the transport refused AFTER the invitation
+    // committed, and "suppressed" when Fortleva no longer mails the address
+    // (slice 103). Saying "sent" then would be a lie the member could only
+    // discover by asking the client whether anything arrived — so each is a
+    // caution toast.
     const { mailed } = await inviteContact(ctx, contactId);
-    return mailed ? t("invited") : t("invitedNotSent");
+    if (mailed === "suppressed") return caution(t("invitedUndeliverable"));
+    return mailed === "sent" ? t("invited") : caution(t("invitedNotSent"));
   });
   // "layout", not the tab: `portalStatus` is read by the client's Portal
   // tab and by View-as-Contact as well as by this list.

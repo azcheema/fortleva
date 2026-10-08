@@ -320,6 +320,19 @@ export async function clientSummaryLink(tenantId: string, contactEmail: string):
   return token;
 }
 
+/**
+ * Block one of the fixture tenant's own addresses on the reserved
+ * `@e2e-undeliverable.invalid` domain, as an SES bounce would (slice 103), and
+ * clear it again — the block and the tenant's member invitations to it —
+ * `undeliverable.spec.ts`; the clearing belongs in `afterAll`.
+ */
+export async function suppressAddress(tenantId: string, email: string): Promise<void> {
+  await runCli<{ suppressed: string }>(["suppress-address", tenantId, email]);
+}
+export async function clearUndeliverable(tenantId: string, email: string): Promise<void> {
+  await runCli<{ invites: number; blocks: number }>(["clear-undeliverable", tenantId, email]);
+}
+
 /** Mark a live login of the fixture tenant "Change soon", by name (vault.spec's slice 94 test). */
 export async function flagLogin(tenantId: string, name: string): Promise<number> {
   const { flagged } = await runCli<{ flagged: number }>(["flag-login", tenantId, name]);

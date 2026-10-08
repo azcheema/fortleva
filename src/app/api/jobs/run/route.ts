@@ -43,6 +43,15 @@ const DRAIN_BATCH = 50;
 const DRAIN_PASSES = 10;
 const DRAIN_BUDGET_MS = 60_000;
 
+/**
+ * THE FUNCTION'S LIFETIME, declared (slice 103, the code review's medium):
+ * with a real transport a send takes real time, and every job below the drain
+ * must still run in the same kick. The drain may START sends for its first
+ * minute only (`sendUntil`), a pass ends after three failed sends in a row, and
+ * the rest of the five minutes is the other jobs'. Vercel Pro's ceiling.
+ */
+export const maxDuration = 300;
+
 const tokenMatches = (given: string | null, expected: string): boolean => {
   if (given === null) return false;
   const a = Buffer.from(given);
@@ -71,7 +80,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   for (let pass = 0; pass < DRAIN_PASSES; pass += 1) {
     let r: Awaited<ReturnType<typeof drainOutbox>>;
     try {
-      r = await drainOutbox(DRAIN_BATCH);
+      r = await drainOutbox(DRAIN_BATCH, { sendUntil: drainStarted + DRAIN_BUDGET_MS });
     } catch (e) {
       const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
       console.error(`jobs: outbox drain pass ${pass + 1} failed: ${e instanceof Error ? e.name : typeof e}${code}`);

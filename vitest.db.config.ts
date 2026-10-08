@@ -14,6 +14,16 @@ loadEnv({ path: ".env" });
 // forked workers never see it.
 delete process.env["UPSTASH_REDIS_REST_URL"];
 delete process.env["UPSTASH_REDIS_REST_TOKEN"];
+// AND NEVER REAL MAIL (Phase 5 slice 103): a loopback process already stays on
+// the dev transport unless `MAIL_TRANSPORT=amazon-ses` asks otherwise
+// (src/config, `mailTransportKind`) — so the flag and the credentials both go,
+// and a founder trying real sending from `.env.local` cannot send a dbtest's
+// mail to a fixture address.
+delete process.env["MAIL_TRANSPORT"];
+delete process.env["MAIL_SEND_TO_ANYONE"];
+delete process.env["AMAZON_SES_ACCESS_KEY_ID"];
+delete process.env["AMAZON_SES_SECRET_ACCESS_KEY"];
+delete process.env["AMAZON_SES_FEEDBACK_TOPIC_ARN"];
 
 // Integration suite: runs against a real Postgres as the REAL
 // app_runtime role (TENANCY.md §11 — a local owner/superuser role

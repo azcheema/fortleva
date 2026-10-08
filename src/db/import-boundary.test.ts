@@ -309,3 +309,88 @@ describe("portal identity boundary: portalAuthClient", () => {
     ).toEqual([]);
   });
 });
+
+// ── The suppression lookup (Phase 5 slice 103) ──────────────────────
+
+/**
+ * `isAddressSuppressed` is the SIXTH narrow entry point (`src/db/index.ts`):
+ * one read of the GLOBAL `email_suppression` table on the runtime client,
+ * outside any seam, because the mailer runs with no tenant, user or platform
+ * principal to open one for — and `withPlatform` would audit every mail. It is
+ * read-only and answers one bit, but it answers it for ANY address, so it gets
+ * the recordPlatformEvent standard (the design review's medium): one permitted
+ * importer, `mailer/index.ts`, whose `send()` asks it before every message.
+ * Pages ask the same question through their own transaction instead
+ * (`notify/undeliverable.ts`). Tests may import it.
+ */
+export const SUPPRESSION_LOOKUP_ALLOWED_FILES = ["mailer/index.ts"] as const;
+
+export const suppressionLookupUsagesIn = (source: string, fileName = "probe.ts"): string[] =>
+  moduleRefsOf(source, fileName)
+    .filter(
+      (ref) =>
+        ref.bindsValue &&
+        (ref.names.includes("isAddressSuppressed") || /(?:^|\/)email-suppression$/.test(normalizeSpecifier(ref.specifier))),
+    )
+    .map((ref) => `${ref.kind} ${ref.specifier}`);
+
+describe("the suppression lookup: isAddressSuppressed", () => {
+  const files = walkSourceFiles(SRC);
+
+  it("the allowlist is pinned (one importer — widen only deliberately)", () => {
+    expect([...SUPPRESSION_LOOKUP_ALLOWED_FILES]).toEqual(["mailer/index.ts"]);
+  });
+
+  it("only the mailer reaches it", () => {
+    const offenders: string[] = [];
+    for (const rel of files) {
+      if (rel.startsWith("db/") || isTest(rel)) continue;
+      if ((SUPPRESSION_LOOKUP_ALLOWED_FILES as readonly string[]).includes(rel)) continue;
+      for (const hit of suppressionLookupUsagesIn(readFileSync(join(SRC, rel), "utf8"), rel)) offenders.push(`${rel} → ${hit}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("catches the named import and the defining module; leaves the rest of the barrel alone", () => {
+    expect(suppressionLookupUsagesIn(`import { isAddressSuppressed } from "@/db";`)).toHaveLength(1);
+    expect(suppressionLookupUsagesIn(`import { isAddressSuppressed as s } from "@/db";`)).toHaveLength(1);
+    expect(suppressionLookupUsagesIn(`import { x } from "@/db/email-suppression";`)).toHaveLength(1);
+    expect(suppressionLookupUsagesIn(`import { withTenant } from "@/db";`)).toEqual([]);
+  });
+});
+
+// ── Support's unblock (Phase 5 slice 103) ───────────────────────────
+
+/**
+ * `liftMailBlock` REMOVES an address from the global suppression list — for
+ * every workspace (founder decision C71 (f): support only, never an agency).
+ * It lives in its own file so that the public webhook's writer never sits
+ * beside it (the security review's nit), and NOTHING in `src` may import it
+ * but its own dbtest: the one caller is `scripts/lift-mail-block.ts`, outside
+ * `src`, run by the operator.
+ */
+export const liftMailBlockUsagesIn = (source: string, fileName = "probe.ts"): string[] =>
+  moduleRefsOf(source, fileName)
+    .filter(
+      (ref) =>
+        ref.bindsValue &&
+        (ref.names.includes("liftMailBlock") || /(?:^|\/)lift-mail-block$/.test(normalizeSpecifier(ref.specifier))),
+    )
+    .map((ref) => `${ref.kind} ${ref.specifier}`);
+
+describe("support's unblock: liftMailBlock", () => {
+  it("no product code imports it — the operator's script is the one caller", () => {
+    const offenders: string[] = [];
+    for (const rel of walkSourceFiles(SRC)) {
+      if (rel === "jobs/lift-mail-block.ts" || isTest(rel)) continue;
+      for (const hit of liftMailBlockUsagesIn(readFileSync(join(SRC, rel), "utf8"), rel)) offenders.push(`${rel} → ${hit}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("catches the named import and the module grab", () => {
+    expect(liftMailBlockUsagesIn(`import { liftMailBlock } from "@/jobs/lift-mail-block";`)).toHaveLength(1);
+    expect(liftMailBlockUsagesIn(`const m = await import("@/jobs/lift-mail-block");`)).toHaveLength(1);
+    expect(liftMailBlockUsagesIn(`import { recordMailFeedback } from "@/jobs/mail-feedback";`)).toEqual([]);
+  });
+});

@@ -91,6 +91,23 @@ const envSchema = z.object({
   // the preprocess, "" would fail `z.url()` and the app would not boot.
   UPSTASH_REDIS_REST_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional()),
   UPSTASH_REDIS_REST_TOKEN: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  // Amazon SES (ARC-09; Phase 5 slice 103, founder decision C71) — read and
+  // checked below (`amazonSesConfig`), as plain strings here so that a bad
+  // value stops the boot with a sentence rather than a schema dump. Empty is
+  // unset, for the Upstash reason above: it is how a harness keeps
+  // `.env.local`'s values out of a process it starts.
+  AMAZON_SES_REGION: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  AMAZON_SES_ACCESS_KEY_ID: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  AMAZON_SES_SECRET_ACCESS_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  AMAZON_SES_CONFIGURATION_SET: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  AMAZON_SES_FEEDBACK_TOPIC_ARN: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  // Only the literal "amazon-ses" means anything (`mailTransportKind`).
+  MAIL_TRANSPORT: z.string().optional(),
+  // The addresses a non-deployment may really mail with MAIL_TRANSPORT set.
+  MAIL_DEV_RECIPIENTS: z.string().optional(),
+  // "1" in the production deployment's environment ONLY: it may mail anyone
+  // (`mailTransportKind`). Anything else is off.
+  MAIL_SEND_TO_ANYONE: z.string().optional(),
 });
 
 const env = envSchema.parse(process.env);
@@ -246,6 +263,187 @@ export const mailFrom = {
     return `${this.name} <${this.address}>`;
   },
 } as const;
+
+/**
+ * AMAZON SES — WHERE MAIL IS SENT FROM, AND WHETHER IT IS SENT AT ALL (ARC-09;
+ * Phase 5 slice 103, founder decision C71). RUNBOOK §1 lists the variables and
+ * §9 the AWS side.
+ *
+ * **ONLY A REGION IN AN EU MEMBER STATE, IN EVERY MODE.** Everything Fortleva
+ * keeps is at rest in the EU (SECURITY.md §9.3), and SES keeps what it sends in
+ * the region that sent it — a deployment pointed at `us-east-1` would quietly
+ * break that promise, so it does not boot. An allowlist, not a pattern: AWS's
+ * `eu-` prefix also names London (`eu-west-2`) and Zurich (`eu-central-2`),
+ * neither in the EU (the design review's low). Frankfurt by default, beside
+ * the database.
+ *
+ * **CREDENTIALS COME IN PAIRS.** One without the other in production off
+ * loopback is a deploy mistake, not a choice — it would be read as "no SES" and
+ * every mail would fail at send. Both absent is the documented state of a
+ * deployment that has not set mail up yet: `src/mailer` then refuses each send,
+ * as it always has. The names are our own, never `AWS_*`, so no other library's
+ * default credential chain can pick them up — or hand SES credentials meant for
+ * something else.
+ *
+ * **THE ENDPOINT IS PINNED HERE** (`email.<region>.amazonaws.com`, INV-D2), so
+ * no `AWS_ENDPOINT_URL*` variable can send our signed requests elsewhere.
+ */
+const EU_SES_REGIONS = ["eu-central-1", "eu-west-1", "eu-west-3", "eu-north-1", "eu-south-1", "eu-south-2"] as const;
+const sesRegion = env.AMAZON_SES_REGION ?? "eu-central-1";
+if (!(EU_SES_REGIONS as readonly string[]).includes(sesRegion)) {
+  throw new Error(
+    `AMAZON_SES_REGION must be a region in an EU member state — ${EU_SES_REGIONS.join(", ")} (src/config): "${sesRegion}" would keep mail outside the EU`,
+  );
+}
+const sesKeys = [env.AMAZON_SES_ACCESS_KEY_ID, env.AMAZON_SES_SECRET_ACCESS_KEY].filter((k) => k !== undefined).length;
+if (isProduction && sesKeys === 1 && !LOOPBACK_HOSTS.has(appUrl.hostname)) {
+  throw new Error(
+    "AMAZON_SES_ACCESS_KEY_ID and AMAZON_SES_SECRET_ACCESS_KEY must be set together (src/config): with one alone, no mail can be sent",
+  );
+}
+if (env.AMAZON_SES_CONFIGURATION_SET !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(env.AMAZON_SES_CONFIGURATION_SET)) {
+  throw new Error("AMAZON_SES_CONFIGURATION_SET is not a configuration set name (src/config): letters, digits, - and _ only");
+}
+
+/**
+ * WHO A NON-DEPLOYMENT MAY MAIL FOR REAL: `MAIL_DEV_RECIPIENTS`, a comma list of
+ * exact addresses (see `mailTransportKind` below). Lower-cased.
+ */
+const devRecipients = new Set(
+  (env.MAIL_DEV_RECIPIENTS ?? "")
+    .split(",")
+    .map((a) => a.trim().toLowerCase())
+    .filter((a) => a.length > 0),
+);
+
+/**
+ * WHICH TRANSPORT `src/mailer` USES — and why a developer's machine never sends
+ * real mail by accident (the design and security reviews' mediums).
+ *
+ * - **THE DEPLOYMENT** — a production build whose `APP_URL` is not loopback AND
+ *   whose environment says `MAIL_SEND_TO_ANYONE=1` — with SES credentials sends
+ *   through Amazon SES, to anyone. The flag is set in the production
+ *   environment ONLY (Vercel's Production scope; RUNBOOK §1): "is this the real
+ *   deployment" is DECLARED, never guessed — a `next build && next start` on a
+ *   tunnel to try the installed app on a phone, or a Preview given the keys by
+ *   mistake (on a branch of real data), is a production build off loopback too.
+ *   Without the flag, such a process keeps the dev transport, and production's
+ *   `send()` refuses every message loudly — a forgotten flag is an error, never
+ *   a silent drop.
+ * - **EVERYTHING ELSE** — `pnpm dev` (on loopback, a LAN address or a tunnel
+ *   alike), every dbtest, the e2e harness's production build — stays on the dev
+ *   transport (`.dev-outbox/`) even when `.env.local` holds the credentials,
+ *   UNLESS `MAIL_TRANSPORT=amazon-ses` asks for real sending on purpose, and
+ *   then ONLY to the addresses in `MAIL_DEV_RECIPIENTS` (`allowedRecipients`;
+ *   the transport refuses every other one). A dev server points at the shared
+ *   dev database, whose outbox holds fixtures' and real workspaces' rows: one
+ *   `POST /api/jobs/run` would otherwise mail them all, and a run of bounces
+ *   can get the whole SES account paused — production's mail with it. The flag
+ *   without a list stops the boot.
+ *
+ * The harnesses strip the flags and the credentials too (`vitest.db.config.ts`,
+ * `playwright.config.ts`, `e2e/fixtures/seed-cli.ts`).
+ */
+const realDeployment = isProduction && !LOOPBACK_HOSTS.has(appUrl.hostname) && env.MAIL_SEND_TO_ANYONE === "1";
+if (env.MAIL_TRANSPORT === "amazon-ses" && !realDeployment && devRecipients.size === 0) {
+  throw new Error(
+    "MAIL_TRANSPORT=amazon-ses needs MAIL_DEV_RECIPIENTS (src/config): the addresses this machine may really mail, comma-separated",
+  );
+}
+
+export type AmazonSesConfig = {
+  /** A region in an EU member state (checked above). */
+  readonly region: string;
+  /** `https://email.<region>.amazonaws.com` — the SESv2 endpoint, pinned (INV-D2). */
+  readonly endpoint: string;
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  /** The configuration set every send names, for its event destinations; `null` = none. */
+  readonly configurationSet: string | null;
+  /** `null` on a deployment (anyone); otherwise the only addresses that may be mailed. */
+  readonly allowedRecipients: ReadonlySet<string> | null;
+};
+
+export const amazonSesConfig: AmazonSesConfig | null =
+  env.AMAZON_SES_ACCESS_KEY_ID !== undefined && env.AMAZON_SES_SECRET_ACCESS_KEY !== undefined
+    ? {
+        region: sesRegion,
+        endpoint: `https://email.${sesRegion}.amazonaws.com`,
+        accessKeyId: env.AMAZON_SES_ACCESS_KEY_ID,
+        secretAccessKey: env.AMAZON_SES_SECRET_ACCESS_KEY,
+        configurationSet: env.AMAZON_SES_CONFIGURATION_SET ?? null,
+        allowedRecipients: realDeployment ? null : devRecipients,
+      }
+    : null;
+
+export const mailTransportKind: "amazon-ses" | "dev" =
+  amazonSesConfig !== null && (realDeployment || env.MAIL_TRANSPORT === "amazon-ses") ? "amazon-ses" : "dev";
+
+// A real transport sending as a placeholder: SES refuses every send from an
+// address that is not on its verified identity, so the boot says so instead.
+if (mailTransportKind === "amazon-ses" && /(\.invalid|\.test|\.example|\.localhost|@localhost)$/i.test(mailFrom.address)) {
+  throw new Error(
+    `MAIL_FROM_ADDRESS is a placeholder (${mailFrom.address}) while Amazon SES is the transport (src/config): set it to an address on the SES identity's domain`,
+  );
+}
+// The display name goes into `From:` as it is (`mailFrom.header`): SES refuses a
+// non-ASCII name that is not RFC 2047-encoded, and a quote, comma or angle
+// bracket breaks the header's parse — every send would fail (the code
+// review's low). Plain printable ASCII without RFC 5322's specials, then.
+if (mailTransportKind === "amazon-ses" && !/^[A-Za-z0-9 !#$%&'*+\-/=?^_`{|}~.]{1,64}$/.test(mailFrom.name)) {
+  throw new Error(
+    "MAIL_FROM_NAME must be plain ASCII while Amazon SES is the transport (src/config): letters, digits, spaces and simple punctuation — no accents, quotes, commas, brackets or @",
+  );
+}
+
+/**
+ * THE SNS TOPIC AMAZON SES REPORTS BOUNCES AND COMPLAINTS TO (Phase 5 slice
+ * 103), and the one host its messages may name. `POST /api/mail-feedback`
+ * accepts a message only from THIS topic (`src/mailer/sns.ts` says why the
+ * topic, and not the signature alone, makes a message ours) and fetches only
+ * from `sns.<its region>.amazonaws.com` — the host lives here (INV-D2).
+ * Unset: the webhook answers 404 to everything. Its region must be SES's,
+ * because SES publishes only to a topic in its own region.
+ */
+export type MailFeedbackConfig = {
+  readonly topicArn: string;
+  readonly region: string;
+  /**
+   * The AWS account that owns the topic — and so OUR account: a feedback event
+   * counts only when the mail it describes was sent by it (`mail.sendingAccountId`,
+   * `src/mailer/sns.ts`).
+   */
+  readonly accountId: string;
+  /** `sns.<region>.amazonaws.com` — the only host a message's URLs may name. */
+  readonly snsHost: string;
+};
+
+const TOPIC_ARN = /^arn:aws:sns:(eu-[a-z]+-\d):(\d{12}):([A-Za-z0-9_-]{1,256})$/;
+const topicMatch = env.AMAZON_SES_FEEDBACK_TOPIC_ARN === undefined ? null : TOPIC_ARN.exec(env.AMAZON_SES_FEEDBACK_TOPIC_ARN);
+if (env.AMAZON_SES_FEEDBACK_TOPIC_ARN !== undefined && (topicMatch === null || topicMatch[1] !== sesRegion)) {
+  throw new Error(
+    `AMAZON_SES_FEEDBACK_TOPIC_ARN must be an SNS topic ARN in ${sesRegion}, the SES region (src/config): arn:aws:sns:${sesRegion}:<account>:<name>`,
+  );
+}
+export const mailFeedbackConfig: MailFeedbackConfig | null =
+  topicMatch === null
+    ? null
+    : {
+        topicArn: topicMatch[0],
+        region: topicMatch[1]!,
+        accountId: topicMatch[2]!,
+        snsHost: `sns.${topicMatch[1]!}.amazonaws.com`,
+      };
+
+// A topic with nothing routed to it: with no configuration set, SES publishes
+// only what the identity's own feedback notifications send there (RUNBOOK §9,
+// step 7) — said once at boot, because the silence would otherwise look like
+// a list that is simply empty (the design review's medium).
+if (mailFeedbackConfig !== null && mailTransportKind === "amazon-ses" && amazonSesConfig?.configurationSet === null) {
+  console.warn(
+    "[config] AMAZON_SES_FEEDBACK_TOPIC_ARN is set but AMAZON_SES_CONFIGURATION_SET is not — bounces reach the topic only if the identity's own feedback notifications publish to it (RUNBOOK §9)",
+  );
+}
 
 /** Build an absolute URL on the canonical app origin. Deep links in email
  * carry links, not data (ARC-09), and always point here. */

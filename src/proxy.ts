@@ -182,12 +182,18 @@ const REPLY_ADDRESS_PREFIX = "/reply-address/";
  */
 const PORTAL_UNSUBSCRIBE_PREFIX = "/portal/unsubscribe/";
 const CLIENT_SUMMARY_API_PREFIX = "/api/client-summary/unsubscribe/";
+const MAIL_FEEDBACK_PATH = "/api/mail-feedback";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
 // /api/jobs/run authenticates itself (JOBS_RUN_TOKEN header): a cron has
 // no member cookie, so the presence gate must not redirect it to /login.
-const PUBLIC_PATHS = new Set(["/login", "/signup", MEMBER_RESET, "/ops/login", PORTAL_LOGIN, PORTAL_RESET, "/api/health", "/api/jobs/run", "/manifest.webmanifest", "/sw.js"]);
+// /api/mail-feedback is Amazon SNS delivering SES's bounces and complaints
+// (Phase 5 slice 103): SNS has no session either, and the route trusts a
+// message only when AWS signed it AND it came from our topic
+// (`src/mailer/feedback-handler.ts`). An exact path, on the app host only —
+// the ops host sweeps it under /ops, where it 404s.
+const PUBLIC_PATHS = new Set(["/login", "/signup", MEMBER_RESET, "/ops/login", PORTAL_LOGIN, PORTAL_RESET, "/api/health", "/api/jobs/run", MAIL_FEEDBACK_PATH, "/manifest.webmanifest", "/sw.js"]);
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;

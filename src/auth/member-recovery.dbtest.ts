@@ -436,6 +436,28 @@ describe("the reset delivery, awaited directly", () => {
     expect(await ledger(fay.id, "PASSWORD_RESET")).toBe(0);
   });
 
+  it("A BLOCKED ADDRESS (slice 103) is a decline: nothing sent, the row removed, the hour's slot given back", async () => {
+    // UNCONFIRMED, or the confirmation half below would decline for that
+    // reason before it ever reached the block (a vacuous pass).
+    const gus = await makeUser("blocked-gus", { emailVerified: false });
+    const { internalAdapter } = await auth.$context;
+    const raw = `blocked${run.replace(/-/g, "")}`;
+    await internalAdapter.createVerificationValue({ identifier: `reset-password:${raw}`, value: gus.id, expiresAt: hour() });
+    const db = getPlatformClient();
+    await db.emailSuppression.create({ data: { email: gus.email.toLowerCase(), reason: "COMPLAINT", source: "dbtest" } });
+    try {
+      expect(await deliverMemberReset({ id: gus.id, email: gus.email }, raw)).toBe("declined");
+      expect(mailTo(gus.email)).toHaveLength(0);
+      expect(await resetRowsOf(gus.id)).toHaveLength(0);
+      expect(await ledger(gus.id, "PASSWORD_RESET")).toBe(0);
+      // The sign-up confirmation takes the same path: declined, slot back.
+      expect(await deliverMemberConfirmation({ id: gus.id, email: gus.email }, "http://localhost/x", "tok")).toBe("declined");
+      expect(await ledger(gus.id, "EMAIL_VERIFICATION")).toBe(0);
+    } finally {
+      await db.emailSuppression.deleteMany({ where: { email: gus.email.toLowerCase() } });
+    }
+  });
+
   it("declines a console principal even when the snapshot did not say so — the re-read", async () => {
     const ops = await makeUser("ops-late", { platformRole: "SUPERADMIN" });
     const { internalAdapter } = await auth.$context;

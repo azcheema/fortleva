@@ -11,7 +11,7 @@ import { absoluteUrl, mailFrom } from "@/config";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
-import { send } from "@/mailer";
+import { send, type SendOutcome } from "@/mailer";
 import { allowStrict } from "@/ratelimit";
 
 import { REPLY_ADDRESS_CHANGED_MAIL } from "./reply-address-mail-key";
@@ -172,7 +172,12 @@ async function requestReplyAddress(
     // suppression list: that list is platform-wide, and an answer that
     // differs for a suppressed address must cost a request, or it is a free
     // probe of whether any address bounced or complained (the security
-    // review's low).
+    // review's low). *Superseded in part by slice 103 (founder decision
+    // C71 (d)): the "Emails to this address aren't being delivered" note on a
+    // client's Contacts tab now answers the same bit for any address a member
+    // records as a contact, unlimited — accepted and recorded in SECURITY.md
+    // §9.2's Amazon SES row (one bit, the same for a bounce and a complaint).
+    // The order here still keeps THIS door from being the cheaper one.*
     if (!(await allowStrict("mail.reply_address_request", ctx.tenantId))) {
       return fail("REPLY_ADDRESS_LIMIT", "too many confirmation mails today");
     }
@@ -224,9 +229,16 @@ export async function requestReplyAddressAndMail(
   const now = new Date();
   const made = await requestReplyAddress(ctx, rawEmail, now);
   const link = absoluteUrl(`/reply-address/${made.token}`);
+  // A send that throws, AND one `send()` answers "suppressed" (slice 103 — the
+  // address was blocked between the check above and now; the design review's
+  // low): either way nothing went, so the request is cancelled as unmailed.
+  let outcome: SendOutcome | "failed";
   try {
-    await send({ to: made.email, ...replyAddressMail(made.locale, link) });
+    outcome = await send({ to: made.email, ...replyAddressMail(made.locale, link) });
   } catch {
+    outcome = "failed";
+  }
+  if (outcome !== "sent") {
     await withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
       // Only the row THIS request wrote: a colleague's newer one stays. And
       // the trail says so, or it would show a request that never existed
@@ -239,11 +251,13 @@ export async function requestReplyAddressAndMail(
           action: "reply_address.request_cancelled",
           targetType: "Tenant",
           targetId: ctx.tenantId,
-          metadata: { email: made.email, reason: "mail_failed" },
+          metadata: { email: made.email, reason: outcome === "suppressed" ? "mail_suppressed" : "mail_failed" },
         });
       }
     }).catch(() => undefined);
-    return fail("REPLY_ADDRESS_MAIL_FAILED", "the confirmation mail could not be sent");
+    return outcome === "suppressed"
+      ? fail("REPLY_ADDRESS_UNDELIVERABLE", "the address is on the suppression list")
+      : fail("REPLY_ADDRESS_MAIL_FAILED", "the confirmation mail could not be sent");
   }
   return { email: made.email, expiresAt: new Date(now.getTime() + REPLY_ADDRESS_LINK_DAYS * 86_400_000) };
 }

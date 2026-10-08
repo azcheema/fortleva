@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { AuthzError } from "@/authz/errors";
+import { readCappedText } from "@/lib/capped-body";
 import { DomainError } from "@/lib/domain-error";
 import { requireTenantContext } from "@/members/tenant-context";
 import type { VaultCtx } from "@/modules/vault";
@@ -74,31 +75,9 @@ export function vaultFailure(e: unknown): Response {
   throw e;
 }
 
-/** The body as text, read against BODY_MAX bytes — or null when it is larger. */
-async function readCapped(request: Request): Promise<string | null> {
-  const declared = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > BODY_MAX) return null;
-  if (request.body === null) return "";
-  const reader = request.body.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > BODY_MAX) {
-      await reader.cancel();
-      return null;
-    }
-    text += decoder.decode(value, { stream: true });
-  }
-  return text + decoder.decode();
-}
-
 /** The request's body: `{}` when empty, an object, or a refusal. */
 async function readBody(request: Request): Promise<Record<string, unknown> | Response> {
-  const text = await readCapped(request);
+  const text = await readCappedText(request, BODY_MAX);
   if (text === null) return refuse("INVALID_INPUT", 400);
   if (text.length === 0) return {};
   let parsed: unknown;

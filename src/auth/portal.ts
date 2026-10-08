@@ -10,7 +10,7 @@ import { portalAuditSink } from "./portal-audit";
 
 import { absoluteUrl, appUrl, portalAuthSecret, sessionCookieName } from "@/config";
 import { portalAuthClient, withTenant } from "@/db";
-import { send } from "@/mailer";
+import { send, type SendOutcome } from "@/mailer";
 
 import { enforceAuthRateLimit } from "./rate-limit-hook";
 
@@ -320,11 +320,12 @@ export async function deliverPortalReset(
     tx.tenant.findFirstOrThrow({ select: { name: true } }),
   );
   const minutes = Math.round(RESET_TTL_SECONDS / 60);
+  let outcome: SendOutcome;
   try {
     // NO `Reply-To`, deliberately (founder decision C68 (j)): this mail carries a
     // live password-reset link, and a reply quoting it would put it in the agency's mailbox
     // (`MAIL_WITHOUT_REPLY_TO`'s note, src/notify/reply-address-resolve.ts).
-    await send({
+    outcome = await send({
       to: user.email,
     subject: `Reset your password for ${tenantName}'s client portal`,
     text:
@@ -340,6 +341,15 @@ export async function deliverPortalReset(
       console.error(`[portal-auth] unsent reset row not removed for contact ${user.id}`, cleanup);
     });
     throw error;
+  }
+  if (outcome === "suppressed") {
+    // A blocked address (slice 103, C71 (e)): nothing went, so the row nobody
+    // holds goes, as every decline's does — it would otherwise count against
+    // the hourly cap (the design review's low). The answer stays constant.
+    await decline().catch((cleanup: unknown) => {
+      console.error(`[portal-auth] blocked reset row not removed for contact ${user.id}`, cleanup);
+    });
+    return "declined";
   }
   return "sent";
 }

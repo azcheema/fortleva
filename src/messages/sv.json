@@ -769,6 +769,7 @@
     "description": "Vilka som finns i arbetsytan, och vad var och en får göra.",
     "manageRoles": "Hantera roller →",
     "noPermission": "Du har inte behörighet att se medlemslistan.",
+    "undeliverable": "E-post till den här adressen kommer inte fram",
     "columns": {
       "member": "Medlem",
       "email": "E-post",
@@ -811,6 +812,8 @@
       "submit": "Skicka inbjudan",
       "submitting": "Skickar…",
       "sent": "Inbjudan skickad till {email}",
+      "undeliverable": "Inbjudan sparad, men e-post till {email} kommer inte fram. Kontrollera adressen.",
+      "notSent": "Inbjudan sparad, men mejlet till {email} kunde inte skickas. Återkalla den nedan och bjud in igen om en liten stund.",
       "description": "Personen får en länk och väljer sitt eget lösenord.",
       "emailHint": "En jobbadress — inbjudan gäller bara för den här adressen."
     },
@@ -1466,7 +1469,7 @@
     "LOGIN_ASK_ENDED": "Förfrågan har redan besvarats eller avbrutits. Ladda om sidan för att se läget.",
     "REPLY_ADDRESS_INVALID": "Ange en e-postadress som kan ta emot svar.",
     "REPLY_ADDRESS_UNCHANGED": "Svar går redan till den adressen.",
-    "REPLY_ADDRESS_UNDELIVERABLE": "E-post till den adressen har studsat tidigare, så vi kan inte skicka dit.",
+    "REPLY_ADDRESS_UNDELIVERABLE": "E-post till den adressen kommer inte fram, så vi kan inte skicka dit. Välj en annan adress.",
     "REPLY_ADDRESS_LIMIT": "För många bekräftelsemejl i dag. Försök igen i morgon.",
     "REPLY_ADDRESS_MAIL_FAILED": "Vi kunde inte skicka bekräftelsemejlet. Ingenting ändrades – försök igen."
   },
@@ -1582,8 +1585,10 @@
       "resend": "Skicka inbjudan igen",
       "invited": "Inbjudan skickad",
       "invitedNotSent": "Inbjudan registrerad, men e-postmeddelandet kunde inte skickas — försök Skicka igen",
+      "invitedUndeliverable": "Inbjudan registrerad, men e-post till den här adressen kommer inte fram — kontrollera adressen",
       "addedNotInvited": "La till {name}. Kundportalen är avstängd, så ingen inbjudan skickades",
       "addedNotSent": "La till {name}, men inbjudningsmeddelandet kunde inte skickas — försök Skicka igen",
+      "addedUndeliverable": "La till {name}, men e-post till adressen kommer inte fram — kontrollera den",
       "inviteOnAdd": "Bjud in personen till portalen",
       "addedAndInvited": "La till {name} och skickade inbjudan",
       "pauseAccess": "Pausa åtkomst",
@@ -1609,7 +1614,8 @@
         "at": "Senast inloggad {date}",
         "never": "Aldrig inloggad",
         "notWithinYear": "Inte inloggad på ett år"
-      }
+      },
+      "undeliverable": "E-post till den här adressen kommer inte fram"
     },
     "projects": {
       "empty": "Skapa det första projektet",
@@ -3135,6 +3141,7 @@
         "addressBusy": "Många koder har skickats till din e-postadress den senaste tiden. Försök igen om en timme.",
         "mailFailed": "Vi kunde inte skicka mejlet just nu. Försök igen om en minut.",
         "busy": "Det gick inte igenom. Försök igen om en stund.",
+        "undeliverable": "E-post till din adress kommer inte fram, så vi kan inte skicka någon kod. Be din byrå att kontrollera adressen de har registrerad för dig.",
         "startAgain": "Koden går inte längre att använda. Ange ditt lösenord igen för att få en ny.",
         "wait": "En kod skickades alldeles nyss. Titta i din e-post, eller be om en ny om en halv minut.",
         "malformed": "Ange de sex siffrorna från mejlet.",

@@ -6,7 +6,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { AutoForm } from "@/components/auto-form";
-import { Field, FormMessage, InlineEdit, RowActions, StatusBadge } from "@/components/semantic";
+import { Field, FormMessage, InlineEdit, RowActions, StatusBadge, UndeliverableNote } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -82,12 +82,19 @@ export function ContactRowForm({
   clientId,
   contact,
   signIn,
+  undeliverable,
   can,
 }: {
   clientId: string;
   contact: ContactRow;
   /** `null` when the reader may not see sign-ins (C46): no line at all. */
   signIn: SignInLine | null;
+  /**
+   * Fortleva has stopped mailing this address (slice 103, C71 (d)): it
+   * bounced for good, or its owner reported our mail as spam — the line
+   * never says which. Fixing the address clears it.
+   */
+  undeliverable: boolean;
   can: ContactRowAbilities;
 }) {
   const t = useTranslations("clients.contacts");
@@ -264,15 +271,17 @@ export function ContactRowForm({
     />
   );
 
-  // With the sign-in line the address cell is two lines tall, so the row
-  // aligns to the TOP: every value shares the first line, and the line
-  // hangs under the address rather than pushing it above its neighbours.
-  const align = signIn === null ? "items-center" : "items-start";
+  // With a line under it the address cell is two lines tall (or three), so
+  // the row aligns to the TOP: every value shares the first line, and the
+  // lines hang under the address rather than pushing it above its
+  // neighbours.
+  const lines = signIn !== null || undeliverable;
+  const align = lines ? "items-start" : "items-center";
   // Top-aligned, a READ-ONLY value (an archived client, seen by a manager)
   // is a bare 20px line beside the 28px chip-and-actions cell, so it sat
   // 4px high; `min-h-7` gives it the editable resting box's height. Only
-  // with the line: a centred row never needed it.
-  const readOnlyClass = signIn === null ? "px-2.5" : "min-h-7 px-2.5";
+  // with a line: a centred row never needed it.
+  const readOnlyClass = lines ? "min-h-7 px-2.5" : "px-2.5";
 
   const values = (readOnly: boolean) => (
     <>
@@ -289,7 +298,7 @@ export function ContactRowForm({
         display={<span className="font-medium">{contact.name}</span>}
         className={readOnly ? readOnlyClass : undefined}
       />
-      {signIn === null ? (
+      {!lines ? (
         emailField(readOnly)
       ) : (
         // UNDER THE ADDRESS, NOT A SEVENTH COLUMN. The card is capped near
@@ -299,12 +308,18 @@ export function ContactRowForm({
         // is the widest track and the identity the person signs in with,
         // and a whole sentence needs no header — so no label trick for a
         // phone, where the headers are hidden, or for a screen reader,
-        // for which the header row is `aria-hidden`.
+        // for which the header row is `aria-hidden`. The undelivered note
+        // (slice 103) is a fact about the ADDRESS, so it hangs there too.
         <div className="flex min-w-0 flex-col">
           {emailField(readOnly)}
-          <span data-slot="contact-sign-in" className="min-h-4 px-2.5 text-xs text-muted-foreground">
-            {signIn.text}
-          </span>
+          {signIn !== null ? (
+            <span data-slot="contact-sign-in" className="min-h-4 px-2.5 text-xs text-muted-foreground">
+              {signIn.text}
+            </span>
+          ) : null}
+          {undeliverable ? (
+            <UndeliverableNote slot="contact-undeliverable" text={t("undeliverable")} className="px-2.5" />
+          ) : null}
         </div>
       )}
       <InlineEdit
@@ -389,7 +404,9 @@ export function CreateContactForm({
   const nameRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (state?.ok) {
-      toast.success(state.message);
+      // A caution (slice 103: added, but the invitation's mail did not go).
+      if (state.caution) toast.warning(state.message);
+      else toast.success(state.message);
       formRef.current?.reset();
       nameRef.current?.focus();
     }

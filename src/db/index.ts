@@ -40,3 +40,14 @@ export {
 } from "./model-registry";
 export type { ModelClass, RlsClass } from "./model-registry";
 export { nextCounter } from "./counters";
+// The SUPPRESSION LOOKUP (Phase 5 slice 103, founder decision C71 (e)). A
+// SIXTH narrow entry point: one read of the GLOBAL `email_suppression` table
+// on the runtime client, outside any seam, so that every `send()` — the
+// password reset, the sign-in code, the invitation, sent from a request with
+// no tenant, user or platform principal to open one for — skips a blocked
+// address. Read-only, one primary key, one bit; `app_runtime` holds SELECT
+// alone on the table. Exactly one permitted importer (src/mailer/index.ts),
+// pinned by src/db/import-boundary.test.ts — a page asks through its own
+// transaction instead (src/notify/undeliverable.ts). TENANCY.md §3 records the
+// carve-out.
+export { isAddressSuppressed } from "./email-suppression";

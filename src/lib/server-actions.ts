@@ -17,7 +17,8 @@ export type ActionResult<T = undefined> =
   | { ok: false; message: string };
 
 /** The {ok, message} shape AutoForm / FormMessage consume. */
-export type FormResult = { ok: boolean; message: string };
+/** `caution`: it worked, but see the message (`caution()` below). */
+export type FormResult = { ok: boolean; message: string; caution?: boolean };
 
 const AUTHZ_MESSAGE_KEY: Record<AuthzError["reason"], "FORBIDDEN" | "NOT_FOUND" | "NOT_ENTITLED"> = {
   FORBIDDEN: "FORBIDDEN",
@@ -46,10 +47,19 @@ export async function runAction<T>(returnTo: string, fn: () => Promise<T>): Prom
   }
 }
 
+/**
+ * A success the reader should not mistake for a plain one (slice 103): the act
+ * happened, but something that should have followed did not — an invitation
+ * saved whose mail did not go. Toasted as a warning, never a green tick.
+ */
+export type Caution = { readonly message: string; readonly caution: true };
+export const caution = (message: string): Caution => ({ message, caution: true });
+
 /** Same, for actions whose success is a message (AutoForm / useActionState forms). */
-export async function runForm(returnTo: string, fn: () => Promise<string>): Promise<FormResult> {
+export async function runForm(returnTo: string, fn: () => Promise<string | Caution>): Promise<FormResult> {
   const r = await runAction(returnTo, fn);
-  return r.ok ? { ok: true, message: r.value } : r;
+  if (!r.ok) return r;
+  return typeof r.value === "string" ? { ok: true, message: r.value } : { ok: true, message: r.value.message, caution: true };
 }
 
 /** FormData helpers: "" ⇒ null; dates from <input type="date"> as UTC midnight. */

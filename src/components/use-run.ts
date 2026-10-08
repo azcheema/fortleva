@@ -38,7 +38,9 @@ export const useRun = () => {
     start(async () => {
       const r = await fn();
       if (r.ok) {
-        toast.success(r.message);
+        // A caution (slice 103) worked but warns — never a green tick.
+        if (r.caution) toast.warning(r.message);
+        else toast.success(r.message);
         onOk?.(r);
       } else toast.error(r.message);
       router.refresh();

@@ -58,6 +58,12 @@ loadEnv({ path: ".env" });
 // the reasoning.
 delete process.env["UPSTASH_REDIS_REST_URL"];
 delete process.env["UPSTASH_REDIS_REST_TOKEN"];
+// Never real mail from a fixture (slice 103; `playwright.config.ts` has it).
+delete process.env["MAIL_TRANSPORT"];
+delete process.env["MAIL_SEND_TO_ANYONE"];
+delete process.env["AMAZON_SES_ACCESS_KEY_ID"];
+delete process.env["AMAZON_SES_SECRET_ACCESS_KEY"];
+delete process.env["AMAZON_SES_FEEDBACK_TOPIC_ARN"];
 
 const SLUG_PREFIX = "e2e-";
 const EMAIL_DOMAIN = "@test.invalid";
@@ -143,6 +149,9 @@ const DBTEST_PREFIXES = [
   "inbox-",
   "iso-a-",
   "iso-b-",
+  // Phase 5 slice 103, real email sending — `src/jobs/mail-feedback.dbtest.ts`,
+  // `setupTenant("mailfb")` (the outbox's blocked-at-send branch).
+  "mailfb-",
   "members-",
   "mfa-",
   "money-",
@@ -2987,6 +2996,61 @@ async function clientSummaryLink(tenantId: string, contactEmail: string): Promis
 }
 
 /**
+ * BLOCK AN ADDRESS, as Amazon SES's bounce would (Phase 5 slice 103, C71 (d)) —
+ * for `undeliverable.spec.ts`, which needs the note beside a person and has no
+ * SNS to send it. `email_suppression` is GLOBAL, so the belt is the address,
+ * not only the tenant: it must be one of THIS throwaway tenant's own contacts
+ * or pending invitations, on the reserved domain below (RFC 2606's `.invalid`,
+ * never a real mailbox). Each call first sweeps that domain's rows older than
+ * an hour — a run that died before its `unsuppress-address` leaves nothing
+ * behind for long, and nothing outside the domain is ever touched.
+ */
+const UNDELIVERABLE_DOMAIN = "@e2e-undeliverable.invalid";
+
+async function suppressAddress(tenantId: string, email: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const address = (email ?? "").trim().toLowerCase();
+  if (!address.endsWith(UNDELIVERABLE_DOMAIN)) throw new Error(`suppress-address: only *${UNDELIVERABLE_DOMAIN}`);
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const owned =
+    (await db.contact.count({ where: { tenantId, email: { equals: address, mode: "insensitive" } } })) +
+    (await db.memberInvite.count({ where: { tenantId, email: { equals: address, mode: "insensitive" } } }));
+  if (owned === 0) throw new Error("suppress-address: not an address of this tenant's contacts or invitations");
+  await db.emailSuppression.deleteMany({
+    where: { email: { endsWith: UNDELIVERABLE_DOMAIN }, createdAt: { lt: new Date(Date.now() - 60 * 60_000) } },
+  });
+  await db.emailSuppression.upsert({
+    where: { email: address },
+    create: { email: address, reason: "HARD_BOUNCE", source: "e2e" },
+    update: {},
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ suppressed: address })}\n`);
+}
+
+/**
+ * `undeliverable.spec.ts`'s belt, from `afterAll`: lift `suppress-address`'s
+ * block and delete the member invitations THIS tenant made to the address —
+ * the reserved domain only. A leftover invitation would change the Members
+ * screenshots of the specs that sort after it (the contact goes through
+ * `remove-contact`).
+ */
+async function clearUndeliverable(tenantId: string, email: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const address = (email ?? "").trim().toLowerCase();
+  if (!address.endsWith(UNDELIVERABLE_DOMAIN)) throw new Error(`clear-undeliverable: only *${UNDELIVERABLE_DOMAIN}`);
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const invites = await db.memberInvite.deleteMany({
+    where: { tenantId, email: { equals: address, mode: "insensitive" } },
+  });
+  const blocks = await db.emailSuppression.deleteMany({ where: { email: address } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ invites: invites.count, blocks: blocks.count })}\n`);
+}
+
+/**
  * Mark a login "Change soon" (slice 94) by its name, as removing a member
  * who saw it would — the fixture's members stay, so `vault.spec.ts` sets
  * the mark straight on the row, then clears it through the UI by changing
@@ -3048,6 +3112,8 @@ const main = async (): Promise<void> => {
   if (command === "clear-portal-submissions") return clearPortalSubmissions(argument!, process.argv[4]!);
   if (command === "clear-login-asks") return clearLoginAsks(argument!, process.argv[4]!);
   if (command === "client-summary-link") return clientSummaryLink(argument!, process.argv[4]!);
+  if (command === "suppress-address") return suppressAddress(argument!, process.argv[4]!);
+  if (command === "clear-undeliverable") return clearUndeliverable(argument!, process.argv[4]!);
   if (command === "remove-users") return removeUsers(process.argv.slice(3));
   if (command === "sweep") return sweep(argument);
   if (command === "sweep-dbtests") return sweepDbtests(argument);

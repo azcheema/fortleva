@@ -79,6 +79,8 @@ export async function startLoginsDoorAction(password: unknown): Promise<LoginsDo
         return { ok: false, message: t("door.addressBusy") };
       case "mail_failed":
         return { ok: false, message: t("door.mailFailed"), toCode: true };
+      case "undeliverable":
+        return { ok: false, message: t("door.undeliverable") };
       case "off":
         return { ok: false, message: t("unavailable") };
       case "busy":
@@ -108,6 +110,8 @@ export async function resendLoginsCodeAction(): Promise<LoginsDoorResult> {
         return { ok: false, message: t("door.addressBusy") };
       case "mail_failed":
         return { ok: false, message: t("door.mailFailed") };
+      case "undeliverable":
+        return { ok: false, message: t("door.undeliverable") };
       case "off":
         return { ok: false, message: t("unavailable") };
       case "busy":

@@ -5,7 +5,7 @@ import { authorize, effectivePermissions, type MemberActor } from "@/authz/autho
 import { AuthzError, deny } from "@/authz/errors";
 import { record } from "@/audit/record";
 import { inviteUrl } from "@/auth";
-import { send } from "@/mailer";
+import { send, type DeliveryOutcome } from "@/mailer";
 import { resolveReplyAddress } from "@/notify/reply-address-resolve";
 
 /**
@@ -26,7 +26,7 @@ export async function createInvite(input: {
   actor: MemberActor;
   email: string;
   roleIds: string[];
-}): Promise<{ inviteId: string }> {
+}): Promise<{ inviteId: string; mailed: DeliveryOutcome }> {
   const email = input.email.trim().toLowerCase();
   const token = randomBytes(32).toString("base64url");
   const actorMemberId = input.actor.memberId;
@@ -94,14 +94,29 @@ export async function createInvite(input: {
     },
   );
 
-  await send({
-    to: email,
-    subject: "You have been invited to Fortleva",
-    text: `You have been invited to a Fortleva workspace.\n\nAccept the invitation: ${inviteUrl(token)}\n\nThis link expires in 7 days.`,
-    ...(replyTo ? { replyTo } : {}),
-  });
+  // AFTER THE COMMIT, AND NEVER A THROW OVER IT (slice 103; the design
+  // review's medium): the invitation exists whether or not its mail went, so a
+  // failed send is an answer — "saved, not sent" — not an error page over a
+  // row the member can see in the list. With a real transport that is an
+  // everyday state (a throttle, an outage, SES's sandbox refusing an
+  // unverified address); `contact-access.ts`'s invitation has always said so.
+  // A blocked address (`send()` answers "suppressed", C71 (e)) is said too:
+  // the list shows the invitation with the undelivered note.
+  let mailed: DeliveryOutcome;
+  try {
+    mailed = await send({
+      to: email,
+      subject: "You have been invited to Fortleva",
+      text: `You have been invited to a Fortleva workspace.\n\nAccept the invitation: ${inviteUrl(token)}\n\nThis link expires in 7 days.`,
+      ...(replyTo ? { replyTo } : {}),
+    });
+  } catch (e) {
+    // The NAME only: a transport's message may quote the address.
+    console.error(`invites: the invitation mail could not be sent: ${e instanceof Error ? e.name : typeof e}`);
+    mailed = "failed";
+  }
 
-  return { inviteId };
+  return { inviteId, mailed };
 }
 
 export type InvitePreview = {

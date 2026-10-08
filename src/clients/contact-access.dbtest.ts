@@ -240,6 +240,20 @@ describe("issuing a portal invitation", () => {
     expect(JSON.stringify(events[0]!.metadata)).not.toContain("@");
   });
 
+  it("A BLOCKED ADDRESS (slice 103): the invitation commits, and says its mail did not go", async () => {
+    const email = `cinv-anna-${run}@test.invalid`;
+    await f.platform.emailSuppression.create({ data: { email, reason: "HARD_BOUNCE", source: "dbtest" } });
+    try {
+      const { mailed } = await inviteContact(ctxOf("manager"), anna);
+      expect(mailed).toBe("suppressed");
+      // The invitation exists all the same — the address is what to fix.
+      expect((await contactRow(anna)).portalStatus).toBe("INVITED");
+      expect(await liveInvite(anna)).toBeTruthy();
+    } finally {
+      await f.platform.emailSuppression.deleteMany({ where: { email } });
+    }
+  });
+
   it("stores only the token's HASH, never the token", async () => {
     await inviteContact(ctxOf("manager"), anna);
     const invite = await liveInvite(anna);
@@ -927,7 +941,7 @@ describe("taking access away, and giving it back", () => {
     // its own test below. (A review caught this comment claiming the
     // opposite, and the gap behind it.)
     const { mailed } = await inviteContact(ctxOf("manager"), anna);
-    expect(mailed).toBe(true);
+    expect(mailed).toBe("sent");
     const reinvited = await contactRow(anna);
     expect(reinvited.portalStatus).toBe("INVITED");
     expect(reinvited.invitedAt!.getTime()).toBeGreaterThan(staleInvitedAt!.getTime());

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
+import type { DeliveryOutcome } from "@/mailer";
 import { createInvite } from "@/members/invites";
 import {
   reactivateMember,
@@ -22,7 +23,8 @@ const inviteSchema = z.object({
   roleIds: z.array(z.string()).min(1),
 });
 
-export type InviteFormState = { ok: boolean; message: string } | null;
+/** `caution`: the invitation is saved, but its mail did not go (slice 103). */
+export type InviteFormState = { ok: boolean; message: string; caution?: boolean } | null;
 
 export async function inviteMemberAction(
   _prev: InviteFormState,
@@ -41,13 +43,14 @@ export async function inviteMemberAction(
     return { ok: false, message: roleIssue ? t("invite.pickRole") : tCommon("invalidInput") };
   }
 
+  let mailed: DeliveryOutcome;
   try {
-    await createInvite({
+    ({ mailed } = await createInvite({
       tenantId: membership.tenantId,
       actor,
       email: parsed.data.email,
       roleIds: parsed.data.roleIds,
-    });
+    }));
   } catch (e) {
     // MFA_REQUIRED (deferred denial, AUTHZ.md §7.5) becomes navigation to
     // step-up / enrolment; every other denial is shown inline.
@@ -59,6 +62,15 @@ export async function inviteMemberAction(
   }
 
   revalidatePath("/members");
+  // The invitation is saved in every branch; what differs is whether its mail
+  // went (slice 103) — a caution, never a failure, so the form does not read
+  // as if nothing happened.
+  if (mailed === "suppressed") {
+    return { ok: true, caution: true, message: t("invite.undeliverable", { email: parsed.data.email }) };
+  }
+  if (mailed === "failed") {
+    return { ok: true, caution: true, message: t("invite.notSent", { email: parsed.data.email }) };
+  }
   return { ok: true, message: t("invite.sent", { email: parsed.data.email }) };
 }
 

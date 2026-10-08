@@ -21,6 +21,15 @@ loadEnv({ path: ".env" });
 // neither — start it with the same two empty values.
 delete process.env["UPSTASH_REDIS_REST_URL"];
 delete process.env["UPSTASH_REDIS_REST_TOKEN"];
+// AND NEVER REAL MAIL (Phase 5 slice 103), on the same two levels: deleted
+// here, EMPTY for the server below. The server is on loopback, which keeps it
+// on the dev transport unless `MAIL_TRANSPORT=amazon-ses` (src/config) — so
+// the flag goes, and the credentials with it.
+delete process.env["MAIL_TRANSPORT"];
+delete process.env["MAIL_SEND_TO_ANYONE"];
+delete process.env["AMAZON_SES_ACCESS_KEY_ID"];
+delete process.env["AMAZON_SES_SECRET_ACCESS_KEY"];
+delete process.env["AMAZON_SES_FEEDBACK_TOPIC_ARN"];
 
 /**
  * End-to-end harness (PLAN.md Phase 2). Chromium only — this suite
@@ -112,13 +121,19 @@ export default defineConfig({
     // Invite would write the row and then throw, and the acceptance
     // token exists nowhere but that message. See src/config's own note:
     // this is the only place in the repository that sets it.
-    // The two empty Upstash values: see the note under `loadEnv` above.
+    // The two empty Upstash values, and the empty mail values: see the notes
+    // under `loadEnv` above.
     env: {
       APP_URL: BASE_URL,
       PORT: String(PORT),
       MAIL_DEV_OUTBOX: "1",
       UPSTASH_REDIS_REST_URL: "",
       UPSTASH_REDIS_REST_TOKEN: "",
+      MAIL_TRANSPORT: "",
+      MAIL_SEND_TO_ANYONE: "",
+      AMAZON_SES_ACCESS_KEY_ID: "",
+      AMAZON_SES_SECRET_ACCESS_KEY: "",
+      AMAZON_SES_FEEDBACK_TOPIC_ARN: "",
     },
   },
 });

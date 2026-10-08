@@ -1,14 +1,34 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { allowDevMailOutbox, isProduction, mailFrom } from "@/config";
+import { allowDevMailOutbox, amazonSesConfig, isProduction, mailFrom, mailTransportKind } from "@/config";
+import { isAddressSuppressed } from "@/db";
+
+import { amazonSesTransport, RecipientRefusedError } from "./amazon-ses";
+
+/**
+ * Did the transport refuse this one recipient (a reserved domain, a dev
+ * allowlist) rather than fail? The outbox counts only real failures toward
+ * "the transport is down" (slice 103).
+ */
+export const isRecipientRefusal = (e: unknown): boolean => e instanceof RecipientRefusedError;
 
 /**
  * The one-interface mail adapter (ARC-09): everything that sends email
- * goes through send(). The Amazon SES transport lands when the
- * mailer.naxdor.com identity exists; until then the dev transport logs
- * to console and appends to .dev-outbox.jsonl (gitignored) so flows
- * are fully testable without a provider.
+ * goes through send(). A deployment with Amazon SES credentials sends
+ * through Amazon SES (`./amazon-ses.ts`, Phase 5 slice 103); every process
+ * serving itself on loopback — dev, the dbtests, the e2e harness — uses
+ * the dev transport, which logs to console and appends to
+ * .dev-outbox/outbox.jsonl (gitignored) so flows are fully testable
+ * without a provider (`mailTransportKind`, src/config, says when).
+ *
+ * **A BLOCKED ADDRESS GETS NOTHING** (founder decision C71 (e)): before
+ * every message, `send()` asks the suppression list — an address that
+ * bounced for good or reported our mail as spam — and answers
+ * `"suppressed"` without sending. That covers the mail sent straight from
+ * a request, which no outbox check reaches: password resets, sign-in
+ * codes, invitations, share links' codes. Support lifts a block (RUNBOOK
+ * §8); fixing a person's address starts their mail again.
  *
  * Module is named `mailer`, NEVER `ses` — bare "SES" means Simple
  * Electronic Signature in this codebase (SignatureLevel.SES, Phase 4).
@@ -39,8 +59,9 @@ export type MailMessage = {
    * mailbox provider POSTs `List-Unsubscribe=One-Click` to. A transport that
    * sends real mail sets BOTH headers from it — `List-Unsubscribe: <url>` and
    * `List-Unsubscribe-Post: List-Unsubscribe=One-Click` — and the message
-   * must be DKIM-signed with those headers covered (RFC 8058 §4; SES's own
-   * signing does). Only the clients' weekly summary carries one: it is the
+   * must be DKIM-signed with those headers covered (RFC 8058 §4; whether
+   * Amazon SES's Easy DKIM covers them is checked at go-live — RUNBOOK §9
+   * step 9 (a), the `h=` tag — not assumed). Only the clients' weekly summary carries one: it is the
    * one mail sent to a person on a schedule rather than because something
    * happened to them.
    */
@@ -61,12 +82,13 @@ const devTransport: MailTransport = async (msg) => {
   }
 };
 
-let transport: MailTransport = devTransport;
+let transport: MailTransport =
+  mailTransportKind === "amazon-ses" && amazonSesConfig !== null ? amazonSesTransport(amazonSesConfig) : devTransport;
 
 /**
- * Amazon SES transport plugs in here (Phase 1, post-identity). Returns the
- * transport it replaced, so a test that swaps one in — the portal reset's,
- * which needs a transport that never answers — can put the real one back.
+ * Swap the transport — tests only. Returns the transport it replaced, so a
+ * test that swaps one in — the portal reset's, which needs a transport that
+ * never answers — can put the real one back.
  */
 export const setTransport = (t: MailTransport): MailTransport => {
   const previous = transport;
@@ -76,7 +98,38 @@ export const setTransport = (t: MailTransport): MailTransport => {
 
 let announcedDevOutbox = false;
 
-export async function send(msg: MailMessage): Promise<void> {
+/**
+ * What became of a message: `"sent"` (handed to the transport, which
+ * resolved) or `"suppressed"` (the address is blocked — nothing was sent,
+ * nothing will be). A transport failure throws, as it always has.
+ */
+export type SendOutcome = "sent" | "suppressed";
+
+/**
+ * What a caller that catches a transport failure reports instead of throwing
+ * it — an invitation, which has committed before its mail goes (slice 103).
+ */
+export type DeliveryOutcome = SendOutcome | "failed";
+
+export async function send(msg: MailMessage): Promise<SendOutcome> {
+  // Before the transport guard below, so a blocked address is answered the
+  // same in every mode. A failed lookup throws — fail closed, like a failed
+  // transport: nothing is sent to an address we could not check — and throws
+  // its NAME and code only, as the SES transport does: a Prisma message prints
+  // its arguments (the address), and the outbox keeps the message in
+  // `lastError`, in the tenant's own export (the design review's low).
+  let suppressed: boolean;
+  try {
+    suppressed = await isAddressSuppressed(msg.to);
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    throw new Error(`mailer: suppression lookup failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+  }
+  if (suppressed) {
+    // Never the address: logs leave the database's protection.
+    console.warn("[mailer] recipient is on the suppression list — not sent");
+    return "suppressed";
+  }
   if (isProduction && transport === devTransport) {
     // **THE ONE WAY PAST THIS GUARD, and it is the e2e harness's.**
     // `next start` sets NODE_ENV=production, so the browser harness runs
@@ -92,7 +145,9 @@ export async function send(msg: MailMessage): Promise<void> {
     // so once. A real deployment cannot turn mail into a silent drop by
     // accident, and could not do it quietly on purpose.
     if (!allowDevMailOutbox) {
-      throw new Error("mailer: production requires a real transport (Amazon SES not yet wired)");
+      throw new Error(
+        "mailer: production requires a real transport — the deployment needs AMAZON_SES_ACCESS_KEY_ID, AMAZON_SES_SECRET_ACCESS_KEY and MAIL_SEND_TO_ANYONE=1 (RUNBOOK §1); any other production build on loopback uses MAIL_DEV_OUTBOX=1, or MAIL_TRANSPORT=amazon-ses with MAIL_DEV_RECIPIENTS",
+      );
     }
     if (!announcedDevOutbox) {
       announcedDevOutbox = true;
@@ -100,4 +155,5 @@ export async function send(msg: MailMessage): Promise<void> {
     }
   }
   await transport({ ...msg, from: mailFrom.header });
+  return "sent";
 }

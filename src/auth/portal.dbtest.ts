@@ -820,6 +820,37 @@ describe("the password reset (the portal's reset screens)", () => {
     }
   });
 
+  it("A BLOCKED ADDRESS (slice 103) is a decline: nothing sent, the row removed", async () => {
+    // A FRESH contact, as the failed-send test's: the shared ones have spent
+    // their hourly cap in the tests above, which would decline for that
+    // reason instead (a vacuous pass).
+    const db = getPlatformClient();
+    const email = `e2e-portal-blocked-${run}@test.invalid`;
+    const c = await db.contact.create({
+      data: { tenantId: T, clientId: CLIENT, name: "Blocked Mail", email, emailVerified: true, portalStatus: "ACTIVE" },
+    });
+    resetContactIds.push(c.id);
+    const { internalAdapter } = await portalAuth.$context;
+    const raw = `blockedtoken${run.replace(/-/g, "")}`;
+    await internalAdapter.createVerificationValue({
+      identifier: `reset-password:${raw}`,
+      value: c.id,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    await db.emailSuppression.create({ data: { email, reason: "HARD_BOUNCE", source: "dbtest" } });
+    try {
+      const outcome = await deliverPortalReset(
+        { id: c.id, email, name: "Blocked Mail", tenantId: T, portalStatus: "ACTIVE" },
+        raw,
+      );
+      expect(outcome).toBe("declined");
+      expect(mailTo(email)).toHaveLength(0);
+      expect(await db.contactVerification.count({ where: { value: c.id } })).toBe(0);
+    } finally {
+      await db.emailSuppression.deleteMany({ where: { email } });
+    }
+  });
+
   it("a send that FAILS removes its row, so lost mails cannot use up the cap", async () => {
     const db = getPlatformClient();
     const email = `e2e-portal-lostmail-${run}@test.invalid`;

@@ -1,6 +1,6 @@
 import { appUrl } from "@/config";
 import { withPlatform, withTenant } from "@/db";
-import { send } from "@/mailer";
+import { isRecipientRefusal, send, type SendOutcome } from "@/mailer";
 import { isNotificationKind, NOTIFICATION_KINDS } from "@/notify/catalog";
 import { CONTACT_DIGEST_MAIL, renderContactDigest } from "@/notify/client-digest";
 import { clientSummaryToken } from "@/notify/client-summary-token";
@@ -46,6 +46,23 @@ const LEASE_MINUTES = 10;
  * claim (slice 101) — well inside the lease, leaving the sends their time.
  */
 const RECOUNT_BUDGET_MS = 4 * 60_000;
+/**
+ * How long after its claim one drain may go on SENDING (slice 103, the design
+ * review's low): with a real transport each send can take seconds (SES's
+ * timeouts, one SDK retry), and a drain still sending when its rows' lease
+ * ran out would race the next drain's reclaim of them — the same mail twice.
+ * Two minutes short of the lease; past it the rows not attempted go back to
+ * the queue (`releaseUnattempted`), re-checked by the next drain.
+ */
+const SEND_BUDGET_MS = (LEASE_MINUTES - 2) * 60_000;
+/** Failed sends in a row that say the transport is down: the pass ends. */
+const MAX_FAILURES_IN_A_ROW = 3;
+/**
+ * No claim with less than this left before the caller's `sendUntil` (the
+ * fix-pass review's low): a batch claimed a moment before the deadline would
+ * be leased for ten minutes and sent by nobody.
+ */
+const CLAIM_MARGIN_MS = 15_000;
 
 type ClaimedRow = {
   id: string;
@@ -59,6 +76,14 @@ type ClaimedRow = {
   notification_ids: string[];
   attempts: number;
   created_at: Date;
+  send_after: Date;
+  /**
+   * The claim's own lease stamp, AS POSTGRES WROTE IT (`locked_at::text`) —
+   * the same `now()` for every row of one claim. Text, never a JS `Date`: a
+   * `Date` keeps milliseconds and the column microseconds, so a `Date` read
+   * back would match no row.
+   */
+  lease: string;
 };
 
 type Outcome = "sent" | "skipped" | "suppressed" | "failed" | "dead";
@@ -94,17 +119,36 @@ export async function drainOutbox(
      * review). Production drains every tenant.
      */
     readonly tenantId?: string;
+    /**
+     * No send STARTS after this moment (epoch ms) — the caller's own clock
+     * (slice 103, the code review's medium): `POST /api/jobs/run` runs every
+     * other job after the drain, inside one function's lifetime, and a slow
+     * SES must not spend it all. Rows left unsent go back to the queue
+     * (`releaseUnattempted`). `SEND_BUDGET_MS` from the claim bounds it either
+     * way.
+     */
+    readonly sendUntil?: number;
   },
 ): Promise<{ sent: number; skipped: number; suppressed: number; failed: number; dead: number }> {
   const out = { sent: 0, skipped: 0, suppressed: 0, failed: 0, dead: 0 };
   const only = opts?.tenantId;
+  // The lease starts at the claim (`locked_at = now()` in it); every budget
+  // below is measured from just before it, so it can only err early.
+  const claimStarted = Date.now();
+  if (opts?.sendUntil !== undefined && opts.sendUntil - claimStarted < CLAIM_MARGIN_MS) return out;
 
   const { toSend: claimedToSend, recount } = await withPlatform(
     SYSTEM,
     only ? `claim one tenant's due email_outbox rows (FOR UPDATE SKIP LOCKED)` : "claim due email_outbox rows (FOR UPDATE SKIP LOCKED) and resolve them",
     async (tx) => {
+      // OLDEST FIRST, FOR REAL (slice 103, the narrow re-check's medium): an
+      // `UPDATE … RETURNING` keeps no order — the subquery's `ORDER BY` picks
+      // WHICH rows, not the order they come back in (a hash join returns them
+      // by id) — so the claim is wrapped and sorted. Sends then go oldest
+      // first, and a pass that stops early hands back the newest.
       const claimed = only
         ? await tx.$queryRaw<ClaimedRow[]>`
+      WITH claimed AS (
         UPDATE email_outbox SET status = 'SENDING', locked_at = now(), updated_at = now()
         WHERE id IN (
           SELECT id FROM email_outbox
@@ -115,8 +159,11 @@ export async function drainOutbox(
           LIMIT ${limit}
           FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, tenant_id, receiver_type, receiver_id, kind, locale, to_email, params, notification_ids, attempts, created_at`
+        RETURNING id, tenant_id, receiver_type, receiver_id, kind, locale, to_email, params, notification_ids, attempts, created_at, send_after, locked_at::text AS lease
+      )
+      SELECT * FROM claimed ORDER BY send_after, id`
         : await tx.$queryRaw<ClaimedRow[]>`
+      WITH claimed AS (
         UPDATE email_outbox SET status = 'SENDING', locked_at = now(), updated_at = now()
         WHERE id IN (
           SELECT id FROM email_outbox
@@ -126,7 +173,9 @@ export async function drainOutbox(
           LIMIT ${limit}
           FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, tenant_id, receiver_type, receiver_id, kind, locale, to_email, params, notification_ids, attempts, created_at`;
+        RETURNING id, tenant_id, receiver_type, receiver_id, kind, locale, to_email, params, notification_ids, attempts, created_at, send_after, locked_at::text AS lease
+      )
+      SELECT * FROM claimed ORDER BY send_after, id`;
       const toSend: Prepared[] = [];
       const recount: Recount[] = [];
       // The summaries' receivers, read ONCE for the whole claim rather than
@@ -354,13 +403,16 @@ export async function drainOutbox(
   // zeros; logged by ids, name and code only.
   const prepared: Prepared[] = [...claimedToSend];
   const recountStarted = Date.now();
-  for (const item of recount) {
+  for (const [i, item] of recount.entries()) {
     const { row } = item;
     // INSIDE THE LEASE (the code review's low): a recount that ran past
     // `LEASE_MINUTES` could have its rows claimed — and sent — by an
-    // overlapping drain. Past the budget the rest stay SENDING, and the lease
-    // reclaim takes them up (re-checked, and dropped if too late by then).
-    if (Date.now() - recountStarted > RECOUNT_BUDGET_MS) break;
+    // overlapping drain. Past the budget the rest go back to the queue, for
+    // the next drain to check again (and drop if too late by then).
+    if (Date.now() - recountStarted > RECOUNT_BUDGET_MS || Date.now() > (opts?.sendUntil ?? Number.POSITIVE_INFINITY)) {
+      await releaseUnattempted(recount.slice(i).map((r) => r.row), only);
+      break;
+    }
     let mail: { subject: string; text: string } | null = null;
     let refused = false;
     try {
@@ -429,15 +481,69 @@ export async function drainOutbox(
   }
 
   // One row's failure never blocks the next: each send + finalise is
-  // isolated and every path below resolves to an outcome.
-  for (const item of prepared) {
+  // isolated and every path below resolves to an outcome — until the
+  // transport looks DOWN: three transport failures in a row end the pass (the
+  // code review's medium — each failed SES call can take half a minute). A
+  // refusal of ONE recipient (a reserved domain, a dev allowlist) costs
+  // nothing and says nothing about the transport, so it does not count (the
+  // fix-pass review's low).
+  const sendDeadline = Math.min(claimStarted + SEND_BUDGET_MS, opts?.sendUntil ?? Number.POSITIVE_INFINITY);
+  // Oldest first across BOTH kinds — the claim's order, with the counted-again
+  // client summaries put back in it (the final check's nit) — so a pass that
+  // stops early hands back the newest, whatever they are.
+  prepared.sort((a, b) => a.row.send_after.getTime() - b.row.send_after.getTime() || (a.row.id < b.row.id ? -1 : 1));
+  let failedInARow = 0;
+  for (const [i, item] of prepared.entries()) {
+    // Inside the lease (`SEND_BUDGET_MS`) and the caller's own deadline. The
+    // rows not attempted go straight back to the queue (the fix-pass review's
+    // low) — never left leased for ten minutes, never sent by two drains.
+    if (Date.now() > sendDeadline || failedInARow >= MAX_FAILURES_IN_A_ROW) {
+      await releaseUnattempted(prepared.slice(i).map((p) => p.row), only);
+      break;
+    }
     // A security notice to the workspace's own members carries none: a reply
     // to it would go to an address an admin may have set
     // (`MAIL_WITHOUT_REPLY_TO`).
     const address = MAIL_WITHOUT_REPLY_TO.has(item.row.kind) ? undefined : replyTo.get(item.row.tenant_id);
-    out[await sendAndFinalise(item, address, only)] += 1;
+    const { outcome, transportDown } = await sendAndFinalise(item, address, only);
+    out[outcome] += 1;
+    // Only a SENT mail proves the transport up; a refusal of one recipient or
+    // a blocked address never reached it, so it leaves the streak as it was
+    // (the narrow re-check's nit).
+    if (transportDown) failedInARow += 1;
+    else if (outcome === "sent") failedInARow = 0;
   }
   return out;
+}
+
+/**
+ * Hand claimed rows that were never attempted back to the queue, in one short
+ * transaction: QUEUED again, unleased, their attempts and `send_after` as they
+ * were — the next drain takes them up. ONLY while the lease is still THIS
+ * drain's (`locked_at` = the claim's own stamp — the narrow re-check's low): a
+ * recount stalled past the lease may already have had its rows reclaimed by
+ * another drain, and releasing those would let a third send them twice. A
+ * release that fails leaves them for the lease reclaim, as before.
+ */
+async function releaseUnattempted(rows: readonly ClaimedRow[], only: string | undefined): Promise<void> {
+  if (rows.length === 0) return;
+  try {
+    await withPlatform(
+      SYSTEM,
+      `release ${rows.length} unattempted outbox row(s)`,
+      // Every row of one claim carries the same lease stamp, compared in SQL
+      // against the text Postgres gave us.
+      (tx) => tx.$executeRaw`
+        UPDATE email_outbox SET status = 'QUEUED', locked_at = NULL, updated_at = now()
+        WHERE id = ANY(${rows.map((r) => r.id)}::text[]) AND status = 'SENDING' AND locked_at = ${rows[0]!.lease}::timestamptz`,
+      { readOnly: false, ...(only ? { targetTenantId: only } : {}) },
+    );
+  } catch (e) {
+    // The lease reclaim takes them up in ten minutes. The NAME and code only,
+    // as every catch here (a Prisma message prints its arguments).
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`outbox: releasing ${rows.length} unattempted row(s) failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+  }
 }
 
 /**
@@ -488,14 +594,28 @@ async function finaliseUnsent(
   }
 }
 
+/**
+ * Send one row and finalise it; `transportDown` when the send failed for a
+ * reason other than refusing this one recipient — what the pass counts.
+ */
 async function sendAndFinalise(
+  prepared: Prepared,
+  replyTo: string | undefined,
+  only: string | undefined,
+): Promise<{ outcome: Outcome; transportDown: boolean }> {
+  const result = await sendAndFinaliseRow(prepared, replyTo, only);
+  return { outcome: result.outcome, transportDown: result.sendError !== null && !isRecipientRefusal(result.sendError) };
+}
+
+async function sendAndFinaliseRow(
   { row, subject, text, listUnsubscribe }: Prepared,
   replyTo: string | undefined,
   only: string | undefined,
-): Promise<Outcome> {
+): Promise<{ outcome: Outcome; sendError: unknown }> {
   let sendError: unknown = null;
+  let outcome: SendOutcome | null = null;
   try {
-    await send({
+    outcome = await send({
       to: row.to_email,
       subject,
       text,
@@ -506,10 +626,17 @@ async function sendAndFinalise(
     sendError = e;
   }
   try {
-    return await withPlatform(
+    const finalised = await withPlatform(
       SYSTEM,
       `finalise outbox row ${row.id} (${row.kind})`,
       async (tx) => {
+        if (outcome === "suppressed") {
+          // Blocked between the claim's check and the send (a bounce or a
+          // complaint landed in between — slice 103): `send()` sent nothing,
+          // and the row says so, as the claim's own check would have.
+          await tx.emailOutbox.update({ where: { id: row.id }, data: { status: "SUPPRESSED", lockedAt: null } });
+          return "suppressed" as const;
+        }
         if (sendError === null) {
           await tx.emailOutbox.update({
             where: { id: row.id },
@@ -532,9 +659,10 @@ async function sendAndFinalise(
       },
       { readOnly: false, ...(only ? { targetTenantId: only } : {}) },
     );
+    return { outcome: finalised, sendError };
   } catch {
     // The finalise itself failed (connection, timeout): the row stays
     // SENDING and the lease reclaim revisits it — at-least-once.
-    return sendError === null ? "sent" : "failed";
+    return { outcome: outcome === "suppressed" ? "suppressed" : sendError === null ? "sent" : "failed", sendError };
   }
 }

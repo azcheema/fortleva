@@ -16,6 +16,7 @@ import {
   PageHeader,
   SectionCard,
   StatusBadge,
+  UndeliverableNote,
 } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,7 @@ import {
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
 import { cn } from "@/lib/utils";
+import { undeliverableAmong } from "@/notify/undeliverable";
 
 import { InviteForm } from "./invite-form";
 import { MemberRolesForm, MemberRowActions, RevokeInviteForm } from "./member-admin";
@@ -120,10 +122,17 @@ export default async function MembersPage() {
           "member:reset_two_factor",
         ]),
       ]);
+      // "Emails to this address aren't being delivered" (slice 103, C71 (d)):
+      // after the batch, never a leg of it (AGENTS.md's Promise.all trap).
+      const undeliverable = await undeliverableAmong(tx, [
+        ...members.map((m) => m.user.email),
+        ...invites.map((i) => i.email),
+      ]);
       return {
         members,
         invites,
         roles,
+        undeliverable,
         canInvite: perms.allowed.has("member:invite"),
         canRemove: perms.allowed.has("member:remove"),
         // member:manage_roles is ✦: the editor shows for anyone the
@@ -247,21 +256,32 @@ export default async function MembersPage() {
                       <TableCell className="max-w-36 sm:max-w-64">
                         <span className="flex min-w-0 items-center gap-2">
                           <MemberAvatar id={m.id} name={m.user.name} />
-                          <span
-                            className={cn(
-                              "truncate",
-                              suspended ? "text-muted-foreground" : "font-medium",
-                            )}
-                          >
-                            {m.user.name}
-                          </span>
-                          {isSelf ? (
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              {"("}
-                              {tCommon("you")}
-                              {")"}
+                          <span className="min-w-0">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span
+                                className={cn(
+                                  "truncate",
+                                  suspended ? "text-muted-foreground" : "font-medium",
+                                )}
+                              >
+                                {m.user.name}
+                              </span>
+                              {isSelf ? (
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {"("}
+                                  {tCommon("you")}
+                                  {")"}
+                                </span>
+                              ) : null}
                             </span>
-                          ) : null}
+                            {/* Under the NAME, not the address: the email
+                                column is the first to go on a phone, and a
+                                member who gets no mail misses invitations,
+                                resets and every notice (C71 (d)). */}
+                            {data.undeliverable.has(m.user.email.trim().toLowerCase()) ? (
+                              <UndeliverableNote slot="member-undeliverable" text={t("undeliverable")} />
+                            ) : null}
+                          </span>
                         </span>
                       </TableCell>
                       <TableCell priority="low" className="max-w-64 truncate text-muted-foreground">
@@ -331,7 +351,14 @@ export default async function MembersPage() {
                             aria-hidden="true"
                             className="size-3.5 shrink-0 text-muted-foreground"
                           />
-                          <span className="truncate">{i.email}</span>
+                          <span className="min-w-0">
+                            <span className="block truncate">{i.email}</span>
+                            {/* The invitation itself never arrived (C71 (d)):
+                                revoke it and invite the right address. */}
+                            {data.undeliverable.has(i.email.trim().toLowerCase()) ? (
+                              <UndeliverableNote slot="invite-undeliverable" text={t("undeliverable")} />
+                            ) : null}
+                          </span>
                         </span>
                       </TableCell>
                       <TableCell>

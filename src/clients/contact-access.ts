@@ -8,7 +8,7 @@ import { requireAccess } from "@/entitlements/resolver";
 import { fail, isDeadlock } from "@/lib/domain-error";
 import { retryOnDeadlock } from "@/lib/retry";
 import { portalInviteUrl } from "@/auth";
-import { send } from "@/mailer";
+import { send, type DeliveryOutcome } from "@/mailer";
 import { releaseContactAssignments } from "@/modules/work";
 
 import { INVITE_TTL_HOURS, INVITE_TTL_MS, hashToken } from "./contact-invite-secret";
@@ -76,7 +76,7 @@ const principalOf = (ctx: ClientCtx) => ({ type: "member", id: ctx.actor.memberI
 export async function inviteContact(
   ctx: ClientCtx,
   contactId: string,
-): Promise<{ inviteId: string; mailed: boolean }> {
+): Promise<{ inviteId: string; mailed: DeliveryOutcome }> {
   const token = randomBytes(32).toString("base64url");
   const { inviteId, email, tenantName, contactName } = await withTenant(
     ctx.tenantId,
@@ -229,18 +229,18 @@ export async function inviteContact(
   //
   // So the send is REPORTED rather than thrown, and the caller picks the
   // sentence. It is not swallowed: the reason goes to the server log and
-  // `mailed: false` is a fact the surface states out loud. (Today the one
-  // way it fires is a production build with no real transport — Amazon
-  // SES is not wired — which is exactly the state the founder's first
-  // invitation is meant to be read out of the dev outbox in.)
+  // `mailed: "failed"` is a fact the surface states out loud — as is
+  // `"suppressed"` (slice 103, C71 (e)): an address Fortleva no longer mails
+  // was sent nothing, and the row's undelivered note says why the person
+  // never got it.
   //
   // Raised by this slice's review.
-  let mailed = true;
+  let mailed: DeliveryOutcome;
   try {
     // NO `Reply-To`, deliberately (founder decision C68 (j)): this mail carries a
     // live invitation link (it sets the password), and a reply quoting it would put it in the agency's mailbox
     // (`MAIL_WITHOUT_REPLY_TO`'s note, src/notify/reply-address-resolve.ts).
-    await send({
+    mailed = await send({
       to: email,
       subject: `${tenantName} has invited you to their client portal`,
       text:
@@ -252,8 +252,11 @@ export async function inviteContact(
   } catch (error) {
     // No address, no name and no token: the invitation id is enough to
     // find the row, and this line is world-readable in a CI log.
-    console.error(`[contact-invite] invitation ${inviteId} recorded but not sent`, error);
-    mailed = false;
+    // The error's NAME only: a transport's message may quote the address.
+    console.error(
+      `[contact-invite] invitation ${inviteId} recorded but not sent: ${error instanceof Error ? error.name : typeof error}`,
+    );
+    mailed = "failed";
   }
 
   return { inviteId, mailed };

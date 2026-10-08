@@ -3,7 +3,7 @@
 import { absoluteUrl, appUrl } from "@/config";
 import { runtimeClient } from "@/db/client";
 import { safeNext } from "@/lib/safe-next";
-import { send } from "@/mailer";
+import { send, type SendOutcome } from "@/mailer";
 
 import { releaseAuthMail, reserveAuthMail } from "./mail-budget";
 import {
@@ -181,8 +181,9 @@ export async function deliverMemberReset(
   }
 
   const minutes = Math.round(MEMBER_RESET_TTL_SECONDS / 60);
+  let outcome: SendOutcome;
   try {
-    await send({
+    outcome = await send({
       to: user.email,
       subject: "Reset your Fortleva password",
       text:
@@ -198,6 +199,16 @@ export async function deliverMemberReset(
       console.error(`[auth] unsent reset mail not cleaned up for user ${user.id}`, cleanup);
     });
     throw error;
+  }
+  if (outcome === "suppressed") {
+    // A blocked address (slice 103, C71 (e)): nothing went, so this is a
+    // DECLINE like the three above — the row nobody holds is removed and the
+    // hourly slot given back (the design review's low). The request's answer
+    // is the same constant either way, so it tells the caller nothing.
+    await Promise.all([releaseAuthMail(slot), decline()]).catch((cleanup: unknown) => {
+      console.error(`[auth] blocked reset mail not cleaned up for user ${user.id}`, cleanup);
+    });
+    return "declined";
   }
   return "sent";
 }
@@ -247,8 +258,9 @@ export async function deliverMemberConfirmation(
   }
 
   const minutes = Math.round(EMAIL_CONFIRMATION_TTL_SECONDS / 60);
+  let outcome: SendOutcome;
   try {
-    await send({
+    outcome = await send({
       to: user.email,
       subject: "Confirm your email address for Fortleva",
       text:
@@ -261,6 +273,14 @@ export async function deliverMemberConfirmation(
       console.error(`[auth] unsent confirmation slot not released for user ${user.id}`, cleanup);
     });
     throw error;
+  }
+  if (outcome === "suppressed") {
+    // A blocked address (slice 103): nothing went, so the hour's slot goes
+    // back, as for a failed send — and it is a decline, like the reset's.
+    await releaseAuthMail(slot).catch((cleanup: unknown) => {
+      console.error(`[auth] blocked confirmation slot not released for user ${user.id}`, cleanup);
+    });
+    return "declined";
   }
   return "sent";
 }

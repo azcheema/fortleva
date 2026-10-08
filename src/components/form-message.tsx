@@ -1,4 +1,4 @@
-import { CircleCheckIcon, OctagonAlertIcon } from "lucide-react";
+import { CircleCheckIcon, OctagonAlertIcon, TriangleAlertIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -7,16 +7,22 @@ import { cn } from "@/lib/utils";
  * failure is role="alert" — the state is announced, not merely tinted,
  * and both carry a distinct glyph so the pair survives greyscale and
  * every colour-vision type.
+ *
+ * A third state, `caution` on a success (slice 103): the action did what it
+ * said, but something the reader should know did not follow — an invitation
+ * saved whose email did not go. Still role="status" (nothing failed), in the
+ * caution tone with the triangle, so it never reads as a plain tick.
  */
 export function FormMessage({
   state,
   className,
 }: {
-  state: { ok: boolean; message: string } | null | undefined;
+  state: { ok: boolean; message: string; caution?: boolean } | null | undefined;
   className?: string;
 }) {
   if (!state) return null;
-  const Icon = state.ok ? CircleCheckIcon : OctagonAlertIcon;
+  const caution = state.ok && state.caution === true;
+  const Icon = caution ? TriangleAlertIcon : state.ok ? CircleCheckIcon : OctagonAlertIcon;
   return (
     <p
       role={state.ok ? "status" : "alert"}
@@ -25,7 +31,7 @@ export function FormMessage({
         // Danger as TEXT is --tone-danger-fg, never --destructive: the
         // latter is a FILL colour (white label at 4.6:1) and measures
         // 3.90:1 as text on a dark card, i.e. it fails SC 1.4.3.
-        state.ok ? "text-(--tone-success-fg)" : "text-(--tone-danger-fg)",
+        caution ? "text-(--tone-caution-fg)" : state.ok ? "text-(--tone-success-fg)" : "text-(--tone-danger-fg)",
         className,
       )}
     >

@@ -769,6 +769,7 @@
     "description": "Who is in the workspace, and what each of them may do.",
     "manageRoles": "Manage roles →",
     "noPermission": "You do not have permission to view the member list.",
+    "undeliverable": "Emails to this address aren't being delivered",
     "columns": {
       "member": "Member",
       "email": "Email",
@@ -811,6 +812,8 @@
       "submit": "Send invitation",
       "submitting": "Sending…",
       "sent": "Invitation sent to {email}",
+      "undeliverable": "Invitation saved, but emails to {email} aren't being delivered. Check the address.",
+      "notSent": "Invitation saved, but its email to {email} could not be sent. Revoke it below and invite them again in a little while.",
       "description": "They receive a link and choose their own password.",
       "emailHint": "A work address — the invitation is valid for this address only."
     },
@@ -1466,7 +1469,7 @@
     "LOGIN_ASK_ENDED": "This ask has already been answered or cancelled. Reload to see where it stands.",
     "REPLY_ADDRESS_INVALID": "Enter an email address that can receive replies.",
     "REPLY_ADDRESS_UNCHANGED": "Replies already go to that address.",
-    "REPLY_ADDRESS_UNDELIVERABLE": "Email to that address has bounced before, so we can't send to it.",
+    "REPLY_ADDRESS_UNDELIVERABLE": "Emails to that address aren't being delivered, so we can't send to it. Choose another address.",
     "REPLY_ADDRESS_LIMIT": "Too many confirmation emails today. Try again tomorrow.",
     "REPLY_ADDRESS_MAIL_FAILED": "We couldn't send the confirmation email. Nothing changed — try again."
   },
@@ -1582,8 +1585,10 @@
       "resend": "Send the invitation again",
       "invited": "Invitation sent",
       "invitedNotSent": "Invitation recorded, but the email could not be sent — try Send again",
+      "invitedUndeliverable": "Invitation recorded, but emails to this address aren't being delivered — check the address",
       "addedNotInvited": "Added {name}. The client portal is switched off, so no invitation was sent",
       "addedNotSent": "Added {name}, but the invitation email could not be sent — try Send again",
+      "addedUndeliverable": "Added {name}, but emails to their address aren't being delivered — check the address",
       "inviteOnAdd": "Invite this person to the portal",
       "addedAndInvited": "Added {name} and sent the invitation",
       "pauseAccess": "Pause access",
@@ -1609,7 +1614,8 @@
         "at": "Last signed in {date}",
         "never": "Never signed in",
         "notWithinYear": "Not signed in for a year"
-      }
+      },
+      "undeliverable": "Emails to this address aren't being delivered"
     },
     "projects": {
       "empty": "Create the first project",
@@ -3135,6 +3141,7 @@
         "addressBusy": "Many codes have gone to your email address lately. Try again in an hour.",
         "mailFailed": "We could not send the email just now. Try again in a minute.",
         "busy": "That did not go through. Try again in a moment.",
+        "undeliverable": "Emails to your address aren't being delivered, so we can't send you a code. Ask your agency to check the address they have for you.",
         "startAgain": "That code can no longer be used. Enter your password again to get a new one.",
         "wait": "A code went out a moment ago. Check your email, or ask again in half a minute.",
         "malformed": "Enter the six digits from the email.",

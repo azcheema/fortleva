@@ -6,9 +6,11 @@ import { readContactSignIns } from "@/clients/contact-sign-ins";
 import type { ContactRow } from "@/clients/service";
 import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
+import { withTenant } from "@/db";
 import { resolveTimeZone } from "@/i18n/resolve";
 import { formatDate } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
+import { undeliverableAmong } from "@/notify/undeliverable";
 
 import { loadClient } from "../data";
 import { ContactRowForm, CreateContactForm, type ContactRowAbilities, type SignInLine } from "./contact-forms";
@@ -70,6 +72,19 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
     portal && client.contacts.length > 0
       ? await readContactSignIns({ tenantId: membership.tenantId, actor }, client.id)
       : null;
+  // "Emails to this address aren't being delivered" (slice 103, C71 (d)) —
+  // for EVERY reader of the tab, not only the portal's managers: whoever can
+  // see an address may know that mail to it does not arrive. The addresses
+  // came through `loadClient`'s gates; this asks only whether each is blocked.
+  const undeliverable =
+    client.contacts.length > 0
+      ? await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
+          undeliverableAmong(
+            tx,
+            client.contacts.map((c) => c.email),
+          ),
+        )
+      : new Set<string>();
   const locale = await getLocale();
   // The member's zone (UI.md §8): a sign-in at 00:30 in Stockholm is
   // that day there, not the day before in UTC.
@@ -159,6 +174,7 @@ export default async function ClientContactsPage({ params }: { params: Promise<{
                   clientId={client.id}
                   contact={c}
                   signIn={signInLine(c)}
+                  undeliverable={undeliverable.has(c.email.trim().toLowerCase())}
                   can={can}
                 />
               ))}

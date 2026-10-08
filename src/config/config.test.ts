@@ -147,3 +147,168 @@ describe("the rate limiter's configuration", () => {
     expect(c.upstashConfig).toBeNull();
   });
 });
+
+/**
+ * AMAZON SES (Phase 5 slice 103, founder decision C71). Every case sets each
+ * SES variable — empty when it means "unset" — so a developer's `.env.local`
+ * can never decide a case.
+ */
+describe("Amazon SES: which transport, where, and the feedback topic", () => {
+  const none = {
+    AMAZON_SES_REGION: "",
+    AMAZON_SES_ACCESS_KEY_ID: "",
+    AMAZON_SES_SECRET_ACCESS_KEY: "",
+    AMAZON_SES_CONFIGURATION_SET: "",
+    AMAZON_SES_FEEDBACK_TOPIC_ARN: "",
+    MAIL_TRANSPORT: "",
+    MAIL_DEV_RECIPIENTS: "",
+    MAIL_SEND_TO_ANYONE: "",
+    MAIL_FROM_NAME: "Fortleva",
+  };
+  const keys = { AMAZON_SES_ACCESS_KEY_ID: "AKIATEST", AMAZON_SES_SECRET_ACCESS_KEY: "secret" };
+  const prod = {
+    NODE_ENV: "production",
+    APP_URL: "https://os.example.test",
+    BETTER_AUTH_SECRET: "s",
+    MAIL_FROM_ADDRESS: "no-reply@mailer.naxdor.com",
+    MAIL_SEND_TO_ANYONE: "1",
+  };
+
+  it("A PRODUCTION BUILD OFF LOOPBACK IS NOT THE DEPLOYMENT UNTIL IT SAYS SO — a tunnel or a Preview with the keys keeps the dev transport", async () => {
+    for (const flag of ["", "0", "true", "yes"]) {
+      const c = await configWith({ ...none, ...prod, ...keys, MAIL_SEND_TO_ANYONE: flag });
+      expect(c.mailTransportKind, flag).toBe("dev");
+    }
+  });
+
+  it("refuses a From display name SES would reject — accents, quotes, commas, brackets", async () => {
+    for (const name of ["Naxdor Byrå", 'Fortleva "Mail"', "Fortleva, Inc", "Fortleva <x>"]) {
+      await expect(configWith({ ...none, ...prod, ...keys, MAIL_FROM_NAME: name }), name).rejects.toThrow(/MAIL_FROM_NAME/);
+    }
+    const plain = await configWith({ ...none, ...prod, ...keys, MAIL_FROM_NAME: "Naxdor Studio" });
+    expect(plain.mailFrom.name).toBe("Naxdor Studio");
+  });
+
+  it("a deployment with both keys sends through Amazon SES, to anyone, in Frankfurt by default, on the pinned endpoint", async () => {
+    const c = await configWith({ ...none, ...prod, ...keys });
+    expect(c.mailTransportKind).toBe("amazon-ses");
+    expect(c.amazonSesConfig).toEqual({
+      region: "eu-central-1",
+      endpoint: "https://email.eu-central-1.amazonaws.com",
+      accessKeyId: "AKIATEST",
+      secretAccessKey: "secret",
+      configurationSet: null,
+      allowedRecipients: null,
+    });
+  });
+
+  it("no keys is no SES — and the mailer refuses each send in production, as it always has", async () => {
+    const c = await configWith({ ...none, ...prod });
+    expect(c.amazonSesConfig).toBeNull();
+    expect(c.mailTransportKind).toBe("dev");
+  });
+
+  it("A DEVELOPER'S MACHINE NEVER SENDS REAL MAIL BY ACCIDENT — loopback, a LAN address or a tunnel, and the e2e server, all keep the dev transport with keys present", async () => {
+    for (const origin of ["http://localhost:3000", "http://192.168.1.20:3000", "https://dev-tunnel.example.test"]) {
+      const c = await configWith({ ...none, APP_URL: origin, ...keys });
+      expect(c.amazonSesConfig, origin).not.toBeNull();
+      expect(c.mailTransportKind, origin).toBe("dev");
+    }
+    const e2e = await configWith({ ...none, ...prod, APP_URL: "http://127.0.0.1:3457", ...keys });
+    expect(e2e.mailTransportKind).toBe("dev");
+  });
+
+  it("…unless MAIL_TRANSPORT=amazon-ses asks for it on purpose — and then only to MAIL_DEV_RECIPIENTS", async () => {
+    const on = await configWith({
+      ...none,
+      APP_URL: "http://localhost:3000",
+      ...keys,
+      MAIL_TRANSPORT: "amazon-ses",
+      MAIL_DEV_RECIPIENTS: " Me@Kund.se , ",
+      MAIL_FROM_ADDRESS: "no-reply@mailer.naxdor.com",
+    });
+    expect(on.mailTransportKind).toBe("amazon-ses");
+    expect([...(on.amazonSesConfig?.allowedRecipients ?? [])]).toEqual(["me@kund.se"]);
+    for (const value of ["1", "true", "ses", "AMAZON-SES"]) {
+      const c = await configWith({ ...none, APP_URL: "http://localhost:3000", ...keys, MAIL_TRANSPORT: value });
+      expect(c.mailTransportKind, value).toBe("dev");
+    }
+  });
+
+  it("refuses the flag WITHOUT a recipient list — a dev server's outbox holds other people's mail", async () => {
+    await expect(
+      configWith({ ...none, APP_URL: "http://localhost:3000", ...keys, MAIL_TRANSPORT: "amazon-ses" }),
+    ).rejects.toThrow(/MAIL_DEV_RECIPIENTS/);
+  });
+
+  it("refuses a placeholder From address once Amazon SES sends", async () => {
+    await expect(configWith({ ...none, ...prod, ...keys, MAIL_FROM_ADDRESS: "dev@localhost.invalid" })).rejects.toThrow(
+      /MAIL_FROM_ADDRESS/,
+    );
+    // Without SES the placeholder is the dev default, as ever.
+    const dev = await configWith({ ...none, APP_URL: "http://localhost:3000", MAIL_FROM_ADDRESS: "dev@localhost.invalid" });
+    expect(dev.mailFrom.address).toBe("dev@localhost.invalid");
+  });
+
+  it("REFUSES A REGION OUTSIDE AN EU MEMBER STATE, in every mode — London and Zurich included", async () => {
+    for (const region of ["us-east-1", "eu", "eu-central", "ap-southeast-2", "EU-CENTRAL-1", "eu-west-2", "eu-central-2"]) {
+      await expect(configWith({ ...none, AMAZON_SES_REGION: region }), region).rejects.toThrow(/AMAZON_SES_REGION/);
+    }
+    const stockholm = await configWith({ ...none, ...prod, ...keys, AMAZON_SES_REGION: "eu-north-1" });
+    expect(stockholm.amazonSesConfig?.region).toBe("eu-north-1");
+    expect(stockholm.amazonSesConfig?.endpoint).toBe("https://email.eu-north-1.amazonaws.com");
+  });
+
+  it("refuses one key without the other in production off loopback, not on loopback", async () => {
+    await expect(configWith({ ...none, ...prod, AMAZON_SES_ACCESS_KEY_ID: "AKIATEST" })).rejects.toThrow(
+      /AMAZON_SES_ACCESS_KEY_ID and AMAZON_SES_SECRET_ACCESS_KEY/,
+    );
+    await expect(configWith({ ...none, ...prod, AMAZON_SES_SECRET_ACCESS_KEY: "secret" })).rejects.toThrow(
+      /must be set together/,
+    );
+    const harness = await configWith({ ...none, ...prod, APP_URL: "http://127.0.0.1:3457", AMAZON_SES_ACCESS_KEY_ID: "x" });
+    expect(harness.amazonSesConfig).toBeNull();
+  });
+
+  it("takes a configuration set by name, and refuses anything that is not one", async () => {
+    const c = await configWith({ ...none, ...prod, ...keys, AMAZON_SES_CONFIGURATION_SET: "fortleva-feedback" });
+    expect(c.amazonSesConfig?.configurationSet).toBe("fortleva-feedback");
+    await expect(configWith({ ...none, AMAZON_SES_CONFIGURATION_SET: "a set" })).rejects.toThrow(
+      /AMAZON_SES_CONFIGURATION_SET/,
+    );
+  });
+
+  it("the feedback topic pins the one SNS host its messages may name", async () => {
+    const off = await configWith({ ...none });
+    expect(off.mailFeedbackConfig).toBeNull();
+    const arn = "arn:aws:sns:eu-central-1:123456789012:fortleva-mail-feedback";
+    const c = await configWith({ ...none, AMAZON_SES_FEEDBACK_TOPIC_ARN: arn });
+    expect(c.mailFeedbackConfig).toEqual({
+      topicArn: arn,
+      region: "eu-central-1",
+      accountId: "123456789012",
+      snsHost: "sns.eu-central-1.amazonaws.com",
+    });
+  });
+
+  it("refuses a topic that is not an SNS topic ARN in the SES region", async () => {
+    for (const arn of [
+      "arn:aws:sns:eu-north-1:123456789012:t", // another region than SES's (eu-central-1)
+      "arn:aws:sns:us-east-1:123456789012:t",
+      "arn:aws:sqs:eu-central-1:123456789012:t",
+      "arn:aws:sns:eu-central-1:12345:t",
+      "arn:aws:sns:eu-central-1:123456789012:t.fifo",
+      "https://sns.eu-central-1.amazonaws.com/",
+    ]) {
+      await expect(configWith({ ...none, AMAZON_SES_FEEDBACK_TOPIC_ARN: arn }), arn).rejects.toThrow(
+        /AMAZON_SES_FEEDBACK_TOPIC_ARN/,
+      );
+    }
+    const stockholm = await configWith({
+      ...none,
+      AMAZON_SES_REGION: "eu-north-1",
+      AMAZON_SES_FEEDBACK_TOPIC_ARN: "arn:aws:sns:eu-north-1:123456789012:t",
+    });
+    expect(stockholm.mailFeedbackConfig?.snsHost).toBe("sns.eu-north-1.amazonaws.com");
+  });
+});

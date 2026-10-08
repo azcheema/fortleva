@@ -149,8 +149,11 @@ export type DoorStartOutcome =
        * address has had many codes lately. mail_failed: the mailer threw —
        * the door and its code are stored, so a new code can be asked for.
        * off: no logins are shown here now. busy: lock waits spent.
+       * undeliverable: Fortleva no longer mails the contact's address (slice
+       * 103) — no code was minted, sent or counted (the password check was,
+       * as always, before it), unless the block landed mid-send.
        */
-      readonly reason: "wrong_password" | "limited" | "address_busy" | "mail_failed" | "off" | "busy";
+      readonly reason: "wrong_password" | "limited" | "address_busy" | "mail_failed" | "undeliverable" | "off" | "busy";
     };
 
 export type DoorResendOutcome =
@@ -158,7 +161,7 @@ export type DoorResendOutcome =
   | {
       readonly ok: false;
       /** start_again: no door waiting for a code in this session (or it is spent) — the password again. */
-      readonly reason: "start_again" | "wait" | "limited" | "address_busy" | "mail_failed" | "off" | "busy";
+      readonly reason: "start_again" | "wait" | "limited" | "address_busy" | "mail_failed" | "undeliverable" | "off" | "busy";
     };
 
 export type DoorOpenOutcome =
@@ -307,7 +310,7 @@ export async function startPortalLoginsDoor(
 
   type Made =
     | { readonly ok: true; readonly to: string; readonly code: string; readonly tenantName: string }
-    | { readonly ok: false; readonly reason: "limited" | "address_busy" | "off" };
+    | { readonly ok: false; readonly reason: "limited" | "address_busy" | "undeliverable" | "off" };
   let made: Made;
   try {
     made = await boundedVaultWrite((opts) =>
@@ -335,6 +338,14 @@ export async function startPortalLoginsDoor(
           });
           const tenant = await tx.tenant.findFirst({ where: { id: principal.tenantId }, select: { name: true } });
           if (!contact || !tenant) return { ok: false, reason: "off" };
+          // An address Fortleva no longer mails (slice 103, C71 (e)) is told so
+          // BEFORE a code is minted or counted (the code review's medium: the
+          // contact would otherwise read "sent", wait, and spend their codes on
+          // mail that never leaves). It is their own address, behind their own
+          // password and session — no oracle for anyone else.
+          if (await tx.emailSuppression.findUnique({ where: { email: contact.email.trim().toLowerCase() }, select: { email: true } })) {
+            return { ok: false, reason: "undeliverable" };
+          }
           if (!(await allowStrict("vault.share_code_to", contact.email.toLowerCase()))) {
             return { ok: false, reason: "address_busy" };
           }
@@ -376,7 +387,10 @@ export async function startPortalLoginsDoor(
     // NO `Reply-To`, deliberately (founder decision C68 (j)): this mail carries a
     // live code that opens the client's logins, and a reply quoting it would put it in the agency's mailbox
     // (`MAIL_WITHOUT_REPLY_TO`'s note, src/notify/reply-address-resolve.ts).
-    await send({ to: made.to, subject: words.subject, text: words.text });
+    // Blocked between the check above and now (the race): nothing went.
+    if ((await send({ to: made.to, subject: words.subject, text: words.text })) === "suppressed") {
+      return { ok: false, reason: "undeliverable" };
+    }
   } catch {
     return { ok: false, reason: "mail_failed" };
   }
@@ -434,6 +448,14 @@ export async function resendPortalLoginsCode(ctx: PortalLoginsCtx, compose: Logi
           });
           const tenant = await tx.tenant.findFirst({ where: { id: principal.tenantId }, select: { name: true } });
           if (!contact || !tenant) return { ok: false, reason: "start_again" };
+          // An address Fortleva no longer mails (slice 103, C71 (e)) is told so
+          // BEFORE a code is minted or counted (the code review's medium: the
+          // contact would otherwise read "sent", wait, and spend their codes on
+          // mail that never leaves). It is their own address, behind their own
+          // password and session — no oracle for anyone else.
+          if (await tx.emailSuppression.findUnique({ where: { email: contact.email.trim().toLowerCase() }, select: { email: true } })) {
+            return { ok: false, reason: "undeliverable" };
+          }
           if (!(await allowStrict("vault.share_code_to", contact.email.toLowerCase()))) {
             return { ok: false, reason: "address_busy" };
           }
@@ -470,7 +492,10 @@ export async function resendPortalLoginsCode(ctx: PortalLoginsCtx, compose: Logi
     // NO `Reply-To`, deliberately (founder decision C68 (j)): this mail carries a
     // live code that opens the client's logins, and a reply quoting it would put it in the agency's mailbox
     // (`MAIL_WITHOUT_REPLY_TO`'s note, src/notify/reply-address-resolve.ts).
-    await send({ to: sent.to, subject: words.subject, text: words.text });
+    // Blocked between the check above and now (the race): nothing went.
+    if ((await send({ to: sent.to, subject: words.subject, text: words.text })) === "suppressed") {
+      return { ok: false, reason: "undeliverable" };
+    }
   } catch {
     return { ok: false, reason: "mail_failed" };
   }

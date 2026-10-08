@@ -384,6 +384,56 @@ describe("the client's door — their password, then a mailed code, each time (C
     expect(await readPortalLoginsDoor(at(c.id, randomUUID()))).toEqual({ state: "closed" });
   });
 
+  it("A BLOCKED ADDRESS (slice 103) is told so — no code minted, sent or counted", async () => {
+    const c = await primary();
+    const session = randomUUID();
+    const mails = mailbox.length;
+    await f.platform.emailSuppression.create({ data: { email: c.email.toLowerCase(), reason: "COMPLAINT", source: "dbtest" } });
+    try {
+      expect(await startPortalLoginsDoor(at(c.id, session), right, compose)).toEqual({ ok: false, reason: "undeliverable" });
+      expect(mailbox.length).toBe(mails);
+      expect(await f.platform.contactVaultUnlock.count({ where: { tenantId: f.tenantId, contactId: c.id } })).toBe(0);
+      expect((await f.audits("portal.logins_code_sent")).filter((a) => a.actorId === c.id)).toHaveLength(0);
+    } finally {
+      await f.platform.emailSuppression.deleteMany({ where: { email: c.email.toLowerCase() } });
+    }
+  });
+
+  it("…and a RESEND for a door already waiting is told so too, its count untouched", async () => {
+    const c = await primary();
+    // A door whose code went out four minutes ago, written by the broker's own
+    // principal (the resend test's pattern below).
+    const later = randomUUID();
+    const id = randomUUID();
+    const sent = minutesAgo(4);
+    await withTenant(f.tenantId, { type: "system" }, (tx) =>
+      tx.contactVaultUnlock.create({
+        data: {
+          id,
+          tenantId: f.tenantId,
+          contactId: c.id,
+          sessionId: later,
+          codeHash: hashShareCode(id, "424242"),
+          codeExpiresAt: new Date(sent.getTime() + 10 * 60_000),
+          codeSentAt: sent,
+          codesSent: 1,
+          createdAt: sent,
+        },
+        select: { id: true },
+      }),
+    );
+    const mails = mailbox.length;
+    await f.platform.emailSuppression.create({ data: { email: c.email.toLowerCase(), reason: "HARD_BOUNCE", source: "dbtest" } });
+    try {
+      expect(await resendPortalLoginsCode(at(c.id, later), compose)).toEqual({ ok: false, reason: "undeliverable" });
+      expect(mailbox.length).toBe(mails);
+      const door = await f.platform.contactVaultUnlock.findFirstOrThrow({ where: { tenantId: f.tenantId, id }, select: { codesSent: true, codeHash: true } });
+      expect(door).toEqual({ codesSent: 1, codeHash: hashShareCode(id, "424242") });
+    } finally {
+      await f.platform.emailSuppression.deleteMany({ where: { email: c.email.toLowerCase() } });
+    }
+  });
+
   it("a wrong code is counted; the right one opens the door for the staff window — in THIS session only", async () => {
     const c = await primary();
     const session = randomUUID();

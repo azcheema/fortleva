@@ -15,6 +15,7 @@ export { HealthChip } from "./health-chip";
 export { InlineEdit, VisibilityInlineEdit, type InlineEditProps } from "./inline-edit";
 export { KeyboardHint } from "./keyboard-hint";
 export { MemberAvatar } from "./member-avatar";
+export { UndeliverableNote } from "./undeliverable-note";
 export { MetricTile } from "./metric-tile";
 export { PageState, type PageStateProps } from "./page-state";
 export { PriorityGlyph, PriorityIndicator } from "./priority-indicator";
