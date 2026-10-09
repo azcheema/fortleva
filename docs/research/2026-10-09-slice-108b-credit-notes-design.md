@@ -56,3 +56,12 @@ A credit note's lines, quantities and totals are stored POSITIVE (EN 16931 / Pep
 3. Reusing the original's exchange rate for the SEK VAT on a credit note — correct?
 4. Positive storage + negated print — any trap for the SEK VAT, the export, slice 109's portal view or the Fortnox file?
 5. `creditInFull` issuing inside the action that creates the draft (one transaction) — the fingerprint is not needed there (the issuer sees the frozen original); any hole?
+
+## 6. Also in 108b — the SEK rate's day (founder decision C78 (a), 2026-10-09)
+
+The VAT in SEK on a foreign-currency invoice uses the ECB rate of the day the WORK ENDED: `rateDay = least(coalesce(period_end, issue_date), issue_date)` — the work period's last day, the invoice date without a period, and never later than the invoice date (work invoiced in advance takes the invoice date's latest rate, which Skatteverket accepts). Slice 108 built "the latest rate at issue".
+
+- `fx.ts`: for a `rateDay` before today, the ECB's 90-day history file (`eurofxref-hist-90d.xml`, the same host — `src/config`), the latest file on or before `rateDay` (weekends and TARGET holidays fall back up to ten days); today's file otherwise. A `rateDay` more than 90 days ago is refused in a sentence ("the work period ended too long ago for the ECB's published rates — …"); the dialog says which day's rate it will use. The same redirect refusal and size cap (the history file is ~30 KB — raise the cap to ~256 KB).
+- The guard: the window moves from `[issue_date − 10, issue_date]` to `[rateDay − 10, rateDay]` (a function change in 108b's migration).
+- A credit note keeps the ORIGINAL's rate (§2 step 6) — unaffected.
+- Tests: a period ending last month takes that day's (or the previous business day's) rate from a fixed history file; no period → the invoice date; a period ending after the invoice date → the invoice date; > 90 days → refused; the guard refuses a rate dated outside the new window.
