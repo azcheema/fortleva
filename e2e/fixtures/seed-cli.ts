@@ -2515,6 +2515,9 @@ async function readyInvoicing(tenantId: string, clientId: string): Promise<void>
   const { getPlatformClient } = await import("../../src/db/client");
   const { withTenant } = await import("../../src/db");
   const { encryptFieldV2 } = await import("../../src/crypto/field-encryption");
+  // Both ids, or nothing: an undefined `id` is DROPPED from a Prisma where,
+  // and the address updates below would reach every client of the tenant.
+  if (!tenantId || !clientId) throw new Error("ready-invoicing: a tenant id and a client id");
   const db = getPlatformClient();
   await assertE2ETenant(db, tenantId);
   const bankgiro = await withTenant(tenantId, { type: "system" }, (tx) =>
@@ -2535,10 +2538,13 @@ async function readyInvoicing(tenantId: string, clientId: string): Promise<void>
       bankgiro,
     },
   });
-  await db.client.updateMany({
-    where: { tenantId, id: clientId },
-    data: { addressLine1: "Kundvägen 2", postalCode: "222 33", city: "Lund", countryCode: "SE" },
-  });
+  // Only what issuing needs and the seed left EMPTY — never over what it set:
+  // the seed's city (Stockholm) is asserted by `portal-files.spec.ts`, which
+  // runs later in the same tenant (slice 108's first CI run went red on it).
+  await db.client.updateMany({ where: { tenantId, id: clientId, addressLine1: null }, data: { addressLine1: "Kundvägen 2" } });
+  await db.client.updateMany({ where: { tenantId, id: clientId, postalCode: null }, data: { postalCode: "111 22" } });
+  await db.client.updateMany({ where: { tenantId, id: clientId, city: null }, data: { city: "Stockholm" } });
+  await db.client.updateMany({ where: { tenantId, id: clientId, countryCode: null }, data: { countryCode: "SE" } });
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"ready":1}\n`);
 }
