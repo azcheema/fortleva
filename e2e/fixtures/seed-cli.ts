@@ -42,6 +42,8 @@
  *        tsx e2e/fixtures/seed-cli.ts reset-update-schedule <tenantId> <projectKey>
  *        tsx e2e/fixtures/seed-cli.ts reset-update-layouts <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-invoice-details <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts ready-invoicing <tenantId> <clientId>
+ *        tsx e2e/fixtures/seed-cli.ts set-invoice-series <tenantId> <firstNumber>
  *        tsx e2e/fixtures/seed-cli.ts client-summary-link <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -158,6 +160,9 @@ const DBTEST_PREFIXES = [
   // `src/modules/invoicing/drafts.dbtest.ts` and `seller.dbtest.ts`,
   // `setupTenant("invd")` and `setupTenant("invs")`.
   "invd-",
+  // Phase 4 slice 108, issuing — `src/modules/invoicing/issue.dbtest.ts`,
+  // `setupTenant("invi")`.
+  "invi-",
   "invs-",
   "iso-a-",
   "iso-b-",
@@ -1808,6 +1813,10 @@ async function removeTenant(
     // invoice it credits go together (NO ACTION); lines cascade.
     await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
     await tx.invoice.deleteMany({ where: { tenantId } });
+    // Slice 108: the numbering series RESTRICTs the tenant and refuses DELETE
+    // outside this GUC; the invoices' PDF files are freed by the delete above
+    // and go with the other file objects below.
+    await tx.invoiceSeries.deleteMany({ where: { tenantId } });
     await tx.projectUpdate.deleteMany({ where: { tenantId } });
     await tx.timeReport.deleteMany({ where: { tenantId } });
     await tx.budgetAlert.deleteMany({ where: { tenantId } });
@@ -2490,6 +2499,70 @@ async function resetInvoiceDetails(tenantId: string): Promise<void> {
   await db.tenantPreference.deleteMany({ where: { tenantId, key: "invoice.paymentTermsDays" } });
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"reset":1}\n`);
+}
+
+/**
+ * Make the workspace ready to issue (Phase 4 slice 108), without spending an
+ * authenticator code: the company details and a Bankgiro on `tenant`, and an
+ * address on ONE client — through the PLATFORM role, which the details'
+ * backstop does not judge. The Bankgiro is a REAL v2 ciphertext under the
+ * tenant's key (encrypted in a SYSTEM transaction, then written by the
+ * platform role), because the issued invoice copies it and its PDF decrypts
+ * it. No numbering series: `set-invoice-series` is its own step, so a spec
+ * can see the "first number" blocker first. Throwaway tenant only.
+ */
+async function readyInvoicing(tenantId: string, clientId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const { withTenant } = await import("../../src/db");
+  const { encryptFieldV2 } = await import("../../src/crypto/field-encryption");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const bankgiro = await withTenant(tenantId, { type: "system" }, (tx) =>
+    encryptFieldV2(tx, { tenantId, model: "tenant", rowId: tenantId, field: "bankgiro" }, "5050-1055"),
+  );
+  await db.tenant.update({
+    where: { id: tenantId },
+    data: {
+      legalName: "E2E Invoicing AB",
+      orgNr: "556016-0680",
+      vatNumber: "SE556016068001",
+      seat: "Stockholm",
+      fSkattApproved: true,
+      addressLine1: "Storgatan 1",
+      postalCode: "111 22",
+      city: "Stockholm",
+      countryCode: "SE",
+      bankgiro,
+    },
+  });
+  await db.client.updateMany({
+    where: { tenantId, id: clientId },
+    data: { addressLine1: "Kundvägen 2", postalCode: "222 33", city: "Lund", countryCode: "SE" },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"ready":1}\n`);
+}
+
+/**
+ * The workspace's invoice-number series from `first` (Phase 4 slice 108), as
+ * the owner set it — through the platform role, so no ✦ step-up is spent (the
+ * series guard judges only the runtime role). Made once; a series already
+ * there is left as it is (an issued number fixes it for good). Throwaway
+ * tenant only.
+ */
+async function setInvoiceSeries(tenantId: string, first: number): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  if (!Number.isInteger(first) || first < 1) throw new Error("set-invoice-series: a first number of 1 or more");
+  const existing = await db.invoiceSeries.findFirst({ where: { tenantId }, select: { nextNumber: true } });
+  if (!existing) {
+    const owner = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    await db.invoiceSeries.create({ data: { tenantId, firstNumber: first, nextNumber: first, createdByMemberId: owner.id } });
+  }
+  const series = await db.invoiceSeries.findFirstOrThrow({ where: { tenantId }, select: { nextNumber: true } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"nextNumber":${series.nextNumber}}\n`);
 }
 
 /**
@@ -3270,6 +3343,8 @@ const main = async (): Promise<void> => {
   if (command === "reset-update-schedule") return resetUpdateSchedule(argument!, process.argv[4]!);
   if (command === "reset-update-layouts") return resetUpdateLayouts(argument!);
   if (command === "reset-invoice-details") return resetInvoiceDetails(argument!);
+  if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
+  if (command === "set-invoice-series") return setInvoiceSeries(argument!, Number(process.argv[4]));
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "age-vault-factor") return ageVaultFactor(argument!, process.argv[4]!);

@@ -1,5 +1,5 @@
 import { record } from "@/audit/record";
-import { requireRecentMfa, type MemberActor } from "@/authz/authorize";
+import { requireRecentMfa, resolvePermissions, type MemberActor } from "@/authz/authorize";
 import { decryptFieldV2, encryptFieldV2 } from "@/crypto/field-encryption";
 import { withTenant, type TenantDb } from "@/db";
 import { hasAccess, requireAccess } from "@/entitlements/resolver";
@@ -8,7 +8,6 @@ import { INVOICE_DETAILS_CHANGED_MAIL } from "@/notify/invoice-details-mail-key"
 
 import {
   FOOTER_NOTE_MAX,
-  isAktiebolagOrgNr,
   normalizeBankgiro,
   normalizeBic,
   normalizeCountryCode,
@@ -21,6 +20,8 @@ import {
   SELLER_TEXT_MAX,
   textOrNull,
 } from "./seller-fields";
+import { missingForIssue } from "./issue-check";
+import { readNumbering, type Numbering } from "./series";
 
 /**
  * WHAT THE WORKSPACE'S INVOICES SAY ABOUT IT (Phase 4 slice 107) — Settings →
@@ -107,8 +108,8 @@ export type CompanyDetails = {
 
 export type PaymentDetails = Readonly<Record<PaymentField, string | null>>;
 
-/** What a later slice's ISSUE will refuse without — named on the settings page now. */
-export type MissingDetail = "legalName" | "orgNr" | "vatNumber" | "seat" | "address" | "payment";
+/** What issuing refuses without — named on the settings page and in the issue dialog. */
+export type MissingDetail = "legalName" | "orgNr" | "vatNumber" | "seat" | "address" | "payment" | "paymentUnreadable" | "numbering";
 
 type Changed = { readonly by: string | null; readonly at: Date } | null;
 
@@ -122,13 +123,22 @@ export type InvoiceSettings = {
   readonly paymentChanged: Changed;
   /** `settings:edit` on all four gates. */
   readonly canEdit: boolean;
+  /** The workspace's invoice numbers (slice 108); null before a first number is set. */
+  readonly numbering: Numbering | null;
+  /**
+   * `invoice:manage_series` held — now, or after the step-up (it is ✦: the
+   * surface is OFFERED to a holder and the action steps up, `hasAccess`'s
+   * "not for ✦ codes" note).
+   */
+  readonly canManageNumbering: boolean;
 };
 
-const encryptionContext = (tenantId: string, field: BankField) =>
+/** Where a bank column's ciphertext is bound: the tenant ROW (an issued invoice's copy decrypts under the same). */
+export const bankEncryptionContext = (tenantId: string, field: BankField) =>
   ({ tenantId, model: "tenant", rowId: tenantId, field }) as const;
 
 /** A ciphertext that is not one (wrong shape, wrong AAD, tampered) — not a missing key, which is an outage. */
-const isUnreadableCiphertext = (e: unknown): boolean => {
+export const isUnreadableCiphertext = (e: unknown): boolean => {
   const code = (e as { code?: unknown } | null)?.code;
   const message = e instanceof Error ? e.message : "";
   return (
@@ -139,15 +149,20 @@ const isUnreadableCiphertext = (e: unknown): boolean => {
 };
 
 /** Decrypt one bank column; a value that is not a v2 ciphertext under its own AAD reads as unset. */
-async function readBankField(tx: TenantDb, tenantId: string, field: BankField, stored: string | null): Promise<string | null> {
-  if (stored === null || stored === "") return null;
+async function readBankField(
+  tx: TenantDb,
+  tenantId: string,
+  field: BankField,
+  stored: string | null,
+): Promise<{ value: string | null; unreadable: boolean }> {
+  if (stored === null || stored === "") return { value: null, unreadable: false };
   try {
-    return await decryptFieldV2(tx, encryptionContext(tenantId, field), stored);
+    return { value: await decryptFieldV2(tx, bankEncryptionContext(tenantId, field), stored), unreadable: false };
   } catch (e) {
     // Only an unreadable value reads as unset; a missing tenant key is an
     // outage and must say so rather than show "not set" and a caution that
     // the bank details are missing (the security review's nit).
-    if (isUnreadableCiphertext(e)) return null;
+    if (isUnreadableCiphertext(e)) return { value: null, unreadable: true };
     throw e;
   }
 }
@@ -156,7 +171,7 @@ async function readBankField(tx: TenantDb, tenantId: string, field: BankField, s
 export async function readSeller(
   tx: TenantDb,
   tenantId: string,
-): Promise<{ company: CompanyDetails; payment: PaymentDetails }> {
+): Promise<{ company: CompanyDetails; payment: PaymentDetails; unreadable: readonly BankField[] }> {
   const row = await tx.tenant.findFirst({
     where: { id: tenantId },
     select: {
@@ -179,8 +194,17 @@ export async function readSeller(
   });
   if (!row) return fail("INVALID_INPUT", "tenant");
   const bank: Record<BankField, string | null> = { bankgiro: null, plusgiro: null, iban: null, bic: null };
-  for (const field of BANK_FIELDS) bank[field] = await readBankField(tx, tenantId, field, row[field]);
+  // Stored but not readable (slice 108, the migration review's low): the
+  // issue guard copies whatever is stored into the invoice, and its PDF reads
+  // strictly — so an unreadable one must stop the issue here, never later.
+  const unreadable: BankField[] = [];
+  for (const field of BANK_FIELDS) {
+    const read = await readBankField(tx, tenantId, field, row[field]);
+    bank[field] = read.value;
+    if (read.unreadable) unreadable.push(field);
+  }
   return {
+    unreadable,
     company: {
       legalName: row.legalName,
       orgNr: row.orgNr,
@@ -212,23 +236,6 @@ export async function readDefaultPaymentTerms(tx: TenantDb, tenantId: string): P
   }
 }
 
-/**
- * What issuing will need (slice 108): named now so the settings page can say
- * so. The registered office ("säte") is required of an aktiebolag (ABL 28 kap.
- * 5 §), not of a sole trader — so only when the org. number is a company's
- * whose group digit says aktiebolag (the design review's nit).
- */
-export function missingForIssue(company: CompanyDetails, payment: PaymentDetails): MissingDetail[] {
-  const missing: MissingDetail[] = [];
-  if (!company.legalName) missing.push("legalName");
-  if (!company.orgNr) missing.push("orgNr");
-  if (!company.vatNumber) missing.push("vatNumber");
-  if (!company.seat && company.orgNr && isAktiebolagOrgNr(company.orgNr)) missing.push("seat");
-  if (!company.addressLine1 || !company.postalCode || !company.city) missing.push("address");
-  if (!payment.bankgiro && !payment.plusgiro && !payment.iban) missing.push("payment");
-  return missing;
-}
-
 /** Who wrote the newest row of one audit action, and when. */
 async function lastChange(tx: TenantDb, tenantId: string, action: string): Promise<Changed> {
   const rows = await tx.$queryRaw<{ actor_id: string | null; at: Date }[]>`
@@ -253,7 +260,7 @@ export async function readInvoiceSettings(ctx: InvoicingCtx): Promise<InvoiceSet
     // review's nit). `invoice:view` is that module's code, held by everyone
     // who holds `settings:view` in the seeded roles.
     await requireAccess(tx, ctx.tenantId, ctx.actor, "invoice:view");
-    const { company, payment } = await readSeller(tx, ctx.tenantId);
+    const { company, payment, unreadable } = await readSeller(tx, ctx.tenantId);
     const paymentTermsDays = await readDefaultPaymentTerms(tx, ctx.tenantId);
     // In sequence (AGENTS.md's `Promise.all` trap).
     const companyChanged = await lastChange(tx, ctx.tenantId, "invoice_settings.company_changed");
@@ -262,14 +269,18 @@ export async function readInvoiceSettings(ctx: InvoicingCtx): Promise<InvoiceSet
     // review's low: the permission alone lit controls an impersonating
     // admin's every save would refuse).
     const canEdit = await hasAccess(tx, ctx.tenantId, ctx.actor, "settings:edit");
+    const numbering = await readNumbering(tx, ctx.tenantId);
+    const series = await resolvePermissions(tx, ctx.actor, ["invoice:manage_series"]);
     return {
       company,
       payment,
       paymentTermsDays,
-      missing: missingForIssue(company, payment),
+      missing: missingForIssue(company, payment, numbering !== null, unreadable.length > 0),
       companyChanged,
       paymentChanged,
       canEdit,
+      numbering,
+      canManageNumbering: series.allowed.has("invoice:manage_series") || series.afterStepUp.has("invoice:manage_series"),
     };
   });
 }
@@ -378,7 +389,7 @@ export async function updatePaymentDetails(
         data.invoiceFooterNote = value;
         continue;
       }
-      data[field] = value === null ? null : await encryptFieldV2(tx, encryptionContext(ctx.tenantId, field), value);
+      data[field] = value === null ? null : await encryptFieldV2(tx, bankEncryptionContext(ctx.tenantId, field), value);
       ends[field] = lastFour(value);
     }
     await tx.tenant.update({ where: { id: ctx.tenantId }, data, select: { id: true } });

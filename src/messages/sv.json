@@ -1427,8 +1427,21 @@
           "vatNumber": "momsregistreringsnummer",
           "seat": "säte",
           "address": "adress",
-          "payment": "ett bankgiro-, plusgiro- eller IBAN-nummer"
+          "payment": "ett bankgiro-, plusgiro- eller IBAN-nummer",
+          "paymentUnreadable": "bankuppgifterna inlagda på nytt (en av dem går inte längre att läsa)",
+          "numbering": "ett första fakturanummer"
         }
+      },
+      "numbering": {
+        "title": "Fakturanummer",
+        "description": "Fakturorna numreras uppåt från ert första nummer och börjar aldrig om, inte ens vid ett nytt år. Kreditfakturor tar också nästa nummer.",
+        "firstLabel": "Första fakturanummer",
+        "firstHint": "Om ni har fakturerat från ett annat program, börja en bra bit över dess nummer (till exempel 10001) så att två fakturor aldrig får samma nummer.",
+        "notSet": "Inte angivet",
+        "saved": "Första fakturanumret har sparats.",
+        "next": "Nästa fakturanummer",
+        "fixed": "Låst nu när en faktura har utfärdats.",
+        "ownersOnly": "Bara en ägare kan ange det här."
       },
       "company": {
         "title": "Ert företag på fakturorna",
@@ -1710,7 +1723,13 @@
     "INVOICE_LINE_LIMIT": "En faktura kan ha högst 200 rader.",
     "INVOICE_LINE_DESCRIPTION_REQUIRED": "En rad behöver en beskrivning av vad ni fakturerar.",
     "INVOICE_AMOUNT_TOO_LARGE": "Beloppet är för stort för en rad.",
-    "INVOICE_RATE_NOT_ALLOWED": "Den momssatsen gäller inte för fakturans momshantering."
+    "INVOICE_RATE_NOT_ALLOWED": "Den momssatsen gäller inte för fakturans momshantering.",
+    "INVOICE_NOT_READY": "Fakturan kan inte utfärdas än. Öppna Utfärda faktura för att se vad som saknas.",
+    "INVOICE_CHANGED": "Fakturan eller kunden ändrades efter att du öppnade den. Granska den och utfärda den igen.",
+    "INVOICE_FX_UNAVAILABLE": "Det gick inte att hämta dagens växelkurs från Europeiska centralbanken. Försök igen om en liten stund.",
+    "INVOICE_SERIES_IN_USE": "Första fakturanumret kan inte ändras när en faktura väl har utfärdats.",
+    "INVOICE_ISSUE_BUSY": "En annan faktura utfärdas just nu. Försök igen om en liten stund.",
+    "INVOICE_PDF_UNAVAILABLE": "Det gick inte att skapa fakturans pdf just nu. Försök igen om en liten stund."
   },
   "assignments": {
     "title": "Team",
@@ -1786,6 +1805,11 @@
       "city": "Ort",
       "billingEmail": "Faktura-e-post",
       "invoiceLocale": "Fakturaspråk",
+      "invoiceLocales": {
+        "byCountry": "Efter land: svenska för svenska kunder, annars engelska",
+        "sv": "Svenska",
+        "en": "Engelska"
+      },
       "notes": "Interna anteckningar",
       "notesHint": "Bara ditt team kan någonsin läsa detta — aldrig en kund, aldrig portalen.",
       "notesPlaceholder": "Kontext för teamet: vem man ringer, egenheter, historik…",
@@ -4756,7 +4780,17 @@
         "periodEnd": "Arbete till",
         "buyerReference": "Er referens",
         "ourReference": "Vår referens",
-        "note": "Meddelande på den här fakturan"
+        "note": "Meddelande på den här fakturan",
+        "locale": "Språk"
+      },
+      "locale": {
+        "client": "Kundens språk ({language})",
+        "sv": "Svenska",
+        "en": "Engelska",
+        "names": {
+          "sv": "svenska",
+          "en": "engelska"
+        }
       },
       "days": "{days, plural, one {# dag} other {# dagar}}",
       "noProject": "Inget projekt",
@@ -4777,6 +4811,50 @@
         }
       },
       "projectOptionArchived": "{key} · {name} (arkiverat)"
+    },
+    "issue": {
+      "button": "Utfärda faktura…",
+      "title": "Utfärda faktura {number}?",
+      "titleNoNumber": "Utfärda fakturan?",
+      "body": "Den dateras {issueDate} och förfaller {dueDate}. En utfärdad faktura kan inte ändras eller tas bort. Ett fel rättas med en kreditfaktura.",
+      "total": "Att betala",
+      "language": "Skrivs på {language}.",
+      "fx": "Momsen visas också i SEK, enligt Europeiska centralbankens senaste kurs.",
+      "noPeriod": "Ingen arbetsperiod är angiven, så fakturadatumet räknas som datumet för arbetet. Om arbetet gjordes tidigare, ange perioden under Detaljer först.",
+      "blockedTitle": "Innan fakturan kan utfärdas",
+      "blockers": {
+        "seller": "Inställningar → Fakturering behöver fortfarande {list}.",
+        "clientAddress": "Kunden behöver en adress och en ort.",
+        "clientCountry": "Kunden behöver ett land för den här momshanteringen.",
+        "clientVatNumber": "Omvänd betalningsskyldighet kräver kundens momsregistreringsnummer.",
+        "clientVatCountry": "Omvänd betalningsskyldighet gäller ett företag i ett annat EU-land, och dess momsregistreringsnummer måste börja med landets kod.",
+        "clientInEu": "Kunden finns i EU, så fakturan kan inte vara utanför svensk moms.",
+        "noLines": "Lägg till minst en rad.",
+        "negativeTotal": "Summan kan inte vara under noll."
+      },
+      "toSettings": "Öppna Inställningar → Fakturering",
+      "toClient": "Öppna kunden",
+      "confirm": "Utfärda faktura",
+      "issued": "Faktura {number} har utfärdats.",
+      "issuedNoPdf": "Faktura {number} har utfärdats. Dess pdf kunde inte skapas än. Använd Ladda ner pdf för att försöka igen."
+    },
+    "issued": {
+      "title": "Faktura {number}",
+      "pageTitle": "Faktura",
+      "download": "Ladda ner pdf",
+      "billedTo": "Fakturamottagare",
+      "asIssued": "Som det var när fakturan utfärdades.",
+      "issuedOn": "Utfärdad {date}",
+      "dates": "Datum",
+      "issueDate": "Fakturadatum",
+      "dueDate": "Förfallodatum",
+      "sekTitle": "Moms i SEK",
+      "sekAt": "Moms {rate} %",
+      "sekTotal": "Summa moms i SEK",
+      "sekRate": "Europeiska centralbankens kurs {rate} SEK per {currency}, {date}",
+      "payment": "Betalning",
+      "paymentUnreadable": "Bankuppgifterna på den här fakturan kunde inte läsas här. Fakturans pdf visar dem som de skrevs ut.",
+      "pdfMissing": "Fakturans pdf har inte skapats än. Ladda ner pdf skapar den."
     },
     "lines": {
       "title": "Rader",
@@ -4804,5 +4882,58 @@
       "moved": "Raden har flyttats.",
       "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
     }
+  },
+  "invoicePdf": {
+    "kind": {
+      "INVOICE": "Faktura",
+      "CREDIT_NOTE": "Kreditfaktura"
+    },
+    "documentTitle": "{kind} {number}",
+    "fileName": "faktura-{number}.pdf",
+    "number": "Fakturanummer",
+    "issueDate": "Fakturadatum",
+    "dueDate": "Förfallodatum",
+    "terms": "Betalningsvillkor",
+    "termsDays": "{days, plural, one {# dag netto} other {# dagar netto}}",
+    "termsNow": "Betalas vid mottagandet",
+    "ourReference": "Vår referens",
+    "yourReference": "Er referens",
+    "period": "Avser perioden",
+    "periodRange": "{start} – {end}",
+    "periodFrom": "Fr.o.m. {start}",
+    "periodUntil": "T.o.m. {end}",
+    "billedTo": "Fakturamottagare",
+    "orgNr": "Org.nr {value}",
+    "vatNumber": "Momsreg.nr {value}",
+    "seat": "Styrelsens säte: {seat}",
+    "fSkatt": "Godkänd för F-skatt",
+    "amountsIn": "Belopp i {currency}",
+    "lines": {
+      "description": "Beskrivning",
+      "quantity": "Antal",
+      "unit": "Enhet",
+      "unitPrice": "À-pris",
+      "vat": "Moms",
+      "amount": "Belopp"
+    },
+    "vatRate": "{rate} %",
+    "subtotal": "Summa exkl. moms",
+    "vatAt": "Moms {rate} % på {base}",
+    "noVat": "Moms",
+    "total": "Att betala",
+    "sekTitle": "Moms i SEK",
+    "sekAt": "Moms {rate} %",
+    "sekTotal": "Summa moms i SEK",
+    "sekRate": "Växelkurs 1 {currency} = {rate} SEK (Europeiska centralbanken, {date})",
+    "reverseCharge": "Omvänd betalningsskyldighet",
+    "reverseChargeBody": "Köparen redovisar momsen.",
+    "outsideScope": "Ingen svensk moms",
+    "outsideScopeBody": "Tjänsten är omsatt utanför EU.",
+    "paymentTitle": "Betalning",
+    "bankgiro": "Bankgiro",
+    "plusgiro": "PlusGiro",
+    "iban": "IBAN",
+    "bic": "BIC",
+    "paymentReference": "Ange fakturanummer {number} vid betalning."
   }
 }

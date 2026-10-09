@@ -169,6 +169,7 @@ Mechanism: own ~80-line AES-256-GCM service (`v1.<keyId>.<iv>.<ct>.<tag>`), key 
 | `CredentialSecret.secretCiphertext` (3V) | The vault: type-specific secret fields as one JSON blob | AAD `tenantId:credential_secret:<credentialId>:secret`. Class-A row (§6.17) — a contact principal cannot SELECT it even for a CLIENT_VISIBLE item. Decrypted one field at a time by the reveal endpoint, audited in the same tx. |
 | `CredentialSecret.totpSecretCiphertext` (3V) | Per-item TOTP seed; codes generated server-side | AAD `…:totp_secret`. Never returned — only the 6-digit code, itself audited (`credential.totp_generated`) — except in the plaintext export (`credential:export` ✦, slice 95), whose file carries it as an `otpauth://` URI, audited `credential.exported` per login. |
 | `CredentialVersion.secretCiphertext` (3V) | Last-N history of the above | Same AAD scheme keyed on the version row; pruned with the item. |
+| `Invoice.paymentSnapshot` (Phase 4 slice 108) | The bank details an issued invoice printed (bankgiro, plusgiro, IBAN, BIC) | The TENANT's v2 ciphertexts, **copied verbatim by the issue guard** — never re-encrypted, so they keep the tenant row's AAD (`tenantId:tenant:<tenantId>:<field>`) and decrypt under it; the database cannot read them and the application cannot forge them. An issued row is frozen, so it can never be re-keyed: **its tenant DEK stays referenced for as long as the invoice is kept (R1, seven years)** — a DEK rotation's reference census must count this column, and a DEK compromise cannot be answered by re-encrypting these rows (SECURITY §6.1). Excluded from the tenant export (its archived PDF, always bundled, carries them in print). |
 | `PushSubscription.keysCiphertext` (Phase 5 slice 106) | Web Push `p256dh`/`auth` keys | AAD `tenantId:push_subscription:<id>:keys`; payloads name nothing, so the keys (and the endpoint they pair with) are the sensitive part. Decrypted by the push drain only, a device at a time (`src/jobs/push.ts`); a row that will not decrypt is skipped, never blocks the rest. |
 
 Not encrypted, on purpose: `WorkItem`/`Comment` bodies, `TimeEntry.billRate` (a bill rate is a commercial fact shown to managers and, via `ProjectTimeSummary`, optionally to the client), `CredentialItem` metadata (name, username, url, tags — searchable, non-secret by contract; a tenant who considers a username secret puts it in the secret blob), `ClientAsset` fields. **E2EE for the vault was rejected** (§11, P8): it breaks search-by-name, share links, server TOTP, portal submission and export, and strands 3-person agencies with a lost passphrase.
@@ -1661,6 +1662,47 @@ model InvoiceLine {
 //    20261009150000; on app_runtime only an active member holding
 //    settings:edit changes any of the fifteen); the app adds the code typed in
 //    the form (a one-minute window) and mails every owner (C75 (h)–(j)).
+//
+// AS BUILT — Phase 4 slice 108 (2026-10-09; founder decision C76; migration
+// 20261009200000_invoice_issuing). Issuing:
+//  - InvoiceSeries is ONE per workspace (unique tenant_id): first_number,
+//    next_number, created_by_member_id — NO fiscal-year columns, code or
+//    display format: numbers are plain digits that never restart (C76 (a)),
+//    credit notes draw from the same series (C76 (c)), the workspace sets the
+//    first number before its first invoice (invoice:manage_series ✦, C76 (b))
+//    and it is fixed once next_number has moved (invoice_series_guard; the
+//    platform/owner roles are not judged — fixtures). display_number =
+//    number::text.
+//  - THE GUARD ALLOCATES (§9 rewritten): invoice_guard's leaving-DRAFT branch,
+//    as its LAST step, increments the series row and writes number and
+//    display_number — the app's values are overwritten; invoice_series_guard
+//    accepts a +1 only from inside another trigger (pg_trigger_depth() > 1),
+//    and a unit test (`series-census.test.ts`) holds invoice_guard as the only
+//    writer of invoice_series in any migration.
+//  - The guard WRITES THE SNAPSHOTS from the live rows: seller_snapshot (the
+//    tenant's legal name, org nr, VAT nr, säte, F-skatt, address, footer note —
+//    never tenant.name), payment_snapshot (the tenant's bank-column v2
+//    CIPHERTEXTS copied verbatim — §4), buyer_snapshot (the client's name,
+//    org nr, VAT nr, address). Before that it requires the seller's legal name,
+//    org nr, VAT nr, address and a way to pay (the säte of an aktiebolag), the
+//    buyer's name, address line and city, a country unless SE_DOMESTIC, a VAT
+//    number on a reverse charge — and the treatment fitting the country
+//    (reverse charge: ANOTHER member state, the VAT prefix its own, Greece EL;
+//    outside scope: a non-EU buyer).
+//  - locale (sv|en; NULL on a draft = the client's invoice_locale, else by
+//    country — C76 (e)) fixed at issue; client.invoice_locale accepts only
+//    sv/en from slice 108.
+//  - VAT in SEK: fx_rate_to_sek numeric(12,6), fx_rate_date, vat_total_sek —
+//    all three iff currency <> SEK and VAT <> 0; the ECB's latest file (C76,
+//    the law permits it), dated within ten days before the issue date; the SEK
+//    VAT is each rate's VAT × the rate, rounded, summed — recomputed by the
+//    guard. No VIES columns (C76 (h)), no legal_notes column (the PDF words
+//    them from vat_profile), no supply date (the work period is it).
+//  - pdf_file_id → file_object (composite FK, RESTRICT, unique): set ONCE after
+//    issue, a COMMITTED INVOICE_PDF; the file row frozen by
+//    file_object_invoice_pdf_guard. The PDF is drawn once from the frozen
+//    record (`src/modules/invoicing/pdf/`), never re-rendered; the jobs route
+//    makes any one its issue did not.
 
 // ───────────────────────────────────────────────────────────────────
 // 6.8 DOCUMENTS & FILES (§5, §6) — three layers:
@@ -4629,6 +4671,8 @@ COMMIT;  -- any failure rolls back counter, invoice AND audit row → no gap
 ```
 
 Properties: **atomic** (counter and status move together or not at all), **concurrency-safe** (the `UPDATE` takes a row lock on the series; the second issuer waits and gets 105), **gap-free** (rollback returns the counter; there is no burned number), **draft-safe** (drafts have no number — deleting a draft can never create a gap; issued invoices are undeletable — corrections via `CREDIT_NOTE` only). The `@@unique([tenantId, seriesId, number])` constraint is the backstop if any code path misbehaves. This matches Skatteverket's unbroken-series expectation (guidance, not statute — designing to the stricter reading costs nothing).
+
+**As built (Phase 4 slice 108, migration 20261009200000) — the DATABASE allocates, not the application.** The application's one statement is the `UPDATE invoice SET status = 'ISSUED', series_id = …, issue_date, due_date, totals, locale, [fx]` of step 2 *without* a number or snapshots; `invoice_guard` (BEFORE UPDATE) checks everything an invoice must carry, writes the three snapshots from the live tenant and client rows, and — as its LAST step, so a refusal never holds the series — runs step 1 itself (`UPDATE invoice_series SET next_number = next_number + 1 … RETURNING next_number - 1`) and writes `number` and `display_number` into the row it is issuing; the application reads them back with `RETURNING`. The column is `next_number` (starting at the workspace's first number), not `last_number`. `invoice_series_guard` accepts a +1 only from inside another trigger and refuses every other change once `next_number` has moved; the issuer locks its invoice first (`FOR UPDATE`), the guard then the series — no path takes them the other way round; the issue transaction bounds its lock wait (`lockTimeoutMs`, `INVOICE_ISSUE_BUSY`). Measured by `issue.dbtest.ts`: six concurrent issues take six consecutive numbers; a refused issue takes none.
 
 **Non-legal counters — `counters.next()` *(added 2026-08-16 — Phase 1b helper; used by 2W for `WorkItem.number` and Phase 3 for `ProjectUpdate.seq`)*.** Everything that is *not* an invoice number goes through `TenantCounter` with ONE helper, so there is exactly one way to allocate a human-facing number:
 

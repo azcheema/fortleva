@@ -295,6 +295,17 @@ export async function resetInvoiceDetails(tenantId: string): Promise<void> {
   await runCli<{ reset: number }>(["reset-invoice-details", tenantId]);
 }
 
+/** The workspace ready to issue — company details, a real encrypted Bankgiro, the client's address (slice 108; `seed-cli.ts` says how). */
+export async function readyInvoicing(tenantId: string, clientId: string): Promise<void> {
+  await runCli<{ ready: number }>(["ready-invoicing", tenantId, clientId]);
+}
+
+/** The invoice-number series from `first`, made once (slice 108). Returns the next number. */
+export async function setInvoiceSeries(tenantId: string, first: number): Promise<number> {
+  const { nextNumber } = await runCli<{ nextNumber: number }>(["set-invoice-series", tenantId, String(first)]);
+  return nextNumber;
+}
+
 /**
  * Age the vault member's second factor past the vault window (C52): the
  * next visit to the Vault tab finds THE DOOR. Returns how many sessions

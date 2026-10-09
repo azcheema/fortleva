@@ -1427,8 +1427,21 @@
           "vatNumber": "its VAT number",
           "seat": "its registered office",
           "address": "its address",
-          "payment": "a Bankgiro, PlusGiro or IBAN number"
+          "payment": "a Bankgiro, PlusGiro or IBAN number",
+          "paymentUnreadable": "its bank details entered again (one of them can no longer be read)",
+          "numbering": "a first invoice number"
         }
+      },
+      "numbering": {
+        "title": "Invoice numbers",
+        "description": "Invoices count up from your first number and never start again, not even in a new year. Credit notes take the next number too.",
+        "firstLabel": "First invoice number",
+        "firstHint": "If you have invoiced from another program, start well above its numbers (for example 10001) so that two invoices never share one.",
+        "notSet": "Not set",
+        "saved": "First invoice number saved.",
+        "next": "Next invoice number",
+        "fixed": "Fixed now that an invoice has been issued.",
+        "ownersOnly": "Only an owner can set this."
       },
       "company": {
         "title": "Your company on invoices",
@@ -1710,7 +1723,13 @@
     "INVOICE_LINE_LIMIT": "An invoice can have at most 200 lines.",
     "INVOICE_LINE_DESCRIPTION_REQUIRED": "A line needs a description of what you are charging for.",
     "INVOICE_AMOUNT_TOO_LARGE": "That amount is too large for one line.",
-    "INVOICE_RATE_NOT_ALLOWED": "That VAT rate doesn't apply to this invoice's VAT treatment."
+    "INVOICE_RATE_NOT_ALLOWED": "That VAT rate doesn't apply to this invoice's VAT treatment.",
+    "INVOICE_NOT_READY": "This invoice can't be issued yet. Open Issue invoice to see what's missing.",
+    "INVOICE_CHANGED": "The invoice or its client changed after you opened it. Look it over and issue it again.",
+    "INVOICE_FX_UNAVAILABLE": "Couldn't get today's exchange rate from the European Central Bank. Try again in a moment.",
+    "INVOICE_SERIES_IN_USE": "The first invoice number can't be changed once an invoice has been issued.",
+    "INVOICE_ISSUE_BUSY": "Another invoice is being issued right now. Try again in a moment.",
+    "INVOICE_PDF_UNAVAILABLE": "The invoice's PDF couldn't be made just now. Try again in a moment."
   },
   "assignments": {
     "title": "Team",
@@ -1786,6 +1805,11 @@
       "city": "City",
       "billingEmail": "Billing email",
       "invoiceLocale": "Invoice language",
+      "invoiceLocales": {
+        "byCountry": "By country: Swedish for Swedish clients, otherwise English",
+        "sv": "Swedish",
+        "en": "English"
+      },
       "notes": "Internal notes",
       "notesHint": "Only your team can ever read this — never a client, never the portal.",
       "notesPlaceholder": "Context for the team: who to call, quirks, history…",
@@ -4756,7 +4780,17 @@
         "periodEnd": "Work until",
         "buyerReference": "Your reference",
         "ourReference": "Our reference",
-        "note": "Note on this invoice"
+        "note": "Note on this invoice",
+        "locale": "Language"
+      },
+      "locale": {
+        "client": "Client's language ({language})",
+        "sv": "Swedish",
+        "en": "English",
+        "names": {
+          "sv": "Swedish",
+          "en": "English"
+        }
       },
       "days": "{days, plural, one {# day} other {# days}}",
       "noProject": "No project",
@@ -4777,6 +4811,50 @@
         }
       },
       "projectOptionArchived": "{key} · {name} (archived)"
+    },
+    "issue": {
+      "button": "Issue invoice…",
+      "title": "Issue invoice {number}?",
+      "titleNoNumber": "Issue this invoice?",
+      "body": "It is dated {issueDate} and due {dueDate}. Once issued it can't be changed or deleted. A mistake is corrected with a credit note.",
+      "total": "Total to pay",
+      "language": "Written in {language}.",
+      "fx": "Its VAT is also shown in SEK, at the European Central Bank's latest rate.",
+      "noPeriod": "No work period is set, so the invoice date will count as the date of the work. If the work was done earlier, set the period under Details first.",
+      "blockedTitle": "Before this invoice can be issued",
+      "blockers": {
+        "seller": "Settings → Invoicing still needs {list}.",
+        "clientAddress": "The client needs an address and a city.",
+        "clientCountry": "The client needs a country for this VAT treatment.",
+        "clientVatNumber": "Reverse charge needs the client's VAT number.",
+        "clientVatCountry": "Reverse charge is for a business in another EU country, and its VAT number must start with that country's code.",
+        "clientInEu": "This client is in the EU, so the invoice can't be outside the scope of Swedish VAT.",
+        "noLines": "Add at least one line.",
+        "negativeTotal": "The total can't be below zero."
+      },
+      "toSettings": "Open Settings → Invoicing",
+      "toClient": "Open the client",
+      "confirm": "Issue invoice",
+      "issued": "Invoice {number} issued.",
+      "issuedNoPdf": "Invoice {number} is issued. Its PDF couldn't be made yet. Use Download PDF to try again."
+    },
+    "issued": {
+      "title": "Invoice {number}",
+      "pageTitle": "Invoice",
+      "download": "Download PDF",
+      "billedTo": "Billed to",
+      "asIssued": "As it was when the invoice was issued.",
+      "issuedOn": "Issued {date}",
+      "dates": "Dates",
+      "issueDate": "Invoice date",
+      "dueDate": "Due date",
+      "sekTitle": "VAT in SEK",
+      "sekAt": "VAT {rate} %",
+      "sekTotal": "Total VAT in SEK",
+      "sekRate": "European Central Bank rate {rate} SEK per {currency}, {date}",
+      "payment": "Payment",
+      "paymentUnreadable": "The bank details on this invoice couldn't be read here. Its PDF shows them as they were printed.",
+      "pdfMissing": "Its PDF hasn't been made yet. Download PDF makes it."
     },
     "lines": {
       "title": "Lines",
@@ -4804,5 +4882,58 @@
       "moved": "Line moved.",
       "unreachable": "Couldn't reach Fortleva. Check your connection and try again."
     }
+  },
+  "invoicePdf": {
+    "kind": {
+      "INVOICE": "Invoice",
+      "CREDIT_NOTE": "Credit note"
+    },
+    "documentTitle": "{kind} {number}",
+    "fileName": "invoice-{number}.pdf",
+    "number": "Invoice number",
+    "issueDate": "Invoice date",
+    "dueDate": "Due date",
+    "terms": "Payment terms",
+    "termsDays": "{days, plural, one {# day net} other {# days net}}",
+    "termsNow": "Due on receipt",
+    "ourReference": "Our reference",
+    "yourReference": "Your reference",
+    "period": "Period",
+    "periodRange": "{start} – {end}",
+    "periodFrom": "From {start}",
+    "periodUntil": "Until {end}",
+    "billedTo": "Billed to",
+    "orgNr": "Org. no. {value}",
+    "vatNumber": "VAT no. {value}",
+    "seat": "Registered office: {seat}",
+    "fSkatt": "Approved for F-tax",
+    "amountsIn": "Amounts in {currency}",
+    "lines": {
+      "description": "Description",
+      "quantity": "Qty",
+      "unit": "Unit",
+      "unitPrice": "Unit price",
+      "vat": "VAT",
+      "amount": "Amount"
+    },
+    "vatRate": "{rate} %",
+    "subtotal": "Total excl. VAT",
+    "vatAt": "VAT {rate} % on {base}",
+    "noVat": "VAT",
+    "total": "Total to pay",
+    "sekTitle": "VAT in SEK",
+    "sekAt": "VAT {rate} %",
+    "sekTotal": "Total VAT in SEK",
+    "sekRate": "Exchange rate 1 {currency} = {rate} SEK (European Central Bank, {date})",
+    "reverseCharge": "Reverse charge",
+    "reverseChargeBody": "VAT is to be accounted for by the buyer.",
+    "outsideScope": "Not subject to Swedish VAT",
+    "outsideScopeBody": "The service is supplied outside the EU.",
+    "paymentTitle": "Payment",
+    "bankgiro": "Bankgiro",
+    "plusgiro": "PlusGiro",
+    "iban": "IBAN",
+    "bic": "BIC",
+    "paymentReference": "Please quote invoice number {number} with your payment."
   }
 }

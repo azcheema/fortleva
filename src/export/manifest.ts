@@ -57,6 +57,12 @@ export const EXPORT_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>
   // tenant's record. The exporter's own devices' label and dates leave (the
   // export runs as them, and `own_device` shows nobody else's).
   pushSubscription: ["endpoint", "keysCiphertext", "sessionId"],
+  // Phase 4 slice 108: an issued invoice's bank details are the tenant's
+  // bank-column CIPHERTEXTS, copied at issue — useless outside this deployment,
+  // as `tenant.bankgiro` is. The invoice's archived PDF carries them in print,
+  // and every INVOICE_PDF is bundled whatever the export's size
+  // (`src/export/service.ts`; the design review's medium).
+  invoice: ["paymentSnapshot"],
 };
 
 /**

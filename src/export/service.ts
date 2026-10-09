@@ -143,9 +143,18 @@ export async function generateTenantExport(ctx: ExportCtx): Promise<ExportSummar
   const { models, files, requestedAt } = await dumpTenant(ctx);
 
   // Bundle bytes when the total fits; previous exports are pointers
-  // only (an export never nests exports).
-  const bundleable = files.filter((f) => f.kind !== "EXPORT");
+  // only (an export never nests exports). An issued invoice's PDF is
+  // bundled WHATEVER the total (Phase 4 slice 108, the design review's
+  // medium): it is the bookkeeping record the tenant must keep for seven
+  // years (BFL), and the only place the export carries its bank details
+  // (`invoice.paymentSnapshot` is ciphertext and excluded). They are a few
+  // dozen kilobytes each, and never counted against the cap.
+  const bundleable = files.filter((f) => f.kind !== "EXPORT" && f.kind !== "INVOICE_PDF");
   const totalFileBytes = bundleable.reduce((n, f) => n + f.sizeBytes, 0);
+  // The manifest's `includesFileBytes` speaks for the OTHER files; an
+  // INVOICE_PDF entry carries its `path` (it is in the zip) either way.
+  // OWED (the security review's low): every invoice PDF is held in memory with
+  // the rest of the zip; at seven years of invoices that wants a streamed zip.
   const includesFileBytes = totalFileBytes <= MAX_BUNDLED_FILE_BYTES;
 
   const zipEntries: Zippable = {};
@@ -159,7 +168,7 @@ export async function generateTenantExport(ctx: ExportCtx): Promise<ExportSummar
       sha256: f.sha256,
       sizeBytes: f.sizeBytes,
     };
-    if (includesFileBytes && f.kind !== "EXPORT") {
+    if ((includesFileBytes && f.kind !== "EXPORT") || f.kind === "INVOICE_PDF") {
       const bytes = await storage.getObject(f.r2Key);
       if (bytes) {
         entry.path = filePathFor(f.id, f.originalFilename);

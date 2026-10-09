@@ -86,6 +86,7 @@ export const MODEL_CLASSES = {
     // Phase 4 — invoicing (DATA_MODEL.md §6.7):
     "invoice",
     "invoiceLine",
+    "invoiceSeries",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -223,6 +224,9 @@ export const RLS_CLASSES = {
     // invoice's `client_id` (composite FK) for that gate.
     "invoice",
     "invoiceLine",
+    // Phase 4 slice 108 — the workspace's ONE invoice-number series; no
+    // client ever reads it (a number reaches a client on its invoice).
+    "invoiceSeries",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

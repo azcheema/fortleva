@@ -187,6 +187,14 @@ export const AUDIT_EVENTS = {
   "invoice.created": TENANT,
   "invoice.draft_edited": TENANT,
   "invoice.draft_deleted": TENANT,
+  // Phase 4 slice 108 — issuing (src/modules/invoicing/issue.ts, series.ts,
+  // pdf-store.ts). `invoice.issued` (above) carries the number, the series and
+  // the totals; `invoice.pdf_generated` the archived file (its id, hash, size
+  // and the template's version — the record of which drawing it is);
+  // `series.created` (above) the first number; `series.first_number_changed`
+  // its change before anything was numbered (from, to).
+  "invoice.pdf_generated": TENANT,
+  "series.first_number_changed": TENANT,
   // Settings → Invoicing (src/modules/invoicing/seller.ts). Both protected
   // cards — the code typed in the form, every owner mailed (C75 (h)–(j)) —
   // and the settings page reads each one's newest row to say who changed it

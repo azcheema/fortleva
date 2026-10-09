@@ -6,6 +6,7 @@ import { isProduction } from "@/config";
 import { runClientDigests } from "@/jobs/client-digests";
 import { runMemberDigests } from "@/jobs/digests";
 import { runExpirationReminders } from "@/jobs/expiration-reminders";
+import { runInvoicePdfs } from "@/jobs/invoice-pdfs";
 import { runNotificationRetention } from "@/jobs/notification-retention";
 import { drainOutbox } from "@/jobs/outbox";
 import { runPushes } from "@/jobs/push-sweep";
@@ -41,6 +42,8 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * — the backstop for a lost kick, SENDING REAL PUSHES to devices registered
  * against this server's key in every tenant, and forgetting device records:
  * gone, refused three times, a member no longer active, 90 days dormant),
+ * and the invoice PDFs' backstop (Phase 4 slice 108 — an issued invoice
+ * still without its PDF five minutes on gets one; it only adds files),
  * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
@@ -119,6 +122,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Phase 5 slice 102: progress-update reminders — on the due day and the
   // next two working days, 09:00–17:00 workspace time; sent by the NEXT drain.
   const updateReminders = await runUpdateReminders();
+  // Phase 4 slice 108: an issued invoice's PDF its issue did not make. Its
+  // failure is its own.
+  let invoicePdfs: Awaited<ReturnType<typeof runInvoicePdfs>> | { failed: "discovery" };
+  try {
+    invoicePdfs = await runInvoicePdfs();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: invoice pdfs failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    invoicePdfs = { failed: "discovery" };
+  }
   // Phase 5 slice 106 (founder decision C74): phone and browser notifications —
   // the BACKSTOP for a push whose kick was lost (each is due for fifteen
   // minutes, then never), and the jobs above's own notifications, which their
@@ -154,6 +167,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     digests,
     clientDigests,
     updateReminders,
+    invoicePdfs,
     pushes,
     notificationRetention,
   });

@@ -82,6 +82,8 @@ describe("excluded columns (encrypted / key material never leave)", () => {
       contactVaultUnlock: ["codeHash"],
       // Phase 5 slice 106: a device's push address, its keys, its live sign-in
       pushSubscription: ["endpoint", "keysCiphertext", "sessionId"],
+      // Phase 4 slice 108: an issued invoice's bank details — the tenant's ciphertexts, copied at issue
+      invoice: ["paymentSnapshot"],
     });
   });
 

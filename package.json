@@ -23,6 +23,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1111.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@react-pdf/renderer": "4.9.0",
     "@tiptap/core": "3.31.3",
     "@tiptap/extension-list": "3.31.3",
     "@tiptap/extensions": "3.31.3",

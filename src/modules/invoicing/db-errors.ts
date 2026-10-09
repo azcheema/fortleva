@@ -16,4 +16,12 @@ import { dbErrorMapper } from "@/lib/db-error-map";
 export const { mapDbError, guarded } = dbErrorMapper([
   ["INVOICE_NOT_DRAFT", "INVOICE_NOT_DRAFT"],
   ["INVOICE_RATE_NOT_ALLOWED", "INVOICE_RATE_NOT_ALLOWED"],
+  // Slice 108: the issue guard's own "something an invoice must carry is
+  // missing" — the service checks the same list first (`checkIssue`), so
+  // these are the belt for a detail changed between that read and the write.
+  ["INVOICE_NO_SERIES", "INVOICE_NOT_READY"],
+  ["INVOICE_SELLER_INCOMPLETE", "INVOICE_NOT_READY"],
+  ["INVOICE_BUYER_INCOMPLETE", "INVOICE_NOT_READY"],
+  // A first number changed after an issue took one (a race with the read).
+  ["INVOICE_SERIES_IN_USE", "INVOICE_SERIES_IN_USE"],
 ]);

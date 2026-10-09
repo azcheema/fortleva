@@ -124,11 +124,18 @@ export async function setupTenant(label: string) {
     await runtimeClient.$disconnect();
   };
 
-  /** Every invoice of the tenant (lines cascade), issued ones included — the platform role under the maintenance GUC. */
+  /**
+   * Every invoice of the tenant (lines cascade), issued ones included, then
+   * its numbering series (slice 108, RESTRICTs the tenant, refuses DELETE
+   * outside the GUC) and the invoices' PDF files (RESTRICTed by the invoice
+   * until it goes) — the platform role under the maintenance GUC.
+   */
   async function deleteInvoices(): Promise<void> {
     await platform.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
       await tx.invoice.deleteMany({ where: { tenantId } });
+      await tx.invoiceSeries.deleteMany({ where: { tenantId } });
+      await tx.fileObject.deleteMany({ where: { tenantId, kind: "INVOICE_PDF" } });
     });
   }
 

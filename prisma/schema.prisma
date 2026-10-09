@@ -328,8 +328,9 @@ model Tenant {
   sealedOpenRequests   SealedOpenRequest[]
   credentialAsks       CredentialAsk[]
   // Phase 4 — invoicing (§6.7):
-  invoices     Invoice[]
-  invoiceLines InvoiceLine[]
+  invoices      Invoice[]
+  invoiceLines  InvoiceLine[]
+  invoiceSeries InvoiceSeries[]
 
   @@map("tenant")
 }
@@ -1354,7 +1355,32 @@ model Service {
 // deletable) until it is ISSUED, then never changes — `invoice_guard` and
 // `invoice_line_guard` in migration 20261009120000 hold it. Both tables are
 // class A until slice 109 builds the client's view.
+// Slice 108: issuing (migration 20261009200000) — the number, allocated by
+// the guard from the workspace's ONE series; the parties' snapshots, written
+// by the guard; VAT in SEK on another currency; the PDF, recorded once.
 // ───────────────────────────────────────────────────────────────────
+
+/// The workspace's invoice numbers (founder decision C76 (a)–(c)): ONE series,
+/// plain numbers counting up from `firstNumber` and never restarting; credit
+/// notes draw from it too. `nextNumber` is a counter ROW (never a SEQUENCE —
+/// a rolled-back issue gives its number back): only the issue guard moves it,
+/// one step per issued invoice; the first number may be changed only while
+/// `nextNumber = firstNumber` (`invoice_series_guard`).
+model InvoiceSeries {
+  id                String   @id @default(uuid(7))
+  tenantId          String   @unique @map("tenant_id") // one series per workspace (C76)
+  firstNumber       Int      @map("first_number")
+  nextNumber        Int      @map("next_number")
+  createdByMemberId String   @map("created_by_member_id") // attribution, no FK
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  invoices Invoice[]
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@map("invoice_series")
+}
 
 enum InvoiceKind {
   INVOICE
@@ -1385,10 +1411,11 @@ model Invoice {
   kind              InvoiceKind   @default(INVOICE)
   creditsInvoiceId  String?       @map("credits_invoice_id") // CREDIT_NOTE → the invoice it credits
   status            InvoiceStatus @default(DRAFT)
-  seriesId          String?       @map("series_id") // the series table and its FK land in slice 108
-  number            Int? // allocated at issue only; NULL while DRAFT
-  displayNumber     String?       @map("display_number")
+  seriesId          String?       @map("series_id") // set at issue (slice 108)
+  number            Int? // allocated at issue BY THE GUARD; NULL while DRAFT
+  displayNumber     String?       @map("display_number") // the number as text (C76 (a): plain digits)
   vatProfile        VatProfile    @map("vat_profile")
+  locale            String? // "sv" | "en": NULL on a draft follows the client (C76 (e)); fixed at issue
   currency          String        @db.Char(3)
   paymentTermsDays  Int           @map("payment_terms_days")
   periodStart       DateTime?     @map("period_start") @db.Date
@@ -1403,20 +1430,34 @@ model Invoice {
   subtotalExVat     Decimal?      @map("subtotal_ex_vat") @db.Decimal(16, 2)
   vatTotal          Decimal?      @map("vat_total") @db.Decimal(16, 2)
   total             Decimal?      @db.Decimal(16, 2)
+  // Slice 108 — written at issue, frozen after. The three snapshots are
+  // BUILT BY THE GUARD from the tenant and client rows (the app's values are
+  // overwritten); `paymentSnapshot` holds the tenant's bank-column v2
+  // CIPHERTEXTS copied verbatim (decrypt under the tenant row's AAD).
+  sellerSnapshot    Json?         @map("seller_snapshot")
+  paymentSnapshot   Json?         @map("payment_snapshot")
+  buyerSnapshot     Json?         @map("buyer_snapshot")
+  fxRateToSek       Decimal?      @map("fx_rate_to_sek") @db.Decimal(12, 6) // SEK per unit, the ECB's (only with VAT in another currency)
+  fxRateDate        DateTime?     @map("fx_rate_date") @db.Date
+  vatTotalSek       Decimal?      @map("vat_total_sek") @db.Decimal(16, 2)
+  pdfFileId         String?       @map("pdf_file_id") // the archived rendering, recorded once after issue
   createdByMemberId String        @map("created_by_member_id") // attribution, no FK
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant      Tenant        @relation(fields: [tenantId], references: [id])
-  client      Client        @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict)
-  project     Project?      @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict)
-  credits     Invoice?      @relation("InvoiceCredits", fields: [tenantId, clientId, creditsInvoiceId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction)
-  creditNotes Invoice[]     @relation("InvoiceCredits")
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  client      Client         @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict)
+  project     Project?       @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict)
+  credits     Invoice?       @relation("InvoiceCredits", fields: [tenantId, clientId, creditsInvoiceId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction)
+  creditNotes Invoice[]      @relation("InvoiceCredits")
   lines       InvoiceLine[]
+  series      InvoiceSeries? @relation(fields: [tenantId, seriesId], references: [tenantId, id], onDelete: Restrict)
+  pdfFile     FileObject?    @relation(fields: [tenantId, pdfFileId], references: [tenantId, id], onDelete: Restrict)
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, clientId, id]) // the line's FK: its client is its invoice's
   @@unique([tenantId, seriesId, number]) // the gap-free series' backstop (slice 108)
+  @@unique([tenantId, pdfFileId]) // one PDF belongs to one invoice
   @@index([tenantId, clientId, status])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, projectId])
@@ -1598,6 +1639,7 @@ model FileObject {
 
   tenant   Tenant        @relation(fields: [tenantId], references: [id])
   versions FileVersion[]
+  invoices Invoice[] // the invoice an INVOICE_PDF archives (slice 108)
 
   @@unique([tenantId, id]) // composite-FK target
   @@index([tenantId, status])

@@ -76,7 +76,8 @@ describe("the company card (C75 (j))", () => {
     expect(await outcome(readInvoiceSettings(ctxOf(f.seats.employee.memberId)))).toBe("FORBIDDEN");
     const before = await readInvoiceSettings(ctxOf(f.seats.manager.memberId));
     expect(before.canEdit).toBe(false);
-    expect(before.missing).toEqual(["legalName", "orgNr", "vatNumber", "address", "payment"]);
+    // Slice 108: no first invoice number set in this suite, so that is missing too (first).
+    expect(before.missing).toEqual(["numbering", "legalName", "orgNr", "vatNumber", "address", "payment"]);
     expect(await outcome(updateCompanyDetails(ctxOf(f.seats.manager.memberId), { legalName: "X" }))).toBe("FORBIDDEN");
     // No factor, or one five minutes old (inside the ✦ window, past this one).
     expect(await outcome(updateCompanyDetails(ctxOf(f.seats.admin.memberId, false), { legalName: "X" }))).toBe("MFA_REQUIRED");
@@ -104,7 +105,7 @@ describe("the company card (C75 (j))", () => {
       countryCode: "SE",
     });
     // An aktiebolag's number: its registered office is now missing too.
-    expect(after.missing).toEqual(["seat", "payment"]);
+    expect(after.missing).toEqual(["numbering", "seat", "payment"]);
     expect(after.companyChanged?.by).toMatch(/^admin-invs-/);
     const rows = await f.audits("invoice_settings.company_changed");
     expect(rows).toHaveLength(1);
@@ -160,7 +161,7 @@ describe("the payment details (C75 (h), (i))", () => {
 
     const read = await readInvoiceSettings(ctxOf(f.seats.manager.memberId));
     expect(read.payment).toMatchObject({ bankgiro: "5050-1055", iban: "SE45 5000 0000 0583 9825 7466", plusgiro: null });
-    expect(read.missing).toEqual(["seat"]);
+    expect(read.missing).toEqual(["numbering", "seat"]);
     expect(read.paymentChanged?.by).toMatch(/^admin-invs-/);
     expect(read.paymentChanged!.at.getTime()).toBeGreaterThanOrEqual(at.getTime() - 60_000);
 

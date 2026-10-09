@@ -117,6 +117,8 @@ const envSchema = z.object({
   WEB_PUSH_SUBJECT: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   // Only the literal "dev" means anything (`pushTransportKind`).
   PUSH_TRANSPORT: z.string().optional(),
+  // Only the literal "fixed" means anything (`fxTransportKind`).
+  FX_TRANSPORT: z.string().optional(),
 });
 
 const env = envSchema.parse(process.env);
@@ -586,6 +588,26 @@ export function pushEndpointUrl(raw: string): URL | null {
     PUSH_SERVICE_SUFFIXES.some((suffix) => host.endsWith(suffix) && host.length > suffix.length && /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host));
   return known ? url : null;
 }
+
+/**
+ * THE EXCHANGE RATE AN INVOICE'S VAT IS SHOWN IN SEK AT (Phase 4 slice 108;
+ * `src/modules/invoicing/fx.ts`). Mervärdesskattelagen lets the seller use the
+ * European Central Bank's latest published rate (or Nasdaq Stockholm's middle
+ * rate); the ECB's daily reference rates are one public XML file, no key.
+ * - `"ecb"` — fetch it, at issue, only for an invoice in another currency
+ *   that carries Swedish VAT (C76).
+ * - `"fixed"` — `FX_TRANSPORT=fixed`: a fixed table dated yesterday, for the
+ *   harnesses (`playwright.config.ts`, `vitest.db.config.ts`). Never on a
+ *   production build off loopback: there a forgotten flag would print a made-up
+ *   rate on a real invoice, so it stops the boot (PUSH_TRANSPORT's rule). A
+ *   NON-production build exposed to the internet would accept it — never issue
+ *   real invoices from one (the security review's nit; the push rule's scope).
+ */
+export const ecbDailyRatesUrl = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml";
+if (env.FX_TRANSPORT === "fixed" && isProduction && !LOOPBACK_HOSTS.has(appUrl.hostname)) {
+  throw new Error("FX_TRANSPORT=fixed on a production build off loopback (src/config): invoices would print a made-up exchange rate");
+}
+export const fxTransportKind: "ecb" | "fixed" = env.FX_TRANSPORT === "fixed" ? "fixed" : "ecb";
 
 /** Build an absolute URL on the canonical app origin. Deep links in email
  * carry links, not data (ARC-09), and always point here. */

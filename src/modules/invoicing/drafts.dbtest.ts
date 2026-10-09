@@ -46,6 +46,7 @@ let gamma: string; // US
 let archived: string;
 let acmeP: string;
 let betaP: string;
+let seriesId: string;
 
 const ctxOf = (memberId: string) => ({ tenantId: f.tenantId, actor: actorFor(memberId) });
 const owner = () => ctxOf(f.seats.owner.memberId);
@@ -70,6 +71,9 @@ const TOKENS = [
   "INVOICE_NOT_DRAFT",
   "INVOICE_RATE_NOT_ALLOWED",
   "INVOICE_GUARD",
+  "INVOICE_NO_SERIES",
+  "INVOICE_SELLER_INCOMPLETE",
+  "INVOICE_BUYER_INCOMPLETE",
   "TENANT_INVOICE_DETAILS_GUARD",
   "invoice_line_amount",
   "invoice_line_finite",
@@ -98,13 +102,13 @@ async function issueRaw(
   const subtotal = over.subtotal ?? formatFixed(detail.totals.subtotal, 2);
   const vat = over.vat ?? formatFixed(detail.totals.vatTotal, 2);
   const total = over.total ?? formatFixed(detail.totals.total, 2);
-  const number = Math.floor(Math.random() * 1_000_000) + 1;
   const dayShift = over.issueDateSql === "lastYear" ? 365 : 0;
   const dueExtra = over.due === "plusOne" ? 1 : 0;
+  // The number is the guard's to give (slice 108): none is sent.
   return asMember(memberId, (tx) =>
     tx.$executeRaw`
       UPDATE invoice
-         SET status = 'ISSUED', series_id = 'test-series', number = ${number}, display_number = ${`T-${number}`},
+         SET status = 'ISSUED', series_id = ${seriesId}, locale = 'sv',
              issue_date = CURRENT_DATE - ${dayShift}::int,
              due_date = CURRENT_DATE - ${dayShift}::int + payment_terms_days + ${dueExtra}::int,
              issued_at = now(), issued_by_member_id = ${memberId},
@@ -121,14 +125,28 @@ beforeAll(async () => {
   archived = randomUUID();
   acmeP = randomUUID();
   betaP = randomUUID();
+  const address = { addressLine1: "Gatan 1", postalCode: "111 22", city: "Stockholm" };
   await f.platform.client.createMany({
     data: [
-      { id: acme, tenantId: f.tenantId, name: "Acme AB", countryCode: "SE" },
-      { id: beta, tenantId: f.tenantId, name: "Beta GmbH", countryCode: "DE", vatNumber: "DE123456789" },
-      { id: gamma, tenantId: f.tenantId, name: "Gamma Inc", countryCode: "US" },
+      { id: acme, tenantId: f.tenantId, name: "Acme AB", countryCode: "SE", ...address },
+      { id: beta, tenantId: f.tenantId, name: "Beta GmbH", countryCode: "DE", vatNumber: "DE123456789", ...address, city: "Berlin" },
+      { id: gamma, tenantId: f.tenantId, name: "Gamma Inc", countryCode: "US", ...address, city: "Boston" },
       { id: archived, tenantId: f.tenantId, name: "Gone", status: "ARCHIVED" },
     ],
   });
+  // What issuing needs since slice 108 — the seller's details (the platform
+  // role is not judged by their backstop; the bank column only has to be
+  // set, the issue guard copies it without reading it) and a numbering series.
+  await f.platform.tenant.update({
+    where: { id: f.tenantId },
+    data: { legalName: "Invd AB", orgNr: "556677-8899", vatNumber: "SE556677889901", seat: "Stockholm", bankgiro: "x", ...address },
+  });
+  seriesId = (
+    await f.platform.invoiceSeries.create({
+      data: { tenantId: f.tenantId, firstNumber: 1, nextNumber: 1, createdByMemberId: f.seats.owner.memberId },
+      select: { id: true },
+    })
+  ).id;
   await f.platform.project.createMany({
     data: [
       { id: acmeP, tenantId: f.tenantId, clientId: acme, key: "INVA", name: "Acme site" },
@@ -495,7 +513,7 @@ describe("the database's guards", () => {
       async (tx) => {
         await tx.$executeRaw`
           UPDATE invoice
-             SET status = 'ISSUED', series_id = 'race', number = 1, display_number = 'R-1',
+             SET status = 'ISSUED', series_id = ${seriesId}, locale = 'sv',
                  issue_date = CURRENT_DATE, due_date = CURRENT_DATE + payment_terms_days,
                  issued_at = now(), issued_by_member_id = ${f.seats.owner.memberId},
                  subtotal_ex_vat = ${formatFixed(detail.totals.subtotal, 2)}::numeric,

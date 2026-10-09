@@ -136,7 +136,18 @@ export function ClientCardForm({ client, editable }: { client: ClientDetail; edi
       kind: "text",
       inputProps: { maxLength: 2, className: "uppercase" },
     },
-    { name: "invoiceLocale", label: t("invoiceLocale"), kind: "text", inputProps: { maxLength: 8 } },
+    {
+      // Which language this client's invoices are printed in (C76 (e)).
+      name: "invoiceLocale",
+      label: t("invoiceLocale"),
+      kind: "select",
+      placeholder: t("invoiceLocales.byCountry"),
+      options: [
+        { value: "", label: t("invoiceLocales.byCountry") },
+        { value: "sv", label: t("invoiceLocales.sv") },
+        { value: "en", label: t("invoiceLocales.en") },
+      ],
+    },
   ];
 
   const row = (f: CardField) => {

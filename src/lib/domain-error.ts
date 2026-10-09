@@ -254,7 +254,14 @@ export type DomainErrorCode =
   | "INVOICE_LINE_LIMIT" // two hundred lines on one invoice
   | "INVOICE_LINE_DESCRIPTION_REQUIRED" // a line says what was sold
   | "INVOICE_AMOUNT_TOO_LARGE" // a line's amount past what an invoice holds
-  | "INVOICE_RATE_NOT_ALLOWED"; // a VAT rate the invoice's VAT treatment does not have
+  | "INVOICE_RATE_NOT_ALLOWED" // a VAT rate the invoice's VAT treatment does not have
+  // Phase 4 slice 108 — issuing (src/modules/invoicing/issue.ts, series.ts, fx.ts).
+  | "INVOICE_NOT_READY" // something issuing needs is missing (the dialog names what) — or the guard found it so
+  | "INVOICE_CHANGED" // the draft or its client changed since the issuer looked (the fingerprint), or since the rate was fetched
+  | "INVOICE_FX_UNAVAILABLE" // the ECB's rate could not be fetched or read: try again, never a guessed rate
+  | "INVOICE_SERIES_IN_USE" // the first number is fixed once an invoice has one
+  | "INVOICE_ISSUE_BUSY" // the series stayed held past the issue's lock bound (55P03): try again
+  | "INVOICE_PDF_UNAVAILABLE"; // an issued invoice's PDF could not be made just now
 
 export class DomainError extends Error {
   constructor(

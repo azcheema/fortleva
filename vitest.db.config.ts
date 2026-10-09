@@ -39,6 +39,10 @@ delete process.env["AMAZON_SES_FEEDBACK_TOPIC_ARN"];
   process.env["WEB_PUSH_SUBJECT"] = "mailto:dbtest@fortleva.invalid";
   process.env["PUSH_TRANSPORT"] = "dev";
 }
+// Phase 4 slice 108: never the ECB from a dbtest — a suite that wants a rate
+// passes its own file (`issueInvoice`'s `fetchText`), anything else gets the
+// fixed table.
+process.env["FX_TRANSPORT"] = "fixed";
 
 // Integration suite: runs against a real Postgres as the REAL
 // app_runtime role (TENANCY.md §11 — a local owner/superuser role

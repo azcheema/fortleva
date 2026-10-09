@@ -8,6 +8,7 @@ import { requireTenantContext } from "@/members/tenant-context";
 import { readInvoiceSettings, type InvoiceSettings } from "@/modules/invoicing";
 
 import { CompanyCard } from "./company-card";
+import { NumberingCard } from "./numbering-card";
 import { PaymentCard } from "./payment-card";
 import { TermsCard } from "./terms-card";
 
@@ -24,9 +25,10 @@ const changedOf = (c: InvoiceSettings["companyChanged"]) => (c ? { by: c.by, at:
  * VAT number, registered office, F-tax, address) and how clients pay (bank
  * details and the note printed on every invoice) — both changed only with the
  * member's authenticator code typed in the form, every owner mailed (C75
- * (h)–(j)) — and the default payment terms. `settings:view` reads it,
- * `settings:edit` changes it; the invoicing module closes it. A caution says
- * what issuing (slice 108) will still need.
+ * (h)–(j)) — the invoice numbers' first number (slice 108, C76 (b); owners,
+ * `invoice:manage_series` ✦) and the default payment terms. `settings:view`
+ * reads it, `settings:edit` changes it; the invoicing module closes it. A
+ * caution says what issuing still needs.
  */
 export default async function InvoicingSettingsPage() {
   const { membership, actor } = await requireTenantContext();
@@ -72,6 +74,14 @@ export default async function InvoicingSettingsPage() {
         </SectionCard>
         <SectionCard title={t("payment.title")} description={t("payment.description")}>
           <PaymentCard values={payment} editable={canEdit} hasFactor={hasFactor} changed={changedOf(settings.paymentChanged)} enrolHref={enrolHref} />
+        </SectionCard>
+        <SectionCard title={t("numbering.title")} description={t("numbering.description")}>
+          <NumberingCard
+            firstNumber={settings.numbering?.firstNumber ?? null}
+            nextNumber={settings.numbering?.nextNumber ?? null}
+            used={settings.numbering?.used ?? false}
+            editable={settings.canManageNumbering}
+          />
         </SectionCard>
         <SectionCard title={t("terms.title")}>
           <TermsCard days={settings.paymentTermsDays} editable={canEdit} />

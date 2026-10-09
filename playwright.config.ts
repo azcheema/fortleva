@@ -154,6 +154,9 @@ export default defineConfig({
       WEB_PUSH_VAPID_PRIVATE_KEY: E2E_VAPID.privateKey,
       WEB_PUSH_SUBJECT: "mailto:e2e@fortleva.invalid",
       PUSH_TRANSPORT: "dev",
+      // Phase 4 slice 108: an invoice in another currency carrying Swedish VAT
+      // takes the ECB's rate at issue — the harness never calls the ECB.
+      FX_TRANSPORT: "fixed",
     },
   },
 });

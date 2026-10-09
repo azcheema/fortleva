@@ -27,6 +27,15 @@ const nextConfig: NextConfig = {
       { source: "/portal/share/:path*", headers: [...SHARE_PAGE_HEADERS] },
     ]);
   },
+  // An invoice's PDF is drawn with Inter's TTFs read from disk at render
+  // (src/modules/invoicing/pdf/invoice-pdf.tsx, Phase 4 slice 108); a path
+  // built at runtime is invisible to the tracer, so the folder is named for
+  // every route that can make one — the invoice pages and their actions, and
+  // the jobs route's backstop for a PDF its issue did not make.
+  outputFileTracingIncludes: {
+    "/invoices/**": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
+    "/api/jobs/run": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
+  },
   // CI already runs `next typegen && tsc --noEmit` over this exact
   // tsconfig project, in the isolation job that the e2e job `needs:`.
   // `next build` then runs tsc over the whole project a SECOND time

@@ -66,6 +66,21 @@ export const clean = (v: string | null | undefined): string | null => {
   return s.length === 0 ? null : s;
 };
 
+/**
+ * The language the client's invoices are written in (Phase 4 slice 108,
+ * founder decision C76 (e)): Swedish, English, or blank — "by country"
+ * (`src/modules/invoicing/issue.ts`'s rule). Anything else is refused: an
+ * invoice is printed in one of the two, and a free-text value would silently
+ * mean "by country". (The field was free text until this slice; a stored
+ * value that is neither reads as blank.)
+ */
+const cleanInvoiceLocale = (v: string | null | undefined): "sv" | "en" | null => {
+  const s = clean(v)?.toLowerCase() ?? null;
+  if (s === null) return null;
+  if (s === "sv" || s === "en") return s;
+  return fail("INVALID_INPUT", "invoice language");
+};
+
 const inScope = async (tx: TenantDb, actor: MemberActor, clientId: string): Promise<boolean> => {
   try {
     await assertInScope(tx, actor, { clientId });
@@ -439,7 +454,7 @@ export async function createClient(
         postalCode: clean(input.postalCode),
         city: clean(input.city),
         billingEmail: clean(input.billingEmail)?.toLowerCase() ?? null,
-        invoiceLocale: clean(input.invoiceLocale),
+        invoiceLocale: cleanInvoiceLocale(input.invoiceLocale),
       },
     });
     await record(tx, {
@@ -481,6 +496,12 @@ export async function updateClient(
         next = clean(patch.countryCode)?.toUpperCase() ?? null;
       } else if (f === "billingEmail") {
         next = clean(patch.billingEmail)?.toLowerCase() ?? null;
+      } else if (f === "invoiceLocale") {
+        // The card posts every field: a value from before slice 108, when this
+        // was free text ("sv-SE", "Svenska"), comes back unchanged with any
+        // other edit and must not refuse it (the code review's medium). It is
+        // checked only when it CHANGES.
+        next = clean(patch.invoiceLocale) === current!.invoiceLocale ? current!.invoiceLocale : cleanInvoiceLocale(patch.invoiceLocale);
       } else {
         next = clean(patch[f]);
       }

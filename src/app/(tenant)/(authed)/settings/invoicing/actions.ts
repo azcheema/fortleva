@@ -15,6 +15,7 @@ import {
   normalizeCompanyPatch,
   normalizePaymentPatch,
   PAYMENT_FIELDS,
+  setFirstInvoiceNumber,
   updateCompanyDetails,
   updateDefaultPaymentTerms,
   updatePaymentDetails,
@@ -139,6 +140,22 @@ export async function updateTermsAction(formData: FormData): Promise<FormResult>
   const r = await runForm(PATH, async () => {
     await updateDefaultPaymentTerms({ tenantId: membership.tenantId, actor }, field(formData, "paymentTermsDays"));
     return tCommon("saved");
+  });
+  if (r.ok) revalidatePath(PATH);
+  return r;
+}
+
+/**
+ * The first invoice number (slice 108, C76 (b)) — `invoice:manage_series` ✦:
+ * a stale second factor sends the owner to the step-up page and back here
+ * (`runForm`'s MFA_REQUIRED). Fixed once an invoice holds a number.
+ */
+export async function setFirstNumberAction(formData: FormData): Promise<FormResult> {
+  const { membership, actor } = await requireTenantContext();
+  const t = await getTranslations("settings.invoicing.numbering");
+  const r = await runForm(PATH, async () => {
+    await setFirstInvoiceNumber({ tenantId: membership.tenantId, actor }, field(formData, "firstNumber"));
+    return t("saved");
   });
   if (r.ok) revalidatePath(PATH);
   return r;

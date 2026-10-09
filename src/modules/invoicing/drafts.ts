@@ -7,6 +7,8 @@ import { fail } from "@/lib/domain-error";
 import { CURRENCIES, readPreferences } from "@/preferences/service";
 
 import { guarded } from "./db-errors";
+import { readIssueCheck, readIssueFingerprint, type IssueCheckSeen } from "./issue";
+import { readIssuedInvoice, type IssuedInvoice } from "./issued";
 import {
   formatFixed,
   invoiceTotals,
@@ -18,6 +20,7 @@ import {
   UNIT_PRICE_MAX,
   type InvoiceTotals,
 } from "./money";
+import { invoiceLocaleFor, isInvoiceLocale, type InvoiceLocale } from "./print";
 import { readDefaultPaymentTerms } from "./seller";
 import { normalizePaymentTerms, textOrNull } from "./seller-fields";
 import { defaultRateFor, isVatProfile, rateAllowed, suggestVatProfile, VAT_RATES, type VatProfile } from "./vat";
@@ -122,7 +125,15 @@ export type InvoiceDetail = {
   readonly totals: InvoiceTotals;
   /** The client's live projects — the draft's project select — plus the draft's own if it was archived since (the current value is always offered). */
   readonly projects: readonly { readonly id: string; readonly key: string; readonly name: string; readonly archived?: boolean }[];
-  readonly can: { readonly edit: boolean; readonly delete: boolean };
+  /** The draft's own language choice, or null — the client's (C76 (e)). */
+  readonly locale: InvoiceLocale | null;
+  /** The language the client's invoices take when the draft makes no choice. */
+  readonly clientLocale: InvoiceLocale;
+  /** A draft: what issuing it still needs and would give (slice 108). */
+  readonly issueCheck: IssueCheckSeen | null;
+  /** Issued: the frozen record, as printed. */
+  readonly issued: IssuedInvoice | null;
+  readonly can: { readonly edit: boolean; readonly delete: boolean; readonly issue: boolean };
 };
 
 const lineSelect = {
@@ -286,6 +297,17 @@ async function openDraft(
 export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<InvoiceDetail> {
   return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "invoice:view");
+    // The scope from a minimal read; then, for a draft this member may issue,
+    // the fingerprint of what the page is about to show — read BEFORE any of
+    // it, so an edit landing between the two reads is refused at issue rather
+    // than issued unseen (the fix-pass re-check's low: each statement is its
+    // own snapshot under READ COMMITTED).
+    const scoped = await tx.invoice.findFirst({ where: { id: invoiceId }, select: { clientId: true, status: true } });
+    if (!scoped) return deny("NOT_FOUND");
+    await assertInScope(tx, ctx.actor, { clientId: scoped.clientId });
+    // In turn, never a batch (AGENTS.md: a per-code check is never a leg).
+    const mayIssue = scoped.status === "DRAFT" && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:issue"));
+    const seen = mayIssue ? await readIssueFingerprint(tx, invoiceId) : null;
     const invoice = await tx.invoice.findFirst({
       where: { id: invoiceId },
       select: {
@@ -301,12 +323,12 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
         buyerReference: true,
         ourReference: true,
         note: true,
+        locale: true,
         createdAt: true,
         project: { select: { id: true, key: true, name: true } },
       },
     });
-    if (!invoice) return deny("NOT_FOUND");
-    await assertInScope(tx, ctx.actor, { clientId: invoice.clientId });
+    if (!invoice || invoice.clientId !== scoped.clientId) return deny("NOT_FOUND");
     const client = await tx.client.findFirst({
       where: { id: invoice.clientId },
       select: {
@@ -321,6 +343,7 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
         postalCode: true,
         city: true,
         billingEmail: true,
+        invoiceLocale: true,
         status: true,
         projects: {
           where: { status: { not: "ARCHIVED" } },
@@ -341,7 +364,13 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
     const draft = invoice.status === "DRAFT";
     const canEdit = draft && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:edit"));
     const canDelete = draft && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:delete"));
-    const { projects: live, status, ...billTo } = client;
+    const canIssue = draft && mayIssue;
+    // A draft: what issuing needs (only for someone who may issue it); an
+    // issued invoice: its frozen record, the bank details read tolerantly
+    // (an unreadable one says so on the page; the PDF reads strictly).
+    const issueCheck = canIssue && seen ? await readIssueCheck(tx, ctx.tenantId, invoiceId, new Date(), seen) : null;
+    const issued = draft ? null : await readIssuedInvoice(tx, ctx.tenantId, invoiceId, { strict: false });
+    const { projects: live, status, invoiceLocale, ...billTo } = client;
     // The draft's own project stays offered after it was archived, or the
     // select would show its raw id at rest and "No project" open (the code
     // review's low; `src/lib/inline-edit.ts`'s current-value rule).
@@ -365,7 +394,11 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
       lines,
       totals: invoiceTotals(lines.map((l) => ({ amount: l.amount, rate: l.vatRate }))),
       projects,
-      can: { edit: canEdit, delete: canDelete },
+      locale: isInvoiceLocale(invoice.locale) ? invoice.locale : null,
+      clientLocale: invoiceLocaleFor({ invoiceLocale, countryCode: billTo.countryCode }),
+      issueCheck,
+      issued,
+      can: { edit: canEdit, delete: canDelete, issue: canIssue },
     };
   });
 }
@@ -456,6 +489,8 @@ export type DraftDetailsPatch = {
   readonly buyerReference?: unknown;
   readonly ourReference?: unknown;
   readonly note?: unknown;
+  /** "sv" | "en", or ""/null — the client's (C76 (e)). */
+  readonly locale?: unknown;
 };
 
 /** `invoice:edit` — the draft's details; only the fields present are written. Returns what changed. */
@@ -477,6 +512,11 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
   if ("ourReference" in patch) data.ourReference = textOrNull(patch.ourReference, DETAIL_TEXT_MAX.ourReference);
   if ("note" in patch) data.note = textOrNull(patch.note, DETAIL_TEXT_MAX.note);
   if ("projectId" in patch) data.projectId = patch.projectId || null;
+  if ("locale" in patch) {
+    const l = patch.locale === null || patch.locale === "" ? null : patch.locale;
+    if (l !== null && !isInvoiceLocale(l)) return fail("INVALID_INPUT", "invoice language");
+    data.locale = l;
+  }
 
   return guarded(() =>
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
@@ -493,6 +533,7 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
           buyerReference: true,
           ourReference: true,
           note: true,
+          locale: true,
         },
       });
       if (!current) return deny("NOT_FOUND");

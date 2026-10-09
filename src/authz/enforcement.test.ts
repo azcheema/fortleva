@@ -69,15 +69,10 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
   // spoken for.
   contracts: ["contract:view", "contract:create", "contract:edit", "contract:send", "contract:delete"],
   // Phase 4 slice 107 gave `invoice:view`, `:create`, `:edit` and `:delete`
-  // their guards (`src/modules/invoicing/drafts.ts`); issuing and what
-  // follows it are slices 108 and 109.
-  invoicing: [
-    "invoice:issue",
-    "invoice:send",
-    "invoice:record_payment",
-    "invoice:credit",
-    "invoice:manage_series",
-  ],
+  // their guards (`src/modules/invoicing/drafts.ts`); slice 108 gave issuing
+  // and the numbering theirs (`issue.ts`, `series.ts`). Credit notes are slice
+  // 108b; sending and payments 109.
+  invoicing: ["invoice:send", "invoice:record_payment", "invoice:credit"],
   reports: ["report:view", "report:upload", "report:delete"],
   continuity_box: [
     "continuity_box:view",

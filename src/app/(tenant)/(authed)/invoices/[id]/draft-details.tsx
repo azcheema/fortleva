@@ -20,6 +20,8 @@ export type DraftDetailsValues = {
   readonly buyerReference: string;
   readonly ourReference: string;
   readonly note: string;
+  /** "" — the client's language (C76 (e)) — or "sv" / "en". */
+  readonly locale: string;
 };
 
 /**
@@ -42,6 +44,7 @@ export function DraftDetails({
   currencies,
   projects,
   reducedRateLines,
+  clientLocale,
 }: {
   invoiceId: string;
   values: DraftDetailsValues;
@@ -50,6 +53,8 @@ export function DraftDetails({
   projects: readonly { readonly id: string; readonly key: string; readonly name: string; readonly archived?: boolean }[];
   /** Lines at 12 or 6 % — what leaving Swedish VAT would change. */
   reducedRateLines: number;
+  /** The language the client's invoices take when the draft makes no choice. */
+  clientLocale: "sv" | "en";
 }) {
   const t = useTranslations("invoices.draft");
   const tCommon = useTranslations("common");
@@ -200,6 +205,26 @@ export function DraftDetails({
             resetKey={resets.paymentTermsDays ?? 0}
             className={ro ? "px-2.5" : undefined}
             onCommit={(next) => detail("paymentTermsDays", next)}
+          />,
+        )}
+        {prop(
+          t("fields.locale"),
+          <InlineEdit
+            kind="select"
+            name="locale"
+            value={values.locale}
+            label={t("fields.locale")}
+            placeholder={t("locale.client", { language: t(`locale.names.${clientLocale}`) })}
+            options={[
+              { value: "", label: t("locale.client", { language: t(`locale.names.${clientLocale}`) }) },
+              { value: "sv", label: t("locale.sv") },
+              { value: "en", label: t("locale.en") },
+            ]}
+            readOnly={ro}
+            hiddenInput={false}
+            resetKey={resets.locale ?? 0}
+            className={ro ? "px-2.5" : undefined}
+            onCommit={(next) => detail("locale", next)}
           />,
         )}
         {prop(

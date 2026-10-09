@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { isUuid } from "@/db/context";
-import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
+import { DomainError } from "@/lib/domain-error";
+import { caution, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   addLine,
   createDraft,
   deleteDraft,
+  issueInvoice,
   moveLine,
   removeLine,
   setDraftVatProfile,
@@ -18,6 +20,7 @@ import {
   type DraftDetailsPatch,
   type LineInput,
 } from "@/modules/invoicing";
+import { ensureInvoicePdf, errorTag, invoicePdfUrl } from "@/modules/invoicing/pdf-store";
 
 /**
  * Server actions for /invoices (Phase 4 slice 107). Tenant and actor come
@@ -71,6 +74,7 @@ export async function updateDraftDetailsAction(invoiceId: unknown, patch: unknow
     "buyerReference",
     "ourReference",
     "note",
+    "locale",
   ];
   const clean: Record<string, unknown> = {};
   for (const key of allowed) {
@@ -188,5 +192,50 @@ export async function deleteDraftAction(invoiceId: unknown): Promise<FormResult>
     return t("deleted");
   });
   if (r.ok) revalidatePath(LIST);
+  return r;
+}
+
+/**
+ * Issue the draft (slice 108), then make its PDF. The PDF failing does not
+ * undo the issue: the answer is a CAUTION ("issued; its PDF could not be made
+ * yet"), never a revert-looking error — Download PDF and the jobs route's
+ * backstop make it later.
+ */
+export async function issueInvoiceAction(invoiceId: unknown, fingerprint: unknown): Promise<FormResult> {
+  // The fingerprint of what the issuer saw (the security review's medium) — a
+  // sha-256 the page computed; the issue refuses if the draft moved since.
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId)) return invalid();
+  if (typeof fingerprint !== "string" || !/^[0-9a-f]{64}$/.test(fingerprint)) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.issue");
+  const r = await runForm(pageOf(invoiceId), async () => {
+    const { displayNumber } = await issueInvoice(ctx, invoiceId, { fingerprint });
+    try {
+      await ensureInvoicePdf(ctx, invoiceId);
+    } catch (e) {
+      // Never silent: the issue stands and the backstop will retry, but why
+      // the PDF failed belongs in the log (names and messages carry no data).
+      console.error(`invoices: the PDF after issuing ${invoiceId} failed: ${e instanceof DomainError ? e.code : errorTag(e)}`);
+      return caution(t("issuedNoPdf", { number: displayNumber }));
+    }
+    return t("issued", { number: displayNumber });
+  });
+  revalidatePath(pageOf(invoiceId));
+  if (r.ok) revalidatePath(LIST);
+  return r;
+}
+
+/** A short-lived link to the issued invoice's PDF (made first if it was not yet); the client navigates to it. */
+export async function invoicePdfUrlAction(invoiceId: unknown): Promise<ActionResult<string>> {
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId)) return { ok: false, message: (await invalid()).message };
+  const ctx = await ctxOf();
+  let created = false;
+  const r = await runAction(pageOf(invoiceId), async () => {
+    const pdf = await invoicePdfUrl(ctx, invoiceId);
+    created = pdf.created;
+    return pdf.url;
+  });
+  // Only a PDF made just now changes the page (its "not made yet" note goes).
+  if (created) revalidatePath(pageOf(invoiceId));
   return r;
 }

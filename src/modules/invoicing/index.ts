@@ -65,3 +65,18 @@ export {
   vatNumberFor,
 } from "./seller-fields";
 export { defaultRateFor, isVatProfile, VAT_PROFILES, VAT_RATES, type VatProfile } from "./vat";
+// Phase 4 slice 108 — issuing (founder decision C76).
+export { issueInvoice, type IssueBlocker, type IssueCheck, type IssueCheckSeen } from "./issue";
+export { type IssuedInvoice } from "./issued";
+// NOT the PDF store (`./pdf-store`): it reaches `@react-pdf/renderer`, an
+// ESM-only package a CommonJS importer of this index cannot load — the e2e
+// fixture CLI runs under tsx as CommonJS and imports this index. The invoice
+// actions and the jobs route import `@/modules/invoicing/pdf-store` directly.
+export {
+  isInvoiceLocale,
+  printAmount,
+  printFxRate,
+  type InvoiceLocale,
+  type InvoicePrint,
+} from "./print";
+export { FIRST_NUMBER_MAX, setFirstInvoiceNumber, type Numbering } from "./series";
