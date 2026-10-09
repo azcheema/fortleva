@@ -12,6 +12,7 @@ import {
   KeyRoundIcon,
   MegaphoneIcon,
   PaletteIcon,
+  ReceiptTextIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
   TimerIcon,
@@ -36,6 +37,7 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   // means one concept (UI.md §10).
   vault: VaultIcon,
   renewals: CalendarClockIcon,
+  invoices: ReceiptTextIcon,
   members: UsersIcon,
   settings: SettingsIcon,
   roles: KeyRoundIcon,
@@ -47,6 +49,8 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   vaultSettings: VaultIcon,
   // The project's Updates tab wears the megaphone; its layouts do too.
   updateSettings: MegaphoneIcon,
+  // Invoicing settings wear the invoices' glyph, as Time's settings wear Time's.
+  invoiceSettings: ReceiptTextIcon,
   // A bell is "reach me", the inbox tray is "what reached me": two
   // concepts, two glyphs.
   notifications: BellIcon,

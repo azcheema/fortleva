@@ -41,6 +41,7 @@
  *        tsx e2e/fixtures/seed-cli.ts reset-portal-sections <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-update-schedule <tenantId> <projectKey>
  *        tsx e2e/fixtures/seed-cli.ts reset-update-layouts <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts reset-invoice-details <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts client-summary-link <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -153,6 +154,11 @@ const DBTEST_PREFIXES = [
   // Phase 5 slice 104, the inbox's reasons and housekeeping —
   // `src/notify/inbox-polish.dbtest.ts`, `setupTenant("inbx")` twice.
   "inbx-",
+  // Phase 4 slice 107, invoice drafts and the workspace's invoice details —
+  // `src/modules/invoicing/drafts.dbtest.ts` and `seller.dbtest.ts`,
+  // `setupTenant("invd")` and `setupTenant("invs")`.
+  "invd-",
+  "invs-",
   "iso-a-",
   "iso-b-",
   // Phase 5 slice 105, the progress-update layouts —
@@ -581,6 +587,8 @@ export type E2ESeed = {
    * for the visual walk's share page. Never pressed: a visit previews only.
    */
   readonly vaultShareToken: string;
+  /** A DRAFT invoice for the client, two lines (Phase 4 slice 107) — the visual walk's draft stop. */
+  readonly invoiceDraftId: string;
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -1381,6 +1389,14 @@ async function provision(seedFile: string): Promise<void> {
     includeUsername: true,
   });
   const vaultShareToken = vaultShare.url.slice(vaultShare.url.indexOf("/portal/share/") + "/portal/share/".length);
+  // Phase 4 slice 107: one DRAFT invoice with two lines, made through the
+  // service as the owner, for the visual walk's list and draft stops.
+  const { addLine, createDraft, updateLine } = await import("../../src/modules/invoicing");
+  const invoiceDraftId = await createDraft(ctx, { clientId, projectId });
+  const designLine = await addLine(ctx, invoiceDraftId, { description: `Design work ${run}` });
+  await updateLine(ctx, invoiceDraftId, designLine, { quantity: "12.5", unitPrice: "1150", unit: "h" });
+  const hostingLine = await addLine(ctx, invoiceDraftId, { description: "Hosting" });
+  await updateLine(ctx, invoiceDraftId, hostingLine, { unitPrice: "299", unit: "mo" });
   // Slice 86: one of the agency's OWN logins — no client, no project — which
   // the manager reaches because their scope is the whole tenant (C49).
   const vaultAgencyLoginName = `E2E Registrar ${run}`;
@@ -1737,6 +1753,7 @@ async function provision(seedFile: string): Promise<void> {
     vaultAgencyLoginName,
     vaultSealedLoginName,
     vaultShareToken,
+    invoiceDraftId,
   };
 
   mkdirSync(dirname(seedFile), { recursive: true });
@@ -1785,6 +1802,12 @@ async function removeTenant(
     // work-maintenance GUC (20260925200000), and the project cascade
     // below would run that trigger.
     await tx.$executeRaw`SELECT set_config('app.work_maintenance', 'on', true)`;
+    // Phase 4 slice 107: invoices RESTRICT their client, project and tenant,
+    // and an issued one refuses DELETE except under the invoice-maintenance
+    // GUC on this (platform) role. ONE statement, so a credit note and the
+    // invoice it credits go together (NO ACTION); lines cascade.
+    await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
+    await tx.invoice.deleteMany({ where: { tenantId } });
     await tx.projectUpdate.deleteMany({ where: { tenantId } });
     await tx.timeReport.deleteMany({ where: { tenantId } });
     await tx.budgetAlert.deleteMany({ where: { tenantId } });
@@ -2428,6 +2451,45 @@ async function resetUpdateLayouts(tenantId: string): Promise<void> {
   const { count } = await db.projectUpdateTemplate.deleteMany({ where: { tenantId } });
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"deleted":${count}}\n`);
+}
+
+/**
+ * Put the workspace's invoice details back to none (Phase 4 slice 107): the
+ * company columns and the payment columns on `tenant`, and the default
+ * payment terms — through the PLATFORM role, which the database's backstop
+ * (`tenant_payment_details_guard`) does not judge, so no authenticator code
+ * is spent undoing a test (the TOTP owner's step-ups are a budget of six per
+ * ten minutes, shared by every spec that signs them in). `invoices.spec.ts`
+ * calls it before and after its protected-card tests, pass or fail.
+ * Throwaway tenant only, like every write here.
+ */
+async function resetInvoiceDetails(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  await db.tenant.update({
+    where: { id: tenantId },
+    data: {
+      legalName: null,
+      orgNr: null,
+      vatNumber: null,
+      seat: null,
+      fSkattApproved: false,
+      addressLine1: null,
+      addressLine2: null,
+      postalCode: null,
+      city: null,
+      countryCode: null,
+      bankgiro: null,
+      plusgiro: null,
+      iban: null,
+      bic: null,
+      invoiceFooterNote: null,
+    },
+  });
+  await db.tenantPreference.deleteMany({ where: { tenantId, key: "invoice.paymentTermsDays" } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"reset":1}\n`);
 }
 
 /**
@@ -3207,6 +3269,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-portal-sections") return resetPortalSections(argument!);
   if (command === "reset-update-schedule") return resetUpdateSchedule(argument!, process.argv[4]!);
   if (command === "reset-update-layouts") return resetUpdateLayouts(argument!);
+  if (command === "reset-invoice-details") return resetInvoiceDetails(argument!);
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "age-vault-factor") return ageVaultFactor(argument!, process.argv[4]!);

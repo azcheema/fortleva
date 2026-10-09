@@ -179,6 +179,24 @@ export const AUDIT_EVENTS = {
   "invoice.paid": TENANT,
   "invoice.credited": TENANT,
   "series.created": TENANT,
+  // Phase 4 slice 107 — DRAFTS (src/modules/invoicing/drafts.ts). A draft
+  // has no number and nobody outside the team sees it, but it is money, and
+  // there is no carve-out for it: its creation, every edit (metadata: the
+  // fields or the line operation, never an org. number) and its deletion
+  // are rows.
+  "invoice.created": TENANT,
+  "invoice.draft_edited": TENANT,
+  "invoice.draft_deleted": TENANT,
+  // Settings → Invoicing (src/modules/invoicing/seller.ts). Both protected
+  // cards — the code typed in the form, every owner mailed (C75 (h)–(j)) —
+  // and the settings page reads each one's newest row to say who changed it
+  // and when. Company: the FIELD NAMES only, never the values — an org.
+  // number can be a sole trader's personnummer. Payment: the field names,
+  // each bank field's LAST FOUR characters (the trail says where money
+  // pointed, a reader cannot lift the account) and the note's new text (the
+  // workspace's own words, printed on every invoice).
+  "invoice_settings.company_changed": TENANT,
+  "invoice_settings.payment_details_changed": TENANT,
   // Data egress
   "export.requested": TENANT,
   "export.generated": TENANT,

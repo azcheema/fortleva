@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { MAIL_WITHOUT_REPLY_TO } from "./reply-address-resolve";
@@ -18,6 +19,7 @@ describe("mail without a reply address", () => {
   it("every security notice to a workspace's own members is in the outbox's list", () => {
     const notices = [
       REPLY_ADDRESS_CHANGED_MAIL,
+      INVOICE_DETAILS_CHANGED_MAIL,
       VAULT_EXPORTED_MAIL,
       DOOR_ALARM_MEMBER_MAIL,
       ...Object.values(SEALED_MEMBER_MAIL),

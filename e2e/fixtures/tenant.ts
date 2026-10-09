@@ -287,6 +287,15 @@ export async function resetUpdateLayouts(tenantId: string): Promise<number> {
 }
 
 /**
+ * Put the workspace's invoice details (company, payment, default terms) back
+ * to none through the platform role — no authenticator code spent (Phase 4
+ * slice 107; `seed-cli.ts`'s `resetInvoiceDetails` says why that matters).
+ */
+export async function resetInvoiceDetails(tenantId: string): Promise<void> {
+  await runCli<{ reset: number }>(["reset-invoice-details", tenantId]);
+}
+
+/**
  * Age the vault member's second factor past the vault window (C52): the
  * next visit to the Vault tab finds THE DOOR. Returns how many sessions
  * were aged.

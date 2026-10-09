@@ -20,6 +20,7 @@ export type NavIcon =
   | "files"
   | "vault"
   | "renewals"
+  | "invoices"
   | "members"
   | "settings"
   | "roles"
@@ -28,6 +29,7 @@ export type NavIcon =
   | "timeSettings"
   | "vaultSettings"
   | "updateSettings"
+  | "invoiceSettings"
   | "export"
   | "design"
   | "account";
@@ -46,6 +48,7 @@ export type NavEntry = {
     | "files"
     | "vault"
     | "renewals"
+    | "invoices"
     | "members"
     | "settings"
     | "roles"
@@ -54,6 +57,7 @@ export type NavEntry = {
     | "timeSettings"
     | "vaultSettings"
     | "updateSettings"
+    | "invoiceSettings"
     | "export"
     | "design"
     | "account";
@@ -150,6 +154,16 @@ export const NAV: readonly NavEntry[] = [
     icon: "renewals",
     permission: "asset:view",
   },
+  // Phase 4 slice 107: INVOICES — drafts now, issued invoices from slice 108.
+  // On `invoice:view` across all four gates, so it goes with the invoicing
+  // module. No `G` key: `G I` is the inbox's.
+  {
+    id: "invoices",
+    labelKey: "invoices",
+    href: "/invoices",
+    icon: "invoices",
+    permission: "invoice:view",
+  },
   {
     id: "members",
     labelKey: "members",
@@ -204,6 +218,16 @@ export const NAV: readonly NavEntry[] = [
         href: "/settings/updates",
         icon: "updateSettings",
         permission: "settings:view",
+      },
+      // Phase 4 slice 107: what the workspace's invoices say about it. On
+      // `invoice:view` (all four gates) so it goes with the invoicing module;
+      // the page itself also wants `settings:view` (held by the same roles).
+      {
+        id: "invoiceSettings",
+        labelKey: "invoiceSettings",
+        href: "/settings/invoicing",
+        icon: "invoiceSettings",
+        permission: "invoice:view",
       },
       // No permission: every other Settings page administers the
       // WORKSPACE and is hidden without its code; this one administers

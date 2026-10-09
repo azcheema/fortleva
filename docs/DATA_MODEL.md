@@ -156,7 +156,7 @@ Mechanism: own ~80-line AES-256-GCM service (`v1.<keyId>.<iv>.<ct>.<tag>`), key 
 | Field | Why | Notes |
 |---|---|---|
 | `TwoFactor.secret`, `TwoFactor.backupCodes` | TOTP material | Better Auth stores these; fold into our key inventory, verify hashed/encrypted config |
-| `Tenant.bankgiro`, `Tenant.plusgiro`, `Tenant.iban`, `Tenant.bic` | Bank details (printed on invoices via snapshot at issuance) | Decrypt only in the invoice-issuance path |
+| `Tenant.bankgiro`, `Tenant.plusgiro`, `Tenant.iban`, `Tenant.bic` | Bank details (printed on invoices via snapshot at issuance) | Decrypt only in the invoice-issuance path *(amended 2026-10-09, Phase 4 slice 107: and on Settings → Invoicing, where `settings:view` reads them — they are printed on every invoice. Written v2 under the tenant's key, AAD `tenantId:tenant:<tenantId>:<field>`; read as v2 only — these columns never had a v1 writer, so a v1 value found there reads as unset. A change needs a fresh second factor and mails every owner, C75 (h).)* |
 | `Tenant.databaseUrl` | Connection string = credentials | Unused in v1 (cell escape hatch); see Pushback P3 |
 | `ContinuityBox.shareBCiphertext` | Shamir share B | A single share is information-theoretically useless alone; wrapping it is defense in depth, not the guarantee |
 | `IntegrationConnection.credentialsCiphertext` (v2) | OAuth refresh tokens, API keys (Fortnox, Google, tenant Stripe) | One row per connection; never in logs |
@@ -1619,6 +1619,48 @@ model InvoiceLine {
   @@unique([tenantId, invoiceId, position])
   @@index([tenantId, serviceId])
 }
+
+// AS BUILT — Phase 4 slice 107 (2026-10-09; founder decision C75;
+// migration 20261009120000_invoice_drafts). The draft above was refined:
+//  - BOTH tables are class A (portal_deny) until slice 109 builds the
+//    client's view and reclasses them to B with a status gate; the line
+//    carries its invoice's client_id through a composite FK
+//    (tenant_id, client_id, invoice_id) → invoice(tenant_id, client_id, id),
+//    so that reclass needs no backfill through frozen rows.
+//  - The line has NO taxCategory, NO discountPct, NO serviceId/projectId,
+//    NO lineVatAmount: the category is the invoice's vatProfile's, a
+//    discount is a negative line, and VAT is computed ONCE PER RATE on the
+//    rate's sum (EN 16931 BR-CO-17), never summed from lines. Amount CHECK:
+//    amount_ex_vat = round(quantity × unit_price_ex_vat, 2) (half away from
+//    zero; src/modules/invoicing/money.ts agrees), quantity > 0 and never
+//    NaN; vat_rate_pct ∈ {0, 6, 12, 25} and one the invoice's treatment has
+//    (invoice_line_guard; SE_DOMESTIC 25/12/6, the others 0).
+//  - The invoice gained period_start/period_end (the work period),
+//    our_reference, note, created_by_member_id; its totals are NULL on a
+//    DRAFT (computed on read) and, from issue on, equal to what the lines
+//    say — the guard recomputes them. series_id has no FK yet (the series
+//    table is slice 108's); the snapshots, fx/SEK VAT, legal notes, VIES and
+//    pdf columns arrive with issuing (108), the payment ones with 109.
+//  - invoice_guard: a draft is a member's; it leaves DRAFT only to ISSUED,
+//    by a member as themselves holding invoice:issue, dated today (±1 day of
+//    UTC), due = issue_date + payment_terms_days, with ≥ 1 line, every rate
+//    allowed, totals = lines, total ≥ 0; an issued row is frozen
+//    (to_jsonb(NEW) − {status, updated_at}), its status only forward
+//    (ISSUED → SENT|PAID|CREDITED, SENT → PAID|CREDITED, PAID → CREDITED),
+//    each step by a member holding its code (send / record_payment /
+//    credit); never deleted except under app.invoice_maintenance by the
+//    app_platform role. Client, kind, credits and creation never change. A
+//    credit note's FK binds it to an invoice of the SAME client.
+//  - C75 (a): billed hours are never LOCKED by invoicing — the
+//    INVOICE_DRAFT / INVOICED lock reasons are not set; the issued invoice
+//    (and its frozen lines and, later, its time report) is the record.
+//  - Tenant gained invoice_footer_note (the note printed on every invoice).
+//    It, the four bank columns and the ten company columns (legal name, org.
+//    nr, VAT nr, seat, F-skatt, address ×5) are what every invoice prints, and
+//    are protected together by tenant_payment_details_guard (widened by
+//    20261009150000; on app_runtime only an active member holding
+//    settings:edit changes any of the fifteen); the app adds the code typed in
+//    the form (a one-minute window) and mails every owner (C75 (h)–(j)).
 
 // ───────────────────────────────────────────────────────────────────
 // 6.8 DOCUMENTS & FILES (§5, §6) — three layers:

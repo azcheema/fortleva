@@ -82,6 +82,13 @@ export async function setupTenant(label: string) {
   };
 
   const cleanup = async () => {
+    // Invoices (Phase 4 slice 107) RESTRICT their client, project and tenant,
+    // and an issued one is deleted only under the maintenance GUC by the
+    // platform role. A suite that makes invoices deletes them BEFORE its
+    // clients and projects (`deleteInvoices` below); this is the backstop
+    // for the tenant's own delete. One statement, so a credit note and the
+    // invoice it credits go together (the FK is NO ACTION).
+    await deleteInvoices();
     // search_index has NO foreign key to anything, so a row whose source
     // is already gone is unreachable by every delete below and would
     // outlive the tenant unattributable. Swept here, by tenant, so no
@@ -117,11 +124,19 @@ export async function setupTenant(label: string) {
     await runtimeClient.$disconnect();
   };
 
+  /** Every invoice of the tenant (lines cascade), issued ones included — the platform role under the maintenance GUC. */
+  async function deleteInvoices(): Promise<void> {
+    await platform.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
+      await tx.invoice.deleteMany({ where: { tenantId } });
+    });
+  }
+
   const audits = (action: string) =>
     platform.auditEvent.findMany({ where: { tenantId, action }, orderBy: { createdAt: "asc" } });
 
   const permissionsVersion = async () =>
     (await platform.tenant.findUniqueOrThrow({ where: { id: tenantId } })).permissionsVersion;
 
-  return { platform, tenantId, roleId, seats, cleanup, audits, permissionsVersion };
+  return { platform, tenantId, roleId, seats, cleanup, deleteInvoices, audits, permissionsVersion };
 }

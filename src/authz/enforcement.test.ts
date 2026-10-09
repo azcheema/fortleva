@@ -68,15 +68,14 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
   // product yet. The codes exist so the modules' names are already
   // spoken for.
   contracts: ["contract:view", "contract:create", "contract:edit", "contract:send", "contract:delete"],
+  // Phase 4 slice 107 gave `invoice:view`, `:create`, `:edit` and `:delete`
+  // their guards (`src/modules/invoicing/drafts.ts`); issuing and what
+  // follows it are slices 108 and 109.
   invoicing: [
-    "invoice:view",
-    "invoice:create",
-    "invoice:edit",
     "invoice:issue",
     "invoice:send",
     "invoice:record_payment",
     "invoice:credit",
-    "invoice:delete",
     "invoice:manage_series",
   ],
   reports: ["report:view", "report:upload", "report:delete"],

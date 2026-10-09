@@ -241,7 +241,20 @@ export type DomainErrorCode =
   | "PUSH_UNAVAILABLE" // this server has no VAPID key pair: nothing can be turned on
   | "PUSH_DEVICE_INVALID" // not one of the four push services, or keys no push could use
   | "PUSH_DEVICE_LIMIT" // ten devices already — remove one first
-  | "PUSH_RATE_LIMITED"; // twenty turn-ons an hour per member: a fact about the reader's own behaviour
+  | "PUSH_RATE_LIMITED" // twenty turn-ons an hour per member: a fact about the reader's own behaviour
+  // Invoicing (Phase 4 slice 107 — src/modules/invoicing). The workspace's
+  // details are typo-checked before they are printed on every invoice.
+  | "ORG_NR_INVALID" // not ten digits with a correct check digit
+  | "VAT_NUMBER_INVALID" // not SE + the org. number's ten digits + 01
+  | "BANKGIRO_INVALID" // not 7–8 digits with a correct check digit
+  | "PLUSGIRO_INVALID" // not 2–8 digits with a correct check digit
+  | "IBAN_INVALID" // shape or the mod-97 check
+  | "BIC_INVALID" // not 8 or 11 characters of the BIC shape
+  | "INVOICE_NOT_DRAFT" // the verb wanted a draft; the invoice was issued meanwhile (trigger)
+  | "INVOICE_LINE_LIMIT" // two hundred lines on one invoice
+  | "INVOICE_LINE_DESCRIPTION_REQUIRED" // a line says what was sold
+  | "INVOICE_AMOUNT_TOO_LARGE" // a line's amount past what an invoice holds
+  | "INVOICE_RATE_NOT_ALLOWED"; // a VAT rate the invoice's VAT treatment does not have
 
 export class DomainError extends Error {
   constructor(

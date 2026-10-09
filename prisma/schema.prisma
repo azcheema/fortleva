@@ -253,6 +253,11 @@ model Tenant {
   plusgiro              String?
   iban                  String?
   bic                   String?
+  /// The note printed on every invoice (Phase 4 slice 107). Protected with the
+  /// bank and company columns above (C75 (h)–(j)): the code typed in the form
+  /// and every owner mailed in the app, `tenant_payment_details_guard` in the
+  /// database (migrations 20261009120000, 20261009150000).
+  invoiceFooterNote     String?      @map("invoice_footer_note")
   storageUsedBytes      BigInt       @default(0) @map("storage_used_bytes")
   defaultLocale         String       @default("sv") @map("default_locale")
   suspendedAt           DateTime?    @map("suspended_at") @db.Timestamptz(6)
@@ -322,6 +327,9 @@ model Tenant {
   contactVaultUnlocks  ContactVaultUnlock[]
   sealedOpenRequests   SealedOpenRequest[]
   credentialAsks       CredentialAsk[]
+  // Phase 4 — invoicing (§6.7):
+  invoices     Invoice[]
+  invoiceLines InvoiceLine[]
 
   @@map("tenant")
 }
@@ -678,6 +686,7 @@ model Client {
   assets               ClientAsset[]
   sealedOpenRequests   SealedOpenRequest[]
   credentialAsks       CredentialAsk[]
+  invoices             Invoice[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -1022,6 +1031,8 @@ model Project {
   credentials    CredentialItem[]
   assets         ClientAsset[]
   credentialAsks CredentialAsk[]
+  // Phase 4:
+  invoices       Invoice[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -1335,6 +1346,109 @@ model Service {
   @@index([tenantId, renewsAt])
   @@index([tenantId, projectId]) // portal fan-out + the FK — 20260920190000
   @@map("service")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// INVOICING (Phase 4 — DATA_MODEL.md §6.7, §9; founder decision C75).
+// Slice 107: drafts. An invoice is a DRAFT (no number, edited freely,
+// deletable) until it is ISSUED, then never changes — `invoice_guard` and
+// `invoice_line_guard` in migration 20261009120000 hold it. Both tables are
+// class A until slice 109 builds the client's view.
+// ───────────────────────────────────────────────────────────────────
+
+enum InvoiceKind {
+  INVOICE
+  CREDIT_NOTE // corrections happen ONLY via credit notes (slice 108)
+
+  @@map("invoice_kind")
+}
+
+enum InvoiceStatus {
+  DRAFT // no number, editable, deletable
+  ISSUED // number allocated, content frozen
+  SENT
+  PAID
+  CREDITED
+
+  @@map("invoice_status")
+}
+
+/// An invoice. A DRAFT reads its client live; issuing (slice 108) freezes
+/// everything. The totals are NULL on a draft (computed on read from the
+/// lines by `src/modules/invoicing/money.ts`) and, once issued, equal to
+/// what the lines say — the guard checks it.
+model Invoice {
+  id                String        @id @default(uuid(7))
+  tenantId          String        @map("tenant_id")
+  clientId          String        @map("client_id")
+  projectId         String?       @map("project_id")
+  kind              InvoiceKind   @default(INVOICE)
+  creditsInvoiceId  String?       @map("credits_invoice_id") // CREDIT_NOTE → the invoice it credits
+  status            InvoiceStatus @default(DRAFT)
+  seriesId          String?       @map("series_id") // the series table and its FK land in slice 108
+  number            Int? // allocated at issue only; NULL while DRAFT
+  displayNumber     String?       @map("display_number")
+  vatProfile        VatProfile    @map("vat_profile")
+  currency          String        @db.Char(3)
+  paymentTermsDays  Int           @map("payment_terms_days")
+  periodStart       DateTime?     @map("period_start") @db.Date
+  periodEnd         DateTime?     @map("period_end") @db.Date
+  buyerReference    String?       @map("buyer_reference") // "Er referens" (EN 16931 BT-10)
+  ourReference      String?       @map("our_reference") // "Vår referens"
+  note              String? // printed on this invoice only
+  issueDate         DateTime?     @map("issue_date") @db.Date
+  dueDate           DateTime?     @map("due_date") @db.Date
+  issuedAt          DateTime?     @map("issued_at") @db.Timestamptz(6)
+  issuedByMemberId  String?       @map("issued_by_member_id") // attribution, no FK
+  subtotalExVat     Decimal?      @map("subtotal_ex_vat") @db.Decimal(16, 2)
+  vatTotal          Decimal?      @map("vat_total") @db.Decimal(16, 2)
+  total             Decimal?      @db.Decimal(16, 2)
+  createdByMemberId String        @map("created_by_member_id") // attribution, no FK
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  client      Client        @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict)
+  project     Project?      @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict)
+  credits     Invoice?      @relation("InvoiceCredits", fields: [tenantId, clientId, creditsInvoiceId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction)
+  creditNotes Invoice[]     @relation("InvoiceCredits")
+  lines       InvoiceLine[]
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@unique([tenantId, clientId, id]) // the line's FK: its client is its invoice's
+  @@unique([tenantId, seriesId, number]) // the gap-free series' backstop (slice 108)
+  @@index([tenantId, clientId, status])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, projectId])
+  @@index([tenantId, creditsInvoiceId])
+  @@map("invoice")
+}
+
+/// A line. Its amount is quantity × unit price, to the öre (CHECK); its VAT
+/// rate one its invoice's VAT treatment allows (`invoice_line_guard`).
+/// `clientId` is its invoice's (composite FK) — slice 109's portal gate.
+model InvoiceLine {
+  id             String   @id @default(uuid(7))
+  tenantId       String   @map("tenant_id")
+  clientId       String   @map("client_id")
+  invoiceId      String   @map("invoice_id")
+  position       Int
+  description    String
+  quantity       Decimal  @db.Decimal(12, 3)
+  unit           String?
+  unitPriceExVat Decimal  @map("unit_price_ex_vat") @db.Decimal(14, 2)
+  vatRatePct     Decimal  @map("vat_rate_pct") @db.Decimal(5, 2)
+  amountExVat    Decimal  @map("amount_ex_vat") @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  invoice Invoice @relation(fields: [tenantId, clientId, invoiceId], references: [tenantId, clientId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id]) // composite-FK target (time_entry.invoice_line_id, step 4)
+  @@unique([tenantId, invoiceId, position])
+  @@index([tenantId, clientId, invoiceId])
+  @@map("invoice_line")
 }
 
 // ───────────────────────────────────────────────────────────────────

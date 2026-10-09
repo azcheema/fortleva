@@ -4,6 +4,7 @@ import { isNotificationKind, type NotificationKind } from "./catalog";
 import { CONTACT_DIGEST_MAIL } from "./client-digest";
 import { MEMBER_DIGEST_MAIL, renderMemberDigest } from "./digest";
 import { REPLY_ADDRESS_CHANGED_MAIL } from "./reply-address-mail-key";
+import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MAIL_KEYS, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
@@ -40,6 +41,7 @@ const EXTRA_TEMPLATES = [
   MEMBER_DIGEST_MAIL,
   REPLY_ADDRESS_CHANGED_MAIL,
   CONTACT_DIGEST_MAIL,
+  INVOICE_DETAILS_CHANGED_MAIL,
 ] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
@@ -320,6 +322,20 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Svar på arbetsytans e-post – från ert team och era kunder – går nu till en ny adress. Se den i Fortleva under Inställningar, Preferenser. Om ni inte väntade er detta, ändra den där.",
     },
   },
+  // Phase 4 slice 107 — what the invoices say about the workspace changed:
+  // the company details, the bank details or the note on every invoice (C75
+  // (h)–(j); `invoice-details-mail-key.ts`). A security notice to every owner,
+  // whatever their level; LINKS, NOT DATA — nothing of the details is in it.
+  [INVOICE_DETAILS_CHANGED_MAIL]: {
+    en: {
+      subject: "The details on your invoices were changed",
+      body: "The company details, bank details or note printed on your workspace's invoices were changed. See what they are now, and who changed them, in Fortleva under Settings, Invoicing. If you did not expect this, check them before you send another invoice.",
+    },
+    sv: {
+      subject: "Uppgifterna på era fakturor har ändrats",
+      body: "Företagsuppgifterna, bankuppgifterna eller meddelandet som skrivs ut på arbetsytans fakturor har ändrats. Se vad de är nu, och vem som ändrade dem, i Fortleva under Inställningar, Fakturering. Om ni inte väntade er detta, kontrollera dem innan ni skickar nästa faktura.",
+    },
+  },
   // Phase 5 slice 101 — a client person's weekly summary (C69;
   // `client-digest.ts`). The real mail is `renderContactDigest`, rendered by
   // the outbox with the person's own unsubscribe link; this copy is only what
@@ -396,6 +412,7 @@ const linkFor = (
   if (key === MEMBER_DIGEST_MAIL) return new URL("/inbox", appUrl);
   if (key === CONTACT_DIGEST_MAIL) return new URL("/portal", appUrl);
   if (key === REPLY_ADDRESS_CHANGED_MAIL) return new URL("/settings/preferences", appUrl);
+  if (key === INVOICE_DETAILS_CHANGED_MAIL) return new URL("/settings/invoicing", appUrl);
   // An export (slice 95): the exports page, behind the vault's door, says
   // who exported what and when — the mail itself names nothing.
   if (key === VAULT_EXPORTED_MAIL) return new URL("/vault/exports", appUrl);

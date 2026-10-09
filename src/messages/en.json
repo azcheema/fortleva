@@ -98,7 +98,9 @@
     "vault": "Vault",
     "renewals": "Renewals",
     "vaultSettings": "Vault",
-    "updateSettings": "Progress updates"
+    "updateSettings": "Progress updates",
+    "invoices": "Invoices",
+    "invoiceSettings": "Invoicing"
   },
   "shell": {
     "palette": {
@@ -1411,6 +1413,88 @@
         "titleRequired": "Give each of your own headings a name.",
         "titleTwice": "Two of your headings have the same name."
       }
+    },
+    "invoicing": {
+      "title": "Invoicing",
+      "description": "What your invoices say about your company, how clients pay you, and your usual payment terms.",
+      "noPermission": "Invoicing settings are for people who manage the workspace's settings.",
+      "missing": {
+        "title": "Before you can issue invoices",
+        "body": "Add: {list}.",
+        "items": {
+          "legalName": "your company's legal name",
+          "orgNr": "its organisation number",
+          "vatNumber": "its VAT number",
+          "seat": "its registered office",
+          "address": "its address",
+          "payment": "a Bankgiro, PlusGiro or IBAN number"
+        }
+      },
+      "company": {
+        "title": "Your company on invoices",
+        "description": "Printed on every invoice you issue.",
+        "saved": "Company details saved. The owners are told by email.",
+        "vatHint": "For example {vat}",
+        "fields": {
+          "legalName": "Legal name",
+          "orgNr": "Organisation number",
+          "vatNumber": "VAT number",
+          "seat": "Registered office",
+          "fSkattApproved": "Approved for F-tax",
+          "addressLine1": "Address",
+          "addressLine2": "Address line 2",
+          "postalCode": "Postal code",
+          "city": "City",
+          "countryCode": "Country (two letters)"
+        },
+        "change": "Change company details…",
+        "formLabel": "Company details",
+        "formIntro": "Leave a field empty to remove it. Every owner gets an email when you save.",
+        "save": "Save company details",
+        "seatHint": "The municipality where the company is registered. Needed on an aktiebolag's invoices."
+      },
+      "payment": {
+        "title": "How clients pay",
+        "description": "Your bank details and the note printed on every invoice. Changing them asks for your authenticator code, and every owner gets an email.",
+        "fields": {
+          "bankgiro": "Bankgiro",
+          "plusgiro": "PlusGiro",
+          "iban": "IBAN",
+          "bic": "BIC",
+          "footerNote": "Note on every invoice"
+        },
+        "hints": {
+          "bankgiro": "Seven or eight digits, for example 5050-1055.",
+          "plusgiro": "Two to eight digits.",
+          "iban": "For payments from abroad.",
+          "bic": "Your bank's code, given with an IBAN.",
+          "footerNote": "For example your late-payment interest. Up to 500 characters."
+        },
+        "change": "Change payment details…",
+        "formLabel": "Payment details",
+        "formIntro": "Leave a field empty to remove it. Every owner gets an email when you save.",
+        "save": "Save payment details",
+        "saved": "Payment details saved. The owners are told by email."
+      },
+      "terms": {
+        "title": "Payment terms",
+        "label": "Days to pay",
+        "days": "{days, plural, one {# day} other {# days}}",
+        "hint": "New drafts start with this, unless the client's last invoice had other terms. {min}–{max} days."
+      },
+      "enterCode": "Enter the code from your authenticator app.",
+      "unchanged": "Nothing changed.",
+      "protected": {
+        "codeLabel": "Your authenticator code",
+        "codeHint": "From your authenticator app — asked every time these change.",
+        "changedBy": "Last changed by {name}, {when}.",
+        "someoneGone": "someone no longer in the workspace",
+        "protectedNote": "Changing these asks for your authenticator code, and every owner gets an email.",
+        "needsFactor": "To change these, first set up an authenticator app on your account.",
+        "setUpFactor": "Set up an authenticator",
+        "unreachable": "Couldn't reach Fortleva. Check your connection and try again.",
+        "nothingChanged": "Nothing to save — no field was changed."
+      }
     }
   },
   "files": {
@@ -1615,7 +1699,18 @@
     "PUSH_UNAVAILABLE": "Phone and browser notifications are not available on this server yet.",
     "PUSH_DEVICE_INVALID": "This browser gave Fortleva something it can't send notifications to. Try again, or try another browser.",
     "PUSH_DEVICE_LIMIT": "You can have up to 10 devices. Remove one first.",
-    "PUSH_RATE_LIMITED": "Too many tries in the last hour. Try again later."
+    "PUSH_RATE_LIMITED": "Too many tries in the last hour. Try again later.",
+    "ORG_NR_INVALID": "That isn't a valid Swedish organisation number. Check the digits — it has ten, the last one a check digit.",
+    "VAT_NUMBER_INVALID": "That isn't a valid Swedish VAT number. It is SE, your organisation number's ten digits, then 01.",
+    "BANKGIRO_INVALID": "That isn't a valid Bankgiro number. Check the digits.",
+    "PLUSGIRO_INVALID": "That isn't a valid PlusGiro number. Check the digits.",
+    "IBAN_INVALID": "That isn't a valid IBAN. Check the letters and digits.",
+    "BIC_INVALID": "That isn't a valid BIC. It has 8 or 11 letters and digits.",
+    "INVOICE_NOT_DRAFT": "This invoice is no longer a draft, so it can't be changed.",
+    "INVOICE_LINE_LIMIT": "An invoice can have at most 200 lines.",
+    "INVOICE_LINE_DESCRIPTION_REQUIRED": "A line needs a description of what you are charging for.",
+    "INVOICE_AMOUNT_TOO_LARGE": "That amount is too large for one line.",
+    "INVOICE_RATE_NOT_ALLOWED": "That VAT rate doesn't apply to this invoice's VAT treatment."
   },
   "assignments": {
     "title": "Team",
@@ -4576,5 +4671,138 @@
   },
   "push": {
     "title": "Fortleva"
+  },
+  "invoices": {
+    "list": {
+      "title": "Invoices",
+      "description": "Your invoices, newest first. Drafts have no number until they are issued.",
+      "noPermission": "Invoices are for people who handle the workspace's billing.",
+      "newTitle": "New invoice",
+      "noClients": "There is no client you can invoice yet.",
+      "listTitle": "All invoices",
+      "filter": "Show",
+      "allClients": "All clients",
+      "empty": "No invoices yet",
+      "emptyForClient": "No invoices for this client yet",
+      "emptyBody": "Pick a client above and create a draft.",
+      "emptyAction": "Create a draft",
+      "draftLink": "Draft",
+      "status": {
+        "DRAFT": "Draft",
+        "ISSUED": "Issued",
+        "SENT": "Sent",
+        "PAID": "Paid",
+        "CREDITED": "Credited"
+      },
+      "columns": {
+        "number": "Number",
+        "client": "Client",
+        "project": "Project",
+        "date": "Date",
+        "total": "Total"
+      },
+      "limited": "Showing the newest {limit}. Pick a client to see theirs."
+    },
+    "new": {
+      "client": "Client",
+      "pickClientOption": "Choose a client…",
+      "project": "Project (optional)",
+      "noProject": "No project",
+      "projectOption": "{key} · {name}",
+      "create": "Create draft",
+      "pickClient": "Choose a client first."
+    },
+    "draft": {
+      "title": "Draft invoice",
+      "draftBadge": "Draft",
+      "menuLabel": "Draft invoice actions",
+      "noNumberYet": "Drafts have no number until they are issued.",
+      "noPermission": "Invoices are for people who handle the workspace's billing.",
+      "delete": "Delete draft",
+      "deleteConfirm": "Delete this draft and its lines? This can't be undone.",
+      "deleted": "Draft deleted.",
+      "billTo": {
+        "title": "Bill to",
+        "edit": "Edit on the client's page",
+        "name": "Client",
+        "address": "Address",
+        "orgNr": "Organisation number",
+        "vatNumber": "VAT number",
+        "email": "Billing email",
+        "live": "Until the invoice is issued, it shows the client's details as they are now.",
+        "archived": "This client is archived.",
+        "reverseChargeNeedsVat": "Reverse charge needs the client's VAT number. Add it on the client's page before you issue the invoice."
+      },
+      "details": {
+        "title": "Details"
+      },
+      "vat": {
+        "label": "VAT",
+        "profiles": {
+          "SE_DOMESTIC": "Swedish VAT",
+          "EU_REVERSE_CHARGE": "Reverse charge (EU business)",
+          "OUTSIDE_SCOPE": "Outside the scope of Swedish VAT"
+        },
+        "change": "Change VAT",
+        "question": "{count, plural, one {# line at 12 or 6 % will change to 0 %.} other {# lines at 12 or 6 % will change to 0 %.}} Change to {profile}?",
+        "changed": "VAT changed.",
+        "changedLines": "VAT changed: {count, plural, one {# line has a new rate.} other {# lines have a new rate.}}"
+      },
+      "fields": {
+        "currency": "Currency",
+        "paymentTermsDays": "Payment terms",
+        "project": "Project",
+        "periodStart": "Work from",
+        "periodEnd": "Work until",
+        "buyerReference": "Your reference",
+        "ourReference": "Our reference",
+        "note": "Note on this invoice"
+      },
+      "days": "{days, plural, one {# day} other {# days}}",
+      "noProject": "No project",
+      "projectOption": "{key} · {name}",
+      "notePlaceholder": "Add a note for this invoice",
+      "lines": {
+        "title": "Lines",
+        "description": "Amounts in {currency}, before VAT."
+      },
+      "totals": {
+        "title": "Totals",
+        "subtotal": "Subtotal",
+        "vatAt": "VAT {rate} % on {base}",
+        "total": "Total",
+        "noVat": {
+          "EU_REVERSE_CHARGE": "VAT — reverse charge",
+          "OUTSIDE_SCOPE": "No Swedish VAT"
+        }
+      },
+      "projectOptionArchived": "{key} · {name} (archived)"
+    },
+    "lines": {
+      "title": "Lines",
+      "rate": "{rate} %",
+      "columns": {
+        "description": "Description",
+        "quantity": "Qty",
+        "unit": "Unit",
+        "unitPrice": "Price",
+        "vat": "VAT",
+        "amount": "Amount"
+      },
+      "unitPlaceholder": "Add unit",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "remove": "Remove line",
+      "removeConfirm": "Remove “{description}”?",
+      "emptyEditable": "No lines yet. Add the first one below.",
+      "empty": "No lines.",
+      "newLabel": "New line",
+      "newPlaceholder": "What are you charging for?",
+      "add": "Add line",
+      "added": "Line added.",
+      "removed": "Line removed.",
+      "moved": "Line moved.",
+      "unreachable": "Couldn't reach Fortleva. Check your connection and try again."
+    }
   }
 }

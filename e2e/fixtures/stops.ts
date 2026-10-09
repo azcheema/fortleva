@@ -326,6 +326,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // 3V slice 88: Renewals — the lapsed licence, the domain due in 20 days
     // and the agreement renewing in ~30, as the owner (no door).
     { name: "expirations", path: "/expirations" },
+    // Phase 4 slice 107: the invoice list (the seeded draft on it) and that
+    // draft's editor — lines in a table, the totals as the lines make them.
+    { name: "invoices", path: "/invoices" },
+    { name: "invoice-draft", path: `/invoices/${seed.invoiceDraftId}` },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
     { name: "time-team", path: "/time/team" },
@@ -356,6 +360,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // 3V slice 91: the vault's two workspace switches (share links, logins
     // shown to clients) — both on in the fixture.
     { name: "settings-vault", path: "/settings/vault" },
+    // Phase 4 slice 107: the workspace's details on its invoices (the
+    // missing-details caution shows: the fixture sets none).
+    { name: "settings-invoicing", path: "/settings/invoicing" },
     // 2W/2T: the member's own notification settings — the one Settings
     // page with no permission gate.
     { name: "settings-notifications", path: "/settings/notifications" },

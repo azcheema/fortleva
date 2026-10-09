@@ -83,6 +83,9 @@ export const MODEL_CLASSES = {
     "contactVaultUnlock",
     "sealedOpenRequest",
     "credentialAsk",
+    // Phase 4 — invoicing (DATA_MODEL.md §6.7):
+    "invoice",
+    "invoiceLine",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -214,6 +217,12 @@ export const RLS_CLASSES = {
     // SYSTEM (a send, a decline); the contact reads it only through the
     // broker (a brokered read), never as rows.
     "credentialAsk",
+    // Phase 4 slice 107 — invoices and their lines. CLASS A UNTIL SLICE 109:
+    // no client reads an invoice until the portal's view is built, which
+    // reclasses both to B with a status gate — the line already carries its
+    // invoice's `client_id` (composite FK) for that gate.
+    "invoice",
+    "invoiceLine",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

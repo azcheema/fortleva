@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { TenantDb } from "@/db";
 
+import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
 import { DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { REPLY_ADDRESS_CHANGED_MAIL } from "./reply-address-mail-key";
 import { SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
@@ -39,6 +40,7 @@ export const REPLY_TO_PENDING_KEY = "mail.replyToPending";
  */
 export const MAIL_WITHOUT_REPLY_TO: ReadonlySet<string> = new Set([
   REPLY_ADDRESS_CHANGED_MAIL,
+  INVOICE_DETAILS_CHANGED_MAIL,
   VAULT_EXPORTED_MAIL,
   DOOR_ALARM_MEMBER_MAIL,
   ...Object.values(SEALED_MEMBER_MAIL),

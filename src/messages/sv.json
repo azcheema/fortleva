@@ -98,7 +98,9 @@
     "vault": "Valv",
     "renewals": "Förnyelser",
     "vaultSettings": "Valv",
-    "updateSettings": "Projektuppdateringar"
+    "updateSettings": "Projektuppdateringar",
+    "invoices": "Fakturor",
+    "invoiceSettings": "Fakturering"
   },
   "shell": {
     "palette": {
@@ -1411,6 +1413,88 @@
         "titleRequired": "Ge var och en av dina egna rubriker ett namn.",
         "titleTwice": "Två av dina rubriker har samma namn."
       }
+    },
+    "invoicing": {
+      "title": "Fakturering",
+      "description": "Vad era fakturor säger om ert företag, hur kunderna betalar er och era vanliga betalningsvillkor.",
+      "noPermission": "Inställningarna för fakturering är för dem som sköter arbetsytans inställningar.",
+      "missing": {
+        "title": "Innan ni kan utfärda fakturor",
+        "body": "Lägg till: {list}.",
+        "items": {
+          "legalName": "företagets registrerade namn",
+          "orgNr": "organisationsnummer",
+          "vatNumber": "momsregistreringsnummer",
+          "seat": "säte",
+          "address": "adress",
+          "payment": "ett bankgiro-, plusgiro- eller IBAN-nummer"
+        }
+      },
+      "company": {
+        "title": "Ert företag på fakturorna",
+        "description": "Skrivs ut på varje faktura ni utfärdar.",
+        "saved": "Företagsuppgifterna har sparats. Ägarna får veta det via mejl.",
+        "vatHint": "Till exempel {vat}",
+        "fields": {
+          "legalName": "Registrerat namn",
+          "orgNr": "Organisationsnummer",
+          "vatNumber": "Momsregistreringsnummer",
+          "seat": "Säte",
+          "fSkattApproved": "Godkänd för F-skatt",
+          "addressLine1": "Adress",
+          "addressLine2": "Adressrad 2",
+          "postalCode": "Postnummer",
+          "city": "Ort",
+          "countryCode": "Land (två bokstäver)"
+        },
+        "change": "Ändra företagsuppgifter…",
+        "formLabel": "Företagsuppgifter",
+        "formIntro": "Lämna ett fält tomt för att ta bort det. Alla ägare får ett mejl när du sparar.",
+        "save": "Spara företagsuppgifter",
+        "seatHint": "Kommunen där företaget har sitt säte. Krävs på ett aktiebolags fakturor."
+      },
+      "payment": {
+        "title": "Hur kunderna betalar",
+        "description": "Era bankuppgifter och meddelandet som skrivs ut på varje faktura. För att ändra dem anger du koden från din autentiseringsapp, och alla ägare får ett mejl.",
+        "fields": {
+          "bankgiro": "Bankgiro",
+          "plusgiro": "Plusgiro",
+          "iban": "IBAN",
+          "bic": "BIC",
+          "footerNote": "Meddelande på varje faktura"
+        },
+        "hints": {
+          "bankgiro": "Sju eller åtta siffror, till exempel 5050-1055.",
+          "plusgiro": "Två till åtta siffror.",
+          "iban": "För betalningar från utlandet.",
+          "bic": "Bankens kod, som anges tillsammans med IBAN.",
+          "footerNote": "Till exempel er dröjsmålsränta. Högst 500 tecken."
+        },
+        "change": "Ändra betalningsuppgifter…",
+        "formLabel": "Betalningsuppgifter",
+        "formIntro": "Lämna ett fält tomt för att ta bort det. Alla ägare får ett mejl när du sparar.",
+        "save": "Spara betalningsuppgifter",
+        "saved": "Betalningsuppgifterna har sparats. Ägarna får veta det via mejl."
+      },
+      "terms": {
+        "title": "Betalningsvillkor",
+        "label": "Dagar att betala",
+        "days": "{days, plural, one {# dag} other {# dagar}}",
+        "hint": "Nya utkast börjar med detta, om inte kundens senaste faktura hade andra villkor. {min}–{max} dagar."
+      },
+      "enterCode": "Ange koden från din autentiseringsapp.",
+      "unchanged": "Inget ändrades.",
+      "protected": {
+        "codeLabel": "Din kod från autentiseringsappen",
+        "codeHint": "Från din autentiseringsapp – den behövs varje gång de här ändras.",
+        "changedBy": "Senast ändrade av {name}, {when}.",
+        "someoneGone": "någon som inte längre finns i arbetsytan",
+        "protectedNote": "För att ändra dessa anger du koden från din autentiseringsapp, och alla ägare får ett mejl.",
+        "needsFactor": "För att ändra dessa behöver du först ställa in en autentiseringsapp på ditt konto.",
+        "setUpFactor": "Ställ in en autentiseringsapp",
+        "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen.",
+        "nothingChanged": "Inget att spara – inget fält ändrades."
+      }
     }
   },
   "files": {
@@ -1615,7 +1699,18 @@
     "PUSH_UNAVAILABLE": "Aviseringar till mobil och webbläsare är inte tillgängliga på den här servern ännu.",
     "PUSH_DEVICE_INVALID": "Webbläsaren gav Fortleva något som det inte går att skicka aviseringar till. Försök igen, eller prova en annan webbläsare.",
     "PUSH_DEVICE_LIMIT": "Du kan ha upp till 10 enheter. Ta bort en först.",
-    "PUSH_RATE_LIMITED": "För många försök den senaste timmen. Försök igen senare."
+    "PUSH_RATE_LIMITED": "För många försök den senaste timmen. Försök igen senare.",
+    "ORG_NR_INVALID": "Det är inte ett giltigt svenskt organisationsnummer. Kontrollera siffrorna – det har tio, och den sista är en kontrollsiffra.",
+    "VAT_NUMBER_INVALID": "Det är inte ett giltigt svenskt momsregistreringsnummer. Det är SE, organisationsnumrets tio siffror och sedan 01.",
+    "BANKGIRO_INVALID": "Det är inte ett giltigt bankgironummer. Kontrollera siffrorna.",
+    "PLUSGIRO_INVALID": "Det är inte ett giltigt plusgironummer. Kontrollera siffrorna.",
+    "IBAN_INVALID": "Det är inte ett giltigt IBAN. Kontrollera bokstäverna och siffrorna.",
+    "BIC_INVALID": "Det är inte en giltig BIC. Den har 8 eller 11 bokstäver och siffror.",
+    "INVOICE_NOT_DRAFT": "Fakturan är inte längre ett utkast och kan inte ändras.",
+    "INVOICE_LINE_LIMIT": "En faktura kan ha högst 200 rader.",
+    "INVOICE_LINE_DESCRIPTION_REQUIRED": "En rad behöver en beskrivning av vad ni fakturerar.",
+    "INVOICE_AMOUNT_TOO_LARGE": "Beloppet är för stort för en rad.",
+    "INVOICE_RATE_NOT_ALLOWED": "Den momssatsen gäller inte för fakturans momshantering."
   },
   "assignments": {
     "title": "Team",
@@ -4576,5 +4671,138 @@
   },
   "push": {
     "title": "Fortleva"
+  },
+  "invoices": {
+    "list": {
+      "title": "Fakturor",
+      "description": "Era fakturor, nyaste först. Utkast får ett nummer först när de utfärdas.",
+      "noPermission": "Fakturor är för dem som sköter arbetsytans fakturering.",
+      "newTitle": "Ny faktura",
+      "noClients": "Det finns ännu ingen kund du kan fakturera.",
+      "listTitle": "Alla fakturor",
+      "filter": "Visa",
+      "allClients": "Alla kunder",
+      "empty": "Inga fakturor än",
+      "emptyForClient": "Inga fakturor för den här kunden än",
+      "emptyBody": "Välj en kund ovan och skapa ett utkast.",
+      "emptyAction": "Skapa ett utkast",
+      "draftLink": "Utkast",
+      "status": {
+        "DRAFT": "Utkast",
+        "ISSUED": "Utfärdad",
+        "SENT": "Skickad",
+        "PAID": "Betald",
+        "CREDITED": "Krediterad"
+      },
+      "columns": {
+        "number": "Nummer",
+        "client": "Kund",
+        "project": "Projekt",
+        "date": "Datum",
+        "total": "Summa"
+      },
+      "limited": "Visar de {limit} nyaste. Välj en kund för att se deras."
+    },
+    "new": {
+      "client": "Kund",
+      "pickClientOption": "Välj en kund…",
+      "project": "Projekt (valfritt)",
+      "noProject": "Inget projekt",
+      "projectOption": "{key} · {name}",
+      "create": "Skapa utkast",
+      "pickClient": "Välj en kund först."
+    },
+    "draft": {
+      "title": "Fakturautkast",
+      "draftBadge": "Utkast",
+      "menuLabel": "Åtgärder för fakturautkastet",
+      "noNumberYet": "Utkast får ett nummer först när de utfärdas.",
+      "noPermission": "Fakturor är för dem som sköter arbetsytans fakturering.",
+      "delete": "Ta bort utkast",
+      "deleteConfirm": "Ta bort utkastet och dess rader? Det går inte att ångra.",
+      "deleted": "Utkastet har tagits bort.",
+      "billTo": {
+        "title": "Fakturamottagare",
+        "edit": "Ändra på kundens sida",
+        "name": "Kund",
+        "address": "Adress",
+        "orgNr": "Organisationsnummer",
+        "vatNumber": "Momsregistreringsnummer",
+        "email": "E-post för fakturor",
+        "live": "Tills fakturan utfärdas visar den kundens uppgifter som de är nu.",
+        "archived": "Kunden är arkiverad.",
+        "reverseChargeNeedsVat": "Omvänd betalningsskyldighet kräver kundens momsregistreringsnummer. Lägg till det på kundens sida innan fakturan utfärdas."
+      },
+      "details": {
+        "title": "Uppgifter"
+      },
+      "vat": {
+        "label": "Moms",
+        "profiles": {
+          "SE_DOMESTIC": "Svensk moms",
+          "EU_REVERSE_CHARGE": "Omvänd betalningsskyldighet (företag i EU)",
+          "OUTSIDE_SCOPE": "Utanför svensk moms"
+        },
+        "change": "Ändra moms",
+        "question": "{count, plural, one {# rad med 12 eller 6 % får 0 %.} other {# rader med 12 eller 6 % får 0 %.}} Byta till {profile}?",
+        "changed": "Momsen har ändrats.",
+        "changedLines": "Momsen har ändrats: {count, plural, one {# rad har fått ny momssats.} other {# rader har fått ny momssats.}}"
+      },
+      "fields": {
+        "currency": "Valuta",
+        "paymentTermsDays": "Betalningsvillkor",
+        "project": "Projekt",
+        "periodStart": "Arbete från",
+        "periodEnd": "Arbete till",
+        "buyerReference": "Er referens",
+        "ourReference": "Vår referens",
+        "note": "Meddelande på den här fakturan"
+      },
+      "days": "{days, plural, one {# dag} other {# dagar}}",
+      "noProject": "Inget projekt",
+      "projectOption": "{key} · {name}",
+      "notePlaceholder": "Lägg till ett meddelande på fakturan",
+      "lines": {
+        "title": "Rader",
+        "description": "Belopp i {currency}, exklusive moms."
+      },
+      "totals": {
+        "title": "Summor",
+        "subtotal": "Summa exkl. moms",
+        "vatAt": "Moms {rate} % på {base}",
+        "total": "Att betala",
+        "noVat": {
+          "EU_REVERSE_CHARGE": "Moms – omvänd betalningsskyldighet",
+          "OUTSIDE_SCOPE": "Ingen svensk moms"
+        }
+      },
+      "projectOptionArchived": "{key} · {name} (arkiverat)"
+    },
+    "lines": {
+      "title": "Rader",
+      "rate": "{rate} %",
+      "columns": {
+        "description": "Beskrivning",
+        "quantity": "Antal",
+        "unit": "Enhet",
+        "unitPrice": "À-pris",
+        "vat": "Moms",
+        "amount": "Belopp"
+      },
+      "unitPlaceholder": "Lägg till enhet",
+      "moveUp": "Flytta upp",
+      "moveDown": "Flytta ned",
+      "remove": "Ta bort rad",
+      "removeConfirm": "Ta bort ”{description}”?",
+      "emptyEditable": "Inga rader än. Lägg till den första nedan.",
+      "empty": "Inga rader.",
+      "newLabel": "Ny rad",
+      "newPlaceholder": "Vad fakturerar ni för?",
+      "add": "Lägg till rad",
+      "added": "Raden har lagts till.",
+      "removed": "Raden har tagits bort.",
+      "moved": "Raden har flyttats.",
+      "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
+    }
   }
 }
