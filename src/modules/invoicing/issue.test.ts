@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { checkIssue, clientBlockers, type IssueClient } from "./issue-check";
+import {
+  checkCreditIssue,
+  checkIssue,
+  clientBlockers,
+  creditCovers,
+  creditLeavesNegative,
+  creditOverRates,
+  type IssueClient,
+  type RateNets,
+} from "./issue-check";
 import { invoiceTotals } from "./money";
 import type { CompanyDetails, PaymentDetails } from "./seller";
 
@@ -40,20 +49,25 @@ const base = {
   paymentTermsDays: 30,
   locale: null,
   hasPeriod: true,
+  periodEnd: null,
   today: "2026-10-09",
 };
 
 describe("checkIssue — what the issue dialog says and the issue refuses on", () => {
   it("answers the number, the dates, the language; nothing missing", () => {
     expect(checkIssue(base)).toEqual({
+      kind: "INVOICE",
       blockers: [],
       sellerMissing: [],
       nextNumber: 10007,
       issueDate: "2026-10-09",
       dueDate: "2026-11-08",
       needsFx: false,
+      rateDay: null,
       locale: "sv",
       noPeriod: false,
+      overCredit: [],
+      creditsIssueDate: null,
     });
   });
 
@@ -112,5 +126,131 @@ describe("clientBlockers — the treatment against the buyer (the guard restates
 
   it("Swedish VAT needs no country (a blank one is Sweden)", () => {
     expect(clientBlockers(client({ countryCode: null }), "SE_DOMESTIC")).toEqual([]);
+  });
+});
+
+describe("the rate's day on an invoice (C78 (a))", () => {
+  const eur = { ...base, currency: "EUR" };
+
+  it("is the day the work ended, the invoice date without a period, never after it", () => {
+    expect(checkIssue({ ...eur, periodEnd: "2026-09-30" }).rateDay).toBe("2026-09-30");
+    expect(checkIssue({ ...eur, periodEnd: null }).rateDay).toBe("2026-10-09");
+    expect(checkIssue({ ...eur, periodEnd: "2026-10-31" }).rateDay).toBe("2026-10-09");
+    // No SEK VAT wanted: no day.
+    expect(checkIssue({ ...base, periodEnd: "2026-09-30" }).rateDay).toBeNull();
+  });
+
+  it("refuses a work period that ended before the ECB's 90 days of history, before the click", () => {
+    expect(checkIssue({ ...eur, periodEnd: "2026-07-10" }).blockers).toEqual(["fxTooOld"]);
+    expect(checkIssue({ ...eur, periodEnd: "2026-07-11" }).blockers).toEqual([]);
+    // In SEK the day does not matter.
+    expect(checkIssue({ ...base, periodEnd: "2026-01-01" }).blockers).toEqual([]);
+  });
+});
+
+const nets = (...pairs: [bigint, bigint][]): RateNets => new Map(pairs);
+
+describe("the over-credit rule (slice 108b; the guard's invoice_credit_within)", () => {
+  // An invoice of 1 000,00 at 25 % and 200,00 at 6 %.
+  const original = nets([2500n, 100_000n], [600n, 20_000n]);
+
+  it("lets credit notes take, at each rate, up to what the invoice has", () => {
+    expect(creditOverRates(original, nets(), original)).toEqual([]);
+    expect(creditOverRates(original, nets([2500n, 40_000n]), nets([2500n, 60_000n]))).toEqual([]);
+  });
+
+  it("refuses more than is left at a rate, naming what is left", () => {
+    expect(creditOverRates(original, nets([2500n, 40_000n]), nets([2500n, 60_001n]))).toEqual([
+      { rate: 2500n, left: 60_000n, asked: 60_001n },
+    ]);
+  });
+
+  it("refuses a rate the invoice lacks — even a line netting to nothing there", () => {
+    expect(creditOverRates(original, nets(), nets([1200n, 100n]))).toEqual([{ rate: 1200n, left: 0n, asked: 100n }]);
+    expect(creditOverRates(original, nets(), nets([1200n, 0n]))).toEqual([{ rate: 1200n, left: 0n, asked: 0n }]);
+  });
+
+  it("is signed: a discount rate is credited towards its own sign, never past it, and a credit note never un-credits a rate", () => {
+    // 1 000,00 at 25 % and a discount of −200,00 at 6 %.
+    const withDiscount = nets([2500n, 100_000n], [600n, -20_000n]);
+    expect(creditOverRates(withDiscount, nets(), withDiscount)).toEqual([]);
+    // Crediting only the discount pushes the invoice UP: refused.
+    expect(creditOverRates(withDiscount, nets(), nets([600n, 20_000n]))).toEqual([{ rate: 600n, left: -20_000n, asked: 20_000n }]);
+    // A negative net at a positive rate "un-credits" it, even within the cumulative bound.
+    expect(creditOverRates(original, nets([2500n, 50_000n]), nets([2500n, -10_000n]))).toEqual([
+      { rate: 2500n, left: 50_000n, asked: -10_000n },
+    ]);
+  });
+
+  it("is covered only when every rate is credited exactly", () => {
+    expect(creditCovers(original, original)).toBe(true);
+    expect(creditCovers(original, nets([2500n, 100_000n]))).toBe(false);
+    expect(creditCovers(original, nets([2500n, 100_000n], [600n, 19_999n]))).toBe(false);
+  });
+
+  it("refuses a part credit that would leave only a discount, which nothing could credit later", () => {
+    const withDiscount = nets([2500n, 100_000n], [600n, -20_000n]);
+    expect(creditLeavesNegative(withDiscount, nets(), nets([2500n, 100_000n]))).toBe(true);
+    expect(creditLeavesNegative(withDiscount, nets(), nets([2500n, 50_000n]))).toBe(false);
+    expect(creditLeavesNegative(withDiscount, nets(), withDiscount)).toBe(false);
+  });
+});
+
+describe("checkCreditIssue — what a credit note's issue dialog says", () => {
+  const original = nets([2500n, 100_000n]);
+  const credit = {
+    reason: "Wrong hours",
+    lineCount: 1,
+    totals: invoiceTotals([{ amount: 100_000n, rate: 2500n }]),
+    originalOpen: true,
+    original,
+    credited: nets(),
+    numbering,
+    currency: "SEK",
+    originalRateDate: null,
+    originalIssueDate: "2026-10-01",
+    locale: "sv" as const,
+    today: "2026-10-09",
+  };
+
+  it("is dated today, due the same day, and asks nothing of the seller or the client", () => {
+    expect(checkCreditIssue(credit)).toEqual({
+      kind: "CREDIT_NOTE",
+      blockers: [],
+      sellerMissing: [],
+      nextNumber: 10007,
+      issueDate: "2026-10-09",
+      dueDate: "2026-10-09",
+      needsFx: false,
+      rateDay: null,
+      locale: "sv",
+      noPeriod: false,
+      overCredit: [],
+      creditsIssueDate: "2026-10-01",
+    });
+  });
+
+  it("is never dated before its invoice (a workspace moved west)", () => {
+    expect(checkCreditIssue({ ...credit, originalIssueDate: "2026-10-10" }).blockers).toEqual(["beforeInvoice"]);
+  });
+
+  it("refuses VAT in SEK when its invoice stated no rate (its VAT came to nothing)", () => {
+    const r = checkCreditIssue({ ...credit, currency: "EUR", originalRateDate: null });
+    expect(r.blockers).toEqual(["noRate"]);
+  });
+
+  it("wants a reason, a line, a total above zero, an open invoice and nothing over", () => {
+    expect(checkCreditIssue({ ...credit, reason: "  " }).blockers).toEqual(["noReason"]);
+    expect(checkCreditIssue({ ...credit, lineCount: 0, totals: invoiceTotals([]) }).blockers).toEqual(["noLines"]);
+    expect(checkCreditIssue({ ...credit, totals: invoiceTotals([{ amount: 0n, rate: 2500n }]) }).blockers).toEqual(["notPositive"]);
+    expect(checkCreditIssue({ ...credit, originalOpen: false }).blockers).toEqual(["originalNotOpen"]);
+    const over = checkCreditIssue({ ...credit, credited: nets([2500n, 50_000n]) });
+    expect(over.blockers).toEqual(["overCredit"]);
+    expect(over.overCredit).toEqual([{ rate: 2500n, left: 50_000n, asked: 100_000n }]);
+  });
+
+  it("takes its invoice's rate's day for the VAT in SEK", () => {
+    const r = checkCreditIssue({ ...credit, currency: "EUR", originalRateDate: "2026-09-30" });
+    expect([r.needsFx, r.rateDay]).toEqual([true, "2026-09-30"]);
   });
 });

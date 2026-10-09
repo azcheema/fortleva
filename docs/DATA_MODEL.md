@@ -1703,6 +1703,53 @@ model InvoiceLine {
 //    file_object_invoice_pdf_guard. The PDF is drawn once from the frozen
 //    record (`src/modules/invoicing/pdf/`), never re-rendered; the jobs route
 //    makes any one its issue did not.
+//
+// AS BUILT — Phase 4 slice 108b (2026-10-09; founder decisions C76 (c), (f),
+// C77, C78 (a); migration 20261010090000_credit_notes). Credit notes and the
+// rate's day:
+//  - A CREDIT NOTE is an invoice row, kind CREDIT_NOTE, credits_invoice_id →
+//    an issued INVOICE of the same client (107's composite FK). STORED
+//    POSITIVE — quantities, prices, totals, as an invoice (EN 16931 type 381);
+//    the PRINT negates amounts and quantities (C77 (a); `print.ts`'s `signed`,
+//    the one sign rule — the list, slice 109's portal and outstanding amounts
+//    and the Fortnox file (negate ONE of quantity and price) must use it; any
+//    SUM over invoices must too). New columns: credit_reason (1–500, NULL on
+//    an invoice, required once a credit note is issued — C77 (b)),
+//    credits_display_number and credits_issue_date (written by the GUARD at
+//    issue from the original: ML's unambiguous reference, in the record
+//    itself). CHECK: a credit note's payment_terms_days = 0.
+//  - The guard: a credit-note draft is made by a member holding invoice:credit
+//    AND invoice:issue, of an ISSUED/SENT/PAID INVOICE, carrying its
+//    vat_profile, currency, locale, project, period and series — kept in every
+//    state; only a member holding invoice:credit edits its draft's ROW. Its
+//    LINES are held by the app (openDraft takes invoice:credit; a line keeps
+//    to the original's VAT rates), the issue's fingerprint and the over-credit
+//    rule at issue — invoice_line_guard is 107's, unchanged (any non-contact
+//    principal writes a draft's lines; the security review's nit). Issuing it:
+//    its reason, a total above zero, dated no earlier than the original, the
+//    ORIGINAL locked and still open, and the OVER-CREDIT RULE
+//    (`invoice_credit_within`, VOLATILE so a credit note committed during the
+//    lock wait is seen): at every VAT rate, signed, its own net and the
+//    cumulative net of the original's issued credit notes lie between 0 and
+//    the original's net there; no line at a rate the original lacks. Its
+//    seller/buyer snapshots are COPIED from the original (it names the parties
+//    as that invoice did); payment_snapshot = '{}' (it asks no one to pay; no
+//    bank ciphertext copied); its VAT in SEK at the original's rate and date.
+//    The number from the same series, last. An issued credit note's status
+//    never moves (slice 109 decides "sent"). An invoice reaches CREDITED only
+//    when issued credit notes' nets equal its own at every rate (and at least
+//    one exists); "partly credited" is derived, never a status. VAT is per rate
+//    per document (BR-CO-17), so part credits may together reverse an öre more
+//    VAT than was charged — accepted (the design review's low).
+//  - LOCK ORDER: a credit note's issue takes its ORIGINAL, then itself, then
+//    the series; crediting in full takes the original, writes the corrected
+//    copy and the credit note, issues it, and moves the original — one order.
+//  - Slice 109's portal view must gate credit notes too (they stay ISSUED).
+//  - C78 (a): an invoice's VAT in SEK is at the ECB rate of the day the work
+//    ENDED — least(coalesce(period_end, issue_date), issue_date) — the latest
+//    published on or before it (the 90-day history file for an earlier day);
+//    the guard's window is the ten days before that day; a day older than
+//    the history (90 days) is refused in a sentence.
 
 // ───────────────────────────────────────────────────────────────────
 // 6.8 DOCUMENTS & FILES (§5, §6) — three layers:

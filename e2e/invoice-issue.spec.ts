@@ -22,6 +22,12 @@ import { STORAGE_STATE, readyInvoicing, requireSeed, resetInvoiceDetails, setInv
  *     Swedish); without one (this harness, by default) the issue says its PDF
  *     waits and Download refuses with a sentence.
  *   - Settings → Invoicing then shows the NEXT number, fixed.
+ *   - Credit… (slice 108b; C77): the whole invoice with a corrected copy — the
+ *     credit note issued (its PDF waits here, as the invoice's), the copy
+ *     opened as a plain draft, the invoice Credited with its credit note
+ *     listed, and the credit note's page: what it credits, why, minus signs.
+ *     Part credits, the over-credit rule and the races are the dbtests'
+ *     (`credit.dbtest.ts`).
  *
  * Runs before `invoices.spec.ts` (one worker, alphabetical), which resets the
  * company details afterwards; the issued invoice stays — it can never be
@@ -166,6 +172,63 @@ test.describe.serial("issuing an invoice", () => {
     await page.goto("/settings/invoicing");
     await expect(page.getByTestId("invoice-next-number")).toHaveText(String(first + 1));
     await expect(page.getByTestId("invoice-numbering")).toContainText("Fixed now that an invoice has been issued.");
+  });
+
+  test("credited in full with a corrected copy (slice 108b; C77): a credit note, the invoice Credited, a new draft", async ({ page }) => {
+    await page.goto(draftUrl);
+    await expect(page.getByRole("heading", { name: `Invoice ${first}`, level: 1 })).toBeVisible();
+    await page.getByTestId("credit-open").click();
+    const dialog = page.getByTestId("credit-dialog");
+    await expect(dialog.getByRole("heading", { name: `Credit invoice ${first}` })).toBeVisible();
+    // A reason is required: nothing to confirm until there is one.
+    await expect(dialog.getByTestId("credit-confirm")).toBeDisabled();
+    await dialog.getByLabel("Reason").fill("Wrong hours on the September line");
+    // The whole invoice, with a corrected copy — the defaults.
+    await expect(dialog.getByTestId("credit-whole")).toBeChecked();
+    await expect(dialog.getByTestId("credit-copy")).toBeChecked();
+    await dialog.getByTestId("credit-confirm").click();
+    const credit = first + 1;
+    await expect(
+      toast(
+        page,
+        HAS_R2
+          ? `Credit note ${credit} issued. Here is a copy of the invoice to fix and issue.`
+          : `Credit note ${credit} is issued, and here is the corrected copy. The credit note's PDF couldn't be made yet: open the credit note from the invoice list and use Download PDF.`,
+      ),
+    ).toBeVisible();
+
+    // The corrected copy: a plain draft with the same line, ready to fix and issue.
+    await page.waitForURL((url) => /\/invoices\/[0-9a-f-]{36}$/.test(url.pathname) && url.href !== draftUrl, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Draft invoice", level: 1 })).toBeVisible();
+    await expect(page.getByTestId("invoice-line")).toHaveCount(1);
+    await expect(page.getByTestId("invoice-total")).toContainText("1,250.00");
+
+    // The invoice: Credited, its credit note listed with a minus sign, nothing more to credit.
+    await page.goto(draftUrl);
+    await expect(page.getByTestId("invoice-status")).toHaveText("Credited");
+    const row = page.getByTestId("credit-note-row");
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText(String(credit));
+    // The amount itself carries the minus sign (the code review's nit: the row's ISO date always has a "-").
+    await expect(row.getByTestId("credit-note-amount")).toHaveText(/^-.*1,250\.00$/);
+    await expect(page.getByTestId("credit-open")).toHaveCount(0);
+
+    // The credit note: what it credits, why, and its amounts with a minus sign.
+    await row.getByRole("link").click();
+    await expect(page.getByRole("heading", { name: `Credit note ${credit}`, level: 1 })).toBeVisible();
+    await expect(page.getByTestId("credit-note-original")).toHaveText(`Invoice ${first}`);
+    await expect(page.getByTestId("credit-reason")).toContainText("Wrong hours on the September line");
+    await expect(page.getByTestId("invoice-total")).toHaveText(/^-.*1,250\.00$/);
+    await expect(page.getByTestId("invoice-download")).toBeVisible();
+
+    // …and it holds together on a phone.
+    await page.setViewportSize(VIEWPORTS.mobile);
+    const audit = await page.evaluate(auditPage);
+    expect(audit.h1.count).toBe(1);
+    expect(audit.rawKeys).toEqual([]);
+    expect(audit.invisibleText).toEqual([]);
+    expect(audit.overflow.offenders).toEqual([]);
+    expect(audit.overflow.scrollWidth).toBeLessThanOrEqual(audit.overflow.clientWidth);
   });
 
   test("the issued invoice holds together on a phone (the visual walk's audit, on this page)", async ({ page }) => {

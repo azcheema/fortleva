@@ -18,6 +18,7 @@ import {
   printFxRate,
   printQuantity,
   printRate,
+  signed,
   type InvoiceLocale,
   type InvoicePrint,
 } from "../print";
@@ -41,6 +42,13 @@ import {
  * "Reverse charge", or the outside-the-scope note. Plus the commercial rest —
  * due date, terms, references, where to pay and with which reference — and
  * "Godkänd för F-skatt" when the company is.
+ *
+ * A CREDIT NOTE (slice 108b; C77) is the same drawing with what differs: its
+ * title ("Kreditfaktura"), the invoice it credits by number and date (ML's
+ * unambiguous reference) and why (C77 (b)); every quantity and amount with a
+ * minus sign (C77 (a) — `signed`; unit prices and rates as stored, so each
+ * line still multiplies out); no due date, terms, payment block or the
+ * workspace's invoice note (it asks no one to pay, and the note may say how).
  *
  * FONTS: Inter 4.1 static Regular and SemiBold (SIL OFL 1.1, `./fonts/OFL-Inter.txt`),
  * committed in `./fonts/` from the release's `extras/ttf/`
@@ -136,7 +144,9 @@ function TotalRow({ label, value }: { readonly label: string; readonly value: st
 export function InvoicePdf({ invoice }: { readonly invoice: InvoicePrint }) {
   const t = translatorFor(invoice.locale);
   const loc = invoice.locale;
-  const money = (minor: bigint) => printAmount(minor, loc);
+  const credit = invoice.kind === "CREDIT_NOTE";
+  // Every amount and quantity through the one sign rule (`print.ts`).
+  const money = (minor: bigint) => printAmount(signed(minor, invoice.kind), loc);
   const kind = t(`kind.${invoice.kind}`);
   const seller = invoice.seller;
   const buyer = invoice.buyer;
@@ -185,13 +195,15 @@ export function InvoicePdf({ invoice }: { readonly invoice: InvoicePrint }) {
             {buyer.vatNumber ? <Text>{t("vatNumber", { value: buyer.vatNumber })}</Text> : null}
           </View>
           <View style={s.meta}>
-            <MetaRow label={t("number")} value={invoice.displayNumber} />
-            <MetaRow label={t("issueDate")} value={invoice.issueDate} />
-            <MetaRow label={t("dueDate")} value={invoice.dueDate} />
-            <MetaRow
-              label={t("terms")}
-              value={invoice.paymentTermsDays === 0 ? t("termsNow") : t("termsDays", { days: invoice.paymentTermsDays })}
-            />
+            <MetaRow label={credit ? t("credit.number") : t("number")} value={invoice.displayNumber} />
+            <MetaRow label={credit ? t("credit.issueDate") : t("issueDate")} value={invoice.issueDate} />
+            {credit ? null : <MetaRow label={t("dueDate")} value={invoice.dueDate} />}
+            {credit ? null : (
+              <MetaRow
+                label={t("terms")}
+                value={invoice.paymentTermsDays === 0 ? t("termsNow") : t("termsDays", { days: invoice.paymentTermsDays })}
+              />
+            )}
             <MetaRow label={t("ourReference")} value={invoice.ourReference} />
             <MetaRow label={t("yourReference")} value={invoice.buyerReference} />
             <MetaRow
@@ -209,6 +221,15 @@ export function InvoicePdf({ invoice }: { readonly invoice: InvoicePrint }) {
           </View>
         </View>
 
+        {invoice.credits ? (
+          <View style={[s.box, { marginTop: 0, marginBottom: 14 }]} wrap={false}>
+            <Text style={s.strong}>
+              {t("credit.credits", { number: invoice.credits.displayNumber, date: invoice.credits.issueDate })}
+            </Text>
+            {invoice.creditReason ? <Text>{t("credit.reason", { reason: invoice.creditReason })}</Text> : null}
+          </View>
+        ) : null}
+
         <Text style={s.caption}>{t("amountsIn", { currency: invoice.currency })}</Text>
         <View style={s.tableHead}>
           <Text style={[s.th, s.cDesc]}>{t("lines.description")}</Text>
@@ -221,9 +242,9 @@ export function InvoicePdf({ invoice }: { readonly invoice: InvoicePrint }) {
         {invoice.lines.map((line) => (
           <View key={line.id} style={s.row} wrap={false}>
             <Text style={s.cDesc}>{line.description}</Text>
-            <Text style={s.cQty}>{printQuantity(line.quantity, loc)}</Text>
+            <Text style={s.cQty}>{printQuantity(signed(line.quantity, invoice.kind), loc)}</Text>
             <Text style={s.cUnit}>{line.unit ?? ""}</Text>
-            <Text style={s.cPrice}>{money(line.unitPrice)}</Text>
+            <Text style={s.cPrice}>{printAmount(line.unitPrice, loc)}</Text>
             {domestic ? <Text style={s.cVat}>{t("vatRate", { rate: printRate(line.vatRate, loc) })}</Text> : null}
             <Text style={s.cAmount}>{money(line.amount)}</Text>
           </View>
@@ -281,20 +302,22 @@ export function InvoicePdf({ invoice }: { readonly invoice: InvoicePrint }) {
           </View>
         ) : null}
 
-        <View style={s.payment} wrap={false}>
-          <Text style={s.label}>{t("paymentTitle")}</Text>
-          <MetaRow label={t("bankgiro")} value={pay.bankgiro} />
-          <MetaRow label={t("plusgiro")} value={pay.plusgiro} />
-          <MetaRow label={t("iban")} value={pay.iban} />
-          <MetaRow label={t("bic")} value={pay.bic} />
-          <MetaRow label={t("dueDate")} value={invoice.dueDate} />
-          <Text style={{ marginTop: 4 }}>{t("paymentReference", { number: invoice.displayNumber })}</Text>
-        </View>
+        {credit ? null : (
+          <View style={s.payment} wrap={false}>
+            <Text style={s.label}>{t("paymentTitle")}</Text>
+            <MetaRow label={t("bankgiro")} value={pay.bankgiro} />
+            <MetaRow label={t("plusgiro")} value={pay.plusgiro} />
+            <MetaRow label={t("iban")} value={pay.iban} />
+            <MetaRow label={t("bic")} value={pay.bic} />
+            <MetaRow label={t("dueDate")} value={invoice.dueDate} />
+            <Text style={{ marginTop: 4 }}>{t("paymentReference", { number: invoice.displayNumber })}</Text>
+          </View>
+        )}
 
         {/* The workspace's note in the FLOW, after the payment block — not in
             the fixed footer, whose height the page reserves (the code review's
             low: a 500-character note there overprinted the content above). */}
-        {seller.footerNote ? (
+        {seller.footerNote && !credit ? (
           <View style={s.section} wrap={false}>
             <Text style={{ color: INK.muted }}>{seller.footerNote}</Text>
           </View>
@@ -322,7 +345,8 @@ export async function renderInvoicePdf(invoice: InvoicePrint): Promise<Uint8Arra
   return new Uint8Array(buffer);
 }
 
-/** The file name a download is offered under — in the invoice's language. */
-export function invoicePdfFileName(invoice: Pick<InvoicePrint, "locale" | "displayNumber">): string {
-  return translatorFor(invoice.locale)("fileName", { number: invoice.displayNumber });
+/** The file name a download is offered under — in the invoice's language, "kreditfaktura-…" for a credit note. */
+export function invoicePdfFileName(invoice: Pick<InvoicePrint, "locale" | "displayNumber" | "kind">): string {
+  const t = translatorFor(invoice.locale);
+  return invoice.kind === "CREDIT_NOTE" ? t("credit.fileName", { number: invoice.displayNumber }) : t("fileName", { number: invoice.displayNumber });
 }

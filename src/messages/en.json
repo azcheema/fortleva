@@ -1726,10 +1726,14 @@
     "INVOICE_RATE_NOT_ALLOWED": "That VAT rate doesn't apply to this invoice's VAT treatment.",
     "INVOICE_NOT_READY": "This invoice can't be issued yet. Open Issue invoice to see what's missing.",
     "INVOICE_CHANGED": "The invoice or its client changed after you opened it. Look it over and issue it again.",
-    "INVOICE_FX_UNAVAILABLE": "Couldn't get today's exchange rate from the European Central Bank. Try again in a moment.",
+    "INVOICE_FX_UNAVAILABLE": "Couldn't get the exchange rate from the European Central Bank. Try again in a moment.",
+    "INVOICE_FX_TOO_OLD": "The work period ended too long ago — about three months or more — for the European Central Bank rates this app can read. Invoice it in SEK, or check the period's end.",
     "INVOICE_SERIES_IN_USE": "The first invoice number can't be changed once an invoice has been issued.",
     "INVOICE_ISSUE_BUSY": "Another invoice is being issued right now. Try again in a moment.",
-    "INVOICE_PDF_UNAVAILABLE": "The invoice's PDF couldn't be made just now. Try again in a moment."
+    "INVOICE_PDF_UNAVAILABLE": "The invoice's PDF couldn't be made just now. Try again in a moment.",
+    "INVOICE_NOT_CREDITABLE": "This invoice can't be credited. It may already be credited in full.",
+    "INVOICE_PARTLY_CREDITED": "Part of this invoice has already been credited, so the whole of it can't be. Credit what's left as a part instead.",
+    "INVOICE_CREDIT_REASON_REQUIRED": "A credit note needs a reason."
   },
   "assignments": {
     "title": "Team",
@@ -4725,7 +4729,9 @@
         "date": "Date",
         "total": "Total"
       },
-      "limited": "Showing the newest {limit}. Pick a client to see theirs."
+      "limited": "Showing the newest {limit}. Pick a client to see theirs.",
+      "creditNote": "Credit note",
+      "creditDraftLink": "Credit note draft"
     },
     "new": {
       "client": "Client",
@@ -4755,7 +4761,8 @@
         "email": "Billing email",
         "live": "Until the invoice is issued, it shows the client's details as they are now.",
         "archived": "This client is archived.",
-        "reverseChargeNeedsVat": "Reverse charge needs the client's VAT number. Add it on the client's page before you issue the invoice."
+        "reverseChargeNeedsVat": "Reverse charge needs the client's VAT number. Add it on the client's page before you issue the invoice.",
+        "asOriginal": "As on the invoice it credits. A credit note names the parties as that invoice did."
       },
       "details": {
         "title": "Details"
@@ -4810,7 +4817,14 @@
           "OUTSIDE_SCOPE": "No Swedish VAT"
         }
       },
-      "projectOptionArchived": "{key} · {name} (archived)"
+      "projectOptionArchived": "{key} · {name} (archived)",
+      "creditTitle": "Credit note draft",
+      "creditMenuLabel": "Credit note draft actions",
+      "creditDelete": "Delete credit note draft",
+      "creditDeleteConfirm": "Delete this credit note draft and its lines? This can't be undone.",
+      "creditNoNumberYet": "A credit note has no number until it is issued.",
+      "creditFixed": "A credit note keeps the VAT treatment, currency, language, project and work period of the invoice it credits.",
+      "creditLines": "What this credit note credits, in {currency} before VAT. Lower or remove what isn't credited. The credit note prints these amounts with a minus sign."
     },
     "issue": {
       "button": "Issue invoice…",
@@ -4830,13 +4844,33 @@
         "clientVatCountry": "Reverse charge is for a business in another EU country, and its VAT number must start with that country's code.",
         "clientInEu": "This client is in the EU, so the invoice can't be outside the scope of Swedish VAT.",
         "noLines": "Add at least one line.",
-        "negativeTotal": "The total can't be below zero."
+        "negativeTotal": "The total can't be below zero.",
+        "fxTooOld": "The work period ended more than 90 days ago, earlier than the European Central Bank rates this app can read. Invoice it in SEK, or check the period's end.",
+        "noReason": "Give the reason for the credit note.",
+        "overCredit": "It credits more than is left of the invoice:",
+        "originalNotOpen": "The invoice it credits has already been credited in full.",
+        "notPositive": "The total must be above zero.",
+        "leavesNegative": "It would leave only a discount on the invoice uncredited, which no credit note could take later. Credit the discount too, or credit less.",
+        "noRate": "The invoice it credits stated no exchange rate (its VAT came to nothing), so this credit note's VAT can't be shown in SEK. Credit the whole invoice instead.",
+        "beforeInvoice": "It can't be dated before the invoice it credits ({date}). Issue it from that day on."
       },
       "toSettings": "Open Settings → Invoicing",
       "toClient": "Open the client",
       "confirm": "Issue invoice",
       "issued": "Invoice {number} issued.",
-      "issuedNoPdf": "Invoice {number} is issued. Its PDF couldn't be made yet. Use Download PDF to try again."
+      "issuedNoPdf": "Invoice {number} is issued. Its PDF couldn't be made yet. Use Download PDF to try again.",
+      "creditButton": "Issue credit note…",
+      "creditTitle": "Issue credit note {number}?",
+      "creditTitleNoNumber": "Issue this credit note?",
+      "creditBody": "It is dated {issueDate}. Once issued it can't be changed or deleted.",
+      "creditTotal": "Total",
+      "creditFx": "Its VAT is also shown in SEK, at the rate on the invoice it credits ({date}).",
+      "creditBlockedTitle": "Before this credit note can be issued",
+      "creditConfirm": "Issue credit note",
+      "creditIssued": "Credit note {number} issued.",
+      "creditIssuedNoPdf": "Credit note {number} is issued. Its PDF couldn't be made yet. Use Download PDF to try again.",
+      "fxDay": "Its VAT is also shown in SEK, at the European Central Bank's rate for {date}, the day the work ended (or the last rate before it).",
+      "overCreditAt": "{rate} %: this credits {asked}, and {left} is left."
     },
     "issued": {
       "title": "Invoice {number}",
@@ -4854,7 +4888,9 @@
       "sekRate": "European Central Bank rate {rate} SEK per {currency}, {date}",
       "payment": "Payment",
       "paymentUnreadable": "The bank details on this invoice couldn't be read here. Its PDF shows them as they were printed.",
-      "pdfMissing": "Its PDF hasn't been made yet. Download PDF makes it."
+      "pdfMissing": "Its PDF hasn't been made yet. Download PDF makes it.",
+      "creditTitle": "Credit note {number}",
+      "creditPageTitle": "Credit note"
     },
     "lines": {
       "title": "Lines",
@@ -4881,6 +4917,43 @@
       "removed": "Line removed.",
       "moved": "Line moved.",
       "unreachable": "Couldn't reach Fortleva. Check your connection and try again."
+    },
+    "credit": {
+      "button": "Credit…",
+      "title": "Credit invoice {number}",
+      "body": "A credit note corrects an issued invoice. It takes the next number and can't be changed once issued.",
+      "reason": "Reason",
+      "reasonHint": "Printed on the credit note.",
+      "reasonPlaceholder": "Why is it credited?",
+      "scope": "What to credit",
+      "whole": "The whole invoice",
+      "wholeHint": "Issued now, for every line.",
+      "part": "Part of it",
+      "partHint": "Opens a credit note draft with every line. Lower or remove what isn't credited, then issue it.",
+      "partlyCredited": "Part of this invoice has already been credited. Credit what's left as a part.",
+      "copy": "Make a corrected copy as a new draft",
+      "copyHint": "A new invoice draft with the same details and lines, ready to fix and issue.",
+      "confirmWhole": "Issue credit note",
+      "confirmPart": "Create credit note draft",
+      "issued": "Credit note {number} issued.",
+      "issuedCopy": "Credit note {number} issued. Here is a copy of the invoice to fix and issue.",
+      "issuedNoPdf": "Credit note {number} is issued. Its PDF couldn't be made yet. Use Download PDF on it to try again.",
+      "draftMade": "Credit note draft created.",
+      "reasonLabel": "Reason",
+      "credits": "Credits invoice",
+      "creditsLink": "Invoice {number}",
+      "left": "Left to credit",
+      "leftAt": "{rate} %: {amount}",
+      "notesTitle": "Credit notes",
+      "notesColumns": {
+        "number": "Number",
+        "date": "Date",
+        "amount": "Amount"
+      },
+      "partlyBadge": "Partly credited",
+      "noteDraft": "Draft",
+      "issuedCopyNoPdf": "Credit note {number} is issued, and here is the corrected copy. The credit note's PDF couldn't be made yet: open the credit note from the invoice list and use Download PDF.",
+      "copyNotAllowed": "Making a corrected copy needs permission to create invoices."
     }
   },
   "invoicePdf": {
@@ -4934,6 +5007,13 @@
     "plusgiro": "PlusGiro",
     "iban": "IBAN",
     "bic": "BIC",
-    "paymentReference": "Please quote invoice number {number} with your payment."
+    "paymentReference": "Please quote invoice number {number} with your payment.",
+    "credit": {
+      "number": "Credit note number",
+      "issueDate": "Date",
+      "credits": "Credits invoice {number} dated {date}",
+      "reason": "Reason: {reason}",
+      "fileName": "credit-note-{number}.pdf"
+    }
   }
 }

@@ -24,4 +24,9 @@ export const { mapDbError, guarded } = dbErrorMapper([
   ["INVOICE_BUYER_INCOMPLETE", "INVOICE_NOT_READY"],
   // A first number changed after an issue took one (a race with the read).
   ["INVOICE_SERIES_IN_USE", "INVOICE_SERIES_IN_USE"],
+  // Slice 108b: a credit note's invoice credited in full (or never issued) —
+  // the service checks first, under the original's lock; and the over-credit
+  // rule, which `checkCreditIssue` names rate by rate before the guard does.
+  ["INVOICE_NOT_CREDITABLE", "INVOICE_NOT_CREDITABLE"],
+  ["INVOICE_OVER_CREDIT", "INVOICE_NOT_READY"],
 ]);

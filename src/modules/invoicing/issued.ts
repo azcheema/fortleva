@@ -149,6 +149,9 @@ export async function readIssuedInvoice(
     where: { id: invoiceId, status: { not: "DRAFT" } },
     select: {
       kind: true,
+      creditReason: true,
+      creditsDisplayNumber: true,
+      creditsIssueDate: true,
       locale: true,
       displayNumber: true,
       issueDate: true,
@@ -221,10 +224,22 @@ export async function readIssuedInvoice(
   }
   const seller = readSellerSnapshot(row.sellerSnapshot);
   const buyer = readBuyerSnapshot(row.buyerSnapshot);
-  const { payment, unreadable } = await readPaymentSnapshot(tx, tenantId, row.paymentSnapshot, opts.strict);
+  // A CREDIT NOTE (slice 108b) asks no one to pay: its payment snapshot is
+  // '{}' (the guard writes it) and nothing is decrypted. It says what it
+  // credits — the original's number and date, written into its own record by
+  // the guard — and why; a credit note missing either is a corrupt record.
+  const credit = row.kind === "CREDIT_NOTE";
+  if (credit && (!row.creditsDisplayNumber || !row.creditsIssueDate || !row.creditReason)) {
+    throw new SnapshotUnreadable("credit note's reference");
+  }
+  const { payment, unreadable } = credit
+    ? { payment: { bankgiro: null, plusgiro: null, iban: null, bic: null }, unreadable: false }
+    : await readPaymentSnapshot(tx, tenantId, row.paymentSnapshot, opts.strict);
   return {
     print: {
       kind: row.kind,
+      credits: credit ? { displayNumber: row.creditsDisplayNumber!, issueDate: isoDay(row.creditsIssueDate!) } : null,
+      creditReason: credit ? row.creditReason : null,
       locale: row.locale,
       displayNumber: row.displayNumber,
       issueDate: isoDay(row.issueDate),

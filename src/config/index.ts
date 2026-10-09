@@ -595,8 +595,11 @@ export function pushEndpointUrl(raw: string): URL | null {
  * European Central Bank's latest published rate (or Nasdaq Stockholm's middle
  * rate); the ECB's daily reference rates are one public XML file, no key.
  * - `"ecb"` — fetch it, at issue, only for an invoice in another currency
- *   that carries Swedish VAT (C76).
- * - `"fixed"` — `FX_TRANSPORT=fixed`: a fixed table dated yesterday, for the
+ *   that carries Swedish VAT (C76). The rate is the one of the day the WORK
+ *   ENDED (C78 (a), slice 108b): today's file when that is the invoice date,
+ *   else the ECB's 90-day history file (same host, ~90 KB).
+ * - `"fixed"` — `FX_TRANSPORT=fixed`: a fixed table dated yesterday (or the
+ *   day asked for, when that is earlier), for the
  *   harnesses (`playwright.config.ts`, `vitest.db.config.ts`). Never on a
  *   production build off loopback: there a forgotten flag would print a made-up
  *   rate on a real invoice, so it stops the boot (PUSH_TRANSPORT's rule). A
@@ -604,6 +607,7 @@ export function pushEndpointUrl(raw: string): URL | null {
  *   real invoices from one (the security review's nit; the push rule's scope).
  */
 export const ecbDailyRatesUrl = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml";
+export const ecbHistoryRatesUrl = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml";
 if (env.FX_TRANSPORT === "fixed" && isProduction && !LOOPBACK_HOSTS.has(appUrl.hostname)) {
   throw new Error("FX_TRANSPORT=fixed on a production build off loopback (src/config): invoices would print a made-up exchange rate");
 }

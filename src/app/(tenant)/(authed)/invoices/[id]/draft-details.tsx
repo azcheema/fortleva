@@ -36,6 +36,11 @@ export type DraftDetailsValues = {
  * the choice, an inline question says how many lines change, and "No" puts
  * the select back (the design review's low). Every other change acts at once
  * — a line at 0 % becomes 25 % and back without losing anything.
+ *
+ * A CREDIT NOTE's draft (slice 108b) shows its VAT treatment, currency,
+ * language, project and work period read-only — they are its invoice's, and
+ * the guard holds them — and no payment terms (it asks no one to pay); only
+ * the references and the note are its own.
  */
 export function DraftDetails({
   invoiceId,
@@ -45,6 +50,7 @@ export function DraftDetails({
   projects,
   reducedRateLines,
   clientLocale,
+  creditNote,
 }: {
   invoiceId: string;
   values: DraftDetailsValues;
@@ -55,6 +61,8 @@ export function DraftDetails({
   reducedRateLines: number;
   /** The language the client's invoices take when the draft makes no choice. */
   clientLocale: "sv" | "en";
+  /** A credit note: its invoice's terms, read-only (slice 108b). */
+  creditNote: boolean;
 }) {
   const t = useTranslations("invoices.draft");
   const tCommon = useTranslations("common");
@@ -77,6 +85,8 @@ export function DraftDetails({
   };
   const bump = (name: string) => setResets((r) => ({ ...r, [name]: (r[name] ?? 0) + 1 }));
   const ro = !editable;
+  /** What a credit note keeps from its invoice. */
+  const fixed = ro || creditNote;
 
   /** Run a one-field save; on refusal put that field back. */
   const save = (name: string, call: () => Promise<FormResult>) =>
@@ -123,10 +133,10 @@ export function DraftDetails({
             label={t("vat.label")}
             placeholder={vatLabel(values.vatProfile)}
             options={VAT_PROFILES.map((p) => ({ value: p, label: vatLabel(p) }))}
-            readOnly={ro}
+            readOnly={fixed}
             hiddenInput={false}
             resetKey={resets.vatProfile ?? 0}
-            className={ro ? "px-2.5" : undefined}
+            className={fixed ? "px-2.5" : undefined}
             onCommit={(next) => {
               const profile = VAT_PROFILES.find((p) => p === next);
               if (!profile || profile === values.vatProfile) return;
@@ -183,14 +193,14 @@ export function DraftDetails({
             label={t("fields.currency")}
             placeholder={values.currency}
             options={currencies.map((c) => ({ value: c, label: c }))}
-            readOnly={ro}
+            readOnly={fixed}
             hiddenInput={false}
             resetKey={resets.currency ?? 0}
-            className={ro ? "px-2.5" : undefined}
+            className={fixed ? "px-2.5" : undefined}
             onCommit={(next) => detail("currency", next)}
           />,
         )}
-        {prop(
+        {creditNote ? null : prop(
           t("fields.paymentTermsDays"),
           <InlineEdit
             kind="text"
@@ -220,10 +230,10 @@ export function DraftDetails({
               { value: "sv", label: t("locale.sv") },
               { value: "en", label: t("locale.en") },
             ]}
-            readOnly={ro}
+            readOnly={fixed}
             hiddenInput={false}
             resetKey={resets.locale ?? 0}
-            className={ro ? "px-2.5" : undefined}
+            className={fixed ? "px-2.5" : undefined}
             onCommit={(next) => detail("locale", next)}
           />,
         )}
@@ -236,10 +246,10 @@ export function DraftDetails({
             label={t("fields.project")}
             placeholder={t("noProject")}
             options={projectOptions}
-            readOnly={ro}
+            readOnly={fixed}
             hiddenInput={false}
             resetKey={resets.projectId ?? 0}
-            className={ro ? "px-2.5" : undefined}
+            className={fixed ? "px-2.5" : undefined}
             onCommit={(next) => detail("projectId", next)}
           />,
         )}
@@ -251,11 +261,11 @@ export function DraftDetails({
             value={values.periodStart}
             label={t("fields.periodStart")}
             placeholder={tCommon("notSet")}
-            readOnly={ro}
+            readOnly={fixed}
             hiddenInput={false}
             inputProps={{ min: "2000-01-01", max: "2199-12-31" }}
             resetKey={resets.periodStart ?? 0}
-            className={ro ? "px-2.5" : undefined}
+            className={fixed ? "px-2.5" : undefined}
             onCommit={(next) => detail("periodStart", next)}
           />,
         )}
@@ -267,11 +277,11 @@ export function DraftDetails({
             value={values.periodEnd}
             label={t("fields.periodEnd")}
             placeholder={tCommon("notSet")}
-            readOnly={ro}
+            readOnly={fixed}
             hiddenInput={false}
             inputProps={{ min: "2000-01-01", max: "2199-12-31" }}
             resetKey={resets.periodEnd ?? 0}
-            className={ro ? "px-2.5" : undefined}
+            className={fixed ? "px-2.5" : undefined}
             onCommit={(next) => detail("periodEnd", next)}
           />,
         )}

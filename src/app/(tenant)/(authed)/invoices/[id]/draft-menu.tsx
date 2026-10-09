@@ -13,10 +13,10 @@ import { deleteDraftAction } from "../actions";
 /**
  * The draft's own verbs (MANDATE 2): Delete draft — danger, asks first;
  * `invoice:delete` (owners and admins). An issued invoice has no delete: it
- * is credited (slice 108). The toast comes from here, before the list loads,
+ * is credited (slice 108b; a credit-note draft takes `invoice:credit` too). The toast comes from here, before the list loads,
  * because the page that held the menu is gone once it succeeds.
  */
-export function DraftMenu({ invoiceId, label }: { invoiceId: string; label: string }) {
+export function DraftMenu({ invoiceId, label, creditNote }: { invoiceId: string; label: string; creditNote: boolean }) {
   const t = useTranslations("invoices.draft");
   const router = useRouter();
   const [, start] = useTransition();
@@ -26,10 +26,10 @@ export function DraftMenu({ invoiceId, label }: { invoiceId: string; label: stri
       items={[
         {
           key: "delete",
-          label: t("delete"),
+          label: creditNote ? t("creditDelete") : t("delete"),
           icon: Trash2Icon,
           tone: "danger",
-          confirm: t("deleteConfirm"),
+          confirm: creditNote ? t("creditDeleteConfirm") : t("deleteConfirm"),
           onSelect: () =>
             start(async () => {
               const r = await deleteDraftAction(invoiceId);

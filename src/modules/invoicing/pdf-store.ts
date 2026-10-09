@@ -40,8 +40,12 @@ import { readIssuedInvoice, SnapshotUnreadable } from "./issued";
  * drawing's TEMPLATE VERSION — which layout the archived bytes are.
  */
 
-/** Which drawing this is. Raise it whenever `pdf/invoice-pdf.tsx` changes what a PDF looks like. */
-export const INVOICE_PDF_TEMPLATE_VERSION = 1;
+/**
+ * Which drawing this is. Raise it whenever `pdf/invoice-pdf.tsx` changes what a
+ * PDF looks like. 2 — slice 108b: the credit note's drawing (an invoice's is
+ * unchanged).
+ */
+export const INVOICE_PDF_TEMPLATE_VERSION = 2;
 
 type Principal = { readonly type: "member"; readonly id: string } | { readonly type: "system" };
 

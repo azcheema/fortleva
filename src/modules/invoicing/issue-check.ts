@@ -1,7 +1,7 @@
 import { addDays } from "@/lib/week";
 
-import { needsSekVat } from "./fx";
-import type { InvoiceTotals } from "./money";
+import { needsSekVat, rateDayFor, rateDayTooOld } from "./fx";
+import { vatOn, type InvoiceTotals, type Minor } from "./money";
 import { invoiceLocaleFor, type InvoiceLocale } from "./print";
 import type { CompanyDetails, MissingDetail, PaymentDetails } from "./seller";
 import { isAktiebolagOrgNr } from "./seller-fields";
@@ -52,9 +52,37 @@ export type IssueBlocker =
   | "clientVatCountry"
   | "clientInEu"
   | "noLines"
-  | "negativeTotal";
+  | "negativeTotal"
+  /** The work ended before the ECB's history reaches (C78 (a)). */
+  | "fxTooOld"
+  // A credit note (slice 108b):
+  /** It says why (C77 (b)). */
+  | "noReason"
+  /** It credits more than is left of its invoice at some rate — `overCredit` says where. */
+  | "overCredit"
+  /** Its invoice was credited in full meanwhile (or is not one that can be credited). */
+  | "originalNotOpen"
+  /** Its total is zero or below: it credits nothing. */
+  | "notPositive"
+  /** It would leave only a discount uncredited, which nothing could ever credit (`creditLeavesNegative`). */
+  | "leavesNegative"
+  /** It carries VAT in another currency, but its invoice stated no rate to take. */
+  | "noRate"
+  /** Today is before its invoice's date (a workspace moved west): the guard refuses it. */
+  | "beforeInvoice";
+
+/** One VAT rate a credit note asks more of than its invoice has left (signed: see `creditOverRates`). */
+export type OverCredit = {
+  /** Hundredths of a percent. */
+  readonly rate: bigint;
+  /** What is left to credit at this rate, after the issued credit notes. */
+  readonly left: Minor;
+  /** What this credit note credits at it. */
+  readonly asked: Minor;
+};
 
 export type IssueCheck = {
+  readonly kind: "INVOICE" | "CREDIT_NOTE";
   readonly blockers: readonly IssueBlocker[];
   /** What Settings → Invoicing still lacks, numbering included. */
   readonly sellerMissing: readonly MissingDetail[];
@@ -64,10 +92,137 @@ export type IssueCheck = {
   readonly issueDate: string;
   readonly dueDate: string;
   readonly needsFx: boolean;
+  /**
+   * The day whose ECB rate the VAT in SEK takes (C78 (a)) — `rateDayFor`; for
+   * a credit note, its invoice's rate's date. Null when no SEK VAT is wanted.
+   */
+  readonly rateDay: string | null;
   readonly locale: InvoiceLocale;
   /** No work period: the invoice's date will read as the date of the work (the design review's low). */
   readonly noPeriod: boolean;
+  /** A credit note: the rates it asks too much of. Empty otherwise. */
+  readonly overCredit: readonly OverCredit[];
+  /** A credit note: its invoice's date, `YYYY-MM-DD`. Null otherwise. */
+  readonly creditsIssueDate: string | null;
 };
+
+/** A net per VAT rate (hundredths of a percent → hundredths). */
+export type RateNets = ReadonlyMap<bigint, Minor>;
+
+/**
+ * THE OVER-CREDIT RULE (slice 108b; the issue guard restates it as
+ * `invoice_credit_within`), at every VAT rate, signed — a discount is a
+ * negative line (107), so an invoice may net below zero at a rate:
+ *   - this credit note's own net there lies between zero and the invoice's
+ *     (it never "un-credits" a rate, and never credits only a discount);
+ *   - what the invoice's issued credit notes credit — `credited`, plus this
+ *     one's `asked` — lies between zero and the invoice's net, inclusive;
+ *   - it has no line at a rate the invoice lacks.
+ * Returns the rates that break it; none means the credit note fits.
+ */
+export function creditOverRates(original: RateNets, credited: RateNets, asked: RateNets): OverCredit[] {
+  const rates = new Set<bigint>([...original.keys(), ...credited.keys(), ...asked.keys()]);
+  const out: OverCredit[] = [];
+  for (const rate of [...rates].sort((a, b) => (a === b ? 0 : a > b ? -1 : 1))) {
+    const o = original.get(rate) ?? 0n;
+    const before = credited.get(rate) ?? 0n;
+    const mine = asked.get(rate) ?? 0n;
+    const after = before + mine;
+    const low = o < 0n ? o : 0n;
+    const high = o < 0n ? 0n : o;
+    const lacking = !original.has(rate) && asked.has(rate);
+    if (lacking || mine < low || mine > high || after < low || after > high) out.push({ rate, left: o - before, asked: mine });
+  }
+  return out;
+}
+
+/**
+ * Whether a part credit would leave its invoice with only a NEGATIVE rest — a
+ * discount at a rate of its own, left uncredited once everything else was
+ * (the design review's low). No credit note could ever take that rest (a
+ * credit note's total is above zero), so the invoice would read "partly
+ * credited" for good. The app refuses it; the guard does not (it is not a
+ * wrong record, only a stuck one).
+ */
+export function creditLeavesNegative(original: RateNets, credited: RateNets, asked: RateNets): boolean {
+  const rates = new Set<bigint>([...original.keys(), ...credited.keys(), ...asked.keys()]);
+  let rest = 0n;
+  let anyLeft = false;
+  for (const rate of rates) {
+    const left = (original.get(rate) ?? 0n) - (credited.get(rate) ?? 0n) - (asked.get(rate) ?? 0n);
+    if (left !== 0n) anyLeft = true;
+    rest += left + vatOn(left, rate);
+  }
+  return anyLeft && rest <= 0n;
+}
+
+/** Whether issued credit notes now cover the whole invoice: their net equals its own at every rate. */
+export function creditCovers(original: RateNets, credited: RateNets): boolean {
+  const rates = new Set<bigint>([...original.keys(), ...credited.keys()]);
+  for (const rate of rates) if ((original.get(rate) ?? 0n) !== (credited.get(rate) ?? 0n)) return false;
+  return true;
+}
+
+/** A totals' groups as a net per rate. */
+export const netsOf = (groups: readonly { readonly rate: bigint; readonly net: Minor }[]): RateNets =>
+  new Map(groups.map((g) => [g.rate, g.net]));
+
+/**
+ * What issuing a CREDIT NOTE needs (slice 108b) — pure. None of an invoice's
+ * seller or client checks: its parties are its invoice's, as that invoice
+ * named them (the guard copies the snapshots). It says why, has a line,
+ * credits something, its invoice is still open to credit, and no rate is
+ * asked more of than is left. Its date is today and it falls due the same
+ * day (it asks no one to pay); its language and rate are its invoice's.
+ */
+export function checkCreditIssue(input: {
+  readonly reason: string | null;
+  readonly lineCount: number;
+  readonly totals: InvoiceTotals;
+  readonly originalOpen: boolean;
+  readonly original: RateNets;
+  readonly credited: RateNets;
+  readonly numbering: Numbering | null;
+  readonly currency: string;
+  /** The invoice's rate's date, when it stated VAT in SEK. */
+  readonly originalRateDate: string | null;
+  /** The invoice's own date, `YYYY-MM-DD` — a credit note is never dated before it (the guard). */
+  readonly originalIssueDate: string | null;
+  readonly locale: InvoiceLocale;
+  readonly today: string;
+}): IssueCheck {
+  const blockers: IssueBlocker[] = [];
+  if (!nonBlank(input.reason)) blockers.push("noReason");
+  if (!input.originalOpen) blockers.push("originalNotOpen");
+  if (input.originalIssueDate !== null && input.today < input.originalIssueDate) blockers.push("beforeInvoice");
+  if (input.lineCount === 0) blockers.push("noLines");
+  else if (input.totals.total <= 0n) blockers.push("notPositive");
+  const asked = netsOf(input.totals.groups);
+  const overCredit = input.originalOpen ? creditOverRates(input.original, input.credited, asked) : [];
+  if (overCredit.length > 0) blockers.push("overCredit");
+  else if (input.originalOpen && input.lineCount > 0 && creditLeavesNegative(input.original, input.credited, asked)) {
+    blockers.push("leavesNegative");
+  }
+  const needsFx = needsSekVat(input.currency, input.totals.vatTotal);
+  // Its VAT in SEK is at its invoice's rate — and an invoice whose VAT netted
+  // to nothing stated none, so a part credit carrying VAT has no rate to take
+  // (the migration review's low: the guard refuses it; say so before the click).
+  if (needsFx && input.originalRateDate === null) blockers.push("noRate");
+  return {
+    kind: "CREDIT_NOTE",
+    blockers,
+    sellerMissing: input.numbering ? [] : ["numbering"],
+    nextNumber: input.numbering?.nextNumber ?? null,
+    issueDate: input.today,
+    dueDate: input.today,
+    needsFx,
+    rateDay: needsFx ? input.originalRateDate : null,
+    locale: input.locale,
+    noPeriod: false,
+    overCredit,
+    creditsIssueDate: input.originalIssueDate,
+  };
+}
 
 export type IssueClient = {
   readonly name: string;
@@ -120,6 +275,8 @@ export function checkIssue(input: {
   readonly paymentTermsDays: number;
   readonly locale: InvoiceLocale | null;
   readonly hasPeriod: boolean;
+  /** The work period's last day, `YYYY-MM-DD` — the day of the rate (C78 (a)). */
+  readonly periodEnd: string | null;
   readonly today: string;
 }): IssueCheck {
   const sellerMissing = missingForIssue(input.company, input.payment, input.numbering !== null, input.paymentUnreadable ?? false);
@@ -128,14 +285,21 @@ export function checkIssue(input: {
   blockers.push(...clientBlockers(input.client, input.vatProfile));
   if (input.lineCount === 0) blockers.push("noLines");
   if (input.totals.total < 0n) blockers.push("negativeTotal");
+  const needsFx = needsSekVat(input.currency, input.totals.vatTotal);
+  const rateDay = needsFx ? rateDayFor(input.today, input.periodEnd) : null;
+  if (rateDay !== null && rateDayTooOld(rateDay, input.today)) blockers.push("fxTooOld");
   return {
+    kind: "INVOICE",
     blockers,
     sellerMissing,
     nextNumber: input.numbering?.nextNumber ?? null,
     issueDate: input.today,
     dueDate: addDays(input.today, input.paymentTermsDays),
-    needsFx: needsSekVat(input.currency, input.totals.vatTotal),
+    needsFx,
+    rateDay,
     locale: input.locale ?? invoiceLocaleFor(input.client),
     noPeriod: !input.hasPeriod,
+    overCredit: [],
+    creditsIssueDate: null,
   };
 }

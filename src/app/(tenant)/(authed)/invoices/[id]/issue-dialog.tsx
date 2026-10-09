@@ -25,6 +25,8 @@ import { issueInvoiceAction } from "../actions";
 
 /** What the server's issue check said, as plain values (`IssueCheck`, serialised). */
 export type IssueDialogCheck = {
+  /** A credit note's issue (slice 108b) says "credit note" throughout. */
+  readonly kind: "INVOICE" | "CREDIT_NOTE";
   readonly blockers: readonly IssueBlocker[];
   /** Settings → Invoicing's missing items, already worded. */
   readonly sellerMissing: string;
@@ -32,8 +34,14 @@ export type IssueDialogCheck = {
   readonly issueDate: string;
   readonly dueDate: string;
   readonly needsFx: boolean;
+  /** The day of the ECB rate (C78 (a)); a credit note's: its invoice's rate's date. */
+  readonly rateDay: string | null;
+  /** A credit note: each rate it asks too much of, already worded ("25 %", amounts formatted). */
+  readonly overCredit: readonly { readonly rate: string; readonly asked: string; readonly left: string }[];
   readonly language: string;
   readonly noPeriod: boolean;
+  /** A credit note: its invoice's date (the "before its invoice" blocker names it). */
+  readonly creditsIssueDate: string | null;
   /** What the dialog was opened on — sent back with the issue, refused if the draft moved since. */
   readonly fingerprint: string;
 };
@@ -89,6 +97,14 @@ export function IssueDialog({
   const issuedRef = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const blocked = check.blockers.length > 0;
+  const credit = check.kind === "CREDIT_NOTE";
+  // The VAT in SEK: an invoice's at the latest rate — or, when the work ended
+  // earlier, that day's (C78 (a)); a credit note's at its invoice's.
+  const fxText = credit
+    ? t("creditFx", { date: check.rateDay ?? "" })
+    : check.rateDay !== null && check.rateDay !== check.issueDate
+      ? t("fxDay", { date: check.rateDay })
+      : t("fx");
 
   const issue = async () => {
     setBusy(true);
@@ -115,7 +131,7 @@ export function IssueDialog({
     <Dialog open={open} onOpenChange={(next) => (busy ? undefined : setOpen(next))}>
       <DialogTrigger asChild>
         <Button ref={triggerRef} type="button" size="sm" data-testid="issue-open">
-          {t("button")}
+          {credit ? t("creditButton") : t("button")}
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -130,16 +146,39 @@ export function IssueDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{check.nextNumber === null ? t("titleNoNumber") : t("title", { number: check.nextNumber })}</DialogTitle>
-          <DialogDescription>{t("body", { issueDate: check.issueDate, dueDate: check.dueDate })}</DialogDescription>
+          <DialogTitle>
+            {credit
+              ? check.nextNumber === null
+                ? t("creditTitleNoNumber")
+                : t("creditTitle", { number: check.nextNumber })
+              : check.nextNumber === null
+                ? t("titleNoNumber")
+                : t("title", { number: check.nextNumber })}
+          </DialogTitle>
+          <DialogDescription>
+            {credit ? t("creditBody", { issueDate: check.issueDate }) : t("body", { issueDate: check.issueDate, dueDate: check.dueDate })}
+          </DialogDescription>
         </DialogHeader>
         {blocked ? (
           <div data-testid="issue-blockers">
-            <Callout tone="caution" title={t("blockedTitle")}>
+            <Callout tone="caution" title={credit ? t("creditBlockedTitle") : t("blockedTitle")}>
               <ul className="flex list-disc flex-col gap-1 pl-4">
                 {check.blockers.map((b) => (
                   <li key={b} data-testid={`issue-blocker-${b}`}>
-                    {b === "seller" ? t("blockers.seller", { list: check.sellerMissing }) : t(`blockers.${b}`)}
+                    {b === "seller"
+                      ? t("blockers.seller", { list: check.sellerMissing })
+                      : b === "beforeInvoice"
+                        ? t("blockers.beforeInvoice", { date: check.creditsIssueDate ?? "" })
+                        : t(`blockers.${b}`)}
+                    {b === "overCredit" ? (
+                      <ul className="mt-1 flex flex-col gap-0.5">
+                        {check.overCredit.map((o) => (
+                          <li key={o.rate} className="num">
+                            {t("overCreditAt", o)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -166,14 +205,14 @@ export function IssueDialog({
         ) : (
           <div className="flex flex-col gap-2 text-sm">
             <dl className="grid grid-cols-[1fr_auto] gap-x-6">
-              <dt className="text-muted-foreground">{t("total")}</dt>
+              <dt className="text-muted-foreground">{credit ? t("creditTotal") : t("total")}</dt>
               <dd className="num text-right font-medium" data-testid="issue-total">
                 {total}
               </dd>
             </dl>
             <p className="text-muted-foreground">{t("language", { language: check.language })}</p>
-            {check.needsFx ? <p className="text-muted-foreground">{t("fx")}</p> : null}
-            {check.noPeriod ? (
+            {check.needsFx ? <p className="text-muted-foreground">{fxText}</p> : null}
+            {check.noPeriod && !credit ? (
               <div data-testid="issue-no-period">
                 <Callout tone="caution">{t("noPeriod")}</Callout>
               </div>
@@ -186,7 +225,7 @@ export function IssueDialog({
           </Button>
           {blocked ? null : (
             <Button type="button" size="sm" onClick={() => void issue()} disabled={busy} data-testid="issue-confirm">
-              {busy ? <Pending label={tCommon("loading")} /> : t("confirm")}
+              {busy ? <Pending label={tCommon("loading")} /> : credit ? t("creditConfirm") : t("confirm")}
             </Button>
           )}
         </DialogFooter>

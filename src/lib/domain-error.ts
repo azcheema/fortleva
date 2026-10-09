@@ -259,9 +259,14 @@ export type DomainErrorCode =
   | "INVOICE_NOT_READY" // something issuing needs is missing (the dialog names what) — or the guard found it so
   | "INVOICE_CHANGED" // the draft or its client changed since the issuer looked (the fingerprint), or since the rate was fetched
   | "INVOICE_FX_UNAVAILABLE" // the ECB's rate could not be fetched or read: try again, never a guessed rate
+  | "INVOICE_FX_TOO_OLD" // the work ended before the ECB's 90-day history reaches (C78 (a), slice 108b)
   | "INVOICE_SERIES_IN_USE" // the first number is fixed once an invoice has one
   | "INVOICE_ISSUE_BUSY" // the series stayed held past the issue's lock bound (55P03): try again
-  | "INVOICE_PDF_UNAVAILABLE"; // an issued invoice's PDF could not be made just now
+  | "INVOICE_PDF_UNAVAILABLE" // an issued invoice's PDF could not be made just now
+  // Phase 4 slice 108b — credit notes (src/modules/invoicing/credit.ts).
+  | "INVOICE_NOT_CREDITABLE" // not an issued invoice, a credit note, or credited in full already
+  | "INVOICE_PARTLY_CREDITED" // "the whole invoice" after part of it was credited — credit what is left as a part
+  | "INVOICE_CREDIT_REASON_REQUIRED"; // a credit note says why (C77 (b))
 
 export class DomainError extends Error {
   constructor(

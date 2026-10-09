@@ -6,9 +6,11 @@ import { hasAccess, requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { CURRENCIES, readPreferences } from "@/preferences/service";
 
+import { readCreditedNets, readCreditNotes, readInvoiceNets, type CreditNoteSummary } from "./credit-state";
 import { guarded } from "./db-errors";
 import { readIssueCheck, readIssueFingerprint, type IssueCheckSeen } from "./issue";
-import { readIssuedInvoice, type IssuedInvoice } from "./issued";
+import { creditCovers, type RateNets } from "./issue-check";
+import { readBuyerSnapshot, readIssuedInvoice, SnapshotUnreadable, type IssuedInvoice } from "./issued";
 import {
   formatFixed,
   invoiceTotals,
@@ -20,7 +22,7 @@ import {
   UNIT_PRICE_MAX,
   type InvoiceTotals,
 } from "./money";
-import { invoiceLocaleFor, isInvoiceLocale, type InvoiceLocale } from "./print";
+import { invoiceLocaleFor, isInvoiceLocale, isoDay, type BuyerPrint, type InvoiceLocale } from "./print";
 import { readDefaultPaymentTerms } from "./seller";
 import { normalizePaymentTerms, textOrNull } from "./seller-fields";
 import { defaultRateFor, isVatProfile, rateAllowed, suggestVatProfile, VAT_RATES, type VatProfile } from "./vat";
@@ -63,14 +65,17 @@ export const DETAIL_TEXT_MAX = { buyerReference: 100, ourReference: 100, note: 1
 
 export type InvoiceStatus = "DRAFT" | "ISSUED" | "SENT" | "PAID" | "CREDITED";
 
+export type InvoiceKind = "INVOICE" | "CREDIT_NOTE";
+
 export type InvoiceListRow = {
   readonly id: string;
+  readonly kind: InvoiceKind;
   readonly status: InvoiceStatus;
   readonly displayNumber: string | null;
   readonly client: { readonly id: string; readonly name: string };
   readonly project: { readonly key: string; readonly name: string } | null;
   readonly currency: string;
-  /** In hundredths; a draft's from its lines, an issued invoice's as stored. */
+  /** In hundredths; a draft's from its lines, an issued invoice's as stored — a credit note's POSITIVE (print it with `signed`). */
   readonly total: bigint;
   readonly createdAt: Date;
   readonly issueDate: Date | null;
@@ -106,10 +111,30 @@ export type BillTo = {
   readonly archived: boolean;
 };
 
+/** What an issued invoice has been credited (slice 108b) — its page's "Credit notes" card. */
+export type CreditSummary = {
+  readonly notes: readonly CreditNoteSummary[];
+  /** Per VAT rate: the invoice's net and what its issued credit notes have credited. */
+  readonly original: RateNets;
+  readonly credited: RateNets;
+  /** Some credited, not all of it — derived, never a status. */
+  readonly partly: boolean;
+};
+
 export type InvoiceDetail = {
   readonly id: string;
+  readonly kind: InvoiceKind;
   readonly status: InvoiceStatus;
   readonly displayNumber: string | null;
+  /** A credit note's invoice, and why it credits it. */
+  readonly credits: { readonly id: string; readonly displayNumber: string | null; readonly issueDate: string | null } | null;
+  readonly creditReason: string | null;
+  /** An issued INVOICE: its credit notes and what is left (slice 108b). */
+  readonly creditSummary: CreditSummary | null;
+  /** A credit note's DRAFT: what is left of its invoice to credit, per rate (its issued credit notes taken off). */
+  readonly creditLeft: RateNets | null;
+  /** A credit note's DRAFT: the buyer as its invoice named them — what it will print (null if unreadable). */
+  readonly creditsBuyer: BuyerPrint | null;
   readonly client: BillTo;
   readonly project: { readonly id: string; readonly key: string; readonly name: string } | null;
   readonly vatProfile: VatProfile;
@@ -133,7 +158,15 @@ export type InvoiceDetail = {
   readonly issueCheck: IssueCheckSeen | null;
   /** Issued: the frozen record, as printed. */
   readonly issued: IssuedInvoice | null;
-  readonly can: { readonly edit: boolean; readonly delete: boolean; readonly issue: boolean };
+  readonly can: {
+    readonly edit: boolean;
+    readonly delete: boolean;
+    readonly issue: boolean;
+    /** Credit… on an issued invoice (slice 108b). */
+    readonly credit: boolean;
+    /** …with a corrected copy: `invoice:create` too. */
+    readonly copy: boolean;
+  };
 };
 
 const lineSelect = {
@@ -187,6 +220,7 @@ export async function listInvoices(
       take: INVOICE_LIST_LIMIT + 1,
       select: {
         id: true,
+        kind: true,
         status: true,
         displayNumber: true,
         currency: true,
@@ -222,6 +256,7 @@ export async function listInvoices(
       more,
       rows: invoices.map((i) => ({
         id: i.id,
+        kind: i.kind,
         status: i.status,
         displayNumber: i.displayNumber,
         client: i.client,
@@ -260,37 +295,67 @@ export async function listInvoiceableClients(
   });
 }
 
+type LockedDraft = { clientId: string; vatProfile: VatProfile; kind: InvoiceKind; creditsInvoiceId: string | null };
+
 /** Lock the invoice and re-read it; a draft or a typed refusal. Scope is checked by the caller. */
-async function lockDraft(
-  tx: TenantDb,
-  invoiceId: string,
-): Promise<{ clientId: string; vatProfile: VatProfile }> {
-  const rows = await tx.$queryRaw<{ client_id: string; status: string; vat_profile: string }[]>`
-    SELECT client_id, status::text AS status, vat_profile::text AS vat_profile
+async function lockDraft(tx: TenantDb, invoiceId: string): Promise<LockedDraft> {
+  const rows = await tx.$queryRaw<{ client_id: string; status: string; vat_profile: string; kind: string; credits_invoice_id: string | null }[]>`
+    SELECT client_id, status::text AS status, vat_profile::text AS vat_profile, kind::text AS kind, credits_invoice_id
     FROM invoice WHERE id = ${invoiceId} FOR UPDATE`;
   const row = rows[0];
   if (!row) return deny("NOT_FOUND");
   if (row.status !== "DRAFT") return fail("INVOICE_NOT_DRAFT");
   if (!isVatProfile(row.vat_profile)) throw new Error("lockDraft: an unknown VAT treatment");
-  return { clientId: row.client_id, vatProfile: row.vat_profile };
+  return {
+    clientId: row.client_id,
+    vatProfile: row.vat_profile,
+    kind: row.kind === "CREDIT_NOTE" ? "CREDIT_NOTE" : "INVOICE",
+    creditsInvoiceId: row.credits_invoice_id,
+  };
+}
+
+/**
+ * The VAT rates a CREDIT NOTE's lines may take: its invoice's, highest first
+ * (the code review's low — a new line defaulted to 25 % on a 12 %-only
+ * invoice and blocked the issue with a rate nothing could credit). Null for
+ * an invoice, whose rates are its treatment's.
+ */
+async function creditRatesOf(tx: TenantDb, locked: LockedDraft): Promise<bigint[] | null> {
+  if (locked.kind !== "CREDIT_NOTE" || !locked.creditsInvoiceId) return null;
+  const rows = await tx.invoiceLine.findMany({
+    where: { invoiceId: locked.creditsInvoiceId },
+    distinct: ["vatRatePct"],
+    select: { vatRatePct: true },
+  });
+  return rows.map((r) => readFixed(r.vatRatePct, 2)).sort((a, b) => (a === b ? 0 : a > b ? -1 : 1));
 }
 
 /**
  * `invoice:edit` (or `create`, `delete`) on a draft: the gates, the lock, the
  * scope — in that order, so a member outside the client learns nothing about
- * the invoice's state (NOT_FOUND either way).
+ * the invoice's state (NOT_FOUND either way). A CREDIT NOTE's draft also
+ * takes `invoice:credit` (slice 108b; A4) — here, keyed on the kind the lock
+ * read, so no verb can forget it (the design review's low).
  */
 async function openDraft(
   tx: TenantDb,
   ctx: InvoicingCtx,
   invoiceId: string,
   code: "invoice:edit" | "invoice:delete",
-): Promise<{ clientId: string; vatProfile: VatProfile }> {
+): Promise<LockedDraft> {
   await requireAccess(tx, ctx.tenantId, ctx.actor, code);
   const scoped = await tx.invoice.findFirst({ where: { id: invoiceId }, select: { clientId: true } });
   if (!scoped) return deny("NOT_FOUND");
   await assertInScope(tx, ctx.actor, { clientId: scoped.clientId });
-  return lockDraft(tx, invoiceId);
+  const locked = await lockDraft(tx, invoiceId);
+  if (locked.kind === "CREDIT_NOTE") await requireAccess(tx, ctx.tenantId, ctx.actor, "invoice:credit");
+  return locked;
+}
+
+/** "Our reference" on a new draft: the member who made it, by name. */
+export async function ourReferenceOf(tx: TenantDb, memberId: string): Promise<string | null> {
+  const me = await tx.member.findFirst({ where: { id: memberId }, select: { user: { select: { name: true } } } });
+  return me?.user.name?.trim().slice(0, DETAIL_TEXT_MAX.ourReference) || null;
 }
 
 /** `invoice:view` — one invoice, with its client's billing details read live. */
@@ -302,18 +367,27 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
     // it, so an edit landing between the two reads is refused at issue rather
     // than issued unseen (the fix-pass re-check's low: each statement is its
     // own snapshot under READ COMMITTED).
-    const scoped = await tx.invoice.findFirst({ where: { id: invoiceId }, select: { clientId: true, status: true } });
+    const scoped = await tx.invoice.findFirst({ where: { id: invoiceId }, select: { clientId: true, status: true, kind: true } });
     if (!scoped) return deny("NOT_FOUND");
     await assertInScope(tx, ctx.actor, { clientId: scoped.clientId });
     // In turn, never a batch (AGENTS.md: a per-code check is never a leg).
-    const mayIssue = scoped.status === "DRAFT" && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:issue"));
+    // A credit note's draft is only for a member who may credit (slice 108b;
+    // the design review's low: every `can` below follows it).
+    const isCreditNote = scoped.kind === "CREDIT_NOTE";
+    const mayCredit = await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:credit");
+    const mayIssueAny = await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:issue");
+    const mayIssue = scoped.status === "DRAFT" && mayIssueAny && (!isCreditNote || mayCredit);
     const seen = mayIssue ? await readIssueFingerprint(tx, invoiceId) : null;
     const invoice = await tx.invoice.findFirst({
       where: { id: invoiceId },
       select: {
         id: true,
+        kind: true,
+        creditsInvoiceId: true,
+        creditReason: true,
         status: true,
         displayNumber: true,
+        total: true,
         clientId: true,
         vatProfile: true,
         currency: true,
@@ -362,14 +436,58 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
     ).map(lineView);
     // In turn, never a batch (AGENTS.md: a per-code check is never a leg).
     const draft = invoice.status === "DRAFT";
-    const canEdit = draft && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:edit"));
-    const canDelete = draft && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:delete"));
+    const kindAllows = !isCreditNote || mayCredit;
+    const canEdit = draft && kindAllows && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:edit"));
+    const canDelete = draft && kindAllows && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:delete"));
     const canIssue = draft && mayIssue;
     // A draft: what issuing needs (only for someone who may issue it); an
     // issued invoice: its frozen record, the bank details read tolerantly
     // (an unreadable one says so on the page; the PDF reads strictly).
     const issueCheck = canIssue && seen ? await readIssueCheck(tx, ctx.tenantId, invoiceId, new Date(), seen) : null;
     const issued = draft ? null : await readIssuedInvoice(tx, ctx.tenantId, invoiceId, { strict: false });
+    // Slice 108b. A credit note: the invoice it credits (and, while a draft,
+    // what is left of it per rate). An issued invoice: its credit notes.
+    let credits: InvoiceDetail["credits"] = null;
+    let creditLeft: RateNets | null = null;
+    let creditsBuyer: BuyerPrint | null = null;
+    let creditSummary: CreditSummary | null = null;
+    if (isCreditNote && invoice.creditsInvoiceId) {
+      const original = await tx.invoice.findFirst({
+        where: { id: invoice.creditsInvoiceId },
+        select: { id: true, displayNumber: true, issueDate: true, buyerSnapshot: true },
+      });
+      if (original) credits = { id: original.id, displayNumber: original.displayNumber, issueDate: original.issueDate ? isoDay(original.issueDate) : null };
+      // Who a credit note's draft bills: the parties as its invoice named
+      // them (the guard copies that snapshot at issue), never the live client.
+      if (draft && original) {
+        try {
+          creditsBuyer = readBuyerSnapshot(original.buyerSnapshot);
+        } catch (e) {
+          if (!(e instanceof SnapshotUnreadable)) throw e;
+        }
+      }
+      if (draft && original) {
+        const own = await readInvoiceNets(tx, original.id);
+        const done = await readCreditedNets(tx, original.id);
+        // Highest rate first, as the totals list them.
+        creditLeft = new Map(
+          [...own].sort(([a], [b]) => (a === b ? 0 : a > b ? -1 : 1)).map(([rate, net]) => [rate, net - (done.get(rate) ?? 0n)]),
+        );
+      }
+    } else if (!draft) {
+      const notes = await readCreditNotes(tx, invoice.id);
+      const own = await readInvoiceNets(tx, invoice.id);
+      const done = await readCreditedNets(tx, invoice.id);
+      creditSummary = { notes, original: own, credited: done, partly: done.size > 0 && !creditCovers(own, done) };
+    }
+    const creditable = invoice.status === "ISSUED" || invoice.status === "SENT" || invoice.status === "PAID";
+    // Something to credit: an invoice of nothing never can be (a credit
+    // note's total is above zero — the code review's low).
+    const positive = invoice.total !== null && readFixed(invoice.total, 2) > 0n;
+    const canCredit =
+      !isCreditNote && creditable && positive && mayCredit && mayIssueAny && creditSummary !== null && !creditCovers(creditSummary.original, creditSummary.credited);
+    // The corrected copy is a new draft: `invoice:create` (the code review's low).
+    const canCopy = canCredit && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:create"));
     const { projects: live, status, invoiceLocale, ...billTo } = client;
     // The draft's own project stays offered after it was archived, or the
     // select would show its raw id at rest and "No project" open (the code
@@ -378,8 +496,14 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
     const projects = own && !live.some((p) => p.id === own.id) ? [...live, { ...own, archived: true }] : live;
     return {
       id: invoice.id,
+      kind: invoice.kind,
       status: invoice.status,
       displayNumber: invoice.displayNumber,
+      credits,
+      creditReason: invoice.creditReason,
+      creditSummary,
+      creditLeft,
+      creditsBuyer,
       client: { ...billTo, archived: status === "ARCHIVED" },
       project: invoice.project,
       vatProfile: invoice.vatProfile,
@@ -398,7 +522,7 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
       clientLocale: invoiceLocaleFor({ invoiceLocale, countryCode: billTo.countryCode }),
       issueCheck,
       issued,
-      can: { edit: canEdit, delete: canDelete, issue: canIssue },
+      can: { edit: canEdit, delete: canDelete, issue: canIssue, credit: canCredit, copy: canCopy },
     };
   });
 }
@@ -435,15 +559,17 @@ export async function createDraft(
       if (!client) return deny("NOT_FOUND");
       if (client.status === "ARCHIVED") return fail("ARCHIVED");
       if (input.projectId) await assertProjectOfClient(tx, client.id, input.projectId);
+      // The client's last INVOICE — never a credit note, whose terms are
+      // always none (the design review's medium: a part credit made the next
+      // invoice due on its date).
       const last = await tx.invoice.findFirst({
-        where: { clientId: client.id },
+        where: { clientId: client.id, kind: "INVOICE" },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: { currency: true, paymentTermsDays: true },
       });
       const prefs = await readPreferences(tx, ctx.tenantId);
       const paymentTermsDays = last?.paymentTermsDays ?? (await readDefaultPaymentTerms(tx, ctx.tenantId));
-      const me = await tx.member.findFirst({ where: { id: ctx.actor.memberId }, select: { user: { select: { name: true } } } });
-      const ourReference = me?.user.name?.trim().slice(0, DETAIL_TEXT_MAX.ourReference) || null;
+      const ourReference = await ourReferenceOf(tx, ctx.actor.memberId);
       const created = await tx.invoice.create({
         data: {
           tenantId: ctx.tenantId,
@@ -491,11 +617,24 @@ export type DraftDetailsPatch = {
   readonly note?: unknown;
   /** "sv" | "en", or ""/null — the client's (C76 (e)). */
   readonly locale?: unknown;
+  /** A credit note's reason (C77 (b)) — required, so never cleared. */
+  readonly creditReason?: unknown;
 };
+
+/** What a credit note's draft may change: its reason and the words around it. Its terms are its invoice's (the guard holds them). */
+const CREDIT_NOTE_FIELDS: ReadonlySet<string> = new Set(["creditReason", "buyerReference", "ourReference", "note"]);
+
+/** A credit note's reason, at most this long (the column's CHECK). */
+export const CREDIT_REASON_MAX = 500;
 
 /** `invoice:edit` — the draft's details; only the fields present are written. Returns what changed. */
 export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, patch: DraftDetailsPatch): Promise<string[]> {
   const data: Record<string, unknown> = {};
+  if ("creditReason" in patch) {
+    const reason = textOrNull(patch.creditReason, CREDIT_REASON_MAX);
+    if (reason === null) return fail("INVOICE_CREDIT_REASON_REQUIRED");
+    data.creditReason = reason;
+  }
   if ("currency" in patch) {
     const c = typeof patch.currency === "string" ? patch.currency.trim().toUpperCase() : "";
     if (!(CURRENCIES as readonly string[]).includes(c)) return fail("INVALID_INPUT", "currency");
@@ -520,11 +659,16 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
 
   return guarded(() =>
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
-      const { clientId } = await openDraft(tx, ctx, invoiceId, "invoice:edit");
+      const { clientId, kind } = await openDraft(tx, ctx, invoiceId, "invoice:edit");
+      // A credit note keeps its invoice's terms; an invoice has no reason.
+      for (const field of Object.keys(data)) {
+        if (kind === "CREDIT_NOTE" ? !CREDIT_NOTE_FIELDS.has(field) : field === "creditReason") return fail("INVALID_INPUT", field);
+      }
       if (typeof data.projectId === "string") await assertProjectOfClient(tx, clientId, data.projectId);
       const current = await tx.invoice.findFirst({
         where: { id: invoiceId },
         select: {
+          creditReason: true,
           projectId: true,
           currency: true,
           paymentTermsDays: true,
@@ -573,6 +717,8 @@ export async function setDraftVatProfile(ctx: InvoicingCtx, invoiceId: string, r
   return guarded(() =>
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
       const current = await openDraft(tx, ctx, invoiceId, "invoice:edit");
+      // A credit note's treatment is its invoice's (the guard holds it).
+      if (current.kind === "CREDIT_NOTE") return fail("INVALID_INPUT", "vat profile");
       if (current.vatProfile === profile) return 0;
       // The invoice first, then its lines: the line guard checks each new
       // rate against the treatment the invoice now has.
@@ -629,6 +775,12 @@ const parseRate = (raw: unknown, profile: VatProfile): bigint => {
   return r;
 };
 
+/** A credit note's line keeps to its invoice's rates (`creditRatesOf`); an invoice's, to its treatment's (`parseRate`). */
+const creditRate = (rate: bigint, rates: readonly bigint[] | null): bigint => {
+  if (rates !== null && !rates.includes(rate)) return fail("INVOICE_RATE_NOT_ALLOWED");
+  return rate;
+};
+
 const parseDescription = (raw: unknown): string => {
   const d = textOrNull(raw, LINE_TEXT_MAX.description);
   if (d === null) return fail("INVOICE_LINE_DESCRIPTION_REQUIRED");
@@ -650,11 +802,14 @@ const amountOf = (quantity: bigint, unitPrice: bigint): bigint => {
 export async function addLine(ctx: InvoicingCtx, invoiceId: string, input: LineInput, parse: LineParse = {}): Promise<string> {
   return guarded(() =>
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
-      const { clientId, vatProfile } = await openDraft(tx, ctx, invoiceId, "invoice:edit");
+      const locked = await openDraft(tx, ctx, invoiceId, "invoice:edit");
+      const { clientId, vatProfile } = locked;
+      const rates = await creditRatesOf(tx, locked);
       const description = parseDescription(input.description);
       const quantity = input.quantity === undefined ? 1000n : parseQuantity(input.quantity, parse.decimalComma);
       const unitPrice = input.unitPrice === undefined ? 0n : parseUnitPrice(input.unitPrice, parse.decimalComma);
-      const vatRate = input.vatRate === undefined ? defaultRateFor(vatProfile) : parseRate(input.vatRate, vatProfile);
+      const vatRate =
+        input.vatRate === undefined ? (rates?.[0] ?? defaultRateFor(vatProfile)) : creditRate(parseRate(input.vatRate, vatProfile), rates);
       const unit = textOrNull(input.unit, LINE_TEXT_MAX.unit);
       const amount = amountOf(quantity, unitPrice);
       const stats = await tx.invoiceLine.aggregate({
@@ -699,7 +854,9 @@ export async function updateLine(
 ): Promise<string[]> {
   return guarded(() =>
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
-      const { vatProfile } = await openDraft(tx, ctx, invoiceId, "invoice:edit");
+      const locked = await openDraft(tx, ctx, invoiceId, "invoice:edit");
+      const { vatProfile } = locked;
+      const rates = "vatRate" in patch ? await creditRatesOf(tx, locked) : null;
       const stored = await tx.invoiceLine.findFirst({ where: { id: lineId, invoiceId }, select: lineSelect });
       if (!stored) return deny("NOT_FOUND");
       const line = lineView(stored);
@@ -708,7 +865,7 @@ export async function updateLine(
         quantity: "quantity" in patch ? parseQuantity(patch.quantity, parse.decimalComma) : line.quantity,
         unit: "unit" in patch ? textOrNull(patch.unit, LINE_TEXT_MAX.unit) : line.unit,
         unitPrice: "unitPrice" in patch ? parseUnitPrice(patch.unitPrice, parse.decimalComma) : line.unitPrice,
-        vatRate: "vatRate" in patch ? parseRate(patch.vatRate, vatProfile) : line.vatRate,
+        vatRate: "vatRate" in patch ? creditRate(parseRate(patch.vatRate, vatProfile), rates) : line.vatRate,
       };
       const changed = (["description", "quantity", "unit", "unitPrice", "vatRate"] as const).filter((k) => next[k] !== line[k]);
       if (changed.length === 0) return [];

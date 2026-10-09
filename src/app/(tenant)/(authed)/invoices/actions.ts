@@ -9,7 +9,9 @@ import { caution, runAction, runForm, type ActionResult, type FormResult } from 
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   addLine,
+  createCreditDraft,
   createDraft,
+  creditInFull,
   deleteDraft,
   issueInvoice,
   moveLine,
@@ -75,6 +77,8 @@ export async function updateDraftDetailsAction(invoiceId: unknown, patch: unknow
     "ourReference",
     "note",
     "locale",
+    // Slice 108b: a credit note's reason (the service refuses it on an invoice).
+    "creditReason",
   ];
   const clean: Record<string, unknown> = {};
   for (const key of allowed) {
@@ -191,7 +195,8 @@ export async function deleteDraftAction(invoiceId: unknown): Promise<FormResult>
     await deleteDraft(ctx, invoiceId);
     return t("deleted");
   });
-  if (r.ok) revalidatePath(LIST);
+  // A credit note's draft is listed on its invoice's page too (slice 108b).
+  if (r.ok) revalidatePath(LIST, "layout");
   return r;
 }
 
@@ -209,19 +214,81 @@ export async function issueInvoiceAction(invoiceId: unknown, fingerprint: unknow
   const ctx = await ctxOf();
   const t = await getTranslations("invoices.issue");
   const r = await runForm(pageOf(invoiceId), async () => {
-    const { displayNumber } = await issueInvoice(ctx, invoiceId, { fingerprint });
-    try {
-      await ensureInvoicePdf(ctx, invoiceId);
-    } catch (e) {
-      // Never silent: the issue stands and the backstop will retry, but why
-      // the PDF failed belongs in the log (names and messages carry no data).
-      console.error(`invoices: the PDF after issuing ${invoiceId} failed: ${e instanceof DomainError ? e.code : errorTag(e)}`);
-      return caution(t("issuedNoPdf", { number: displayNumber }));
-    }
-    return t("issued", { number: displayNumber });
+    const { displayNumber, kind } = await issueInvoice(ctx, invoiceId, { fingerprint });
+    const credit = kind === "CREDIT_NOTE";
+    if (!(await pdfMade(ctx, invoiceId))) return caution(t(credit ? "creditIssuedNoPdf" : "issuedNoPdf", { number: displayNumber }));
+    return t(credit ? "creditIssued" : "issued", { number: displayNumber });
   });
   revalidatePath(pageOf(invoiceId));
-  if (r.ok) revalidatePath(LIST);
+  // A credit note may have moved its invoice to Credited: the whole list.
+  if (r.ok) revalidatePath(LIST, "layout");
+  return r;
+}
+
+/**
+ * Make an issued invoice's PDF right after its issue. A failure does not undo
+ * the issue: the caller answers with a CAUTION, never a revert-looking error —
+ * Download PDF and the jobs route's backstop make it later.
+ */
+async function pdfMade(ctx: Awaited<ReturnType<typeof ctxOf>>, invoiceId: string): Promise<boolean> {
+  try {
+    await ensureInvoicePdf(ctx, invoiceId);
+    return true;
+  } catch (e) {
+    // Never silent: the issue stands and the backstop will retry, but why
+    // the PDF failed belongs in the log (names and messages carry no data).
+    console.error(`invoices: the PDF after issuing ${invoiceId} failed: ${e instanceof DomainError ? e.code : errorTag(e)}`);
+    return false;
+  }
+}
+
+/**
+ * Credit PART of an issued invoice (slice 108b): a credit-note draft with every
+ * line; the answer carries its id so the dialog navigates to it.
+ */
+export async function createCreditDraftAction(invoiceId: unknown, reason: unknown): Promise<ActionResult<string>> {
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId) || typeof reason !== "string") return { ok: false, message: (await invalid()).message };
+  const ctx = await ctxOf();
+  const r = await runAction(pageOf(invoiceId), () => createCreditDraft(ctx, invoiceId, { reason }));
+  if (r.ok) {
+    revalidatePath(pageOf(invoiceId));
+    revalidatePath(LIST);
+  }
+  return r;
+}
+
+export type CreditedAnswer = {
+  readonly message: string;
+  readonly caution: boolean;
+  /** Where the dialog goes next: the corrected copy, or the credit note. */
+  readonly goTo: string;
+};
+
+/**
+ * Credit the WHOLE issued invoice (slice 108b; C77 (c)): the credit note
+ * issued now and its PDF made, and — with `correctedCopy` — a new draft of
+ * the invoice to fix and issue, which the dialog then opens.
+ */
+export async function creditInFullAction(invoiceId: unknown, reason: unknown, correctedCopy: unknown): Promise<ActionResult<CreditedAnswer>> {
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId) || typeof reason !== "string" || typeof correctedCopy !== "boolean") {
+    return { ok: false, message: (await invalid()).message };
+  }
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.credit");
+  const r = await runAction(pageOf(invoiceId), async (): Promise<CreditedAnswer> => {
+    const done = await creditInFull(ctx, invoiceId, { reason, correctedCopy });
+    const made = await pdfMade(ctx, done.creditNoteId);
+    // The copy opens (C77 (c)) even when the credit note's PDF failed, so
+    // that caution says where the credit note is (the code review's nit).
+    const message = done.copyId
+      ? t(made ? "issuedCopy" : "issuedCopyNoPdf", { number: done.displayNumber })
+      : t(made ? "issued" : "issuedNoPdf", { number: done.displayNumber });
+    return { message, caution: !made, goTo: pageOf(done.copyId ?? done.creditNoteId) };
+  });
+  if (r.ok) {
+    revalidatePath(pageOf(invoiceId));
+    revalidatePath(LIST);
+  }
   return r;
 }
 

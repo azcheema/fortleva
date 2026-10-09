@@ -32,7 +32,10 @@ function census(): { file: string; fn: string | null }[] {
 }
 
 describe("who updates invoice_series", () => {
-  it("only invoice_guard, in the issuing migration", () => {
-    expect(census()).toEqual([{ file: "20261009200000_invoice_issuing", fn: "invoice_guard" }]);
+  it("only invoice_guard — in the issuing migration, and its replacement for credit notes (108b), the allocation unchanged", () => {
+    expect(census()).toEqual([
+      { file: "20261009200000_invoice_issuing", fn: "invoice_guard" },
+      { file: "20261010090000_credit_notes", fn: "invoice_guard" },
+    ]);
   });
 });

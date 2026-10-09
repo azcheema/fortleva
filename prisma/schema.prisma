@@ -1441,6 +1441,14 @@ model Invoice {
   fxRateDate        DateTime?     @map("fx_rate_date") @db.Date
   vatTotalSek       Decimal?      @map("vat_total_sek") @db.Decimal(16, 2)
   pdfFileId         String?       @map("pdf_file_id") // the archived rendering, recorded once after issue
+  // Slice 108b — a credit note says WHY (C77 (b)): required to issue one,
+  // NULL on an invoice (CHECKs). Its amounts are stored POSITIVE, as an
+  // invoice's; the print negates them (C77 (a); `print.ts`'s `signed`).
+  creditReason      String?       @map("credit_reason")
+  // …and what it credits, by number and date — WRITTEN BY THE GUARD at issue
+  // from the original (ML's unambiguous reference, in the record itself).
+  creditsDisplayNumber String?    @map("credits_display_number")
+  creditsIssueDate  DateTime?     @map("credits_issue_date") @db.Date
   createdByMemberId String        @map("created_by_member_id") // attribution, no FK
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)

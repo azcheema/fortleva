@@ -156,6 +156,9 @@ const DBTEST_PREFIXES = [
   // Phase 5 slice 104, the inbox's reasons and housekeeping —
   // `src/notify/inbox-polish.dbtest.ts`, `setupTenant("inbx")` twice.
   "inbx-",
+  // Phase 4 slice 108b, credit notes — `src/modules/invoicing/credit.dbtest.ts`,
+  // `setupTenant("invc")`.
+  "invc-",
   // Phase 4 slice 107, invoice drafts and the workspace's invoice details —
   // `src/modules/invoicing/drafts.dbtest.ts` and `seller.dbtest.ts`,
   // `setupTenant("invd")` and `setupTenant("invs")`.

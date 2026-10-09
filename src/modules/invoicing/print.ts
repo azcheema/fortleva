@@ -74,8 +74,18 @@ export type SekVat = {
   readonly totalSek: Minor;
 };
 
+/** What a credit note credits (slice 108b): ML's unambiguous reference to the original. */
+export type CreditsPrint = {
+  readonly displayNumber: string;
+  /** The original's invoice date, `YYYY-MM-DD`. */
+  readonly issueDate: string;
+};
+
 export type InvoicePrint = {
   readonly kind: "INVOICE" | "CREDIT_NOTE";
+  /** A credit note: the invoice it credits, and why (C77 (b)). Null on an invoice. */
+  readonly credits: CreditsPrint | null;
+  readonly creditReason: string | null;
   readonly locale: InvoiceLocale;
   readonly displayNumber: string;
   readonly issueDate: string;
@@ -95,6 +105,16 @@ export type InvoicePrint = {
   readonly buyer: BuyerPrint;
   readonly payment: PaymentPrint;
 };
+
+/**
+ * THE ONE SIGN RULE (slice 108b; C77 (a)). A credit note is STORED with
+ * positive quantities and amounts, as an invoice is (EN 16931's credit note);
+ * it PRINTS them with a minus sign — "Att betala: −1 250,00" — and its
+ * quantities too, so every line still reads quantity × price = amount. Unit
+ * prices and rates print as stored. Everything that shows a credit note's
+ * amounts (the PDF, its page, the list) goes through this.
+ */
+export const signed = (value: bigint, kind: InvoicePrint["kind"]): bigint => (kind === "CREDIT_NOTE" ? -value : value);
 
 const intlTag = (locale: InvoiceLocale): string => (locale === "sv" ? "sv-SE" : "en-GB");
 

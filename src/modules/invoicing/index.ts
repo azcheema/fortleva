@@ -18,9 +18,12 @@ export {
   setDraftVatProfile,
   updateDraftDetails,
   updateLine,
+  CREDIT_REASON_MAX,
   type BillTo,
+  type CreditSummary,
   type DraftDetailsPatch,
   type InvoiceDetail,
+  type InvoiceKind,
   type InvoiceLineView,
   type InvoiceListRow,
   type InvoiceStatus,
@@ -66,7 +69,11 @@ export {
 } from "./seller-fields";
 export { defaultRateFor, isVatProfile, VAT_PROFILES, VAT_RATES, type VatProfile } from "./vat";
 // Phase 4 slice 108 — issuing (founder decision C76).
-export { issueInvoice, type IssueBlocker, type IssueCheck, type IssueCheckSeen } from "./issue";
+export { issueInvoice, type IssueBlocker, type IssueCheck, type IssueCheckSeen, type OverCredit } from "./issue";
+// Phase 4 slice 108b — credit notes (founder decisions C76 (c), (f), C77).
+export { createCreditDraft, creditInFull, type CreditedInFull } from "./credit";
+export { type CreditNoteSummary } from "./credit-state";
+export { type RateNets } from "./issue-check";
 export { type IssuedInvoice } from "./issued";
 // NOT the PDF store (`./pdf-store`): it reaches `@react-pdf/renderer`, an
 // ESM-only package a CommonJS importer of this index cannot load — the e2e
@@ -76,6 +83,7 @@ export {
   isInvoiceLocale,
   printAmount,
   printFxRate,
+  signed,
   type InvoiceLocale,
   type InvoicePrint,
 } from "./print";

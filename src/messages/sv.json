@@ -1726,10 +1726,14 @@
     "INVOICE_RATE_NOT_ALLOWED": "Den momssatsen gäller inte för fakturans momshantering.",
     "INVOICE_NOT_READY": "Fakturan kan inte utfärdas än. Öppna Utfärda faktura för att se vad som saknas.",
     "INVOICE_CHANGED": "Fakturan eller kunden ändrades efter att du öppnade den. Granska den och utfärda den igen.",
-    "INVOICE_FX_UNAVAILABLE": "Det gick inte att hämta dagens växelkurs från Europeiska centralbanken. Försök igen om en liten stund.",
+    "INVOICE_FX_UNAVAILABLE": "Det gick inte att hämta växelkursen från Europeiska centralbanken. Försök igen om en liten stund.",
+    "INVOICE_FX_TOO_OLD": "Arbetsperioden slutade för länge sedan – ungefär tre månader eller mer – för de kurser från Europeiska centralbanken som appen kan läsa. Fakturera i kronor, eller kontrollera periodens slut.",
     "INVOICE_SERIES_IN_USE": "Första fakturanumret kan inte ändras när en faktura väl har utfärdats.",
     "INVOICE_ISSUE_BUSY": "En annan faktura utfärdas just nu. Försök igen om en liten stund.",
-    "INVOICE_PDF_UNAVAILABLE": "Det gick inte att skapa fakturans pdf just nu. Försök igen om en liten stund."
+    "INVOICE_PDF_UNAVAILABLE": "Det gick inte att skapa fakturans pdf just nu. Försök igen om en liten stund.",
+    "INVOICE_NOT_CREDITABLE": "Den här fakturan kan inte krediteras. Den kan redan vara helt krediterad.",
+    "INVOICE_PARTLY_CREDITED": "En del av fakturan har redan krediterats, så hela fakturan kan inte krediteras. Kreditera det som återstår som en del i stället.",
+    "INVOICE_CREDIT_REASON_REQUIRED": "En kreditfaktura behöver en orsak."
   },
   "assignments": {
     "title": "Team",
@@ -4725,7 +4729,9 @@
         "date": "Datum",
         "total": "Summa"
       },
-      "limited": "Visar de {limit} nyaste. Välj en kund för att se deras."
+      "limited": "Visar de {limit} nyaste. Välj en kund för att se deras.",
+      "creditNote": "Kreditfaktura",
+      "creditDraftLink": "Kreditfakturautkast"
     },
     "new": {
       "client": "Kund",
@@ -4755,7 +4761,8 @@
         "email": "E-post för fakturor",
         "live": "Tills fakturan utfärdas visar den kundens uppgifter som de är nu.",
         "archived": "Kunden är arkiverad.",
-        "reverseChargeNeedsVat": "Omvänd betalningsskyldighet kräver kundens momsregistreringsnummer. Lägg till det på kundens sida innan fakturan utfärdas."
+        "reverseChargeNeedsVat": "Omvänd betalningsskyldighet kräver kundens momsregistreringsnummer. Lägg till det på kundens sida innan fakturan utfärdas.",
+        "asOriginal": "Som på fakturan den krediterar. En kreditfaktura anger parterna som den fakturan gjorde."
       },
       "details": {
         "title": "Uppgifter"
@@ -4810,7 +4817,14 @@
           "OUTSIDE_SCOPE": "Ingen svensk moms"
         }
       },
-      "projectOptionArchived": "{key} · {name} (arkiverat)"
+      "projectOptionArchived": "{key} · {name} (arkiverat)",
+      "creditTitle": "Kreditfakturautkast",
+      "creditMenuLabel": "Åtgärder för kreditfakturautkastet",
+      "creditDelete": "Ta bort kreditfakturautkast",
+      "creditDeleteConfirm": "Ta bort det här kreditfakturautkastet och dess rader? Det går inte att ångra.",
+      "creditNoNumberYet": "En kreditfaktura får sitt nummer när den utfärdas.",
+      "creditFixed": "En kreditfaktura behåller momshantering, valuta, språk, projekt och arbetsperiod från fakturan den krediterar.",
+      "creditLines": "Det som kreditfakturan krediterar, i {currency} exkl. moms. Sänk eller ta bort det som inte ska krediteras. Kreditfakturan skriver ut beloppen med minustecken."
     },
     "issue": {
       "button": "Utfärda faktura…",
@@ -4830,13 +4844,33 @@
         "clientVatCountry": "Omvänd betalningsskyldighet gäller ett företag i ett annat EU-land, och dess momsregistreringsnummer måste börja med landets kod.",
         "clientInEu": "Kunden finns i EU, så fakturan kan inte vara utanför svensk moms.",
         "noLines": "Lägg till minst en rad.",
-        "negativeTotal": "Summan kan inte vara under noll."
+        "negativeTotal": "Summan kan inte vara under noll.",
+        "fxTooOld": "Arbetsperioden slutade för mer än 90 dagar sedan, tidigare än de kurser från Europeiska centralbanken som appen kan läsa. Fakturera i kronor, eller kontrollera periodens slut.",
+        "noReason": "Ange orsaken till kreditfakturan.",
+        "overCredit": "Den krediterar mer än vad som återstår av fakturan:",
+        "originalNotOpen": "Fakturan den krediterar har redan krediterats helt.",
+        "notPositive": "Summan måste vara över noll.",
+        "leavesNegative": "Då skulle bara en rabatt på fakturan lämnas okrediterad, och den kan ingen kreditfaktura ta senare. Kreditera rabatten också, eller kreditera mindre.",
+        "noRate": "Fakturan den krediterar angav ingen växelkurs (dess moms blev noll), så kreditfakturans moms kan inte visas i kronor. Kreditera hela fakturan i stället.",
+        "beforeInvoice": "Den kan inte dateras före fakturan den krediterar ({date}). Utfärda den från och med den dagen."
       },
       "toSettings": "Öppna Inställningar → Fakturering",
       "toClient": "Öppna kunden",
       "confirm": "Utfärda faktura",
       "issued": "Faktura {number} har utfärdats.",
-      "issuedNoPdf": "Faktura {number} har utfärdats. Dess pdf kunde inte skapas än. Använd Ladda ner pdf för att försöka igen."
+      "issuedNoPdf": "Faktura {number} har utfärdats. Dess pdf kunde inte skapas än. Använd Ladda ner pdf för att försöka igen.",
+      "creditButton": "Utfärda kreditfaktura…",
+      "creditTitle": "Utfärda kreditfaktura {number}?",
+      "creditTitleNoNumber": "Utfärda kreditfakturan?",
+      "creditBody": "Den dateras {issueDate}. En utfärdad kreditfaktura kan inte ändras eller tas bort.",
+      "creditTotal": "Summa",
+      "creditFx": "Momsen visas också i SEK, enligt kursen på fakturan den krediterar ({date}).",
+      "creditBlockedTitle": "Innan kreditfakturan kan utfärdas",
+      "creditConfirm": "Utfärda kreditfaktura",
+      "creditIssued": "Kreditfaktura {number} har utfärdats.",
+      "creditIssuedNoPdf": "Kreditfaktura {number} har utfärdats. Dess pdf kunde inte skapas än. Använd Ladda ner pdf för att försöka igen.",
+      "fxDay": "Momsen visas också i SEK, enligt Europeiska centralbankens kurs för {date}, dagen då arbetet avslutades (eller den senaste kursen före den dagen).",
+      "overCreditAt": "{rate} %: den krediterar {asked} och {left} återstår."
     },
     "issued": {
       "title": "Faktura {number}",
@@ -4854,7 +4888,9 @@
       "sekRate": "Europeiska centralbankens kurs {rate} SEK per {currency}, {date}",
       "payment": "Betalning",
       "paymentUnreadable": "Bankuppgifterna på den här fakturan kunde inte läsas här. Fakturans pdf visar dem som de skrevs ut.",
-      "pdfMissing": "Fakturans pdf har inte skapats än. Ladda ner pdf skapar den."
+      "pdfMissing": "Fakturans pdf har inte skapats än. Ladda ner pdf skapar den.",
+      "creditTitle": "Kreditfaktura {number}",
+      "creditPageTitle": "Kreditfaktura"
     },
     "lines": {
       "title": "Rader",
@@ -4881,6 +4917,43 @@
       "removed": "Raden har tagits bort.",
       "moved": "Raden har flyttats.",
       "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
+    },
+    "credit": {
+      "button": "Kreditera…",
+      "title": "Kreditera faktura {number}",
+      "body": "En kreditfaktura rättar en utfärdad faktura. Den får nästa nummer och kan inte ändras när den väl har utfärdats.",
+      "reason": "Orsak",
+      "reasonHint": "Skrivs ut på kreditfakturan.",
+      "reasonPlaceholder": "Varför krediteras den?",
+      "scope": "Vad ska krediteras",
+      "whole": "Hela fakturan",
+      "wholeHint": "Utfärdas nu, för alla rader.",
+      "part": "En del av den",
+      "partHint": "Öppnar ett kreditfakturautkast med alla rader. Sänk eller ta bort det som inte ska krediteras och utfärda den sedan.",
+      "partlyCredited": "En del av fakturan har redan krediterats. Kreditera det som återstår som en del.",
+      "copy": "Gör en rättad kopia som ett nytt utkast",
+      "copyHint": "Ett nytt fakturautkast med samma uppgifter och rader, klart att rätta och utfärda.",
+      "confirmWhole": "Utfärda kreditfaktura",
+      "confirmPart": "Skapa kreditfakturautkast",
+      "issued": "Kreditfaktura {number} har utfärdats.",
+      "issuedCopy": "Kreditfaktura {number} har utfärdats. Här är en kopia av fakturan att rätta och utfärda.",
+      "issuedNoPdf": "Kreditfaktura {number} har utfärdats. Dess pdf kunde inte skapas än. Använd Ladda ner pdf på den för att försöka igen.",
+      "draftMade": "Kreditfakturautkastet har skapats.",
+      "reasonLabel": "Orsak",
+      "credits": "Krediterar faktura",
+      "creditsLink": "Faktura {number}",
+      "left": "Kvar att kreditera",
+      "leftAt": "{rate} %: {amount}",
+      "notesTitle": "Kreditfakturor",
+      "notesColumns": {
+        "number": "Nummer",
+        "date": "Datum",
+        "amount": "Belopp"
+      },
+      "partlyBadge": "Delvis krediterad",
+      "noteDraft": "Utkast",
+      "issuedCopyNoPdf": "Kreditfaktura {number} har utfärdats, och här är den rättade kopian. Kreditfakturans pdf kunde inte skapas än: öppna kreditfakturan från fakturalistan och använd Ladda ner pdf.",
+      "copyNotAllowed": "För att göra en rättad kopia krävs behörighet att skapa fakturor."
     }
   },
   "invoicePdf": {
@@ -4934,6 +5007,13 @@
     "plusgiro": "PlusGiro",
     "iban": "IBAN",
     "bic": "BIC",
-    "paymentReference": "Ange fakturanummer {number} vid betalning."
+    "paymentReference": "Ange fakturanummer {number} vid betalning.",
+    "credit": {
+      "number": "Kreditfakturanummer",
+      "issueDate": "Datum",
+      "credits": "Krediterar faktura {number} daterad {date}",
+      "reason": "Orsak: {reason}",
+      "fileName": "kreditfaktura-{number}.pdf"
+    }
   }
 }

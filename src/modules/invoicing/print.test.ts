@@ -10,6 +10,7 @@ import {
   printFxRate,
   printQuantity,
   printRate,
+  signed,
   type InvoicePrint,
 } from "./print";
 import type { VatProfile } from "./vat";
@@ -85,6 +86,8 @@ function fixture(profile: VatProfile, locale: "sv" | "en", currency = "SEK"): In
   const totals = invoiceTotals(lines.map((l) => ({ amount: l.amount, rate: l.vatRate })));
   return {
     kind: "INVOICE",
+    credits: null,
+    creditReason: null,
     locale,
     displayNumber: "10001",
     issueDate: "2026-10-09",
@@ -174,7 +177,44 @@ describe("the invoice's PDF", () => {
   });
 
   it("offers the file under the invoice's own word for it", () => {
-    expect(invoicePdfFileName({ locale: "sv", displayNumber: "10001" })).toBe("faktura-10001.pdf");
-    expect(invoicePdfFileName({ locale: "en", displayNumber: "10001" })).toBe("invoice-10001.pdf");
+    expect(invoicePdfFileName({ locale: "sv", displayNumber: "10001", kind: "INVOICE" })).toBe("faktura-10001.pdf");
+    expect(invoicePdfFileName({ locale: "en", displayNumber: "10001", kind: "INVOICE" })).toBe("invoice-10001.pdf");
+    expect(invoicePdfFileName({ locale: "sv", displayNumber: "10002", kind: "CREDIT_NOTE" })).toBe("kreditfaktura-10002.pdf");
+    expect(invoicePdfFileName({ locale: "en", displayNumber: "10002", kind: "CREDIT_NOTE" })).toBe("credit-note-10002.pdf");
+  });
+});
+
+describe("a credit note (slice 108b; C77 (a))", () => {
+  it("prints its amounts and quantities with a minus sign — one rule, `signed`", () => {
+    expect(signed(125_000n, "CREDIT_NOTE")).toBe(-125_000n);
+    expect(signed(125_000n, "INVOICE")).toBe(125_000n);
+    expect(signed(0n, "CREDIT_NOTE")).toBe(0n);
+    // Swedish prints the true minus sign: "Att betala: −1 250,00".
+    expect(printAmount(signed(125_000n, "CREDIT_NOTE"), "sv")).toBe(`−${printAmount(125_000n, "sv")}`);
+    expect(printQuantity(signed(2_000n, "CREDIT_NOTE"), "en")).toBe("-2");
+  });
+
+  it.each([
+    ["SE_DOMESTIC", "sv", "SEK"],
+    ["SE_DOMESTIC", "en", "EUR"],
+    ["EU_REVERSE_CHARGE", "en", "EUR"],
+  ] as const)("renders a %s credit note in %s (%s) — its own layout, Inter embedded", async (profile, locale, currency) => {
+    const invoice = fixture(profile, locale, currency);
+    const bytes = await renderInvoicePdf({
+      ...invoice,
+      kind: "CREDIT_NOTE",
+      displayNumber: "10002",
+      dueDate: invoice.issueDate,
+      paymentTermsDays: 0,
+      credits: { displayNumber: "10001", issueDate: "2026-10-01" },
+      creditReason: "Wrong hours on line 2",
+      payment: { bankgiro: null, plusgiro: null, iban: null, bic: null },
+    });
+    // The page's text is compressed (FlateDecode); what it says is the dbtests'
+    // and the reviewers' — this proves the credit-note drawing renders at all.
+    const text = Buffer.from(bytes).toString("latin1");
+    expect(text.slice(0, 5)).toBe("%PDF-");
+    expect(bytes.byteLength).toBeGreaterThan(3_000);
+    expect(text).toMatch(/\/BaseFont\s*\/[A-Z]{6}\+Inter-Regular/);
   });
 });

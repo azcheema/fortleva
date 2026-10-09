@@ -248,7 +248,7 @@ describe("issuing", () => {
     expect(check.nextNumber).toBe(20001);
     expect(check.noPeriod).toBe(true);
     const r = await issueInvoice(admin(), first);
-    expect(r).toEqual({ number: 20001, displayNumber: "20001" });
+    expect(r).toEqual({ kind: "INVOICE", number: 20001, displayNumber: "20001", creditedInFull: false });
     const row = await f.platform.invoice.findUniqueOrThrow({ where: { id: first } });
     expect(row.status).toBe("ISSUED");
     expect(row.locale).toBe("sv");
@@ -438,6 +438,60 @@ describe("VAT in SEK on another currency (the ECB's rate)", () => {
     expect((await f.platform.invoice.findUniqueOrThrow({ where: { id } })).status).toBe("DRAFT");
   });
 
+  // Slice 108b — founder decision C78 (a).
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
+  it("takes the ECB rate of the day the WORK ENDED, from the history file — the last one on or before it", async () => {
+    const id = await draftFor(se, "1000", { currency: "EUR" });
+    await updateDraftDetails(manager(), id, { periodStart: daysAgo(30), periodEnd: daysAgo(14) });
+    const check = await asMember(f.seats.admin.memberId, (tx) => readIssueCheck(tx, f.tenantId, id));
+    expect(check.rateDay).toBe(daysAgo(14));
+    let asked = "";
+    const history = `<Cube>
+      <Cube time="${daysAgo(13)}"><Cube currency="SEK" rate="11.3000"/></Cube>
+      <Cube time="${daysAgo(16)}"><Cube currency="SEK" rate="11.2000"/></Cube>
+      <Cube time="${daysAgo(20)}"><Cube currency="SEK" rate="11.1000"/></Cube>
+    </Cube>`;
+    await issueInvoice(admin(), id, {
+      fetchText: (url) => {
+        asked = url;
+        return Promise.resolve(history);
+      },
+    });
+    expect(asked).toMatch(/eurofxref-hist-90d\.xml$/);
+    const row = await f.platform.invoice.findUniqueOrThrow({ where: { id } });
+    expect(row.fxRateDate?.toISOString().slice(0, 10)).toBe(daysAgo(16));
+    expect(row.fxRateToSek?.toFixed(6)).toBe("11.200000");
+  });
+
+  it("a work period that ended over 90 days ago is refused before the click and at the issue, nothing fetched", async () => {
+    const id = await draftFor(se, "100", { currency: "EUR" });
+    await updateDraftDetails(manager(), id, { periodStart: daysAgo(120), periodEnd: daysAgo(100) });
+    const check = await asMember(f.seats.admin.memberId, (tx) => readIssueCheck(tx, f.tenantId, id));
+    expect(check.blockers).toEqual(["fxTooOld"]);
+    expect(await outcome(issueInvoice(admin(), id, { fetchText: () => Promise.reject(new Error("never fetched")) }))).toBe(
+      "INVOICE_FX_TOO_OLD",
+    );
+    await updateDraftDetails(manager(), id, { currency: "SEK" });
+  });
+
+  it("the database holds the rate's date to the ten days before the day the work ended", async () => {
+    const id = await draftFor(se, "100", { currency: "EUR" });
+    await updateDraftDetails(manager(), id, { periodEnd: daysAgo(30) });
+    const s = await series();
+    const raw = (rateDate: string) =>
+      asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`
+        UPDATE invoice SET status = 'ISSUED', series_id = ${s.id}, locale = 'sv',
+               issue_date = CURRENT_DATE, due_date = CURRENT_DATE + payment_terms_days, issued_at = now(),
+               issued_by_member_id = ${f.seats.admin.memberId}, subtotal_ex_vat = 100, vat_total = 25.00, total = 125.00,
+               fx_rate_to_sek = 11.194, fx_rate_date = ${rateDate}::date, vat_total_sek = 279.85
+         WHERE id = ${id}`);
+    // Yesterday's rate is AFTER the work ended — slice 108's window took it, C78 (a) does not.
+    expect(await refusal(raw(daysAgo(1)))).toBe("INVOICE_GUARD");
+    expect(await refusal(raw(daysAgo(45)))).toBe("INVOICE_GUARD");
+    expect(await refusal(raw(daysAgo(31)))).toBe("ok");
+  });
+
   it("the database: no rate on SEK, no missing rate on another currency, the SEK VAT recomputed", async () => {
     const sek = await draftFor(se, "100");
     const s = await series();
@@ -476,7 +530,7 @@ describe("the PDF", () => {
     expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(Number(file.sizeBytes)).toBe(bytes.byteLength);
     const audit = (await f.audits("invoice.pdf_generated")).at(-1)!;
-    expect(audit.metadata).toMatchObject({ fileObjectId: pdf.fileObjectId, sha256: file.sha256, templateVersion: 1 });
+    expect(audit.metadata).toMatchObject({ fileObjectId: pdf.fileObjectId, sha256: file.sha256, templateVersion: 2 });
     // Again: the same file, nothing new.
     expect((await ensureInvoicePdf(manager(), id)).fileObjectId).toBe(pdf.fileObjectId);
     expect(await f.platform.fileObject.count({ where: { tenantId: f.tenantId, kind: "INVOICE_PDF", invoices: { some: { id } } } })).toBe(1);
