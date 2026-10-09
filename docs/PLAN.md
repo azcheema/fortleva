@@ -3207,6 +3207,7 @@ Consequences: permissions **+3** (`time_report:manage` CM · `time_report:publis
 | CP4 vault stance | 3V | do not start 3V until closed |
 | Bitwarden Emergency Access for founder credentials | Phase 1 cheap win #1 | none — founder action |
 | Trademark check "Fortleva" | before Phase 7 domain buy | none |
+| **VAPID key pair for phone notifications** (Phase 5 slice 106, C74) — `pnpm exec tsx scripts/generate-vapid-keys.ts`, the two lines into PRODUCTION's environment; one pair per environment, kept once in use (replacing it switches everyone's off); production also needs a real `MAIL_FROM_ADDRESS` (RUNBOOK §1). **Not needed before go-live — the founder asked (2026-10-09) to be REMINDED then: raise it with the SES go-live (RUNBOOK §9), or when they want to try push on their own machine.** | production go-live | Settings → Notifications says phone notifications are "not available on this server yet"; nothing else changes |
 
 ---
 
