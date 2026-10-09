@@ -4730,8 +4730,7 @@
         "total": "Total"
       },
       "limited": "Showing the newest {limit}. Pick a client to see theirs.",
-      "creditNote": "Credit note",
-      "creditDraftLink": "Credit note draft"
+      "creditNote": "Credit note"
     },
     "new": {
       "client": "Client",

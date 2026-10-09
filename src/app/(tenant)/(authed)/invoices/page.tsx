@@ -132,23 +132,21 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                 <TableBody>
                   {rows.map((r) => (
                     <TableRow key={r.id} data-testid="invoice-row" data-invoice-id={r.id} data-status={r.status}>
-                      <TableCell className="whitespace-nowrap">
+                      {/* `leading-4`: a credit note's two lines (the number, the
+                          label under it) fit the row's 32px of content, so the
+                          row keeps its --row-h (the fix review's high). */}
+                      <TableCell className="whitespace-nowrap leading-4">
                         <Link
                           href={`/invoices/${r.id}`}
                           className="rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         >
-                          {r.displayNumber ? (
-                            <span className="num-id font-mono">{r.displayNumber}</span>
-                          ) : r.kind === "CREDIT_NOTE" ? (
-                            t("creditDraftLink")
-                          ) : (
-                            t("draftLink")
-                          )}
+                          {r.displayNumber ? <span className="num-id font-mono">{r.displayNumber}</span> : t("draftLink")}
                         </Link>
-                        {/* A credit note says so beside its number (slice 108b);
-                            its draft's link already does. */}
-                        {r.kind === "CREDIT_NOTE" && r.displayNumber ? (
-                          <span className="ml-2 text-xs text-muted-foreground" data-testid="invoice-row-credit">
+                        {/* A credit note says so UNDER its number (slice 108b) —
+                            beside it, the phone's table overflowed its box by
+                            40px (the visual walk's audit, CI 37961042339). */}
+                        {r.kind === "CREDIT_NOTE" ? (
+                          <span className="block text-2xs text-muted-foreground" data-testid="invoice-row-credit">
                             {t("creditNote")}
                           </span>
                         ) : null}

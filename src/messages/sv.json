@@ -4730,8 +4730,7 @@
         "total": "Summa"
       },
       "limited": "Visar de {limit} nyaste. Välj en kund för att se deras.",
-      "creditNote": "Kreditfaktura",
-      "creditDraftLink": "Kreditfakturautkast"
+      "creditNote": "Kreditfaktura"
     },
     "new": {
       "client": "Kund",
