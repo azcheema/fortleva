@@ -322,7 +322,16 @@ jobs:
     # the runner, where the 4.3 min it takes against Neon locally is
     # nearly all network. Its budget is 240 s on CI now, so the red case
     # is 8 minutes, not 20, and 30 is the honest ceiling again.
-    timeout-minutes: 30
+    #
+    # RAISED 30 → 40 on 2026-10-09, at the founder's word, because the
+    # suite has GROWN past what 30 leaves room for: 247–252 tests, their
+    # step 21–24 minutes on green runs (37903264009: 24.0; 37929877345:
+    # 21.4). Run 37934957365 was CANCELLED healthy at 30 when the runner's
+    # `playwright install --with-deps` took 5 minutes instead of 17 s (a
+    # slow apt mirror), leaving the tests 24 — no failure, no log. Still a
+    # hang guard: 40 is ~1.6× today's whole job, CI is free on this public
+    # repository, and the measure to take again is the suite's own step.
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:18
