@@ -1733,7 +1733,15 @@
     "INVOICE_PDF_UNAVAILABLE": "Det gick inte att skapa fakturans pdf just nu. Försök igen om en liten stund.",
     "INVOICE_NOT_CREDITABLE": "Den här fakturan kan inte krediteras. Den kan redan vara helt krediterad.",
     "INVOICE_PARTLY_CREDITED": "En del av fakturan har redan krediterats, så hela fakturan kan inte krediteras. Kreditera det som återstår som en del i stället.",
-    "INVOICE_CREDIT_REASON_REQUIRED": "En kreditfaktura behöver en orsak."
+    "INVOICE_CREDIT_REASON_REQUIRED": "En kreditfaktura behöver en orsak.",
+    "INVOICE_PAY_LINK_REFUSED": "En betallänk måste vara en betallänk eller fakturasida från Stripe, eller en länk från PayPal.",
+    "INVOICE_PAY_LINK_CODE": "Fakturan har en betallänk, så du behöver ange koden från din autentiseringsapp för att utfärda den.",
+    "INVOICE_ALREADY_SENT": "Fakturan har redan skickats.",
+    "INVOICE_JUST_SENT": "Fakturan skickades till de här adresserna för mindre än en minut sedan. Vänta en stund innan du skickar den igen.",
+    "INVOICE_SEND_LIMIT": "För många fakturamejl har skickats just nu. Försök igen senare.",
+    "INVOICE_NOT_PAYABLE": "Fakturan kan inte markeras som betald.",
+    "INVOICE_NOT_PAID": "Fakturan är inte markerad som betald.",
+    "INVOICE_PAID_ON": "Dagen då betalningen kom in kan inte ligga i framtiden, eller mer än ett år före fakturadatumet."
   },
   "assignments": {
     "title": "Team",
@@ -3297,7 +3305,8 @@
       "home": "Översikt",
       "files": "Filer",
       "company": "Ditt företag",
-      "logins": "Inloggningar"
+      "logins": "Inloggningar",
+      "invoices": "Fakturor"
     },
     "files": {
       "title": "Filer",
@@ -3546,6 +3555,44 @@
         "refused": "Det gick inte att skicka. Förfrågan kanske inte längre är öppen — ladda om sidan för att se.",
         "done": "Din byrå har fått veta det.",
         "doneBody": "Förfrågan är stängd."
+      }
+    },
+    "invoices": {
+      "title": "Fakturor",
+      "description": "Fakturor och kreditfakturor som er byrå har skickat till er.",
+      "truncated": "Visar de {count} senaste.",
+      "invoiceNumber": "Faktura {number}",
+      "creditNumber": "Kreditfaktura {number}",
+      "dueOn": "Förfaller {date}",
+      "state": {
+        "TO_PAY": "Att betala",
+        "OVERDUE": "Förfallen",
+        "PAID": "Betald",
+        "CREDITED": "Krediterad",
+        "CREDIT_NOTE": "Kreditfaktura"
+      },
+      "back": "Alla fakturor",
+      "facts": "Uppgifter",
+      "issueDate": "Datum",
+      "dueDate": "Förfallodatum",
+      "amount": "Totalt",
+      "creditAmount": "Belopp",
+      "leftToPay": "Kvar att betala",
+      "credits": "Krediterar",
+      "download": "Ladda ner pdf",
+      "payTitle": "Så betalar ni",
+      "payNow": "Betala nu",
+      "payNowOpens": "Öppnar {host} i en ny flik.",
+      "bank": "Betala med banköverföring",
+      "orBank": "Eller betala med banköverföring",
+      "bankgiro": "Bankgiro",
+      "plusgiro": "PlusGiro",
+      "iban": "IBAN",
+      "bic": "BIC",
+      "reference": "Ange fakturanummer {number} vid betalning.",
+      "creditNotes": "Kreditfakturor",
+      "errors": {
+        "download": "Pdf:en kunde inte laddas ner just nu. Försök igen eller hör av er till er byrå."
       }
     }
   },
@@ -4730,7 +4777,8 @@
         "total": "Summa"
       },
       "limited": "Visar de {limit} nyaste. Välj en kund för att se deras.",
-      "creditNote": "Kreditfaktura"
+      "creditNote": "Kreditfaktura",
+      "overdue": "Förfallen"
     },
     "new": {
       "client": "Kund",
@@ -4787,7 +4835,8 @@
         "buyerReference": "Er referens",
         "ourReference": "Vår referens",
         "note": "Meddelande på den här fakturan",
-        "locale": "Språk"
+        "locale": "Språk",
+        "payLinkUrl": "Betallänk"
       },
       "locale": {
         "client": "Kundens språk ({language})",
@@ -4823,7 +4872,10 @@
       "creditDeleteConfirm": "Ta bort det här kreditfakturautkastet och dess rader? Det går inte att ångra.",
       "creditNoNumberYet": "En kreditfaktura får sitt nummer när den utfärdas.",
       "creditFixed": "En kreditfaktura behåller momshantering, valuta, språk, projekt och arbetsperiod från fakturan den krediterar.",
-      "creditLines": "Det som kreditfakturan krediterar, i {currency} exkl. moms. Sänk eller ta bort det som inte ska krediteras. Kreditfakturan skriver ut beloppen med minustecken."
+      "creditLines": "Det som kreditfakturan krediterar, i {currency} exkl. moms. Sänk eller ta bort det som inte ska krediteras. Kreditfakturan skriver ut beloppen med minustecken.",
+      "payLinkPlaceholder": "Lägg till en länk från Stripe eller PayPal",
+      "payLinkNone": "Ingen",
+      "payLinkHint": "En betallänk från Stripe eller PayPal för fakturans belopp. Kunden får en knapp för att betala direkt i mejlet och i kundportalen. När du utfärdar en faktura med länk behöver du ange koden från din autentiseringsapp."
     },
     "issue": {
       "button": "Utfärda faktura…",
@@ -4869,7 +4921,15 @@
       "creditIssued": "Kreditfaktura {number} har utfärdats.",
       "creditIssuedNoPdf": "Kreditfaktura {number} har utfärdats. Dess pdf kunde inte skapas än. Använd Ladda ner pdf för att försöka igen.",
       "fxDay": "Momsen visas också i SEK, enligt Europeiska centralbankens kurs för {date}, dagen då arbetet avslutades (eller den senaste kursen före den dagen).",
-      "overCreditAt": "{rate} %: den krediterar {asked} och {left} återstår."
+      "overCreditAt": "{rate} %: den krediterar {asked} och {left} återstår.",
+      "enterCode": "Ange den sexsiffriga koden från din autentiseringsapp.",
+      "payLinkTitle": "Fakturan har en betallänk",
+      "payLinkBody": "Kundens betalning går till det konto som skapade länken. Kontrollera att det är ert – alla ägare får ett mejl om att fakturan utfärdades med en länk.",
+      "codeLabel": "Kod från autentiseringsappen",
+      "codeHint": "För att utfärda en faktura med betallänk behövs en kod från din autentiseringsapp.",
+      "needsFactor": "För att utfärda en faktura med betallänk behöver du en autentiseringsapp.",
+      "setUpFactor": "Ställ in en autentiseringsapp",
+      "paymentText": "Fakturans egen text nämner en webbadress eller betalningsuppgifter. Kontrollera att de är era – kunden kan komma att betala efter dem."
     },
     "issued": {
       "title": "Faktura {number}",
@@ -4889,7 +4949,9 @@
       "paymentUnreadable": "Bankuppgifterna på den här fakturan kunde inte läsas här. Fakturans pdf visar dem som de skrevs ut.",
       "pdfMissing": "Fakturans pdf har inte skapats än. Ladda ner pdf skapar den.",
       "creditTitle": "Kreditfaktura {number}",
-      "creditPageTitle": "Kreditfaktura"
+      "creditPageTitle": "Kreditfaktura",
+      "issuedBy": "Utfärdad av",
+      "issuedByGone": "en tidigare medlem"
     },
     "lines": {
       "title": "Rader",
@@ -4953,6 +5015,55 @@
       "noteDraft": "Utkast",
       "issuedCopyNoPdf": "Kreditfaktura {number} har utfärdats, och här är den rättade kopian. Kreditfakturans pdf kunde inte skapas än: öppna kreditfakturan från fakturalistan och använd Ladda ner pdf.",
       "copyNotAllowed": "För att göra en rättad kopia krävs behörighet att skapa fakturor."
+    },
+    "send": {
+      "button": "Skicka…",
+      "againButton": "Skicka igen…",
+      "title": "Skicka faktura {number}",
+      "titleCredit": "Skicka kreditfaktura {number}",
+      "body": "Fortleva mejlar den med pdf:en bifogad. När den har skickats kan kundens huvudkontakter även se den i sin kundportal.",
+      "bodyAgain": "Fortleva mejlar den igen med pdf:en bifogad.",
+      "formLabel": "Skicka med e-post",
+      "to": "Till",
+      "noBillingEmail": "Kundkortet saknar fakturamejl – skriv in adressen.",
+      "blockedNote": "E-post till den här adressen kommer inte fram.",
+      "alsoTo": "Även till (adress {n})",
+      "confirm": "Skicka",
+      "markBody": "Har du skickat den på annat sätt? Markera den som skickad – kundens huvudkontakter ser den då i sin kundportal.",
+      "markButton": "Markera som skickad",
+      "sent": "Faktura {number} mejlades till {list}.",
+      "sentCredit": "Kreditfaktura {number} mejlades till {list}.",
+      "some": "Mejlad till {list}. Inte skickad till {missed} – kontrollera adressen eller försök igen senare.",
+      "notRecorded": "Mejlad till {list}, men utskicket kunde inte registreras. Skicka den inte igen – ladda om sidan.",
+      "blocked": "Inget skickades: e-post till {list} kommer inte fram.",
+      "failed": "Mejlet kunde inte skickas just nu. Försök igen om en liten stund.",
+      "marked": "Markerad som skickad.",
+      "creditUnsent": "Kunden har fakturan som den här kreditfakturan rättar, men inte kreditfakturan. Skicka den till dem.",
+      "historyTitle": "Utskick",
+      "notSentYet": "Inte skickad ännu – kunden kan inte se den i sin kundportal.",
+      "historyEmailed": "Mejlad till {list}",
+      "historyMarked": "Markerad som skickad",
+      "historyBy": "{when} · {name}",
+      "someoneGone": "en tidigare medlem",
+      "historyNone": "Den har inte skickats.",
+      "failedAndBlocked": "Inget skickades: mejlet kunde inte skickas just nu, och e-post till {list} kommer inte fram. Kontrollera adressen och försök sedan igen."
+    },
+    "payment": {
+      "button": "Markera som betald…",
+      "title": "Markera faktura {number} som betald",
+      "body": "Ange dagen då pengarna kom in. Kundportalen visar den då som betald.",
+      "formLabel": "Markera som betald",
+      "paidOn": "Dag då pengarna kom in",
+      "note": "Anteckning (valfri)",
+      "noteHint": "Bara ert team ser anteckningen – till exempel bankens referens.",
+      "confirm": "Markera som betald",
+      "marked": "Markerad som betald.",
+      "undo": "Markera som obetald",
+      "undoConfirm": "Markera fakturan som obetald? Betalningens dag och anteckning tas bort, och kundportalen visar den som obetald igen.",
+      "undone": "Markerad som obetald.",
+      "menuLabel": "Åtgärder för betalningen",
+      "overdue": "Förfallen",
+      "paidOnLabel": "Betald"
     }
   },
   "invoicePdf": {
@@ -5014,5 +5125,23 @@
       "reason": "Orsak: {reason}",
       "fileName": "kreditfaktura-{number}.pdf"
     }
+  },
+  "invoiceMail": {
+    "subject": "{kind} {number} från {seller}",
+    "intro": "Här kommer faktura {number} från {seller}. Den är bifogad som pdf i det här mejlet.",
+    "introCredit": "Här kommer kreditfaktura {number} från {seller}. Den är bifogad som pdf i det här mejlet.",
+    "amount": "Att betala: {amount}",
+    "dueDate": "Förfallodatum: {date}",
+    "payOnline": "Betala online:",
+    "bank": "Betalningsuppgifter:",
+    "orBank": "Ni kan också betala till:",
+    "credits": "Den krediterar faktura {number} daterad {date}.",
+    "creditAmount": "Belopp: {amount}",
+    "reason": "Orsak: {reason}",
+    "portal": "Har ni ett konto i kundportalen hittar ni den även där:",
+    "reply": "Frågor? Svara på det här mejlet.",
+    "paid": "Fakturan ({amount}) är betald. Den här kopian är för era handlingar – det finns inget att betala.",
+    "credited": "Fakturan är krediterad i sin helhet. Den här kopian är för era handlingar – det finns inget att betala.",
+    "leftToPay": "Kvar att betala: {amount} (av {total}, efter kreditfakturor)"
   }
 }

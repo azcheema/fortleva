@@ -71,9 +71,8 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
   // Phase 4 slice 107 gave `invoice:view`, `:create`, `:edit` and `:delete`
   // their guards (`src/modules/invoicing/drafts.ts`); slice 108 gave issuing
   // and the numbering theirs (`issue.ts`, `series.ts`); slice 108b crediting
-  // (`credit.ts`, and every draft verb on a credit note). Sending and
-  // payments are 109.
-  invoicing: ["invoice:send", "invoice:record_payment"],
+  // (`credit.ts`, and every draft verb on a credit note); slice 109 sending
+  // and payments (`send.ts`). Every invoicing code now has its guard.
   reports: ["report:view", "report:upload", "report:delete"],
   continuity_box: [
     "continuity_box:view",

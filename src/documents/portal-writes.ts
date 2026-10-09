@@ -1,13 +1,14 @@
 import { record } from "@/audit/record";
 import { deny } from "@/authz/errors";
-import { withTenant, type TenantDb } from "@/db";
+import { withTenant } from "@/db";
 import { fail, isDeadlock, isLockTimeout } from "@/lib/domain-error";
 import { attachmentDisposition } from "@/lib/http-download";
 import { retryOnContention } from "@/lib/retry";
 import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal";
-import { lockContactBudget } from "@/portal/contact-budget-lock";
 import { allow } from "@/ratelimit";
 import { getStorage } from "@/storage";
+
+import { assertDownloadBudget } from "./download-budget";
 
 /**
  * THE FILE LAYER'S BROKER — the one place the portal plane reaches
@@ -71,17 +72,11 @@ import { getStorage } from "@/storage";
  */
 
 /**
- * The most a contact may download inside the window, counted on the
- * DATABASE'S clock from the audit rows the downloads themselves write
- * (`file.downloaded`, actor CONTACT). A Postgres count and not the
- * Upstash limiter, for the reason `assertRequestBudget` gives: that
- * limiter fails OPEN while Upstash is unprovisioned, which it is
- * (PLAN §0), so it is the cheap front filter and this is the control.
- * Generous on purpose — a person opening a folder of deliverables one
- * by one is the ordinary use; this is sized to catch a script.
+ * The download budget — the window, the limit and the count — lives in
+ * `./download-budget.ts` since slice 109 shared it with the invoice PDF's
+ * broker (an exported function here is a broker to the pins).
  */
-export const DOWNLOAD_WINDOW_MINUTES = 15;
-export const DOWNLOAD_WINDOW_LIMIT = 60;
+export { DOWNLOAD_WINDOW_LIMIT, DOWNLOAD_WINDOW_MINUTES } from "./download-budget";
 
 /**
  * HOW LONG THE DOWNLOAD MAY WAIT ON ITS OWN BUDGET LOCK. Short, for the
@@ -117,18 +112,6 @@ const documentGate = (principal: PortalPrincipal) => ({
   // principal a relation filter is not gated by RLS, so both are written.
   OR: [{ projectId: null }, { project: { archivedAt: null, portalEnabled: true } }],
 });
-
-async function assertDownloadBudget(tx: TenantDb, tenantId: string, contactId: string): Promise<void> {
-  const now = await lockContactBudget(tx, "portal_download", contactId);
-  const since = new Date(now.getTime() - DOWNLOAD_WINDOW_MINUTES * 60_000);
-  // The rows this contact's own downloads wrote, inside the window —
-  // including ones for files since made private or deleted, because
-  // the budget is about how often somebody may fetch, not what they own.
-  const used = await tx.auditEvent.count({
-    where: { tenantId, action: "file.downloaded", actorType: "CONTACT", actorId: contactId, createdAt: { gte: since } },
-  });
-  if (used >= DOWNLOAD_WINDOW_LIMIT) fail("DOWNLOAD_RATE_LIMITED");
-}
 
 /**
  * DOWNLOAD A SHARED FILE (`portal.document.download`) — the newest

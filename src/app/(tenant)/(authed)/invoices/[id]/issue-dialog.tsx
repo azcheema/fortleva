@@ -6,8 +6,9 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Callout } from "@/components/semantic";
-import { Pending } from "@/components/semantic/field";
+import { Field, Pending } from "@/components/semantic/field";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -44,13 +45,15 @@ export type IssueDialogCheck = {
   readonly creditsIssueDate: string | null;
   /** What the dialog was opened on — sent back with the issue, refused if the draft moved since. */
   readonly fingerprint: string;
+  /** Slice 109: the draft's own text reads like somewhere to pay (a web address, account details). */
+  readonly paymentText: boolean;
 };
 
 /** The issued page's Download PDF — where focus goes after an issue (`download-pdf.tsx`). */
 export const DOWNLOAD_PDF_ID = "invoice-download-pdf";
 
 /** Focus an element once the revalidated page has rendered it (a few frames at most). */
-function focusWhenRendered(id: string, frames = 30): void {
+export function focusWhenRendered(id: string, frames = 30): void {
   const target = document.getElementById(id);
   if (target) {
     target.focus();
@@ -80,18 +83,34 @@ export function IssueDialog({
   clientId,
   total,
   check,
+  payLink,
+  hasFactor,
+  enrolHref,
 }: {
   invoiceId: string;
   clientId: string;
   /** The total, formatted in the invoice's currency. */
   total: string;
   check: IssueDialogCheck;
+  /**
+   * Slice 109 (C79 (c), (g)): the draft's Pay now link, shown IN FULL — where
+   * the client's money would go — and, when there is one, the issuer's code
+   * typed here, as for the bank details. Null: no link, no code.
+   */
+  payLink: string | null;
+  /** The member has an authenticator to type a code from. */
+  hasFactor: boolean;
+  /** Where "Set up an authenticator" goes, back to this invoice after. */
+  enrolHref: string;
 }) {
   const t = useTranslations("invoices.issue");
   const tCommon = useTranslations("common");
   const tLines = useTranslations("invoices.lines");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState("");
+  const codeId = `issue-code-${invoiceId}`;
+  const needsCode = payLink !== null;
   // Issued: the trigger is gone from the re-rendered page, so focus goes to
   // Download PDF — never to <body> (the code review's low).
   const issuedRef = useRef(false);
@@ -109,9 +128,12 @@ export function IssueDialog({
   const issue = async () => {
     setBusy(true);
     try {
-      const r = await issueInvoiceAction(invoiceId, check.fingerprint);
+      const r = await issueInvoiceAction(invoiceId, check.fingerprint, needsCode ? code : undefined);
       if (!r.ok) {
         toast.error(r.message);
+        // A code is spent or wrong once checked: type the next one. One
+        // refused before it was checked (too short) stays to be finished.
+        if (needsCode && r.codeChecked !== false) setCode("");
         return;
       }
       if (r.caution) toast.warning(r.message);
@@ -128,7 +150,15 @@ export function IssueDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (busy ? undefined : setOpen(next))}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        // Each opening starts without a code (one typed before is spent or stale).
+        if (next) setCode("");
+        setOpen(next);
+      }}
+    >
       <DialogTrigger asChild>
         <Button ref={triggerRef} type="button" size="sm" data-testid="issue-open">
           {credit ? t("creditButton") : t("button")}
@@ -217,13 +247,50 @@ export function IssueDialog({
                 <Callout tone="caution">{t("noPeriod")}</Callout>
               </div>
             ) : null}
+            {check.paymentText ? (
+              <div data-testid="issue-payment-text">
+                <Callout tone="caution">{t("paymentText")}</Callout>
+              </div>
+            ) : null}
+            {payLink !== null ? (
+              <div className="flex flex-col gap-2" data-testid="issue-pay-link">
+                <Callout tone="caution" title={t("payLinkTitle")}>
+                  <p className="break-all font-mono text-xs">{payLink}</p>
+                  <p className="mt-1">{t("payLinkBody")}</p>
+                </Callout>
+                {hasFactor ? (
+                  <Field label={t("codeLabel")} htmlFor={codeId} hint={t("codeHint")}>
+                    <Input
+                      id={codeId}
+                      value={code}
+                      onChange={(ev) => setCode(ev.target.value)}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={32}
+                      className="num-id w-40 font-mono"
+                      data-testid="issue-code"
+                    />
+                  </Field>
+                ) : (
+                  <p className="text-sm" data-testid="issue-needs-factor">
+                    {t("needsFactor")}{" "}
+                    <Link
+                      href={enrolHref}
+                      className="rounded-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      {t("setUpFactor")}
+                    </Link>
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
         )}
         <DialogFooter>
           <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={busy}>
             {tCommon("cancel")}
           </Button>
-          {blocked ? null : (
+          {blocked || (needsCode && !hasFactor) ? null : (
             <Button type="button" size="sm" onClick={() => void issue()} disabled={busy} data-testid="issue-confirm">
               {busy ? <Pending label={tCommon("loading")} /> : credit ? t("creditConfirm") : t("confirm")}
             </Button>

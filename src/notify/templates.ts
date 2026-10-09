@@ -5,6 +5,7 @@ import { CONTACT_DIGEST_MAIL } from "./client-digest";
 import { MEMBER_DIGEST_MAIL, renderMemberDigest } from "./digest";
 import { REPLY_ADDRESS_CHANGED_MAIL } from "./reply-address-mail-key";
 import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
+import { INVOICE_PAY_LINK_ISSUED_MAIL } from "./invoice-pay-link-mail-key";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MAIL_KEYS, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
@@ -42,6 +43,7 @@ const EXTRA_TEMPLATES = [
   REPLY_ADDRESS_CHANGED_MAIL,
   CONTACT_DIGEST_MAIL,
   INVOICE_DETAILS_CHANGED_MAIL,
+  INVOICE_PAY_LINK_ISSUED_MAIL,
 ] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
@@ -336,6 +338,19 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Företagsuppgifterna, bankuppgifterna eller meddelandet som skrivs ut på arbetsytans fakturor har ändrats. Se vad de är nu, och vem som ändrade dem, i Fortleva under Inställningar, Fakturering. Om ni inte väntade er detta, kontrollera dem innan ni skickar nästa faktura.",
     },
   },
+  // Phase 4 slice 109 — an invoice ISSUED WITH A PAY NOW LINK (C79 (g);
+  // `invoice-pay-link-mail-key.ts`). A security notice to every owner,
+  // whatever their level; LINKS, NOT DATA — neither the link nor the amount.
+  [INVOICE_PAY_LINK_ISSUED_MAIL]: {
+    en: {
+      subject: "An invoice was issued with a Pay now link",
+      body: "An invoice in your workspace was issued with a Pay now link — the client can pay it through that Stripe or PayPal page. Open the invoice to see the link and who issued it. If you did not expect this, check that the link goes to your own account before the client pays.",
+    },
+    sv: {
+      subject: "En faktura utfärdades med en betallänk",
+      body: "En faktura i er arbetsyta utfärdades med en betallänk – kunden kan betala den via den sidan hos Stripe eller PayPal. Öppna fakturan för att se länken och vem som utfärdade den. Om ni inte väntade er detta, kontrollera att länken går till ert eget konto innan kunden betalar.",
+    },
+  },
   // Phase 5 slice 101 — a client person's weekly summary (C69;
   // `client-digest.ts`). The real mail is `renderContactDigest`, rendered by
   // the outbox with the person's own unsubscribe link; this copy is only what
@@ -413,6 +428,12 @@ const linkFor = (
   if (key === CONTACT_DIGEST_MAIL) return new URL("/portal", appUrl);
   if (key === REPLY_ADDRESS_CHANGED_MAIL) return new URL("/settings/preferences", appUrl);
   if (key === INVOICE_DETAILS_CHANGED_MAIL) return new URL("/settings/invoicing", appUrl);
+  // An invoice issued with a Pay now link (slice 109): that invoice's page —
+  // the id the issue put in `params`, else the list.
+  if (key === INVOICE_PAY_LINK_ISSUED_MAIL) {
+    const invoiceId = uuidParam(params, "invoiceId");
+    return new URL(invoiceId ? `/invoices/${invoiceId}` : "/invoices", appUrl);
+  }
   // An export (slice 95): the exports page, behind the vault's door, says
   // who exported what and when — the mail itself names nothing.
   if (key === VAULT_EXPORTED_MAIL) return new URL("/vault/exports", appUrl);

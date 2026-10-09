@@ -415,8 +415,20 @@ export async function updatePaymentDetails(
  * the change still goes; recorded as the security review's nit). The mail
  * names nothing and carries no `Reply-To` (`MAIL_WITHOUT_REPLY_TO`): a
  * security notice to the workspace's own people.
+ *
+ * Slice 109 (C79 (g)) sends its own notice the same way — an invoice issued
+ * with a Pay now link (`INVOICE_PAY_LINK_ISSUED_MAIL`, the invoice's id in
+ * `params` for its link, keyed per invoice).
  */
-async function noticeToOwners(tx: TenantDb, tenantId: string, now: Date): Promise<void> {
+export async function noticeToOwners(
+  tx: TenantDb,
+  tenantId: string,
+  now: Date,
+  mail: { readonly kind: string; readonly key: string; readonly params?: Record<string, string> } = {
+    kind: INVOICE_DETAILS_CHANGED_MAIL,
+    key: `invoice_details_changed:${now.toISOString()}`,
+  },
+): Promise<void> {
   const owners = await tx.member.findMany({
     where: {
       tenantId,
@@ -442,12 +454,13 @@ async function noticeToOwners(tx: TenantDb, tenantId: string, now: Date): Promis
     .filter((r) => !suppressed.has(r.email))
     .map((r) => ({
       tenantId,
-      idempotencyKey: `invoice_details_changed:${now.toISOString()}:MEMBER:${r.id}`,
+      idempotencyKey: `${mail.key}:MEMBER:${r.id}`,
       receiverType: "MEMBER" as const,
       receiverId: r.id,
       toEmail: r.email,
-      kind: INVOICE_DETAILS_CHANGED_MAIL,
+      kind: mail.kind,
       locale: r.locale,
+      ...(mail.params ? { params: mail.params } : {}),
       notificationIds: [],
     }));
   if (data.length > 0) await tx.emailOutbox.createMany({ data, skipDuplicates: true });

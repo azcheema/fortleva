@@ -266,7 +266,16 @@ export type DomainErrorCode =
   // Phase 4 slice 108b — credit notes (src/modules/invoicing/credit.ts).
   | "INVOICE_NOT_CREDITABLE" // not an issued invoice, a credit note, or credited in full already
   | "INVOICE_PARTLY_CREDITED" // "the whole invoice" after part of it was credited — credit what is left as a part
-  | "INVOICE_CREDIT_REASON_REQUIRED"; // a credit note says why (C77 (b))
+  | "INVOICE_CREDIT_REASON_REQUIRED" // a credit note says why (C77 (b))
+  // Phase 4 slice 109 — sending, Pay now, paid by hand (C79).
+  | "INVOICE_PAY_LINK_REFUSED" // a Pay now link that is not a Stripe or PayPal payment page (C79 (f))
+  | "INVOICE_PAY_LINK_CODE" // issuing an invoice with a Pay now link takes the code typed now (C79 (g))
+  | "INVOICE_ALREADY_SENT" // "Mark as sent" on an invoice already sent
+  | "INVOICE_JUST_SENT" // the same invoice emailed under a minute ago — a double click
+  | "INVOICE_SEND_LIMIT" // the sending budget: per member per hour, per workspace per day
+  | "INVOICE_NOT_PAYABLE" // marking paid: a credit note, a draft, or paid/credited already
+  | "INVOICE_PAID_ON" // the day a payment arrived: not in the future, not long before the invoice
+  | "INVOICE_NOT_PAID"; // "Mark as unpaid" on an invoice that is not marked paid
 
 export class DomainError extends Error {
   constructor(

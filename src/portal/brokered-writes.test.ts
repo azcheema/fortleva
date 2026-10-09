@@ -250,6 +250,12 @@ const BROKERED_READS: readonly (readonly [string, string])[] = [
   [join("modules", "vault", "submission-portal-writes.ts"), "countPortalLoginAsks"],
   [join("modules", "vault", "submission-portal-writes.ts"), "listPortalLoginAsks"],
   [join("modules", "vault", "submission-portal-writes.ts"), "readPortalLoginAsk"],
+  // Phase 4 slice 109 (C79 (b), (c)): where to pay one sent invoice — the
+  // bank details decrypted from its frozen snapshot (ciphertext a contact's
+  // own transaction cannot read) and the Pay now link while nothing of it is
+  // credited (decided against credit notes the client may not have). Reading
+  // where to pay is not paying, so nothing here is audited.
+  [join("modules", "invoicing", "portal-writes.ts"), "readPortalInvoicePayment"],
 ];
 
 /**

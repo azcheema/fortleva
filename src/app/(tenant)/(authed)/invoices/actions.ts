@@ -1,8 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { verifyStepUpWithHeaders } from "@/auth/step-up";
+import type { MemberActor } from "@/authz/authorize";
+import { enrolUrl } from "@/authz/redirects";
 import { isUuid } from "@/db/context";
 import { DomainError } from "@/lib/domain-error";
 import { caution, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
@@ -23,6 +28,7 @@ import {
   type LineInput,
 } from "@/modules/invoicing";
 import { ensureInvoicePdf, errorTag, invoicePdfUrl } from "@/modules/invoicing/pdf-store";
+import { markInvoicePaid, markInvoiceSent, markInvoiceUnpaid, sendInvoice } from "@/modules/invoicing/send";
 
 /**
  * Server actions for /invoices (Phase 4 slice 107). Tenant and actor come
@@ -47,6 +53,32 @@ const invalid = async (): Promise<FormResult> => {
 
 /** How this member types decimals: a Swedish reader's comma is the decimal separator. */
 const lineParse = async () => ({ decimalComma: (await getLocale()).startsWith("sv") });
+
+/**
+ * The authenticator code typed in a dialog (slice 109, C79 (g) — the bank
+ * details' pattern, `settings/invoicing/actions.ts`): verified through the one
+ * step-up path that spends the member's attempt budget; the context comes back
+ * with a factor seconds old. A member with no authenticator is sent to set one
+ * up; a wrong code is a sentence.
+ */
+async function withCode(
+  rawCode: unknown,
+  returnTo: string,
+): Promise<{ readonly ok: true; readonly ctx: { readonly tenantId: string; readonly actor: MemberActor } } | IssueResult> {
+  const t = await getTranslations("invoices.issue");
+  const code = typeof rawCode === "string" ? rawCode.trim() : "";
+  // Too short or too long to be a code: not checked, so the dialog keeps it.
+  if (code.length < 6 || code.length > 32) return { ok: false, message: t("enterCode"), codeChecked: false };
+  const { membership, actor } = await requireTenantContext();
+  const verified = await verifyStepUpWithHeaders(code, await headers());
+  if (!verified.ok) {
+    if (verified.reason === "no_session") redirect("/login");
+    if (verified.reason === "not_enrolled") redirect(enrolUrl(returnTo));
+    const tStep = await getTranslations("account.stepUp");
+    return { ok: false, message: verified.reason === "rate_limited" ? tStep("tooManyAttempts") : tStep("mismatch") };
+  }
+  return { ok: true, ctx: { tenantId: membership.tenantId, actor: { ...actor, mfa: { enrolled: true, verifiedAt: verified.verifiedAt } } } };
+}
 
 const strOrNull = (v: unknown): string | null | undefined =>
   v === undefined ? undefined : v === null ? null : typeof v === "string" ? v : undefined;
@@ -79,6 +111,8 @@ export async function updateDraftDetailsAction(invoiceId: unknown, patch: unknow
     "locale",
     // Slice 108b: a credit note's reason (the service refuses it on an invoice).
     "creditReason",
+    // Slice 109 (C79 (c), (f)): the Pay now link (the service refuses it on a credit note).
+    "payLinkUrl",
   ];
   const clean: Record<string, unknown> = {};
   for (const key of allowed) {
@@ -206,15 +240,32 @@ export async function deleteDraftAction(invoiceId: unknown): Promise<FormResult>
  * yet"), never a revert-looking error — Download PDF and the jobs route's
  * backstop make it later.
  */
-export async function issueInvoiceAction(invoiceId: unknown, fingerprint: unknown): Promise<FormResult> {
+/** An issue's answer; `codeChecked: false` when a typed code was refused before it was checked (the dialog keeps it). */
+export type IssueResult = FormResult & { readonly codeChecked?: boolean };
+
+export async function issueInvoiceAction(invoiceId: unknown, fingerprint: unknown, code?: unknown): Promise<IssueResult> {
   // The fingerprint of what the issuer saw (the security review's medium) — a
   // sha-256 the page computed; the issue refuses if the draft moved since.
   if (typeof invoiceId !== "string" || !isUuid(invoiceId)) return invalid();
   if (typeof fingerprint !== "string" || !/^[0-9a-f]{64}$/.test(fingerprint)) return invalid();
-  const ctx = await ctxOf();
+  // Slice 109 (C79 (g)): a draft with a Pay now link is issued only with the
+  // issuer's code typed in the dialog — verified here through the one step-up
+  // path that spends the attempt budget; the service accepts a factor no older
+  // than a minute (and asks for one only when the LOCKED draft has a link).
+  let ctx = await ctxOf();
+  // The service accepts a draft with a link ONLY when this request verified a
+  // typed code (`codeTypedNow`) — never because some other step-up in the
+  // last minute left the session fresh (the security review's low).
+  let codeTypedNow = false;
+  if (code !== undefined && code !== null && code !== "") {
+    const verified = await withCode(code, pageOf(invoiceId));
+    if (!("ctx" in verified)) return verified;
+    ctx = verified.ctx;
+    codeTypedNow = true;
+  }
   const t = await getTranslations("invoices.issue");
   const r = await runForm(pageOf(invoiceId), async () => {
-    const { displayNumber, kind } = await issueInvoice(ctx, invoiceId, { fingerprint });
+    const { displayNumber, kind } = await issueInvoice(ctx, invoiceId, { fingerprint, codeTypedNow });
     const credit = kind === "CREDIT_NOTE";
     if (!(await pdfMade(ctx, invoiceId))) return caution(t(credit ? "creditIssuedNoPdf" : "issuedNoPdf", { number: displayNumber }));
     return t(credit ? "creditIssued" : "issued", { number: displayNumber });
@@ -304,5 +355,90 @@ export async function invoicePdfUrlAction(invoiceId: unknown): Promise<ActionRes
   });
   // Only a PDF made just now changes the page (its "not made yet" note goes).
   if (created) revalidatePath(pageOf(invoiceId));
+  return r;
+}
+
+/**
+ * Send… / Send again… (slice 109; C79 (a), (e)): the issued invoice or credit
+ * note emailed with its PDF to one to three addresses. The answer says exactly
+ * which addresses took it: a send that reached none is a refusal (nothing was
+ * recorded); one that reached some, or whose record failed after the mail
+ * went, is a CAUTION — never a plain success, never a revert-looking error.
+ */
+export async function sendInvoiceAction(invoiceId: unknown, to: unknown): Promise<FormResult> {
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId) || !Array.isArray(to)) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.send");
+  const r = await runAction(pageOf(invoiceId), () => sendInvoice(ctx, invoiceId, { to }));
+  if (!r.ok) return r;
+  const { sent, blocked, failed, recorded, kind, displayNumber } = r.value;
+  if (sent.length === 0) {
+    // Both causes named when both happened (the code review's nit): a retry
+    // cures a transport failure, never a blocked address.
+    return {
+      ok: false,
+      message:
+        failed.length > 0 && blocked.length > 0
+          ? t("failedAndBlocked", { list: blocked.join(", ") })
+          : failed.length > 0
+            ? t("failed")
+            : t("blocked", { list: blocked.join(", ") }),
+    };
+  }
+  revalidatePath(pageOf(invoiceId));
+  revalidatePath(LIST);
+  const list = sent.join(", ");
+  if (!recorded) return { ok: true, caution: true, message: t("notRecorded", { list }) };
+  const missed = [...blocked, ...failed];
+  if (missed.length > 0) return { ok: true, caution: true, message: t("some", { list, missed: missed.join(", ") }) };
+  return { ok: true, message: t(kind === "CREDIT_NOTE" ? "sentCredit" : "sent", { number: displayNumber, list }) };
+}
+
+/** Mark as sent (C79 (a)): sent some other way — once; it is in the client's portal from now on. */
+export async function markInvoiceSentAction(invoiceId: unknown): Promise<FormResult> {
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId)) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.send");
+  const r = await runForm(pageOf(invoiceId), async () => {
+    await markInvoiceSent(ctx, invoiceId);
+    return t("marked");
+  });
+  if (r.ok) {
+    revalidatePath(pageOf(invoiceId));
+    revalidatePath(LIST);
+  }
+  return r;
+}
+
+/** Mark as paid… (C79 (d)): the day the money arrived and the agency's own note. */
+export async function markInvoicePaidAction(invoiceId: unknown, paidOn: unknown, note: unknown): Promise<FormResult> {
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId) || typeof paidOn !== "string") return invalid();
+  if (note !== null && note !== undefined && typeof note !== "string") return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.payment");
+  const r = await runForm(pageOf(invoiceId), async () => {
+    await markInvoicePaid(ctx, invoiceId, { paidOn, note: note ?? null });
+    return t("marked");
+  });
+  if (r.ok) {
+    revalidatePath(pageOf(invoiceId));
+    revalidatePath(LIST);
+  }
+  return r;
+}
+
+/** Mark as unpaid (C79 (h)): a Paid mark undone — the invoice back to unpaid, audited. */
+export async function markInvoiceUnpaidAction(invoiceId: unknown): Promise<FormResult> {
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId)) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.payment");
+  const r = await runForm(pageOf(invoiceId), async () => {
+    await markInvoiceUnpaid(ctx, invoiceId);
+    return t("undone");
+  });
+  if (r.ok) {
+    revalidatePath(pageOf(invoiceId));
+    revalidatePath(LIST);
+  }
   return r;
 }

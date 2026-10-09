@@ -331,6 +331,8 @@ model Tenant {
   invoices      Invoice[]
   invoiceLines  InvoiceLine[]
   invoiceSeries InvoiceSeries[]
+  invoiceDeliveries InvoiceDelivery[]
+  invoicePaymentNotes InvoicePaymentNote[]
 
   @@map("tenant")
 }
@@ -1449,6 +1451,16 @@ model Invoice {
   // from the original (ML's unambiguous reference, in the record itself).
   creditsDisplayNumber String?    @map("credits_display_number")
   creditsIssueDate  DateTime?     @map("credits_issue_date") @db.Date
+  // Slice 109 — sending, the client's portal, Pay now (C79). The pay link is
+  // a draft's (an INVOICE's only), frozen at issue with everything else, and
+  // only Stripe's or PayPal's own hosts (CHECK + `src/config`'s `payLinkUrl`).
+  // `sentAt` is the FIRST send (emailed or marked) and the portal's gate;
+  // `paidOn` the day a payment marked by hand arrived (C79 (d)). The agency's
+  // NOTE on that payment is NOT here: this row is a client's to read once sent
+  // (class B), so the note lives on a class-A row (`InvoicePaymentNote`).
+  payLinkUrl        String?       @map("pay_link_url")
+  sentAt            DateTime?     @map("sent_at") @db.Timestamptz(6)
+  paidOn            DateTime?     @map("paid_on") @db.Date
   createdByMemberId String        @map("created_by_member_id") // attribution, no FK
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1459,6 +1471,8 @@ model Invoice {
   credits     Invoice?       @relation("InvoiceCredits", fields: [tenantId, clientId, creditsInvoiceId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction)
   creditNotes Invoice[]      @relation("InvoiceCredits")
   lines       InvoiceLine[]
+  deliveries  InvoiceDelivery[]
+  paymentNote InvoicePaymentNote?
   series      InvoiceSeries? @relation(fields: [tenantId, seriesId], references: [tenantId, id], onDelete: Restrict)
   pdfFile     FileObject?    @relation(fields: [tenantId, pdfFileId], references: [tenantId, id], onDelete: Restrict)
 
@@ -1475,7 +1489,8 @@ model Invoice {
 
 /// A line. Its amount is quantity × unit price, to the öre (CHECK); its VAT
 /// rate one its invoice's VAT treatment allows (`invoice_line_guard`).
-/// `clientId` is its invoice's (composite FK) — slice 109's portal gate.
+/// `clientId` is its invoice's (composite FK). Class A even after slice 109:
+/// the client's copy of the lines is the PDF, never these rows.
 model InvoiceLine {
   id             String   @id @default(uuid(7))
   tenantId       String   @map("tenant_id")
@@ -1498,6 +1513,57 @@ model InvoiceLine {
   @@unique([tenantId, invoiceId, position])
   @@index([tenantId, clientId, invoiceId])
   @@map("invoice_line")
+}
+
+enum InvoiceDeliveryMethod {
+  EMAIL // emailed by Fortleva with its PDF attached (C79 (a))
+  MARKED // "Mark as sent" — sent some other way
+
+  @@map("invoice_delivery_method")
+}
+
+/// One send of an issued invoice or credit note (Phase 4 slice 109; C79):
+/// emailed — to whom, the addresses that took it — or marked as sent, by whom,
+/// when. Written only by a member holding `invoice:send` (its guard), never
+/// changed; class A — the agency's record, never the client's.
+model InvoiceDelivery {
+  id             String                @id @default(uuid(7))
+  tenantId       String                @map("tenant_id")
+  clientId       String                @map("client_id")
+  invoiceId      String                @map("invoice_id")
+  method         InvoiceDeliveryMethod
+  recipients     String[] // EMAIL: 1–3 lower-cased addresses; MARKED: none
+  sentByMemberId String                @map("sent_by_member_id") // attribution, no FK
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  invoice Invoice @relation(fields: [tenantId, clientId, invoiceId], references: [tenantId, clientId, id], onDelete: Cascade)
+
+  @@index([tenantId, invoiceId, createdAt])
+  @@index([tenantId, createdAt]) // the sending budget's count
+  @@map("invoice_delivery")
+}
+
+/// The agency's own note on a payment marked by hand (Phase 4 slice 109; C79
+/// (d)) — "USD 15 short, bank fee", the bank's reference. Its own CLASS-A row
+/// because the invoice is a client's to read once sent (the pre-apply
+/// migration review's medium: a projection's select is not a database rule).
+/// One per invoice while it is PAID (or CREDITED after being paid): written
+/// beside the move to PAID, deleted by "Mark as unpaid", never changed
+/// (`invoice_payment_note_guard`).
+model InvoicePaymentNote {
+  tenantId          String   @map("tenant_id")
+  clientId          String   @map("client_id")
+  invoiceId         String   @map("invoice_id")
+  note              String
+  createdByMemberId String   @map("created_by_member_id") // attribution, no FK
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  invoice Invoice @relation(fields: [tenantId, clientId, invoiceId], references: [tenantId, clientId, id], onDelete: Cascade)
+
+  @@id([tenantId, clientId, invoiceId]) // one per invoice (the relation's fields: one-to-one)
+  @@map("invoice_payment_note")
 }
 
 // ───────────────────────────────────────────────────────────────────

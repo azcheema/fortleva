@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
+import { INVOICE_PAY_LINK_ISSUED_MAIL } from "./invoice-pay-link-mail-key";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { MAIL_WITHOUT_REPLY_TO } from "./reply-address-resolve";
@@ -20,6 +21,7 @@ describe("mail without a reply address", () => {
     const notices = [
       REPLY_ADDRESS_CHANGED_MAIL,
       INVOICE_DETAILS_CHANGED_MAIL,
+      INVOICE_PAY_LINK_ISSUED_MAIL,
       VAULT_EXPORTED_MAIL,
       DOOR_ALARM_MEMBER_MAIL,
       ...Object.values(SEALED_MEMBER_MAIL),

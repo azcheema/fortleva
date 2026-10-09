@@ -1733,7 +1733,15 @@
     "INVOICE_PDF_UNAVAILABLE": "The invoice's PDF couldn't be made just now. Try again in a moment.",
     "INVOICE_NOT_CREDITABLE": "This invoice can't be credited. It may already be credited in full.",
     "INVOICE_PARTLY_CREDITED": "Part of this invoice has already been credited, so the whole of it can't be. Credit what's left as a part instead.",
-    "INVOICE_CREDIT_REASON_REQUIRED": "A credit note needs a reason."
+    "INVOICE_CREDIT_REASON_REQUIRED": "A credit note needs a reason.",
+    "INVOICE_PAY_LINK_REFUSED": "A Pay now link must be a Stripe payment link or invoice page, or a PayPal link.",
+    "INVOICE_PAY_LINK_CODE": "This invoice has a Pay now link, so issuing it needs your authenticator code.",
+    "INVOICE_ALREADY_SENT": "This invoice has already been sent.",
+    "INVOICE_JUST_SENT": "This invoice was sent to these addresses less than a minute ago. Wait a moment before sending it again.",
+    "INVOICE_SEND_LIMIT": "Too many invoice emails have been sent for now. Try again later.",
+    "INVOICE_NOT_PAYABLE": "This invoice can't be marked as paid.",
+    "INVOICE_NOT_PAID": "This invoice isn't marked as paid.",
+    "INVOICE_PAID_ON": "The day the payment arrived can't be in the future, or more than a year before the invoice date."
   },
   "assignments": {
     "title": "Team",
@@ -3297,7 +3305,8 @@
       "home": "Overview",
       "files": "Files",
       "company": "Your company",
-      "logins": "Logins"
+      "logins": "Logins",
+      "invoices": "Invoices"
     },
     "files": {
       "title": "Files",
@@ -3546,6 +3555,44 @@
         "refused": "This couldn't be sent. The request may no longer be open — reload the page to check.",
         "done": "Your agency has been told.",
         "doneBody": "The request is closed."
+      }
+    },
+    "invoices": {
+      "title": "Invoices",
+      "description": "Invoices and credit notes your agency has sent you.",
+      "truncated": "Showing the newest {count}.",
+      "invoiceNumber": "Invoice {number}",
+      "creditNumber": "Credit note {number}",
+      "dueOn": "Due {date}",
+      "state": {
+        "TO_PAY": "To pay",
+        "OVERDUE": "Overdue",
+        "PAID": "Paid",
+        "CREDITED": "Credited",
+        "CREDIT_NOTE": "Credit note"
+      },
+      "back": "All invoices",
+      "facts": "Details",
+      "issueDate": "Date",
+      "dueDate": "Due date",
+      "amount": "Total",
+      "creditAmount": "Amount",
+      "leftToPay": "Left to pay",
+      "credits": "Credits",
+      "download": "Download PDF",
+      "payTitle": "How to pay",
+      "payNow": "Pay now",
+      "payNowOpens": "Opens {host} in a new tab.",
+      "bank": "Pay by bank transfer",
+      "orBank": "Or pay by bank transfer",
+      "bankgiro": "Bankgiro",
+      "plusgiro": "PlusGiro",
+      "iban": "IBAN",
+      "bic": "BIC",
+      "reference": "Quote invoice number {number} with your payment.",
+      "creditNotes": "Credit notes",
+      "errors": {
+        "download": "The PDF couldn't be downloaded just now. Try again, or contact your agency."
       }
     }
   },
@@ -4730,7 +4777,8 @@
         "total": "Total"
       },
       "limited": "Showing the newest {limit}. Pick a client to see theirs.",
-      "creditNote": "Credit note"
+      "creditNote": "Credit note",
+      "overdue": "Overdue"
     },
     "new": {
       "client": "Client",
@@ -4787,7 +4835,8 @@
         "buyerReference": "Your reference",
         "ourReference": "Our reference",
         "note": "Note on this invoice",
-        "locale": "Language"
+        "locale": "Language",
+        "payLinkUrl": "Pay now link"
       },
       "locale": {
         "client": "Client's language ({language})",
@@ -4823,7 +4872,10 @@
       "creditDeleteConfirm": "Delete this credit note draft and its lines? This can't be undone.",
       "creditNoNumberYet": "A credit note has no number until it is issued.",
       "creditFixed": "A credit note keeps the VAT treatment, currency, language, project and work period of the invoice it credits.",
-      "creditLines": "What this credit note credits, in {currency} before VAT. Lower or remove what isn't credited. The credit note prints these amounts with a minus sign."
+      "creditLines": "What this credit note credits, in {currency} before VAT. Lower or remove what isn't credited. The credit note prints these amounts with a minus sign.",
+      "payLinkPlaceholder": "Add a Stripe or PayPal link",
+      "payLinkNone": "None",
+      "payLinkHint": "A Stripe payment link or PayPal link for this invoice's amount. The client gets a Pay now button in the email and in their portal. Issuing an invoice with a link asks for your authenticator code."
     },
     "issue": {
       "button": "Issue invoice…",
@@ -4869,7 +4921,15 @@
       "creditIssued": "Credit note {number} issued.",
       "creditIssuedNoPdf": "Credit note {number} is issued. Its PDF couldn't be made yet. Use Download PDF to try again.",
       "fxDay": "Its VAT is also shown in SEK, at the European Central Bank's rate for {date}, the day the work ended (or the last rate before it).",
-      "overCreditAt": "{rate} %: this credits {asked}, and {left} is left."
+      "overCreditAt": "{rate} %: this credits {asked}, and {left} is left.",
+      "enterCode": "Enter the 6-digit code from your authenticator app.",
+      "payLinkTitle": "This invoice has a Pay now link",
+      "payLinkBody": "The client's payment goes to whichever account made this link. Check that it is yours — every owner will be emailed that this invoice was issued with a link.",
+      "codeLabel": "Authenticator code",
+      "codeHint": "Issuing an invoice with a Pay now link needs a code from your authenticator app.",
+      "needsFactor": "Issuing an invoice with a Pay now link needs an authenticator app.",
+      "setUpFactor": "Set up an authenticator",
+      "paymentText": "This invoice's own text mentions a web address or payment details. Check that they are yours — the client may pay by them."
     },
     "issued": {
       "title": "Invoice {number}",
@@ -4889,7 +4949,9 @@
       "paymentUnreadable": "The bank details on this invoice couldn't be read here. Its PDF shows them as they were printed.",
       "pdfMissing": "Its PDF hasn't been made yet. Download PDF makes it.",
       "creditTitle": "Credit note {number}",
-      "creditPageTitle": "Credit note"
+      "creditPageTitle": "Credit note",
+      "issuedBy": "Issued by",
+      "issuedByGone": "a former member"
     },
     "lines": {
       "title": "Lines",
@@ -4953,6 +5015,55 @@
       "noteDraft": "Draft",
       "issuedCopyNoPdf": "Credit note {number} is issued, and here is the corrected copy. The credit note's PDF couldn't be made yet: open the credit note from the invoice list and use Download PDF.",
       "copyNotAllowed": "Making a corrected copy needs permission to create invoices."
+    },
+    "send": {
+      "button": "Send…",
+      "againButton": "Send again…",
+      "title": "Send invoice {number}",
+      "titleCredit": "Send credit note {number}",
+      "body": "Fortleva emails it with its PDF attached. Once it has been sent, the client's main contacts can also see it in their portal.",
+      "bodyAgain": "Fortleva emails it again with its PDF attached.",
+      "formLabel": "Send by email",
+      "to": "To",
+      "noBillingEmail": "The client card has no billing email — type the address.",
+      "blockedNote": "Emails to this address aren't being delivered.",
+      "alsoTo": "Also to (address {n})",
+      "confirm": "Send",
+      "markBody": "Sent it another way? Mark it as sent — the client's main contacts will then see it in their portal.",
+      "markButton": "Mark as sent",
+      "sent": "Invoice {number} was emailed to {list}.",
+      "sentCredit": "Credit note {number} was emailed to {list}.",
+      "some": "Emailed to {list}. Not sent to {missed} — check the address or try again later.",
+      "notRecorded": "Emailed to {list}, but the send couldn't be recorded. Don't send it again — reload the page.",
+      "blocked": "Nothing was sent: emails to {list} aren't being delivered.",
+      "failed": "The email couldn't be sent just now. Try again in a moment.",
+      "marked": "Marked as sent.",
+      "creditUnsent": "The client has the invoice this credit note corrects, but not this credit note. Send it to them.",
+      "historyTitle": "Sending",
+      "notSentYet": "Not sent yet — the client can't see it in their portal.",
+      "historyEmailed": "Emailed to {list}",
+      "historyMarked": "Marked as sent",
+      "historyBy": "{when} · {name}",
+      "someoneGone": "a former member",
+      "historyNone": "It hasn't been sent.",
+      "failedAndBlocked": "Nothing was sent: the email couldn't be sent just now, and emails to {list} aren't being delivered. Check that address, then try again."
+    },
+    "payment": {
+      "button": "Mark as paid…",
+      "title": "Mark invoice {number} as paid",
+      "body": "Record the day the money arrived. The client's portal will then show it as paid.",
+      "formLabel": "Mark as paid",
+      "paidOn": "Day the money arrived",
+      "note": "Note (optional)",
+      "noteHint": "Only your team sees this note — for example the bank's reference.",
+      "confirm": "Mark as paid",
+      "marked": "Marked as paid.",
+      "undo": "Mark as unpaid",
+      "undoConfirm": "Mark this invoice as unpaid? The payment's day and note are removed, and the client's portal shows it as unpaid again.",
+      "undone": "Marked as unpaid.",
+      "menuLabel": "Payment actions",
+      "overdue": "Overdue",
+      "paidOnLabel": "Paid"
     }
   },
   "invoicePdf": {
@@ -5014,5 +5125,23 @@
       "reason": "Reason: {reason}",
       "fileName": "credit-note-{number}.pdf"
     }
+  },
+  "invoiceMail": {
+    "subject": "{kind} {number} from {seller}",
+    "intro": "Here is invoice {number} from {seller}. It is attached to this email as a PDF.",
+    "introCredit": "Here is credit note {number} from {seller}. It is attached to this email as a PDF.",
+    "amount": "Total to pay: {amount}",
+    "dueDate": "Due date: {date}",
+    "payOnline": "Pay online:",
+    "bank": "Payment details:",
+    "orBank": "Or pay to:",
+    "credits": "It credits invoice {number} dated {date}.",
+    "creditAmount": "Amount: {amount}",
+    "reason": "Reason: {reason}",
+    "portal": "If you have an account in the client portal, you will find it there too:",
+    "reply": "Questions? Reply to this email.",
+    "paid": "This invoice ({amount}) has been paid. This copy is for your records — there is nothing to pay.",
+    "credited": "This invoice has been credited in full. This copy is for your records — there is nothing to pay.",
+    "leftToPay": "Left to pay: {amount} (of {total}, after credit notes)"
   }
 }

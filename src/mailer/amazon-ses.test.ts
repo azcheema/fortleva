@@ -58,6 +58,26 @@ describe("what SES is asked to send", () => {
       Charset: "UTF-8",
     });
   });
+
+  it("attaches an invoice's PDF as a real attachment, its bytes untouched (slice 109, C79 (a))", () => {
+    const content = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
+    const input = sendEmailInput(
+      { ...msg, attachments: [{ filename: "faktura-10001.pdf", contentType: "application/pdf", content }] },
+      null,
+    );
+    expect(input.Content?.Simple?.Attachments).toEqual([
+      {
+        FileName: "faktura-10001.pdf",
+        ContentType: "application/pdf",
+        ContentDisposition: "ATTACHMENT",
+        ContentTransferEncoding: "BASE64",
+        RawContent: content,
+      },
+    ]);
+    // No attachment given, none sent — not even an empty list.
+    expect(sendEmailInput(msg, null).Content?.Simple).not.toHaveProperty("Attachments");
+    expect(sendEmailInput({ ...msg, attachments: [] }, null).Content?.Simple).not.toHaveProperty("Attachments");
+  });
 });
 
 describe("the transport", () => {

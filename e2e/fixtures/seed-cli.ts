@@ -167,6 +167,9 @@ const DBTEST_PREFIXES = [
   // `setupTenant("invi")`.
   "invi-",
   "invs-",
+  // Phase 4 slice 109, sending, the portal's invoices, paid by hand —
+  // `src/modules/invoicing/send.dbtest.ts`, `setupTenant("invsend")`.
+  "invsend-",
   "iso-a-",
   "iso-b-",
   // Phase 5 slice 105, the progress-update layouts —

@@ -1624,7 +1624,9 @@ model InvoiceLine {
 // AS BUILT — Phase 4 slice 107 (2026-10-09; founder decision C75;
 // migration 20261009120000_invoice_drafts). The draft above was refined:
 //  - BOTH tables are class A (portal_deny) until slice 109 builds the
-//    client's view and reclasses them to B with a status gate; the line
+//    client's view and reclasses them to B with a status gate (AMENDED by
+//    slice 109: only `invoice` moved to B; `invoice_line` stays A — the PDF
+//    is the client's copy of the lines); the line
 //    carries its invoice's client_id through a composite FK
 //    (tenant_id, client_id, invoice_id) → invoice(tenant_id, client_id, id),
 //    so that reclass needs no backfill through frozen rows.
@@ -1750,6 +1752,65 @@ model InvoiceLine {
 //    published on or before it (the 90-day history file for an earlier day);
 //    the guard's window is the ten days before that day; a day older than
 //    the history (90 days) is refused in a sentence.
+//
+// AS BUILT — Phase 4 slice 109 (2026-10-09; founder decision C79 (a)–(h);
+// migration 20261010120000_invoice_sending; the design and its three reviews:
+// docs/research/2026-10-09-slice-109-sending-design.md). Sending, the client's
+// portal, Pay now, paid by hand:
+//  - `invoice` gains pay_link_url (a DRAFT's, an INVOICE's only; CHECK
+//    `invoice_pay_link`: https, Stripe's or PayPal's own hosts exactly —
+//    buy.stripe.com, invoice.stripe.com, www.paypal.com, paypal.com,
+//    paypal.me, www.paypal.me — printable ASCII, ≤ 500; `src/config`'s
+//    `payLinkUrl` is the same list; frozen at issue, and the issue itself
+//    never sets or changes it), sent_at (the FIRST send, emailed or marked —
+//    THE PORTAL'S GATE) and paid_on (a payment marked by hand). CHECKs: for an
+//    unpaid invoice ISSUED ⇔ unsent and SENT ⇔ sent; PAID has its day; a day
+//    only on PAID or CREDITED (a refund keeps it).
+//  - `invoice_delivery` (class A): one row per send — EMAIL (1–3 lower-cased
+//    addresses that took it) or MARKED (none) — by whom, when; written only by
+//    a member holding invoice:send, of an issued invoice; never changed (no
+//    UPDATE grant, and its guard); cascades with its invoice.
+//  - `invoice_payment_note` (class A, one per invoice): the AGENCY's note on a
+//    payment — not a column of `invoice`, because `invoice` is a client's to
+//    read once sent (the pre-apply review's medium). Written only by a member
+//    holding invoice:record_payment right after THIS transaction moved the
+//    invoice to PAID (a transaction-local `app.invoice_paid_now` marker the
+//    guard sets, and the row's xmin); deleted by the invoice's own guard when a
+//    payment is undone, or by its cascade; never changed.
+//  - invoice_guard (replaced): sent_at set once, now, by a member holding
+//    invoice:send, only beside a delivery row by that member written in the
+//    same transaction (xmin; no savepoint between them); a credit note moves
+//    only ISSUED → SENT; PAID needs its day (≤ tomorrow UTC, ≥ a year before
+//    the invoice date); PAID → SENT|ISSUED is the reversal (C79 (h)); a
+//    payment is recorded or undone, never rewritten; the code for a move is
+//    keyed on (OLD, NEW): →SENT invoice:send, →PAID and the reversal
+//    invoice:record_payment, →CREDITED invoice:credit.
+//  - `invoice` is CLASS B (B_clientScoped, PORTAL_GATE_VARIANTS status): a
+//    contact reads a row of their own client that is not a draft and has been
+//    SENT — invoices AND credit notes, each on its own send; shown whatever its
+//    project's portal switch (C79 (b)); RESTRICTIVE `portal_invoice_primary`
+//    holds it to a MAIN contact (pinned by name in isolation.dbtest.ts); the
+//    census's three named denies; WITH CHECK denies contacts outright.
+//    `invoice_line` STAYS CLASS A (107's note said both would move): the PDF is
+//    the client's copy of the lines. RLS hands a main contact every column of a
+//    sent invoice — the projection (`src/modules/invoicing/portal.ts`) owns
+//    which it reads. What a raw read could see beyond the PDF: the pay link
+//    (shown to them anyway, while payable), opaque member and project ids and
+//    timestamps; `payment_snapshot` is ciphertext they cannot read. Nothing of
+//    the agency's own (the payment note, the sends' recipients) is on the row.
+//  - Sending is SYNCHRONOUS from the member's click (not the outbox): the PDF
+//    read from storage and its sha-256 checked against the file row; a
+//    RESERVATION (`invoice.send_attempted`, an address count and a digest of
+//    the list) committed under a per-workspace advisory lock BEFORE any mail —
+//    the budget (30 addresses per member per hour, 300 per workspace per day)
+//    and the double-click guard (the same invoice to the same addresses within
+//    a minute) count the committed reservations, so they hold under
+//    concurrency; emailed to each address in turn (C79 (a), (e)) — ARC-09's one
+//    exception to "no attachments" — then recorded in a further transaction; a
+//    send that reached nobody VOIDS its reservation
+//    (`invoice.send_attempt_voided`) and records nothing else.
+//  - Overdue is DERIVED (an unpaid INVOICE past its due date in the
+//    workspace's zone, or the portal's), never a status.
 
 // ───────────────────────────────────────────────────────────────────
 // 6.8 DOCUMENTS & FILES (§5, §6) — three layers:

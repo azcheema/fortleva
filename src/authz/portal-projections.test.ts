@@ -114,6 +114,15 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "requestedByMemberId",
   "cancelledByMemberId",
   "sentCredentialId",
+  // Phase 4 slice 109 (C79), invoices in the portal: `invoice` is class B
+  // now, so RLS hands a main contact the WHOLE row of a sent invoice — the
+  // projection owns the columns (the design review's low). The agency's own
+  // note on a payment ("USD 15 short, bank fee"), the member who issued it,
+  // and the member who sent it (on `invoice_delivery`, class A — named here
+  // so a broker that joined it would meet the tripwire).
+  "paymentNote",
+  "issuedByMemberId",
+  "sentByMemberId",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -429,6 +438,9 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "requestedByMemberId",
       "cancelledByMemberId",
       "sentCredentialId",
+      "paymentNote",
+      "issuedByMemberId",
+      "sentByMemberId",
     ]);
   });
 
@@ -510,7 +522,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
     // model quietly added to one would widen the tripwire with no test
     // failing anywhere.
     expect(PORTAL_NEVER_SELECTED_EXCEPT).toEqual({
-      kind: ["Document", "Service"],
+      kind: ["Document", "Service", "Invoice"],
       description: ["Service"],
       type: ["CredentialAsk"],
     });
@@ -705,13 +717,16 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
  *    asked the client for (a website login, an API key…) — the agency
  *    wrote it FOR that client, who sends one of that kind (C66). On every
  *    other model it stays banned.
+ *  - `kind` (slice 109) on `Invoice` is INVOICE / CREDIT_NOTE — the
+ *    document's own title, printed on it ("Kreditfaktura"); the portal
+ *    must tell the two apart to sign a credit note's amount (C77 (a)).
  *
  * The exemption is by MODEL, resolved through the schema like every
  * other key here, so `kind` selected through a relation to `WorkItem`
  * from a document projection is still an offence. Pinned below.
  */
 const PORTAL_NEVER_SELECTED_EXCEPT: Readonly<Record<string, readonly string[]>> = {
-  kind: ["Document", "Service"],
+  kind: ["Document", "Service", "Invoice"],
   description: ["Service"],
   type: ["CredentialAsk"],
 };

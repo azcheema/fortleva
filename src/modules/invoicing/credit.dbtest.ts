@@ -65,6 +65,9 @@ const TOKENS = [
   "invoice_credit_reason",
   "invoice_credit_note_terms",
   "invoice_credits_reference",
+  // Slice 109's CHECKs (sent, paid).
+  "invoice_sent",
+  "invoice_paid",
 ] as const;
 const refusal = async (p: Promise<unknown>): Promise<string> => {
   try {
@@ -246,7 +249,18 @@ describe("making a credit note's draft", () => {
     expect(await outcome(updateLine(manager(), cn, line!.id, { unitPrice: "1" }))).toBe("FORBIDDEN");
     expect(await outcome(updateDraftDetails(manager(), cn, { note: "x" }))).toBe("FORBIDDEN");
     const view = await getInvoice(manager(), cn);
-    expect(view.can).toEqual({ edit: false, delete: false, issue: false, credit: false, copy: false });
+    expect(view.can).toEqual({
+      edit: false,
+      delete: false,
+      issue: false,
+      credit: false,
+      copy: false,
+      // Slice 109: a draft is never sent or paid.
+      send: false,
+      markSent: false,
+      markPaid: false,
+      markUnpaid: false,
+    });
     // An invoice has no reason.
     const plain = await createDraft(manager(), { clientId: se });
     expect(await outcome(updateDraftDetails(manager(), plain, { creditReason: "x" }))).toBe("INVALID_INPUT");
@@ -379,7 +393,7 @@ describe("issuing a credit note", () => {
     expect(await statusOf(cn)).toBe("DRAFT");
   });
 
-  it("the database: an invoice reaches CREDITED only when covered, and a credit note's status never moves", async () => {
+  it("the database: an invoice reaches CREDITED only when covered, and a credit note's status moves only to SENT", async () => {
     const original = await issuedInvoice(se, [{ price: "800" }]);
     expect(
       await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'CREDITED' WHERE id = ${original}`)),
@@ -390,9 +404,14 @@ describe("issuing a credit note", () => {
     expect(
       await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'CREDITED' WHERE id = ${original}`)),
     ).toBe("INVOICE_GUARD");
+    // Slice 109: a credit note is sent like an invoice — ISSUED → SENT, and
+    // only with a send (`sent_at` and its record — `send.dbtest.ts`); never paid.
     expect(await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'SENT' WHERE id = ${cn}`))).toBe(
-      "INVOICE_GUARD",
+      "invoice_sent",
     );
+    expect(
+      await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'PAID', paid_on = issue_date WHERE id = ${cn}`)),
+    ).toBe("INVOICE_GUARD");
     // Issued, it is frozen like any invoice — its reason included.
     expect(
       await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET credit_reason = 'other' WHERE id = ${cn}`)),

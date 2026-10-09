@@ -70,6 +70,19 @@ export function sendEmailInput(
               ],
             }
           : {}),
+        // An issued invoice's PDF (slice 109, C79 (a)): a real attachment,
+        // base64 on the wire (the SDK encodes the bytes).
+        ...(msg.attachments && msg.attachments.length > 0
+          ? {
+              Attachments: msg.attachments.map((a) => ({
+                FileName: a.filename,
+                ContentType: a.contentType,
+                ContentDisposition: "ATTACHMENT" as const,
+                ContentTransferEncoding: "BASE64" as const,
+                RawContent: a.content,
+              })),
+            }
+          : {}),
       },
     },
   };

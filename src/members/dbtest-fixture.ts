@@ -125,7 +125,7 @@ export async function setupTenant(label: string) {
   };
 
   /**
-   * Every invoice of the tenant (lines cascade), issued ones included, then
+   * Every invoice of the tenant (lines and records of sends cascade), issued ones included, then
    * its numbering series (slice 108, RESTRICTs the tenant, refuses DELETE
    * outside the GUC) and the invoices' PDF files (RESTRICTed by the invoice
    * until it goes) — the platform role under the maintenance GUC.

@@ -78,6 +78,10 @@ const TOKENS = [
   "invoice_line_amount",
   "invoice_line_finite",
   "invoice_issued_facts",
+  // Slice 109's CHECKs (sent, paid, the pay link).
+  "invoice_sent",
+  "invoice_paid",
+  "invoice_pay_link",
 ] as const;
 const refusal = async (p: Promise<unknown>): Promise<string> => {
   try {
@@ -467,19 +471,39 @@ describe("the database's guards", () => {
       expect(await outcome(addLine(manager(), id, { description: "x" }))).toBe("INVOICE_NOT_DRAFT");
     });
 
-    it("its status moves only forward, by the code for the step", async () => {
+    it("its status moves only forward — or a payment undone — by the code for the step", async () => {
       expect(await refusal(asMember(f.seats.owner.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'DRAFT' WHERE id = ${id}`))).toBe(
         "INVOICE_GUARD",
       );
       // The manager holds no invoice:record_payment.
-      expect(await refusal(asMember(f.seats.manager.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'PAID' WHERE id = ${id}`))).toBe(
-        "INVOICE_GUARD",
-      );
+      expect(
+        await refusal(
+          asMember(f.seats.manager.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'PAID', paid_on = issue_date WHERE id = ${id}`),
+        ),
+      ).toBe("INVOICE_GUARD");
+      // Slice 109: PAID has its day (C79 (d)).
       expect(await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'PAID' WHERE id = ${id}`))).toBe(
-        "ok",
+        "invoice_paid",
       );
+      expect(
+        await refusal(
+          asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'PAID', paid_on = issue_date WHERE id = ${id}`),
+        ),
+      ).toBe("ok");
+      // Undone (C79 (h)): back to SENT only if it was ever sent — this one was
+      // not — and the day goes with it.
+      expect(
+        await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'SENT', paid_on = NULL WHERE id = ${id}`)),
+      ).toBe("invoice_sent");
+      expect(
+        await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'ISSUED' WHERE id = ${id}`)),
+      ).toBe("invoice_paid");
+      expect(
+        await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'ISSUED', paid_on = NULL WHERE id = ${id}`)),
+      ).toBe("ok");
+      // SENT needs a send (sent_at, with its record — `send.dbtest.ts`).
       expect(await refusal(asMember(f.seats.admin.memberId, (tx) => tx.$executeRaw`UPDATE invoice SET status = 'SENT' WHERE id = ${id}`))).toBe(
-        "INVOICE_GUARD",
+        "invoice_sent",
       );
     });
 

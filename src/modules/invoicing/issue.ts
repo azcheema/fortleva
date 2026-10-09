@@ -1,23 +1,24 @@
 import { createHash } from "node:crypto";
 
 import { record } from "@/audit/record";
-import { assertInScope } from "@/authz/authorize";
-import { deny } from "@/authz/errors";
+import { assertInScope, requireRecentMfa } from "@/authz/authorize";
+import { AuthzError, deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { todayIn } from "@/lib/due-date";
 import { addDays } from "@/lib/week";
 import { fail, isLockTimeout } from "@/lib/domain-error";
+import { INVOICE_PAY_LINK_ISSUED_MAIL } from "@/notify/invoice-pay-link-mail-key";
 import { readPreferences } from "@/preferences/service";
 
 import { readCreditedNets, readInvoiceNets } from "./credit-state";
 import { guarded } from "./db-errors";
 import type { InvoicingCtx } from "./drafts";
 import { FX_MAX_AGE_DAYS, needsSekVat, rateDayFor, sekRateFor, vatGroupsInSek, type FetchText, type FxRate } from "./fx";
-import { checkCreditIssue, checkIssue, creditCovers, type IssueCheck, type IssueClient } from "./issue-check";
+import { checkCreditIssue, checkIssue, creditCovers, mentionsPaymentDetails, type IssueCheck, type IssueClient } from "./issue-check";
 import { formatFixed, invoiceTotals, readFixed, type InvoiceTotals } from "./money";
 import { isInvoiceLocale, isoDay, type InvoiceLocale } from "./print";
-import { readSeller } from "./seller";
+import { INVOICE_DETAILS_STEP_UP_MINUTES, noticeToOwners, readSeller } from "./seller";
 import { readNumbering } from "./series";
 import type { VatProfile } from "./vat";
 
@@ -159,6 +160,7 @@ export async function readIssueFingerprint(tx: TenantDb, invoiceId: string): Pro
       buyerReference: true,
       ourReference: true,
       note: true,
+      payLinkUrl: true,
     },
   });
   if (!invoice) return deny("NOT_FOUND");
@@ -211,12 +213,37 @@ export async function readIssueFingerprint(tx: TenantDb, invoiceId: string): Pro
       : null,
     // Appended, so an INVOICE's canonical form keeps slice 108's prefix.
     ...(credit ? [invoice.kind, invoice.creditReason] : []),
+    // Slice 109 (C79 (c)): the Pay now link — where the client's money goes,
+    // seen by the issuer; a link set or changed after the page loaded is
+    // INVOICE_CHANGED. Appended only when there is one.
+    ...(invoice.payLinkUrl !== null ? ["payLink", invoice.payLinkUrl] : []),
   ]);
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-/** The issue check, with the fingerprint of what it was read from. */
-export type IssueCheckSeen = IssueCheck & { readonly fingerprint: string };
+/**
+ * The issue check, with the fingerprint of what it was read from — and (slice
+ * 109's security review, its low on free text) whether the draft's own text
+ * reads like somewhere to pay.
+ */
+export type IssueCheckSeen = IssueCheck & { readonly fingerprint: string; readonly paymentText: boolean };
+
+/** The draft's own printed text — note, references, reason, line descriptions — read for `mentionsPaymentDetails`. */
+async function readDraftPaymentText(tx: TenantDb, invoiceId: string): Promise<boolean> {
+  const invoice = await tx.invoice.findFirst({
+    where: { id: invoiceId },
+    select: { note: true, buyerReference: true, ourReference: true, creditReason: true },
+  });
+  if (!invoice) return false;
+  const lines = await tx.invoiceLine.findMany({ where: { invoiceId }, select: { description: true, unit: true } });
+  return mentionsPaymentDetails([
+    invoice.note,
+    invoice.buyerReference,
+    invoice.ourReference,
+    invoice.creditReason,
+    ...lines.flatMap((l) => [l.description, l.unit]),
+  ]);
+}
 
 /** The client's facts issuing reads. */
 async function readIssueClient(tx: TenantDb, clientId: string): Promise<IssueClient> {
@@ -321,7 +348,8 @@ export async function readIssueCheck(
   const fingerprint = seen ?? (await readIssueFingerprint(tx, invoiceId));
   const draft = await readDraftFacts(tx, invoiceId);
   const { check } = await checkDraft(tx, tenantId, draft, now);
-  return { ...check, fingerprint };
+  const paymentText = await readDraftPaymentText(tx, invoiceId);
+  return { ...check, fingerprint, paymentText };
 }
 
 /**
@@ -359,7 +387,18 @@ export async function issueLocked(
   tx: TenantDb,
   ctx: InvoicingCtx,
   invoiceId: string,
-  opts: { readonly now: Date; readonly rate: FetchedRate | null; readonly fingerprint?: string },
+  opts: {
+    readonly now: Date;
+    readonly rate: FetchedRate | null;
+    readonly fingerprint?: string;
+    /**
+     * The issuer's code was TYPED AND VERIFIED in this very request (the issue
+     * action sets it after `verifyStepUpWithHeaders`). A draft with a Pay now
+     * link is issued only with it — any other step-up minutes ago (the vault's
+     * door, a cost reveal) must not stand in for it (the security review's low).
+     */
+    readonly codeTypedNow?: boolean;
+  },
 ): Promise<Issued> {
   const { now, rate } = opts;
   const clientId = await openIssue(tx, ctx, invoiceId);
@@ -376,8 +415,8 @@ export async function issueLocked(
     // serialise here, and every check below reads under both locks.
     await tx.$queryRaw`SELECT 1 FROM invoice WHERE id = ${kind.creditsInvoiceId} FOR UPDATE`;
   }
-  const locked = await tx.$queryRaw<{ status: string }[]>`
-    SELECT status::text AS status FROM invoice WHERE id = ${invoiceId} FOR UPDATE`;
+  const locked = await tx.$queryRaw<{ status: string; pay_link_url: string | null }[]>`
+    SELECT status::text AS status, pay_link_url FROM invoice WHERE id = ${invoiceId} FOR UPDATE`;
   if (!locked[0]) return deny("NOT_FOUND");
   if (locked[0].status !== "DRAFT") return fail("INVOICE_NOT_DRAFT");
   if (!credit) {
@@ -391,6 +430,24 @@ export async function issueLocked(
   // Under the draft's lock: the draft (and its client) as the issuer saw them.
   if (opts.fingerprint !== undefined && (await readIssueFingerprint(tx, invoiceId)) !== opts.fingerprint) {
     return fail("INVOICE_CHANGED");
+  }
+  // A PAY NOW LINK takes the issuer's code AT THAT MOMENT (C79 (g); the design
+  // review's high): the Stripe-or-PayPal fence cannot tell whose account a
+  // link pays into, so issuing one is guarded like the bank details are — a
+  // code typed in the dialog in THIS request, the one-minute window (C75 (h)),
+  // decided from the LOCKED row. AFTER the fingerprint (the code review's
+  // low): a link added since the page loaded is "it changed — look again", not
+  // "type your code" in a dialog that has no field for one. Every owner is
+  // told after the write.
+  const payLink = locked[0].pay_link_url;
+  if (payLink !== null) {
+    if (opts.codeTypedNow !== true) return fail("INVOICE_PAY_LINK_CODE");
+    try {
+      await requireRecentMfa(ctx.actor, INVOICE_DETAILS_STEP_UP_MINUTES);
+    } catch (e) {
+      if (e instanceof AuthzError && e.reason === "MFA_REQUIRED") return fail("INVOICE_PAY_LINK_CODE");
+      throw e;
+    }
   }
   const draft = await readDraftFacts(tx, invoiceId);
   const { check, numbering, original } = await checkDraft(tx, ctx.tenantId, draft, now);
@@ -457,8 +514,19 @@ export async function issueLocked(
       locale: check.locale,
       ...(fx ? { fxRateToSek: formatFixed(fx.micros, 6), fxRateDate: fx.date } : {}),
       ...(original ? { kind: "CREDIT_NOTE", creditsInvoiceId: original.id } : {}),
+      // Where the client's money would go (slice 109's design review's high).
+      ...(payLink !== null ? { payLink } : {}),
     },
   });
+  // C79 (g): every active owner told that an invoice went out with a Pay now
+  // link — a link to it, never the URL (ARC-09); once per invoice.
+  if (payLink !== null) {
+    await noticeToOwners(tx, ctx.tenantId, now, {
+      kind: INVOICE_PAY_LINK_ISSUED_MAIL,
+      key: `invoice_pay_link_issued:${invoiceId}`,
+      params: { invoiceId },
+    });
+  }
 
   // A credit note that completes the credit: its invoice is CREDITED now, in
   // the same transaction (the guard refuses the move unless it is so).
@@ -510,6 +578,8 @@ export async function issueInvoice(
     readonly fetchText?: FetchText;
     /** What the issuer saw (`readIssueCheck`'s fingerprint); the action always sends it. */
     readonly fingerprint?: string;
+    /** The issuer's code typed and verified in this request (C79 (g); `issueLocked`). */
+    readonly codeTypedNow?: boolean;
   } = {},
 ): Promise<Issued> {
   const now = opts.now ?? new Date();
@@ -533,5 +603,7 @@ export async function issueInvoice(
   }
 
   // 3. The issue.
-  return inIssueTransaction(ctx, (tx) => issueLocked(tx, ctx, invoiceId, { now, rate, fingerprint: opts.fingerprint }));
+  return inIssueTransaction(ctx, (tx) =>
+    issueLocked(tx, ctx, invoiceId, { now, rate, fingerprint: opts.fingerprint, codeTypedNow: opts.codeTypedNow }),
+  );
 }

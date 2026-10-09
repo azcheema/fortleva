@@ -160,7 +160,16 @@ export type PortalScopeRef =
    * has proved the contact may read that exact shipped version, which
    * is the row the decision lands on.
    */
-  | { readonly kind: "project_version"; readonly versionId: string };
+  | { readonly kind: "project_version"; readonly versionId: string }
+  /**
+   * `invoice` (Phase 4 slice 109, C79 (b)). Its `portal_gate` is the
+   * status-structural form — client match, not a draft, SENT — and
+   * `portal_invoice_primary` holds it to a main contact, so a ref that
+   * resolves has proved the contact may read that exact invoice or credit
+   * note. Paid for by the PDF and payment brokers
+   * (`src/modules/invoicing/portal-writes.ts`), whose system reads follow.
+   */
+  | { readonly kind: "invoice"; readonly invoiceId: string };
 
 /**
  * Throws `AuthzError` on every denial. NOT_FOUND for anything
@@ -336,6 +345,16 @@ export async function authorizePortal(
       select: { id: true },
     });
     if (!row) deny("NOT_FOUND", "project version");
+  } else if (ref?.kind === "invoice") {
+    // Client, issued and SENT are `portal_gate`'s, a main contact
+    // `portal_invoice_primary`'s; the status and send terms are restated, as
+    // every probe restates its gate. No project term: an invoice shows whether
+    // or not its project's portal is on (C79 (b)).
+    const row = await tx.invoice.findFirst({
+      where: { id: ref.invoiceId, status: { not: "DRAFT" }, sentAt: { not: null } },
+      select: { id: true },
+    });
+    if (!row) deny("NOT_FOUND", "invoice");
   }
 
   // 5. Gates 1–3 for every module this capability rides on.

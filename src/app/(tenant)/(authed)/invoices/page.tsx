@@ -149,6 +149,13 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                           <span className="block text-2xs text-muted-foreground" data-testid="invoice-row-credit">
                             {t("creditNote")}
                           </span>
+                        ) : r.overdue ? (
+                          // Slice 109: past its due date and unpaid — derived,
+                          // never a status; under the number, as the credit
+                          // note's label (the row keeps its pitch).
+                          <span className="block text-2xs text-(--tone-caution-fg)" data-testid="invoice-row-overdue">
+                            {t("overdue")}
+                          </span>
                         ) : null}
                         {/* A draft's link already reads "Draft"; a badge saying it
                             again cost a phone its width (the visual walk's audit).

@@ -590,6 +590,71 @@ export function pushEndpointUrl(raw: string): URL | null {
 }
 
 /**
+ * WHERE AN INVOICE'S "PAY NOW" LINK MAY POINT (Phase 4 slice 109; founder
+ * decision C79 (c), (f); SECURITY.md §6.1). A member pastes it on a draft —
+ * typically a payment link made for that invoice's amount — and it becomes a
+ * button in the client's email and portal. A link on an invoice is a classic
+ * way to divert a payment, so only the payment services' OWN hosts are
+ * accepted, EXACTLY (no subdomains, no lookalikes, no IP literal): HTTPS, no
+ * credentials, the default port, no whitespace, control character or
+ * backslash anywhere in what was typed. A fragment is allowed — PayPal's
+ * invoice links carry the invoice's id after `#`, and a fragment never leaves
+ * the browser. Stripe and PayPal to start; another service is added here AND
+ * in the database's CHECK (`invoice_pay_link`, migration
+ * `20261010120000_invoice_sending`) when a workspace asks for it.
+ *
+ * WHAT THIS DOES NOT STOP (the design review's high, C79 (g)): a link to
+ * SOMEONE ELSE'S Stripe or PayPal account passes — anyone can make one. That is
+ * held elsewhere: issuing an invoice that carries a link takes the issuer's
+ * code at that moment, and every owner is told (`issue.ts`).
+ */
+export const PAY_LINK_HOSTS: readonly string[] = [
+  // Stripe — Payment Links (permanent) and hosted invoice pages. NOT Checkout
+  // (`checkout.stripe.com`): a Checkout Session dies within 24 hours, and a
+  // link fixed at issue would be dead before the client pays.
+  "buy.stripe.com",
+  "invoice.stripe.com",
+  // PayPal — invoices and payment links on paypal.com, PayPal.Me.
+  "www.paypal.com",
+  "paypal.com",
+  "paypal.me",
+  "www.paypal.me",
+];
+/** At most this long, as stored (the database's CHECK says the same). */
+export const PAY_LINK_MAX_LENGTH = 500;
+
+/**
+ * ON PAYPAL.COM, ONLY ITS PAY PAGES (the slice-109 security review's nit): any
+ * other path there — `cgi-bin/webscr?cmd=_xclick…` — carries `return` and
+ * `cancel_return` addresses its author chose, sending the client anywhere
+ * after PayPal. Payment links, invoices and PayPal.Me only. (The database's
+ * CHECK holds the hosts; this narrower rule is the app's, applied at every
+ * write AND every read — the portal and the mail re-check a stored link.)
+ */
+const PAYPAL_COM_PATHS: readonly string[] = ["/ncp/payment/", "/invoice/p/", "/invoice/payerView/", "/paypalme/"];
+
+/** The pay link as a URL when it points to one of the services above; null otherwise. */
+export function payLinkUrl(raw: string): URL | null {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > PAY_LINK_MAX_LENGTH) return null;
+  // What was TYPED, before the URL parser forgives it: a parser drops tabs and
+  // newlines and reads `\` as `/`, so `https:\\evil.example\@buy.stripe.com`
+  // is refused here rather than normalised into something else.
+  if (!/^https:\/\/[^\s\\\p{Cc}]+$/iu.test(raw)) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username !== "" || url.password !== "" || url.port !== "") return null;
+  if (!PAY_LINK_HOSTS.includes(url.hostname)) return null;
+  if ((url.hostname === "www.paypal.com" || url.hostname === "paypal.com") && !PAYPAL_COM_PATHS.some((p) => url.pathname.startsWith(p))) {
+    return null;
+  }
+  return url.href.length <= PAY_LINK_MAX_LENGTH ? url : null;
+}
+
+/**
  * THE EXCHANGE RATE AN INVOICE'S VAT IS SHOWN IN SEK AT (Phase 4 slice 108;
  * `src/modules/invoicing/fx.ts`). Mervärdesskattelagen lets the seller use the
  * European Central Bank's latest published rate (or Nasdaq Stockholm's middle

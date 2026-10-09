@@ -87,6 +87,8 @@ export const MODEL_CLASSES = {
     "invoice",
     "invoiceLine",
     "invoiceSeries",
+    "invoiceDelivery",
+    "invoicePaymentNote",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -218,22 +220,35 @@ export const RLS_CLASSES = {
     // SYSTEM (a send, a decline); the contact reads it only through the
     // broker (a brokered read), never as rows.
     "credentialAsk",
-    // Phase 4 slice 107 — invoices and their lines. CLASS A UNTIL SLICE 109:
-    // no client reads an invoice until the portal's view is built, which
-    // reclasses both to B with a status gate — the line already carries its
-    // invoice's `client_id` (composite FK) for that gate.
-    "invoice",
+    // Phase 4 slice 107 — an invoice's lines. STILL CLASS A after slice 109
+    // moved `invoice` to B (the design review's answer to its Q4): the
+    // client's copy of the lines is the PDF, and the portal shows an
+    // invoice's totals and dates, never line rows.
     "invoiceLine",
     // Phase 4 slice 108 — the workspace's ONE invoice-number series; no
     // client ever reads it (a number reaches a client on its invoice).
     "invoiceSeries",
+    // Phase 4 slice 109 — a send's record (C79): emailed to whom, or marked
+    // as sent, by whom. The agency's record, never the client's.
+    "invoiceDelivery",
+    // …and the agency's own note on a payment marked by hand ("USD 15 short,
+    // bank fee") — on its own row because `invoice` is a client's to read once
+    // sent (the pre-apply migration review's medium).
+    "invoicePaymentNote",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no
   // portal_enabled. `clientAsset` is INTERNAL-only in the database; a
   // `credentialItem` may be CLIENT_VISIBLE since slice 91, read by a
   // contact only while the tenant's switch is on (`portal_vault_switch`).
-  B_clientScoped: ["client", "contact", "credentialItem", "clientAsset"],
+  //
+  // `invoice` (Phase 4 slice 109, C79 (b)): client-level money, read by a
+  // MAIN contact of its client once it is issued and SENT — a status-
+  // structural gate (no `visibility`: being sent IS the client's), with a
+  // RESTRICTIVE `portal_invoice_primary` belt (CONTACT_PRIMARY only) pinned
+  // by name in `isolation.dbtest.ts`. Shown even when its project's portal is
+  // off: the client already has it.
+  B_clientScoped: ["client", "contact", "credentialItem", "clientAsset", "invoice"],
   B_projectScoped: [
     "project",
     "projectVersion",
@@ -275,12 +290,15 @@ export type RlsClass = keyof typeof RLS_CLASSES;
  *   contact        — client match only
  *   project        — client match AND its own portal_enabled
  *   projectVersion — client match AND status = 'SHIPPED' AND portal_enabled
+ *   invoice        — client match AND status <> 'DRAFT' AND sent_at set
+ *                    (slice 109, C79 (b))
  */
 export const PORTAL_GATE_VARIANTS = {
   client: { clientColumn: "id", term: "structural" },
   contact: { clientColumn: "client_id", term: "structural" },
   project: { clientColumn: "client_id", term: "portal_enabled" },
   projectVersion: { clientColumn: "client_id", term: "status" },
+  invoice: { clientColumn: "client_id", term: "status" },
 } as const satisfies Record<
   string,
   { clientColumn: "id" | "client_id"; term: "structural" | "portal_enabled" | "status" }

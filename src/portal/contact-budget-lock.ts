@@ -4,7 +4,8 @@ import type { TenantDb } from "@/db";
  * THE PER-CONTACT ADVISORY LOCK BEHIND EVERY PORTAL BUDGET — one raw
  * statement, in one core file, for the request intake's budget
  * (`assertRequestBudget`, `src/modules/work/requests.ts`), the file
- * download's (`assertDownloadBudget`, `src/documents/portal-writes.ts`)
+ * download's (`assertDownloadBudget`, `src/documents/download-budget.ts` —
+ * shared since slice 109 by the file and the invoice PDF brokers)
  * and, since slice 75, a task comment's (`assertCommentBudget`,
  * `src/modules/work/portal-comment.ts`). The first cut of the download slice copied the statement into a
  * second file; a review pointed out that the CTE trick, the clock-row

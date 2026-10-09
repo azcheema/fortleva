@@ -303,3 +303,24 @@ export function checkIssue(input: {
     creditsIssueDate: null,
   };
 }
+
+/**
+ * TEXT THAT READS LIKE SOMEWHERE TO PAY (slice 109; the security review's low).
+ * A draft's note, references and line descriptions are printed on the PDF —
+ * now emailed — and are ordinary edits (C75 (i): the issuer sees the whole
+ * invoice), so a web address or an account number typed there gets past every
+ * fence the Pay now link has. Not a refusal — an agency's lines name websites
+ * — but the issue dialog says so, plainly, before the code.
+ */
+const PAYMENT_TEXT: readonly RegExp[] = [
+  /\bhttps?:\/\//i,
+  /\bwww\./i,
+  // An IBAN's shape: two letters, two digits, then groups.
+  /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}\b/,
+  // A Bankgiro / PlusGiro shape: 123-4567, 1234-5678.
+  /\b\d{3,4}-\d{4}\b/,
+  /\b(?:bankgiro|plusgiro|iban|swift|bic|swish)\b/i,
+];
+
+export const mentionsPaymentDetails = (texts: readonly (string | null | undefined)[]): boolean =>
+  texts.some((t) => typeof t === "string" && PAYMENT_TEXT.some((re) => re.test(t)));

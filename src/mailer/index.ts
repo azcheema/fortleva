@@ -5,6 +5,9 @@ import { allowDevMailOutbox, amazonSesConfig, isProduction, mailFrom, mailTransp
 import { isAddressSuppressed } from "@/db";
 
 import { amazonSesTransport, RecipientRefusedError } from "./amazon-ses";
+import { describeAttachments, type MailAttachment } from "./attachment";
+
+export type { MailAttachment } from "./attachment";
 
 /**
  * Did the transport refuse this one recipient (a reserved domain, a dev
@@ -35,7 +38,13 @@ export const isRecipientRefusal = (e: unknown): boolean => e instanceof Recipien
  *
  * Policy (ARC-09): emails carry links, not data — deep links to the
  * canonical app origin, no attachments, no sensitive contents, and
- * NEVER key material (CONTINUITY_BOX.md INV-3).
+ * NEVER key material (CONTINUITY_BOX.md INV-3). ONE EXCEPTION (founder
+ * decision C79 (a), Phase 4 slice 109): an issued invoice or credit note is
+ * emailed to the client's accounts address WITH ITS ARCHIVED PDF ATTACHED —
+ * an accounts mailbox has no portal account, and an invoice is a document
+ * the buyer must receive. `src/modules/invoicing/send.ts` is the only
+ * caller that sets `attachments` (`attachments.test.ts` pins it), and the dev
+ * outbox records an attachment's name, size and hash, never its bytes.
  */
 
 export type MailMessage = {
@@ -66,12 +75,15 @@ export type MailMessage = {
    * happened to them.
    */
   readonly listUnsubscribe?: string;
+  /** Slice 109 (C79 (a)): an issued invoice's PDF — `send.ts` only. */
+  readonly attachments?: readonly MailAttachment[];
 };
 
 export type MailTransport = (msg: MailMessage & { from: string }) => Promise<void>;
 
 const devTransport: MailTransport = async (msg) => {
-  const line = JSON.stringify({ at: new Date().toISOString(), ...msg });
+  const { attachments, ...rest } = msg;
+  const line = JSON.stringify({ at: new Date().toISOString(), ...rest, ...(attachments ? { attachments: describeAttachments(attachments) } : {}) });
   console.log(`[mailer:dev] to=${msg.to} subject="${msg.subject}"`);
   try {
     const dir = join(process.cwd(), ".dev-outbox");

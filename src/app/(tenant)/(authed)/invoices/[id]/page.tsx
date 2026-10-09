@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getLocale, getTranslations } from "next-intl/server";
+import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
 import { AuthzError } from "@/authz/errors";
+import { enrolUrl } from "@/authz/redirects";
 import { Callout, DataTable, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,6 +20,9 @@ import { DraftDetails } from "./draft-details";
 import { DraftMenu } from "./draft-menu";
 import { InvoiceLines } from "./invoice-lines";
 import { IssueDialog } from "./issue-dialog";
+import { PaidDialog } from "./paid-dialog";
+import { PaidMenu } from "./paid-menu";
+import { SendDialog } from "./send-dialog";
 
 export async function generateMetadata(): Promise<Metadata> {
   // Neutral: the same route is a draft and, once issued, an invoice.
@@ -61,9 +65,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const tIssued = await getTranslations("invoices.issued");
   const tCredit = await getTranslations("invoices.credit");
   const tStatus = await getTranslations("invoices.list.status");
+  const tSend = await getTranslations("invoices.send");
+  const tPayment = await getTranslations("invoices.payment");
   const tMissing = await getTranslations("settings.invoicing.missing.items");
   const tCommon = await getTranslations("common");
   const locale = await getLocale();
+  const format = await getFormatter();
 
   let invoice: InvoiceDetail | null = null;
   try {
@@ -150,7 +157,27 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 {tCredit("partlyBadge")}
               </Badge>
             ) : null}
+            {invoice.overdue ? (
+              <Badge variant="caution" data-testid="invoice-overdue">
+                {tPayment("overdue")}
+              </Badge>
+            ) : null}
             {issued ? <DownloadPdf invoiceId={invoice.id} /> : null}
+            {issued && invoice.can.send && invoice.displayNumber ? (
+              <SendDialog
+                invoiceId={invoice.id}
+                credit={credit}
+                displayNumber={invoice.displayNumber}
+                billingEmail={invoice.client.billingEmail}
+                billingEmailBlocked={invoice.billingEmailBlocked}
+                sentBefore={invoice.sentAt !== null}
+                canMarkSent={invoice.can.markSent}
+              />
+            ) : null}
+            {invoice.can.markPaid && invoice.displayNumber && invoice.today ? (
+              <PaidDialog invoiceId={invoice.id} displayNumber={invoice.displayNumber} today={invoice.today} />
+            ) : null}
+            {invoice.can.markUnpaid ? <PaidMenu invoiceId={invoice.id} label={tPayment("menuLabel")} /> : null}
             {invoice.can.credit && invoice.displayNumber ? (
               <CreditDialog
                 invoiceId={invoice.id}
@@ -183,7 +210,11 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                   noPeriod: check.noPeriod,
                   creditsIssueDate: check.creditsIssueDate,
                   fingerprint: check.fingerprint,
+                  paymentText: check.paymentText,
                 }}
+                payLink={invoice.payLinkUrl}
+                hasFactor={actor.mfa?.enrolled === true}
+                enrolHref={enrolUrl(`/invoices/${invoice.id}`)}
               />
             ) : null}
             {invoice.can.delete ? (
@@ -198,6 +229,11 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           <p className="text-sm text-muted-foreground" data-testid="invoice-pdf-missing">
             {tIssued("pdfMissing")}
           </p>
+        ) : null}
+        {invoice.creditUnsent ? (
+          <div data-testid="credit-unsent">
+            <Callout tone="caution">{tSend("creditUnsent")}</Callout>
+          </div>
         ) : null}
 
         {credit ? (
@@ -302,12 +338,68 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                   <dd className="num text-sm">{issued.print.dueDate}</dd>
                 </div>
               )}
+              {/* Slice 109: who issued it — what the owners' Pay now notice
+                  sends them here to check. */}
+              {invoice.issuedBy ? (
+                <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2">
+                  <dt className="text-xs text-muted-foreground">{tIssued("issuedBy")}</dt>
+                  <dd className="text-sm" data-testid="invoice-issued-by">
+                    {tSend("historyBy", {
+                      name: invoice.issuedBy.name ?? tIssued("issuedByGone"),
+                      when: format.dateTime(invoice.issuedBy.at, { dateStyle: "medium", timeStyle: "short" }),
+                    })}
+                  </dd>
+                </div>
+              ) : null}
+              {/* Slice 109 (C79 (d)): a payment marked by hand — its day, and
+                  the team's own note (never the client's to read). */}
+              {invoice.paidOn ? (
+                <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2" data-testid="invoice-paid">
+                  <dt className="text-xs text-muted-foreground">{tPayment("paidOnLabel")}</dt>
+                  <dd className="text-sm">
+                    <span className="num">{dayText(invoice.paidOn)}</span>
+                    {invoice.paymentNote ? (
+                      <span className="mt-0.5 block whitespace-pre-line text-muted-foreground" data-testid="invoice-payment-note">
+                        {invoice.paymentNote}
+                      </span>
+                    ) : null}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
             {issued.paymentUnreadable ? (
               <div className="mt-3">
                 <Callout tone="caution">{tIssued("paymentUnreadable")}</Callout>
               </div>
             ) : null}
+          </SectionCard>
+        ) : null}
+
+        {/* Slice 109 (C79 (a), (e)): every send — emailed to whom, or marked
+            as sent — newest first. Until the first, the client cannot see it. */}
+        {issued ? (
+          <SectionCard title={tSend("historyTitle")} description={invoice.sentAt ? undefined : tSend("notSentYet")}>
+            {invoice.deliveries.length > 0 ? (
+              <ul className="flex flex-col gap-2" data-testid="invoice-deliveries">
+                {invoice.deliveries.map((d) => (
+                  <li key={d.id} className="flex min-w-0 flex-col gap-0.5 text-sm" data-testid="invoice-delivery" data-method={d.method}>
+                    <span className="min-w-0 wrap-break-word">
+                      {d.method === "EMAIL" ? tSend("historyEmailed", { list: d.recipients.join(", ") }) : tSend("historyMarked")}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {tSend("historyBy", {
+                        when: format.dateTime(d.at, { dateStyle: "medium", timeStyle: "short" }),
+                        name: d.by ?? tSend("someoneGone"),
+                      })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground" data-testid="invoice-deliveries-none">
+                {tSend("historyNone")}
+              </p>
+            )}
           </SectionCard>
         ) : null}
 
@@ -362,6 +454,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               ourReference: invoice.ourReference ?? "",
               note: invoice.note ?? "",
               locale: invoice.locale ?? "",
+              payLinkUrl: invoice.payLinkUrl ?? "",
             }}
           />
           {credit && draft ? <p className="mt-3 text-xs text-muted-foreground">{t("creditFixed")}</p> : null}

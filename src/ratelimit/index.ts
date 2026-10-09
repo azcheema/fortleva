@@ -187,7 +187,7 @@ const POLICIES = {
   /**
    * THE PORTAL'S FILE DOWNLOAD per CONTACT (Phase 3, the portal files
    * slice). The cheap filter in front of a fail-CLOSED Postgres budget
-   * (`assertDownloadBudget`, `src/documents/portal-writes.ts`, which
+   * (`assertDownloadBudget`, `src/documents/download-budget.ts`, which
    * counts the `file.downloaded` audit rows the downloads themselves
    * write) — the same layering as `portal.request_create`, and a no-op
    * until Upstash is provisioned for the same documented reason. Its

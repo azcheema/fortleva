@@ -456,6 +456,21 @@ describe("posture assertions", () => {
         `${p.table}: undeclared PERMISSIVE policy on a class-B table — it ORs with tenant_isolation and can only widen`,
       ).toEqual([]);
     }
+    // Class B's extra RESTRICTIVE belts that something depends on, pinned BY
+    // NAME — a RESTRICTIVE policy can only narrow, so nothing above sees one
+    // DROPPED (the slice-109 design review's low). `invoice`'s
+    // `portal_invoice_primary` is what keeps a client's collaborators from its
+    // invoices in the database (AUTHZ §8: no money for collaborators).
+    const CLASS_B_REQUIRED_EXTRA: Readonly<Record<string, { readonly name: string; readonly qual: string }>> = {
+      invoice: { name: "portal_invoice_primary", qual: "CONTACT_PRIMARY" },
+    };
+    for (const [m, { name, qual }] of Object.entries(CLASS_B_REQUIRED_EXTRA)) {
+      const p = of(m);
+      expect(p.policies, `${p.table}: needs ${name}`).toContain(name);
+      expect(p.permissive, `${p.table}: ${name} must be RESTRICTIVE`).not.toContain(name);
+      expect(p.quals[name] ?? "", `${p.table}: ${name} must test ${qual}`).toContain(qual);
+      expect(p.quals[name] ?? "", `${p.table}: ${name} must read the contact's own row`).toContain("app.principal_id");
+    }
     // principalScoped (notification): tenant_isolation + the RESTRICTIVE
     // receiver binding on SELECT and UPDATE, an INSERT deny for contacts,
     // and NEVER the class-B columns (it is not portal content).

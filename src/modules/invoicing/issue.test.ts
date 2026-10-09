@@ -7,11 +7,32 @@ import {
   creditCovers,
   creditLeavesNegative,
   creditOverRates,
+  mentionsPaymentDetails,
   type IssueClient,
   type RateNets,
 } from "./issue-check";
 import { invoiceTotals } from "./money";
 import type { CompanyDetails, PaymentDetails } from "./seller";
+
+describe("text that reads like somewhere to pay (slice 109; the security review's low)", () => {
+  it("notices a web address, an IBAN, a Bankgiro number or the words for them", () => {
+    for (const text of [
+      "Pay at https://evil.example/pay",
+      "see www.example.se",
+      "IBAN SE45 5000 0000 0583 9825 7466",
+      "SE4550000000058398257466",
+      "Bankgiro 123-4567",
+      "betala till 5050-1055",
+      "Use Swish",
+    ]) {
+      expect(mentionsPaymentDetails([text]), text).toBe(true);
+    }
+  });
+
+  it("stays quiet on ordinary invoice text — dates, hours, prices", () => {
+    expect(mentionsPaymentDetails(["Consulting, September 2026", "Period 2026-09-01 – 2026-09-30", "12.5 h", null, undefined])).toBe(false);
+  });
+});
 
 const company: CompanyDetails = {
   legalName: "Invi Konsult AB",

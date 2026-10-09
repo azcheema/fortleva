@@ -1,9 +1,11 @@
 import { record } from "@/audit/record";
 import { assertInScope, scopeWhere, type MemberActor } from "@/authz/authorize";
 import { deny } from "@/authz/errors";
+import { payLinkUrl } from "@/config";
 import { withTenant, type TenantDb } from "@/db";
 import { hasAccess, requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
+import { todayIn } from "@/lib/due-date";
 import { CURRENCIES, readPreferences } from "@/preferences/service";
 
 import { readCreditedNets, readCreditNotes, readInvoiceNets, type CreditNoteSummary } from "./credit-state";
@@ -79,6 +81,8 @@ export type InvoiceListRow = {
   readonly total: bigint;
   readonly createdAt: Date;
   readonly issueDate: Date | null;
+  /** Slice 109: an unpaid INVOICE past its due date in the workspace's zone — derived, never a status. */
+  readonly overdue: boolean;
 };
 
 export type InvoiceLineView = {
@@ -158,6 +162,25 @@ export type InvoiceDetail = {
   readonly issueCheck: IssueCheckSeen | null;
   /** Issued: the frozen record, as printed. */
   readonly issued: IssuedInvoice | null;
+  /** Slice 109 (C79 (c)): the Pay now link — a draft's to edit, fixed at issue. */
+  readonly payLinkUrl: string | null;
+  /** Slice 109: the FIRST send (emailed or marked) — what opens the client's portal to it. */
+  readonly sentAt: Date | null;
+  /** Every send, newest first. */
+  readonly deliveries: readonly InvoiceDeliveryView[];
+  /** Marked paid by hand (C79 (d)): the day the money arrived, and the agency's note. */
+  readonly paidOn: Date | null;
+  readonly paymentNote: string | null;
+  /** An unpaid INVOICE past its due date in the workspace's zone. */
+  readonly overdue: boolean;
+  /** Issued: today in the workspace's zone, `YYYY-MM-DD` — Mark as paid's first day and its latest. */
+  readonly today: string | null;
+  /** The client's billing email is on the blocked list (bounced, or reported) — the send dialog says so. */
+  readonly billingEmailBlocked: boolean;
+  /** An issued credit note not yet sent whose invoice WAS sent: the client has the invoice, not its correction. */
+  readonly creditUnsent: boolean;
+  /** Issued: by whom (null when the member is gone) and when — what the owners' Pay now notice points at. */
+  readonly issuedBy: { readonly name: string | null; readonly at: Date } | null;
   readonly can: {
     readonly edit: boolean;
     readonly delete: boolean;
@@ -166,7 +189,25 @@ export type InvoiceDetail = {
     readonly credit: boolean;
     /** …with a corrected copy: `invoice:create` too. */
     readonly copy: boolean;
+    /** Slice 109: Send… / Send again… (`invoice:send`). */
+    readonly send: boolean;
+    /** Mark as sent — until it has been sent. */
+    readonly markSent: boolean;
+    /** Mark as paid… (`invoice:record_payment`) — an unpaid INVOICE. */
+    readonly markPaid: boolean;
+    /** Mark as unpaid (C79 (h)) — a PAID invoice. */
+    readonly markUnpaid: boolean;
   };
+};
+
+/** One send of an invoice (slice 109): emailed to whom, or marked — when, by whom. */
+export type InvoiceDeliveryView = {
+  readonly id: string;
+  readonly method: "EMAIL" | "MARKED";
+  readonly recipients: readonly string[];
+  readonly at: Date;
+  /** The member's name, or null when they are gone. */
+  readonly by: string | null;
 };
 
 const lineSelect = {
@@ -227,10 +268,12 @@ export async function listInvoices(
         total: true,
         createdAt: true,
         issueDate: true,
+        dueDate: true,
         client: { select: { id: true, name: true } },
         project: { select: { key: true, name: true } },
       },
     });
+    const today = todayIn((await readPreferences(tx, ctx.tenantId)).timezone, new Date());
     const more = invoices.length > INVOICE_LIST_LIMIT;
     invoices.splice(INVOICE_LIST_LIMIT);
     // A draft's total from its lines, summed per rate in the database (VAT
@@ -265,6 +308,8 @@ export async function listInvoices(
         total: i.status === "DRAFT" || i.total === null ? invoiceTotals(linesOf.get(i.id) ?? []).total : readFixed(i.total, 2),
         createdAt: i.createdAt,
         issueDate: i.issueDate,
+        overdue:
+          i.kind === "INVOICE" && (i.status === "ISSUED" || i.status === "SENT") && i.dueDate !== null && isoDay(i.dueDate) < today,
       })),
     };
   });
@@ -399,6 +444,13 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
         note: true,
         locale: true,
         createdAt: true,
+        payLinkUrl: true,
+        sentAt: true,
+        paidOn: true,
+        // The agency's note on the payment — its own class-A row (slice 109's
+        // pre-apply review): `invoice` is a client's to read once sent.
+        paymentNote: { select: { note: true } },
+        dueDate: true,
         project: { select: { id: true, key: true, name: true } },
       },
     });
@@ -451,12 +503,16 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
     let creditLeft: RateNets | null = null;
     let creditsBuyer: BuyerPrint | null = null;
     let creditSummary: CreditSummary | null = null;
+    let creditUnsent = false;
     if (isCreditNote && invoice.creditsInvoiceId) {
       const original = await tx.invoice.findFirst({
         where: { id: invoice.creditsInvoiceId },
-        select: { id: true, displayNumber: true, issueDate: true, buyerSnapshot: true },
+        select: { id: true, displayNumber: true, issueDate: true, buyerSnapshot: true, sentAt: true },
       });
       if (original) credits = { id: original.id, displayNumber: original.displayNumber, issueDate: original.issueDate ? isoDay(original.issueDate) : null };
+      // Slice 109 (the design review's M1): the client has the invoice but not
+      // this correction of it — the page says so, beside Send….
+      creditUnsent = !draft && invoice.sentAt === null && original?.sentAt != null;
       // Who a credit note's draft bills: the parties as its invoice named
       // them (the guard copies that snapshot at issue), never the live client.
       if (draft && original) {
@@ -488,6 +544,44 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
       !isCreditNote && creditable && positive && mayCredit && mayIssueAny && creditSummary !== null && !creditCovers(creditSummary.original, creditSummary.credited);
     // The corrected copy is a new draft: `invoice:create` (the code review's low).
     const canCopy = canCredit && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:create"));
+
+    // Slice 109 (C79): sending and payments. In turn, never a batch.
+    const mayRecordPayment = !draft && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:record_payment"));
+    const canSend = !draft && (await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:send"));
+    const issuer = issued
+      ? await tx.member.findFirst({ where: { id: issued.issuedByMemberId }, select: { user: { select: { name: true } } } })
+      : null;
+    const issuedBy = issued ? { name: issuer?.user.name?.trim() || null, at: issued.issuedAt } : null;
+    const unpaid = !isCreditNote && (invoice.status === "ISSUED" || invoice.status === "SENT");
+    const prefs = !draft ? await readPreferences(tx, ctx.tenantId) : null;
+    const today = prefs !== null ? todayIn(prefs.timezone, new Date()) : null;
+    const overdue = unpaid && today !== null && invoice.dueDate !== null && isoDay(invoice.dueDate) < today;
+    const deliveries: InvoiceDeliveryView[] = [];
+    if (!draft) {
+      const rows = await tx.invoiceDelivery.findMany({
+        where: { invoiceId: invoice.id },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 50,
+        select: { id: true, method: true, recipients: true, createdAt: true, sentByMemberId: true },
+      });
+      const names = new Map(
+        (
+          await tx.member.findMany({
+            where: { id: { in: [...new Set(rows.map((r) => r.sentByMemberId))] } },
+            select: { id: true, user: { select: { name: true } } },
+          })
+        ).map((m) => [m.id, m.user.name?.trim() || null]),
+      );
+      for (const r of rows) {
+        deliveries.push({ id: r.id, method: r.method, recipients: r.recipients, at: r.createdAt, by: names.get(r.sentByMemberId) ?? null });
+      }
+    }
+    // The client's billing email on the blocked list (C71 (d) — never why).
+    const billingEmailBlocked =
+      canSend && client.billingEmail !== null
+        ? (await tx.emailSuppression.count({ where: { email: client.billingEmail.toLowerCase() } })) > 0
+        : false;
+
     const { projects: live, status, invoiceLocale, ...billTo } = client;
     // The draft's own project stays offered after it was archived, or the
     // select would show its raw id at rest and "No project" open (the code
@@ -522,7 +616,27 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
       clientLocale: invoiceLocaleFor({ invoiceLocale, countryCode: billTo.countryCode }),
       issueCheck,
       issued,
-      can: { edit: canEdit, delete: canDelete, issue: canIssue, credit: canCredit, copy: canCopy },
+      payLinkUrl: invoice.payLinkUrl,
+      sentAt: invoice.sentAt,
+      deliveries,
+      paidOn: invoice.paidOn,
+      paymentNote: invoice.paymentNote?.note ?? null,
+      overdue,
+      today,
+      billingEmailBlocked,
+      creditUnsent,
+      issuedBy,
+      can: {
+        edit: canEdit,
+        delete: canDelete,
+        issue: canIssue,
+        credit: canCredit,
+        copy: canCopy,
+        send: canSend,
+        markSent: canSend && invoice.sentAt === null,
+        markPaid: mayRecordPayment && unpaid,
+        markUnpaid: mayRecordPayment && !isCreditNote && invoice.status === "PAID",
+      },
     };
   });
 }
@@ -619,6 +733,8 @@ export type DraftDetailsPatch = {
   readonly locale?: unknown;
   /** A credit note's reason (C77 (b)) — required, so never cleared. */
   readonly creditReason?: unknown;
+  /** Slice 109 (C79 (c), (f)): the Pay now link — an invoice's; "" or null clears it. */
+  readonly payLinkUrl?: unknown;
 };
 
 /** What a credit note's draft may change: its reason and the words around it. Its terms are its invoice's (the guard holds them). */
@@ -656,6 +772,18 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
     if (l !== null && !isInvoiceLocale(l)) return fail("INVALID_INPUT", "invoice language");
     data.locale = l;
   }
+  if ("payLinkUrl" in patch) {
+    // Stripe's or PayPal's own payment pages, exactly (C79 (f); `src/config`'s
+    // fence, the database's CHECK behind it); stored as the parsed link.
+    const raw = patch.payLinkUrl === null ? "" : typeof patch.payLinkUrl === "string" ? patch.payLinkUrl.trim() : undefined;
+    if (raw === undefined) return fail("INVALID_INPUT", "pay link");
+    if (raw === "") data.payLinkUrl = null;
+    else {
+      const url = payLinkUrl(raw);
+      if (!url) return fail("INVOICE_PAY_LINK_REFUSED");
+      data.payLinkUrl = url.href;
+    }
+  }
 
   return guarded(() =>
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
@@ -678,6 +806,7 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
           ourReference: true,
           note: true,
           locale: true,
+          payLinkUrl: true,
         },
       });
       if (!current) return deny("NOT_FOUND");
@@ -697,7 +826,10 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
         action: "invoice.draft_edited",
         targetType: "Invoice",
         targetId: invoiceId,
-        metadata: { fields: changed },
+        // The Pay now link itself when it changes (the slice-109 design
+        // review's high): where a client's money would go is the one field
+        // whose old and new values the trail must show.
+        metadata: { fields: changed, ...(changed.includes("payLinkUrl") ? { payLink: data.payLinkUrl ?? null } : {}) },
       });
       return changed;
     }),

@@ -22,6 +22,8 @@ export type DraftDetailsValues = {
   readonly note: string;
   /** "" — the client's language (C76 (e)) — or "sv" / "en". */
   readonly locale: string;
+  /** Slice 109 (C79 (c), (f)): the Pay now link, or "" — an invoice's only. */
+  readonly payLinkUrl: string;
 };
 
 /**
@@ -332,6 +334,33 @@ export function DraftDetails({
             onCommit={(next) => detail("note", next)}
           />,
           true,
+        )}
+        {/* Slice 109 (C79 (c), (f)): a Stripe or PayPal link for this
+            invoice's amount — the Pay now button in its email and the
+            client's portal, never printed on the PDF; fixed at issue, and
+            issuing one asks for the issuer's code (C79 (g)). A credit note
+            asks no one to pay. */}
+        {creditNote ? null : (
+          <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2" data-testid="pay-link">
+            <dt className="px-2.5 text-xs text-muted-foreground">{t("fields.payLinkUrl")}</dt>
+            <dd className="min-w-0">
+              <InlineEdit
+                kind="text"
+                name="payLinkUrl"
+                value={values.payLinkUrl}
+                label={t("fields.payLinkUrl")}
+                placeholder={ro ? t("payLinkNone") : t("payLinkPlaceholder")}
+                display={values.payLinkUrl ? <span className="break-all">{values.payLinkUrl}</span> : undefined}
+                readOnly={ro}
+                hiddenInput={false}
+                inputProps={{ maxLength: 500, inputMode: "url", autoComplete: "off", spellCheck: false }}
+                resetKey={resets.payLinkUrl ?? 0}
+                className={ro ? "px-2.5" : "min-w-0"}
+                onCommit={(next) => detail("payLinkUrl", next)}
+              />
+              {ro ? null : <p className="mt-1 px-2.5 text-xs text-muted-foreground">{t("payLinkHint")}</p>}
+            </dd>
+          </div>
         )}
       </dl>
     </div>

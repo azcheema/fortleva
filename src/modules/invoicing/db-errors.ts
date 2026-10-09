@@ -29,4 +29,8 @@ export const { mapDbError, guarded } = dbErrorMapper([
   // rule, which `checkCreditIssue` names rate by rate before the guard does.
   ["INVOICE_NOT_CREDITABLE", "INVOICE_NOT_CREDITABLE"],
   ["INVOICE_OVER_CREDIT", "INVOICE_NOT_READY"],
+  // Slice 109: a first send recorded twice (two "Mark as sent" at once — the
+  // service checks under the invoice's lock first). `INVOICE_DELIVERY_GUARD`
+  // stays unmapped: a send's record written by anything but `send.ts`.
+  ["INVOICE_ALREADY_SENT", "INVOICE_ALREADY_SENT"],
 ]);

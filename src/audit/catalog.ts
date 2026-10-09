@@ -195,6 +195,23 @@ export const AUDIT_EVENTS = {
   // its change before anything was numbered (from, to).
   "invoice.pdf_generated": TENANT,
   "series.first_number_changed": TENANT,
+  // Phase 4 slice 109 — sending and payments (src/modules/invoicing/send.ts;
+  // C79). `invoice.sent` (above) names the send's record and how it went,
+  // never an address (they are on `invoice_delivery`); `invoice.paid` the day
+  // and whether there is a note, never the note; `invoice.payment_undone` what
+  // was undone (C79 (h)). `invoice.pdf_downloaded` — a CLIENT's download from
+  // the portal, brokered and audited to the contact (`portal-writes.ts`).
+  "invoice.payment_undone": TENANT,
+  "invoice.pdf_downloaded": TENANT,
+  // …and `invoice.send_attempted` — a send's RESERVATION, written and
+  // committed before any mail goes (the security review's medium): the
+  // sending budget counts these (an address count and a digest of the list,
+  // never an address), and an attempt whose record later failed still leaves
+  // this trace.
+  "invoice.send_attempted": TENANT,
+  // …voided when the send reached nobody (the code review's medium): no
+  // double click, no budget spent.
+  "invoice.send_attempt_voided": TENANT,
   // Settings → Invoicing (src/modules/invoicing/seller.ts). Both protected
   // cards — the code typed in the form, every owner mailed (C75 (h)–(j)) —
   // and the settings page reads each one's newest row to say who changed it
