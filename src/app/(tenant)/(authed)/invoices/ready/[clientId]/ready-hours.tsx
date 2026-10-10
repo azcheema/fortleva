@@ -210,13 +210,19 @@ export function ReadyHours({
                   <TableHead className="w-0">
                     <span className="sr-only">{t("selected", { count: chosen.length })}</span>
                   </TableHead>
-                  <TableHead className="w-[11ch]">{t("columns.date")}</TableHead>
+                  {/* medium: on a phone the date is the column that yields (the
+                      project rows group the hours, the period filter bounds them) —
+                      the time grid's own trade for its clock column; measured by
+                      the visual walk's audit (CI 38035736535: 116px over a 356px box). */}
+                  <TableHead priority="medium" className="w-[11ch]">
+                    {t("columns.date")}
+                  </TableHead>
                   <TableHead>{t("columns.what")}</TableHead>
-                  <TableHead priority="medium">{t("columns.person")}</TableHead>
-                  <TableHead priority="low" className="text-right">
+                  <TableHead priority="medium" className="w-[16ch]">{t("columns.person")}</TableHead>
+                  <TableHead priority="low" className="w-[10ch] text-right">
                     {t("columns.tracked")}
                   </TableHead>
-                  <TableHead className="text-right">{t("columns.billed")}</TableHead>
+                  <TableHead className="w-[10ch] text-right">{t("columns.billed")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -235,7 +241,10 @@ export function ReadyHours({
                           />
                         </TableCell>
                         <TableCell colSpan={5} className="text-xs font-semibold text-muted-foreground">
-                          <span className="num-id font-mono">{first.projectKey}</span> {first.projectName}
+                          {/* Contained: a long project name never widens a phone's table. */}
+                          <div className="w-full min-w-0 truncate contain-inline-size" title={first.projectName}>
+                            <span className="num-id font-mono">{first.projectKey}</span> {first.projectName}
+                          </div>
                         </TableCell>
                       </TableRow>
                       {group.map((r) => (
@@ -247,21 +256,31 @@ export function ReadyHours({
                               aria-label={t("selectRow", { date: r.dateLabel })}
                             />
                           </TableCell>
-                          <TableCell className="num whitespace-nowrap text-muted-foreground">{r.dateLabel}</TableCell>
-                          <TableCell className="max-w-72">
-                            <div className="flex min-w-0 items-center gap-2">
+                          <TableCell priority="medium" className="num whitespace-nowrap text-muted-foreground">
+                            {r.dateLabel}
+                          </TableCell>
+                          {/* WHAT YIELDS: `contain-inline-size` + `w-full` takes the
+                              wrapper out of the column's intrinsic sizing (UI.md
+                              §10.12, the time grid's answer), and the badges are
+                              capped at half the cell so they clip, never push. */}
+                          <TableCell className="min-w-24">
+                            <div className="flex w-full min-w-0 items-center gap-2 contain-inline-size">
                               <span className="truncate" title={r.what}>
                                 {r.what}
                               </span>
-                              {r.needsReview ? (
-                                <Badge variant="outline" className="shrink-0" title={t("needsReviewWhy")}>
-                                  {t("needsReview")}
-                                </Badge>
-                              ) : null}
-                              {r.rate === null ? (
-                                <Badge variant="outline" className="shrink-0">
-                                  {t("noRate")}
-                                </Badge>
+                              {r.needsReview || r.rate === null ? (
+                                <span className="flex max-w-1/2 shrink-0 items-center gap-1 overflow-hidden">
+                                  {r.needsReview ? (
+                                    <Badge variant="outline" className="shrink-0" title={t("needsReviewWhy")}>
+                                      {t("needsReview")}
+                                    </Badge>
+                                  ) : null}
+                                  {r.rate === null ? (
+                                    <Badge variant="outline" className="shrink-0">
+                                      {t("noRate")}
+                                    </Badge>
+                                  ) : null}
+                                </span>
                               ) : null}
                             </div>
                           </TableCell>
@@ -289,8 +308,11 @@ export function ReadyHours({
       ) : null}
 
       {rows.length > 0 ? (
-        <SectionCard title={t("linesTitle")} contentClassName="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
+        // Unpadded, the table flush between two padded bands — a bordered
+        // table inside a padded card is two hairlines (UI.md §10.15.1; the
+        // visual walk's audit, CI 38035736535); the Marked card's shape.
+        <SectionCard title={t("linesTitle")} contentClassName="p-0">
+          <div className="flex flex-col gap-1 border-b border-border p-4">
             <Label htmlFor="hours-grouping">{t("groupBy")}</Label>
             <NativeSelect
               id="hours-grouping"
@@ -309,27 +331,29 @@ export function ReadyHours({
             {grouping === "TASK" ? <p className="text-xs text-muted-foreground">{t("taskHint")}</p> : null}
           </div>
           {billing.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("previewEmpty")}</p>
+            <p className="p-4 text-sm text-muted-foreground">{t("previewEmpty")}</p>
           ) : (
-            <DataTable scrollLabel={t("linesTitle")}>
+            <DataTable flush scrollLabel={t("linesTitle")}>
               <Table data-testid="hours-preview">
                 <TableHeader>
                   <TableRow>
                     <TableHead>{tLines("columns.description")}</TableHead>
-                    <TableHead className="text-right">{tLines("columns.quantity")}</TableHead>
-                    <TableHead priority="medium" className="text-right">
+                    <TableHead className="w-[10ch] text-right">{tLines("columns.quantity")}</TableHead>
+                    <TableHead priority="medium" className="w-[14ch] text-right">
                       {tLines("columns.unitPrice")}
                     </TableHead>
-                    <TableHead className="text-right">{tLines("columns.amount")}</TableHead>
+                    <TableHead className="w-[14ch] text-right">{tLines("columns.amount")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {billing.map((l) => (
                     <TableRow key={l.key} data-testid="hours-preview-line">
-                      <TableCell className="max-w-80">
-                        <span className="block truncate" title={l.description}>
-                          {l.description}
-                        </span>
+                      <TableCell className="min-w-24">
+                        <div className="w-full min-w-0 contain-inline-size">
+                          <span className="block truncate" title={l.description}>
+                            {l.description}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="num text-right whitespace-nowrap">{t("quantity", { quantity: qty(l.quantity) })}</TableCell>
                       <TableCell priority="medium" className="num text-right whitespace-nowrap">
@@ -351,40 +375,45 @@ export function ReadyHours({
               </Table>
             </DataTable>
           )}
-          {leftOut > 0 ? <p className="text-xs text-(--tone-caution-fg)">{t("leftOut", { count: leftOut })}</p> : null}
-          <div className="flex flex-wrap items-center gap-2">
-            {draft ? (
-              can.add ? (
-                <Button onClick={add} disabled={pending || nothingChosen} data-testid="hours-add">
-                  {t("add")}
-                </Button>
-              ) : null
-            ) : can.create ? (
-              <Button onClick={create} disabled={pending || nothingChosen} data-testid="hours-create">
-                {t("create")}
-              </Button>
-            ) : null}
-            {can.mark ? (
-              <>
-                <InlineConfirm
-                  label={t("billedElsewhere")}
-                  question={t("confirmBilledElsewhere", { count: chosen.length })}
-                  onConfirm={() => go(() => markHoursAction(clientId, chosen, "BILLED_ELSEWHERE"))}
-                  pending={pending}
-                  disabled={chosen.length === 0}
-                  variant="outline"
-                />
-                <InlineConfirm
-                  label={t("wontInvoice")}
-                  question={t("confirmWontInvoice", { count: chosen.length })}
-                  onConfirm={() => go(() => markHoursAction(clientId, chosen, "WONT_INVOICE"))}
-                  pending={pending}
-                  disabled={chosen.length === 0}
-                  variant="outline"
-                />
-              </>
-            ) : null}
-          </div>
+          {/* Only when there is something to say or do — never an empty bordered strip. */}
+          {leftOut > 0 || (draft ? can.add : can.create) || can.mark ? (
+            <div className="flex flex-col gap-3 border-t border-border p-3">
+              {leftOut > 0 ? <p className="text-xs text-(--tone-caution-fg)">{t("leftOut", { count: leftOut })}</p> : null}
+              <div className="flex flex-wrap items-center gap-2">
+                {draft ? (
+                  can.add ? (
+                    <Button onClick={add} disabled={pending || nothingChosen} data-testid="hours-add">
+                      {t("add")}
+                    </Button>
+                  ) : null
+                ) : can.create ? (
+                  <Button onClick={create} disabled={pending || nothingChosen} data-testid="hours-create">
+                    {t("create")}
+                  </Button>
+                ) : null}
+                {can.mark ? (
+                  <>
+                    <InlineConfirm
+                      label={t("billedElsewhere")}
+                      question={t("confirmBilledElsewhere", { count: chosen.length })}
+                      onConfirm={() => go(() => markHoursAction(clientId, chosen, "BILLED_ELSEWHERE"))}
+                      pending={pending}
+                      disabled={chosen.length === 0}
+                      variant="outline"
+                    />
+                    <InlineConfirm
+                      label={t("wontInvoice")}
+                      question={t("confirmWontInvoice", { count: chosen.length })}
+                      onConfirm={() => go(() => markHoursAction(clientId, chosen, "WONT_INVOICE"))}
+                      pending={pending}
+                      disabled={chosen.length === 0}
+                      variant="outline"
+                    />
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </SectionCard>
       ) : null}
 
@@ -402,10 +431,12 @@ export function ReadyHours({
                         <span className="sr-only">{t("undo")}</span>
                       </TableHead>
                     ) : null}
-                    <TableHead className="w-[11ch]">{t("columns.date")}</TableHead>
+                    <TableHead priority="medium" className="w-[11ch]">
+                      {t("columns.date")}
+                    </TableHead>
                     <TableHead>{t("columns.what")}</TableHead>
-                    <TableHead priority="medium">{t("columns.person")}</TableHead>
-                    <TableHead className="text-right">{t("columns.billed")}</TableHead>
+                    <TableHead priority="medium" className="w-[16ch]">{t("columns.person")}</TableHead>
+                    <TableHead className="w-[10ch] text-right">{t("columns.billed")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -427,14 +458,19 @@ export function ReadyHours({
                           />
                         </TableCell>
                       ) : null}
-                      <TableCell className="num whitespace-nowrap text-muted-foreground">{m.dateLabel}</TableCell>
-                      <TableCell className="max-w-72">
-                        <div className="flex min-w-0 items-center gap-2">
+                      <TableCell priority="medium" className="num whitespace-nowrap text-muted-foreground">
+                        {m.dateLabel}
+                      </TableCell>
+                      <TableCell className="min-w-24">
+                        <div className="flex w-full min-w-0 items-center gap-2 contain-inline-size">
                           <span className="truncate" title={m.what}>
                             <span className="num-id font-mono text-muted-foreground">{m.projectKey}</span> {m.what}
                           </span>
-                          <Badge variant="outline" className="shrink-0">
-                            {t(`markedStates.${m.mark}`)}
+                          {/* The mark is what tells these rows apart: capped, truncated
+                              with an ellipsis, and whole in its title (the time grid's
+                              billing badge). */}
+                          <Badge variant="outline" className="min-w-0 max-w-1/2 overflow-hidden" title={t(`markedStates.${m.mark}`)}>
+                            <span className="truncate">{t(`markedStates.${m.mark}`)}</span>
                           </Badge>
                         </div>
                       </TableCell>

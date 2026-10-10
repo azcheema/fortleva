@@ -125,7 +125,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                   <TableHeader>
                     <TableRow>
                       <TableHead>{tReady("columns.client")}</TableHead>
-                      <TableHead className="text-right">{tReady("columns.hours")}</TableHead>
+                      <TableHead className="w-[10ch] text-right">{tReady("columns.hours")}</TableHead>
                       <TableHead className="text-right">{tReady("columns.value")}</TableHead>
                       <TableHead priority="low">{tReady("columns.oldest")}</TableHead>
                     </TableRow>
@@ -135,14 +135,18 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                       const seconds = r.byCurrency.reduce((s, c) => s + c.seconds, 0) + r.noRateSeconds;
                       return (
                         <TableRow key={r.clientId} data-testid="ready-row" data-client-id={r.clientId}>
-                          <TableCell className="max-w-56 truncate">
-                            <Link
-                              href={`/invoices/ready/${r.clientId}`}
-                              className="rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                            >
-                              {r.name}
-                            </Link>
-                            {r.archived ? <span className="ml-2 text-2xs text-muted-foreground">{tReady("archived")}</span> : null}
+                          {/* The client YIELDS (`contain-inline-size`): a long name never widens the card. */}
+                          <TableCell className="min-w-24">
+                            <div className="flex w-full min-w-0 items-baseline gap-2 contain-inline-size">
+                              <Link
+                                href={`/invoices/ready/${r.clientId}`}
+                                title={r.name}
+                                className="min-w-0 truncate rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                              >
+                                {r.name}
+                              </Link>
+                              {r.archived ? <span className="shrink-0 text-2xs text-muted-foreground">{tReady("archived")}</span> : null}
+                            </div>
                           </TableCell>
                           <TableCell className="num text-right whitespace-nowrap">{hours(seconds)}</TableCell>
                           {/* `leading-4`: the "without a rate" line under the value

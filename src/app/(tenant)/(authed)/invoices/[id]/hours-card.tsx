@@ -78,11 +78,20 @@ export function InvoiceHoursCard({
                     <span className="sr-only">{t("return")}</span>
                   </TableHead>
                 ) : null}
-                <TableHead className="w-[11ch]">{t("columns.date")}</TableHead>
-                <TableHead priority="medium">{t("columns.person")}</TableHead>
+                {/* The date yields on a phone, as on the hours page (UI.md §10.12). */}
+                <TableHead priority="medium" className="w-[11ch]">
+                  {t("columns.date")}
+                </TableHead>
+                <TableHead priority="medium" className="w-[16ch]">
+                  {t("columns.person")}
+                </TableHead>
                 <TableHead>{t("columns.task")}</TableHead>
-                <TableHead className="text-right">{t("columns.billed")}</TableHead>
-                {draft ? null : <TableHead priority="low">{t("columns.now")}</TableHead>}
+                <TableHead className="w-[10ch] text-right">{t("columns.billed")}</TableHead>
+                {draft ? null : (
+                  <TableHead priority="low" className="w-[16ch]">
+                    {t("columns.now")}
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -106,26 +115,35 @@ export function InvoiceHoursCard({
                       ) : null}
                     </TableCell>
                   ) : null}
-                  <TableCell className="num whitespace-nowrap text-muted-foreground">{r.dateLabel}</TableCell>
-                  <TableCell priority="medium" className="max-w-40 truncate text-muted-foreground">
-                    {r.member ?? "—"}
+                  <TableCell priority="medium" className="num whitespace-nowrap text-muted-foreground">
+                    {r.dateLabel}
                   </TableCell>
-                  <TableCell className="max-w-72 truncate" title={r.task ?? undefined}>
-                    {r.task ?? (r.projectKey ? <span className="num-id font-mono text-muted-foreground">{r.projectKey}</span> : "—")}
+                  <TableCell priority="medium" className="text-muted-foreground">
+                    <div className="w-full min-w-0 truncate contain-inline-size" title={r.member ?? undefined}>
+                      {r.member ?? "—"}
+                    </div>
+                  </TableCell>
+                  {/* The task YIELDS (`contain-inline-size`): never measured from its full title. */}
+                  <TableCell className="min-w-24">
+                    <div className="w-full min-w-0 truncate contain-inline-size" title={r.task ?? undefined}>
+                      {r.task ?? (r.projectKey ? <span className="num-id font-mono text-muted-foreground">{r.projectKey}</span> : "—")}
+                    </div>
                   </TableCell>
                   <TableCell className="num text-right whitespace-nowrap">{r.billed}</TableCell>
                   {draft ? null : (
-                    <TableCell priority="low" className="whitespace-nowrap text-muted-foreground">
-                      {r.state.kind === "other" ? (
-                        <Link
-                          href={`/invoices/${r.state.invoiceId}`}
-                          className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                        >
-                          {stateText(r.state)}
-                        </Link>
-                      ) : (
-                        stateText(r.state)
-                      )}
+                    <TableCell priority="low" className="text-muted-foreground">
+                      <div className="w-full min-w-0 truncate contain-inline-size" title={stateText(r.state)}>
+                        {r.state.kind === "other" ? (
+                          <Link
+                            href={`/invoices/${r.state.invoiceId}`}
+                            className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          >
+                            {stateText(r.state)}
+                          </Link>
+                        ) : (
+                          stateText(r.state)
+                        )}
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
