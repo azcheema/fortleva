@@ -91,13 +91,33 @@ const TOKENS = [
   "contract_language",
   "row-level security",
 ] as const;
+/** The whole text of the last refusal — the message of an assertion on a CHECK, so CI shows what arrived. */
+let lastRefusal = "";
 const refusal = async (p: Promise<unknown>): Promise<string> => {
+  lastRefusal = "";
   try {
     await p;
     return "ok";
   } catch (e) {
-    const text = `${e instanceof Error ? e.message : String(e)} ${JSON.stringify((e as { meta?: unknown })?.meta ?? "")}`;
-    return TOKENS.find((t) => text.includes(t)) ?? `unexpected: ${text.slice(0, 300)}`;
+    // WHAT THE DATABASE SAID — `meta` (the driver's error), never the message:
+    // outside production Prisma prefixes its message with a CODE FRAME of the
+    // calling test's own source lines, so an expected token written in the
+    // assertion just above a call was "found" in that call's refusal (CI run
+    // 38090784940: a CHECK's refusal read as CONTRACT_SIGNER_INVALID). The
+    // message is used only when there is no meta.
+    const meta = JSON.stringify((e as { meta?: unknown })?.meta ?? "");
+    const text = meta.length > 2 ? meta : e instanceof Error ? e.message : String(e);
+    lastRefusal = text.slice(0, 1200);
+    // PRECISE, never "the first token anywhere in the text": a CHECK by the
+    // name Postgres says it violates, a guard by the token its RAISE begins
+    // with (CI run 38090784940 read a CHECK's refusal as CONTRACT_SIGNER_INVALID
+    // under the loose match). Anything else comes back WHOLE, so a failing
+    // assertion prints what the database actually said.
+    const check = /violates check constraint \\?"([a-z0-9_]+)\\?"/.exec(text)?.[1];
+    if (check && (TOKENS as readonly string[]).includes(check)) return check;
+    const raised = /\b(CONTRACT_[A-Z_]+):/.exec(text)?.[1];
+    if (raised && (TOKENS as readonly string[]).includes(raised)) return raised;
+    return TOKENS.find((t) => text.includes(t)) ?? `unexpected: ${text.slice(0, 600)}`;
   }
 };
 
@@ -365,8 +385,10 @@ describe("the database's guards on contract (migration 20261011120000)", () => {
     expect(await refusal(asMember(mgr, (tx) => tx.contract.create({ data: { ...base, createdByMemberId: mgr, signerContactId: bo } })))).toBe(
       "CONTRACT_SIGNER_INVALID",
     );
-    expect(await refusal(asMember(mgr, (tx) => tx.contract.create({ data: { ...base, createdByMemberId: mgr, language: "de" } })))).toBe("contract_language");
-    expect(await refusal(asMember(mgr, (tx) => tx.contract.create({ data: { ...base, createdByMemberId: mgr, title: " padded " } })))).toBe("contract_title");
+    const language = await refusal(asMember(mgr, (tx) => tx.contract.create({ data: { ...base, createdByMemberId: mgr, language: "de" } })));
+    expect(language, lastRefusal).toBe("contract_language");
+    const title = await refusal(asMember(mgr, (tx) => tx.contract.create({ data: { ...base, createdByMemberId: mgr, title: " padded " } })));
+    expect(title, lastRefusal).toBe("contract_title");
   });
 
   it("moves no status in this slice and freezes everything but a draft's seven fields", async () => {
