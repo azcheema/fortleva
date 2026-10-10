@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { ReceiptTextIcon } from "lucide-react";
+import { BookOpenCheckIcon, ReceiptTextIcon } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
+import { resolveScope } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { DataTable, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
@@ -74,12 +75,15 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   // Slice 110 (C80 (a)): the clients with billable hours waiting — for a
   // member who may put hours on invoices; every value through the database's
   // twin of the rounding (`listReadyToInvoice`).
-  const { canGenerate, prefs } = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => ({
+  const { canGenerate, canExport, prefs } = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => ({
     canGenerate: await hasAccess(tx, membership.tenantId, actor, "invoice:generate_from_time"),
+    // Slice 111 (C82): the bookkeeping file — its page also wants every client.
+    canExport: (await hasAccess(tx, membership.tenantId, actor, "invoice:export")) && (await resolveScope(tx, actor)).all,
     prefs: await readPreferences(tx, membership.tenantId),
   }));
   const ready = canGenerate ? await listReadyToInvoice(ctx) : null;
   const tReady = await getTranslations("invoices.ready");
+  const tBookkeeping = await getTranslations("invoices.bookkeeping");
   const hours = (seconds: number) => formatDurationSeconds(locale, seconds, prefs.durationStyle);
 
   // The filter offers the clients the member can see invoices of: those on
@@ -97,7 +101,20 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
 
   return (
     <Page>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader
+        title={t("title")}
+        description={t("description")}
+        actions={
+          canExport ? (
+            <Button asChild size="sm" variant="outline">
+              <Link href="/invoices/bookkeeping" data-testid="open-bookkeeping">
+                <BookOpenCheckIcon aria-hidden />
+                {tBookkeeping("open")}
+              </Link>
+            </Button>
+          ) : null
+        }
+      />
       <div className="mt-6 flex flex-col gap-4">
         {canCreate ? (
           <SectionCard id="new-invoice" title={t("newTitle")}>

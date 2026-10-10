@@ -5,8 +5,9 @@ import { AuthzError } from "@/authz/errors";
 import { enrolUrl } from "@/authz/redirects";
 import { Callout, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { requireTenantContext } from "@/members/tenant-context";
-import { readInvoiceSettings, type InvoiceSettings } from "@/modules/invoicing";
+import { readBookkeepingSettingsPage, readInvoiceSettings, type BookkeepingSettingsPage, type InvoiceSettings } from "@/modules/invoicing";
 
+import { BookkeepingCard } from "./bookkeeping-card";
 import { CompanyCard } from "./company-card";
 import { NumberingCard } from "./numbering-card";
 import { PaymentCard } from "./payment-card";
@@ -26,7 +27,9 @@ const changedOf = (c: InvoiceSettings["companyChanged"]) => (c ? { by: c.by, at:
  * details and the note printed on every invoice) — both changed only with the
  * member's authenticator code typed in the form, every owner mailed (C75
  * (h)–(j)) — the invoice numbers' first number (slice 108, C76 (b); owners,
- * `invoice:manage_series` ✦) and the default payment terms. `settings:view`
+ * `invoice:manage_series` ✦), the default payment terms, and how the
+ * bookkeeping file books (slice 111, C82 — the method, the financial year,
+ * the series, the accounts). `settings:view`
  * reads it, `settings:edit` changes it; the invoicing module closes it. A
  * caution says what issuing still needs.
  */
@@ -54,6 +57,9 @@ export default async function InvoicingSettingsPage() {
     );
   }
 
+  // Slice 111 (C82): the bookkeeping file's method, year and accounts — read
+  // after the page's own gates, under the same two codes.
+  const bookkeeping: BookkeepingSettingsPage = await readBookkeepingSettingsPage({ tenantId: membership.tenantId, actor });
   const { company, payment, missing, canEdit } = settings;
   const hasFactor = actor.mfa?.enrolled === true;
   // The enrolment notice, and back here after (the action's own redirect keeps the same way back).
@@ -85,6 +91,9 @@ export default async function InvoicingSettingsPage() {
         </SectionCard>
         <SectionCard title={t("terms.title")}>
           <TermsCard days={settings.paymentTermsDays} editable={canEdit} />
+        </SectionCard>
+        <SectionCard id="bookkeeping" title={t("bookkeeping.title")} description={t("bookkeeping.description")}>
+          <BookkeepingCard values={bookkeeping.values} editable={bookkeeping.canEdit} methodFixed={bookkeeping.methodFixed} />
         </SectionCard>
       </div>
     </Page>

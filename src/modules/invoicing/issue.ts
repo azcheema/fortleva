@@ -31,7 +31,8 @@ import type { VatProfile } from "./vat";
  * series, today's date (in the workspace's time zone), its due date (its
  * payment terms later), its totals, its language, and — on another currency
  * carrying VAT — the VAT in SEK at the European Central Bank's rate of the day
- * the work ended (C78 (a)). The DATABASE does the rest and has the last word
+ * the work ended (C78 (a)); and, in any other currency, the rate the
+ * bookkeeping file books it at (slice 111, C82 (d), (f)). The DATABASE does the rest and has the last word
  * (`invoice_guard`, migrations 20261009200000 and 20261010090000): it
  * allocates the number, writes the seller's, the bank's and the buyer's
  * snapshots from the live rows, and refuses anything an invoice must carry but
@@ -427,6 +428,14 @@ export async function issueLocked(
   opts: {
     readonly now: Date;
     readonly rate: FetchedRate | null;
+    /**
+     * Slice 111 (C82 (d)): the ECB rate of the ISSUE DATE, fetched before the
+     * transaction for an INVOICE in another currency WITHOUT VAT — the rate
+     * the bookkeeping file books it at. One carrying VAT is booked at its VAT's
+     * rate (C82 (f), `rate` above); a credit note takes its original's (the
+     * database writes it, `invoice_book_rate_guard`).
+     */
+    readonly bookRate?: FetchedRate | null;
     readonly fingerprint?: string;
     /**
      * The issuer's code was TYPED AND VERIFIED in this very request (the issue
@@ -543,6 +552,23 @@ export async function issueLocked(
     }
     fx = rate;
   }
+  // Slice 111 (C82 (d), (f)): the BOOKING rate — an invoice's in another
+  // currency only. Its VAT's rate when it carries VAT; otherwise the ECB's of
+  // the issue date, fetched for THIS currency and THIS day (else "look
+  // again"), at most ten days old (else "try again" — the guard holds the
+  // same window). A credit note sends none: the database copies its
+  // original's.
+  let book: { readonly micros: bigint; readonly date: string } | null = null;
+  if (!original && draft.currency !== "SEK") {
+    if (fx) {
+      book = fx;
+    } else {
+      const b = opts.bookRate ?? null;
+      if (b === null || b.currency !== draft.currency || b.rateDay !== check.issueDate) return fail("INVOICE_CHANGED");
+      if (b.date > b.rateDay || b.date < addDays(b.rateDay, -FX_MAX_AGE_DAYS)) return fail("INVOICE_FX_UNAVAILABLE");
+      book = b;
+    }
+  }
   const sek = fx ? vatGroupsInSek(draft.totals.groups, fx.micros) : null;
   const issued = await tx.invoice.update({
     where: { id: invoiceId },
@@ -560,6 +586,7 @@ export async function issueLocked(
       fxRateToSek: fx ? formatFixed(fx.micros, 6) : null,
       fxRateDate: fx ? new Date(`${fx.date}T00:00:00Z`) : null,
       vatTotalSek: sek ? formatFixed(sek.totalSek, 2) : null,
+      ...(book ? { bookRateToSek: formatFixed(book.micros, 6), bookRateDate: new Date(`${book.date}T00:00:00Z`) } : {}),
     },
     // The guard wrote the number (and, ticked, the time breakdown):
     // RETURNING reads the row as stored.
@@ -590,6 +617,9 @@ export async function issueLocked(
       issueDate: check.issueDate,
       locale: check.locale,
       ...(fx ? { fxRateToSek: formatFixed(fx.micros, 6), fxRateDate: fx.date } : {}),
+      // Slice 111: the rate the bookkeeping file converts it at (an invoice's;
+      // a credit note's is its original's, written by the database).
+      ...(book ? { bookRateToSek: formatFixed(book.micros, 6), bookRateDate: book.date } : {}),
       ...(original ? { kind: "CREDIT_NOTE", creditsInvoiceId: original.id } : {}),
       // Where the client's money would go (slice 109's design review's high).
       ...(payLink !== null ? { payLink } : {}),
@@ -680,14 +710,21 @@ export async function issueInvoice(
   // 2. The rate, outside any transaction — an invoice's only (a credit note
   //    takes its invoice's).
   let rate: FetchedRate | null = null;
+  let bookRate: FetchedRate | null = null;
   if (before.kind === "INVOICE" && needsSekVat(before.currency, before.totals.vatTotal)) {
     const rateDay = rateDayFor(before.today, before.periodEnd);
     const fetched = await sekRateFor(before.currency, { rateDay, issueDate: before.today }, { fetchText: opts.fetchText, now });
     rate = { ...fetched, currency: before.currency, rateDay };
+  } else if (before.kind === "INVOICE" && before.currency !== "SEK") {
+    // Slice 111 (C82 (d)): no VAT to state in kronor, but the bookkeeping file
+    // books it in kronor — at the ECB's rate of the invoice date. One carrying
+    // VAT is booked at that VAT's rate (C82 (f)): no second fetch.
+    const fetched = await sekRateFor(before.currency, { rateDay: before.today, issueDate: before.today }, { fetchText: opts.fetchText, now });
+    bookRate = { ...fetched, currency: before.currency, rateDay: before.today };
   }
 
   // 3. The issue.
   return inIssueTransaction(ctx, (tx) =>
-    issueLocked(tx, ctx, invoiceId, { now, rate, fingerprint: opts.fingerprint, codeTypedNow: opts.codeTypedNow }),
+    issueLocked(tx, ctx, invoiceId, { now, rate, bookRate, fingerprint: opts.fingerprint, codeTypedNow: opts.codeTypedNow }),
   );
 }

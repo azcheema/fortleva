@@ -90,6 +90,9 @@ export const MODEL_CLASSES = {
     "invoiceDelivery",
     "invoicePaymentNote",
     "invoiceLineTimeEntry",
+    // Phase 4 slice 111 — the bookkeeping file (C82).
+    "invoiceExport",
+    "invoiceExportEntry",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -240,6 +243,10 @@ export const RLS_CLASSES = {
     // snapshot of each (C80): the agency's record behind its lines. The
     // client's copy of an invoice is its PDF; no contact reads these rows.
     "invoiceLineTimeEntry",
+    // Phase 4 slice 111 — the bookkeeping files a member made and what each
+    // booked (C82): the agency's books, never a client's.
+    "invoiceExport",
+    "invoiceExportEntry",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

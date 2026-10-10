@@ -237,6 +237,16 @@ export const AUDIT_EVENTS = {
   // workspace's own words, printed on every invoice).
   "invoice_settings.company_changed": TENANT,
   "invoice_settings.payment_details_changed": TENANT,
+  // Phase 4 slice 111 — the bookkeeping file (src/modules/invoicing/
+  // bookkeeping.ts; C82). `invoice_settings.bookkeeping_changed`: the method,
+  // the year's first month, the series or an account — each changed field's
+  // old and new value (nothing secret: account numbers). `invoice_export.
+  // created`: a file made — its number, method, how many of each event, the
+  // first and last day. `invoice_export.downloaded`: a file handed over — which
+  // one, which format, and the bytes' SHA-256 (what exactly left).
+  "invoice_settings.bookkeeping_changed": TENANT,
+  "invoice_export.created": TENANT,
+  "invoice_export.downloaded": TENANT,
   // Data egress
   "export.requested": TENANT,
   "export.generated": TENANT,

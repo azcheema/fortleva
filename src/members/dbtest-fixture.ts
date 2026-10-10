@@ -137,6 +137,10 @@ export async function setupTenant(label: string) {
       // billing guard lets platform maintenance); the records of hours go
       // with their invoices.
       await tx.timeEntry.updateMany({ where: { tenantId, invoiceLineId: { not: null } }, data: { invoiceLineId: null } });
+      // Slice 111: the bookkeeping files' entries RESTRICT their invoices —
+      // entries, then files, then invoices.
+      await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
+      await tx.invoiceExport.deleteMany({ where: { tenantId } });
       await tx.invoice.deleteMany({ where: { tenantId } });
       await tx.invoiceSeries.deleteMany({ where: { tenantId } });
       await tx.fileObject.deleteMany({ where: { tenantId, kind: "INVOICE_PDF" } });

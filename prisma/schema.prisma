@@ -334,6 +334,8 @@ model Tenant {
   invoiceDeliveries InvoiceDelivery[]
   invoicePaymentNotes InvoicePaymentNote[]
   invoiceLineTimeEntries InvoiceLineTimeEntry[]
+  invoiceExports         InvoiceExport[]
+  invoiceExportEntries   InvoiceExportEntry[]
 
   @@map("tenant")
 }
@@ -1480,6 +1482,14 @@ model Invoice {
   // (CHECK). Both are printed on the client's PDF (src/modules/invoicing/hours-page.ts).
   includeHours      Boolean       @default(false) @map("include_hours")
   hoursPage         Json?         @map("hours_page")
+  // Slice 111 (C82 (d), (f)) — the rate the BOOKKEEPING FILE converts this
+  // invoice's amounts to kronor at: the ECB's on the invoice date, or its
+  // VAT's rate when it carries Swedish VAT; a credit note its original's
+  // (WRITTEN BY `invoice_book_rate_guard`). Set at issue on every invoice in
+  // another currency, NULL otherwise (CHECK); frozen. Internal — on
+  // `PORTAL_NEVER_SELECTED` (this row is class B).
+  bookRateToSek     Decimal?      @map("book_rate_to_sek") @db.Decimal(12, 6)
+  bookRateDate      DateTime?     @map("book_rate_date") @db.Date
   createdByMemberId String        @map("created_by_member_id") // attribution, no FK
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1493,6 +1503,7 @@ model Invoice {
   deliveries  InvoiceDelivery[]
   paymentNote InvoicePaymentNote?
   hours       InvoiceLineTimeEntry[]
+  exportEntries InvoiceExportEntry[]
   series      InvoiceSeries? @relation(fields: [tenantId, seriesId], references: [tenantId, id], onDelete: Restrict)
   pdfFile     FileObject?    @relation(fields: [tenantId, pdfFileId], references: [tenantId, id], onDelete: Restrict)
 
@@ -1583,6 +1594,73 @@ model InvoiceLineTimeEntry {
   @@unique([tenantId, invoiceId, timeEntryId]) // an hour is on an invoice once
   @@index([tenantId, timeEntryId]) // an hour's billing history
   @@map("invoice_line_time_entry")
+}
+
+// ── Slice 111 — THE BOOKKEEPING FILE (Phase 4 step 5; founder decision C82;
+// migration 20261010230000_invoice_bookkeeping_export; the design and its
+// reviews: docs/research/2026-10-10-slice-111-fortnox-file-design.md §10).
+// One `InvoiceExport` per file a member made ("File 3"); one
+// `InvoiceExportEntry` per event it booked — the voucher FROZEN as it went
+// out, so a re-download is the same file and the rows are the transfer's
+// processing history (BFL 5 kap. 11 §; retention R1). Both CLASS A, append
+// only; the database numbers the files, holds the method to the workspace's
+// first file's, and books each event once (`invoice_export_guard`,
+// `invoice_export_entry_guard`, under `invoice_export_lock(tenant)`).
+
+enum InvoiceExportMethod {
+  INVOICE // fakturametoden: each invoice and credit note on its issue date
+  CASH // kontantmetoden: each payment on the day it arrived (C82 (e))
+
+  @@map("invoice_export_method")
+}
+
+enum InvoiceExportEvent {
+  ISSUE // invoice method: an invoice or credit note issued
+  PAYMENT // cash method: an invoice marked paid
+  PAYMENT_UNDONE // cash method: a booked payment marked as unpaid since
+  CREDIT_NOTED // cash method: a credit note, listed — no voucher
+
+  @@map("invoice_export_event")
+}
+
+model InvoiceExport {
+  id                String              @id @default(uuid(7))
+  tenantId          String              @map("tenant_id")
+  number            Int // ALLOCATED by the guard: 1, 2, 3… per workspace
+  method            InvoiceExportMethod
+  series            String // the voucher series the file names (C82; default F)
+  madeOn            DateTime            @map("made_on") @db.Date // the workspace's day (#GEN)
+  createdByMemberId String              @map("created_by_member_id") // attribution, no FK
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant               @relation(fields: [tenantId], references: [id])
+  entries InvoiceExportEntry[]
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@unique([tenantId, number])
+  @@map("invoice_export")
+}
+
+model InvoiceExportEntry {
+  id        String             @id @default(uuid(7))
+  tenantId  String             @map("tenant_id")
+  exportId  String             @map("export_id")
+  invoiceId String             @map("invoice_id") // the invoice or credit note
+  position  Int // its place in the file (1, 2, 3…)
+  event     InvoiceExportEvent
+  bookedOn  DateTime           @map("booked_on") @db.Date // the voucher's date
+  voucher   Json? // { text, rows: [{ account, amount }] } as booked; NULL — nothing to book
+  detail    Json // the list's frozen facts (amounts as booked, deductions, remark)
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id])
+  export  InvoiceExport @relation(fields: [tenantId, exportId], references: [tenantId, id], onDelete: Restrict)
+  invoice Invoice       @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, exportId, position])
+  @@index([tenantId, invoiceId]) // an invoice's booked events
+  @@map("invoice_export_entry")
 }
 
 enum InvoiceDeliveryMethod {

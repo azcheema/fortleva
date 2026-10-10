@@ -519,6 +519,8 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "invoiceRoundingStep",
         "invoiceRoundingMode",
         "invoiceRoundingMinimum",
+        "bookRateToSek",
+        "bookRateDate",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -704,6 +706,11 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   "invoiceRoundingStep",
   "invoiceRoundingMode",
   "invoiceRoundingMinimum",
+  // Phase 4 slice 111 (C82 (d), (f)): the rate the agency's BOOKKEEPING FILE
+  // converts an invoice at — a public ECB figure, but the agency's books, and
+  // `invoice` is class B (a main contact's RLS reads the whole sent row).
+  "bookRateToSek",
+  "bookRateDate",
 ]);
 
 /**

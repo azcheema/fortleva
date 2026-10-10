@@ -132,3 +132,29 @@ export {
 export { INVOICE_HOURS_CARD_MAX, type InvoiceHourRow, type InvoiceHours, type InvoiceHourState } from "./hours-record";
 // Phase 4 slice 110b — the time breakdown page on the PDF (founder decisions C80 (d), C81).
 export { HOURS_PAGE_ROWS_MAX, printedTask, printHoursMinutes, type HoursPagePrint, type HoursPagePrintLine } from "./hours-page";
+// Phase 4 slice 111 — the bookkeeping file for Fortnox (founder decision C82).
+export {
+  createExport,
+  EXPORT_FILES_PAGE,
+  exportFile,
+  readBookkeeping,
+  readBookkeepingSettingsPage,
+  updateBookkeepingSettings,
+  type BookkeepingFile,
+  type BookkeepingPage,
+  type BookkeepingSettingsPage,
+  type ExportFormat,
+  type MadeFile,
+} from "./bookkeeping";
+export {
+  ACCOUNT_ROLES,
+  BOOKKEEPING_DEFAULTS,
+  BOOKKEEPING_FIELDS,
+  BOOKKEEPING_METHODS,
+  isBookkeepingField,
+  type AccountRole,
+  type BookkeepingField,
+  type BookkeepingMethod,
+  type BookkeepingSettings,
+} from "./bookkeeping-accounts";
+export { LIST_COLUMNS, LIST_EVENTS, type ListColumn, type ListEvent, type ListRemark, type ListWords } from "./invoice-list";

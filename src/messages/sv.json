@@ -1489,6 +1489,37 @@
         "save": "Spara betalningsuppgifter",
         "saved": "Betalningsuppgifterna har sparats. Ägarna får veta det via mejl."
       },
+      "bookkeeping": {
+        "title": "Bokföring",
+        "description": "Hur bokföringsfilen bokför era fakturor, och på vilka konton. Fråga er redovisningskonsult om ni är osäkra.",
+        "method": {
+          "label": "Bokför fakturor",
+          "placeholder": "Inte valt",
+          "INVOICE": "När de utfärdas (faktureringsmetoden)",
+          "CASH": "När de betalas (kontantmetoden)",
+          "fixed": "Låst nu när en bokföringsfil har skapats."
+        },
+        "yearStart": {
+          "label": "Räkenskapsåret börjar i"
+        },
+        "series": {
+          "label": "Verifikationsserie"
+        },
+        "accounts": {
+          "title": "Konton",
+          "bank": "Bank (inbetalningar)",
+          "receivables": "Kundfordringar",
+          "salesSe25": "Försäljning i Sverige, 25 % moms",
+          "salesSe12": "Försäljning i Sverige, 12 % moms",
+          "salesSe6": "Försäljning i Sverige, 6 % moms",
+          "salesEu": "Tjänster till andra EU-länder",
+          "salesOutsideEu": "Tjänster utanför EU",
+          "vat25": "Utgående moms 25 %",
+          "vat12": "Utgående moms 12 %",
+          "vat6": "Utgående moms 6 %"
+        },
+        "hint": "Ett tomt fält går tillbaka till standardkontot. Ett konto ni ändrar kan behöva sin momskod i Fortnox — momskoder följer inte med i en SIE-fil."
+      },
       "terms": {
         "title": "Betalningsvillkor",
         "label": "Dagar att betala",
@@ -1748,7 +1779,11 @@
     "HOURS_TOO_MANY": "Välj högst 1 000 poster åt gången.",
     "INVOICE_HOURS_KEPT": "Fakturan behåller sina timmar tills en kreditfaktura rättar den.",
     "INVOICE_HAS_HOURS": "Utkastet har registrerade timmar prissatta i dess valuta, så valutan kan inte ändras. Ta bort de raderna först.",
-    "ENTRY_INVOICED": "Tiden ligger på ett fakturautkast och kan inte delas. Ta bort raden från utkastet först."
+    "ENTRY_INVOICED": "Tiden ligger på ett fakturautkast och kan inte delas. Ta bort raden från utkastet först.",
+    "INVOICE_EXPORT_NO_METHOD": "Välj först hur företaget bokför fakturor — Inställningar → Fakturering → Bokföring.",
+    "INVOICE_EXPORT_EMPTY": "Det finns inget nytt att lägga i en fil.",
+    "INVOICE_EXPORT_BUSY": "En annan fil skapas just nu, eller så markeras en faktura som betald. Försök igen om en stund.",
+    "INVOICE_EXPORT_METHOD_FIXED": "Bokföringsmetoden kan inte ändras när en bokföringsfil har skapats."
   },
   "assignments": {
     "title": "Team",
@@ -5229,6 +5264,112 @@
       "confirmReturn": "Lägga tillbaka {count, plural, one {# post} other {# poster}} i listan Redo att fakturera? Fakturan ändras inte.",
       "returned": "{count, plural, one {# post är} other {# poster är}} tillbaka i listan Redo att fakturera.",
       "selectRow": "Markera tidsposten från {date}"
+    },
+    "bookkeeping": {
+      "title": "Bokföring",
+      "description": "Filer till ert bokföringsprogram: en SIE-fil som Fortnox läser in, och en lista att stämma av mot.",
+      "open": "Bokföring",
+      "range": "{first} – {last}",
+      "method": {
+        "INVOICE": "Fakturor bokförs när de utfärdas.",
+        "CASH": "Fakturor bokförs när de betalas."
+      },
+      "noMethod": {
+        "title": "Välj hur företaget bokför fakturor",
+        "body": "När de utfärdas eller när de betalas — det avgör vad varje fil bokför.",
+        "bodyAsk": "När de utfärdas eller när de betalas — en ägare eller administratör väljer det under Inställningar → Fakturering.",
+        "action": "Välj under Inställningar"
+      },
+      "next": {
+        "title": "Nytt sedan förra filen",
+        "empty": "Inget nytt. Allt finns i en fil.",
+        "summary": "{count, plural, one {# post} other {# poster}}, {range}",
+        "issued": "{count, plural, one {# faktura eller kreditfaktura} other {# fakturor och kreditfakturor}}",
+        "payments": "{count, plural, one {# inbetalning} other {# inbetalningar}}",
+        "undone": "{count, plural, one {# inbetalning har markerats som obetald sedan sin fil — återförs} other {# inbetalningar har markerats som obetalda sedan sina filer — återförs}}",
+        "noted": "{count, plural, one {# kreditfaktura, listad} other {# kreditfakturor, listade}}",
+        "waiting": "{count, plural, one {# till hamnar i en senare fil.} other {# till hamnar i senare filer.}} En fil rymmer ett räkenskapsår.",
+        "make": "Skapa fil",
+        "made": "Fil {number} är klar.",
+        "madeWaiting": "Fil {number} är klar. {count, plural, one {# till hamnar} other {# till hamnar}} i nästa."
+      },
+      "files": {
+        "title": "Filer",
+        "empty": "Inga filer än",
+        "emptyBody": "Varje fil innehåller det som är nytt sedan den förra.",
+        "columns": {
+          "file": "Fil",
+          "made": "Skapad",
+          "by": "Av",
+          "entries": "Poster",
+          "dates": "Datum",
+          "download": "Ladda ner"
+        },
+        "number": "Fil {number}",
+        "someoneGone": "Finns inte längre",
+        "nothingToBook": "Inget att bokföra",
+        "fortnox": "Fortnox-fil",
+        "list": "Lista",
+        "older": "Äldre filer",
+        "newest": "Senaste filerna"
+      },
+      "help": {
+        "title": "Läsa in i Fortnox",
+        "import": "Öppna Bokföring → Importera SIE-fil i Fortnox och välj Fortnox-filen (.si).",
+        "series": "Fortnox frågar vilken verifikationsserie filens serie {series} ska bokföras i. Använd en serie som bara används för de här filerna — en import kan inte ångras när andra verifikationer har bokförts i samma serie.",
+        "once": "Läs in varje fil en gång. Fortleva lägger allt i en enda fil, så det går bra att ladda ner igen.",
+        "bank": "När en inbetalning syns från banken i Fortnox: matcha den mot den inlästa inbetalningen — bokför den inte igen. Bankavgifter och kursdifferenser bokförs där.",
+        "yearEnd": "Fakturor som är obetalda när räkenskapsåret slutar finns inte i de här filerna än — bokför dem vid bokslutet tillsammans med er redovisningskonsult.",
+        "eu": "Listans kolumn för momsregistreringsnummer är underlaget för den periodiska sammanställningen.",
+        "first": "Den första filen innehåller allt som finns i Fortleva hittills."
+      },
+      "list": {
+        "sheet": "Bokföring",
+        "headers": {
+          "entry": "Post",
+          "bookedOn": "Bokförd",
+          "number": "Nummer",
+          "type": "Typ",
+          "relates": "Avser",
+          "date": "Fakturadatum",
+          "due": "Förfallodatum",
+          "client": "Kund",
+          "orgNr": "Org.nr",
+          "vatNumber": "Momsreg.nr",
+          "country": "Land",
+          "vatTreatment": "Moms",
+          "currency": "Valuta",
+          "net": "Netto",
+          "vat": "Momsbelopp",
+          "total": "Totalt",
+          "bookRate": "Kurs SEK",
+          "netSek": "Netto SEK",
+          "vatSek": "Moms SEK",
+          "totalSek": "Totalt SEK",
+          "remark": "Anmärkning"
+        },
+        "events": {
+          "ISSUE": "Utfärdad",
+          "PAYMENT": "Inbetalning",
+          "PAYMENT_UNDONE": "Återförd inbetalning",
+          "CREDIT_NOTED": "Kreditfaktura (listad)"
+        },
+        "invoice": "Faktura",
+        "creditNote": "Kreditfaktura",
+        "treatments": {
+          "SE_DOMESTIC": "Svensk moms",
+          "EU_REVERSE_CHARGE": "Omvänd betalningsskyldighet (EU)",
+          "OUTSIDE_SCOPE": "Utanför EU"
+        },
+        "remarks": {
+          "nothing": "Inget att bokföra",
+          "deducted": "Avräknad från inbetalningen {day} (fil {file})",
+          "afterPayment": "Efter inbetalningen {day} (fil {file}) — bokför en eventuell återbetalning från banken",
+          "unpaid": "Fakturan är inte betald än — inbetalningen blir lägre",
+          "creditedUnpaid": "Fakturan är helt krediterad och inte betald — inget att bokföra",
+          "reverses": "Återför inbetalningen {day} (fil {file})"
+        }
+      }
     },
     "hoursPage": {
       "title": "Tidsspecifikation",

@@ -283,7 +283,12 @@ export type DomainErrorCode =
   | "HOURS_TOO_MANY" // more hours chosen than one action takes
   | "INVOICE_HOURS_KEPT" // an issued invoice keeps its hours until a credit note corrects it
   | "INVOICE_HAS_HOURS" // a draft holding tracked hours keeps their currency
-  | "ENTRY_INVOICED"; // an hour on a draft invoice is not split until its line is removed
+  | "ENTRY_INVOICED" // an hour on a draft invoice is not split until its line is removed
+  // Phase 4 slice 111 — the bookkeeping file (src/modules/invoicing/bookkeeping.ts; C82).
+  | "INVOICE_EXPORT_NO_METHOD" // the workspace has not chosen how it books invoices (Settings → Invoicing)
+  | "INVOICE_EXPORT_EMPTY" // nothing new since the last file
+  | "INVOICE_EXPORT_BUSY" // another file was being made, or an invoice was being marked paid: try again
+  | "INVOICE_EXPORT_METHOD_FIXED"; // the method is fixed once a file has been made
 
 export class DomainError extends Error {
   constructor(

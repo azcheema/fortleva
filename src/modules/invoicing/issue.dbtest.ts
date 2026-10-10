@@ -67,6 +67,9 @@ const TOKENS = [
   "INVOICE_SELLER_INCOMPLETE",
   "INVOICE_BUYER_INCOMPLETE",
   "INVOICE_NOT_DRAFT",
+  // Slice 111: the booking rate's own guard fires BEFORE `invoice_guard`
+  // (name order), so it is matched first.
+  "INVOICE_BOOK_RATE_GUARD",
   "INVOICE_GUARD",
   "FILE_INVOICE_PDF_GUARD",
   "invoice_series_tenant_id_key",
@@ -394,6 +397,9 @@ describe("issuing", () => {
     await issueInvoice(admin(), usOut);
     const row = await f.platform.invoice.findUniqueOrThrow({ where: { id: usOut } });
     expect([row.locale, row.fxRateToSek]).toEqual(["en", null]);
+    // Slice 111 (C82 (d)): no VAT in kronor to state, but booked at the ECB's
+    // rate of its date (the harness's fixed table, dated yesterday).
+    expect(row.bookRateToSek).not.toBeNull();
   });
 
   it("a draft that names its language keeps it", async () => {
@@ -484,7 +490,9 @@ describe("VAT in SEK on another currency (the ECB's rate)", () => {
         UPDATE invoice SET status = 'ISSUED', series_id = ${s.id}, locale = 'sv',
                issue_date = CURRENT_DATE, due_date = CURRENT_DATE + payment_terms_days, issued_at = now(),
                issued_by_member_id = ${f.seats.admin.memberId}, subtotal_ex_vat = 100, vat_total = 25.00, total = 125.00,
-               fx_rate_to_sek = 11.194, fx_rate_date = ${rateDate}::date, vat_total_sek = 279.85
+               fx_rate_to_sek = 11.194, fx_rate_date = ${rateDate}::date, vat_total_sek = 279.85,
+               -- Slice 111 (C82 (f)): carrying VAT, it is booked at its VAT's rate.
+               book_rate_to_sek = 11.194, book_rate_date = ${rateDate}::date
          WHERE id = ${id}`);
     // Yesterday's rate is AFTER the work ended — slice 108's window took it, C78 (a) does not.
     expect(await refusal(raw(daysAgo(1)))).toBe("INVOICE_GUARD");
@@ -501,11 +509,13 @@ describe("VAT in SEK on another currency (the ECB's rate)", () => {
                issue_date = CURRENT_DATE, due_date = CURRENT_DATE + payment_terms_days, issued_at = now(),
                issued_by_member_id = ${f.seats.admin.memberId}, subtotal_ex_vat = 100, vat_total = ${vat}::numeric, total = ${total}::numeric,
                fx_rate_to_sek = ${fx}::numeric, fx_rate_date = CASE WHEN ${fx}::text IS NULL THEN NULL ELSE CURRENT_DATE - 1 END,
-               vat_total_sek = ${sekVat}::numeric
+               vat_total_sek = ${sekVat}::numeric,
+               book_rate_to_sek = ${fx}::numeric, book_rate_date = CASE WHEN ${fx}::text IS NULL THEN NULL ELSE CURRENT_DATE - 1 END
          WHERE id = ${id}`);
     expect(await refusal(raw(sek, "11.194", "279.85", "25.00", "125.00"))).toBe("INVOICE_GUARD");
     const eur = await draftFor(se, "100", { currency: "EUR" });
-    expect(await refusal(raw(eur, null, null, "25.00", "125.00"))).toBe("INVOICE_GUARD");
+    // No rate at all: since slice 111 the booking rate's guard says so first.
+    expect(await refusal(raw(eur, null, null, "25.00", "125.00"))).toBe("INVOICE_BOOK_RATE_GUARD");
     expect(await refusal(raw(eur, "11.194", "279.86", "25.00", "125.00"))).toBe("INVOICE_GUARD");
     expect(await refusal(raw(eur, "11.194", "279.85", "25.00", "125.00"))).toBe("ok");
   });
@@ -689,12 +699,14 @@ describe("the guard's census", () => {
   // `invoice_billed_hours_guard` sorts BEFORE it ('b' < 'g'), only ever raises
   // or returns NEW, and so can refuse an issue but never burn a number. Since
   // slice 110b it also WRITES `NEW.hours_page` as the invoice leaves DRAFT —
-  // still before the number is taken, and still never NULL.
+  // still before the number is taken, and still never NULL. Slice 111's
+  // `invoice_book_rate_guard` ('bo') sorts between them: it raises, or writes
+  // a credit note's booking rate, and always returns NEW.
   it("invoice_guard is the LAST BEFORE trigger on invoice (a later one returning NULL would burn a number)", async () => {
     const rows = await f.platform.$queryRaw<{ tgname: string }[]>`
       SELECT tgname FROM pg_trigger
        WHERE tgrelid = 'invoice'::regclass AND NOT tgisinternal AND (tgtype & 2) = 2
        ORDER BY tgname`;
-    expect(rows.map((r) => r.tgname)).toEqual(["invoice_billed_hours_guard", "invoice_guard"]);
+    expect(rows.map((r) => r.tgname)).toEqual(["invoice_billed_hours_guard", "invoice_book_rate_guard", "invoice_guard"]);
   });
 });

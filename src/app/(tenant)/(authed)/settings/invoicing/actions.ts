@@ -15,7 +15,9 @@ import {
   normalizeCompanyPatch,
   normalizePaymentPatch,
   PAYMENT_FIELDS,
+  isBookkeepingField,
   setFirstInvoiceNumber,
+  updateBookkeepingSettings,
   updateCompanyDetails,
   updateDefaultPaymentTerms,
   updatePaymentDetails,
@@ -158,5 +160,29 @@ export async function setFirstNumberAction(formData: FormData): Promise<FormResu
     return t("saved");
   });
   if (r.ok) revalidatePath(PATH);
+  return r;
+}
+
+/**
+ * The Bookkeeping card (slice 111; C82): one field at a time — its name and
+ * typed value. `settings:edit` + `invoice:view`; the method refused a change
+ * once a file exists; audited with what changed (`bookkeeping.ts`).
+ */
+export async function updateBookkeepingAction(patch: unknown): Promise<FormResult> {
+  const { membership, actor } = await requireTenantContext();
+  const tCommon = await getTranslations("common");
+  if (patch === null || typeof patch !== "object" || Array.isArray(patch)) return { ok: false, message: tCommon("invalidInput") };
+  const entries = Object.entries(patch as Record<string, unknown>);
+  if (entries.length === 0 || entries.some(([k, v]) => !isBookkeepingField(k) || typeof v !== "string")) {
+    return { ok: false, message: tCommon("invalidInput") };
+  }
+  const r = await runForm(PATH, async () => {
+    await updateBookkeepingSettings({ tenantId: membership.tenantId, actor }, Object.fromEntries(entries));
+    return tCommon("saved");
+  });
+  if (r.ok) {
+    revalidatePath(PATH);
+    revalidatePath("/invoices/bookkeeping");
+  }
   return r;
 }

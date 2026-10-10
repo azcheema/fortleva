@@ -313,6 +313,14 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     CA,
   ),
   p("time:write_off", "time", "Mark hours billed elsewhere or not to be invoiced, and undo it — they leave the ready-to-invoice list", CA),
+  // ── Phase 4 slice 111 (+1; catalog 114 → 115; TEMPLATE_VERSION 15,
+  // 2026-10-10) — the bookkeeping file for Fortnox (founder decision C82;
+  // `src/modules/invoicing/bookkeeping.ts`). C A — those who issue invoices,
+  // as the founder was told when asked; not ✦ (nothing it hands over is a
+  // secret the workspace's own accountant may not hold). A file is every
+  // client's invoices, so its verbs also want a TENANT-WIDE client scope (the
+  // app's rule; the database holds the code, `invoice_export_guard`).
+  p("invoice:export", "invoicing", "Make and download the bookkeeping file (SIE, for Fortnox) and its list — every client's invoices", CA),
 ];
 
 export type RoleTemplate = {
@@ -401,8 +409,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     founder decision C80). C A, neither ✦, so clones gain them too;
  *     additive. The same rule as v6: a release carrying this bump MUST run
  *     `prisma/seed.ts` — until it runs, the database's guards refuse every
- *     hour put on an invoice and every mark (`invoice_member_holds`). */
-export const TEMPLATE_VERSION = 14;
+ *     hour put on an invoice and every mark (`invoice_member_holds`).
+ * v15 (2026-10-10): +1 `invoicing` code (invoice:export — Phase 4 slice
+ *     111, the bookkeeping file for Fortnox, founder decision C82). C A, not
+ *     ✦, so clones gain it too; additive. The same rule as v6: a release
+ *     carrying this bump MUST run `prisma/seed.ts` — until it runs, nobody
+ *     can make a bookkeeping file (`invoice_export_guard`). */
+export const TEMPLATE_VERSION = 15;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

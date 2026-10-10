@@ -334,6 +334,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // (`invoice-hours.spec.ts`'s, when it ran first; else the empty state),
     // the lines' preview, the Marked card.
     { name: "invoices-ready", path: `/invoices/ready/${seed.clientId}` },
+    // Phase 4 slice 111: the bookkeeping files — File 1 and what is new since
+    // (`invoices-bookkeeping.spec.ts` made it, when it ran first; else the
+    // "choose a method" caution).
+    { name: "invoices-bookkeeping", path: "/invoices/bookkeeping" },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
     { name: "time-team", path: "/time/team" },

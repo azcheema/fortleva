@@ -119,6 +119,11 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 87, the asset registry — `src/modules/vault/assets.dbtest.ts`,
   // `setupTenant("assets")`.
   "assets-",
+  // Phase 4 slice 111, the bookkeeping file — `src/modules/invoicing/bookkeeping.dbtest.ts`,
+  // `setupTenant("bkx")` (the invoice method, and a raw-write tenant) and
+  // `setupTenant("bkxc")` (the cash method).
+  "bkx-",
+  "bkxc-",
   "bulk-",
   "census-",
   // Phase 3, the invite slice — `src/clients/contact-access.dbtest.ts`,
@@ -1829,6 +1834,11 @@ async function removeTenant(
     // on the composite key) — cleared first; the lines' records of hours go
     // with the invoices, BEFORE the entries they name are deleted below.
     await tx.timeEntry.updateMany({ where: { tenantId, invoiceLineId: { not: null } }, data: { invoiceLineId: null } });
+    // Slice 111: what the bookkeeping files booked RESTRICTs their invoices,
+    // and the files their entries — entries, then files, then invoices (both
+    // guards admit a delete under this GUC on this role).
+    await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
+    await tx.invoiceExport.deleteMany({ where: { tenantId } });
     await tx.invoice.deleteMany({ where: { tenantId } });
     // Slice 108: the numbering series RESTRICTs the tenant and refuses DELETE
     // outside this GUC; the invoices' PDF files are freed by the delete above

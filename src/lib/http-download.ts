@@ -34,6 +34,19 @@ export function csvResponse(body: string, filename: string): Response {
   });
 }
 
+/** Any other file as a same-origin download (the bookkeeping file's .si and .xlsx — slice 111). */
+export function fileResponse(body: Uint8Array, filename: string, contentType: string): Response {
+  return new Response(new Blob([body as Uint8Array<ArrayBuffer>]), {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Content-Disposition": attachmentDisposition(filename),
+      "X-Content-Type-Options": "nosniff",
+      ...NO_STORE,
+    },
+  });
+}
+
 /**
  * A download is a same-origin act. The member cookie is SameSite=Lax, so a
  * third-party page could top-level-navigate a signed-in member to a

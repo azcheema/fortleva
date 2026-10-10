@@ -1489,6 +1489,37 @@
         "save": "Save payment details",
         "saved": "Payment details saved. The owners are told by email."
       },
+      "bookkeeping": {
+        "title": "Bookkeeping",
+        "description": "How the bookkeeping file books your invoices, and to which accounts. Ask your accountant if you're unsure.",
+        "method": {
+          "label": "Book invoices",
+          "placeholder": "Not chosen",
+          "INVOICE": "When they're issued (invoice method)",
+          "CASH": "When they're paid (cash method)",
+          "fixed": "Fixed now that a bookkeeping file has been made."
+        },
+        "yearStart": {
+          "label": "Financial year starts in"
+        },
+        "series": {
+          "label": "Voucher series"
+        },
+        "accounts": {
+          "title": "Accounts",
+          "bank": "Bank (payments)",
+          "receivables": "Customer receivables",
+          "salesSe25": "Sales in Sweden, 25 % VAT",
+          "salesSe12": "Sales in Sweden, 12 % VAT",
+          "salesSe6": "Sales in Sweden, 6 % VAT",
+          "salesEu": "Services to other EU countries",
+          "salesOutsideEu": "Services outside the EU",
+          "vat25": "Output VAT 25 %",
+          "vat12": "Output VAT 12 %",
+          "vat6": "Output VAT 6 %"
+        },
+        "hint": "Blank goes back to the standard account. An account you change may need its VAT code set in Fortnox — VAT codes don't travel in an SIE file."
+      },
       "terms": {
         "title": "Payment terms",
         "label": "Days to pay",
@@ -1748,7 +1779,11 @@
     "HOURS_TOO_MANY": "Choose at most 1,000 time entries at a time.",
     "INVOICE_HOURS_KEPT": "This invoice keeps its hours until a credit note corrects it.",
     "INVOICE_HAS_HOURS": "This draft has tracked hours priced in its currency, so the currency can't change. Remove those lines first.",
-    "ENTRY_INVOICED": "This time is on a draft invoice, so it can't be split. Remove its line from the draft first."
+    "ENTRY_INVOICED": "This time is on a draft invoice, so it can't be split. Remove its line from the draft first.",
+    "INVOICE_EXPORT_NO_METHOD": "Choose how your company books invoices first — Settings → Invoicing → Bookkeeping.",
+    "INVOICE_EXPORT_EMPTY": "There is nothing new to put in a file.",
+    "INVOICE_EXPORT_BUSY": "Another file is being made, or an invoice is being marked paid. Try again in a moment.",
+    "INVOICE_EXPORT_METHOD_FIXED": "The booking method can't be changed once a bookkeeping file has been made."
   },
   "assignments": {
     "title": "Team",
@@ -5229,6 +5264,112 @@
       "confirmReturn": "Put {count, plural, one {# entry} other {# entries}} back on the ready-to-invoice list? This invoice doesn't change.",
       "returned": "{count, plural, one {# entry is} other {# entries are}} back on the ready-to-invoice list.",
       "selectRow": "Select the time entry of {date}"
+    },
+    "bookkeeping": {
+      "title": "Bookkeeping",
+      "description": "Files for your bookkeeping program: an SIE file Fortnox imports, and a list to check it against.",
+      "open": "Bookkeeping",
+      "range": "{first} – {last}",
+      "method": {
+        "INVOICE": "Invoices are booked when they're issued.",
+        "CASH": "Invoices are booked when they're paid."
+      },
+      "noMethod": {
+        "title": "Choose how your company books invoices",
+        "body": "When they're issued, or when they're paid — it decides what each file books.",
+        "bodyAsk": "When they're issued, or when they're paid — an owner or admin chooses it in Settings → Invoicing.",
+        "action": "Choose in Settings"
+      },
+      "next": {
+        "title": "New since the last file",
+        "empty": "Nothing new. Everything is in a file.",
+        "summary": "{count, plural, one {# entry} other {# entries}}, {range}",
+        "issued": "{count, plural, one {# invoice or credit note} other {# invoices and credit notes}}",
+        "payments": "{count, plural, one {# payment} other {# payments}}",
+        "undone": "{count, plural, one {# payment marked as unpaid since its file — reversed} other {# payments marked as unpaid since their files — reversed}}",
+        "noted": "{count, plural, one {# credit note, listed} other {# credit notes, listed}}",
+        "waiting": "{count, plural, one {# more goes in a later file.} other {# more go in later files.}} A file holds one financial year.",
+        "make": "Make file",
+        "made": "File {number} is ready.",
+        "madeWaiting": "File {number} is ready. {count, plural, one {# more goes} other {# more go}} in the next one."
+      },
+      "files": {
+        "title": "Files",
+        "empty": "No files yet",
+        "emptyBody": "Each file holds what's new since the one before.",
+        "columns": {
+          "file": "File",
+          "made": "Made",
+          "by": "By",
+          "entries": "Entries",
+          "dates": "Dates",
+          "download": "Download"
+        },
+        "number": "File {number}",
+        "someoneGone": "No longer here",
+        "nothingToBook": "Nothing to book",
+        "fortnox": "Fortnox file",
+        "list": "List",
+        "older": "Older files",
+        "newest": "Newest files"
+      },
+      "help": {
+        "title": "Importing into Fortnox",
+        "import": "In Fortnox, open Bokföring → Importera SIE-fil and choose the Fortnox file (.si).",
+        "series": "Fortnox asks which voucher series to use for the file's series {series}. Use a series kept for these files only — an import can't be undone once other vouchers are booked in the same series.",
+        "once": "Import each file once. Fortleva puts everything in one file only, so downloading again is safe.",
+        "bank": "When a payment shows up from the bank in Fortnox, match it to the imported payment — don't book it again. Bank fees and exchange differences are booked there.",
+        "yearEnd": "Invoices still unpaid when the financial year ends aren't in these files yet — book them at year end with your accountant.",
+        "eu": "The list's VAT number column is what the EU sales list (periodisk sammanställning) needs.",
+        "first": "The first file holds everything in Fortleva so far."
+      },
+      "list": {
+        "sheet": "Bookkeeping",
+        "headers": {
+          "entry": "Entry",
+          "bookedOn": "Booked on",
+          "number": "Number",
+          "type": "Type",
+          "relates": "Related",
+          "date": "Invoice date",
+          "due": "Due date",
+          "client": "Client",
+          "orgNr": "Org. no.",
+          "vatNumber": "VAT no.",
+          "country": "Country",
+          "vatTreatment": "VAT",
+          "currency": "Currency",
+          "net": "Net",
+          "vat": "VAT amount",
+          "total": "Total",
+          "bookRate": "Rate to SEK",
+          "netSek": "Net SEK",
+          "vatSek": "VAT SEK",
+          "totalSek": "Total SEK",
+          "remark": "Note"
+        },
+        "events": {
+          "ISSUE": "Issued",
+          "PAYMENT": "Payment",
+          "PAYMENT_UNDONE": "Payment reversed",
+          "CREDIT_NOTED": "Credit note (listed)"
+        },
+        "invoice": "Invoice",
+        "creditNote": "Credit note",
+        "treatments": {
+          "SE_DOMESTIC": "Swedish VAT",
+          "EU_REVERSE_CHARGE": "Reverse charge (EU)",
+          "OUTSIDE_SCOPE": "Outside the EU"
+        },
+        "remarks": {
+          "nothing": "Nothing to book",
+          "deducted": "Deducted from the payment of {day} (file {file})",
+          "afterPayment": "After the payment of {day} (file {file}) — book any refund from the bank",
+          "unpaid": "The invoice isn't paid yet — its payment will be less",
+          "creditedUnpaid": "The invoice is credited in full and isn't paid — nothing to book",
+          "reverses": "Reverses the payment of {day} (file {file})"
+        }
+      }
     },
     "hoursPage": {
       "title": "Time breakdown",

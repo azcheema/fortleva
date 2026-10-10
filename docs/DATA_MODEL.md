@@ -182,7 +182,7 @@ Not encrypted, on purpose: `WorkItem`/`Comment` bodies, `TimeEntry.billRate` (a 
 
 | Class | Rule | Applies to |
 |---|---|---|
-| **R1 — bookkeeping** | Retained until the end of the **7th year after the calendar year in which the tenant's fiscal year ended** ([BFL 1999:1078 7 kap.](https://www.bfn.se/fragor-och-svar/arkivering/)). Issued invoices are the tenant's räkenskapsinformation; Fortleva is a försystem holding it. **Carved out of GDPR deletion** (Art. 17(3)(b), legal obligation — the tenant's, which we support contractually): tenant offboarding and client deletion never delete issued `Invoice`/`InvoiceLine`/`InvoiceSeries` rows or invoice PDF `FileObject`s inside the window; offboarding produces the promised archive export instead. EU storage (Neon Frankfurt, R2 EU) is lawful with Skatteverket notification by the tenant (BFL 7 kap. 3a §) — surfaced in ToS/DPA, see `SECURITY.md`. | `Invoice`, `InvoiceLine`, `InvoiceSeries`, invoice-PDF and signed-contract `FileObject`s |
+| **R1 — bookkeeping** | Retained until the end of the **7th year after the calendar year in which the tenant's fiscal year ended** ([BFL 1999:1078 7 kap.](https://www.bfn.se/fragor-och-svar/arkivering/)). Issued invoices are the tenant's räkenskapsinformation; Fortleva is a försystem holding it. **Carved out of GDPR deletion** (Art. 17(3)(b), legal obligation — the tenant's, which we support contractually): tenant offboarding and client deletion never delete issued `Invoice`/`InvoiceLine`/`InvoiceSeries` rows or invoice PDF `FileObject`s inside the window; offboarding produces the promised archive export instead. EU storage (Neon Frankfurt, R2 EU) is lawful with Skatteverket notification by the tenant (BFL 7 kap. 3a §) — surfaced in ToS/DPA, see `SECURITY.md`. *(Slice 111, 2026-10-10: the bookkeeping files' records — `InvoiceExport`, `InvoiceExportEntry` — are the transfer's processing history (behandlingshistorik, BFL 5 kap. 11 §): kept on the same clock as the invoices they booked.)* | `Invoice`, `InvoiceLine`, `InvoiceSeries`, `InvoiceExport`, `InvoiceExportEntry`, invoice-PDF and signed-contract `FileObject`s |
 | **R2 — tenant-lifecycle** | Live for the tenancy; exported then hard-deleted after the offboarding grace period (platform plane, §7). Client-level deletion honors per-client GDPR erasure except R1/R3 carve-outs. | All domain models not listed elsewhere |
 | **R3 — audit** | Category schedules per §3 (12/24 months; continuity = box life + 24 months); pseudonymize-don't-delete on erasure requests. | `AuditEvent` |
 | **R4 — ephemeral** | TTL'd by expiry columns + sweep jobs: sessions and verifications per auth config, invites per `expiresAt`, `PENDING` FileObjects swept (with the R2 abort-incomplete-multipart lifecycle rule + reconciliation job). `AuthMail` rows older than its one-hour window are pruned by the next reservation for the same person, and cascade with the user. | `Session`, `ContactSession`, `Verification`, `ContactVerification`, `MemberInvite`, `ContactInvite`, `FileObject(PENDING)`, `AuthMail` |
@@ -1916,6 +1916,48 @@ model InvoiceLine {
 //    title in full (the PDF prints at most PRINTED_TASK_MAX = 120 characters
 //    of it, whitespace collapsed — `printedTask`), and the invoice's own
 //    line ids (no projection selects it).
+
+// AS BUILT — Phase 4 slice 111 (2026-10-10; founder decision C82 (a)–(f);
+// migration 20261010230000_invoice_bookkeeping_export; the design and its
+// reviews: docs/research/2026-10-10-slice-111-fortnox-file-design.md — its
+// §10 overrides its body). THE BOOKKEEPING FILE for Fortnox (or any program
+// reading SIE 4I):
+//  - `invoice.book_rate_to_sek` / `book_rate_date` — the rate the file
+//    converts an invoice in another currency at: the ECB's on the invoice
+//    date (C82 (d)), or its VAT's own rate when it carries Swedish VAT (C82
+//    (f)); a credit note its original's, WRITTEN BY `invoice_book_rate_guard`.
+//    Set at issue on every issued invoice in another currency, NULL otherwise
+//    (CHECKs `invoice_book_rate_pair`, `invoice_book_rate_when`); frozen.
+//    Internal: on `PORTAL_NEVER_SELECTED` (`invoice` is class B).
+//  - The workspace's METHOD is a setting (TenantPreference
+//    `invoice.bookkeeping`, with the year's first month, the voucher series
+//    and ten BAS accounts held to their classes): INVOICE (fakturametoden —
+//    each invoice and credit note on its issue date, to 1510) or CASH
+//    (kontantmetoden, C82 (e) — Naxdor: each payment marked in Fortleva on
+//    its day, to the bank 1930, less the credit notes issued on or before it
+//    that existed when it was marked; a payment unmarked after its file
+//    reversed on the file's day; each credit note listed, never booked).
+//    Chosen before the first file; fixed once one exists (the app and
+//    `invoice_export_guard`). Year-end booking of unpaid invoices under the
+//    cash method is slice 111b.
+//  - `invoice_export` (class A) — one row per file: NUMBERED by its guard
+//    under `invoice_export_lock(tenant)` (the ONE advisory key every maker and
+//    both guards take), its method (every file of a workspace has the first's),
+//    series, day, maker. Never changed; deleted only by platform maintenance.
+//  - `invoice_export_entry` (class A) — one row per BOOKED EVENT (ISSUE,
+//    PAYMENT, PAYMENT_UNDONE, CREDIT_NOTED) with its voucher FROZEN as jsonb
+//    `{text, rows:[{account, amount}]}` (NULL — nothing to book) and the list's
+//    facts in `detail`. Written only in its file's own transaction by its
+//    maker (xmin); ISSUE and CREDIT_NOTED once per document (partial
+//    UNIQUEs); a PAYMENT only for an invoice paid on that day with none
+//    booked, an UNDONE only negating the booked one row by row; every voucher
+//    ≤ 50 characters of text (Fortnox), no quote or control character, rows
+//    non-zero to two decimals, balancing. One file = one financial year and
+//    one seller (the invoices' frozen seller snapshot names `#FNAMN`/`#ORGNR`).
+//  - Both files are REGENERATED from these rows on every download, so a
+//    re-download is the same bytes; `invoice_export.downloaded` records their
+//    SHA-256. R1: these rows are the transfer's processing history (BFL 5 kap.
+//    11 §) — kept with the invoices.
 
 // ───────────────────────────────────────────────────────────────────
 // 6.8 DOCUMENTS & FILES (§5, §6) — three layers:
@@ -4931,7 +4973,7 @@ The decisive argument: **the security-relevant dimensions of a file are tenant, 
 | **Custom domains / subdomain routing tables** | v2 | Decision #8: single app domain v1. `Tenant.slug` is reserved; hostname→tenantId resolution is a stubbed seam, a `TenantDomain` table arrives with the feature. |
 | **Per-tenant DEK** ~~/ KMS envelope~~ | ~~v2~~ **per-tenant DEK: SUPERSEDED 2026-08-16 by decision 12 → `TenantKey` + v2 format in Phase 1b (§4, §6.17)**; KMS root custody: still later | ~~The `v1.<keyId>.` ciphertext prefix is the seam; env-var key is proportionate at v1 (SECURITY.md).~~ The v2 `rootKeyId` segment is now the KMS seam; the DEK is wrapped by the env root keyring until then (SECURITY.md §6.1). |
 | **API tokens / public API / webhooks** | v2 | `api_token.*` audit actions reserved in the catalog; no table until the surface exists. |
-| **SIE export / verifikationer / bookkeeping** | skip | The line drawn by decision #3: we are a försystem issuing invoices; the tenant's accounting tool is the bookkeeping source of truth. Building toward SIE drags in systemdokumentation and audit expectations (§10.2 research). |
+| ~~**SIE export / verifikationer / bookkeeping**~~ | ~~skip~~ **BUILT as an import file, 2026-10-10 (slice 111, founder decision C82)** | The line drawn by decision #3 still holds: we are a försystem issuing invoices; the tenant's accounting tool is the bookkeeping source of truth. *Overridden for one thing only — an SIE 4I IMPORT file (vouchers the tenant's program books) with a list beside it — by the founder's choice (C82 (a)); the recommendation that led to it did not cite this line (recorded there). The tenant's duty to describe its system (BFL 5 kap. 11 §) exists however its invoices reach the books; what the export adds is written on its page (which accounts, which rates) and recorded per file (who made it, when, which events — §6.7's slice-111 note, R1). Fortleva still keeps no ledger, no balances, no SIE export of anything but its own invoices' vouchers.* |
 | ~~**Kanban/Gantt tables**~~ | ~~v2 (views)~~ **Kanban: SUPERSEDED 2026-08-16 → §6.14 (Phase 2W)**; Gantt: still no tables | ~~Board = view over `Issue`; timeline = `Milestone` + `ProjectVersion`. No new storage.~~ The board is now a view over `WorkItem` grouped by `WorkflowState` with one `rank` per item — that IS new storage (`WorkflowState`, `WorkItem.rank`), deliberately. Gantt with dependency auto-scheduling stays out (later module, if ever); the portal timeline stays `Milestone` + `ProjectVersion` + `ProjectUpdate` (§6.16 derived UNION). |
 | **Tenant-customizable portal roles** | v2 if demanded | See Pushback P1. |
 | **AI features** | none | Room left via JSONB metadata; no schema commitment (market trend noted, not chased). |
