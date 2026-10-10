@@ -137,6 +137,9 @@ const DBTEST_PREFIXES = [
   // here and pointed at a `slug:` key that does not exist.)
   "cinv-",
   "clients-",
+  // Phase 4 slice 112, contract templates and drafts — `src/modules/contracts/contracts.dbtest.ts`,
+  // `setupTenant("cntr")`.
+  "cntr-",
   "copy-",
   // Phase 3 slice 77, a contact's last sign-in — `src/clients/contact-sign-ins.dbtest.ts`,
   // `setupTenant("csign")`.
@@ -1849,6 +1852,12 @@ async function removeTenant(
     await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
     await tx.invoiceExport.deleteMany({ where: { tenantId } });
     await tx.invoice.deleteMany({ where: { tenantId } });
+    // Slice 112: contracts RESTRICT their client, their PDFs and the tenant,
+    // and only a draft is deleted outside the contract-maintenance GUC on this
+    // role; templates likewise.
+    await tx.$executeRaw`SELECT set_config('app.contract_maintenance', 'on', true)`;
+    await tx.contract.deleteMany({ where: { tenantId } });
+    await tx.contractTemplate.deleteMany({ where: { tenantId } });
     // Slice 108: the numbering series RESTRICTs the tenant and refuses DELETE
     // outside this GUC; the invoices' PDF files are freed by the delete above
     // and go with the other file objects below.

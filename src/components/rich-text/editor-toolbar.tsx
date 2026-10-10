@@ -5,10 +5,12 @@ import {
   BoldIcon,
   CheckSquareIcon,
   CodeIcon,
+  Heading2Icon,
   ItalicIcon,
   ListIcon,
   ListOrderedIcon,
   StrikethroughIcon,
+  UnderlineIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -29,7 +31,17 @@ import { Button } from "@/components/ui/button";
  * reference, so a plain `editor.isActive()` in a render body renders a
  * toolbar that stops updating.
  */
-export type MarkKey = "bold" | "italic" | "strike" | "code" | "bulletList" | "orderedList" | "taskList";
+export type MarkKey =
+  | "bold"
+  | "italic"
+  | "strike"
+  | "code"
+  | "bulletList"
+  | "orderedList"
+  | "taskList"
+  // Phase 4 slice 112 — the contract editor's two more (its schema has both).
+  | "heading"
+  | "underline";
 
 type MarkSpec = {
   readonly icon: LucideIcon;
@@ -50,6 +62,8 @@ export const MARK_SPECS: Readonly<Record<MarkKey, MarkSpec>> = {
     toggle: (e) => e.chain().focus().toggleOrderedList().run(),
   },
   taskList: { icon: CheckSquareIcon, active: "taskList", toggle: (e) => e.chain().focus().toggleTaskList().run() },
+  heading: { icon: Heading2Icon, active: "heading", toggle: (e) => e.chain().focus().toggleHeading({ level: 2 }).run() },
+  underline: { icon: UnderlineIcon, active: "underline", toggle: (e) => e.chain().focus().toggleUnderline().run() },
 };
 
 export type MarkStates = Partial<Record<MarkKey, boolean>>;

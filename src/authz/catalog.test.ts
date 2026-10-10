@@ -8,9 +8,9 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 115 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 + 1 vault @ slice 95 + 1 invoicing + 1 time @ slice 110 + 1 invoicing @ slice 111 — bumped deliberately 2026-10-10)", () => {
-    expect(PERMISSIONS).toHaveLength(115);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(115);
+  it("holds exactly 116 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 + 1 vault @ slice 95 + 1 invoicing + 1 time @ slice 110 + 1 invoicing @ slice 111 + 1 contracts @ slice 112 — bumped deliberately 2026-10-10)", () => {
+    expect(PERMISSIONS).toHaveLength(116);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(116);
   });
 
   it("invoice:export is invoicing-module, C A, never ✦ (slice 111, C82; AUTHZ.md §3.2)", () => {

@@ -338,6 +338,11 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // (`invoices-bookkeeping.spec.ts` made it, when it ran first; else the
     // "choose a method" caution).
     { name: "invoices-bookkeeping", path: "/invoices/bookkeeping" },
+    // Phase 4 slice 112: the contracts list with New contract inline (the
+    // drafts `contracts.spec.ts` made, when it ran first; else the empty
+    // state). No draft stop: the fixture cannot seed one — the database lets
+    // only a member start a contract, as themselves.
+    { name: "contracts", path: "/contracts" },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
     { name: "time-team", path: "/time/team" },
@@ -371,6 +376,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // Phase 4 slice 107: the workspace's details on its invoices (the
     // missing-details caution shows: the fixture sets none).
     { name: "settings-invoicing", path: "/settings/invoicing" },
+    // Phase 4 slice 112: the contract templates (`contracts.spec.ts`'s, when
+    // it ran first; else the empty state).
+    { name: "settings-contracts", path: "/settings/contracts" },
     // 2W/2T: the member's own notification settings — the one Settings
     // page with no permission gate.
     { name: "settings-notifications", path: "/settings/notifications" },

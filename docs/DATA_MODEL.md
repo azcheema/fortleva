@@ -1437,6 +1437,34 @@ model ContractSignature {
   @@index([tenantId, clientId])
 }
 
+// AS BUILT — Phase 4 slice 112, 2026-10-10 (founder decision C84; migration
+// 20261011120000_contracts; the design and its reviews:
+// docs/research/2026-10-10-slice-112-contracts-design.md, whose §10 overrides
+// its body). The sketch above is SUPERSEDED where they differ:
+//   - Contracts are WRITTEN IN FORTLEVA (C84 (a)) from `ContractTemplate`
+//     (class A, owners and admins — `contract:manage_templates`): a ProseMirror
+//     body in the contract schema (`contractExtensions` — no code, no
+//     checklist), with `{{key}}` fill-ins from a fixed list filled ONCE when a
+//     contract is started (C84 (e)). A template's `body` is NULLABLE (blank).
+//   - `Contract`: client-level (no projectId); `origin` WRITTEN | UPLOADED
+//     (signed elsewhere, 112c); status DRAFT | SENT | SIGNED | DECLINED |
+//     WITHDRAWN (no EXPIRED/VOIDED: an end date is a record field for
+//     Expirations, a withdrawal is WITHDRAWN); `startsOn`/`endsOn` dates;
+//     `signerContactId` a DRAFT's choice with NO foreign key (a deleted contact
+//     leaves a draft naming nobody; the send re-checks); `parties` and
+//     `contentSha256` written BY THE GUARD at sending (112b) — the signatures
+//     attest to the FROZEN RECORD's fingerprint (a jsonb_build_object of the
+//     contract's fields, hashed in Postgres), not to a PDF's bytes (react-pdf
+//     embeds a creation date; the e2e harness has no file storage);
+//     `pdfFileId`/`signedPdfFileId` the archived PDFs. Class B,
+//     status-structural (`PORTAL_GATE_VARIANTS.contract`): a contact reads one
+//     of their own client once it is not a DRAFT and is sent (or uploaded and
+//     shown), MAIN contacts only (`portal_contract_primary`); never writes.
+//   - In slice 112 the guard refuses every status move; slice 112b adds the
+//     send (the agency's signature, C84 (b)), `ContractSignature` (ONE client
+//     signer, C84 (c), a census write; IP and browser on a class-A evidence
+//     row), withdraw and versions.
+
 // ───────────────────────────────────────────────────────────────────
 // 6.7 INVOICING (§6, §10.2) — an invoice LEDGER, not an accounting
 // system (decision #3). Modeled on EN 16931 / Peppol BIS Billing 3

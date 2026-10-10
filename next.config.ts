@@ -34,6 +34,9 @@ const nextConfig: NextConfig = {
   // the jobs route's backstop for a PDF its issue did not make.
   outputFileTracingIncludes: {
     "/invoices/**": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
+    // Phase 4 slice 112: a contract draft's preview PDF (the same Inter files,
+    // `src/lib/pdf-fonts.ts`).
+    "/contracts/**": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
     "/api/jobs/run": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
   },
   // CI already runs `next typegen && tsc --noEmit` over this exact

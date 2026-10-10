@@ -321,6 +321,13 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // client's invoices, so its verbs also want a TENANT-WIDE client scope (the
   // app's rule; the database holds the code, `invoice_export_guard`).
   p("invoice:export", "invoicing", "Make and download the bookkeeping file (SIE, for Fortnox) and its list — every client's invoices", CA),
+  // ── Phase 4 slice 112 (+1; catalog 115 → 116; TEMPLATE_VERSION 16,
+  // 2026-10-10) — contract templates (founder decision C84 (g): templates are
+  // the company's standard wording, kept by owners and admins; managers start
+  // contracts from them and send them with the `contract:*` codes they
+  // already hold). C A, not ✦. The database holds it
+  // (`contract_template_guard`, migration 20261011120000).
+  p("contract:manage_templates", "contracts", "Create, change and delete contract templates", CA),
 ];
 
 export type RoleTemplate = {
@@ -414,8 +421,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     111, the bookkeeping file for Fortnox, founder decision C82). C A, not
  *     ✦, so clones gain it too; additive. The same rule as v6: a release
  *     carrying this bump MUST run `prisma/seed.ts` — until it runs, nobody
- *     can make a bookkeeping file (`invoice_export_guard`). */
-export const TEMPLATE_VERSION = 15;
+ *     can make a bookkeeping file (`invoice_export_guard`).
+ * v16 (2026-10-10): +1 `contracts` code (contract:manage_templates — Phase 4
+ *     slice 112, contracts, founder decision C84 (g)). C A, not ✦, so clones
+ *     gain it too; additive. The same rule as v6: a release carrying this
+ *     bump MUST run `prisma/seed.ts` — until it runs, nobody can keep a
+ *     contract template (`contract_template_guard`). */
+export const TEMPLATE_VERSION = 16;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

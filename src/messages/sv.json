@@ -100,7 +100,9 @@
     "vaultSettings": "Valv",
     "updateSettings": "Projektuppdateringar",
     "invoices": "Fakturor",
-    "invoiceSettings": "Fakturering"
+    "invoiceSettings": "Fakturering",
+    "contracts": "Kontrakt",
+    "contractSettings": "Kontraktsmallar"
   },
   "shell": {
     "palette": {
@@ -889,7 +891,7 @@
     "modules": {
       "core": "Kärna",
       "invoicing": "Fakturering",
-      "contracts": "Avtal",
+      "contracts": "Kontrakt",
       "reports": "Rapporter",
       "issues": "Ärenden",
       "documentation": "Dokumentation",
@@ -958,7 +960,7 @@
       "notInPlan": "Ingår inte i planen",
       "modules": {
         "invoicing": "Fakturering",
-        "contracts": "Avtal",
+        "contracts": "Kontrakt",
         "reports": "Rapporter",
         "issues": "Ärenden",
         "documentation": "Dokumentation",
@@ -970,7 +972,7 @@
       },
       "moduleHints": {
         "invoicing": "Fakturor, kreditnotor och betalningsuppföljning (fas 4).",
-        "contracts": "Avtal och e-signering (fas 4).",
+        "contracts": "Kontrakt och e-signering (fas 4).",
         "reports": "Rapportdokument och projekthälsa i portföljvy (fas 6).",
         "issues": "Ärendemottagning och uppföljning (går upp i Arbete).",
         "documentation": "Dokumentationssidor riktade till kunden.",
@@ -1788,7 +1790,11 @@
     "INVOICE_YEAR_END_NOT_DUE": "Det bokslutet är inte aktuellt — det är redan bokfört, eller så har året inte slutat än. Ladda om sidan.",
     "INVOICE_YEAR_END_WAITING": "Poster från det året ska fortfarande in i en fil. Skapa filer tills inget återstår och boka sedan upp de obetalda fakturorna.",
     "INVOICE_YEAR_END_CHANGED": "De obetalda fakturorna har ändrats sedan sidan laddades. Titta på listan igen och boka sedan upp.",
-    "INVOICE_YEAR_CLOSED": "Fakturadatumet ligger i ett år där de obetalda fakturorna redan är uppbokade vid bokslutet. Kontrollera arbetsytans tidszon, eller utfärda fakturan i morgon."
+    "INVOICE_YEAR_CLOSED": "Fakturadatumet ligger i ett år där de obetalda fakturorna redan är uppbokade vid bokslutet. Kontrollera arbetsytans tidszon, eller utfärda fakturan i morgon.",
+    "CONTRACT_TOO_LARGE": "Kontraktet är för långt för att sparas.",
+    "CONTRACT_NOT_DRAFT": "Kontraktet har skickats och kan inte längre ändras eller tas bort. Ladda om sidan.",
+    "CONTRACT_TEMPLATE_NAME_TAKEN": "Det finns redan en mall med det namnet.",
+    "CONTRACT_SIGNER_INVALID": "Den personen kan inte skriva under. Välj en huvudkontakt hos kunden som har loggat in i portalen."
   },
   "assignments": {
     "title": "Team",
@@ -4207,7 +4213,8 @@
   "richText": {
     "toolbar": {
       "description": "Formatering av beskrivningen",
-      "comment": "Formatering av kommentaren"
+      "comment": "Formatering av kommentaren",
+      "contract": "Formatering av kontraktet"
     },
     "format": {
       "bold": "Fet",
@@ -4216,7 +4223,9 @@
       "code": "Kod",
       "bulletList": "Punktlista",
       "orderedList": "Numrerad lista",
-      "taskList": "Checklista"
+      "taskList": "Checklista",
+      "heading": "Rubrik",
+      "underline": "Understruken"
     }
   },
   "timeReports": {
@@ -5440,6 +5449,131 @@
       "withSeconds": "Visas med sekunder: några av timmarna kommer från ett projekt som inte avrundar sin tid.",
       "unreadable": "Fakturans tidsspecifikation kan inte läsas."
     }
+  },
+  "contracts": {
+    "list": {
+      "title": "Kontrakt",
+      "description": "Kontrakt med era kunder, skrivna utifrån era mallar.",
+      "noPermission": "Du har inte åtkomst till kontrakt.",
+      "newTitle": "Nytt kontrakt",
+      "listTitle": "Alla kontrakt",
+      "empty": "Inga kontrakt än",
+      "emptyBody": "Börja med en mall, eller med ett tomt kontrakt.",
+      "noClients": "Det finns inga kunder du kan skriva kontrakt för.",
+      "templates": "Mallar",
+      "limited": "Visar de {limit} senast ändrade kontrakten.",
+      "columns": {
+        "title": "Kontrakt",
+        "client": "Kund",
+        "status": "Status",
+        "version": "Version",
+        "updated": "Ändrat"
+      },
+      "versionValue": "v{version}"
+    },
+    "status": {
+      "DRAFT": "Utkast",
+      "SENT": "Väntar på underskrift",
+      "SIGNED": "Underskrivet",
+      "DECLINED": "Avböjt",
+      "WITHDRAWN": "Återkallat"
+    },
+    "new": {
+      "client": "Kund",
+      "pickClientOption": "Välj en kund…",
+      "pickClient": "Välj en kund först.",
+      "template": "Mall",
+      "blank": "Tomt kontrakt",
+      "signer": "Undertecknare hos kunden",
+      "noSigner": "Bestäm senare",
+      "noSigners": "Ingen hos kunden kan skriva under än",
+      "title": "Titel",
+      "titlePlaceholder": "Mallens namn",
+      "create": "Skapa kontrakt",
+      "titleNeeded": "Ge ett tomt kontrakt en titel."
+    },
+    "draft": {
+      "pageTitle": "Kontrakt",
+      "back": "Kontrakt",
+      "draftBadge": "Utkast",
+      "details": "Uppgifter",
+      "title": "Titel",
+      "signer": "Undertecknare hos kunden",
+      "noSigner": "Inte vald än",
+      "signerHint": "Bara en huvudkontakt som har loggat in i kundportalen kan skriva under. Bjud in personen till portalen som huvudkontakt från kundens flik Kontakter.",
+      "signerCannotSign": "{name} kan inte skriva under just nu — personen är inte längre huvudkontakt med åtkomst till portalen.",
+      "signerGone": "Personen som valdes att skriva under är inte längre kontakt hos kunden.",
+      "language": "Språk",
+      "languageHint": "Språket i kontraktets pdf och i mejlen om det.",
+      "languages": {
+        "sv": "Svenska",
+        "en": "Engelska"
+      },
+      "startsOn": "Börjar",
+      "endsOn": "Slutar",
+      "datesHint": "För era egna register och påminnelser. Avtalstiden står i själva kontraktstexten.",
+      "text": "Kontraktstext",
+      "textPlaceholder": "Skriv kontraktet…",
+      "save": "Spara",
+      "saved": "Sparat.",
+      "unsaved": "Osparade ändringar",
+      "remainingTitle": "Återstår att fylla i",
+      "remainingBody": "Byt ut dessa mot rätt uppgifter innan kontraktet skickas: {keys}.",
+      "signerNotInText": "{name} är vald att skriva under, men namnet finns inte i texten. Kontrollera att kontraktet nämner rätt person.",
+      "preview": "Förhandsgranska pdf",
+      "menu": "Åtgärder för kontraktet",
+      "delete": "Ta bort utkastet",
+      "deleteConfirm": "Ta bort utkastet? Det går inte att ångra.",
+      "deleted": "Utkastet är borttaget.",
+      "fromTemplate": "Skapat från {name}"
+    },
+    "fillIns": {
+      "insert": "Infoga ifyllnadsfält",
+      "keys": {
+        "client_name": "Kundens namn",
+        "client_org_nr": "Kundens org.nr",
+        "client_address": "Kundens adress",
+        "signer_name": "Undertecknarens namn",
+        "agency_name": "Ert företagsnamn",
+        "agency_org_nr": "Ert org.nr",
+        "agency_address": "Er adress",
+        "today": "Dagens datum"
+      },
+      "split": "Några ifyllnadsfält är delvis formaterade och fylls inte i: {keys}. Skriv om dem utan formatering, eller infoga dem från menyn."
+    },
+    "templates": {
+      "title": "Kontraktsmallar",
+      "description": "Ert företags standardkontrakt. Ifyllnadsfält som kundens namn fylls i när någon skapar ett kontrakt från en mall; därefter kan kontraktets text ändras fritt.",
+      "noPermission": "Bara ägare och administratörer hanterar kontraktsmallar.",
+      "new": "Ny mall",
+      "newTitle": "Ny mall",
+      "editTitle": "Redigera mall",
+      "name": "Namn",
+      "namePlaceholder": "t.ex. Webbutveckling",
+      "text": "Malltext",
+      "textPlaceholder": "Skriv kontraktet. Använd Infoga ifyllnadsfält för uppgifter som skiljer sig mellan kunder.",
+      "create": "Skapa mall",
+      "created": "Mallen är skapad.",
+      "save": "Spara",
+      "saved": "Mallen är sparad.",
+      "edit": "Redigera",
+      "delete": "Ta bort mallen",
+      "deleteConfirm": "Ta bort mallen? Kontrakt som redan skapats från den behåller sin text.",
+      "deleted": "Mallen är borttagen.",
+      "empty": "Inga mallar än",
+      "emptyBody": "Skapa en, så kan teamet skapa kontrakt från den.",
+      "changed": "Ändrad {date}",
+      "menu": "Åtgärder för {name}",
+      "back": "Kontraktsmallar"
+    }
+  },
+  "contractPdf": {
+    "draft": "Utkast — inte skickat",
+    "agency": "Leverantör",
+    "client": "Kund",
+    "orgNr": "Org.nr {value}",
+    "version": "Version {version}",
+    "page": "Sida {page} av {pages}"
   },
   "invoicePdf": {
     "kind": {

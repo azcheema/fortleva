@@ -293,7 +293,12 @@ export type DomainErrorCode =
   | "INVOICE_YEAR_END_NOT_DUE" // that year end is not due — already booked, or the year hasn't ended
   | "INVOICE_YEAR_END_WAITING" // entries dated in that year still wait for a file: make files first
   | "INVOICE_YEAR_END_CHANGED" // the unpaid invoices changed since the page was read: look again
-  | "INVOICE_YEAR_CLOSED"; // an invoice or credit note dated in a year whose year end is booked
+  | "INVOICE_YEAR_CLOSED" // an invoice or credit note dated in a year whose year end is booked
+  // Phase 4 slice 112 — contracts (src/modules/contracts; C84).
+  | "CONTRACT_TOO_LARGE" // a contract's or a template's text is past its cap
+  | "CONTRACT_NOT_DRAFT" // the verb wanted a draft: edit, delete
+  | "CONTRACT_TEMPLATE_NAME_TAKEN" // another template already has that name
+  | "CONTRACT_SIGNER_INVALID"; // the picked signer is not a main contact of this client in the portal (the database holds "of this client"; sending re-checks the rest — 112b)
 
 export class DomainError extends Error {
   constructor(

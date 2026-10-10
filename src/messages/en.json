@@ -100,7 +100,9 @@
     "vaultSettings": "Vault",
     "updateSettings": "Progress updates",
     "invoices": "Invoices",
-    "invoiceSettings": "Invoicing"
+    "invoiceSettings": "Invoicing",
+    "contracts": "Contracts",
+    "contractSettings": "Contract templates"
   },
   "shell": {
     "palette": {
@@ -1788,7 +1790,11 @@
     "INVOICE_YEAR_END_NOT_DUE": "That year end isn't due — it's already booked, or the year hasn't ended yet. Reload the page.",
     "INVOICE_YEAR_END_WAITING": "Entries from that year still go in a file. Make files until none is left, then book the year end.",
     "INVOICE_YEAR_END_CHANGED": "The unpaid invoices changed since the page was loaded. Look at the list again, then book the year end.",
-    "INVOICE_YEAR_CLOSED": "That invoice date is in a year whose year end is already booked. Check the workspace's time zone, or issue it tomorrow."
+    "INVOICE_YEAR_CLOSED": "That invoice date is in a year whose year end is already booked. Check the workspace's time zone, or issue it tomorrow.",
+    "CONTRACT_TOO_LARGE": "The contract is too long to save.",
+    "CONTRACT_NOT_DRAFT": "That contract has been sent, so it can't be changed or deleted any more. Reload the page.",
+    "CONTRACT_TEMPLATE_NAME_TAKEN": "Another template already has that name.",
+    "CONTRACT_SIGNER_INVALID": "That person can't sign it. Pick a main contact of this client who has signed in to the portal."
   },
   "assignments": {
     "title": "Team",
@@ -4207,7 +4213,8 @@
   "richText": {
     "toolbar": {
       "description": "Description formatting",
-      "comment": "Comment formatting"
+      "comment": "Comment formatting",
+      "contract": "Contract formatting"
     },
     "format": {
       "bold": "Bold",
@@ -4216,7 +4223,9 @@
       "code": "Code",
       "bulletList": "Bulleted list",
       "orderedList": "Numbered list",
-      "taskList": "Checklist"
+      "taskList": "Checklist",
+      "heading": "Heading",
+      "underline": "Underline"
     }
   },
   "timeReports": {
@@ -5440,6 +5449,131 @@
       "withSeconds": "Shown to the second: some of these hours come from a project that doesn't round its time.",
       "unreadable": "This invoice's time breakdown can't be read."
     }
+  },
+  "contracts": {
+    "list": {
+      "title": "Contracts",
+      "description": "Contracts with your clients, written from your templates.",
+      "noPermission": "You don't have access to contracts.",
+      "newTitle": "New contract",
+      "listTitle": "All contracts",
+      "empty": "No contracts yet",
+      "emptyBody": "Start one from a template, or blank.",
+      "noClients": "There are no clients you can write a contract for.",
+      "templates": "Templates",
+      "limited": "Showing the {limit} most recently changed contracts.",
+      "columns": {
+        "title": "Contract",
+        "client": "Client",
+        "status": "Status",
+        "version": "Version",
+        "updated": "Changed"
+      },
+      "versionValue": "v{version}"
+    },
+    "status": {
+      "DRAFT": "Draft",
+      "SENT": "Waiting for signature",
+      "SIGNED": "Signed",
+      "DECLINED": "Declined",
+      "WITHDRAWN": "Withdrawn"
+    },
+    "new": {
+      "client": "Client",
+      "pickClientOption": "Choose a client…",
+      "pickClient": "Choose a client first.",
+      "template": "Template",
+      "blank": "Blank contract",
+      "signer": "Who signs for the client",
+      "noSigner": "Decide later",
+      "noSigners": "No one at this client can sign yet",
+      "title": "Title",
+      "titlePlaceholder": "The template's name",
+      "create": "Start contract",
+      "titleNeeded": "Give a blank contract a title."
+    },
+    "draft": {
+      "pageTitle": "Contract",
+      "back": "Contracts",
+      "draftBadge": "Draft",
+      "details": "Details",
+      "title": "Title",
+      "signer": "Who signs for the client",
+      "noSigner": "Not chosen yet",
+      "signerHint": "Only a main contact who has signed in to the client portal can sign. To add someone, invite them to the portal from the client's Contacts tab as a main contact.",
+      "signerCannotSign": "{name} can't sign at the moment — they are no longer a main contact with portal access.",
+      "signerGone": "The person chosen to sign is no longer a contact of this client.",
+      "language": "Language",
+      "languageHint": "The language of the contract's PDF and of the emails about it.",
+      "languages": {
+        "sv": "Swedish",
+        "en": "English"
+      },
+      "startsOn": "Starts",
+      "endsOn": "Ends",
+      "datesHint": "For your records and reminders. The contract's own text says what the term is.",
+      "text": "Contract text",
+      "textPlaceholder": "Write the contract…",
+      "save": "Save",
+      "saved": "Saved.",
+      "unsaved": "Unsaved changes",
+      "remainingTitle": "Still to fill in",
+      "remainingBody": "Replace these with the right details before the contract is sent: {keys}.",
+      "signerNotInText": "{name} is chosen to sign, but their name isn't in the text. Check that the contract names the right person.",
+      "preview": "Preview PDF",
+      "menu": "Contract actions",
+      "delete": "Delete draft",
+      "deleteConfirm": "Delete this draft? This can't be undone.",
+      "deleted": "Draft deleted.",
+      "fromTemplate": "Started from {name}"
+    },
+    "fillIns": {
+      "insert": "Insert fill-in",
+      "keys": {
+        "client_name": "Client name",
+        "client_org_nr": "Client org. number",
+        "client_address": "Client address",
+        "signer_name": "Signer's name",
+        "agency_name": "Your company's name",
+        "agency_org_nr": "Your org. number",
+        "agency_address": "Your address",
+        "today": "Today's date"
+      },
+      "split": "Some fill-ins are partly formatted and won't be filled in: {keys}. Retype them without formatting, or insert them from the menu."
+    },
+    "templates": {
+      "title": "Contract templates",
+      "description": "Your company's standard contracts. Fill-ins such as the client's name are filled in when someone starts a contract from a template; after that, the contract's text can be changed freely.",
+      "noPermission": "Only owners and admins keep contract templates.",
+      "new": "New template",
+      "newTitle": "New template",
+      "editTitle": "Edit template",
+      "name": "Name",
+      "namePlaceholder": "e.g. Website development",
+      "text": "Template text",
+      "textPlaceholder": "Write the contract. Use Insert fill-in for details that change from client to client.",
+      "create": "Create template",
+      "created": "Template created.",
+      "save": "Save",
+      "saved": "Template saved.",
+      "edit": "Edit",
+      "delete": "Delete template",
+      "deleteConfirm": "Delete this template? Contracts already started from it keep their text.",
+      "deleted": "Template deleted.",
+      "empty": "No templates yet",
+      "emptyBody": "Create one, and your team can start contracts from it.",
+      "changed": "Changed {date}",
+      "menu": "Actions for {name}",
+      "back": "Contract templates"
+    }
+  },
+  "contractPdf": {
+    "draft": "Draft — not sent",
+    "agency": "Supplier",
+    "client": "Client",
+    "orgNr": "Org. no. {value}",
+    "version": "Version {version}",
+    "page": "Page {page} of {pages}"
   },
   "invoicePdf": {
     "kind": {

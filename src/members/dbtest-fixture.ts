@@ -144,6 +144,11 @@ export async function setupTenant(label: string) {
       await tx.invoice.deleteMany({ where: { tenantId } });
       await tx.invoiceSeries.deleteMany({ where: { tenantId } });
       await tx.fileObject.deleteMany({ where: { tenantId, kind: "INVOICE_PDF" } });
+      // Slice 112: contracts and templates, under their own maintenance GUC.
+      await tx.$executeRaw`SELECT set_config('app.contract_maintenance', 'on', true)`;
+      await tx.contract.deleteMany({ where: { tenantId } });
+      await tx.contractTemplate.deleteMany({ where: { tenantId } });
+      await tx.fileObject.deleteMany({ where: { tenantId, kind: "CONTRACT_PDF" } });
     });
   }
 

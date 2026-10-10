@@ -2,7 +2,7 @@ import { getSchema } from "@tiptap/core";
 import { Node as PMNode } from "@tiptap/pm/model";
 
 import { fail, type DomainErrorCode } from "@/lib/domain-error";
-import { commentExtensions, descriptionExtensions } from "./extensions";
+import { commentExtensions, contractExtensions, descriptionExtensions } from "./extensions";
 
 /**
  * The rich-text gatekeeper: the browser sends JSON, and NOTHING it
@@ -46,6 +46,12 @@ export const COMMENT_TEXT_CHARS = 20_000;
  */
 export const UPDATE_SECTION_JSON_BYTES = COMMENT_JSON_BYTES;
 export const UPDATE_SECTION_TEXT_CHARS = COMMENT_TEXT_CHARS;
+/**
+ * A CONTRACT or a contract template (Phase 4 slice 112): the description's
+ * caps — a contract is a whole document, sent in one request.
+ */
+export const CONTRACT_JSON_BYTES = DESCRIPTION_JSON_BYTES;
+export const CONTRACT_TEXT_CHARS = DESCRIPTION_TEXT_CHARS;
 
 /**
  * Built on first use, not on import. Constructing a schema walks every
@@ -54,10 +60,13 @@ export const UPDATE_SECTION_TEXT_CHARS = COMMENT_TEXT_CHARS;
  */
 let descriptionSchema: ReturnType<typeof getSchema> | null = null;
 let commentSchema: ReturnType<typeof getSchema> | null = null;
+let contractSchema: ReturnType<typeof getSchema> | null = null;
 const schemaFor = (kind: RichTextKind): ReturnType<typeof getSchema> =>
   kind === "comment"
     ? (commentSchema ??= getSchema(commentExtensions()))
-    : (descriptionSchema ??= getSchema(descriptionExtensions()));
+    : kind === "contract"
+      ? (contractSchema ??= getSchema(contractExtensions()))
+      : (descriptionSchema ??= getSchema(descriptionExtensions()));
 
 type JsonNode = {
   type?: unknown;
@@ -154,7 +163,7 @@ function sanitize(node: JsonNode): JsonNode {
   return out;
 }
 
-type RichTextKind = "description" | "comment" | "update";
+type RichTextKind = "description" | "comment" | "update" | "contract";
 
 type Caps = {
   readonly jsonBytes: number;
@@ -167,6 +176,7 @@ const CAPS: Record<RichTextKind, Caps> = {
   description: { jsonBytes: DESCRIPTION_JSON_BYTES, textChars: DESCRIPTION_TEXT_CHARS, tooLarge: "DESCRIPTION_TOO_LARGE" },
   comment: { jsonBytes: COMMENT_JSON_BYTES, textChars: COMMENT_TEXT_CHARS, tooLarge: "COMMENT_TOO_LARGE" },
   update: { jsonBytes: UPDATE_SECTION_JSON_BYTES, textChars: UPDATE_SECTION_TEXT_CHARS, tooLarge: "UPDATE_TOO_LARGE" },
+  contract: { jsonBytes: CONTRACT_JSON_BYTES, textChars: CONTRACT_TEXT_CHARS, tooLarge: "CONTRACT_TOO_LARGE" },
 };
 
 type Normalized = {
@@ -303,5 +313,27 @@ export type NormalizedUpdateSection = {
  */
 export function normalizeUpdateSection(input: unknown): NormalizedUpdateSection {
   const n = normalizeRichText(input, "update");
+  return { doc: n.doc, text: n.text };
+}
+
+export type NormalizedContractBody = {
+  /** Canonical JSON to store — or null when the body says nothing yet (a blank draft or template). */
+  readonly doc: JsonNode | null;
+  /** Plain text; null when empty. */
+  readonly text: string | null;
+};
+
+/**
+ * A contract's body or a contract template's (Phase 4 slice 112): the
+ * contract schema (no code, no checklist — `contractExtensions`) at the
+ * description's caps. May be empty while it is a draft; sending refuses
+ * an empty one (slice 112b).
+ */
+export function normalizeContractBody(input: unknown): NormalizedContractBody {
+  // The editor sends null when it is empty (`ContractBodyEditor`), and a blank
+  // template or a cleared draft is a legitimate nothing-yet — `fromJSON` would
+  // refuse it as INVALID_INPUT (the code and security reviews' item 1).
+  if (input === null || input === undefined) return { doc: null, text: null };
+  const n = normalizeRichText(input, "contract");
   return { doc: n.doc, text: n.text };
 }

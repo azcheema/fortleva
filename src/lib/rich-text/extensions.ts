@@ -80,3 +80,21 @@ export const commentExtensions = () => [
     link: { openOnClick: false, autolink: false },
   }),
 ];
+
+/**
+ * The contract (Phase 4 slice 112, founder decision C84 (a)): a document
+ * a client SIGNS, written from a template and frozen at sending. Headings,
+ * lists, quotes, rules and the text marks a contract is written with; NO
+ * code or code block (a contract is prose) and NO checklist — a checkbox
+ * has no meaning in a signed document, and one ticked or not at sending
+ * would read as a term. The PDF walker (`src/modules/contracts/pdf`) draws
+ * exactly this list, so a node added here must be drawn there too.
+ */
+export const contractExtensions = () => [
+  StarterKit.configure({
+    heading: { levels: [1, 2, 3] },
+    code: false,
+    codeBlock: false,
+    link: { openOnClick: false, autolink: false },
+  }),
+];

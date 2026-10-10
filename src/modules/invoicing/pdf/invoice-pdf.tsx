@@ -4,11 +4,10 @@
 // would ask the bundle's React for a dispatcher it never set.
 "use no memo";
 
-import path from "node:path";
-
-import { Document, Font, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import { createTranslator } from "next-intl";
 
+import { registerPdfFonts } from "@/lib/pdf-fonts";
 import en from "@/messages/en.json";
 import sv from "@/messages/sv.json";
 
@@ -63,29 +62,12 @@ import {
  * FONTS: Inter 4.1 static Regular and SemiBold (SIL OFL 1.1, `./fonts/OFL-Inter.txt`),
  * committed in `./fonts/` from the release's `extras/ttf/`
  * (https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip; sha256
- * 40d692fc… and 78a843fa…). Not the standard Helvetica:
+ * 40d692fc… and 78a843fa…; registered by `@/lib/pdf-fonts`, which the
+ * contract's PDF shares). Not the standard Helvetica:
  * its WinAnsi encoding has no Polish, Czech or Hungarian letters, so a client
  * named "Łódź Sp. z o.o." would print wrong. Read from disk, so
  * `next.config.ts` traces the folder into the invoice routes.
  */
-
-const FONT_DIR = path.join(process.cwd(), "src", "modules", "invoicing", "pdf", "fonts");
-let fontsRegistered = false;
-
-function registerFonts(): void {
-  if (fontsRegistered) return;
-  Font.register({
-    family: "Inter",
-    fonts: [
-      { src: path.join(FONT_DIR, "Inter-Regular.ttf"), fontWeight: 400 },
-      { src: path.join(FONT_DIR, "Inter-SemiBold.ttf"), fontWeight: 600 },
-    ],
-  });
-  // Never hyphenate: an org. number, an IBAN or a company name split with a
-  // hyphen would print a different value.
-  Font.registerHyphenationCallback((word) => [word]);
-  fontsRegistered = true;
-}
 
 /** A printed page has no theme: these are the PDF's own inks, not the app's tokens. */
 const INK = { text: "#1a1a1a", muted: "#5f5f5f", rule: "#d4d4d4", band: "#f4f4f4" } as const;
@@ -421,7 +403,7 @@ export function InvoicePdf({ invoice }: { readonly invoice: InvoicePrint }) {
 
 /** The PDF's bytes. */
 export async function renderInvoicePdf(invoice: InvoicePrint): Promise<Uint8Array> {
-  registerFonts();
+  registerPdfFonts();
   const buffer = await renderToBuffer(<InvoicePdf invoice={invoice} />);
   return new Uint8Array(buffer);
 }

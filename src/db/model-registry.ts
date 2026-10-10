@@ -93,6 +93,9 @@ export const MODEL_CLASSES = {
     // Phase 4 slice 111 — the bookkeeping file (C82).
     "invoiceExport",
     "invoiceExportEntry",
+    // Phase 4 slice 112 — contracts (C84).
+    "contractTemplate",
+    "contract",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -247,6 +250,9 @@ export const RLS_CLASSES = {
     // booked (C82): the agency's books, never a client's.
     "invoiceExport",
     "invoiceExportEntry",
+    // Phase 4 slice 112 — the company's contract templates (C84 (g)): staff
+    // wording; a client reads a contract, never the template it came from.
+    "contractTemplate",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no
@@ -260,7 +266,12 @@ export const RLS_CLASSES = {
   // RESTRICTIVE `portal_invoice_primary` belt (CONTACT_PRIMARY only) pinned
   // by name in `isolation.dbtest.ts`. Shown even when its project's portal is
   // off: the client already has it.
-  B_clientScoped: ["client", "contact", "credentialItem", "clientAsset", "invoice"],
+  //
+  // `contract` (Phase 4 slice 112, C84): client-level, read by a MAIN contact
+  // of its client once it is not a draft and is sent (or, signed elsewhere,
+  // shown — 112c) — status-structural like `invoice`, with the RESTRICTIVE
+  // `portal_contract_primary` belt pinned by name in `isolation.dbtest.ts`.
+  B_clientScoped: ["client", "contact", "credentialItem", "clientAsset", "invoice", "contract"],
   B_projectScoped: [
     "project",
     "projectVersion",
@@ -304,6 +315,8 @@ export type RlsClass = keyof typeof RLS_CLASSES;
  *   projectVersion — client match AND status = 'SHIPPED' AND portal_enabled
  *   invoice        — client match AND status <> 'DRAFT' AND sent_at set
  *                    (slice 109, C79 (b))
+ *   contract       — client match AND status <> 'DRAFT' AND (written and
+ *                    sent_at set, or uploaded and shown_to_client) (slice 112)
  */
 export const PORTAL_GATE_VARIANTS = {
   client: { clientColumn: "id", term: "structural" },
@@ -311,6 +324,7 @@ export const PORTAL_GATE_VARIANTS = {
   project: { clientColumn: "client_id", term: "portal_enabled" },
   projectVersion: { clientColumn: "client_id", term: "status" },
   invoice: { clientColumn: "client_id", term: "status" },
+  contract: { clientColumn: "client_id", term: "status" },
 } as const satisfies Record<
   string,
   { clientColumn: "id" | "client_id"; term: "structural" | "portal_enabled" | "status" }

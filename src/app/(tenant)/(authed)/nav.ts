@@ -21,6 +21,7 @@ export type NavIcon =
   | "vault"
   | "renewals"
   | "invoices"
+  | "contracts"
   | "members"
   | "settings"
   | "roles"
@@ -30,6 +31,7 @@ export type NavIcon =
   | "vaultSettings"
   | "updateSettings"
   | "invoiceSettings"
+  | "contractSettings"
   | "export"
   | "design"
   | "account";
@@ -49,6 +51,7 @@ export type NavEntry = {
     | "vault"
     | "renewals"
     | "invoices"
+    | "contracts"
     | "members"
     | "settings"
     | "roles"
@@ -58,6 +61,7 @@ export type NavEntry = {
     | "vaultSettings"
     | "updateSettings"
     | "invoiceSettings"
+    | "contractSettings"
     | "export"
     | "design"
     | "account";
@@ -164,6 +168,16 @@ export const NAV: readonly NavEntry[] = [
     icon: "invoices",
     permission: "invoice:view",
   },
+  // Phase 4 slice 112: CONTRACTS (C84) — drafts now, sent and signed ones from
+  // slice 112b. On `contract:view` across all four gates, so it goes with the
+  // contracts module.
+  {
+    id: "contracts",
+    labelKey: "contracts",
+    href: "/contracts",
+    icon: "contracts",
+    permission: "contract:view",
+  },
   {
     id: "members",
     labelKey: "members",
@@ -228,6 +242,15 @@ export const NAV: readonly NavEntry[] = [
         href: "/settings/invoicing",
         icon: "invoiceSettings",
         permission: "invoice:view",
+      },
+      // Phase 4 slice 112: the company's contract templates — owners and
+      // admins (C84 (g)); the page asks the same code.
+      {
+        id: "contractSettings",
+        labelKey: "contractSettings",
+        href: "/settings/contracts",
+        icon: "contractSettings",
+        permission: "contract:manage_templates",
       },
       // No permission: every other Settings page administers the
       // WORKSPACE and is hidden without its code; this one administers

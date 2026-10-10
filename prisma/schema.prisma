@@ -336,6 +336,9 @@ model Tenant {
   invoiceLineTimeEntries InvoiceLineTimeEntry[]
   invoiceExports         InvoiceExport[]
   invoiceExportEntries   InvoiceExportEntry[]
+  // Phase 4 slice 112 — contracts (§6.6, C84):
+  contractTemplates      ContractTemplate[]
+  contracts              Contract[]
 
   @@map("tenant")
 }
@@ -693,6 +696,7 @@ model Client {
   sealedOpenRequests   SealedOpenRequest[]
   credentialAsks       CredentialAsk[]
   invoices             Invoice[]
+  contracts            Contract[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -1363,6 +1367,112 @@ model Service {
   @@map("service")
 }
 
+// ── Phase 4 slice 112 — CONTRACTS (§6.6 as built; founder decision C84) ──
+// The design: docs/research/2026-10-10-slice-112-contracts-design.md (its §10
+// overrides its body). The signature rows are slice 112b's.
+
+enum ContractOrigin {
+  WRITTEN // written in Fortleva from a template or blank (C84 (a))
+  UPLOADED // signed elsewhere, its signed PDF put in (C84 (f) — slice 112c)
+
+  @@map("contract_origin")
+}
+
+enum ContractStatus {
+  DRAFT // editable, deletable; no client ever reads it
+  SENT // frozen and fingerprinted; the agency has signed, the client has not (slice 112b)
+  SIGNED // both signatures (WRITTEN), or signed elsewhere (UPLOADED)
+  DECLINED // the client said no
+  WITHDRAWN // the agency took it back before the client signed
+
+  @@map("contract_status")
+}
+
+/// A contract TEMPLATE — the company's standard wording, kept by owners and
+/// admins (`contract:manage_templates`, C84 (g)), with `{{key}}` fill-ins
+/// from the fixed list in `src/modules/contracts/fill-ins.ts` (C84 (e)). A
+/// contract COPIES its body when started, so a template may be changed or
+/// deleted freely afterwards.
+/// scope=tenant  rls=A (no contact reads one)  ret=R2  enc=none
+/// audit: contract_template.created | contract_template.updated | contract_template.deleted
+model ContractTemplate {
+  id                String   @id @default(uuid(7))
+  tenantId          String   @map("tenant_id")
+  name              String // 1–120, unique per workspace case-insensitively (SQL index)
+  body              Json? // the contract schema (`normalizeContractBody`); NULL = blank
+  createdByMemberId String   @map("created_by_member_id") // attribution, no FK
+  updatedByMemberId String   @map("updated_by_member_id") // attribution, no FK
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@map("contract_template")
+}
+
+/// A CONTRACT with a client (C84). Written in Fortleva: a DRAFT is the
+/// agency's alone — editable by `contract:edit`, deleted by
+/// `contract:delete` — and slice 112b's send freezes it, fingerprints it in
+/// the database (`content_sha256`) and puts it before ONE main contact to
+/// sign. Client-level (no project). The guard (`contract_guard`) holds every
+/// rule; in slice 112 it refuses every status move.
+/// scope=client  rls=B (status-structural: a contact reads a SENT one of
+///   their own client, never a draft; main contacts only)
+/// ret=R2; a SIGNED contract's PDFs follow the archive (§5)
+/// enc=none (the body is the client's to read once sent)
+/// audit: contract.created | contract.draft_edited | contract.draft_deleted | contract.sent | contract.signed | contract.declined | contract.withdrawn
+model Contract {
+  id                  String         @id @default(uuid(7))
+  tenantId            String         @map("tenant_id")
+  clientId            String         @map("client_id")
+  title               String // 1–200
+  origin              ContractOrigin @default(WRITTEN)
+  status              ContractStatus @default(DRAFT)
+  version             Int            @default(1)
+  supersedesId        String?        @map("supersedes_id") // slice 112b: the contract this version replaces
+  templateId          String?        @map("template_id") // the template it was started from — attribution, no FK
+  body                Json? // WRITTEN: the contract schema, NULL while blank; UPLOADED: always NULL
+  language            String         @db.VarChar(2) // "sv" | "en" — the PDF's words, the mails' language
+  // A DRAFT's chosen signer: a contact of the SAME client (the guard), with NO
+  // foreign key — a deleted contact leaves a draft naming nobody, and the
+  // send re-checks (design §10 item 2). Not attribution: nobody wrote it.
+  signerContactId     String?        @map("signer_contact_id")
+  startsOn            DateTime?      @map("starts_on") @db.Date
+  endsOn              DateTime?      @map("ends_on") @db.Date
+  // Slice 112b — written at sending, BY THE GUARD (never the app's values):
+  parties             Json? // { agency: {…}, client: {…} } as printed
+  contentSha256       String?        @map("content_sha256") @db.Char(64) // what both signatures attest to
+  sentAt              DateTime?      @map("sent_at") @db.Timestamptz(6)
+  sentByMemberId      String?        @map("sent_by_member_id") // attribution, no FK
+  signedOn            DateTime?      @map("signed_on") @db.Date
+  withdrawnAt         DateTime?      @map("withdrawn_at") @db.Timestamptz(6)
+  withdrawnByMemberId String?        @map("withdrawn_by_member_id") // attribution, no FK
+  pdfFileId           String?        @map("pdf_file_id") // the PDF as sent (112b)
+  signedPdfFileId     String?        @map("signed_pdf_file_id") // the signed copy (112b), or the uploaded file (112c)
+  shownToClient       Boolean        @default(false) @map("shown_to_client") // UPLOADED only (112c)
+  createdByMemberId   String         @map("created_by_member_id") // attribution, no FK
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id])
+  client       Client      @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict)
+  supersedes   Contract?   @relation("ContractVersions", fields: [tenantId, clientId, supersedesId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction)
+  supersededBy Contract?   @relation("ContractVersions")
+  pdfFile      FileObject? @relation("ContractPdf", fields: [tenantId, pdfFileId], references: [tenantId, id], onDelete: Restrict)
+  signedPdf    FileObject? @relation("ContractSignedPdf", fields: [tenantId, signedPdfFileId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@unique([tenantId, clientId, id]) // the version link's (and 112b's signature's) FK: same client
+  @@unique([tenantId, clientId, supersedesId]) // one successor per contract
+  @@unique([tenantId, pdfFileId]) // one PDF belongs to one contract
+  @@unique([tenantId, signedPdfFileId])
+  @@index([tenantId, clientId, status])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, endsOn]) // Expirations (112c)
+  @@map("contract")
+}
+
 // ───────────────────────────────────────────────────────────────────
 // INVOICING (Phase 4 — DATA_MODEL.md §6.7, §9; founder decision C75).
 // Slice 107: drafts. An invoice is a DRAFT (no number, edited freely,
@@ -1869,6 +1979,8 @@ model FileObject {
   tenant   Tenant        @relation(fields: [tenantId], references: [id])
   versions FileVersion[]
   invoices Invoice[] // the invoice an INVOICE_PDF archives (slice 108)
+  contractPdfs       Contract[] @relation("ContractPdf") // slice 112b: a contract's PDF as sent
+  contractSignedPdfs Contract[] @relation("ContractSignedPdf") // slice 112b/c: the signed copy, or the uploaded one
 
   @@unique([tenantId, id]) // composite-FK target
   @@index([tenantId, status])

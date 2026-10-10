@@ -2,6 +2,7 @@ import {
   ArchiveIcon,
   Building2Icon,
   CoinsIcon,
+  FileSignatureIcon,
   FolderIcon,
   FolderKanbanIcon,
   HouseIcon,
@@ -38,6 +39,7 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   vault: VaultIcon,
   renewals: CalendarClockIcon,
   invoices: ReceiptTextIcon,
+  contracts: FileSignatureIcon,
   members: UsersIcon,
   settings: SettingsIcon,
   roles: KeyRoundIcon,
@@ -51,6 +53,7 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   updateSettings: MegaphoneIcon,
   // Invoicing settings wear the invoices' glyph, as Time's settings wear Time's.
   invoiceSettings: ReceiptTextIcon,
+  contractSettings: FileSignatureIcon,
   // A bell is "reach me", the inbox tray is "what reached me": two
   // concepts, two glyphs.
   notifications: BellIcon,
