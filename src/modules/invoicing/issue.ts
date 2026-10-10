@@ -7,13 +7,14 @@ import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { todayIn } from "@/lib/due-date";
 import { addDays } from "@/lib/week";
-import { fail, isLockTimeout } from "@/lib/domain-error";
+import { fail, isDeadlock, isLockTimeout } from "@/lib/domain-error";
 import { INVOICE_PAY_LINK_ISSUED_MAIL } from "@/notify/invoice-pay-link-mail-key";
 import { readPreferences } from "@/preferences/service";
 
 import { readCreditedNets, readInvoiceNets } from "./credit-state";
 import { guarded } from "./db-errors";
 import type { InvoicingCtx } from "./drafts";
+import { freeInvoiceHours, lockInvoiceHours, readHoursIssueFacts } from "./hours-record";
 import { FX_MAX_AGE_DAYS, needsSekVat, rateDayFor, sekRateFor, vatGroupsInSek, type FetchText, type FxRate } from "./fx";
 import { checkCreditIssue, checkIssue, creditCovers, mentionsPaymentDetails, type IssueCheck, type IssueClient } from "./issue-check";
 import { formatFixed, invoiceTotals, readFixed, type InvoiceTotals } from "./money";
@@ -74,6 +75,7 @@ export { checkIssue, clientBlockers, type IssueBlocker, type IssueCheck, type Is
 const memberPrincipal = (ctx: InvoicingCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
 
 type DraftFacts = {
+  readonly id: string;
   readonly kind: "INVOICE" | "CREDIT_NOTE";
   readonly creditsInvoiceId: string | null;
   readonly creditReason: string | null;
@@ -111,6 +113,7 @@ async function readDraftFacts(tx: TenantDb, invoiceId: string): Promise<DraftFac
   const lines = await tx.invoiceLine.findMany({ where: { invoiceId }, select: { amountExVat: true, vatRatePct: true } });
   const totals = invoiceTotals(lines.map((l) => ({ amount: readFixed(l.amountExVat, 2), rate: readFixed(l.vatRatePct, 2) })));
   return {
+    id: invoiceId,
     kind: invoice.kind,
     creditsInvoiceId: invoice.creditsInvoiceId,
     creditReason: invoice.creditReason,
@@ -312,6 +315,9 @@ async function checkDraft(
   }
   const client = await readIssueClient(tx, draft.clientId);
   const { company, payment, unreadable } = await readSeller(tx, tenantId);
+  // Slice 110: its tracked hours — a private task named on a line, a record
+  // the marks disagree with (blockers), hours changed since added (a caution).
+  const hours = await readHoursIssueFacts(tx, tenantId, draft.id);
   const check = checkIssue({
     company,
     payment,
@@ -327,6 +333,7 @@ async function checkDraft(
     hasPeriod: draft.hasPeriod,
     periodEnd: draft.periodEnd,
     today,
+    hours,
   });
   return { check, numbering, original: null };
 }
@@ -398,6 +405,13 @@ export async function issueLocked(
      * door, a cost reveal) must not stand in for it (the security review's low).
      */
     readonly codeTypedNow?: boolean;
+    /**
+     * Slice 110 (C80 (f)): what a credit note that completes its invoice's
+     * credit does to the invoice's hours — FREED (the default: back to "not
+     * invoiced"), or KEPT for `creditInFull` to move onto the corrected copy
+     * in the same transaction (the design review's H1).
+     */
+    readonly hours?: "free" | "keep";
   },
 ): Promise<Issued> {
   const { now, rate } = opts;
@@ -414,6 +428,10 @@ export async function issueLocked(
     // order (the design review's low): two credit notes on one invoice
     // serialise here, and every check below reads under both locks.
     await tx.$queryRaw`SELECT 1 FROM invoice WHERE id = ${kind.creditsInvoiceId} FOR UPDATE`;
+    // …and its tracked hours, by id, NOW (slice 110; the design review's M2):
+    // a credit that completes the credit frees them after the series is
+    // taken, and that must never wait behind a member editing one.
+    await lockInvoiceHours(tx, ctx.tenantId, kind.creditsInvoiceId);
   }
   const locked = await tx.$queryRaw<{ status: string; pay_link_url: string | null }[]>`
     SELECT status::text AS status, pay_link_url FROM invoice WHERE id = ${invoiceId} FOR UPDATE`;
@@ -449,6 +467,13 @@ export async function issueLocked(
       throw e;
     }
   }
+  // Slice 110: the check reads whether a line names a task the client may not
+  // see (`readHoursIssueFacts`) WITHOUT locking the tasks. A share-lock here
+  // was tried and taken out (the fix-pass re-check's medium): it bypassed the
+  // work module's rank-lock queue (`rank-lock.ts`), and a bulk edit — which
+  // has no retry — could deadlock with it. The residual, accepted: a task made
+  // private in the instant between this check and the issue's commit is
+  // printed by that one issue.
   const draft = await readDraftFacts(tx, invoiceId);
   const { check, numbering, original } = await checkDraft(tx, ctx.tenantId, draft, now);
   if (original && !original.open) return fail("INVOICE_NOT_CREDITABLE");
@@ -535,11 +560,14 @@ export async function issueLocked(
     const covered = creditCovers(await readInvoiceNets(tx, original.id), await readCreditedNets(tx, original.id));
     if (covered) {
       await tx.invoice.update({ where: { id: original.id }, data: { status: "CREDITED" }, select: { id: true } });
+      // C80 (f): credited in full, its hours are free again — unless the
+      // corrected copy is taking them (`creditInFull`). Locked above.
+      const hoursFreed = opts.hours === "keep" ? 0 : await freeInvoiceHours(tx, ctx.tenantId, original.id);
       await record(tx, {
         action: "invoice.credited",
         targetType: "Invoice",
         targetId: original.id,
-        metadata: { byCreditNoteId: invoiceId, byCreditNoteNumber: issued.displayNumber },
+        metadata: { byCreditNoteId: invoiceId, byCreditNoteNumber: issued.displayNumber, ...(hoursFreed > 0 ? { hoursFreed } : {}) },
       });
       creditedInFull = true;
     }
@@ -554,7 +582,9 @@ export async function inIssueTransaction<T>(ctx: InvoicingCtx, fn: (tx: TenantDb
       withTenant(ctx.tenantId, memberPrincipal(ctx), fn, { lockTimeoutMs: ISSUE_LOCK_WAIT_MS, timeoutMs: ISSUE_TX_TIMEOUT_MS }),
     );
   } catch (e) {
-    if (isLockTimeout(e)) return fail("INVOICE_ISSUE_BUSY");
+    // A deadlock with a writer outside every queue (the fix-pass re-check's
+    // medium) is the same "try again" as a lock held past the bound.
+    if (isLockTimeout(e) || isDeadlock(e)) return fail("INVOICE_ISSUE_BUSY");
     throw e;
   }
 }

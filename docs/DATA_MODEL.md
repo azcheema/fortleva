@@ -1812,6 +1812,74 @@ model InvoiceLine {
 //  - Overdue is DERIVED (an unpaid INVOICE past its due date in the
 //    workspace's zone, or the portal's), never a status.
 
+// AS BUILT — Phase 4 slice 110 (2026-10-10; founder decisions C75 (a), (b),
+// C80 (a)–(g); migration 20261010180000_hours_onto_invoices; the design and its
+// reviews: docs/research/2026-10-10-slice-110-hours-onto-invoices-design.md —
+// its §9 overrides its body). Hours onto invoices:
+//  - BILLED HOURS ARE MARKED, NEVER LOCKED (C75 (a)). `time_entry` carries at
+//    most ONE billing mark (CHECK `time_entry_one_billing_mark`):
+//    invoice_line_id (the line it is on NOW — a draft's, or an issued
+//    invoice's until a credit frees it; FK RESTRICT, cleared before its line
+//    or draft is deleted — Prisma cannot say `SET NULL (column)` on the
+//    composite key), billed_externally_at ("Billed elsewhere") or
+//    written_off_at ("Won't invoice", C80 (g)). `locked_reason` is never set
+//    by invoicing; the hour stays editable. A mark-only update of a LOCKED
+//    entry (a lock date or approval, when one ships) must be exempted from
+//    `time_entry_lock_guard` then (the design review's low).
+//  - `invoice_line_time_entry` (class A) — which entries a line billed, as a
+//    SNAPSHOT of each when it was added (day, project, task, tracked and billed
+//    seconds, rate). PK (tenant, line, entry); UNIQUE (tenant, invoice, entry);
+//    cascades with its line and its invoice; RESTRICTs the entry. Written only
+//    with a line made in the same transaction, on a DRAFT INVOICE, by a holder
+//    of invoice:generate_from_time, of a finished billable unmarked hour of the
+//    invoice's client and currency, billed at its project's rounding (the
+//    guard recomputes it) — or, under `app.invoice_copy_of`, as an exact copy
+//    of the record of an invoice credited in full in the same transaction (the
+//    corrected copy, by a holder of invoice:credit). Never changed; deleted
+//    only with its line or invoice. An issued invoice's record is the
+//    bookkeeping record of its hours, for good — a freed or re-billed hour
+//    leaves it standing.
+//  - `time_entry_billing_guard`: a new row is never born marked, except a
+//    split's second half carrying its first half's mark (`app.time_split_of`,
+//    same member, project, billability; never onto a draft's line or a
+//    credited invoice's); the two marks set (now) or cleared by a holder of
+//    time:write_off; leaving a line: a draft's (invoice:edit or :delete), a
+//    CREDITED invoice's (invoice:credit), a partly credited one's
+//    (invoice:generate_from_time AND invoice:credit), never any other issued
+//    invoice's (INVOICE_HOURS_KEPT); joining a draft invoice's line with its
+//    record already written (invoice:generate_from_time); moving between lines
+//    only onto the corrected copy (`app.invoice_copy_of`).
+//    ("Made in this transaction" is `xmin = pg_current_xact_id()`, which a
+//    row merely UPDATED in the transaction also matches — the original made
+//    CREDITED, the copy, the first half of a split are each updated or
+//    inserted here; no app path exploits the difference (the security
+//    review's nit).)
+//  - `invoice_billed_hours_guard` (BEFORE UPDATE OF status, currency — sorts
+//    BEFORE invoice_guard, so it refuses before a number is taken): a draft
+//    holding hours keeps its currency (INVOICE_HAS_HOURS); leaving DRAFT needs
+//    every hour its record names marked on that line (INVOICE_HOURS_MISMATCH).
+//  - `project` gains invoice_rounding_step (1/6/10/15/30/60 min; NULL = off),
+//    invoice_rounding_mode (UP/NEAREST/DOWN) and invoice_rounding_minimum
+//    (1–480 min or none); CHECK `project_invoice_rounding`; INTERNAL-ONLY
+//    (`PORTAL_NEVER_SELECTED`). Set only through `setProjectRounding`
+//    (`rate:manage_bill` — owners and admins, C80 (h); audited with the rule
+//    from and to), never through `updateProject`. EACH ENTRY is rounded (C80 (c)) —
+//    `time_billed_seconds()` in SQL, `billedSeconds` in hours-lines.ts, held
+//    equal by a dbtest matrix; a line's quantity is the sum converted once to
+//    hours at three decimals.
+//  - The ready list's partial index `time_entry_ready (tenant, client,
+//    local_date)` replaces 2T's never-read `time_entry_uninvoiced`.
+//  - A full credit FREES the hours (invoice.credited's `hoursFreed`) — or,
+//    with the corrected copy, MOVES them onto it as billed; a part credit
+//    keeps them, returned by hand (invoice.hours_returned). An issued
+//    invoice's hours are locked FOR UPDATE right after the invoice when one of
+//    its credit notes is issued, before the series is taken.
+//  - What a client can read: only the PDF (the lines' text). Task titles are
+//    printed only for tasks the client may see (`namedTaskShared`, the time
+//    report's rule) and refused at issue if a line still names one made
+//    private since; CLIENT_VISIBLE task and agreement names reach the client
+//    by email even when a project's portal is off — the invoice is theirs.
+
 // ───────────────────────────────────────────────────────────────────
 // 6.8 DOCUMENTS & FILES (§5, §6) — three layers:
 //   Document   = logical, visibility-carrying, attachable entity

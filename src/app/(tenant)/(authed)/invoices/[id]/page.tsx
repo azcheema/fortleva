@@ -7,13 +7,16 @@ import { AuthzError } from "@/authz/errors";
 import { enrolUrl } from "@/authz/redirects";
 import { Callout, DataTable, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatMoney } from "@/lib/format";
+import { withTenant } from "@/db";
+import { formatDurationSeconds, formatMoney } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
 import { formatFixed, getInvoice, minorToNumber, printFxRate, rateToNumber, signed, type InvoiceDetail } from "@/modules/invoicing";
-import { CURRENCIES } from "@/preferences/service";
+import { CURRENCIES, readPreferences } from "@/preferences/service";
 
 import { CreditDialog } from "./credit-dialog";
+import { InvoiceHoursCard } from "./hours-card";
 import { CreditReason } from "./credit-reason";
 import { DownloadPdf } from "./download-pdf";
 import { DraftDetails } from "./draft-details";
@@ -95,6 +98,11 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const draft = invoice.status === "DRAFT";
   const credit = invoice.kind === "CREDIT_NOTE";
   const issued = invoice.issued;
+  // Slice 110: the Hours card's durations, in the workspace's style.
+  const durationStyle = invoice.hours
+    ? (await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) => readPreferences(tx, membership.tenantId)))
+        .durationStyle
+    : "decimal";
   // Every amount a credit note shows has a minus sign (C77 (a)).
   const sign = (minor: bigint) => signed(minor, invoice.kind);
   const money = (minor: bigint, currency = invoice.currency) => formatMoney(locale, minorToNumber(minor), currency);
@@ -211,6 +219,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                   creditsIssueDate: check.creditsIssueDate,
                   fingerprint: check.fingerprint,
                   paymentText: check.paymentText,
+                  hoursChanged: check.hoursChanged,
+                  // Named as the table numbers them (positions may have gaps).
+                  privateTaskLines: check.privateTaskLines.map((p) => invoice.lines.findIndex((l) => l.position === p) + 1).join(", "),
                 }}
                 payLink={invoice.payLinkUrl}
                 hasFactor={actor.mfa?.enrolled === true}
@@ -464,6 +475,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           title={t("lines.title")}
           description={credit && draft ? t("creditLines", { currency: invoice.currency }) : t("lines.description", { currency: invoice.currency })}
           contentClassName="flex flex-col gap-3"
+          actions={
+            // Slice 110 (C80 (a)): the client's waiting hours, onto this draft.
+            invoice.can.addHours ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/invoices/ready/${invoice.client.id}?draft=${invoice.id}`} data-testid="draft-add-hours">
+                  {t("addHours")}
+                </Link>
+              </Button>
+            ) : null
+          }
         >
           <InvoiceLines
             invoiceId={invoice.id}
@@ -477,9 +498,28 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               unitPrice: formatFixed(l.unitPrice, 2),
               vatRate: formatFixed(l.vatRate, 2),
               amount: formatFixed(lineSign(l.amount), 2),
+              hours: invoice.hours?.perLine[l.id] ?? 0,
             }))}
           />
         </SectionCard>
+
+        {invoice.hours ? (
+          <InvoiceHoursCard
+            invoiceId={invoice.id}
+            draft={draft}
+            canReturn={invoice.can.returnHours}
+            more={invoice.hours.more}
+            rows={invoice.hours.rows.map((r) => ({
+              entryId: r.entryId,
+              dateLabel: format.dateTime(new Date(`${r.date}T00:00:00Z`), { dateStyle: "medium", timeZone: "UTC" }),
+              member: r.member,
+              task: r.task,
+              projectKey: r.projectKey,
+              billed: formatDurationSeconds(locale, r.billedSeconds, durationStyle),
+              state: r.state.kind === "other" ? { kind: "other", draft: r.state.draft, number: r.state.number, invoiceId: r.state.invoiceId } : { kind: r.state.kind },
+            }))}
+          />
+        ) : null}
 
         <SectionCard title={t("totals.title")}>
           <dl className="ml-auto grid w-full max-w-sm grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-sm" data-testid="invoice-totals">

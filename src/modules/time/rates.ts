@@ -497,10 +497,15 @@ export async function repriceRateCard(
         if (!card) fail("INVALID_INPUT", "unknown rate card");
         await assertCardScope(tx, ctx, { memberId: card!.memberId, projectId: card!.projectId, serviceId: card!.serviceId });
         const entries = await tx.timeEntry.findMany({
+          // Never an hour billed or marked (slice 110): on an invoice its rate
+          // is the line's; billed elsewhere or written off, at the rate it
+          // was. "ALL_UNBILLED" means it.
           where: {
             tenantId: ctx.tenantId,
             deletedAt: null,
             invoiceLineId: null,
+            billedExternallyAt: null,
+            writtenOffAt: null,
             OR: [{ billRateCardId: card!.id }, { costRateCardId: card!.id }],
             ...(fromDate ? { localDate: { gte: dateColumn(fromDate) } } : {}),
           },
@@ -542,11 +547,13 @@ export async function repriceRateCard(
           g.ids.push(e.id);
           groups.set(key, g);
           touches.push({ projectId: e.projectId, localDate: e.localDate });
-          repriced += 1;
         }
         for (const { snap, ids } of groups.values()) {
-          await tx.timeEntry.updateMany({
-            where: { id: { in: ids } },
+          // The marks again HERE, re-checked under each row's lock (the
+          // design review's low): the read above holds no lock, and an hour
+          // put on an invoice meanwhile keeps the rate it was billed at.
+          const updated = await tx.timeEntry.updateMany({
+            where: { id: { in: ids }, invoiceLineId: null, billedExternallyAt: null, writtenOffAt: null },
             data: {
               billRate: snap.billRate,
               currency: snap.billRate !== null ? snap.currency : null,
@@ -555,6 +562,7 @@ export async function repriceRateCard(
               costRateCardId: snap.costRateCardId,
             },
           });
+          repriced += updated.count;
         }
         await recomputeTouched(tx, ctx.tenantId, touches);
         await record(tx, {

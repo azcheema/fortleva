@@ -133,6 +133,10 @@ export async function setupTenant(label: string) {
   async function deleteInvoices(): Promise<void> {
     await platform.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
+      // Slice 110: an hour's mark RESTRICTs its line — cleared first (the
+      // billing guard lets platform maintenance); the records of hours go
+      // with their invoices.
+      await tx.timeEntry.updateMany({ where: { tenantId, invoiceLineId: { not: null } }, data: { invoiceLineId: null } });
       await tx.invoice.deleteMany({ where: { tenantId } });
       await tx.invoiceSeries.deleteMany({ where: { tenantId } });
       await tx.fileObject.deleteMany({ where: { tenantId, kind: "INVOICE_PDF" } });

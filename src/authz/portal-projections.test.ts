@@ -516,6 +516,9 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "updateScheduleSince",
         "updateTemplateId",
         "updateTemplate",
+        "invoiceRoundingStep",
+        "invoiceRoundingMode",
+        "invoiceRoundingMinimum",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -695,6 +698,12 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   // choice.
   "updateTemplateId",
   "updateTemplate",
+  // Phase 4 slice 110 (C75 (b)): how a project's hours are rounded on its
+  // invoices — the agency's pricing rule, never a portal surface (the client
+  // reads the invoice, never the rule behind its quantities).
+  "invoiceRoundingStep",
+  "invoiceRoundingMode",
+  "invoiceRoundingMinimum",
 ]);
 
 /**

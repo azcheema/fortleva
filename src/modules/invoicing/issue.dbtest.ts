@@ -683,11 +683,16 @@ describe("the client's invoice language (C76 (e))", () => {
 });
 
 describe("the guard's census", () => {
-  it("invoice_guard is the only BEFORE trigger on invoice (a later one returning NULL would burn a number)", async () => {
+  // The worry this pins: a BEFORE trigger firing AFTER `invoice_guard` (same
+  // timing fires in name order) that returned NULL would skip the row's write
+  // after the guard had taken a number — a gap in the series. Slice 110's
+  // `invoice_billed_hours_guard` sorts BEFORE it ('b' < 'g'), only ever raises
+  // or returns NEW, and so can refuse an issue but never burn a number.
+  it("invoice_guard is the LAST BEFORE trigger on invoice (a later one returning NULL would burn a number)", async () => {
     const rows = await f.platform.$queryRaw<{ tgname: string }[]>`
       SELECT tgname FROM pg_trigger
        WHERE tgrelid = 'invoice'::regclass AND NOT tgisinternal AND (tgtype & 2) = 2
        ORDER BY tgname`;
-    expect(rows.map((r) => r.tgname)).toEqual(["invoice_guard"]);
+    expect(rows.map((r) => r.tgname)).toEqual(["invoice_billed_hours_guard", "invoice_guard"]);
   });
 });

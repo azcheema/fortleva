@@ -275,7 +275,15 @@ export type DomainErrorCode =
   | "INVOICE_SEND_LIMIT" // the sending budget: per member per hour, per workspace per day
   | "INVOICE_NOT_PAYABLE" // marking paid: a credit note, a draft, or paid/credited already
   | "INVOICE_PAID_ON" // the day a payment arrived: not in the future, not long before the invoice
-  | "INVOICE_NOT_PAID"; // "Mark as unpaid" on an invoice that is not marked paid
+  | "INVOICE_NOT_PAID" // "Mark as unpaid" on an invoice that is not marked paid
+  // Phase 4 slice 110 — hours onto invoices (src/modules/invoicing/hours.ts; C80).
+  | "HOURS_CHANGED" // some of the chosen hours changed, were taken or are being worked on meanwhile — look again
+  | "HOURS_NOTHING_TO_BILL" // the chosen hours bill nothing under their project's rounding
+  | "HOURS_MIXED_CURRENCY" // the chosen hours are priced in more than one currency
+  | "HOURS_TOO_MANY" // more hours chosen than one action takes
+  | "INVOICE_HOURS_KEPT" // an issued invoice keeps its hours until a credit note corrects it
+  | "INVOICE_HAS_HOURS" // a draft holding tracked hours keeps their currency
+  | "ENTRY_INVOICED"; // an hour on a draft invoice is not split until its line is removed
 
 export class DomainError extends Error {
   constructor(

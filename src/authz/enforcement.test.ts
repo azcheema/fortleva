@@ -115,10 +115,12 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
   time: [
     // The LOCK is real at the database — a locked entry refuses every
     // edit (ENTRY_LOCKED) and the time week renders a `Locked` badge —
-    // but nothing in the app ever WRITES `TimeEntry.lockedAt`. The
-    // writer is invoicing's (`invoiceLineId` is marked Phase 4), so
-    // there is no lock to manage yet. The UI is ready for a state that
-    // cannot occur.
+    // but nothing in the app ever WRITES `TimeEntry.lockedAt`. Invoicing
+    // never will: billed hours are MARKED, never locked (founder decision
+    // C75 (a); slice 110's `invoiceLineId` and the two other marks). A
+    // lock would be a month-close (lock date) or an approval, neither
+    // built — so there is no lock to manage yet. The UI is ready for a
+    // state that cannot occur.
     "time:manage_locks",
   ],
 };

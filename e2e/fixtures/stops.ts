@@ -330,6 +330,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // draft's editor — lines in a table, the totals as the lines make them.
     { name: "invoices", path: "/invoices" },
     { name: "invoice-draft", path: `/invoices/${seed.invoiceDraftId}` },
+    // Phase 4 slice 110: one client's hours to invoice — the waiting hours
+    // (`invoice-hours.spec.ts`'s, when it ran first; else the empty state),
+    // the lines' preview, the Marked card.
+    { name: "invoices-ready", path: `/invoices/ready/${seed.clientId}` },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
     { name: "time-team", path: "/time/team" },

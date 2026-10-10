@@ -4,7 +4,7 @@ import { record } from "@/audit/record";
 import { assertInScope, isAuthorized, scopeWhere } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
-import { requireAccess } from "@/entitlements/resolver";
+import { hasAccess, requireAccess } from "@/entitlements/resolver";
 import {
   addSeconds,
   dateColumn,
@@ -139,6 +139,12 @@ async function writeFinishedEntry(
     localDate?: Date;
     /** Carry a provisional flag (the unconfirmed remainder of an auto-stopped row). */
     review?: { needsReview: boolean; reviewReason: ReviewReason | null };
+    /**
+     * Carry the first half's billing mark (a split's second half — Phase 4
+     * slice 110, the design review's M6): the database accepts it only under
+     * `app.time_split_of`, which the caller sets.
+     */
+    marks?: { invoiceLineId: string | null; billedExternallyAt: Date | null; writtenOffAt: Date | null };
   },
 ): Promise<TimerEntry> {
   const localDate = input.localDate ?? localDateColumn(input.startedAt, input.timezone);
@@ -147,6 +153,7 @@ async function writeFinishedEntry(
     data: {
       id: randomUUID(),
       ...(input.review ? { needsReview: input.review.needsReview, reviewReason: input.review.reviewReason } : {}),
+      ...(input.marks ?? {}),
       tenantId: input.tenantId,
       clientId: input.target.clientId,
       projectId: input.target.projectId,
@@ -491,6 +498,10 @@ export async function splitEntry(
         rateSource: true,
         billRateCardId: true,
         costRateCardId: true,
+        invoiceLineId: true,
+        billedExternallyAt: true,
+        writtenOffAt: true,
+        invoiceLine: { select: { invoice: { select: { status: true } } } },
       } as const;
       const load = () => tx.timeEntry.findFirst({ where: { tenantId: ctx.tenantId, id: entryId, deletedAt: null }, select: rowSelect });
       const seen = (await load()) ?? fail("INVALID_INPUT", "unknown entry");
@@ -510,8 +521,43 @@ export async function splitEntry(
       // Every read above ran before the member lock; under it the row is read AGAIN, because a split mints time: a
       // concurrent split, edit or delete of the same row (two tabs) must not inflate or resurrect it.
       await lockMember(tx, ctx.tenantId, seen.memberId);
+      const seenMarks = (await load()) ?? fail("INVALID_INPUT", "unknown entry");
+      // THE MARKS ARE HELD BEFORE THE SPLIT WRITES (Phase 4 slice 110). An hour
+      // on an invoice: its invoice FOR SHARE first (invoice, then hour — the
+      // lock order), so a credit in full cannot free it between the read and
+      // the second half carrying its mark (the pre-apply review's L2). Then the
+      // hour ITSELF, FOR UPDATE — the member lock does not serialise with
+      // putting hours on a draft or marking them (those lock hours by id), and
+      // without it a mark landing between the read and the first half's write
+      // left the second half unmarked: billable twice, or half a write-off
+      // undone (the code review's medium). Re-read under both: a mark that
+      // changed meanwhile is "look again", never a half carrying the old one.
+      if (seenMarks.invoiceLineId !== null) {
+        await tx.$queryRaw`
+          SELECT 1 FROM invoice i
+            JOIN invoice_line l ON l.tenant_id = i.tenant_id AND l.invoice_id = i.id
+           WHERE l.tenant_id = ${ctx.tenantId} AND l.id = ${seenMarks.invoiceLineId}
+             FOR SHARE OF i`;
+      }
+      await tx.$queryRaw`SELECT 1 FROM time_entry WHERE tenant_id = ${ctx.tenantId} AND id = ${entryId} FOR UPDATE`;
       const existing = (await load()) ?? fail("INVALID_INPUT", "unknown entry");
+      if (
+        existing.invoiceLineId !== seenMarks.invoiceLineId ||
+        existing.billedExternallyAt?.getTime() !== seenMarks.billedExternallyAt?.getTime() ||
+        existing.writtenOffAt?.getTime() !== seenMarks.writtenOffAt?.getTime()
+      ) {
+        fail("HOURS_CHANGED");
+      }
       if (existing.lockedReason) fail("ENTRY_LOCKED");
+      // Phase 4 slice 110 (the design review's M6): an hour on a DRAFT
+      // invoice's line is not billed yet — its line is removed first (a
+      // draft's hours move only with their line). Anywhere else a split's
+      // second half CARRIES the mark: it was billed, or marked, as one hour.
+      if (existing.invoiceLine?.invoice.status === "DRAFT") fail("ENTRY_INVOICED");
+      const marks =
+        existing.invoiceLineId !== null || existing.billedExternallyAt !== null || existing.writtenOffAt !== null
+          ? { invoiceLineId: existing.invoiceLineId, billedExternallyAt: existing.billedExternallyAt, writtenOffAt: existing.writtenOffAt }
+          : undefined;
       const stoppedAt = existing.stoppedAt ?? fail("INVALID_INPUT", "a running entry cannot be split");
       const durationSeconds = existing.durationSeconds ?? fail("INVALID_INPUT", "a running entry cannot be split");
       // Any change since the pre-lock read — the interval OR the target the split was resolved for — means the
@@ -545,7 +591,11 @@ export async function splitEntry(
         data: { stoppedAt: firstStop, durationSeconds: firstSeconds, needsReview: false, reviewReason: null },
         select: entrySelect,
       });
+      // The database accepts a new row carrying a mark only as the second
+      // half of the row this transaction just shortened (`time_entry_billing_guard`).
+      if (marks) await tx.$executeRaw`SELECT set_config('app.time_split_of', ${existing.id}, true)`;
       const second = await writeFinishedEntry(tx, {
+        marks,
         tenantId: ctx.tenantId,
         memberId: existing.memberId,
         createdByMemberId: ctx.actor.memberId,
@@ -572,6 +622,7 @@ export async function splitEntry(
         // billable edit does not (slice 20).
         review: existing.needsReview ? { needsReview: true, reviewReason: existing.reviewReason } : undefined,
       });
+      if (marks) await tx.$executeRaw`SELECT set_config('app.time_split_of', '', true)`;
       await recomputeTouched(tx, ctx.tenantId, [
         { projectId: first.projectId, localDate: first.localDate },
         { projectId: second.projectId, localDate: second.localDate },
@@ -608,7 +659,42 @@ export type EntryListRow = TimerEntry & {
   billRate: string | null;
   currency: string | null;
   lockedReason: string | null;
+  /** Phase 4 slice 110: the hour's billing mark — the week grid's badge and its warning (C80 (e)). */
+  billing: EntryBilling | null;
 };
+
+/**
+ * Where an hour has been billed (slice 110). Never a lock (C75 (a)): the
+ * grid still edits it, and says the invoice will not change. The invoice's
+ * number only for a member who may see invoices.
+ */
+export type EntryBilling =
+  | { readonly kind: "invoice"; readonly draft: boolean; readonly number: string | null }
+  | { readonly kind: "billedElsewhere" }
+  | { readonly kind: "wontInvoice" };
+
+const billingSelect = {
+  billedExternallyAt: true,
+  writtenOffAt: true,
+  invoiceLine: { select: { invoice: { select: { status: true, displayNumber: true } } } },
+} as const;
+
+function billingOf(
+  r: {
+    billedExternallyAt: Date | null;
+    writtenOffAt: Date | null;
+    invoiceLine: { invoice: { status: string; displayNumber: string | null } } | null;
+  },
+  canSeeInvoices: boolean,
+): EntryBilling | null {
+  if (r.invoiceLine) {
+    const draft = r.invoiceLine.invoice.status === "DRAFT";
+    return { kind: "invoice", draft, number: canSeeInvoices && !draft ? r.invoiceLine.invoice.displayNumber : null };
+  }
+  if (r.billedExternallyAt !== null) return { kind: "billedElsewhere" };
+  if (r.writtenOffAt !== null) return { kind: "wontInvoice" };
+  return null;
+}
 
 /**
  * time:track — the member's own entries in [from, to] by local date
@@ -625,6 +711,8 @@ export async function listMyEntries(
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:track");
     const canSeeRates = await isAuthorized(tx, ctx.actor, "rate:view_bill");
+    // In turn, never a batch (AGENTS.md: a per-code check is never a leg).
+    const canSeeInvoices = await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:view");
     const rows = await tx.timeEntry.findMany({
       where: {
         tenantId: ctx.tenantId,
@@ -634,14 +722,15 @@ export async function listMyEntries(
       },
       // Two anchored halves of a split share a start instant: the id keeps their order stable across refreshes.
       orderBy: [{ startedAt: "asc" }, { id: "asc" }],
-      select: { ...entrySelect, rateSource: true, billRate: true, currency: true, lockedReason: true },
+      select: { ...entrySelect, rateSource: true, billRate: true, currency: true, lockedReason: true, ...billingSelect },
     });
-    return rows.map((r, i) => ({
+    return rows.map(({ billedExternallyAt, writtenOffAt, invoiceLine, ...r }, i) => ({
       ...r,
       rateSource: r.rateSource,
       billRate: canSeeRates ? (r.billRate?.toString() ?? null) : null,
       currency: canSeeRates ? r.currency : null,
       lockedReason: r.lockedReason,
+      billing: billingOf({ billedExternallyAt, writtenOffAt, invoiceLine }, canSeeInvoices),
       overlaps: rows.some((o, j) => j !== i && rowsOverlap(r, o)),
     }));
   });
@@ -659,6 +748,7 @@ export async function listTeamEntries(
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "time:view_team");
     const canSeeRates = await isAuthorized(tx, ctx.actor, "rate:view_bill");
+    const canSeeInvoices = await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:view");
     const scope = await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "projectId" });
     const rows = await tx.timeEntry.findMany({
       where: {
@@ -678,13 +768,15 @@ export async function listTeamEntries(
         currency: true,
         lockedReason: true,
         member: { select: { user: { select: { name: true } } } },
+        ...billingSelect,
       },
     });
-    return rows.map((r, i) => ({
+    return rows.map(({ billedExternallyAt, writtenOffAt, invoiceLine, ...r }, i) => ({
       ...r,
       memberName: r.member.user.name,
       billRate: canSeeRates ? (r.billRate?.toString() ?? null) : null,
       currency: canSeeRates ? r.currency : null,
+      billing: billingOf({ billedExternallyAt, writtenOffAt, invoiceLine }, canSeeInvoices),
       overlaps: rows.some((o, j) => j !== i && o.memberId === r.memberId && rowsOverlap(r, o)),
     }));
   });

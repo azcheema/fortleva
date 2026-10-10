@@ -296,6 +296,23 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // `credential:reveal`: a file of every secret is every reveal at once,
   // which a role holding export without reveal was never granted.
   p("credential:export", "vault", "Export logins with their secrets in plain text, as a file for a password manager — always a fresh factor, every holder is emailed, audited", C, true),
+  // ── Phase 4 slice 110 (+2; catalog 112 → 114; TEMPLATE_VERSION 14,
+  // 2026-10-10) — AUTHZ.md §3.2's two reserved bridge rows, landing with the
+  // hours they guard (founder decisions C75 (a), C80; `src/modules/invoicing/
+  // hours.ts`). C A, as the rest of the invoice lifecycle; neither ✦.
+  // Billed hours are NEVER LOCKED (C75 (a)): neither code sets `locked_reason`
+  // — an hour is MARKED, and stays editable. The database holds both
+  // (`invoice_line_time_entry_guard`, `time_entry_billing_guard`, migration
+  // 20261010180000). Holding `invoice:generate_from_time` shows the bill rates
+  // of the hours it lists, as any invoice line shows its price — an admin
+  // without `rate:view_bill` sees them there.
+  p(
+    "invoice:generate_from_time",
+    "invoicing",
+    "Put tracked hours on invoice drafts (the ready-to-invoice list, Add hours); with invoice:credit, return a partly credited invoice's hours",
+    CA,
+  ),
+  p("time:write_off", "time", "Mark hours billed elsewhere or not to be invoiced, and undo it — they leave the ready-to-invoice list", CA),
 ];
 
 export type RoleTemplate = {
@@ -378,8 +395,14 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     slice 95, the plaintext export, founder decision C63). Owner
  *     template only; additive. The same rule as v6: a release carrying
  *     this bump MUST run `prisma/seed.ts` — until it runs, nobody can
- *     export. */
-export const TEMPLATE_VERSION = 13;
+ *     export.
+ * v14 (2026-10-10): +2 codes (invoice:generate_from_time `invoicing`,
+ *     time:write_off `time` — Phase 4 slice 110, hours onto invoices,
+ *     founder decision C80). C A, neither ✦, so clones gain them too;
+ *     additive. The same rule as v6: a release carrying this bump MUST run
+ *     `prisma/seed.ts` — until it runs, the database's guards refuse every
+ *     hour put on an invoice and every mark (`invoice_member_holds`). */
+export const TEMPLATE_VERSION = 14;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

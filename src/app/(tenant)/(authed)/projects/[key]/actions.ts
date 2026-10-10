@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { assignMemberToProject, unassignMemberFromProject } from "@/clients/assignments";
 import { dateField, field, has, runForm, type FormResult } from "@/lib/server-actions";
+import type { RoundingMode, RoundingRule, RoundingStep } from "@/modules/invoicing/hours-lines";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   createMilestone,
@@ -21,6 +22,7 @@ import {
   setHoursSharingMode,
   setPortalEnabled,
   setPortalSection,
+  setProjectRounding,
   unarchiveProject,
   updateProject,
   type ProjectPatch,
@@ -100,6 +102,32 @@ export async function updateProjectAction(formData: FormData): Promise<FormResul
   if (has(formData, "defaultBillableMarker")) patch.defaultBillable = formData.get("defaultBillable") === "on";
   const r = await runForm(projectPath(key), async () => {
     await updateProject(ctx, projectId.data, patch);
+    return tCommon("saved");
+  });
+  if (r.ok) revalidateProject(key);
+  return r;
+}
+
+/**
+ * How the project's hours are rounded on invoices (Phase 4 slice 110; C75
+ * (b), C80 (h)) — its own verb, `rate:manage_bill`, never a field of the
+ * Overview's form (an admin sets rates but holds no `project:edit`). A null
+ * step is off; the service checks the step, the direction and the minimum.
+ */
+export async function setProjectRoundingAction(projectId: unknown, key: unknown, rule: unknown): Promise<FormResult> {
+  if (typeof projectId !== "string" || !uuid.safeParse(projectId).success || typeof key !== "string" || !key) return invalid();
+  let parsed: RoundingRule | null = null;
+  if (rule !== null) {
+    if (typeof rule !== "object") return invalid();
+    const r = rule as { stepMinutes?: unknown; mode?: unknown; minimumMinutes?: unknown };
+    if (typeof r.stepMinutes !== "number" || typeof r.mode !== "string") return invalid();
+    if (r.minimumMinutes !== null && typeof r.minimumMinutes !== "number") return invalid();
+    parsed = { stepMinutes: r.stepMinutes as RoundingStep, mode: r.mode as RoundingMode, minimumMinutes: r.minimumMinutes as number | null };
+  }
+  const ctx = await ctxOf();
+  const tCommon = await getTranslations("common");
+  const r = await runForm(projectPath(key), async () => {
+    await setProjectRounding(ctx, projectId, parsed);
     return tCommon("saved");
   });
   if (r.ok) revalidateProject(key);

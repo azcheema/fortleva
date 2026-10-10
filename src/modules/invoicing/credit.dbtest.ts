@@ -260,6 +260,9 @@ describe("making a credit note's draft", () => {
       markSent: false,
       markPaid: false,
       markUnpaid: false,
+      // Slice 110: a credit note credits lines, never hours.
+      addHours: false,
+      returnHours: false,
     });
     // An invoice has no reason.
     const plain = await createDraft(manager(), { clientId: se });

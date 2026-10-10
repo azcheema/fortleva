@@ -9,16 +9,18 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { withTenant } from "@/db";
 import { hasAccess } from "@/entitlements/resolver";
-import { formatMoney } from "@/lib/format";
+import { formatDurationSeconds, formatMoney } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   INVOICE_LIST_LIMIT,
   listInvoiceableClients,
   listInvoices,
+  listReadyToInvoice,
   minorToNumber,
   signed,
   type InvoiceListRow,
 } from "@/modules/invoicing";
+import { readPreferences } from "@/preferences/service";
 
 import { InvoiceFilter } from "./invoice-filter";
 import { NewInvoice, type InvoiceableClient } from "./new-invoice";
@@ -69,6 +71,16 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
     hasAccess(tx, membership.tenantId, actor, "invoice:create"),
   );
   const clients: readonly InvoiceableClient[] = canCreate ? await listInvoiceableClients(ctx) : [];
+  // Slice 110 (C80 (a)): the clients with billable hours waiting — for a
+  // member who may put hours on invoices; every value through the database's
+  // twin of the rounding (`listReadyToInvoice`).
+  const { canGenerate, prefs } = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => ({
+    canGenerate: await hasAccess(tx, membership.tenantId, actor, "invoice:generate_from_time"),
+    prefs: await readPreferences(tx, membership.tenantId),
+  }));
+  const ready = canGenerate ? await listReadyToInvoice(ctx) : null;
+  const tReady = await getTranslations("invoices.ready");
+  const hours = (seconds: number) => formatDurationSeconds(locale, seconds, prefs.durationStyle);
 
   // The filter offers the clients the member can see invoices of: those on
   // the list, those they could make one for, and the one in the URL.
@@ -93,6 +105,63 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
               <NewInvoice clients={clients} initialClientId={clientFilter} />
             ) : (
               <p className="text-sm text-muted-foreground">{t("noClients")}</p>
+            )}
+          </SectionCard>
+        ) : null}
+        {ready ? (
+          <SectionCard
+            id="ready-to-invoice"
+            title={tReady("title")}
+            description={tReady("description")}
+            contentClassName={ready.length === 0 ? undefined : "p-0"}
+          >
+            {ready.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="ready-empty">
+                {tReady("empty")}
+              </p>
+            ) : (
+              <DataTable flush scrollLabel={tReady("title")}>
+                <Table data-testid="ready-list">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{tReady("columns.client")}</TableHead>
+                      <TableHead className="text-right">{tReady("columns.hours")}</TableHead>
+                      <TableHead className="text-right">{tReady("columns.value")}</TableHead>
+                      <TableHead priority="low">{tReady("columns.oldest")}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ready.map((r) => {
+                      const seconds = r.byCurrency.reduce((s, c) => s + c.seconds, 0) + r.noRateSeconds;
+                      return (
+                        <TableRow key={r.clientId} data-testid="ready-row" data-client-id={r.clientId}>
+                          <TableCell className="max-w-56 truncate">
+                            <Link
+                              href={`/invoices/ready/${r.clientId}`}
+                              className="rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            >
+                              {r.name}
+                            </Link>
+                            {r.archived ? <span className="ml-2 text-2xs text-muted-foreground">{tReady("archived")}</span> : null}
+                          </TableCell>
+                          <TableCell className="num text-right whitespace-nowrap">{hours(seconds)}</TableCell>
+                          {/* `leading-4`: the "without a rate" line under the value
+                              keeps the row's 36px pitch (the credit note label's rule). */}
+                          <TableCell className="num text-right whitespace-nowrap leading-4" data-testid="ready-value">
+                            {r.byCurrency.map((c) => formatMoney(locale, minorToNumber(c.amount), c.currency)).join(" · ")}
+                            {r.noRateSeconds > 0 ? (
+                              <span className="block text-2xs text-muted-foreground">{tReady("noRate", { hours: hours(r.noRateSeconds) })}</span>
+                            ) : null}
+                          </TableCell>
+                          <TableCell priority="low" className="num whitespace-nowrap text-muted-foreground">
+                            {format.dateTime(new Date(`${r.oldest}T00:00:00Z`), { dateStyle: "medium", timeZone: "UTC" })}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </DataTable>
             )}
           </SectionCard>
         ) : null}

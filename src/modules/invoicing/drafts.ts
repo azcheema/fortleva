@@ -10,6 +10,7 @@ import { CURRENCIES, readPreferences } from "@/preferences/service";
 
 import { readCreditedNets, readCreditNotes, readInvoiceNets, type CreditNoteSummary } from "./credit-state";
 import { guarded } from "./db-errors";
+import { readInvoiceHours, releaseDraftHours, type InvoiceHours } from "./hours-record";
 import { readIssueCheck, readIssueFingerprint, type IssueCheckSeen } from "./issue";
 import { creditCovers, type RateNets } from "./issue-check";
 import { readBuyerSnapshot, readIssuedInvoice, SnapshotUnreadable, type IssuedInvoice } from "./issued";
@@ -181,6 +182,8 @@ export type InvoiceDetail = {
   readonly creditUnsent: boolean;
   /** Issued: by whom (null when the member is gone) and when — what the owners' Pay now notice points at. */
   readonly issuedBy: { readonly name: string | null; readonly at: Date } | null;
+  /** Slice 110: the tracked hours its lines billed, and where each is now — null when none. */
+  readonly hours: InvoiceHours | null;
   readonly can: {
     readonly edit: boolean;
     readonly delete: boolean;
@@ -197,6 +200,14 @@ export type InvoiceDetail = {
     readonly markPaid: boolean;
     /** Mark as unpaid (C79 (h)) — a PAID invoice. */
     readonly markUnpaid: boolean;
+    /** Slice 110: Add hours… — an INVOICE draft, `invoice:edit` + `invoice:generate_from_time`. */
+    readonly addHours: boolean;
+    /**
+     * Return hours to "not invoiced" by hand (C80 (f)) — an issued invoice with
+     * an issued credit note, not credited in full, still holding hours;
+     * `invoice:generate_from_time` + `invoice:credit`.
+     */
+    readonly returnHours: boolean;
   };
 };
 
@@ -340,7 +351,7 @@ export async function listInvoiceableClients(
   });
 }
 
-type LockedDraft = { clientId: string; vatProfile: VatProfile; kind: InvoiceKind; creditsInvoiceId: string | null };
+export type LockedDraft = { clientId: string; vatProfile: VatProfile; kind: InvoiceKind; creditsInvoiceId: string | null };
 
 /** Lock the invoice and re-read it; a draft or a typed refusal. Scope is checked by the caller. */
 async function lockDraft(tx: TenantDb, invoiceId: string): Promise<LockedDraft> {
@@ -382,7 +393,7 @@ async function creditRatesOf(tx: TenantDb, locked: LockedDraft): Promise<bigint[
  * takes `invoice:credit` (slice 108b; A4) — here, keyed on the kind the lock
  * read, so no verb can forget it (the design review's low).
  */
-async function openDraft(
+export async function openDraft(
   tx: TenantDb,
   ctx: InvoicingCtx,
   invoiceId: string,
@@ -582,6 +593,15 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
         ? (await tx.emailSuppression.count({ where: { email: client.billingEmail.toLowerCase() } })) > 0
         : false;
 
+    // Slice 110: the hours its lines billed (the record, and each one's mark
+    // now — never its edits, C80 (e)). In turn, never a batch.
+    const hours = await readInvoiceHours(tx, ctx.tenantId, invoice.id);
+    const mayGenerate = await hasAccess(tx, ctx.tenantId, ctx.actor, "invoice:generate_from_time");
+    const canAddHours = canEdit && !isCreditNote && mayGenerate;
+    const partlyCredited = !isCreditNote && creditSummary !== null && creditSummary.notes.some((n) => n.status !== "DRAFT");
+    const canReturnHours =
+      hours !== null && hours.here > 0 && partlyCredited && invoice.status !== "CREDITED" && mayGenerate && mayCredit;
+
     const { projects: live, status, invoiceLocale, ...billTo } = client;
     // The draft's own project stays offered after it was archived, or the
     // select would show its raw id at rest and "No project" open (the code
@@ -626,6 +646,7 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
       billingEmailBlocked,
       creditUnsent,
       issuedBy,
+      hours,
       can: {
         edit: canEdit,
         delete: canDelete,
@@ -636,6 +657,8 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
         markSent: canSend && invoice.sentAt === null,
         markPaid: mayRecordPayment && unpaid,
         markUnpaid: mayRecordPayment && !isCreditNote && invoice.status === "PAID",
+        addHours: canAddHours,
+        returnHours: canReturnHours,
       },
     };
   });
@@ -666,46 +689,60 @@ export async function createDraft(
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
       await requireAccess(tx, ctx.tenantId, ctx.actor, "invoice:create");
       await assertInScope(tx, ctx.actor, { clientId: input.clientId });
-      const client = await tx.client.findFirst({
-        where: { id: input.clientId },
-        select: { id: true, status: true, vatProfile: true, countryCode: true, vatNumber: true },
-      });
-      if (!client) return deny("NOT_FOUND");
-      if (client.status === "ARCHIVED") return fail("ARCHIVED");
-      if (input.projectId) await assertProjectOfClient(tx, client.id, input.projectId);
-      // The client's last INVOICE — never a credit note, whose terms are
-      // always none (the design review's medium: a part credit made the next
-      // invoice due on its date).
-      const last = await tx.invoice.findFirst({
-        where: { clientId: client.id, kind: "INVOICE" },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: { currency: true, paymentTermsDays: true },
-      });
-      const prefs = await readPreferences(tx, ctx.tenantId);
-      const paymentTermsDays = last?.paymentTermsDays ?? (await readDefaultPaymentTerms(tx, ctx.tenantId));
-      const ourReference = await ourReferenceOf(tx, ctx.actor.memberId);
-      const created = await tx.invoice.create({
-        data: {
-          tenantId: ctx.tenantId,
-          clientId: client.id,
-          projectId: input.projectId ?? null,
-          vatProfile: suggestVatProfile(client),
-          currency: last?.currency ?? prefs.currencyDefault,
-          paymentTermsDays,
-          ourReference,
-          createdByMemberId: ctx.actor.memberId,
-        },
-        select: { id: true },
-      });
-      await record(tx, {
-        action: "invoice.created",
-        targetType: "Invoice",
-        targetId: created.id,
-        metadata: { clientId: client.id, projectId: input.projectId ?? null },
-      });
-      return created.id;
+      return writeDraft(tx, ctx, input);
     }),
   );
+}
+
+/**
+ * The draft itself, inside the caller's transaction, after its gates
+ * (`invoice:create`, the client in scope): the client live and not archived,
+ * the project one of its live ones. `currency` — slice 110's "Create invoice"
+ * from hours priced in it — overrides the client's last; nothing else differs.
+ */
+export async function writeDraft(
+  tx: TenantDb,
+  ctx: InvoicingCtx,
+  input: { readonly clientId: string; readonly projectId?: string | null; readonly currency?: string | null },
+): Promise<string> {
+  const client = await tx.client.findFirst({
+    where: { id: input.clientId },
+    select: { id: true, status: true, vatProfile: true, countryCode: true, vatNumber: true },
+  });
+  if (!client) return deny("NOT_FOUND");
+  if (client.status === "ARCHIVED") return fail("ARCHIVED");
+  if (input.projectId) await assertProjectOfClient(tx, client.id, input.projectId);
+  // The client's last INVOICE — never a credit note, whose terms are
+  // always none (the design review's medium: a part credit made the next
+  // invoice due on its date).
+  const last = await tx.invoice.findFirst({
+    where: { clientId: client.id, kind: "INVOICE" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { currency: true, paymentTermsDays: true },
+  });
+  const prefs = await readPreferences(tx, ctx.tenantId);
+  const paymentTermsDays = last?.paymentTermsDays ?? (await readDefaultPaymentTerms(tx, ctx.tenantId));
+  const ourReference = await ourReferenceOf(tx, ctx.actor.memberId);
+  const created = await tx.invoice.create({
+    data: {
+      tenantId: ctx.tenantId,
+      clientId: client.id,
+      projectId: input.projectId ?? null,
+      vatProfile: suggestVatProfile(client),
+      currency: input.currency ?? last?.currency ?? prefs.currencyDefault,
+      paymentTermsDays,
+      ourReference,
+      createdByMemberId: ctx.actor.memberId,
+    },
+    select: { id: true },
+  });
+  await record(tx, {
+    action: "invoice.created",
+    targetType: "Invoice",
+    targetId: created.id,
+    metadata: { clientId: client.id, projectId: input.projectId ?? null },
+  });
+  return created.id;
 }
 
 /** A date input's value — UTC midnight, the form's convention — or null. Years outside 2000–2199 are typos. */
@@ -814,6 +851,12 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
         a instanceof Date || b instanceof Date ? (a as Date | null)?.getTime() === (b as Date | null)?.getTime() : a === b;
       const changed = Object.keys(data).filter((k) => !same(data[k], current[k as keyof typeof current]));
       if (changed.length === 0) return [];
+      // Slice 110 (the design review's M3): tracked hours are priced in the
+      // draft's currency — it keeps it while it holds them (the database's
+      // `invoice_billed_hours_guard` says the same).
+      if (changed.includes("currency") && (await tx.invoiceLineTimeEntry.count({ where: { invoiceId } })) > 0) {
+        return fail("INVOICE_HAS_HOURS");
+      }
       const start = (changed.includes("periodStart") ? data.periodStart : current.periodStart) as Date | null;
       const end = (changed.includes("periodEnd") ? data.periodEnd : current.periodEnd) as Date | null;
       if (start && end && start.getTime() > end.getTime()) return fail("INVALID_INPUT", "period");
@@ -1025,19 +1068,28 @@ export async function updateLine(
   );
 }
 
-/** `invoice:edit` — remove one line. */
-export async function removeLine(ctx: InvoicingCtx, invoiceId: string, lineId: string): Promise<void> {
-  await guarded(() =>
+/**
+ * `invoice:edit` — remove one line. A line made from tracked hours (slice
+ * 110) puts them back on the ready list first — their marks cleared, locked by
+ * id after the draft (the lock order); their record goes with the line.
+ * Returns how many hours went back.
+ */
+export async function removeLine(ctx: InvoicingCtx, invoiceId: string, lineId: string): Promise<number> {
+  return guarded(() =>
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
       await openDraft(tx, ctx, invoiceId, "invoice:edit");
+      const line = await tx.invoiceLine.findFirst({ where: { id: lineId, invoiceId }, select: { id: true } });
+      if (!line) return deny("NOT_FOUND");
+      const hoursReturned = await releaseDraftHours(tx, ctx.tenantId, { lineId });
       const gone = await tx.invoiceLine.deleteMany({ where: { id: lineId, invoiceId } });
       if (gone.count === 0) return deny("NOT_FOUND");
       await record(tx, {
         action: "invoice.draft_edited",
         targetType: "Invoice",
         targetId: invoiceId,
-        metadata: { op: "line_removed", lineId },
+        metadata: { op: "line_removed", lineId, ...(hoursReturned > 0 ? { hoursReturned } : {}) },
       });
+      return hoursReturned;
     }),
   );
 }
@@ -1073,17 +1125,21 @@ export async function moveLine(ctx: InvoicingCtx, invoiceId: string, lineId: str
   );
 }
 
-/** `invoice:delete` — delete a draft and its lines. An issued invoice is never deleted. */
+/**
+ * `invoice:delete` — delete a draft and its lines. An issued invoice is never
+ * deleted. Its tracked hours (slice 110) go back on the ready list first.
+ */
 export async function deleteDraft(ctx: InvoicingCtx, invoiceId: string): Promise<void> {
   await guarded(() =>
     withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
       const { clientId } = await openDraft(tx, ctx, invoiceId, "invoice:delete");
+      const hoursReturned = await releaseDraftHours(tx, ctx.tenantId, { invoiceId });
       await tx.invoice.delete({ where: { id: invoiceId }, select: { id: true } });
       await record(tx, {
         action: "invoice.draft_deleted",
         targetType: "Invoice",
         targetId: invoiceId,
-        metadata: { clientId },
+        metadata: { clientId, ...(hoursReturned > 0 ? { hoursReturned } : {}) },
       });
     }),
   );

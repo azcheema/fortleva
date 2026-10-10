@@ -3,7 +3,8 @@
 import { LockIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
-import { Fragment } from "react";
+import { Fragment, useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import { AutoForm } from "@/components/auto-form";
 import { InlineConfirm } from "@/components/inline-confirm";
@@ -21,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { isoDate } from "@/lib/server-actions";
+import { ROUNDING_MODES, ROUNDING_STEPS, type RoundingMode, type RoundingRule, type RoundingStep } from "@/modules/invoicing/hours-lines";
 import { UPDATE_WEEKDAYS } from "@/modules/work/update-schedule";
 import type { ProjectDetail } from "@/projects/service";
 
@@ -28,6 +30,7 @@ import {
   changeProjectKeyAction,
   changeProjectStatusAction,
   setProjectArchivedAction,
+  setProjectRoundingAction,
   updateProjectAction,
 } from "./actions";
 import { useRun } from "@/components/use-run";
@@ -36,6 +39,8 @@ const STATUSES = ["PLANNED", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as co
 const CADENCES = ["NONE", "WEEKLY", "BIWEEKLY", "MONTHLY"] as const;
 /** The `projects.overview.weekdays.*` key of each ISO weekday an update may fall on (slice 102). */
 const WEEKDAY_KEYS = { 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri" } as const;
+/** The minimums a project picks from (minutes; the database takes 1–480). */
+const ROUNDING_MINIMUM_CHOICES: readonly number[] = [5, 10, 15, 30, 60, 120];
 
 /** A field label that carries the INTERNAL lock glyph (UI.md §10.4). */
 function PrivateLabel({ children }: { children: React.ReactNode }) {
@@ -336,49 +341,153 @@ export function ProjectDetailsForm({
   const rest = props.filter((p) => !p.filled);
 
   return (
-    <AutoForm action={updateProjectAction} className="flex flex-col gap-3">
-      <input type="hidden" name="projectId" value={project.id} />
-      <input type="hidden" name="projectKey" value={project.key} />
-      <dl className="flex flex-col">
-        {shown.map((p) => (
-          <Fragment key={p.key}>{p.node}</Fragment>
-        ))}
-      </dl>
-
-      {/* The scope summary is a writing surface, not a labelled property
-          (WORKLIST §3.8), so it keeps its control. */}
-      <Field label={t("scopeSummary")} htmlFor="p-scope">
-        <Textarea
-          id="p-scope"
-          name="scopeSummary"
-          rows={3}
-          defaultValue={project.scopeSummary ?? ""}
-          readOnly={ro}
-        />
-      </Field>
-
-      <div className="flex items-center gap-2">
-        <input type="hidden" name="defaultBillableMarker" value="1" />
-        {/* Native, not Radix: <AutoForm> saves on a real change event. */}
-        <NativeCheckbox
-          id="p-billable"
-          name="defaultBillable"
-          defaultChecked={project.defaultBillable}
-          disabled={ro}
-        />
-        <Label htmlFor="p-billable" className="font-normal">
-          {t("defaultBillable")}
-        </Label>
-      </div>
-
-      {rest.length > 0 ? (
-        <BlankFields label={tCommon("addDetails")}>
-          {rest.map((p) => (
+    <>
+      <AutoForm action={updateProjectAction} className="flex flex-col gap-3">
+        <input type="hidden" name="projectId" value={project.id} />
+        <input type="hidden" name="projectKey" value={project.key} />
+        <dl className="flex flex-col">
+          {shown.map((p) => (
             <Fragment key={p.key}>{p.node}</Fragment>
           ))}
-        </BlankFields>
+        </dl>
+
+        {/* The scope summary is a writing surface, not a labelled property
+            (WORKLIST §3.8), so it keeps its control. */}
+        <Field label={t("scopeSummary")} htmlFor="p-scope">
+          <Textarea
+            id="p-scope"
+            name="scopeSummary"
+            rows={3}
+            defaultValue={project.scopeSummary ?? ""}
+            readOnly={ro}
+          />
+        </Field>
+
+        <div className="flex items-center gap-2">
+          <input type="hidden" name="defaultBillableMarker" value="1" />
+          {/* Native, not Radix: <AutoForm> saves on a real change event. */}
+          <NativeCheckbox
+            id="p-billable"
+            name="defaultBillable"
+            defaultChecked={project.defaultBillable}
+            disabled={ro}
+          />
+          <Label htmlFor="p-billable" className="font-normal">
+            {t("defaultBillable")}
+          </Label>
+        </div>
+
+        {rest.length > 0 ? (
+          <BlankFields label={tCommon("addDetails")}>
+            {rest.map((p) => (
+              <Fragment key={p.key}>{p.node}</Fragment>
+            ))}
+          </BlankFields>
+        ) : null}
+      </AutoForm>
+      <ProjectRounding project={project} />
+    </>
+  );
+}
+
+/**
+ * HOW THE PROJECT'S HOURS ARE ROUNDED ON INVOICES (Phase 4 slice 110; C75
+ * (b), C80 (c), (h)) — OUTSIDE the Overview's <AutoForm>, on purpose: it is
+ * its own verb (`rate:manage_bill`, owners and admins — an admin holds no
+ * `project:edit`), and a native select inside the form would also submit the
+ * form, which that admin may not save. Each pick commits through
+ * `setProjectRoundingAction` with the whole rule; everyone else reads it.
+ */
+function ProjectRounding({ project }: { project: ProjectDetail }) {
+  const t = useTranslations("projects.overview");
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  // A refused save puts the controls back to what is saved — never a pick left
+  // on screen that the server did not take (AGENTS.md: a failure must never
+  // look like a save; the draft's `resetKey` pattern, `draft-details.tsx`).
+  const [resetKey, setResetKey] = useState(0);
+  // Read-only while a save is in flight: each pick composes the whole rule from
+  // the saved one, and a second pick before the refresh would send a stale rule.
+  const ro = !project.caps.manageRounding || project.status === "ARCHIVED" || pending;
+  const current = project.invoiceRounding;
+  const commit = (next: RoundingRule | null) =>
+    start(async () => {
+      const r = await setProjectRoundingAction(project.id, project.key, next);
+      if (r.ok) toast.success(r.message);
+      else {
+        toast.error(r.message);
+        setResetKey((k) => k + 1);
+      }
+      router.refresh();
+    });
+  return (
+    <dl className="flex flex-col" data-testid="project-rounding">
+      <Prop label={t("rounding.label")}>
+        <InlineEdit
+          kind="select"
+          name="invoiceRoundingStep"
+          value={current ? String(current.stepMinutes) : ""}
+          label={t("rounding.label")}
+          placeholder={t("rounding.off")}
+          options={[
+            { value: "", label: t("rounding.off") },
+            ...ROUNDING_STEPS.map((s) => ({ value: String(s), label: t("rounding.step", { minutes: s }) })),
+          ]}
+          readOnly={ro}
+          hiddenInput={false}
+          resetKey={resetKey}
+          onCommit={(v) =>
+            commit(
+              v === ""
+                ? null
+                : { stepMinutes: Number(v) as RoundingStep, mode: current?.mode ?? "UP", minimumMinutes: current?.minimumMinutes ?? null },
+            )
+          }
+          className="-ml-2.5"
+        />
+      </Prop>
+      {current ? (
+        <>
+          <Prop label={t("rounding.modeLabel")}>
+            <InlineEdit
+              kind="select"
+              name="invoiceRoundingMode"
+              value={current.mode}
+              label={t("rounding.modeLabel")}
+              placeholder={t("rounding.modes.UP")}
+              options={ROUNDING_MODES.map((m) => ({ value: m, label: t(`rounding.modes.${m}`) }))}
+              readOnly={ro}
+              hiddenInput={false}
+              resetKey={resetKey}
+              onCommit={(v) => commit({ ...current, mode: v as RoundingMode })}
+              className="-ml-2.5"
+            />
+          </Prop>
+          <Prop label={t("rounding.minimumLabel")}>
+            <InlineEdit
+              kind="select"
+              name="invoiceRoundingMinimum"
+              value={current.minimumMinutes === null ? "" : String(current.minimumMinutes)}
+              label={t("rounding.minimumLabel")}
+              placeholder={t("rounding.minimumNone")}
+              options={[
+                { value: "", label: t("rounding.minimumNone") },
+                ...ROUNDING_MINIMUM_CHOICES.map((m) => ({ value: String(m), label: t("rounding.minimum", { minutes: m }) })),
+                // The current value is always offered (inline-edit's rule), even off the list.
+                ...(current.minimumMinutes !== null && !ROUNDING_MINIMUM_CHOICES.includes(current.minimumMinutes)
+                  ? [{ value: String(current.minimumMinutes), label: t("rounding.minimum", { minutes: current.minimumMinutes }) }]
+                  : []),
+              ]}
+              readOnly={ro}
+              hiddenInput={false}
+              resetKey={resetKey}
+              onCommit={(v) => commit({ ...current, minimumMinutes: v === "" ? null : Number(v) })}
+              className="-ml-2.5"
+            />
+          </Prop>
+        </>
       ) : null}
-    </AutoForm>
+    </dl>
   );
 }
 

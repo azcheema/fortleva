@@ -142,6 +142,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
     overlaps: e.overlaps,
     needsReview: e.needsReview,
     locked: e.lockedReason !== null,
+    billing: e.billing,
     entryMode: e.entryMode,
   }));
   // Day headings, formatted once here (server ICU only — see TimeWeek's note).

@@ -7,6 +7,7 @@ import { fail } from "@/lib/domain-error";
 
 import { readCreditedNets } from "./credit-state";
 import { CREDIT_REASON_MAX, ourReferenceOf, type InvoicingCtx } from "./drafts";
+import { moveHoursToCopy } from "./hours-record";
 import { inIssueTransaction, issueLocked } from "./issue";
 import { readFixed } from "./money";
 import { textOrNull } from "./seller-fields";
@@ -262,8 +263,23 @@ export async function creditInFull(
     // nothing slow may run while it is held (the design review's low).
     const copyId = input.correctedCopy ? await writeCorrectedCopy(tx, ctx, original) : null;
     const creditNoteId = await writeCreditDraft(tx, ctx, original, reason);
-    const issued = await issueLocked(tx, ctx, creditNoteId, { now, rate: null });
+    // Slice 110 (C80 (f)): credited in full, its tracked hours are freed — or,
+    // with a corrected copy, KEPT through the issue and then moved onto the
+    // copy's lines (the design review's H1: the copy bills exactly what the
+    // original did, edited hours included; never freed while a copy bills them).
+    const issued = await issueLocked(tx, ctx, creditNoteId, { now, rate: null, hours: copyId ? "keep" : "free" });
     if (!issued.creditedInFull) throw new Error("creditInFull: the credit note did not cover its invoice");
+    if (copyId) {
+      const moved = await moveHoursToCopy(tx, ctx.tenantId, original.id, copyId);
+      if (moved > 0) {
+        await record(tx, {
+          action: "invoice.hours_added",
+          targetType: "Invoice",
+          targetId: copyId,
+          metadata: { op: "corrected_copy", fromInvoiceId: original.id, hours: moved },
+        });
+      }
+    }
     return { creditNoteId, number: issued.number, displayNumber: issued.displayNumber, copyId };
   });
 }

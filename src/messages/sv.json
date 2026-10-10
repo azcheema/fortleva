@@ -1741,7 +1741,14 @@
     "INVOICE_SEND_LIMIT": "För många fakturamejl har skickats just nu. Försök igen senare.",
     "INVOICE_NOT_PAYABLE": "Fakturan kan inte markeras som betald.",
     "INVOICE_NOT_PAID": "Fakturan är inte markerad som betald.",
-    "INVOICE_PAID_ON": "Dagen då betalningen kom in kan inte ligga i framtiden, eller mer än ett år före fakturadatumet."
+    "INVOICE_PAID_ON": "Dagen då betalningen kom in kan inte ligga i framtiden, eller mer än ett år före fakturadatumet.",
+    "HOURS_CHANGED": "Några av timmarna har ändrats, eller så arbetar någon annan med dem. Ladda om och titta igen.",
+    "HOURS_NOTHING_TO_BILL": "Timmarna blir ingenting med projektets avrundning, så det finns inget att fakturera.",
+    "HOURS_MIXED_CURRENCY": "Timmarna är prissatta i mer än en valuta. Välj en valutas timmar för varje faktura.",
+    "HOURS_TOO_MANY": "Välj högst 1 000 poster åt gången.",
+    "INVOICE_HOURS_KEPT": "Fakturan behåller sina timmar tills en kreditfaktura rättar den.",
+    "INVOICE_HAS_HOURS": "Utkastet har registrerade timmar prissatta i dess valuta, så valutan kan inte ändras. Ta bort de raderna först.",
+    "ENTRY_INVOICED": "Tiden ligger på ett fakturautkast och kan inte delas. Ta bort raden från utkastet först."
   },
   "assignments": {
     "title": "Team",
@@ -2147,7 +2154,21 @@
       "openProduction": "Öppna sajten",
       "setDate": "Ange datum",
       "archiveHint": "Arkivering döljer projektet i listorna och gör det skrivskyddat. Ingenting raderas, och du kan återställa det när som helst.",
-      "unarchiveHint": "Projektet är arkiverat och skrivskyddat. Återställer du det dyker det upp i listorna igen."
+      "unarchiveHint": "Projektet är arkiverat och skrivskyddat. Återställer du det dyker det upp i listorna igen.",
+      "rounding": {
+        "label": "Avrundning på fakturor",
+        "off": "Av (fakturera exakt tid)",
+        "step": "{minutes} min",
+        "modeLabel": "Avrundningsriktning",
+        "modes": {
+          "UP": "Uppåt",
+          "NEAREST": "Till närmaste",
+          "DOWN": "Nedåt"
+        },
+        "minimumLabel": "Minsta debitering per tidspost",
+        "minimumNone": "Ingen",
+        "minimum": "{minutes} min"
+      }
     },
     "timeline": {
       "milestones": "Milstolpar",
@@ -4001,7 +4022,12 @@
         "overlap": "Överlappar",
         "review": "Kontrollera",
         "locked": "Låst",
-        "lockedWhy": "Ligger på en faktura eller i en stängd period — kan inte ändras."
+        "lockedWhy": "Ligger i en stängd period och kan inte ändras.",
+        "invoiced": "Fakturerad {number}",
+        "invoicedNoNumber": "Fakturerad",
+        "onDraft": "På ett fakturautkast",
+        "billedElsewhere": "Fakturerad på annat sätt",
+        "wontInvoice": "Faktureras inte"
       },
       "billable": {
         "yes": "Fakturerbar",
@@ -4035,6 +4061,17 @@
         "first": "Dela {name} — första delen",
         "hint": "Första delens längd; resten (totalt {total}) blir en ny rad med samma uppgift och timpris.",
         "submit": "Dela"
+      },
+      "billing": {
+        "invoicedWarning": "Tiden finns på faktura {number}. Om du ändrar den ändras inte fakturan.",
+        "invoicedWarningNoNumber": "Tiden har fakturerats. Om du ändrar den ändras inte fakturan.",
+        "draftWarning": "Tiden finns på ett fakturautkast. Om du ändrar den ändras inte utkastets rad.",
+        "savedInvoiced": "Sparat. Faktura {number} ändras inte.",
+        "savedInvoicedNoNumber": "Sparat. Fakturan ändras inte.",
+        "savedDraft": "Sparat. Fakturautkastets rad ändras inte.",
+        "confirmDeleteInvoiced": "Ta bort posten? Den finns på faktura {number}, och fakturan ändras inte.",
+        "confirmDeleteInvoicedNoNumber": "Ta bort posten? Den har fakturerats, och fakturan ändras inte.",
+        "confirmDeleteDraft": "Ta bort posten? Den finns på ett fakturautkast, och utkastets rad ändras inte."
       }
     },
     "team": {
@@ -4875,7 +4912,8 @@
       "creditLines": "Det som kreditfakturan krediterar, i {currency} exkl. moms. Sänk eller ta bort det som inte ska krediteras. Kreditfakturan skriver ut beloppen med minustecken.",
       "payLinkPlaceholder": "Lägg till en länk från Stripe eller PayPal",
       "payLinkNone": "Ingen",
-      "payLinkHint": "En betallänk från Stripe eller PayPal för fakturans belopp. Kunden får en knapp för att betala direkt i mejlet och i kundportalen. När du utfärdar en faktura med länk behöver du ange koden från din autentiseringsapp."
+      "payLinkHint": "En betallänk från Stripe eller PayPal för fakturans belopp. Kunden får en knapp för att betala direkt i mejlet och i kundportalen. När du utfärdar en faktura med länk behöver du ange koden från din autentiseringsapp.",
+      "addHours": "Lägg till timmar…"
     },
     "issue": {
       "button": "Utfärda faktura…",
@@ -4903,7 +4941,9 @@
         "notPositive": "Summan måste vara över noll.",
         "leavesNegative": "Då skulle bara en rabatt på fakturan lämnas okrediterad, och den kan ingen kreditfaktura ta senare. Kreditera rabatten också, eller kreditera mindre.",
         "noRate": "Fakturan den krediterar angav ingen växelkurs (dess moms blev noll), så kreditfakturans moms kan inte visas i kronor. Kreditera hela fakturan i stället.",
-        "beforeInvoice": "Den kan inte dateras före fakturan den krediterar ({date}). Utfärda den från och med den dagen."
+        "beforeInvoice": "Den kan inte dateras före fakturan den krediterar ({date}). Utfärda den från och med den dagen.",
+        "privateTask": "De här raderna nämner en uppgift som kunden inte ser: {lines}. Ändra deras text.",
+        "hoursMismatch": "Några timmar som utkastet registrerar ligger inte längre på dess rader. Ta bort raderna med timmar och lägg till timmarna igen."
       },
       "toSettings": "Öppna Inställningar → Fakturering",
       "toClient": "Öppna kunden",
@@ -4929,7 +4969,8 @@
       "codeHint": "För att utfärda en faktura med betallänk behövs en kod från din autentiseringsapp.",
       "needsFactor": "För att utfärda en faktura med betallänk behöver du en autentiseringsapp.",
       "setUpFactor": "Ställ in en autentiseringsapp",
-      "paymentText": "Fakturans egen text nämner en webbadress eller betalningsuppgifter. Kontrollera att de är era – kunden kan komma att betala efter dem."
+      "paymentText": "Fakturans egen text nämner en webbadress eller betalningsuppgifter. Kontrollera att de är era – kunden kan komma att betala efter dem.",
+      "hoursChanged": "{count, plural, one {# tidspost på utkastet har ändrats sedan den lades till} other {# tidsposter på utkastet har ändrats sedan de lades till}}. Raderna ändras inte. Vill du fakturera timmarna som de är nu tar du bort en rad och lägger till dess timmar igen."
     },
     "issued": {
       "title": "Faktura {number}",
@@ -4977,7 +5018,9 @@
       "added": "Raden har lagts till.",
       "removed": "Raden har tagits bort.",
       "moved": "Raden har flyttats.",
-      "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
+      "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen.",
+      "fromHours": "Från {count, plural, one {# tidspost} other {# tidsposter}}",
+      "hoursReturned": "{count, plural, one {# tidspost är} other {# tidsposter är}} tillbaka i listan Redo att fakturera."
     },
     "credit": {
       "button": "Kreditera…",
@@ -5064,6 +5107,120 @@
       "menuLabel": "Åtgärder för betalningen",
       "overdue": "Förfallen",
       "paidOnLabel": "Betald"
+    },
+    "ready": {
+      "title": "Redo att fakturera",
+      "description": "Debiterbara timmar som inte finns på någon faktura än.",
+      "columns": {
+        "client": "Kund",
+        "hours": "Timmar",
+        "value": "Värde",
+        "oldest": "Äldst"
+      },
+      "noRate": "{hours} utan timpris",
+      "archived": "Arkiverad",
+      "empty": "Inga timmar väntar på att faktureras."
+    },
+    "hours": {
+      "lineOtherWork": "Övrigt arbete",
+      "title": "{client}: timmar att fakturera",
+      "description": "Välj timmarna och hur de blir rader, och skapa sedan fakturan.",
+      "descriptionDraft": "Välj timmarna och hur de blir rader, och lägg sedan till dem på utkastet.",
+      "back": "Redo att fakturera",
+      "backToDraft": "Tillbaka till utkastet",
+      "noPermission": "Du har inte behörighet att lägga timmar på fakturor.",
+      "archivedClient": "Kunden är arkiverad, så ingen faktura kan skapas. Du kan fortfarande markera dess timmar.",
+      "filters": {
+        "title": "Filtrera",
+        "from": "Från",
+        "to": "Till",
+        "project": "Projekt",
+        "allProjects": "Alla projekt",
+        "currency": "Valuta",
+        "apply": "Visa"
+      },
+      "listTitle": "Väntande timmar",
+      "columns": {
+        "date": "Datum",
+        "what": "Vad",
+        "person": "Person",
+        "tracked": "Registrerat",
+        "billed": "Debiteras"
+      },
+      "projectWork": "Projektarbete",
+      "needsReview": "Kontrollera",
+      "needsReviewWhy": "Stoppades automatiskt. Kontrollera tiden innan du fakturerar den.",
+      "noRate": "Inget timpris",
+      "selectProject": "Markera alla timmar i {project}",
+      "selectRow": "Markera tidsposten från {date}",
+      "selected": "{count, plural, one {# post vald} other {# poster valda}}",
+      "more": "Visar de första {max} posterna. Begränsa perioden för att se resten.",
+      "empty": "Inga timmar väntar för den här kunden.",
+      "emptyFiltered": "Inga timmar matchar filtren.",
+      "linesTitle": "Rader på fakturan",
+      "groupBy": "En rad per",
+      "groupings": {
+        "PROJECT": "Projekt",
+        "TASK": "Uppgift",
+        "AGREEMENT": "Avtal",
+        "PERSON": "Person"
+      },
+      "personWarning": "Rader per person skriver ut era medarbetares namn på fakturan.",
+      "taskHint": "Uppgifter som kunden inte ser kallas ”Övrigt arbete”.",
+      "previewEmpty": "Markera timmar för att se raderna.",
+      "noRateLine": "Inget timpris. Skriv ett pris på utkastet.",
+      "leftOut": "{count, plural, one {# post blir} other {# poster blir}} ingenting med projektets avrundning och stannar i listan.",
+      "total": "Summa exkl. moms",
+      "create": "Skapa faktura",
+      "add": "Lägg till på utkastet",
+      "billedElsewhere": "Fakturerad på annat sätt",
+      "wontInvoice": "Faktureras inte",
+      "confirmBilledElsewhere": "Markera {count, plural, one {# post} other {# poster}} som fakturerade på annat sätt? De lämnar listan men räknas fortfarande i rapporterna.",
+      "confirmWontInvoice": "Markera {count, plural, one {# post} other {# poster}} som att de inte ska faktureras? De lämnar listan men räknas fortfarande i rapporterna, som avskrivet värde.",
+      "created": "Fakturautkastet har skapats.",
+      "added": "{count, plural, one {# rad har} other {# rader har}} lagts till på utkastet.",
+      "marked": "{count, plural, one {# post har} other {# poster har}} markerats.",
+      "unmarked": "{count, plural, one {# post är} other {# poster är}} tillbaka i listan.",
+      "markedTitle": "Markerade",
+      "markedDescription": "Timmar som fakturerats på annat sätt eller inte ska faktureras. Ångra lägger tillbaka dem i listan.",
+      "markedStates": {
+        "BILLED_ELSEWHERE": "Fakturerad på annat sätt",
+        "WONT_INVOICE": "Faktureras inte"
+      },
+      "writtenOff": "Avskrivet: {amount}",
+      "undo": "Ångra",
+      "markedEmpty": "Inga markerade timmar.",
+      "markedMore": "Visar de senaste {max} markerade posterna.",
+      "draftNote": "Timmarna läggs till på det öppna fakturautkastet, i {currency}.",
+      "quantity": "{quantity} h"
+    },
+    "hoursCard": {
+      "title": "Timmar",
+      "descriptionDraft": "Tidsposterna bakom raderna som gjorts av timmar.",
+      "descriptionIssued": "Tidsposterna som fakturan fakturerade, som de fakturerades, och var var och en finns nu.",
+      "columns": {
+        "date": "Datum",
+        "person": "Person",
+        "task": "Uppgift",
+        "billed": "Debiterat",
+        "now": "Nu"
+      },
+      "states": {
+        "here": "På den här fakturan",
+        "returned": "Inte fakturerad",
+        "billedElsewhere": "Fakturerad på annat sätt",
+        "wontInvoice": "Faktureras inte",
+        "otherDraft": "På ett utkast",
+        "otherInvoice": "På faktura {number}",
+        "otherClient": "På en annan kunds faktura",
+        "splitHere": "På den här fakturan (delad från en fakturerad tidspost)"
+      },
+      "more": "och {count} till",
+      "returnHint": "Efter en delkreditering väljer du timmarna som kreditfakturan täckte och lägger tillbaka dem i listan Redo att fakturera.",
+      "return": "Tillbaka till ej fakturerat",
+      "confirmReturn": "Lägga tillbaka {count, plural, one {# post} other {# poster}} i listan Redo att fakturera? Fakturan ändras inte.",
+      "returned": "{count, plural, one {# post är} other {# poster är}} tillbaka i listan Redo att fakturera.",
+      "selectRow": "Markera tidsposten från {date}"
     }
   },
   "invoicePdf": {

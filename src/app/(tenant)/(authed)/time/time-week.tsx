@@ -16,6 +16,7 @@ import { SHOW_FROM, Table, TableBody, TableCell, TableHead, TableHeader, TableRo
 import { canSplitSeconds } from "@/lib/duration";
 import { durationInputText, formatDurationSeconds, type DurationStyle } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { EntryBilling } from "@/modules/time/entries";
 
 import { continueEntryAction, deleteEntryAction, splitEntryAction, updateEntryAction } from "./actions";
 
@@ -35,6 +36,8 @@ export type WeekEntryRow = {
   overlaps: boolean;
   needsReview: boolean;
   locked: boolean;
+  /** Slice 110: where the hour has been billed — a warning, never a lock (C75 (a), C80 (e)). */
+  billing: EntryBilling | null;
   entryMode: "TIMER" | "MANUAL" | "DURATION";
 };
 
@@ -74,13 +77,61 @@ export function TimeWeek({
   const router = useRouter();
   const [pending, start] = useTransition();
 
-  const run = (fn: () => Promise<{ ok: boolean; message: string }>) =>
+  const run = (fn: () => Promise<{ ok: boolean; message: string; caution?: boolean }>) =>
     start(async () => {
-      const r = await fn().catch(() => ({ ok: false, message: t("failed") }));
+      const r: { ok: boolean; message: string; caution?: boolean } = await fn().catch(() => ({ ok: false, message: t("failed") }));
       if (!r.ok) toast.error(r.message);
+      else if (r.caution) toast.warning(r.message);
       else toast.success(r.message);
       notifyTimerChanged();
       router.refresh();
+    });
+
+  // Slice 110 (C80 (e)): an hour already on an invoice is still edited —
+  // never locked (C75 (a)) — and the member is told the invoice does not
+  // change: in the badge's title, in the delete question, and in the toast
+  // after an edit saves. Billed elsewhere or not to be invoiced says nothing
+  // more than its badge: no invoice is involved.
+  const billingBadge = (b: EntryBilling): string =>
+    b.kind === "invoice"
+      ? b.draft
+        ? t("badges.onDraft")
+        : b.number
+          ? t("badges.invoiced", { number: b.number })
+          : t("badges.invoicedNoNumber")
+      : b.kind === "billedElsewhere"
+        ? t("badges.billedElsewhere")
+        : t("badges.wontInvoice");
+  const billingWarning = (b: EntryBilling | null): string | null =>
+    b?.kind !== "invoice"
+      ? null
+      : b.draft
+        ? t("billing.draftWarning")
+        : b.number
+          ? t("billing.invoicedWarning", { number: b.number })
+          : t("billing.invoicedWarningNoNumber");
+  const savedNote = (b: EntryBilling | null): string | null =>
+    b?.kind !== "invoice"
+      ? null
+      : b.draft
+        ? t("billing.savedDraft")
+        : b.number
+          ? t("billing.savedInvoiced", { number: b.number })
+          : t("billing.savedInvoicedNoNumber");
+  const deleteQuestion = (b: EntryBilling | null): string =>
+    b?.kind !== "invoice"
+      ? t("actions.confirmDelete")
+      : b.draft
+        ? t("billing.confirmDeleteDraft")
+        : b.number
+          ? t("billing.confirmDeleteInvoiced", { number: b.number })
+          : t("billing.confirmDeleteInvoicedNoNumber");
+  /** An edit of a billed hour: on success, say the invoice does not change — a caution, never a green tick. */
+  const edit = (e: WeekEntryRow, fn: () => Promise<{ ok: boolean; message: string }>) =>
+    run(async () => {
+      const r = await fn();
+      const note = savedNote(e.billing);
+      return r.ok && note ? { ok: true, message: note, caution: true } : r;
     });
 
   // "Split…" from a row's menu is answered by ONE in-place form under the
@@ -170,9 +221,13 @@ export function TimeWeek({
                   </TableRow>
                   {rows.map((e) => {
                     const running = e.stoppedAt === null;
+                    // An hour on a DRAFT invoice's line is not split (its line
+                    // is removed first — the service's rule, slice 110); one on
+                    // an issued invoice splits, both halves carrying the mark.
+                    const onDraft = e.billing?.kind === "invoice" && e.billing.draft;
                     const rowActions: RowAction[] = [
                       // Split: a finished, unlocked row long enough for two whole-minute halves (the service's rule, one helper).
-                      ...(e.locked || running || !canSplitSeconds(e.durationSeconds)
+                      ...(e.locked || running || onDraft || !canSplitSeconds(e.durationSeconds)
                         ? []
                         : [{ key: "split", label: t("actions.split"), onSelect: () => setSplittingId(e.id) }]),
                       ...(e.locked
@@ -182,7 +237,7 @@ export function TimeWeek({
                               key: "delete",
                               label: t("actions.delete"),
                               tone: "danger" as const,
-                              confirm: t("actions.confirmDelete"),
+                              confirm: deleteQuestion(e.billing),
                               onSelect: () => run(() => deleteEntryAction(e.id)),
                             },
                           ]),
@@ -278,6 +333,25 @@ export function TimeWeek({
                                 {t("badges.locked")}
                               </Badge>
                             ) : null}
+                            {/* WHERE IT WAS BILLED (slice 110) — the warning C80 (e)
+                                chose: never a lock, so it is not Locked's
+                                uncapped badge either. Capped at half the cell
+                                and clipped past it, like the advisories (a long
+                                Swedish "På ett fakturautkast" must not push the
+                                row out of a phone's box); never hidden, since it
+                                is the warning itself — and its title says the
+                                invoice will not change. */}
+                            {e.billing ? (
+                              <Badge
+                                variant="outline"
+                                className="min-w-0 max-w-1/2 overflow-hidden"
+                                title={billingWarning(e.billing) ?? billingBadge(e.billing)}
+                                data-testid="entry-billing"
+                                data-billing={e.billing.kind}
+                              >
+                                <span className="truncate">{billingBadge(e.billing)}</span>
+                              </Badge>
+                            ) : null}
                           </div>
                         </TableCell>
                         <TableCell priority="low" className="text-muted-foreground">{e.serviceName ?? "—"}</TableCell>
@@ -297,7 +371,7 @@ export function TimeWeek({
                             density="table"
                             fit
                             hiddenInput={false}
-                            onCommit={(next) => run(() => updateEntryAction(e.id, { billable: next === "yes" }))}
+                            onCommit={(next) => edit(e, () => updateEntryAction(e.id, { billable: next === "yes" }))}
                           />
                         </TableCell>
                         <TableCell className="text-right">
@@ -317,7 +391,7 @@ export function TimeWeek({
                               align="end"
                               hiddenInput={false}
                               inputProps={{ inputMode: "text", pattern: ".*" }}
-                              onCommit={(next) => run(() => updateEntryAction(e.id, { durationText: next }))}
+                              onCommit={(next) => edit(e, () => updateEntryAction(e.id, { durationText: next }))}
                             />
                           )}
                         </TableCell>

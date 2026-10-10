@@ -89,6 +89,7 @@ export const MODEL_CLASSES = {
     "invoiceSeries",
     "invoiceDelivery",
     "invoicePaymentNote",
+    "invoiceLineTimeEntry",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -235,6 +236,10 @@ export const RLS_CLASSES = {
     // bank fee") — on its own row because `invoice` is a client's to read once
     // sent (the pre-apply migration review's medium).
     "invoicePaymentNote",
+    // Phase 4 slice 110 — which time entries an invoice line billed, as a
+    // snapshot of each (C80): the agency's record behind its lines. The
+    // client's copy of an invoice is its PDF; no contact reads these rows.
+    "invoiceLineTimeEntry",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

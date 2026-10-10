@@ -300,6 +300,11 @@ export async function readyInvoicing(tenantId: string, clientId: string): Promis
   await runCli<{ ready: number }>(["ready-invoicing", tenantId, clientId]);
 }
 
+/** `count` billable hours of a member on a project, on one day five weeks back (slice 110). */
+export async function plantHours(tenantId: string, projectId: string, memberId: string, count: number): Promise<{ ids: string[]; day: string }> {
+  return runCli<{ ids: string[]; day: string }>(["plant-hours", tenantId, projectId, memberId, String(count)]);
+}
+
 /** The invoice-number series from `first`, made once (slice 108). Returns the next number. */
 export async function setInvoiceSeries(tenantId: string, first: number): Promise<number> {
   const { nextNumber } = await runCli<{ nextNumber: number }>(["set-invoice-series", tenantId, String(first)]);

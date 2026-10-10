@@ -552,9 +552,11 @@ async function assertNamesStillShared(
  * only while every task above it is still shared: a task shared and then
  * deleted was still shared; one whose parent went private since is not.
  * `ancestors` holds the parent's and the root's visibility, `null` where
- * there is none (the root is its own).
+ * there is none (the root is its own). Exported for invoice lines made from
+ * hours (Phase 4 slice 110, C80 (b)): an invoice names a task by the same
+ * rule a time report does, or calls it "Other work".
  */
-function namedTaskShared(t: {
+export function namedTaskShared(t: {
   visibility: string;
   deleted: boolean;
   ancestors: readonly (string | null)[];

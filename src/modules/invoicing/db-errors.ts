@@ -33,4 +33,15 @@ export const { mapDbError, guarded } = dbErrorMapper([
   // service checks under the invoice's lock first). `INVOICE_DELIVERY_GUARD`
   // stays unmapped: a send's record written by anything but `send.ts`.
   ["INVOICE_ALREADY_SENT", "INVOICE_ALREADY_SENT"],
+  // Slice 110 (migration 20261010180000): an hour taken, changed or marked
+  // between the page's read and the write — every hours verb locks and
+  // re-checks first, so these are the belt. `INVOICE_HOURS_MISMATCH` is the
+  // issue's: the record and the marks disagree (`checkIssue` names it first).
+  // (Never a token containing another: `HOURS_CHANGED` would match inside it.)
+  // `INVOICE_HOURS_GUARD` and `TIME_BILLING_GUARD` stay unmapped: a write no
+  // service makes.
+  ["HOURS_CHANGED", "HOURS_CHANGED"],
+  ["INVOICE_HOURS_KEPT", "INVOICE_HOURS_KEPT"],
+  ["INVOICE_HAS_HOURS", "INVOICE_HAS_HOURS"],
+  ["INVOICE_HOURS_MISMATCH", "INVOICE_NOT_READY"],
 ]);

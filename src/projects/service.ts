@@ -21,6 +21,13 @@ import type {
 } from "@/generated/prisma/enums";
 import { fail, isDeadlock, isLockTimeout, isUniqueViolation } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
+import {
+  isRoundingMode,
+  isRoundingStep,
+  ROUNDING_MINIMUM_MAX,
+  roundingRuleOf,
+  type RoundingRule,
+} from "@/modules/invoicing/hours-lines";
 import { guarded as guardLayoutKey } from "@/modules/work/db-errors";
 import { readUpdateSchedule } from "@/modules/work/update-reminders";
 import { isUpdateWeekday, type UpdateScheduleStatus } from "@/modules/work/update-schedule";
@@ -195,6 +202,8 @@ export type ProjectDetail = {
   portalSections: PortalSections;
   billingCurrency: string | null;
   defaultBillable: boolean;
+  /** Phase 4 slice 110 (C75 (b)): how its hours are rounded on invoices, entry by entry — null = off. INTERNAL-ONLY. */
+  invoiceRounding: RoundingRule | null;
   updateCadence: UpdateCadence;
   /** Phase 5 slice 102: the day an update is due, ISO 1 = Monday … 5 = Friday. */
   updateWeekday: number;
@@ -235,6 +244,8 @@ export type ProjectDetail = {
   caps: {
     edit: boolean;
     delete: boolean;
+    /** `rate:manage_bill` — the project's rounding on invoices (slice 110, C80 (h)). */
+    manageRounding: boolean;
     manageVersions: boolean;
     manageAssignments: boolean;
     /** project:manage_portal — the Portal tab and everything on it. */
@@ -271,6 +282,9 @@ const PROJECT_MODULE_CODES = [
   "credential:view",
   // Slice 102: whether the update schedule's state is read at all.
   "project_update:view",
+  // Slice 110 (C80 (h)): the project's rounding on invoices — a `time`-module
+  // code, so the control closes with time tracking switched off.
+  "rate:manage_bill",
 ] as const;
 
 /** project:view; assertInScope({projectId}) ⇒ NOT_FOUND outside scope. */
@@ -360,6 +374,7 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
       },
       billingCurrency: p.billingCurrency,
       defaultBillable: p.defaultBillable,
+      invoiceRounding: roundingRuleOf(p),
       updateCadence: p.updateCadence,
       updateWeekday: p.updateWeekday,
       updateSchedule,
@@ -406,6 +421,7 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
       caps: {
         edit: held.has("project:edit"),
         delete: held.has("project:delete"),
+        manageRounding: modules.has("rate:manage_bill"),
         manageVersions: held.has("project:manage_versions"),
         manageAssignments: held.has("project:manage_assignments"),
         managePortal: held.has("project:manage_portal"),
@@ -640,6 +656,64 @@ export async function updateProject(
       metadata: { fields: changed },
     });
     return { changed };
+  });
+}
+
+/** A rule as the audit row says it: "15:UP:30" (step, direction, minimum), or null for off. */
+const ruleText = (step: number | null, mode: string | null, minimum: number | null): string | null =>
+  step === null ? null : `${step}:${mode ?? ""}:${minimum ?? 0}`;
+
+/**
+ * `rate:manage_bill` — HOW THE PROJECT'S HOURS ARE ROUNDED ON INVOICES
+ * (Phase 4 slice 110; C75 (b), C80 (c)): a step of 1/6/10/15/30/60 minutes, a
+ * direction, an optional minimum (1–480) — or off. What clients pay, like an
+ * hourly rate, so it is changed only by those who set rates: owners and
+ * admins (founder decision C80 (h); the security review's medium —
+ * `project:edit` reaches employees, and an admin holds no `project:edit`, so
+ * it is its own verb, never a field of `updateProject`). The CHECK
+ * `project_invoice_rounding` holds the shape. Audited with the rule it was and
+ * the rule it became. Returns whether it changed.
+ */
+export async function setProjectRounding(ctx: ProjectCtx, projectId: string, rule: RoundingRule | null): Promise<boolean> {
+  if (
+    rule !== null &&
+    (!isRoundingStep(rule.stepMinutes) ||
+      !isRoundingMode(rule.mode) ||
+      (rule.minimumMinutes !== null &&
+        (!Number.isInteger(rule.minimumMinutes) || rule.minimumMinutes < 1 || rule.minimumMinutes > ROUNDING_MINIMUM_MAX)))
+  ) {
+    return fail("INVALID_INPUT", "rounding");
+  }
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "rate:manage_bill");
+    const p = await loadInScope(tx, ctx.actor, projectId);
+    if (p.status === "ARCHIVED") fail("ARCHIVED");
+    const next = {
+      invoiceRoundingStep: rule?.stepMinutes ?? null,
+      invoiceRoundingMode: rule?.mode ?? null,
+      invoiceRoundingMinimum: rule?.minimumMinutes ?? null,
+    };
+    if (
+      next.invoiceRoundingStep === p.invoiceRoundingStep &&
+      next.invoiceRoundingMode === p.invoiceRoundingMode &&
+      next.invoiceRoundingMinimum === p.invoiceRoundingMinimum
+    ) {
+      return false;
+    }
+    await tx.project.update({ where: { id: projectId }, data: next, select: { id: true } });
+    await record(tx, {
+      action: "project.updated",
+      targetType: "Project",
+      targetId: projectId,
+      metadata: {
+        fields: ["invoiceRounding"],
+        invoiceRounding: {
+          from: ruleText(p.invoiceRoundingStep, p.invoiceRoundingMode, p.invoiceRoundingMinimum),
+          to: ruleText(next.invoiceRoundingStep, next.invoiceRoundingMode, next.invoiceRoundingMinimum),
+        },
+      },
+    });
+    return true;
   });
 }
 

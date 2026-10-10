@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TimerIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
@@ -30,6 +30,8 @@ export type LineRow = {
   readonly vatRate: string;
   /** "1875.00". */
   readonly amount: string;
+  /** Slice 110: how many tracked time entries it was made from (0: typed by hand). */
+  readonly hours: number;
 };
 
 /** A stored decimal as a member types it: no trailing zeros past what it needs, the locale's separator. */
@@ -210,20 +212,37 @@ export function InvoiceLines({
               {lines.map((line, index) => (
                 <TableRow key={line.id} data-testid="invoice-line" data-line-id={line.id}>
                   <TableCell className="min-w-32">
-                    <div className="w-full min-w-0 contain-inline-size">
-                      <InlineEdit
-                        kind="text"
-                        name={`description-${line.id}`}
-                        value={line.description}
-                        label={t("columns.description")}
-                        placeholder={line.description}
-                        readOnly={ro}
-                        density="table"
-                        hiddenInput={false}
-                        inputProps={{ maxLength: 2000, required: true }}
-                        resetKey={resets[cellKey(line.id, "description")] ?? 0}
-                        onCommit={(next) => commit(line.id, "description", next)}
-                      />
+                    <div className="flex w-full min-w-0 items-center gap-1.5 contain-inline-size">
+                      <div className="min-w-0 flex-1">
+                        <InlineEdit
+                          kind="text"
+                          name={`description-${line.id}`}
+                          value={line.description}
+                          label={t("columns.description")}
+                          placeholder={line.description}
+                          readOnly={ro}
+                          density="table"
+                          hiddenInput={false}
+                          inputProps={{ maxLength: 2000, required: true }}
+                          resetKey={resets[cellKey(line.id, "description")] ?? 0}
+                          onCommit={(next) => commit(line.id, "description", next)}
+                        />
+                      </div>
+                      {/* Slice 110: a line made from tracked hours says how many —
+                          on its own row, not under it (the row keeps its pitch). */}
+                      {line.hours > 0 ? (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-0.5 text-2xs text-muted-foreground"
+                          title={t("fromHours", { count: line.hours })}
+                          data-testid="invoice-line-hours"
+                        >
+                          <TimerIcon className="size-3" aria-hidden />
+                          <span aria-hidden className="num">
+                            {line.hours}
+                          </span>
+                          <span className="sr-only">{t("fromHours", { count: line.hours })}</span>
+                        </span>
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell priority="medium" className="text-right">

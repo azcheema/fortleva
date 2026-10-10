@@ -52,6 +52,11 @@ export async function resolveZone(
  */
 const TOKENS: DbErrorTokens = [
   ["ENTRY_LOCKED", "ENTRY_LOCKED"],
+  // Phase 4 slice 110 (`time_entry_billing_guard`): a split of an hour on a
+  // draft invoice's line — the service refuses first; this is the belt.
+  ["ENTRY_INVOICED", "ENTRY_INVOICED"],
+  // …and a split whose invoice was credited in full between its reads.
+  ["HOURS_CHANGED", "HOURS_CHANGED"],
   ["SERVICE_CLIENT_MISMATCH", "SERVICE_CLIENT_MISMATCH"],
   ["RATE_CARD_IMMUTABLE", "RATE_CARD_IMMUTABLE"],
   ["REPORT_IMMUTABLE", "REPORT_IMMUTABLE"],

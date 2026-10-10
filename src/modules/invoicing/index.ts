@@ -88,3 +88,44 @@ export {
   type InvoicePrint,
 } from "./print";
 export { FIRST_NUMBER_MAX, setFirstInvoiceNumber, type Numbering } from "./series";
+// Phase 4 slice 110 — hours onto invoices (founder decisions C75 (a), (b), C80).
+export {
+  addHoursToDraft,
+  clearHourMarks,
+  createInvoiceFromHours,
+  forLine,
+  HOURS_PAGE_MAX,
+  isHourMark,
+  listReadyToInvoice,
+  markHours,
+  readClientHours,
+  returnHours,
+  type ClientHours,
+  type ClientHoursFilter,
+  type HourMark,
+  type HoursAdded,
+  type MarkedHour,
+  type ReadyClient,
+  type ReadyHour,
+} from "./hours";
+export {
+  billedSeconds,
+  hoursLines,
+  hoursQuantity,
+  isLineGrouping,
+  isRoundingMode,
+  isRoundingStep,
+  LINE_GROUPINGS,
+  ROUNDING_MINIMUM_MAX,
+  ROUNDING_MODES,
+  ROUNDING_STEPS,
+  roundingRuleOf,
+  type HourForLine,
+  type HoursLine,
+  type LineGrouping,
+  type LineTexts,
+  type RoundingMode,
+  type RoundingRule,
+  type RoundingStep,
+} from "./hours-lines";
+export { INVOICE_HOURS_CARD_MAX, type InvoiceHourRow, type InvoiceHours, type InvoiceHourState } from "./hours-record";

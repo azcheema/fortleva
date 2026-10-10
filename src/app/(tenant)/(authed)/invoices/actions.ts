@@ -13,14 +13,20 @@ import { DomainError } from "@/lib/domain-error";
 import { caution, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
+  addHoursToDraft,
   addLine,
+  clearHourMarks,
   createCreditDraft,
   createDraft,
+  createInvoiceFromHours,
   creditInFull,
   deleteDraft,
+  isHourMark,
   issueInvoice,
+  markHours,
   moveLine,
   removeLine,
+  returnHours,
   setDraftVatProfile,
   updateDraftDetails,
   updateLine,
@@ -193,8 +199,9 @@ export async function removeLineAction(invoiceId: unknown, lineId: unknown): Pro
   const ctx = await ctxOf();
   const t = await getTranslations("invoices.lines");
   const r = await runForm(pageOf(invoiceId), async () => {
-    await removeLine(ctx, invoiceId, lineId);
-    return t("removed");
+    // A line made from hours puts them back on the ready list (slice 110).
+    const returned = await removeLine(ctx, invoiceId, lineId);
+    return returned > 0 ? `${t("removed")} ${t("hoursReturned", { count: returned })}` : t("removed");
   });
   if (r.ok) revalidatePath(pageOf(invoiceId));
   return r;
@@ -439,6 +446,98 @@ export async function markInvoiceUnpaidAction(invoiceId: unknown): Promise<FormR
   if (r.ok) {
     revalidatePath(pageOf(invoiceId));
     revalidatePath(LIST);
+  }
+  return r;
+}
+
+// ── Slice 110: hours onto invoices (C80) ─────────────────────────────
+
+const readyPath = (clientId: string) => `/invoices/ready/${clientId}`;
+
+/** A list of hour ids, every one a uuid (the service checks the count and the rest). */
+const hourIds = (raw: unknown): string[] | null =>
+  Array.isArray(raw) && raw.length > 0 && raw.every((x) => typeof x === "string" && isUuid(x)) ? (raw as string[]) : null;
+
+/** "Create invoice" from a client's hours: one transaction; the answer carries the new draft's id and how many hours stayed behind. */
+export async function createInvoiceFromHoursAction(
+  clientId: unknown,
+  entryIds: unknown,
+  grouping: unknown,
+): Promise<ActionResult<{ readonly invoiceId: string; readonly leftOut: number }>> {
+  const ids = hourIds(entryIds);
+  if (typeof clientId !== "string" || !isUuid(clientId) || !ids || typeof grouping !== "string") {
+    return { ok: false, message: (await invalid()).message };
+  }
+  const ctx = await ctxOf();
+  const r = await runAction(readyPath(clientId), async () => {
+    const made = await createInvoiceFromHours(ctx, { clientId, entryIds: ids, grouping });
+    return { invoiceId: made.invoiceId, leftOut: made.leftOut };
+  });
+  if (r.ok) {
+    revalidatePath(LIST);
+    revalidatePath(readyPath(clientId));
+  }
+  return r;
+}
+
+/** "Add to draft": the chosen hours onto the open draft. The page goes back to the draft. */
+export async function addHoursToDraftAction(invoiceId: unknown, clientId: unknown, entryIds: unknown, grouping: unknown): Promise<FormResult> {
+  const ids = hourIds(entryIds);
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId) || typeof clientId !== "string" || !isUuid(clientId) || !ids) return invalid();
+  if (typeof grouping !== "string") return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.hours");
+  const r = await runForm(readyPath(clientId), async () => {
+    const added = await addHoursToDraft(ctx, invoiceId, { entryIds: ids, grouping });
+    const message = t("added", { count: added.lineIds.length });
+    return added.leftOut > 0 ? caution(`${message} ${t("leftOut", { count: added.leftOut })}`) : message;
+  });
+  if (r.ok) {
+    revalidatePath(pageOf(invoiceId));
+    revalidatePath(readyPath(clientId));
+    revalidatePath(LIST);
+  }
+  return r;
+}
+
+/** "Billed elsewhere" / "Won't invoice" on the chosen hours (C80 (g)). */
+export async function markHoursAction(clientId: unknown, entryIds: unknown, mark: unknown): Promise<FormResult> {
+  const ids = hourIds(entryIds);
+  if (typeof clientId !== "string" || !isUuid(clientId) || !ids || !isHourMark(mark)) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.hours");
+  const r = await runForm(readyPath(clientId), async () => t("marked", { count: await markHours(ctx, { clientId, entryIds: ids, mark }) }));
+  if (r.ok) {
+    revalidatePath(readyPath(clientId));
+    revalidatePath(LIST);
+  }
+  return r;
+}
+
+/** Undo either mark: the chosen hours back on the ready list. */
+export async function clearHourMarksAction(clientId: unknown, entryIds: unknown): Promise<FormResult> {
+  const ids = hourIds(entryIds);
+  if (typeof clientId !== "string" || !isUuid(clientId) || !ids) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.hours");
+  const r = await runForm(readyPath(clientId), async () => t("unmarked", { count: await clearHourMarks(ctx, { clientId, entryIds: ids }) }));
+  if (r.ok) {
+    revalidatePath(readyPath(clientId));
+    revalidatePath(LIST);
+  }
+  return r;
+}
+
+/** After a part credit, particular hours of the invoice back to "not invoiced" (C80 (f)). */
+export async function returnHoursAction(invoiceId: unknown, entryIds: unknown): Promise<FormResult> {
+  const ids = hourIds(entryIds);
+  if (typeof invoiceId !== "string" || !isUuid(invoiceId) || !ids) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("invoices.hoursCard");
+  const r = await runForm(pageOf(invoiceId), async () => t("returned", { count: await returnHours(ctx, invoiceId, { entryIds: ids }) }));
+  if (r.ok) {
+    revalidatePath(pageOf(invoiceId));
+    revalidatePath(LIST, "layout");
   }
   return r;
 }

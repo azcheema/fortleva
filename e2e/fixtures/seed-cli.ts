@@ -44,6 +44,7 @@
  *        tsx e2e/fixtures/seed-cli.ts reset-invoice-details <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts ready-invoicing <tenantId> <clientId>
  *        tsx e2e/fixtures/seed-cli.ts set-invoice-series <tenantId> <firstNumber>
+ *        tsx e2e/fixtures/seed-cli.ts plant-hours <tenantId> <projectId> <memberId> <count>
  *        tsx e2e/fixtures/seed-cli.ts client-summary-link <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -163,6 +164,9 @@ const DBTEST_PREFIXES = [
   // `src/modules/invoicing/drafts.dbtest.ts` and `seller.dbtest.ts`,
   // `setupTenant("invd")` and `setupTenant("invs")`.
   "invd-",
+  // Phase 4 slice 110, hours onto invoices — `src/modules/invoicing/hours.dbtest.ts`,
+  // `setupTenant("invh")`.
+  "invh-",
   // Phase 4 slice 108, issuing — `src/modules/invoicing/issue.dbtest.ts`,
   // `setupTenant("invi")`.
   "invi-",
@@ -1818,6 +1822,10 @@ async function removeTenant(
     // GUC on this (platform) role. ONE statement, so a credit note and the
     // invoice it credits go together (NO ACTION); lines cascade.
     await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
+    // Slice 110: an hour's mark RESTRICTs its line (Prisma cannot say SET NULL
+    // on the composite key) — cleared first; the lines' records of hours go
+    // with the invoices, BEFORE the entries they name are deleted below.
+    await tx.timeEntry.updateMany({ where: { tenantId, invoiceLineId: { not: null } }, data: { invoiceLineId: null } });
     await tx.invoice.deleteMany({ where: { tenantId } });
     // Slice 108: the numbering series RESTRICTs the tenant and refuses DELETE
     // outside this GUC; the invoices' PDF files are freed by the delete above
@@ -2553,6 +2561,53 @@ async function readyInvoicing(tenantId: string, clientId: string): Promise<void>
   await db.client.updateMany({ where: { tenantId, id: clientId, countryCode: null }, data: { countryCode: "SE" } });
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"ready":1}\n`);
+}
+
+/**
+ * Billable hours of the seed member on a project (Phase 4 slice 110 — the
+ * ready-to-invoice list's fixture): `count` finished one-hour-ish entries at
+ * 1 000 SEK an hour, each a note and no task, on ONE day five weeks back —
+ * never the current or the previous week, which the time specs (copy last
+ * week) read. Planted as rows (the timer's own rules are its specs'). Prints
+ * their ids and the day. Throwaway tenant only.
+ */
+async function plantHours(tenantId: string, projectId: string, memberId: string, count: number): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  // All three, or nothing: an undefined id is DROPPED from a Prisma where.
+  if (!tenantId || !projectId || !memberId || !(count > 0 && count <= 20)) throw new Error("plant-hours: a tenant, a project, a member and a count");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const project = await db.project.findFirstOrThrow({ where: { tenantId, id: projectId }, select: { clientId: true } });
+  const day = new Date(Date.now() - 35 * 86_400_000).toISOString().slice(0, 10);
+  const ids: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const startedAt = new Date(`${day}T${String(7 + i).padStart(2, "0")}:00:00Z`);
+    const seconds = 3600 + i * 1800; // 1 h, 1,5 h, 2 h …
+    const row = await db.timeEntry.create({
+      data: {
+        tenantId,
+        clientId: project.clientId,
+        projectId,
+        memberId,
+        description: `E2E hours ${i + 1}`,
+        startedAt,
+        stoppedAt: new Date(startedAt.getTime() + seconds * 1000),
+        durationSeconds: seconds,
+        timezone: "Europe/Stockholm",
+        localDate: new Date(`${day}T00:00:00Z`),
+        entryMode: "MANUAL",
+        source: "MANUAL",
+        billable: true,
+        billRate: "1000",
+        currency: "SEK",
+        rateSource: "PROJECT",
+      },
+      select: { id: true },
+    });
+    ids.push(row.id);
+  }
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ ids, day })}\n`);
 }
 
 /**
@@ -3357,6 +3412,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-invoice-details") return resetInvoiceDetails(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "set-invoice-series") return setInvoiceSeries(argument!, Number(process.argv[4]));
+  if (command === "plant-hours") return plantHours(argument!, process.argv[4]!, process.argv[5]!, Number(process.argv[6]));
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);
   if (command === "age-vault-factor") return ageVaultFactor(argument!, process.argv[4]!);

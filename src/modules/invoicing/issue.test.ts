@@ -89,7 +89,19 @@ describe("checkIssue — what the issue dialog says and the issue refuses on", (
       noPeriod: false,
       overCredit: [],
       creditsIssueDate: null,
+      hoursChanged: 0,
+      privateTaskLines: [],
     });
+  });
+
+  it("slice 110: a line naming a private task blocks it; a record the marks disagree with too; changed hours only caution", () => {
+    const hours = { changed: 2, privateTaskLines: [3], mismatch: true };
+    const check = checkIssue({ ...base, hours });
+    expect(check.blockers).toEqual(["privateTask", "hoursMismatch"]);
+    expect(check).toMatchObject({ hoursChanged: 2, privateTaskLines: [3] });
+    const calm = checkIssue({ ...base, hours: { changed: 4, privateTaskLines: [], mismatch: false } });
+    expect(calm.blockers).toEqual([]);
+    expect(calm.hoursChanged).toBe(4);
   });
 
   it("counts the due date across a month and a year", () => {
@@ -248,6 +260,9 @@ describe("checkCreditIssue — what a credit note's issue dialog says", () => {
       noPeriod: false,
       overCredit: [],
       creditsIssueDate: "2026-10-01",
+      // A credit note credits lines, never hours.
+      hoursChanged: 0,
+      privateTaskLines: [],
     });
   });
 

@@ -69,7 +69,12 @@ export type IssueBlocker =
   /** It carries VAT in another currency, but its invoice stated no rate to take. */
   | "noRate"
   /** Today is before its invoice's date (a workspace moved west): the guard refuses it. */
-  | "beforeInvoice";
+  | "beforeInvoice"
+  // Slice 110 — tracked hours on its lines:
+  /** A line's text names a task of its hours that the client may not see now — `privateTaskLines` says which (the design review's M8). */
+  | "privateTask"
+  /** An hour its record names is no longer marked on that line (the database refuses it: `invoice_billed_hours_guard`). */
+  | "hoursMismatch";
 
 /** One VAT rate a credit note asks more of than its invoice has left (signed: see `creditOverRates`). */
 export type OverCredit = {
@@ -104,6 +109,17 @@ export type IssueCheck = {
   readonly overCredit: readonly OverCredit[];
   /** A credit note: its invoice's date, `YYYY-MM-DD`. Null otherwise. */
   readonly creditsIssueDate: string | null;
+  /** Slice 110: hours on its lines changed since they were added — a caution, never a blocker. */
+  readonly hoursChanged: number;
+  /** Slice 110: the positions of lines whose text names a task the client may not see (`privateTask`). */
+  readonly privateTaskLines: readonly number[];
+};
+
+/** What issuing needs to know of a draft's tracked hours (`hours-record.ts`'s `readHoursIssueFacts`). */
+export type HoursFacts = {
+  readonly changed: number;
+  readonly privateTaskLines: readonly number[];
+  readonly mismatch: boolean;
 };
 
 /** A net per VAT rate (hundredths of a percent → hundredths). */
@@ -221,6 +237,9 @@ export function checkCreditIssue(input: {
     noPeriod: false,
     overCredit,
     creditsIssueDate: input.originalIssueDate,
+    // A credit note credits lines, never hours.
+    hoursChanged: 0,
+    privateTaskLines: [],
   };
 }
 
@@ -278,6 +297,8 @@ export function checkIssue(input: {
   /** The work period's last day, `YYYY-MM-DD` — the day of the rate (C78 (a)). */
   readonly periodEnd: string | null;
   readonly today: string;
+  /** Slice 110: its tracked hours, when it holds any. */
+  readonly hours?: HoursFacts;
 }): IssueCheck {
   const sellerMissing = missingForIssue(input.company, input.payment, input.numbering !== null, input.paymentUnreadable ?? false);
   const blockers: IssueBlocker[] = [];
@@ -285,6 +306,8 @@ export function checkIssue(input: {
   blockers.push(...clientBlockers(input.client, input.vatProfile));
   if (input.lineCount === 0) blockers.push("noLines");
   if (input.totals.total < 0n) blockers.push("negativeTotal");
+  if (input.hours && input.hours.privateTaskLines.length > 0) blockers.push("privateTask");
+  if (input.hours?.mismatch) blockers.push("hoursMismatch");
   const needsFx = needsSekVat(input.currency, input.totals.vatTotal);
   const rateDay = needsFx ? rateDayFor(input.today, input.periodEnd) : null;
   if (rateDay !== null && rateDayTooOld(rateDay, input.today)) blockers.push("fxTooOld");
@@ -301,6 +324,8 @@ export function checkIssue(input: {
     noPeriod: !input.hasPeriod,
     overCredit: [],
     creditsIssueDate: null,
+    hoursChanged: input.hours?.changed ?? 0,
+    privateTaskLines: input.hours?.privateTaskLines ?? [],
   };
 }
 

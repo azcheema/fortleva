@@ -8,9 +8,19 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 112 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 + 1 vault @ slice 95 — bumped deliberately 2026-10-06)", () => {
-    expect(PERMISSIONS).toHaveLength(112);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(112);
+  it("holds exactly 114 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 + 1 vault @ slice 95 + 1 invoicing + 1 time @ slice 110 — bumped deliberately 2026-10-10)", () => {
+    expect(PERMISSIONS).toHaveLength(114);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(114);
+  });
+
+  it("the hours-to-invoice codes are C A and never ✦ (slice 110, C80; AUTHZ.md §3.2)", () => {
+    for (const code of ["invoice:generate_from_time", "time:write_off"]) {
+      const def = PERMISSIONS.find((p) => p.code === code);
+      expect(def?.seeded, code).toEqual(["owner", "admin"]);
+      expect(def?.requiresMfa, code).toBe(false);
+    }
+    expect(PERMISSIONS.find((p) => p.code === "invoice:generate_from_time")?.module).toBe("invoicing");
+    expect(PERMISSIONS.find((p) => p.code === "time:write_off")?.module).toBe("time");
   });
 
   it("credential:export is vault-module, ✦, and the owner's alone (slice 95, C63; AUTHZ.md §3.2)", () => {

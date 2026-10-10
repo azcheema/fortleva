@@ -327,7 +327,18 @@ export async function undoStart(ctx: TimeCtx, input: { startedId: string; resume
         select: { id: true, startedAt: true, projectId: true, localDate: true },
       });
       const resume = await tx.timeEntry.findFirst({
-        where: { tenantId: ctx.tenantId, id: input.resumeId, memberId: ctx.actor.memberId, deletedAt: null, lockedReason: null },
+        // Never reopen an hour already billed or marked (slice 110; the design
+        // review's nit): a running row on an invoice would bill time not yet tracked.
+        where: {
+          tenantId: ctx.tenantId,
+          id: input.resumeId,
+          memberId: ctx.actor.memberId,
+          deletedAt: null,
+          lockedReason: null,
+          invoiceLineId: null,
+          billedExternallyAt: null,
+          writtenOffAt: null,
+        },
         select: { id: true, stoppedAt: true, projectId: true, localDate: true },
       });
       if (!started || !resume || !resume.stoppedAt) fail("INVALID_INPUT", "nothing to undo");

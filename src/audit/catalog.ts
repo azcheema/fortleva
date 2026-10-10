@@ -195,6 +195,21 @@ export const AUDIT_EVENTS = {
   // its change before anything was numbered (from, to).
   "invoice.pdf_generated": TENANT,
   "series.first_number_changed": TENANT,
+  // Phase 4 slice 110 — hours onto invoices (src/modules/invoicing/hours.ts;
+  // C80). `invoice.hours_added`: lines made from tracked hours on a draft
+  // (metadata: how — created / added / corrected_copy —, the grouping, the
+  // line ids, how many hours and how many were left out, each project's
+  // rounding rule; the hours themselves are the line's record,
+  // `invoice_line_time_entry`). `invoice.hours_returned`: hours of a partly
+  // credited invoice put back on the ready list by hand (their ids). A credit
+  // in full that frees them says so on `invoice.credited` (`hoursFreed`).
+  "invoice.hours_added": TENANT,
+  "invoice.hours_returned": TENANT,
+  // …and the two marks (C80 (g)) — "Billed elsewhere", "Won't invoice", and
+  // their undoing: the hours' ids are in the row, their only history.
+  "time_entry.marked_billed_elsewhere": TENANT,
+  "time_entry.marked_written_off": TENANT,
+  "time_entry.billing_mark_cleared": TENANT,
   // Phase 4 slice 109 — sending and payments (src/modules/invoicing/send.ts;
   // C79). `invoice.sent` (above) names the send's record and how it went,
   // never an address (they are on `invoice_delivery`); `invoice.paid` the day

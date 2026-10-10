@@ -333,6 +333,7 @@ model Tenant {
   invoiceSeries InvoiceSeries[]
   invoiceDeliveries InvoiceDelivery[]
   invoicePaymentNotes InvoicePaymentNote[]
+  invoiceLineTimeEntries InvoiceLineTimeEntry[]
 
   @@map("tenant")
 }
@@ -995,6 +996,15 @@ model Project {
   autoStartParent    Boolean          @default(false) @map("auto_start_parent")
   autoCompleteParent Boolean          @default(false) @map("auto_complete_parent")
   defaultServiceId   String?          @map("default_service_id") // 2T (D4): seeds TimeEntry.serviceId; the per-entry picker overrides
+  // Phase 4 slice 110 (founder decisions C75 (b), C80 (c)): how this project's
+  // hours are rounded on an invoice — EACH ENTRY, to a step of 1/6/10/15/30/60
+  // minutes, in a direction, with an optional minimum (minutes). NULL step =
+  // off (the default); the CHECK keeps the three together. Applied to the
+  // invoice line only — tracked seconds never change. INTERNAL-ONLY (never in
+  // a portal projection — `PORTAL_NEVER_SELECTED`).
+  invoiceRoundingStep    Int?                 @map("invoice_rounding_step") @db.SmallInt
+  invoiceRoundingMode    InvoiceRoundingMode? @map("invoice_rounding_mode")
+  invoiceRoundingMinimum Int?                 @map("invoice_rounding_minimum") @db.SmallInt
   // Phase 5 slice 105 (founder decision C73 (c)): the layout this project's
   // NEW progress updates start from; NULL = the workspace's default layout,
   // else Fortleva standard. INTERNAL-ONLY (never in a portal projection).
@@ -1473,6 +1483,7 @@ model Invoice {
   lines       InvoiceLine[]
   deliveries  InvoiceDelivery[]
   paymentNote InvoicePaymentNote?
+  hours       InvoiceLineTimeEntry[]
   series      InvoiceSeries? @relation(fields: [tenantId, seriesId], references: [tenantId, id], onDelete: Restrict)
   pdfFile     FileObject?    @relation(fields: [tenantId, pdfFileId], references: [tenantId, id], onDelete: Restrict)
 
@@ -1508,11 +1519,61 @@ model InvoiceLine {
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id])
   invoice Invoice @relation(fields: [tenantId, clientId, invoiceId], references: [tenantId, clientId, id], onDelete: Cascade)
+  // Slice 110: the hours on it now, and the record of the hours it billed.
+  timeEntries TimeEntry[]
+  hours       InvoiceLineTimeEntry[]
 
   @@unique([tenantId, id]) // composite-FK target (time_entry.invoice_line_id, step 4)
   @@unique([tenantId, invoiceId, position])
   @@index([tenantId, clientId, invoiceId])
   @@map("invoice_line")
+}
+
+enum InvoiceRoundingMode {
+  UP
+  NEAREST
+  DOWN
+
+  @@map("invoice_rounding_mode")
+}
+
+/// Which time entries an invoice line billed, and as what (Phase 4 slice 110;
+/// founder decisions C75 (a), C80). Written when hours are put on a DRAFT's
+/// line — a SNAPSHOT of the hour then: its day, project, task, tracked and
+/// billed seconds and its rate — and never changed or deleted on its own: a
+/// draft's go with their line, an issued invoice's are its record for good
+/// (`invoice_line_time_entry_guard`, migration 20261010180000). The entry's
+/// current mark is `TimeEntry.invoiceLineId`; a freed or re-billed hour
+/// leaves this row standing. `projectId` and `workItemId` are snapshot ids,
+/// no FK. Class A — the client's copy of an invoice is its PDF.
+model InvoiceLineTimeEntry {
+  tenantId      String   @map("tenant_id")
+  clientId      String   @map("client_id")
+  invoiceId     String   @map("invoice_id")
+  invoiceLineId String   @map("invoice_line_id")
+  timeEntryId   String   @map("time_entry_id")
+  projectId     String   @map("project_id") // snapshot, no FK
+  workItemId    String?  @map("work_item_id") // snapshot, no FK
+  localDate     DateTime @map("local_date") @db.Date
+  rawSeconds    Int      @map("raw_seconds")
+  billedSeconds Int      @map("billed_seconds")
+  billRate      Decimal? @map("bill_rate") @db.Decimal(12, 2) // NULL: an hour with no rate
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  // CASCADE on both keys: the link guard accepts its delete when its line OR
+  // its invoice is gone (the design review's M5), so the order the two
+  // cascades fire in never matters — and a NO ACTION check here would have
+  // depended on that order instead (the pre-apply review's M1: RI triggers
+  // fire by name, and a name's OID can cross a digit).
+  invoice   Invoice     @relation(fields: [tenantId, clientId, invoiceId], references: [tenantId, clientId, id], onDelete: Cascade)
+  line      InvoiceLine @relation(fields: [tenantId, invoiceLineId], references: [tenantId, id], onDelete: Cascade)
+  timeEntry TimeEntry   @relation(fields: [tenantId, timeEntryId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([tenantId, invoiceLineId, timeEntryId])
+  @@unique([tenantId, invoiceId, timeEntryId]) // an hour is on an invoice once
+  @@index([tenantId, timeEntryId]) // an hour's billing history
+  @@map("invoice_line_time_entry")
 }
 
 enum InvoiceDeliveryMethod {
@@ -2676,7 +2737,16 @@ model TimeEntry {
   costRateCardId     String?           @map("cost_rate_card_id") // id ONLY — never the amount
   lockedReason       TimeLockReason?   @map("locked_reason")
   lockedAt           DateTime?         @map("locked_at") @db.Timestamptz(6)
-  invoiceLineId      String?           @map("invoice_line_id") // Phase 4
+  // Phase 4 slice 110 (founder decisions C75 (a), C80): the hour's BILLING
+  // MARK — at most one of the three (CHECK `time_entry_one_billing_mark`).
+  // `invoiceLineId`: the invoice line it is on NOW (a draft's, or an issued
+  // invoice's until a credit frees it); `billedExternallyAt` "Billed
+  // elsewhere"; `writtenOffAt` "Won't invoice". A mark never locks the hour
+  // (C75 (a)): it takes it off the ready-to-invoice list. Who may set or
+  // clear each is the database's (`time_entry_billing_guard`, migration
+  // 20261010180000); which entries an issued invoice billed is
+  // `InvoiceLineTimeEntry`, never rewritten.
+  invoiceLineId      String?           @map("invoice_line_id")
   retainerPeriodId   String?           @map("retainer_period_id") // Phase 4
   billedExternallyAt DateTime?         @map("billed_externally_at") @db.Timestamptz(6)
   writtenOffAt       DateTime?         @map("written_off_at") @db.Timestamptz(6)
@@ -2699,6 +2769,12 @@ model TimeEntry {
   member       Member    @relation(fields: [tenantId, memberId], references: [tenantId, id])
   billRateCard RateCard? @relation("TimeEntryBillRateCard", fields: [tenantId, billRateCardId], references: [tenantId, id], onDelete: Restrict)
   costRateCard RateCard? @relation("TimeEntryCostRateCard", fields: [tenantId, costRateCardId], references: [tenantId, id], onDelete: Restrict)
+  // RESTRICT, never SET NULL: Prisma cannot express `SET NULL (column)` on a
+  // composite key whose tenant column is required (the `default_service_id`
+  // precedent) — removing a line or deleting a draft clears its hours' marks
+  // first, in the same transaction (`src/modules/invoicing/hours.ts`).
+  invoiceLine  InvoiceLine? @relation(fields: [tenantId, invoiceLineId], references: [tenantId, id], onDelete: Restrict)
+  billedOn     InvoiceLineTimeEntry[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, memberId, clientEventId]) // offline idempotency (NULLs distinct)

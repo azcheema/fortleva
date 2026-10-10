@@ -1741,7 +1741,14 @@
     "INVOICE_SEND_LIMIT": "Too many invoice emails have been sent for now. Try again later.",
     "INVOICE_NOT_PAYABLE": "This invoice can't be marked as paid.",
     "INVOICE_NOT_PAID": "This invoice isn't marked as paid.",
-    "INVOICE_PAID_ON": "The day the payment arrived can't be in the future, or more than a year before the invoice date."
+    "INVOICE_PAID_ON": "The day the payment arrived can't be in the future, or more than a year before the invoice date.",
+    "HOURS_CHANGED": "Some of these hours changed, or someone else is working on them. Reload and look again.",
+    "HOURS_NOTHING_TO_BILL": "These hours come to nothing under their project's rounding, so there's nothing to invoice.",
+    "HOURS_MIXED_CURRENCY": "These hours are priced in more than one currency. Choose one currency's hours for each invoice.",
+    "HOURS_TOO_MANY": "Choose at most 1,000 time entries at a time.",
+    "INVOICE_HOURS_KEPT": "This invoice keeps its hours until a credit note corrects it.",
+    "INVOICE_HAS_HOURS": "This draft has tracked hours priced in its currency, so the currency can't change. Remove those lines first.",
+    "ENTRY_INVOICED": "This time is on a draft invoice, so it can't be split. Remove its line from the draft first."
   },
   "assignments": {
     "title": "Team",
@@ -2147,7 +2154,21 @@
       "openProduction": "Open site",
       "setDate": "Set date",
       "archiveHint": "Archiving hides the project from lists and makes it read-only. Nothing is deleted, and you can restore it at any time.",
-      "unarchiveHint": "This project is archived and read-only. Restoring puts it back in the lists it came from."
+      "unarchiveHint": "This project is archived and read-only. Restoring puts it back in the lists it came from.",
+      "rounding": {
+        "label": "Rounding on invoices",
+        "off": "Off (bill the exact time)",
+        "step": "{minutes} min",
+        "modeLabel": "Rounding direction",
+        "modes": {
+          "UP": "Up",
+          "NEAREST": "To the nearest",
+          "DOWN": "Down"
+        },
+        "minimumLabel": "Minimum per time entry",
+        "minimumNone": "None",
+        "minimum": "{minutes} min"
+      }
     },
     "timeline": {
       "milestones": "Milestones",
@@ -4001,7 +4022,12 @@
         "overlap": "Overlaps",
         "review": "Check",
         "locked": "Locked",
-        "lockedWhy": "On an invoice or in a closed period — cannot be changed."
+        "lockedWhy": "In a closed period, so it can't be changed.",
+        "invoiced": "Invoiced {number}",
+        "invoicedNoNumber": "Invoiced",
+        "onDraft": "On a draft invoice",
+        "billedElsewhere": "Billed elsewhere",
+        "wontInvoice": "Won't invoice"
       },
       "billable": {
         "yes": "Billable",
@@ -4035,6 +4061,17 @@
         "first": "Split {name} — first part",
         "hint": "The first part's length; the rest ({total} in all) becomes a new row with the same task and rate.",
         "submit": "Split"
+      },
+      "billing": {
+        "invoicedWarning": "This time is on invoice {number}. Changing it won't change the invoice.",
+        "invoicedWarningNoNumber": "This time has been invoiced. Changing it won't change the invoice.",
+        "draftWarning": "This time is on a draft invoice. Changing it won't change the draft's line.",
+        "savedInvoiced": "Saved. Invoice {number} doesn't change.",
+        "savedInvoicedNoNumber": "Saved. The invoice doesn't change.",
+        "savedDraft": "Saved. The draft invoice's line doesn't change.",
+        "confirmDeleteInvoiced": "Delete this entry? It's on invoice {number}, and the invoice won't change.",
+        "confirmDeleteInvoicedNoNumber": "Delete this entry? It has been invoiced, and the invoice won't change.",
+        "confirmDeleteDraft": "Delete this entry? It's on a draft invoice, and the draft's line won't change."
       }
     },
     "team": {
@@ -4875,7 +4912,8 @@
       "creditLines": "What this credit note credits, in {currency} before VAT. Lower or remove what isn't credited. The credit note prints these amounts with a minus sign.",
       "payLinkPlaceholder": "Add a Stripe or PayPal link",
       "payLinkNone": "None",
-      "payLinkHint": "A Stripe payment link or PayPal link for this invoice's amount. The client gets a Pay now button in the email and in their portal. Issuing an invoice with a link asks for your authenticator code."
+      "payLinkHint": "A Stripe payment link or PayPal link for this invoice's amount. The client gets a Pay now button in the email and in their portal. Issuing an invoice with a link asks for your authenticator code.",
+      "addHours": "Add hours…"
     },
     "issue": {
       "button": "Issue invoice…",
@@ -4903,7 +4941,9 @@
         "notPositive": "The total must be above zero.",
         "leavesNegative": "It would leave only a discount on the invoice uncredited, which no credit note could take later. Credit the discount too, or credit less.",
         "noRate": "The invoice it credits stated no exchange rate (its VAT came to nothing), so this credit note's VAT can't be shown in SEK. Credit the whole invoice instead.",
-        "beforeInvoice": "It can't be dated before the invoice it credits ({date}). Issue it from that day on."
+        "beforeInvoice": "It can't be dated before the invoice it credits ({date}). Issue it from that day on.",
+        "privateTask": "These lines name a task the client can't see: {lines}. Change their text.",
+        "hoursMismatch": "Some hours this draft records are no longer on its lines. Remove the lines made from hours and add the hours again."
       },
       "toSettings": "Open Settings → Invoicing",
       "toClient": "Open the client",
@@ -4929,7 +4969,8 @@
       "codeHint": "Issuing an invoice with a Pay now link needs a code from your authenticator app.",
       "needsFactor": "Issuing an invoice with a Pay now link needs an authenticator app.",
       "setUpFactor": "Set up an authenticator",
-      "paymentText": "This invoice's own text mentions a web address or payment details. Check that they are yours — the client may pay by them."
+      "paymentText": "This invoice's own text mentions a web address or payment details. Check that they are yours — the client may pay by them.",
+      "hoursChanged": "{count, plural, one {# time entry on this draft has changed since it was added} other {# time entries on this draft have changed since they were added}}. The lines don't change. To bill the hours as they are now, remove a line and add its hours again."
     },
     "issued": {
       "title": "Invoice {number}",
@@ -4977,7 +5018,9 @@
       "added": "Line added.",
       "removed": "Line removed.",
       "moved": "Line moved.",
-      "unreachable": "Couldn't reach Fortleva. Check your connection and try again."
+      "unreachable": "Couldn't reach Fortleva. Check your connection and try again.",
+      "fromHours": "From {count, plural, one {# time entry} other {# time entries}}",
+      "hoursReturned": "{count, plural, one {# time entry is} other {# time entries are}} back on the ready-to-invoice list."
     },
     "credit": {
       "button": "Credit…",
@@ -5064,6 +5107,120 @@
       "menuLabel": "Payment actions",
       "overdue": "Overdue",
       "paidOnLabel": "Paid"
+    },
+    "ready": {
+      "title": "Ready to invoice",
+      "description": "Billable hours that aren't on an invoice yet.",
+      "columns": {
+        "client": "Client",
+        "hours": "Hours",
+        "value": "Value",
+        "oldest": "Oldest"
+      },
+      "noRate": "{hours} without a rate",
+      "archived": "Archived",
+      "empty": "No hours are waiting to be invoiced."
+    },
+    "hours": {
+      "lineOtherWork": "Other work",
+      "title": "{client}: hours to invoice",
+      "description": "Choose the hours and how they become lines, then create the invoice.",
+      "descriptionDraft": "Choose the hours and how they become lines, then add them to the draft.",
+      "back": "Ready to invoice",
+      "backToDraft": "Back to the draft",
+      "noPermission": "You don't have permission to put hours on invoices.",
+      "archivedClient": "This client is archived, so no invoice can be created for it. You can still mark its hours.",
+      "filters": {
+        "title": "Filter",
+        "from": "From",
+        "to": "To",
+        "project": "Project",
+        "allProjects": "All projects",
+        "currency": "Currency",
+        "apply": "Show"
+      },
+      "listTitle": "Waiting hours",
+      "columns": {
+        "date": "Date",
+        "what": "What",
+        "person": "Person",
+        "tracked": "Tracked",
+        "billed": "Billed"
+      },
+      "projectWork": "Project work",
+      "needsReview": "Check",
+      "needsReviewWhy": "Stopped automatically. Check the time before you invoice it.",
+      "noRate": "No rate",
+      "selectProject": "Select all hours in {project}",
+      "selectRow": "Select the time entry of {date}",
+      "selected": "{count, plural, one {# entry selected} other {# entries selected}}",
+      "more": "Showing the first {max} entries. Narrow the period to see the rest.",
+      "empty": "No hours are waiting for this client.",
+      "emptyFiltered": "No hours match these filters.",
+      "linesTitle": "Lines on the invoice",
+      "groupBy": "One line per",
+      "groupings": {
+        "PROJECT": "Project",
+        "TASK": "Task",
+        "AGREEMENT": "Agreement",
+        "PERSON": "Person"
+      },
+      "personWarning": "Lines per person print your people's names on the invoice.",
+      "taskHint": "Tasks the client can't see are called “Other work”.",
+      "previewEmpty": "Select hours to see the lines.",
+      "noRateLine": "No rate. Type a price on the draft.",
+      "leftOut": "{count, plural, one {# entry comes} other {# entries come}} to nothing under the project's rounding and stays on the list.",
+      "total": "Total excl. VAT",
+      "create": "Create invoice",
+      "add": "Add to draft",
+      "billedElsewhere": "Billed elsewhere",
+      "wontInvoice": "Won't invoice",
+      "confirmBilledElsewhere": "Mark {count, plural, one {# entry} other {# entries}} as billed elsewhere? They leave this list but still count in reports.",
+      "confirmWontInvoice": "Mark {count, plural, one {# entry} other {# entries}} as not to be invoiced? They leave this list but still count in reports, as written-off value.",
+      "created": "Draft invoice created.",
+      "added": "{count, plural, one {# line} other {# lines}} added to the draft.",
+      "marked": "{count, plural, one {# entry} other {# entries}} marked.",
+      "unmarked": "{count, plural, one {# entry is} other {# entries are}} back on the list.",
+      "markedTitle": "Marked",
+      "markedDescription": "Hours billed elsewhere or not to be invoiced. Undo puts them back on the list.",
+      "markedStates": {
+        "BILLED_ELSEWHERE": "Billed elsewhere",
+        "WONT_INVOICE": "Won't invoice"
+      },
+      "writtenOff": "Written off: {amount}",
+      "undo": "Undo",
+      "markedEmpty": "No marked hours.",
+      "markedMore": "Showing the latest {max} marked entries.",
+      "draftNote": "These hours will be added to the open draft invoice, in {currency}.",
+      "quantity": "{quantity} h"
+    },
+    "hoursCard": {
+      "title": "Hours",
+      "descriptionDraft": "The time entries behind the lines made from hours.",
+      "descriptionIssued": "The time entries this invoice billed, as billed, and where each one is now.",
+      "columns": {
+        "date": "Date",
+        "person": "Person",
+        "task": "Task",
+        "billed": "Billed",
+        "now": "Now"
+      },
+      "states": {
+        "here": "On this invoice",
+        "returned": "Not invoiced",
+        "billedElsewhere": "Billed elsewhere",
+        "wontInvoice": "Won't invoice",
+        "otherDraft": "On a draft",
+        "otherInvoice": "On invoice {number}",
+        "otherClient": "On another client's invoice",
+        "splitHere": "On this invoice (split from a billed hour)"
+      },
+      "more": "and {count} more",
+      "returnHint": "After a part credit, choose the hours the credit note covered and put them back on the ready-to-invoice list.",
+      "return": "Return to not invoiced",
+      "confirmReturn": "Put {count, plural, one {# entry} other {# entries}} back on the ready-to-invoice list? This invoice doesn't change.",
+      "returned": "{count, plural, one {# entry is} other {# entries are}} back on the ready-to-invoice list.",
+      "selectRow": "Select the time entry of {date}"
     }
   },
   "invoicePdf": {

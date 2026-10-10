@@ -47,6 +47,10 @@ export type IssueDialogCheck = {
   readonly fingerprint: string;
   /** Slice 109: the draft's own text reads like somewhere to pay (a web address, account details). */
   readonly paymentText: boolean;
+  /** Slice 110: hours on its lines changed since they were added — a caution. */
+  readonly hoursChanged: number;
+  /** Slice 110: the lines (by position, already worded "2, 5") naming a task the client may not see. */
+  readonly privateTaskLines: string;
 };
 
 /** The issued page's Download PDF — where focus goes after an issue (`download-pdf.tsx`). */
@@ -199,7 +203,9 @@ export function IssueDialog({
                       ? t("blockers.seller", { list: check.sellerMissing })
                       : b === "beforeInvoice"
                         ? t("blockers.beforeInvoice", { date: check.creditsIssueDate ?? "" })
-                        : t(`blockers.${b}`)}
+                        : b === "privateTask"
+                          ? t("blockers.privateTask", { lines: check.privateTaskLines })
+                          : t(`blockers.${b}`)}
                     {b === "overCredit" ? (
                       <ul className="mt-1 flex flex-col gap-0.5">
                         {check.overCredit.map((o) => (
@@ -250,6 +256,11 @@ export function IssueDialog({
             {check.paymentText ? (
               <div data-testid="issue-payment-text">
                 <Callout tone="caution">{t("paymentText")}</Callout>
+              </div>
+            ) : null}
+            {check.hoursChanged > 0 ? (
+              <div data-testid="issue-hours-changed">
+                <Callout tone="caution">{t("hoursChanged", { count: check.hoursChanged })}</Callout>
               </div>
             ) : null}
             {payLink !== null ? (
