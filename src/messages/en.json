@@ -1500,7 +1500,8 @@
           "fixed": "Fixed now that a bookkeeping file has been made."
         },
         "yearStart": {
-          "label": "Financial year starts in"
+          "label": "Financial year starts in",
+          "hint": "It decides what each file holds and when the cash method's year end falls — change it only when your company's financial year changes."
         },
         "series": {
           "label": "Voucher series"
@@ -1783,7 +1784,11 @@
     "INVOICE_EXPORT_NO_METHOD": "Choose how your company books invoices first — Settings → Invoicing → Bookkeeping.",
     "INVOICE_EXPORT_EMPTY": "There is nothing new to put in a file.",
     "INVOICE_EXPORT_BUSY": "Another file is being made, or an invoice is being marked paid. Try again in a moment.",
-    "INVOICE_EXPORT_METHOD_FIXED": "The booking method can't be changed once a bookkeeping file has been made."
+    "INVOICE_EXPORT_METHOD_FIXED": "The booking method can't be changed once a bookkeeping file has been made.",
+    "INVOICE_YEAR_END_NOT_DUE": "That year end isn't due — it's already booked, or the year hasn't ended yet. Reload the page.",
+    "INVOICE_YEAR_END_WAITING": "Entries from that year still go in a file. Make files until none is left, then book the year end.",
+    "INVOICE_YEAR_END_CHANGED": "The unpaid invoices changed since the page was loaded. Look at the list again, then book the year end.",
+    "INVOICE_YEAR_CLOSED": "That invoice date is in a year whose year end is already booked. Check the workspace's time zone, or issue it tomorrow."
   },
   "assignments": {
     "title": "Team",
@@ -5149,7 +5154,8 @@
       "undone": "Marked as unpaid.",
       "menuLabel": "Payment actions",
       "overdue": "Overdue",
-      "paidOnLabel": "Paid"
+      "paidOnLabel": "Paid",
+      "closedYear": "This day is in a year whose year end is already booked ({day}). The next bookkeeping file books the payment into that year — check with whoever keeps the books that the year is still open in Fortnox."
     },
     "ready": {
       "title": "Ready to invoice",
@@ -5291,7 +5297,44 @@
         "waiting": "{count, plural, one {# more goes in a later file.} other {# more go in later files.}} A file holds one financial year.",
         "make": "Make file",
         "made": "File {number} is ready.",
-        "madeWaiting": "File {number} is ready. {count, plural, one {# more goes} other {# more go}} in the next one."
+        "madeWaiting": "File {number} is ready. {count, plural, one {# more goes} other {# more go}} in the next one.",
+        "yearEndReversed": "{count, plural, one {# year-end entry reversed the next day} other {# year-end entries reversed the next day}}",
+        "yearEndUndone": "{count, plural, one {# invoice taken out of the year end — paid by then} other {# invoices taken out of the year end — paid by then}}",
+        "yearEndReversalUndone": "{count, plural, one {# reversal taken back with it} other {# reversals taken back with them}}",
+        "intoBookedYear": {
+          "title": "This file books into the year that ended on {day}, whose year end is booked",
+          "body": "A payment dated then was marked or changed since. Before you import this file, check with your accountant that the year is still open in Fortnox — and that nothing in it was already booked there by hand."
+        }
+      },
+      "yearEnd": {
+        "title": "Year end: {day}",
+        "description": "These invoices weren't paid on {day}. Booking the year end puts them in your books on that day and takes them out again on {nextDay}, so their payments book as usual.",
+        "waiting": "{count, plural, one {# entry dated on or before {day} still goes in a file} other {# entries dated on or before {day} still go in a file}} — make files until none is left, then book the year end.",
+        "leftOut": "{count, plural, one {# unpaid invoice names} other {# unpaid invoices name}} organisation number {orgNr} — another company's books, so not in this year end. If it's the same company, your accountant books these by hand.",
+        "none": "Nothing was unpaid on {day}. Booking the year end records that it's done.",
+        "columns": {
+          "number": "Invoice",
+          "client": "Client",
+          "date": "Invoice date",
+          "amount": "Amount"
+        },
+        "more": "{count, plural, one {# more invoice} other {# more invoices}}",
+        "total": "{count, plural, one {# invoice} other {# invoices}}, {total} in all",
+        "markFirst": "Mark every payment that came in by {day} first.",
+        "vat": "Book it before you file the VAT return for the year's last period — the VAT on these invoices belongs there.",
+        "refunds": "A credit note issued after its invoice was paid isn't part of the year end — if the refund wasn't paid by then, tell your accountant.",
+        "book": "Book the year end",
+        "confirmTitle": "Book the year end for {day}?",
+        "confirmBody": "{count, plural, one {# unpaid invoice} other {# unpaid invoices}}, {total} — booked on {day} and reversed on {nextDay}.",
+        "confirmEmpty": "Nothing was unpaid on {day}. Booking records that the year end is done.",
+        "confirmLate": "A payment that came in by then but is marked later corrects the year end in a later file.",
+        "booked": "The year end is booked in file {number}.",
+        "bookedEmpty": "Nothing was unpaid on {day} — recorded in file {number}.",
+        "reminder": {
+          "title": "The financial year ended on {day}",
+          "body": "Book the invoices still unpaid on that day, once every payment that came in by then is marked.",
+          "action": "Book the year end"
+        }
       },
       "files": {
         "title": "Files",
@@ -5306,6 +5349,7 @@
           "download": "Download"
         },
         "number": "File {number}",
+        "numberYearEnd": "File {number} · year end {day}",
         "someoneGone": "No longer here",
         "nothingToBook": "Nothing to book",
         "fortnox": "Fortnox file",
@@ -5319,7 +5363,7 @@
         "series": "Fortnox asks which voucher series to use for the file's series {series}. Use a series kept for these files only — an import can't be undone once other vouchers are booked in the same series.",
         "once": "Import each file once. Fortleva puts everything in one file only, so downloading again is safe.",
         "bank": "When a payment shows up from the bank in Fortnox, match it to the imported payment — don't book it again. Bank fees and exchange differences are booked there.",
-        "yearEnd": "Invoices still unpaid when the financial year ends aren't in these files yet — book them at year end with your accountant.",
+        "yearEnd": "When the financial year ends, book the invoices still unpaid on its last day here — Book the year end.",
         "eu": "The list's VAT number column is what the EU sales list (periodisk sammanställning) needs.",
         "first": "The first file holds everything in Fortleva so far."
       },
@@ -5352,7 +5396,11 @@
           "ISSUE": "Issued",
           "PAYMENT": "Payment",
           "PAYMENT_UNDONE": "Payment reversed",
-          "CREDIT_NOTED": "Credit note (listed)"
+          "CREDIT_NOTED": "Credit note (listed)",
+          "YEAR_END": "Unpaid at year end",
+          "YEAR_END_REVERSED": "Year end reversed",
+          "YEAR_END_UNDONE": "Year end corrected",
+          "YEAR_END_REVERSAL_UNDONE": "Reversal corrected"
         },
         "invoice": "Invoice",
         "creditNote": "Credit note",
@@ -5367,7 +5415,11 @@
           "afterPayment": "After the payment of {day} (file {file}) — book any refund from the bank",
           "unpaid": "The invoice isn't paid yet — its payment will be less",
           "creditedUnpaid": "The invoice is credited in full and isn't paid — nothing to book",
-          "reverses": "Reverses the payment of {day} (file {file})"
+          "reverses": "Reverses the payment of {day} (file {file})",
+          "reversesYearEnd": "Reverses the year end of {day} (file {file})",
+          "paidByYearEnd": "Paid on {day} after all — taken out of the year end (file {file})",
+          "paidInBooks": "A payment booked by then stands — taken out of the year end of {day} (file {file})",
+          "undoesReversal": "Takes back the reversal of {day} (file {file})"
         }
       }
     },

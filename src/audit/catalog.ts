@@ -247,6 +247,12 @@ export const AUDIT_EVENTS = {
   "invoice_settings.bookkeeping_changed": TENANT,
   "invoice_export.created": TENANT,
   "invoice_export.downloaded": TENANT,
+  // Phase 4 slice 111b — the cash method's year end (bookkeeping.ts; C83).
+  // `invoice_export.year_end_booked`: the year-end file made — its number,
+  // the year's last day, how many unpaid invoices it books and their total in
+  // kronor (the corrections that follow ride in later files'
+  // `invoice_export.created` counts).
+  "invoice_export.year_end_booked": TENANT,
   // Data egress
   "export.requested": TENANT,
   "export.generated": TENANT,

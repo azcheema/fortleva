@@ -4,7 +4,16 @@ import { LIST_COLUMNS, listColumns, listRow, type ListedEntry, type ListWords } 
 
 const words: ListWords = {
   headers: Object.fromEntries(LIST_COLUMNS.map((c) => [c, c.toUpperCase()])) as ListWords["headers"],
-  events: { ISSUE: "Issued", PAYMENT: "Payment", PAYMENT_UNDONE: "Payment undone", CREDIT_NOTED: "Credit note noted" },
+  events: {
+    ISSUE: "Issued",
+    PAYMENT: "Payment",
+    PAYMENT_UNDONE: "Payment undone",
+    CREDIT_NOTED: "Credit note noted",
+    YEAR_END: "Unpaid at year end",
+    YEAR_END_REVERSED: "Year end reversed",
+    YEAR_END_UNDONE: "Year end corrected",
+    YEAR_END_REVERSAL_UNDONE: "Reversal corrected",
+  },
   invoice: "Invoice",
   creditNote: "Credit note",
   treatments: { SE_DOMESTIC: "Swedish VAT", EU_REVERSE_CHARGE: "Reverse charge", OUTSIDE_SCOPE: "Outside the EU" },
@@ -69,5 +78,17 @@ describe("the bookkeeping list", () => {
     };
     expect(row(noted)).toMatchObject({ entry: "Credit note noted", type: "Credit note", relates: "10002", total: "-100.00", remark: "deducted 2026-10-20 #3" });
     expect(row({ ...noted, remark: { kind: "afterPayment" } }).remark).toBe("afterPayment");
+  });
+
+  it("names the year end's rows and what each negation undoes (slice 111b)", () => {
+    const yearEnd: ListedEntry = { ...payment, event: "YEAR_END", bookedOn: "2026-12-31", relates: ["10004"], remark: null };
+    expect(row(yearEnd)).toMatchObject({ entry: "Unpaid at year end", bookedOn: "2026-12-31", relates: "10004", remark: null });
+    const back = (event: ListedEntry["event"], remark: ListedEntry["remark"]) => row({ ...yearEnd, event, relates: [], remark });
+    expect(back("YEAR_END_REVERSED", { kind: "reversesYearEnd", day: "2026-12-31", file: 7 })).toMatchObject({
+      entry: "Year end reversed",
+      remark: "reversesYearEnd 2026-12-31 #7",
+    });
+    expect(back("YEAR_END_UNDONE", { kind: "paidByYearEnd", day: "2026-12-30", file: 7 }).remark).toBe("paidByYearEnd 2026-12-30 #7");
+    expect(back("YEAR_END_REVERSAL_UNDONE", { kind: "undoesReversal", day: "2027-01-01", file: 8 }).entry).toBe("Reversal corrected");
   });
 });

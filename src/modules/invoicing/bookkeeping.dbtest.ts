@@ -9,7 +9,7 @@ import { todayIn } from "@/lib/due-date";
 import { addDays } from "@/lib/week";
 import { actorFor, setupTenant } from "@/members/dbtest-fixture";
 
-import { createExport, exportFile, readBookkeeping, updateBookkeepingSettings } from "./bookkeeping";
+import { bookYearEnd, createExport, exportFile, readBookkeeping, readNewestYearEnd, readYearEndReminder, updateBookkeepingSettings } from "./bookkeeping";
 import { createCreditDraft, creditInFull } from "./credit";
 import { addLine, createDraft, removeLine, setDraftVatProfile, updateDraftDetails, updateLine } from "./drafts";
 import { LIST_COLUMNS, LIST_EVENTS, type ListWords } from "./invoice-list";
@@ -76,6 +76,11 @@ const TOKENS = [
   "INVOICE_EXPORT_GUARD",
   "INVOICE_NOT_DRAFT",
   "invoice_export_entry_issue_once",
+  // Slice 111b — the year end's constraints (none of these names holds another).
+  "invoice_export_year_end_cash",
+  "invoice_export_year_end_passed",
+  "invoice_export_year_end_month_end",
+  "invoice_export_year_end_once",
   "invoice_book_rate_when",
   "invoice_book_rate_pair",
   "permission denied",
@@ -457,11 +462,13 @@ describe("the CASH method (C82 (e))", () => {
     const month = Number(day.slice(5, 7));
     await updateBookkeepingSettings(owner(cash), { yearStart: String(month) });
     const lastYear = addDays(`${day.slice(0, 7)}-01`, -1);
+    // X paid this year and filed, then its day corrected into last year: its
+    // reversal is this year's (the file's day), its re-mark last year's.
     const x = await issued(cash, se, [["100", "25"]]);
-    await markInvoicePaid(admin(cash), x, { paidOn: lastYear, note: null });
-    await createExport(admin(cash)); // X's payment, last year
+    await markInvoicePaid(admin(cash), x, { paidOn: day, note: null });
+    await createExport(admin(cash)); // X's payment, this year
     await markInvoiceUnpaid(admin(cash), x);
-    await markInvoicePaid(admin(cash), x, { paidOn: addDays(lastYear, -1), note: null });
+    await markInvoicePaid(admin(cash), x, { paidOn: lastYear, note: null });
     const y = await issued(cash, se, [["200", "25"]]);
     await markInvoicePaid(admin(cash), y, { paidOn: lastYear, note: null });
     const events = async () => {
@@ -473,6 +480,132 @@ describe("the CASH method (C82 (e))", () => {
     expect(await events()).toEqual(["PAYMENT:x"]); // then last year's re-mark
     expect(await outcome(createExport(admin(cash)))).toBe("INVOICE_EXPORT_EMPTY");
     await updateBookkeepingSettings(owner(cash), { yearStart: "1" });
+  });
+
+  it("keeps a payment's day corrected inside an ended year in that year — its reversal and the re-mark in one file (slice 111b, the review's M3)", async () => {
+    const { se } = clients[cash.tenantId]!;
+    const day = await today(cash);
+    // The financial year starts this month, so last month's last day is last year — ended.
+    await updateBookkeepingSettings(owner(cash), { yearStart: String(Number(day.slice(5, 7))) });
+    const lastYear = addDays(`${day.slice(0, 7)}-01`, -1);
+    const z = await issued(cash, se, [["300", "25"]]);
+    await markInvoicePaid(admin(cash), z, { paidOn: lastYear, note: null });
+    await createExport(admin(cash)); // Z's payment, last year
+    await markInvoiceUnpaid(admin(cash), z);
+    await markInvoicePaid(admin(cash), z, { paidOn: addDays(lastYear, -1), note: null });
+    const made = await createExport(admin(cash));
+    const entries = (await entriesOf(cash, made.id)).filter((e) => e.invoiceId === z);
+    // The reversal first, dated the later day's month end — last month's last day, last year — then the re-mark.
+    expect(entries.map((e) => e.event)).toEqual(["PAYMENT_UNDONE", "PAYMENT"]);
+    expect(entries[0]!.bookedOn.toISOString().slice(0, 10)).toBe(lastYear);
+    expect(entries[1]!.bookedOn.toISOString().slice(0, 10)).toBe(addDays(lastYear, -1));
+    expect(await outcome(createExport(admin(cash)))).toBe("INVOICE_EXPORT_EMPTY");
+    await updateBookkeepingSettings(owner(cash), { yearStart: "1" });
+  });
+});
+
+describe("the year end — nothing due, and what the database refuses without a past date (slice 111b; C83)", () => {
+  // Every invoice here is issued today, so no year end is ever due and none
+  // can hold one; `year-end.dbtest.ts` (CI only) plants past dates for the rest.
+  /** The last day of the month before last — always over a day before today, as a year-end file needs. */
+  const pastMonthEnd = (day: string) => addDays(`${addDays(`${day.slice(0, 7)}-01`, -1).slice(0, 7)}-01`, -1);
+  const thisMonthEnd = (day: string) => {
+    const [y, m] = day.split("-").map(Number);
+    return new Date(Date.UTC(y!, m!, 0)).toISOString().slice(0, 10);
+  };
+  /** Dated the WORKSPACE's day, as the services date a file — never the database's UTC date (the fix pass's low: they differ for an hour or two each night). */
+  const insertFile = (tx: TenantDb, f: Fixture, method: "INVOICE" | "CASH", yearEnd: string | null, madeOn: string) =>
+    tx.$queryRaw<{ id: string }[]>`
+      INSERT INTO invoice_export (id, tenant_id, number, method, series, made_on, year_end, created_by_member_id)
+      VALUES (${randomUUID()}, ${f.tenantId}, 1, ${method}::invoice_export_method, 'F', ${madeOn}::date, ${yearEnd}::date, ${f.seats.admin.memberId})
+      RETURNING id`;
+  /** A raw file (a year end's when `yearEnd` is set) and `fn` in it — always rolled back. */
+  const inFile = async (f: Fixture, method: "INVOICE" | "CASH", yearEnd: string | null, fn: (tx: TenantDb, exportId: string) => Promise<unknown> = async () => {}) => {
+    const madeOn = await today(f);
+    return asMember(f, f.seats.admin.memberId, async (tx) => {
+      const made = await insertFile(tx, f, method, yearEnd, madeOn);
+      await fn(tx, made[0]!.id);
+      throw new Error("ROLLBACK_OK");
+    });
+  };
+  const rolled = async (p: Promise<unknown>) => {
+    const r = await refusal(p);
+    return r.startsWith("unexpected") && r.includes("ROLLBACK_OK") ? "ok" : r;
+  };
+  const entry = (tx: TenantDb, exportId: string, invoiceId: string, event: string, bookedOn: string, yearEnd: string | null, voucher: unknown) =>
+    tx.$executeRaw`INSERT INTO invoice_export_entry (id, tenant_id, export_id, invoice_id, position, event, booked_on, year_end, voucher, detail)
+                   VALUES (${randomUUID()}, ${cash.tenantId}, ${exportId}, ${invoiceId}, 1, ${event}::invoice_export_event, ${bookedOn}::date,
+                           ${yearEnd}::date, ${voucher === null ? null : JSON.stringify(voucher)}::jsonb, '{}'::jsonb)`;
+  const voucher = { text: "Bokslut obetald faktura x", rows: [{ account: "1510", amount: "125.00" }, { account: "3001", amount: "-100.00" }, { account: "2611", amount: "-25.00" }] };
+  const negated = { text: "Återföring bokslut faktura x", rows: voucher.rows.map((r) => ({ account: r.account, amount: r.amount.startsWith("-") ? r.amount.slice(1) : `-${r.amount}` })) };
+  const fingerprint = { count: 0, totalSek: "0.00" };
+
+  it("is never due while every invoice is of the current year; asked for anyway, refused", async () => {
+    const page = await readBookkeeping(admin(cash));
+    expect(page.method).toBe("CASH");
+    expect(page.yearEnd).toBeNull();
+    expect(page.next?.intoBookedYear ?? null).toBeNull();
+    expect(page.files.every((f) => f.yearEnd === null)).toBe(true);
+    expect(await readYearEndReminder(admin(cash))).toBeNull();
+    expect(await readNewestYearEnd(admin(cash))).toBeNull();
+    const end = pastMonthEnd(await today(cash));
+    expect(await outcome(bookYearEnd(admin(cash), { yearEnd: end, ...fingerprint }))).toBe("INVOICE_YEAR_END_NOT_DUE");
+    expect(await outcome(bookYearEnd(admin(cash), { yearEnd: "31 December", ...fingerprint }))).toBe("INVALID_INPUT");
+    expect(await outcome(bookYearEnd(admin(cash), { yearEnd: end, count: -1, totalSek: "0.00" }))).toBe("INVALID_INPUT");
+    expect(await outcome(bookYearEnd(manager(cash), { yearEnd: end, ...fingerprint }))).toBe("FORBIDDEN");
+    // The invoice method has no year end at all.
+    expect((await readBookkeeping(admin(inv))).yearEnd).toBeNull();
+    expect(await readYearEndReminder(admin(inv))).toBeNull();
+  });
+
+  it("a year-end file: the cash method's only, from the second day after it, on a month's last day, in order", async () => {
+    const day = await today(cash);
+    const end = pastMonthEnd(day);
+    expect(await rolled(inFile(cash, "CASH", end))).toBe("ok");
+    expect(await rolled(inFile(inv, "INVOICE", pastMonthEnd(await today(inv))))).toBe("invoice_export_year_end_cash");
+    expect(await rolled(inFile(cash, "CASH", thisMonthEnd(day)))).toBe("invoice_export_year_end_passed");
+    expect(await rolled(inFile(cash, "CASH", addDays(end, -1)))).toBe("invoice_export_year_end_month_end");
+    // A second for the same year, and an older one after a newer: the guard (before the unique index).
+    expect(await rolled(inFile(cash, "CASH", end, (tx) => insertFile(tx, cash, "CASH", end, day)))).toBe("INVOICE_EXPORT_GUARD");
+    const older = pastMonthEnd(end);
+    expect(await rolled(inFile(cash, "CASH", end, (tx) => insertFile(tx, cash, "CASH", older, day)))).toBe("INVOICE_EXPORT_GUARD");
+  });
+
+  it("a year end's entries: only in its own file, nothing else there, only for an invoice issued by then, never without one to negate", async () => {
+    const { se } = clients[cash.tenantId]!;
+    const doc = await issued(cash, se, [["100", "25"]]);
+    const end = pastMonthEnd(await today(cash));
+    const after = addDays(end, 1);
+    // A year end in a regular file, and a payment in a year-end file.
+    expect(await rolled(inFile(cash, "CASH", null, (tx, id) => entry(tx, id, doc, "YEAR_END", end, end, voucher)))).toBe("INVOICE_EXPORT_ENTRY_GUARD");
+    expect(await rolled(inFile(cash, "CASH", end, (tx, id) => entry(tx, id, doc, "PAYMENT", end, null, voucher)))).toBe("INVOICE_EXPORT_ENTRY_GUARD");
+    // Issued today — after the year end.
+    expect(await rolled(inFile(cash, "CASH", end, (tx, id) => entry(tx, id, doc, "YEAR_END", end, end, voucher)))).toBe("INVOICE_EXPORT_ENTRY_GUARD");
+    // A reversal or a withdrawal of a year end that was never booked.
+    expect(await rolled(inFile(cash, "CASH", null, (tx, id) => entry(tx, id, doc, "YEAR_END_REVERSED", after, end, negated)))).toBe("INVOICE_EXPORT_ENTRY_GUARD");
+    expect(await rolled(inFile(cash, "CASH", null, (tx, id) => entry(tx, id, doc, "YEAR_END_UNDONE", end, end, negated)))).toBe("INVOICE_EXPORT_ENTRY_GUARD");
+    expect(await rolled(inFile(cash, "CASH", null, (tx, id) => entry(tx, id, doc, "YEAR_END_REVERSAL_UNDONE", after, end, voucher)))).toBe("INVOICE_EXPORT_ENTRY_GUARD");
+  });
+
+  it("a payment's reversal: on the file's day, or a month's end inside an ended year — never an unmark into a closed one (the re-check's R3)", async () => {
+    const { se } = clients[cash.tenantId]!;
+    const day = await today(cash);
+    const id = await issued(cash, se, [["90", "25"]]);
+    await markInvoicePaid(admin(cash), id, { paidOn: day, note: null });
+    const first = await createExport(admin(cash));
+    const booked = (await entriesOf(cash, first.id)).find((e) => e.invoiceId === id && e.event === "PAYMENT")!;
+    await markInvoiceUnpaid(admin(cash), id);
+    const undo = { text: "Återförd inbetalning x", rows: rowsOf(booked.voucher).map((r) => {
+      const [account, amount] = r.split(" ");
+      return { account: account!, amount: amount!.startsWith("-") ? amount!.slice(1) : `-${amount}` };
+    }) };
+    // Dated before the booked payment's own day — a month's end or not: refused
+    // (the month's-end and closed-year branches need a past payment: `year-end.dbtest.ts`).
+    expect(await rolled(inFile(cash, "CASH", null, (tx, x) => entry(tx, x, id, "PAYMENT_UNDONE", pastMonthEnd(day), null, undo)))).toBe("INVOICE_EXPORT_ENTRY_GUARD");
+    expect(await rolled(inFile(cash, "CASH", null, (tx, x) => entry(tx, x, id, "PAYMENT_UNDONE", addDays(day, -1), null, undo)))).toBe("INVOICE_EXPORT_ENTRY_GUARD");
+    // On the file's day: fine.
+    expect(await rolled(inFile(cash, "CASH", null, (tx, x) => entry(tx, x, id, "PAYMENT_UNDONE", day, null, undo)))).toBe("ok");
+    await markInvoicePaid(admin(cash), id, { paidOn: day, note: null });
   });
 });
 
@@ -495,6 +628,9 @@ describe("who may, and what the database refuses whoever asks (the security revi
     expect(await outcome(readBookkeeping(scoped))).toBe("FORBIDDEN");
     expect(await outcome(createExport(scoped))).toBe("FORBIDDEN");
     expect(await outcome(exportFile(scoped, file.id, "sie", WORDS))).toBe("FORBIDDEN");
+    // Slice 111b: the year end takes the same gates; the reminder stays quiet.
+    expect(await outcome(bookYearEnd(scoped, { yearEnd: "2025-12-31", count: 0, totalSek: "0.00" }))).toBe("FORBIDDEN");
+    expect(await readYearEndReminder(scoped)).toBeNull();
     // The control (the fix-pass re-check's 2): every client is the ONE thing
     // missing — given it, the same member reads the page and the file.
     const all = await inv.platform.permission.findFirstOrThrow({ where: { code: "client:view_all" } });
@@ -563,6 +699,9 @@ describe("who may, and what the database refuses whoever asks (the security revi
     // The accounts are settings like any other: theirs to change.
     expect(await updateBookkeepingSettings(settingsOnly, { bank: "1940" })).toEqual(["bank"]);
     expect(await updateBookkeepingSettings(settingsOnly, { bank: "" })).toEqual(["bank"]);
+    // Slice 111b (its design review's L2): the financial year decides what a
+    // file holds and when a year end falls — not theirs, as the method isn't.
+    expect(await outcome(updateBookkeepingSettings(settingsOnly, { yearStart: "7" }))).toBe("FORBIDDEN");
   });
 });
 

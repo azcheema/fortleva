@@ -288,7 +288,12 @@ export type DomainErrorCode =
   | "INVOICE_EXPORT_NO_METHOD" // the workspace has not chosen how it books invoices (Settings → Invoicing)
   | "INVOICE_EXPORT_EMPTY" // nothing new since the last file
   | "INVOICE_EXPORT_BUSY" // another file was being made, or an invoice was being marked paid: try again
-  | "INVOICE_EXPORT_METHOD_FIXED"; // the method is fixed once a file has been made
+  | "INVOICE_EXPORT_METHOD_FIXED" // the method is fixed once a file has been made
+  // Phase 4 slice 111b — the cash method's year end (bookkeeping.ts; C83).
+  | "INVOICE_YEAR_END_NOT_DUE" // that year end is not due — already booked, or the year hasn't ended
+  | "INVOICE_YEAR_END_WAITING" // entries dated in that year still wait for a file: make files first
+  | "INVOICE_YEAR_END_CHANGED" // the unpaid invoices changed since the page was read: look again
+  | "INVOICE_YEAR_CLOSED"; // an invoice or credit note dated in a year whose year end is booked
 
 export class DomainError extends Error {
   constructor(

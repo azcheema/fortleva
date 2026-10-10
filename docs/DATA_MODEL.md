@@ -1938,8 +1938,8 @@ model InvoiceLine {
 //    that existed when it was marked; a payment unmarked after its file
 //    reversed on the file's day; each credit note listed, never booked).
 //    Chosen before the first file; fixed once one exists (the app and
-//    `invoice_export_guard`). Year-end booking of unpaid invoices under the
-//    cash method is slice 111b.
+//    `invoice_export_guard`). The year's first month is changed only by a
+//    holder of `invoice:export` too (slice 111b).
 //  - `invoice_export` (class A) — one row per file: NUMBERED by its guard
 //    under `invoice_export_lock(tenant)` (the ONE advisory key every maker and
 //    both guards take), its method (every file of a workspace has the first's),
@@ -1958,6 +1958,55 @@ model InvoiceLine {
 //    re-download is the same bytes; `invoice_export.downloaded` records their
 //    SHA-256. R1: these rows are the transfer's processing history (BFL 5 kap.
 //    11 §) — kept with the invoices.
+//
+// Slice 111b (founder decision C83, migrations 20261011090000 +
+// 20261011090100; design docs/research/2026-10-10-slice-111b-year-end-design.md
+// §13–§14) — THE CASH METHOD'S YEAR END:
+//  - `invoice_export.year_end DATE NULL` — a YEAR-END FILE: made by Book the
+//    year end (`bookYearEnd`, `invoice:export` + `invoice:view` + every
+//    client), holding a `YEAR_END` entry for each invoice unpaid on the
+//    financial year's last day E (receivables debited, sales and VAT
+//    credited: the invoice less its credit notes dated by then, at its
+//    booking rate). CHECKs: the CASH method's only; made from the second day
+//    after E (`made_on > year_end + 1` — no issue dated E is still in
+//    flight); E a month's last day. One per workspace and year (partial
+//    UNIQUE), each after every earlier one (the guard). Year ends go in
+//    order; a year with nothing unpaid still gets its (empty) file.
+//  - "Unpaid on E" reads the BOOKS: issued by E, not marked paid by E, and
+//    no payment standing in the files at E (`invoice_export_paid_in_books` —
+//    PAYMENTs less PAYMENT_UNDONEs booked by E). Only the year's company:
+//    the seller org. number of the newest invoice issued on or before E;
+//    others are named on the page and left out, never refused.
+//  - `invoice_export_entry.year_end DATE NULL` — set on exactly the four
+//    year-end events (CHECK), each once per invoice and year (partial
+//    UNIQUE), always with a voucher: `YEAR_END` (on E, only in E's file),
+//    `YEAR_END_REVERSED` (on E + 1, the exact negation, while it stands and
+//    the invoice was not paid by E), `YEAR_END_UNDONE` (on E, the negation —
+//    a payment on or before E marked since, or one standing in the books at
+//    E), `YEAR_END_REVERSAL_UNDONE` (the reversal negated, on a day of E + 1's
+//    year up to the file's, never past the next booked year end).
+//  - A PAYMENT is refused while the invoice's year end at the workspace's
+//    earliest booked year end on or after its day stands: the withdrawal and
+//    the payment are filed TOGETHER (`selectForFile`'s units). A
+//    PAYMENT_UNDONE may be dated back inside an ended year: re-marked to
+//    another day of it — the last day of the LATER day's month; unmarked, or
+//    moved to another year, while its year end is not yet booked — the last
+//    day of the BOOKED day's month. The database admits exactly those two
+//    days before the file's (migration 20261011090200; "ended" and "the
+//    same year" are the app's choice between them, as it alone knows the
+//    financial year).
+//  - Size: a year end reads and books every unpaid invoice of its year in one
+//    transaction (the page lists the first 50). Thousands would outlast the
+//    30-second budget — far beyond any agency's year; not split, not capped.
+//  - `invoice_closed_year_guard` (BEFORE UPDATE OF status on `invoice`,
+//    before `invoice_guard` by name, only raises or returns NEW): nothing
+//    leaves DRAFT dated on or before a booked year end.
+//  - Edges not guarded, written down: an 18-month transition year is not
+//    offered; after a booked year end, an unmarked payment re-marked into
+//    that year books it twice there (warned at Mark as paid and on the file);
+//    a prepayment dated in an earlier year than its year end, marked late and
+//    unmarked between the two files, leaves that year short until the next
+//    year end.
 
 // ───────────────────────────────────────────────────────────────────
 // 6.8 DOCUMENTS & FILES (§5, §6) — three layers:

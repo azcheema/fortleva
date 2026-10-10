@@ -1500,7 +1500,8 @@
           "fixed": "Låst nu när en bokföringsfil har skapats."
         },
         "yearStart": {
-          "label": "Räkenskapsåret börjar i"
+          "label": "Räkenskapsåret börjar i",
+          "hint": "Det avgör vad varje fil innehåller och när bokslutet faller vid kontantmetoden — ändra bara när företagets räkenskapsår ändras."
         },
         "series": {
           "label": "Verifikationsserie"
@@ -1783,7 +1784,11 @@
     "INVOICE_EXPORT_NO_METHOD": "Välj först hur företaget bokför fakturor — Inställningar → Fakturering → Bokföring.",
     "INVOICE_EXPORT_EMPTY": "Det finns inget nytt att lägga i en fil.",
     "INVOICE_EXPORT_BUSY": "En annan fil skapas just nu, eller så markeras en faktura som betald. Försök igen om en stund.",
-    "INVOICE_EXPORT_METHOD_FIXED": "Bokföringsmetoden kan inte ändras när en bokföringsfil har skapats."
+    "INVOICE_EXPORT_METHOD_FIXED": "Bokföringsmetoden kan inte ändras när en bokföringsfil har skapats.",
+    "INVOICE_YEAR_END_NOT_DUE": "Det bokslutet är inte aktuellt — det är redan bokfört, eller så har året inte slutat än. Ladda om sidan.",
+    "INVOICE_YEAR_END_WAITING": "Poster från det året ska fortfarande in i en fil. Skapa filer tills inget återstår och boka sedan upp de obetalda fakturorna.",
+    "INVOICE_YEAR_END_CHANGED": "De obetalda fakturorna har ändrats sedan sidan laddades. Titta på listan igen och boka sedan upp.",
+    "INVOICE_YEAR_CLOSED": "Fakturadatumet ligger i ett år där de obetalda fakturorna redan är uppbokade vid bokslutet. Kontrollera arbetsytans tidszon, eller utfärda fakturan i morgon."
   },
   "assignments": {
     "title": "Team",
@@ -5149,7 +5154,8 @@
       "undone": "Markerad som obetald.",
       "menuLabel": "Åtgärder för betalningen",
       "overdue": "Förfallen",
-      "paidOnLabel": "Betald"
+      "paidOnLabel": "Betald",
+      "closedYear": "Dagen ligger i ett år där obetalda fakturor redan är uppbokade vid bokslutet ({day}). Nästa bokföringsfil bokför inbetalningen i det året — kontrollera med den som sköter bokföringen att året fortfarande är öppet i Fortnox."
     },
     "ready": {
       "title": "Redo att fakturera",
@@ -5291,7 +5297,44 @@
         "waiting": "{count, plural, one {# till hamnar i en senare fil.} other {# till hamnar i senare filer.}} En fil rymmer ett räkenskapsår.",
         "make": "Skapa fil",
         "made": "Fil {number} är klar.",
-        "madeWaiting": "Fil {number} är klar. {count, plural, one {# till hamnar} other {# till hamnar}} i nästa."
+        "madeWaiting": "Fil {number} är klar. {count, plural, one {# till hamnar} other {# till hamnar}} i nästa.",
+        "yearEndReversed": "{count, plural, one {# uppbokning vid bokslut återförs dagen efter} other {# uppbokningar vid bokslut återförs dagen efter}}",
+        "yearEndUndone": "{count, plural, one {# faktura tas ur uppbokningen — betald senast då} other {# fakturor tas ur uppbokningen — betalda senast då}}",
+        "yearEndReversalUndone": "{count, plural, one {# återföring tas tillbaka med den} other {# återföringar tas tillbaka med dem}}",
+        "intoBookedYear": {
+          "title": "Filen bokför i året som slutade {day}, där obetalda fakturor redan är uppbokade",
+          "body": "En inbetalning daterad då har markerats eller ändrats sedan dess. Kontrollera med er redovisningskonsult att året fortfarande är öppet i Fortnox innan du läser in filen — och att inget i den redan har bokförts där för hand."
+        }
+      },
+      "yearEnd": {
+        "title": "Bokslut {day}: obetalda fakturor",
+        "description": "De här fakturorna var obetalda {day}. När du bokar upp dem hamnar de i bokföringen den dagen och återförs {nextDay}, så att deras inbetalningar bokförs som vanligt.",
+        "waiting": "{count, plural, one {# post daterad senast {day} ska fortfarande in i en fil} other {# poster daterade senast {day} ska fortfarande in i en fil}} — skapa filer tills inget återstår och boka sedan upp.",
+        "leftOut": "{count, plural, one {# obetald faktura anger} other {# obetalda fakturor anger}} organisationsnummer {orgNr} — ett annat företags bokföring, så de ingår inte i uppbokningen. Är det samma företag bokar er redovisningskonsult upp dem för hand.",
+        "none": "Inget var obetalt {day}. När du bokar upp noteras att bokslutet är gjort.",
+        "columns": {
+          "number": "Faktura",
+          "client": "Kund",
+          "date": "Fakturadatum",
+          "amount": "Belopp"
+        },
+        "more": "{count, plural, one {# faktura till} other {# fakturor till}}",
+        "total": "{count, plural, one {# faktura} other {# fakturor}}, {total} totalt",
+        "markFirst": "Markera först alla inbetalningar som kom in senast {day}.",
+        "vat": "Boka upp innan du lämnar momsdeklarationen för årets sista period — momsen på de här fakturorna hör hemma där.",
+        "refunds": "En kreditfaktura som utfärdades efter att fakturan betalats ingår inte i uppbokningen — om återbetalningen inte var gjord då, berätta det för er redovisningskonsult.",
+        "book": "Boka upp obetalda fakturor",
+        "confirmTitle": "Boka upp obetalda fakturor per {day}?",
+        "confirmBody": "{count, plural, one {# obetald faktura} other {# obetalda fakturor}}, {total} — bokas upp {day} och återförs {nextDay}.",
+        "confirmEmpty": "Inget var obetalt {day}. Det noteras att bokslutet är gjort.",
+        "confirmLate": "En inbetalning som kom in senast då men markeras senare rättar uppbokningen i en senare fil.",
+        "booked": "De obetalda fakturorna är uppbokade i fil {number}.",
+        "bookedEmpty": "Inget var obetalt {day} — noterat i fil {number}.",
+        "reminder": {
+          "title": "Räkenskapsåret slutade {day}",
+          "body": "Boka upp fakturorna som fortfarande var obetalda den dagen, när alla inbetalningar som kom in senast då är markerade.",
+          "action": "Boka upp obetalda fakturor"
+        }
       },
       "files": {
         "title": "Filer",
@@ -5306,6 +5349,7 @@
           "download": "Ladda ner"
         },
         "number": "Fil {number}",
+        "numberYearEnd": "Fil {number} · bokslut {day}",
         "someoneGone": "Finns inte längre",
         "nothingToBook": "Inget att bokföra",
         "fortnox": "Fortnox-fil",
@@ -5319,7 +5363,7 @@
         "series": "Fortnox frågar vilken verifikationsserie filens serie {series} ska bokföras i. Använd en serie som bara används för de här filerna — en import kan inte ångras när andra verifikationer har bokförts i samma serie.",
         "once": "Läs in varje fil en gång. Fortleva lägger allt i en enda fil, så det går bra att ladda ner igen.",
         "bank": "När en inbetalning syns från banken i Fortnox: matcha den mot den inlästa inbetalningen — bokför den inte igen. Bankavgifter och kursdifferenser bokförs där.",
-        "yearEnd": "Fakturor som är obetalda när räkenskapsåret slutar finns inte i de här filerna än — bokför dem vid bokslutet tillsammans med er redovisningskonsult.",
+        "yearEnd": "När räkenskapsåret slutar: boka upp fakturorna som fortfarande var obetalda på årets sista dag här — Boka upp obetalda fakturor.",
         "eu": "Listans kolumn för momsregistreringsnummer är underlaget för den periodiska sammanställningen.",
         "first": "Den första filen innehåller allt som finns i Fortleva hittills."
       },
@@ -5352,7 +5396,11 @@
           "ISSUE": "Utfärdad",
           "PAYMENT": "Inbetalning",
           "PAYMENT_UNDONE": "Återförd inbetalning",
-          "CREDIT_NOTED": "Kreditfaktura (listad)"
+          "CREDIT_NOTED": "Kreditfaktura (listad)",
+          "YEAR_END": "Obetald vid bokslut",
+          "YEAR_END_REVERSED": "Återförd uppbokning",
+          "YEAR_END_UNDONE": "Rättad uppbokning",
+          "YEAR_END_REVERSAL_UNDONE": "Rättad återföring"
         },
         "invoice": "Faktura",
         "creditNote": "Kreditfaktura",
@@ -5367,7 +5415,11 @@
           "afterPayment": "Efter inbetalningen {day} (fil {file}) — bokför en eventuell återbetalning från banken",
           "unpaid": "Fakturan är inte betald än — inbetalningen blir lägre",
           "creditedUnpaid": "Fakturan är helt krediterad och inte betald — inget att bokföra",
-          "reverses": "Återför inbetalningen {day} (fil {file})"
+          "reverses": "Återför inbetalningen {day} (fil {file})",
+          "reversesYearEnd": "Återför uppbokningen {day} (fil {file})",
+          "paidByYearEnd": "Betald {day} ändå — tagen ur uppbokningen (fil {file})",
+          "paidInBooks": "En inbetalning bokförd senast då står kvar — tagen ur uppbokningen {day} (fil {file})",
+          "undoesReversal": "Tar tillbaka återföringen {day} (fil {file})"
         }
       }
     },

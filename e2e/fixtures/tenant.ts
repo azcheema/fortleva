@@ -305,6 +305,16 @@ export async function plantHours(tenantId: string, projectId: string, memberId: 
   return runCli<{ ids: string[]; day: string }>(["plant-hours", tenantId, projectId, memberId, String(count)]);
 }
 
+/**
+ * The fixture owner's SECOND workspace ready for a year end (slice 111b; CI
+ * only — `seed-cli.ts`'s `yearEndWorkspace` says how): reset, two invoices
+ * planted in the year that ended on `yearEnd`. `planted: false` where the
+ * database's owner is no superuser — the caller skips.
+ */
+export async function readyYearEndWorkspace(tenantId: string): Promise<{ planted: boolean; yearEnd?: string }> {
+  return runCli<{ planted: boolean; yearEnd?: string }>(["year-end-workspace", tenantId]);
+}
+
 /** The invoice-number series from `first`, made once (slice 108). Returns the next number. */
 export async function setInvoiceSeries(tenantId: string, first: number): Promise<number> {
   const { nextNumber } = await runCli<{ nextNumber: number }>(["set-invoice-series", tenantId, String(first)]);

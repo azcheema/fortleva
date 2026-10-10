@@ -701,12 +701,14 @@ describe("the guard's census", () => {
   // slice 110b it also WRITES `NEW.hours_page` as the invoice leaves DRAFT —
   // still before the number is taken, and still never NULL. Slice 111's
   // `invoice_book_rate_guard` ('bo') sorts between them: it raises, or writes
-  // a credit note's booking rate, and always returns NEW.
+  // a credit note's booking rate, and always returns NEW. Slice 111b's
+  // `invoice_closed_year_guard` ('c') too: it only raises (an issue dated on
+  // or before a booked year end) or returns NEW.
   it("invoice_guard is the LAST BEFORE trigger on invoice (a later one returning NULL would burn a number)", async () => {
     const rows = await f.platform.$queryRaw<{ tgname: string }[]>`
       SELECT tgname FROM pg_trigger
        WHERE tgrelid = 'invoice'::regclass AND NOT tgisinternal AND (tgtype & 2) = 2
        ORDER BY tgname`;
-    expect(rows.map((r) => r.tgname)).toEqual(["invoice_billed_hours_guard", "invoice_book_rate_guard", "invoice_guard"]);
+    expect(rows.map((r) => r.tgname)).toEqual(["invoice_billed_hours_guard", "invoice_book_rate_guard", "invoice_closed_year_guard", "invoice_guard"]);
   });
 });

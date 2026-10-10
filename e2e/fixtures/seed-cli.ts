@@ -124,6 +124,9 @@ const DBTEST_PREFIXES = [
   // `setupTenant("bkxc")` (the cash method).
   "bkx-",
   "bkxc-",
+  // Slice 111b, the cash method's year end — `src/modules/invoicing/year-end.dbtest.ts`
+  // (CI only), `setupTenant("bkye")`.
+  "bkye-",
   "bulk-",
   "census-",
   // Phase 3, the invite slice — `src/clients/contact-access.dbtest.ts`,
@@ -451,9 +454,15 @@ export type E2ESeed = {
    * Without it neither the offer nor the switch could be tested in a
    * browser: every assertion could only ever be an ABSENCE.
    *
-   * Deliberately EMPTY — no client, project or document. It is the
+   * EMPTY as seeded — no client, project or document. It is the
    * destination of a switch, and an empty workspace makes "am I in the
-   * other one?" unmistakable. It is torn down with the first. */
+   * other one?" unmistakable. One exception, in CI only: slice 111b's
+   * `invoices-year-end.spec.ts` gives it (via `year-end-workspace`)
+   * invoicing details, one client and two invoices dated in an ended year
+   * — a year end needs a cash-method workspace, and the first is the
+   * invoice method's for good. Nothing in it reaches `/home` or
+   * `account.spec.ts`'s assertions, which name only the workspace. It is
+   * torn down with the first. */
   readonly secondTenantId: string;
   readonly secondTenantSlug: string;
   readonly secondTenantName: string;
@@ -2624,6 +2633,134 @@ async function plantHours(tenantId: string, projectId: string, memberId: string,
 }
 
 /**
+ * Slice 111b — THE SECOND WORKSPACE READY FOR A YEAR END (CI only), for
+ * `invoices-year-end.spec.ts`. A year end books invoices DATED in a year
+ * that has ended, which no writer can make (the database holds an issue
+ * date to today ± a day) — so two SEK invoices are issued through the real
+ * services as the owner, then their dates moved back through the database's
+ * superuser OWNER connection with `session_replication_role = replica`
+ * (`year-end.dbtest.ts`'s precedent). Where that connection is no superuser
+ * (the dev database), nothing is written and `planted:false` makes the spec
+ * skip.
+ *
+ * RESETS first — the year end is one-way, so a CI retry must find the
+ * workspace as the first attempt did: its files, entries, invoices and series
+ * go (under the invoice-maintenance setting), then everything is made again.
+ * The cash method, its financial year starting the month after the year end
+ * (the last day of the month before last, in the workspace's own day).
+ */
+async function yearEndWorkspace(tenantId: string): Promise<void> {
+  // Only where planting is meant to happen — CI, or a deliberate
+  // `DBTEST_ALLOW_REPLICA=1` (`year-end.dbtest.ts`'s gate; the security
+  // review's L2) — and only into a throwaway tenant, checked BEFORE the
+  // superuser connection is opened.
+  const inCi = process.env["CI"] === "true";
+  if (!inCi && process.env["DBTEST_ALLOW_REPLICA"] !== "1") {
+    process.stdout.write(`${MARKER}{"planted":false}\n`);
+    return;
+  }
+  if (!tenantId) throw new Error("year-end-workspace: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const directUrl = process.env["DIRECT_URL"];
+  const { default: pg } = await import("pg");
+  let owner: InstanceType<typeof pg.Client> | null = null;
+  if (directUrl) {
+    const candidate = new pg.Client({ connectionString: directUrl });
+    candidate.on("error", () => {});
+    try {
+      await candidate.connect();
+      const r = await candidate.query<{ rolsuper: boolean }>("SELECT rolsuper FROM pg_roles WHERE rolname = current_user");
+      if (r.rows[0]?.rolsuper === true) owner = candidate;
+      else await candidate.end();
+    } catch {
+      await candidate.end().catch(() => {});
+    }
+  }
+  if (!owner) {
+    await db.$disconnect();
+    // CI's owner IS a superuser (`.github/workflows/ci.yml`): never let the spec go quietly skipped there.
+    if (inCi) throw new Error("year-end-workspace: CI's owner connection must be a superuser");
+    process.stdout.write(`${MARKER}{"planted":false}\n`);
+    return;
+  }
+  const { withTenant } = await import("../../src/db");
+  const { encryptFieldV2 } = await import("../../src/crypto/field-encryption");
+  const { addLine, createDraft, issueInvoice, updateLine } = await import("../../src/modules/invoicing");
+  const { todayIn } = await import("../../src/lib/due-date");
+  const { addDays } = await import("../../src/lib/week");
+  try {
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
+      await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
+      await tx.invoiceExport.deleteMany({ where: { tenantId } });
+      await tx.invoice.deleteMany({ where: { tenantId } });
+      await tx.invoiceSeries.deleteMany({ where: { tenantId } });
+    });
+    const ownerMember = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const bankgiro = await withTenant(tenantId, { type: "system" }, (tx) =>
+      encryptFieldV2(tx, { tenantId, model: "tenant", rowId: tenantId, field: "bankgiro" }, "5050-1055"),
+    );
+    await db.tenant.update({
+      where: { id: tenantId },
+      data: {
+        legalName: "E2E Year End AB",
+        orgNr: "556016-0680",
+        vatNumber: "SE556016068001",
+        seat: "Stockholm",
+        fSkattApproved: true,
+        addressLine1: "Storgatan 1",
+        postalCode: "111 22",
+        city: "Stockholm",
+        countryCode: "SE",
+        bankgiro,
+      },
+    });
+    await db.invoiceSeries.create({ data: { tenantId, firstNumber: 5001, nextNumber: 5001, createdByMemberId: ownerMember.id } });
+    const clientName = "E2E Year End Client AB";
+    const client =
+      (await db.client.findFirst({ where: { tenantId, name: clientName }, select: { id: true } })) ??
+      (await db.client.create({
+        data: { tenantId, name: clientName, orgNr: "556677-8899", addressLine1: "Kundvägen 2", postalCode: "111 22", city: "Stockholm", countryCode: "SE" },
+        select: { id: true },
+      }));
+    const zone = await db.tenantPreference.findFirst({ where: { tenantId, key: "ui.timezone" }, select: { value: true } });
+    const today = todayIn(typeof zone?.value === "string" ? zone.value : "Europe/Stockholm", new Date());
+    const lastMonthEnd = addDays(`${today.slice(0, 7)}-01`, -1);
+    const yearEnd = addDays(`${lastMonthEnd.slice(0, 7)}-01`, -1);
+    const yearStart = String((Number(yearEnd.slice(5, 7)) % 12) + 1);
+    await db.tenantPreference.upsert({
+      where: { tenantId_key: { tenantId, key: "invoice.bookkeeping" } },
+      create: { tenantId, key: "invoice.bookkeeping", value: { method: "CASH", yearStart }, updatedByMemberId: ownerMember.id },
+      update: { value: { method: "CASH", yearStart }, updatedByMemberId: ownerMember.id },
+    });
+    // Two invoices, issued as the owner would (no ✦ code: the browser session has none).
+    const ctx = { tenantId, actor: { memberId: ownerMember.id, mfa: { enrolled: false, verifiedAt: null } } };
+    const dated = addDays(yearEnd, -20);
+    for (const price of ["1000", "2000"]) {
+      const id = await createDraft(ctx, { clientId: client.id });
+      const line = await addLine(ctx, id, { description: `Year-end work ${price}` });
+      await updateLine(ctx, id, line, { unitPrice: price, vatRate: "25" });
+      await issueInvoice(ctx, id);
+      await owner.query("BEGIN");
+      try {
+        await owner.query("SET LOCAL session_replication_role = replica");
+        await owner.query("UPDATE invoice SET issue_date = $1::date, due_date = $2::date WHERE id = $3 AND tenant_id = $4", [dated, addDays(dated, 30), id, tenantId]);
+        await owner.query("COMMIT");
+      } catch (e) {
+        await owner.query("ROLLBACK");
+        throw e;
+      }
+    }
+    process.stdout.write(`${MARKER}${JSON.stringify({ planted: true, yearEnd })}\n`);
+  } finally {
+    await owner.end();
+    await db.$disconnect();
+  }
+}
+
+/**
  * The workspace's invoice-number series from `first` (Phase 4 slice 108), as
  * the owner set it — through the platform role, so no ✦ step-up is spent (the
  * series guard judges only the runtime role). Made once; a series already
@@ -3425,6 +3562,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-invoice-details") return resetInvoiceDetails(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "set-invoice-series") return setInvoiceSeries(argument!, Number(process.argv[4]));
+  if (command === "year-end-workspace") return yearEndWorkspace(argument!);
   if (command === "plant-hours") return plantHours(argument!, process.argv[4]!, process.argv[5]!, Number(process.argv[6]));
   if (command === "forget-notice") return forgetNotice(argument!, process.argv[4]!);
   if (command === "remove-contact") return removeContact(argument!, process.argv[4]!);

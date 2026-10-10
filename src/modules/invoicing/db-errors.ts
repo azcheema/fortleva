@@ -44,4 +44,9 @@ export const { mapDbError, guarded } = dbErrorMapper([
   ["INVOICE_HOURS_KEPT", "INVOICE_HOURS_KEPT"],
   ["INVOICE_HAS_HOURS", "INVOICE_HAS_HOURS"],
   ["INVOICE_HOURS_MISMATCH", "INVOICE_NOT_READY"],
+  // Slice 111b (migration 20261011090100): an invoice or credit note leaving
+  // DRAFT dated on or before a booked year end — reachable through the issue
+  // (a workspace's time zone changed across the year turn), so a sentence,
+  // not a stack (its design re-check's NIT).
+  ["INVOICE_CLOSED_YEAR_GUARD", "INVOICE_YEAR_CLOSED"],
 ]);

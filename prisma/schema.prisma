@@ -1619,6 +1619,11 @@ enum InvoiceExportEvent {
   PAYMENT // cash method: an invoice marked paid
   PAYMENT_UNDONE // cash method: a booked payment marked as unpaid since
   CREDIT_NOTED // cash method: a credit note, listed — no voucher
+  // The cash method's year end (slice 111b; C83) — E is the financial year's last day.
+  YEAR_END // an invoice unpaid on E, booked as a receivable on E (only in E's year-end file)
+  YEAR_END_REVERSED // that booking negated on E + 1
+  YEAR_END_UNDONE // that booking withdrawn on E: a payment on or before E marked since
+  YEAR_END_REVERSAL_UNDONE // the reversal withdrawn with it, on the file's day (kept inside E + 1's year)
 
   @@map("invoice_export_event")
 }
@@ -1630,6 +1635,7 @@ model InvoiceExport {
   method            InvoiceExportMethod
   series            String // the voucher series the file names (C82; default F)
   madeOn            DateTime            @map("made_on") @db.Date // the workspace's day (#GEN)
+  yearEnd           DateTime?           @map("year_end") @db.Date // slice 111b: this file books the year end of that day (CASH; one per year)
   createdByMemberId String              @map("created_by_member_id") // attribution, no FK
   createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -1646,6 +1652,7 @@ model InvoiceExportEntry {
   tenantId  String             @map("tenant_id")
   exportId  String             @map("export_id")
   invoiceId String             @map("invoice_id") // the invoice or credit note
+  yearEnd   DateTime?          @map("year_end") @db.Date // slice 111b: the year end a year-end event belongs to (set on exactly those four)
   position  Int // its place in the file (1, 2, 3…)
   event     InvoiceExportEvent
   bookedOn  DateTime           @map("booked_on") @db.Date // the voucher's date

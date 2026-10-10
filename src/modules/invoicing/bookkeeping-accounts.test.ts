@@ -6,6 +6,7 @@ import {
   BOOKKEEPING_DEFAULTS,
   bookkeepingFrom,
   bookkeepingToStore,
+  financialYearEndOf,
   financialYearOf,
   methodOf,
   normalizeBookkeepingValue,
@@ -70,6 +71,18 @@ describe("bookkeeping settings", () => {
     expect(financialYearOf("2027-01-01", 1)).toBe("2027-01-01");
     expect(financialYearOf("2026-04-30", 5)).toBe("2025-05-01");
     expect(financialYearOf("2026-05-01", 5)).toBe("2026-05-01");
+  });
+
+  it("finds the last day of the financial year a day falls in (slice 111b)", () => {
+    expect(financialYearEndOf("2026-01-01", 1)).toBe("2026-12-31");
+    expect(financialYearEndOf("2026-12-31", 1)).toBe("2026-12-31");
+    expect(financialYearEndOf("2025-06-10", 5)).toBe("2026-04-30");
+    expect(financialYearEndOf("2026-04-30", 5)).toBe("2026-04-30");
+    expect(financialYearEndOf("2026-05-01", 5)).toBe("2027-04-30");
+    // A year starting in March ends on February's last day — a leap year's 29th.
+    expect(financialYearEndOf("2027-06-01", 3)).toBe("2028-02-29");
+    expect(financialYearEndOf("2026-06-01", 3)).toBe("2027-02-28");
+    expect(financialYearEndOf("2026-07-15", 7)).toBe("2027-06-30");
   });
 
   it("finds each treatment's and rate's account", () => {

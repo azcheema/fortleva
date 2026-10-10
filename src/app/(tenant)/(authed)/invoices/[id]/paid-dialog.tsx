@@ -34,8 +34,23 @@ const NOTE_MAX = 500;
  *
  * Once marked, the trigger is gone from the re-rendered page, so focus goes to
  * Download PDF — never to <body>.
+ *
+ * Slice 111b (its design review's L9): a day on or before the newest booked
+ * year end says so — the next bookkeeping file books the payment into a
+ * year the accountant may have closed.
  */
-export function PaidDialog({ invoiceId, displayNumber, today }: { invoiceId: string; displayNumber: string; today: string }) {
+export function PaidDialog({
+  invoiceId,
+  displayNumber,
+  today,
+  closedYear,
+}: {
+  invoiceId: string;
+  displayNumber: string;
+  today: string;
+  /** The newest booked year end (`YYYY-MM-DD`) and how the page prints it, or null. */
+  closedYear: { day: string; label: string } | null;
+}) {
   const t = useTranslations("invoices.payment");
   const tCommon = useTranslations("common");
   const tLines = useTranslations("invoices.lines");
@@ -108,6 +123,11 @@ export function PaidDialog({ invoiceId, displayNumber, today }: { invoiceId: str
               data-testid="paid-on"
             />
           </Field>
+          {closedYear && paidOn !== "" && paidOn <= closedYear.day ? (
+            <p className="text-sm text-muted-foreground" data-testid="paid-closed-year">
+              {t("closedYear", { day: closedYear.label })}
+            </p>
+          ) : null}
           <Field label={t("note")} htmlFor={`paid-note-${invoiceId}`} hint={t("noteHint")}>
             <Textarea
               id={`paid-note-${invoiceId}`}

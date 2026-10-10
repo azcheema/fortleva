@@ -161,11 +161,40 @@ export function paymentVoucher(
   return voucherOf(paidOn, voucherText("Inbetalning faktura", inv.displayNumber, inv.clientName), rows);
 }
 
-/** A booked voucher reversed on another day — every row negated (a payment marked as unpaid after its file). */
-export function reversalOf(booked: SieVoucher, on: string, displayNumber: string, clientName: string): SieVoucher {
+/**
+ * THE CASH METHOD'S YEAR END (slice 111b; C83): an invoice still unpaid on
+ * the financial year's last day, less the credit notes dated by then, to
+ * receivables — the invoice method's voucher on that day, reversed the next.
+ */
+export function yearEndVoucher(
+  inv: BookableInvoice,
+  amounts: BookedAmounts,
+  yearEnd: string,
+  s: BookkeepingSettings,
+): SieVoucher | null {
+  if (inv.kind !== "INVOICE") throw new Error("vouchers: only an invoice is unpaid at year end");
+  const rows = rowsFor(s.receivables, amounts, inv.vatProfile, s, 1n);
+  return voucherOf(yearEnd, voucherText("Bokslut obetald faktura", inv.displayNumber, inv.clientName), rows);
+}
+
+/** What a negated voucher undoes — its text's first words. */
+export const REVERSAL_WORDS = {
+  /** A payment marked as unpaid after its file. */
+  PAYMENT_UNDONE: "Återförd inbetalning",
+  /** A year end, the day after it. */
+  YEAR_END_REVERSED: "Återföring bokslut faktura",
+  /** A year end, withdrawn: the invoice was paid by then after all. */
+  YEAR_END_UNDONE: "Rättelse bokslut faktura",
+  /** That year end's reversal, withdrawn with it. */
+  YEAR_END_REVERSAL_UNDONE: "Rättelse återföring faktura",
+} as const;
+export type ReversalEvent = keyof typeof REVERSAL_WORDS;
+
+/** A booked voucher negated on a day — every row's sign reversed. */
+export function reversalOf(booked: SieVoucher, on: string, event: ReversalEvent, displayNumber: string, clientName: string): SieVoucher {
   return {
     date: on,
-    text: voucherText("Återförd inbetalning", displayNumber, clientName),
+    text: voucherText(REVERSAL_WORDS[event], displayNumber, clientName),
     rows: booked.rows.map((r) => ({ account: r.account, amount: -r.amount })),
   };
 }

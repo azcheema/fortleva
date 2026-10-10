@@ -116,6 +116,7 @@ export function BookkeepingCard({
               if (next !== values.yearStart) save("yearStart", next);
             }}
           />,
+          t("yearStart.hint"),
         )}
         {text("series", t("series.label"), 10, false)}
       </dl>

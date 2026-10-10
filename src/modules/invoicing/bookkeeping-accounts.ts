@@ -161,6 +161,19 @@ export function financialYearOf(day: string, yearStart: number): string {
   return `${startYear}-${String(yearStart).padStart(2, "0")}-01`;
 }
 
+/**
+ * The financial year's LAST day a day falls in (`YYYY-MM-DD`; slice 111b's
+ * year end): with a year starting in May, 2026-04-30 for 2025-06-10.
+ */
+export function financialYearEndOf(day: string, yearStart: number): string {
+  const startYear = Number(financialYearOf(day, yearStart).slice(0, 4));
+  const endYear = yearStart === 1 ? startYear : startYear + 1;
+  const endMonth = yearStart === 1 ? 12 : yearStart - 1;
+  // Day 0 of the next month is the month's last.
+  const lastDay = new Date(Date.UTC(endYear, endMonth, 0)).getUTCDate();
+  return `${endYear}-${String(endMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+}
+
 /** The sales account a VAT treatment and rate (hundredths of a percent) book to. */
 export function salesAccountFor(s: BookkeepingSettings, profile: VatProfile, rate: bigint): string {
   if (profile === "EU_REVERSE_CHARGE") return s.salesEu;

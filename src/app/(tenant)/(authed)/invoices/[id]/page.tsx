@@ -19,6 +19,7 @@ import {
   minorToNumber,
   printFxRate,
   rateToNumber,
+  readNewestYearEnd,
   signed,
   type InvoiceDetail,
 } from "@/modules/invoicing";
@@ -109,6 +110,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const draft = invoice.status === "DRAFT";
   const credit = invoice.kind === "CREDIT_NOTE";
   const issued = invoice.issued;
+  // Slice 111b (its design review's L9): Mark as paid says so when the day
+  // falls in a year whose year end is already booked.
+  const newestYearEnd = invoice.can.markPaid ? await readNewestYearEnd({ tenantId: membership.tenantId, actor }) : null;
   // Slice 110: the Hours card's durations, in the workspace's style.
   const durationStyle = invoice.hours
     ? (await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) => readPreferences(tx, membership.tenantId)))
@@ -194,7 +198,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               />
             ) : null}
             {invoice.can.markPaid && invoice.displayNumber && invoice.today ? (
-              <PaidDialog invoiceId={invoice.id} displayNumber={invoice.displayNumber} today={invoice.today} />
+              <PaidDialog
+                invoiceId={invoice.id}
+                displayNumber={invoice.displayNumber}
+                today={invoice.today}
+                closedYear={
+                  newestYearEnd
+                    ? { day: newestYearEnd, label: format.dateTime(new Date(`${newestYearEnd}T00:00:00Z`), { dateStyle: "medium", timeZone: "UTC" }) }
+                    : null
+                }
+              />
             ) : null}
             {invoice.can.markUnpaid ? <PaidMenu invoiceId={invoice.id} label={tPayment("menuLabel")} /> : null}
             {invoice.can.credit && invoice.displayNumber ? (

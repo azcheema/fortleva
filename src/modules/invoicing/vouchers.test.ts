@@ -8,9 +8,11 @@ import {
   issueVoucher,
   lessCredits,
   paymentVoucher,
+  REVERSAL_WORDS,
   reversalOf,
   voucherText,
   VOUCHER_TEXT_MAX,
+  yearEndVoucher,
   type BookableInvoice,
 } from "./vouchers";
 
@@ -149,10 +151,46 @@ describe("the cash method: paymentVoucher, lessCredits, reversalOf", () => {
 
   it("reverses a booked payment on another day, every sign negated", () => {
     const paid = paymentVoucher(twoRates, bookedAmounts(twoRates), "2026-10-20", S)!;
-    const back = reversalOf(paid, "2026-11-05", "10001", "Acme AB");
+    const back = reversalOf(paid, "2026-11-05", "PAYMENT_UNDONE", "10001", "Acme AB");
     expect(back.date).toBe("2026-11-05");
     expect(back.text).toBe("Återförd inbetalning 10001 Acme AB");
     expect(rows(back)).toEqual(["1930 -1810.00", "3001 1000.00", "3002 500.00", "2611 250.00", "2621 60.00"]);
+  });
+});
+
+describe("the cash method's year end (slice 111b): yearEndVoucher and its negations", () => {
+  it("books an unpaid invoice less the credit notes by then to receivables, on the year's last day", () => {
+    const credit = bookedAmounts({ ...base, kind: "CREDIT_NOTE", displayNumber: "10002", groups: [{ rate: 2500n, net: 40_000n }] });
+    const v = yearEndVoucher(twoRates, lessCredits(bookedAmounts(twoRates), [credit]), "2026-12-31", S);
+    expect(v?.date).toBe("2026-12-31");
+    expect(v?.text).toBe("Bokslut obetald faktura 10001 Acme AB");
+    expect(rows(v)).toEqual(["1510 1310.00", "3001 -600.00", "3002 -500.00", "2611 -150.00", "2621 -60.00"]);
+  });
+
+  it("books a euro receivable at the invoice's booking rate", () => {
+    const inv = { ...base, currency: "EUR", vatProfile: "EU_REVERSE_CHARGE" as const, groups: [{ rate: 0n, net: 200_000n }], bookRate: 11_194_000n };
+    expect(rows(yearEndVoucher(inv, bookedAmounts(inv), "2026-12-31", S))).toEqual(["1510 22388.00", "3308 -22388.00"]);
+  });
+
+  it("is nothing when the credit notes took everything; refuses a credit note (a bug)", () => {
+    const credit = bookedAmounts({ ...twoRates, kind: "CREDIT_NOTE" });
+    expect(yearEndVoucher(twoRates, lessCredits(bookedAmounts(twoRates), [credit]), "2026-12-31", S)).toBeNull();
+    expect(() => yearEndVoucher({ ...twoRates, kind: "CREDIT_NOTE" }, bookedAmounts(twoRates), "2026-12-31", S)).toThrow();
+  });
+
+  it("negates it the next day, and names each withdrawal — every text within Fortnox's 50 characters", () => {
+    const name = "Stockholms Byggnads- och Fastighetsförvaltning AB XYZ";
+    const ye = yearEndVoucher({ ...twoRates, clientName: name }, bookedAmounts(twoRates), "2026-12-31", S)!;
+    const back = reversalOf(ye, "2027-01-01", "YEAR_END_REVERSED", "10001", name);
+    expect(back.date).toBe("2027-01-01");
+    expect(rows(back)).toEqual(["1510 -1810.00", "3001 1000.00", "3002 500.00", "2611 250.00", "2621 60.00"]);
+    for (const [event, words] of Object.entries(REVERSAL_WORDS)) {
+      const text = reversalOf(ye, "2027-01-01", event as keyof typeof REVERSAL_WORDS, "10001", name).text;
+      expect(text.startsWith(`${words} 10001 Stockholms`)).toBe(true);
+      expect(Array.from(text).length).toBeLessThanOrEqual(VOUCHER_TEXT_MAX);
+    }
+    expect(Array.from(ye.text).length).toBeLessThanOrEqual(VOUCHER_TEXT_MAX);
+    expect(ye.text.startsWith("Bokslut obetald faktura 10001 Stockholms")).toBe(true);
   });
 });
 

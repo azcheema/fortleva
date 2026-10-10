@@ -14,15 +14,38 @@ import type { VatProfile } from "./vat";
  * the VAT-number column is the EU sales list's source (L12).
  */
 
-export const LIST_EVENTS = ["ISSUE", "PAYMENT", "PAYMENT_UNDONE", "CREDIT_NOTED"] as const;
+export const LIST_EVENTS = [
+  "ISSUE",
+  "PAYMENT",
+  "PAYMENT_UNDONE",
+  "CREDIT_NOTED",
+  // The cash method's year end (slice 111b; C83).
+  "YEAR_END",
+  "YEAR_END_REVERSED",
+  "YEAR_END_UNDONE",
+  "YEAR_END_REVERSAL_UNDONE",
+] as const;
 export type ListEvent = (typeof LIST_EVENTS)[number];
 
 /**
  * Why a row books nothing, what a credit note in a cash-method file means
  * (the re-check's 2: from the FROZEN record — "deducted" only when a booked,
- * not undone, payment names it), and what a reversal reverses (its 3).
+ * not undone, payment names it), and what a reversal reverses (its 3) — and
+ * for the year end (slice 111b): which year end a reversal reverses, why one
+ * was withdrawn (the payment's day), and which reversal went with it.
  */
-export const LIST_REMARKS = ["nothing", "deducted", "afterPayment", "unpaid", "creditedUnpaid", "reverses"] as const;
+export const LIST_REMARKS = [
+  "nothing",
+  "deducted",
+  "afterPayment",
+  "unpaid",
+  "creditedUnpaid",
+  "reverses",
+  "reversesYearEnd",
+  "paidByYearEnd",
+  "paidInBooks",
+  "undoesReversal",
+] as const;
 export type ListRemarkKind = (typeof LIST_REMARKS)[number];
 
 /** A remark, with the payment it refers to where it names one: its day and its file. */

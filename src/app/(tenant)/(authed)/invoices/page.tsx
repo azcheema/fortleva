@@ -5,7 +5,7 @@ import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
 import { resolveScope } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
-import { DataTable, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
+import { Callout, DataTable, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { withTenant } from "@/db";
@@ -18,6 +18,7 @@ import {
   listInvoices,
   listReadyToInvoice,
   minorToNumber,
+  readYearEndReminder,
   signed,
   type InvoiceListRow,
 } from "@/modules/invoicing";
@@ -82,6 +83,9 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
     prefs: await readPreferences(tx, membership.tenantId),
   }));
   const ready = canGenerate ? await listReadyToInvoice(ctx) : null;
+  // Slice 111b (C83 (a)): the cash method's year end, while it waits to be
+  // booked — for whoever the Bookkeeping link is shown to.
+  const yearEndDue = canExport ? await readYearEndReminder(ctx) : null;
   const tReady = await getTranslations("invoices.ready");
   const tBookkeeping = await getTranslations("invoices.bookkeeping");
   const hours = (seconds: number) => formatDurationSeconds(locale, seconds, prefs.durationStyle);
@@ -116,6 +120,24 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         }
       />
       <div className="mt-6 flex flex-col gap-4">
+        {yearEndDue ? (
+          <div data-testid="year-end-reminder">
+            <Callout
+              tone="caution"
+              title={tBookkeeping("yearEnd.reminder.title", {
+                day: format.dateTime(new Date(`${yearEndDue}T00:00:00Z`), { dateStyle: "medium", timeZone: "UTC" }),
+              })}
+            >
+              {tBookkeeping("yearEnd.reminder.body")}{" "}
+              <Link
+                href="/invoices/bookkeeping#year-end"
+                className="rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                {tBookkeeping("yearEnd.reminder.action")}
+              </Link>
+            </Callout>
+          </div>
+        ) : null}
         {canCreate ? (
           <SectionCard id="new-invoice" title={t("newTitle")}>
             {clients.length > 0 ? (
