@@ -14,7 +14,8 @@ import { readPreferences } from "@/preferences/service";
 import { readCreditedNets, readInvoiceNets } from "./credit-state";
 import { guarded } from "./db-errors";
 import type { InvoicingCtx } from "./drafts";
-import { freeInvoiceHours, lockInvoiceHours, readHoursIssueFacts } from "./hours-record";
+import { HOURS_PAGE_ROWS_MAX, hoursPageSize, hoursPageTitles, printedTask } from "./hours-page";
+import { freeInvoiceHours, lockInvoiceHours, readHoursIssueFacts, readLiveHoursPageText } from "./hours-record";
 import { FX_MAX_AGE_DAYS, needsSekVat, rateDayFor, sekRateFor, vatGroupsInSek, type FetchText, type FxRate } from "./fx";
 import { checkCreditIssue, checkIssue, creditCovers, mentionsPaymentDetails, type IssueCheck, type IssueClient } from "./issue-check";
 import { formatFixed, invoiceTotals, readFixed, type InvoiceTotals } from "./money";
@@ -89,6 +90,8 @@ type DraftFacts = {
   readonly periodEnd: string | null;
   readonly lineCount: number;
   readonly totals: InvoiceTotals;
+  /** Slice 110b: the time breakdown is ticked. */
+  readonly includeHours: boolean;
 };
 
 /** The draft's own facts and its lines' totals, read inside a transaction. */
@@ -107,6 +110,7 @@ async function readDraftFacts(tx: TenantDb, invoiceId: string): Promise<DraftFac
       locale: true,
       periodStart: true,
       periodEnd: true,
+      includeHours: true,
     },
   });
   if (!invoice) return deny("NOT_FOUND");
@@ -127,6 +131,7 @@ async function readDraftFacts(tx: TenantDb, invoiceId: string): Promise<DraftFac
     periodEnd: invoice.periodEnd ? isoDay(invoice.periodEnd) : null,
     lineCount: lines.length,
     totals,
+    includeHours: invoice.includeHours,
   };
 }
 
@@ -144,12 +149,21 @@ async function readDraftFacts(tx: TenantDb, invoiceId: string): Promise<DraftFac
  * never hash what you sent). The workspace's own details are not in it: they
  * change only with a code typed in the form and every owner mailed (C75).
  * A CREDIT NOTE hashes its kind and reason too, and not the live client —
- * nothing of it is printed there (its parties are its invoice's).
+ * nothing of it is printed there (its parties are its invoice's). A draft
+ * with the TIME BREAKDOWN ticked (slice 110b) hashes the page the database
+ * would write now — a task renamed or made private since the page was shown
+ * is "it changed — look again".
  */
 export async function readIssueFingerprint(tx: TenantDb, invoiceId: string): Promise<string> {
+  return (await readIssueFingerprintParts(tx, invoiceId)).hash;
+}
+
+/** The fingerprint, and the time breakdown's text it hashed (null when not ticked, or no hours) — `issueLocked` holds the frozen page to it. */
+async function readIssueFingerprintParts(tx: TenantDb, invoiceId: string): Promise<{ readonly hash: string; readonly hoursPage: string | null }> {
   const invoice = await tx.invoice.findFirst({
     where: { id: invoiceId },
     select: {
+      tenantId: true,
       kind: true,
       creditReason: true,
       clientId: true,
@@ -164,6 +178,7 @@ export async function readIssueFingerprint(tx: TenantDb, invoiceId: string): Pro
       ourReference: true,
       note: true,
       payLinkUrl: true,
+      includeHours: true,
     },
   });
   if (!invoice) return deny("NOT_FOUND");
@@ -190,6 +205,8 @@ export async function readIssueFingerprint(tx: TenantDb, invoiceId: string): Pro
         },
       });
   if (!credit && !client) return deny("NOT_FOUND");
+  // In sequence, after the reads above (one transaction, one connection).
+  const hoursPage = invoice.includeHours ? await readLiveHoursPageText(tx, invoice.tenantId, invoiceId) : null;
   const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
   const canonical = JSON.stringify([
     invoice.projectId,
@@ -220,8 +237,11 @@ export async function readIssueFingerprint(tx: TenantDb, invoiceId: string): Pro
     // seen by the issuer; a link set or changed after the page loaded is
     // INVOICE_CHANGED. Appended only when there is one.
     ...(invoice.payLinkUrl !== null ? ["payLink", invoice.payLinkUrl] : []),
+    // Slice 110b (C80 (d)): the time breakdown — the tick and the page the
+    // database would freeze. Appended only when ticked.
+    ...(invoice.includeHours ? ["hoursPage", hoursPage] : []),
   ]);
-  return createHash("sha256").update(canonical).digest("hex");
+  return { hash: createHash("sha256").update(canonical).digest("hex"), hoursPage };
 }
 
 /**
@@ -231,20 +251,30 @@ export async function readIssueFingerprint(tx: TenantDb, invoiceId: string): Pro
  */
 export type IssueCheckSeen = IssueCheck & { readonly fingerprint: string; readonly paymentText: boolean };
 
-/** The draft's own printed text — note, references, reason, line descriptions — read for `mentionsPaymentDetails`. */
+/**
+ * The draft's own printed text — note, references, reason, line descriptions
+ * and, with the time breakdown ticked, its task titles (slice 110b; the
+ * security review's low: those titles are written by anyone who edits a task,
+ * a client's own requests included, and the default one line per project
+ * prints them nowhere else) — read for `mentionsPaymentDetails`.
+ */
 async function readDraftPaymentText(tx: TenantDb, invoiceId: string): Promise<boolean> {
   const invoice = await tx.invoice.findFirst({
     where: { id: invoiceId },
-    select: { note: true, buyerReference: true, ourReference: true, creditReason: true },
+    select: { tenantId: true, note: true, buyerReference: true, ourReference: true, creditReason: true, includeHours: true },
   });
   if (!invoice) return false;
   const lines = await tx.invoiceLine.findMany({ where: { invoiceId }, select: { description: true, unit: true } });
+  const page = invoice.includeHours ? await readLiveHoursPageText(tx, invoice.tenantId, invoiceId) : null;
   return mentionsPaymentDetails([
     invoice.note,
     invoice.buyerReference,
     invoice.ourReference,
     invoice.creditReason,
     ...lines.flatMap((l) => [l.description, l.unit]),
+    // Each title raw AND as printed: collapsing whitespace can make an
+    // account number the raw text does not spell (the fix-pass re-check's nit).
+    ...(page === null ? [] : hoursPageTitles(JSON.parse(page)).flatMap((title) => [title, printedTask(title)])),
   ]);
 }
 
@@ -317,7 +347,7 @@ async function checkDraft(
   const { company, payment, unreadable } = await readSeller(tx, tenantId);
   // Slice 110: its tracked hours — a private task named on a line, a record
   // the marks disagree with (blockers), hours changed since added (a caution).
-  const hours = await readHoursIssueFacts(tx, tenantId, draft.id);
+  const hours = await readHoursIssueFacts(tx, tenantId, draft.id, { page: draft.includeHours });
   const check = checkIssue({
     company,
     payment,
@@ -433,8 +463,8 @@ export async function issueLocked(
     // taken, and that must never wait behind a member editing one.
     await lockInvoiceHours(tx, ctx.tenantId, kind.creditsInvoiceId);
   }
-  const locked = await tx.$queryRaw<{ status: string; pay_link_url: string | null }[]>`
-    SELECT status::text AS status, pay_link_url FROM invoice WHERE id = ${invoiceId} FOR UPDATE`;
+  const locked = await tx.$queryRaw<{ status: string; pay_link_url: string | null; include_hours: boolean }[]>`
+    SELECT status::text AS status, pay_link_url, include_hours FROM invoice WHERE id = ${invoiceId} FOR UPDATE`;
   if (!locked[0]) return deny("NOT_FOUND");
   if (locked[0].status !== "DRAFT") return fail("INVOICE_NOT_DRAFT");
   if (!credit) {
@@ -445,8 +475,12 @@ export async function issueLocked(
     // bounded by the same lock_timeout.
     await tx.$queryRaw`SELECT 1 FROM client WHERE id = ${clientId} FOR SHARE`;
   }
-  // Under the draft's lock: the draft (and its client) as the issuer saw them.
-  if (opts.fingerprint !== undefined && (await readIssueFingerprint(tx, invoiceId)) !== opts.fingerprint) {
+  // Under the draft's lock: the draft (and its client) as the issuer saw them
+  // — read when the issuer sent what they saw, or the draft carries a time
+  // breakdown the stored page must equal (below); never otherwise (a credit
+  // note's issue inside `creditInFull` holds its original's lock).
+  const seen = opts.fingerprint !== undefined || locked[0].include_hours ? await readIssueFingerprintParts(tx, invoiceId) : null;
+  if (opts.fingerprint !== undefined && seen?.hash !== opts.fingerprint) {
     return fail("INVOICE_CHANGED");
   }
   // A PAY NOW LINK takes the issuer's code AT THAT MOMENT (C79 (g); the design
@@ -478,6 +512,13 @@ export async function issueLocked(
   const { check, numbering, original } = await checkDraft(tx, ctx.tenantId, draft, now);
   if (original && !original.open) return fail("INVOICE_NOT_CREDITABLE");
   if (check.blockers.length > 0 || !numbering) return fail("INVOICE_NOT_READY");
+  // Slice 110b: the row cap on the very page that will be frozen — the text
+  // the fingerprint read, which the stored page must equal (below); the check
+  // above read the page once more (the migration review's nit).
+  const seenPage = seen?.hoursPage ?? null;
+  if (locked[0].include_hours && (hoursPageSize(seenPage === null ? null : JSON.parse(seenPage))?.rows ?? 0) > HOURS_PAGE_ROWS_MAX) {
+    return fail("INVOICE_NOT_READY");
+  }
 
   let fx: { readonly micros: bigint; readonly date: string } | null = null;
   if (original) {
@@ -520,10 +561,21 @@ export async function issueLocked(
       fxRateDate: fx ? new Date(`${fx.date}T00:00:00Z`) : null,
       vatTotalSek: sek ? formatFixed(sek.totalSek, 2) : null,
     },
-    // The guard wrote the number: RETURNING reads the row as stored.
-    select: { number: true, displayNumber: true, seriesId: true },
+    // The guard wrote the number (and, ticked, the time breakdown):
+    // RETURNING reads the row as stored.
+    select: { number: true, displayNumber: true, seriesId: true, hoursPage: true },
   });
   if (issued.number === null || issued.displayNumber === null) throw new Error("issueInvoice: the guard gave no number");
+  // Slice 110b: the guard wrote the time breakdown from the record and the
+  // tasks as they are in ITS statement; the issuer saw them in the
+  // fingerprint's. A task renamed or (un)shared between the two is "look
+  // again", never frozen unseen (the design review's L4) — both texts read
+  // from Postgres, never a re-serialisation. The rollback returns the number.
+  if (locked[0].include_hours) {
+    const stored = await tx.$queryRaw<{ page: string | null }[]>`SELECT hours_page::text AS page FROM invoice WHERE id = ${invoiceId}`;
+    if ((stored[0]?.page ?? null) !== seenPage) return fail("INVOICE_CHANGED");
+  }
+  const hoursPage = hoursPageSize(issued.hoursPage);
   await record(tx, {
     action: "invoice.issued",
     targetType: "Invoice",
@@ -541,6 +593,8 @@ export async function issueLocked(
       ...(original ? { kind: "CREDIT_NOTE", creditsInvoiceId: original.id } : {}),
       // Where the client's money would go (slice 109's design review's high).
       ...(payLink !== null ? { payLink } : {}),
+      // Slice 110b: a time breakdown printed — how big, never what it says.
+      ...(hoursPage ? { hoursPage } : {}),
     },
   });
   // C79 (g): every active owner told that an invoice went out with a Pay now

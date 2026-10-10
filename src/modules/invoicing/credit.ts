@@ -64,6 +64,8 @@ type Original = {
   readonly note: string | null;
   readonly seriesId: string | null;
   readonly displayNumber: string | null;
+  /** Slice 110b: its time breakdown was ticked — the corrected copy keeps the tick (it bills the same hours). */
+  readonly includeHours: boolean;
 };
 
 /**
@@ -106,6 +108,7 @@ async function openCredit(tx: TenantDb, ctx: InvoicingCtx, invoiceId: string): P
       note: true,
       seriesId: true,
       displayNumber: true,
+      includeHours: true,
     },
   });
   if (!original) return deny("NOT_FOUND");
@@ -217,6 +220,9 @@ async function writeCorrectedCopy(tx: TenantDb, ctx: InvoicingCtx, original: Ori
       buyerReference: original.buyerReference,
       ourReference: await ourReferenceOf(tx, ctx.actor.memberId),
       note: original.note,
+      // Slice 110b: the copy bills the same hours (they move onto it), so it
+      // prints the same breakdown unless the member unticks it.
+      includeHours: original.includeHours,
       createdByMemberId: ctx.actor.memberId,
     },
     select: { id: true },

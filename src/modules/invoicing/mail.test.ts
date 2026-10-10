@@ -68,6 +68,7 @@ function invoice(overrides: Partial<InvoicePrint> = {}): InvoicePrint {
       countryCode: "SE",
     },
     payment: { bankgiro: "123-4567", plusgiro: null, iban: "SE45 5000 0000 0583 9825 7466", bic: "ESSESESS" },
+    hoursPage: null,
     ...overrides,
   };
 }

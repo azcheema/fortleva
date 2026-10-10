@@ -12,6 +12,7 @@ import { createTranslator } from "next-intl";
 import en from "@/messages/en.json";
 import sv from "@/messages/sv.json";
 
+import { printedTask, printHoursMinutes } from "../hours-page";
 import {
   printAddress,
   printAmount,
@@ -49,6 +50,15 @@ import {
  * minus sign (C77 (a) — `signed`; unit prices and rates as stored, so each
  * line still multiplies out); no due date, terms, payment block or the
  * workspace's invoice note (it asks no one to pay, and the note may say how).
+ *
+ * THE TIME BREAKDOWN (slice 110b; C80 (d), C81) — an INVOICE whose draft was
+ * ticked gets a page of its own after the invoice: per line, its text and the
+ * days' hours (the title of a task the client may see, else "Other work"),
+ * in hours and minutes — with seconds throughout when some hour is not whole
+ * minutes, so it adds up exactly — and the line's total with its decimal
+ * hours. Drawn from the page the DATABASE froze at issue; never a person or a
+ * note. It flows over as many pages as it needs, each with its own head and
+ * the same foot.
  *
  * FONTS: Inter 4.1 static Regular and SemiBold (SIL OFL 1.1, `./fonts/OFL-Inter.txt`),
  * committed in `./fonts/` from the release's `extras/ttf/`
@@ -113,6 +123,15 @@ const s = StyleSheet.create({
   section: { marginTop: 14 },
   payment: { marginTop: 14, width: 280 },
   foot: { position: "absolute", bottom: 28, left: 44, right: 44, borderTopWidth: 0.5, borderTopColor: INK.rule, paddingTop: 6, fontSize: 7.5, lineHeight: 1.4, color: INK.muted },
+  // The time breakdown (slice 110b).
+  hoursHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, borderBottomColor: INK.text, paddingBottom: 6, marginBottom: 6 },
+  hoursTitle: { fontSize: 13, lineHeight: 1.25, fontWeight: 600 },
+  hoursLine: { marginTop: 12 },
+  hoursLineTitle: { fontWeight: 600, marginBottom: 4 },
+  cDate: { width: 70 },
+  cWork: { flexGrow: 1, flexShrink: 1, flexBasis: 0, paddingRight: 8 },
+  cHours: { width: 70, textAlign: "right" },
+  hoursTotal: { flexDirection: "row", justifyContent: "space-between", paddingTop: 4, fontWeight: 600 },
 });
 
 const MESSAGES = { en, sv } as const;
@@ -137,6 +156,59 @@ function TotalRow({ label, value }: { readonly label: string; readonly value: st
       <Text style={{ color: INK.muted }}>{label}</Text>
       <Text>{value}</Text>
     </View>
+  );
+}
+
+/** The time breakdown's pages (slice 110b) — after the invoice's, an INVOICE's only. */
+function HoursBreakdown({
+  page,
+  heading,
+  foot,
+  t,
+  loc,
+}: {
+  readonly page: NonNullable<InvoicePrint["hoursPage"]>;
+  readonly heading: string;
+  readonly foot: string;
+  readonly t: ReturnType<typeof translatorFor>;
+  readonly loc: InvoiceLocale;
+}) {
+  const hm = (seconds: number) => printHoursMinutes(seconds, page.withSeconds);
+  return (
+    <Page size="A4" style={s.page}>
+      {/* On every page of the breakdown: what it is, and whose invoice. */}
+      <View style={s.hoursHead} fixed>
+        <Text style={s.hoursTitle}>{t("hours.title")}</Text>
+        <Text style={{ color: INK.muted }}>{heading}</Text>
+      </View>
+      {page.lines.map((line) => (
+        <View key={line.lineId} style={s.hoursLine}>
+          {/* A line's text never ends a page alone: it keeps its column heads and a row with it. */}
+          <Text style={s.hoursLineTitle} minPresenceAhead={44}>
+            {line.description}
+          </Text>
+          <View style={s.tableHead}>
+            <Text style={[s.th, s.cDate]}>{t("hours.date")}</Text>
+            <Text style={[s.th, s.cWork]}>{t("hours.work")}</Text>
+            <Text style={[s.th, s.cHours]}>{t("hours.hours")}</Text>
+          </View>
+          {line.rows.map((r, i) => (
+            <View key={i} style={s.row} wrap={false}>
+              <Text style={s.cDate}>{r.date}</Text>
+              <Text style={s.cWork}>{r.task === null ? t("hours.otherWork") : printedTask(r.task)}</Text>
+              <Text style={s.cHours}>{hm(r.seconds)}</Text>
+            </View>
+          ))}
+          <View style={s.hoursTotal} wrap={false}>
+            <Text>{t("hours.total")}</Text>
+            <Text>{t("hours.totalValue", { hm: hm(line.seconds), hours: printQuantity(line.quantity, loc) })}</Text>
+          </View>
+        </View>
+      ))}
+      <View style={s.foot} fixed>
+        <Text>{foot}</Text>
+      </View>
+    </Page>
   );
 }
 
@@ -334,6 +406,15 @@ export function InvoicePdf({ invoice }: { readonly invoice: InvoicePrint }) {
           <Text>{footParts.join(" · ")}</Text>
         </View>
       </Page>
+      {invoice.hoursPage && !credit ? (
+        <HoursBreakdown
+          page={invoice.hoursPage}
+          heading={t("hours.ofInvoice", { kind, number: invoice.displayNumber })}
+          foot={footParts.join(" · ")}
+          t={t}
+          loc={loc}
+        />
+      ) : null}
     </Document>
   );
 }

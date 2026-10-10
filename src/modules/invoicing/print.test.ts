@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { hoursQuantity } from "./hours-lines";
+import { HOURS_PAGE_ROWS_MAX } from "./hours-page";
 import { invoiceTotals } from "./money";
 import { invoicePdfFileName, renderInvoicePdf } from "./pdf/invoice-pdf";
 import {
@@ -135,6 +137,7 @@ function fixture(profile: VatProfile, locale: "sv" | "en", currency = "SEK"): In
       countryCode: profile === "SE_DOMESTIC" ? "SE" : profile === "EU_REVERSE_CHARGE" ? "PL" : "US",
     },
     payment: { bankgiro: "123-4567", plusgiro: null, iban: "SE45 5000 0000 0583 9825 7466", bic: "ESSESESS" },
+    hoursPage: null,
   };
 }
 
@@ -217,4 +220,73 @@ describe("a credit note (slice 108b; C77 (a))", () => {
     expect(bytes.byteLength).toBeGreaterThan(3_000);
     expect(text).toMatch(/\/BaseFont\s*\/[A-Z]{6}\+Inter-Regular/);
   });
+});
+
+describe("the time breakdown page (slice 110b; C80 (d), C81)", () => {
+  const pages = (bytes: Uint8Array) => Buffer.from(bytes).toString("latin1").match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+  const breakdown = (invoice: InvoicePrint, rowsPerLine: number, withSeconds = false): InvoicePrint => {
+    const page = {
+      lines: invoice.lines.map((l) => {
+        const rows = Array.from({ length: rowsPerLine }, (_, i) => ({
+          date: `2026-09-${String((i % 28) + 1).padStart(2, "0")}`,
+          task: i % 3 === 0 ? null : `Startsidans layout Łódź ${i}`,
+          seconds: withSeconds ? 3_725 : 2_700,
+        }));
+        const seconds = rows.reduce((n, r) => n + r.seconds, 0);
+        return { lineId: l.id, rows, description: l.description, seconds, quantity: hoursQuantity(seconds) };
+      }),
+      withSeconds,
+    };
+    return { ...invoice, hoursPage: page };
+  };
+
+  it.each(["sv", "en"] as const)("adds a page of its own after the invoice, in %s", async (locale) => {
+    const invoice = fixture("SE_DOMESTIC", locale);
+    const without = await renderInvoicePdf(invoice);
+    const withPage = await renderInvoicePdf(breakdown(invoice, 6));
+    expect(pages(withPage)).toBe(pages(without) + 1);
+    expect(Buffer.from(withPage.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
+  });
+
+  it("flows over as many pages as its rows need, with seconds when the hours are not whole minutes", async () => {
+    const invoice = fixture("SE_DOMESTIC", "sv");
+    const bytes = await renderInvoicePdf(breakdown(invoice, 250, true));
+    expect(pages(bytes)).toBeGreaterThan(pages(await renderInvoicePdf(invoice)) + 2);
+  });
+
+  it("is never drawn on a credit note, whatever it is handed", async () => {
+    const invoice = fixture("SE_DOMESTIC", "sv");
+    const credit: InvoicePrint = {
+      ...invoice,
+      kind: "CREDIT_NOTE",
+      credits: { displayNumber: "10001", issueDate: "2026-10-01" },
+      creditReason: "Wrong hours",
+      payment: { bankgiro: null, plusgiro: null, iban: null, bic: null },
+    };
+    expect(pages(await renderInvoicePdf(breakdown(credit, 6)))).toBe(pages(await renderInvoicePdf(credit)));
+  });
+});
+
+describe("the longest time breakdown allowed (the design review's M2)", () => {
+  it("draws HOURS_PAGE_ROWS_MAX rows of the longest titles over four lines — the issue refuses anything longer", async () => {
+    const invoice = fixture("SE_DOMESTIC", "sv");
+    const lines = [0, 1, 2, 3].map((k) => line(k + 1, 100_000n, 2_500n));
+    const per = HOURS_PAGE_ROWS_MAX / lines.length;
+    const page = {
+      withSeconds: false,
+      lines: lines.map((l) => {
+        const rows = Array.from({ length: per }, (_, i) => ({
+          date: `2026-0${(i % 9) + 1}-${String((i % 28) + 1).padStart(2, "0")}`,
+          // The longest titles the database keeps (500 characters), with line
+          // breaks — printed shortened (`printedTask`), so the cap stays drawable.
+          task: i % 5 === 0 ? null : `${"Ett mycket långt uppgiftsnamn ".repeat(16)}${String.fromCharCode(10)}rad två ${i}`.slice(0, 500),
+          seconds: 900 * ((i % 8) + 1),
+        }));
+        const seconds = rows.reduce((n, r) => n + r.seconds, 0);
+        return { lineId: l.id, rows, description: l.description, seconds, quantity: hoursQuantity(seconds) };
+      }),
+    };
+    const bytes = await renderInvoicePdf({ ...invoice, lines, totals: invoiceTotals(lines.map((l) => ({ amount: l.amount, rate: l.vatRate }))), hoursPage: page });
+    expect(Buffer.from(bytes.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
+  }, 120_000);
 });

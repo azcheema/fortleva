@@ -4873,7 +4873,8 @@
         "ourReference": "Our reference",
         "note": "Note on this invoice",
         "locale": "Language",
-        "payLinkUrl": "Pay now link"
+        "payLinkUrl": "Pay now link",
+        "includeHours": "Time breakdown in the PDF"
       },
       "locale": {
         "client": "Client's language ({language})",
@@ -4913,7 +4914,11 @@
       "payLinkPlaceholder": "Add a Stripe or PayPal link",
       "payLinkNone": "None",
       "payLinkHint": "A Stripe payment link or PayPal link for this invoice's amount. The client gets a Pay now button in the email and in their portal. Issuing an invoice with a link asks for your authenticator code.",
-      "addHours": "Add hours…"
+      "addHours": "Add hours…",
+      "includeHoursHint": "Adds a page listing each day's hours and tasks. Tasks the client can't see show as “Other work”, and no one's name is printed.",
+      "includeHoursOn": "Included",
+      "includeHoursOff": "Not included",
+      "includeHoursNoHours": "This draft has no hours on it, so no page is added."
     },
     "issue": {
       "button": "Issue invoice…",
@@ -4943,7 +4948,8 @@
         "noRate": "The invoice it credits stated no exchange rate (its VAT came to nothing), so this credit note's VAT can't be shown in SEK. Credit the whole invoice instead.",
         "beforeInvoice": "It can't be dated before the invoice it credits ({date}). Issue it from that day on.",
         "privateTask": "These lines name a task the client can't see: {lines}. Change their text.",
-        "hoursMismatch": "Some hours this draft records are no longer on its lines. Remove the lines made from hours and add the hours again."
+        "hoursMismatch": "Some hours this draft records are no longer on its lines. Remove the lines made from hours and add the hours again.",
+        "hoursPageTooLong": "The time breakdown would be longer than a PDF can carry (more than {max} rows). Turn it off, or split the hours over several invoices."
       },
       "toSettings": "Open Settings → Invoicing",
       "toClient": "Open the client",
@@ -4970,7 +4976,9 @@
       "needsFactor": "Issuing an invoice with a Pay now link needs an authenticator app.",
       "setUpFactor": "Set up an authenticator",
       "paymentText": "This invoice's own text mentions a web address or payment details. Check that they are yours — the client may pay by them.",
-      "hoursChanged": "{count, plural, one {# time entry on this draft has changed since it was added} other {# time entries on this draft have changed since they were added}}. The lines don't change. To bill the hours as they are now, remove a line and add its hours again."
+      "hoursChanged": "{count, plural, one {# time entry on this draft has changed since it was added} other {# time entries on this draft have changed since they were added}}. The lines don't change. To bill the hours as they are now, remove a line and add its hours again.",
+      "hoursPage": "The PDF includes a time breakdown page.",
+      "hoursPageDiffers": "These lines bill a different number of hours than their time breakdown shows: {lines}. The client will see both figures."
     },
     "issued": {
       "title": "Invoice {number}",
@@ -5221,6 +5229,23 @@
       "confirmReturn": "Put {count, plural, one {# entry} other {# entries}} back on the ready-to-invoice list? This invoice doesn't change.",
       "returned": "{count, plural, one {# entry is} other {# entries are}} back on the ready-to-invoice list.",
       "selectRow": "Select the time entry of {date}"
+    },
+    "hoursPage": {
+      "title": "Time breakdown",
+      "descriptionDraft": "What the client sees on the PDF's time breakdown page. Tasks they can't see show as “Other work”.",
+      "descriptionIssued": "As printed on this invoice's PDF.",
+      "columns": {
+        "date": "Date",
+        "work": "Work",
+        "hours": "Hours"
+      },
+      "otherWork": "Other work",
+      "total": "Total",
+      "totalValue": "{hm} ({hours} h)",
+      "more": "{count, plural, one {# more row is} other {# more rows are}} on the PDF.",
+      "tooLong": "This breakdown is longer than a PDF can carry (more than {max} rows). Turn it off, or split the hours over several invoices.",
+      "withSeconds": "Shown to the second: some of these hours come from a project that doesn't round its time.",
+      "unreadable": "This invoice's time breakdown can't be read."
     }
   },
   "invoicePdf": {
@@ -5281,6 +5306,16 @@
       "credits": "Credits invoice {number} dated {date}",
       "reason": "Reason: {reason}",
       "fileName": "credit-note-{number}.pdf"
+    },
+    "hours": {
+      "title": "Time breakdown",
+      "ofInvoice": "{kind} {number}",
+      "date": "Date",
+      "work": "Work",
+      "hours": "Hours",
+      "otherWork": "Other work",
+      "total": "Total",
+      "totalValue": "{hm} ({hours} h)"
     }
   },
   "invoiceMail": {

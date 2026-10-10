@@ -2,6 +2,10 @@ import type { TenantDb } from "@/db";
 import { isoDateOf } from "@/lib/duration";
 import { namedTaskShared } from "@/modules/time/reports";
 
+import { hoursQuantity } from "./hours-lines";
+import { hoursPageSize, readHoursPage, type HoursPage } from "./hours-page";
+import { readFixed } from "./money";
+
 /**
  * THE HOURS AN INVOICE BILLED — its record and its marks (Phase 4 slice 110;
  * founder decisions C75 (a), C80 (e), (f)). Helpers every invoicing verb that
@@ -186,9 +190,18 @@ export type HoursIssueFacts = {
   readonly privateTaskLines: readonly number[];
   /** Some hour the record names is not marked on that line (the database refuses the issue: `INVOICE_HOURS_MISMATCH`). A blocker. */
   readonly mismatch: boolean;
+  /** Slice 110b, a TICKED draft: how many rows its time breakdown would have (`HOURS_PAGE_ROWS_MAX` blocks). 0 otherwise. */
+  readonly pageRows: number;
+  /**
+   * Slice 110b, a ticked draft: lines (by position) that bill another number
+   * of hours than their breakdown totals — a line's quantity edited, or a
+   * corrected copy whose hours were partly returned before (the design
+   * review's L5). A caution: the client sees both figures.
+   */
+  readonly pageDiffers: readonly number[];
 };
 
-const NO_HOURS: HoursIssueFacts = { changed: 0, privateTaskLines: [], mismatch: false };
+const NO_HOURS: HoursIssueFacts = { changed: 0, privateTaskLines: [], mismatch: false, pageRows: 0, pageDiffers: [] };
 
 /**
  * What issuing needs to know of a draft's hours, in the database: how many
@@ -203,7 +216,12 @@ const NO_HOURS: HoursIssueFacts = { changed: 0, privateTaskLines: [], mismatch: 
  * default one-line-per-project text look like a private task's). A title a
  * member typed into a line by hand is theirs to have written.
  */
-export async function readHoursIssueFacts(tx: TenantDb, tenantId: string, invoiceId: string): Promise<HoursIssueFacts> {
+export async function readHoursIssueFacts(
+  tx: TenantDb,
+  tenantId: string,
+  invoiceId: string,
+  opts: { readonly page: boolean } = { page: false },
+): Promise<HoursIssueFacts> {
   const facts = await tx.$queryRaw<{ n: number; changed: number; mismatch: boolean | null }[]>`
     SELECT count(*)::int AS n,
            count(*) FILTER (WHERE e.id IS NULL OR e.deleted_at IS NOT NULL OR NOT e.billable
@@ -244,7 +262,23 @@ export async function readHoursIssueFacts(tx: TenantDb, tenantId: string, invoic
       privateTaskLines.sort((a, b) => a - b);
     }
   }
-  return { changed: f.changed, privateTaskLines, mismatch: f.mismatch === true };
+  // Slice 110b: a ticked draft's breakdown — how long it would be, and which
+  // lines bill another number of hours than it totals. In sequence.
+  let pageRows = 0;
+  const pageDiffers: number[] = [];
+  if (opts.page) {
+    const text = await readLiveHoursPageText(tx, tenantId, invoiceId);
+    pageRows = text === null ? 0 : (hoursPageSize(JSON.parse(text))?.rows ?? 0);
+    const perLine = await tx.$queryRaw<{ position: number; quantity: string; seconds: number }[]>`
+      SELECT l.position, l.quantity::text AS quantity, sum(h.billed_seconds)::int AS seconds
+        FROM invoice_line l
+        JOIN invoice_line_time_entry h ON h.tenant_id = l.tenant_id AND h.invoice_line_id = l.id
+       WHERE l.tenant_id = ${tenantId} AND l.invoice_id = ${invoiceId}
+       GROUP BY l.id, l.position, l.quantity
+       ORDER BY l.position`;
+    for (const l of perLine) if (readFixed(l.quantity, 3) !== hoursQuantity(l.seconds)) pageDiffers.push(l.position);
+  }
+  return { changed: f.changed, privateTaskLines, mismatch: f.mismatch === true, pageRows, pageDiffers };
 }
 
 /** Where an hour an invoice billed is NOW — its mark, never its edits (C80 (e); the design review's M7). */
@@ -395,4 +429,33 @@ export async function readInvoiceHours(tx: TenantDb, tenantId: string, invoiceId
     }
   }
   return { rows, more: Math.max(0, total + unrecordedTotal - rows.length), perLine, here };
+}
+
+/**
+ * THE TIME BREAKDOWN a draft would print NOW (slice 110b; C80 (d), C81): the
+ * database's own `invoice_hours_page()` — the very function the guard runs as
+ * the invoice leaves DRAFT — as the TEXT Postgres returned (what the issue
+ * fingerprint hashes: never a re-serialisation, AGENTS.md). Null when the
+ * invoice records no hours.
+ */
+export async function readLiveHoursPageText(tx: TenantDb, tenantId: string, invoiceId: string): Promise<string | null> {
+  const rows = await tx.$queryRaw<{ page: string | null }[]>`SELECT invoice_hours_page(${tenantId}, ${invoiceId})::text AS page`;
+  return rows[0]?.page ?? null;
+}
+
+/**
+ * …and read against the lines the caller already shows — the draft page's
+ * PREVIEW. A line added or removed between the caller's read and this one is
+ * left out (the design review's L3); the issue fingerprint, not the preview,
+ * holds the issue to what was seen.
+ */
+export async function readLiveHoursPage(
+  tx: TenantDb,
+  tenantId: string,
+  invoiceId: string,
+  lineIds: ReadonlySet<string>,
+): Promise<HoursPage | null> {
+  const text = await readLiveHoursPageText(tx, tenantId, invoiceId);
+  if (text === null) return null;
+  return readHoursPage(JSON.parse(text), lineIds, { dropUnknownLines: true });
 }

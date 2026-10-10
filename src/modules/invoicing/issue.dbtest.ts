@@ -530,7 +530,7 @@ describe("the PDF", () => {
     expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(Number(file.sizeBytes)).toBe(bytes.byteLength);
     const audit = (await f.audits("invoice.pdf_generated")).at(-1)!;
-    expect(audit.metadata).toMatchObject({ fileObjectId: pdf.fileObjectId, sha256: file.sha256, templateVersion: 2 });
+    expect(audit.metadata).toMatchObject({ fileObjectId: pdf.fileObjectId, sha256: file.sha256, templateVersion: 3 });
     // Again: the same file, nothing new.
     expect((await ensureInvoicePdf(manager(), id)).fileObjectId).toBe(pdf.fileObjectId);
     expect(await f.platform.fileObject.count({ where: { tenantId: f.tenantId, kind: "INVOICE_PDF", invoices: { some: { id } } } })).toBe(1);
@@ -687,7 +687,9 @@ describe("the guard's census", () => {
   // timing fires in name order) that returned NULL would skip the row's write
   // after the guard had taken a number — a gap in the series. Slice 110's
   // `invoice_billed_hours_guard` sorts BEFORE it ('b' < 'g'), only ever raises
-  // or returns NEW, and so can refuse an issue but never burn a number.
+  // or returns NEW, and so can refuse an issue but never burn a number. Since
+  // slice 110b it also WRITES `NEW.hours_page` as the invoice leaves DRAFT —
+  // still before the number is taken, and still never NULL.
   it("invoice_guard is the LAST BEFORE trigger on invoice (a later one returning NULL would burn a number)", async () => {
     const rows = await f.platform.$queryRaw<{ tgname: string }[]>`
       SELECT tgname FROM pg_trigger

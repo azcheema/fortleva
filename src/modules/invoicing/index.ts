@@ -83,6 +83,7 @@ export {
   isInvoiceLocale,
   printAmount,
   printFxRate,
+  printQuantity,
   signed,
   type InvoiceLocale,
   type InvoicePrint,
@@ -129,3 +130,5 @@ export {
   type RoundingStep,
 } from "./hours-lines";
 export { INVOICE_HOURS_CARD_MAX, type InvoiceHourRow, type InvoiceHours, type InvoiceHourState } from "./hours-record";
+// Phase 4 slice 110b — the time breakdown page on the PDF (founder decisions C80 (d), C81).
+export { HOURS_PAGE_ROWS_MAX, printedTask, printHoursMinutes, type HoursPagePrint, type HoursPagePrintLine } from "./hours-page";

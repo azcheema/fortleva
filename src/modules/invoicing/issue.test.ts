@@ -11,6 +11,7 @@ import {
   type IssueClient,
   type RateNets,
 } from "./issue-check";
+import { HOURS_PAGE_ROWS_MAX } from "./hours-page";
 import { invoiceTotals } from "./money";
 import type { CompanyDetails, PaymentDetails } from "./seller";
 
@@ -91,17 +92,26 @@ describe("checkIssue — what the issue dialog says and the issue refuses on", (
       creditsIssueDate: null,
       hoursChanged: 0,
       privateTaskLines: [],
+      hoursPageDiffers: [],
     });
   });
 
   it("slice 110: a line naming a private task blocks it; a record the marks disagree with too; changed hours only caution", () => {
-    const hours = { changed: 2, privateTaskLines: [3], mismatch: true };
+    const hours = { changed: 2, privateTaskLines: [3], mismatch: true, pageRows: 0, pageDiffers: [] };
     const check = checkIssue({ ...base, hours });
     expect(check.blockers).toEqual(["privateTask", "hoursMismatch"]);
     expect(check).toMatchObject({ hoursChanged: 2, privateTaskLines: [3] });
-    const calm = checkIssue({ ...base, hours: { changed: 4, privateTaskLines: [], mismatch: false } });
+    const calm = checkIssue({ ...base, hours: { changed: 4, privateTaskLines: [], mismatch: false, pageRows: 0, pageDiffers: [] } });
     expect(calm.blockers).toEqual([]);
     expect(calm.hoursChanged).toBe(4);
+  });
+
+  it("slice 110b: a time breakdown past the rows a PDF can carry blocks it; lines it disagrees with only caution", () => {
+    const facts = (pageRows: number) => ({ changed: 0, privateTaskLines: [], mismatch: false, pageRows, pageDiffers: [2, 4] });
+    expect(checkIssue({ ...base, hours: facts(HOURS_PAGE_ROWS_MAX) }).blockers).toEqual([]);
+    const long = checkIssue({ ...base, hours: facts(HOURS_PAGE_ROWS_MAX + 1) });
+    expect(long.blockers).toEqual(["hoursPageTooLong"]);
+    expect(long.hoursPageDiffers).toEqual([2, 4]);
   });
 
   it("counts the due date across a month and a year", () => {
@@ -263,6 +273,7 @@ describe("checkCreditIssue — what a credit note's issue dialog says", () => {
       // A credit note credits lines, never hours.
       hoursChanged: 0,
       privateTaskLines: [],
+      hoursPageDiffers: [],
     });
   });
 

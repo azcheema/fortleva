@@ -10,7 +10,8 @@ import { CURRENCIES, readPreferences } from "@/preferences/service";
 
 import { readCreditedNets, readCreditNotes, readInvoiceNets, type CreditNoteSummary } from "./credit-state";
 import { guarded } from "./db-errors";
-import { readInvoiceHours, releaseDraftHours, type InvoiceHours } from "./hours-record";
+import { hoursPagePrint, type HoursPagePrint } from "./hours-page";
+import { readInvoiceHours, readLiveHoursPage, releaseDraftHours, type InvoiceHours } from "./hours-record";
 import { readIssueCheck, readIssueFingerprint, type IssueCheckSeen } from "./issue";
 import { creditCovers, type RateNets } from "./issue-check";
 import { readBuyerSnapshot, readIssuedInvoice, SnapshotUnreadable, type IssuedInvoice } from "./issued";
@@ -184,6 +185,14 @@ export type InvoiceDetail = {
   readonly issuedBy: { readonly name: string | null; readonly at: Date } | null;
   /** Slice 110: the tracked hours its lines billed, and where each is now — null when none. */
   readonly hours: InvoiceHours | null;
+  /** Slice 110b (C80 (d)): the time breakdown is ticked — a draft field, fixed at issue. */
+  readonly includeHours: boolean;
+  /**
+   * The time breakdown as the client's PDF prints it: a ticked DRAFT's, from
+   * the database's own function now (what issuing it would freeze); an issued
+   * invoice's, as frozen. Null when not ticked or there are no hours.
+   */
+  readonly hoursPage: HoursPagePrint | null;
   readonly can: {
     readonly edit: boolean;
     readonly delete: boolean;
@@ -458,6 +467,7 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
         payLinkUrl: true,
         sentAt: true,
         paidOn: true,
+        includeHours: true,
         // The agency's note on the payment — its own class-A row (slice 109's
         // pre-apply review): `invoice` is a client's to read once sent.
         paymentNote: { select: { note: true } },
@@ -601,13 +611,20 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
     const partlyCredited = !isCreditNote && creditSummary !== null && creditSummary.notes.some((n) => n.status !== "DRAFT");
     const canReturnHours =
       hours !== null && hours.here > 0 && partlyCredited && invoice.status !== "CREDITED" && mayGenerate && mayCredit;
+    // Slice 110b: the time breakdown — a ticked draft's from the database's
+    // function (the guard's own), an issued invoice's as frozen.
+    const live =
+      draft && invoice.includeHours && !isCreditNote
+        ? await readLiveHoursPage(tx, ctx.tenantId, invoice.id, new Set(lines.map((l) => l.id)))
+        : null;
+    const hoursPage = issued ? issued.print.hoursPage : live ? hoursPagePrint(live, lines) : null;
 
-    const { projects: live, status, invoiceLocale, ...billTo } = client;
+    const { projects: liveProjects, status, invoiceLocale, ...billTo } = client;
     // The draft's own project stays offered after it was archived, or the
     // select would show its raw id at rest and "No project" open (the code
     // review's low; `src/lib/inline-edit.ts`'s current-value rule).
     const own = invoice.project;
-    const projects = own && !live.some((p) => p.id === own.id) ? [...live, { ...own, archived: true }] : live;
+    const projects = own && !liveProjects.some((p) => p.id === own.id) ? [...liveProjects, { ...own, archived: true }] : liveProjects;
     return {
       id: invoice.id,
       kind: invoice.kind,
@@ -647,6 +664,8 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
       creditUnsent,
       issuedBy,
       hours,
+      includeHours: invoice.includeHours,
+      hoursPage,
       can: {
         edit: canEdit,
         delete: canDelete,
@@ -772,6 +791,8 @@ export type DraftDetailsPatch = {
   readonly creditReason?: unknown;
   /** Slice 109 (C79 (c), (f)): the Pay now link — an invoice's; "" or null clears it. */
   readonly payLinkUrl?: unknown;
+  /** Slice 110b (C80 (d)): the time breakdown page on the PDF — an invoice's; a boolean. */
+  readonly includeHours?: unknown;
 };
 
 /** What a credit note's draft may change: its reason and the words around it. Its terms are its invoice's (the guard holds them). */
@@ -809,6 +830,10 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
     if (l !== null && !isInvoiceLocale(l)) return fail("INVALID_INPUT", "invoice language");
     data.locale = l;
   }
+  if ("includeHours" in patch) {
+    if (typeof patch.includeHours !== "boolean") return fail("INVALID_INPUT", "time breakdown");
+    data.includeHours = patch.includeHours;
+  }
   if ("payLinkUrl" in patch) {
     // Stripe's or PayPal's own payment pages, exactly (C79 (f); `src/config`'s
     // fence, the database's CHECK behind it); stored as the parsed link.
@@ -844,6 +869,7 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
           note: true,
           locale: true,
           payLinkUrl: true,
+          includeHours: true,
         },
       });
       if (!current) return deny("NOT_FOUND");
@@ -872,7 +898,13 @@ export async function updateDraftDetails(ctx: InvoicingCtx, invoiceId: string, p
         // The Pay now link itself when it changes (the slice-109 design
         // review's high): where a client's money would go is the one field
         // whose old and new values the trail must show.
-        metadata: { fields: changed, ...(changed.includes("payLinkUrl") ? { payLink: data.payLinkUrl ?? null } : {}) },
+        metadata: {
+          fields: changed,
+          ...(changed.includes("payLinkUrl") ? { payLink: data.payLinkUrl ?? null } : {}),
+          // Slice 110b: which way the time breakdown went — whether task titles
+          // and daily hours go to the client (the security review's nit).
+          ...(changed.includes("includeHours") ? { includeHours: data.includeHours === true } : {}),
+        },
       });
       return changed;
     }),

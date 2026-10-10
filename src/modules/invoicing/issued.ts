@@ -3,6 +3,7 @@ import type { TenantDb } from "@/db";
 
 import type { InvoiceLineView } from "./drafts";
 import { vatGroupsInSek } from "./fx";
+import { HoursPageUnreadable, hoursPagePrint, readHoursPage } from "./hours-page";
 import { invoiceTotals, readFixed } from "./money";
 import { isInvoiceLocale, isoDay, type BuyerPrint, type InvoicePrint, type PaymentPrint, type SellerPrint } from "./print";
 import { bankEncryptionContext, isUnreadableCiphertext } from "./seller";
@@ -133,6 +134,8 @@ export type IssuedInvoice = {
   readonly pdfFileId: string | null;
   /** Tolerant mode only: a bank detail that could not be read. */
   readonly paymentUnreadable: boolean;
+  /** Tolerant mode only: the time breakdown could not be read (slice 110b) — the page says so; the PDF refuses. */
+  readonly hoursPageUnreadable: boolean;
 };
 
 /**
@@ -176,6 +179,8 @@ export async function readIssuedInvoice(
       issuedAt: true,
       issuedByMemberId: true,
       pdfFileId: true,
+      includeHours: true,
+      hoursPage: true,
     },
   });
   if (!row) return null;
@@ -235,6 +240,24 @@ export async function readIssuedInvoice(
   const { payment, unreadable } = credit
     ? { payment: { bankgiro: null, plusgiro: null, iban: null, bic: null }, unreadable: false }
     : await readPaymentSnapshot(tx, tenantId, row.paymentSnapshot, opts.strict);
+  // Slice 110b: the time breakdown the guard froze, only where the tick
+  // allowed one (the CHECK says the same). STRICT (the PDF): unreadable
+  // throws — a corrupt record is never drawn. TOLERANT (the page): it reads as
+  // missing and the page says so, so the invoice can still be seen and
+  // credited (the design review's M1).
+  let hoursPage: InvoicePrint["hoursPage"] = null;
+  let hoursPageUnreadable = false;
+  if (row.hoursPage !== null) {
+    try {
+      if (credit || !row.includeHours) throw new HoursPageUnreadable("on an invoice that was not ticked");
+      const page = readHoursPage(row.hoursPage, new Set(lines.map((l) => l.id)));
+      hoursPage = page ? hoursPagePrint(page, lines) : null;
+    } catch (e) {
+      if (!(e instanceof HoursPageUnreadable)) throw e;
+      if (opts.strict) throw new SnapshotUnreadable(e.message);
+      hoursPageUnreadable = true;
+    }
+  }
   return {
     print: {
       kind: row.kind,
@@ -258,10 +281,12 @@ export async function readIssuedInvoice(
       seller,
       buyer,
       payment,
+      hoursPage,
     },
     issuedAt: row.issuedAt,
     issuedByMemberId: row.issuedByMemberId,
     pdfFileId: row.pdfFileId,
     paymentUnreadable: unreadable,
+    hoursPageUnreadable,
   };
 }

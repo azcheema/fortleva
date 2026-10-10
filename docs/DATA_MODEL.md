@@ -1880,6 +1880,43 @@ model InvoiceLine {
 //    private since; CLIENT_VISIBLE task and agreement names reach the client
 //    by email even when a project's portal is off — the invoice is theirs.
 
+// AS BUILT — Phase 4 slice 110b (2026-10-10; founder decisions C80 (d), C81;
+// migration 20261010210000_invoice_hours_page; the design and its reviews:
+// docs/research/2026-10-10-slice-110b-hours-page-design.md — its §10 overrides
+// its body). The TIME BREAKDOWN page on an invoice's PDF:
+//  - `invoice.include_hours` (bool, default false) — the draft's tick, an
+//    INVOICE's only (CHECK `invoice_include_hours_kind`); set by
+//    `updateDraftDetails` (invoice:edit, audited invoice.draft_edited);
+//    refused in the statement that leaves DRAFT (`invoice_billed_hours_guard`);
+//    frozen after with every other column. The corrected copy carries it.
+//  - `invoice.hours_page` (jsonb) — WRITTEN BY THE DATABASE as the invoice
+//    leaves DRAFT (`invoice_billed_hours_guard` → `invoice_hours_page()`),
+//    NULL on a draft (CHECK `invoice_hours_page_issued`), frozen after.
+//    Shape: {"version":1,"lines":[{"lineId","rows":[{"date","task"|null,
+//    "seconds"}]}]} — one row per line, day and printed task, from the
+//    invoice's RECORD (`invoice_line_time_entry`), never the live entries;
+//    zero-second rows left out. `task` is the title (trimmed, at most 500
+//    code points) of a task OF THE INVOICE'S CLIENT the client may see now —
+//    `work_item_named_to_client()`, the SQL twin of `namedTaskShared`, held
+//    equal by a dbtest matrix — else NULL, printed "Other work". Never a
+//    member, a note (C81 (a)), a rate or a project key.
+//  - ONE implementation: the same function serves the draft's preview card,
+//    the issue fingerprint (its ::text, appended only when ticked) and the
+//    guard; `issueLocked` compares the text it hashed with `hours_page::text`
+//    as stored and refuses (INVOICE_CHANGED) a difference.
+//  - Read by `readHoursPage` (hours-page.ts) by SHAPE only — never stricter
+//    than the SQL writes; strict for the PDF, tolerant for the page.
+//  - Printed in hours and minutes (C81 (b)), with seconds throughout when any
+//    row is not whole minutes (a project that does not round). At most
+//    HOURS_PAGE_ROWS_MAX = 1 000 rows (react-pdf's layout time grows faster
+//    than the rows): past it the issue is refused (`hoursPageTooLong`). The
+//    PDF's template version is 3.
+//  - `invoice` is class B: a main contact's RLS reads the column on a sent
+//    invoice; it holds nothing beyond the PDF's rows, each such task's
+//    title in full (the PDF prints at most PRINTED_TASK_MAX = 120 characters
+//    of it, whitespace collapsed — `printedTask`), and the invoice's own
+//    line ids (no projection selects it).
+
 // ───────────────────────────────────────────────────────────────────
 // 6.8 DOCUMENTS & FILES (§5, §6) — three layers:
 //   Document   = logical, visibility-carrying, attachable entity

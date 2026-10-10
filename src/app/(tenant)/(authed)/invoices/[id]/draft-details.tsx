@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 
 import { InlineConfirm, InlineEdit } from "@/components/semantic";
+import { Switch } from "@/components/ui/switch";
 import { useRun } from "@/components/use-run";
 import type { FormResult } from "@/lib/server-actions";
 import { VAT_PROFILES, VAT_RATES, type VatProfile } from "@/modules/invoicing/vat";
@@ -43,6 +44,11 @@ export type DraftDetailsValues = {
  * language, project and work period read-only — they are its invoice's, and
  * the guard holds them — and no payment terms (it asks no one to pay); only
  * the references and the note are its own.
+ *
+ * THE TIME BREAKDOWN (slice 110b; C80 (d)) is a switch, an INVOICE's only and
+ * only where it means something — the draft holds hours, or the switch is on
+ * (so it can be turned off). Bound to the SERVER value (`useRun`: a refusal is
+ * toasted, never a flick back); the page re-renders with its preview card.
  */
 export function DraftDetails({
   invoiceId,
@@ -53,6 +59,7 @@ export function DraftDetails({
   reducedRateLines,
   clientLocale,
   creditNote,
+  hoursBreakdown,
 }: {
   invoiceId: string;
   values: DraftDetailsValues;
@@ -65,10 +72,13 @@ export function DraftDetails({
   clientLocale: "sv" | "en";
   /** A credit note: its invoice's terms, read-only (slice 108b). */
   creditNote: boolean;
+  /** Slice 110b: the time breakdown tick, and whether the draft holds hours at all. Null for a credit note. */
+  hoursBreakdown: { readonly on: boolean; readonly available: boolean } | null;
 }) {
   const t = useTranslations("invoices.draft");
   const tCommon = useTranslations("common");
   const { run } = useRun();
+  const breakdown = useRun();
   const [resets, setResets] = useState<Record<string, number>>({});
   const [askingFor, setAskingFor] = useState<VatProfile | null>(null);
   const vatRef = useRef<HTMLDivElement>(null);
@@ -362,6 +372,39 @@ export function DraftDetails({
             </dd>
           </div>
         )}
+        {hoursBreakdown && (hoursBreakdown.available || hoursBreakdown.on) ? (
+          <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2" data-testid="include-hours">
+            <dt className="px-2.5 text-xs text-muted-foreground">
+              {ro ? t("fields.includeHours") : <label htmlFor={`include-hours-${invoiceId}`}>{t("fields.includeHours")}</label>}
+            </dt>
+            <dd className="flex min-w-0 items-start gap-3 px-2.5">
+              {ro ? (
+                <span className="text-sm">{hoursBreakdown.on ? t("includeHoursOn") : t("includeHoursOff")}</span>
+              ) : (
+                <Switch
+                  id={`include-hours-${invoiceId}`}
+                  checked={hoursBreakdown.on}
+                  // NOT disabled while a save is pending, only refused: a
+                  // disabled control drops keyboard focus to <body>, where
+                  // every single-key shortcut acts (the code review's low;
+                  // `settings/vault/vault-switch.tsx`'s precedent).
+                  aria-busy={breakdown.pending}
+                  aria-describedby={`include-hours-hint-${invoiceId}`}
+                  onCheckedChange={(v) => {
+                    if (breakdown.pending) return;
+                    breakdown.run(() => updateDraftDetailsAction(invoiceId, { includeHours: v }));
+                  }}
+                  className="mt-0.5"
+                />
+              )}
+              {ro ? null : (
+                <p id={`include-hours-hint-${invoiceId}`} className="min-w-0 text-xs text-muted-foreground">
+                  {hoursBreakdown.available ? t("includeHoursHint") : t("includeHoursNoHours")}
+                </p>
+              )}
+            </dd>
+          </div>
+        ) : null}
       </dl>
     </div>
   );

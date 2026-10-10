@@ -51,6 +51,12 @@ export type IssueDialogCheck = {
   readonly hoursChanged: number;
   /** Slice 110: the lines (by position, already worded "2, 5") naming a task the client may not see. */
   readonly privateTaskLines: string;
+  /** Slice 110b (C80 (d)): the PDF will carry a time breakdown page — said, never a blocker. */
+  readonly hoursPage: boolean;
+  /** Slice 110b: lines (already worded "2, 5") billing another number of hours than their breakdown — a caution. */
+  readonly hoursPageDiffers: string;
+  /** Slice 110b: the most rows a breakdown may have (the `hoursPageTooLong` blocker names it). */
+  readonly hoursPageRowsMax: number;
 };
 
 /** The issued page's Download PDF — where focus goes after an issue (`download-pdf.tsx`). */
@@ -205,7 +211,9 @@ export function IssueDialog({
                         ? t("blockers.beforeInvoice", { date: check.creditsIssueDate ?? "" })
                         : b === "privateTask"
                           ? t("blockers.privateTask", { lines: check.privateTaskLines })
-                          : t(`blockers.${b}`)}
+                          : b === "hoursPageTooLong"
+                            ? t("blockers.hoursPageTooLong", { max: check.hoursPageRowsMax })
+                            : t(`blockers.${b}`)}
                     {b === "overCredit" ? (
                       <ul className="mt-1 flex flex-col gap-0.5">
                         {check.overCredit.map((o) => (
@@ -248,6 +256,11 @@ export function IssueDialog({
             </dl>
             <p className="text-muted-foreground">{t("language", { language: check.language })}</p>
             {check.needsFx ? <p className="text-muted-foreground">{fxText}</p> : null}
+            {check.hoursPage && !credit ? (
+              <p className="text-muted-foreground" data-testid="issue-hours-page">
+                {t("hoursPage")}
+              </p>
+            ) : null}
             {check.noPeriod && !credit ? (
               <div data-testid="issue-no-period">
                 <Callout tone="caution">{t("noPeriod")}</Callout>
@@ -261,6 +274,11 @@ export function IssueDialog({
             {check.hoursChanged > 0 ? (
               <div data-testid="issue-hours-changed">
                 <Callout tone="caution">{t("hoursChanged", { count: check.hoursChanged })}</Callout>
+              </div>
+            ) : null}
+            {check.hoursPageDiffers ? (
+              <div data-testid="issue-hours-page-differs">
+                <Callout tone="caution">{t("hoursPageDiffers", { lines: check.hoursPageDiffers })}</Callout>
               </div>
             ) : null}
             {payLink !== null ? (

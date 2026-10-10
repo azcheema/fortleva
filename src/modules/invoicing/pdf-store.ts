@@ -43,9 +43,10 @@ import { readIssuedInvoice, SnapshotUnreadable } from "./issued";
 /**
  * Which drawing this is. Raise it whenever `pdf/invoice-pdf.tsx` changes what a
  * PDF looks like. 2 — slice 108b: the credit note's drawing (an invoice's is
- * unchanged).
+ * unchanged). 3 — slice 110b: the time breakdown page, when the invoice has
+ * one (everything else unchanged).
  */
-export const INVOICE_PDF_TEMPLATE_VERSION = 2;
+export const INVOICE_PDF_TEMPLATE_VERSION = 3;
 
 type Principal = { readonly type: "member"; readonly id: string } | { readonly type: "system" };
 

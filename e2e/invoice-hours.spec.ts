@@ -14,6 +14,10 @@ import { STORAGE_STATE, plantHours, requireSeed, type E2ESeed } from "./fixtures
  *   - The time grid's week shows those hours "On a draft invoice", and Delete
  *     asks with the sentence that the draft's line will not change (C80 (e)).
  *   - The hour left over is marked "Billed elsewhere" and then undone (C80 (g)).
+ *   - On the draft, the time breakdown (slice 110b; C80 (d)) is off by default;
+ *     turned on, its card shows what the client's PDF will print — one day,
+ *     "Other work", 4:30 — and turned off again it is gone. (The PDF itself is
+ *     the unit suite's and the dbtests': this harness has no file storage.)
  *
  * The rules underneath — rounding, the guards, crediting, the races — are the
  * dbtests' (`hours.dbtest.ts`). Runs before `invoice-issue.spec.ts` (one
@@ -67,6 +71,25 @@ test.describe.serial("hours onto invoices", () => {
     await expect(line).toBeVisible();
     await expect(line.getByTestId("invoice-line-hours")).toContainText("3");
     await expect(page.getByTestId("invoice-hours").getByTestId("invoice-hour")).toHaveCount(3);
+
+    // Slice 110b: the time breakdown — off by default.
+    const breakdown = page.getByRole("switch", { name: "Time breakdown in the PDF" });
+    await expect(breakdown).not.toBeChecked();
+    await expect(page.getByTestId("hours-page")).toHaveCount(0);
+    await breakdown.click();
+    await expect(breakdown).toBeChecked({ timeout: 20_000 });
+    // The switch refuses a press while its save is in flight (it is never
+    // disabled — focus would fall to the page): wait for it to settle.
+    await expect(breakdown).toHaveAttribute("aria-busy", "false", { timeout: 20_000 });
+    const card = page.getByTestId("hours-page");
+    const pageRow = card.getByTestId("hours-page-row");
+    await expect(pageRow).toHaveCount(1);
+    await expect(pageRow).toContainText("Other work");
+    await expect(pageRow).toContainText("4:30");
+    await expect(card.getByTestId("hours-page-total")).toContainText("4:30 (4.5 h)");
+    await breakdown.click();
+    await expect(breakdown).not.toBeChecked({ timeout: 20_000 });
+    await expect(page.getByTestId("hours-page")).toHaveCount(0);
   });
 
   test("the time grid says the hour is on a draft invoice, and Delete says the line won't change", async ({ page }) => {

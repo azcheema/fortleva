@@ -1,6 +1,7 @@
 import { addDays } from "@/lib/week";
 
 import { needsSekVat, rateDayFor, rateDayTooOld } from "./fx";
+import { HOURS_PAGE_ROWS_MAX } from "./hours-page";
 import { vatOn, type InvoiceTotals, type Minor } from "./money";
 import { invoiceLocaleFor, type InvoiceLocale } from "./print";
 import type { CompanyDetails, MissingDetail, PaymentDetails } from "./seller";
@@ -74,7 +75,9 @@ export type IssueBlocker =
   /** A line's text names a task of its hours that the client may not see now — `privateTaskLines` says which (the design review's M8). */
   | "privateTask"
   /** An hour its record names is no longer marked on that line (the database refuses it: `invoice_billed_hours_guard`). */
-  | "hoursMismatch";
+  | "hoursMismatch"
+  /** Slice 110b: the ticked time breakdown would be longer than a PDF can carry (`HOURS_PAGE_ROWS_MAX`). */
+  | "hoursPageTooLong";
 
 /** One VAT rate a credit note asks more of than its invoice has left (signed: see `creditOverRates`). */
 export type OverCredit = {
@@ -113,6 +116,8 @@ export type IssueCheck = {
   readonly hoursChanged: number;
   /** Slice 110: the positions of lines whose text names a task the client may not see (`privateTask`). */
   readonly privateTaskLines: readonly number[];
+  /** Slice 110b: the positions of lines billing another number of hours than their time breakdown totals — a caution. */
+  readonly hoursPageDiffers: readonly number[];
 };
 
 /** What issuing needs to know of a draft's tracked hours (`hours-record.ts`'s `readHoursIssueFacts`). */
@@ -120,6 +125,9 @@ export type HoursFacts = {
   readonly changed: number;
   readonly privateTaskLines: readonly number[];
   readonly mismatch: boolean;
+  /** Slice 110b: a ticked draft's breakdown rows, and the lines it disagrees with. */
+  readonly pageRows: number;
+  readonly pageDiffers: readonly number[];
 };
 
 /** A net per VAT rate (hundredths of a percent → hundredths). */
@@ -240,6 +248,7 @@ export function checkCreditIssue(input: {
     // A credit note credits lines, never hours.
     hoursChanged: 0,
     privateTaskLines: [],
+    hoursPageDiffers: [],
   };
 }
 
@@ -308,6 +317,7 @@ export function checkIssue(input: {
   if (input.totals.total < 0n) blockers.push("negativeTotal");
   if (input.hours && input.hours.privateTaskLines.length > 0) blockers.push("privateTask");
   if (input.hours?.mismatch) blockers.push("hoursMismatch");
+  if ((input.hours?.pageRows ?? 0) > HOURS_PAGE_ROWS_MAX) blockers.push("hoursPageTooLong");
   const needsFx = needsSekVat(input.currency, input.totals.vatTotal);
   const rateDay = needsFx ? rateDayFor(input.today, input.periodEnd) : null;
   if (rateDay !== null && rateDayTooOld(rateDay, input.today)) blockers.push("fxTooOld");
@@ -326,6 +336,7 @@ export function checkIssue(input: {
     creditsIssueDate: null,
     hoursChanged: input.hours?.changed ?? 0,
     privateTaskLines: input.hours?.privateTaskLines ?? [],
+    hoursPageDiffers: input.hours?.pageDiffers ?? [],
   };
 }
 

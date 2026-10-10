@@ -1,4 +1,5 @@
 import type { InvoiceLineView } from "./drafts";
+import type { HoursPagePrint } from "./hours-page";
 import { formatFixed, type InvoiceTotals, type Minor, type VatGroup } from "./money";
 import type { VatProfile } from "./vat";
 
@@ -104,6 +105,8 @@ export type InvoicePrint = {
   readonly seller: SellerPrint;
   readonly buyer: BuyerPrint;
   readonly payment: PaymentPrint;
+  /** Slice 110b (C80 (d), C81): the time breakdown page, as the database froze it at issue — an INVOICE's, when ticked. */
+  readonly hoursPage: HoursPagePrint | null;
 };
 
 /**

@@ -128,6 +128,12 @@ export async function updateDraftDetailsAction(invoiceId: unknown, patch: unknow
     if (key === "projectId" && v !== null && v !== "" && !isUuid(v)) return invalid();
     clean[key] = v;
   }
+  // Slice 110b (C80 (d)): the time breakdown tick — a boolean, never text
+  // (the service refuses it on a credit note).
+  if ("includeHours" in input) {
+    if (typeof input.includeHours !== "boolean") return invalid();
+    clean.includeHours = input.includeHours;
+  }
   const ctx = await ctxOf();
   const tCommon = await getTranslations("common");
   const r = await runForm(pageOf(invoiceId), async () => {

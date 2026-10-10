@@ -1471,6 +1471,15 @@ model Invoice {
   payLinkUrl        String?       @map("pay_link_url")
   sentAt            DateTime?     @map("sent_at") @db.Timestamptz(6)
   paidOn            DateTime?     @map("paid_on") @db.Date
+  // Slice 110b (C80 (d), C81) — THE TIME BREAKDOWN page on the PDF. The tick
+  // is a draft field (an INVOICE's only — CHECK), off by default; the page is
+  // WRITTEN BY THE DATABASE as the invoice leaves DRAFT
+  // (`invoice_billed_hours_guard` → `invoice_hours_page()`, from the record of
+  // the hours it billed: days, task titles the client may see, seconds — never
+  // a person or a note) and frozen with everything else; NULL on a draft
+  // (CHECK). Both are printed on the client's PDF (src/modules/invoicing/hours-page.ts).
+  includeHours      Boolean       @default(false) @map("include_hours")
+  hoursPage         Json?         @map("hours_page")
   createdByMemberId String        @map("created_by_member_id") // attribution, no FK
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)

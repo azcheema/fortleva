@@ -4873,7 +4873,8 @@
         "ourReference": "Vår referens",
         "note": "Meddelande på den här fakturan",
         "locale": "Språk",
-        "payLinkUrl": "Betallänk"
+        "payLinkUrl": "Betallänk",
+        "includeHours": "Tidsspecifikation i PDF:en"
       },
       "locale": {
         "client": "Kundens språk ({language})",
@@ -4913,7 +4914,11 @@
       "payLinkPlaceholder": "Lägg till en länk från Stripe eller PayPal",
       "payLinkNone": "Ingen",
       "payLinkHint": "En betallänk från Stripe eller PayPal för fakturans belopp. Kunden får en knapp för att betala direkt i mejlet och i kundportalen. När du utfärdar en faktura med länk behöver du ange koden från din autentiseringsapp.",
-      "addHours": "Lägg till timmar…"
+      "addHours": "Lägg till timmar…",
+      "includeHoursHint": "Lägger till en sida med varje dags timmar och uppgifter. Uppgifter som kunden inte ser visas som ”Övrigt arbete”, och ingens namn skrivs ut.",
+      "includeHoursOn": "Ingår",
+      "includeHoursOff": "Ingår inte",
+      "includeHoursNoHours": "Utkastet har inga timmar, så ingen sida läggs till."
     },
     "issue": {
       "button": "Utfärda faktura…",
@@ -4943,7 +4948,8 @@
         "noRate": "Fakturan den krediterar angav ingen växelkurs (dess moms blev noll), så kreditfakturans moms kan inte visas i kronor. Kreditera hela fakturan i stället.",
         "beforeInvoice": "Den kan inte dateras före fakturan den krediterar ({date}). Utfärda den från och med den dagen.",
         "privateTask": "De här raderna nämner en uppgift som kunden inte ser: {lines}. Ändra deras text.",
-        "hoursMismatch": "Några timmar som utkastet registrerar ligger inte längre på dess rader. Ta bort raderna med timmar och lägg till timmarna igen."
+        "hoursMismatch": "Några timmar som utkastet registrerar ligger inte längre på dess rader. Ta bort raderna med timmar och lägg till timmarna igen.",
+        "hoursPageTooLong": "Tidsspecifikationen blir längre än en PDF klarar (fler än {max} rader). Stäng av den, eller dela upp timmarna på flera fakturor."
       },
       "toSettings": "Öppna Inställningar → Fakturering",
       "toClient": "Öppna kunden",
@@ -4970,7 +4976,9 @@
       "needsFactor": "För att utfärda en faktura med betallänk behöver du en autentiseringsapp.",
       "setUpFactor": "Ställ in en autentiseringsapp",
       "paymentText": "Fakturans egen text nämner en webbadress eller betalningsuppgifter. Kontrollera att de är era – kunden kan komma att betala efter dem.",
-      "hoursChanged": "{count, plural, one {# tidspost på utkastet har ändrats sedan den lades till} other {# tidsposter på utkastet har ändrats sedan de lades till}}. Raderna ändras inte. Vill du fakturera timmarna som de är nu tar du bort en rad och lägger till dess timmar igen."
+      "hoursChanged": "{count, plural, one {# tidspost på utkastet har ändrats sedan den lades till} other {# tidsposter på utkastet har ändrats sedan de lades till}}. Raderna ändras inte. Vill du fakturera timmarna som de är nu tar du bort en rad och lägger till dess timmar igen.",
+      "hoursPage": "PDF:en får en sida med tidsspecifikation.",
+      "hoursPageDiffers": "Dessa rader fakturerar ett annat antal timmar än tidsspecifikationen visar: {lines}. Kunden ser båda siffrorna."
     },
     "issued": {
       "title": "Faktura {number}",
@@ -5221,6 +5229,23 @@
       "confirmReturn": "Lägga tillbaka {count, plural, one {# post} other {# poster}} i listan Redo att fakturera? Fakturan ändras inte.",
       "returned": "{count, plural, one {# post är} other {# poster är}} tillbaka i listan Redo att fakturera.",
       "selectRow": "Markera tidsposten från {date}"
+    },
+    "hoursPage": {
+      "title": "Tidsspecifikation",
+      "descriptionDraft": "Det kunden ser på PDF:ens tidsspecifikation. Uppgifter som kunden inte ser visas som ”Övrigt arbete”.",
+      "descriptionIssued": "Som den skrevs ut på fakturans PDF.",
+      "columns": {
+        "date": "Datum",
+        "work": "Arbete",
+        "hours": "Timmar"
+      },
+      "otherWork": "Övrigt arbete",
+      "total": "Summa",
+      "totalValue": "{hm} ({hours} h)",
+      "more": "{count, plural, one {# rad till finns} other {# rader till finns}} på PDF:en.",
+      "tooLong": "Specifikationen är längre än en PDF klarar (fler än {max} rader). Stäng av den, eller dela upp timmarna på flera fakturor.",
+      "withSeconds": "Visas med sekunder: några av timmarna kommer från ett projekt som inte avrundar sin tid.",
+      "unreadable": "Fakturans tidsspecifikation kan inte läsas."
     }
   },
   "invoicePdf": {
@@ -5281,6 +5306,16 @@
       "credits": "Krediterar faktura {number} daterad {date}",
       "reason": "Orsak: {reason}",
       "fileName": "kreditfaktura-{number}.pdf"
+    },
+    "hours": {
+      "title": "Tidsspecifikation",
+      "ofInvoice": "{kind} {number}",
+      "date": "Datum",
+      "work": "Arbete",
+      "hours": "Timmar",
+      "otherWork": "Övrigt arbete",
+      "total": "Summa",
+      "totalValue": "{hm} ({hours} h)"
     }
   },
   "invoiceMail": {

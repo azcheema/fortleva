@@ -167,6 +167,9 @@ const DBTEST_PREFIXES = [
   // Phase 4 slice 110, hours onto invoices — `src/modules/invoicing/hours.dbtest.ts`,
   // `setupTenant("invh")`.
   "invh-",
+  // Phase 4 slice 110b, the time breakdown page — `src/modules/invoicing/hours-page.dbtest.ts`,
+  // `setupTenant("invp")`.
+  "invp-",
   // Phase 4 slice 108, issuing — `src/modules/invoicing/issue.dbtest.ts`,
   // `setupTenant("invi")`.
   "invi-",

@@ -12,11 +12,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { withTenant } from "@/db";
 import { formatDurationSeconds, formatMoney } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
-import { formatFixed, getInvoice, minorToNumber, printFxRate, rateToNumber, signed, type InvoiceDetail } from "@/modules/invoicing";
+import {
+  formatFixed,
+  getInvoice,
+  HOURS_PAGE_ROWS_MAX,
+  minorToNumber,
+  printFxRate,
+  rateToNumber,
+  signed,
+  type InvoiceDetail,
+} from "@/modules/invoicing";
 import { CURRENCIES, readPreferences } from "@/preferences/service";
 
 import { CreditDialog } from "./credit-dialog";
 import { InvoiceHoursCard } from "./hours-card";
+import { HoursPageCard } from "./hours-page-card";
 import { CreditReason } from "./credit-reason";
 import { DownloadPdf } from "./download-pdf";
 import { DraftDetails } from "./draft-details";
@@ -72,6 +82,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const tPayment = await getTranslations("invoices.payment");
   const tMissing = await getTranslations("settings.invoicing.missing.items");
   const tCommon = await getTranslations("common");
+  const tHoursPage = await getTranslations("invoices.hoursPage");
   const locale = await getLocale();
   const format = await getFormatter();
 
@@ -222,6 +233,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                   hoursChanged: check.hoursChanged,
                   // Named as the table numbers them (positions may have gaps).
                   privateTaskLines: check.privateTaskLines.map((p) => invoice.lines.findIndex((l) => l.position === p) + 1).join(", "),
+                  hoursPage: invoice.hoursPage !== null,
+                  hoursPageDiffers: check.hoursPageDiffers.map((p) => invoice.lines.findIndex((l) => l.position === p) + 1).join(", "),
+                  hoursPageRowsMax: HOURS_PAGE_ROWS_MAX,
                 }}
                 payLink={invoice.payLinkUrl}
                 hasFactor={actor.mfa?.enrolled === true}
@@ -454,6 +468,13 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             projects={invoice.projects}
             reducedRateLines={reducedRateLines}
             clientLocale={invoice.clientLocale}
+            // An issued invoice says whether a breakdown was PRINTED (the review's
+            // nit: a tick on a draft with no hours prints nothing).
+            hoursBreakdown={
+              credit
+                ? null
+                : { on: draft ? invoice.includeHours : invoice.hoursPage !== null || issued?.hoursPageUnreadable === true, available: invoice.hours !== null }
+            }
             values={{
               vatProfile: invoice.vatProfile,
               currency: invoice.currency,
@@ -519,6 +540,14 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               state: r.state.kind === "other" ? { kind: "other", draft: r.state.draft, number: r.state.number, invoiceId: r.state.invoiceId } : { kind: r.state.kind },
             }))}
           />
+        ) : null}
+
+        {/* Slice 110b (C80 (d)): the time breakdown as the client's PDF prints it. */}
+        {invoice.hoursPage ? <HoursPageCard page={invoice.hoursPage} draft={draft} /> : null}
+        {issued?.hoursPageUnreadable ? (
+          <div data-testid="hours-page-unreadable">
+            <Callout tone="caution">{tHoursPage("unreadable")}</Callout>
+          </div>
         ) : null}
 
         <SectionCard title={t("totals.title")}>
