@@ -41,11 +41,18 @@ test.describe.serial("contract templates and drafts, as the owner", () => {
     const body = page.getByTestId("template-body");
     await body.click();
     await page.keyboard.type("This contract is between us and ");
-    await page.getByTestId("insert-fill-in").click();
-    await page.getByTestId("fill-in-client_name").click();
+    const insert = async (key: string) => {
+      await page.getByTestId("insert-fill-in").click();
+      await page.getByTestId(`fill-in-${key}`).click();
+      // The menu has closed, the token is in, and the caret is back in the
+      // text (TipTap focuses a frame later) before the next keystroke.
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(body).toContainText(`{{${key}}}`);
+      await expect(body).toBeFocused();
+    };
+    await insert("client_name");
     await page.keyboard.type(", signed by ");
-    await page.getByTestId("insert-fill-in").click();
-    await page.getByTestId("fill-in-signer_name").click();
+    await insert("signer_name");
     await page.keyboard.type(".");
     await expect(body).toContainText("This contract is between us and {{client_name}}, signed by {{signer_name}}.");
     await page.getByTestId("template-save").click();
