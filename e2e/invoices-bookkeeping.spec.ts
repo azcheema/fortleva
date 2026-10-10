@@ -27,6 +27,25 @@ import { STORAGE_STATE } from "./fixtures/tenant";
 
 const toast = (page: Page, text: string | RegExp): Locator => page.locator("[data-sonner-toast]", { hasText: text });
 
+/**
+ * A download, probed from INSIDE the page — a same-origin fetch carries the
+ * Secure session cookie and `Sec-Fetch-Site: same-origin`, where Playwright's
+ * Node-side request client drops a Secure cookie on any http host but
+ * `localhost` (the harness runs on 127.0.0.1) and is answered by the sign-in
+ * page instead (CI run 38063511448; `time.spec.ts`'s precedent).
+ */
+const probe = (page: Page, url: string) =>
+  page.evaluate(async (u) => {
+    const r = await fetch(u, { credentials: "same-origin", redirect: "manual" });
+    return {
+      status: r.status,
+      type: r.headers.get("content-type"),
+      disposition: r.headers.get("content-disposition"),
+      cache: r.headers.get("cache-control"),
+      bytes: Array.from(new Uint8Array(await r.arrayBuffer())),
+    };
+  }, url);
+
 test.describe.serial("the bookkeeping file", () => {
   test.use({ storageState: STORAGE_STATE, locale: "en-US" });
 
@@ -56,6 +75,8 @@ test.describe.serial("the bookkeeping file", () => {
     }
 
     const next = page.getByTestId("bookkeeping-next");
+    // Wait for the page before deciding (the fix review's low: `isVisible` does not wait).
+    await expect(next.or(page.getByTestId("bookkeeping-nothing"))).toBeVisible();
     if (await next.isVisible()) {
       await expect(next).toContainText("invoice");
       await next.getByTestId("bookkeeping-make").click();
@@ -68,21 +89,22 @@ test.describe.serial("the bookkeeping file", () => {
 
     // The Fortnox file: an SIE 4 import, in code page 437, as an attachment.
     const sieHref = await row.getByTestId("bookkeeping-sie").getAttribute("href");
-    const sie = await page.request.get(sieHref!);
-    expect(sie.status()).toBe(200);
-    expect(sie.headers()["content-disposition"]).toContain(`filename="fortleva-fakt-${number}.si"`);
-    expect(sie.headers()["cache-control"]).toContain("no-store");
-    const body = (await sie.body()).toString("latin1");
+    const sie = await probe(page, sieHref!);
+    expect(sie.status).toBe(200);
+    expect(sie.disposition).toContain(`filename="fortleva-fakt-${number}.si"`);
+    expect(sie.cache).toContain("no-store");
+    const body = Buffer.from(sie.bytes).toString("latin1");
     expect(body.startsWith("#FLAGGA 0\r\n#PROGRAM \"Fortleva\" 1.0\r\n#FORMAT PC8\r\n")).toBe(true);
     expect(body).toContain("#SIETYP 4\r\n");
     expect(body).toMatch(/#VER "F" "" \d{8} "Faktura \d+ /);
 
     // The list: a workbook (a zip).
     const xlsxHref = await row.getByTestId("bookkeeping-xlsx").getAttribute("href");
-    const xlsx = await page.request.get(xlsxHref!);
-    expect(xlsx.status()).toBe(200);
-    expect(xlsx.headers()["content-type"]).toContain("spreadsheetml");
-    expect((await xlsx.body()).subarray(0, 2).toString("latin1")).toBe("PK");
+    const xlsx = await probe(page, xlsxHref!);
+    expect(xlsx.status).toBe(200);
+    expect(xlsx.type).toContain("spreadsheetml");
+    expect(xlsx.disposition).toContain(`filename="fortleva-fakturor-${number}.xlsx"`);
+    expect(Buffer.from(xlsx.bytes.slice(0, 2)).toString("latin1")).toBe("PK");
 
     // The method is fixed now.
     await page.goto("/settings/invoicing#bookkeeping");
