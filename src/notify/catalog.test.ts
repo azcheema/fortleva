@@ -105,7 +105,7 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * — INSTANT because an alarm must not wait for a digest. The next test
    * pins that it never mails through `emailAllowed`, at any level.
    */
-  it("the instant set is assignment, mention, the six client-caused kinds, the three renewal reminders, the door's alarm and the update reminder — and nothing else", () => {
+  it("the instant set is assignment, mention, the eight client-caused kinds, the three renewal reminders, the door's alarm and the update reminder — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -118,6 +118,10 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       // Someone kept failing at a client's logins page (Phase 3V slice 99,
       // C67): inbox only — its mail is the vault's own security notice.
       "contact.logins_alarm",
+      // A client signed or declined a contract (Phase 4 slice 112b2, C85
+      // (a)): the sender asked for the signature and is waiting on it.
+      "contract.declined",
+      "contract.signed",
       // A client said they do not have a login the agency asked for (Phase
       // 3V slice 98, C66 (c)): the team was waiting on it and must now find
       // it another way — the hand-over's argument, the other way round.
@@ -145,6 +149,16 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
   it("an update reminder mails at PARTICIPATING, never at MENTIONS", () => {
     expect(emailAllowed("MENTIONS", "project_update.due")).toBe(false);
     expect(emailAllowed("PARTICIPATING", "project_update.due")).toBe(true);
+  });
+
+  /** A client's signature or refusal is the sender's own ask answered, not a mention (slice 112b2). */
+  it("a contract signed or declined mails at PARTICIPATING, never at MENTIONS — a MEMBER kind with no client-visibility claim", () => {
+    for (const kind of ["contract.signed", "contract.declined"] as const) {
+      expect(emailAllowed("MENTIONS", kind)).toBe(false);
+      expect(emailAllowed("PARTICIPATING", kind)).toBe(true);
+      expect(NOTIFICATION_KINDS[kind].audience).toBe("MEMBER");
+      expect(NOTIFICATION_KINDS[kind].clientVisibleOnly).toBeUndefined();
+    }
   });
 
   /** The door's alarm mails as the vault's security notice, never as a kind (slice 99). */

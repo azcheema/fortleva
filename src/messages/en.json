@@ -283,7 +283,9 @@
       "loginSubmitted": "A client sent a login",
       "loginAskDeclined": "A client can't send a login you asked for",
       "loginsAlarm": "Repeated failed attempts to open a client's logins",
-      "updateDue": "A project update is due"
+      "updateDue": "A project update is due",
+      "contractSigned": "A client signed a contract you sent",
+      "contractDeclined": "A client declined a contract you sent"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",
@@ -3335,7 +3337,9 @@
       "read": "Read",
       "readLabel": "Read the reply on {title}",
       "loginAsks": "Your agency asked you for {count, plural, one {# login} other {# logins}}",
-      "loginAsksOpen": "Open"
+      "loginAsksOpen": "Open",
+      "contracts": "{count, plural, one {# contract is waiting for your signature} other {# contracts are waiting for your signature}}",
+      "contractsOpen": "Open"
     },
     "signoff": {
       "awaitingYou": "Waiting for your sign-off",
@@ -3379,7 +3383,8 @@
       "files": "Files",
       "company": "Your company",
       "logins": "Logins",
-      "invoices": "Invoices"
+      "invoices": "Invoices",
+      "contracts": "Contracts"
     },
     "files": {
       "title": "Files",
@@ -3664,6 +3669,69 @@
       "bic": "BIC",
       "reference": "Quote invoice number {number} with your payment.",
       "creditNotes": "Credit notes",
+      "errors": {
+        "download": "The PDF couldn't be downloaded just now. Try again, or contact your agency."
+      }
+    },
+    "contracts": {
+      "title": "Contracts",
+      "description": "Contracts your agency has sent you to sign.",
+      "truncated": "Showing the newest {count}.",
+      "version": "Version {version}",
+      "sentOn": "Sent {date}",
+      "state": {
+        "SENT": "Waiting for signature",
+        "SENT_YOU": "Waiting for your signature",
+        "SIGNED": "Signed",
+        "DECLINED": "Declined",
+        "WITHDRAWN": "Withdrawn"
+      },
+      "back": "All contracts",
+      "facts": "Details",
+      "versionLabel": "Version",
+      "sent": "Sent",
+      "signed": "Signed",
+      "starts": "Starts",
+      "ends": "Ends",
+      "download": "Download PDF",
+      "downloadSigned": "Download signed copy",
+      "pdfPreparing": "The PDF is being prepared. It will be here in a few minutes.",
+      "signedCopyPreparing": "The signed copy is being prepared. It will be here in a few minutes.",
+      "parties": "Parties",
+      "agency": "Your agency",
+      "yourCompany": "Your company",
+      "orgNr": "Org. no. {orgNr}",
+      "text": "The contract",
+      "signatures": "Signatures",
+      "signedAs": "Signed as “{name}”, {when}",
+      "declinedAt": "Declined {when}",
+      "notYetSigned": "Not signed yet",
+      "notSigned": "Not signed",
+      "fingerprint": "Fingerprint (SHA-256)",
+      "fingerprintHint": "Both signatures apply to the contract exactly as it was sent. The signed copy carries the same fingerprint.",
+      "outcome": {
+        "waiting": "Waiting for a signature.",
+        "waitingFor": "Waiting for {name} to sign.",
+        "signed": "Signed by both sides.",
+        "signedOn": "Signed by both sides on {date}.",
+        "declined": "This contract was declined. Your agency has been told.",
+        "withdrawn": "Your agency withdrew this contract. It can no longer be signed."
+      },
+      "sign": {
+        "title": "Sign this contract",
+        "description": "Read the contract below. To sign it, tick the box and type your full name.",
+        "accept": "I have read and accept this contract",
+        "name": "Your full name",
+        "nameHint": "Typing your name is your signature.",
+        "confirm": "Sign",
+        "decline": "Decline…",
+        "declineTitle": "Decline this contract?",
+        "declineBody": "Your agency will be told. You can say why — they will read it, and so will your colleagues who see this contract.",
+        "reason": "Why? (optional)",
+        "reasonHint": "At most 1,000 characters.",
+        "declineConfirm": "Decline contract",
+        "failed": "Your answer couldn't be sent. Check your connection and try again."
+      },
       "errors": {
         "download": "The PDF couldn't be downloaded just now. Try again, or contact your agency."
       }
@@ -5591,6 +5659,7 @@
       "agency": "Your company",
       "client": "{name}, for the client",
       "waiting": "Waiting for their signature",
+      "notSigned": "Not signed",
       "declined": "Declined",
       "signedAt": "Signed {when}",
       "declinedAt": "Declined {when}",

@@ -1422,7 +1422,7 @@ model ContractSignature {
   signerMemberId  String?                        // TENANT party
   signerContactId String?                        // CLIENT party
   signerName      String
-  signerEmail     String
+  signerEmail     String?                        // slice 112b2: NULL on the agency's row without a confirmed reply address (C85 (e))
   level           SignatureLevel  @default(SES)
   status          SignatureStatus @default(PENDING)
   signedAt        DateTime?       @db.Timestamptz(6)
@@ -1472,6 +1472,16 @@ model ContractSignature {
 //     (class A): the client signer's IP and browser, moved off the readable row
 //     by a second definer. A WITHDRAWN contract's client row stays PENDING:
 //     every "waiting for a signature" read joins `contract.status = 'SENT'`.
+//   - SLICE 112b2 (migration 20261013090000, C85 (e)): `signerEmail` is NULLABLE
+//     on the agency's row — the guard copies the workspace's CONFIRMED reply
+//     address (`mail.replyTo`), else NULL, never the sender's login email (the
+//     owner fallback the mails' Reply-To uses is a login email and is not
+//     read); a client row's stays NOT NULL (a CHECK). The portal reads the
+//     contract and both signatures under the contact (`src/modules/contracts/
+//     portal.ts`: names, typed names, moments, a decline's reason — no email,
+//     no member id); the client signer signs or declines under their own
+//     principal (`portal-sign.ts`), the sender is told and the signed copy
+//     drawn and mailed by an announcer (`sign-announce.ts`).
 
 // ───────────────────────────────────────────────────────────────────
 // 6.7 INVOICING (§6, §10.2) — an invoice LEDGER, not an accounting

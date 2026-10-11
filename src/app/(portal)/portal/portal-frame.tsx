@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 import { cn } from "@/lib/utils";
 import type { PortalPrincipal } from "@/portal";
 
+import { contractsShown } from "./contracts-shown";
 import { invoicesShown } from "./invoices-shown";
 import { loginsShown } from "./logins-shown";
 
@@ -53,7 +54,7 @@ import { loginsShown } from "./logins-shown";
  * carries a member cookie and is answered with a redirect to the client
  * sign-in page on every render.
  */
-export type PortalNav = "home" | "files" | "company" | "logins" | "invoices";
+export type PortalNav = "home" | "files" | "company" | "logins" | "invoices" | "contracts";
 
 const NAV: readonly { readonly key: PortalNav; readonly href: string }[] = [
   { key: "home", href: "/portal" },
@@ -84,6 +85,14 @@ const LOGINS = { key: "logins", href: "/portal/logins" } as const;
  */
 const INVOICES = { key: "invoices", href: "/portal/invoices" } as const;
 
+/**
+ * "Contracts" (Phase 4 slice 112b2; C85) — drawn, like Invoices, only when there
+ * is something behind it for THIS contact: a main contact whose client has at
+ * least one SENT contract (`./contracts-shown`). Under View-as the entry is
+ * drawn for the byte comparison; its page never renders there.
+ */
+const CONTRACTS = { key: "contracts", href: "/portal/contracts" } as const;
+
 export async function PortalFrame({
   name,
   nav,
@@ -103,6 +112,7 @@ export async function PortalFrame({
   const entries = [
     ...NAV,
     ...((await invoicesShown(principal)) ? [INVOICES] : []),
+    ...((await contractsShown(principal)) ? [CONTRACTS] : []),
     ...((await loginsShown(principal)) ? [LOGINS] : []),
   ];
   return (

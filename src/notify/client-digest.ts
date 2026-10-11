@@ -31,15 +31,15 @@ export const contactDigestKey = (contactId: string, periodKey: string): string =
 
 /**
  * What a summary counts, in the order it says it. The first three are NEW
- * since the last summary; the last three are WAITING on the reader now,
- * however old.
+ * since the last summary; the rest are WAITING on the reader now, however old
+ * — contracts waiting for their signature since slice 112b2 (C85 (d)).
  */
-export const CLIENT_DIGEST_COUNTS = ["updates", "replies", "files", "signoffs", "tasks", "logins"] as const;
+export const CLIENT_DIGEST_COUNTS = ["updates", "replies", "files", "signoffs", "contracts", "tasks", "logins"] as const;
 export type ClientDigestCount = (typeof CLIENT_DIGEST_COUNTS)[number];
 export type ClientDigestCounts = Readonly<Record<ClientDigestCount, number>>;
 
 const NEW: readonly ClientDigestCount[] = ["updates", "replies", "files"];
-const WAITING: readonly ClientDigestCount[] = ["signoffs", "tasks", "logins"];
+const WAITING: readonly ClientDigestCount[] = ["signoffs", "contracts", "tasks", "logins"];
 
 /**
  * `counts` as stored in an outbox row's `params` — untrusted Json: only a
@@ -83,6 +83,10 @@ const LINES: Readonly<Record<ClientDigestCount, Line>> = {
   signoffs: line(
     ["1 thing is waiting for your sign-off", "# things are waiting for your sign-off"],
     ["1 sak väntar på ditt godkännande", "# saker väntar på ditt godkännande"],
+  ),
+  contracts: line(
+    ["1 contract is waiting for your signature", "# contracts are waiting for your signature"],
+    ["1 kontrakt väntar på din underskrift", "# kontrakt väntar på din underskrift"],
   ),
   tasks: line(
     ["1 task is waiting for you", "# tasks are waiting for you"],

@@ -2,6 +2,7 @@ import { appUrl } from "@/config";
 import { isUuid } from "@/db/context";
 import { isNotificationKind, type NotificationKind } from "./catalog";
 import { CONTACT_DIGEST_MAIL } from "./client-digest";
+import { CONTRACT_MAIL_KEYS, CONTRACT_SENT_MAIL, CONTRACT_SIGNED_MAIL } from "./contract-mail-keys";
 import { MEMBER_DIGEST_MAIL, renderMemberDigest } from "./digest";
 import { REPLY_ADDRESS_CHANGED_MAIL } from "./reply-address-mail-key";
 import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
@@ -44,6 +45,7 @@ const EXTRA_TEMPLATES = [
   CONTACT_DIGEST_MAIL,
   INVOICE_DETAILS_CHANGED_MAIL,
   INVOICE_PAY_LINK_ISSUED_MAIL,
+  ...CONTRACT_MAIL_KEYS,
 ] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
@@ -380,6 +382,51 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Ett projekt du ansvarar för ska ha en lägesuppdatering i dag. Öppna fliken Uppdateringar i projektet för att skriva den.",
     },
   },
+  // Phase 4 slice 112b2 — the client's signer decided a contract the reader
+  // sent (C85 (a)). LINKS, NOT DATA: neither the contract nor the client is
+  // named; the inbox names them under the reader's own principal.
+  "contract.signed": {
+    en: {
+      subject: "A client signed a contract you sent",
+      body: "A client has signed a contract you sent them for signature. Open it to see the signatures and download the signed copy.",
+    },
+    sv: {
+      subject: "En kund har skrivit under ett kontrakt du skickade",
+      body: "En kund har skrivit under ett kontrakt som du skickade till dem för underskrift. Öppna det för att se underskrifterna och ladda ner det undertecknade exemplaret.",
+    },
+  },
+  "contract.declined": {
+    en: {
+      subject: "A client declined a contract you sent",
+      body: "A client has declined a contract you sent them for signature, and may have said why. Open it to read their answer.",
+    },
+    sv: {
+      subject: "En kund har tackat nej till ett kontrakt du skickade",
+      body: "En kund har tackat nej till ett kontrakt som du skickade till dem för underskrift, och kan ha skrivit varför. Öppna det för att läsa svaret.",
+    },
+  },
+  // Phase 4 slice 112b2 — to the client's SIGNER (C85 (b); `contract-mail-keys.ts`).
+  // LINKS, NOT DATA: the portal page says what the contract is.
+  [CONTRACT_SENT_MAIL]: {
+    en: {
+      subject: "Your agency sent you a contract to sign",
+      body: "Your agency has sent you a contract to read and sign. Sign in to your client portal to read it, then sign it or decline it there.",
+    },
+    sv: {
+      subject: "Din byrå har skickat ett kontrakt till dig för underskrift",
+      body: "Din byrå har skickat ett kontrakt som du ska läsa och skriva under. Logga in i kundportalen för att läsa det, och skriv sedan under eller tacka nej där.",
+    },
+  },
+  [CONTRACT_SIGNED_MAIL]: {
+    en: {
+      subject: "Your contract is signed",
+      body: "The contract you signed is now signed by both sides. Your signed copy is in your client portal, where you can download it.",
+    },
+    sv: {
+      subject: "Ditt kontrakt är undertecknat",
+      body: "Kontraktet som du skrev under är nu undertecknat av båda parter. Ditt undertecknade exemplar finns i kundportalen, där du kan ladda ner det.",
+    },
+  },
   "time.weekly_reminder": {
     en: {
       subject: "Your weekly time reminder",
@@ -452,6 +499,17 @@ const linkFor = (
     return new URL(clientId ? `/clients/${clientId}/contacts` : "/clients", appUrl);
   }
   if (key === DOOR_ALARM_CONTACT_MAIL) return new URL("/portal/reset-password", appUrl);
+  // A contract (slice 112b2): the client's mails open it in their portal, the
+  // agency's on its page. The id came from the contracts module, never a
+  // person, and is held to a uuid's shape.
+  if (key === CONTRACT_SENT_MAIL || key === CONTRACT_SIGNED_MAIL) {
+    const contractId = uuidParam(params, "contractId");
+    return new URL(contractId ? `/portal/contracts/${contractId}` : "/portal", appUrl);
+  }
+  if (key === "contract.signed" || key === "contract.declined") {
+    const contractId = uuidParam(params, "contractId");
+    return new URL(contractId ? `/contracts/${contractId}` : "/contracts", appUrl);
+  }
   // A login asked of a contact (slice 98): the ask's own page in their
   // portal, which answers only to the one contact asked. The id came from
   // the vault, never a person, and is held to a uuid's shape.

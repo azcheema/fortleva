@@ -308,6 +308,32 @@ const KINDS = {
     class: "INSTANT",
     email: { atLevel: "PARTICIPATING" },
   },
+  /**
+   * Phase 4 slice 112b2 (founder decision C85 (a)): the client's signer SIGNED
+   * a contract, or DECLINED it, in the portal (`src/modules/contracts/
+   * portal-sign.ts`, announced after the census write by `sign-announce.ts`).
+   * To the member who SENT it — while active — and nobody else (C85 (a), over
+   * every owner and over everyone assigned to the client).
+   *
+   * AUDIENCE IS MEMBER: the field names who RECEIVES. INSTANT and
+   * PARTICIPATING: the sender asked for the signature and is waiting on it — a
+   * signed contract is the moment work or an invoice can move, a refusal is a
+   * conversation to have now — and a member who has turned email down to
+   * MENTIONS has said they only want to be named. No `debounceMinutes`, no
+   * `cancelledIfRead`: a decision is final. Entity: the CONTRACT; the inbox
+   * names it (its title and client) under the reader's own `contract:view`
+   * and scope (`src/modules/contracts/subjects.ts`). One row per contract.
+   */
+  "contract.signed": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
+  "contract.declined": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

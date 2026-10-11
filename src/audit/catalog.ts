@@ -186,6 +186,11 @@ export const AUDIT_EVENTS = {
   // (which kind, its file and hash).
   "contract.withdrawn": TENANT,
   "contract.pdf_generated": TENANT,
+  // Slice 112b2: a CLIENT's download of the PDF as sent or the signed copy,
+  // from the portal — brokered, attributed to the contact (the invoice's
+  // `invoice.pdf_downloaded`). `contract.signed` / `contract.declined` above
+  // are the client signer's own, written under the contact in the census write.
+  "contract.pdf_downloaded": TENANT,
   "invoice.issued": TENANT,
   "invoice.sent": TENANT,
   "invoice.paid": TENANT,

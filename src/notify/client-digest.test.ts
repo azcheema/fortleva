@@ -18,7 +18,7 @@ import { clientSummaryToken, readClientSummaryToken } from "./client-summary-tok
  */
 
 const LINKS = { portal: "https://app.example/portal", unsubscribe: "https://app.example/portal/unsubscribe/T" };
-const NONE = { updates: 0, replies: 0, files: 0, signoffs: 0, tasks: 0, logins: 0 };
+const NONE = { updates: 0, replies: 0, files: 0, signoffs: 0, contracts: 0, tasks: 0, logins: 0 };
 
 describe("readClientDigestCounts", () => {
   it("keeps only known keys with positive whole numbers", () => {
@@ -40,6 +40,7 @@ describe("clientDigestHasNews", () => {
   it("is true for something WAITING alone (C69 (c))", () => {
     expect(clientDigestHasNews({ ...NONE, signoffs: 1 })).toBe(true);
     expect(clientDigestHasNews({ ...NONE, logins: 1 })).toBe(true);
+    expect(clientDigestHasNews({ ...NONE, contracts: 1 })).toBe(true);
   });
 });
 
@@ -62,6 +63,8 @@ describe("renderContactDigest", () => {
     const waitingOnly = renderContactDigest("en", { tasks: 1 }, LINKS)!;
     expect(waitingOnly.text).not.toContain("New since your last summary");
     expect(waitingOnly.text).toContain("- 1 task is waiting for you");
+    // A contract waiting for the reader's signature (slice 112b2, C85 (d)).
+    expect(renderContactDigest("en", { contracts: 2 }, LINKS)!.text).toContain("Waiting for you:\n- 2 contracts are waiting for your signature");
     const newOnly = renderContactDigest("en", { files: 2 }, LINKS)!;
     expect(newOnly.text).not.toContain("Waiting for you");
   });

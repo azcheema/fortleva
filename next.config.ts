@@ -37,6 +37,9 @@ const nextConfig: NextConfig = {
     // Phase 4 slice 112: a contract draft's preview PDF (the same Inter files,
     // `src/lib/pdf-fonts.ts`).
     "/contracts/**": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
+    // Slice 112b2: the signed copy is drawn when the client signs, inside the
+    // portal contract page's action (`sign-announce.ts`).
+    "/portal/contracts/**": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
     "/api/jobs/run": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
   },
   // CI already runs `next typegen && tsc --noEmit` over this exact

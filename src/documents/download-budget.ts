@@ -5,8 +5,8 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
 /**
  * The most a contact may download inside the window, counted on the
  * DATABASE'S clock from the audit rows the downloads themselves write
- * (`file.downloaded` and, since slice 109, `invoice.pdf_downloaded` — actor
- * CONTACT). A Postgres count and not the Upstash limiter, for the reason
+ * (`file.downloaded`, since slice 109 `invoice.pdf_downloaded`, and since
+ * slice 112b2 `contract.pdf_downloaded` — actor CONTACT). A Postgres count and not the Upstash limiter, for the reason
  * `assertRequestBudget` gives: that limiter fails OPEN while Upstash is
  * unprovisioned, so it is the cheap front filter and this is the control.
  * Generous on purpose — a person opening a folder of deliverables one by one
@@ -17,10 +17,12 @@ export const DOWNLOAD_WINDOW_LIMIT = 60;
 
 /**
  * ONE DOWNLOAD BUDGET PER CONTACT, for every file the portal hands out — a
- * shared file (`src/documents/portal-writes.ts`) and, since slice 109, an
- * invoice's PDF (`src/modules/invoicing/portal-writes.ts`): the same lock key,
- * both actions counted (the slice-109 design review's nit — two budgets would
- * double it). Its own file, not a broker's: an exported function in a
+ * shared file (`src/documents/portal-writes.ts`), since slice 109 an
+ * invoice's PDF (`src/modules/invoicing/portal-writes.ts`), and since slice
+ * 112b2 a contract's PDF or signed copy (`src/modules/contracts/portal-writes.ts`):
+ * the same lock key, every action counted (the slice-109 design review's nit —
+ * two budgets would double it; slice 112b2's code review found the third
+ * action missing from the count). Its own file, not a broker's: an exported function in a
  * `portal-writes.ts` IS a broker to `brokered-writes.test.ts`, and this one is
  * the step every broker that hands out a file takes INSIDE its system
  * transaction, after the contact's proof.
@@ -34,7 +36,7 @@ export async function assertDownloadBudget(tx: TenantDb, tenantId: string, conta
   const used = await tx.auditEvent.count({
     where: {
       tenantId,
-      action: { in: ["file.downloaded", "invoice.pdf_downloaded"] },
+      action: { in: ["file.downloaded", "invoice.pdf_downloaded", "contract.pdf_downloaded"] },
       actorType: "CONTACT",
       actorId: contactId,
       createdAt: { gte: since },

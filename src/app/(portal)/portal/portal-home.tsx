@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Callout, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { listPortalPendingDeliverables } from "@/documents/portal";
+import { countPortalContractsToSign } from "@/modules/contracts/portal";
 import { countPortalLoginAsks, portalCanSendLogins } from "@/modules/vault";
 import {
   listPortalAgencyReplies,
@@ -16,6 +17,7 @@ import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 import type { PortalPendingApproval } from "@/portal/signoff";
 import { listPortalPendingVersions, listPortalProjects } from "@/projects/portal";
 
+import { contractsShown } from "./contracts-shown";
 import { PortalFrame } from "./portal-frame";
 import { AgencyReplyItem, PortalTasksEmpty, ProjectTasks } from "./task-list";
 
@@ -183,6 +185,15 @@ export async function PortalHome({
   const loginAsks = canSendLogins
     ? ((await portalReadOrNull("countPortalLoginAsks", () => countPortalLoginAsks(principal))) ?? 0)
     : 0;
+  // CONTRACTS WAITING FOR THIS PERSON'S SIGNATURE (Phase 4 slice 112b2, C85
+  // (d)) — a COUNT and a link, never a title, for the login asks' reason:
+  // View-as renders this card under a member session that may hold no
+  // `contract:view`. Asked only when the nav's own answer says there is a
+  // contract to see (`./contracts-shown`, once per request — the frame reuses
+  // it), so a client with none pays no transaction. Sequential, as above.
+  const contractsToSign = (await contractsShown(principal))
+    ? ((await portalReadOrNull("countPortalContractsToSign", () => countPortalContractsToSign(principal))) ?? 0)
+    : 0;
 
   return (
     <PortalFrame name={name} principal={principal} nav="home">
@@ -216,13 +227,30 @@ export async function PortalHome({
               ) : null
             }
           />
-          {asks.length > 0 || replied.length > 0 || loginAsks > 0 ? (
+          {asks.length > 0 || replied.length > 0 || loginAsks > 0 || contractsToSign > 0 ? (
             <SectionCard
               title={t("actionItems.title")}
               description={t("actionItems.description")}
               contentClassName="p-4"
             >
               <ul data-slot="portal-action-items" className="flex flex-col gap-2">
+                {contractsToSign > 0 ? (
+                  <li
+                    data-slot="portal-action-item"
+                    data-kind="contract"
+                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+                  >
+                    <span className="text-sm text-foreground">
+                      {t("actionItems.contracts", { count: contractsToSign })}
+                    </span>
+                    <Button asChild variant="outline" size="sm">
+                      {/* No prefetch: rendered on the member plane too (View-as). */}
+                      <Link href="/portal/contracts" prefetch={false}>
+                        {t("actionItems.contractsOpen")}
+                      </Link>
+                    </Button>
+                  </li>
+                ) : null}
                 {loginAsks > 0 ? (
                   <li
                     data-slot="portal-action-item"
@@ -277,7 +305,7 @@ export async function PortalHome({
               </ul>
             </SectionCard>
           ) : null}
-          {projects.length === 0 && asks.length === 0 && replied.length === 0 && loginAsks === 0 ? (
+          {projects.length === 0 && asks.length === 0 && replied.length === 0 && loginAsks === 0 && contractsToSign === 0 ? (
             // Shared with the member app's Portal tab since 2026-09-21,
             // so the preview there and this page cannot drift apart —
             // see `task-list.tsx` for why the variant and the glyph are

@@ -4,6 +4,8 @@ import {
   CircleCheckIcon,
   ClipboardCheckIcon,
   FileClockIcon,
+  FileSignatureIcon,
+  FileXIcon,
   GaugeIcon,
   InboxIcon,
   KeyRoundIcon,
@@ -42,4 +44,7 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "contact.logins_alarm": ShieldAlertIcon,
   // The Updates tab's own glyph (its empty state), so the reminder and the tab match.
   "project_update.due": MegaphoneIcon,
+  // The Contracts nav's own glyph for a signature; a crossed file for a refusal.
+  "contract.signed": FileSignatureIcon,
+  "contract.declined": FileXIcon,
 };

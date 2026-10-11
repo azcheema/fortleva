@@ -286,6 +286,9 @@ const BROKERED_READS: readonly (readonly [string, string])[] = [
 const ANNOUNCERS: readonly string[] = [
   join("portal", "signoff-announce.ts"),
   join("modules", "work", "comment-announce.ts"),
+  // The third (Phase 4 slice 112b2, C85 (a), (b)): a client's signature or
+  // refusal of a contract, announced after the census write committed it.
+  join("modules", "contracts", "sign-announce.ts"),
 ];
 
 /**
@@ -304,6 +307,21 @@ const ANNOUNCER_IMPORTS: Readonly<Record<string, readonly string[]>> = {
     "./notify:requestReceivers",
     // The ONE writer beyond `emit`: the task's history row naming the contact.
     "./activity:writeContactActivity",
+  ],
+  [join("modules", "contracts", "sign-announce.ts")]: [
+    "@/db:withTenant",
+    // The sender's inbox row (and their mail, as their settings say).
+    "@/notify/emit:emit",
+    // The client signer's "it's signed" mail — the one outbox writer (C85 (b)).
+    "./mail:enqueueContractMail",
+    // THE DELIBERATE EXCEPTION to "writes through emit alone, audits nothing",
+    // which this pin holds for the announcer's OWN text only: the signed copy
+    // drawn and archived as SYSTEM — a file in storage, its `file_object` row,
+    // the contract's `signed_pdf_file_id`, the workspace's storage count, and
+    // the `contract.pdf_generated` audit row the store writes for every PDF
+    // (the jobs sweep's same call). Admitted by name, as the store's one
+    // system entry point (`ensureContractPdfAsSystem`, off the module's barrel).
+    "./pdf-store:ensureContractPdfAsSystem",
   ],
 };
 

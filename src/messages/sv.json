@@ -283,7 +283,9 @@
       "loginSubmitted": "En kund har skickat en inloggning",
       "loginAskDeclined": "En kund kan inte skicka en inloggning ni bad om",
       "loginsAlarm": "Upprepade misslyckade försök att öppna en kunds inloggningar",
-      "updateDue": "Dags för en projektuppdatering"
+      "updateDue": "Dags för en projektuppdatering",
+      "contractSigned": "En kund har skrivit under ett kontrakt du skickade",
+      "contractDeclined": "En kund har tackat nej till ett kontrakt du skickade"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",
@@ -3335,7 +3337,9 @@
       "read": "Läs",
       "readLabel": "Läs svaret på {title}",
       "loginAsks": "Din byrå har bett dig om {count, plural, one {# inloggning} other {# inloggningar}}",
-      "loginAsksOpen": "Öppna"
+      "loginAsksOpen": "Öppna",
+      "contracts": "{count, plural, one {# kontrakt väntar på din underskrift} other {# kontrakt väntar på din underskrift}}",
+      "contractsOpen": "Öppna"
     },
     "signoff": {
       "awaitingYou": "Väntar på ditt godkännande",
@@ -3379,7 +3383,8 @@
       "files": "Filer",
       "company": "Ditt företag",
       "logins": "Inloggningar",
-      "invoices": "Fakturor"
+      "invoices": "Fakturor",
+      "contracts": "Kontrakt"
     },
     "files": {
       "title": "Filer",
@@ -3666,6 +3671,69 @@
       "creditNotes": "Kreditfakturor",
       "errors": {
         "download": "Pdf:en kunde inte laddas ner just nu. Försök igen eller hör av er till er byrå."
+      }
+    },
+    "contracts": {
+      "title": "Kontrakt",
+      "description": "Kontrakt som din byrå har skickat till dig för underskrift.",
+      "truncated": "Visar de {count} senaste.",
+      "version": "Version {version}",
+      "sentOn": "Skickat {date}",
+      "state": {
+        "SENT": "Väntar på underskrift",
+        "SENT_YOU": "Väntar på din underskrift",
+        "SIGNED": "Undertecknat",
+        "DECLINED": "Avböjt",
+        "WITHDRAWN": "Återkallat"
+      },
+      "back": "Alla kontrakt",
+      "facts": "Uppgifter",
+      "versionLabel": "Version",
+      "sent": "Skickat",
+      "signed": "Undertecknat",
+      "starts": "Börjar gälla",
+      "ends": "Upphör",
+      "download": "Ladda ner pdf",
+      "downloadSigned": "Ladda ner undertecknat exemplar",
+      "pdfPreparing": "Pdf:en håller på att tas fram. Den finns här om några minuter.",
+      "signedCopyPreparing": "Det undertecknade exemplaret håller på att tas fram. Det finns här om några minuter.",
+      "parties": "Parter",
+      "agency": "Din byrå",
+      "yourCompany": "Ditt företag",
+      "orgNr": "Org.nr {orgNr}",
+      "text": "Kontraktet",
+      "signatures": "Underskrifter",
+      "signedAs": "Undertecknat som ”{name}”, {when}",
+      "declinedAt": "Avböjt {when}",
+      "notYetSigned": "Inte undertecknat ännu",
+      "notSigned": "Inte undertecknat",
+      "fingerprint": "Fingeravtryck (SHA-256)",
+      "fingerprintHint": "Båda underskrifterna gäller kontraktet exakt som det skickades. Det undertecknade exemplaret har samma fingeravtryck.",
+      "outcome": {
+        "waiting": "Väntar på underskrift.",
+        "waitingFor": "Väntar på att {name} skriver under.",
+        "signed": "Undertecknat av båda parter.",
+        "signedOn": "Undertecknat av båda parter den {date}.",
+        "declined": "Kontraktet har avböjts. Din byrå har fått veta det.",
+        "withdrawn": "Din byrå har återkallat kontraktet. Det går inte längre att skriva under."
+      },
+      "sign": {
+        "title": "Skriv under kontraktet",
+        "description": "Läs kontraktet nedan. Kryssa i rutan och skriv ditt fullständiga namn för att skriva under.",
+        "accept": "Jag har läst och godkänner kontraktet",
+        "name": "Ditt fullständiga namn",
+        "nameHint": "Ditt namn är din underskrift.",
+        "confirm": "Skriv under",
+        "decline": "Tacka nej…",
+        "declineTitle": "Tacka nej till kontraktet?",
+        "declineBody": "Din byrå får veta det. Du kan skriva varför — de läser det, och det gör även dina kollegor som ser kontraktet.",
+        "reason": "Varför? (frivilligt)",
+        "reasonHint": "Högst 1 000 tecken.",
+        "declineConfirm": "Tacka nej",
+        "failed": "Ditt svar kunde inte skickas. Kontrollera anslutningen och försök igen."
+      },
+      "errors": {
+        "download": "Pdf:en kunde inte laddas ner just nu. Försök igen eller kontakta din byrå."
       }
     }
   },
@@ -5591,6 +5659,7 @@
       "agency": "Ert företag",
       "client": "{name}, för kunden",
       "waiting": "Väntar på underskrift",
+      "notSigned": "Inte undertecknat",
       "declined": "Avböjt",
       "signedAt": "Undertecknat {when}",
       "declinedAt": "Avböjt {when}",

@@ -140,7 +140,7 @@ describe("the signed copy", () => {
         signed: {
           contentSha256: "a".repeat(64),
           signatures: [
-            { party: "TENANT", name: "Maja Manager", email: "maja@example.com", typedName: "Maja Manager", when: "10 oktober 2026 14:05 CEST" },
+            { party: "TENANT", name: "Maja Manager", email: "hej@sigs.example", typedName: "Maja Manager", when: "10 oktober 2026 14:05 CEST" },
             { party: "CLIENT", name: "Eva Ek", email: "eva@example.com", typedName: "Eva Ek", when: "11 oktober 2026 09:12 CEST" },
           ],
         },
@@ -149,5 +149,20 @@ describe("the signed copy", () => {
     const pages = (bytes: Uint8Array) => Buffer.from(bytes).toString("latin1").match(/\/Type\s*\/Page\b/g)!.length;
     expect(Buffer.from(signed.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
     expect(pages(signed)).toBe(pages(one) + 1);
+  });
+
+  it("prints the agency's signer by name alone when the workspace has no reply address (C85 (e))", async () => {
+    const signed = await renderContractPdf(
+      fixture({
+        signed: {
+          contentSha256: "b".repeat(64),
+          signatures: [
+            { party: "TENANT", name: "Maja Manager", email: null, typedName: "Maja Manager", when: "10 oktober 2026 14:05 CEST" },
+            { party: "CLIENT", name: "Eva Ek", email: "eva@example.com", typedName: "Eva Ek", when: "11 oktober 2026 09:12 CEST" },
+          ],
+        },
+      }),
+    );
+    expect(Buffer.from(signed.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
   });
 });

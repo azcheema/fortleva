@@ -123,6 +123,15 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "paymentNote",
   "issuedByMemberId",
   "sentByMemberId",
+  // Phase 4 slice 112b2 (C85), contracts in the portal: `contract` and
+  // `contract_signature` are class B, so RLS hands a main contact the whole
+  // row of a sent contract and both its signatures — the projection owns the
+  // columns. The member who withdrew it and the member who signed for the
+  // agency (`sentByMemberId` above is the sender), and a signature's email:
+  // the portal names the agency's sender by NAME only (C85 (e)).
+  "withdrawnByMemberId",
+  "signerMemberId",
+  "signerEmail",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -232,6 +241,14 @@ const PORTAL_SURFACES_BY_NAME = [
   // system, writes only the agency's side, and is pinned as an announcer
   // in `src/portal/brokered-writes.test.ts`.
   join("modules", "work", "portal-comment.ts"),
+  // The FOURTH census writer (Phase 4 slice 112b2, C85): a client signer's
+  // signature or refusal of a contract, under their own principal. In the
+  // text tier for the comment writer's reason — the reason a client declines
+  // with is a string every main contact of the client then reads — and
+  // verified clean of every forbidden identifier, prose included, when added.
+  // Its after-commit fan-out (`sign-announce.ts`) is an announcer, pinned in
+  // `src/portal/brokered-writes.test.ts`, and not a portal surface.
+  join("modules", "contracts", "portal-sign.ts"),
   // The clients' weekly summary's job (Phase 5 slice 101). It never says
   // `withPortalRead` — it calls `src/portal/weekly-summary.ts`, which does —
   // but it synthesises a contact principal for every client person and reads
@@ -441,6 +458,9 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "paymentNote",
       "issuedByMemberId",
       "sentByMemberId",
+      "withdrawnByMemberId",
+      "signerMemberId",
+      "signerEmail",
     ]);
   });
 
@@ -521,6 +541,10 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "invoiceRoundingMinimum",
         "bookRateToSek",
         "bookRateDate",
+        "sentByMemberId",
+        "withdrawnByMemberId",
+        "signerMemberId",
+        "signerEmail",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -711,6 +735,14 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   // `invoice` is class B (a main contact's RLS reads the whole sent row).
   "bookRateToSek",
   "bookRateDate",
+  // Phase 4 slice 112b2 (C85 (e)): a contract's and its signatures' member
+  // columns and a signature's email — the portal names the agency's sender
+  // by name only. Here as well as on the text list, so the census writer and
+  // every surface the text tier does not read meet them as select keys.
+  "sentByMemberId",
+  "withdrawnByMemberId",
+  "signerMemberId",
+  "signerEmail",
 ]);
 
 /**

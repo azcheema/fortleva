@@ -45,7 +45,9 @@ import type { ContractsCtx } from "./templates";
  */
 
 /** Which drawing this is. Raise it whenever `pdf/contract-pdf.tsx` changes what a PDF looks like. */
-export const CONTRACT_PDF_TEMPLATE_VERSION = 1;
+// 2 (slice 112b2, C85 (e)): the agency's signer is printed by name alone when
+// the workspace had no confirmed reply address at sending.
+export const CONTRACT_PDF_TEMPLATE_VERSION = 2;
 
 export type ContractPdfKind = "sent" | "signed";
 

@@ -76,7 +76,12 @@ export type SignaturePrint = {
   readonly party: "TENANT" | "CLIENT";
   /** The signer as the record names them. */
   readonly name: string;
-  readonly email: string;
+  /**
+   * The client signer's address; on the agency's signature the workspace's
+   * confirmed reply address, or null when none was — never a member's login
+   * (C85 (e)): the name is then printed alone.
+   */
+  readonly email: string | null;
   /** What they typed to sign. */
   readonly typedName: string;
   /** When, already written out in the contract's language and the workspace's time zone. */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { CONTRACT_SENT_MAIL, CONTRACT_SIGNED_MAIL } from "./contract-mail-keys";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { isEmailTemplate, renderEmail } from "./templates";
 
@@ -46,5 +47,37 @@ describe("the door's alarm mails", () => {
     expect(lastLine(owners.text)).toContain(CLIENT);
     const person = renderEmail(DOOR_ALARM_CONTACT_MAIL, "en", { clientId: CLIENT });
     expect(person.text).not.toContain(CLIENT);
+  });
+});
+
+/**
+ * A CONTRACT'S MAILS (Phase 4 slice 112b2; founder decision C85 (a), (b)) — the
+ * client signer's two open the contract in their portal, the sender's open it
+ * on its page; each in both languages, a link and no data (ARC-09), and an id
+ * that is not a uuid never reaches a path.
+ */
+describe("a contract's mails", () => {
+  const CONTRACT = "0192f3a4-5b6c-7d8e-9f01-23456789abce";
+  const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
+
+  it("the signer's open the contract in their portal, in either language", () => {
+    for (const key of [CONTRACT_SENT_MAIL, CONTRACT_SIGNED_MAIL]) {
+      expect(isEmailTemplate(key)).toBe(true);
+      const en = renderEmail(key, "en", { contractId: CONTRACT });
+      const sv = renderEmail(key, "sv", { contractId: CONTRACT });
+      for (const mail of [en, sv]) {
+        expect(new URL(lastLine(mail.text)).pathname).toBe(`/portal/contracts/${CONTRACT}`);
+        expect(mail.text.split(CONTRACT)).toHaveLength(2); // once — in the link
+      }
+      expect(en.subject).not.toBe(sv.subject);
+      expect(new URL(lastLine(renderEmail(key, "en", { contractId: "../x" }).text)).pathname).toBe("/portal");
+    }
+  });
+
+  it("the sender's open the contract's page", () => {
+    for (const key of ["contract.signed", "contract.declined"] as const) {
+      expect(new URL(lastLine(renderEmail(key, "en", { contractId: CONTRACT }).text)).pathname).toBe(`/contracts/${CONTRACT}`);
+      expect(new URL(lastLine(renderEmail(key, "sv", { contractId: "nope" }).text)).pathname).toBe("/contracts");
+    }
   });
 });

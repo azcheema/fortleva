@@ -1515,7 +1515,7 @@ model ContractSignature {
   signerMemberId  String?         @map("signer_member_id") // attribution, no FK
   signerContactId String?         @map("signer_contact_id") // attribution, no FK
   signerName      String          @map("signer_name") // copied by the guard
-  signerEmail     String          @map("signer_email") // copied by the guard
+  signerEmail     String?         @map("signer_email") // copied by the guard: the client signer's address; on the agency's row the workspace's CONFIRMED reply address, else NULL — never a login email (C85 (e), slice 112b2)
   level           SignatureLevel  @default(SES)
   status          SignatureStatus @default(PENDING)
   typedName       String?         @map("typed_name") // the name as the signer typed it (SIGNED)

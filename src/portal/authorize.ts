@@ -169,7 +169,17 @@ export type PortalScopeRef =
    * note. Paid for by the PDF and payment brokers
    * (`src/modules/invoicing/portal-writes.ts`), whose system reads follow.
    */
-  | { readonly kind: "invoice"; readonly invoiceId: string };
+  | { readonly kind: "invoice"; readonly invoiceId: string }
+  /**
+   * `contract` (Phase 4 slice 112b2, C84, C85). Its `portal_gate` is the
+   * status-structural form — client match, not a draft, a WRITTEN contract
+   * SENT (or, from slice 112c, an uploaded one shown to the client) — and
+   * `portal_contract_primary` holds it to a main contact, so a ref that
+   * resolves has proved the contact may read that exact contract. Paid for by
+   * the client's signature (a census write, `src/modules/contracts/portal-sign.ts`)
+   * and the PDF broker (`src/modules/contracts/portal-writes.ts`).
+   */
+  | { readonly kind: "contract"; readonly contractId: string };
 
 /**
  * Throws `AuthzError` on every denial. NOT_FOUND for anything
@@ -355,6 +365,16 @@ export async function authorizePortal(
       select: { id: true },
     });
     if (!row) deny("NOT_FOUND", "invoice");
+  } else if (ref?.kind === "contract") {
+    // Client, not a draft and SENT are `portal_gate`'s, a main contact
+    // `portal_contract_primary`'s; the terms are restated, as every probe
+    // restates its gate — WRITTEN only until slice 112c shows uploaded ones.
+    // No project term: a contract is the client's, not a project's.
+    const row = await tx.contract.findFirst({
+      where: { id: ref.contractId, origin: "WRITTEN", status: { not: "DRAFT" }, sentAt: { not: null } },
+      select: { id: true },
+    });
+    if (!row) deny("NOT_FOUND", "contract");
   }
 
   // 5. Gates 1–3 for every module this capability rides on.

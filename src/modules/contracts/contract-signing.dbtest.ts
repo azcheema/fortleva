@@ -157,6 +157,10 @@ afterAll(async () => {
   setStorage(null);
   if (!f) return;
   await f.deleteInvoices(); // contracts, their signatures and PDFs too (slice 112)
+  // Since slice 112b2 a send queues the signer's mail (and the store's audit
+  // rows go with the tenant): the outbox RESTRICTs the tenant.
+  await f.platform.emailOutbox.deleteMany({ where: { tenantId: f.tenantId } });
+  await f.platform.notification.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.contact.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.client.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.tenantPreference.deleteMany({ where: { tenantId: f.tenantId } });
@@ -195,8 +199,11 @@ describe("sending (C84 (b)–(d))", () => {
     // Names and addresses from the record — never the app's placeholders.
     expect(sigs[0]!.typedName).toBe("Maja Manager");
     expect(sigs[0]!.signerName).not.toBe("-");
-    expect(sigs[0]!.signerEmail).toMatch(/@test\.invalid$/);
+    // Never the sender's login email (C85 (e), slice 112b2): this workspace has
+    // confirmed no reply address, so the agency's row carries none.
+    expect(sigs[0]!.signerEmail).toBeNull();
     expect(sigs[1]!.signerName).toBe("Eva Ek");
+    expect(sigs[1]!.signerEmail).toMatch(/@test\.invalid$/);
     for (const s of sigs) expect(s.contentSha256).toBe(c.contentSha256);
     const audit = (await f.audits("contract.sent")).filter((a) => a.targetId === id);
     expect(audit).toHaveLength(1);

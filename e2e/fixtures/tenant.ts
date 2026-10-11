@@ -357,6 +357,12 @@ export async function clearPortalSubmissions(tenantId: string, contactEmail: str
   return cleared;
 }
 
+/** `contracts.spec.ts`'s portal half: the agency's contract notices and the contract mails (slice 112b2). */
+export async function clearContractNotices(tenantId: string): Promise<number> {
+  const { cleared } = await runCli<{ cleared: number }>(["clear-contract-notices", tenantId]);
+  return cleared;
+}
+
 /** Hand back the asks `portal-login-ask.spec.ts` made of the fixture contact (3V slice 98) — from `afterAll`. */
 export async function clearLoginAsks(tenantId: string, contactEmail: string): Promise<number> {
   const { cleared } = await runCli<{ cleared: number }>(["clear-login-asks", tenantId, contactEmail]);

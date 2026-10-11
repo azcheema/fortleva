@@ -417,6 +417,11 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // the record and the one shared agreement with its fee.
     { name: "portal-files", path: "/portal/files", session: "contact" },
     { name: "portal-company", path: "/portal/company", session: "contact" },
+    // Phase 4 slice 112b2 (C85): Astrid's contracts — the ones
+    // `contracts.spec.ts` sent her and she signed or declined, when it ran
+    // first; else the empty state. (The contract's own page needs an id the
+    // fixture does not make; the spec walks it.)
+    { name: "portal-contracts", path: "/portal/contracts", session: "contact" },
     // 3V slice 91: the logins the agency shows Astrid — the door (her
     // password, then a mailed code), or, when `portal-logins.spec.ts` has
     // opened it in this same session within the staff window, the list

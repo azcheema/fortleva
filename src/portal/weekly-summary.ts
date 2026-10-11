@@ -1,5 +1,6 @@
 import { AuthzError } from "@/authz/errors";
 import { listPortalDocuments, listPortalPendingDeliverables } from "@/documents/portal";
+import { countPortalContractsToSign } from "@/modules/contracts/portal";
 import { countPortalLoginAsks } from "@/modules/vault";
 import { isWaitingOnYou, listPortalAgencyReplies, listPortalTasks, listPortalUpdates } from "@/modules/work";
 import type { ClientDigestCounts } from "@/notify/client-digest";
@@ -8,7 +9,7 @@ import { listPortalPendingVersions } from "@/projects/portal";
 import type { PortalPrincipal } from "./authorize";
 
 /** How many projections a summary reads — all refused means the person sees no portal at all. */
-const READS = 7;
+const READS = 8;
 
 /**
  * WHAT ONE CLIENT PERSON'S WEEKLY SUMMARY COUNTS (Phase 5 slice 101; founder
@@ -80,6 +81,10 @@ export async function countClientSummary(
   const tasks = await quiet(() => listPortalTasks(principal));
   // WAITING: logins the agency asked this person for — the home's count.
   const logins = await quiet(() => countPortalLoginAsks(principal));
+  // WAITING: contracts sent for THIS person's signature (slice 112b2, C85
+  // (d)) — the home's count, which joins the contract's own status: a
+  // withdrawn contract's pending row is never counted.
+  const contracts = await quiet(() => countPortalContractsToSign(principal));
   if (refused === READS) return null;
 
   return {
@@ -87,6 +92,7 @@ export async function countClientSummary(
     replies: (replies ?? []).filter((r) => inWindow(r.repliedAt)).length,
     files: (files?.documents ?? []).filter((d) => inWindow(d.version.at)).length,
     signoffs: (versions?.length ?? 0) + (deliverables?.length ?? 0),
+    contracts: contracts ?? 0,
     tasks: (tasks?.projects ?? []).flatMap((p) => p.tasks).filter((t) => isWaitingOnYou(t) && t.markedDoneAt === null)
       .length,
     logins: logins ?? 0,

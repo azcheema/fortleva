@@ -8,6 +8,7 @@ import { newId } from "@/lib/ids";
 
 import { guarded } from "./db-errors";
 import { remainingFillIns } from "./fill-ins";
+import { enqueueContractMail } from "./mail";
 import { readSigners } from "./signers";
 import { memberPrincipal, type ContractsCtx } from "./templates";
 
@@ -30,7 +31,8 @@ import { memberPrincipal, type ContractsCtx } from "./templates";
  *     transaction): the agency's SIGNED by the sender with the name typed, the
  *     client's PENDING for the signer; their guard copies names, emails and the
  *     fingerprint from the record;
- *   - audit `contract.sent`; the deferred trigger checks both rows at commit.
+ *   - audit `contract.sent`; the signer's mail queued (slice 112b2); the
+ *     deferred trigger checks both rows at commit.
  * The PDF as sent is drawn AFTER the commit (`ensureContractPdf`) — a render
  * and an upload never hold the contract's lock.
  *
@@ -144,6 +146,13 @@ export async function sendContract(ctx: ContractsCtx, id: string, input: SendInp
         // Ids and the fingerprint — never the text or the name typed.
         metadata: { clientId: row.client_id, signerContactId: row.signer_contact_id, version: row.version, contentSha256: sent[0]!.content_sha256 },
       });
+      // The signer's mail (slice 112b2, C85 (b)): "your agency sent you a
+      // contract to sign", into the outbox in THIS transaction, so it exists
+      // exactly when the sent contract does — after the signature rows: the
+      // client's names the contact, mailed at their CURRENT address (`mail.ts`
+      // reads the contact, never the row's frozen copy). A suppressed address
+      // gets none; the send stands.
+      await enqueueContractMail(tx, ctx.tenantId, row.client_id, id, "sent");
       return { id, contentSha256: sent[0]!.content_sha256 };
     }),
   );

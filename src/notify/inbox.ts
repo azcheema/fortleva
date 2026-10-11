@@ -8,6 +8,7 @@ import { idCursor } from "@/lib/id-cursor";
 import type { WeekStart } from "@/lib/week";
 import { readPreferences } from "@/preferences/service";
 import { DEFAULT_TIMEZONE } from "@/i18n/config";
+import { contractSubjects, isContractDecisionKind } from "@/modules/contracts/subjects";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
 import {
   askDeclineSubjects,
@@ -526,6 +527,20 @@ async function resolveSubjects(
       out.set(id, { title: subject.title, href: subject.href });
     }
     rows = rows.filter((r) => !isDoorAlarmKind(r.kind));
+    if (rows.length === 0) return out;
+  }
+
+  // …AND A CLIENT'S SIGNATURE OR REFUSAL (slice 112b2, C85 (a)): the contract's
+  // title and client, linked to its page, under the reader's `contract:view`
+  // and the client's scope — `contractSubjects`. Never the fall-through below,
+  // which knows nothing of contracts.
+  const contracts = rows.filter((r) => isContractDecisionKind(r.kind));
+  if (contracts.length > 0) {
+    const refs = contracts.map((r) => ({ id: r.id, kind: r.kind, entityType: r.entityType, entityId: r.entityId }));
+    for (const [id, subject] of await contractSubjects(tx, ctx.tenantId, ctx.actor, refs)) {
+      out.set(id, { title: subject.title, href: subject.href });
+    }
+    rows = rows.filter((r) => !isContractDecisionKind(r.kind));
     if (rows.length === 0) return out;
   }
 

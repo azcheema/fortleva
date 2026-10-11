@@ -269,7 +269,7 @@ function SignaturePage({
     <View key={i} style={s.sigBlock} wrap={false}>
       <Text style={s.label}>{sig.party === "TENANT" ? t("agency") : t("client")}</Text>
       <Text style={s.sigName}>{sig.typedName}</Text>
-      {row(t("signature.signer"), `${sig.name} <${sig.email}>`)}
+      {row(t("signature.signer"), sig.email ? `${sig.name} <${sig.email}>` : sig.name)}
       {row(t("signature.when"), sig.when)}
       {row(t("signature.how"), sig.party === "TENANT" ? t("signature.howTenant") : t("signature.howClient"))}
     </View>

@@ -267,6 +267,9 @@ const DBTEST_PREFIXES = [
   // Phase 4 slice 112b, sending and signing a contract — `src/modules/contracts/contract-signing.dbtest.ts`,
   // `setupTenant("sigs")`.
   "sigs-",
+  // Phase 4 slice 112b2, the client's side of a contract — `src/modules/contracts/contract-portal.dbtest.ts`,
+  // `setupTenant("ctrportal")`.
+  "ctrportal-",
   "split-",
   "switch-",
   "tadmin-",
@@ -3384,6 +3387,33 @@ async function clearPortalSubmissions(tenantId: string, contactEmail: string): P
 }
 
 /**
+ * Hand the fixture back after `contracts.spec.ts`'s portal half (Phase 4 slice
+ * 112b2): the agency's `contract.signed` / `contract.declined` notifications
+ * and the mails they carried, and the client signer's two contract mails — so
+ * the owner's inbox holds the one standing row `inbox.spec.ts` counts. The
+ * contracts themselves stay: a sent contract is never deleted (its guard), and
+ * the portal's Contracts list is drawn from them. Runs from `afterAll`; a
+ * throwaway `e2e-` tenant only.
+ */
+async function clearContractNotices(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const kinds = ["contract.signed", "contract.declined"];
+  const notices = await db.notification.findMany({ where: { tenantId, kind: { in: kinds } }, select: { id: true } });
+  const noticeIds = notices.map((n) => n.id);
+  if (noticeIds.length > 0) {
+    await db.emailOutbox.deleteMany({ where: { tenantId, kind: { in: kinds }, notificationIds: { hasSome: noticeIds } } });
+    await db.notification.deleteMany({ where: { tenantId, id: { in: noticeIds } } });
+  }
+  await db.emailOutbox.deleteMany({
+    where: { tenantId, receiverType: "CONTACT", kind: { in: ["portal.contract_sent", "portal.contract_signed"] } },
+  });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ cleared: noticeIds.length })}\n`);
+}
+
+/**
  * Hand the fixture back after `portal-login-ask.spec.ts` (3V slice 98): the
  * asks made of the fixture contact (whatever their ending), their audit
  * rows, the contact's ask mails, and the agency's `credential.ask_declined`
@@ -3583,6 +3613,7 @@ const main = async (): Promise<void> => {
   if (command === "portal-submissions") return portalSubmissions(argument!, process.argv[4]!);
   if (command === "clear-portal-submissions") return clearPortalSubmissions(argument!, process.argv[4]!);
   if (command === "clear-login-asks") return clearLoginAsks(argument!, process.argv[4]!);
+  if (command === "clear-contract-notices") return clearContractNotices(argument!);
   if (command === "client-summary-link") return clientSummaryLink(argument!, process.argv[4]!);
   if (command === "suppress-address") return suppressAddress(argument!, process.argv[4]!);
   if (command === "clear-undeliverable") return clearUndeliverable(argument!, process.argv[4]!);

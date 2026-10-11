@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { CONTRACT_SENT_MAIL, CONTRACT_SIGNED_MAIL } from "./contract-mail-keys";
 import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
 import { INVOICE_PAY_LINK_ISSUED_MAIL } from "./invoice-pay-link-mail-key";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
@@ -30,7 +31,7 @@ describe("mail without a reply address", () => {
   });
 
   it("mail to a client that names no secret keeps the agency's address", () => {
-    for (const key of [LOGIN_ASK_MAIL, DOOR_ALARM_CONTACT_MAIL, SEALED_CONTACT_MAIL]) {
+    for (const key of [LOGIN_ASK_MAIL, DOOR_ALARM_CONTACT_MAIL, SEALED_CONTACT_MAIL, CONTRACT_SENT_MAIL, CONTRACT_SIGNED_MAIL]) {
       expect(MAIL_WITHOUT_REPLY_TO.has(key)).toBe(false);
     }
   });

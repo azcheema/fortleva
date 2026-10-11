@@ -1,6 +1,6 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 
-import { STORAGE_STATE, requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { CONTACT_STORAGE_STATE, STORAGE_STATE, clearContractNotices, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
  * CONTRACTS IN A BROWSER (Phase 4 slice 112; founder decision C84).
@@ -168,5 +168,125 @@ test.describe.serial("contract templates and drafts, as the owner", () => {
     await expect(page.getByTestId("contract-status")).toHaveText("Draft");
     await expect(page.getByTestId("contract-versions")).toContainText("Replaces version 1");
     await expect(page.getByTestId("contract-title")).toHaveValue(`Retainer ${suffix}`);
+  });
+});
+
+/** Astrid's own portal, in a context of her own (`invoice-send.spec.ts`'s helper). */
+async function asAstrid(browser: Browser): Promise<{ page: Page; close: () => Promise<void> }> {
+  const context = await browser.newContext({ storageState: CONTACT_STORAGE_STATE, locale: "en-US" });
+  const page = await context.newPage();
+  return { page, close: () => context.close() };
+}
+
+/**
+ * Slice 112b2 (C84, C85): the client's side. A blank contract written and sent
+ * to Astrid by the owner, who types their name — then, in Astrid's own portal,
+ * the home's card counts it, she reads it, ticks "I have read and accept",
+ * types her name and signs; the owner's page says Signed, and their inbox says
+ * a client signed. A second one she declines with a reason, which the owner's
+ * page reads back. The harness has no file storage unless CI gives it one, so
+ * the signed copy is "being prepared" there.
+ */
+test.describe.serial("a contract signed or declined in the client's portal", () => {
+  test.use({ storageState: STORAGE_STATE, locale: "en-US" });
+
+  const suffix = Math.random().toString(36).slice(2, 8);
+
+  // The owner's inbox gets the sender's notices; `inbox.spec.ts` counts its
+  // one standing row, so they go (the login asks' precedent).
+  test.afterAll(async () => {
+    await clearContractNotices(seed.tenantId);
+  });
+
+  /** A blank contract for the seeded client, signed for and sent by the owner — its id. */
+  async function sendOne(page: Page, title: string): Promise<string> {
+    await page.goto("/contracts");
+    const form = page.getByTestId("new-contract");
+    await form.getByLabel("Client", { exact: true }).selectOption(seed.clientId);
+    const signer = form.getByLabel("Who signs for the client");
+    await expect(signer.locator("option", { hasText: seed.contactName })).toHaveCount(1);
+    await signer.selectOption({ label: seed.contactName });
+    await form.getByLabel("Template").selectOption({ label: "Blank contract" });
+    await form.getByLabel("Title").fill(title);
+    await page.getByTestId("new-contract-create").click();
+    await expect(page).toHaveURL(/\/contracts\/[0-9a-f-]{36}$/);
+    await page.getByTestId("contract-body").click();
+    await page.keyboard.type("Design and build of the new website.");
+    await page.getByTestId("contract-save").click();
+    await expect(toast(page, "Saved.")).toBeVisible();
+    await expect(page.getByTestId("contract-unsaved")).toHaveCount(0);
+    await page.getByTestId("contract-send-open").click();
+    const dialog = page.getByTestId("contract-send-dialog");
+    await dialog.getByTestId("contract-send-name").fill("Erik Owner");
+    await dialog.getByTestId("contract-send-confirm").click();
+    await expect(page.getByTestId("contract-status")).toHaveText("Waiting for signature");
+    return new URL(page.url()).pathname.split("/").pop()!;
+  }
+
+  test("Astrid signs in her portal; the owner's page says Signed and their inbox says so", async ({ page, browser }) => {
+    const title = `Website ${suffix}`;
+    const id = await sendOne(page, title);
+
+    const astrid = await asAstrid(browser);
+    try {
+      const client = astrid.page;
+      await client.goto("/portal");
+      const surface = client.locator("[data-portal-surface]");
+      await expect(surface).toBeVisible({ timeout: 30_000 });
+      // The home counts what waits for her signature, and the nav offers Contracts.
+      await expect(client.locator('[data-slot="portal-action-item"][data-kind="contract"]')).toContainText("waiting for your signature");
+      await surface.locator('[data-slot="portal-nav"]').getByRole("link", { name: "Contracts" }).click();
+      await expect(client).toHaveURL(/\/portal\/contracts$/);
+      const row = client.getByTestId("portal-contract-row").filter({ hasText: title });
+      await expect(row.getByTestId("portal-contract-state")).toHaveText("Waiting for your signature");
+      await row.getByRole("link", { name: title }).click();
+      await expect(client).toHaveURL(new RegExp(`/portal/contracts/${id}$`));
+
+      await expect(client.getByTestId("portal-contract-body")).toContainText("Design and build of the new website.");
+      await expect(client.getByTestId("portal-signature-agency")).toContainText("Erik Owner");
+      await expect(client.getByTestId("portal-contract-fingerprint")).toContainText(/[0-9a-f]{64}/);
+      // Nothing to press until the box is ticked and the name typed.
+      const sign = client.getByTestId("portal-contract-sign-confirm");
+      await expect(sign).toBeDisabled();
+      await client.getByTestId("portal-contract-accept").check();
+      await client.getByTestId("portal-contract-name").fill(seed.contactName);
+      await sign.click();
+
+      await expect(client.getByTestId("portal-contract-outcome")).toContainText("Signed by both sides");
+      await expect(client.getByTestId("portal-contract-state")).toHaveText("Signed");
+      await expect(client.getByTestId("portal-signature-client")).toContainText(`Signed as “${seed.contactName}”`);
+      await expect(client.getByTestId("portal-contract-sign")).toHaveCount(0);
+      if (!HAS_R2) await expect(client.getByTestId("portal-contract-preparing")).toContainText("being prepared");
+    } finally {
+      await astrid.close();
+    }
+
+    await page.reload();
+    await expect(page.getByTestId("contract-status")).toHaveText("Signed");
+    await expect(page.getByTestId("signature-client")).toHaveAttribute("data-status", "SIGNED");
+    await page.goto("/inbox");
+    await expect(page.getByText("A client signed a contract you sent").first()).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("Astrid declines another with a reason; the owner's page reads it back", async ({ page, browser }) => {
+    const id = await sendOne(page, `Retainer ${suffix}`);
+    const astrid = await asAstrid(browser);
+    try {
+      const client = astrid.page;
+      await client.goto(`/portal/contracts/${id}`);
+      await expect(client.getByTestId("portal-contract-sign")).toBeVisible({ timeout: 30_000 });
+      await client.getByTestId("portal-contract-decline-open").click();
+      const dialog = client.getByTestId("portal-contract-decline-dialog");
+      await dialog.getByTestId("portal-contract-reason").fill("Not this quarter, sorry.");
+      await dialog.getByTestId("portal-contract-decline-confirm").click();
+      await expect(dialog).toHaveCount(0);
+      await expect(client.getByTestId("portal-contract-outcome")).toContainText("This contract was declined");
+      await expect(client.getByTestId("portal-contract-decline-reason")).toHaveText("Not this quarter, sorry.");
+    } finally {
+      await astrid.close();
+    }
+    await page.reload();
+    await expect(page.getByTestId("contract-status")).toHaveText("Declined");
+    await expect(page.getByTestId("sent-contract")).toContainText("Not this quarter, sorry.");
   });
 });

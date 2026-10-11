@@ -197,7 +197,15 @@ export function SentContract({
           <div className="flex min-w-0 flex-col gap-0.5" data-testid="signature-client" data-status={client?.status ?? ""}>
             <dt className="text-xs text-muted-foreground">{t("client", { name: client?.signerName ?? "" })}</dt>
             <dd className="text-sm font-medium">
-              {client?.status === "SIGNED" ? client.typedName : client?.status === "DECLINED" ? t("declined") : t("waiting")}
+              {/* A withdrawn contract's client row stays PENDING for ever: it
+                  waits only while the contract does (slice 112b2's rule). */}
+              {client?.status === "SIGNED"
+                ? client.typedName
+                : client?.status === "DECLINED"
+                  ? t("declined")
+                  : status === "SENT"
+                    ? t("waiting")
+                    : t("notSigned")}
             </dd>
             {client?.decidedAt ? (
               <dd className="text-xs text-muted-foreground">
