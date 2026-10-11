@@ -12,6 +12,7 @@ import { contractVerbs, readContract, type ContractDetail } from "@/modules/cont
 
 import { ContractDraftMenu } from "./draft-menu";
 import { DraftEditor } from "./draft-editor";
+import { SentContract } from "./sent-contract";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("contracts.draft");
@@ -23,9 +24,10 @@ const LINK =
 
 /**
  * /contracts/[id] (Phase 4 slice 112; C84) — one contract. A DRAFT is its
- * editor: the details, the text, the fill-ins still in it, Preview PDF, and
- * Delete draft for `contract:delete`. Sending for signature is slice 112b;
- * nothing past DRAFT exists before it. `contract:view` and the client in
+ * editor: the details, the text, the fill-ins still in it, Preview PDF,
+ * Delete draft for `contract:delete`, and Send for signature… for
+ * `contract:send` (slice 112b). Once sent it is the sent contract: its
+ * signatures, its PDFs, its text read-only, and its verbs (`SentContract`). `contract:view` and the client in
  * DIRECT scope, else not found (the service decides; the page never says
  * which gate).
  */
@@ -87,9 +89,38 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         }
       />
       <div className="mt-6 flex flex-col gap-4">
-        {signerGone ? <Callout tone="caution" title={t("signerGone")} /> : null}
+        {contract.supersedes || contract.supersededBy ? (
+          <p className="text-sm text-muted-foreground" data-testid="contract-versions">
+            {contract.supersedes ? (
+              <Link href={`/contracts/${contract.supersedes.id}`} className={LINK}>
+                {t("replaces", { version: contract.supersedes.version })}
+              </Link>
+            ) : null}
+            {contract.supersedes && contract.supersededBy ? " · " : null}
+            {contract.supersededBy ? (
+              <Link href={`/contracts/${contract.supersededBy.id}`} className={LINK}>
+                {t("replacedBy", { version: contract.supersededBy.version })}
+              </Link>
+            ) : null}
+          </p>
+        ) : null}
+        {!draft ? (
+          <SentContract
+            contractId={contract.id}
+            status={contract.status}
+            body={contract.body}
+            signatures={contract.signatures}
+            hasSignedPdf={contract.hasSignedPdf}
+            contentSha256={contract.contentSha256}
+            canSend={verbs.send}
+            canCreate={verbs.create}
+            replaced={contract.supersededBy !== null}
+          />
+        ) : null}
+        {draft && signerGone ? <Callout tone="caution" title={t("signerGone")} /> : null}
         {/* Never keyed on the row's `updated_at`: a save must not remount the
             editor and drop what was typed meanwhile (the code review's medium). */}
+        {draft ? (
         <DraftEditor
           contractId={contract.id}
           initial={{
@@ -114,7 +145,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           signers={contract.signers}
           signer={contract.signer}
           canEdit={draft && verbs.edit}
+          send={verbs.send ? { seen: contract.updatedAt.toISOString() } : null}
         />
+        ) : null}
       </div>
     </Page>
   );

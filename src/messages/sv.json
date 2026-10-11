@@ -1794,7 +1794,13 @@
     "CONTRACT_TOO_LARGE": "Kontraktet är för långt för att sparas.",
     "CONTRACT_NOT_DRAFT": "Kontraktet har skickats och kan inte längre ändras eller tas bort. Ladda om sidan.",
     "CONTRACT_TEMPLATE_NAME_TAKEN": "Det finns redan en mall med det namnet.",
-    "CONTRACT_SIGNER_INVALID": "Den personen kan inte skriva under. Välj en huvudkontakt hos kunden som har loggat in i portalen."
+    "CONTRACT_SIGNER_INVALID": "Den personen kan inte skriva under. Välj en huvudkontakt hos kunden som har loggat in i portalen.",
+    "CONTRACT_CHANGED": "Kontraktet har ändrats sedan du öppnade det. Titta på det igen och skicka det sedan.",
+    "CONTRACT_NOT_READY": "Kontraktet är inte klart än. Ladda om sidan.",
+    "CONTRACT_FILL_INS_LEFT": "Det finns ifyllnadsfält kvar i texten. Byt ut dem mot rätt uppgifter först.",
+    "CONTRACT_NOT_OPEN": "Kontraktet väntar inte längre på underskrift. Ladda om sidan.",
+    "CONTRACT_NOT_REPLACEABLE": "Bara ett avböjt eller återkallat kontrakt kan få en ny version, och bara en gång. Ladda om sidan.",
+    "CONTRACT_PDF_UNAVAILABLE": "Det gick inte att skapa kontraktets pdf just nu. Försök igen om en liten stund."
   },
   "assignments": {
     "title": "Team",
@@ -5525,7 +5531,10 @@
       "delete": "Ta bort utkastet",
       "deleteConfirm": "Ta bort utkastet? Det går inte att ångra.",
       "deleted": "Utkastet är borttaget.",
-      "fromTemplate": "Skapat från {name}"
+      "fromTemplate": "Skapat från {name}",
+      "toSend": "För att skicka det: spara, välj vem som skriver under och byt ut alla ifyllnadsfält.",
+      "replaces": "Ersätter version {version}",
+      "replacedBy": "Ersatt av version {version}"
     },
     "fillIns": {
       "insert": "Infoga ifyllnadsfält",
@@ -5565,6 +5574,45 @@
       "changed": "Ändrad {date}",
       "menu": "Åtgärder för {name}",
       "back": "Kontraktsmallar"
+    },
+    "send": {
+      "button": "Skicka för underskrift…",
+      "title": "Skicka för underskrift",
+      "body": "”{title}” skickas till {signer}, som skriver under i kundportalen. När du skriver ditt namn nedan undertecknar du för ert företag. Ett skickat kontrakt kan inte ändras — bara återkallas.",
+      "typedName": "Ditt fullständiga namn",
+      "typedNameHint": "Det är din underskrift, så som den visas på det undertecknade kontraktet.",
+      "confirm": "Skriv under och skicka",
+      "sent": "Undertecknat och skickat.",
+      "sentNoPdf": "Undertecknat och skickat. Pdf:en kunde inte skapas än — den kommer inom kort.",
+      "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
+    },
+    "sent": {
+      "signatures": "Underskrifter",
+      "agency": "Ert företag",
+      "client": "{name}, för kunden",
+      "waiting": "Väntar på underskrift",
+      "declined": "Avböjt",
+      "signedAt": "Undertecknat {when}",
+      "declinedAt": "Avböjt {when}",
+      "fingerprint": "Fingeravtryck av det som undertecknades (SHA-256): {hash}",
+      "downloadSent": "Ladda ner pdf",
+      "downloadSigned": "Ladda ner undertecknat kontrakt",
+      "downloadSignedMake": "Ladda ner undertecknat kontrakt",
+      "text": "Kontraktstext",
+      "menu": "Åtgärder för kontraktet",
+      "withdraw": "Återkalla",
+      "withdrawConfirm": "Återkalla kontraktet? Kunden kan då inte längre skriva under det.",
+      "withdrawn": "Återkallat.",
+      "change": "Ändra",
+      "changeConfirm": "Återkalla kontraktet och öppna en kopia att ändra? Kunden kan då inte längre skriva under det här.",
+      "changed": "Återkallat — den nya versionen är ett utkast.",
+      "newVersion": "Ny version",
+      "withdrawnTitle": "Återkallat",
+      "withdrawnBody": "Kontraktet togs tillbaka innan det undertecknades.",
+      "declinedTitle": "Avböjt",
+      "declinedReason": "Deras skäl: ”{reason}”",
+      "declinedNoReason": "De angav inget skäl.",
+      "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
     }
   },
   "contractPdf": {
@@ -5573,7 +5621,18 @@
     "client": "Kund",
     "orgNr": "Org.nr {value}",
     "version": "Version {version}",
-    "page": "Sida {page} av {pages}"
+    "page": "Sida {page} av {pages}",
+    "signature": {
+      "title": "Underskrifter",
+      "intro": "”{title}” ({version}) har undertecknats elektroniskt i Fortleva av båda parter nedan.",
+      "signer": "Undertecknat av",
+      "when": "Undertecknat",
+      "how": "Hur",
+      "howTenant": "Undertecknat av avsändaren när kontraktet skickades, efter inloggning i Fortleva",
+      "howClient": "Undertecknat i kundportalen efter inloggning, genom att kryssa i ”Jag godkänner” och skriva sitt namn",
+      "fingerprintTitle": "Fingeravtryck av det undertecknade kontraktet (SHA-256)",
+      "fingerprintBody": "Båda underskrifterna gäller kontraktets text och uppgifter exakt som de sparades när det skickades. Fingeravtrycket identifierar den versionen: minsta ändring ger ett annat fingeravtryck."
+    }
   },
   "invoicePdf": {
     "kind": {

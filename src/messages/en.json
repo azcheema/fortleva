@@ -1794,7 +1794,13 @@
     "CONTRACT_TOO_LARGE": "The contract is too long to save.",
     "CONTRACT_NOT_DRAFT": "That contract has been sent, so it can't be changed or deleted any more. Reload the page.",
     "CONTRACT_TEMPLATE_NAME_TAKEN": "Another template already has that name.",
-    "CONTRACT_SIGNER_INVALID": "That person can't sign it. Pick a main contact of this client who has signed in to the portal."
+    "CONTRACT_SIGNER_INVALID": "That person can't sign it. Pick a main contact of this client who has signed in to the portal.",
+    "CONTRACT_CHANGED": "The contract was changed since you opened it. Look at it again, then send it.",
+    "CONTRACT_NOT_READY": "That contract isn't ready yet. Reload the page.",
+    "CONTRACT_FILL_INS_LEFT": "Some fill-ins are still in the text. Replace them with the right details first.",
+    "CONTRACT_NOT_OPEN": "That contract is no longer waiting for a signature. Reload the page.",
+    "CONTRACT_NOT_REPLACEABLE": "Only a declined or withdrawn contract can get a new version, and only once. Reload the page.",
+    "CONTRACT_PDF_UNAVAILABLE": "The contract's PDF couldn't be made just now. Try again in a moment."
   },
   "assignments": {
     "title": "Team",
@@ -5525,7 +5531,10 @@
       "delete": "Delete draft",
       "deleteConfirm": "Delete this draft? This can't be undone.",
       "deleted": "Draft deleted.",
-      "fromTemplate": "Started from {name}"
+      "fromTemplate": "Started from {name}",
+      "toSend": "To send it: save, choose who signs, and replace every fill-in.",
+      "replaces": "Replaces version {version}",
+      "replacedBy": "Replaced by version {version}"
     },
     "fillIns": {
       "insert": "Insert fill-in",
@@ -5565,6 +5574,45 @@
       "changed": "Changed {date}",
       "menu": "Actions for {name}",
       "back": "Contract templates"
+    },
+    "send": {
+      "button": "Send for signature…",
+      "title": "Send for signature",
+      "body": "“{title}” goes to {signer}, who signs it in the client portal. Typing your name below is your company's signature on it. Once sent, the contract can't be changed — only withdrawn.",
+      "typedName": "Your full name",
+      "typedNameHint": "This is your signature, as it will appear on the signed copy.",
+      "confirm": "Sign and send",
+      "sent": "Signed and sent.",
+      "sentNoPdf": "Signed and sent. Its PDF couldn't be made yet — it will be shortly.",
+      "unreachable": "Fortleva couldn't be reached. Check your connection and try again."
+    },
+    "sent": {
+      "signatures": "Signatures",
+      "agency": "Your company",
+      "client": "{name}, for the client",
+      "waiting": "Waiting for their signature",
+      "declined": "Declined",
+      "signedAt": "Signed {when}",
+      "declinedAt": "Declined {when}",
+      "fingerprint": "Fingerprint of what was signed (SHA-256): {hash}",
+      "downloadSent": "Download PDF",
+      "downloadSigned": "Download signed copy",
+      "downloadSignedMake": "Download signed copy",
+      "text": "Contract text",
+      "menu": "Contract actions",
+      "withdraw": "Withdraw",
+      "withdrawConfirm": "Withdraw this contract? The client can no longer sign it.",
+      "withdrawn": "Withdrawn.",
+      "change": "Change it",
+      "changeConfirm": "Withdraw this contract and open a copy to change? The client can no longer sign this one.",
+      "changed": "Withdrawn — the new version is a draft.",
+      "newVersion": "New version",
+      "withdrawnTitle": "Withdrawn",
+      "withdrawnBody": "This contract was taken back before it was signed.",
+      "declinedTitle": "Declined",
+      "declinedReason": "Their reason: “{reason}”",
+      "declinedNoReason": "They gave no reason.",
+      "unreachable": "Fortleva couldn't be reached. Check your connection and try again."
     }
   },
   "contractPdf": {
@@ -5573,7 +5621,18 @@
     "client": "Client",
     "orgNr": "Org. no. {value}",
     "version": "Version {version}",
-    "page": "Page {page} of {pages}"
+    "page": "Page {page} of {pages}",
+    "signature": {
+      "title": "Signatures",
+      "intro": "“{title}” ({version}) was signed electronically in Fortleva by both parties below.",
+      "signer": "Signed by",
+      "when": "Signed at",
+      "how": "How",
+      "howTenant": "Signed by the sender when sending the contract, after signing in to Fortleva",
+      "howClient": "Signed in the client portal after signing in, by ticking “I accept” and typing their name",
+      "fingerprintTitle": "Fingerprint of the signed contract (SHA-256)",
+      "fingerprintBody": "Both signatures apply to the contract's text and details exactly as stored when it was sent. This fingerprint identifies that version: any change to it gives a different fingerprint."
+    }
   },
   "invoicePdf": {
     "kind": {

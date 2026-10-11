@@ -264,6 +264,9 @@ const DBTEST_PREFIXES = [
   "roles-",
   "scope-",
   "search-",
+  // Phase 4 slice 112b, sending and signing a contract — `src/modules/contracts/contract-signing.dbtest.ts`,
+  // `setupTenant("sigs")`.
+  "sigs-",
   "split-",
   "switch-",
   "tadmin-",

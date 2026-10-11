@@ -464,6 +464,7 @@ describe("posture assertions", () => {
     const CLASS_B_REQUIRED_EXTRA: Readonly<Record<string, { readonly name: string; readonly qual: string }>> = {
       invoice: { name: "portal_invoice_primary", qual: "CONTACT_PRIMARY" },
       contract: { name: "portal_contract_primary", qual: "CONTACT_PRIMARY" },
+      contractSignature: { name: "portal_signature_primary", qual: "CONTACT_PRIMARY" },
     };
     for (const [m, { name, qual }] of Object.entries(CLASS_B_REQUIRED_EXTRA)) {
       const p = of(m);

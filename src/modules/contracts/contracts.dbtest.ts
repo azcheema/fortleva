@@ -85,6 +85,7 @@ const TOKENS = [
   "CONTRACT_NOT_DRAFT",
   "CONTRACT_SIGNER_INVALID",
   "CONTRACT_GUARD",
+  "CONTRACT_NOT_OPEN",
   "contract_template_name_key",
   "contract_draft_bare",
   "contract_title",
@@ -391,11 +392,12 @@ describe("the database's guards on contract (migration 20261011120000)", () => {
     expect(title, lastRefusal).toBe("contract_title");
   });
 
-  it("moves no status in this slice and freezes everything but a draft's seven fields", async () => {
+  it("moves a draft nowhere but to SENT (slice 112b) and freezes everything but a draft's seven fields", async () => {
     const id = await blankDraft();
     const mgr = f.seats.manager.memberId;
+    // A draft is never withdrawn — only a sent contract is (slice 112b's guard).
     expect(await refusal(asMember(mgr, (tx) => tx.$executeRaw`UPDATE contract SET status = 'WITHDRAWN', withdrawn_at = now(), withdrawn_by_member_id = ${mgr} WHERE id = ${id}`))).toBe(
-      "CONTRACT_GUARD",
+      "CONTRACT_NOT_OPEN",
     );
     expect(await refusal(asMember(mgr, (tx) => tx.$executeRaw`UPDATE contract SET created_by_member_id = ${f.seats.owner.memberId} WHERE id = ${id}`))).toBe("CONTRACT_GUARD");
     expect(await refusal(asMember(mgr, (tx) => tx.$executeRaw`UPDATE contract SET template_id = ${randomUUID()} WHERE id = ${id}`))).toBe("CONTRACT_GUARD");

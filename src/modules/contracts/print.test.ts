@@ -131,3 +131,23 @@ describe("listMarker — an ordered list's marker as the editor shows it", () =>
     expect(listMarker(4, "I")).toBe("IV");
   });
 });
+
+describe("the signed copy", () => {
+  it("renders the contract and its signature page", async () => {
+    const one = await renderContractPdf(fixture());
+    const signed = await renderContractPdf(
+      fixture({
+        signed: {
+          contentSha256: "a".repeat(64),
+          signatures: [
+            { party: "TENANT", name: "Maja Manager", email: "maja@example.com", typedName: "Maja Manager", when: "10 oktober 2026 14:05 CEST" },
+            { party: "CLIENT", name: "Eva Ek", email: "eva@example.com", typedName: "Eva Ek", when: "11 oktober 2026 09:12 CEST" },
+          ],
+        },
+      }),
+    );
+    const pages = (bytes: Uint8Array) => Buffer.from(bytes).toString("latin1").match(/\/Type\s*\/Page\b/g)!.length;
+    expect(Buffer.from(signed.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
+    expect(pages(signed)).toBe(pages(one) + 1);
+  });
+});

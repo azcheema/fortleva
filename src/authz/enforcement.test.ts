@@ -67,10 +67,8 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
   // Phase 4 and beyond: no service, no route, no model writer in the
   // product yet. The codes exist so the modules' names are already
   // spoken for.
-  // Phase 4 slice 112 gave `contract:view`, `:create`, `:edit`, `:delete` and
-  // `:manage_templates` their guards (`src/modules/contracts/`); sending is
-  // slice 112b's.
-  contracts: ["contract:send"],
+  // Phase 4 slices 112 and 112b gave every `contract:*` code its guard
+  // (`src/modules/contracts/`).
   // Phase 4 slice 107 gave `invoice:view`, `:create`, `:edit` and `:delete`
   // their guards (`src/modules/invoicing/drafts.ts`); slice 108 gave issuing
   // and the numbering theirs (`issue.ts`, `series.ts`); slice 108b crediting

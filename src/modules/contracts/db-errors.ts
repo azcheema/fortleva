@@ -13,6 +13,14 @@ import { dbErrorMapper } from "@/lib/db-error-map";
 export const { mapDbError, guarded } = dbErrorMapper([
   ["CONTRACT_NOT_DRAFT", "CONTRACT_NOT_DRAFT"],
   ["CONTRACT_SIGNER_INVALID", "CONTRACT_SIGNER_INVALID"],
+  // Slice 112b (migration 20261012090000): the send's own refusals — the
+  // service checks each first, so these are the belt for a race; and a
+  // signature or withdrawal that met a contract no longer waiting.
+  // `CONTRACT_SIGNATURE_GUARD` stays unmapped: a write no service makes.
+  ["CONTRACT_NOT_READY", "CONTRACT_NOT_READY"],
+  ["CONTRACT_FILL_INS_LEFT", "CONTRACT_FILL_INS_LEFT"],
+  ["CONTRACT_NOT_OPEN", "CONTRACT_NOT_OPEN"],
+  ["CONTRACT_NOT_REPLACEABLE", "CONTRACT_NOT_REPLACEABLE"],
   // The case-insensitive name index — asked first (`assertNameFree`), so the
   // race's belt.
   ["contract_template_name_key", "CONTRACT_TEMPLATE_NAME_TAKEN"],

@@ -182,6 +182,10 @@ export const AUDIT_EVENTS = {
   "contract.created": TENANT,
   "contract.draft_edited": TENANT,
   "contract.draft_deleted": TENANT,
+  // Slice 112b: taken back before the client signed; a PDF drawn and archived
+  // (which kind, its file and hash).
+  "contract.withdrawn": TENANT,
+  "contract.pdf_generated": TENANT,
   "invoice.issued": TENANT,
   "invoice.sent": TENANT,
   "invoice.paid": TENANT,

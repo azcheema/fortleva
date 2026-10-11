@@ -68,6 +68,26 @@ export type ContractDetail = {
   /** The client's main contacts in the portal — who could sign. */
   readonly signers: readonly SignerOption[];
   readonly updatedAt: Date;
+  /** Slice 112b — once sent: when, the fingerprint, both signatures, the PDFs, the versions. */
+  readonly sentAt: Date | null;
+  readonly signedOn: string | null;
+  readonly withdrawnAt: Date | null;
+  readonly contentSha256: string | null;
+  readonly signatures: readonly ContractSignatureView[];
+  readonly hasPdf: boolean;
+  readonly hasSignedPdf: boolean;
+  /** The contract this one replaces, and the one that replaced it. */
+  readonly supersedes: { readonly id: string; readonly version: number } | null;
+  readonly supersededBy: { readonly id: string; readonly version: number } | null;
+};
+
+export type ContractSignatureView = {
+  readonly party: "TENANT" | "CLIENT";
+  readonly signerName: string;
+  readonly status: "PENDING" | "SIGNED" | "DECLINED";
+  readonly typedName: string | null;
+  readonly decidedAt: Date | null;
+  readonly declineReason: string | null;
 };
 
 const isoDay = (d: Date | null): string | null => (d === null ? null : d.toISOString().slice(0, 10));
@@ -190,6 +210,18 @@ export async function readContract(ctx: ContractsCtx, id: string): Promise<Contr
         endsOn: true,
         templateId: true,
         updatedAt: true,
+        sentAt: true,
+        signedOn: true,
+        withdrawnAt: true,
+        contentSha256: true,
+        pdfFileId: true,
+        signedPdfFileId: true,
+        supersedes: { select: { id: true, version: true } },
+        supersededBy: { select: { id: true, version: true } },
+        signatures: {
+          select: { party: true, signerName: true, status: true, typedName: true, decidedAt: true, declineReason: true },
+          orderBy: { party: "asc" }, // TENANT before CLIENT (the enum's declared order)
+        },
         client: { select: { id: true, name: true } },
       },
     });
@@ -227,6 +259,15 @@ export async function readContract(ctx: ContractsCtx, id: string): Promise<Contr
       remainingFillIns: remainingFillIns(row.body),
       signers,
       updatedAt: row.updatedAt,
+      sentAt: row.sentAt,
+      signedOn: isoDay(row.signedOn),
+      withdrawnAt: row.withdrawnAt,
+      contentSha256: row.contentSha256,
+      signatures: row.signatures,
+      hasPdf: row.pdfFileId !== null,
+      hasSignedPdf: row.signedPdfFileId !== null,
+      supersedes: row.supersedes,
+      supersededBy: row.supersededBy,
     };
   });
 }
@@ -331,7 +372,11 @@ export type DraftPatch = {
  * when picked (the database holds only "of this client"; whether they may sign
  * is re-checked at sending, 112b).
  */
-export async function updateContractDraft(ctx: ContractsCtx, id: string, patch: DraftPatch): Promise<{ id: string; remainingFillIns: FillInKey[] }> {
+export async function updateContractDraft(
+  ctx: ContractsCtx,
+  id: string,
+  patch: DraftPatch,
+): Promise<{ id: string; remainingFillIns: FillInKey[]; updatedAt: Date }> {
   const data: {
     title?: string;
     language?: ContractLocale;
@@ -419,8 +464,14 @@ export async function updateContractDraft(ctx: ContractsCtx, id: string, patch: 
           metadata: { clientId: locked.client_id, fields },
         });
       }
-      const after = await tx.$queryRaw<{ body: unknown }[]>`SELECT body FROM contract WHERE tenant_id = ${ctx.tenantId} AND id = ${id}`;
-      return { id, remainingFillIns: remainingFillIns(after[0]?.body ?? null) };
+      // The row as the DATABASE now holds it — its `updated_at` is the guard's
+      // clock (slice 112b), the token a send is bound to: handed back so the
+      // page can send at once, before its revalidated props arrive (the code
+      // review's medium; AGENTS.md: a compare-and-set token comes from the
+      // database, never from what was sent).
+      const after = await tx.$queryRaw<{ body: unknown; updated_at: Date }[]>`
+        SELECT body, updated_at FROM contract WHERE tenant_id = ${ctx.tenantId} AND id = ${id}`;
+      return { id, remainingFillIns: remainingFillIns(after[0]?.body ?? null), updatedAt: after[0]!.updated_at };
     }),
   );
 }
@@ -445,14 +496,15 @@ export async function deleteContractDraft(ctx: ContractsCtx, id: string): Promis
 /** What the page offers: each verb shown exactly where the service accepts it (UI.md §3.1). */
 export async function contractVerbs(
   ctx: ContractsCtx,
-): Promise<{ create: boolean; edit: boolean; delete: boolean; manageTemplates: boolean }> {
+): Promise<{ create: boolean; edit: boolean; delete: boolean; send: boolean; manageTemplates: boolean }> {
   return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     // In SEQUENCE: a per-code check is never a leg of a batch (AGENTS.md).
     const create = await hasAccess(tx, ctx.tenantId, ctx.actor, "contract:create");
     const edit = await hasAccess(tx, ctx.tenantId, ctx.actor, "contract:edit");
     const del = await hasAccess(tx, ctx.tenantId, ctx.actor, "contract:delete");
+    const send = await hasAccess(tx, ctx.tenantId, ctx.actor, "contract:send");
     const manageTemplates = await hasAccess(tx, ctx.tenantId, ctx.actor, "contract:manage_templates");
-    return { create, edit, delete: del, manageTemplates };
+    return { create, edit, delete: del, send, manageTemplates };
   });
 }
 

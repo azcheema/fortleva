@@ -16,12 +16,18 @@ export {
   updateContractDraft,
   type ContractDetail,
   type ContractListRow,
+  type ContractSignatureView,
   type ContractStatus,
   type DraftPatch,
   type StartInput,
 } from "./drafts";
 export { FILL_IN_KEYS, fillInToken, type FillInKey } from "./fill-ins";
 export { contractPreviewPdf } from "./preview";
+// `ensureContractPdfAsSystem` is deliberately NOT here (slice 112b's security
+// review): as SYSTEM it bypasses the portal gate, so only the announcer and the
+// sweep import it, from `./pdf-store` — never a portal route.
+export { contractPdfUrl, ensureContractPdf, makeMissingContractPdfs, type ContractPdfKind } from "./pdf-store";
+export { changeSentContract, newContractVersion, sendContract, TYPED_NAME_MAX, withdrawContract } from "./send";
 export type { SignerOption } from "./signers";
 export {
   createContractTemplate,

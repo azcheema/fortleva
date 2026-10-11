@@ -1460,10 +1460,18 @@ model ContractSignature {
 //     status-structural (`PORTAL_GATE_VARIANTS.contract`): a contact reads one
 //     of their own client once it is not a DRAFT and is sent (or uploaded and
 //     shown), MAIN contacts only (`portal_contract_primary`); never writes.
-//   - In slice 112 the guard refuses every status move; slice 112b adds the
-//     send (the agency's signature, C84 (b)), `ContractSignature` (ONE client
-//     signer, C84 (c), a census write; IP and browser on a class-A evidence
-//     row), withdraw and versions.
+//   - In slice 112 the guard refused every status move. SLICE 112b (migration
+//     20261012090000, C85): the guard owns `updated_at`; SEND (the sender's typed
+//     name is the agency's signature, C84 (b)) writes `parties` and
+//     `contentSha256`; WITHDRAW; a NEW VERSION of a declined/withdrawn one.
+//     `ContractSignature` (class B structural): one row per side, written by
+//     the send (names, emails, hash copied by its guard); the client's decided
+//     ONCE by that signer — a CENSUS WRITE (`portal_signature_decide` + the
+//     column trigger), which a SECURITY DEFINER trigger turns into the contract's
+//     SIGNED/DECLINED (`WHERE status = 'SENT'`). `ContractSignatureEvidence`
+//     (class A): the client signer's IP and browser, moved off the readable row
+//     by a second definer. A WITHDRAWN contract's client row stays PENDING:
+//     every "waiting for a signature" read joins `contract.status = 'SENT'`.
 
 // ───────────────────────────────────────────────────────────────────
 // 6.7 INVOICING (§6, §10.2) — an invoice LEDGER, not an accounting

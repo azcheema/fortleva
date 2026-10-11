@@ -24,6 +24,9 @@ import { STORAGE_STATE, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 const seed: E2ESeed = requireSeed();
 
+/** The harness has no bucket unless CI gives it one: a PDF is then "not made yet". */
+const HAS_R2 = Boolean(process.env["R2_BUCKET"]);
+
 const toast = (page: Page, text: string | RegExp): Locator => page.locator("[data-sonner-toast]", { hasText: text });
 
 test.describe.serial("contract templates and drafts, as the owner", () => {
@@ -113,5 +116,57 @@ test.describe.serial("contract templates and drafts, as the owner", () => {
     // longer than a toast lives on a cold server: look for it first.
     await expect(toast(page, "Draft deleted.")).toBeVisible();
     await page.waitForURL(/\/contracts$/, { timeout: 15_000 });
+  });
+
+  // Slice 112b (C84 (b)–(d), C85): a blank draft written, its signer picked and
+  // saved, then signed for and sent — the sender's typed name is the
+  // agency's signature; withdrawn; and a new version opened from it.
+  test("a contract is signed for and sent, withdrawn, and opened again as version 2", async ({ page }) => {
+    await page.goto("/contracts");
+    const form = page.getByTestId("new-contract");
+    await form.getByLabel("Client", { exact: true }).selectOption(seed.clientId);
+    const signer = form.getByLabel("Who signs for the client");
+    await expect(signer.locator("option", { hasText: seed.contactName })).toHaveCount(1);
+    await signer.selectOption({ label: seed.contactName });
+    await form.getByLabel("Template").selectOption({ label: "Blank contract" });
+    await form.getByLabel("Title").fill(`Retainer ${suffix}`);
+    await page.getByTestId("new-contract-create").click();
+    await expect(page).toHaveURL(/\/contracts\/[0-9a-f-]{36}$/);
+
+    // Not ready until it has text and is saved: the page says what is missing.
+    await expect(page.getByTestId("contract-not-ready")).toBeVisible();
+    const body = page.getByTestId("contract-body");
+    await body.click();
+    await page.keyboard.type("Monthly support, 10 hours.");
+    await page.getByTestId("contract-save").click();
+    await expect(toast(page, "Saved.")).toBeVisible();
+    await expect(page.getByTestId("contract-unsaved")).toHaveCount(0);
+
+    await page.getByTestId("contract-send-open").click();
+    const dialog = page.getByTestId("contract-send-dialog");
+    await expect(dialog).toContainText(seed.contactName);
+    await dialog.getByTestId("contract-send-name").fill("Erik Owner");
+    await dialog.getByTestId("contract-send-confirm").click();
+    // No bucket in the harness: the send stands, its PDF follows later.
+    await expect(toast(page, HAS_R2 ? "Signed and sent." : "Signed and sent. Its PDF couldn't be made yet — it will be shortly.")).toBeVisible();
+
+    await expect(page.getByTestId("contract-status")).toHaveText("Waiting for signature");
+    await expect(page.getByTestId("signature-agency")).toContainText("Erik Owner");
+    await expect(page.getByTestId("signature-client")).toHaveAttribute("data-status", "PENDING");
+    await expect(page.getByTestId("contract-fingerprint")).toContainText(/[0-9a-f]{64}/);
+
+    // Withdrawn, after the question.
+    await page.getByRole("button", { name: "Contract actions" }).click();
+    await page.getByRole("menuitem", { name: "Withdraw" }).click();
+    await page.getByRole("button", { name: "Yes" }).click();
+    await expect(toast(page, "Withdrawn.")).toBeVisible();
+    await expect(page.getByTestId("contract-status")).toHaveText("Withdrawn");
+
+    // A new version: a draft, version 2, that names the one it replaces.
+    await page.getByRole("button", { name: "Contract actions" }).click();
+    await page.getByRole("menuitem", { name: "New version" }).click();
+    await expect(page.getByTestId("contract-status")).toHaveText("Draft");
+    await expect(page.getByTestId("contract-versions")).toContainText("Replaces version 1");
+    await expect(page.getByTestId("contract-title")).toHaveValue(`Retainer ${suffix}`);
   });
 });

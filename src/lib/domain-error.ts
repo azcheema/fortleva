@@ -298,6 +298,13 @@ export type DomainErrorCode =
   | "CONTRACT_TOO_LARGE" // a contract's or a template's text is past its cap
   | "CONTRACT_NOT_DRAFT" // the verb wanted a draft: edit, delete
   | "CONTRACT_TEMPLATE_NAME_TAKEN" // another template already has that name
+  // Phase 4 slice 112b — sending and signing (src/modules/contracts/send.ts; C84, C85).
+  | "CONTRACT_CHANGED" // the draft changed since the page was read: look again before sending
+  | "CONTRACT_NOT_READY" // a contract to send needs its text (or: not sent/signed yet, for its PDF)
+  | "CONTRACT_FILL_INS_LEFT" // a fill-in is still in the text
+  | "CONTRACT_NOT_OPEN" // not waiting for a signature (withdrawn, signed, declined) — reload
+  | "CONTRACT_NOT_REPLACEABLE" // only a declined or withdrawn contract gets a new version, once
+  | "CONTRACT_PDF_UNAVAILABLE" // its PDF could not be made just now
   | "CONTRACT_SIGNER_INVALID"; // the picked signer is not a main contact of this client in the portal (the database holds "of this client"; sending re-checks the rest — 112b)
 
 export class DomainError extends Error {

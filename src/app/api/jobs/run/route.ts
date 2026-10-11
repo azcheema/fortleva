@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { isProduction } from "@/config";
 import { runClientDigests } from "@/jobs/client-digests";
+import { runContractPdfs } from "@/jobs/contract-pdfs";
 import { runMemberDigests } from "@/jobs/digests";
 import { runExpirationReminders } from "@/jobs/expiration-reminders";
 import { runInvoicePdfs } from "@/jobs/invoice-pdfs";
@@ -132,6 +133,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     console.error(`jobs: invoice pdfs failed: ${e instanceof Error ? e.name : typeof e}${code}`);
     invoicePdfs = { failed: "discovery" };
   }
+  // Phase 4 slice 112b: a sent contract's PDF, or a signed one's copy, that its
+  // moment did not make. Its failure is its own.
+  let contractPdfs: Awaited<ReturnType<typeof runContractPdfs>> | { failed: "discovery" };
+  try {
+    contractPdfs = await runContractPdfs();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: contract pdfs failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    contractPdfs = { failed: "discovery" };
+  }
   // Phase 5 slice 106 (founder decision C74): phone and browser notifications —
   // the BACKSTOP for a push whose kick was lost (each is due for fifteen
   // minutes, then never), and the jobs above's own notifications, which their
@@ -168,6 +179,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     clientDigests,
     updateReminders,
     invoicePdfs,
+    contractPdfs,
     pushes,
     notificationRetention,
   });

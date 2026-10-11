@@ -111,6 +111,20 @@ const CENSUS: Readonly<
   project_version: {
     UPDATE: ["approval_by_contact_id", "approval_decided_at", "approval_note", "approval_status", "updated_at"],
   },
+  // THE CONTRACT SIGNATURE (Phase 4 slice 112b, migration 20261012090000):
+  // the signer decides their own PENDING client row — signed (with the name
+  // typed) or declined (with an optional reason), dated — and the IP address
+  // and browser travel on that one update, moved at once to the class-A
+  // evidence row by a SECURITY DEFINER trigger and cleared (a CHECK holds them
+  // NULL at rest). Narrowed by `portal_signature_decide` (their own CLIENT row,
+  // decided, dated, still an ACTIVE main contact — an OR-form policy) and by
+  // `contract_signature_guard` (PENDING → decided, once). The contract's own
+  // move is `contract_signature_decided`'s, a definer — pinned below with the
+  // other definers that write for a contact. `contract-signing.dbtest.ts`
+  // drives every one of those.
+  contract_signature: {
+    UPDATE: ["decided_at", "decline_reason", "ip", "status", "typed_name", "user_agent"],
+  },
 };
 
 /**
@@ -269,6 +283,32 @@ describe("the contact-writable census is exactly what the documents say", () => 
     }
 
     expect(writable).toEqual(CENSUS);
+  });
+
+  /**
+   * THE SECURITY DEFINER FUNCTIONS — the census above cannot see them: they
+   * run as their owner, who bypasses row security, so what they write for a
+   * contact appears in no policy or grant. Every one is named here with what
+   * it is for, so a new one fails this test until someone has said why it may
+   * exist (the design review of slice 112b, its item 7).
+   *   search_lang                     reads the tenant's search language (20260820170000)
+   *   vault_portal_credentials_on     reads the tenant's portal-logins switch (20261005120000)
+   *   contract_signature_evidence_move moves a client signer's IP and browser to the
+   *                                    class-A evidence row (20261012090000)
+   *   contract_signature_decided      moves a sent contract to SIGNED or DECLINED on the
+   *                                    signer's decision (20261012090000)
+   */
+  it("names every SECURITY DEFINER function", async () => {
+    const db = getPlatformClient();
+    const rows = await db.$queryRaw<{ name: string }[]>`
+      SELECT p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.prosecdef ORDER BY 1`;
+    expect(rows.map((r) => r.name)).toEqual([
+      "contract_signature_decided",
+      "contract_signature_evidence_move",
+      "search_lang",
+      "vault_portal_credentials_on",
+    ]);
   });
 });
 

@@ -12,7 +12,7 @@ import { registerPdfFonts } from "@/lib/pdf-fonts";
 import en from "@/messages/en.json";
 import sv from "@/messages/sv.json";
 
-import type { ContractLocale, ContractParty, ContractPrint } from "../print";
+import type { ContractLocale, ContractParty, ContractPrint, SignaturePrint } from "../print";
 
 /**
  * A CONTRACT'S PDF (Phase 4 slice 112; founder decision C84 (a)) — a pure
@@ -58,6 +58,14 @@ const s = StyleSheet.create({
   quote: { borderLeftWidth: 2, borderLeftColor: INK.rule, paddingLeft: 10, marginBottom: 7, color: INK.muted },
   rule: { borderBottomWidth: 0.5, borderBottomColor: INK.rule, marginVertical: 10 },
   link: { color: INK.text, textDecoration: "underline" },
+  sigTitle: { fontSize: 14, lineHeight: 1.3, fontWeight: 600, marginBottom: 6 },
+  sigIntro: { color: INK.muted, marginBottom: 16, lineHeight: 1.45 },
+  sigBlock: { marginBottom: 14, paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: INK.rule },
+  sigName: { fontSize: 12, fontWeight: 600, marginBottom: 2 },
+  sigRow: { flexDirection: "row", marginBottom: 2 },
+  sigLabel: { width: 110, color: INK.muted },
+  sigValue: { flexGrow: 1, flexShrink: 1, flexBasis: 0 },
+  hash: { fontSize: 8.5, letterSpacing: 0.2 },
   foot: { position: "absolute", bottom: 30, left: 54, right: 54, borderTopWidth: 0.5, borderTopColor: INK.rule, paddingTop: 6, fontSize: 7.5, color: INK.muted, flexDirection: "row", justifyContent: "space-between" },
 });
 
@@ -239,6 +247,51 @@ function Party({ label, party, t }: { readonly label: string; readonly party: Co
   );
 }
 
+/** The signed copy's last page (slice 112b): who signed, how and when, and what they signed. */
+function SignaturePage({
+  contract,
+  signed,
+  t,
+  version,
+}: {
+  readonly contract: ContractPrint;
+  readonly signed: NonNullable<ContractPrint["signed"]>;
+  readonly t: ReturnType<typeof translatorFor>;
+  readonly version: string;
+}) {
+  const row = (label: string, value: string) => (
+    <View style={s.sigRow}>
+      <Text style={s.sigLabel}>{label}</Text>
+      <Text style={s.sigValue}>{value}</Text>
+    </View>
+  );
+  const one = (sig: SignaturePrint, i: number) => (
+    <View key={i} style={s.sigBlock} wrap={false}>
+      <Text style={s.label}>{sig.party === "TENANT" ? t("agency") : t("client")}</Text>
+      <Text style={s.sigName}>{sig.typedName}</Text>
+      {row(t("signature.signer"), `${sig.name} <${sig.email}>`)}
+      {row(t("signature.when"), sig.when)}
+      {row(t("signature.how"), sig.party === "TENANT" ? t("signature.howTenant") : t("signature.howClient"))}
+    </View>
+  );
+  return (
+    <Page size="A4" style={s.page}>
+      <Text style={s.sigTitle}>{t("signature.title")}</Text>
+      <Text style={s.sigIntro}>{t("signature.intro", { title: contract.title, version })}</Text>
+      {signed.signatures.map(one)}
+      <View wrap={false}>
+        <Text style={s.label}>{t("signature.fingerprintTitle")}</Text>
+        <Text style={s.hash}>{signed.contentSha256}</Text>
+        <Text style={[s.sigIntro, { marginTop: 6 }]}>{t("signature.fingerprintBody")}</Text>
+      </View>
+      <View style={s.foot} fixed>
+        <Text>{`${contract.title} · ${version}`}</Text>
+        <Text render={({ pageNumber, totalPages }) => t("page", { page: pageNumber, pages: totalPages })} />
+      </View>
+    </Page>
+  );
+}
+
 /** The document, for `renderContractPdf` and the unit test. */
 export function ContractPdf({ contract }: { readonly contract: ContractPrint }) {
   const t = translatorFor(contract.locale);
@@ -264,6 +317,7 @@ export function ContractPdf({ contract }: { readonly contract: ContractPrint }) 
           <Text render={({ pageNumber, totalPages }) => t("page", { page: pageNumber, pages: totalPages })} />
         </View>
       </Page>
+      {contract.signed ? <SignaturePage contract={contract} signed={contract.signed} t={t} version={version} /> : null}
     </Document>
   );
 }

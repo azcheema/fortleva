@@ -826,7 +826,11 @@ export async function deleteContact(ctx: ClientCtx, contactId: string): Promise<
       // An ask of the agency they DECLINED, with a note (slice 98, C66 (c)).
       // An ask they never answered, or one the team cancelled, is not their
       // writing: it goes with them (the FK cascade).
-      (await tx.credentialAsk.count({ where: { tenantId: ctx.tenantId, declinedByContactId: contactId } })) > 0;
+      (await tx.credentialAsk.count({ where: { tenantId: ctx.tenantId, declinedByContactId: contactId } })) > 0 ||
+      // A contract sent for them to sign (slice 112b, C84 (c)): the client's
+      // signature row names them — pending, signed or declined, it is the
+      // contract's record of who was to sign and who did.
+      (await tx.contractSignature.count({ where: { tenantId: ctx.tenantId, signerContactId: contactId } })) > 0;
     // **AND ITS MESSAGE MAY NOT SAY "end their access instead"**, which
     // is what it said for an afternoon. This guard sits BELOW the status
     // check, so it is reachable only for a NO_ACCESS or REVOKED contact

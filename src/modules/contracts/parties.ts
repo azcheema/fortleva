@@ -4,7 +4,7 @@ import { todayIn } from "@/lib/due-date";
 import { readPreferences } from "@/preferences/service";
 
 import { addressLine, type FillInValues } from "./fill-ins";
-import type { ContractLocale, ContractParties, ContractParty } from "./print";
+import type { ContractLocale, ContractParties, ContractParty, FrozenParty } from "./print";
 
 /**
  * THE TWO PARTIES, READ LIVE (Phase 4 slice 112) — what a DRAFT's preview
@@ -50,6 +50,28 @@ export function printedDay(isoDay: string, locale: ContractLocale): string {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(y!, m! - 1, d!)));
+}
+
+/** The parties the SEND froze, printed in the contract's language (slice 112b). */
+export function partiesFromFrozen(
+  frozen: { readonly agency: FrozenParty; readonly client: FrozenParty },
+  locale: ContractLocale,
+): ContractParties {
+  const one = (p: FrozenParty): ContractParty => ({ name: p.name, orgNr: p.orgNr, address: printedAddress(p, locale) });
+  return { agency: one(frozen.agency), client: one(frozen.client) };
+}
+
+/** "10 October 2026, 14:05" / "10 oktober 2026 14:05" in the workspace's zone — a signature's moment. */
+export function printedMoment(at: Date, locale: ContractLocale, timeZone: string): string {
+  return new Intl.DateTimeFormat(locale === "sv" ? "sv-SE" : "en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(at);
 }
 
 export type LiveParties = {

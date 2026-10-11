@@ -96,6 +96,9 @@ export const MODEL_CLASSES = {
     // Phase 4 slice 112 — contracts (C84).
     "contractTemplate",
     "contract",
+    // Phase 4 slice 112b — signatures (C84 (b)–(d), C85).
+    "contractSignature",
+    "contractSignatureEvidence",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -253,6 +256,10 @@ export const RLS_CLASSES = {
     // Phase 4 slice 112 — the company's contract templates (C84 (g)): staff
     // wording; a client reads a contract, never the template it came from.
     "contractTemplate",
+    // Phase 4 slice 112b — the client signer's IP address and browser: the
+    // evidence of a simple electronic signature, never a client's to read
+    // (moved here from the signature row by a SECURITY DEFINER trigger).
+    "contractSignatureEvidence",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no
@@ -271,7 +278,12 @@ export const RLS_CLASSES = {
   // of its client once it is not a draft and is sent (or, signed elsewhere,
   // shown — 112c) — status-structural like `invoice`, with the RESTRICTIVE
   // `portal_contract_primary` belt pinned by name in `isolation.dbtest.ts`.
-  B_clientScoped: ["client", "contact", "credentialItem", "clientAsset", "invoice", "contract"],
+  //
+  // `contractSignature` (slice 112b): structural — a contact reads the rows of
+  // a contract they can see (an EXISTS on `contract` under their own RLS), main
+  // contacts only (`portal_signature_primary`), and decides their own pending
+  // row: the census write (`portal_signature_decide`).
+  B_clientScoped: ["client", "contact", "credentialItem", "clientAsset", "invoice", "contract", "contractSignature"],
   B_projectScoped: [
     "project",
     "projectVersion",
@@ -317,6 +329,7 @@ export type RlsClass = keyof typeof RLS_CLASSES;
  *                    (slice 109, C79 (b))
  *   contract       — client match AND status <> 'DRAFT' AND (written and
  *                    sent_at set, or uploaded and shown_to_client) (slice 112)
+ *   contractSignature — client match AND its contract visible (slice 112b)
  */
 export const PORTAL_GATE_VARIANTS = {
   client: { clientColumn: "id", term: "structural" },
@@ -325,6 +338,7 @@ export const PORTAL_GATE_VARIANTS = {
   projectVersion: { clientColumn: "client_id", term: "status" },
   invoice: { clientColumn: "client_id", term: "status" },
   contract: { clientColumn: "client_id", term: "status" },
+  contractSignature: { clientColumn: "client_id", term: "structural" },
 } as const satisfies Record<
   string,
   { clientColumn: "id" | "client_id"; term: "structural" | "portal_enabled" | "status" }

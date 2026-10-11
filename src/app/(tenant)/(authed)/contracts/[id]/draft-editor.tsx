@@ -14,6 +14,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import type { FillInKey, SignerOption } from "@/modules/contracts";
 
 import { saveContractDraftAction } from "../actions";
+import { SendDialog } from "./send-dialog";
 
 type Fields = {
   readonly title: string;
@@ -57,6 +58,7 @@ export function DraftEditor({
   signers,
   signer,
   canEdit,
+  send,
 }: {
   contractId: string;
   initial: Fields;
@@ -68,6 +70,8 @@ export function DraftEditor({
   /** The signer the draft names, when they are no longer among `signers` (can't sign, or gone). */
   signer: { readonly id: string; readonly name: string; readonly canSign: boolean } | null;
   canEdit: boolean;
+  /** Slice 112b: Send for signature, for a holder of `contract:send` — the draft's `updatedAt` as read. */
+  send: { readonly seen: string } | null;
 }) {
   const t = useTranslations("contracts.draft");
   const tFill = useTranslations("contracts.fillIns");
@@ -80,6 +84,11 @@ export function DraftEditor({
   const [remaining, setRemaining] = useState<readonly FillInKey[]>(initialRemaining);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  // The send's token: the newer of the page's (props) and the last save's own
+  // answer — a send right after a save must not post the pre-save value
+  // while the revalidated page is still on its way.
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const seen = send ? (savedAt !== null && savedAt > send.seen ? savedAt : send.seen) : null;
 
   const changed = (Object.keys(fields) as (keyof Fields)[]).filter((k) => fields[k] !== saved[k]);
   const bodyDirty = bodyVersion !== savedVersion;
@@ -103,7 +112,8 @@ export function DraftEditor({
       }
       setSaved(sentFields);
       setSavedVersion(sentVersion);
-      setRemaining(r.value);
+      setRemaining(r.value.remaining);
+      setSavedAt(r.value.updatedAt);
       // The action revalidates the page; no refresh here.
       toast.success(t("saved"));
     } finally {
@@ -113,6 +123,9 @@ export function DraftEditor({
   };
 
   const chosen = signers.find((s) => s.id === fields.signerContactId) ?? null;
+  // What the send needs, as the page can tell (the service and the database
+  // check again): saved, a signer who can sign, some text, no fill-in left.
+  const readyToSend = !dirty && chosen !== null && body !== null && remaining.length === 0;
   const namedInText = chosen === null || textOf(body).includes(chosen.name);
   const signerElsewhere = signer !== null && !signers.some((s) => s.id === signer.id) && fields.signerContactId === signer.id;
 
@@ -240,6 +253,15 @@ export function DraftEditor({
           <span className="text-xs text-muted-foreground" data-testid="contract-unsaved">
             {t("unsaved")}
           </span>
+        ) : null}
+        {send ? (
+          readyToSend ? (
+            <SendDialog contractId={contractId} seen={seen!} title={saved.title} signerName={chosen!.name} />
+          ) : (
+            <span className="text-xs text-muted-foreground" data-testid="contract-not-ready">
+              {t("toSend")}
+            </span>
+          )
         ) : null}
       </div>
     </div>

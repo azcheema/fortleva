@@ -339,6 +339,8 @@ model Tenant {
   // Phase 4 slice 112 — contracts (§6.6, C84):
   contractTemplates      ContractTemplate[]
   contracts              Contract[]
+  contractSignatures     ContractSignature[]
+  contractSignatureEvidence ContractSignatureEvidence[]
 
   @@map("tenant")
 }
@@ -1461,6 +1463,7 @@ model Contract {
   supersededBy Contract?   @relation("ContractVersions")
   pdfFile      FileObject? @relation("ContractPdf", fields: [tenantId, pdfFileId], references: [tenantId, id], onDelete: Restrict)
   signedPdf    FileObject? @relation("ContractSignedPdf", fields: [tenantId, signedPdfFileId], references: [tenantId, id], onDelete: Restrict)
+  signatures   ContractSignature[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, clientId, id]) // the version link's (and 112b's signature's) FK: same client
@@ -1471,6 +1474,86 @@ model Contract {
   @@index([tenantId, status, updatedAt])
   @@index([tenantId, endsOn]) // Expirations (112c)
   @@map("contract")
+}
+
+// ── Phase 4 slice 112b — SIGNATURES (C84 (b)–(d), C85) ──
+enum SignatureParty {
+  TENANT // the agency's — the sender, signing as they send (C84 (b))
+  CLIENT // the one signer at the client (C84 (c))
+
+  @@map("signature_party")
+}
+
+enum SignatureLevel {
+  SES // simple electronic signature; BankID (AES) is v1.5 — an enum value added then
+
+  @@map("signature_level")
+}
+
+enum SignatureStatus {
+  PENDING
+  SIGNED
+  DECLINED
+
+  @@map("signature_status")
+}
+
+/// ONE SIDE'S SIGNATURE of a sent contract (C84 (b), (c)). Written by the
+/// send — the agency's SIGNED, the client's PENDING — with the names, emails
+/// and fingerprint copied BY THE GUARD from the record; the client's decided
+/// once, by that signer, in the portal (a census write). IP and browser travel
+/// on the contact's update and are moved at once to the class-A evidence row.
+/// scope=client  rls=B (structural: the rows of a contract the contact can see; main contacts)
+/// ret=R2 (follows the contract)  enc=none
+/// audit: contract.sent (the agency's, with the send) | contract.signed | contract.declined
+model ContractSignature {
+  id              String          @id @default(uuid(7))
+  tenantId        String          @map("tenant_id")
+  clientId        String          @map("client_id")
+  contractId      String          @map("contract_id")
+  party           SignatureParty
+  signerMemberId  String?         @map("signer_member_id") // attribution, no FK
+  signerContactId String?         @map("signer_contact_id") // attribution, no FK
+  signerName      String          @map("signer_name") // copied by the guard
+  signerEmail     String          @map("signer_email") // copied by the guard
+  level           SignatureLevel  @default(SES)
+  status          SignatureStatus @default(PENDING)
+  typedName       String?         @map("typed_name") // the name as the signer typed it (SIGNED)
+  decidedAt       DateTime?       @map("decided_at") @db.Timestamptz(6)
+  declineReason   String?         @map("decline_reason")
+  ip              String? // in transit only — NULL at rest (CHECK); see the evidence
+  userAgent       String?         @map("user_agent") // in transit only
+  contentSha256   String          @map("content_sha256") @db.Char(64) // copied by the guard: what is signed
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant                     @relation(fields: [tenantId], references: [id])
+  contract Contract                   @relation(fields: [tenantId, clientId, contractId], references: [tenantId, clientId, id], onDelete: Cascade)
+  evidence ContractSignatureEvidence?
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@unique([tenantId, contractId, party]) // one per side (v1)
+  @@index([tenantId, clientId])
+  @@index([tenantId, signerContactId, status])
+  @@map("contract_signature")
+}
+
+/// The client signer's IP address and browser, kept as evidence of a simple
+/// electronic signature (DATA_MODEL §6.6) and never readable by a client —
+/// written only by `contract_signature_evidence_move` (SECURITY DEFINER).
+/// scope=tenant  rls=A  ret=R2 (follows the contract)  enc=none
+model ContractSignatureEvidence {
+  id          String   @id
+  tenantId    String   @map("tenant_id")
+  signatureId String   @map("signature_id")
+  ip          String?
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  signature ContractSignature @relation(fields: [tenantId, signatureId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, signatureId])
+  @@map("contract_signature_evidence")
 }
 
 // ───────────────────────────────────────────────────────────────────
