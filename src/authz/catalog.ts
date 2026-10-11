@@ -82,10 +82,15 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   p("service:edit", "core", "Edit services, renewal dates", CMA),
   p("service:delete", "core", "Delete services", CM),
   p("contract:view", "contracts", "View contracts", CMA),
-  p("contract:create", "contracts", "Draft/upload contracts", CMA),
-  p("contract:edit", "contracts", "Edit draft contracts (sent/signed are immutable)", CMA),
-  p("contract:send", "contracts", "Send for signature (client-facing act)", CMA),
-  p("contract:delete", "contracts", "Delete draft contracts only", CM),
+  // The three descriptions below widened in slice 112c (C86): a contract
+  // signed ELSEWHERE is put in with contract:create, its details edited with
+  // contract:edit, shown to the client with contract:send (client-facing),
+  // deleted with contract:delete. The codes are unchanged; `prisma/seed.ts`
+  // rewrites the text (the TV16 run owed at release carries it).
+  p("contract:create", "contracts", "Draft contracts, and put in ones signed elsewhere", CMA),
+  p("contract:edit", "contracts", "Edit draft contracts, and the details of ones signed elsewhere (a sent contract never changes)", CMA),
+  p("contract:send", "contracts", "Send for signature, and show a contract signed elsewhere to the client (client-facing acts)", CMA),
+  p("contract:delete", "contracts", "Delete draft contracts, and ones signed elsewhere that were put in wrong", CM),
   p("invoice:view", "invoicing", "View invoices", CMA),
   p("invoice:create", "invoicing", "Create draft invoices (unnumbered)", CMA),
   p("invoice:edit", "invoicing", "Edit draft invoices", CMA),

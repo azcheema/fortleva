@@ -43,6 +43,8 @@ export type ContractListRow = {
   readonly id: string;
   readonly title: string;
   readonly status: ContractStatus;
+  /** Slice 112c: written in Fortleva, or signed elsewhere and put in. */
+  readonly origin: "WRITTEN" | "UPLOADED";
   readonly version: number;
   readonly client: { readonly id: string; readonly name: string };
   readonly endsOn: string | null;
@@ -53,6 +55,10 @@ export type ContractDetail = {
   readonly id: string;
   readonly title: string;
   readonly status: ContractStatus;
+  /** Slice 112c: written in Fortleva, or signed elsewhere and put in (C84 (f)). */
+  readonly origin: "WRITTEN" | "UPLOADED";
+  /** Signed elsewhere: shown to the client's main contacts in their portal (C86 (a) — off until turned on). */
+  readonly shownToClient: boolean;
   readonly version: number;
   readonly client: { readonly id: string; readonly name: string };
   readonly language: ContractLocale;
@@ -95,7 +101,7 @@ const isoDay = (d: Date | null): string | null => (d === null ? null : d.toISOSt
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A calendar day from a form ("2026-10-10"), or null for an empty one. */
-function dayOf(raw: unknown, what: string): Date | null {
+export function dayOf(raw: unknown, what: string): Date | null {
   if (raw === null || raw === undefined || raw === "") return null;
   if (typeof raw !== "string" || !DAY.test(raw)) fail("INVALID_INPUT", what);
   const d = new Date(`${raw as string}T00:00:00Z`);
@@ -105,7 +111,7 @@ function dayOf(raw: unknown, what: string): Date | null {
   return d;
 }
 
-function titleOf(raw: unknown): string {
+export function titleOf(raw: unknown): string {
   const title = typeof raw === "string" ? raw.trim() : "";
   if (title.length === 0 || title.length > CONTRACT_TITLE_MAX) fail("INVALID_INPUT", "title");
   return title;
@@ -153,6 +159,7 @@ export async function listContracts(
         id: true,
         title: true,
         status: true,
+        origin: true,
         version: true,
         endsOn: true,
         updatedAt: true,
@@ -202,6 +209,8 @@ export async function readContract(ctx: ContractsCtx, id: string): Promise<Contr
         id: true,
         title: true,
         status: true,
+        origin: true,
+        shownToClient: true,
         version: true,
         language: true,
         body: true,
@@ -247,6 +256,8 @@ export async function readContract(ctx: ContractsCtx, id: string): Promise<Contr
       id: row.id,
       title: row.title,
       status: row.status,
+      origin: row.origin,
+      shownToClient: row.shownToClient,
       version: row.version,
       client: row.client,
       language: isContractLocale(row.language) ? row.language : "sv",

@@ -16,8 +16,11 @@ import { isContractLocale, readFrozenParties, type ContractLocale, type Contract
  * holds exactly that (the client, not a draft, sent) and
  * `portal_contract_primary` holds it to a MAIN contact (AUTHZ §8: contracts
  * are a main contact's, as invoices are); every read here restates the terms
- * and asks `portal.contract.view` as well. Slice 112c adds the contracts
- * signed elsewhere that the agency chooses to show.
+ * and asks `portal.contract.view` as well. Since slice 112c, also every
+ * contract SIGNED ELSEWHERE that the agency has chosen to SHOW (C86 (a): its
+ * switch is off until someone turns it on) — read as its title, the day it was
+ * signed, its term and its file: no text, parties, signatures or fingerprint
+ * exist for one (the PDF is the record).
  *
  * WHAT A CLIENT IS TOLD: the title, the version, the language, the dates, the
  * status, the parties as the send froze them, the text, the fingerprint both
@@ -43,7 +46,10 @@ export type PortalContractRow = {
   readonly title: string;
   readonly version: number;
   readonly status: PortalContractStatus;
-  readonly sentAt: Date;
+  /** Written in Fortleva and sent, or signed elsewhere and shown (slice 112c). */
+  readonly origin: "WRITTEN" | "UPLOADED";
+  /** When it was sent — a written contract's; null for one signed elsewhere. */
+  readonly sentAt: Date | null;
   /** `YYYY-MM-DD`, the workspace's day — a signed contract's. */
   readonly signedOn: string | null;
   /** Sent, and waiting for THIS person's signature. */
@@ -94,13 +100,19 @@ const day = (d: Date | null): string | null => (d === null ? null : d.toISOStrin
 const isShownStatus = (s: string): s is PortalContractStatus =>
   s === "SENT" || s === "SIGNED" || s === "DECLINED" || s === "WITHDRAWN";
 
-/** `portal_gate`'s terms on `contract`, restated (WRITTEN only until slice 112c). */
+/**
+ * `portal_gate`'s terms on `contract`, restated: the client's own, not a
+ * draft, and EITHER written in Fortleva and sent OR signed elsewhere and SHOWN
+ * (slice 112c — C86 (a): off until someone turns it on).
+ */
 const contractGate = (principal: PortalPrincipal) => ({
   tenantId: principal.tenantId,
   clientId: principal.clientId,
-  origin: "WRITTEN" as const,
   status: { not: "DRAFT" as const },
-  sentAt: { not: null },
+  OR: [
+    { origin: "WRITTEN" as const, sentAt: { not: null } },
+    { origin: "UPLOADED" as const, shownToClient: true },
+  ],
 });
 
 const waitsFor = (
@@ -118,14 +130,18 @@ export async function listPortalContracts(
     await authorizePortal(tx, principal, "portal.contract.view", { kind: "client", clientId: principal.clientId });
     const rows = await tx.contract.findMany({
       where: contractGate(principal),
-      orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+      // Newest first by when each entered Fortleva (a contract signed
+      // elsewhere was never sent).
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: PORTAL_CONTRACT_LIMIT + 1,
       select: {
         id: true,
         title: true,
         version: true,
         status: true,
+        origin: true,
         sentAt: true,
+        createdAt: true,
         signedOn: true,
         // The client's row, to say whether it waits for this person — an
         // inline literal, as every portal select must be (the tripwire).
@@ -134,14 +150,19 @@ export async function listPortalContracts(
     });
     const truncated = rows.length > PORTAL_CONTRACT_LIMIT;
     rows.splice(PORTAL_CONTRACT_LIMIT);
+    // Newest SENT first — one put in counts from when it was put in (it was
+    // never sent): the order a client would expect (the code review's low).
+    const at = (r: { sentAt: Date | null; createdAt: Date }) => (r.sentAt ?? r.createdAt).getTime();
+    rows.sort((a, b) => at(b) - at(a) || (a.id < b.id ? 1 : -1));
     const contracts = rows.flatMap((r): PortalContractRow[] =>
-      isShownStatus(r.status) && r.sentAt !== null
+      isShownStatus(r.status) && (r.origin === "UPLOADED" || r.sentAt !== null)
         ? [
             {
               id: r.id,
               title: r.title,
               version: r.version,
               status: r.status,
+              origin: r.origin,
               sentAt: r.sentAt,
               signedOn: day(r.signedOn),
               waitingForYou: waitsFor(principal, r.status, r.signatures),
@@ -201,6 +222,7 @@ export async function readPortalContract(principal: PortalPrincipal, contractId:
         title: true,
         version: true,
         status: true,
+        origin: true,
         language: true,
         startsOn: true,
         endsOn: true,
@@ -226,7 +248,7 @@ export async function readPortalContract(principal: PortalPrincipal, contractId:
       },
     });
     // Gone between the proof and this read (or malformed): the plane's one answer.
-    if (!row || row.sentAt === null || !isShownStatus(row.status) || !isContractLocale(row.language)) {
+    if (!row || (row.origin === "WRITTEN" && row.sentAt === null) || !isShownStatus(row.status) || !isContractLocale(row.language)) {
       return deny("NOT_FOUND", "contract");
     }
     const frozen = readFrozenParties(row.parties);
@@ -245,6 +267,7 @@ export async function readPortalContract(principal: PortalPrincipal, contractId:
       title: row.title,
       version: row.version,
       status: row.status,
+      origin: row.origin,
       sentAt: row.sentAt,
       signedOn: day(row.signedOn),
       waitingForYou,

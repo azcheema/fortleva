@@ -305,6 +305,8 @@ export type DomainErrorCode =
   | "CONTRACT_NOT_OPEN" // not waiting for a signature (withdrawn, signed, declined) — reload
   | "CONTRACT_NOT_REPLACEABLE" // only a declined or withdrawn contract gets a new version, once
   | "CONTRACT_PDF_UNAVAILABLE" // its PDF could not be made just now
+  | "CONTRACT_UPLOAD_INVALID" // slice 112c: the uploaded file is not a PDF, or not the file that was announced (size, fingerprint)
+  | "CONTRACT_NOT_UPLOADED" // slice 112c: that verb is for a contract signed elsewhere
   | "CONTRACT_SIGNER_INVALID"; // the picked signer is not a main contact of this client in the portal (the database holds "of this client"; sending re-checks the rest — 112b)
 
 export class DomainError extends Error {

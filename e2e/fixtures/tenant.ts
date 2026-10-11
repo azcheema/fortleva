@@ -357,6 +357,12 @@ export async function clearPortalSubmissions(tenantId: string, contactEmail: str
   return cleared;
 }
 
+/** A contract signed elsewhere, put in for `clientId` by `memberId` (slice 112c) — its id. */
+export async function plantUploadedContract(tenantId: string, clientId: string, memberId: string, title: string): Promise<string> {
+  const { id } = await runCli<{ id: string }>(["plant-uploaded-contract", tenantId, clientId, memberId, title]);
+  return id;
+}
+
 /** `contracts.spec.ts`'s portal half: the agency's contract notices and the contract mails (slice 112b2). */
 export async function clearContractNotices(tenantId: string): Promise<number> {
   const { cleared } = await runCli<{ cleared: number }>(["clear-contract-notices", tenantId]);

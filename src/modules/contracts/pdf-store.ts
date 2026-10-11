@@ -12,7 +12,7 @@ import { readPreferences } from "@/preferences/service";
 import { getStorage } from "@/storage";
 
 import { partiesFromFrozen, printedMoment } from "./parties";
-import { contractPdfFileName, isContractLocale, readFrozenParties, type ContractPrint, type SignaturePrint } from "./print";
+import { contractPdfFileName, isContractLocale, readFrozenParties, uploadedContractPdfName, type ContractPrint, type SignaturePrint } from "./print";
 import type { ContractsCtx } from "./templates";
 
 /**
@@ -253,15 +253,29 @@ export async function ensureContractPdf(
   now: Date = new Date(),
 ): Promise<ContractPdf> {
   const principal = { type: "member", id: ctx.actor.memberId } as const;
-  await withTenant(ctx.tenantId, principal, async (tx) => {
+  const uploaded = await withTenant(ctx.tenantId, principal, async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "contract:view");
     const scoped = await tx.contract.findFirst({ where: { id: contractId }, select: { clientId: true, status: true, origin: true } });
     if (!scoped) return deny("NOT_FOUND");
     await assertInScope(tx, ctx.actor, { clientId: scoped.clientId });
-    if (scoped.origin !== "WRITTEN" || scoped.status === "DRAFT" || (kind === "signed" && scoped.status !== "SIGNED")) {
+    // A contract SIGNED ELSEWHERE (slice 112c): its signed copy IS the file
+    // that was put in — recorded at its insert, never drawn. It has no PDF as
+    // sent.
+    if (scoped.origin === "UPLOADED") {
+      if (kind !== "signed") return fail("CONTRACT_NOT_READY");
+      const file = await recordedPdf(tx, contractId, "signed");
+      if (!file) return fail("CONTRACT_PDF_UNAVAILABLE");
+      // Named from its CURRENT title, as the portal names it (the code
+      // review's low: the recorded name is the title at the time it was put in).
+      const { title } = await tx.contract.findFirstOrThrow({ where: { id: contractId }, select: { title: true } });
+      return { ...file, fileName: uploadedContractPdfName(title) };
+    }
+    if (scoped.status === "DRAFT" || (kind === "signed" && scoped.status !== "SIGNED")) {
       return fail("CONTRACT_NOT_READY");
     }
+    return null;
   });
+  if (uploaded) return uploaded;
   return makePdf(ctx.tenantId, principal, contractId, kind, now);
 }
 

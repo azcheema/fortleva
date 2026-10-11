@@ -192,6 +192,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // it open: the "coming up" strip (a domain due in 20 days, a licence
     // lapsed 3 days ago), read-first rows, and the inline add form.
     { name: "client-assets", path: `${client}/assets` },
+    // Phase 4 slice 112c (C86): the Contracts tab — the contracts
+    // `contracts.spec.ts` wrote for the seeded client, when it ran first; else
+    // the empty state with Put in a signed contract… and Write a contract.
+    { name: "client-contracts", path: `${client}/contracts` },
     { name: "projects", path: "/projects" },
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },

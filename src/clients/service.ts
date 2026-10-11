@@ -264,6 +264,15 @@ export type ClientDetail = {
     viewAssets: boolean;
     manageAssets: boolean;
     deleteAssets: boolean;
+    /**
+     * `contract:view` on all four gates AND a DIRECT assignment (Phase 4 slice
+     * 112c) — whether a Contracts tab exists: contracts are a client's, read
+     * by direct scope only (the agreements tab's rule; `listContracts`).
+     * `contract:create` the same way — whether it offers Put in a signed
+     * contract.
+     */
+    viewContracts: boolean;
+    createContracts: boolean;
   };
 };
 
@@ -272,7 +281,7 @@ export type ClientDetail = {
  * `heldAndAccessibleCodes`. Every cap but one answers all four gates, so
  * a cap whose module a tenant can switch off closes with it:
  * `client:manage_contacts` is `portal`, the five `document:*` are
- * `documentation`, and `credential:view` and the three `asset:*` are `vault`; the rest are `core`. The one is `manageContactRecords`,
+ * `documentation`, and `credential:view` and the three `asset:*` are `vault`, the two `contract:*` are `contracts`; the rest are `core`. The one is `manageContactRecords`,
  * on gate 4 by C48. None is a ✦ code, which is what lets the helper answer
  * them. `CapCode` makes `can()` — and `holds()`, the gate-4 answer — on a
  * code missing from this list a type error; a hand-written permission
@@ -298,6 +307,8 @@ const CAP_CODES = [
   "asset:view",
   "asset:manage",
   "asset:delete",
+  "contract:view",
+  "contract:create",
 ] as const;
 type CapCode = (typeof CAP_CODES)[number];
 
@@ -417,6 +428,9 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
         viewAssets: can("asset:view"),
         manageAssets: can("asset:manage"),
         deleteAssets: can("asset:delete"),
+        viewContracts: can("contract:view") && direct,
+        // Only an ACTIVE client is offered one (the service refuses an archived one — the code review's low).
+        createContracts: can("contract:create") && direct && c.status === "ACTIVE",
       },
     };
   });

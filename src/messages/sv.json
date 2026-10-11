@@ -1801,6 +1801,8 @@
     "CONTRACT_NOT_READY": "Kontraktet är inte klart än. Ladda om sidan.",
     "CONTRACT_FILL_INS_LEFT": "Det finns ifyllnadsfält kvar i texten. Byt ut dem mot rätt uppgifter först.",
     "CONTRACT_NOT_OPEN": "Kontraktet väntar inte längre på underskrift. Ladda om sidan.",
+    "CONTRACT_UPLOAD_INVALID": "Filen är inte en pdf, eller så ändrades den medan den laddades upp. Välj den undertecknade pdf:en och försök igen.",
+    "CONTRACT_NOT_UPLOADED": "Det går bara att göra med ett kontrakt som undertecknats utanför Fortleva.",
     "CONTRACT_NOT_REPLACEABLE": "Bara ett avböjt eller återkallat kontrakt kan få en ny version, och bara en gång. Ladda om sidan.",
     "CONTRACT_PDF_UNAVAILABLE": "Det gick inte att skapa kontraktets pdf just nu. Försök igen om en liten stund."
   },
@@ -1856,6 +1858,7 @@
       "contacts": "Kontakter",
       "files": "Filer",
       "agreements": "Avtal",
+      "contracts": "Kontrakt",
       "vault": "Valv",
       "assets": "Tillgångar"
     },
@@ -2033,6 +2036,14 @@
         "emptyBody": "Lägg till ett priskort på ett avtal; tid på avtalet bär priset.",
         "add": "Lägg till ett avtalspris"
       }
+    },
+    "contracts": {
+      "title": "Kontrakt",
+      "description": "Kontrakt med kunden — skrivna i Fortleva, eller undertecknade på annat håll och inlagda.",
+      "write": "Skriv ett kontrakt",
+      "empty": "Inga kontrakt med kunden än",
+      "emptyBody": "Skriv ett i Fortleva, eller lägg in ett som undertecknats på annat håll.",
+      "limited": "Visar de {count} senast ändrade."
     }
   },
   "projects": {
@@ -3679,6 +3690,7 @@
       "truncated": "Visar de {count} senaste.",
       "version": "Version {version}",
       "sentOn": "Skickat {date}",
+      "signedElsewhereOn": "Undertecknat {date}, utanför Fortleva",
       "state": {
         "SENT": "Väntar på underskrift",
         "SENT_YOU": "Väntar på din underskrift",
@@ -3714,6 +3726,8 @@
         "waitingFor": "Väntar på att {name} skriver under.",
         "signed": "Undertecknat av båda parter.",
         "signedOn": "Undertecknat av båda parter den {date}.",
+        "signedElsewhere": "Undertecknat utanför Fortleva. Den undertecknade pdf:en finns nedan.",
+        "signedElsewhereOn": "Undertecknat utanför Fortleva den {date}. Den undertecknade pdf:en finns nedan.",
         "declined": "Kontraktet har avböjts. Din byrå har fått veta det.",
         "withdrawn": "Din byrå har återkallat kontraktet. Det går inte längre att skriva under."
       },
@@ -5543,7 +5557,9 @@
         "version": "Version",
         "updated": "Ändrat"
       },
-      "versionValue": "v{version}"
+      "versionValue": "v{version}",
+      "columnEnds": "Upphör",
+      "none": "—"
     },
     "status": {
       "DRAFT": "Utkast",
@@ -5602,7 +5618,8 @@
       "fromTemplate": "Skapat från {name}",
       "toSend": "För att skicka det: spara, välj vem som skriver under och byt ut alla ifyllnadsfält.",
       "replaces": "Ersätter version {version}",
-      "replacedBy": "Ersatt av version {version}"
+      "replacedBy": "Ersatt av version {version}",
+      "signedElsewhere": "Externt undertecknat"
     },
     "fillIns": {
       "insert": "Infoga ifyllnadsfält",
@@ -5682,6 +5699,60 @@
       "declinedReason": "Deras skäl: ”{reason}”",
       "declinedNoReason": "De angav inget skäl.",
       "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
+    },
+    "uploaded": {
+      "badge": "Externt undertecknat",
+      "title": "Undertecknat utanför Fortleva",
+      "intro": "Kontraktet undertecknades på papper eller i ett annat verktyg. Den undertecknade pdf:en är underlaget; filen kan inte bytas ut.",
+      "download": "Ladda ner undertecknad pdf",
+      "menu": "Åtgärder för kontraktet",
+      "delete": "Radera…",
+      "deleteConfirm": "Radera kontraktet och dess pdf? Om det lades in fel, lägg in det igen efteråt. Det går inte att ångra.",
+      "deleted": "Raderat.",
+      "showTitle": "Kundportalen",
+      "showLabel": "Visa för kunden",
+      "showOn": "Visas: kundens huvudkontakter kan se kontraktet – dess titel och datum – och ladda ner dess pdf i kundportalen.",
+      "showOff": "Visas inte: ingen hos kunden kan se det.",
+      "showNoPermission": "Bara de som kan skicka kontrakt kan visa ett för kunden.",
+      "shownNow": "Visas för kunden.",
+      "hiddenNow": "Dolt för kunden.",
+      "detailsTitle": "Uppgifter",
+      "contractTitle": "Titel",
+      "signedOn": "Undertecknat",
+      "startsOn": "Börjar gälla",
+      "endsOn": "Upphör",
+      "save": "Spara",
+      "saved": "Sparat.",
+      "noEdit": "Du kan inte ändra uppgifterna.",
+      "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen."
+    },
+    "upload": {
+      "button": "Lägg in ett undertecknat kontrakt…",
+      "title": "Lägg in ett undertecknat kontrakt",
+      "body": "För ett kontrakt som undertecknats på papper eller i ett annat verktyg. Det sparas som undertecknat, och kunden ser det inte förrän ni väljer att visa det.",
+      "client": "Kund",
+      "chooseClient": "Välj en kund",
+      "contractTitle": "Titel",
+      "signedOn": "Undertecknat",
+      "startsOn": "Börjar gälla",
+      "endsOn": "Upphör",
+      "file": "Undertecknad pdf",
+      "confirm": "Lägg in",
+      "done": "Kontraktet har lagts in.",
+      "empty": "Filen är tom. Välj den undertecknade pdf:en.",
+      "notPdf": "Välj en pdf-fil.",
+      "tooLarge": "Pdf:en får vara högst {mb} MB.",
+      "failed": "Filen kunde inte laddas upp. Försök igen.",
+      "steps": {
+        "preparing": "Förbereder…",
+        "uploading": "Laddar upp…",
+        "finishing": "Slutför…"
+      },
+      "dropHint": "Släpp den undertecknade pdf:en här, eller välj den. Endast pdf, högst {mb} MB.",
+      "dropNow": "Släpp den för att välja den",
+      "choose": "Välj pdf",
+      "signedLater": "Dagen då det undertecknades kan inte vara senare än i dag.",
+      "endsBefore": "Slutdatumet är före startdatumet."
     }
   },
   "contractPdf": {

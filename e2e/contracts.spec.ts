@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 
-import { CONTACT_STORAGE_STATE, STORAGE_STATE, clearContractNotices, requireSeed, type E2ESeed } from "./fixtures/tenant";
+import { CONTACT_STORAGE_STATE, STORAGE_STATE, clearContractNotices, plantUploadedContract, requireSeed, type E2ESeed } from "./fixtures/tenant";
 
 /**
  * CONTRACTS IN A BROWSER (Phase 4 slice 112; founder decision C84).
@@ -295,5 +295,76 @@ test.describe.serial("a contract signed or declined in the client's portal", () 
     await page.reload();
     await expect(page.getByTestId("contract-status")).toHaveText("Declined");
     await expect(page.getByTestId("sent-contract")).toContainText("Not this quarter, sorry.");
+  });
+});
+
+/**
+ * Slice 112c (C84 (f), C86): a contract SIGNED ELSEWHERE. The harness has no
+ * file storage, so the upload's byte path is the dbtest's
+ * (`contract-uploads.dbtest.ts`); here one is planted in-process through the
+ * real service, then: found on the client's Contracts tab, its end date
+ * edited; NOT in Astrid's portal until shown (C86 (a)); shown, her portal
+ * lists it and its page says it was signed outside Fortleva; hidden, gone
+ * again; deleted (C86 (b)), gone from the list.
+ */
+test.describe.serial("a contract signed elsewhere, put in and shown to the client", () => {
+  test.use({ storageState: STORAGE_STATE, locale: "en-US" });
+
+  const title = `Paper contract ${Math.random().toString(36).slice(2, 8)}`;
+  let id = "";
+
+  test.beforeAll(async () => {
+    id = await plantUploadedContract(seed.tenantId, seed.clientId, seed.memberId, title);
+  });
+
+  test("edited on the client's tab, shown to Astrid and hidden again, then deleted", async ({ page, browser }) => {
+    await page.goto(`/clients/${seed.clientId}/contracts`);
+    const row = page.getByTestId("contract-row").filter({ hasText: title });
+    await expect(row).toHaveAttribute("data-origin", "UPLOADED");
+    await row.getByRole("link", { name: title }).click();
+    await expect(page).toHaveURL(new RegExp(`/contracts/${id}$`));
+    await expect(page.getByTestId("contract-signed-elsewhere")).toBeVisible();
+    await expect(page.getByTestId("uploaded-shown-state")).toContainText("Not shown");
+
+    // Its end date, edited and saved.
+    await page.getByTestId("uploaded-endsOn").fill("2028-05-31");
+    await page.getByTestId("uploaded-save").click();
+    await expect(toast(page, "Saved.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId("uploaded-endsOn")).toHaveValue("2028-05-31");
+
+    const astrid = await asAstrid(browser);
+    try {
+      // Not shown: her portal has nothing of it.
+      expect((await astrid.page.goto(`/portal/contracts/${id}`))?.status()).toBe(404);
+
+      // Shown — the server's answer drawn, never an optimistic flip.
+      await page.getByTestId("uploaded-shown").click();
+      await expect(toast(page, "Shown to the client.")).toBeVisible();
+      await expect(page.getByTestId("uploaded-shown-state")).toContainText("Shown:");
+
+      await astrid.page.goto("/portal/contracts");
+      const listed = astrid.page.getByTestId("portal-contract-row").filter({ hasText: title });
+      await expect(listed.getByTestId("portal-contract-state")).toHaveText("Signed");
+      await listed.getByRole("link", { name: title }).click();
+      await expect(astrid.page.getByTestId("portal-contract-outcome")).toContainText("Signed outside Fortleva");
+      await expect(astrid.page.getByTestId("portal-contract-download-signed")).toBeVisible();
+      await expect(astrid.page.getByTestId("portal-contract-body")).toHaveCount(0);
+      await expect(astrid.page.getByTestId("portal-contract-signatures")).toHaveCount(0);
+
+      // Hidden again: gone from her portal.
+      await page.getByTestId("uploaded-shown").click();
+      await expect(toast(page, "Hidden from the client.")).toBeVisible();
+      expect((await astrid.page.goto(`/portal/contracts/${id}`))?.status()).toBe(404);
+    } finally {
+      await astrid.close();
+    }
+
+    // Deleted, after the question.
+    await page.getByRole("button", { name: "Contract actions" }).click();
+    await page.getByRole("menuitem", { name: "Delete…" }).click();
+    await page.getByRole("button", { name: "Yes" }).click();
+    await expect(page).toHaveURL(/\/contracts$/);
+    await expect(page.getByTestId("contract-row").filter({ hasText: title })).toHaveCount(0);
   });
 });

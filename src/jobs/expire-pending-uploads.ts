@@ -21,16 +21,15 @@ export async function expirePendingUploads(
     { type: "system", job: "expire-pending-uploads" },
     `expire PENDING file objects older than ${olderThanMinutes} min`,
     async (tx) => {
-      const stale = await tx.fileObject.findMany({
-        where: { status: "PENDING", createdAt: { lt: cutoff } },
-        select: { id: true, r2Key: true },
-      });
-      if (stale.length === 0) return [];
-      await tx.fileObject.updateMany({
-        where: { id: { in: stale.map((s) => s.id) }, status: "PENDING" },
-        data: { status: "DELETED" },
-      });
-      return stale.map((s) => s.r2Key);
+      // ONE statement, and only the rows IT flipped hand back their key (the
+      // slice-112c pre-apply review): a SELECT then an UPDATE deleted the
+      // bytes of every row the SELECT saw — a commit landing between the two
+      // kept its row COMMITTED and lost its file for good.
+      const flipped = await tx.$queryRaw<{ r2_key: string }[]>`
+        UPDATE file_object SET status = 'DELETED'
+         WHERE status = 'PENDING' AND created_at < ${cutoff}
+        RETURNING r2_key`;
+      return flipped.map((r) => r.r2_key);
     },
     { readOnly: false },
   );

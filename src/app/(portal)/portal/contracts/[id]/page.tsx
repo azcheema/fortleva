@@ -96,8 +96,8 @@ export default async function PortalContractPage({
 
           <SectionCard title={t("facts")}>
             <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2" data-testid="portal-contract-facts">
-              <Fact label={t("versionLabel")} value={String(contract.version)} />
-              <Fact label={t("sent")} value={moment(contract.sentAt)} />
+              {contract.origin === "WRITTEN" ? <Fact label={t("versionLabel")} value={String(contract.version)} /> : null}
+              {contract.sentAt ? <Fact label={t("sent")} value={moment(contract.sentAt)} /> : null}
               {contract.signedOn ? <Fact label={t("signed")} value={day(contract.signedOn)} /> : null}
               {contract.startsOn ? <Fact label={t("starts")} value={day(contract.startsOn)} /> : null}
               {contract.endsOn ? <Fact label={t("ends")} value={day(contract.endsOn)} /> : null}
@@ -112,7 +112,7 @@ export default async function PortalContractPage({
                 <p className="text-xs text-muted-foreground" data-testid="portal-contract-preparing">
                   {t("signedCopyPreparing")}
                 </p>
-              ) : !contract.pdfReady ? (
+              ) : contract.origin === "WRITTEN" && !contract.pdfReady ? (
                 <p className="text-xs text-muted-foreground" data-testid="portal-contract-preparing">
                   {t("pdfPreparing")}
                 </p>
@@ -138,10 +138,15 @@ export default async function PortalContractPage({
             </SectionCard>
           ) : null}
 
-          <SectionCard title={t("text")}>
-            <RichText doc={contract.body} data-testid="portal-contract-body" />
-          </SectionCard>
+          {/* A contract signed elsewhere (slice 112c) has no text, parties,
+              signatures or fingerprint here: its PDF is the record. */}
+          {contract.body !== null ? (
+            <SectionCard title={t("text")}>
+              <RichText doc={contract.body} data-testid="portal-contract-body" />
+            </SectionCard>
+          ) : null}
 
+          {contract.signatures.length > 0 ? (
           <SectionCard title={t("signatures")}>
             <ul className="flex flex-col gap-4" data-testid="portal-contract-signatures">
               {contract.signatures.map((s) => (
@@ -158,6 +163,7 @@ export default async function PortalContractPage({
               </div>
             ) : null}
           </SectionCard>
+          ) : null}
         </div>
       </Page>
     </PortalFrame>
@@ -216,7 +222,13 @@ function Outcome({
     case "SIGNED":
       return (
         <Callout tone="success">
-          {contract.signedOn ? t("outcome.signedOn", { date: day(contract.signedOn) }) : t("outcome.signed")}
+          {contract.origin === "UPLOADED"
+            ? contract.signedOn
+              ? t("outcome.signedElsewhereOn", { date: day(contract.signedOn) })
+              : t("outcome.signedElsewhere")
+            : contract.signedOn
+              ? t("outcome.signedOn", { date: day(contract.signedOn) })
+              : t("outcome.signed")}
         </Callout>
       );
     case "DECLINED":

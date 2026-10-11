@@ -1,16 +1,15 @@
 import type { Metadata } from "next";
 import { FileSignatureIcon, LayoutTemplateIcon } from "lucide-react";
 import Link from "next/link";
-import { getFormatter, getTranslations } from "next-intl/server";
+import { getTranslations } from "next-intl/server";
 
 import { AuthzError } from "@/authz/errors";
-import { DataTable, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
-import { Badge } from "@/components/ui/badge";
+import { EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   CONTRACT_LIST_LIMIT,
+  CONTRACT_UPLOAD_MAX_BYTES,
   contractVerbs,
   listContractClients,
   listContracts,
@@ -18,7 +17,9 @@ import {
   type ContractListRow,
 } from "@/modules/contracts";
 
+import { ContractTable } from "./contract-table";
 import { NewContract } from "./new-contract";
+import { UploadContract } from "./upload-contract";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("contracts.list");
@@ -37,9 +38,7 @@ export default async function ContractsPage() {
   const { membership, actor } = await requireTenantContext();
   const ctx = { tenantId: membership.tenantId, actor };
   const t = await getTranslations("contracts.list");
-  const tStatus = await getTranslations("contracts.status");
   const tCommon = await getTranslations("common");
-  const format = await getFormatter();
 
   let listed: { rows: readonly ContractListRow[]; more: boolean } | null = null;
   try {
@@ -71,13 +70,19 @@ export default async function ContractsPage() {
         title={t("title")}
         description={t("description")}
         actions={
-          verbs.manageTemplates ? (
-            <Button asChild size="sm" variant="outline">
-              <Link href="/settings/contracts" data-testid="open-contract-templates">
-                <LayoutTemplateIcon aria-hidden />
-                {t("templates")}
-              </Link>
-            </Button>
+          verbs.manageTemplates || (verbs.create && clients.length > 0) ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Slice 112c (C84 (f)): a contract signed elsewhere, put in with its PDF. */}
+              {verbs.create && clients.length > 0 ? <UploadContract clients={clients} maxBytes={CONTRACT_UPLOAD_MAX_BYTES} /> : null}
+              {verbs.manageTemplates ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/settings/contracts" data-testid="open-contract-templates">
+                    <LayoutTemplateIcon aria-hidden />
+                    {t("templates")}
+                  </Link>
+                </Button>
+              ) : null}
+            </div>
           ) : null
         }
       />
@@ -109,51 +114,7 @@ export default async function ContractsPage() {
               <EmptyState variant="filtered" icon={FileSignatureIcon} title={t("empty")} />
             )
           ) : (
-            <DataTable flush scrollLabel={t("listTitle")}>
-              <Table data-testid="contract-list">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("columns.title")}</TableHead>
-                    <TableHead priority="medium">{t("columns.client")}</TableHead>
-                    <TableHead>{t("columns.status")}</TableHead>
-                    <TableHead priority="low" className="w-[8ch]">
-                      {t("columns.version")}
-                    </TableHead>
-                    <TableHead priority="low">{t("columns.updated")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((r) => (
-                    <TableRow key={r.id} data-testid="contract-row" data-contract-id={r.id} data-status={r.status}>
-                      {/* The title YIELDS (`contain-inline-size`): a long one never widens the card. */}
-                      <TableCell className="min-w-24">
-                        <div className="flex w-full min-w-0 contain-inline-size">
-                          <Link
-                            href={`/contracts/${r.id}`}
-                            title={r.title}
-                            className="min-w-0 truncate rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                          >
-                            {r.title}
-                          </Link>
-                        </div>
-                      </TableCell>
-                      <TableCell priority="medium" className="max-w-48 truncate text-muted-foreground">
-                        {r.client.name}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <Badge variant={r.status === "DRAFT" ? "neutral" : "brand"}>{tStatus(r.status)}</Badge>
-                      </TableCell>
-                      <TableCell priority="low" className="num whitespace-nowrap text-muted-foreground">
-                        {t("versionValue", { version: r.version })}
-                      </TableCell>
-                      <TableCell priority="low" className="num whitespace-nowrap text-muted-foreground">
-                        {format.dateTime(r.updatedAt, { dateStyle: "medium" })}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </DataTable>
+            <ContractTable rows={rows} showClient label={t("listTitle")} />
           )}
         </SectionCard>
         {listed.more ? (

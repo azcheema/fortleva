@@ -3,14 +3,21 @@
 import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 
+import { AuthzError } from "@/authz/errors";
 import { isUuid } from "@/db/context";
 import { DomainError } from "@/lib/domain-error";
 import { caution, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
   changeSentContract,
+  commitContractUpload,
   contractPdfUrl,
   deleteContractDraft,
+  deleteUploadedContract,
+  presignContractUpload,
+  setUploadedContractShown,
+  updateUploadedContract,
+  type ContractUploadTicket,
   ensureContractPdf,
   listContractSigners,
   newContractVersion,
@@ -33,6 +40,8 @@ import {
  */
 
 const LIST = "/contracts";
+/** Every client's Contracts tab (slice 112c) — the route's FILE path, route groups included (Next 16's page tags). */
+const CLIENT_TAB = "/(tenant)/(authed)/clients/[id]/contracts";
 const pageOf = (id: string) => `/contracts/${id}`;
 
 const ctxOf = async () => {
@@ -177,4 +186,90 @@ export async function contractPdfUrlAction(id: unknown, kind: unknown): Promise<
   if (!r.ok) return r;
   if (r.value.created) revalidatePath(pageOf(id));
   return { ok: true, value: r.value.url };
+}
+
+/**
+ * A CONTRACT SIGNED ELSEWHERE (slice 112c; C84 (f), C86): step 1 of putting one
+ * in — a presigned PUT for the signed PDF. The browser PUTs the bytes straight
+ * to the bucket, then commits (step 3) with the details.
+ */
+export async function presignContractUploadAction(input: unknown): Promise<ActionResult<ContractUploadTicket>> {
+  if (typeof input !== "object" || input === null) return invalid();
+  const { clientId, fileName, contentType, sizeBytes, sha256 } = input as Record<string, unknown>;
+  const ctx = await ctxOf();
+  return runAction(LIST, () => presignContractUpload(ctx, { clientId, fileName, contentType, sizeBytes, sha256 }));
+}
+
+/** Step 3: the stored bytes checked, the contract put in (SIGNED, not shown) — its id comes back so the dialog opens it. */
+export async function commitContractUploadAction(input: unknown): Promise<ActionResult<string> & { readonly uploadGone?: boolean }> {
+  if (typeof input !== "object" || input === null) return invalid();
+  const { fileObjectId, clientId, title, signedOn, startsOn, endsOn } = input as Record<string, unknown>;
+  const ctx = await ctxOf();
+  // Whether the uploaded file can still be committed: refused as a file (not
+  // a PDF, not the bytes announced) or already gone, it cannot — the dialog
+  // then uploads afresh rather than trying it again (the fix re-check's low).
+  let uploadGone = false;
+  const r = await runAction(LIST, async () => {
+    try {
+      return (await commitContractUpload(ctx, { fileObjectId, clientId, title, signedOn, startsOn, endsOn })).id;
+    } catch (e) {
+      if ((e instanceof DomainError && e.code === "CONTRACT_UPLOAD_INVALID") || (e instanceof AuthzError && e.reason === "NOT_FOUND")) {
+        uploadGone = true;
+      }
+      throw e;
+    }
+  });
+  if (!r.ok) return { ...r, uploadGone };
+  revalidatePath(LIST);
+  if (typeof clientId === "string" && isUuid(clientId)) revalidatePath(`/clients/${clientId}/contracts`);
+  return r;
+}
+
+/** Its title, the day it was signed, its term (`contract:edit`). */
+export async function saveUploadedContractAction(id: unknown, input: unknown): Promise<FormResult> {
+  if (typeof id !== "string" || !isUuid(id) || typeof input !== "object" || input === null) return invalid();
+  const { title, signedOn, startsOn, endsOn } = input as Record<string, unknown>;
+  const ctx = await ctxOf();
+  const t = await getTranslations("contracts.uploaded");
+  const r = await runForm(pageOf(id), async () => {
+    await updateUploadedContract(ctx, id, { title, signedOn, startsOn, endsOn });
+    return t("saved");
+  });
+  if (r.ok) {
+    revalidatePath(pageOf(id));
+    revalidatePath(CLIENT_TAB, "page");
+  }
+  return r;
+}
+
+/** Show it to the client's main contacts in their portal, or hide it (`contract:send` — C86 (a)). */
+export async function setContractShownAction(id: unknown, shown: unknown): Promise<FormResult> {
+  if (typeof id !== "string" || !isUuid(id) || typeof shown !== "boolean") return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("contracts.uploaded");
+  const r = await runForm(pageOf(id), async () => {
+    await setUploadedContractShown(ctx, id, shown);
+    return shown ? t("shownNow") : t("hiddenNow");
+  });
+  if (r.ok) {
+    revalidatePath(pageOf(id));
+    revalidatePath(CLIENT_TAB, "page");
+  }
+  return r;
+}
+
+/** Delete one that was put in wrong, with its file (`contract:delete` — C86 (b)). */
+export async function deleteUploadedContractAction(id: unknown): Promise<FormResult> {
+  if (typeof id !== "string" || !isUuid(id)) return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("contracts.uploaded");
+  const r = await runForm(LIST, async () => {
+    await deleteUploadedContract(ctx, id);
+    return t("deleted");
+  });
+  if (r.ok) {
+    revalidatePath(LIST);
+    revalidatePath(CLIENT_TAB, "page");
+  }
+  return r;
 }

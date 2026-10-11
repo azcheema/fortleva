@@ -1801,6 +1801,8 @@
     "CONTRACT_NOT_READY": "That contract isn't ready yet. Reload the page.",
     "CONTRACT_FILL_INS_LEFT": "Some fill-ins are still in the text. Replace them with the right details first.",
     "CONTRACT_NOT_OPEN": "That contract is no longer waiting for a signature. Reload the page.",
+    "CONTRACT_UPLOAD_INVALID": "That file isn't a PDF, or it changed while it was uploading. Choose the signed PDF and try again.",
+    "CONTRACT_NOT_UPLOADED": "That can only be done to a contract signed outside Fortleva.",
     "CONTRACT_NOT_REPLACEABLE": "Only a declined or withdrawn contract can get a new version, and only once. Reload the page.",
     "CONTRACT_PDF_UNAVAILABLE": "The contract's PDF couldn't be made just now. Try again in a moment."
   },
@@ -1856,6 +1858,7 @@
       "contacts": "Contacts",
       "files": "Files",
       "agreements": "Agreements",
+      "contracts": "Contracts",
       "vault": "Vault",
       "assets": "Assets"
     },
@@ -2033,6 +2036,14 @@
         "emptyBody": "Add a rate card to an agreement; time on that agreement carries it.",
         "add": "Add an agreement rate"
       }
+    },
+    "contracts": {
+      "title": "Contracts",
+      "description": "Contracts with this client — written in Fortleva, or signed elsewhere and put in.",
+      "write": "Write a contract",
+      "empty": "No contracts with this client yet",
+      "emptyBody": "Write one in Fortleva, or put in one that was signed elsewhere.",
+      "limited": "Showing the {count} most recently changed."
     }
   },
   "projects": {
@@ -3679,6 +3690,7 @@
       "truncated": "Showing the newest {count}.",
       "version": "Version {version}",
       "sentOn": "Sent {date}",
+      "signedElsewhereOn": "Signed {date}, outside Fortleva",
       "state": {
         "SENT": "Waiting for signature",
         "SENT_YOU": "Waiting for your signature",
@@ -3714,6 +3726,8 @@
         "waitingFor": "Waiting for {name} to sign.",
         "signed": "Signed by both sides.",
         "signedOn": "Signed by both sides on {date}.",
+        "signedElsewhere": "Signed outside Fortleva. The signed PDF is below.",
+        "signedElsewhereOn": "Signed outside Fortleva on {date}. The signed PDF is below.",
         "declined": "This contract was declined. Your agency has been told.",
         "withdrawn": "Your agency withdrew this contract. It can no longer be signed."
       },
@@ -5543,7 +5557,9 @@
         "version": "Version",
         "updated": "Changed"
       },
-      "versionValue": "v{version}"
+      "versionValue": "v{version}",
+      "columnEnds": "Ends",
+      "none": "—"
     },
     "status": {
       "DRAFT": "Draft",
@@ -5602,7 +5618,8 @@
       "fromTemplate": "Started from {name}",
       "toSend": "To send it: save, choose who signs, and replace every fill-in.",
       "replaces": "Replaces version {version}",
-      "replacedBy": "Replaced by version {version}"
+      "replacedBy": "Replaced by version {version}",
+      "signedElsewhere": "Signed elsewhere"
     },
     "fillIns": {
       "insert": "Insert fill-in",
@@ -5682,6 +5699,60 @@
       "declinedReason": "Their reason: “{reason}”",
       "declinedNoReason": "They gave no reason.",
       "unreachable": "Fortleva couldn't be reached. Check your connection and try again."
+    },
+    "uploaded": {
+      "badge": "Signed elsewhere",
+      "title": "Signed outside Fortleva",
+      "intro": "This contract was signed on paper or in another tool. Its signed PDF is the record; the file can't be replaced.",
+      "download": "Download signed PDF",
+      "menu": "Contract actions",
+      "delete": "Delete…",
+      "deleteConfirm": "Delete this contract and its PDF? If it was put in wrong, put it in again afterwards. This can't be undone.",
+      "deleted": "Deleted.",
+      "showTitle": "Client portal",
+      "showLabel": "Show to the client",
+      "showOn": "Shown: the client's main contacts can see this contract — its title and dates — and download its PDF in their portal.",
+      "showOff": "Not shown: nobody at the client can see it.",
+      "showNoPermission": "Only people who can send contracts can show one to the client.",
+      "shownNow": "Shown to the client.",
+      "hiddenNow": "Hidden from the client.",
+      "detailsTitle": "Details",
+      "contractTitle": "Title",
+      "signedOn": "Signed on",
+      "startsOn": "Starts",
+      "endsOn": "Ends",
+      "save": "Save",
+      "saved": "Saved.",
+      "noEdit": "You can't change these details.",
+      "unreachable": "Fortleva couldn't be reached. Check your connection and try again."
+    },
+    "upload": {
+      "button": "Put in a signed contract…",
+      "title": "Put in a signed contract",
+      "body": "For a contract signed on paper or in another tool. It's saved as signed, and the client doesn't see it until you choose to show it.",
+      "client": "Client",
+      "chooseClient": "Choose a client",
+      "contractTitle": "Title",
+      "signedOn": "Signed on",
+      "startsOn": "Starts",
+      "endsOn": "Ends",
+      "file": "Signed PDF",
+      "confirm": "Put in",
+      "done": "Contract put in.",
+      "empty": "That file is empty. Choose the signed PDF.",
+      "notPdf": "Choose a PDF file.",
+      "tooLarge": "The PDF can be at most {mb} MB.",
+      "failed": "The file couldn't be uploaded. Try again.",
+      "steps": {
+        "preparing": "Preparing…",
+        "uploading": "Uploading…",
+        "finishing": "Finishing…"
+      },
+      "dropHint": "Drop the signed PDF here, or choose it. PDF only, up to {mb} MB.",
+      "dropNow": "Drop it to choose it",
+      "choose": "Choose PDF",
+      "signedLater": "The day it was signed can't be after today.",
+      "endsBefore": "The end date is before the start date."
     }
   },
   "contractPdf": {

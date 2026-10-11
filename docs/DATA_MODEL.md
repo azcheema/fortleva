@@ -1482,6 +1482,16 @@ model ContractSignature {
 //     no member id); the client signer signs or declines under their own
 //     principal (`portal-sign.ts`), the sender is told and the signed copy
 //     drawn and mailed by an announcer (`sign-announce.ts`).
+//   - SLICE 112c (migration 20261014090000, C84 (f), C86): a contract SIGNED
+//     ELSEWHERE is put in as `origin = UPLOADED`, born SIGNED and NOT shown,
+//     with no signatures — its `signed_pdf_file_id` (a COMMITTED CONTRACT_PDF
+//     the putting-in member recorded, at a key no presigned URL names: the
+//     server re-writes the bytes it checked) is the record. Its title, signing
+//     day and term stay editable (`contract:edit`); `shown_to_client` is the
+//     client-facing switch (`contract:send`); a wrong one is deleted with its
+//     file (`contract:delete`). CHECKs `contract_upload_bare` (nothing of a
+//     written contract's life) and `contract_signing_day_floor`; the file
+//     guard now freezes a contract PDF's recorder and dates too.
 
 // ───────────────────────────────────────────────────────────────────
 // 6.7 INVOICING (§6, §10.2) — an invoice LEDGER, not an accounting

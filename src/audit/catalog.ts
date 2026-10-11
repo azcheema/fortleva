@@ -191,6 +191,14 @@ export const AUDIT_EVENTS = {
   // `invoice.pdf_downloaded`). `contract.signed` / `contract.declined` above
   // are the client signer's own, written under the contact in the census write.
   "contract.pdf_downloaded": TENANT,
+  // Slice 112c (C84 (f), C86): a contract signed ELSEWHERE — put in with its
+  // signed PDF, its details edited, shown to the client or hidden (a
+  // visibility change, always a row), deleted. Ids, fields, on/off — never
+  // the title or the file's name.
+  "contract.uploaded": TENANT,
+  "contract.uploaded_edited": TENANT,
+  "contract.shown_changed": TENANT,
+  "contract.uploaded_deleted": TENANT,
   "invoice.issued": TENANT,
   "invoice.sent": TENANT,
   "invoice.paid": TENANT,

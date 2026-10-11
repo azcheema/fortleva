@@ -13,6 +13,7 @@ import { contractVerbs, readContract, type ContractDetail } from "@/modules/cont
 import { ContractDraftMenu } from "./draft-menu";
 import { DraftEditor } from "./draft-editor";
 import { SentContract } from "./sent-contract";
+import { UploadedContract } from "./uploaded-contract";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("contracts.draft");
@@ -27,7 +28,9 @@ const LINK =
  * editor: the details, the text, the fill-ins still in it, Preview PDF,
  * Delete draft for `contract:delete`, and Send for signature… for
  * `contract:send` (slice 112b). Once sent it is the sent contract: its
- * signatures, its PDFs, its text read-only, and its verbs (`SentContract`). `contract:view` and the client in
+ * signatures, its PDFs, its text read-only, and its verbs (`SentContract`).
+ * Signed ELSEWHERE (slice 112c, C86) it is that record: its file, its
+ * details, Show to the client, Delete (`UploadedContract`). `contract:view` and the client in
  * DIRECT scope, else not found (the service decides; the page never says
  * which gate).
  */
@@ -63,6 +66,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
   const verbs = await contractVerbs(ctx);
   const draft = contract.status === "DRAFT";
+  const uploaded = contract.origin === "UPLOADED";
   const signerGone = contract.signerContactId !== null && contract.signer === null;
 
   return (
@@ -84,6 +88,11 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             <Badge variant={draft ? "neutral" : "brand"} data-testid="contract-status">
               {draft ? t("draftBadge") : tStatus(contract.status)}
             </Badge>
+            {uploaded ? (
+              <Badge variant="neutral" data-testid="contract-signed-elsewhere">
+                {t("signedElsewhere")}
+              </Badge>
+            ) : null}
             {draft && verbs.delete ? <ContractDraftMenu contractId={contract.id} /> : null}
           </div>
         }
@@ -104,7 +113,22 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             ) : null}
           </p>
         ) : null}
-        {!draft ? (
+        {uploaded ? (
+          <UploadedContract
+            contractId={contract.id}
+            stored={{
+              title: contract.title,
+              signedOn: contract.signedOn ?? "",
+              startsOn: contract.startsOn ?? "",
+              endsOn: contract.endsOn ?? "",
+            }}
+            shown={contract.shownToClient}
+            canEdit={verbs.edit}
+            canShow={verbs.send}
+            canDelete={verbs.delete}
+          />
+        ) : null}
+        {!draft && !uploaded ? (
           <SentContract
             contractId={contract.id}
             status={contract.status}

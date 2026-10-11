@@ -366,12 +366,19 @@ export async function authorizePortal(
     });
     if (!row) deny("NOT_FOUND", "invoice");
   } else if (ref?.kind === "contract") {
-    // Client, not a draft and SENT are `portal_gate`'s, a main contact
+    // Client, not a draft, and written-and-SENT or signed-elsewhere-and-SHOWN
+    // (slice 112c) are `portal_gate`'s, a main contact
     // `portal_contract_primary`'s; the terms are restated, as every probe
-    // restates its gate — WRITTEN only until slice 112c shows uploaded ones.
-    // No project term: a contract is the client's, not a project's.
+    // restates its gate. No project term: a contract is the client's.
     const row = await tx.contract.findFirst({
-      where: { id: ref.contractId, origin: "WRITTEN", status: { not: "DRAFT" }, sentAt: { not: null } },
+      where: {
+        id: ref.contractId,
+        status: { not: "DRAFT" },
+        OR: [
+          { origin: "WRITTEN", sentAt: { not: null } },
+          { origin: "UPLOADED", shownToClient: true },
+        ],
+      },
       select: { id: true },
     });
     if (!row) deny("NOT_FOUND", "contract");

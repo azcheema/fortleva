@@ -69,8 +69,17 @@ export default async function PortalContractsPage() {
                           {c.title}
                         </Link>
                         <span className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                          <span>{t("version", { version: c.version })}</span>
-                          <span className="num">{t("sentOn", { date: format.dateTime(c.sentAt, { dateStyle: "medium" }) })}</span>
+                          {c.origin === "WRITTEN" ? <span>{t("version", { version: c.version })}</span> : null}
+                          {c.sentAt ? (
+                            <span className="num">{t("sentOn", { date: format.dateTime(c.sentAt, { dateStyle: "medium" }) })}</span>
+                          ) : c.signedOn ? (
+                            // Signed elsewhere (slice 112c): the day it was signed, a stored day.
+                            <span className="num">
+                              {t("signedElsewhereOn", {
+                                date: format.dateTime(new Date(`${c.signedOn}T00:00:00Z`), { dateStyle: "medium", timeZone: "UTC" }),
+                              })}
+                            </span>
+                          ) : null}
                         </span>
                       </span>
                       <ContractStateBadge status={c.status} waitingForYou={c.waitingForYou} />

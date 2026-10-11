@@ -270,6 +270,9 @@ const DBTEST_PREFIXES = [
   // Phase 4 slice 112b2, the client's side of a contract — `src/modules/contracts/contract-portal.dbtest.ts`,
   // `setupTenant("ctrportal")`.
   "ctrportal-",
+  // Phase 4 slice 112c, contracts signed elsewhere — `src/modules/contracts/contract-uploads.dbtest.ts`,
+  // `setupTenant("ctrupload")`.
+  "ctrupload-",
   "split-",
   "switch-",
   "tadmin-",
@@ -3387,6 +3390,57 @@ async function clearPortalSubmissions(tenantId: string, contactEmail: string): P
 }
 
 /**
+ * A CONTRACT SIGNED ELSEWHERE for `contracts.spec.ts` (Phase 4 slice 112c, C86):
+ * put in for the seeded client through the REAL service — presign, the
+ * browser's PUT and the commit — as the owner, with this process's own
+ * temp-dir file storage (the browser harness has none: the app server never
+ * reads these bytes; the spec does not download them). It is born SIGNED and
+ * not shown, as every one is. `e2e-` tenants only.
+ */
+async function plantUploadedContract(tenantId: string, clientId: string, memberId: string, title: string): Promise<void> {
+  if (!tenantId || !clientId || !memberId || !title) throw new Error("plant-uploaded-contract: a tenant, a client, a member and a title");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { LocalDiskTransport, setStorage } = await import("../../src/storage");
+  const { commitContractUpload, presignContractUpload } = await import("../../src/modules/contracts");
+  const storageDir = join(tmpdir(), `fortleva-e2e-contract-${randomUUID().slice(0, 8)}`);
+  mkdirSync(storageDir, { recursive: true });
+  const storage = new LocalDiskTransport(storageDir);
+  setStorage(storage);
+  const ctx = { tenantId, actor: { memberId, mfa: { enrolled: true, verifiedAt: new Date() } } };
+  const body = new Uint8Array(Buffer.from(`%PDF-1.4\n% ${title}\ntrailer << >>\n%%EOF\n`, "latin1"));
+  const ticket = await presignContractUpload(ctx, {
+    clientId,
+    fileName: "signed-on-paper.pdf",
+    contentType: "application/pdf",
+    sizeBytes: body.byteLength,
+    sha256: createHash("sha256").update(body).digest("hex"),
+  });
+  const key = new URL(ticket.uploadUrl, "http://localhost").pathname
+    .replace(/^\/api\/dev-storage\//, "")
+    .split("/")
+    .map(decodeURIComponent)
+    .join("/");
+  const res = await storage.handlePut(
+    new Request(new URL(ticket.uploadUrl, "http://localhost"), { method: "PUT", headers: { ...ticket.headers }, body: Buffer.from(body) }),
+    key,
+  );
+  if (res.status !== 200) throw new Error(`plant-uploaded-contract: upload failed: ${res.status}`);
+  const { id } = await commitContractUpload(ctx, {
+    fileObjectId: ticket.fileObjectId,
+    clientId,
+    title,
+    signedOn: "2024-05-02",
+    startsOn: "2024-06-01",
+    endsOn: "2027-05-31",
+  });
+  setStorage(null);
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ id })}\n`);
+}
+
+/**
  * Hand the fixture back after `contracts.spec.ts`'s portal half (Phase 4 slice
  * 112b2): the agency's `contract.signed` / `contract.declined` notifications
  * and the mails they carried, and the client signer's two contract mails — so
@@ -3614,6 +3668,7 @@ const main = async (): Promise<void> => {
   if (command === "clear-portal-submissions") return clearPortalSubmissions(argument!, process.argv[4]!);
   if (command === "clear-login-asks") return clearLoginAsks(argument!, process.argv[4]!);
   if (command === "clear-contract-notices") return clearContractNotices(argument!);
+  if (command === "plant-uploaded-contract") return plantUploadedContract(argument!, process.argv[4]!, process.argv[5]!, process.argv[6]!);
   if (command === "client-summary-link") return clientSummaryLink(argument!, process.argv[4]!);
   if (command === "suppress-address") return suppressAddress(argument!, process.argv[4]!);
   if (command === "clear-undeliverable") return clearUndeliverable(argument!, process.argv[4]!);

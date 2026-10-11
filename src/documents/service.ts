@@ -83,7 +83,7 @@ const storageKeyFor = (tenantId: string, fileObjectId: string): string =>
  * COMMITTED bytes + PENDING reservations + this upload must fit under
  * entitlements.limits.maxStorageBytes. Unlimited (null) always passes.
  */
-async function enforceStorageQuota(
+export async function enforceStorageQuota(
   tx: TenantDb,
   tenantId: string,
   incomingBytes: number,
@@ -272,7 +272,10 @@ async function commitFileObject(
   // Pass 1: authorize + find the pending object (permission before existence).
   const pending = await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:upload");
-    const obj = await tx.fileObject.findFirst({ where: { id: fileObjectId } });
+    // The member's OWN upload, a plain file (slice 112c's security review): a
+    // placeholder is presigned for one member, and a contract's is not a
+    // document to be committed by someone who learned its id.
+    const obj = await tx.fileObject.findFirst({ where: { id: fileObjectId, kind: "GENERAL", createdByMemberId: ctx.actor.memberId } });
     if (!obj) deny("NOT_FOUND");
     if (obj!.status !== "PENDING") throw new DocumentError("NOT_PENDING", obj!.status);
     return { key: obj!.r2Key, sizeBytes: Number(obj!.sizeBytes) };
@@ -305,7 +308,7 @@ async function commitFileObject(
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:upload");
     const flipped = await tx.fileObject.updateMany({
-      where: { id: fileObjectId, status: "PENDING" },
+      where: { id: fileObjectId, status: "PENDING", kind: "GENERAL", createdByMemberId: ctx.actor.memberId },
       data: { status: "COMMITTED", committedAt: new Date() },
     });
     if (flipped.count !== 1) throw new DocumentError("NOT_PENDING", "raced");

@@ -28,6 +28,18 @@ export { contractPreviewPdf } from "./preview";
 // sweep import it, from `./pdf-store` — never a portal route.
 export { contractPdfUrl, ensureContractPdf, makeMissingContractPdfs, type ContractPdfKind } from "./pdf-store";
 export { changeSentContract, newContractVersion, sendContract, TYPED_NAME_MAX, withdrawContract } from "./send";
+export {
+  commitContractUpload,
+  CONTRACT_UPLOAD_MAX_BYTES,
+  deleteUploadedContract,
+  presignContractUpload,
+  setUploadedContractShown,
+  updateUploadedContract,
+  type ContractUploadCommit,
+  type ContractUploadIntent,
+  type ContractUploadTicket,
+  type UploadedDetails,
+} from "./uploads";
 export type { SignerOption } from "./signers";
 export {
   createContractTemplate,

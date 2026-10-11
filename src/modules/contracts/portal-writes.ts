@@ -9,6 +9,8 @@ import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal"
 import { allow } from "@/ratelimit";
 import { getStorage } from "@/storage";
 
+import { uploadedContractPdfName } from "./print";
+
 /**
  * THE CONTRACTS MODULE'S PORTAL BROKER (Phase 4 slice 112b2; founder decision
  * C85 (b)) — what a client's contract needs that a contact's own transaction
@@ -63,15 +65,24 @@ export async function resolvePortalContractPdf(
         const contract = await tx.contract.findFirst({
           where: {
             id: contractId,
-            // `portal_gate`'s terms, restated for a SYSTEM read — and SIGNED for the signed copy.
+            // `portal_gate`'s terms, restated for a SYSTEM read — and SIGNED
+            // for the signed copy. A contract signed elsewhere (slice 112c)
+            // only while SHOWN, and only its signed copy: it has no PDF as sent.
             tenantId: principal.tenantId,
             clientId: principal.clientId,
-            origin: "WRITTEN",
-            sentAt: { not: null },
             status: kind === "signed" ? "SIGNED" : { not: "DRAFT" },
+            OR:
+              kind === "signed"
+                ? [
+                    { origin: "WRITTEN", sentAt: { not: null } },
+                    { origin: "UPLOADED", shownToClient: true },
+                  ]
+                : [{ origin: "WRITTEN", sentAt: { not: null } }],
           },
           select: {
             id: true,
+            title: true,
+            origin: true,
             pdfFile: { select: { id: true, r2Key: true, originalFilename: true, status: true } },
             signedPdf: { select: { id: true, r2Key: true, originalFilename: true, status: true } },
           },
@@ -87,7 +98,11 @@ export async function resolvePortalContractPdf(
           // Ids only, never the file name (SECURITY §7).
           metadata: { kind, fileObjectId: file.id, clientId: principal.clientId },
         });
-        return { key: file.r2Key, filename: file.originalFilename ?? `${contract.id}.pdf` };
+        // A contract signed elsewhere downloads under its CURRENT title, never
+        // the name of the file someone put in (slice 112c).
+        const filename =
+          contract.origin === "UPLOADED" ? uploadedContractPdfName(contract.title) : (file.originalFilename ?? `${contract.id}.pdf`);
+        return { key: file.r2Key, filename };
       },
       { lockTimeoutMs: PORTAL_LOCK_WAIT_MS },
     );

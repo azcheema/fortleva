@@ -110,13 +110,25 @@ export type ContractPrint = {
 
 /** A file name a person recognises, safe on every filesystem. */
 export function contractPdfFileName(title: string, version: number): string {
-  const slug =
+  return `${titleSlug(title)}-v${version}.pdf`;
+}
+
+/**
+ * What a contract SIGNED ELSEWHERE downloads as (slice 112c): its title,
+ * "-signed.pdf" — never the uploader's own file name, which a client would
+ * otherwise read (the pre-apply review's low).
+ */
+export const uploadedContractPdfName = (title: string): string => `${titleSlug(title)}-signed.pdf`;
+
+/** A title as a file name's stem, safe on every filesystem. */
+function titleSlug(title: string): string {
+  return (
     title
       .normalize("NFKD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^A-Za-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 60)
-      .toLowerCase() || "contract";
-  return `${slug}-v${version}.pdf`;
+      .toLowerCase() || "contract"
+  );
 }
