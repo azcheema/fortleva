@@ -32,6 +32,20 @@ export const focusSignaturesNext = (): void => {
 };
 
 /**
+ * The request, consumed: true when one is fresh. A PLAIN function, never inline
+ * in the component (slice 112b2, AGENTS.md's standing trap): the React
+ * Compiler treats a module-level binding as a constant and would turn
+ * `const asked = focusRequestedAt; focusRequestedAt = 0; … asked` into a read
+ * of the variable AFTER its reset — this hand-off would then never happen, with
+ * nothing to say so. It worked only because the compiler skips this component.
+ */
+function takeSignaturesFocus(): boolean {
+  const asked = focusRequestedAt;
+  focusRequestedAt = 0;
+  return asked !== 0 && Date.now() - asked <= FOCUS_REQUEST_MS;
+}
+
+/**
  * A SENT CONTRACT (Phase 4 slice 112b; C84) — what it is now and who signed:
  * the agency's signature (the sender, at sending) and the client's (waiting,
  * signed or declined, with the reason when one was given); the PDF as sent and,
@@ -68,10 +82,7 @@ export function SentContract({
   const [busy, setBusy] = useState<"sent" | "signed" | null>(null);
   const [, start] = useTransition();
   useEffect(() => {
-    const asked = focusRequestedAt;
-    focusRequestedAt = 0;
-    if (asked === 0 || Date.now() - asked > FOCUS_REQUEST_MS) return;
-    document.getElementById(SENT_HEADING_ID)?.focus();
+    if (takeSignaturesFocus()) document.getElementById(SENT_HEADING_ID)?.focus();
   }, []);
 
   /** An action's call, its failure a toast — never the error boundary, never a revert-looking silence. */

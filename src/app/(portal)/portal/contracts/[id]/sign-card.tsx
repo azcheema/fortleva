@@ -36,14 +36,32 @@ import { OUTCOME_ID } from "./outcome-id";
 const FOCUS_REQUEST_MS = 5_000;
 let focusRequest: { readonly contractId: string; readonly at: number } | null = null;
 
+/*
+ * READ AND CLEARED ONLY IN THESE TWO PLAIN FUNCTIONS, never inside a component
+ * or a hook (CI run 38132836202; AGENTS.md's standing trap): the React
+ * Compiler's constant propagation treats a module-level binding as a constant,
+ * so `const asked = focusRequest; …; focusRequest = null; … asked.at` inside
+ * `OutcomeFocus`'s effect became `h = null, … h.at` — the local replaced by
+ * the module variable it copied, read AFTER the write — and the client's page
+ * died with "Cannot read properties of null (reading 'at')" the moment they
+ * signed. The compiler does not compile a plain function.
+ */
+function requestOutcomeFocus(contractId: string): void {
+  focusRequest = { contractId, at: Date.now() };
+}
+
+/** This tab's request, consumed: true when it was THIS contract's and is fresh. */
+function takeOutcomeFocus(contractId: string): boolean {
+  const asked = focusRequest;
+  if (asked === null || asked.contractId !== contractId) return false;
+  focusRequest = null;
+  return Date.now() - asked.at <= FOCUS_REQUEST_MS;
+}
+
 /** Rendered by the page beside the outcome line: takes focus when a decision made here, on THIS contract, asked it to. */
 export function OutcomeFocus({ contractId }: { contractId: string }) {
   useEffect(() => {
-    const asked = focusRequest;
-    if (asked?.contractId !== contractId) return;
-    focusRequest = null;
-    if (Date.now() - asked.at > FOCUS_REQUEST_MS) return;
-    document.getElementById(OUTCOME_ID)?.focus();
+    if (takeOutcomeFocus(contractId)) document.getElementById(OUTCOME_ID)?.focus();
   }, [contractId]);
   return null;
 }
@@ -100,13 +118,13 @@ export function SignCard({ contractId }: { contractId: string }) {
         // instead of offering this card again. A typing mistake keeps the card
         // and the message — its props do not change. If the card goes, its
         // outcome line takes focus, as after a decision.
-        focusRequest = { contractId, at: Date.now() };
+        requestOutcomeFocus(contractId);
         router.refresh();
         return;
       }
       // The page re-renders without this card; its outcome line takes focus.
       decidedRef.current = true;
-      focusRequest = { contractId, at: Date.now() };
+      requestOutcomeFocus(contractId);
       setDeclining(false);
     } catch (e) {
       if (isActionRedirect(e)) return;

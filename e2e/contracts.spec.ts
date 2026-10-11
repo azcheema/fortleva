@@ -151,6 +151,9 @@ test.describe.serial("contract templates and drafts, as the owner", () => {
     await expect(toast(page, HAS_R2 ? "Signed and sent." : "Signed and sent. Its PDF couldn't be made yet — it will be shortly.")).toBeVisible();
 
     await expect(page.getByTestId("contract-status")).toHaveText("Waiting for signature");
+    // The send dialog's trigger is gone with the draft editor: the sent view's
+    // heading has focus, never <body> (slice 112b's hand-off, asserted in 112b2).
+    await expect(page.locator("#contract-signatures")).toBeFocused();
     await expect(page.getByTestId("signature-agency")).toContainText("Erik Owner");
     await expect(page.getByTestId("signature-client")).toHaveAttribute("data-status", "PENDING");
     await expect(page.getByTestId("contract-fingerprint")).toContainText(/[0-9a-f]{64}/);
@@ -253,6 +256,9 @@ test.describe.serial("a contract signed or declined in the client's portal", () 
       await sign.click();
 
       await expect(client.getByTestId("portal-contract-outcome")).toContainText("Signed by both sides");
+      // The card that held focus is gone: the outcome line has it, never <body>
+      // (a hand-off the React Compiler once broke — AGENTS.md's standing trap).
+      await expect(client.getByTestId("portal-contract-outcome")).toBeFocused();
       await expect(client.getByTestId("portal-contract-state")).toHaveText("Signed");
       await expect(client.getByTestId("portal-signature-client")).toContainText(`Signed as “${seed.contactName}”`);
       await expect(client.getByTestId("portal-contract-sign")).toHaveCount(0);
@@ -281,6 +287,7 @@ test.describe.serial("a contract signed or declined in the client's portal", () 
       await dialog.getByTestId("portal-contract-decline-confirm").click();
       await expect(dialog).toHaveCount(0);
       await expect(client.getByTestId("portal-contract-outcome")).toContainText("This contract was declined");
+      await expect(client.getByTestId("portal-contract-outcome")).toBeFocused();
       await expect(client.getByTestId("portal-contract-decline-reason")).toHaveText("Not this quarter, sorry.");
     } finally {
       await astrid.close();
