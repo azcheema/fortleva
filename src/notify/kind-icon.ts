@@ -38,6 +38,9 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   // The Renewals rail entry's glyph, so the reminder and the page match.
   "expiration.asset_due": CalendarClockIcon,
   "expiration.agreement_ending": FileClockIcon,
+  // An ending, as an agreement's — never the signed glyph, which would make
+  // "a contract is ending" look like "a client signed" (the code review's nit).
+  "expiration.contract_ending": FileClockIcon,
   "expiration.logins_expiring": KeyRoundIcon,
   "credential.submitted": KeySquareIcon,
   "credential.ask_declined": KeySquareIcon,

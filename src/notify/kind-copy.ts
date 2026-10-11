@@ -37,7 +37,8 @@ type KindCopyKey =
   | "loginsAlarm"
   | "updateDue"
   | "contractSigned"
-  | "contractDeclined";
+  | "contractDeclined"
+  | "contractEnding";
 
 export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.assigned": "assigned",
@@ -50,6 +51,7 @@ export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "budget.threshold_reached": "budgetThreshold",
   "expiration.asset_due": "assetDue",
   "expiration.agreement_ending": "agreementEnding",
+  "expiration.contract_ending": "contractEnding",
   "expiration.logins_expiring": "loginsExpiring",
   "credential.submitted": "loginSubmitted",
   "credential.ask_declined": "loginAskDeclined",

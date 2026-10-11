@@ -125,6 +125,16 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Ett avtal med en kund upphör snart. Bestäm om det ska förlängas.",
     },
   },
+  "expiration.contract_ending": {
+    en: {
+      subject: "A contract is ending",
+      body: "A signed contract with a client ends soon. Decide whether to renew it.",
+    },
+    sv: {
+      subject: "Ett kontrakt löper ut",
+      body: "Ett undertecknat kontrakt med en kund upphör snart. Bestäm om det ska förnyas.",
+    },
+  },
   "expiration.logins_expiring": {
     en: {
       subject: "Logins are expiring",
@@ -560,6 +570,12 @@ const linkFor = (
     const clientId = uuidParam(params, "clientId");
     if (params?.["link"] === "agreements" && clientId) return new URL(`/clients/${clientId}/agreements`, appUrl);
     return new URL(params?.["link"] === "renewals" ? "/expirations" : "/inbox", appUrl);
+  }
+  // A signed contract ending (slice 112c2): its own page — every receiver
+  // passed that page's rule (`contract:view`, the client in direct scope).
+  if (key === "expiration.contract_ending") {
+    const contractId = uuidParam(params, "contractId");
+    return new URL(contractId ? `/contracts/${contractId}` : "/contracts", appUrl);
   }
   if (key === "expiration.logins_expiring") {
     const clientId = uuidParam(params, "clientId");

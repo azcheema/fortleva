@@ -3806,7 +3806,7 @@ model ClientAsset {
 /// passed, which is when it can no longer matter.
 model ExpirationReminderSent {
   tenantId    String   @map("tenant_id")
-  subjectType String   @map("subject_type") // "ClientAsset" | "Service" | "CredentialItem" (CHECK)
+  subjectType String   @map("subject_type") // "ClientAsset" | "Service" | "CredentialItem" | "Contract" (CHECK; Contract since slice 112c2)
   subjectId   String   @map("subject_id")
   dueOn       DateTime @map("due_on") @db.Date // the UTC day of the date reminded about
   offsetDays  Int      @map("offset_days") // 60 | 30 | 14 | 7 | 1 (CHECK)

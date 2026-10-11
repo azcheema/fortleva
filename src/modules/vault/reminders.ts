@@ -23,28 +23,37 @@ import { anchorInScope, type VaultAnchor } from "./scope";
  *   - an AGREEMENT not ended with an END date — `expiration.agreement_ending`.
  *     Founder decision C55: only when one ends; a regular renewal sends
  *     nothing (it would be noise every month);
+ *   - a SIGNED CONTRACT with an END date — `expiration.contract_ending`
+ *     (Phase 4 slice 112c2, founder decision C86 (c): like an agreement).
+ *     Written and signed, or signed elsewhere and put in; never one nobody
+ *     signed. Its metadata only — never its body, which can be half a
+ *     megabyte;
  *   - LOGINS with an expiry date — `expiration.logins_expiring`, as a COUNT
  *     per client (C56): never naming a login, because which ones stays
  *     behind the vault's door (C54, C52 (a)). Deduplicated per LOGIN, so a
  *     login that enters a band a day after its neighbours is still told.
  *
  * WHO HEARS — and this is the part that must not leak:
- *   - an asset or an agreement: the client's people (C53) — that PROJECT's
- *     people (its assignees and its lead) for a project's row, the
- *     client's directly assigned members for a client-level one — AND the
- *     workspace's owners, always (founder decision C57, 2026-10-03, which
- *     amended C53's "owners only when nobody is assigned"); each
+ *   - an asset, an agreement or a contract: the client's people (C53) —
+ *     that PROJECT's people (its assignees and its lead) for a project's
+ *     row, the client's directly assigned members for a client-level one (a
+ *     contract always is) — AND the workspace's owners, always (founder
+ *     decision C57, 2026-10-03, which amended C53's "owners only when
+ *     nobody is assigned"); each
  *     kept only if, checked as THEMSELVES, they hold the row's code on all
  *     four gates (`asset:view`; for an agreement `service:view`, which is
  *     core — an agreement's end is reminded whether or not the vault module
- *     is on, the code review's medium) AND their scope reaches the row by
- *     the vault's anchor rule (`anchorInScope`, the rule `/expirations`
- *     lists by) — the owners too: the owner role itself is read-only
+ *     is on, the code review's medium; for a contract `contract:view`) AND
+ *     their scope reaches the row by the vault's anchor rule
+ *     (`anchorInScope`, the rule `/expirations` lists by — for a contract,
+ *     its client in DIRECT scope, the contract page's own rule) —
+ *     the owners too: the owner role itself is read-only
  *     and holds every code, but a module switched off, the plan, the
  *     kill-switch or a template not yet seeded still closes a code to them
  *     (the C57 review). EACH RECEIVER'S MAIL LINKS TO A PAGE THEY CAN OPEN (`linkFor`):
  *     the asset's line needs `client:view`, an agreement's tab needs direct
- *     assignment too, Renewals needs `asset:view` — so receivers are told in
+ *     assignment too, Renewals needs `asset:view`, and a contract's page is
+ *     the receiver's own rule, so it always opens — so receivers are told in
  *     one fan-out per link, the link a closed token in `params`;
  *   - logins: every active member who holds `credential:view` on all four
  *     gates, each told the number of THIS group's logins their scope
@@ -73,16 +82,17 @@ import { anchorInScope, type VaultAnchor } from "./scope";
 const SYSTEM = { type: "system" } as const;
 
 /** The codes a receiver can need — one permission resolution per member per run. */
-const RECEIVER_CODES = ["asset:view", "service:view", "credential:view", "client:view"] as const;
+const RECEIVER_CODES = ["asset:view", "service:view", "contract:view", "credential:view", "client:view"] as const;
 
 /**
  * Where a receiver's mail sends them — a closed token in `params`, turned
  * into a path by `src/notify/templates.ts`: the asset's own line on the
- * client's Assets tab, the client's Agreements tab, Renewals, or the inbox.
+ * client's Assets tab, the client's Agreements tab, Renewals, the inbox, or
+ * a contract's own page.
  */
-export type ReminderLink = "asset" | "agreements" | "renewals" | "inbox";
+export type ReminderLink = "asset" | "agreements" | "renewals" | "inbox" | "contract";
 
-type SubjectType = "ClientAsset" | "Service";
+type SubjectType = "ClientAsset" | "Service" | "Contract";
 
 type DueSubject = VaultAnchor & {
   readonly type: SubjectType;
@@ -121,6 +131,8 @@ export type ReminderRun = {
   readonly assets: number;
   /** Agreement-ending reminders sent. */
   readonly agreements: number;
+  /** Contract-ending reminders sent (slice 112c2). */
+  readonly contracts: number;
   /** Login reminders sent — one per client and band, however many logins. */
   readonly logins: number;
 };
@@ -160,6 +172,12 @@ async function plan(tx: TenantDb, tenantId: string, now: Date): Promise<Plan> {
     where: { tenantId, status: { not: "ENDED" }, endsAt: window },
     select: { id: true, clientId: true, projectId: true, endsAt: true },
   });
+  // C86 (c): a SIGNED contract's END — nobody is bound by one never signed.
+  // A contract has no project: it is a client-level subject.
+  const contracts = await tx.contract.findMany({
+    where: { tenantId, status: "SIGNED", endsOn: window },
+    select: { id: true, clientId: true, endsOn: true },
+  });
   // Metadata only — never the secret's table (the vault's boundary).
   const logins = await tx.credentialItem.findMany({
     where: { tenantId, deletedAt: null, expiresAt: window },
@@ -185,6 +203,10 @@ async function plan(tx: TenantDb, tenantId: string, now: Date): Promise<Plan> {
   for (const s of agreements) {
     const d = due(today, s.endsAt);
     if (unsent("Service", s.id, d)) subjects.push({ type: "Service", id: s.id, clientId: s.clientId, projectId: s.projectId, ...d! });
+  }
+  for (const c of contracts) {
+    const d = due(today, c.endsOn);
+    if (unsent("Contract", c.id, d)) subjects.push({ type: "Contract", id: c.id, clientId: c.clientId, projectId: null, ...d! });
   }
   const dueLogins: DueLogin[] = [];
   for (const l of logins) {
@@ -263,6 +285,9 @@ type Receiver = { readonly memberId: string; readonly link: ReminderLink; readon
  * open to them; an agreement receiver may hold neither, and gets the inbox.
  */
 function linkOf(s: DueSubject, w: Who): ReminderLink {
+  // A contract's receiver passed its page's own rule (`contract:view`,
+  // direct scope): the contract's page opens for every one of them.
+  if (s.type === "Contract") return "contract";
   const clientPages = w.codes.has("client:view");
   if (s.type === "ClientAsset") return clientPages ? "asset" : "renewals";
   const direct = w.scope.all || w.scope.directClientIds.includes(s.clientId);
@@ -272,7 +297,7 @@ function linkOf(s: DueSubject, w: Who): ReminderLink {
 
 /** C53's receivers and, by C57, the owners — see the file's comment. One row each, however many ways they qualify. */
 async function subjectReceivers(s: DueSubject, people: People, who: (id: string) => Promise<Who>): Promise<Receiver[]> {
-  const required = s.type === "ClientAsset" ? "asset:view" : "service:view";
+  const required = s.type === "ClientAsset" ? "asset:view" : s.type === "Service" ? "service:view" : "contract:view";
   const keep = async (reasons: ReadonlyMap<string, NotificationReason>) => {
     const out: Receiver[] = [];
     // In turn: each `who` may open a transaction of its own.
@@ -303,42 +328,66 @@ async function subjectReceivers(s: DueSubject, people: People, who: (id: string)
   );
 }
 
-/** Send one asset or agreement reminder; true when it went out. */
+/** The subject's row as it stands now — its anchor and the date reminded about — or null when it is no longer one to remind. */
+async function liveSubject(
+  tx: TenantDb,
+  tenantId: string,
+  s: DueSubject,
+): Promise<{ clientId: string; projectId: string | null; at: Date | null } | null> {
+  if (s.type === "ClientAsset") {
+    const a = await tx.clientAsset.findFirst({
+      where: { tenantId, id: s.id, status: "ACTIVE" },
+      select: { clientId: true, projectId: true, expiresAt: true },
+    });
+    return a ? { clientId: a.clientId, projectId: a.projectId, at: a.expiresAt } : null;
+  }
+  if (s.type === "Service") {
+    const a = await tx.service.findFirst({
+      where: { tenantId, id: s.id, status: { not: "ENDED" } },
+      select: { clientId: true, projectId: true, endsAt: true },
+    });
+    return a ? { clientId: a.clientId, projectId: a.projectId, at: a.endsAt } : null;
+  }
+  const c = await tx.contract.findFirst({
+    where: { tenantId, id: s.id, status: "SIGNED" },
+    select: { clientId: true, endsOn: true },
+  });
+  return c ? { clientId: c.clientId, projectId: null, at: c.endsOn } : null;
+}
+
+const KIND_OF = {
+  ClientAsset: "expiration.asset_due",
+  Service: "expiration.agreement_ending",
+  Contract: "expiration.contract_ending",
+} as const satisfies Record<SubjectType, string>;
+
+const ID_PARAM_OF = { ClientAsset: "assetId", Service: "serviceId", Contract: "contractId" } as const satisfies Record<SubjectType, string>;
+
+/** Send one asset, agreement or contract reminder; true when it went out. */
 async function sendSubject(tenantId: string, s: DueSubject, receivers: readonly Receiver[]): Promise<boolean> {
   return withTenant(tenantId, SYSTEM, async (tx) => {
-    // The row as it stands NOW: still in use (or running), still due that
-    // day, still on the same anchor the receivers were chosen for.
-    const row =
-      s.type === "ClientAsset"
-        ? await tx.clientAsset.findFirst({
-            where: { tenantId, id: s.id, status: "ACTIVE" },
-            select: { clientId: true, projectId: true, expiresAt: true },
-          })
-        : await tx.service.findFirst({
-            where: { tenantId, id: s.id, status: { not: "ENDED" } },
-            select: { clientId: true, projectId: true, endsAt: true },
-          });
-    const at = row ? ("expiresAt" in row ? row.expiresAt : row.endsAt) : null;
-    if (!row || !at || utcDayOf(at) !== s.dueOn || row.clientId !== s.clientId || row.projectId !== s.projectId) return false;
+    // The row as it stands NOW: still in use (running, signed), still due
+    // that day, still on the same anchor the receivers were chosen for.
+    const row = await liveSubject(tx, tenantId, s);
+    if (!row || !row.at || utcDayOf(row.at) !== s.dueOn || row.clientId !== s.clientId || row.projectId !== s.projectId) return false;
 
     const { count } = await tx.expirationReminderSent.createMany({
       data: [{ tenantId, subjectType: s.type, subjectId: s.id, dueOn: dateColumn(s.dueOn), offsetDays: s.band }],
       skipDuplicates: true,
     });
     if (count === 0) return false; // already sent — a concurrent run got there first
-    const asset = s.type === "ClientAsset";
     // One fan-out per link, so each mail opens a page its reader may open.
     const byLink = new Map<ReminderLink, Map<string, NotificationReason>>();
     for (const r of receivers) byLink.set(r.link, (byLink.get(r.link) ?? new Map()).set(r.memberId, r.reason));
     for (const [link, linkReceivers] of byLink) {
       await emit(tx, tenantId, {
-        kind: asset ? "expiration.asset_due" : "expiration.agreement_ending",
+        kind: KIND_OF[s.type],
         entity: { type: s.type, id: s.id },
         clientId: s.clientId,
         ...(s.projectId === null ? {} : { projectId: s.projectId }),
         receivers: linkReceivers,
         // IDS ONLY, the band and the link's closed token: emit's rule.
-        params: { clientId: s.clientId, [asset ? "assetId" : "serviceId"]: s.id, days: String(s.band), link },
+        params: { clientId: s.clientId, [ID_PARAM_OF[s.type]]: s.id, days: String(s.band), link },
         dedupeKey: `expiration:${s.type}:${s.id}:${s.dueOn}:${s.band}`,
       });
     }
@@ -447,15 +496,16 @@ async function sendLogins(
 export async function sendExpirationReminders(tenantId: string, now: Date = new Date()): Promise<ReminderRun> {
   if (typeof tenantId !== "string" || tenantId.length === 0) throw new TypeError("vault: tenantId must be a non-empty string");
   const p = await withTenant(tenantId, SYSTEM, (tx) => plan(tx, tenantId, now));
-  const out = { assets: 0, agreements: 0, logins: 0 };
+  const out = { assets: 0, agreements: 0, contracts: 0, logins: 0 };
   if (p.people === null) return out;
   const people = p.people;
   const who = whoResolver(tenantId);
+  const counter = { ClientAsset: "assets", Service: "agreements", Contract: "contracts" } as const satisfies Record<SubjectType, keyof typeof out>;
 
   for (const s of p.subjects) {
     const receivers = await subjectReceivers(s, people, who);
     if (receivers.length === 0) continue; // nobody can hear it yet — nothing recorded
-    if (await sendSubject(tenantId, s, receivers)) out[s.type === "ClientAsset" ? "assets" : "agreements"] += 1;
+    if (await sendSubject(tenantId, s, receivers)) out[counter[s.type]] += 1;
   }
 
   const groups = new Map<string, LoginGroup>();

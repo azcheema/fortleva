@@ -326,12 +326,14 @@ test.describe.serial("a contract signed elsewhere, put in and shown to the clien
     await expect(page.getByTestId("contract-signed-elsewhere")).toBeVisible();
     await expect(page.getByTestId("uploaded-shown-state")).toContainText("Not shown");
 
-    // Its end date, edited and saved.
-    await page.getByTestId("uploaded-endsOn").fill("2028-05-31");
+    // Its end date, edited and saved — far from today, so it never lands on
+    // Renewals or the Home card (slice 112c2).
+    const endsOn = `${new Date().getUTCFullYear() + 6}-05-31`;
+    await page.getByTestId("uploaded-endsOn").fill(endsOn);
     await page.getByTestId("uploaded-save").click();
     await expect(toast(page, "Saved.")).toBeVisible();
     await page.reload();
-    await expect(page.getByTestId("uploaded-endsOn")).toHaveValue("2028-05-31");
+    await expect(page.getByTestId("uploaded-endsOn")).toHaveValue(endsOn);
 
     const astrid = await asAstrid(browser);
     try {

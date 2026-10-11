@@ -10,7 +10,7 @@ import type { NotificationKind } from "./catalog";
  * kind's generic label, `inbox.kind.*`.
  */
 export type ReminderLabel =
-  | { readonly key: "assetDue" | "agreementEnding"; readonly days: number }
+  | { readonly key: "assetDue" | "agreementEnding" | "contractEnding"; readonly days: number }
   | { readonly key: "loginsExpiring"; readonly days: number; readonly count: number };
 
 // The `t(…)` call itself stays in each component: next-intl's typed
@@ -27,6 +27,8 @@ export function reminderLabel(
       return { key: "assetDue", days: reminder.days };
     case "expiration.agreement_ending":
       return { key: "agreementEnding", days: reminder.days };
+    case "expiration.contract_ending":
+      return { key: "contractEnding", days: reminder.days };
     case "expiration.logins_expiring":
       return reminder.count === null ? null : { key: "loginsExpiring", days: reminder.days, count: reminder.count };
     default:

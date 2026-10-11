@@ -26,7 +26,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * DATA_MODEL.md §6.17's expirations feed). Everything that renews, expires
  * or ends within 90 days, and everything already past its date, across the
  * clients the member reaches — assets (`asset:view`, the page's gate),
- * agreements (`service:view`), and LOGINS as a count per client only
+ * agreements (`service:view`), signed contracts' ends (`contract:view`,
+ * slice 112c2 — an ended one for 30 days after, C86 (e)), and LOGINS as a
+ * count per client only
  * (`credential:view`; founder decision C54: which ones stays behind the
  * vault's door, so this page never opens it).
  *

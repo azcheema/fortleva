@@ -193,6 +193,9 @@ const KINDS = {
    *     C57, the workspace's owners always);
    *   - `expiration.agreement_ending` — an agreement ENDS (C55: a regular
    *     renewal sends nothing; the same people as an asset);
+   *   - `expiration.contract_ending` — a SIGNED contract ENDS (Phase 4
+   *     slice 112c2, C86 (c): like an agreement — the client's directly
+   *     assigned people and the owners, held to `contract:view`);
    *   - `expiration.logins_expiring` — logins expire, as a COUNT per client
    *     and never by name (C56, C54: which ones stays behind the vault's
    *     door), to everyone who can open them.
@@ -212,6 +215,11 @@ const KINDS = {
     email: { atLevel: "PARTICIPATING" },
   },
   "expiration.agreement_ending": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
+  "expiration.contract_ending": {
     audience: "MEMBER",
     class: "INSTANT",
     email: { atLevel: "PARTICIPATING" },

@@ -262,6 +262,10 @@ export const SUMMARY_LINES: Readonly<Record<NotificationKind, Line | null>> = {
     ["1 agreement is ending", "# agreements are ending"],
     ["1 avtal löper ut", "# avtal löper ut"],
   ),
+  "expiration.contract_ending": line(
+    ["1 contract is ending", "# contracts are ending"],
+    ["1 kontrakt löper ut", "# kontrakt löper ut"],
+  ),
   "expiration.logins_expiring": line(
     ["1 reminder about expiring logins", "# reminders about expiring logins"],
     ["1 påminnelse om inloggningar som går ut", "# påminnelser om inloggningar som går ut"],

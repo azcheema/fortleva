@@ -134,6 +134,8 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       // not wait for a digest, and 60 days' notice is the point.
       "expiration.agreement_ending",
       "expiration.asset_due",
+      // A signed contract's end (Phase 4 slice 112c2, C86 (c)): like an agreement's.
+      "expiration.contract_ending",
       "expiration.logins_expiring",
       // A project's progress update is due or late (Phase 5 slice 102,
       // C70): the receiver's own job on a day — a digest is a day late.

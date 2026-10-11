@@ -273,6 +273,9 @@ const DBTEST_PREFIXES = [
   // Phase 4 slice 112c, contracts signed elsewhere — `src/modules/contracts/contract-uploads.dbtest.ts`,
   // `setupTenant("ctrupload")`.
   "ctrupload-",
+  // Phase 4 slice 112c2, a signed contract's end in the reminders and on Renewals —
+  // `src/modules/contracts/contract-reminders.dbtest.ts`, `setupTenant("ctrremind")`.
+  "ctrremind-",
   "split-",
   "switch-",
   "tadmin-",
@@ -3433,7 +3436,10 @@ async function plantUploadedContract(tenantId: string, clientId: string, memberI
     title,
     signedOn: "2024-05-02",
     startsOn: "2024-06-01",
-    endsOn: "2027-05-31",
+    // Far out, from today: a fixed date would put this signed contract on
+    // Renewals and the Home card one day and move other specs' rows
+    // (slice 112c2's code review).
+    endsOn: `${new Date().getUTCFullYear() + 5}-05-31`,
   });
   setStorage(null);
   await db.$disconnect();

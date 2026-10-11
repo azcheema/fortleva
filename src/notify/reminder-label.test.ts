@@ -9,6 +9,7 @@ describe("reminderLabel — which `inbox.reminder.*` message draws a renewal rem
   it("each reminder kind takes its own message and numbers", () => {
     expect(reminderLabel("expiration.asset_due", { days: 14, count: null })).toEqual({ key: "assetDue", days: 14 });
     expect(reminderLabel("expiration.agreement_ending", { days: 7, count: null })).toEqual({ key: "agreementEnding", days: 7 });
+    expect(reminderLabel("expiration.contract_ending", { days: 30, count: null })).toEqual({ key: "contractEnding", days: 30 });
     expect(reminderLabel("expiration.logins_expiring", { days: 1, count: 3 })).toEqual({ key: "loginsExpiring", days: 1, count: 3 });
   });
 
@@ -20,7 +21,7 @@ describe("reminderLabel — which `inbox.reminder.*` message draws a renewal rem
   });
 
   it("every key it can name exists in both catalogues", () => {
-    for (const key of ["assetDue", "agreementEnding", "loginsExpiring"] as const) {
+    for (const key of ["assetDue", "agreementEnding", "contractEnding", "loginsExpiring"] as const) {
       expect(en.inbox.reminder[key], key).toBeTruthy();
       expect(sv.inbox.reminder[key], key).toBeTruthy();
     }

@@ -1,21 +1,13 @@
-import { ReceiptIcon } from "lucide-react";
+import { FileSignatureIcon, ReceiptIcon } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 
 import { ASSET_ICON } from "@/app/(tenant)/(authed)/clients/[id]/assets/asset-icons";
-import { daysBetween, SOON_DAYS } from "@/app/(tenant)/(authed)/clients/[id]/assets/asset-shape";
+import { daysBetween } from "@/app/(tenant)/(authed)/clients/[id]/assets/asset-shape";
 import { Badge } from "@/components/ui/badge";
 import type { ExpirationEntry } from "@/modules/vault";
 
-/**
- * Where a row leads: the asset's own line on the client's Assets tab, or the
- * client's Agreements tab — only where that page would open for the member
- * (`linkable`: `client:view`, and direct assignment for an agreement).
- */
-export function expirationHref(e: ExpirationEntry): string | null {
-  if (!e.linkable) return null;
-  return e.kind === "asset" ? `/clients/${e.client.id}/assets#asset-${e.id}` : `/clients/${e.client.id}/agreements`;
-}
+import { cueOf, expirationHref } from "./expiration-row";
 
 /**
  * Rows of the expirations feed — `/expirations` and the Home card draw the
@@ -43,7 +35,8 @@ export async function ExpirationList({
   return (
     <ul data-testid={testId}>
       {entries.map((e) => {
-        const Icon = e.kind === "asset" && e.assetType !== null ? ASSET_ICON[e.assetType] : ReceiptIcon;
+        const Icon =
+          e.kind === "asset" && e.assetType !== null ? ASSET_ICON[e.assetType] : e.kind === "contractEnds" ? FileSignatureIcon : ReceiptIcon;
         const days = daysBetween(today, e.date);
         const what =
           e.kind === "asset" ? (e.assetType === null ? "" : tAssets(`types.${e.assetType}`)) : t(`kinds.${e.kind}`);
@@ -91,40 +84,4 @@ export async function ExpirationList({
       })}
     </ul>
   );
-}
-
-type Cue = {
-  readonly key:
-    | "expired"
-    | "expiresToday"
-    | "expiresIn"
-    | "renewsToday"
-    | "renewsIn"
-    | "endsToday"
-    | "endsIn"
-    | "endPassed";
-  readonly tone: "danger" | "caution" | "neutral" | "quiet";
-};
-
-/**
- * The words and the weight of a row's date — the Assets tab's cue, so one
- * asset reads the same in both places: past it is danger; an asset that
- * lapses TODAY is danger too; within `SOON_DAYS` is caution — or neutral
- * when it renews by itself, an agreement's renewal included — and an
- * agreement ending today is caution; further out it is quiet.
- */
-function cueOf(e: ExpirationEntry, days: number): Cue {
-  const near = days <= SOON_DAYS;
-  if (e.kind === "agreementEnds") {
-    if (days < 0) return { key: "endPassed", tone: "danger" };
-    if (days === 0) return { key: "endsToday", tone: "caution" };
-    return { key: "endsIn", tone: near ? "caution" : "quiet" };
-  }
-  const renews = e.kind === "agreementRenews" || e.autoRenew === true;
-  // An agreement's renewal is never in the past here: the feed reads
-  // renewals from today on (`expirations.ts`), so only an asset lapses.
-  if (days < 0) return { key: "expired", tone: "danger" };
-  if (days === 0) return renews ? { key: "renewsToday", tone: "neutral" } : { key: "expiresToday", tone: "danger" };
-  if (renews) return { key: "renewsIn", tone: near ? "neutral" : "quiet" };
-  return { key: "expiresIn", tone: near ? "caution" : "quiet" };
 }

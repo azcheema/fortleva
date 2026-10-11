@@ -285,12 +285,14 @@
       "loginsAlarm": "Repeated failed attempts to open a client's logins",
       "updateDue": "A project update is due",
       "contractSigned": "A client signed a contract",
-      "contractDeclined": "A client declined a contract"
+      "contractDeclined": "A client declined a contract",
+      "contractEnding": "A contract is ending"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",
       "agreementEnding": "Ends within {days, plural, one {# day} other {# days}}",
-      "loginsExpiring": "{count, plural, one {# login expires} other {# logins expire}} within {days, plural, one {# day} other {# days}}"
+      "loginsExpiring": "{count, plural, one {# login expires} other {# logins expire}} within {days, plural, one {# day} other {# days}}",
+      "contractEnding": "Ends within {days, plural, one {# day} other {# days}}"
     },
     "row": {
       "markRead": "Mark as read",
@@ -4856,7 +4858,8 @@
     },
     "kinds": {
       "agreementRenews": "Agreement renews",
-      "agreementEnds": "Agreement ends"
+      "agreementEnds": "Agreement ends",
+      "contractEnds": "Contract ends"
     },
     "cue": {
       "expired": "Expired",
@@ -4866,7 +4869,8 @@
       "renewsIn": "Renews in {days, plural, one {# day} other {# days}}",
       "endsToday": "Ends today",
       "endsIn": "Ends in {days, plural, one {# day} other {# days}}",
-      "endPassed": "End date passed"
+      "endPassed": "End date passed",
+      "ended": "Ended {days, plural, one {# day} other {# days}} ago"
     },
     "truncated": "There is more than this page can show: it lists everything before {date}, and some of what falls on it.",
     "empty": "Nothing to renew",

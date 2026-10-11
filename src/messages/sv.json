@@ -285,12 +285,14 @@
       "loginsAlarm": "Upprepade misslyckade försök att öppna en kunds inloggningar",
       "updateDue": "Dags för en projektuppdatering",
       "contractSigned": "En kund har skrivit under ett kontrakt",
-      "contractDeclined": "En kund har tackat nej till ett kontrakt"
+      "contractDeclined": "En kund har tackat nej till ett kontrakt",
+      "contractEnding": "Ett kontrakt löper ut"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",
       "agreementEnding": "Upphör inom {days, plural, one {# dag} other {# dagar}}",
-      "loginsExpiring": "{count, plural, one {# inloggning går ut} other {# inloggningar går ut}} inom {days, plural, one {# dag} other {# dagar}}"
+      "loginsExpiring": "{count, plural, one {# inloggning går ut} other {# inloggningar går ut}} inom {days, plural, one {# dag} other {# dagar}}",
+      "contractEnding": "Upphör inom {days, plural, one {# dag} other {# dagar}}"
     },
     "row": {
       "markRead": "Markera som läst",
@@ -4856,7 +4858,8 @@
     },
     "kinds": {
       "agreementRenews": "Avtalet förnyas",
-      "agreementEnds": "Avtalet upphör"
+      "agreementEnds": "Avtalet upphör",
+      "contractEnds": "Kontraktet upphör"
     },
     "cue": {
       "expired": "Har gått ut",
@@ -4866,7 +4869,8 @@
       "renewsIn": "Förnyas om {days, plural, one {# dag} other {# dagar}}",
       "endsToday": "Upphör i dag",
       "endsIn": "Upphör om {days, plural, one {# dag} other {# dagar}}",
-      "endPassed": "Slutdatumet har passerat"
+      "endPassed": "Slutdatumet har passerat",
+      "ended": "Upphörde för {days, plural, one {# dag} other {# dagar}} sedan"
     },
     "truncated": "Det finns mer än sidan kan visa: den listar allt före {date}, och en del av det som infaller den dagen.",
     "empty": "Inget att förnya",

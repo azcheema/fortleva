@@ -20,6 +20,13 @@ import { anchorScopeWhere } from "./scope";
  *     all four gates): a renewal date from TODAY on, and an end date,
  *     passed or coming (a running agreement past its renewal has renewed,
  *     and nothing moves `renewsAt` on — see `readFeed`);
+ *   - SIGNED CONTRACTS with an end date (`contract:view` — joined only when
+ *     it is open; Phase 4 slice 112c2, founder decisions C86 (c), (e)): the
+ *     end coming, and an end PASSED for `CONTRACT_LAPSED_DAYS` after it —
+ *     long enough that a renewal that slipped is still noticed, then it
+ *     drops off with nothing to clear. A contract has no project: it is
+ *     read for its client in DIRECT scope only, the contract page's own
+ *     rule, so every row links to that page;
  *   - LOGINS with an expiry date, as a COUNT per client and never by name
  *     (`credential:view`) — founder decision C54, 2026-10-03: which logins
  *     stays behind the vault's door (C52 (a)), so this read does NOT enter
@@ -32,7 +39,9 @@ import { anchorScopeWhere } from "./scope";
  * §4 and its slice-87 amendment). It is the services' own rule too —
  * `resolveScope`'s project list already holds a directly assigned
  * client's projects — so an agreement is listed here exactly when
- * `listServices` would list it.
+ * `listServices` would list it. A contract, which has no project, is held
+ * to that rule's client-level half (direct assignment), which is
+ * `listContracts`' own.
  *
  * A LAPSED date stays in the feed for as long as the row says it is in
  * use — a domain whose date passed while it is still ACTIVE is the most
@@ -43,6 +52,8 @@ import { anchorScopeWhere } from "./scope";
  */
 
 export const EXPIRATIONS_DAYS = 90;
+/** How long a signed contract stays on the page after its end (C86 (e)), in days. */
+export const CONTRACT_LAPSED_DAYS = 30;
 /** How far ahead the Home card looks — the Assets tab's "coming up" window. */
 export const GLANCE_DAYS = 30;
 /** Rows read per source at most; past it the feed says it was cut. */
@@ -50,11 +61,11 @@ export const EXPIRATIONS_LIMIT = 200;
 /** Rows the Home card draws. */
 export const GLANCE_ROWS = 5;
 
-export type ExpirationKind = "asset" | "agreementRenews" | "agreementEnds";
+export type ExpirationKind = "asset" | "agreementRenews" | "agreementEnds" | "contractEnds";
 
 export type ExpirationEntry = {
   readonly kind: ExpirationKind;
-  /** The asset's or the agreement's id. */
+  /** The asset's, the agreement's or the contract's id. */
   readonly id: string;
   readonly name: string;
   /** The day it renews, expires or ends, `YYYY-MM-DD` (the UTC day of the stored date). */
@@ -72,7 +83,8 @@ export type ExpirationEntry = {
    * mails send exactly that member here). With it, an asset is reachable
    * there (the client's page opens on the lifted scope); an agreement's tab
    * wants DIRECT assignment too, so a member reached through one project
-   * gets the line without the link.
+   * gets the line without the link. A contract's is always true: its
+   * source is read under the contract page's own rule.
    */
   readonly linkable: boolean;
 };
@@ -133,12 +145,18 @@ async function readFeed(
   tx: TenantDb,
   ctx: VaultCtx,
   today: string,
-  opts: { readonly days: number; readonly limit: number; readonly logins: boolean },
+  opts: {
+    readonly days: number;
+    readonly limit: number;
+    readonly logins: boolean;
+    /** List a signed contract's end for `CONTRACT_LAPSED_DAYS` after it — the page; never the Home card. */
+    readonly contractsLapsed: boolean;
+  },
 ): Promise<ExpirationsFeed> {
   const { start, until, before } = span(today, opts.days);
   const { limit } = opts;
   // One read for the two optional sources' gates (all four gates each).
-  const open = await accessibleCodes(tx, ctx.tenantId, ctx.actor, ["service:view", "credential:view", "client:view"]);
+  const open = await accessibleCodes(tx, ctx.tenantId, ctx.actor, ["service:view", "contract:view", "credential:view", "client:view"]);
   const clientPages = open.has("client:view");
   const scope = await resolveScope(tx, ctx.actor);
   const inScope = anchorScopeWhere(scope);
@@ -210,6 +228,42 @@ async function readFeed(
     });
   }
 
+  if (open.has("contract:view")) {
+    // A SIGNED contract's END, from `CONTRACT_LAPSED_DAYS` before today on
+    // (C86 (e)): nothing ends a signed contract but its date, so a passed
+    // one leaves the page by itself. Its client in DIRECT scope only — a
+    // contract has no project, and the page its row opens asks exactly this.
+    // The Home card reads from TODAY on: an ended contract is a note, not a
+    // task, and five rows of them must never push a domain lapsing today off
+    // the card (slice 112c2's code review).
+    const since = opts.contractsLapsed ? new Date(start.getTime() - CONTRACT_LAPSED_DAYS * 86_400_000) : start;
+    const contracts = await tx.contract.findMany({
+      where: {
+        AND: [
+          { tenantId: ctx.tenantId, status: "SIGNED", endsOn: { gte: since, lt: before } },
+          scope.all ? {} : { clientId: { in: [...scope.directClientIds] } },
+        ],
+      },
+      orderBy: [{ endsOn: "asc" }, { title: "asc" }, { id: "asc" }],
+      take: limit + 1,
+      select: { id: true, title: true, endsOn: true, client: { select: { id: true, name: true } } },
+    });
+    sources.push({
+      cut: cutBy(contracts, (c) => c.endsOn!),
+      entries: contracts.slice(0, limit).map((c) => ({
+        kind: "contractEnds",
+        id: c.id,
+        name: c.title,
+        date: dayOf(c.endsOn!),
+        client: c.client,
+        project: null,
+        assetType: null,
+        autoRenew: null,
+        linkable: true,
+      })),
+    });
+  }
+
   // LOGINS, as a count per client (C54) — never under impersonation, which
   // the vault refuses before it reads anything (`door.ts`; the security
   // review), and the agency's own on TWO checks (C49: the scope filter, and
@@ -255,7 +309,7 @@ async function readFeed(
 export async function expirationsFeed(ctx: VaultCtx, today: string): Promise<ExpirationsFeed> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "asset:view");
-    return readFeed(tx, ctx, today, { days: EXPIRATIONS_DAYS, limit: EXPIRATIONS_LIMIT, logins: true });
+    return readFeed(tx, ctx, today, { days: EXPIRATIONS_DAYS, limit: EXPIRATIONS_LIMIT, logins: true, contractsLapsed: true });
   });
 }
 
@@ -273,7 +327,9 @@ export type ExpirationsGlance = {
  * other Home cards' rule, so a member or tenant without the registry
  * meets no card and no refusal — otherwise what is lapsed or due within
  * `GLANCE_DAYS`, soonest first. Logins are not read at all: the card is a
- * list of things to renew, and C54 keeps logins to a count on the page.
+ * list of things to renew, and C54 keeps logins to a count on the page; a
+ * signed contract only while its end is still to come (an ended one is the
+ * page's note, not the card's task).
  */
 export async function expirationsGlance(ctx: VaultCtx, today: string): Promise<ExpirationsGlance | null> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
@@ -283,7 +339,7 @@ export async function expirationsGlance(ctx: VaultCtx, today: string): Promise<E
       if (e instanceof AuthzError) return null;
       throw e;
     }
-    const feed = await readFeed(tx, ctx, today, { days: GLANCE_DAYS, limit: EXPIRATIONS_LIMIT, logins: false });
+    const feed = await readFeed(tx, ctx, today, { days: GLANCE_DAYS, limit: EXPIRATIONS_LIMIT, logins: false, contractsLapsed: false });
     return {
       entries: feed.entries.slice(0, GLANCE_ROWS),
       more: Math.max(0, feed.entries.length - GLANCE_ROWS),

@@ -213,7 +213,7 @@ afterAll(async () => {
 describe("the first run", () => {
   it("sends each due row's smallest band to C53's people and the owners (C57), logins as a count (C56), and records each", async () => {
     const run = await sendExpirationReminders(f.tenantId, at(0));
-    expect(run).toEqual({ assets: 6, agreements: 3, logins: 3 });
+    expect(run).toEqual({ assets: 6, agreements: 3, contracts: 0, logins: 3 });
     const { owner: o, manager: m, employee: e, admin: a } = f.seats;
 
     // A project's asset → that project's people (the employee) and, by C57, the owner.
@@ -338,7 +338,7 @@ describe("the first run", () => {
 describe("later runs", () => {
   it("a second run the same day sends nothing", async () => {
     const before = await f.platform.notification.count({ where: { tenantId: f.tenantId } });
-    expect(await sendExpirationReminders(f.tenantId, at(0))).toEqual({ assets: 0, agreements: 0, logins: 0 });
+    expect(await sendExpirationReminders(f.tenantId, at(0))).toEqual({ assets: 0, agreements: 0, contracts: 0, logins: 0 });
     expect(await f.platform.notification.count({ where: { tenantId: f.tenantId } })).toBe(before);
   });
 
@@ -363,7 +363,7 @@ describe("later runs", () => {
     ids["lateCert"] = (await createAsset(owner(), { clientId: acme, projectId: p1, type: "SSL_CERT", name: "late-cert", expiresAt: day(13) })).id;
     // acme.se renewed: its new date has sent nothing yet.
     await updateAsset(owner(), ids["acmeDomain"]!, { expiresAt: day(40) });
-    expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 2, agreements: 0, logins: 0 });
+    expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 2, agreements: 0, contracts: 0, logins: 0 });
     const late = await f.platform.expirationReminderSent.findMany({ where: { tenantId: f.tenantId, subjectId: ids["lateCert"]! } });
     expect(late.map((r) => r.offsetDays)).toEqual([14]); // 10 days out: never 60 or 30 after the fact
     expect(await daysFor("expiration.asset_due", ids["acmeDomain"]!, f.seats.manager.memberId)).toEqual(["30", "60"]); // 37 days out
@@ -378,7 +378,7 @@ describe("later runs", () => {
     await service("p1Deal", { name: "P1 hosting deal", projectId: p1, endsAt: day(12) });
     await setModuleEnabled(owner(), "vault", false);
     try {
-      expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 0, agreements: 2, logins: 0 });
+      expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 0, agreements: 2, contracts: 0, logins: 0 });
       for (const key of ["betaIo", "betaLogin"]) {
         expect(await f.platform.expirationReminderSent.count({ where: { tenantId: f.tenantId, subjectId: ids[key]! } }), key).toBe(0);
       }
@@ -394,18 +394,18 @@ describe("later runs", () => {
     } finally {
       await setModuleEnabled(owner(), "vault", true);
     }
-    expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 1, agreements: 0, logins: 1 });
+    expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 1, agreements: 0, contracts: 0, logins: 1 });
     expect(await receiversOf("expiration.asset_due", ids["betaIo"]!)).toEqual([f.seats.owner.memberId]);
   });
 
   it("today is the TENANT's day: at 22:30 UTC it is already tomorrow in Stockholm", async () => {
     ids["zoneEdge"] = (await createAsset(owner(), { clientId: acme, projectId: p1, type: "HOSTING", name: "zone-edge", expiresAt: day(18) })).id;
-    expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 1, agreements: 0, logins: 0 }); // 15 days: band 30
+    expect(await sendExpirationReminders(f.tenantId, at(3))).toEqual({ assets: 1, agreements: 0, contracts: 0, logins: 0 }); // 15 days: band 30
     // 22:30 UTC on day 3 is 00:30 on day 4 in Stockholm: zone-edge is 14 days
     // out (band 14) and Acme launch 1 day (band 1). By the UTC day — still
     // day 3 — neither would be due.
     const lateEvening = new Date(day(3).getTime() + 22.5 * 3_600_000);
-    expect(await sendExpirationReminders(f.tenantId, lateEvening)).toEqual({ assets: 1, agreements: 1, logins: 0 });
+    expect(await sendExpirationReminders(f.tenantId, lateEvening)).toEqual({ assets: 1, agreements: 1, contracts: 0, logins: 0 });
     expect(await daysFor("expiration.asset_due", ids["zoneEdge"]!, f.seats.employee.memberId)).toEqual(["30", "14"]);
     expect(await daysFor("expiration.agreement_ending", ids["launch"]!, f.seats.manager.memberId)).toEqual(["7", "1"]);
   });

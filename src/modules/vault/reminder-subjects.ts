@@ -7,7 +7,7 @@ import { anchorScopeWhere } from "./scope";
 
 /**
  * WHAT A RENEWAL REMINDER IN THE INBOX MAY NAME (Phase 3V slice 89) — the
- * inbox's subject resolution for the three `expiration.*` kinds, which
+ * inbox's subject resolution for the four `expiration.*` kinds, which
  * `src/notify/inbox.ts` hands over because their rules are the vault's.
  *
  * It runs under the READER's own principal, at read time, and is
@@ -27,6 +27,9 @@ import { anchorScopeWhere } from "./scope";
  *     `client:view` (the tab's own rule), else to Renewals with
  *     `asset:view`, else named without a link (C34's rule: never a link to
  *     a page that refuses);
+ *   - a CONTRACT (slice 112c2, C86 (c)): `contract:view` and its client in
+ *     DIRECT scope — the contract page's own rule (`listContracts`') —
+ *     named by its title and client, linked to its page;
  *   - LOGINS: `credential:view` and never under impersonation (the vault
  *     refuses impersonation before it reads anything — `door.ts`): the
  *     CLIENT is named, never a login (C54, C56), and only while the reader
@@ -49,6 +52,7 @@ import { anchorScopeWhere } from "./scope";
 export const REMINDER_KINDS = [
   "expiration.asset_due",
   "expiration.agreement_ending",
+  "expiration.contract_ending",
   "expiration.logins_expiring",
 ] as const;
 
@@ -82,7 +86,7 @@ export type ReminderSubject = {
   /**
    * Logins only: the most the row may say expire — how many of that
    * client's (or our own) logins the reader reaches now that could have been
-   * in it (`windowOf`). Null for an asset or an agreement.
+   * in it (`windowOf`). Null for an asset, an agreement or a contract.
    */
   readonly countCap: number | null;
 };
@@ -97,8 +101,8 @@ export async function reminderSubjects(
   const mine = refs.filter((r) => isReminderKind(r.kind));
   if (mine.length === 0) return out;
 
-  const may = await accessibleCodes(tx, tenantId, actor, ["asset:view", "service:view", "credential:view", "client:view"]);
-  if (!may.has("asset:view") && !may.has("service:view") && !may.has("credential:view")) return out;
+  const may = await accessibleCodes(tx, tenantId, actor, ["asset:view", "service:view", "contract:view", "credential:view", "client:view"]);
+  if (!may.has("asset:view") && !may.has("service:view") && !may.has("contract:view") && !may.has("credential:view")) return out;
   const scope = await resolveScope(tx, actor);
   const inScope = anchorScopeWhere(scope);
   const clientPages = may.has("client:view");
@@ -124,6 +128,17 @@ export async function reminderSubjects(
       })
     : [];
   const byService = new Map(services.map((s) => [s.id, s]));
+
+  // A contract has no project: DIRECT client scope only, never the lifted
+  // one — the contract page's own rule.
+  const contractIds = may.has("contract:view") ? idsOf("expiration.contract_ending", "Contract") : [];
+  const contracts = contractIds.length
+    ? await tx.contract.findMany({
+        where: { AND: [{ tenantId, id: { in: contractIds } }, scope.all ? {} : { clientId: { in: [...scope.directClientIds] } }] },
+        select: { id: true, title: true, client: { select: { name: true } } },
+      })
+    : [];
+  const byContract = new Map(contracts.map((c) => [c.id, c]));
 
   // LOGINS: what the reader reaches NOW, per row, by the anchor rule and
   // the row's own window (`windowOf`) — our own (a null client) only under
@@ -203,6 +218,9 @@ export async function reminderSubjects(
           countCap: null,
         });
       }
+    } else if (r.kind === "expiration.contract_ending" && r.entityType === "Contract") {
+      const c = byContract.get(r.entityId);
+      if (c) out.set(r.id, { title: `${c.title} · ${c.client.name}`, href: `/contracts/${c.id}`, countCap: null });
     } else if (r.kind === "expiration.logins_expiring") {
       const cap = capOf.get(r.id) ?? 0;
       if (cap === 0) continue; // nothing this reader reaches could have been in it

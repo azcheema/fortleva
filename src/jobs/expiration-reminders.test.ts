@@ -24,6 +24,7 @@ vi.mock("@/db", () => ({
     return fn({
       clientAsset: table("clientAsset"),
       service: table("service"),
+      contract: table("contract"),
       credentialItem: table("credentialItem"),
       expirationReminderSent: table("expirationReminderSent"),
     });
@@ -52,6 +53,7 @@ describe("discovery", () => {
     const window = { gte: new Date(NOW.getTime() - 2 * DAY), lt: new Date(NOW.getTime() + 62 * DAY) };
     expect(byTable["clientAsset"]).toEqual({ status: "ACTIVE", expiresAt: window });
     expect(byTable["service"]).toEqual({ status: { not: "ENDED" }, endsAt: window }); // C55: the END only
+    expect(byTable["contract"]).toEqual({ status: "SIGNED", endsOn: window }); // C86 (c): a SIGNED contract's END
     expect(byTable["credentialItem"]).toEqual({ deletedAt: null, expiresAt: window });
     // A tenant whose last date left the window still gets its sweep.
     expect(byTable["expirationReminderSent"]).toEqual({ dueOn: { lt: new Date(NOW.getTime() - 3 * DAY) } });
@@ -60,12 +62,13 @@ describe("discovery", () => {
   it("opens each tenant once, whichever sources found it", async () => {
     found["clientAsset"] = [{ tenantId: "t1" }];
     found["service"] = [{ tenantId: "t1" }, { tenantId: "t2" }];
+    found["contract"] = [{ tenantId: "t2" }, { tenantId: "t4" }];
     found["expirationReminderSent"] = [{ tenantId: "t3" }];
-    sent.mockResolvedValue({ assets: 1, agreements: 0, logins: 0 });
+    sent.mockResolvedValue({ assets: 1, agreements: 0, contracts: 1, logins: 0 });
     const out = await runExpirationReminders(NOW);
-    expect(sent.mock.calls.map((c) => c[0])).toEqual(["t1", "t2", "t3"]);
+    expect(sent.mock.calls.map((c) => c[0])).toEqual(["t1", "t2", "t4", "t3"]);
     expect(sent.mock.calls.every((c) => c[1] === NOW)).toBe(true);
-    expect(out).toEqual({ tenants: 3, assets: 3, agreements: 0, logins: 0, failed: 0 });
+    expect(out).toEqual({ tenants: 4, assets: 4, agreements: 0, contracts: 4, logins: 0, failed: 0 });
   });
 });
 
@@ -75,10 +78,10 @@ describe("one tenant's failure", () => {
     const boom = Object.assign(new Error("Invalid `prisma.emailOutbox.createMany()` invocation: toEmail someone@example.test"), {
       code: "P2034",
     });
-    sent.mockRejectedValueOnce(boom).mockResolvedValueOnce({ assets: 0, agreements: 1, logins: 2 });
+    sent.mockRejectedValueOnce(boom).mockResolvedValueOnce({ assets: 0, agreements: 1, contracts: 3, logins: 2 });
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const out = await runExpirationReminders(NOW);
-    expect(out).toEqual({ tenants: 2, assets: 0, agreements: 1, logins: 2, failed: 1 });
+    expect(out).toEqual({ tenants: 2, assets: 0, agreements: 1, contracts: 3, logins: 2, failed: 1 });
     expect(log).toHaveBeenCalledTimes(1);
     const line = String(log.mock.calls[0]![0]);
     expect(line).toContain("t1");

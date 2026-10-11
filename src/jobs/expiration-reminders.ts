@@ -4,8 +4,9 @@ import { sendExpirationReminders } from "@/modules/vault";
 /**
  * The daily renewal reminders (Phase 3V slice 89; ARCHITECTURE.md §5's
  * `reminders` job): at 60 / 30 / 14 / 7 / 1 days before an asset's renewal
- * date, an agreement's END (founder decision C55) and a login's expiry
- * (C56, as a count per client). The per-tenant body — who hears, what is
+ * date, an agreement's END (founder decision C55), a SIGNED contract's
+ * END (C86 (c), slice 112c2) and a login's expiry (C56, as a count per
+ * client). The per-tenant body — who hears, what is
  * sent, the dedupe — is the vault's (`sendExpirationReminders`); this file
  * only finds the tenants worth opening.
  *
@@ -36,11 +37,11 @@ const LOOK_AHEAD_DAYS = 62;
 
 export async function runExpirationReminders(
   now: Date = new Date(),
-): Promise<{ tenants: number; assets: number; agreements: number; logins: number; failed: number }> {
+): Promise<{ tenants: number; assets: number; agreements: number; contracts: number; logins: number; failed: number }> {
   const window = { gte: new Date(now.getTime() - 2 * DAY_MS), lt: new Date(now.getTime() + LOOK_AHEAD_DAYS * DAY_MS) };
   const tenantIds = await withPlatform(
     { type: "system", job: "expiration-reminders" },
-    "list tenants with an asset, agreement end or login expiry inside the reminder window, or a reminder row to sweep",
+    "list tenants with an asset, agreement end, signed contract's end or login expiry inside the reminder window, or a reminder row to sweep",
     async (tx) => {
       // In sequence: one transaction, one connection (AGENTS.md's trap).
       const assets = await tx.clientAsset.findMany({
@@ -50,6 +51,11 @@ export async function runExpirationReminders(
       });
       const agreements = await tx.service.findMany({
         where: { status: { not: "ENDED" }, endsAt: window },
+        select: { tenantId: true },
+        distinct: ["tenantId"],
+      });
+      const contracts = await tx.contract.findMany({
+        where: { status: "SIGNED", endsOn: window },
         select: { tenantId: true },
         distinct: ["tenantId"],
       });
@@ -66,16 +72,17 @@ export async function runExpirationReminders(
         select: { tenantId: true },
         distinct: ["tenantId"],
       });
-      return [...new Set([...assets, ...agreements, ...logins, ...stale].map((r) => r.tenantId))];
+      return [...new Set([...assets, ...agreements, ...contracts, ...logins, ...stale].map((r) => r.tenantId))];
     },
   );
 
-  const out = { tenants: tenantIds.length, assets: 0, agreements: 0, logins: 0, failed: 0 };
+  const out = { tenants: tenantIds.length, assets: 0, agreements: 0, contracts: 0, logins: 0, failed: 0 };
   for (const tenantId of tenantIds) {
     try {
       const r = await sendExpirationReminders(tenantId, now);
       out.assets += r.assets;
       out.agreements += r.agreements;
+      out.contracts += r.contracts;
       out.logins += r.logins;
     } catch (e) {
       out.failed += 1;
