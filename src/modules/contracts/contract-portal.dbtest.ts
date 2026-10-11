@@ -274,6 +274,18 @@ describe("signing and declining, under the signer's own principal", () => {
     expect(audits.map((a) => [a.actorType, a.actorId])).toEqual([["CONTACT", eva]]);
   });
 
+  it("a sender who has LEFT: the workspace's owners are told instead (C85 (f))", async () => {
+    const id = await sent("Sender gone");
+    await f.platform.member.update({ where: { id: f.seats.manager.memberId }, data: { status: "SUSPENDED" } });
+    try {
+      await sign(eva, id);
+    } finally {
+      await f.platform.member.update({ where: { id: f.seats.manager.memberId }, data: { status: "ACTIVE" } });
+    }
+    const told = await f.platform.notification.findMany({ where: { tenantId: f.tenantId, kind: "contract.signed", entityId: id } });
+    expect(told.map((n) => [n.receiverId, n.reason])).toEqual([[f.seats.owner.memberId, "OWNER"]]);
+  });
+
   it("only the signer: a colleague and a collaborator are refused, and the contract still waits", async () => {
     const id = await sent("Only Eva");
     expect(await outcome(sign(ella, id, "Ella Eng"))).toBe("NOT_FOUND");

@@ -20,8 +20,9 @@ import { ensureContractPdfAsSystem } from "./pdf-store";
  * the reverse.
  *
  *   1. One transaction: the SENDER told (C85 (a)) — an inbox row and, through
- *      `emit`, a mail as their own notification settings say — while they are
- *      an active member; and, on a signature, the signed-copy mail to the
+ *      `emit`, a mail as their own notification settings say — or, when the
+ *      sender is no longer an active member, the workspace's active OWNERS
+ *      (C85 (f)); and, on a signature, the signed-copy mail to the
  *      client's signer queued (C85 (b): "it's signed — your copy is in your
  *      portal"; `./mail.ts`, the one writer here beyond `emit`).
  *   2. On a signature, the SIGNED COPY drawn and archived
@@ -50,9 +51,22 @@ export async function announceContractDecision(
     const sender = contract.sentByMemberId
       ? await tx.member.findFirst({ where: { tenantId, id: contract.sentByMemberId, status: "ACTIVE" }, select: { id: true } })
       : null;
-    if (sender) {
-      // "You asked" — the sender asked the client for this signature.
-      const receivers = new Map<string, NotificationReason>([[sender.id, "REQUESTER"]]);
+    // "You asked" — the sender asked the client for this signature. A sender
+    // who has LEFT (no longer an active member) hands it to the workspace's
+    // active OWNERS, so a client's answer never goes unheard (founder decision
+    // C85 (f), 2026-10-11 — only in that case; otherwise the sender alone).
+    const receivers = new Map<string, NotificationReason>(
+      sender
+        ? [[sender.id, "REQUESTER"]]
+        : (
+            await tx.member.findMany({
+              where: { tenantId, status: "ACTIVE", memberRoles: { some: { role: { isSystem: true, templateKey: "owner" } } } },
+              select: { id: true },
+              orderBy: { id: "asc" },
+            })
+          ).map((m): [string, NotificationReason] => [m.id, "OWNER"]),
+    );
+    if (receivers.size > 0) {
       await emit(tx, tenantId, {
         kind: decision === "SIGNED" ? "contract.signed" : "contract.declined",
         entity: { type: "Contract", id: contractId },

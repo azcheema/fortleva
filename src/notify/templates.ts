@@ -382,27 +382,29 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Ett projekt du ansvarar för ska ha en lägesuppdatering i dag. Öppna fliken Uppdateringar i projektet för att skriva den.",
     },
   },
-  // Phase 4 slice 112b2 — the client's signer decided a contract the reader
-  // sent (C85 (a)). LINKS, NOT DATA: neither the contract nor the client is
-  // named; the inbox names them under the reader's own principal.
+  // Phase 4 slice 112b2 — the client's signer decided a contract: to its sender
+  // (C85 (a)), or to the owners when the sender has left (C85 (f)) — so the
+  // copy says "a contract", never "you sent". LINKS, NOT DATA: neither the
+  // contract nor the client is named; the inbox names them under the reader's
+  // own principal.
   "contract.signed": {
     en: {
-      subject: "A client signed a contract you sent",
-      body: "A client has signed a contract you sent them for signature. Open it to see the signatures and download the signed copy.",
+      subject: "A client signed a contract",
+      body: "A client has signed a contract your workspace sent them for signature. Open it to see the signatures and download the signed copy.",
     },
     sv: {
-      subject: "En kund har skrivit under ett kontrakt du skickade",
-      body: "En kund har skrivit under ett kontrakt som du skickade till dem för underskrift. Öppna det för att se underskrifterna och ladda ner det undertecknade exemplaret.",
+      subject: "En kund har skrivit under ett kontrakt",
+      body: "En kund har skrivit under ett kontrakt som ni skickade till dem för underskrift. Öppna det för att se underskrifterna och ladda ner det undertecknade exemplaret.",
     },
   },
   "contract.declined": {
     en: {
-      subject: "A client declined a contract you sent",
-      body: "A client has declined a contract you sent them for signature, and may have said why. Open it to read their answer.",
+      subject: "A client declined a contract",
+      body: "A client has declined a contract your workspace sent them for signature, and may have said why. Open it to read their answer.",
     },
     sv: {
-      subject: "En kund har tackat nej till ett kontrakt du skickade",
-      body: "En kund har tackat nej till ett kontrakt som du skickade till dem för underskrift, och kan ha skrivit varför. Öppna det för att läsa svaret.",
+      subject: "En kund har tackat nej till ett kontrakt",
+      body: "En kund har tackat nej till ett kontrakt som ni skickade till dem för underskrift, och kan ha skrivit varför. Öppna det för att läsa svaret.",
     },
   },
   // Phase 4 slice 112b2 — to the client's SIGNER (C85 (b); `contract-mail-keys.ts`).

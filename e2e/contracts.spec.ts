@@ -271,7 +271,7 @@ test.describe.serial("a contract signed or declined in the client's portal", () 
     await expect(page.getByTestId("contract-status")).toHaveText("Signed");
     await expect(page.getByTestId("signature-client")).toHaveAttribute("data-status", "SIGNED");
     await page.goto("/inbox");
-    await expect(page.getByText("A client signed a contract you sent").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("A client signed a contract").first()).toBeVisible({ timeout: 30_000 });
   });
 
   test("Astrid declines another with a reason; the owner's page reads it back", async ({ page, browser }) => {

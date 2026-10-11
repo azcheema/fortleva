@@ -310,7 +310,8 @@ const ANNOUNCER_IMPORTS: Readonly<Record<string, readonly string[]>> = {
   ],
   [join("modules", "contracts", "sign-announce.ts")]: [
     "@/db:withTenant",
-    // The sender's inbox row (and their mail, as their settings say).
+    // The sender's inbox row — the owners', when the sender has left (C85 (f)) —
+    // and the mail, as their settings say.
     "@/notify/emit:emit",
     // The client signer's "it's signed" mail — the one outbox writer (C85 (b)).
     "./mail:enqueueContractMail",

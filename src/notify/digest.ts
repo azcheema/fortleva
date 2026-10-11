@@ -289,12 +289,12 @@ export const SUMMARY_LINES: Readonly<Record<NotificationKind, Line | null>> = {
     ["1 påminnelse om att skriva en projektuppdatering", "# påminnelser om att skriva projektuppdateringar"],
   ),
   "contract.signed": line(
-    ["1 client signed a contract you sent", "Clients signed # contracts you sent"],
-    ["1 kund har skrivit under ett kontrakt du skickade", "Kunder har skrivit under # kontrakt som du skickade"],
+    ["1 client signed a contract", "Clients signed # contracts"],
+    ["1 kund har skrivit under ett kontrakt", "Kunder har skrivit under # kontrakt"],
   ),
   "contract.declined": line(
-    ["1 client declined a contract you sent", "Clients declined # contracts you sent"],
-    ["1 kund har tackat nej till ett kontrakt du skickade", "Kunder har tackat nej till # kontrakt som du skickade"],
+    ["1 client declined a contract", "Clients declined # contracts"],
+    ["1 kund har tackat nej till ett kontrakt", "Kunder har tackat nej till # kontrakt"],
   ),
 };
 

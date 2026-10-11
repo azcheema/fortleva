@@ -284,8 +284,8 @@
       "loginAskDeclined": "En kund kan inte skicka en inloggning ni bad om",
       "loginsAlarm": "Upprepade misslyckade försök att öppna en kunds inloggningar",
       "updateDue": "Dags för en projektuppdatering",
-      "contractSigned": "En kund har skrivit under ett kontrakt du skickade",
-      "contractDeclined": "En kund har tackat nej till ett kontrakt du skickade"
+      "contractSigned": "En kund har skrivit under ett kontrakt",
+      "contractDeclined": "En kund har tackat nej till ett kontrakt"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",

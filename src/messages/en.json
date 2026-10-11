@@ -284,8 +284,8 @@
       "loginAskDeclined": "A client can't send a login you asked for",
       "loginsAlarm": "Repeated failed attempts to open a client's logins",
       "updateDue": "A project update is due",
-      "contractSigned": "A client signed a contract you sent",
-      "contractDeclined": "A client declined a contract you sent"
+      "contractSigned": "A client signed a contract",
+      "contractDeclined": "A client declined a contract"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",

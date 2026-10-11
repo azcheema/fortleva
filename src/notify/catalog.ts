@@ -313,7 +313,8 @@ const KINDS = {
    * a contract, or DECLINED it, in the portal (`src/modules/contracts/
    * portal-sign.ts`, announced after the census write by `sign-announce.ts`).
    * To the member who SENT it — while active — and nobody else (C85 (a), over
-   * every owner and over everyone assigned to the client).
+   * every owner and over everyone assigned to the client); when the sender has
+   * LEFT, the workspace's active owners instead (C85 (f)), reason OWNER.
    *
    * AUDIENCE IS MEMBER: the field names who RECEIVES. INSTANT and
    * PARTICIPATING: the sender asked for the signature and is waiting on it — a

@@ -3,7 +3,7 @@ import type { TenantDb } from "@/db";
 import { accessibleCodes } from "@/entitlements/resolver";
 
 /**
- * WHAT "A CLIENT SIGNED / DECLINED A CONTRACT YOU SENT" MAY NAME IN THE INBOX
+ * WHAT "A CLIENT SIGNED / DECLINED A CONTRACT" MAY NAME IN THE INBOX
  * (Phase 4 slice 112b2; founder decision C85 (a)) — the inbox's subject
  * resolution for `contract.signed` and `contract.declined`, handed over by
  * `src/notify/inbox.ts` because who may read a contract is this module's rule.
