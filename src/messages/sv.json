@@ -1806,7 +1806,8 @@
     "CONTRACT_UPLOAD_INVALID": "Filen är inte en pdf, eller så ändrades den medan den laddades upp. Välj den undertecknade pdf:en och försök igen.",
     "CONTRACT_NOT_UPLOADED": "Det går bara att göra med ett kontrakt som undertecknats utanför Fortleva.",
     "CONTRACT_NOT_REPLACEABLE": "Bara ett avböjt eller återkallat kontrakt kan få en ny version, och bara en gång. Ladda om sidan.",
-    "CONTRACT_PDF_UNAVAILABLE": "Det gick inte att skapa kontraktets pdf just nu. Försök igen om en liten stund."
+    "CONTRACT_PDF_UNAVAILABLE": "Det gick inte att skapa kontraktets pdf just nu. Försök igen om en liten stund.",
+    "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan."
   },
   "assignments": {
     "title": "Team",
@@ -5563,7 +5564,8 @@
       },
       "versionValue": "v{version}",
       "columnEnds": "Upphör",
-      "none": "—"
+      "none": "—",
+      "remindersOff": "Påminnelser avstängda"
     },
     "status": {
       "DRAFT": "Utkast",
@@ -5757,6 +5759,16 @@
       "choose": "Välj pdf",
       "signedLater": "Dagen då det undertecknades kan inte vara senare än i dag.",
       "endsBefore": "Slutdatumet är före startdatumet."
+    },
+    "reminders": {
+      "title": "Påminnelser",
+      "label": "Påminn innan kontraktet löper ut",
+      "on": "De som är tilldelade kunden och kan se kontrakt, och ägarna, får en påminnelse 60, 30, 14, 7 och 1 dag innan det löper ut, och det visas under Förnyelser när slutet närmar sig.",
+      "off": "Inga påminnelser, och det visas inte under Förnyelser – för ett kontrakt som har förnyats eller inte ska förnyas. Påminnelserna stängdes av den {date}.",
+      "noPermission": "Bara de som kan redigera kontrakt kan stänga av eller slå på påminnelserna.",
+      "unreachable": "Anslutningen bröts innan vi fick svar. Ladda om sidan för att se om det ändrades.",
+      "onNow": "Påminnelserna är påslagna igen.",
+      "offNow": "Påminnelserna är avstängda. Det visas inte under Förnyelser."
     }
   },
   "contractPdf": {

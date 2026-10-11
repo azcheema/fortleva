@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { requireTenantContext } from "@/members/tenant-context";
 import { contractVerbs, readContract, type ContractDetail } from "@/modules/contracts";
 
+import { ContractReminders } from "./contract-reminders";
 import { ContractDraftMenu } from "./draft-menu";
 import { DraftEditor } from "./draft-editor";
 import { SentContract } from "./sent-contract";
@@ -30,7 +31,8 @@ const LINK =
  * `contract:send` (slice 112b). Once sent it is the sent contract: its
  * signatures, its PDFs, its text read-only, and its verbs (`SentContract`).
  * Signed ELSEWHERE (slice 112c, C86) it is that record: its file, its
- * details, Show to the client, Delete (`UploadedContract`). `contract:view` and the client in
+ * details, Show to the client, Delete (`UploadedContract`). A SIGNED one with an
+ * end date has "Remind before it ends" (slice 112c3, C87 (a) — `ContractReminders`). `contract:view` and the client in
  * DIRECT scope, else not found (the service decides; the page never says
  * which gate).
  */
@@ -140,6 +142,10 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             canCreate={verbs.create}
             replaced={contract.supersededBy !== null}
           />
+        ) : null}
+        {/* A signed contract with an end: "Remind before it ends" (slice 112c3, C87 (a)). */}
+        {contract.status === "SIGNED" && contract.endsOn !== null ? (
+          <ContractReminders contractId={contract.id} stoppedAt={contract.remindersStoppedAt} canEdit={verbs.edit} />
         ) : null}
         {draft && signerGone ? <Callout tone="caution" title={t("signerGone")} /> : null}
         {/* Never keyed on the row's `updated_at`: a save must not remount the

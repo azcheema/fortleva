@@ -1453,6 +1453,8 @@ model Contract {
   pdfFileId           String?        @map("pdf_file_id") // the PDF as sent (112b)
   signedPdfFileId     String?        @map("signed_pdf_file_id") // the signed copy (112b), or the uploaded file (112c)
   shownToClient       Boolean        @default(false) @map("shown_to_client") // UPLOADED only (112c)
+  // Slice 112c3 (C87 (a)): its end's reminders and Renewals stopped — when; NULL = reminding. SIGNED only (CHECK).
+  remindersStoppedAt  DateTime?      @map("reminders_stopped_at") @db.Timestamptz(6)
   createdByMemberId   String         @map("created_by_member_id") // attribution, no FK
   createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)

@@ -15,6 +15,7 @@ import {
   deleteContractDraft,
   deleteUploadedContract,
   presignContractUpload,
+  setContractReminders,
   setUploadedContractShown,
   updateUploadedContract,
   type ContractUploadTicket,
@@ -253,6 +254,27 @@ export async function setContractShownAction(id: unknown, shown: unknown): Promi
   });
   if (r.ok) {
     revalidatePath(pageOf(id));
+    revalidatePath(CLIENT_TAB, "page");
+  }
+  return r;
+}
+
+/**
+ * "Remind before it ends" on a signed contract, off or back on (`contract:edit`
+ * — C87 (a), slice 112c3). Off: no reminders and off Renewals.
+ */
+export async function setContractRemindersAction(id: unknown, on: unknown): Promise<FormResult> {
+  if (typeof id !== "string" || !isUuid(id) || typeof on !== "boolean") return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("contracts.reminders");
+  const r = await runForm(pageOf(id), async () => {
+    await setContractReminders(ctx, id, on);
+    return on ? t("onNow") : t("offNow");
+  });
+  if (r.ok) {
+    // Its page, and both lists' "Reminders off" (the re-check's nit).
+    revalidatePath(pageOf(id));
+    revalidatePath(LIST);
     revalidatePath(CLIENT_TAB, "page");
   }
   return r;

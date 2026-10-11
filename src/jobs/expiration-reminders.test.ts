@@ -53,7 +53,7 @@ describe("discovery", () => {
     const window = { gte: new Date(NOW.getTime() - 2 * DAY), lt: new Date(NOW.getTime() + 62 * DAY) };
     expect(byTable["clientAsset"]).toEqual({ status: "ACTIVE", expiresAt: window });
     expect(byTable["service"]).toEqual({ status: { not: "ENDED" }, endsAt: window }); // C55: the END only
-    expect(byTable["contract"]).toEqual({ status: "SIGNED", endsOn: window }); // C86 (c): a SIGNED contract's END
+    expect(byTable["contract"]).toEqual({ status: "SIGNED", remindersStoppedAt: null, endsOn: window }); // C86 (c) — unless turned off (C87 (a))
     expect(byTable["credentialItem"]).toEqual({ deletedAt: null, expiresAt: window });
     // A tenant whose last date left the window still gets its sweep.
     expect(byTable["expirationReminderSent"]).toEqual({ dueOn: { lt: new Date(NOW.getTime() - 3 * DAY) } });

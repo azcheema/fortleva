@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { AuthzError } from "@/authz/errors";
+import { withTenant, type TenantDb } from "@/db";
+import { DomainError } from "@/lib/domain-error";
 import { actorFor, setupTenant } from "@/members/dbtest-fixture";
 import { expirationsFeed, expirationsGlance, sendExpirationReminders } from "@/modules/vault";
 import { listInbox } from "@/notify/inbox";
@@ -11,7 +14,8 @@ import { resolvePortalModuleGates, withCensusWrite, type PortalPrincipal } from 
 import { setModuleEnabled } from "@/preferences/service";
 import { LocalDiskTransport, setStorage } from "@/storage";
 
-import { readContract, startContract, updateContractDraft } from "./drafts";
+import { listContracts, readContract, startContract, updateContractDraft } from "./drafts";
+import { setContractReminders } from "./reminders-switch";
 import { sendContract, withdrawContract } from "./send";
 import { commitContractUpload, deleteUploadedContract, presignContractUpload, updateUploadedContract } from "./uploads";
 
@@ -28,7 +32,10 @@ import { commitContractUpload, deleteUploadedContract, presignContractUpload, up
  *     once per band; an edited end date re-arms; the module off sends and
  *     records nothing;
  *   - the inbox naming it only while the reader may open its page;
- *   - Renewals listing it, an ended one for 30 days after its end (C86 (e)).
+ *   - Renewals listing it, an ended one for 30 days after its end (C86 (e));
+ *   - "Remind before it ends" turned off and on again (slice 112c3, C87 (a)):
+ *     no reminder and off Renewals while off; the next band once back on; and
+ *     the database's guard holding who, what and when.
  *
  * It calls the per-tenant `sendExpirationReminders` ONLY — never the job's
  * cross-tenant run (AGENTS.md: never write outside a throwaway tenant). The
@@ -64,6 +71,30 @@ const ctxOf = (memberId: string) => ({ tenantId: f.tenantId, actor: actorFor(mem
 const manager = () => ctxOf(f.seats.manager.memberId);
 const owner = () => ctxOf(f.seats.owner.memberId);
 const P = (n: { params: unknown }) => n.params as Record<string, string>;
+const asMember = <T,>(memberId: string, fn: (tx: TenantDb) => Promise<T>) => withTenant(f.tenantId, { type: "member", id: memberId }, fn);
+const sys = <T,>(fn: (tx: TenantDb) => Promise<T>) => withTenant(f.tenantId, { type: "system" }, fn);
+
+const outcome = async (p: Promise<unknown>): Promise<string> => {
+  try {
+    await p;
+    return "ok";
+  } catch (e) {
+    if (e instanceof AuthzError) return e.reason;
+    if (e instanceof DomainError) return e.code;
+    throw e;
+  }
+};
+
+/** What the DATABASE said — its meta, never the message, whose code frame quotes this file. */
+const said = async (p: Promise<unknown>): Promise<string> => {
+  try {
+    const n = await p;
+    return n === 0 ? "0" : "ok";
+  } catch (e) {
+    const meta = JSON.stringify((e as { meta?: unknown })?.meta ?? null);
+    return /\b(CONTRACT_[A-Z_]+):/.exec(meta)?.[1] ?? `unexpected: ${meta.slice(0, 400)}`;
+  }
+};
 const run = (n = 0) => sendExpirationReminders(f.tenantId, at(n));
 const KIND = "expiration.contract_ending";
 /** The dedupe table's subject CHECK, by name — matched in the error's META only (the code-frame trap). */
@@ -412,5 +443,117 @@ describe("Renewals (C86 (e))", () => {
   it("to a member of the client's project only, nothing of the client's contracts", async () => {
     expect(await contractsOn(viaProject)).toEqual([]);
     expect((await contractsOn(direct)).map((e) => e.name)).toEqual(["Ended a month ago", "Ends today", "Support agreement", "Web build"]);
+  });
+});
+
+describe("Remind before it ends (slice 112c3, C87 (a))", () => {
+  const stoppedOf = async (id: string) =>
+    (await f.platform.contract.findUniqueOrThrow({ where: { id }, select: { remindersStoppedAt: true } })).remindersStoppedAt;
+
+  it("off: no reminder when its next band comes, nothing recorded, and off Renewals and the Home card", async () => {
+    await setContractReminders(manager(), ids["signed"]!, false);
+    expect(await stoppedOf(ids["signed"]!)).toBeInstanceOf(Date);
+    expect((await readContract(manager(), ids["signed"]!)).remindersStoppedAt).toBeInstanceOf(Date);
+    // Day 16: "Web build" (day 30) is 14 days out — its 14-day band is due.
+    expect(await run(16)).toMatchObject({ contracts: 0 });
+    expect(await f.platform.expirationReminderSent.count({ where: { tenantId: f.tenantId, subjectId: ids["signed"]!, offsetDays: 14 } })).toBe(0);
+    const names = (await expirationsFeed(owner(), TODAY)).entries.filter((e) => e.kind === "contractEnds").map((e) => e.name);
+    expect(names).not.toContain("Web build");
+    expect(names).toContain("Ends today"); // the others stay
+    const glance = await expirationsGlance(owner(), TODAY);
+    expect(glance?.entries.map((e) => e.name)).not.toContain("Web build");
+    // The list says so, so owners can find it (the security review's low).
+    const listed = (await listContracts(owner(), { clientId: acme })).rows;
+    expect(listed.find((r) => r.id === ids["signed"])?.remindersOff).toBe(true);
+    expect(listed.find((r) => r.id === ids["today"])?.remindersOff).toBe(false);
+    // Once is enough: turning it off again changes nothing and logs nothing.
+    await setContractReminders(manager(), ids["signed"]!, false);
+    const changes = (await f.audits("contract.reminders_changed")).filter((a) => a.targetId === ids["signed"]);
+    expect(changes.map((a) => (a.metadata as { on: boolean }).on)).toEqual([false]);
+  });
+
+  it("back on: the band now due goes out, it is on Renewals again, and both changes are logged", async () => {
+    await setContractReminders(owner(), ids["signed"]!, true);
+    expect(await stoppedOf(ids["signed"]!)).toBeNull();
+    expect(await run(16)).toMatchObject({ contracts: 1 });
+    expect((await notes(ids["signed"]!)).filter((x) => x.receiverId === direct).map((x) => P(x)["days"])).toEqual(["30", "14"]);
+    expect((await expirationsFeed(owner(), TODAY)).entries.map((e) => e.name)).toContain("Web build");
+    expect((await listContracts(owner(), { clientId: acme })).rows.find((r) => r.id === ids["signed"])?.remindersOff).toBe(false);
+    const changes = (await f.audits("contract.reminders_changed")).filter((a) => a.targetId === ids["signed"]);
+    expect(changes.map((a) => (a.metadata as { on: boolean; clientId: string })).map((m) => [m.on, m.clientId])).toEqual([
+      [false, acme],
+      [true, acme],
+    ]);
+  });
+
+  it("the service: contract:edit, a signed contract, the client in direct scope", async () => {
+    expect(await outcome(setContractReminders(ctxOf(f.seats.employee.memberId), ids["signed"]!, false))).toBe("FORBIDDEN");
+    // The reader role holds `contract:view` but not `contract:edit`.
+    expect(await outcome(setContractReminders(ctxOf(direct), ids["signed"]!, false))).toBe("FORBIDDEN");
+    // A holder of `contract:edit` assigned to Beta only: Acme's contract is not theirs to silence.
+    const editor = await f.platform.role.create({ data: { tenantId: f.tenantId, name: "Contracts editor" }, select: { id: true } });
+    const codes = await f.platform.permission.findMany({ where: { code: { in: ["contract:view", "contract:edit"] } }, select: { id: true } });
+    expect(codes).toHaveLength(2);
+    await f.platform.rolePermission.createMany({
+      data: codes.map((c) => ({ tenantId: f.tenantId, roleId: editor.id, permissionId: c.id, source: "TENANT_GRANT" as const })),
+    });
+    const betaEditor = await extraMember(editor.id, "betaeditor");
+    await f.platform.memberClient.create({ data: { tenantId: f.tenantId, memberId: betaEditor, clientId: beta } });
+    expect(await outcome(setContractReminders(ctxOf(betaEditor), ids["signed"]!, false))).toBe("NOT_FOUND");
+    expect(await outcome(setContractReminders(manager(), ids["sent"]!, false))).toBe("CONTRACT_NOT_SIGNED");
+    expect(await outcome(setContractReminders(manager(), ids["draft"]!, false))).toBe("CONTRACT_NOT_SIGNED");
+    expect(await outcome(setContractReminders(manager(), "not-a-uuid", false))).toBe("INVALID_INPUT");
+    expect(await outcome(setContractReminders(manager(), ids["signed"]!, "off"))).toBe("INVALID_INPUT");
+    expect(await stoppedOf(ids["signed"]!)).toBeNull();
+  });
+
+  it("the database: only a holder of contract:edit, on a signed contract, on its own, stamped now — never the system", async () => {
+    // Which check refused, from the error's META (the database's own text —
+    // never the message, whose code frame quotes this file): every case below
+    // is a CONTRACT_GUARD, so the token alone could not tell them apart (the
+    // code review's nit).
+    const refusal = async (p: Promise<unknown>): Promise<string> => {
+      try {
+        await p;
+        return "ok";
+      } catch (e) {
+        return JSON.stringify((e as { meta?: unknown })?.meta ?? null);
+      }
+    };
+    const stop = (memberId: string, id: string, extra = "") =>
+      asMember(memberId, (tx) =>
+        tx.$executeRawUnsafe(`UPDATE contract SET reminders_stopped_at = now()${extra} WHERE tenant_id = $1 AND id = $2`, f.tenantId, id),
+      );
+    const m = f.seats.manager.memberId;
+    expect(await refusal(stop(f.seats.employee.memberId, ids["signed"]!))).toContain("reminders are changed by a member holding contract:edit");
+    expect(await said(stop(m, ids["sent"]!))).toBe("CONTRACT_NOT_SIGNED");
+    expect(await refusal(stop(m, ids["signed"]!, ", title = 'Renamed'"))).toContain("reminders change on their own");
+    expect(
+      await refusal(
+        asMember(m, (tx) =>
+          tx.$executeRaw`UPDATE contract SET reminders_stopped_at = now() - interval '1 day' WHERE tenant_id = ${f.tenantId} AND id = ${ids["signed"]!}`,
+        ),
+      ),
+    ).toContain("reminders are stopped now");
+    expect(
+      await refusal(
+        sys((tx) => tx.$executeRaw`UPDATE contract SET reminders_stopped_at = now() WHERE tenant_id = ${f.tenantId} AND id = ${ids["signed"]!}`),
+      ),
+    ).toContain("PDF is the system");
+    // Born reminding: a draft started with a stop is refused.
+    expect(
+      await refusal(
+        asMember(m, (tx) =>
+          tx.$executeRaw`
+            INSERT INTO contract (id, tenant_id, client_id, title, language, created_by_member_id, updated_at, reminders_stopped_at)
+            VALUES (${randomUUID()}, ${f.tenantId}, ${acme}, 'Born stopped', 'sv', ${m}, now(), now())`,
+        ),
+      ),
+    ).toContain("started with its reminders on");
+    // The manager, as themselves, on its own, now: the guard admits it.
+    expect(await said(stop(m, ids["signed"]!))).toBe("ok");
+    expect(await stoppedOf(ids["signed"]!)).toBeInstanceOf(Date);
+    expect(await said(asMember(m, (tx) => tx.$executeRaw`UPDATE contract SET reminders_stopped_at = NULL WHERE tenant_id = ${f.tenantId} AND id = ${ids["signed"]!}`))).toBe("ok");
+    expect(await stoppedOf(ids["signed"]!)).toBeNull();
   });
 });

@@ -198,6 +198,7 @@ export const AUDIT_EVENTS = {
   "contract.uploaded": TENANT,
   "contract.uploaded_edited": TENANT,
   "contract.shown_changed": TENANT,
+  "contract.reminders_changed": TENANT, // slice 112c3 (C87 (a)): a signed contract's reminders stopped or turned back on
   "contract.uploaded_deleted": TENANT,
   "invoice.issued": TENANT,
   "invoice.sent": TENANT,

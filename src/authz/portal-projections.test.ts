@@ -132,6 +132,10 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "withdrawnByMemberId",
   "signerMemberId",
   "signerEmail",
+  // Phase 4 slice 112c3 (C87 (a)): a signed contract's reminders turned off —
+  // the agency's own note that it was renewed, or won't be (the pre-apply
+  // review's low: the class-B row reaches a main contact whole).
+  "remindersStoppedAt",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -461,6 +465,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "withdrawnByMemberId",
       "signerMemberId",
       "signerEmail",
+      "remindersStoppedAt",
     ]);
   });
 
@@ -545,6 +550,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "withdrawnByMemberId",
         "signerMemberId",
         "signerEmail",
+        "remindersStoppedAt",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -743,6 +749,8 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   "withdrawnByMemberId",
   "signerMemberId",
   "signerEmail",
+  // Phase 4 slice 112c3 (C87 (a)): the reminders switch's stamp (above).
+  "remindersStoppedAt",
 ]);
 
 /**

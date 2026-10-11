@@ -240,7 +240,8 @@ async function readFeed(
     const contracts = await tx.contract.findMany({
       where: {
         AND: [
-          { tenantId: ctx.tenantId, status: "SIGNED", endsOn: { gte: since, lt: before } },
+          // …and not turned off (C87 (a), slice 112c3: "it leaves Renewals").
+          { tenantId: ctx.tenantId, status: "SIGNED", remindersStoppedAt: null, endsOn: { gte: since, lt: before } },
           scope.all ? {} : { clientId: { in: [...scope.directClientIds] } },
         ],
       },

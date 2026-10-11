@@ -55,7 +55,7 @@ export async function runExpirationReminders(
         distinct: ["tenantId"],
       });
       const contracts = await tx.contract.findMany({
-        where: { status: "SIGNED", endsOn: window },
+        where: { status: "SIGNED", remindersStoppedAt: null, endsOn: window },
         select: { tenantId: true },
         distinct: ["tenantId"],
       });

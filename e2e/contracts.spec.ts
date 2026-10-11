@@ -303,7 +303,8 @@ test.describe.serial("a contract signed or declined in the client's portal", () 
  * file storage, so the upload's byte path is the dbtest's
  * (`contract-uploads.dbtest.ts`); here one is planted in-process through the
  * real service, then: found on the client's Contracts tab, its end date
- * edited; NOT in Astrid's portal until shown (C86 (a)); shown, her portal
+ * edited; "Remind before it ends" turned off and on again (slice 112c3, C87
+ * (a)); NOT in Astrid's portal until shown (C86 (a)); shown, her portal
  * lists it and its page says it was signed outside Fortleva; hidden, gone
  * again; deleted (C86 (b)), gone from the list.
  */
@@ -334,6 +335,23 @@ test.describe.serial("a contract signed elsewhere, put in and shown to the clien
     await expect(toast(page, "Saved.")).toBeVisible();
     await page.reload();
     await expect(page.getByTestId("uploaded-endsOn")).toHaveValue(endsOn);
+
+    // "Remind before it ends" (slice 112c3, C87 (a)): on until turned off,
+    // the server's answer drawn — off, then on again.
+    const reminders = page.getByTestId("contract-reminders-switch");
+    await expect(reminders).toHaveAttribute("aria-checked", "true");
+    await reminders.click();
+    await expect(toast(page, "Reminders are off. It won't show on Renewals.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId("contract-reminders-switch")).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByTestId("contract-reminders-state")).toContainText("Turned off on");
+    // …and the list says so, so owners can find it.
+    await page.goto("/contracts");
+    await expect(page.getByTestId("contract-row").filter({ hasText: title }).getByTestId("contract-row-reminders-off")).toBeVisible();
+    await page.goto(`/contracts/${id}`);
+    await page.getByTestId("contract-reminders-switch").click();
+    await expect(toast(page, "Reminders are on again.")).toBeVisible();
+    await expect(page.getByTestId("contract-reminders-switch")).toHaveAttribute("aria-checked", "true");
 
     const astrid = await asAstrid(browser);
     try {

@@ -88,7 +88,7 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // deleted with contract:delete. The codes are unchanged; `prisma/seed.ts`
   // rewrites the text (the TV16 run owed at release carries it).
   p("contract:create", "contracts", "Draft contracts, and put in ones signed elsewhere", CMA),
-  p("contract:edit", "contracts", "Edit draft contracts, and the details of ones signed elsewhere (a sent contract never changes)", CMA),
+  p("contract:edit", "contracts", "Edit draft contracts and the details of ones signed elsewhere, and turn a signed contract's reminders off or on (a sent contract's text never changes)", CMA),
   p("contract:send", "contracts", "Send for signature, and show a contract signed elsewhere to the client (client-facing acts)", CMA),
   p("contract:delete", "contracts", "Delete draft contracts, and ones signed elsewhere that were put in wrong", CM),
   p("invoice:view", "invoicing", "View invoices", CMA),

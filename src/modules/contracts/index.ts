@@ -1,7 +1,7 @@
 /**
  * CONTRACTS (Phase 4 step 6; founder decision C84). Slice 112: templates and
  * drafts; 112b sends and signs in the portal; 112c puts in a contract signed
- * elsewhere. The design: docs/research/2026-10-10-slice-112-contracts-design.md.
+ * elsewhere; 112c3 turns a signed one's reminders off and on. The design: docs/research/2026-10-10-slice-112-contracts-design.md.
  */
 export {
   contractVerbs,
@@ -27,6 +27,7 @@ export { contractPreviewPdf } from "./preview";
 // review): as SYSTEM it bypasses the portal gate, so only the announcer and the
 // sweep import it, from `./pdf-store` — never a portal route.
 export { contractPdfUrl, ensureContractPdf, makeMissingContractPdfs, type ContractPdfKind } from "./pdf-store";
+export { setContractReminders } from "./reminders-switch";
 export { changeSentContract, newContractVersion, sendContract, TYPED_NAME_MAX, withdrawContract } from "./send";
 export {
   commitContractUpload,

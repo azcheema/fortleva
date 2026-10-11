@@ -24,7 +24,8 @@ import { anchorInScope, type VaultAnchor } from "./scope";
  *     Founder decision C55: only when one ends; a regular renewal sends
  *     nothing (it would be noise every month);
  *   - a SIGNED CONTRACT with an END date — `expiration.contract_ending`
- *     (Phase 4 slice 112c2, founder decision C86 (c): like an agreement).
+ *     (Phase 4 slice 112c2, founder decision C86 (c): like an agreement) —
+ *     unless "Remind before it ends" was turned off (slice 112c3, C87 (a)).
  *     Written and signed, or signed elsewhere and put in; never one nobody
  *     signed. Its metadata only — never its body, which can be half a
  *     megabyte;
@@ -172,10 +173,11 @@ async function plan(tx: TenantDb, tenantId: string, now: Date): Promise<Plan> {
     where: { tenantId, status: { not: "ENDED" }, endsAt: window },
     select: { id: true, clientId: true, projectId: true, endsAt: true },
   });
-  // C86 (c): a SIGNED contract's END — nobody is bound by one never signed.
-  // A contract has no project: it is a client-level subject.
+  // C86 (c): a SIGNED contract's END — nobody is bound by one never signed —
+  // unless its reminders were turned off (C87 (a), slice 112c3). A contract
+  // has no project: it is a client-level subject.
   const contracts = await tx.contract.findMany({
-    where: { tenantId, status: "SIGNED", endsOn: window },
+    where: { tenantId, status: "SIGNED", remindersStoppedAt: null, endsOn: window },
     select: { id: true, clientId: true, endsOn: true },
   });
   // Metadata only — never the secret's table (the vault's boundary).
@@ -348,8 +350,9 @@ async function liveSubject(
     });
     return a ? { clientId: a.clientId, projectId: a.projectId, at: a.endsAt } : null;
   }
+  // Its reminders turned off since the plan (C87 (a)): nothing is sent.
   const c = await tx.contract.findFirst({
-    where: { tenantId, id: s.id, status: "SIGNED" },
+    where: { tenantId, id: s.id, status: "SIGNED", remindersStoppedAt: null },
     select: { clientId: true, endsOn: true },
   });
   return c ? { clientId: c.clientId, projectId: null, at: c.endsOn } : null;

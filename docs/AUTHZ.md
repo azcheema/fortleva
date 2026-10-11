@@ -83,7 +83,7 @@ Seeding column: **C** = CEO (owner-equivalent), **M** = Manager, **A** = Admin, 
 | `service:delete` | core | Delete services | C M | scoped | v1 |
 | `contract:view` | contracts | View contracts | C M A | scoped | v1 |
 | `contract:create` | contracts | Draft/upload contracts *(slice 112c, C86: also PUTS IN a contract signed elsewhere, with its PDF)* | C M A | scoped | v1 |
-| `contract:edit` | contracts | Edit **draft** contracts (sent/signed are immutable) *(slice 112c, C86 (b): also the DETAILS — title, signing day, term — of a contract signed elsewhere; never its file; a contract sent from Fortleva still never changes)* | C M A | scoped | v1 |
+| `contract:edit` | contracts | Edit **draft** contracts (sent/signed are immutable) *(slice 112c, C86 (b): also the DETAILS — title, signing day, term — of a contract signed elsewhere; never its file; a contract sent from Fortleva still never changes)* *(slice 112c3, C87 (a): also "Remind before it ends" on a SIGNED contract — its end's reminders and its place on Renewals turned off or on; a column of its own, never its text)* | C M A | scoped | v1 |
 | `contract:send` | contracts | Send for signature (client-facing act) *(slice 112c, C86 (a): also SHOWS a contract signed elsewhere to the client's main contacts, or hides it — the same client-facing act)* | C M A | scoped | v1 |
 | `contract:delete` | contracts | Delete **draft** contracts only *(slice 112c, C86 (b): and a contract signed elsewhere that was put in wrong, with its file; a contract sent from Fortleva is never deleted)* | C M | scoped | v1 |
 | `invoice:view` | invoicing | View invoices | C M A | scoped | v1 |

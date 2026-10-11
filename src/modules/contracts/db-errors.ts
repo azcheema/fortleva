@@ -21,6 +21,9 @@ export const { mapDbError, guarded } = dbErrorMapper([
   ["CONTRACT_FILL_INS_LEFT", "CONTRACT_FILL_INS_LEFT"],
   ["CONTRACT_NOT_OPEN", "CONTRACT_NOT_OPEN"],
   ["CONTRACT_NOT_REPLACEABLE", "CONTRACT_NOT_REPLACEABLE"],
+  // Slice 112c3 (migration 20261016090000): a reminders switch that met a
+  // contract not signed — the service checks first, so the race's belt.
+  ["CONTRACT_NOT_SIGNED", "CONTRACT_NOT_SIGNED"],
   // The case-insensitive name index — asked first (`assertNameFree`), so the
   // race's belt.
   ["contract_template_name_key", "CONTRACT_TEMPLATE_NAME_TAKEN"],

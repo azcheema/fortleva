@@ -10,7 +10,10 @@ import type { ContractListRow } from "@/modules/contracts";
  * The contracts table — `/contracts` (every client) and the client page's
  * Contracts tab (one client: `showClient` false). One table, so the two lists
  * cannot drift apart (UI.md §12). A contract signed elsewhere (slice 112c)
- * carries a "Signed elsewhere" mark beside its status.
+ * carries a "Signed elsewhere" mark beside its status; one whose reminders
+ * were turned off (slice 112c3, C87 (a)) says so beside its end date — the
+ * security review: a stop hides the deadline from everyone, so owners must be
+ * able to find it.
  */
 export function ContractTable({ rows, showClient, label }: { rows: readonly ContractListRow[]; showClient: boolean; label: string }) {
   const t = useTranslations("contracts.list");
@@ -63,8 +66,15 @@ export function ContractTable({ rows, showClient, label }: { rows: readonly Cont
                 {r.origin === "WRITTEN" ? t("versionValue", { version: r.version }) : t("none")}
               </TableCell>
               <TableCell priority="medium" className="num whitespace-nowrap text-muted-foreground" data-testid="contract-row-ends">
-                {/* A stored day (UTC midnight), formatted in UTC so no zone shifts it. */}
-                {r.endsOn ? format.dateTime(new Date(`${r.endsOn}T00:00:00Z`), { dateStyle: "medium", timeZone: "UTC" }) : t("none")}
+                <span className="inline-flex items-center gap-1.5">
+                  {/* A stored day (UTC midnight), formatted in UTC so no zone shifts it. */}
+                  {r.endsOn ? format.dateTime(new Date(`${r.endsOn}T00:00:00Z`), { dateStyle: "medium", timeZone: "UTC" }) : t("none")}
+                  {r.remindersOff ? (
+                    <Badge variant="neutral" data-testid="contract-row-reminders-off">
+                      {t("remindersOff")}
+                    </Badge>
+                  ) : null}
+                </span>
               </TableCell>
               <TableCell priority="low" className="num whitespace-nowrap text-muted-foreground">
                 {format.dateTime(r.updatedAt, { dateStyle: "medium" })}

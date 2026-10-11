@@ -1806,7 +1806,8 @@
     "CONTRACT_UPLOAD_INVALID": "That file isn't a PDF, or it changed while it was uploading. Choose the signed PDF and try again.",
     "CONTRACT_NOT_UPLOADED": "That can only be done to a contract signed outside Fortleva.",
     "CONTRACT_NOT_REPLACEABLE": "Only a declined or withdrawn contract can get a new version, and only once. Reload the page.",
-    "CONTRACT_PDF_UNAVAILABLE": "The contract's PDF couldn't be made just now. Try again in a moment."
+    "CONTRACT_PDF_UNAVAILABLE": "The contract's PDF couldn't be made just now. Try again in a moment.",
+    "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page."
   },
   "assignments": {
     "title": "Team",
@@ -5563,7 +5564,8 @@
       },
       "versionValue": "v{version}",
       "columnEnds": "Ends",
-      "none": "—"
+      "none": "—",
+      "remindersOff": "Reminders off"
     },
     "status": {
       "DRAFT": "Draft",
@@ -5757,6 +5759,16 @@
       "choose": "Choose PDF",
       "signedLater": "The day it was signed can't be after today.",
       "endsBefore": "The end date is before the start date."
+    },
+    "reminders": {
+      "title": "Reminders",
+      "label": "Remind before it ends",
+      "on": "The people assigned to this client who can see contracts, and the owners, are reminded 60, 30, 14, 7 and 1 days before it ends, and it shows on Renewals as its end nears.",
+      "off": "No reminders, and it won't show on Renewals — for a contract that has been renewed, or won't be. Turned off on {date}.",
+      "noPermission": "Only people who can edit contracts can turn the reminders off or on.",
+      "unreachable": "The connection failed before we heard back. Reload the page to see whether it changed.",
+      "onNow": "Reminders are on again.",
+      "offNow": "Reminders are off. It won't show on Renewals."
     }
   },
   "contractPdf": {

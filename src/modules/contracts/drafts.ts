@@ -48,6 +48,8 @@ export type ContractListRow = {
   readonly version: number;
   readonly client: { readonly id: string; readonly name: string };
   readonly endsOn: string | null;
+  /** Slice 112c3 (C87 (a)): a signed contract's reminders turned off — said on the list, so owners can find them. */
+  readonly remindersOff: boolean;
   readonly updatedAt: Date;
 };
 
@@ -59,6 +61,8 @@ export type ContractDetail = {
   readonly origin: "WRITTEN" | "UPLOADED";
   /** Signed elsewhere: shown to the client's main contacts in their portal (C86 (a) — off until turned on). */
   readonly shownToClient: boolean;
+  /** Slice 112c3 (C87 (a)): when a signed contract's reminders were turned off; null while reminding. */
+  readonly remindersStoppedAt: Date | null;
   readonly version: number;
   readonly client: { readonly id: string; readonly name: string };
   readonly language: ContractLocale;
@@ -162,6 +166,7 @@ export async function listContracts(
         origin: true,
         version: true,
         endsOn: true,
+        remindersStoppedAt: true,
         updatedAt: true,
         client: { select: { id: true, name: true } },
       },
@@ -171,7 +176,11 @@ export async function listContracts(
     const more = rows.length > CONTRACT_LIST_LIMIT;
     return {
       more,
-      rows: rows.slice(0, CONTRACT_LIST_LIMIT).map((r) => ({ ...r, endsOn: isoDay(r.endsOn) })),
+      rows: rows.slice(0, CONTRACT_LIST_LIMIT).map(({ remindersStoppedAt, ...r }) => ({
+        ...r,
+        endsOn: isoDay(r.endsOn),
+        remindersOff: remindersStoppedAt !== null,
+      })),
     };
   });
 }
@@ -211,6 +220,7 @@ export async function readContract(ctx: ContractsCtx, id: string): Promise<Contr
         status: true,
         origin: true,
         shownToClient: true,
+        remindersStoppedAt: true,
         version: true,
         language: true,
         body: true,
@@ -258,6 +268,7 @@ export async function readContract(ctx: ContractsCtx, id: string): Promise<Contr
       status: row.status,
       origin: row.origin,
       shownToClient: row.shownToClient,
+      remindersStoppedAt: row.remindersStoppedAt,
       version: row.version,
       client: row.client,
       language: isContractLocale(row.language) ? row.language : "sv",
