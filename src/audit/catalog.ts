@@ -129,6 +129,9 @@ export const AUDIT_EVENTS = {
   "service.updated": TENANT,
   "service.ended": TENANT,
   "service.deleted": TENANT,
+  // Slice 113 (C88): the renewal job moved an agreement's passed renewal
+  // date on — as SYSTEM, `{ clientId, from, to, steps }` (days only).
+  "service.renewed": TENANT,
   // Contacts & portal (contact.created is a Phase-2 record emitter; the
   // rest are Phase 3 emitters — catalog is static)
   "contact.created": TENANT,

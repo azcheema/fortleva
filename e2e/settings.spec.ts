@@ -135,7 +135,7 @@ test.describe("client agreements tab (owner)", () => {
     await page.waitForURL(/\/clients\/[^/]+\/agreements$/);
     await expect(tabs.getByRole("link", { name: "Agreements", exact: true })).toHaveAttribute("aria-current", "page");
     // The Overview no longer carries the services card; this tab does.
-    const maintenance = page.getByRole("row").filter({ hasText: "Förvaltning" }).first();
+    const maintenance = page.getByTestId("agreement-item").filter({ hasText: "Förvaltning" }).first();
     await expect(maintenance).toBeVisible();
     await expect(maintenance.getByTestId("agreement-rate")).toContainText("1,200.00");
     const cards = page.getByTestId("rate-card-row");
@@ -344,7 +344,7 @@ test.describe("as the employee", () => {
     await expect(page.getByTestId("notice-ack-row")).toHaveCount(0);
     // The employee is assigned to the client: agreements show names, never rates (UI.md rule 14).
     await page.goto(`/clients/${seed.clientId}/agreements`);
-    await expect(page.getByRole("row").filter({ hasText: "Förvaltning" }).first()).toBeVisible();
+    await expect(page.getByTestId("agreement-item").filter({ hasText: "Förvaltning" }).first()).toBeVisible();
     await expect(page.getByTestId("agreement-rate")).toHaveCount(0);
     await expect(page.getByTestId("rate-card-row")).toHaveCount(0);
     await expect(page.getByText("1,200.00")).toHaveCount(0);

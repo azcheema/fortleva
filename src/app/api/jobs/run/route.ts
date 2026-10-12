@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { isProduction } from "@/config";
+import { runAgreementRenewals } from "@/jobs/agreement-renewals";
 import { runClientDigests } from "@/jobs/client-digests";
 import { runContractPdfs } from "@/jobs/contract-pdfs";
 import { runMemberDigests } from "@/jobs/digests";
@@ -45,6 +46,9 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * gone, refused three times, a member no longer active, 90 days dormant),
  * and the invoice PDFs' backstop (Phase 4 slice 108 — an issued invoice
  * still without its PDF five minutes on gets one; it only adds files),
+ * and the agreements' renewals (Phase 4 slice 113 — a running recurring
+ * agreement's passed renewal date MOVES ON to the next one, in every
+ * tenant),
  * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
@@ -143,6 +147,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     console.error(`jobs: contract pdfs failed: ${e instanceof Error ? e.name : typeof e}${code}`);
     contractPdfs = { failed: "discovery" };
   }
+  // Phase 4 slice 113 (C88): agreements' passed renewal dates move on —
+  // AFTER the PDF backstops, and within a minute of its own (the security
+  // review: it must never hold the route past them). Its failure is its own.
+  let agreementRenewals: Awaited<ReturnType<typeof runAgreementRenewals>> | { failed: "discovery" };
+  try {
+    agreementRenewals = await runAgreementRenewals();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: agreement renewals failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    agreementRenewals = { failed: "discovery" };
+  }
   // Phase 5 slice 106 (founder decision C74): phone and browser notifications —
   // the BACKSTOP for a push whose kick was lost (each is due for fifteen
   // minutes, then never), and the jobs above's own notifications, which their
@@ -178,6 +193,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     digests,
     clientDigests,
     updateReminders,
+    agreementRenewals,
     invoicePdfs,
     contractPdfs,
     pushes,

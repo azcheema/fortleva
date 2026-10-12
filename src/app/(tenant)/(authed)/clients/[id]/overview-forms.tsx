@@ -1,51 +1,29 @@
 "use client";
 
-import { CircleSlashIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useFormatter, useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { useActionState, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { AutoForm } from "@/components/auto-form";
 import { InlineConfirm } from "@/components/inline-confirm";
-import {
-  DataTable,
-  Disclosure,
-  Field,
-  FormMessage,
-  InlineEdit,
-  RowActions,
-  StatusBadge,
-  type RowAction,
-} from "@/components/semantic";
+import { Disclosure, Field, FormMessage, InlineEdit } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import type { ClientDetail } from "@/clients/service";
-import { formatMoney } from "@/lib/format";
 import type { InlineEditOption } from "@/lib/inline-edit";
-import { useRun } from "@/components/use-run";
 import type { FormResult } from "@/lib/server-actions";
-import type { ServiceRow } from "@/services/service";
 
 import {
   createServiceAction,
-  deleteServiceAction,
-  endServiceAction,
   setClientArchivedAction,
   updateClientCardAction,
   updateClientNotesAction,
 } from "./actions";
+import { DAY_MAX, DAY_MIN } from "./agreements/agreement-shape";
 
 const VAT_PROFILES = ["SE_DOMESTIC", "EU_REVERSE_CHARGE", "OUTSIDE_SCOPE"] as const;
 
@@ -256,155 +234,7 @@ export function ArchiveClientControl({ client }: { client: ClientDetail }) {
 }
 
 // -- Services (records) ---------------------------------------------
-
-/** Money and dates go through the cached Intl formatters (DESIGN SPEC §3.5). */
-export function ServicesList({
-  clientId,
-  services,
-  canEdit,
-  canDelete,
-  rates,
-  usage,
-  defaultCurrency,
-}: {
-  clientId: string;
-  services: ServiceRow[];
-  canEdit: boolean;
-  canDelete: boolean;
-  /** The tenant's finance.currencyDefault — a row without its own currency is shown in it; never a literal. */
-  defaultCurrency: string;
-  /**
-   * 2T (Agreements tab): the agreement's open BILL rate, FORMATTED ON THE
-   * SERVER ("1 200,00 kr/h"), null = no card; absent = the viewer lacks
-   * rate:view_bill and the column does not exist (UI.md rule 14).
-   */
-  rates?: Record<string, string | null>;
-  /** 2T: hours on the agreement this month, formatted on the server. */
-  usage?: Record<string, string>;
-}) {
-  const t = useTranslations("clients.services");
-  const tCommon = useTranslations("common");
-  const locale = useLocale();
-  const format = useFormatter();
-  const { run } = useRun();
-
-  const money = (row: ServiceRow): string | null => {
-    if (!row.priceExVat) return null;
-    const amount = Number(row.priceExVat);
-    if (!Number.isFinite(amount)) return row.priceExVat;
-    return formatMoney(locale, amount, row.currency ?? defaultCurrency);
-  };
-
-  /**
-   * One quiet trigger per row instead of two solid buttons: a
-   * destructive verb repeated down a table is the loudest object on the
-   * page and it outranks the rows it serves (§5.9).
-   */
-  const actionsFor = (s: ServiceRow): RowAction[] => [
-    ...(canEdit && s.status !== "ENDED"
-      ? [
-          {
-            key: "end",
-            label: t("endService"),
-            icon: CircleSlashIcon,
-            confirm: t("endConfirm"),
-            onSelect: () => run(() => endServiceAction(clientId, s.id)),
-          } satisfies RowAction,
-        ]
-      : []),
-    ...(canDelete
-      ? [
-          {
-            key: "delete",
-            label: t("deleteService"),
-            icon: Trash2Icon,
-            tone: "danger",
-            confirm: t("deleteConfirm"),
-            onSelect: () => run(() => deleteServiceAction(clientId, s.id)),
-          } satisfies RowAction,
-        ]
-      : []),
-  ];
-
-  return (
-    <DataTable density="compact" flush scrollLabel={t("title")}>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t("columns.name")}</TableHead>
-            <TableHead priority="medium">{t("columns.billing")}</TableHead>
-            <TableHead priority="low">{t("columns.scope")}</TableHead>
-            <TableHead className="text-right">{t("columns.price")}</TableHead>
-            {/* Phones keep name · price · status · ⋯; billing, scope and the rate wait
-                for a wider box — the rate still shows in the rate-card table beneath.
-                The rate is `low`, not `medium`: in Swedish the medium set measured 23px
-                wider than the rung's own 608px box, its row actions 7px outside.
-                This month and Renews wait one rung longer (`lower`, a 61.5rem box):
-                with all nine columns the table measured 864px, which at the `low`
-                rung's narrowest box (46rem = 736px) is 128px too wide. */}
-            {rates ? <TableHead priority="low" className="text-right">{t("columns.rate")}</TableHead> : null}
-            {usage ? <TableHead priority="lower" className="text-right">{t("columns.thisMonth")}</TableHead> : null}
-            <TableHead priority="lower">{t("columns.renews")}</TableHead>
-            <TableHead>{t("columns.status")}</TableHead>
-            <TableHead pinned className="text-right">
-              <span className="sr-only">{tCommon("actions")}</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {services.map((s) => {
-            const actions = actionsFor(s);
-            return (
-              <TableRow key={s.id}>
-                <TableCell className="max-w-64 truncate font-medium">{s.name}</TableCell>
-                <TableCell priority="medium" className="text-muted-foreground">
-                  {[
-                    t(`kinds.${s.kind}`),
-                    s.billingInterval ? t(`intervals.${s.billingInterval}`) : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </TableCell>
-                <TableCell priority="low">
-                  {s.projectKey ? (
-                    <span className="num-id font-mono text-xs">{s.projectKey}</span>
-                  ) : (
-                    <span className="text-muted-foreground">{t("clientLevel")}</span>
-                  )}
-                </TableCell>
-                <TableCell className="num text-right">{money(s) ?? "—"}</TableCell>
-                {rates ? (
-                  <TableCell priority="low" className="num text-right" data-testid="agreement-rate">
-                    {rates[s.id] ?? <span className="text-muted-foreground">{"—"}</span>}
-                  </TableCell>
-                ) : null}
-                {usage ? (
-                  <TableCell priority="lower" className="num text-right text-muted-foreground" data-testid="agreement-usage">
-                    {usage[s.id] ?? "—"}
-                  </TableCell>
-                ) : null}
-                <TableCell priority="lower" className="num text-muted-foreground">
-                  {s.renewsAt ? format.dateTime(s.renewsAt, { dateStyle: "medium" }) : "—"}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge domain="serviceStatus" value={s.status} />
-                </TableCell>
-                <TableCell pinned className="text-right">
-                  {actions.length > 0 ? (
-                    <RowActions
-                      label={tCommon("actionsFor", { name: s.name })}
-                      items={actions}
-                    />
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </DataTable>
-  );
-}
+// An agreement's row is `agreements/agreement-row.tsx` (slice 113, read-first).
 
 export function CreateServiceForm({
   clientId,
@@ -486,8 +316,13 @@ export function CreateServiceForm({
           name="renewsAt"
           type="date"
           className="num"
+          min={DAY_MIN}
+          max={DAY_MAX}
           disabled={pending || kind !== "RECURRING"}
         />
+      </Field>
+      <Field label={t("endsAt")} htmlFor="s-ends">
+        <Input id="s-ends" name="endsAt" type="date" className="num" min={DAY_MIN} max={DAY_MAX} disabled={pending} />
       </Field>
       <Field label={t("project")} htmlFor="s-project">
         <NativeSelect id="s-project" name="projectId" defaultValue="" disabled={pending}>

@@ -90,7 +90,10 @@ export async function listPortalServices(principal: PortalPrincipal): Promise<re
       billingInterval: s.billingInterval,
       price: s.priceExVat !== null && s.currency ? { amount: s.priceExVat.toString(), currency: s.currency } : null,
       status: s.status,
-      renewsAt: s.renewsAt,
+      // Slice 113: the date moves on by itself only while the agreement RUNS,
+      // so a paused or ended one's would be a passed date that is no promise
+      // to the client — not shown (the design review's low).
+      renewsAt: s.status === "ACTIVE" ? s.renewsAt : null,
       endsAt: s.endsAt,
       project: s.project ? { key: s.project.key, name: s.project.name } : null,
     }));

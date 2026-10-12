@@ -116,6 +116,9 @@ const DBTEST_PREFIXES = [
   // `slug: \`acsec-other-…\``), all under this one prefix.
   "acsec-",
   "admin-",
+  // Phase 4 slice 113, agreements' renewal dates — `src/services/agreement-renewals.dbtest.ts`,
+  // `setupTenant("agren")`.
+  "agren-",
   // Phase 3V slice 87, the asset registry — `src/modules/vault/assets.dbtest.ts`,
   // `setupTenant("assets")`.
   "assets-",

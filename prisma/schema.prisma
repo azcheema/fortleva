@@ -1347,6 +1347,11 @@ model Service {
   status          ServiceStatus    @default(ACTIVE)
   startedAt       DateTime?        @map("started_at") @db.Timestamptz(6)
   renewsAt        DateTime?        @map("renews_at") @db.Timestamptz(6)
+  // Slice 113 (C88): the day of the month it renews on, kept when a shorter
+  // month moves the date (the 31st → 28 Feb → 31 Mar). NULL = the day of
+  // `renewsAt` — a person setting the date resets it; the renewal job writes
+  // it as it moves the date on (`src/services/renewal-dates.ts`). INTERNAL.
+  renewalDay      Int?             @map("renewal_day") @db.SmallInt
   endsAt          DateTime?        @map("ends_at") @db.Timestamptz(6)
   internalNotes   String?          @map("internal_notes") // INTERNAL-ONLY
   visibility      Visibility       @default(INTERNAL)

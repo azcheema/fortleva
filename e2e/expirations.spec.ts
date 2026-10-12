@@ -55,6 +55,8 @@ test.describe("renewals (owner)", () => {
     await expect(card.getByTestId("expiration-row").filter({ hasText: "E2E Elementor Pro" })).toHaveCount(1);
     await expect(card.getByTestId("expiration-row").filter({ hasText: "e2e-acme.se" })).toHaveCount(1);
     await expect(card.getByTestId("expiration-row").filter({ hasText: "E2E website hosting" })).toHaveCount(0);
+    // An agreement's RENEWAL is the page's only (founder decision C88 (g), slice 113).
+    await expect(card.locator('[data-testid="expiration-row"][data-kind="agreementRenews"]')).toHaveCount(0);
     await page.getByRole("link", { name: "All renewals" }).click();
     await page.waitForURL(/\/expirations$/);
   });

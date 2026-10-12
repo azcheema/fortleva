@@ -233,11 +233,15 @@ describe("scope and gates", () => {
 });
 
 describe("the Home glance", () => {
-  it("is what is lapsed or due within 30 days, the first five, and how many more", async () => {
+  it("is what is lapsed or due within 30 days, the first five, and how many more — never an agreement's renewal", async () => {
     const glance = await expirationsGlance(owner(), TODAY);
-    expect(glance?.entries.map((e) => e.name)).toEqual(["lapsed.se", "Lapsed end", "Due today renewal", "soon.se", "beta.se"]);
-    // Within 30 days there are three more — both hostings and the retainer's renewal — nothing from day 31 on, and the count is exact.
-    expect(glance?.more).toBe(3);
+    // Founder decision C88 (g), slice 113: agreements' RENEWALS are the page's
+    // only — "Due today renewal" and the retainer's renewal stay off the card,
+    // an agreement's END ("Lapsed end") stays on it.
+    expect(glance?.entries.map((e) => e.name)).toEqual(["lapsed.se", "Lapsed end", "soon.se", "beta.se", "p1-hosting"]);
+    expect(glance?.entries.some((e) => e.kind === "agreementRenews")).toBe(false);
+    // Within 30 days there is one more — the other hosting — nothing from day 31 on, and the count is exact.
+    expect(glance?.more).toBe(1);
     expect(glance?.moreAtLeast).toBe(false);
   });
 });

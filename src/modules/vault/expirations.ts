@@ -18,8 +18,10 @@ import { anchorScopeWhere } from "./scope";
  *     gate: without it there is no feed);
  *   - AGREEMENTS not ended (`service:view` — joined only when it is open,
  *     all four gates): a renewal date from TODAY on, and an end date,
- *     passed or coming (a running agreement past its renewal has renewed,
- *     and nothing moves `renewsAt` on — see `readFeed`);
+ *     passed or coming (a running agreement past its renewal has renewed:
+ *     the renewal job moves `renewsAt` on the day after, slice 113 — see
+ *     `readFeed`). Its RENEWALS on the page only, never the Home card
+ *     (founder decision C88 (g));
  *   - SIGNED CONTRACTS with an end date (`contract:view` — joined only when
  *     it is open; Phase 4 slice 112c2, founder decisions C86 (c), (e)): the
  *     end coming, and an end PASSED for `CONTRACT_LAPSED_DAYS` after it —
@@ -151,6 +153,8 @@ async function readFeed(
     readonly logins: boolean;
     /** List a signed contract's end for `CONTRACT_LAPSED_DAYS` after it — the page; never the Home card. */
     readonly contractsLapsed: boolean;
+    /** List agreements' RENEWALS — the page; never the Home card (founder decision C88 (g)). */
+    readonly agreementRenewals: boolean;
   },
 ): Promise<ExpirationsFeed> {
   const { start, until, before } = span(today, opts.days);
@@ -197,18 +201,24 @@ async function readFeed(
       autoRenew: null,
       linkable: clientPages && direct(s.client.id),
     });
-    // RENEWALS FROM TODAY ON. A running agreement past its renewal date has,
-    // in practice, renewed — and nothing in the product rolls `renewsAt`
-    // forward or lets a member edit it, so a lapsed renewal would sit at
-    // the top of the page and the Home card for ever with no verb that
-    // clears it (the code review's medium; UI.md §5.8). Each date is its
-    // own read, ordered by THAT date, so a cut drops the latest of each.
-    const renewals = await tx.service.findMany({
-      where: { AND: [{ tenantId: ctx.tenantId, status: { not: "ENDED" }, renewsAt: { gte: start, lt: before } }, inScope] },
-      orderBy: [{ renewsAt: "asc" }, { name: "asc" }, { id: "asc" }],
-      take: limit + 1,
-      select: { id: true, name: true, renewsAt: true, ...clientAndProject },
-    });
+    // RENEWALS FROM TODAY ON. A running agreement past its renewal date has
+    // renewed: since slice 113 the renewal job moves its date on the day
+    // after (`src/services/renewals.ts`), so a passed one is the job's
+    // business for at most a day — and a paused one, or one whose end comes
+    // first, keeps a passed date that is nobody's task. Each date is its own
+    // read, ordered by THAT date, so a cut drops the latest of each. THE PAGE
+    // ONLY (founder decision C88 (g)): a monthly agreement is always within a
+    // month once dates move on, and five rows of them would push a domain
+    // lapsing today off the Home card; a renewal needs no action (from slice
+    // 113b it drafts its own invoice and says so).
+    const renewals = !opts.agreementRenewals
+      ? []
+      : await tx.service.findMany({
+          where: { AND: [{ tenantId: ctx.tenantId, status: { not: "ENDED" }, renewsAt: { gte: start, lt: before } }, inScope] },
+          orderBy: [{ renewsAt: "asc" }, { name: "asc" }, { id: "asc" }],
+          take: limit + 1,
+          select: { id: true, name: true, renewsAt: true, ...clientAndProject },
+        });
     sources.push({
       cut: cutBy(renewals, (s) => s.renewsAt!),
       entries: renewals.slice(0, limit).map((s) => ({ ...agreement(s), kind: "agreementRenews", date: dayOf(s.renewsAt!) })),
@@ -310,7 +320,7 @@ async function readFeed(
 export async function expirationsFeed(ctx: VaultCtx, today: string): Promise<ExpirationsFeed> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "asset:view");
-    return readFeed(tx, ctx, today, { days: EXPIRATIONS_DAYS, limit: EXPIRATIONS_LIMIT, logins: true, contractsLapsed: true });
+    return readFeed(tx, ctx, today, { days: EXPIRATIONS_DAYS, limit: EXPIRATIONS_LIMIT, logins: true, contractsLapsed: true, agreementRenewals: true });
   });
 }
 
@@ -330,7 +340,9 @@ export type ExpirationsGlance = {
  * `GLANCE_DAYS`, soonest first. Logins are not read at all: the card is a
  * list of things to renew, and C54 keeps logins to a count on the page; a
  * signed contract only while its end is still to come (an ended one is the
- * page's note, not the card's task).
+ * page's note, not the card's task); and no agreement's RENEWAL (C88 (g) —
+ * once dates move on, a monthly agreement is always within the card's
+ * month, and a renewal is not a task), only its end.
  */
 export async function expirationsGlance(ctx: VaultCtx, today: string): Promise<ExpirationsGlance | null> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
@@ -340,7 +352,13 @@ export async function expirationsGlance(ctx: VaultCtx, today: string): Promise<E
       if (e instanceof AuthzError) return null;
       throw e;
     }
-    const feed = await readFeed(tx, ctx, today, { days: GLANCE_DAYS, limit: EXPIRATIONS_LIMIT, logins: false, contractsLapsed: false });
+    const feed = await readFeed(tx, ctx, today, {
+      days: GLANCE_DAYS,
+      limit: EXPIRATIONS_LIMIT,
+      logins: false,
+      contractsLapsed: false,
+      agreementRenewals: false,
+    });
     return {
       entries: feed.entries.slice(0, GLANCE_ROWS),
       more: Math.max(0, feed.entries.length - GLANCE_ROWS),

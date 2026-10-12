@@ -308,6 +308,8 @@ export type DomainErrorCode =
   | "CONTRACT_NOT_SIGNED" // slice 112c3: that verb is for a signed contract (its reminders)
   | "CONTRACT_UPLOAD_INVALID" // slice 112c: the uploaded file is not a PDF, or not the file that was announced (size, fingerprint)
   | "CONTRACT_NOT_UPLOADED" // slice 112c: that verb is for a contract signed elsewhere
+  // Phase 4 slice 113 — agreements (src/services/service.ts; C88).
+  | "AGREEMENT_ENDED" // pause, run again or a new end date: an ended agreement stays ended, on the day it ended
   | "CONTRACT_SIGNER_INVALID"; // the picked signer is not a main contact of this client in the portal (the database holds "of this client"; sending re-checks the rest — 112b)
 
 export class DomainError extends Error {

@@ -136,6 +136,9 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   // the agency's own note that it was renewed, or won't be (the pre-apply
   // review's low: the class-B row reaches a main contact whole).
   "remindersStoppedAt",
+  // Phase 4 slice 113 (C88): an agreement's anchor day, the renewal job's
+  // bookkeeping (`service` is class B — the portal's agreements read it).
+  "renewalDay",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -466,6 +469,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "signerMemberId",
       "signerEmail",
       "remindersStoppedAt",
+      "renewalDay",
     ]);
   });
 
@@ -551,6 +555,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "signerMemberId",
         "signerEmail",
         "remindersStoppedAt",
+        "renewalDay",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -751,6 +756,8 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   "signerEmail",
   // Phase 4 slice 112c3 (C87 (a)): the reminders switch's stamp (above).
   "remindersStoppedAt",
+  // Phase 4 slice 113 (C88): an agreement's anchor day (above).
+  "renewalDay",
 ]);
 
 /**

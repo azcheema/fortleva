@@ -76,3 +76,19 @@ export const dateField = (fd: FormData, name: string): Date | null => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 export const isoDate = (d: Date | null): string => (d ? d.toISOString().slice(0, 10) : "");
+
+/**
+ * A posted `<input type="date">`, STRICTLY: blank is no date; a real
+ * `YYYY-MM-DD` is that day at UTC midnight; ANYTHING ELSE is `undefined`,
+ * which the caller refuses. `dateField` reads an unparseable value as blank —
+ * and a browser's date input takes a five-digit year — so a typo would clear
+ * the stored date and say "Saved" (slice 87's code review; the Assets tab's
+ * own copy of this rule). The service then holds the year to 2000–2199.
+ */
+export function strictDateField(fd: FormData, name: string): Date | null | undefined {
+  const v = field(fd, name);
+  if (v === null || v === "") return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+  const d = new Date(`${v}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v ? undefined : d;
+}

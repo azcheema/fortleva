@@ -1807,6 +1807,7 @@
     "CONTRACT_NOT_UPLOADED": "That can only be done to a contract signed outside Fortleva.",
     "CONTRACT_NOT_REPLACEABLE": "Only a declined or withdrawn contract can get a new version, and only once. Reload the page.",
     "CONTRACT_PDF_UNAVAILABLE": "The contract's PDF couldn't be made just now. Try again in a moment.",
+    "AGREEMENT_ENDED": "This agreement has ended: it can't be paused, run again or given a new end date. Reload the page.",
     "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page."
   },
   "assignments": {
@@ -1996,6 +1997,7 @@
       "price": "Price ex. VAT",
       "currency": "Currency",
       "renewsAt": "Renews",
+      "endsAt": "Ends on",
       "project": "Project",
       "clientLevel": "Client level",
       "status": {
@@ -2006,23 +2008,25 @@
       "add": "Add service",
       "adding": "Adding…",
       "added": "Added {name}",
-      "end": "End",
-      "endConfirm": "End this service?",
-      "endService": "End service",
       "ended": "Service ended",
-      "delete": "Delete",
-      "deleteConfirm": "Delete service?",
-      "deleteService": "Delete service",
       "deleted": "Service deleted",
-      "columns": {
-        "name": "Service",
+      "row": {
+        "name": "Name",
         "billing": "Billing",
-        "scope": "Scope",
         "price": "Price ex. VAT",
-        "renews": "Renews",
-        "status": "Status",
-        "rate": "Rate",
-        "thisMonth": "This month"
+        "currency": "Currency",
+        "renewsOn": "Renews on",
+        "endsOn": "Ends on",
+        "rate": "Bill rate",
+        "thisMonth": "This month",
+        "pause": "Pause",
+        "resume": "Run again",
+        "paused": "Agreement paused",
+        "resumed": "Agreement running again",
+        "end": "End agreement",
+        "endConfirm": "End {name}? It stops renewing, and an ended agreement can't be started again.",
+        "delete": "Delete agreement",
+        "deleteConfirm": "Delete {name}? This can't be undone."
       }
     },
     "filters": {

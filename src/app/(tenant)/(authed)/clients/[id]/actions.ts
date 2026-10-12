@@ -21,11 +21,11 @@ import {
   updateContact,
   type ClientCardPatch,
 } from "@/clients/service";
-import { caution, dateField, field, has, runForm, type FormResult } from "@/lib/server-actions";
+import { caution, field, has, runForm, strictDateField, type FormResult } from "@/lib/server-actions";
 import type { DeliveryOutcome } from "@/mailer";
 import { requireTenantContext } from "@/members/tenant-context";
 import { createProject } from "@/projects/service";
-import { createService, deleteService, endService } from "@/services/service";
+import { createService, deleteService, endService, setAgreementRunning, updateService, type ServicePatch } from "@/services/service";
 
 /**
  * Server actions for /clients/[id]/*. Every one derives tenant + actor
@@ -379,22 +379,22 @@ export async function createClientProjectAction(
 const KINDS = ["ONE_TIME", "RECURRING"] as const;
 const INTERVALS = ["MONTHLY", "QUARTERLY", "YEARLY"] as const;
 
+const kindOf = (raw: string | null) => KINDS.find((k) => k === raw) ?? null;
+const intervalOf = (raw: string | null) => INTERVALS.find((i) => i === raw) ?? null;
+
 export async function createServiceAction(
   _prev: FormResult | null,
   formData: FormData,
 ): Promise<FormResult> {
   const clientId = uuid.safeParse(formData.get("clientId"));
-  if (!clientId.success) return invalid();
+  // Slice 113: a malformed date is refused, never read as "no date".
+  const renewsAt = strictDateField(formData, "renewsAt");
+  const endsAt = strictDateField(formData, "endsAt");
+  if (!clientId.success || renewsAt === undefined || endsAt === undefined) return invalid();
   const ctx = await ctxOf();
   const t = await getTranslations("clients.services");
-  const kindRaw = field(formData, "kind");
-  const kind = KINDS.includes(kindRaw as (typeof KINDS)[number])
-    ? (kindRaw as (typeof KINDS)[number])
-    : "ONE_TIME";
-  const intervalRaw = field(formData, "billingInterval");
-  const billingInterval = INTERVALS.includes(intervalRaw as (typeof INTERVALS)[number])
-    ? (intervalRaw as (typeof INTERVALS)[number])
-    : null;
+  const kind = kindOf(field(formData, "kind")) ?? "ONE_TIME";
+  const billingInterval = intervalOf(field(formData, "billingInterval"));
   const projectRaw = field(formData, "projectId");
   const projectId = projectRaw && uuid.safeParse(projectRaw).success ? projectRaw : null;
   const name = field(formData, "name") ?? "";
@@ -407,12 +407,72 @@ export async function createServiceAction(
       billingInterval,
       priceExVat: field(formData, "priceExVat"),
       currency: field(formData, "currency"),
-      renewsAt: dateField(formData, "renewsAt"),
+      renewsAt,
+      endsAt,
     });
     return t("added", { name: name.trim() });
   });
   // "layout": services are rendered on the Agreements tab (2T), not the overview path.
   if (r.ok) revalidatePath(path(clientId.data), "layout");
+  return r;
+}
+
+/**
+ * An agreement's read-first row (slice 113; AutoForm posts the whole row):
+ * only the fields the form posted are patched (`has`), a malformed date or
+ * an unknown interval is refused, and the service audits what changed.
+ * The KIND is not editable here (set when the agreement is added — the
+ * code review's low: a select saving on change would clear a recurring
+ * agreement's date on one keystroke), so a posted `kind` is ignored.
+ */
+export async function updateAgreementAction(formData: FormData): Promise<FormResult> {
+  const clientId = uuid.safeParse(formData.get("clientId"));
+  const serviceId = uuid.safeParse(formData.get("serviceId"));
+  const renewsAt = strictDateField(formData, "renewsAt");
+  const endsAt = strictDateField(formData, "endsAt");
+  const interval = has(formData, "billingInterval") ? intervalOf(field(formData, "billingInterval")) : undefined;
+  if (!clientId.success || !serviceId.success || renewsAt === undefined || endsAt === undefined || interval === null) {
+    return invalid();
+  }
+  const ctx = await ctxOf();
+  const tCommon = await getTranslations("common");
+  const patch: { -readonly [K in keyof ServicePatch]: ServicePatch[K] } = {};
+  if (has(formData, "name")) patch.name = field(formData, "name") ?? "";
+  if (interval !== undefined) patch.billingInterval = interval;
+  if (has(formData, "priceExVat")) patch.priceExVat = field(formData, "priceExVat");
+  // The currency select draws the workspace's default for an agreement that
+  // has none, so it is patched only when the member changed it — never a
+  // currency nobody chose, written by a save of another field (the re-check's
+  // low: it would also start showing a shared agreement's price in the portal).
+  if (has(formData, "currency") && field(formData, "currency") !== field(formData, "currencyWas")) patch.currency = field(formData, "currency");
+  // The renewal date MOVES ON BY ITSELF (the renewal job), so a page loaded
+  // before a move posts the OLD date with every save of the row — which would
+  // put the date back and drop its anchor (the design review's M3). The row
+  // posts the date it was drawn with (`renewsAtWas`); only a date the member
+  // actually changed is patched.
+  if (has(formData, "renewsAt") && field(formData, "renewsAt") !== field(formData, "renewsAtWas")) patch.renewsAt = renewsAt;
+  // Ending writes the end date from the row's menu, so the same rule: only a
+  // date the member changed (the code review's low — a page loaded before an
+  // End posted the old, empty date back over the day it ended).
+  if (has(formData, "endsAt") && field(formData, "endsAt") !== field(formData, "endsAtWas")) patch.endsAt = endsAt;
+  const r = await runForm(path(clientId.data), async () => {
+    await updateService(ctx, serviceId.data, patch);
+    return tCommon("saved");
+  });
+  if (r.ok) revalidatePath(path(clientId.data), "layout");
+  return r;
+}
+
+/** Pause a running agreement, or let a paused one run again (slice 113): one click each way. */
+export async function setAgreementRunningAction(clientId: string, serviceId: string, running: boolean): Promise<FormResult> {
+  if (!uuid.safeParse(clientId).success || !uuid.safeParse(serviceId).success || typeof running !== "boolean") return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("clients.services.row");
+  const r = await runForm(path(clientId), async () => {
+    await setAgreementRunning(ctx, serviceId, running);
+    return running ? t("resumed") : t("paused");
+  });
+  if (r.ok) revalidatePath(path(clientId), "layout");
   return r;
 }
 

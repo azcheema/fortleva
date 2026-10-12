@@ -1807,6 +1807,7 @@
     "CONTRACT_NOT_UPLOADED": "Det går bara att göra med ett kontrakt som undertecknats utanför Fortleva.",
     "CONTRACT_NOT_REPLACEABLE": "Bara ett avböjt eller återkallat kontrakt kan få en ny version, och bara en gång. Ladda om sidan.",
     "CONTRACT_PDF_UNAVAILABLE": "Det gick inte att skapa kontraktets pdf just nu. Försök igen om en liten stund.",
+    "AGREEMENT_ENDED": "Avtalet är avslutat och kan inte pausas, startas igen eller få ett nytt slutdatum. Ladda om sidan.",
     "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan."
   },
   "assignments": {
@@ -1996,6 +1997,7 @@
       "price": "Pris exkl. moms",
       "currency": "Valuta",
       "renewsAt": "Förnyas",
+      "endsAt": "Slutar",
       "project": "Projekt",
       "clientLevel": "Kundnivå",
       "status": {
@@ -2006,23 +2008,25 @@
       "add": "Lägg till tjänst",
       "adding": "Lägger till…",
       "added": "La till {name}",
-      "end": "Avsluta",
-      "endConfirm": "Avsluta tjänsten?",
-      "endService": "Avsluta tjänst",
       "ended": "Tjänsten avslutad",
-      "delete": "Ta bort",
-      "deleteConfirm": "Ta bort tjänsten?",
-      "deleteService": "Ta bort tjänst",
       "deleted": "Tjänsten borttagen",
-      "columns": {
-        "name": "Tjänst",
+      "row": {
+        "name": "Namn",
         "billing": "Fakturering",
-        "scope": "Omfattning",
         "price": "Pris exkl. moms",
-        "renews": "Förnyas",
-        "status": "Status",
-        "rate": "Pris",
-        "thisMonth": "Denna månad"
+        "currency": "Valuta",
+        "renewsOn": "Förnyas",
+        "endsOn": "Slutar",
+        "rate": "Timpris",
+        "thisMonth": "Denna månad",
+        "pause": "Pausa",
+        "resume": "Starta igen",
+        "paused": "Avtalet pausat",
+        "resumed": "Avtalet löper igen",
+        "end": "Avsluta avtalet",
+        "endConfirm": "Avsluta {name}? Det slutar förnyas, och ett avslutat avtal kan inte startas igen.",
+        "delete": "Ta bort avtalet",
+        "deleteConfirm": "Ta bort {name}? Det går inte att ångra."
       }
     },
     "filters": {

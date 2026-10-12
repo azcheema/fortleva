@@ -11,7 +11,9 @@ import type {
   Visibility,
 } from "@/generated/prisma/enums";
 import { fail } from "@/lib/domain-error";
+import { dateColumn, localDateString } from "@/lib/duration";
 import { newId } from "@/lib/ids";
+import { readPreferences } from "@/preferences/service";
 
 /**
  * Services — what the client buys, as a RECORD with renewal dates
@@ -162,13 +164,54 @@ export type ServiceInput = {
   visibility?: Visibility;
 };
 
+/**
+ * A day the form sent: none, or a real date in 2000–2199. A browser's date
+ * input takes a five-digit year, and a typo would otherwise be stored —
+ * and, since slice 113, move a renewal date on by centuries or bill one
+ * (invoices and assets hold the same range).
+ */
+export function checkDay(d: Date | null | undefined, field: string): Date | null {
+  if (d === undefined || d === null) return null;
+  const year = d.getUTCFullYear();
+  if (Number.isNaN(d.getTime()) || year < 2000 || year > 2199) return fail("INVALID_INPUT", field);
+  return d;
+}
+
+/**
+ * The longest name an agreement may have — the form's own limit, held here
+ * too (slice 113's security review): the name reaches the client's portal
+ * and the reminder mails, and a crafted post is not bound by `maxLength`.
+ */
+export const SERVICE_NAME_MAX = 200;
+
+const checkName = (raw: string | null | undefined): string => {
+  const name = clean(raw);
+  if (!name) return fail("NAME_REQUIRED");
+  if (name.length > SERVICE_NAME_MAX) return fail("INVALID_INPUT", "name");
+  return name;
+};
+
+/** A value as the audit row keeps it: a date as the day it names (`YYYY-MM-DD`), anything else as text, none as null. */
+const dayText = (v: unknown): string | null =>
+  v instanceof Date ? v.toISOString().slice(0, 10) : v === null || v === undefined ? null : String(v);
+
+/**
+ * The fields whose old and new VALUES the audit row keeps (slice 113's
+ * security review): what an agreement is billed and when — from slice 113b
+ * they draft invoices. Staff-only facts; never `internalNotes` or the
+ * description, which are named only.
+ */
+const VALUED_FIELDS: ReadonlySet<string> = new Set(["name", "kind", "billingInterval", "priceExVat", "currency", "startedAt", "renewsAt", "endsAt"]);
+
 /** service:create; scoped on the project (if any) else the client, directly. */
 export async function createService(ctx: ServiceCtx, input: ServiceInput): Promise<{ id: string }> {
-  const name = clean(input.name);
-  if (!name) fail("NAME_REQUIRED");
+  const name = checkName(input.name);
   const price = parsePrice(input.priceExVat);
   const currency = clean(input.currency)?.toUpperCase() ?? null;
   if (currency && !/^[A-Z]{3}$/.test(currency)) fail("INVALID_INPUT", "currency");
+  const startedAt = checkDay(input.startedAt, "startedAt");
+  const renewsAt = checkDay(input.renewsAt, "renewsAt");
+  const endsAt = checkDay(input.endsAt, "endsAt");
   const id = newId();
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "service:create");
@@ -179,15 +222,15 @@ export async function createService(ctx: ServiceCtx, input: ServiceInput): Promi
         tenantId: ctx.tenantId,
         clientId: input.clientId,
         projectId: input.projectId ?? null,
-        name: name!,
+        name,
         description: clean(input.description),
         kind: input.kind,
         billingInterval: input.kind === "RECURRING" ? (input.billingInterval ?? "MONTHLY") : null,
         priceExVat: price,
         currency,
-        startedAt: input.startedAt ?? null,
-        renewsAt: input.kind === "RECURRING" ? (input.renewsAt ?? null) : null,
-        endsAt: input.endsAt ?? null,
+        startedAt,
+        renewsAt: input.kind === "RECURRING" ? renewsAt : null,
+        endsAt,
         internalNotes: clean(input.internalNotes),
         visibility: input.visibility ?? "INTERNAL",
       },
@@ -217,6 +260,7 @@ export async function updateService(
     await assertTarget(tx, ctx.actor, s!.clientId, s!.projectId);
     const data: Record<string, unknown> = {};
     const changed: string[] = [];
+    const values: Record<string, { from: string | null; to: string | null }> = {};
     const set = (field: string, next: unknown, cur: unknown) => {
       const same =
         next instanceof Date && cur instanceof Date
@@ -225,16 +269,29 @@ export async function updateService(
       if (!same) {
         data[field] = next;
         changed.push(field);
+        if (VALUED_FIELDS.has(field)) values[field] = { from: dayText(cur), to: dayText(next) };
       }
     };
-    if ("name" in patch) {
-      const name = clean(patch.name);
-      if (!name) fail("NAME_REQUIRED");
-      set("name", name, s!.name);
-    }
+    if ("name" in patch) set("name", checkName(patch.name), s!.name);
     if ("description" in patch) set("description", clean(patch.description), s!.description);
     if ("kind" in patch && patch.kind) set("kind", patch.kind, s!.kind);
-    if ("billingInterval" in patch) set("billingInterval", patch.billingInterval ?? null, s!.billingInterval);
+    // The kind's rules on every edit, as on create (slice 113): a one-time
+    // agreement has no interval and no renewal date; a recurring one always
+    // has an interval. Applied whatever the patch names, so a kind changed
+    // alone never leaves a one-time agreement renewing.
+    const kind = "kind" in patch && patch.kind ? patch.kind : s!.kind;
+    const interval =
+      kind === "RECURRING" ? (("billingInterval" in patch ? patch.billingInterval : s!.billingInterval) ?? "MONTHLY") : null;
+    set("billingInterval", interval, s!.billingInterval);
+    const renewsAt = kind === "RECURRING" ? ("renewsAt" in patch ? checkDay(patch.renewsAt, "renewsAt") : s!.renewsAt) : null;
+    set("renewsAt", renewsAt, s!.renewsAt);
+    // A date a person sets is the new anchor: the day the job kept goes
+    // (`renewal-dates.ts`). Not a field anyone reads, so not in `changed`.
+    // Unconditionally — never on what the unlocked read saw: a job moving the
+    // date at the same moment writes the anchor after that read, and this
+    // UPDATE, waiting on its lock, would keep the job's anchor with the
+    // person's date (the design review's low).
+    if (changed.includes("renewsAt")) data.renewalDay = null;
     if ("priceExVat" in patch) {
       set("priceExVat", parsePrice(patch.priceExVat), s!.priceExVat === null ? null : s!.priceExVat.toString());
     }
@@ -243,18 +300,27 @@ export async function updateService(
       if (currency && !/^[A-Z]{3}$/.test(currency)) fail("INVALID_INPUT", "currency");
       set("currency", currency, s!.currency);
     }
-    if ("startedAt" in patch) set("startedAt", patch.startedAt ?? null, s!.startedAt);
-    if ("renewsAt" in patch) set("renewsAt", patch.renewsAt ?? null, s!.renewsAt);
-    if ("endsAt" in patch) set("endsAt", patch.endsAt ?? null, s!.endsAt);
+    if ("startedAt" in patch) set("startedAt", checkDay(patch.startedAt, "startedAt"), s!.startedAt);
+    if ("endsAt" in patch) set("endsAt", checkDay(patch.endsAt, "endsAt"), s!.endsAt);
+    // An ENDED agreement's end is the day it was ended (slice 113's code
+    // review): never moved on or cleared afterwards — a stale page included.
+    if (changed.includes("endsAt") && s!.status === "ENDED") fail("AGREEMENT_ENDED");
     if ("internalNotes" in patch) set("internalNotes", clean(patch.internalNotes), s!.internalNotes);
     if ("visibility" in patch && patch.visibility) set("visibility", patch.visibility, s!.visibility);
     if (changed.length === 0) return { changed };
-    await tx.service.update({ where: { id: serviceId }, data });
+    // The end date's write re-checks the status in the same statement: an
+    // End committed between the read above and this write would otherwise
+    // be written over (the re-check's low — the read is not locked).
+    const { count } = await tx.service.updateMany({
+      where: { id: serviceId, ...(changed.includes("endsAt") ? { status: { not: "ENDED" as const } } : {}) },
+      data,
+    });
+    if (count === 0) return changed.includes("endsAt") ? fail("AGREEMENT_ENDED") : deny("NOT_FOUND");
     await record(tx, {
       action: "service.updated",
       targetType: "Service",
       targetId: serviceId,
-      metadata: { clientId: s!.clientId, fields: changed },
+      metadata: { clientId: s!.clientId, fields: changed, values },
     });
     return { changed };
   });
@@ -272,15 +338,31 @@ export async function setServiceStatus(
     if (!s) deny("NOT_FOUND");
     await assertTarget(tx, ctx.actor, s!.clientId, s!.projectId);
     if (s!.status === status) return { changed: false };
+    // ENDING is "it ends today" (slice 113): its end is today — the
+    // workspace's day, as a date — unless an EARLIER end is already set. A
+    // later one would leave an ended agreement saying it runs on (and, from
+    // slice 113b, decide what its last invoice bills).
+    let endsAt: Date | null = null;
+    if (status === "ENDED") {
+      const today = dateColumn(localDateString(new Date(), (await readPreferences(tx, ctx.tenantId)).timezone));
+      endsAt = s!.endsAt !== null && s!.endsAt.getTime() < today.getTime() ? s!.endsAt : today;
+    }
     await tx.service.update({
       where: { id: serviceId },
-      data: { status, ...(status === "ENDED" ? { endsAt: s!.endsAt ?? new Date() } : {}) },
+      data: { status, ...(endsAt !== null ? { endsAt } : {}) },
+      select: { id: true },
     });
     await record(tx, {
       action: status === "ENDED" ? "service.ended" : "service.updated",
       targetType: "Service",
       targetId: serviceId,
-      metadata: { clientId: s!.clientId, from: s!.status, to: status },
+      // An end date ending wrote over is kept in the trail (the security review's low).
+      metadata: {
+        clientId: s!.clientId,
+        from: s!.status,
+        to: status,
+        ...(endsAt !== null && s!.endsAt?.getTime() !== endsAt.getTime() ? { endsAt: { from: dayText(s!.endsAt), to: dayText(endsAt) } } : {}),
+      },
     });
     return { changed: true };
   });
@@ -288,6 +370,34 @@ export async function setServiceStatus(
 
 export const endService = (ctx: ServiceCtx, serviceId: string) =>
   setServiceStatus(ctx, serviceId, "ENDED");
+
+/**
+ * service:edit — PAUSE a running agreement, or let a paused one RUN again
+ * (slice 113: its row's menu, one click each way). An ended agreement stays
+ * ended (`AGREEMENT_ENDED` — the UI offers neither verb on one). A paused
+ * agreement's renewal date does not move and nothing is drafted for it;
+ * running again, a date that passed meanwhile moves on with the next run
+ * and nothing is billed for the time it was paused (`renewals.ts`).
+ */
+export async function setAgreementRunning(ctx: ServiceCtx, serviceId: string, running: boolean): Promise<{ changed: boolean }> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "service:edit");
+    const s = await tx.service.findFirst({ where: { id: serviceId }, select: { clientId: true, projectId: true, status: true } });
+    if (!s) return deny("NOT_FOUND");
+    await assertTarget(tx, ctx.actor, s.clientId, s.projectId);
+    if (s.status === "ENDED") return fail("AGREEMENT_ENDED");
+    const status: ServiceStatus = running ? "ACTIVE" : "PAUSED";
+    if (s.status === status) return { changed: false };
+    await tx.service.update({ where: { id: serviceId }, data: { status }, select: { id: true } });
+    await record(tx, {
+      action: "service.updated",
+      targetType: "Service",
+      targetId: serviceId,
+      metadata: { clientId: s.clientId, from: s.status, to: status },
+    });
+    return { changed: true };
+  });
+}
 
 /** service:delete — hard delete of a record (no invoice lines yet in Phase 2). */
 export async function deleteService(ctx: ServiceCtx, serviceId: string): Promise<void> {

@@ -19,7 +19,10 @@ import { listServices } from "@/services/service";
 import { CreateRateCardForm, RateCardTable, type RateCardRow } from "@/app/(tenant)/(authed)/settings/rates/rate-cards";
 
 import { loadClient } from "../data";
-import { CreateServiceForm, ServicesList } from "../overview-forms";
+import { CreateServiceForm } from "../overview-forms";
+
+import { AgreementRow } from "./agreement-row";
+import { utcDayOf, type AgreementItem } from "./agreement-shape";
 
 /** The tab's rate verbs — `time`-module codes, none of them ✦. */
 const AGREEMENT_CODES = ["rate:view_bill", "rate:manage_bill", "time:reprice"] as const;
@@ -104,17 +107,41 @@ export default async function ClientAgreementsPage({ params }: { params: Promise
     open: c.effectiveTo === null,
   }));
   const openRows = [...rows.filter((r) => r.open), ...rows.filter((r) => !r.open)];
-  // The rate column: the open SERVICE card today, one per agreement (the EXCLUDE guarantees at most one).
-  const rates: Record<string, string | null> | undefined = canViewBill
-    ? Object.fromEntries(
-        services.map((s) => {
-          const current = cards.find(
-            (c) => c.serviceId === s.id && c.effectiveFrom <= today && (c.effectiveTo === null || c.effectiveTo > today),
-          );
-          return [s.id, current ? rateLabel(current.amount, current.currency) : null];
-        }),
-      )
-    : undefined;
+  // The rate: the open SERVICE card today, one per agreement (the EXCLUDE guarantees at most one).
+  const rateOf = (serviceId: string): string | null => {
+    const current = cards.find(
+      (c) => c.serviceId === serviceId && c.effectiveFrom <= today && (c.effectiveTo === null || c.effectiveTo > today),
+    );
+    return current ? rateLabel(current.amount, current.currency) : null;
+  };
+  const day = (d: Date | null) => (d ? format.dateTime(d, { dateStyle: "medium", timeZone: "UTC" }) : null);
+  const items: AgreementItem[] = services.map((s) => {
+    const amount = s.priceExVat === null ? Number.NaN : Number(s.priceExVat);
+    return {
+      id: s.id,
+      name: s.name,
+      kind: s.kind,
+      billingInterval: s.billingInterval,
+      status: s.status,
+      project: s.projectKey ? { key: s.projectKey } : null,
+      price: s.priceExVat,
+      // The AMOUNT only ("7 500,00"): the row draws the currency beside it —
+      // its select when editable, text when not — never twice.
+      priceLabel:
+        s.priceExVat === null
+          ? null
+          : Number.isFinite(amount)
+            ? format.number(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : s.priceExVat,
+      currency: s.currency,
+      renewsOn: utcDayOf(s.renewsAt),
+      renewsLabel: day(s.renewsAt),
+      endsOn: utcDayOf(s.endsAt),
+      endsLabel: day(s.endsAt),
+      ...(canViewBill ? { rate: rateOf(s.id) } : {}),
+      thisMonth: usage[s.id] ?? null,
+    };
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -146,15 +173,18 @@ export default async function ClientAgreementsPage({ params }: { params: Promise
             )}
           </div>
         ) : (
-          <ServicesList
-            clientId={client.id}
-            services={services}
-            canEdit={client.caps.editServices}
-            canDelete={client.caps.deleteServices}
-            rates={rates}
-            usage={usage}
-            defaultCurrency={prefs.currencyDefault}
-          />
+          <ul className="divide-y divide-border">
+            {items.map((item) => (
+              <AgreementRow
+                key={item.id}
+                clientId={client.id}
+                item={item}
+                can={{ edit: client.caps.editServices, delete: client.caps.deleteServices }}
+                currencies={CURRENCIES}
+                defaultCurrency={prefs.currencyDefault}
+              />
+            ))}
+          </ul>
         )}
         {canAddService ? (
           <div id="new-service" className="scroll-mt-16 border-t border-border p-4">
