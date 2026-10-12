@@ -1352,6 +1352,11 @@ model Service {
   // `renewsAt` — a person setting the date resets it; the renewal job writes
   // it as it moves the date on (`src/services/renewal-dates.ts`). INTERNAL.
   renewalDay      Int?             @map("renewal_day") @db.SmallInt
+  // Slice 113b (C88 (e)): "Invoice each renewal" — ON by default; and the last
+  // day of the last period the renewal job drafted (written by the job only,
+  // never moved back: a deleted draft or line is not drafted again). INTERNAL.
+  invoiceRenewals Boolean          @default(true) @map("invoice_renewals")
+  invoicedThrough DateTime?        @map("invoiced_through") @db.Date
   endsAt          DateTime?        @map("ends_at") @db.Timestamptz(6)
   internalNotes   String?          @map("internal_notes") // INTERNAL-ONLY
   visibility      Visibility       @default(INTERNAL)
@@ -1367,7 +1372,7 @@ model Service {
   rateCards          RateCard[]
   timeEntries        TimeEntry[]
 
-  @@unique([tenantId, id]) // composite-FK target (InvoiceLine.serviceId)
+  @@unique([tenantId, id]) // composite-FK target (TimeEntry, RateCard); InvoiceLine.serviceId is a snapshot id, NO FK (slice 113b)
   @@index([tenantId, clientId, status])
   @@index([tenantId, renewsAt])
   @@index([tenantId, projectId]) // portal fan-out + the FK — 20260920190000
@@ -1690,7 +1695,10 @@ model Invoice {
   // `PORTAL_NEVER_SELECTED` (this row is class B).
   bookRateToSek     Decimal?      @map("book_rate_to_sek") @db.Decimal(12, 6)
   bookRateDate      DateTime?     @map("book_rate_date") @db.Date
-  createdByMemberId String        @map("created_by_member_id") // attribution, no FK
+  // Slice 113b (C88 (a)): who made the draft — a MEMBER (by name below) or
+  // the RENEWAL job (no member: CHECK `invoice_origin_maker`); never changes.
+  origin            InvoiceOrigin @default(MEMBER)
+  createdByMemberId String?       @map("created_by_member_id") // attribution, no FK; NULL = made by the renewal job
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1734,6 +1742,14 @@ model InvoiceLine {
   unitPriceExVat Decimal  @map("unit_price_ex_vat") @db.Decimal(14, 2)
   vatRatePct     Decimal  @map("vat_rate_pct") @db.Decimal(5, 2)
   amountExVat    Decimal  @map("amount_ex_vat") @db.Decimal(14, 2)
+  // Slice 113b (C88): the agreement a RENEWAL line bills and the days it
+  // bills — set by the renewal job only, never changed; a SNAPSHOT id with no
+  // FK (an issued invoice's lines are its record for good). No day of one
+  // agreement on two lines while they exist: the EXCLUDE
+  // `invoice_line_no_day_twice` (migration 20261018090000 — Prisma cannot state it).
+  serviceId          String?   @map("service_id")
+  servicePeriodStart DateTime? @map("service_period_start") @db.Date
+  servicePeriodEnd   DateTime? @map("service_period_end") @db.Date
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1747,6 +1763,14 @@ model InvoiceLine {
   @@unique([tenantId, invoiceId, position])
   @@index([tenantId, clientId, invoiceId])
   @@map("invoice_line")
+}
+
+/// Who made an invoice draft (slice 113b, founder decision C88 (a)).
+enum InvoiceOrigin {
+  MEMBER // a person — every invoice before slice 113b
+  RENEWAL // the renewal job, 14 days before an agreement renews
+
+  @@map("invoice_origin")
 }
 
 enum InvoiceRoundingMode {

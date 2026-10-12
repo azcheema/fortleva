@@ -230,7 +230,17 @@ describe("a member's own devices", () => {
   it("re-links the person's OWN row to a new sign-in, in place — never another member's, never a new row", async () => {
     const b = browser();
     const { id } = await register(b);
-    // Audit rows outlive each test; this one counts only its own, after the turn-on.
+    // Audit rows outlive each test; this one counts only its own, after the
+    // turn-on — and never the turn-on's own row, which can land in the very
+    // millisecond `since` names (a CI timing flake on 2026-10-11 and
+    // 2026-10-12: `gte` counted it). Excluded by id, whatever the clock says.
+    const turnOn = await f.platform.auditEvent.findFirst({
+      // The turn-on's row names the MEMBER and carries the device in its metadata.
+      where: { tenantId: f.tenantId, action: "push_device.added", metadata: { path: ["deviceId"], equals: id } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    });
+    expect(turnOn).not.toBeNull();
     const since = new Date();
     const later = await sessionFor(employeeUser);
     const asEmployee = { sessionId: later, impersonated: false, memberships: [{ tenantId: f.tenantId, memberId: employee }] };
@@ -253,7 +263,11 @@ describe("a member's own devices", () => {
     await f.platform.pushSubscription.update({ where: { id }, data: { vapidKey: "another-key" } });
     expect(await resumePushDevices({ ...asEmployee, sessionId: managerSession }, { endpoint: b.endpoint, p256dh: b.p256dh, auth: b.auth })).toBe(0);
     // No audit row for any re-link (C74 (k)).
-    expect(await f.platform.auditEvent.count({ where: { tenantId: f.tenantId, action: { startsWith: "push_device." }, createdAt: { gte: since } } })).toBe(0);
+    expect(
+      await f.platform.auditEvent.count({
+        where: { tenantId: f.tenantId, action: { startsWith: "push_device." }, createdAt: { gte: since }, id: { not: turnOn!.id } },
+      }),
+    ).toBe(0);
   });
 
   it("lists the member's devices with whether each one's sign-in is alive", async () => {

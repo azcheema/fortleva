@@ -50,6 +50,8 @@ export type ServiceRow = {
   endsAt: Date | null;
   internalNotes: string | null;
   visibility: Visibility;
+  /** Slice 113b (C88 (e)): "Invoice each renewal" — the renewal job drafts its invoices. */
+  invoiceRenewals: boolean;
   updatedAt: Date;
 };
 
@@ -70,6 +72,7 @@ const toRow = (s: {
   endsAt: Date | null;
   internalNotes: string | null;
   visibility: Visibility;
+  invoiceRenewals: boolean;
   updatedAt: Date;
 }): ServiceRow => ({
   id: s.id,
@@ -88,6 +91,7 @@ const toRow = (s: {
   endsAt: s.endsAt,
   internalNotes: s.internalNotes,
   visibility: s.visibility,
+  invoiceRenewals: s.invoiceRenewals,
   updatedAt: s.updatedAt,
 });
 
@@ -162,6 +166,8 @@ export type ServiceInput = {
   endsAt?: Date | null;
   internalNotes?: string | null;
   visibility?: Visibility;
+  /** Slice 113b: "Invoice each renewal" (default on — C88 (e)). */
+  invoiceRenewals?: boolean;
 };
 
 /**
@@ -201,7 +207,17 @@ const dayText = (v: unknown): string | null =>
  * they draft invoices. Staff-only facts; never `internalNotes` or the
  * description, which are named only.
  */
-const VALUED_FIELDS: ReadonlySet<string> = new Set(["name", "kind", "billingInterval", "priceExVat", "currency", "startedAt", "renewsAt", "endsAt"]);
+const VALUED_FIELDS: ReadonlySet<string> = new Set([
+  "name",
+  "kind",
+  "billingInterval",
+  "priceExVat",
+  "currency",
+  "startedAt",
+  "renewsAt",
+  "endsAt",
+  "invoiceRenewals",
+]);
 
 /** service:create; scoped on the project (if any) else the client, directly. */
 export async function createService(ctx: ServiceCtx, input: ServiceInput): Promise<{ id: string }> {
@@ -233,6 +249,7 @@ export async function createService(ctx: ServiceCtx, input: ServiceInput): Promi
         endsAt,
         internalNotes: clean(input.internalNotes),
         visibility: input.visibility ?? "INTERNAL",
+        invoiceRenewals: input.invoiceRenewals ?? true,
       },
     });
     await record(tx, {
@@ -307,6 +324,11 @@ export async function updateService(
     if (changed.includes("endsAt") && s!.status === "ENDED") fail("AGREEMENT_ENDED");
     if ("internalNotes" in patch) set("internalNotes", clean(patch.internalNotes), s!.internalNotes);
     if ("visibility" in patch && patch.visibility) set("visibility", patch.visibility, s!.visibility);
+    // Slice 113b (C88 (e)): off, the renewal job drafts nothing for it; on
+    // again, from its next renewal — a period already started never.
+    if ("invoiceRenewals" in patch && typeof patch.invoiceRenewals === "boolean") {
+      set("invoiceRenewals", patch.invoiceRenewals, s!.invoiceRenewals);
+    }
     if (changed.length === 0) return { changed };
     // The end date's write re-checks the status in the same statement: an
     // End committed between the read above and this write would otherwise
@@ -382,24 +404,46 @@ export const endService = (ctx: ServiceCtx, serviceId: string) =>
 export async function setAgreementRunning(ctx: ServiceCtx, serviceId: string, running: boolean): Promise<{ changed: boolean }> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "service:edit");
-    const s = await tx.service.findFirst({ where: { id: serviceId }, select: { clientId: true, projectId: true, status: true } });
+    const s = await tx.service.findFirst({
+      where: { id: serviceId },
+      select: { clientId: true, projectId: true, status: true, invoicedThrough: true },
+    });
     if (!s) return deny("NOT_FOUND");
     await assertTarget(tx, ctx.actor, s.clientId, s.projectId);
     if (s.status === "ENDED") return fail("AGREEMENT_ENDED");
     const status: ServiceStatus = running ? "ACTIVE" : "PAUSED";
     if (s.status === status) return { changed: false };
-    await tx.service.update({ where: { id: serviceId }, data: { status }, select: { id: true } });
+    // Running again (slice 113b; the design review's #7): what was drafted up
+    // to a day already past is forgotten, so the paused time is never billed —
+    // the renewal job drafts late only a period drafted WITHOUT a gap up to it.
+    let forget = false;
+    if (running && s.invoicedThrough !== null) {
+      const today = localDateString(new Date(), (await readPreferences(tx, ctx.tenantId)).timezone);
+      forget = s.invoicedThrough.toISOString().slice(0, 10) < today;
+    }
+    await tx.service.update({ where: { id: serviceId }, data: { status, ...(forget ? { invoicedThrough: null } : {}) }, select: { id: true } });
     await record(tx, {
       action: "service.updated",
       targetType: "Service",
       targetId: serviceId,
-      metadata: { clientId: s.clientId, from: s.status, to: status },
+      // What it had been drafted up to is kept in the trail when it is forgotten
+      // (the security review of 113b: whether a pause was ever billed hangs on it).
+      metadata: {
+        clientId: s.clientId,
+        from: s.status,
+        to: status,
+        ...(forget ? { invoicedThrough: { from: dayText(s.invoicedThrough), to: null } } : {}),
+      },
     });
     return { changed: true };
   });
 }
 
-/** service:delete — hard delete of a record (no invoice lines yet in Phase 2). */
+/**
+ * service:delete — hard delete of a record. Its renewal lines on invoices keep
+ * its id as a SNAPSHOT (no foreign key — slice 113b): an issued invoice is its
+ * record for good, and a draft's lines are the person's to keep or remove.
+ */
 export async function deleteService(ctx: ServiceCtx, serviceId: string): Promise<void> {
   await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "service:delete");

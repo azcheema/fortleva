@@ -300,6 +300,10 @@ export const SUMMARY_LINES: Readonly<Record<NotificationKind, Line | null>> = {
     ["1 client declined a contract", "Clients declined # contracts"],
     ["1 kund har tackat nej till ett kontrakt", "Kunder har tackat nej till # kontrakt"],
   ),
+  "invoice.renewal_drafted": line(
+    ["1 renewal invoice is ready to check", "# renewal invoices are ready to check"],
+    ["1 förnyelsefaktura väntar på granskning", "# förnyelsefakturor väntar på granskning"],
+  ),
 };
 
 const OTHER: Line = line(["1 other update", "# other updates"], ["1 annan uppdatering", "# andra uppdateringar"]);

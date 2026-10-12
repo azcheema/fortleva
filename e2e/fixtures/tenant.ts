@@ -363,6 +363,17 @@ export async function plantUploadedContract(tenantId: string, clientId: string, 
   return id;
 }
 
+/** A renewal draft for `clientId`, made by the tenant's own renewal run (slice 113b) — its id and its agreement's. */
+export async function plantRenewalDraft(tenantId: string, clientId: string): Promise<{ invoiceId: string; serviceId: string }> {
+  return runCli<{ invoiceId: string; serviceId: string }>(["plant-renewal-draft", tenantId, clientId]);
+}
+
+/** `renewal-invoices.spec.ts`'s clean-up: the renewal notices, the planted drafts and agreements (slice 113b). */
+export async function clearRenewalDrafts(tenantId: string): Promise<number> {
+  const { cleared } = await runCli<{ cleared: number }>(["clear-renewal-drafts", tenantId]);
+  return cleared;
+}
+
 /** `contracts.spec.ts`'s portal half: the agency's contract notices and the contract mails (slice 112b2). */
 export async function clearContractNotices(tenantId: string): Promise<number> {
   const { cleared } = await runCli<{ cleared: number }>(["clear-contract-notices", tenantId]);

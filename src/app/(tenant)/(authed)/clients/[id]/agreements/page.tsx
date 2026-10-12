@@ -140,6 +140,7 @@ export default async function ClientAgreementsPage({ params }: { params: Promise
       endsLabel: day(s.endsAt),
       ...(canViewBill ? { rate: rateOf(s.id) } : {}),
       thisMonth: usage[s.id] ?? null,
+      invoiceRenewals: s.invoiceRenewals,
     };
   });
 

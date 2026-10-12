@@ -101,6 +101,15 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
     en: { subject: "A project budget reached a threshold", body: "A project budget in Fortleva reached one of its thresholds." },
     sv: { subject: "En projektbudget har nått en tröskel", body: "En projektbudget i Fortleva har nått en av sina trösklar." },
   },
+  // Slice 113b: never mailed (COALESCED, no `email` — C88 (d)); every kind
+  // still carries its copy.
+  "invoice.renewal_drafted": {
+    en: { subject: "A renewal invoice is ready to check", body: "Fortleva drafted an invoice for a client's agreements that renew soon. Check it, then issue it." },
+    sv: {
+      subject: "En förnyelsefaktura väntar på granskning",
+      body: "Fortleva har gjort ett fakturautkast för en kunds avtal som snart förnyas. Granska det och utfärda det sedan.",
+    },
+  },
   // Phase 3V slice 89 — the renewal reminders. LINKS, NOT DATA, as every
   // mail here: no asset, agreement, client or login is named, and the
   // count and the days stay in the inbox, which renders them under the

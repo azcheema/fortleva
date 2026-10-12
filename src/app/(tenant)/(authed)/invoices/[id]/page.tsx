@@ -263,6 +263,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       />
       <div className="mt-6 flex flex-col gap-4">
         {draft ? <p className="text-sm text-muted-foreground">{credit ? t("creditNoNumberYet") : t("noNumberYet")}</p> : null}
+        {draft && invoice.origin === "RENEWAL" ? (
+          // Slice 113b (C88 (a)): the renewal job made it; a person checks and issues it.
+          <div data-testid="invoice-renewal-note">
+            <Callout tone="info">{t("renewalNote")}</Callout>
+          </div>
+        ) : null}
         {issued && issued.pdfFileId === null ? (
           <p className="text-sm text-muted-foreground" data-testid="invoice-pdf-missing">
             {tIssued("pdfMissing")}

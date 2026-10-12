@@ -343,6 +343,23 @@ const KINDS = {
     class: "INSTANT",
     email: { atLevel: "PARTICIPATING" },
   },
+  /**
+   * Phase 4 slice 113b (founder decision C88 (d)): the renewal job drafted an
+   * invoice — a client's agreements renew in 14 days — and it waits to be
+   * checked and issued (`src/modules/invoicing/renewals.ts`). To the people
+   * who may ISSUE it and reach its client directly; IDS ONLY (the client, the
+   * invoice, how many renewals were added); deduplicated per draft while
+   * unread.
+   *
+   * COALESCED, NO `email` — "no email every month" (C88 (d)): the inbox only,
+   * as the budget alert, the other notice a job writes under SYSTEM; not a
+   * push either (`isPushKind` wants INSTANT). The team's summary email still
+   * counts it (C68 (h)), which the founder was told.
+   */
+  "invoice.renewal_drafted": {
+    audience: "MEMBER",
+    class: "COALESCED",
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

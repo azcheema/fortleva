@@ -214,6 +214,12 @@ export const AUDIT_EVENTS = {
   // fields or the line operation, never an org. number) and its deletion
   // are rows.
   "invoice.created": TENANT,
+  // Slice 113b (C88): the renewal job added an agreement's coming period to a
+  // renewal draft — as SYSTEM, `{ clientId, serviceId, periodStart, periodEnd,
+  // lineId, prorated }` (a share rounding to nothing: `lineId` null, on the
+  // agreement). A renewal draft's own creation is `invoice.created` with
+  // `origin: "RENEWAL"`.
+  "invoice.renewal_drafted": TENANT,
   "invoice.draft_edited": TENANT,
   "invoice.draft_deleted": TENANT,
   // Phase 4 slice 108 — issuing (src/modules/invoicing/issue.ts, series.ts,

@@ -71,9 +71,14 @@ export type InvoiceStatus = "DRAFT" | "ISSUED" | "SENT" | "PAID" | "CREDITED";
 
 export type InvoiceKind = "INVOICE" | "CREDIT_NOTE";
 
+/** Who made a draft (slice 113b): a person, or the renewal job. */
+export type InvoiceOrigin = "MEMBER" | "RENEWAL";
+
 export type InvoiceListRow = {
   readonly id: string;
   readonly kind: InvoiceKind;
+  /** Slice 113b: made by a person, or by the renewal job (C88 (a)). */
+  readonly origin: InvoiceOrigin;
   readonly status: InvoiceStatus;
   readonly displayNumber: string | null;
   readonly client: { readonly id: string; readonly name: string };
@@ -130,6 +135,8 @@ export type CreditSummary = {
 export type InvoiceDetail = {
   readonly id: string;
   readonly kind: InvoiceKind;
+  /** Slice 113b: made by a person, or by the renewal job (C88 (a)). */
+  readonly origin: InvoiceOrigin;
   readonly status: InvoiceStatus;
   readonly displayNumber: string | null;
   /** A credit note's invoice, and why it credits it. */
@@ -282,6 +289,7 @@ export async function listInvoices(
       select: {
         id: true,
         kind: true,
+        origin: true,
         status: true,
         displayNumber: true,
         currency: true,
@@ -320,6 +328,7 @@ export async function listInvoices(
       rows: invoices.map((i) => ({
         id: i.id,
         kind: i.kind,
+        origin: i.origin,
         status: i.status,
         displayNumber: i.displayNumber,
         client: i.client,
@@ -448,6 +457,7 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
       select: {
         id: true,
         kind: true,
+        origin: true,
         creditsInvoiceId: true,
         creditReason: true,
         status: true,
@@ -628,6 +638,7 @@ export async function getInvoice(ctx: InvoicingCtx, invoiceId: string): Promise<
     return {
       id: invoice.id,
       kind: invoice.kind,
+      origin: invoice.origin,
       status: invoice.status,
       displayNumber: invoice.displayNumber,
       credits,

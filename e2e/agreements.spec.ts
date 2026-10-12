@@ -58,12 +58,20 @@ test.describe("a client's Agreements tab (owner)", () => {
     await page.reload();
     await expect(rowOf(page, name).getByRole("button", { name: /^Edit Price ex\. VAT, currently / })).toContainText("650");
 
-    // The renewal date: a date control. `fill` neither blurs nor submits —
-    // the row's form saves a date on BLUR; Enter blurs it (the code review).
+    // The renewal date: a date control, TYPED as a person types it (the
+    // browser is en-US: month, day, year) — the row's form saves a date on
+    // BLUR, and Enter blurs it. Not `fill`: on CI run 38267530088 a `fill`
+    // then Enter closed the editor on the new date and posted NOTHING (the
+    // form's focus snapshot already held the filled value), the one inline
+    // date no other spec had exercised.
     const next = inDays(70);
     await rowOf(page, name).getByRole("button", { name: /^Edit Renews on, currently / }).click();
+    const control = rowOf(page, name).locator('input[type="date"][name="renewsAt"]');
+    await expect(control).toBeFocused();
     const dated = page.waitForResponse((res) => isActionPost(res.request()));
-    await rowOf(page, name).locator('input[type="date"][name="renewsAt"]').fill(next);
+    const [y, m, d] = next.split("-");
+    await page.keyboard.type(`${m}${d}${y}`);
+    await expect(control).toHaveValue(next);
     await page.keyboard.press("Enter");
     await dated;
     await page.reload();

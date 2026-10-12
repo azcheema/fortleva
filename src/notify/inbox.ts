@@ -9,6 +9,7 @@ import type { WeekStart } from "@/lib/week";
 import { readPreferences } from "@/preferences/service";
 import { DEFAULT_TIMEZONE } from "@/i18n/config";
 import { contractSubjects, isContractDecisionKind } from "@/modules/contracts/subjects";
+import { invoiceSubjects, isInvoiceSubjectKind } from "@/modules/invoicing/subjects";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
 import {
   askDeclineSubjects,
@@ -541,6 +542,19 @@ async function resolveSubjects(
       out.set(id, { title: subject.title, href: subject.href });
     }
     rows = rows.filter((r) => !isContractDecisionKind(r.kind));
+    if (rows.length === 0) return out;
+  }
+
+  // …AND A RENEWAL INVOICE READY TO CHECK (slice 113b, C88 (d)): its client,
+  // linked to the draft, under the reader's `invoice:view` and the client's
+  // scope — `invoiceSubjects`. Never the fall-through below.
+  const invoices = rows.filter((r) => isInvoiceSubjectKind(r.kind));
+  if (invoices.length > 0) {
+    const refs = invoices.map((r) => ({ id: r.id, kind: r.kind, entityType: r.entityType, entityId: r.entityId }));
+    for (const [id, subject] of await invoiceSubjects(tx, ctx.tenantId, ctx.actor, refs)) {
+      out.set(id, { title: subject.title, href: subject.href });
+    }
+    rows = rows.filter((r) => !isInvoiceSubjectKind(r.kind));
     if (rows.length === 0) return out;
   }
 

@@ -286,7 +286,8 @@
       "updateDue": "Dags för en projektuppdatering",
       "contractSigned": "En kund har skrivit under ett kontrakt",
       "contractDeclined": "En kund har tackat nej till ett kontrakt",
-      "contractEnding": "Ett kontrakt löper ut"
+      "contractEnding": "Ett kontrakt löper ut",
+      "renewalDrafted": "En förnyelsefaktura väntar på granskning"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",
@@ -347,6 +348,7 @@
       "CLIENT_MEMBER": "Din kund",
       "BUDGET_WATCHER": "På larmlistan",
       "VAULT_ACCESS": "Inloggningar du kan öppna",
+      "INVOICE_ACCESS": "Fakturor du kan utfärda",
       "OWNER": "Du är ägare"
     },
     "keys": {
@@ -2027,6 +2029,16 @@
         "endConfirm": "Avsluta {name}? Det slutar förnyas, och ett avslutat avtal kan inte startas igen.",
         "delete": "Ta bort avtalet",
         "deleteConfirm": "Ta bort {name}? Det går inte att ångra."
+      },
+      "invoicing": {
+        "label": "Fakturera varje förnyelse",
+        "on": "Fortleva gör ett fakturautkast 14 dagar före varje förnyelse.",
+        "off": "Av: inget fakturautkast görs för avtalets förnyelser.",
+        "noPrice": "På, men avtalet saknar pris: ange ett för att få fakturautkast.",
+        "noCurrency": "På, men avtalet saknar egen valuta: ange en för att få fakturautkast.",
+        "unreachable": "Anslutningen bröts innan vi fick svar. Ladda om sidan för att se om det ändrades.",
+        "turnedOn": "Avtalets förnyelser faktureras",
+        "turnedOff": "Avtalets förnyelser faktureras inte"
       }
     },
     "filters": {
@@ -4961,7 +4973,8 @@
       },
       "limited": "Visar de {limit} nyaste. Välj en kund för att se deras.",
       "creditNote": "Kreditfaktura",
-      "overdue": "Förfallen"
+      "overdue": "Förfallen",
+      "renewal": "Förnyelse"
     },
     "new": {
       "client": "Kund",
@@ -5064,7 +5077,8 @@
       "includeHoursHint": "Lägger till en sida med varje dags timmar och uppgifter. Uppgifter som kunden inte ser visas som ”Övrigt arbete”, och ingens namn skrivs ut.",
       "includeHoursOn": "Ingår",
       "includeHoursOff": "Ingår inte",
-      "includeHoursNoHours": "Utkastet har inga timmar, så ingen sida läggs till."
+      "includeHoursNoHours": "Utkastet har inga timmar, så ingen sida läggs till.",
+      "renewalNote": "Fortleva har gjort det här utkastet för avtal som snart förnyas, en rad per förnyelse med de dagar den gäller. Granska det och utfärda det sedan – inget når kunden förrän du gör det."
     },
     "issue": {
       "button": "Utfärda faktura…",

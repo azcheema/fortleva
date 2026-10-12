@@ -139,6 +139,10 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   // Phase 4 slice 113 (C88): an agreement's anchor day, the renewal job's
   // bookkeeping (`service` is class B — the portal's agreements read it).
   "renewalDay",
+  // Slice 113b (C88 (e)): "Invoice each renewal" and what was drafted to —
+  // the agency's own bookkeeping on the same class-B row.
+  "invoiceRenewals",
+  "invoicedThrough",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -470,6 +474,8 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "signerEmail",
       "remindersStoppedAt",
       "renewalDay",
+      "invoiceRenewals",
+      "invoicedThrough",
     ]);
   });
 
@@ -556,6 +562,9 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "signerEmail",
         "remindersStoppedAt",
         "renewalDay",
+        "invoiceRenewals",
+        "invoicedThrough",
+        "origin",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -565,6 +574,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       kind: ["Document", "Service", "Invoice"],
       description: ["Service"],
       type: ["CredentialAsk"],
+      origin: ["Contract"],
     });
   });
 
@@ -758,6 +768,14 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   "remindersStoppedAt",
   // Phase 4 slice 113 (C88): an agreement's anchor day (above).
   "renewalDay",
+  // Slice 113b (C88): the agreement's switch and what was drafted to (above),
+  // and who made an invoice — a person or the renewal job — which no client
+  // reads (`invoice` is class B). `origin` is NOT on the text list: the
+  // portal's contract projection selects `Contract.origin` (the exemption
+  // below), so the bare word appears in portal source by right.
+  "invoiceRenewals",
+  "invoicedThrough",
+  "origin",
 ]);
 
 /**
@@ -792,6 +810,9 @@ const PORTAL_NEVER_SELECTED_EXCEPT: Readonly<Record<string, readonly string[]>> 
   kind: ["Document", "Service", "Invoice"],
   description: ["Service"],
   type: ["CredentialAsk"],
+  // Slice 113b: a contract's origin (WRITTEN / UPLOADED) is the portal's to
+  // show (slice 112c); an invoice's (MEMBER / RENEWAL) never is.
+  origin: ["Contract"],
 };
 
 const neverSelected = (key: string, model: string | null): boolean =>

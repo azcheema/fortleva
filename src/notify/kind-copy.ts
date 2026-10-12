@@ -38,7 +38,8 @@ type KindCopyKey =
   | "updateDue"
   | "contractSigned"
   | "contractDeclined"
-  | "contractEnding";
+  | "contractEnding"
+  | "renewalDrafted";
 
 export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.assigned": "assigned",
@@ -59,6 +60,7 @@ export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "project_update.due": "updateDue",
   "contract.signed": "contractSigned",
   "contract.declined": "contractDeclined",
+  "invoice.renewal_drafted": "renewalDrafted",
 };
 
 /** The label for a row whose kind this build does not know — a row

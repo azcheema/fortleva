@@ -46,9 +46,11 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * gone, refused three times, a member no longer active, 90 days dormant),
  * and the invoice PDFs' backstop (Phase 4 slice 108 — an issued invoice
  * still without its PDF five minutes on gets one; it only adds files),
- * and the agreements' renewals (Phase 4 slice 113 — a running recurring
- * agreement's passed renewal date MOVES ON to the next one, in every
- * tenant),
+ * and the agreements' renewals (Phase 4 slices 113, 113b — 14 days before
+ * a running recurring agreement renews, its coming period is DRAFTED onto its
+ * client's renewal invoice draft and the people who may issue it are told;
+ * then its passed renewal date MOVES ON to the next one, unless a started
+ * period is still owed a draft — in every sending tenant),
  * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local

@@ -2,15 +2,26 @@
 
 import { CircleSlashIcon, PauseIcon, PlayIcon, Trash2Icon } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useId, useState } from "react";
+import { toast } from "sonner";
 
 import { AutoForm } from "@/components/auto-form";
 import { InlineEdit, RowActions, StatusBadge, type RowAction } from "@/components/semantic";
+import { Pending } from "@/components/semantic/field";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useRun } from "@/components/use-run";
+import { isActionRedirect } from "@/lib/action-redirect";
 import { withCurrentOption } from "@/lib/inline-edit";
 
-import { deleteServiceAction, endServiceAction, setAgreementRunningAction, updateAgreementAction } from "../actions";
+import {
+  deleteServiceAction,
+  endServiceAction,
+  setAgreementInvoicingAction,
+  setAgreementRunningAction,
+  updateAgreementAction,
+} from "../actions";
 import { DAY_MAX, DAY_MIN, type AgreementItem } from "./agreement-shape";
 
 /** What the member may do with a row (the client loader's `service:*` caps). */
@@ -184,16 +195,22 @@ export function AgreementRow({
               <InlineEdit
                 kind="select"
                 name="currency"
-                value={shownCurrency}
+                value={item.currency ?? ""}
                 label={t("row.currency")}
-                placeholder={shownCurrency}
+                placeholder={tCommon("notSet")}
                 // A stored currency outside the offered list stays a choice, or
                 // the select would open on another and every save rewrite it.
-                options={withCurrentOption(
-                  currencies.map((c) => ({ value: c, label: c })),
-                  item.currency ?? "",
-                  item.currency,
-                )}
+                // No currency of its own is its own choice, "Not set" (slice
+                // 113b's re-check): picking the workspace's currency must be a
+                // change — renewal invoices are drafted only with one set.
+                options={[
+                  ...(item.currency === null ? [{ value: "", label: tCommon("notSet") }] : []),
+                  ...withCurrentOption(
+                    currencies.map((c) => ({ value: c, label: c })),
+                    item.currency ?? "",
+                    item.currency,
+                  ),
+                ]}
                 density="table"
                 fit
                 {...track()}
@@ -253,8 +270,23 @@ export function AgreementRow({
     </>
   );
 
+  // "Invoice each renewal" sits OUTSIDE the row's AutoForm: a switch inside a
+  // form renders a checkbox the form would save the whole row on.
+  // Never on an ended agreement: nothing renews (the code review of 113b).
+  const invoicing =
+    recurring && item.status !== "ENDED" ? (
+      <AgreementInvoicing
+        clientId={clientId}
+        serviceId={item.id}
+        on={item.invoiceRenewals}
+        priced={item.price !== null && Number(item.price) > 0}
+        hasCurrency={item.currency !== null}
+        canEdit={can.edit}
+      />
+    ) : null;
+
   return (
-    <li className="px-3 py-3" data-testid="agreement-item" data-name={item.name} data-agreement-id={item.id}>
+    <li className="flex flex-col gap-2 px-3 py-3" data-testid="agreement-item" data-name={item.name} data-agreement-id={item.id}>
       {readOnly ? (
         <div className="flex flex-col gap-2">{body}</div>
       ) : (
@@ -269,10 +301,84 @@ export function AgreementRow({
           <input type="hidden" name="endsAtWas" value={item.endsOn ?? ""} />
           {/* …and the currency its select was drawn with (the default when the
               agreement has none): only a currency the member picks is saved. */}
-          {item.price !== null ? <input type="hidden" name="currencyWas" value={shownCurrency} /> : null}
+          {item.price !== null ? <input type="hidden" name="currencyWas" value={item.currency ?? ""} /> : null}
           {body}
         </AutoForm>
       )}
+      {invoicing}
     </li>
+  );
+}
+
+/**
+ * "INVOICE EACH RENEWAL" (Phase 4 slice 113b; founder decision C88 (e)) — ON
+ * by default: 14 days before the agreement renews, Fortleva drafts that
+ * period's invoice onto the client's renewal draft. OFF — an agreement the
+ * client pays another way — it drafts nothing. `service:edit`. The switch
+ * draws the SERVER's state (the action revalidates the page) and is never
+ * optimistic, as "Remind before it ends"; a refusal is a toast, never a
+ * silent revert (AGENTS.md); guarded on its own `busy`.
+ */
+function AgreementInvoicing({
+  clientId,
+  serviceId,
+  on,
+  priced,
+  hasCurrency,
+  canEdit,
+}: {
+  clientId: string;
+  serviceId: string;
+  /** The server's answer. */
+  on: boolean;
+  /** A price above zero — the job drafts nothing without one. */
+  priced: boolean;
+  /** A currency of its own — the job drafts nothing without one (it would bill in whatever the default became). */
+  hasCurrency: boolean;
+  canEdit: boolean;
+}) {
+  const t = useTranslations("clients.services.invoicing");
+  const tCommon = useTranslations("common");
+  const id = useId();
+  const [busy, setBusy] = useState(false);
+
+  const set = async (next: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await setAgreementInvoicingAction(clientId, serviceId, next);
+      if (!r.ok) {
+        toast.error(r.message);
+        return;
+      }
+      toast.success(r.message);
+    } catch (e) {
+      if (isActionRedirect(e)) return;
+      toast.error(t("unreachable"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-md border border-input p-2.5">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <Label htmlFor={id} className="text-sm">
+          {t("label")}
+        </Label>
+        <span className="text-xs text-muted-foreground" data-testid="agreement-invoicing-state">
+          {!on ? t("off") : !priced ? t("noPrice") : !hasCurrency ? t("noCurrency") : t("on")}
+        </span>
+      </div>
+      {busy ? <Pending label={tCommon("loading")} className="mt-1" /> : null}
+      <Switch
+        id={id}
+        checked={on}
+        disabled={!canEdit || busy}
+        onCheckedChange={(next) => void set(next)}
+        className="mt-1"
+        data-testid="agreement-invoicing-switch"
+      />
+    </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   MegaphoneIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
+  ReceiptTextIcon,
   ShieldAlertIcon,
   UserRoundPlusIcon,
   type LucideProps,
@@ -50,4 +51,6 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   // The Contracts nav's own glyph for a signature; a crossed file for a refusal.
   "contract.signed": FileSignatureIcon,
   "contract.declined": FileXIcon,
+  // The Invoices nav's own glyph (slice 113b).
+  "invoice.renewal_drafted": ReceiptTextIcon,
 };

@@ -29,6 +29,8 @@ export type AgreementItem = {
   readonly rate?: string | null;
   /** This month's hours on it, formatted, or null for none. */
   readonly thisMonth: string | null;
+  /** Slice 113b (C88 (e)): "Invoice each renewal". */
+  readonly invoiceRenewals: boolean;
 };
 
 /** The earliest and latest day a date field offers — the service's own range (2000–2199). */

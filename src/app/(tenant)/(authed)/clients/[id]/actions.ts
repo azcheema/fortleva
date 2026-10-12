@@ -463,6 +463,22 @@ export async function updateAgreementAction(formData: FormData): Promise<FormRes
   return r;
 }
 
+/**
+ * "Invoice each renewal" on or off (slice 113b, C88 (e)) — `service:edit`,
+ * audited in `service.updated` with its old and new value.
+ */
+export async function setAgreementInvoicingAction(clientId: string, serviceId: string, on: boolean): Promise<FormResult> {
+  if (!uuid.safeParse(clientId).success || !uuid.safeParse(serviceId).success || typeof on !== "boolean") return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("clients.services.invoicing");
+  const r = await runForm(path(clientId), async () => {
+    await updateService(ctx, serviceId, { invoiceRenewals: on });
+    return on ? t("turnedOn") : t("turnedOff");
+  });
+  if (r.ok) revalidatePath(path(clientId), "layout");
+  return r;
+}
+
 /** Pause a running agreement, or let a paused one run again (slice 113): one click each way. */
 export async function setAgreementRunningAction(clientId: string, serviceId: string, running: boolean): Promise<FormResult> {
   if (!uuid.safeParse(clientId).success || !uuid.safeParse(serviceId).success || typeof running !== "boolean") return invalid();

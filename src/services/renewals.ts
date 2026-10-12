@@ -53,7 +53,30 @@ const isInterval = (v: string | null): v is RenewalInterval => v === "MONTHLY" |
 
 const utcDay = (d: Date): string => d.toISOString().slice(0, 10);
 
-export type RenewalMoveRun = { readonly moved: number; readonly failed: number };
+export type RenewalMoveRun = { readonly moved: number; readonly failed: number; readonly held: number };
+
+/**
+ * An agreement as its date's move reads it — the LOCKED row, in plain values —
+ * for a hold to judge (slice 113b: the invoicing module's `agreementHoldsDate`
+ * keeps a date where it is while a started period is still owed a draft; this
+ * module knows nothing of invoices).
+ */
+export type MoveFacts = {
+  readonly renewsOn: string;
+  readonly interval: RenewalInterval;
+  readonly anchorDay: number;
+  readonly endsOn: string | null;
+  readonly invoicedThrough: string | null;
+  readonly invoiceRenewals: boolean;
+  /** The price as stored ("1200.00"), or null. */
+  readonly price: string | null;
+  readonly currency: string | null;
+  readonly clientActive: boolean;
+  readonly name: string;
+};
+
+/** True: leave this agreement's date where it is this run. */
+export type MoveHold = (facts: MoveFacts, today: string) => boolean;
 
 /**
  * Move on every passed renewal date of this tenant's running agreements.
@@ -65,15 +88,16 @@ export type RenewalMoveRun = { readonly moved: number; readonly failed: number }
  * renewal). And ONE AGREEMENT'S FAILURE DOES NOT STOP THE REST: it is
  * counted and logged by id and error name only, and the next one moves.
  * The job passes a `deadline` (its time budget); what is left moves next run.
+ * And a `hold` (slice 113b): an agreement it holds keeps its date this run.
  */
 export async function moveRenewalDatesOn(
   tenantId: string,
   now: Date = new Date(),
-  opts: { readonly deadline?: number } = {},
+  opts: { readonly deadline?: number; readonly hold?: MoveHold } = {},
 ): Promise<RenewalMoveRun> {
   if (typeof tenantId !== "string" || tenantId.length === 0) throw new TypeError("services: tenantId must be a non-empty string");
   const today = await withTenant(tenantId, SYSTEM, async (tx) => localDateString(now, (await readPreferences(tx, tenantId)).timezone));
-  const out = { moved: 0, failed: 0 };
+  const out = { moved: 0, failed: 0, held: 0 };
   let after: string | null = null;
   const deadline = opts.deadline ?? Number.POSITIVE_INFINITY;
   for (let seen = 0; seen < MOVE_CAP && Date.now() < deadline; ) {
@@ -98,7 +122,9 @@ export async function moveRenewalDatesOn(
     for (const { id } of page) {
       if (Date.now() >= deadline) break; // the rest wait for the next run
       try {
-        if (await moveOne(tenantId, id, today)) out.moved += 1;
+        const r = await moveOne(tenantId, id, today, opts.hold);
+        if (r === "moved") out.moved += 1;
+        else if (r === "held") out.held += 1;
       } catch (e) {
         out.failed += 1;
         const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
@@ -112,44 +138,72 @@ export async function moveRenewalDatesOn(
   return out;
 }
 
-async function moveOne(tenantId: string, serviceId: string, today: string): Promise<boolean> {
-  return withTenant(tenantId, SYSTEM, async (tx) => {
-    const rows = await tx.$queryRaw<
-      {
-        client_id: string;
-        status: string;
-        kind: string;
-        billing_interval: string | null;
-        renews_at: Date | null;
-        renewal_day: number | null;
-        ends_at: Date | null;
-      }[]
-    >`
-      SELECT client_id, status::text AS status, kind::text AS kind, billing_interval::text AS billing_interval,
-             renews_at, renewal_day, ends_at
-        FROM service
-       WHERE tenant_id = ${tenantId} AND id = ${serviceId}
-         FOR UPDATE`;
-    const s = rows[0];
-    if (!s || s.status !== "ACTIVE" || s.kind !== "RECURRING" || !isInterval(s.billing_interval) || s.renews_at === null) return false;
-    const from = utcDay(s.renews_at);
-    const anchor = anchorOf(from, s.renewal_day);
-    if (anchor === null) return false;
-    const step = nextRenewal(from, today, s.billing_interval, anchor);
-    if (step === null) return false;
-    // It ends before it would renew again: the end stands, the date stays.
-    if (s.ends_at !== null && step.next > utcDay(s.ends_at)) return false;
-    await tx.service.update({
-      where: { id: serviceId },
-      data: { renewsAt: dateColumn(step.next), renewalDay: anchor },
-      select: { id: true },
-    });
-    await record(tx, {
-      action: "service.renewed",
-      targetType: "Service",
-      targetId: serviceId,
-      metadata: { clientId: s.client_id, from, to: step.next, steps: step.steps },
-    });
-    return true;
-  });
+async function moveOne(tenantId: string, serviceId: string, today: string, hold: MoveHold | undefined): Promise<"moved" | "held" | "stays"> {
+  return withTenant(
+    tenantId,
+    SYSTEM,
+    async (tx) => {
+      const rows = await tx.$queryRaw<
+        {
+          client_id: string;
+          status: string;
+          kind: string;
+          billing_interval: string | null;
+          renews_at: Date | null;
+          renewal_day: number | null;
+          ends_at: Date | null;
+          invoice_renewals: boolean;
+          price: string | null;
+          currency: string | null;
+          invoiced_through: Date | null;
+          name: string;
+          client_active: boolean;
+        }[]
+      >`
+        SELECT s.client_id, s.status::text AS status, s.kind::text AS kind, s.billing_interval::text AS billing_interval,
+               s.renews_at, s.renewal_day, s.ends_at, s.invoice_renewals, s.price_ex_vat::text AS price, s.currency,
+               s.invoiced_through, s.name,
+               EXISTS (SELECT 1 FROM client c WHERE c.tenant_id = s.tenant_id AND c.id = s.client_id AND c.status = 'ACTIVE') AS client_active
+          FROM service s
+         WHERE s.tenant_id = ${tenantId} AND s.id = ${serviceId}
+           FOR UPDATE OF s`;
+      const s = rows[0];
+      if (!s || s.status !== "ACTIVE" || s.kind !== "RECURRING" || !isInterval(s.billing_interval) || s.renews_at === null) return "stays";
+      const from = utcDay(s.renews_at);
+      const anchor = anchorOf(from, s.renewal_day);
+      if (anchor === null) return "stays";
+      const step = nextRenewal(from, today, s.billing_interval, anchor);
+      if (step === null) return "stays";
+      // It ends before it would renew again: the end stands, the date stays.
+      if (s.ends_at !== null && step.next > utcDay(s.ends_at)) return "stays";
+      // A started period still owed a draft keeps its date (slice 113b).
+      const facts: MoveFacts = {
+        renewsOn: from,
+        interval: s.billing_interval,
+        anchorDay: anchor,
+        endsOn: s.ends_at === null ? null : utcDay(s.ends_at),
+        invoicedThrough: s.invoiced_through === null ? null : utcDay(s.invoiced_through),
+        invoiceRenewals: s.invoice_renewals,
+        price: s.price,
+        currency: s.currency,
+        clientActive: s.client_active,
+        name: s.name,
+      };
+      if (hold?.(facts, today)) return "held";
+      await tx.service.update({
+        where: { id: serviceId },
+        data: { renewsAt: dateColumn(step.next), renewalDay: anchor },
+        select: { id: true },
+      });
+      await record(tx, {
+        action: "service.renewed",
+        targetType: "Service",
+        targetId: serviceId,
+        metadata: { clientId: s.client_id, from, to: step.next, steps: step.steps },
+      });
+      return "moved";
+    },
+    // A row a person holds waits at most this long; it moves next run (the security review's low).
+    { lockTimeoutMs: 5_000 },
+  );
 }

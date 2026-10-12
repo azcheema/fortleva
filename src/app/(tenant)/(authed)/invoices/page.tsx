@@ -268,6 +268,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                           <span className="block text-2xs text-(--tone-caution-fg)" data-testid="invoice-row-overdue">
                             {t("overdue")}
                           </span>
+                        ) : r.origin === "RENEWAL" ? (
+                          // Slice 113b (C88 (a)): made by the renewal job — under
+                          // the number, as the labels above (the row keeps its pitch).
+                          <span className="block text-2xs text-muted-foreground" data-testid="invoice-row-renewal">
+                            {t("renewal")}
+                          </span>
                         ) : null}
                         {/* A draft's link already reads "Draft"; a badge saying it
                             again cost a phone its width (the visual walk's audit).

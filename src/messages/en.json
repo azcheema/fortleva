@@ -286,7 +286,8 @@
       "updateDue": "A project update is due",
       "contractSigned": "A client signed a contract",
       "contractDeclined": "A client declined a contract",
-      "contractEnding": "A contract is ending"
+      "contractEnding": "A contract is ending",
+      "renewalDrafted": "A renewal invoice is ready to check"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",
@@ -347,6 +348,7 @@
       "CLIENT_MEMBER": "Your client",
       "BUDGET_WATCHER": "On the alert list",
       "VAULT_ACCESS": "Logins you can open",
+      "INVOICE_ACCESS": "Invoices you can issue",
       "OWNER": "You're an owner"
     },
     "keys": {
@@ -2027,6 +2029,16 @@
         "endConfirm": "End {name}? It stops renewing, and an ended agreement can't be started again.",
         "delete": "Delete agreement",
         "deleteConfirm": "Delete {name}? This can't be undone."
+      },
+      "invoicing": {
+        "label": "Invoice each renewal",
+        "on": "Fortleva drafts its invoice 14 days before each renewal.",
+        "off": "Off: no invoice is drafted for its renewals.",
+        "noPrice": "On, but it has no price: set one to have its invoices drafted.",
+        "noCurrency": "On, but it has no currency of its own: set one to have its invoices drafted.",
+        "unreachable": "The connection failed before we heard back. Reload the page to see whether it changed.",
+        "turnedOn": "Its renewals will be invoiced",
+        "turnedOff": "Its renewals won't be invoiced"
       }
     },
     "filters": {
@@ -4961,7 +4973,8 @@
       },
       "limited": "Showing the newest {limit}. Pick a client to see theirs.",
       "creditNote": "Credit note",
-      "overdue": "Overdue"
+      "overdue": "Overdue",
+      "renewal": "Renewal"
     },
     "new": {
       "client": "Client",
@@ -5064,7 +5077,8 @@
       "includeHoursHint": "Adds a page listing each day's hours and tasks. Tasks the client can't see show as “Other work”, and no one's name is printed.",
       "includeHoursOn": "Included",
       "includeHoursOff": "Not included",
-      "includeHoursNoHours": "This draft has no hours on it, so no page is added."
+      "includeHoursNoHours": "This draft has no hours on it, so no page is added.",
+      "renewalNote": "Fortleva made this draft for agreements that renew soon, one line per renewal with the days it bills. Check it, then issue it — nothing reaches the client until you do."
     },
     "issue": {
       "button": "Issue invoice…",

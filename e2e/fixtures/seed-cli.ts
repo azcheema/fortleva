@@ -45,6 +45,8 @@
  *        tsx e2e/fixtures/seed-cli.ts ready-invoicing <tenantId> <clientId>
  *        tsx e2e/fixtures/seed-cli.ts set-invoice-series <tenantId> <firstNumber>
  *        tsx e2e/fixtures/seed-cli.ts plant-hours <tenantId> <projectId> <memberId> <count>
+ *        tsx e2e/fixtures/seed-cli.ts plant-renewal-draft <tenantId> <clientId>
+ *        tsx e2e/fixtures/seed-cli.ts clear-renewal-drafts <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts client-summary-link <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
@@ -264,6 +266,9 @@ const DBTEST_PREFIXES = [
   // `setupTenant("replyto")`.
   "replyto-",
   "reports-",
+  // Phase 4 slice 113b, renewals that draft an invoice — `src/modules/invoicing/renewal-invoices.dbtest.ts`,
+  // `setupTenant("rinv")`.
+  "rinv-",
   "roles-",
   "scope-",
   "search-",
@@ -3449,6 +3454,68 @@ async function plantUploadedContract(tenantId: string, clientId: string, memberI
   process.stdout.write(`${MARKER}${JSON.stringify({ id })}\n`);
 }
 
+/** The agreement `plantRenewalDraft` makes — one name, so the clean-up can find a run's leftover. */
+const E2E_RENEWAL_AGREEMENT = "E2E renewal hosting";
+
+/**
+ * A RENEWAL DRAFT for `clientId` (Phase 4 slice 113b): a monthly agreement
+ * renewing in seven days, then the tenant's renewal run itself
+ * (`draftRenewalInvoices` — the job's per-tenant body, never the job) — which
+ * drafts it and tells the owners and admins. Prints the draft's and the
+ * agreement's ids. `renewal-invoices.spec.ts`; a throwaway `e2e-` tenant only.
+ */
+async function plantRenewalDraft(tenantId: string, clientId: string): Promise<void> {
+  if (!tenantId || !clientId) throw new Error("plant-renewal-draft: a tenant and a client");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { draftRenewalInvoices } = await import("../../src/modules/invoicing/renewals");
+  const renews = new Date();
+  renews.setUTCHours(0, 0, 0, 0);
+  renews.setUTCDate(renews.getUTCDate() + 7);
+  const serviceId = randomUUID();
+  await db.service.create({
+    data: {
+      id: serviceId,
+      tenantId,
+      clientId,
+      name: E2E_RENEWAL_AGREEMENT,
+      kind: "RECURRING",
+      billingInterval: "MONTHLY",
+      priceExVat: "1500.00",
+      currency: "SEK",
+      renewsAt: renews,
+    },
+  });
+  await draftRenewalInvoices(tenantId);
+  const line = await db.invoiceLine.findFirst({ where: { tenantId, serviceId }, select: { invoiceId: true } });
+  await db.$disconnect();
+  if (!line) throw new Error("plant-renewal-draft: nothing was drafted");
+  process.stdout.write(`${MARKER}${JSON.stringify({ invoiceId: line.invoiceId, serviceId })}\n`);
+}
+
+/**
+ * Hand the fixture back after `renewal-invoices.spec.ts` (slice 113b): the
+ * renewal notices (so `inbox.spec.ts`'s count and the visual walk see the
+ * inbox as seeded), the planted agreements' drafts — DRAFTs, which the
+ * platform role deletes as any teardown does — and the agreements. A
+ * throwaway `e2e-` tenant only.
+ */
+async function clearRenewalDrafts(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  await db.notification.deleteMany({ where: { tenantId, kind: "invoice.renewal_drafted" } });
+  // EVERY renewal draft of the tenant and every agreement's record of what was
+  // drafted, not only the planted one's (the code review): the plant runs the
+  // tenant's whole renewal pass, which would draft any other agreement due.
+  const { count } = await db.invoice.deleteMany({ where: { tenantId, status: "DRAFT", origin: "RENEWAL" } });
+  await db.service.updateMany({ where: { tenantId, invoicedThrough: { not: null } }, data: { invoicedThrough: null } });
+  await db.service.deleteMany({ where: { tenantId, name: E2E_RENEWAL_AGREEMENT } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ cleared: count })}\n`);
+}
+
 /**
  * Hand the fixture back after `contracts.spec.ts`'s portal half (Phase 4 slice
  * 112b2): the agency's `contract.signed` / `contract.declined` notifications
@@ -3678,6 +3745,8 @@ const main = async (): Promise<void> => {
   if (command === "clear-login-asks") return clearLoginAsks(argument!, process.argv[4]!);
   if (command === "clear-contract-notices") return clearContractNotices(argument!);
   if (command === "plant-uploaded-contract") return plantUploadedContract(argument!, process.argv[4]!, process.argv[5]!, process.argv[6]!);
+  if (command === "plant-renewal-draft") return plantRenewalDraft(argument!, process.argv[4]!);
+  if (command === "clear-renewal-drafts") return clearRenewalDrafts(argument!);
   if (command === "client-summary-link") return clientSummaryLink(argument!, process.argv[4]!);
   if (command === "suppress-address") return suppressAddress(argument!, process.argv[4]!);
   if (command === "clear-undeliverable") return clearUndeliverable(argument!, process.argv[4]!);

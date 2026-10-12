@@ -30,6 +30,12 @@ export const NOTIFICATION_REASONS = [
    * is true for all of them (the design review's high).
    */
   "VAULT_ACCESS",
+  /**
+   * They can issue that client's invoices — a renewal draft is ready to check
+   * (Phase 4 slice 113b, founder decision C88 (d)): `invoice:view` and
+   * `invoice:issue`, tenant-wide. One assigned to the client is CLIENT_MEMBER.
+   */
+  "INVOICE_ACCESS",
   /** They own the workspace (the owners hear some things always). */
   "OWNER",
 ] as const;
