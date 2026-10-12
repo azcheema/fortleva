@@ -100,7 +100,7 @@ afterAll(async () => {
 describe("a passed renewal date moves on", () => {
   it("moves a monthly date that passed yesterday to the next renewal, as SYSTEM", async () => {
     const id = await agreement({ name: "Hosting", renews: "2031-11-01" });
-    expect(await moveRenewalDatesOn(f.tenantId, at("2031-11-02"))).toEqual({ moved: 1, failed: 0 });
+    expect(await moveRenewalDatesOn(f.tenantId, at("2031-11-02"))).toEqual({ moved: 1, failed: 0, held: 0 });
     const s = await read(id);
     expect(dayOf(s.renewsAt)).toBe("2031-12-01");
     expect(s.renewsAt!.toISOString()).toBe("2031-12-01T00:00:00.000Z");
@@ -110,7 +110,7 @@ describe("a passed renewal date moves on", () => {
     expect(rows[0]!.actorType).toBe("SYSTEM");
     expect(rows[0]!.metadata).toEqual({ clientId: acme, from: "2031-11-01", to: "2031-12-01", steps: 1 });
     // A second run the same day has nothing to move.
-    expect(await moveRenewalDatesOn(f.tenantId, at("2031-11-02"))).toEqual({ moved: 0, failed: 0 });
+    expect(await moveRenewalDatesOn(f.tenantId, at("2031-11-02"))).toEqual({ moved: 0, failed: 0, held: 0 });
     expect(await renewed(id)).toHaveLength(1);
   });
 
