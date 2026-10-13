@@ -1176,7 +1176,7 @@ export function BacklogTable({
   //
   // Whether that column is DISPLAYED is observed on its header cell, not
   // asked of a media query: its cells are `priority="medium"`, a rung of
-  // the TABLE's width (`PRIORITY` in `@/components/ui/table`), and the
+  // the TABLE's width (`PRIORITY` in `@/components/ui/table-rungs`), and the
   // viewport cannot see the 224px rail that narrows the table or the
   // member collapsing it. A `display: none` cell has no box, so
   // ResizeObserver reports the change both ways; it notifies on observe

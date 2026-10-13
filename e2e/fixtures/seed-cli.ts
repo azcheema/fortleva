@@ -227,6 +227,9 @@ const DBTEST_PREFIXES = [
   // Phase 3, the portal files slice — `src/documents/portal.dbtest.ts`,
   // `setupTenant("pfil")`.
   "pfil-",
+  // Phase 6 slice 116, the project health table — `src/modules/reports/portfolio.dbtest.ts`,
+  // `setupTenant("pfo")`.
+  "pfo-",
   "portalc-",
   // Phase 3, progress updates — `src/modules/work/updates.dbtest.ts`,
   // `setupTenant("pupd")`.

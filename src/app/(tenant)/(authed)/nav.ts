@@ -22,6 +22,7 @@ export type NavIcon =
   | "renewals"
   | "invoices"
   | "contracts"
+  | "reports"
   | "members"
   | "settings"
   | "roles"
@@ -52,6 +53,7 @@ export type NavEntry = {
     | "renewals"
     | "invoices"
     | "contracts"
+    | "reports"
     | "members"
     | "settings"
     | "roles"
@@ -177,6 +179,16 @@ export const NAV: readonly NavEntry[] = [
     href: "/contracts",
     icon: "contracts",
     permission: "contract:view",
+  },
+  // Phase 6 slice 116: REPORTS — the project health table (C92). On
+  // `report:view_portfolio` across all four gates, so it goes with the
+  // reports module; owners and managers by default. No `G` key.
+  {
+    id: "reports",
+    labelKey: "reports",
+    href: "/reports",
+    icon: "reports",
+    permission: "report:view_portfolio",
   },
   {
     id: "members",

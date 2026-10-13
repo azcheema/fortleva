@@ -343,6 +343,12 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // (the bank details' one-minute window). The database holds the code
   // (`integration_connection_guard`, migration 20261019090000).
   p("invoice:connect_bookkeeping", "invoicing", "Connect the workspace to its bookkeeping program (Fortnox), and disconnect it — every owner is emailed", C, true),
+  // ── Phase 6 slice 116 (+1; catalog 117 → 118; TEMPLATE_VERSION 18,
+  // 2026-10-13) — the staff project health table at `/reports` (founder
+  // decision C92; AUTHZ.md §3.2's row, reserved since 2026-08-16). C M, not
+  // ✦: owners and managers, who already see each project's health, burn and
+  // tasks one project at a time. Read-only — nothing in the database asks it.
+  p("report:view_portfolio", "reports", "See the project health table — every project in scope: health, last update, tasks done, budget", CM),
 ];
 
 export type RoleTemplate = {
@@ -446,8 +452,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     Phase 4 slice 114, the direct Fortnox connection, founder decision
  *     C89 (d)). Owner template only; additive. The same rule as v6: a
  *     release carrying this bump MUST run `prisma/seed.ts` — until it runs,
- *     nobody can connect Fortnox (`integration_connection_guard`). */
-export const TEMPLATE_VERSION = 17;
+ *     nobody can connect Fortnox (`integration_connection_guard`).
+ * v18 (2026-10-13): +1 `reports` code (report:view_portfolio — Phase 6
+ *     slice 116, the project health table, founder decision C92). C M, not
+ *     ✦, so clones gain it too; additive. A release carrying this bump MUST
+ *     run `prisma/seed.ts` — until it runs, nobody's role holds the code and
+ *     the Reports rail entry stays hidden (nothing breaks). */
+export const TEMPLATE_VERSION = 18;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

@@ -102,7 +102,8 @@
     "invoices": "Fakturor",
     "invoiceSettings": "Fakturering",
     "contracts": "Kontrakt",
-    "contractSettings": "Kontraktsmallar"
+    "contractSettings": "Kontraktsmallar",
+    "reports": "Rapporter"
   },
   "shell": {
     "palette": {
@@ -6220,5 +6221,39 @@
     "paid": "Fakturan ({amount}) är betald. Den här kopian är för era handlingar – det finns inget att betala.",
     "credited": "Fakturan är krediterad i sin helhet. Den här kopian är för era handlingar – det finns inget att betala.",
     "leftToPay": "Kvar att betala: {amount} (av {total}, efter kreditfakturor)"
+  },
+  "reports": {
+    "title": "Rapporter",
+    "description": "Hur det går för alla projekt du kan se.",
+    "noPermission": "Du har inte tillgång till rapporter.",
+    "health": {
+      "title": "Projekthälsa",
+      "legend": "Mest oroande först: ur kurs, sedan risk, sedan en försenad uppdatering, sedan resten.",
+      "showFinished": "Visa avslutade",
+      "hideFinished": "Dölj avslutade",
+      "filter": "Visa",
+      "allClients": "Alla kunder",
+      "columns": {
+        "key": "Nyckel",
+        "project": "Projekt",
+        "client": "Kund",
+        "health": "Hälsa",
+        "lastUpdate": "Senaste uppdatering",
+        "done": "Klart",
+        "budget": "Använd budget"
+      },
+      "noUpdate": "Ingen uppdatering än",
+      "late": "Försenad",
+      "lateLong": "Uppdatering försenad",
+      "due": "I dag",
+      "noTasks": "Inga",
+      "noBudget": "Ingen budget",
+      "empty": "Inga pågående projekt",
+      "emptyBody": "Planerade, aktiva och pausade projekt visas här.",
+      "emptyFinished": "Inga projekt",
+      "openProjects": "Gå till Projekt",
+      "emptyFinishedBody": "Det finns inga projekt som du kan se.",
+      "capped": "Visar de första {count} projekten — välj en kund för att se resten."
+    }
   }
 }

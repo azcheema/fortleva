@@ -27,7 +27,7 @@ import { ScrollFade } from "./scroll-fade";
  * The scroll box is also the `data-table` SIZE CONTAINER that column
  * priority queries: whether a column fits is a question about this box,
  * which the rail narrows and a viewport query cannot see (`PRIORITY` in
- * `@/components/ui/table` has the measurement). Its width comes from its
+ * `@/components/ui/table-rungs` has the measurement). Its width comes from its
  * parent, never its content, so the inline-size containment costs nothing.
  */
 export type Density = "compact" | "default";

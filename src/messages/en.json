@@ -102,7 +102,8 @@
     "invoices": "Invoices",
     "invoiceSettings": "Invoicing",
     "contracts": "Contracts",
-    "contractSettings": "Contract templates"
+    "contractSettings": "Contract templates",
+    "reports": "Reports"
   },
   "shell": {
     "palette": {
@@ -6220,5 +6221,39 @@
     "paid": "This invoice ({amount}) has been paid. This copy is for your records — there is nothing to pay.",
     "credited": "This invoice has been credited in full. This copy is for your records — there is nothing to pay.",
     "leftToPay": "Left to pay: {amount} (of {total}, after credit notes)"
+  },
+  "reports": {
+    "title": "Reports",
+    "description": "How every project you can see is going.",
+    "noPermission": "You don't have access to reports.",
+    "health": {
+      "title": "Project health",
+      "legend": "Most worrying first: off track, then at risk, then a late update, then the rest.",
+      "showFinished": "Show finished",
+      "hideFinished": "Hide finished",
+      "filter": "Show",
+      "allClients": "All clients",
+      "columns": {
+        "key": "Key",
+        "project": "Project",
+        "client": "Client",
+        "health": "Health",
+        "lastUpdate": "Last update",
+        "done": "Done",
+        "budget": "Budget used"
+      },
+      "noUpdate": "No update yet",
+      "late": "Late",
+      "lateLong": "Update late",
+      "due": "Due today",
+      "noTasks": "None",
+      "noBudget": "No budget",
+      "empty": "No running projects",
+      "emptyBody": "Planned, active and paused projects show here.",
+      "emptyFinished": "No projects",
+      "openProjects": "Go to Projects",
+      "emptyFinishedBody": "There are no projects you can see.",
+      "capped": "Showing the first {count} projects — choose a client to see the rest."
+    }
   }
 }

@@ -351,6 +351,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // state). No draft stop: the fixture cannot seed one — the database lets
     // only a member start a contract, as themselves.
     { name: "contracts", path: "/contracts" },
+    // Phase 6 slice 116 (C92): the project health table — the seeded
+    // project's At risk chip first, then the running projects without a
+    // post, the legend, Show finished and (with two clients) the filter.
+    { name: "project-health", path: "/reports" },
     // 2T: My time (week grid, shift strip) and the team view.
     { name: "time", path: "/time" },
     { name: "time-team", path: "/time/team" },

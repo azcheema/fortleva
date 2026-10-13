@@ -159,31 +159,96 @@ export function currentPeriod(
 
 /** Burn of one budget in its current period (inside an existing tx). */
 export async function budgetBurn(tx: TenantDb, tenantId: string, budget: Row, today: string): Promise<BudgetBurn> {
-  const p = currentPeriod(budget.period, today);
-  const anchor = budget.periodAnchor ? isoDateOf(budget.periodAnchor) : null;
-  const start = [p.start, anchor].filter((x): x is string => x !== null).sort().at(-1) ?? null;
-  const rows = await tx.$queryRaw<{ seconds: number | null; amount: string | null }[]>`
-    SELECT coalesce(sum(duration_seconds), 0)::int AS seconds,
-           round(coalesce(sum(CASE WHEN billable THEN duration_seconds::numeric / 3600 * bill_rate END), 0), 2)::text AS amount
-      FROM time_entry
-     WHERE tenant_id = ${tenantId} AND project_id = ${budget.projectId}
-       AND deleted_at IS NULL AND stopped_at IS NOT NULL
-       AND (${budget.includeNonBillable} OR billable)
-       AND (${start}::date IS NULL OR local_date >= ${start}::date)
-       AND (${p.end}::date IS NULL OR local_date <= ${p.end}::date)`;
-  const seconds = rows[0]?.seconds ?? 0;
-  const amount = rows[0]?.amount ?? "0";
-  const budgetAmount = Number(budget.amount.toString());
-  const used = budget.kind === "HOURS" ? seconds / 3600 : Number(amount);
-  const percent = budgetAmount > 0 ? Math.round((used / budgetAmount) * 1000) / 10 : 0;
-  return {
-    periodKey: p.key,
-    periodStart: start,
-    periodEnd: p.end,
-    seconds,
-    amount: budget.kind === "MONEY" ? amount : null,
-    percent,
-  };
+  return (await budgetBurns(tx, tenantId, [budget], today)).get(budget.id)!;
+}
+
+/**
+ * Burn of many budgets in their current periods — ONE statement however
+ * many (the project health table's column, slice 116), and the one
+ * definition of burn: `budgetBurn` is this of one, so the alert job, the
+ * Time tab, the update's snapshot and the table can never disagree. Each
+ * window is computed here (`currentPeriod`, never before the anchor) and
+ * passed as a row of `unnest`; an open end is `-infinity`/`infinity`
+ * rather than NULL, so no array parameter carries a NULL.
+ */
+export async function budgetBurns(
+  tx: TenantDb,
+  tenantId: string,
+  budgets: readonly Row[],
+  today: string,
+): Promise<ReadonlyMap<string, BudgetBurn>> {
+  if (budgets.length === 0) return new Map();
+  const windows = budgets.map((budget) => {
+    const p = currentPeriod(budget.period, today);
+    const anchor = budget.periodAnchor ? isoDateOf(budget.periodAnchor) : null;
+    const start = [p.start, anchor].filter((x): x is string => x !== null).sort().at(-1) ?? null;
+    return { budget, p, start };
+  });
+  const rows = await tx.$queryRaw<{ id: string; seconds: number | null; amount: string | null }[]>`
+    SELECT b.id,
+           coalesce(sum(t.duration_seconds), 0)::int AS seconds,
+           round(coalesce(sum(CASE WHEN t.billable THEN t.duration_seconds::numeric / 3600 * t.bill_rate END), 0), 2)::text AS amount
+      FROM unnest(${windows.map((w) => w.budget.id)}::text[],
+                  ${windows.map((w) => w.budget.projectId)}::text[],
+                  ${windows.map((w) => w.budget.includeNonBillable)}::boolean[],
+                  ${windows.map((w) => w.start ?? "-infinity")}::date[],
+                  ${windows.map((w) => w.p.end ?? "infinity")}::date[])
+           AS b(id, project_id, include_non_billable, start_on, end_on)
+      LEFT JOIN time_entry t
+        ON t.tenant_id = ${tenantId} AND t.project_id = b.project_id
+       AND t.deleted_at IS NULL AND t.stopped_at IS NOT NULL
+       AND (b.include_non_billable OR t.billable)
+       AND t.local_date >= b.start_on AND t.local_date <= b.end_on
+     GROUP BY b.id`;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return new Map(
+    windows.map(({ budget, p, start }) => {
+      const seconds = byId.get(budget.id)?.seconds ?? 0;
+      const amount = byId.get(budget.id)?.amount ?? "0";
+      const budgetAmount = Number(budget.amount.toString());
+      const used = budget.kind === "HOURS" ? seconds / 3600 : Number(amount);
+      const percent = budgetAmount > 0 ? Math.round((used / budgetAmount) * 1000) / 10 : 0;
+      const burn: BudgetBurn = {
+        periodKey: p.key,
+        periodStart: start,
+        periodEnd: p.end,
+        seconds,
+        amount: budget.kind === "MONEY" ? amount : null,
+        percent,
+      };
+      return [budget.id, burn];
+    }),
+  );
+}
+
+/**
+ * The ACTIVE budget of each of `projectIds` with its burn — two statements
+ * however many projects. NO GATE: the caller has asked `budget:view` and
+ * read the projects in scope. A MONEY burn's amount is NULLED unless the
+ * caller passes `money: true`, which it may only do for a holder of
+ * `rate:view_bill` (`getProjectBudget`'s rule) — redacted HERE, so a caller
+ * cannot forward an amount by accident. The project health table (slice
+ * 116) passes `false`: it shows the percent alone.
+ */
+export async function activeBudgetBurns(
+  tx: TenantDb,
+  tenantId: string,
+  projectIds: readonly string[],
+  today: string,
+  opts: { readonly money: boolean },
+): Promise<ReadonlyMap<string, { budget: BudgetView; burn: BudgetBurn }>> {
+  if (projectIds.length === 0) return new Map();
+  const rows = await tx.projectBudget.findMany({
+    where: { tenantId, projectId: { in: [...projectIds] }, status: "ACTIVE" },
+    select,
+  });
+  const burns = await budgetBurns(tx, tenantId, rows, today);
+  return new Map(
+    rows.map((r) => {
+      const burn = burns.get(r.id)!;
+      return [r.projectId, { budget: toView(r), burn: opts.money || r.kind === "HOURS" ? burn : { ...burn, amount: null } }];
+    }),
+  );
 }
 
 /** budget:view — the project's ACTIVE budget and its burn (amounts only with rate:view_bill). */
