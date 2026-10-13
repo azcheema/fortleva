@@ -1271,7 +1271,12 @@ const TIMELINE_KIND_ORDER: Record<PortalTimelineEntry["kind"], number> = {
 const isDecided = (status: string): status is "APPROVED" | "CHANGES_REQUESTED" =>
   status === "APPROVED" || status === "CHANGES_REQUESTED";
 
-/** The document kinds whose versions are events (DATA_MODEL §6.16: DELIVERABLE | REPORT). */
+/**
+ * The document kinds whose versions are events (DATA_MODEL §6.16: DELIVERABLE | REPORT).
+ * A client REPORT (Phase 6 slice 115) is never on a project, so it never
+ * reaches this per-project rail; the kind stays listed for the day a
+ * project's own report kind exists (DATA_MODEL §6.8's enum note).
+ */
 const TIMELINE_DOCUMENT_KINDS = ["DELIVERABLE", "REPORT"] as const;
 const isTimelineDocumentKind = (kind: string): kind is (typeof TIMELINE_DOCUMENT_KINDS)[number] =>
   (TIMELINE_DOCUMENT_KINDS as readonly string[]).includes(kind);

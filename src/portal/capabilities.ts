@@ -36,6 +36,7 @@ export const PORTAL_MODULES = [
   "vault",
   "invoicing",
   "contracts",
+  "reports", // Phase 6 slice 115 — the client's Reports page
   "continuity_box",
 ] as const satisfies readonly Module[];
 
@@ -82,10 +83,10 @@ type CapabilityDef = {
 };
 
 /**
- * The v1 complete set. `portal.report.view` is the one row of AUTHZ.md
- * §8's table that is NOT here: it is marked v2 there, and a capability
- * present in the union is a capability `CONTACT_PRIMARY` holds (below),
- * so listing it early would grant it early. Add it with the feature.
+ * The v1 complete set — every row of AUTHZ.md §8's table. A capability
+ * present in the union is a capability `CONTACT_PRIMARY` holds (below), so
+ * a row is listed only with the feature that enforces it: `portal.report.view`
+ * waited here, "v2", until the client report files (Phase 6 slice 115).
  */
 export const PORTAL_CAPABILITY_DEFS = {
   // ── Core portal surfaces: no parent module (projects, documents and
@@ -132,6 +133,14 @@ export const PORTAL_CAPABILITY_DEFS = {
   // (C61 (e)): absent from the collaborator bundle below. Not tied to the
   // agency's "show logins to clients" switch (C61 (d)).
   "portal.credential.request_open": { modules: ["portal", "vault"] },
+  // ── reports (P6) ─────────────────────────────────────────────────
+  // The client's REPORTS page (Phase 6 slice 115; founder decision C91): the
+  // monthly report files the agency published, and their download. EVERY
+  // profile (C91 (b)): written into the collaborator bundle below. A report
+  // is also a document, so its reads ask `portal.document.view` (and its
+  // download `portal.document.download`) as well — `src/documents/portal.ts`.
+  // The CrUX charts will ride on it too.
+  "portal.report.view": { modules: ["portal", "reports"] },
   // ── money (P4) ───────────────────────────────────────────────────
   "portal.invoice.view": { modules: ["portal", "invoicing"] },
   "portal.invoice.pay": { modules: ["portal", "invoicing"] },
@@ -171,7 +180,8 @@ export const isPortalCapability = (value: unknown): value is PortalCapability =>
  * continuity, no hours, no deliverable sign-off, no version approval —
  * and no agreements (`portal.service.view`), because an agreement row
  * carries the fee the client pays, which is money — and no logins
- * (`portal.credential.view`, founder decision C59 (a), 2026-10-05).
+ * (`portal.credential.view`, founder decision C59 (a), 2026-10-05). It does
+ * hold the reports (`portal.report.view`, C91 (b), 2026-10-13).
  */
 export const PORTAL_PROFILES = {
   CONTACT_PRIMARY: PORTAL_CAPABILITIES,
@@ -188,6 +198,7 @@ export const PORTAL_PROFILES = {
     "portal.timeline.view",
     "portal.credential.submit",
     "portal.share_link.view",
+    "portal.report.view",
   ],
 } as const satisfies Record<string, readonly PortalCapability[]>;
 

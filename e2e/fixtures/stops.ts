@@ -180,6 +180,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "client-projects", path: `${client}/projects` },
     { name: "client-contacts", path: `${client}/contacts` },
     { name: "client-files", path: `${client}/files` },
+    // Phase 6 slice 115 (C91): the Reports tab — the seed's published report
+    // (the warm row cue, "Client can see", its date) above its INTERNAL draft,
+    // the legend, and the Add a report card with its month and year.
+    { name: "client-reports", path: `${client}/reports` },
     // 2T: agreements with their rate and this month's hours, plus the
     // agreement-scoped rate cards.
     { name: "client-agreements", path: `${client}/agreements` },
@@ -420,6 +424,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // under the project's card, the company's own file under its own;
     // the record and the one shared agreement with its fee.
     { name: "portal-files", path: "/portal/files", session: "contact" },
+    // Phase 6 slice 115 (C91): the client's Reports page — last month's card
+    // with the seed's published report and its download; the draft nowhere.
+    { name: "portal-reports", path: "/portal/reports", session: "contact" },
     { name: "portal-company", path: "/portal/company", session: "contact" },
     // Phase 4 slice 112b2 (C85): Astrid's contracts — the ones
     // `contracts.spec.ts` sent her and she signed or declined, when it ran

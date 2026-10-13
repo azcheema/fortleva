@@ -18,7 +18,7 @@ import { clientSummaryToken, readClientSummaryToken } from "./client-summary-tok
  */
 
 const LINKS = { portal: "https://app.example/portal", unsubscribe: "https://app.example/portal/unsubscribe/T" };
-const NONE = { updates: 0, replies: 0, files: 0, signoffs: 0, contracts: 0, tasks: 0, logins: 0 };
+const NONE = { updates: 0, reports: 0, replies: 0, files: 0, signoffs: 0, contracts: 0, tasks: 0, logins: 0 };
 
 describe("readClientDigestCounts", () => {
   it("keeps only known keys with positive whole numbers", () => {
@@ -67,6 +67,15 @@ describe("renderContactDigest", () => {
     expect(renderContactDigest("en", { contracts: 2 }, LINKS)!.text).toContain("Waiting for you:\n- 2 contracts are waiting for your signature");
     const newOnly = renderContactDigest("en", { files: 2 }, LINKS)!;
     expect(newOnly.text).not.toContain("Waiting for you");
+  });
+
+  it("counts published reports as NEW, right after the updates (slice 115, C91 (c))", () => {
+    const mail = renderContactDigest("en", { updates: 1, reports: 2, files: 1 }, LINKS)!;
+    expect(mail.text).toContain(
+      "New since your last summary:\n- 1 new update from your agency\n- 2 new reports from your agency\n- 1 file was shared with you or updated",
+    );
+    expect(mail.text).not.toContain("Waiting for you");
+    expect(renderContactDigest("sv", { reports: 1 }, LINKS)!.text).toContain("- 1 ny rapport från din byrå");
   });
 
   it("writes Swedish for a Swedish reader", () => {

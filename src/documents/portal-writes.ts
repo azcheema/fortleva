@@ -150,9 +150,20 @@ export async function resolvePortalDownload(
     fail("DOWNLOAD_RATE_LIMITED", "front filter");
   }
 
-  await withPortalRead(principal, (tx) =>
-    authorizePortal(tx, principal, "portal.document.download", { kind: "document", documentId }),
-  );
+  await withPortalRead(principal, async (tx) => {
+    await authorizePortal(tx, principal, "portal.document.download", { kind: "document", documentId });
+    // A client REPORT is a document AND a report (Phase 6 slice 115): its
+    // download asks `portal.report.view` too, so the reports module switched
+    // off closes it here as it closes the Reports page. The row is the one
+    // the gate just admitted, read under the same principal with every one of
+    // the gate's terms restated (`documentGate` — `portal-switch-belts.test.ts`
+    // holds every document read in this file to it).
+    const proven = await tx.document.findFirst({
+      where: { id: documentId, ...documentGate(principal) },
+      select: { kind: true },
+    });
+    if (proven?.kind === "REPORT") await authorizePortal(tx, principal, "portal.report.view");
+  });
 
   // THE LOCK WAIT IS BOUNDED AND ITS EXHAUSTION IS A TYPED REFUSAL, the
   // request broker's shape: a spent `lockTimeoutMs` (55P03) or a lost

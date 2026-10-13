@@ -1,4 +1,5 @@
 import { AuthzError } from "@/authz/errors";
+import type { TenantDb } from "@/db";
 import { authorizePortal, withPortalRead, type PortalPrincipal } from "@/portal";
 import type { PortalApprovalState, PortalPendingApproval } from "@/portal/signoff";
 
@@ -30,14 +31,15 @@ import { readPortalFileVersions } from "./portal-writes";
  * is not a file the client is told about.
  */
 
-export type PortalDocumentKind = "GENERAL" | "DELIVERABLE" | "REPORT";
+export type PortalDocumentKind = "GENERAL" | "DELIVERABLE";
 
 /**
  * The order the page groups by: what the agency delivered first, then
- * what it reported, then everything else it shared (UI.md §4 item 6,
- * "Files & deliverables").
+ * everything else it shared (UI.md §4 item 6, "Files & deliverables").
+ * REPORTS ARE NOT FILES HERE (Phase 6 slice 115, C91 (b)): they have their
+ * own page, `listPortalReports` below, so nothing shows twice.
  */
-export const PORTAL_DOCUMENT_KINDS: readonly PortalDocumentKind[] = ["DELIVERABLE", "REPORT", "GENERAL"];
+export const PORTAL_DOCUMENT_KINDS: readonly PortalDocumentKind[] = ["DELIVERABLE", "GENERAL"];
 
 export type PortalDocument = {
   readonly id: string;
@@ -62,7 +64,7 @@ export type PortalDocument = {
 };
 
 export type PortalDocumentList = {
-  /** Deliverables, then reports, then the rest; newest version first within each. */
+  /** Deliverables, then the rest; newest version first within each. */
   readonly documents: readonly PortalDocument[];
   /** True when `PORTAL_DOCUMENT_LIMIT` cut the list short. */
   readonly truncated: boolean;
@@ -76,7 +78,7 @@ export type PortalDocumentList = {
  */
 export const PORTAL_DOCUMENT_LIMIT = 200;
 
-const KIND_ORDER: Record<PortalDocumentKind, number> = { DELIVERABLE: 0, REPORT: 1, GENERAL: 2 };
+const KIND_ORDER: Record<PortalDocumentKind, number> = { DELIVERABLE: 0, GENERAL: 1 };
 
 const isPortalKind = (kind: string): kind is PortalDocumentKind => kind in KIND_ORDER;
 
@@ -90,7 +92,8 @@ const isPortalKind = (kind: string): kind is PortalDocumentKind => kind in KIND_
  * repeated as defence in depth. What the policy does not carry and this
  * must: the soft delete, the PROJECT's archive (the gap every portal
  * projection documents), and EXPORT — a tenant's own data export is
- * never a client's file, whatever visibility somebody set on it.
+ * never a client's file, whatever visibility somebody set on it — and,
+ * since slice 115, REPORT, which is `listPortalReports`'.
  */
 export async function listPortalDocuments(
   principal: PortalPrincipal,
@@ -123,7 +126,7 @@ export async function listPortalDocuments(
         visibility: "CLIENT_VISIBLE",
         portalEnabled: true,
         deletedAt: null,
-        kind: { not: "EXPORT" },
+        kind: { notIn: ["EXPORT", "REPORT"] },
         ...(projectId
           ? { projectId, project: { archivedAt: null } }
           : { OR: [{ projectId: null }, { project: { archivedAt: null } }] }),
@@ -170,8 +173,9 @@ export async function listPortalDocuments(
   const documents: PortalDocument[] = [];
   for (const row of page) {
     const version = newest.get(row.id);
-    // EXPORT is excluded by the `where`; the guard keeps the type honest
-    // rather than asserted, and drops the file with no committed bytes.
+    // EXPORT and REPORT are excluded by the `where`; the guard keeps the
+    // type honest rather than asserted, and drops the file with no
+    // committed bytes.
     if (!version || !isPortalKind(row.kind)) continue;
     documents.push({
       id: row.id,
@@ -263,5 +267,136 @@ export async function listPortalPendingDeliverables(
       versionNumber: row.approvalVersionNumber ?? 0,
       project: row.project ? { id: row.project.id, key: row.project.key, name: row.project.name } : null,
     }));
+  });
+}
+
+// ── Reports (Phase 6 slice 115; founder decision C91) ────────────────
+
+/**
+ * One published report, as its client's people may know it: its name, the
+ * month it covers, when it was published, and its file's size and type.
+ * Nothing else: no uploader, no tags, no key.
+ */
+export type PortalReport = {
+  readonly id: string;
+  readonly name: string;
+  /** `YYYY-MM-01` — the month the report covers. */
+  readonly month: string;
+  /** When the agency (last) published it. */
+  readonly publishedAt: Date;
+  /** The newest committed version — always present on a listed row. */
+  readonly version: { readonly at: Date; readonly sizeBytes: number; readonly contentType: string };
+};
+
+/** Same reasoning as `PORTAL_DOCUMENT_LIMIT`: a report a month for sixteen years. */
+export const PORTAL_REPORT_LIMIT = 200;
+
+/**
+ * The gate's terms for a REPORT under this principal — `portal_gate`'s own
+ * (tenant, client, visibility, `portal_enabled`) restated as defence in depth,
+ * plus the soft delete and the kind. A report is the client's own (no project
+ * — `document_report_company_level`), so no project's archive or switch
+ * enters into it.
+ */
+const reportWhere = (principal: PortalPrincipal) => ({
+  tenantId: principal.tenantId,
+  clientId: principal.clientId,
+  visibility: "CLIENT_VISIBLE" as const,
+  portalEnabled: true,
+  deletedAt: null,
+  kind: "REPORT" as const,
+  projectId: null,
+});
+
+/**
+ * Both capabilities a report's read asks (design §4.3): `portal.report.view`
+ * — the reports module and the profile (C91 (b): every profile) — and
+ * `portal.document.view`, because a report is a document too.
+ */
+async function authorizeReports(tx: TenantDb, principal: PortalPrincipal): Promise<void> {
+  await authorizePortal(tx, principal, "portal.report.view");
+  await authorizePortal(tx, principal, "portal.document.view");
+}
+
+/**
+ * THE CLIENT'S REPORTS PAGE (C91 (b)) — every report the agency published to
+ * the contact's client, newest month first, then newest published, then by
+ * name. Read under the contact's principal; the versions through the same
+ * brokered read the files list uses (`readPortalFileVersions`), and a report
+ * whose bytes are not committed is DROPPED, as a file is.
+ */
+export async function listPortalReports(principal: PortalPrincipal): Promise<readonly PortalReport[]> {
+  const rows = await withPortalRead(principal, async (tx) => {
+    await authorizeReports(tx, principal);
+    return tx.document.findMany({
+      where: reportWhere(principal),
+      select: { id: true, name: true, reportMonth: true, reportPublishedAt: true },
+      orderBy: [{ reportMonth: "desc" }, { reportPublishedAt: "desc" }, { name: "asc" }, { id: "asc" }],
+      take: PORTAL_REPORT_LIMIT,
+    });
+  });
+  // SEQUENTIAL, after the contact's transaction has closed — the files list's shape.
+  const versions = await readPortalFileVersions(
+    principal,
+    rows.map((r) => r.id),
+    { newestPerDocument: true },
+  );
+  const newest = new Map(versions.map((v) => [v.documentId, v]));
+  const reports: PortalReport[] = [];
+  for (const row of rows) {
+    const version = newest.get(row.id);
+    // The CHECKs make a shared REPORT's month and stamp non-null; the guard
+    // keeps the types honest, and drops a report with no committed bytes.
+    if (!version || !row.reportMonth || !row.reportPublishedAt) continue;
+    reports.push({
+      id: row.id,
+      name: row.name,
+      month: row.reportMonth.toISOString().slice(0, 10),
+      publishedAt: row.reportPublishedAt,
+      version: { at: version.at, sizeBytes: version.sizeBytes, contentType: version.contentType },
+    });
+  }
+  return reports;
+}
+
+/**
+ * HOW MANY REPORTS THIS CONTACT CAN SEE — the nav's question ("is there a
+ * Reports page for me?"), and nothing else. Zero, never a refusal: a profile
+ * or module that cannot read reports simply has none to show.
+ */
+export async function countPortalReports(principal: PortalPrincipal): Promise<number> {
+  return withPortalRead(principal, async (tx) => {
+    try {
+      await authorizeReports(tx, principal);
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      return 0;
+    }
+    return tx.document.count({ where: reportWhere(principal) });
+  });
+}
+
+/**
+ * ONE REPORT'S MONTH, IF THIS CONTACT CAN SEE IT NOW — the outbox's question
+ * at send (`src/jobs/outbox.ts`, design §4.2): `YYYY-MM-01`, or null for every
+ * way it cannot be seen (hidden, deleted, another client's, the person paused,
+ * the portal or the reports module off, a profile without the capability).
+ * Never throws an AuthzError: a refusal is an answer here, not a failure.
+ */
+export async function portalReportMonth(principal: PortalPrincipal, documentId: string): Promise<string | null> {
+  // The belt: Prisma drops an `undefined` filter silently.
+  if (typeof documentId !== "string" || documentId.length === 0) return null;
+  return withPortalRead(principal, async (tx) => {
+    try {
+      await authorizeReports(tx, principal);
+    } catch (e) {
+      if (!(e instanceof AuthzError)) throw e;
+      return null;
+    }
+    const row = await tx.document.findFirst({
+      where: { id: documentId, ...reportWhere(principal) },
+      select: { reportMonth: true },
+    });
+    return row?.reportMonth ? row.reportMonth.toISOString().slice(0, 10) : null;
   });
 }

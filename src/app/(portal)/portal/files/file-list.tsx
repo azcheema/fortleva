@@ -15,7 +15,8 @@ import { downloadDocumentAction } from "./actions";
  * (a card per project, and one for the company's own files) and for
  * the one-screen project page's "Files & deliverables" section (UI.md
  * §4 item 6). Grouped by KIND in the projection's fixed order —
- * deliverables, then reports, then everything else — under a small
+ * deliverables, then everything else (reports have their own page since
+ * Phase 6 slice 115, `/portal/reports`) — under a small
  * heading each, so a client reads down the same few headings on every
  * card; a kind with nothing in it is absent, not drawn empty.
  *

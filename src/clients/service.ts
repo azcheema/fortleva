@@ -273,6 +273,21 @@ export type ClientDetail = {
      */
     viewContracts: boolean;
     createContracts: boolean;
+    /**
+     * The client's REPORTS (Phase 6 slice 115, C91) — every report verb is a
+     * document verb AND a report verb (`src/documents/reports.ts`), so each
+     * cap asks both codes on all four gates, and a DIRECT assignment (the
+     * Files tab's rule): see and download (`document:view` + `report:view`);
+     * upload (`document:upload` + `report:upload`); publish and hide
+     * (`document:change_visibility` + `report:upload`); edit the name and
+     * month (`document:edit` + `report:upload`); delete (`document:delete` +
+     * `report:delete`). Upload, publish and edit only on an ACTIVE client.
+     */
+    viewReports: boolean;
+    uploadReports: boolean;
+    publishReports: boolean;
+    editReports: boolean;
+    deleteReports: boolean;
   };
 };
 
@@ -281,7 +296,7 @@ export type ClientDetail = {
  * `heldAndAccessibleCodes`. Every cap but one answers all four gates, so
  * a cap whose module a tenant can switch off closes with it:
  * `client:manage_contacts` is `portal`, the five `document:*` are
- * `documentation`, and `credential:view` and the three `asset:*` are `vault`, the two `contract:*` are `contracts`; the rest are `core`. The one is `manageContactRecords`,
+ * `documentation`, and `credential:view` and the three `asset:*` are `vault`, the two `contract:*` are `contracts`, the three `report:*` are `reports`; the rest are `core`. The one is `manageContactRecords`,
  * on gate 4 by C48. None is a ✦ code, which is what lets the helper answer
  * them. `CapCode` makes `can()` — and `holds()`, the gate-4 answer — on a
  * code missing from this list a type error; a hand-written permission
@@ -309,6 +324,9 @@ const CAP_CODES = [
   "asset:delete",
   "contract:view",
   "contract:create",
+  "report:view",
+  "report:upload",
+  "report:delete",
 ] as const;
 type CapCode = (typeof CAP_CODES)[number];
 
@@ -431,6 +449,11 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
         viewContracts: can("contract:view") && direct,
         // Only an ACTIVE client is offered one (the service refuses an archived one — the code review's low).
         createContracts: can("contract:create") && direct && c.status === "ACTIVE",
+        viewReports: can("document:view") && can("report:view") && direct,
+        uploadReports: can("document:upload") && can("report:upload") && direct && c.status === "ACTIVE",
+        publishReports: can("document:change_visibility") && can("report:upload") && direct,
+        editReports: can("document:edit") && can("report:upload") && direct && c.status === "ACTIVE",
+        deleteReports: can("document:delete") && can("report:delete") && direct,
       },
     };
   });

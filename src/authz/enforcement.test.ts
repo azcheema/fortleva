@@ -74,7 +74,8 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
   // and the numbering theirs (`issue.ts`, `series.ts`); slice 108b crediting
   // (`credit.ts`, and every draft verb on a credit note); slice 109 sending
   // and payments (`send.ts`). Every invoicing code now has its guard.
-  reports: ["report:view", "report:upload", "report:delete"],
+  // Phase 6 slice 115 gave `report:view`, `:upload` and `:delete` theirs —
+  // the client report files (`src/documents/reports.ts`).
   continuity_box: [
     "continuity_box:view",
     "continuity_box:edit",

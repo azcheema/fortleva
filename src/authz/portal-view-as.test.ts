@@ -184,6 +184,9 @@ const VIEW_AS_PROJECT_PAGE = join(SRC, "app", "(tenant)", "view-as", "projects",
 // third and fourth navigable pages.
 const PORTAL_FILES_PAGE = join(SRC, "app", "(portal)", "portal", "files", "page.tsx");
 const VIEW_AS_FILES_PAGE = join(SRC, "app", "(tenant)", "view-as", "files", "page.tsx");
+// The reports page and its twin (Phase 6 slice 115, C91).
+const PORTAL_REPORTS_PAGE = join(SRC, "app", "(portal)", "portal", "reports", "page.tsx");
+const VIEW_AS_REPORTS_PAGE = join(SRC, "app", "(tenant)", "view-as", "reports", "page.tsx");
 const PORTAL_COMPANY_PAGE = join(SRC, "app", "(portal)", "portal", "company", "page.tsx");
 const VIEW_AS_COMPANY_PAGE = join(SRC, "app", "(tenant)", "view-as", "company", "page.tsx");
 // The task page and its twin (Phase 3 slice 75, C41): the conversation
@@ -303,6 +306,14 @@ describe("view-as-contact renders the contact's own page", () => {
       expect(importsFrom(text, "@/documents/portal")).toBe(false);
       expect(importsFrom(text, "@/documents/portal-writes")).toBe(false);
     }
+    // …the reports page (slice 115): both render <PortalReportsView>, and
+    // neither reaches the documents module itself.
+    for (const file of [PORTAL_REPORTS_PAGE, VIEW_AS_REPORTS_PAGE]) {
+      const text = readFileSync(file, "utf8");
+      expect(importsFrom(text, "reports-view")).toBe(true);
+      expect(importsFrom(text, "@/documents/portal")).toBe(false);
+      expect(importsFrom(text, "@/documents/portal-writes")).toBe(false);
+    }
     // …and the company page: both render <PortalCompanyView>, and neither
     // reaches the client or services projections itself.
     for (const file of [PORTAL_COMPANY_PAGE, VIEW_AS_COMPANY_PAGE]) {
@@ -385,6 +396,7 @@ describe("view-as-contact renders the contact's own page", () => {
     // slice), the same arrangement, measured in each component's body.
     for (const [file, fn, view] of [
       [VIEW_AS_FILES_PAGE, "ViewAsFilesPage", "<PortalFilesView"],
+      [VIEW_AS_REPORTS_PAGE, "ViewAsReportsPage", "<PortalReportsView"],
       [VIEW_AS_COMPANY_PAGE, "ViewAsCompanyPage", "<PortalCompanyView"],
       [VIEW_AS_TASK_PAGE, "ViewAsTaskPage", "<PortalTaskView"],
     ] as const) {

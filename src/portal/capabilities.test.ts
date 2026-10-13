@@ -40,6 +40,7 @@ describe("the portal capability union", () => {
       "portal.invoice.pay",
       "portal.invoice.view",
       "portal.project.view",
+      "portal.report.view",
       "portal.request.create",
       "portal.service.view",
       "portal.share_link.view",
@@ -53,14 +54,13 @@ describe("the portal capability union", () => {
 
   it("carries no retired or v2 name", () => {
     // portal.issue.* were retired 2026-08-16 in favour of
-    // portal.work_item.* / portal.request.create / portal.comment.create;
-    // portal.report.view is v2 and must not be grantable before it is
-    // built, because CONTACT_PRIMARY holds everything in this union.
+    // portal.work_item.* / portal.request.create / portal.comment.create.
+    // (portal.report.view stood here as "v2, not grantable before it is
+    // built" until Phase 6 slice 115 built it — C91.)
     for (const gone of [
       "portal.issue.view",
       "portal.issue.create",
       "portal.issue.comment",
-      "portal.report.view",
     ]) {
       expect(isPortalCapability(gone), gone).toBe(false);
     }
@@ -113,6 +113,7 @@ describe("the portal capability union", () => {
       "portal.share_link.view": "vault",
       "portal.credential.view": "vault",
       "portal.credential.request_open": "vault",
+      "portal.report.view": "reports",
       "portal.invoice.view": "invoicing",
       "portal.invoice.pay": "invoicing",
       "portal.contract.view": "contracts",
@@ -153,7 +154,7 @@ describe("the two v1 contact profiles", () => {
     // adding a row to the union is otherwise a silent grant to every
     // primary contact in the product.
     expect([...PORTAL_PROFILES.CONTACT_PRIMARY].sort()).toEqual([...PORTAL_CAPABILITIES].sort());
-    expect(PORTAL_PROFILES.CONTACT_PRIMARY.length).toBe(25);
+    expect(PORTAL_PROFILES.CONTACT_PRIMARY.length).toBe(26);
   });
 
   it("CONTACT_COLLABORATOR holds exactly the collaborator bundle", () => {
@@ -164,6 +165,7 @@ describe("the two v1 contact profiles", () => {
       "portal.document.download",
       "portal.document.view",
       "portal.project.view",
+      "portal.report.view",
       "portal.request.create",
       "portal.share_link.view",
       "portal.timeline.view",

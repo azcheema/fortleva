@@ -16,7 +16,7 @@ export async function generateMetadata({
   return { title: client.name };
 }
 
-/** /clients/[id] shell: name + status, tabs Overview · Projects · Contacts · Files · Agreements · Contracts · Vault · Assets (UI.md §3.1). */
+/** /clients/[id] shell: name + status, tabs Overview · Projects · Contacts · Files · Reports · Agreements · Contracts · Vault · Assets (UI.md §3.1). */
 export default async function ClientLayout({
   params,
   children,
@@ -37,6 +37,10 @@ export default async function ClientLayout({
     // where the files live. Either way only with `document:view` on all
     // four gates — the documentation module switched off hides it.
     ...(client.caps.viewDocumentsAnyScope ? [{ href: `${base}/files`, label: t("tabs.files") }] : []),
+    // Phase 6 slice 115 (C91): the client's monthly reports — uploaded,
+    // published to their portal, hidden again — for `document:view` +
+    // `report:view` and a direct assignment.
+    ...(client.caps.viewReports ? [{ href: `${base}/reports`, label: t("tabs.reports") }] : []),
     // 2T: Service rows presented as agreements, with their rate cards
     // and this month's consumption (UI.md §3.1).
     ...(client.caps.viewServices ? [{ href: `${base}/agreements`, label: t("tabs.agreements") }] : []),

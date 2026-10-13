@@ -1,5 +1,5 @@
 import { AuthzError } from "@/authz/errors";
-import { listPortalDocuments, listPortalPendingDeliverables } from "@/documents/portal";
+import { listPortalDocuments, listPortalPendingDeliverables, listPortalReports } from "@/documents/portal";
 import { countPortalContractsToSign } from "@/modules/contracts/portal";
 import { countPortalLoginAsks } from "@/modules/vault";
 import { isWaitingOnYou, listPortalAgencyReplies, listPortalTasks, listPortalUpdates } from "@/modules/work";
@@ -9,7 +9,7 @@ import { listPortalPendingVersions } from "@/projects/portal";
 import type { PortalPrincipal } from "./authorize";
 
 /** How many projections a summary reads — all refused means the person sees no portal at all. */
-const READS = 8;
+const READS = 9;
 
 /**
  * WHAT ONE CLIENT PERSON'S WEEKLY SUMMARY COUNTS (Phase 5 slice 101; founder
@@ -60,6 +60,11 @@ export async function countClientSummary(
   // NEW: the updates the home's cards would show (the Updates switch
   // followed, C47), published since the last summary.
   const updates = await quiet(() => listPortalUpdates(principal, { followSectionSwitches: true, publishedSince: since }));
+  // NEW: reports the agency published since the last summary (slice 115, C91
+  // (c)) — by when each was published, not when its bytes arrived: a report is
+  // uploaded, checked, then published, often days apart. The Reports page's
+  // own list, as the person.
+  const reports = await quiet(() => listPortalReports(principal));
   // NEW: "Your agency replied" — a shared task whose newest comment the person
   // can see is the agency's and still unanswered — replied since the last
   // summary. The card's own window is `PORTAL_REPLY_WINDOW_DAYS` (14): a
@@ -89,6 +94,7 @@ export async function countClientSummary(
 
   return {
     updates: (updates ?? []).filter((u) => inWindow(u.publishedAt)).length,
+    reports: (reports ?? []).filter((r) => inWindow(r.publishedAt)).length,
     replies: (replies ?? []).filter((r) => inWindow(r.repliedAt)).length,
     files: (files?.documents ?? []).filter((d) => inWindow(d.version.at)).length,
     signoffs: (versions?.length ?? 0) + (deliverables?.length ?? 0),

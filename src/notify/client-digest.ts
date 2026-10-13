@@ -30,15 +30,16 @@ export const contactDigestKey = (contactId: string, periodKey: string): string =
   `digest:contact:${contactId}:${periodKey}`;
 
 /**
- * What a summary counts, in the order it says it. The first three are NEW
- * since the last summary; the rest are WAITING on the reader now, however old
- * — contracts waiting for their signature since slice 112b2 (C85 (d)).
+ * What a summary counts, in the order it says it. The first four are NEW
+ * since the last summary — reports published since slice 115 (C91 (c)); the
+ * rest are WAITING on the reader now, however old — contracts waiting for
+ * their signature since slice 112b2 (C85 (d)).
  */
-export const CLIENT_DIGEST_COUNTS = ["updates", "replies", "files", "signoffs", "contracts", "tasks", "logins"] as const;
+export const CLIENT_DIGEST_COUNTS = ["updates", "reports", "replies", "files", "signoffs", "contracts", "tasks", "logins"] as const;
 export type ClientDigestCount = (typeof CLIENT_DIGEST_COUNTS)[number];
 export type ClientDigestCounts = Readonly<Record<ClientDigestCount, number>>;
 
-const NEW: readonly ClientDigestCount[] = ["updates", "replies", "files"];
+const NEW: readonly ClientDigestCount[] = ["updates", "reports", "replies", "files"];
 const WAITING: readonly ClientDigestCount[] = ["signoffs", "contracts", "tasks", "logins"];
 
 /**
@@ -71,6 +72,10 @@ const LINES: Readonly<Record<ClientDigestCount, Line>> = {
   updates: line(
     ["1 new update from your agency", "# new updates from your agency"],
     ["1 ny uppdatering från din byrå", "# nya uppdateringar från din byrå"],
+  ),
+  reports: line(
+    ["1 new report from your agency", "# new reports from your agency"],
+    ["1 ny rapport från din byrå", "# nya rapporter från din byrå"],
   ),
   replies: line(
     ["Your agency replied on 1 task", "Your agency replied on # tasks"],

@@ -285,6 +285,9 @@ const DBTEST_PREFIXES = [
   // `setupTenant("rinv")`.
   "rinv-",
   "roles-",
+  // Phase 6 slice 115, client report files — `src/documents/reports.dbtest.ts`,
+  // `setupTenant("rpt")`.
+  "rpt-",
   "scope-",
   "search-",
   // Phase 4 slice 112b, sending and signing a contract — `src/modules/contracts/contract-signing.dbtest.ts`,
@@ -467,6 +470,16 @@ export type E2ESeed = {
   readonly deliverableDocId: string;
   readonly deliverableDocName: string;
   readonly internalDeliverableDocName: string;
+  /**
+   * The client reports fixture (Phase 6 slice 115, C91): a PUBLISHED report
+   * for last month — on the client's Reports tab, on the contact's Reports
+   * page, never on a Files page — and an INTERNAL one beside it, the
+   * negative control, which must appear on no portal surface.
+   */
+  readonly reportId: string;
+  readonly reportName: string;
+  readonly internalReportId: string;
+  readonly internalReportName: string;
   readonly serviceName: string;
   readonly serviceNotesSentinel: string;
   /**
@@ -734,6 +747,8 @@ async function provision(seedFile: string): Promise<void> {
   const { addVersion, commitUpload, createUpload, requestDocumentSignoff } = await import(
     "../../src/documents/service"
   );
+  const { commitReportUpload, publishReport: publishClientReport } = await import("../../src/documents/reports");
+  const { defaultReportMonth, reportMonthFormValue } = await import("../../src/documents/report-month");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
 
   const run = randomUUID().slice(0, 8);
@@ -858,6 +873,28 @@ async function provision(seedFile: string): Promise<void> {
   await version(deliverableDocId, { projectId }, `Slutversion av leveransen ${run}\n`);
   const internalDeliverableDocName = `e2e-intern-leverans-${run}.txt`;
   await document(internalDeliverableDocName, "INTERNAL", { projectId }, "DELIVERABLE");
+
+  // ── Phase 6 slice 115: client reports ──────────────────────────────
+  // Last month's report, published (the contact's Reports page and its nav
+  // entry), and a second one left INTERNAL as the negative control — both
+  // through the real services, so the publish writes its stamp, its audit
+  // row and its mail as a person's would.
+  const reportMonth = reportMonthFormValue(defaultReportMonth(localDateString(new Date(), "Europe/Stockholm")));
+  const reportName = `E2E Monthly report ${run}`;
+  const { documentId: reportId } = await commitReportUpload(ctx, {
+    fileObjectId: await putBytes(`e2e-rapport-${run}.txt`, new TextEncoder().encode(`Rapport ${run}\n`), { clientId }),
+    clientId,
+    month: reportMonth,
+    name: reportName,
+  });
+  await publishClientReport(ctx, reportId);
+  const internalReportName = `E2E Draft report ${run}`;
+  const { documentId: internalReportId } = await commitReportUpload(ctx, {
+    fileObjectId: await putBytes(`e2e-utkast-${run}.txt`, new TextEncoder().encode(`Utkast ${run}\n`), { clientId }),
+    clientId,
+    month: reportMonth,
+    name: internalReportName,
+  });
 
   // ── Visual-sweep fixture ───────────────────────────────────────────
   // Everything below exists so the screenshots show populated tables,
@@ -1776,6 +1813,10 @@ async function provision(seedFile: string): Promise<void> {
     deliverableDocId,
     deliverableDocName,
     internalDeliverableDocName,
+    reportId,
+    reportName,
+    internalReportId,
+    internalReportName,
     serviceName,
     serviceNotesSentinel,
     timeReportTitle,

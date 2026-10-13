@@ -161,6 +161,12 @@ export const AUDIT_EVENTS = {
   "file.downloaded": TENANT,
   "document.visibility_changed": TENANT,
   "document.deleted": TENANT,
+  // A client report's name or month changed (Phase 6 slice 115, C91) — one
+  // row for one edit, `{ from: { name, month }, to: { name, month } }`. A
+  // report is published and hidden through `document.visibility_changed`
+  // (metadata `kind: "REPORT"`), uploaded through `document.created`, removed
+  // through `document.deleted`, as every file is.
+  "document.report_edited": TENANT,
   // Deliverable sign-off (Phase 3, DATA_MODEL §6.8): staff ask, the
   // client answers. ONE decided verb with the outcome in metadata,
   // where `project_version` has two — both shapes are the documents'

@@ -261,8 +261,10 @@ type CommittedObject = {
  * Tenant.storageUsedBytes and recording file.uploaded. Size mismatch or
  * missing bytes ⇒ the object is marked DELETED (in its own tx) and the
  * error propagates — the presigned size is what quota was checked with.
+ * Exported for `./reports.ts` (slice 115), whose report commit is this same
+ * HEAD-verify with its own row — never a second copy of it.
  */
-async function commitFileObject(
+export async function commitFileObject(
   ctx: DocumentCtx,
   fileObjectId: string,
   work: (tx: TenantDb, obj: CommittedObject) => Promise<void>,
@@ -337,8 +339,10 @@ async function commitFileObject(
  * `DocumentKind`): a deliverable — client-approvable output, grouped
  * first on the portal's "Files & deliverables" and an event on the
  * Client Timeline for every version — or just a file. REPORT and EXPORT
- * are GENERATED kinds with writers of their own (`src/export`, the
- * Phase 4 tidrapport) and are not a choice the upload form offers.
+ * have writers of their own and are not a choice the upload form offers:
+ * EXPORT is `src/export`'s, and REPORT — since Phase 6 slice 115 the
+ * client's monthly report file — is `./reports.ts`'s, which the paths in
+ * this file refuse for a REPORT row.
  */
 export type UploadKind = "GENERAL" | "DELIVERABLE";
 
@@ -442,7 +446,9 @@ export async function addVersion(
   let versionNumber = 0;
   await commitFileObject(ctx, input.fileObjectId, async (tx, obj) => {
     const doc = await tx.document.findFirst({
-      where: { id: input.documentId, deletedAt: null },
+      // Never a client REPORT (slice 115): a report has no new versions — it
+      // is hidden or deleted and uploaded again (`./reports.ts`).
+      where: { id: input.documentId, deletedAt: null, kind: { not: "REPORT" } },
       select: {
         id: true,
         clientId: true,
@@ -506,7 +512,10 @@ export async function requestDocumentSignoff(
   return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:edit");
     const doc = await tx.document.findFirst({
-      where: { id: documentId, deletedAt: null },
+      // Never a client REPORT (slice 115; the security review's NIT-2): the
+      // answer for one is NOT_FOUND, as on every other Files path — not "not a
+      // deliverable", which would say it exists to a member without `report:view`.
+      where: { id: documentId, deletedAt: null, kind: { not: "REPORT" } },
       select: {
         id: true,
         clientId: true,
@@ -622,7 +631,10 @@ export async function listDocuments(
           ? { clientId: filter.clientId, projectId: null, ...scope }
           : { OR: [{ clientId: null }, { clientId: { not: null }, ...scope }] };
     const rows = await tx.document.findMany({
-      where: { deletedAt: null, ...where },
+      // Never a client REPORT (slice 115, C91 (b)): reports are listed only
+      // on the client's Reports tab (`./reports.ts`), so no file appears in
+      // two places with two sets of controls.
+      where: { deletedAt: null, kind: { not: "REPORT" }, ...where },
       orderBy: { updatedAt: "desc" },
       include: {
         _count: { select: { versions: true } },
@@ -726,10 +738,13 @@ export async function getDownloadUrl(
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:view");
     const doc = await tx.document.findFirst({
       where: { id: documentId, deletedAt: null },
-      select: { clientId: true, projectId: true },
+      select: { clientId: true, projectId: true, kind: true },
     });
     if (!doc) deny("NOT_FOUND");
     await assertDocumentInScope(tx, ctx.actor, doc!);
+    // A client REPORT is a document AND a report (slice 115): its download
+    // asks `report:view` too, so the reports module switched off closes it.
+    if (doc!.kind === "REPORT") await requireAccess(tx, ctx.tenantId, ctx.actor, "report:view");
     return resolveDownload(tx, documentId);
   });
   const url = await getStorage().presignGet(target.key, {
@@ -752,7 +767,8 @@ export async function renameDocument(
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:edit");
     const doc = await tx.document.findFirst({
-      where: { id: documentId, deletedAt: null },
+      // Never a client REPORT (slice 115): its name is `editReport`'s.
+      where: { id: documentId, deletedAt: null, kind: { not: "REPORT" } },
       select: { id: true, name: true, clientId: true, projectId: true },
     });
     if (!doc) deny("NOT_FOUND");
@@ -797,7 +813,10 @@ async function changeVisibilityOnce(
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:change_visibility");
     const doc = await tx.document.findFirst({
-      where: { id: documentId, deletedAt: null },
+      // Never a client REPORT (slice 115): a report is published and hidden
+      // only by `./reports.ts`, the one writer that stamps
+      // `report_published_at` and tells the client's people.
+      where: { id: documentId, deletedAt: null, kind: { not: "REPORT" } },
       select: {
         id: true,
         clientId: true,
@@ -837,7 +856,9 @@ export async function softDeleteDocument(ctx: DocumentCtx, documentId: string): 
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:delete");
     const doc = await tx.document.findFirst({
-      where: { id: documentId, deletedAt: null },
+      // Never a client REPORT (slice 115): deleting one asks `report:delete`
+      // as well — `deleteReport` in `./reports.ts`.
+      where: { id: documentId, deletedAt: null, kind: { not: "REPORT" } },
       select: { id: true, clientId: true, projectId: true },
     });
     if (!doc) deny("NOT_FOUND");

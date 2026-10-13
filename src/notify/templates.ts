@@ -10,6 +10,7 @@ import { INVOICE_PAY_LINK_ISSUED_MAIL } from "./invoice-pay-link-mail-key";
 import { INTEGRATION_CONNECTED_MAIL, INTEGRATION_DISCONNECTED_MAIL, INTEGRATION_MAIL_KEYS } from "./integration-mail-keys";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MAIL_KEYS, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
+import { renderReportMail, REPORT_PUBLISHED_MAIL } from "./report-mail";
 import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
 import { VAULT_EXPORTED_MAIL } from "./vault-export-mail-key";
 import { WEEKLY_REMINDER_KIND } from "./weekly-reminder";
@@ -48,6 +49,7 @@ const EXTRA_TEMPLATES = [
   INVOICE_PAY_LINK_ISSUED_MAIL,
   ...CONTRACT_MAIL_KEYS,
   ...INTEGRATION_MAIL_KEYS,
+  REPORT_PUBLISHED_MAIL,
 ] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
@@ -501,6 +503,19 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Din byrå har skickat ett kontrakt som du ska läsa och skriva under. Logga in i kundportalen för att läsa det, och skriv sedan under eller tacka nej där.",
     },
   },
+  // Phase 6 slice 115 — a report published to the client (C91 (c);
+  // `report-mail.ts`). The FALLBACK copy only: `renderEmail` hands the key to
+  // `renderReportMail` with the month the outbox read at send, as the person.
+  [REPORT_PUBLISHED_MAIL]: {
+    en: {
+      subject: "Your agency shared a new report",
+      body: "Your agency has published a new report in your client portal.",
+    },
+    sv: {
+      subject: "Din byrå har delat en ny rapport",
+      body: "Din byrå har publicerat en ny rapport i kundportalen.",
+    },
+  },
   [CONTRACT_SIGNED_MAIL]: {
     en: {
       subject: "Your contract is signed",
@@ -597,6 +612,8 @@ const linkFor = (
     const contractId = uuidParam(params, "contractId");
     return new URL(contractId ? `/portal/contracts/${contractId}` : "/portal", appUrl);
   }
+  // A report (slice 115): the client's Reports page — the person's own list.
+  if (key === REPORT_PUBLISHED_MAIL) return new URL("/portal/reports", appUrl);
   if (key === "contract.signed" || key === "contract.declined") {
     const contractId = uuidParam(params, "contractId");
     return new URL(contractId ? `/contracts/${contractId}` : "/contracts", appUrl);
@@ -712,6 +729,10 @@ export function renderEmail(
       settings: new URL("/settings/notifications", appUrl).toString(),
     });
     if (digest) return digest;
+  }
+  if (key === REPORT_PUBLISHED_MAIL) {
+    // The month the outbox read at send, as the person (`report-mail.ts`).
+    return renderReportMail(locale, params?.["month"], linkFor(key, params).toString());
   }
   const lang = locale === "sv" ? "sv" : "en";
   const late = key === "project_update.due" && params?.["late"] === "1";

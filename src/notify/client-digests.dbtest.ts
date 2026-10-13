@@ -375,7 +375,7 @@ beforeEach(async () => {
 describe("what a person's summary counts — the portal's own projections, as that person", () => {
   it("counts only what this main contact's portal shows: nothing INTERNAL, nothing on a project whose portal is off, nothing older, nothing of another client", async () => {
     const counts = await countClientSummary(await principalOf(ids.anna, ids.acme), SINCE, UNTIL);
-    expect(counts).toEqual({ updates: 1, replies: 1, files: 1, signoffs: 1, contracts: 0, tasks: 1, logins: 0 });
+    expect(counts).toEqual({ updates: 1, reports: 0, replies: 1, files: 1, signoffs: 1, contracts: 0, tasks: 1, logins: 0 });
   });
 
   it("a helper who may not sign is told of no sign-offs, and of no task given to somebody else", async () => {
@@ -387,12 +387,13 @@ describe("what a person's summary counts — the portal's own projections, as th
 
   it("another client's person counts their own client's news only", async () => {
     const counts = await countClientSummary(await principalOf(ids.bo, ids.beta), SINCE, UNTIL);
-    expect(counts).toEqual({ updates: 1, replies: 0, files: 0, signoffs: 0, contracts: 0, tasks: 0, logins: 0 });
+    expect(counts).toEqual({ updates: 1, reports: 0, replies: 0, files: 0, signoffs: 0, contracts: 0, tasks: 0, logins: 0 });
   });
 
   it("a person with nothing shared counts zeros; one with only an old sign-off counts it as waiting", async () => {
     expect(await countClientSummary(await principalOf(ids.quinn, ids.quiet), SINCE, UNTIL)).toEqual({
       updates: 0,
+      reports: 0,
       replies: 0,
       files: 0,
       signoffs: 0,
@@ -402,6 +403,7 @@ describe("what a person's summary counts — the portal's own projections, as th
     });
     expect(await countClientSummary(await principalOf(ids.will, ids.waits), SINCE, UNTIL)).toEqual({
       updates: 0,
+      reports: 0,
       replies: 0,
       files: 0,
       signoffs: 1,

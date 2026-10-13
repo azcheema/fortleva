@@ -4,6 +4,9 @@ import { isRecipientRefusal, send, type SendOutcome } from "@/mailer";
 import { isEmailLevel, isNotificationKind, NOTIFICATION_KINDS } from "@/notify/catalog";
 import { CONTACT_DIGEST_MAIL, renderContactDigest } from "@/notify/client-digest";
 import { clientSummaryToken } from "@/notify/client-summary-token";
+import { isUuid } from "@/db/context";
+import { portalReportMonth } from "@/documents/portal";
+import { REPORT_MAIL_NOT_VISIBLE, REPORT_MAIL_UNWANTED, REPORT_PUBLISHED_MAIL } from "@/notify/report-mail";
 import { synthesiseContactPrincipal } from "@/portal";
 import { countClientSummary } from "@/portal/weekly-summary";
 import {
@@ -49,7 +52,9 @@ const MAX_ATTEMPTS = 8;
 const LEASE_MINUTES = 10;
 /**
  * How long one drain may spend counting the clients' summaries again after its
- * claim (slice 101) — well inside the lease, leaving the sends their time.
+ * claim (slice 101), and asking whether each published report is still the
+ * person's to see (slice 115) — one budget for both, well inside the lease,
+ * leaving the sends their time.
  */
 const RECOUNT_BUDGET_MS = 4 * 60_000;
 /**
@@ -104,16 +109,28 @@ type Prepared = {
 };
 
 /**
- * A client person's weekly summary that passed every check inside the claim
- * and is counted AGAIN, as the person, after it (slice 101): `since`/`until`
- * are the window its new lines count, set by the job.
+ * A client person's mail that passed every check inside the claim and is
+ * asked AGAIN, as the person, after it — outside the claim, because each
+ * portal projection opens its own transaction:
+ *   - `summary` (slice 101): their weekly summary, counted again; `since` /
+ *     `until` are the window its new lines count, set by the job;
+ *   - `report` (slice 115, C91 (c)): a report published to them — is it
+ *     still theirs to see, and which month is it (`portalReportMonth`)?
  */
-type Recount = {
-  row: ClaimedRow;
-  contact: { id: string; tenantId: string; clientId: string };
-  since: Date;
-  until: Date;
-};
+type Recount =
+  | {
+      type: "summary";
+      row: ClaimedRow;
+      contact: { id: string; tenantId: string; clientId: string };
+      since: Date;
+      until: Date;
+    }
+  | {
+      type: "report";
+      row: ClaimedRow;
+      contact: { id: string; tenantId: string; clientId: string };
+      documentId: string;
+    };
 
 const SYSTEM = { type: "system", job: "outbox" } as const;
 
@@ -212,15 +229,20 @@ export async function drainOutbox(
       // The clients' summaries' receivers (slice 101), read once per claim like
       // the team's: each person's standing, their own stop, and their
       // workspace's switch — any of which may have changed since the job.
+      // A published report's mail (slice 115) reads the same standing: the
+      // person active, invited, at a client not archived, at the address it
+      // was made for, the workspace sending.
       const contactRows = claimed.filter((r) => r.kind === CONTACT_DIGEST_MAIL);
+      const reportRows = claimed.filter((r) => r.kind === REPORT_PUBLISHED_MAIL);
       const contactStanding = new Map<
         string,
         { status: string; invited: boolean; tenantStatus: string; clientId: string; email: string; clientArchived: boolean }
       >();
       const contactStopped = new Set<string>();
       const clientSummaryOff = new Set<string>();
-      if (contactRows.length > 0) {
-        const ids = [...new Set(contactRows.map((r) => r.receiver_id))];
+      const standingRows = [...contactRows, ...reportRows];
+      if (standingRows.length > 0) {
+        const ids = [...new Set(standingRows.map((r) => r.receiver_id))];
         for (const c of await tx.contact.findMany({
           where: { id: { in: ids } },
           select: {
@@ -243,6 +265,9 @@ export async function drainOutbox(
             clientArchived: c.client.archivedAt !== null,
           });
         }
+      }
+      if (contactRows.length > 0) {
+        const ids = [...new Set(contactRows.map((r) => r.receiver_id))];
         for (const p of await tx.notificationPreference.findMany({
           where: { receiverType: "CONTACT", receiverId: { in: ids }, digestCadence: "NONE" },
           select: { tenantId: true, receiverId: true },
@@ -497,10 +522,44 @@ export async function drainOutbox(
             continue;
           }
           recount.push({
+            type: "summary",
             row,
             contact: { id: row.receiver_id, tenantId: row.tenant_id, clientId: person.clientId },
             since: since!,
             until: until!,
+          });
+          continue;
+        }
+        // A REPORT PUBLISHED TO A CLIENT'S PERSON (slice 115, C91 (c)): still
+        // WANTED — the person active, invited, at a client not archived, at the
+        // address it was made for, the workspace sending — then asked AGAIN,
+        // as the person, after this claim, whether the report is theirs to see
+        // (`recount`, below). No "late": a report stays news until it is read.
+        if (kind === REPORT_PUBLISHED_MAIL) {
+          const person = contactStanding.get(`${row.tenant_id}:${row.receiver_id}`);
+          const documentId = row.params?.["documentId"];
+          const wanted =
+            row.receiver_type === "CONTACT" &&
+            person !== undefined &&
+            person.status === "ACTIVE" &&
+            person.invited &&
+            !person.clientArchived &&
+            person.email === row.to_email &&
+            (DIGEST_SENDING_TENANT_STATUSES as readonly string[]).includes(person.tenantStatus) &&
+            typeof documentId === "string" &&
+            isUuid(documentId);
+          if (!wanted) {
+            // Tagged: it told nobody, so publishing the report again queues it
+            // again (`enqueueReportMails`, the design review's L2).
+            await tx.emailOutbox.update({ where: { id: row.id }, data: { status: "SKIPPED", lockedAt: null, lastError: REPORT_MAIL_UNWANTED } });
+            out.skipped += 1;
+            continue;
+          }
+          recount.push({
+            type: "report",
+            row,
+            contact: { id: row.receiver_id, tenantId: row.tenant_id, clientId: person.clientId },
+            documentId,
           });
           continue;
         }
@@ -589,6 +648,40 @@ export async function drainOutbox(
     if (Date.now() - recountStarted > RECOUNT_BUDGET_MS || Date.now() > (opts?.sendUntil ?? Number.POSITIVE_INFINITY)) {
       await releaseUnattempted(recount.slice(i).map((r) => r.row), only);
       break;
+    }
+    if (item.type === "report") {
+      // A PUBLISHED REPORT (slice 115): the portal's own projection, as the
+      // person — the report's month if they can see it now, else null (hidden
+      // or deleted since, the person paused, the portal or the reports module
+      // off). Null → SKIPPED, nothing sent; a failure → FAILED with the usual
+      // backoff, logged by ids, name and code only.
+      let month: string | null;
+      try {
+        const principal = await synthesiseContactPrincipal(row.tenant_id, item.contact);
+        month = await portalReportMonth(principal, item.documentId);
+      } catch (e) {
+        const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+        const what = `${e instanceof Error ? e.name : typeof e}${code}`;
+        console.error(`outbox: report mail ${row.id} could not be checked: ${what}`);
+        const dead = row.attempts + 1 >= MAX_ATTEMPTS;
+        out[await finaliseUnsent(row, failureData(row, new Error(`report check failed: ${what}`), dead), dead ? "dead" : "failed", only)] += 1;
+        continue;
+      }
+      if (month === null) {
+        // Tagged, as the claim's drop is: a later publish queues it again.
+        out[await finaliseUnsent(row, { status: "SKIPPED", lockedAt: null, lastError: REPORT_MAIL_NOT_VISIBLE }, "skipped", only)] += 1;
+        continue;
+      }
+      // Rendered inside a try, as the claim's renders are (both reviews' nit):
+      // a throw here must fail this row, never the whole drain.
+      try {
+        const msg = renderEmail(REPORT_PUBLISHED_MAIL, row.locale, { month });
+        prepared.push({ row, subject: msg.subject, text: msg.text });
+      } catch (e) {
+        const dead = row.attempts + 1 >= MAX_ATTEMPTS;
+        out[await finaliseUnsent(row, failureData(row, e, dead), dead ? "dead" : "failed", only)] += 1;
+      }
+      continue;
     }
     let mail: { subject: string; text: string } | null = null;
     let refused = false;

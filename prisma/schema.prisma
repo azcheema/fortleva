@@ -2185,6 +2185,14 @@ model Document {
   approvalByContactId   String?        @map("approval_by_contact_id") // attribution, no FK
   approvalNote          String?        @map("approval_note")
   approvalVersionNumber Int?           @map("approval_version_number")
+  // A client REPORT (Phase 6 slice 115, C91; DATA_MODEL §6.10): the month it
+  // covers, as the month's first day — set on, and only on, kind REPORT, which
+  // is always the client's (no project, no anchor); and when it was last
+  // published to the client (every move INTERNAL → CLIENT_VISIBLE), which the
+  // portal shows and the weekly summary counts by. CHECKs in migration
+  // 20261022090000; written only by `src/documents/reports.ts`.
+  reportMonth        DateTime?       @map("report_month") @db.Date
+  reportPublishedAt  DateTime?       @map("report_published_at") @db.Timestamptz(6)
   createdByMemberId  String?         @map("created_by_member_id") // attribution, no FK
   createdByContactId String?         @map("created_by_contact_id") // attribution, no FK
   deletedAt          DateTime?       @map("deleted_at") @db.Timestamptz(6)

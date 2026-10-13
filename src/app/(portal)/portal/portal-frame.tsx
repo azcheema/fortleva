@@ -8,6 +8,7 @@ import type { PortalPrincipal } from "@/portal";
 import { contractsShown } from "./contracts-shown";
 import { invoicesShown } from "./invoices-shown";
 import { loginsShown } from "./logins-shown";
+import { reportsShown } from "./reports-shown";
 
 /**
  * THE PORTAL'S CHROME, and UI.md §11 makes it a short list: tenant
@@ -54,13 +55,20 @@ import { loginsShown } from "./logins-shown";
  * carries a member cookie and is answered with a redirect to the client
  * sign-in page on every render.
  */
-export type PortalNav = "home" | "files" | "company" | "logins" | "invoices" | "contracts";
+export type PortalNav = "home" | "files" | "reports" | "company" | "logins" | "invoices" | "contracts";
 
-const NAV: readonly { readonly key: PortalNav; readonly href: string }[] = [
-  { key: "home", href: "/portal" },
-  { key: "files", href: "/portal/files" },
-  { key: "company", href: "/portal/company" },
-];
+const HOME = { key: "home", href: "/portal" } as const;
+const FILES = { key: "files", href: "/portal/files" } as const;
+const COMPANY = { key: "company", href: "/portal/company" } as const;
+
+/**
+ * "Reports" (Phase 6 slice 115; C91 (b)) — after Files, drawn only when there
+ * is something behind it for THIS contact: at least one report published to
+ * their client that they may read (`./reports-shown`, every profile). Under
+ * View-as it is drawn the same way, and its page renders there too, as the
+ * Files page does (`/view-as/reports`).
+ */
+const REPORTS = { key: "reports", href: "/portal/reports" } as const;
 
 /**
  * THE FOURTH ENTRY, "Logins" (Phase 3V slice 91; C52 (d), C59 (a)), is
@@ -109,8 +117,11 @@ export async function PortalFrame({
   const t = await getTranslations("portal");
   const tCommon = await getTranslations("common");
   // In sequence — each ask is its own contact transaction.
-  const entries = [
-    ...NAV,
+  const entries: readonly { readonly key: PortalNav; readonly href: string }[] = [
+    HOME,
+    FILES,
+    ...((await reportsShown(principal)) ? [REPORTS] : []),
+    COMPANY,
     ...((await invoicesShown(principal)) ? [INVOICES] : []),
     ...((await contractsShown(principal)) ? [CONTRACTS] : []),
     ...((await loginsShown(principal)) ? [LOGINS] : []),

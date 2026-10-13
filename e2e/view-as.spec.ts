@@ -92,6 +92,7 @@ test.describe("view-as-contact", () => {
     let contactHtml: string;
     let contactProjectHtml: string;
     let contactFilesHtml: string;
+    let contactReportsHtml: string;
     let contactCompanyHtml: string;
     let contactTaskHtml: string;
     try {
@@ -108,6 +109,10 @@ test.describe("view-as-contact", () => {
       // the files page, with its download forms, and the company page.
       await contactPage.goto("/portal/files");
       contactFilesHtml = await portalSurface(contactPage);
+      // …and the reports page (Phase 6 slice 115): the seed's published
+      // report, with its download form.
+      await contactPage.goto("/portal/reports");
+      contactReportsHtml = await portalSurface(contactPage);
       await contactPage.goto("/portal/company");
       contactCompanyHtml = await portalSurface(contactPage);
       // …and the fifth (Phase 3 slice 75): a shared task's own page, with
@@ -127,6 +132,9 @@ test.describe("view-as-contact", () => {
     expect(contactFilesHtml).toContain(seed.deliverableDocName);
     expect(contactFilesHtml).toContain('data-slot="portal-file"');
     expect(contactFilesHtml).not.toContain('data-slot="empty-state"');
+    expect(contactReportsHtml).toContain(seed.reportName);
+    expect(contactReportsHtml).toContain('data-slot="portal-report"');
+    expect(contactReportsHtml).not.toContain(seed.internalReportName);
     expect(contactCompanyHtml).toContain(seed.serviceName);
     expect(contactCompanyHtml).toContain('data-slot="portal-agreement"');
     expect(contactCompanyHtml).not.toContain('data-slot="empty-state"');
@@ -217,6 +225,10 @@ test.describe("view-as-contact", () => {
       await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
       await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");
       expect(await portalSurface(page)).toBe(contactFilesHtml);
+      await page.goto("/view-as/reports");
+      await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
+      await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");
+      expect(await portalSurface(page)).toBe(contactReportsHtml);
       await page.goto("/view-as/company");
       await expect(page.locator('[data-slot="view-as-banner"]')).toBeVisible();
       await expect.poll(() => page.locator("html").getAttribute("lang")).toBe("en");

@@ -2043,6 +2043,7 @@
       "projects": "Projects",
       "contacts": "Contacts",
       "files": "Files",
+      "reports": "Reports",
       "agreements": "Agreements",
       "contracts": "Contracts",
       "vault": "Vault",
@@ -2157,6 +2158,73 @@
       "emptyReadOnlyDescription": "Nothing has been uploaded here.",
       "noAccess": "Client-level files need a client assignment",
       "noAccessDescription": "You reach this client through a project; its files live under that project."
+    },
+    "reports": {
+      "title": "Reports",
+      "description": "Monthly reports for this client. Only your team sees one until you publish it; then everyone at the client with portal access can open it under Reports in their portal.",
+      "empty": "No reports yet",
+      "emptyBody": "Upload a monthly report and publish it when it's ready. The client finds it under Reports in their portal.",
+      "tableLabel": "Reports",
+      "columns": {
+        "month": "Month",
+        "report": "Report",
+        "status": "Who can see it",
+        "actions": "Actions"
+      },
+      "menu": {
+        "publish": "Publish…",
+        "hide": "Hide from client",
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "deleteConfirm": "Delete {name}?",
+      "deletePublishedConfirm": "Delete {name}? The client can see it now, and it will disappear from their portal.",
+      "download": "Download {name}",
+      "publishedOn": "Published {date}",
+      "legend": {
+        "internal": "Only your team can see it",
+        "clientVisible": "Published: everyone at the client with portal access can open it"
+      },
+      "month": {
+        "label": "Month the report covers",
+        "monthLabel": "Month",
+        "yearLabel": "Year"
+      },
+      "add": {
+        "title": "Add a report",
+        "description": "Pick the month it covers and upload the file.",
+        "name": "Name",
+        "nameHint": "Optional. Leave it empty to use the file's name.",
+        "fileHint": "A PDF works best. Drop it here or choose it.",
+        "private": "Only your team can see it until you publish it.",
+        "submit": "Upload report",
+        "done": "Report uploaded. Only your team can see it until you publish it.",
+        "failed": "The report could not be uploaded. Try again."
+      },
+      "publish": {
+        "title": "Publish the {month} report?",
+        "description": "Everyone at {client} with portal access will be able to open it under Reports in their portal, and they'll get an email.",
+        "submit": "Publish",
+        "submitting": "Publishing…"
+      },
+      "edit": {
+        "title": "Edit report",
+        "description": "Change its name or the month it covers.",
+        "name": "Name",
+        "submit": "Save",
+        "submitting": "Saving…"
+      },
+      "toast": {
+        "published": "Published. {count, plural, one {1 person will get an email} other {# people will get an email}}.",
+        "publishedNobody": "Published. Nobody at the client has portal access yet, so no one was emailed.",
+        "publishedUndeliverable": "Published. Emails to the client's portal addresses aren't being delivered, so no one was emailed.",
+        "publishedToldBefore": "Published. No new emails: everyone with portal access has already been sent one, or will be shortly.",
+        "alreadyPublished": "This report was already published.",
+        "hidden": "Hidden. Only your team can see it now.",
+        "alreadyHidden": "This report was already hidden.",
+        "saved": "Report saved.",
+        "deleted": "Report deleted."
+      }
     },
     "services": {
       "title": "Services",
@@ -3591,6 +3659,7 @@
       "label": "Client portal",
       "home": "Overview",
       "files": "Files",
+      "reports": "Reports",
       "company": "Your company",
       "logins": "Logins",
       "invoices": "Invoices",
@@ -3605,7 +3674,6 @@
       "companyDescription": "Files that are not tied to one project.",
       "kinds": {
         "DELIVERABLE": "Deliverables",
-        "REPORT": "Reports",
         "GENERAL": "Other files"
       },
       "version": "Version {number}",
@@ -3617,6 +3685,13 @@
         "download": "That file could not be downloaded just now. Try again, or ask your contact at the agency."
       },
       "approvalVersion": "Sign-off concerns version {number}"
+    },
+    "reports": {
+      "title": "Reports",
+      "description": "Reports your agency has published for you, newest month first.",
+      "empty": "No reports yet",
+      "emptyBody": "Your agency hasn't published any reports for you yet.",
+      "published": "Published {date}"
     },
     "company": {
       "title": "Your company",

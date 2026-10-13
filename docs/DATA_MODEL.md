@@ -192,7 +192,7 @@ Not encrypted, on purpose: `WorkItem`/`Comment` bodies, `TimeEntry.billRate` (a 
 
 | Class | Rule | Applies to |
 |---|---|---|
-| **R1 (extended)** — invoiced time | A `TimeEntry` with `invoiceLineId IS NOT NULL` (or `lockedReason ∈ {INVOICED, BILLED_EXTERNAL}`) is räkenskapsinformation underpinning an issued invoice ([BFL 1999:1078 7 kap. 2 §](https://www.bfn.se/fragor-och-svar/arkivering/)) — retained on the R1 clock, carved out of GDPR erasure. On a member's erasure request the entry survives with **`memberId` re-pointed to a per-tenant pseudonymous Member tombstone** and description scrubbed of names; hours, rate, dates stay. `InvoiceLineTimeEntry` follows the invoice. | `TimeEntry` (invoiced), `InvoiceLineTimeEntry`, `RateCard` rows referenced by an invoiced entry (`billRateCardId`), tidrapport `Document(kind REPORT)` PDFs attached to an invoice |
+| **R1 (extended)** — invoiced time | A `TimeEntry` with `invoiceLineId IS NOT NULL` (or `lockedReason ∈ {INVOICED, BILLED_EXTERNAL}`) is räkenskapsinformation underpinning an issued invoice ([BFL 1999:1078 7 kap. 2 §](https://www.bfn.se/fragor-och-svar/arkivering/)) — retained on the R1 clock, carved out of GDPR erasure. On a member's erasure request the entry survives with **`memberId` re-pointed to a per-tenant pseudonymous Member tombstone** and description scrubbed of names; hours, rate, dates stay. `InvoiceLineTimeEntry` follows the invoice. | `TimeEntry` (invoiced), `InvoiceLineTimeEntry`, `RateCard` rows referenced by an invoiced entry (`billRateCardId`), tidrapport PDFs attached to an invoice (a `Document` of a NEW kind when built — `REPORT` is the client report file since slice 115, §6.8's enum note) |
 | **HR — un-invoiced time** | Employee working-time records are HR data, not bookkeeping: **tenant-configurable retention, default 2 years (SE — preskription/ATL 11 §-adjacent practice) / 3 years (US — FLSA 29 CFR 516.5)** by `Member.workCountry`; preference `time.retentionMonths.<country>`. Sweep job soft-deletes then hard-deletes; member erasure pseudonymises like R1 if the tenant has flagged the entries as evidence, else deletes. Timer telemetry (`skewMs`, `clientEventId`) is dropped at 90 d regardless. | `TimeEntry` (un-invoiced), `BudgetAlert` |
 | **R2 + finance carve-out** — cost rates | `RateCard(kind=COST)` rows are salary-grade personal data: kept while any entry references them, hard-deleted 24 months after `effectiveTo` when unreferenced; **never exported to the client, never in the offboarding archive's client-facing part**, present in the tenant's own archive export (encrypted at rest there too). | `RateCard` (COST) |
 | **R2 — staff notice evidence** | `StaffNoticeAcknowledgment` rows are the tenant's evidence of information duty (Art. 13 GDPR; MBL 19 §) — retained for the membership + 24 months, pseudonymised (not deleted) on erasure, like audit. `StaffNotice` versions immutable, never deleted. | `StaffNotice`, `StaffNoticeAcknowledgment` |
@@ -2101,10 +2101,23 @@ enum AttachableType {
 /// "Files & deliverables" grouping, the Client Timeline (DELIVERABLE |
 /// REPORT versions appear), retention (REPORT tidrapporter attached to an
 /// invoice follow R1) and the approval flow (DELIVERABLE only).
+/// *(Amended 2026-10-13, Phase 6 slice 115 — founder decision C91: REPORT is
+/// now the CLIENT REPORT FILE — a monthly report the agency uploads and
+/// publishes to the client's Reports page — and nothing else. It is always
+/// the client's (no project, no anchor) and carries `report_month`, both held
+/// by CHECKs (below). Nothing had ever written the kind, so the reading cost
+/// nothing; but it closes REPORT to the GENERATED documents this comment
+/// listed — the progress-update PDF (`ProjectUpdate.pdfDocumentId`, §6.16) and
+/// a tidrapport attached to an invoice (R1): both are project-level or
+/// monthless, which the CHECKs refuse. When either is built it takes a NEW
+/// enum value — a two-migration job, since Postgres refuses a value added in
+/// the same transaction that uses it — and its retention rule moves with it.
+/// The Client Timeline's DELIVERABLE | REPORT is per project, so a report
+/// (never on a project) is not on it.)*
 enum DocumentKind {
   GENERAL
   DELIVERABLE      // client-approvable output (design, build, copy…)
-  REPORT           // generated: progress-update PDF, tidrapport, performance report
+  REPORT           // the client's monthly report file (slice 115, C91) — was "generated: progress-update PDF, tidrapport, performance report"
   EXPORT           // tenant/client data export
 }
 
@@ -2169,8 +2182,24 @@ enum DocumentKind {
 ///   defaulted from the parent at creation and the child <= parent guard
 ///   applies (§10); a parent cannot be flipped to INTERNAL while an
 ///   attached CLIENT_VISIBLE document exists (downgrade refusal).
+/// - CLIENT REPORTS (2026-10-13, Phase 6 slice 115, C91; migration
+///   20261022090000): `reportMonth date?` (the month a report covers, as its
+///   first day) and `reportPublishedAt timestamptz?` (when it was last made
+///   CLIENT_VISIBLE — the portal shows it, the clients' weekly summary counts
+///   a report as new by it). Five CHECKs: `document_report_month_shape`
+///   (`(kind = 'REPORT') = (report_month IS NOT NULL)`),
+///   `document_report_month_first` (the 1st, 2000–2099),
+///   `document_report_company_level` (a REPORT has a client and no project or
+///   anchor — so `portal_enabled` is TRUE by the stamp's rule),
+///   `document_report_published_shape` (the stamp on a REPORT only) and
+///   `document_report_published_when_shared` (a CLIENT_VISIBLE REPORT carries
+///   its stamp). `search_feed_document()` treats a REPORT as deleted: no
+///   search row. ONE WRITER, `src/documents/reports.ts`; the Files paths
+///   answer NOT_FOUND for a REPORT row and never list one. Every report verb
+///   asks its document code AND its report code (AUTHZ.md §3). A contact
+///   writes neither column (`portal_contact_columns_only`).
 /// scope=client (clientId nullable ⇒ tenant-internal)  rls=B (projectScoped when projectId set, else clientScoped)  ret=R2 (invoice/contract PDFs referenced via R1 parents survive)  enc=none
-/// audit: document.created | document.visibility_changed | document.renamed | document.deleted | document.approval_requested | document.approval_decided | document.approval_voided (a new version voided an open ask, 2026-09-27) | file.uploaded | file.downloaded
+/// audit: document.created | document.visibility_changed | document.renamed | document.deleted | document.approval_requested | document.approval_decided | document.approval_voided (a new version voided an open ask, 2026-09-27) | document.report_edited (a report's name or month, slice 115) | file.uploaded | file.downloaded
 model Document {
   id                 String          @id @default(uuid(7))
   tenantId           String
@@ -2394,6 +2423,12 @@ model IssueComment {
 
 // ───────────────────────────────────────────────────────────────────
 // 6.10 PERFORMANCE REPORTS (§6, §10.5)
+// AMENDED 2026-10-13 (Phase 6 slice 115, founder decision C91): an UPLOADED
+// report is NOT a row here. It is a Document of kind REPORT with its month
+// (§6.8's "CLIENT REPORTS" note) — one visibility, the document's, through
+// the one portal gate, rather than a listing row whose visibility could
+// disagree with its file's. MANUAL_UPLOAD and `documentId` below are dropped
+// from the design; this table is the CrUX slice's (CRUX_SNAPSHOT `metrics`).
 // v1: MANUAL_UPLOAD (report PDFs as client-visible Documents, linked
 // here for grouping) + CRUX_SNAPSHOT (API-key-only, free, cron-fetched
 // per Project.productionUrl: https://developer.chrome.com/docs/crux/api
@@ -4190,7 +4225,7 @@ model ProjectUpdate {
   publishedAt         DateTime?           @db.Timestamptz(6)
   publishedByMemberId String?
   editNote            String?
-  pdfDocumentId       String?                             // → Document(kind REPORT) rendering, generated post-publish
+  pdfDocumentId       String?                             // → Document rendering, generated post-publish — NOT kind REPORT since slice 115 (a client report file now; §6.8's enum note): a new kind when built
   createdAt           DateTime            @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime            @updatedAt @db.Timestamptz(6)
 
@@ -4866,6 +4901,8 @@ model PushSubscription {
 **Fan-out rules (tested):** an INTERNAL comment never notifies a contact; a CLIENT_VISIBLE change never emails another client's contacts; a digest built for a contact runs the same allow-listed projections under the contact principal and therefore cannot contain INTERNAL rows; suppression honoured at enqueue and send; assignment debounce cancels (`SKIPPED`) if read within 2 min.
 
 ### 6.19 Search — `search_index` *(added 2026-08-16 — plan §3.5; CORE; lands Phase 2W; hand-written DDL, thin Prisma read mapping)*
+
+> *2026-10-13 (Phase 6 slice 115):* a client REPORT document is NEVER indexed — `search_feed_document()` treats a `kind = 'REPORT'` row as deleted (migration 20261022090000). The rule lives in that trigger function alone: any future backfill or rebuild of the index FROM `document` must skip `kind = 'REPORT'` too (the slice's security review's NIT-4).
 
 Postgres FTS in one narrow, trigger-fed table under the same tenant + `portal_gate` policies as everything else. **Per-row `lang regconfig`** derived from `Tenant.defaultLocale` (later per-project/document language) — configs `fortleva_sv` (unaccent + `swedish_stem`) and `fortleva_en` (unaccent + `english_stem`), never Swedish-only (PLAN.md's "no two-language assumption" rule; nothing Naxdor-specific in schema). **No GIN/trgm indexes at v1**: under FORCE RLS a non-leakproof operator (`@@`, `%`) never becomes an index qual, so a GIN would be dead weight; the planner slices on `(tenant_id, project_id | client_id, updated_at)` btrees and filters — fine at agency scale, measured before any change. Modelling rule enforced by review: **no member-only free-text column on any entity that can be CLIENT_VISIBLE** (internal notes are their own INTERNAL rows), so the feed never has to redact inside a row.
 
