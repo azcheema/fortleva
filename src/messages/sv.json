@@ -2169,6 +2169,8 @@
         "month": "Månad",
         "report": "Rapport",
         "status": "Vem kan se den",
+        "published": "Publicerad",
+        "size": "Storlek",
         "actions": "Åtgärder"
       },
       "menu": {
@@ -2180,7 +2182,7 @@
       "deleteConfirm": "Ta bort {name}?",
       "deletePublishedConfirm": "Ta bort {name}? Kunden kan se den nu, och den försvinner från kundportalen.",
       "download": "Ladda ner {name}",
-      "publishedOn": "Publicerad {date}",
+      "monthPrefix": "{month} · ",
       "legend": {
         "internal": "Bara ert team kan se den",
         "clientVisible": "Publicerad: alla hos kunden med tillgång till portalen kan öppna den"

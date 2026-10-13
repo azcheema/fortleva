@@ -2169,6 +2169,8 @@
         "month": "Month",
         "report": "Report",
         "status": "Who can see it",
+        "published": "Published",
+        "size": "Size",
         "actions": "Actions"
       },
       "menu": {
@@ -2180,7 +2182,7 @@
       "deleteConfirm": "Delete {name}?",
       "deletePublishedConfirm": "Delete {name}? The client can see it now, and it will disappear from their portal.",
       "download": "Download {name}",
-      "publishedOn": "Published {date}",
+      "monthPrefix": "{month} · ",
       "legend": {
         "internal": "Only your team can see it",
         "clientVisible": "Published: everyone at the client with portal access can open it"

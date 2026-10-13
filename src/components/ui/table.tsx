@@ -165,6 +165,23 @@ export const SHOW_FROM: Record<ColumnPriority, string> = {
 }
 
 /**
+ * The inverse of `SHOW_FROM`: an element shown only WHILE a rung's column is
+ * hidden — what stands in for that column below its width (the client Reports
+ * table's short month in the report cell while the Month column is hidden,
+ * Phase 6 slice 115). Same rungs, same reason to live here (a rung spelled at
+ * a call site is a rung re-measured in one place only), same complete class
+ * strings. `high` is "hidden": a high column always renders, so its stand-in
+ * never does.
+ */
+export const HIDE_FROM: Record<ColumnPriority, string> = {
+  high: "hidden",
+  medium: "@min-[38rem]/data-table:hidden",
+  low: "@min-[46rem]/data-table:hidden",
+  lower: "@min-[61.5rem]/data-table:hidden",
+  lowest: "@min-[71rem]/data-table:hidden",
+}
+
+/**
  * THE PINNED COLUMN — the trailing actions column's `pinned` (UI.md §10.12).
  * Its cells are `position: sticky` at the scroll box's right edge, so a
  * row's verbs are in view however far a table scrolls: column priority

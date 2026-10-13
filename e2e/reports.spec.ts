@@ -53,11 +53,11 @@ test.describe("a client's Reports tab (owner)", () => {
     const published = rowOf(page, seed.reportName);
     await expect(published).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
     await expect(published.locator('[data-slot="visibility-badge"]')).toHaveText("Client can see");
-    await expect(published).toContainText("Published");
+    await expect(published.getByTestId("report-published")).toHaveText(/\d{4}/);
     const draft = rowOf(page, seed.internalReportName);
     await expect(draft).toHaveAttribute("data-visibility", "INTERNAL");
     await expect(draft.locator('[data-slot="visibility-badge"]')).toHaveText("Private to team");
-    await expect(draft).not.toContainText("Published");
+    await expect(draft.getByTestId("report-published")).toHaveText("");
     // The upload card says a new report starts private.
     await expect(page.getByTestId("add-report")).toContainText("Only your team can see it until you publish it.");
 

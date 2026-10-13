@@ -16,13 +16,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { HIDE_FROM, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFocusReturn } from "@/components/ui/use-focus-return";
 import { useRun } from "@/components/use-run";
 import { afterClosingLayers } from "@/lib/after-closing-layers";
 import { bytesParts } from "@/lib/format";
 import type { FormResult } from "@/lib/server-actions";
+import { cn } from "@/lib/utils";
 
 import { downloadAction } from "../../../files/actions";
 import { deleteReportAction, editReportAction, hideReportAction, publishReportAction } from "./actions";
@@ -82,9 +83,23 @@ export function ReportTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[16ch]">{t("columns.month")}</TableHead>
+            {/* ONE LINE PER ROW, at the row height every table keeps (the
+                walk's row-pitch audit), and the Files table's widths: on a
+                phone only the report (with its short month in front), who can
+                see it and the verbs — the badge is safety-critical and never
+                the column that yields. The month, the date it was published
+                and the size join as the table widens. */}
+            <TableHead priority="medium" className="w-[16ch]">
+              {t("columns.month")}
+            </TableHead>
             <TableHead>{t("columns.report")}</TableHead>
             <TableHead className="w-[18ch]">{t("columns.status")}</TableHead>
+            <TableHead priority="low" className="w-[14ch]">
+              {t("columns.published")}
+            </TableHead>
+            <TableHead priority="low" className="w-[10ch] text-right">
+              {t("columns.size")}
+            </TableHead>
             <TableHead pinned className="w-0 text-right">
               <span className="sr-only">{t("columns.actions")}</span>
             </TableHead>
@@ -133,7 +148,9 @@ function ReportRow({
   const { run } = useRun();
   const [publishOpen, setPublishOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const monthLabel = format.dateTime(new Date(`${row.month}T00:00:00.000Z`), { month: "long", year: "numeric", timeZone: "UTC" });
+  const monthDate = new Date(`${row.month}T00:00:00.000Z`);
+  const monthLabel = format.dateTime(monthDate, { month: "long", year: "numeric", timeZone: "UTC" });
+  const shortMonth = format.dateTime(monthDate, { month: "short", year: "numeric", timeZone: "UTC" });
   const size = bytesParts(locale, row.sizeBytes);
   const published = row.visibility === "CLIENT_VISIBLE";
 
@@ -192,30 +209,30 @@ function ReportRow({
 
   return (
     <TableRow data-visibility={row.visibility} data-testid="report-row" className={visibilityRowCue(row.visibility)}>
-      <TableCell className="font-medium whitespace-nowrap">{monthLabel}</TableCell>
+      <TableCell priority="medium" className="font-medium whitespace-nowrap">
+        {monthLabel}
+      </TableCell>
       <TableCell className="min-w-20">
         <span className="flex w-full min-w-0 items-center gap-2 contain-inline-size">
           <FileChartColumnIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate" title={row.name}>
-              {row.name}
-            </span>
-            <span className="num text-xs text-muted-foreground">
-              {size.value}
-              {size.unit}
-            </span>
+          <span className="truncate" title={row.name}>
+            {/* The month, short, while its own column (`medium`) is hidden. */}
+            <span className={cn("font-medium", HIDE_FROM.medium)}>{t("monthPrefix", { month: shortMonth })}</span>
+            {row.name}
           </span>
         </span>
       </TableCell>
       <TableCell>
-        <span className="flex flex-col items-start gap-0.5">
-          <VisibilityBadge value={row.visibility} />
-          {published && row.publishedAt ? (
-            <span className="text-xs text-muted-foreground">
-              {t("publishedOn", { date: format.dateTime(row.publishedAt, { day: "numeric", month: "short", year: "numeric" }) })}
-            </span>
-          ) : null}
-        </span>
+        <VisibilityBadge value={row.visibility} />
+      </TableCell>
+      <TableCell priority="low" className="num whitespace-nowrap text-muted-foreground" data-testid="report-published">
+        {published && row.publishedAt
+          ? format.dateTime(row.publishedAt, { day: "numeric", month: "short", year: "numeric" })
+          : null}
+      </TableCell>
+      <TableCell priority="low" className="num text-right whitespace-nowrap">
+        {size.value}
+        <span className="ml-1 text-muted-foreground">{size.unit}</span>
       </TableCell>
       <TableCell pinned>
         {items.length > 0 ? (
