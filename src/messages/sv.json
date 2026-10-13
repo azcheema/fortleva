@@ -1607,6 +1607,7 @@
             "ACCOUNT": "Ett konto saknas eller är inaktivt i Fortnox.",
             "PERIOD_LOCKED": "Fortnox är låst för en verifikations datum.",
             "PDF_MISSING": "En fakturas pdf gick inte att bifoga.",
+            "NOT_ANSWERING": "Fortnox svarar inte som Fortleva förväntar sig.",
             "REFUSED": "Fortnox tog inte emot en verifikation."
           }
         },
@@ -5589,7 +5590,9 @@
         "intoBookedYear": {
           "title": "Filen bokför i året som slutade {day}, där obetalda fakturor redan är uppbokade",
           "body": "En inbetalning daterad då har markerats eller ändrats sedan dess. Kontrollera med er redovisningskonsult att året fortfarande är öppet i Fortnox innan du läser in filen — och att inget i den redan har bokförts där för hand."
-        }
+        },
+        "otherTitle": "Poster för ett annat företag",
+        "otherBody": "De här hör till ett annat företag än {company} och kan inte skickas till dess Fortnox. Gör en fil av dem till den bokföring där de hör hemma."
       },
       "yearEnd": {
         "title": "Bokslut {day}: obetalda fakturor",
@@ -5640,7 +5643,14 @@
         "fortnox": "Fortnox-fil",
         "list": "Lista",
         "older": "Äldre filer",
-        "newest": "Senaste filerna"
+        "newest": "Senaste filerna",
+        "byNight": "Nattlig sändning",
+        "state": {
+          "waiting": "Väntar på Fortnox",
+          "sending": "Skickas till Fortnox — {booked} av {vouchers}",
+          "done": "I Fortnox: {series} {numbers}",
+          "pdfs": "{count, plural, one {# PDF att bifoga} other {# PDF:er att bifoga}}"
+        }
       },
       "help": {
         "title": "Läsa in i Fortnox",
@@ -5706,6 +5716,16 @@
           "paidInBooks": "En inbetalning bokförd senast då står kvar — tagen ur uppbokningen {day} (fil {file})",
           "undoesReversal": "Tar tillbaka återföringen {day} (fil {file})"
         }
+      },
+      "fortnox": {
+        "title": "Skickas till Fortnox",
+        "description": "Varje natt bokför Fortleva de nya posterna för {company} i Fortnox — var och en som en verifikation med fakturans PDF. Inget annat i Fortnox ändras.",
+        "active": "Ansluten — skickas varje natt.",
+        "tonight": "{count, plural, one {# post skickas i natt.} other {# poster skickas i natt.}}",
+        "tonightNone": "Inget nytt skickas i natt.",
+        "waiting": "{count, plural, one {# verifikation är på väg.} other {# verifikationer är på väg.}}",
+        "stoppedAt": "Det stannade vid faktura {invoice}, daterad {day}.",
+        "said": "Fortnox svarade: ”{message}”"
       }
     },
     "hoursPage": {

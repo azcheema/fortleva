@@ -1607,6 +1607,7 @@
             "ACCOUNT": "An account is missing or inactive in Fortnox.",
             "PERIOD_LOCKED": "Fortnox is locked for an entry's date.",
             "PDF_MISSING": "An invoice's PDF couldn't be attached.",
+            "NOT_ANSWERING": "Fortnox isn't answering the way Fortleva expects.",
             "REFUSED": "Fortnox refused an entry."
           }
         },
@@ -5589,7 +5590,9 @@
         "intoBookedYear": {
           "title": "This file books into the year that ended on {day}, whose year end is booked",
           "body": "A payment dated then was marked or changed since. Before you import this file, check with your accountant that the year is still open in Fortnox — and that nothing in it was already booked there by hand."
-        }
+        },
+        "otherTitle": "Entries of another company",
+        "otherBody": "These belong to another company than {company}, so they can't go to its Fortnox. Make a file of them for the books they belong in."
       },
       "yearEnd": {
         "title": "Year end: {day}",
@@ -5640,7 +5643,14 @@
         "fortnox": "Fortnox file",
         "list": "List",
         "older": "Older files",
-        "newest": "Newest files"
+        "newest": "Newest files",
+        "byNight": "Nightly send",
+        "state": {
+          "waiting": "Waiting for Fortnox",
+          "sending": "Sending to Fortnox — {booked} of {vouchers}",
+          "done": "In Fortnox: {series} {numbers}",
+          "pdfs": "{count, plural, one {# PDF to attach} other {# PDFs to attach}}"
+        }
       },
       "help": {
         "title": "Importing into Fortnox",
@@ -5706,6 +5716,16 @@
           "paidInBooks": "A payment booked by then stands — taken out of the year end of {day} (file {file})",
           "undoesReversal": "Takes back the reversal of {day} (file {file})"
         }
+      },
+      "fortnox": {
+        "title": "Sent to Fortnox",
+        "description": "Every night Fortleva books {company}'s new entries in Fortnox — each a voucher with its invoice's PDF. Nothing else in Fortnox changes.",
+        "active": "Connected — sending every night.",
+        "tonight": "{count, plural, one {# entry goes tonight.} other {# entries go tonight.}}",
+        "tonightNone": "Nothing new goes tonight.",
+        "waiting": "{count, plural, one {# voucher is on its way.} other {# vouchers are on their way.}}",
+        "stoppedAt": "It stopped at invoice {invoice}, dated {day}.",
+        "said": "Fortnox said: “{message}”"
       }
     },
     "hoursPage": {

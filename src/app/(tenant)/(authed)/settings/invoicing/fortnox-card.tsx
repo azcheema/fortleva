@@ -45,6 +45,7 @@ const BROKEN_KINDS = [
   "ACCOUNT",
   "PERIOD_LOCKED",
   "PDF_MISSING",
+  "NOT_ANSWERING",
   "REFUSED",
 ] as const;
 type BrokenKind = (typeof BROKEN_KINDS)[number];

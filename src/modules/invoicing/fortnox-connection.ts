@@ -26,6 +26,7 @@ import { EXPORT_LOCK_WAIT_MS, EXPORT_TX_TIMEOUT_MS, pendingForFiles, readBookkee
 import { ACCOUNT_ROLES, methodOf, type AccountRole } from "./bookkeeping-accounts";
 import type { InvoicingCtx } from "./drafts";
 import { errorTag } from "./pdf-store";
+import { orgDigitsOf } from "./org-digits";
 import { INVOICE_DETAILS_STEP_UP_MINUTES, noticeToOwners, readSeller } from "./seller";
 import { normalizeOrgNr } from "./seller-fields";
 
@@ -618,7 +619,8 @@ export async function readFortnoxCard(
     // (the card shows them only then: the code review's 8, the re-check's 5).
     let pending: FortnoxCard["pending"] = null;
     if (available && live === null && mayExport && everyClient) {
-      pending = await pendingForFiles(tx, ctx.tenantId, now);
+      // The company card's entries only: another seller's never go to Fortnox (slice 114b, §10.3).
+      pending = await pendingForFiles(tx, ctx.tenantId, now, { onlyOrg: orgDigitsOf(cardOrg) });
     }
     let outcome: FortnoxCard["outcome"] = null;
     if (opts.attemptId && /^[0-9a-f-]{36}$/.test(opts.attemptId)) {

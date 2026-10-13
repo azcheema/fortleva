@@ -44,6 +44,8 @@
  *        tsx e2e/fixtures/seed-cli.ts reset-invoice-details <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts ready-invoicing <tenantId> <clientId>
  *        tsx e2e/fixtures/seed-cli.ts forget-fortnox <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts fortnox-night-workspace <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts run-fortnox-night <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts set-invoice-series <tenantId> <firstNumber>
  *        tsx e2e/fixtures/seed-cli.ts plant-hours <tenantId> <projectId> <memberId> <count>
  *        tsx e2e/fixtures/seed-cli.ts plant-renewal-draft <tenantId> <clientId>
@@ -173,6 +175,9 @@ const DBTEST_PREFIXES = [
   // `setupTenant("fnx")` and `setupTenant("fnxb")` (the second workspace, for one company across two).
   "fnx-",
   "fnxb-",
+  // Phase 4 slice 114b, the nightly send — `src/modules/invoicing/fortnox-send.dbtest.ts`,
+  // `setupTenant("fnxs")`.
+  "fnxs-",
   "gate-",
   "inbox-",
   // Phase 5 slice 104, the inbox's reasons and housekeeping —
@@ -1873,7 +1878,10 @@ async function removeTenant(
     await tx.timeEntry.updateMany({ where: { tenantId, invoiceLineId: { not: null } }, data: { invoiceLineId: null } });
     // Slice 111: what the bookkeeping files booked RESTRICTs their invoices,
     // and the files their entries — entries, then files, then invoices (both
-    // guards admit a delete under this GUC on this role).
+    // guards admit a delete under this GUC on this role). Slice 114b: what the
+    // nightly send owed RESTRICTs the entries, the files and the connection —
+    // first (its guard admits a delete under this GUC on this role too).
+    await tx.invoiceExportDelivery.deleteMany({ where: { tenantId } });
     await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
     await tx.invoiceExport.deleteMany({ where: { tenantId } });
     await tx.invoice.deleteMany({ where: { tenantId } });
@@ -2591,6 +2599,11 @@ async function forgetFortnox(tenantId: string): Promise<void> {
   await assertE2ETenant(db, tenantId);
   const removed = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
+    // Slice 114b: a night's Fortnox files RESTRICT their connection — what they
+    // owed, their entries and the files go first (none, unless a night ran here).
+    await tx.invoiceExportDelivery.deleteMany({ where: { tenantId } });
+    await tx.invoiceExportEntry.deleteMany({ where: { tenantId, export: { destination: "FORTNOX" } } });
+    await tx.invoiceExport.deleteMany({ where: { tenantId, destination: "FORTNOX" } });
     const connections = await tx.integrationConnection.deleteMany({ where: { tenantId } });
     await tx.integrationConnectAttempt.deleteMany({ where: { tenantId } });
     return connections.count;
@@ -2598,6 +2611,154 @@ async function forgetFortnox(tenantId: string): Promise<void> {
   removeFakeCompany(fakeCompanyTenantIdFor(tenantId));
   await db.$disconnect();
   process.stdout.write(`${MARKER}${JSON.stringify({ forgotten: removed })}\n`);
+}
+
+/**
+ * The SECOND workspace's books emptied (slices 111b, 114b): what the nightly
+ * send owed, the bookkeeping files and their entries, the invoices, the
+ * numbering series, and the Fortnox connection with its attempts — under the
+ * invoice-maintenance setting, which every one of their guards admits on this
+ * (platform) role — and the fake Fortnox's file for its company.
+ * `year-end-workspace` and `fortnox-night-workspace` both begin here, so a CI
+ * retry, and either one after the other, finds the workspace as a first
+ * attempt would.
+ */
+async function resetSecondWorkspaceBooks(db: PlatformDb, tenantId: string): Promise<void> {
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
+    await tx.invoiceExportDelivery.deleteMany({ where: { tenantId } });
+    await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
+    await tx.invoiceExport.deleteMany({ where: { tenantId } });
+    await tx.invoice.deleteMany({ where: { tenantId } });
+    await tx.invoiceSeries.deleteMany({ where: { tenantId } });
+    await tx.integrationConnection.deleteMany({ where: { tenantId } });
+    await tx.integrationConnectAttempt.deleteMany({ where: { tenantId } });
+  });
+  const { fakeCompanyTenantIdFor, removeFakeCompany } = await import("../../src/integrations/fortnox/fake");
+  removeFakeCompany(fakeCompanyTenantIdFor(tenantId));
+}
+
+/**
+ * THE NIGHTLY SEND'S WORKSPACE (Phase 4 slice 114b; `invoices-fortnox.spec.ts`)
+ * — the fixture owner's SECOND workspace (the first is the invoice method's
+ * own, whose files the other specs count), made ready to send: its books
+ * emptied first, the invoice method, the company card and a series, two SEK
+ * invoices issued through the real services as the owner (no ✦ code: the
+ * browser session has none), and the workspace CONNECTED to its fake Fortnox
+ * company — the attempt and the connection written through the PLATFORM role,
+ * which neither guard judges (the browser walk of connecting is
+ * `fortnox.spec.ts`'s, and spends the run's one code) — its last night
+ * TWO DAYS BACK, so the next `run-fortnox-night` opens one. Throwaway tenant only.
+ */
+async function fortnoxNightWorkspace(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("fortnox-night-workspace: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { withTenant } = await import("../../src/db");
+  const { encryptFieldV2 } = await import("../../src/crypto/field-encryption");
+  const { addLine, createDraft, issueInvoice, updateLine } = await import("../../src/modules/invoicing");
+  const { FORTNOX_FAKE_CLIENT_ID } = await import("../../src/config");
+  const { defaultFakeCompany, fakeCompanyTenantIdFor, setFakeCompany } = await import("../../src/integrations/fortnox/fake");
+  const { stateHashOf, newState } = await import("../../src/integrations/fortnox/pkce");
+  const { todayIn } = await import("../../src/lib/due-date");
+  const { addDays } = await import("../../src/lib/week");
+  try {
+    await resetSecondWorkspaceBooks(db, tenantId);
+    const ownerMember = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const orgNr = "556016-0680";
+    const legalName = "E2E Fortnox AB";
+    const bankgiro = await withTenant(tenantId, { type: "system" }, (tx) =>
+      encryptFieldV2(tx, { tenantId, model: "tenant", rowId: tenantId, field: "bankgiro" }, "5050-1055"),
+    );
+    await db.tenant.update({
+      where: { id: tenantId },
+      data: {
+        legalName,
+        orgNr,
+        vatNumber: "SE556016068001",
+        seat: "Stockholm",
+        fSkattApproved: true,
+        addressLine1: "Storgatan 1",
+        postalCode: "111 22",
+        city: "Stockholm",
+        countryCode: "SE",
+        bankgiro,
+      },
+    });
+    await db.invoiceSeries.create({ data: { tenantId, firstNumber: 7001, nextNumber: 7001, createdByMemberId: ownerMember.id } });
+    const clientName = "E2E Fortnox Client AB";
+    const client =
+      (await db.client.findFirst({ where: { tenantId, name: clientName }, select: { id: true } })) ??
+      (await db.client.create({
+        data: { tenantId, name: clientName, orgNr: "556677-8899", addressLine1: "Kundvägen 2", postalCode: "111 22", city: "Stockholm", countryCode: "SE" },
+        select: { id: true },
+      }));
+    await db.tenantPreference.upsert({
+      where: { tenantId_key: { tenantId, key: "invoice.bookkeeping" } },
+      create: { tenantId, key: "invoice.bookkeeping", value: { method: "INVOICE" }, updatedByMemberId: ownerMember.id },
+      update: { value: { method: "INVOICE" }, updatedByMemberId: ownerMember.id },
+    });
+    const ctx = { tenantId, actor: { memberId: ownerMember.id, mfa: { enrolled: false, verifiedAt: null } } };
+    for (const price of ["1000", "2000"]) {
+      const id = await createDraft(ctx, { clientId: client.id });
+      const line = await addLine(ctx, id, { description: `Fortnox work ${price}` });
+      await updateLine(ctx, id, line, { unitPrice: price, vatRate: "25" });
+      await issueInvoice(ctx, id);
+    }
+    // Connected, as a callback would leave it — through the platform role.
+    const companyTenantId = fakeCompanyTenantIdFor(tenantId);
+    setFakeCompany(defaultFakeCompany(companyTenantId, legalName, orgNr));
+    const now = new Date();
+    const attempt = await db.integrationConnectAttempt.create({
+      data: { tenantId, provider: "FORTNOX", memberId: ownerMember.id, stateHash: stateHashOf(newState()), expiresAt: now, usedAt: now, outcome: "CONNECTED" },
+      select: { id: true },
+    });
+    const zone = await db.tenantPreference.findFirst({ where: { tenantId, key: "ui.timezone" }, select: { value: true } });
+    const today = todayIn(typeof zone?.value === "string" ? zone.value : "Europe/Stockholm", now);
+    await db.integrationConnection.create({
+      data: {
+        tenantId,
+        provider: "FORTNOX",
+        status: "ACTIVE",
+        transport: "fake",
+        appClientId: FORTNOX_FAKE_CLIENT_ID,
+        externalTenantId: companyTenantId,
+        companyName: legalName,
+        companyOrgNr: orgNr,
+        connectAttemptId: attempt.id,
+        connectedByMemberId: ownerMember.id,
+        connectedAt: now,
+        // Two days back (whatever this process takes the zone to be): the next run opens a night.
+        lastNight: new Date(`${addDays(today, -2)}T00:00:00Z`),
+      },
+    });
+    process.stdout.write(`${MARKER}${JSON.stringify({ ready: true, invoices: 2 })}\n`);
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/**
+ * ONE RUN OF THE NIGHTLY SEND for one throwaway workspace (slice 114b) — the
+ * module's own per-workspace body, against the FAKE Fortnox, from this
+ * process (the e2e server's jobs route sends every connected workspace; this
+ * sends one). Its result: vouchers booked, files made, why it stopped.
+ */
+async function runFortnoxNight(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("run-fortnox-night: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  try {
+    await assertE2ETenant(db, tenantId);
+  } finally {
+    await db.$disconnect();
+  }
+  const { FORTNOX_FAKE_CLIENT_ID } = await import("../../src/config");
+  const { fakeFortnox } = await import("../../src/integrations/fortnox/fake");
+  const { sendToFortnox } = await import("../../src/modules/invoicing/fortnox-send");
+  const r = await sendToFortnox(tenantId, { deadline: Date.now() + 60_000, transport: fakeFortnox, appClientId: FORTNOX_FAKE_CLIENT_ID });
+  process.stdout.write(`${MARKER}${JSON.stringify({ skipped: r.skipped, booked: r.booked, files: r.files, stopped: r.stopped?.kind ?? null })}\n`);
 }
 
 /**
@@ -2754,13 +2915,9 @@ async function yearEndWorkspace(tenantId: string): Promise<void> {
   const { todayIn } = await import("../../src/lib/due-date");
   const { addDays } = await import("../../src/lib/week");
   try {
-    await db.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
-      await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
-      await tx.invoiceExport.deleteMany({ where: { tenantId } });
-      await tx.invoice.deleteMany({ where: { tenantId } });
-      await tx.invoiceSeries.deleteMany({ where: { tenantId } });
-    });
+    // The second workspace is also `fortnox-night-workspace`'s (slice 114b):
+    // its deliveries and connection go too.
+    await resetSecondWorkspaceBooks(db, tenantId);
     const ownerMember = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
     const bankgiro = await withTenant(tenantId, { type: "system" }, (tx) =>
       encryptFieldV2(tx, { tenantId, model: "tenant", rowId: tenantId, field: "bankgiro" }, "5050-1055"),
@@ -3768,6 +3925,8 @@ const main = async (): Promise<void> => {
   if (command === "reset-invoice-details") return resetInvoiceDetails(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "forget-fortnox") return forgetFortnox(argument!);
+  if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);
+  if (command === "run-fortnox-night") return runFortnoxNight(argument!);
   if (command === "set-invoice-series") return setInvoiceSeries(argument!, Number(process.argv[4]));
   if (command === "year-end-workspace") return yearEndWorkspace(argument!);
   if (command === "plant-hours") return plantHours(argument!, process.argv[4]!, process.argv[5]!, Number(process.argv[6]));

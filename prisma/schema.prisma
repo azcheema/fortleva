@@ -336,6 +336,8 @@ model Tenant {
   invoiceLineTimeEntries InvoiceLineTimeEntry[]
   invoiceExports         InvoiceExport[]
   invoiceExportEntries   InvoiceExportEntry[]
+  // Phase 4 slice 114b — the nightly send to Fortnox (§6.7, C89):
+  invoiceExportDeliveries InvoiceExportDelivery[]
   // Phase 4 slice 114 — the direct Fortnox connection (§6.13, C89):
   integrationConnections     IntegrationConnection[]
   integrationConnectAttempts IntegrationConnectAttempt[]
@@ -1855,19 +1857,32 @@ enum InvoiceExportEvent {
   @@map("invoice_export_event")
 }
 
+/// Where a bookkeeping file goes (slice 114b; C89 (b)).
+enum InvoiceExportDestination {
+  DOWNLOAD // a person downloads it (the SIE import and the list) — slice 111
+  FORTNOX // the nightly send books its entries in the connected Fortnox company
+
+  @@map("invoice_export_destination")
+}
+
 model InvoiceExport {
-  id                String              @id @default(uuid(7))
-  tenantId          String              @map("tenant_id")
+  id                String                   @id @default(uuid(7))
+  tenantId          String                   @map("tenant_id")
   number            Int // ALLOCATED by the guard: 1, 2, 3… per workspace
   method            InvoiceExportMethod
   series            String // the voucher series the file names (C82; default F)
-  madeOn            DateTime            @map("made_on") @db.Date // the workspace's day (#GEN)
-  yearEnd           DateTime?           @map("year_end") @db.Date // slice 111b: this file books the year end of that day (CASH; one per year)
-  createdByMemberId String              @map("created_by_member_id") // attribution, no FK
-  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  madeOn            DateTime                 @map("made_on") @db.Date // the workspace's day (#GEN)
+  yearEnd           DateTime?                @map("year_end") @db.Date // slice 111b: this file books the year end of that day (CASH; one per year)
+  /// Slice 114b: FORTNOX — sent by the nightly send to `connectionId`, never downloaded as an SIE.
+  destination       InvoiceExportDestination @default(DOWNLOAD)
+  connectionId      String?                  @map("connection_id")
+  createdByMemberId String?                  @map("created_by_member_id") // attribution, no FK; NULL — made by the nightly send (slice 114b)
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  tenant  Tenant               @relation(fields: [tenantId], references: [id])
-  entries InvoiceExportEntry[]
+  tenant     Tenant                  @relation(fields: [tenantId], references: [id])
+  connection IntegrationConnection?  @relation(fields: [tenantId, connectionId], references: [tenantId, id], onDelete: Restrict)
+  entries    InvoiceExportEntry[]
+  deliveries InvoiceExportDelivery[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, number])
@@ -1887,14 +1902,70 @@ model InvoiceExportEntry {
   detail    Json // the list's frozen facts (amounts as booked, deductions, remark)
   createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  tenant  Tenant        @relation(fields: [tenantId], references: [id])
-  export  InvoiceExport @relation(fields: [tenantId, exportId], references: [tenantId, id], onDelete: Restrict)
-  invoice Invoice       @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id])
+  export   InvoiceExport          @relation(fields: [tenantId, exportId], references: [tenantId, id], onDelete: Restrict)
+  invoice  Invoice                @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+  delivery InvoiceExportDelivery?
 
   @@unique([tenantId, id])
   @@unique([tenantId, exportId, position])
   @@index([tenantId, invoiceId]) // an invoice's booked events
   @@map("invoice_export_entry")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Phase 4 slice 114b — THE NIGHTLY SEND (founder decision C89 (b), (c);
+// docs/research/2026-10-12-slice-114-fortnox-connection-design.md §5 as
+// amended by §10–§12). A FORTNOX file's every entry WITH a voucher gets one
+// `InvoiceExportDelivery`, made QUEUED with the file; the nightly send books
+// each in the connected Fortnox company, strictly in order, then attaches its
+// invoice's PDF. Class A; its guard is in migration 20261020090000.
+// ───────────────────────────────────────────────────────────────────
+
+enum InvoiceExportDeliveryState {
+  QUEUED // waits to be sent
+  SENDING // the voucher was asked for and Fortnox's answer is not known yet (reconciled by number before any resend)
+  BOOKED // in Fortnox's books (year, series, number); its PDFs being attached
+  DONE // booked, every PDF attached
+  BY_HAND // a person says it is in Fortnox's books, or dealt with there (slice 114c)
+  DOWNLOADED // after a disconnect, handed over in an SIE of the entries never sent (slice 114c)
+
+  @@map("invoice_export_delivery_state")
+}
+
+/// One Fortnox voucher owed, being sent, or booked (slice 114b; C89 (b)).
+model InvoiceExportDelivery {
+  id                String                     @id @default(uuid(7))
+  tenantId          String                     @map("tenant_id")
+  entryId           String                     @map("entry_id")
+  exportId          String                     @map("export_id")
+  connectionId      String                     @map("connection_id")
+  state             InvoiceExportDeliveryState @default(QUEUED)
+  /// Fortnox's voucher: the financial year's Id, the series and the number — set once, never changed.
+  fortnoxYear       Int?                       @map("fortnox_year")
+  fortnoxSeries     String?                    @map("fortnox_series")
+  fortnoxNumber     Int?                       @map("fortnox_number")
+  /// While SENDING: the series' next number read just before the voucher was asked for — where a reconcile starts looking.
+  fortnoxNextBefore Int?                       @map("fortnox_next_before")
+  /// The PDFs: [{ invoiceId, fileId, connected }] — Fortnox's file id once uploaded, and whether it is connected to the voucher.
+  files             Json                       @default("[]")
+  attemptedAt       DateTime?                  @map("attempted_at") @db.Timestamptz(6)
+  bookedAt          DateTime?                  @map("booked_at") @db.Timestamptz(6)
+  doneAt            DateTime?                  @map("done_at") @db.Timestamptz(6)
+  handledByMemberId String?                    @map("handled_by_member_id") // attribution, no FK
+  handledAt         DateTime?                  @map("handled_at") @db.Timestamptz(6)
+  createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant                @relation(fields: [tenantId], references: [id])
+  entry      InvoiceExportEntry    @relation(fields: [tenantId, entryId], references: [tenantId, id], onDelete: Restrict)
+  export     InvoiceExport         @relation(fields: [tenantId, exportId], references: [tenantId, id], onDelete: Restrict)
+  connection IntegrationConnection @relation(fields: [tenantId, connectionId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, entryId]) // one per entry (and the 1:1 relation's key)
+  @@index([tenantId, connectionId, state]) // what a connection still owes
+  @@index([tenantId, exportId])
+  @@map("invoice_export_delivery")
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1957,8 +2028,11 @@ model IntegrationConnection {
   sendRunId              String?             @map("send_run_id")
   createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  tenant  Tenant                    @relation(fields: [tenantId], references: [id])
-  attempt IntegrationConnectAttempt @relation(fields: [tenantId, connectAttemptId], references: [tenantId, id], onDelete: Restrict)
+  tenant     Tenant                    @relation(fields: [tenantId], references: [id])
+  attempt    IntegrationConnectAttempt @relation(fields: [tenantId, connectAttemptId], references: [tenantId, id], onDelete: Restrict)
+  // Slice 114b: the files sent to it and what each still owes.
+  exports    InvoiceExport[]
+  deliveries InvoiceExportDelivery[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, connectAttemptId]) // one connection per attempt (and the 1:1 relation's key)

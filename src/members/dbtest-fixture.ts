@@ -138,7 +138,9 @@ export async function setupTenant(label: string) {
       // with their invoices.
       await tx.timeEntry.updateMany({ where: { tenantId, invoiceLineId: { not: null } }, data: { invoiceLineId: null } });
       // Slice 111: the bookkeeping files' entries RESTRICT their invoices —
-      // entries, then files, then invoices.
+      // entries, then files, then invoices. Slice 114b: what the nightly send
+      // owed RESTRICTs the entries, the files and the connection — first.
+      await tx.invoiceExportDelivery.deleteMany({ where: { tenantId } });
       await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
       await tx.invoiceExport.deleteMany({ where: { tenantId } });
       await tx.invoice.deleteMany({ where: { tenantId } });

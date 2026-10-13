@@ -4,7 +4,7 @@
  * amended by §10). One interface, two transports: `live.ts` (Fortnox itself)
  * and `fake.ts` (a file-backed fake for the harnesses); `index.ts` picks the
  * one `src/config` names. The nightly send's calls (vouchers, the inbox, file
- * connections) come with slice 114b.
+ * connections) came with slice 114b.
  */
 
 /** Who a Fortnox company says it is (`GET /3/companyinformation`). */
@@ -24,7 +24,32 @@ export type FortnoxFinancialYear = {
   readonly method: "ACCRUAL" | "CASH" | null;
 };
 
-export type FortnoxVoucherSeries = { readonly code: string; readonly manual: boolean };
+export type FortnoxVoucherSeries = {
+  readonly code: string;
+  readonly manual: boolean;
+  /** The number the series' next voucher gets (slice 114b — where a reconcile starts looking); null when Fortnox does not say. */
+  readonly nextNumber: number | null;
+};
+
+/**
+ * A voucher to book (`POST /3/vouchers`; slice 114b). Each row's amount is the
+ * bookkeeping file's own — a decimal string to the öre, positive a debit,
+ * negative a credit — sent EXACTLY (`body.ts`, never through a float).
+ */
+export type FortnoxVoucherDraft = {
+  /** The voucher series (the workspace's, default F — a manual series of its own). */
+  readonly series: string;
+  /** `YYYY-MM-DD`. */
+  readonly date: string;
+  /** The voucher's text (the file's, ≤ 50 characters). */
+  readonly description: string;
+  /** Our marker, `Fortleva <entry id>` — what a reconcile looks for. */
+  readonly comments: string;
+  readonly rows: readonly { readonly account: string; readonly amount: string }[];
+};
+
+/** A voucher Fortnox made: the financial year's Id, the series and its number. */
+export type FortnoxVoucherRef = { readonly year: number; readonly series: string; readonly number: number };
 
 export type FortnoxAccount = { readonly number: string; readonly active: boolean };
 
@@ -63,6 +88,23 @@ export interface FortnoxTransport {
   voucherSeries(accessToken: string, code: string, yearId: number, deadline: number): Promise<FortnoxVoucherSeries | null>;
   /** An account in a financial year, or null when it does not exist. */
   account(accessToken: string, number: string, yearId: number, deadline: number): Promise<FortnoxAccount | null>;
+
+  // ── The nightly send (slice 114b) ──
+
+  /**
+   * Book a voucher in a financial year. NOT idempotent — Fortnox has no key
+   * for it: an `unknown` failure means it may or may not exist, and the
+   * caller reconciles by number (`voucherByNumber`) before ever asking again.
+   */
+  createVoucher(accessToken: string, yearId: number, draft: FortnoxVoucherDraft, deadline: number): Promise<FortnoxVoucherRef>;
+  /** One voucher's comment, by series and number — or null when there is no such voucher. */
+  voucherByNumber(accessToken: string, series: string, number: number, yearId: number, deadline: number): Promise<{ readonly comments: string | null } | null>;
+  /** A PDF into Fortnox's voucher inbox; its file id. A lost answer leaves at most an orphan there — harmless. */
+  uploadToInbox(accessToken: string, bytes: Uint8Array, fileName: string, deadline: number): Promise<string>;
+  /** Connect an uploaded file to a voucher. */
+  connectFile(accessToken: string, yearId: number, fileId: string, series: string, number: number, deadline: number): Promise<void>;
+  /** The voucher a file is connected to, or null when it is connected to none. */
+  fileConnection(accessToken: string, fileId: string, deadline: number): Promise<{ readonly series: string; readonly number: number } | null>;
 }
 
 /**

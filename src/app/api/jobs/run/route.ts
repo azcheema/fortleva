@@ -8,6 +8,7 @@ import { runClientDigests } from "@/jobs/client-digests";
 import { runContractPdfs } from "@/jobs/contract-pdfs";
 import { runMemberDigests } from "@/jobs/digests";
 import { runExpirationReminders } from "@/jobs/expiration-reminders";
+import { runFortnoxSend } from "@/jobs/fortnox-send";
 import { runInvoicePdfs } from "@/jobs/invoice-pdfs";
 import { runNotificationRetention } from "@/jobs/notification-retention";
 import { drainOutbox } from "@/jobs/outbox";
@@ -51,6 +52,10 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * client's renewal invoice draft and the people who may issue it are told;
  * then its passed renewal date MOVES ON to the next one, unless a started
  * period is still owed a draft — in every sending tenant),
+ * and the nightly send to Fortnox (Phase 4 slice 114b — it SENDS VOUCHERS,
+ * each with its invoice's PDF, into the Fortnox company of every workspace
+ * connected by this deployment, and makes the night's bookkeeping file; while
+ * `FORTNOX_TRANSPORT` is off — the default — it does nothing),
  * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
@@ -160,6 +165,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     console.error(`jobs: agreement renewals failed: ${e instanceof Error ? e.name : typeof e}${code}`);
     agreementRenewals = { failed: "discovery" };
   }
+  // Phase 4 slice 114b (C89 (b), (c)): the nightly send to Fortnox — AFTER the
+  // invoice PDFs' backstop (a voucher's PDF is attached when it exists) and
+  // within 45 seconds of its own. Its failure is its own.
+  let fortnoxSend: Awaited<ReturnType<typeof runFortnoxSend>> | { failed: "discovery" };
+  try {
+    fortnoxSend = await runFortnoxSend();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: fortnox send failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    fortnoxSend = { failed: "discovery" };
+  }
   // Phase 5 slice 106 (founder decision C74): phone and browser notifications —
   // the BACKSTOP for a push whose kick was lost (each is due for fifteen
   // minutes, then never), and the jobs above's own notifications, which their
@@ -196,6 +212,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     clientDigests,
     updateReminders,
     agreementRenewals,
+    fortnoxSend,
     invoicePdfs,
     contractPdfs,
     pushes,

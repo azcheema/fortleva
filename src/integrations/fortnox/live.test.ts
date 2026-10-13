@@ -133,3 +133,83 @@ describe("the live Fortnox client's requests", () => {
     expect(urls[1]).toBe("https://api.fortnox.se/3/accounts/1930?financialyear=4");
   });
 });
+
+describe("the nightly send's requests (slice 114b)", () => {
+  const draft = {
+    series: "F",
+    date: "2026-10-12",
+    description: "Betalning 1001",
+    comments: "Fortleva 01920000-0000-7000-8000-000000000001",
+    rows: [
+      { account: "1930", amount: "125.00" },
+      { account: "1510", amount: "-125.00" },
+    ],
+  };
+
+  it("a voucher: POST to the year's vouchers, the body exactly as built, its number read back", async () => {
+    const live = await liveWith();
+    const calls: { url: string; init: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        return json(201, { Voucher: { VoucherNumber: 7, VoucherSeries: "F", Year: 4 } });
+      }),
+    );
+    expect(await live.createVoucher("t".repeat(40), 4, draft, Date.now() + 30_000)).toEqual({ year: 4, series: "F", number: 7 });
+    const { url, init } = calls[0]!;
+    expect(url).toBe("https://api.fortnox.se/3/vouchers?financialyear=4");
+    expect(init.method).toBe("POST");
+    expect(init.redirect).toBe("error");
+    expect(init.body).toContain('"VoucherRows":[{"Account":1930,"Debit":125.00,"Credit":0},{"Account":1510,"Debit":0,"Credit":125.00}]');
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${"t".repeat(40)}`);
+  });
+
+  it("a voucher Fortnox may have made (a 5xx, a timeout) is UNKNOWN; a refusal is certain", async () => {
+    const live = await liveWith();
+    vi.stubGlobal("fetch", vi.fn(async () => json(503, {})));
+    await expect(live.createVoucher("t".repeat(40), 4, draft, Date.now() + 30_000)).rejects.toMatchObject({ kind: "unknown" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("socket hang up");
+      }),
+    );
+    await expect(live.createVoucher("t".repeat(40), 4, draft, Date.now() + 30_000)).rejects.toMatchObject({ kind: "unknown" });
+    vi.stubGlobal("fetch", vi.fn(async () => json(400, { ErrorInformation: { error: 1, message: "Perioden är låst", code: 2000106 } })));
+    await expect(live.createVoucher("t".repeat(40), 4, draft, Date.now() + 30_000)).rejects.toMatchObject({ kind: "refused", code: "2000106" });
+  });
+
+  it("a voucher out of shape is refused before anything is sent", async () => {
+    const live = await liveWith();
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(live.createVoucher("t".repeat(40), 4, { ...draft, rows: [{ account: "1930", amount: "1.00" }] }, Date.now() + 30_000)).rejects.toMatchObject({
+      kind: "shape",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("a PDF into the voucher inbox as multipart; a file's connection read by its checked id", async () => {
+    const live = await liveWith();
+    const calls: { url: string; init: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        return url.includes("/inbox")
+          ? json(201, { File: { Id: "8f1e2d3c-0000-4000-8000-000000000001", Name: "Faktura 1001.pdf" } })
+          : json(200, { VoucherFileConnection: { FileId: "8f1e2d3c-0000-4000-8000-000000000001", VoucherSeries: "F", VoucherNumber: "7" } });
+      }),
+    );
+    const deadline = Date.now() + 30_000;
+    const id = await live.uploadToInbox("t".repeat(40), new Uint8Array([37, 80, 68, 70]), "Faktura 1001.pdf", deadline);
+    expect(id).toBe("8f1e2d3c-0000-4000-8000-000000000001");
+    expect(calls[0]!.url).toBe("https://api.fortnox.se/3/inbox?path=inbox_v");
+    expect(calls[0]!.init.body).toBeInstanceOf(FormData);
+    expect((calls[0]!.init.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+    expect(await live.fileConnection("t".repeat(40), id, deadline)).toEqual({ series: "F", number: 7 });
+    expect(calls[1]!.url).toBe("https://api.fortnox.se/3/voucherfileconnections/8f1e2d3c-0000-4000-8000-000000000001");
+    await expect(live.fileConnection("t".repeat(40), "../x", deadline)).rejects.toMatchObject({ kind: "shape" });
+  });
+});

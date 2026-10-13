@@ -6,7 +6,11 @@ import {
   parseAccessToken,
   parseAccount,
   parseCompany,
+  parseCreatedVoucher,
+  parseFileConnection,
   parseFinancialYearOn,
+  parseInboxFile,
+  parseVoucherComments,
   parseVoucherSeries,
   tenantIdClaimOf,
 } from "./parse";
@@ -86,7 +90,8 @@ describe("the shapes Fortnox answers in", () => {
   });
 
   it("a voucher series and an account", () => {
-    expect(parseVoucherSeries({ VoucherSeries: { Code: "F", Manual: true } })).toEqual({ code: "F", manual: true });
+    expect(parseVoucherSeries({ VoucherSeries: { Code: "F", Manual: true } })).toEqual({ code: "F", manual: true, nextNumber: null });
+    expect(parseVoucherSeries({ VoucherSeries: { Code: "F", Manual: true, NextVoucherNumber: 12 } })).toEqual({ code: "F", manual: true, nextNumber: 12 });
     expect(() => parseVoucherSeries({ VoucherSeries: { Code: "F" } })).toThrow(/shape/);
     expect(parseAccount({ Account: { Number: 1930, Active: false } })).toEqual({ number: "1930", active: false });
     expect(() => parseAccount({ Account: { Number: 1930 } })).toThrow(/shape/);
@@ -115,5 +120,42 @@ describe("a connect attempt's secrets (PKCE, RFC 7636)", () => {
     expect(stateHashOf(a)).toMatch(/^[0-9a-f]{64}$/);
     expect(isStateShape("short")).toBe(false);
     expect(isStateShape(null)).toBe(false);
+  });
+});
+
+describe("the nightly send's answers (slice 114b)", () => {
+  it("a voucher made: its number in the series and year asked for; another series is out of shape", () => {
+    expect(parseCreatedVoucher({ Voucher: { VoucherNumber: 12, VoucherSeries: "F", Year: 3 } }, 3, "F")).toEqual({ year: 3, series: "F", number: 12 });
+    expect(parseCreatedVoucher({ Voucher: { VoucherNumber: "13" } }, 3, "F")).toEqual({ year: 3, series: "F", number: 13 });
+    expect(() => parseCreatedVoucher({ Voucher: { VoucherNumber: 12, VoucherSeries: "A" } }, 3, "F")).toThrow(/shape/);
+    expect(() => parseCreatedVoucher({ Voucher: { VoucherNumber: 0 } }, 3, "F")).toThrow(/shape/);
+    expect(() => parseCreatedVoucher({}, 3, "F")).toThrow(/shape/);
+  });
+
+  it("a voucher read back: its comment, or none", () => {
+    expect(parseVoucherComments({ Voucher: { Comments: "Fortleva x" } })).toEqual({ comments: "Fortleva x" });
+    expect(parseVoucherComments({ Voucher: { Comments: null } })).toEqual({ comments: null });
+    expect(() => parseVoucherComments({ Vouchers: [] })).toThrow(/shape/);
+  });
+
+  it("an upload's file id, checked before it is used again (S14)", () => {
+    expect(parseInboxFile({ File: { Id: "8f1e2d3c-0000-4000-8000-000000000001", Name: "x.pdf" } })).toBe("8f1e2d3c-0000-4000-8000-000000000001");
+    expect(() => parseInboxFile({ File: { Id: "../../etc" } })).toThrow(/shape/);
+    expect(() => parseInboxFile({ File: { Id: 42 } })).toThrow(/shape/);
+  });
+
+  it("a file's connection: the voucher it is connected to", () => {
+    expect(parseFileConnection({ VoucherFileConnection: { FileId: "a", VoucherSeries: "F", VoucherNumber: "12" } })).toEqual({ series: "F", number: 12 });
+    expect(() => parseFileConnection({ VoucherFileConnection: { VoucherSeries: "F" } })).toThrow(/shape/);
+  });
+});
+
+describe("Fortnox's integers, never past what the columns hold (the security review's nit 5)", () => {
+  it("a voucher number or a year's Id beyond INTEGER is out of shape — never a write that cannot succeed", () => {
+    expect(parseCreatedVoucher({ Voucher: { VoucherNumber: 2_147_483_647 } }, 3, "F")).toMatchObject({ number: 2_147_483_647 });
+    expect(() => parseCreatedVoucher({ Voucher: { VoucherNumber: 2_147_483_648 } }, 3, "F")).toThrow(/shape/);
+    expect(() => parseCreatedVoucher({ Voucher: { VoucherNumber: "9999999999" } }, 3, "F")).toThrow(/shape/);
+    expect(() => parseFinancialYearOn({ FinancialYears: [{ Id: 2_147_483_648, FromDate: "2026-01-01", ToDate: "2026-12-31" }] }, "2026-06-01")).toThrow(/shape/);
+    expect(parseVoucherSeries({ VoucherSeries: { Code: "F", Manual: true, NextVoucherNumber: 2_147_483_648 } }).nextNumber).toBeNull();
   });
 });

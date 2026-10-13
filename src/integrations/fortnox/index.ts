@@ -17,4 +17,5 @@ export function fortnoxTransport(): FortnoxTransport | null {
 export { FORTNOX_SCOPES } from "./live";
 export { codeChallengeOf, isStateShape, newPkceVerifier, newState, stateHashOf } from "./pkce";
 export { fakeCompanyTenantIdFor } from "./fake";
+export { fileConnectionBody, isFileId, voucherBody } from "./body";
 export * from "./types";

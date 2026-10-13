@@ -85,7 +85,7 @@ export const INVOICE_SEND_BUDGET = { memberPerHour: 30, workspacePerDay: 300 } a
 /** The same invoice emailed again to the same addresses within this is a double click (INVOICE_JUST_SENT). */
 export const INVOICE_RESEND_AFTER_SECONDS = 60;
 /** An archived PDF larger than this is not a PDF we drew. */
-const PDF_MAX_BYTES = 10 * 1024 * 1024;
+export const PDF_MAX_BYTES = 10 * 1024 * 1024;
 /** The record's lock wait (the second transaction runs after the mail went). */
 const SEND_LOCK_WAIT_MS = 5_000;
 /** A payment's note, at most this long (the CHECK's). */

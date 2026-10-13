@@ -93,6 +93,8 @@ export const MODEL_CLASSES = {
     // Phase 4 slice 111 — the bookkeeping file (C82).
     "invoiceExport",
     "invoiceExportEntry",
+    // Phase 4 slice 114b — what the nightly send owes Fortnox, and what it booked (C89 (b)).
+    "invoiceExportDelivery",
     // Phase 4 slice 112 — contracts (C84).
     "contractTemplate",
     "contract",
@@ -256,6 +258,9 @@ export const RLS_CLASSES = {
     // booked (C82): the agency's books, never a client's.
     "invoiceExport",
     "invoiceExportEntry",
+    // Phase 4 slice 114b — what the nightly send owes the workspace's Fortnox
+    // and what Fortnox booked (C89 (b)): the agency's books, never a client's.
+    "invoiceExportDelivery",
     // Phase 4 slice 112 — the company's contract templates (C84 (g)): staff
     // wording; a client reads a contract, never the template it came from.
     "contractTemplate",

@@ -1,4 +1,11 @@
-import { FortnoxError, type FortnoxAccount, type FortnoxCompany, type FortnoxFinancialYear, type FortnoxVoucherSeries } from "./types";
+import {
+  FortnoxError,
+  type FortnoxAccount,
+  type FortnoxCompany,
+  type FortnoxFinancialYear,
+  type FortnoxVoucherRef,
+  type FortnoxVoucherSeries,
+} from "./types";
 
 /**
  * READING FORTNOX'S ANSWERS (Phase 4 slice 114) — pure, so a unit test pins
@@ -86,7 +93,7 @@ export function parseFinancialYearOn(answer: unknown, on: string): FortnoxFinanc
     const id = o?.Id;
     const from = o ? day(o.FromDate) : null;
     const to = o ? day(o.ToDate) : null;
-    if (!o || typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0 || from === null || to === null) throw shape("financialyears");
+    if (!o || typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0 || id > INT_MAX || from === null || to === null) throw shape("financialyears");
     if (from <= on && on <= to) {
       const m = o.AccountingMethod;
       return { id, from, to, method: m === "ACCRUAL" || m === "CASH" ? m : null };
@@ -95,12 +102,62 @@ export function parseFinancialYearOn(answer: unknown, on: string): FortnoxFinanc
   return null;
 }
 
-/** `GET /3/voucherseries/{code}` → `{"VoucherSeries":{Code, Manual}}`. */
+/** `GET /3/voucherseries/{code}` → `{"VoucherSeries":{Code, Manual, NextVoucherNumber}}`. */
 export function parseVoucherSeries(answer: unknown): FortnoxVoucherSeries {
   const o = obj(obj(answer)?.VoucherSeries);
   const code = o ? text(o.Code) : null;
   if (!o || code === null || typeof o.Manual !== "boolean") throw shape("voucherseries");
-  return { code, manual: o.Manual };
+  return { code, manual: o.Manual, nextNumber: positive(o.NextVoucherNumber) };
+}
+
+/** The largest value a voucher's columns hold (INTEGER). */
+const INT_MAX = 2_147_483_647;
+
+/**
+ * A positive integer, given as a number or as digits (Fortnox writes a voucher
+ * number both ways) — else null; never past what the columns hold (the
+ * security review's nit 5: a write that can never succeed would stall the line).
+ */
+const positive = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d{1,10}$/.test(v) ? Number(v) : NaN;
+  return Number.isSafeInteger(n) && n > 0 && n <= INT_MAX ? n : null;
+};
+
+/**
+ * `POST /3/vouchers` → `{"Voucher":{VoucherNumber, VoucherSeries, …}}` — the
+ * voucher made, in the year it was asked for (its `Year` is not read: the
+ * year is the one the request named). A series other than the one asked for
+ * is out of shape.
+ */
+export function parseCreatedVoucher(answer: unknown, yearId: number, series: string): FortnoxVoucherRef {
+  const o = obj(obj(answer)?.Voucher);
+  const number = o ? positive(o.VoucherNumber) : null;
+  const answeredSeries = o ? text(o.VoucherSeries) : null;
+  if (!o || number === null || (answeredSeries !== null && answeredSeries !== series)) throw shape("vouchers.create");
+  return { year: yearId, series, number };
+}
+
+/** `GET /3/vouchers/{series}/{number}` → `{"Voucher":{Comments, …}}` — its comment (a reconcile's marker), or null. */
+export function parseVoucherComments(answer: unknown): { readonly comments: string | null } {
+  const o = obj(obj(answer)?.Voucher);
+  if (!o) throw shape("vouchers.get");
+  return { comments: typeof o.Comments === "string" ? o.Comments : null };
+}
+
+/** `POST /3/inbox` → `{"File":{Id, …}}` — the file's id, checked before it is used again (S14). */
+export function parseInboxFile(answer: unknown): string {
+  const id = obj(obj(answer)?.File)?.Id;
+  if (typeof id !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(id)) throw shape("inbox.upload");
+  return id;
+}
+
+/** `GET /3/voucherfileconnections/{fileId}` → `{"VoucherFileConnection":{VoucherSeries, VoucherNumber}}`. */
+export function parseFileConnection(answer: unknown): { readonly series: string; readonly number: number } {
+  const o = obj(obj(answer)?.VoucherFileConnection);
+  const series = o ? text(o.VoucherSeries) : null;
+  const number = o ? positive(o.VoucherNumber) : null;
+  if (!o || series === null || number === null) throw shape("voucherfileconnections.get");
+  return { series, number };
 }
 
 /** `GET /3/accounts/{n}` → `{"Account":{Number, Active}}`. */

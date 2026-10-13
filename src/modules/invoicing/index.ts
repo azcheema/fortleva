@@ -149,6 +149,7 @@ export {
   type BookkeepingPage,
   type BookkeepingSettingsPage,
   type ExportFormat,
+  type FortnoxFileState,
   type MadeFile,
   type YearEndBooked,
 } from "./bookkeeping";

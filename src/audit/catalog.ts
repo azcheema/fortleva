@@ -301,6 +301,18 @@ export const AUDIT_EVENTS = {
   "integration.connected": TENANT,
   "integration.reconnected": TENANT,
   "integration.disconnected": TENANT,
+  // Phase 4 slice 114b — the nightly send (fortnox-send.ts; C89 (b), (c)),
+  // every one as SYSTEM. `integration.broken`: the connection stopped taking
+  // entries — on the ACTIVE → BROKEN step only — with the kind, Fortnox's
+  // code and the entry it stopped at; never Fortnox's words (they may name a
+  // client). `integration.restored`: it took entries again (which kind it had
+  // stopped for). `invoice_export.sent`: a Fortnox file's every voucher is in
+  // Fortnox's books — its number, how many, how many by hand, and Fortnox's
+  // series and first and last number. (`invoice_export.created` names its
+  // destination, and is SYSTEM for the night's files.)
+  "integration.broken": TENANT,
+  "integration.restored": TENANT,
+  "invoice_export.sent": TENANT,
   // Data egress
   "export.requested": TENANT,
   "export.generated": TENANT,

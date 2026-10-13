@@ -300,6 +300,16 @@ export async function forgetFortnox(tenantId: string): Promise<void> {
   await runCli<{ forgotten: number }>(["forget-fortnox", tenantId]);
 }
 
+/** The SECOND workspace ready for a night: its books reset, two invoices issued, connected to its fake Fortnox (slice 114b; `seed-cli.ts` says how). */
+export async function readyFortnoxNightWorkspace(tenantId: string): Promise<{ ready: boolean; invoices: number }> {
+  return runCli<{ ready: boolean; invoices: number }>(["fortnox-night-workspace", tenantId]);
+}
+
+/** One run of the nightly send for that workspace, against the fake Fortnox (slice 114b). */
+export async function runFortnoxNight(tenantId: string): Promise<{ skipped: string | null; booked: number; files: number; stopped: string | null }> {
+  return runCli<{ skipped: string | null; booked: number; files: number; stopped: string | null }>(["run-fortnox-night", tenantId]);
+}
+
 /** The workspace ready to issue — company details, a real encrypted Bankgiro, the client's address (slice 108; `seed-cli.ts` says how). */
 export async function readyInvoicing(tenantId: string, clientId: string): Promise<void> {
   await runCli<{ ready: number }>(["ready-invoicing", tenantId, clientId]);

@@ -9,13 +9,18 @@ import {
 } from "@/config";
 import { readCappedText } from "@/lib/capped-body";
 
+import { fileConnectionBody, isFileId, voucherBody } from "./body";
 import {
   answerJson,
   errorFromAnswer,
   parseAccessToken,
   parseAccount,
   parseCompany,
+  parseCreatedVoucher,
+  parseFileConnection,
   parseFinancialYearOn,
+  parseInboxFile,
+  parseVoucherComments,
   parseVoucherSeries,
   tenantIdClaimOf,
 } from "./parse";
@@ -228,6 +233,73 @@ export const liveFortnox: FortnoxTransport = {
       const q = new URLSearchParams({ financialyear: String(yearId) });
       const answer = await getOrNull("accounts", `/accounts/${encodeURIComponent(number)}?${q}`, accessToken, deadline);
       return answer === null ? null : parseAccount(answer);
+    });
+  },
+
+  // ── The nightly send (slice 114b) ──
+
+  async createVoucher(accessToken, yearId, draft, deadline) {
+    // Built (and refused, nothing sent) BEFORE the call.
+    const body = voucherBody(draft);
+    return readWith(accessToken, async () => {
+      const q = new URLSearchParams({ financialyear: String(yearId) });
+      const { answer } = await send(
+        "vouchers.create",
+        `${fortnoxApiBase}/vouchers?${q}`,
+        { method: "POST", headers: { ...bearer(accessToken), "Content-Type": "application/json" }, body },
+        deadline,
+        subjectOf(accessToken),
+      );
+      return parseCreatedVoucher(answer, yearId, draft.series);
+    });
+  },
+
+  async voucherByNumber(accessToken, series, number, yearId, deadline) {
+    return readWith(accessToken, async () => {
+      const q = new URLSearchParams({ financialyear: String(yearId) });
+      const path = `/vouchers/${encodeURIComponent(series)}/${encodeURIComponent(String(number))}?${q}`;
+      const answer = await getOrNull("vouchers.get", path, accessToken, deadline);
+      return answer === null ? null : parseVoucherComments(answer);
+    });
+  },
+
+  async uploadToInbox(accessToken, bytes, fileName, deadline) {
+    return readWith(accessToken, async () => {
+      const form = new FormData();
+      // A copy into a fresh ArrayBuffer: a Blob takes no shared memory.
+      form.append("file", new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), fileName);
+      const q = new URLSearchParams({ path: "inbox_v" });
+      const { answer } = await send(
+        "inbox.upload",
+        `${fortnoxApiBase}/inbox?${q}`,
+        // No Content-Type: fetch writes the multipart boundary.
+        { method: "POST", headers: bearer(accessToken), body: form },
+        deadline,
+        subjectOf(accessToken),
+      );
+      return parseInboxFile(answer);
+    });
+  },
+
+  async connectFile(accessToken, yearId, fileId, series, number, deadline) {
+    const body = fileConnectionBody(fileId, series, number);
+    await readWith(accessToken, async () => {
+      const q = new URLSearchParams({ financialyear: String(yearId) });
+      await send(
+        "voucherfileconnections.create",
+        `${fortnoxApiBase}/voucherfileconnections?${q}`,
+        { method: "POST", headers: { ...bearer(accessToken), "Content-Type": "application/json" }, body },
+        deadline,
+        subjectOf(accessToken),
+      );
+    });
+  },
+
+  async fileConnection(accessToken, fileId, deadline) {
+    if (!isFileId(fileId)) throw new FortnoxError("shape", "voucherfileconnections.get", null, null, null);
+    return readWith(accessToken, async () => {
+      const answer = await getOrNull("voucherfileconnections.get", `/voucherfileconnections/${encodeURIComponent(fileId)}`, accessToken, deadline);
+      return answer === null ? null : parseFileConnection(answer);
     });
   },
 };

@@ -7,6 +7,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { hasAccess, requireAccess } from "@/entitlements/resolver";
 import { todayIn } from "@/lib/due-date";
 import { fail, isDeadlock, isLockTimeout } from "@/lib/domain-error";
+import { newId } from "@/lib/ids";
 import { addDays } from "@/lib/week";
 import { xlsxWorkbook } from "@/lib/xlsx";
 import { readPreferences } from "@/preferences/service";
@@ -26,6 +27,7 @@ import {
 import type { InvoicingCtx } from "./drafts";
 import { LIST_EVENTS, listColumns, listRow, type ListAmounts, type ListedEntry, type ListEvent, type ListRemark, type ListWords } from "./invoice-list";
 import { formatFixed, readFixed, type Minor } from "./money";
+import { orgDigitsOf } from "./org-digits";
 import { isoDay } from "./print";
 import { selectForFile } from "./bookkeeping-select";
 import { dueYearEnd, paymentUndoDay, periodEndOf, reversalUndoDay, yearEndCorrections, type YearEndState } from "./bookkeeping-year-end";
@@ -91,6 +93,16 @@ import {
  * database has the last word (`invoice_export_guard`,
  * `invoice_export_entry_guard`); its refusals stay unmapped — a disagreement
  * is a bug to see, never a "try again" (the re-check's 5).
+ *
+ * THE NIGHTLY SEND (slice 114b; C89 (b); docs/research/2026-10-12-slice-114-
+ * fortnox-connection-design.md §10.3). While the workspace has a LIVE Fortnox
+ * connection, EACH COMPANY'S SALES GO ONLY INTO ITS OWN BOOKS: the entries of
+ * the seller whose org. number is the connected company's (`orgDigitsOf`) are
+ * the NIGHT's — a Fortnox file made as SYSTEM (`makeFortnoxFile`, opened by
+ * `fortnox-send.ts`), each voucher owed a delivery made with it — and a
+ * member's Make file takes only every OTHER seller's, as a download file. A
+ * year end goes where its year's company goes. ONE body makes every file
+ * (`makeFile`); the database holds the same rule per entry.
  */
 
 export const EXPORT_MAX = 1000;
@@ -125,6 +137,29 @@ async function filesMethod(tx: TenantDb): Promise<BookkeepingMethod | null> {
 export async function readBookkeepingSettings(tx: TenantDb, tenantId: string): Promise<BookkeepingSettings> {
   const row = await tx.tenantPreference.findFirst({ where: { tenantId, key: BOOKKEEPING_PREF_KEY }, select: { value: true } });
   return bookkeepingFrom(row?.value ?? null);
+}
+
+/** The workspace's LIVE (ACTIVE or BROKEN) Fortnox connection as the files read it (slice 114b), or null. */
+export type LiveFortnox = {
+  readonly id: string;
+  readonly status: "ACTIVE" | "BROKEN";
+  readonly companyName: string;
+  /** The connected company's org. number as ten digits — whose entries go to it (§10.3). */
+  readonly org: string;
+  readonly brokenReason: unknown;
+};
+
+/** Read inside a transaction (no gate) — under the export lock, it holds until commit (a disconnect takes the lock). */
+export async function readLiveFortnox(tx: TenantDb, tenantId: string): Promise<LiveFortnox | null> {
+  const row = await tx.integrationConnection.findFirst({
+    where: { tenantId, provider: "FORTNOX", status: { not: "DISCONNECTED" } },
+    select: { id: true, status: true, companyName: true, companyOrgNr: true, brokenReason: true },
+  });
+  if (!row || row.status === "DISCONNECTED") return null;
+  const org = orgDigitsOf(row.companyOrgNr);
+  // The connection's CHECK holds NNNNNN-NNNN: ten digits always.
+  if (org === null) throw new Error("bookkeeping: a Fortnox connection without its org. number");
+  return { id: row.id, status: row.status, companyName: row.companyName, org, brokenReason: row.brokenReason };
 }
 
 // ── The documents ───────────────────────────────────────────────────
@@ -810,18 +845,14 @@ function build(p: Plan, picked: readonly Candidate[], s: BookkeepingSettings, fi
 /** One invoice a year end books: the invoice less its credit notes dated by then. */
 type YearEndItem = { readonly doc: Doc; readonly amounts: BookedAmounts; readonly voucher: SieVoucher; readonly credits: readonly Doc[] };
 
-/** A seller's organisation number, digits only — what makes it one company's books. */
-const orgDigits = (orgNr: string | null): string | null => {
-  const digits = orgNr?.replace(/\D/g, "") ?? "";
-  return digits === "" ? null : digits;
-};
-
 type PlannedYearEnd = {
   readonly items: YearEndItem[];
   /** Every invoice read — what a maker locks. */
   readonly ids: string[];
   /** Unpaid invoices of another organisation number, left out (the design review's H1). */
   readonly leftOut: { readonly orgNr: string; readonly count: number }[];
+  /** The year's company as ten digits (`orgDigitsOf`) — where its year end goes (slice 114b; §10.3). */
+  readonly company: string | null;
 };
 
 /**
@@ -834,8 +865,20 @@ type PlannedYearEnd = {
  * kronor remainder). Only the YEAR'S company's (the review's H1, the
  * re-check's R8): the organisation number of the newest invoice issued on or
  * before E — the rest left out and named, never refused. By number.
+ *
+ * Slice 114b: sellers compared as the database compares them (`orgDigitsOf`,
+ * the twin of `invoice_org_digits`), and — when the year's company cannot be
+ * read — the `connected` Fortnox company's invoices left out and named too:
+ * they could go neither to its Fortnox (not the year's company) nor into a
+ * download file (the entry guard; the pre-apply review's low).
  */
-async function planYearEnd(tx: TenantDb, tenantId: string, yearEnd: string, settings: BookkeepingSettings): Promise<PlannedYearEnd> {
+async function planYearEnd(
+  tx: TenantDb,
+  tenantId: string,
+  yearEnd: string,
+  settings: BookkeepingSettings,
+  connected: string | null,
+): Promise<PlannedYearEnd> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     SELECT i.id
       FROM invoice i
@@ -845,7 +888,7 @@ async function planYearEnd(tx: TenantDb, tenantId: string, yearEnd: string, sett
        AND NOT invoice_export_paid_in_books(i.tenant_id, i.id, ${yearEnd}::date)
      ORDER BY i.id`;
   const ids = rows.map((r) => r.id);
-  if (ids.length === 0) return { items: [], ids, leftOut: [] };
+  if (ids.length === 0) return { items: [], ids, leftOut: [], company: null };
   const credits = await tx.invoice.findMany({
     where: { kind: "CREDIT_NOTE", status: { not: "DRAFT" }, creditsInvoiceId: { in: ids }, issueDate: { lte: new Date(`${yearEnd}T00:00:00Z`) } },
     select: { id: true },
@@ -866,7 +909,7 @@ async function planYearEnd(tx: TenantDb, tenantId: string, yearEnd: string, sett
      WHERE i.tenant_id = ${tenantId} AND i.status <> 'DRAFT' AND i.issue_date <= ${yearEnd}::date
      ORDER BY i.issue_date DESC, i.issued_at DESC NULLS LAST, i.id DESC
      LIMIT 1`;
-  const current = orgDigits(newest?.org_nr ?? null);
+  const current = orgDigitsOf(newest?.org_nr ?? null);
 
   const items: YearEndItem[] = [];
   // By the number's digits (one company however it was typed), shown as first spelled.
@@ -879,8 +922,8 @@ async function planYearEnd(tx: TenantDb, tenantId: string, yearEnd: string, sett
     if (amounts.net === 0n && amounts.vat === 0n) continue;
     const voucher = yearEndVoucher(doc, amounts, yearEnd, settings);
     if (voucher === null) continue;
-    const seller = orgDigits(doc.seller.orgNr);
-    if (current !== null && seller !== current) {
+    const seller = orgDigitsOf(doc.seller.orgNr);
+    if ((current !== null && seller !== current) || (current === null && connected !== null && seller === connected)) {
       const key = seller ?? "";
       const was = leftOut.get(key);
       leftOut.set(key, { orgNr: was?.orgNr ?? doc.seller.orgNr ?? "—", count: (was?.count ?? 0) + 1 });
@@ -889,7 +932,12 @@ async function planYearEnd(tx: TenantDb, tenantId: string, yearEnd: string, sett
     items.push({ doc, amounts, voucher, credits: its });
   }
   items.sort((a, b) => Number(a.doc.displayNumber) - Number(b.doc.displayNumber));
-  return { items, ids, leftOut: [...leftOut.values()].sort((a, b) => a.orgNr.localeCompare(b.orgNr)) };
+  return {
+    items,
+    ids,
+    leftOut: [...leftOut.values()].sort((a, b) => a.orgNr.localeCompare(b.orgNr)),
+    company: current,
+  };
 }
 
 /** The year end due (`dueYearEnd`) and the newest one booked — ONE statement for both facts. */
@@ -963,7 +1011,9 @@ export async function bookYearEnd(
         if (due === null || due !== seen) return fail("INVOICE_YEAR_END_NOT_DUE");
 
         // Read, lock, read again — until nothing new to lock.
-        let ye = await planYearEnd(tx, ctx.tenantId, due, settings);
+        // Slice 114b: read before the plan — the year end leaves out what can go nowhere.
+        const live = await readLiveFortnox(tx, ctx.tenantId);
+        let ye = await planYearEnd(tx, ctx.tenantId, due, settings, live?.org ?? null);
         const locked = new Set<string>();
         for (let round = 0; ; round++) {
           const toLock = ye.ids.filter((id) => !locked.has(id));
@@ -971,13 +1021,17 @@ export async function bookYearEnd(
           if (round === 3) return fail("INVOICE_EXPORT_BUSY");
           await tx.$queryRaw`SELECT id FROM invoice WHERE tenant_id = ${ctx.tenantId} AND id = ANY(${toLock}::text[]) ORDER BY id FOR SHARE`;
           for (const id of toLock) locked.add(id);
-          ye = await planYearEnd(tx, ctx.tenantId, due, settings);
+          ye = await planYearEnd(tx, ctx.tenantId, due, settings, live?.org ?? null);
         }
         const p = await plan(tx, ctx.tenantId, method, today, yearStart);
         if (p.candidates.some((c) => holdsYearEnd(c, due))) return fail("INVOICE_YEAR_END_WAITING");
         const totalSek = formatFixed(sumSek(ye.items), 2);
         if (ye.items.length !== seenCount || totalSek !== seenTotal) return fail("INVOICE_YEAR_END_CHANGED");
 
+        // Slice 114b: the year end goes where its year's company goes (§10.3) —
+        // to the live Fortnox connection when that is the company (a BROKEN one
+        // too: it is sent once Fortnox answers again), else into a download file.
+        const fortnox = live !== null && ye.company !== null && ye.company === live.org ? live : null;
         const made = await tx.invoiceExport.create({
           data: {
             tenantId: ctx.tenantId,
@@ -987,10 +1041,12 @@ export async function bookYearEnd(
             madeOn: new Date(`${today}T00:00:00Z`),
             yearEnd: new Date(`${due}T00:00:00Z`),
             createdByMemberId: ctx.actor.memberId,
+            ...(fortnox ? { destination: "FORTNOX" as const, connectionId: fortnox.id } : {}),
           },
           select: { id: true, number: true },
         });
         const rows = ye.items.map((it, i) => ({
+          id: newId(),
           tenantId: ctx.tenantId,
           exportId: made.id,
           invoiceId: it.doc.id,
@@ -1002,11 +1058,19 @@ export async function bookYearEnd(
           detail: { amounts: amountsOf(it.amounts, 1n), relates: it.credits.map((d) => d.displayNumber), remark: null } satisfies EntryDetail,
         }));
         for (const batch of chunks(rows, ENTRY_BATCH)) await tx.invoiceExportEntry.createMany({ data: batch });
+        if (fortnox) await queueDeliveries(tx, ctx.tenantId, made.id, fortnox.id, rows);
         await record(tx, {
           action: "invoice_export.year_end_booked",
           targetType: "InvoiceExport",
           targetId: made.id,
-          metadata: { number: made.number, yearEnd: due, invoices: rows.length, totalSek, leftOut: ye.leftOut.reduce((s, l) => s + l.count, 0) },
+          metadata: {
+            number: made.number,
+            yearEnd: due,
+            invoices: rows.length,
+            totalSek,
+            leftOut: ye.leftOut.reduce((s, l) => s + l.count, 0),
+            destination: fortnox ? "FORTNOX" : "DOWNLOAD",
+          },
         });
         return { id: made.id, number: made.number, yearEnd: due, count: rows.length };
       },
@@ -1055,20 +1119,24 @@ export async function readYearEndReminder(ctx: InvoicingCtx, opts: { readonly no
  * books nothing: neither counted nor dated). The Fortnox card's "the first night sends
  * N" (slice 114; the design review's R16: `count + waiting`, not one file's).
  * NO GATE: the caller's — it holds `invoice:export` and a tenant-wide scope.
+ * Slice 114b: only the entries of `onlyOrg` (the company card's — the one a
+ * connect would reach) go to Fortnox; another seller's never do (§10.3).
  */
 export async function pendingForFiles(
   tx: TenantDb,
   tenantId: string,
   now: Date,
+  opts: { readonly onlyOrg?: string | null } = {},
 ): Promise<{ readonly count: number; readonly first: string | null; readonly last: string | null } | null> {
   const settings = await readBookkeepingSettings(tx, tenantId);
   const method = (await filesMethod(tx)) ?? methodOf(settings);
   if (method === null) return null;
   const today = todayIn((await readPreferences(tx, tenantId)).timezone, now);
   const p = await plan(tx, tenantId, method, today, yearStartOf(settings));
+  const candidates = opts.onlyOrg ? keepSellers(p.candidates, { only: opts.onlyOrg }) : p.candidates;
   // Only what BOOKS — a credit note's listing never becomes an entry in
   // Fortnox (the code review's nit).
-  const days = p.candidates
+  const days = candidates
     .filter((c) => c.event !== "CREDIT_NOTED")
     .map((c) => c.bookedOn)
     .sort();
@@ -1077,12 +1145,37 @@ export async function pendingForFiles(
 
 // ── The page ────────────────────────────────────────────────────────
 
+/** Where a Fortnox file's vouchers stand (slice 114b). */
+export type FortnoxFileState = {
+  /** Vouchers it books — each owed to Fortnox. */
+  readonly vouchers: number;
+  /** In Fortnox's books: booked by the night (with or without every PDF yet) or by hand. */
+  readonly booked: number;
+  /** Booked by the night with every PDF attached, or by hand. */
+  readonly done: number;
+  /** Booked, a PDF still to attach. */
+  readonly pdfsOwed: number;
+  /** Not in Fortnox yet (waiting, or asked and the answer not known). */
+  readonly waiting: number;
+  /** Handed over in a download after a disconnect (slice 114c). */
+  readonly downloaded: number;
+  /** Fortnox's voucher numbers, lowest and highest, and their series. */
+  readonly series: string | null;
+  readonly from: number | null;
+  readonly to: number | null;
+};
+
 export type BookkeepingFile = {
   readonly id: string;
   readonly number: number;
   readonly method: BookkeepingMethod;
   readonly madeOn: string;
+  /** Null: made by the nightly send (slice 114b), or by someone no longer here. */
   readonly madeBy: string | null;
+  /** Made by the nightly send (slice 114b). */
+  readonly byNight: boolean;
+  /** A Fortnox file's progress (slice 114b); null for a download file. */
+  readonly fortnox: FortnoxFileState | null;
   /** Events booked (a voucher) and listed only. */
   readonly vouchers: number;
   readonly listed: number;
@@ -1128,6 +1221,21 @@ export type BookkeepingPage = {
   /** The number to pass as `before` for the next (older) page, or null. */
   readonly olderBefore: number | null;
   readonly canEditSettings: boolean;
+  /**
+   * The workspace's live Fortnox connection (slice 114b), or null. While it
+   * is live, `next` (and Make file) holds only OTHER sellers' entries — the
+   * connected company's are sent every night (§10.3).
+   */
+  readonly fortnox: {
+    readonly status: "ACTIVE" | "BROKEN";
+    readonly companyName: string;
+    /** Why it stopped: its kind, Fortnox's words when it gave any, and the entry it stopped at (this page's tenant-wide scope — S8). */
+    readonly broken: { readonly kind: string; readonly message: string | null; readonly invoice: string | null; readonly day: string | null } | null;
+    /** The connected company's new entries (that book something): the next night's. */
+    readonly tonight: number;
+    /** Vouchers already in Fortnox files and not yet in Fortnox's books. */
+    readonly waiting: number;
+  } | null;
 };
 
 /** `invoice:export` (+ `invoice:view`, every client) — the Bookkeeping page. */
@@ -1136,13 +1244,19 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
     await openBookkeeping(tx, ctx);
     const settings = await readBookkeepingSettings(tx, ctx.tenantId);
     const method = (await filesMethod(tx)) ?? methodOf(settings);
+    const live = await readLiveFortnox(tx, ctx.tenantId);
     let next: BookkeepingPage["next"] = null;
     let yearEnd: BookkeepingPage["yearEnd"] = null;
+    let tonight = 0;
     if (method !== null) {
       const today = todayIn((await readPreferences(tx, ctx.tenantId)).timezone, opts.now ?? new Date());
       const yearStart = yearStartOf(settings);
       const p = await plan(tx, ctx.tenantId, method, today, yearStart);
-      const sorted = [...p.candidates].sort(byDate);
+      // Slice 114b: while connected, Make file holds the other sellers' entries
+      // only; the connected company's that book something wait for the night.
+      const mine = keepSellers(p.candidates, live ? { except: live.org } : null);
+      if (live) tonight = keepSellers(p.candidates, { only: live.org }).filter((c) => c.event !== "CREDIT_NOTED").length;
+      const sorted = [...mine].sort(byDate);
       const picked = selectForFile(sorted, groupOf(yearStart, p.bookedYearEnds), EXPORT_MAX);
       const days = picked.map((c) => c.bookedOn).sort();
       const { due, lastYearEnd } = await yearEndDueFor(tx, ctx.tenantId, method, yearStart, today);
@@ -1151,12 +1265,12 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
         byEvent: countByEvent(picked),
         first: days[0] ?? null,
         last: days.at(-1) ?? null,
-        waiting: p.candidates.length - picked.length,
+        waiting: mine.length - picked.length,
         // A credit note's listing books nothing — it never reopens a year (the re-check's NIT).
         intoBookedYear: lastYearEnd !== null && picked.some((c) => c.bookedOn <= lastYearEnd && c.event !== "CREDIT_NOTED") ? lastYearEnd : null,
       };
       if (due !== null) {
-        const ye = await planYearEnd(tx, ctx.tenantId, due, settings);
+        const ye = await planYearEnd(tx, ctx.tenantId, due, settings, live?.org ?? null);
         yearEnd = {
           date: due,
           waiting: p.candidates.filter((c) => holdsYearEnd(c, due)).length,
@@ -1176,7 +1290,7 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
       where: opts.before ? { number: { lt: opts.before } } : {},
       orderBy: { number: "desc" },
       take: EXPORT_FILES_PAGE + 1,
-      select: { id: true, number: true, method: true, madeOn: true, yearEnd: true, createdByMemberId: true },
+      select: { id: true, number: true, method: true, madeOn: true, yearEnd: true, createdByMemberId: true, destination: true },
     });
     const more = files.length > EXPORT_FILES_PAGE;
     files.splice(EXPORT_FILES_PAGE);
@@ -1192,12 +1306,67 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
              WHERE x.tenant_id = ${ctx.tenantId} AND x.export_id = ANY(${files.map((f) => f.id)}::text[])
              GROUP BY x.export_id`;
     const statOf = new Map(stats.map((s) => [s.export_id, s]));
-    const makers = await tx.member.findMany({
-      where: { id: { in: [...new Set(files.map((f) => f.createdByMemberId))] } },
-      select: { id: true, user: { select: { name: true } } },
-    });
+    // Slice 114b: each Fortnox file's deliveries, in one statement.
+    const fortnoxIds = files.filter((f) => f.destination === "FORTNOX").map((f) => f.id);
+    const sent =
+      fortnoxIds.length === 0
+        ? []
+        : await tx.$queryRaw<
+            {
+              export_id: string;
+              vouchers: number;
+              booked: number;
+              done: number;
+              pdfs_owed: number;
+              waiting: number;
+              downloaded: number;
+              series: string | null;
+              from_n: number | null;
+              to_n: number | null;
+            }[]
+          >`
+            SELECT d.export_id,
+                   count(*)::int AS vouchers,
+                   count(*) FILTER (WHERE d.state IN ('BOOKED', 'DONE', 'BY_HAND'))::int AS booked,
+                   count(*) FILTER (WHERE d.state IN ('DONE', 'BY_HAND'))::int AS done,
+                   count(*) FILTER (WHERE d.state = 'BOOKED')::int AS pdfs_owed,
+                   count(*) FILTER (WHERE d.state IN ('QUEUED', 'SENDING'))::int AS waiting,
+                   count(*) FILTER (WHERE d.state = 'DOWNLOADED')::int AS downloaded,
+                   min(d.fortnox_series) AS series,
+                   min(d.fortnox_number) AS from_n, max(d.fortnox_number) AS to_n
+              FROM invoice_export_delivery d
+             WHERE d.tenant_id = ${ctx.tenantId} AND d.export_id = ANY(${fortnoxIds}::text[])
+             GROUP BY d.export_id`;
+    const sentOf = new Map(sent.map((s) => [s.export_id, s]));
+    // Named for non-null ids only (the design review's R16: the night's files have none).
+    const makerIds = [...new Set(files.map((f) => f.createdByMemberId).filter((id): id is string => id !== null))];
+    const makers =
+      makerIds.length === 0 ? [] : await tx.member.findMany({ where: { id: { in: makerIds } }, select: { id: true, user: { select: { name: true } } } });
     const nameOf = new Map(makers.map((m) => [m.id, m.user.name]));
     const canEditSettings = await hasAccess(tx, ctx.tenantId, ctx.actor, "settings:edit");
+    let fortnox: BookkeepingPage["fortnox"] = null;
+    if (live) {
+      const [owed] = await tx.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM invoice_export_delivery d
+         WHERE d.tenant_id = ${ctx.tenantId} AND d.connection_id = ${live.id} AND d.state IN ('QUEUED', 'SENDING')`;
+      const reason = live.brokenReason as { kind?: unknown; message?: unknown; invoice?: unknown; day?: unknown } | null;
+      const text = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+      fortnox = {
+        status: live.status,
+        companyName: live.companyName,
+        broken:
+          live.status === "BROKEN"
+            ? {
+                kind: text(reason?.kind) ?? "REFUSED",
+                message: text(reason?.message),
+                invoice: text(reason?.invoice),
+                day: typeof reason?.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(reason.day) ? reason.day : null,
+              }
+            : null,
+        tonight,
+        waiting: owed?.n ?? 0,
+      };
+    }
     return {
       method,
       yearStart: yearStartOf(settings),
@@ -1206,12 +1375,28 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
       yearEnd,
       files: files.map((f) => {
         const st = statOf.get(f.id);
+        const s = sentOf.get(f.id);
         return {
           id: f.id,
           number: f.number,
           method: f.method,
           madeOn: isoDay(f.madeOn),
-          madeBy: nameOf.get(f.createdByMemberId) ?? null,
+          madeBy: f.createdByMemberId === null ? null : (nameOf.get(f.createdByMemberId) ?? null),
+          byNight: f.createdByMemberId === null,
+          fortnox:
+            f.destination === "FORTNOX"
+              ? {
+                  vouchers: s?.vouchers ?? 0,
+                  booked: s?.booked ?? 0,
+                  done: s?.done ?? 0,
+                  pdfsOwed: s?.pdfs_owed ?? 0,
+                  waiting: s?.waiting ?? 0,
+                  downloaded: s?.downloaded ?? 0,
+                  series: s?.series ?? null,
+                  from: s?.from_n ?? null,
+                  to: s?.to_n ?? null,
+                }
+              : null,
           vouchers: st?.vouchers ?? 0,
           listed: st?.listed ?? 0,
           first: st?.first ? isoDay(st.first) : null,
@@ -1221,6 +1406,7 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
       }),
       olderBefore: more ? (files.at(-1)?.number ?? null) : null,
       canEditSettings,
+      fortnox,
     };
   });
 }
@@ -1230,7 +1416,146 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
 export type MadeFile = { readonly id: string; readonly number: number; readonly count: number; readonly waiting: number };
 
 /**
+ * Whose entries a file may hold (slice 114b; §10.3): the connected company's
+ * only (the night's Fortnox file), every other seller's (a member's file
+ * while connected), or every seller's (no connection). By `orgDigitsOf` — the
+ * database's `invoice_org_digits` twin, so the entry guard never refuses what
+ * the plan picked; a seller with no readable number is never the connected
+ * company.
+ */
+type SellerFilter = { readonly only: string } | { readonly except: string } | null;
+
+function keepSellers(candidates: readonly Candidate[], sellers: SellerFilter): Candidate[] {
+  if (sellers === null) return [...candidates];
+  const connected = "only" in sellers ? sellers.only : sellers.except;
+  const only = "only" in sellers;
+  const kept = candidates.filter((c) => (orgDigitsOf(c.doc.seller.orgNr) === connected) === only);
+  // Dependencies never cross sellers — a credit note carries its invoice's
+  // seller, and a payment and a year end are their invoice's — so one that did
+  // would wait for good, unseen (the design review's L3 rule): a bug to see.
+  const keys = new Set(kept.map((c) => c.key));
+  for (const c of kept) {
+    if (c.dependsOn.some((k) => !keys.has(k)) || (c.companion !== undefined && !keys.has(c.companion))) {
+      throw new Error(`bookkeeping: ${c.key} waits on another company's event`);
+    }
+  }
+  return kept;
+}
+
+/** Where a file goes: downloaded by a person, or sent to a Fortnox connection by the night. */
+type FileTarget = { readonly destination: "DOWNLOAD" } | { readonly destination: "FORTNOX"; readonly connectionId: string };
+
+/**
+ * THE ONE BODY THAT MAKES A FILE (slice 114b — a member's press and the night;
+ * slice 111's `createExport` before it): read, lock what a mark could move,
+ * read AGAIN under the locks (the re-check's 7) — until the second read names
+ * nothing new to lock — then the sellers it may hold, the next group, the file,
+ * its entries and, for a Fortnox file, a QUEUED delivery for every voucher (the
+ * database refuses the commit without one — `invoice_export_entry_owed`).
+ * The caller holds the export lock and the gates; `maker` null is the nightly
+ * send (SYSTEM, behind its GUC — set by `fortnox-send.ts` alone). Null when
+ * nothing is picked.
+ */
+async function makeFile(
+  tx: TenantDb,
+  tenantId: string,
+  maker: { readonly memberId: string } | null,
+  opts: {
+    readonly method: BookkeepingMethod;
+    readonly settings: BookkeepingSettings;
+    readonly today: string;
+    readonly target: FileTarget;
+    readonly sellers: SellerFilter;
+    readonly max: number;
+  },
+): Promise<MadeFile | null> {
+  const { method, settings, today, target, max } = opts;
+  const yearStart = yearStartOf(settings);
+  let p = await plan(tx, tenantId, method, today, yearStart);
+  const locked = new Set<string>();
+  for (let round = 0; ; round++) {
+    const toLock = p.stateIds.filter((id) => !locked.has(id));
+    if (toLock.length === 0) break;
+    if (round === 3) return fail("INVOICE_EXPORT_BUSY");
+    await tx.$queryRaw`SELECT id FROM invoice WHERE tenant_id = ${tenantId} AND id = ANY(${toLock}::text[]) ORDER BY id FOR SHARE`;
+    for (const id of toLock) locked.add(id);
+    p = await plan(tx, tenantId, method, today, yearStart);
+  }
+
+  const candidates = keepSellers(p.candidates, opts.sellers);
+  const sorted = [...candidates].sort(byDate);
+  const picked = selectForFile(sorted, groupOf(yearStart, p.bookedYearEnds), max);
+  if (picked.length === 0) return null;
+
+  const made = await tx.invoiceExport.create({
+    data: {
+      tenantId,
+      number: 0, // the guard numbers it
+      method,
+      series: settings.series,
+      madeOn: new Date(`${today}T00:00:00Z`),
+      createdByMemberId: maker?.memberId ?? null,
+      destination: target.destination,
+      ...(target.destination === "FORTNOX" ? { connectionId: target.connectionId } : {}),
+    },
+    select: { id: true, number: true },
+  });
+  const built = build(p, picked, settings, made.number);
+  const rows = built.map((b, i) => ({
+    // Named here: a Fortnox file's deliveries point at them.
+    id: newId(),
+    tenantId,
+    exportId: made.id,
+    invoiceId: b.c.doc.id,
+    position: i + 1,
+    event: b.c.event,
+    bookedOn: new Date(`${b.c.bookedOn}T00:00:00Z`),
+    ...(b.c.yearEnd ? { yearEnd: new Date(`${b.c.yearEnd}T00:00:00Z`) } : {}),
+    ...(b.voucher ? { voucher: voucherToJson(b.voucher) } : {}),
+    detail: b.detail,
+  }));
+  // A few statements, not one per entry (the code review's 4: a thousand
+  // round trips outlast the transaction over a slow link): the
+  // REVERSALS and WITHDRAWALS first — a re-marked payment's guard counts
+  // its reversal, a payment by a booked year end's guard looks for that
+  // year end's withdrawal, and a reversal's withdrawal for the year
+  // end's (slice 111b) — then the rest. Within a statement each row's
+  // guard sees the rows before it, and nothing else in a file depends on
+  // another entry.
+  const first = rows.filter((r) => FIRST_EVENTS.has(r.event));
+  const rest = rows.filter((r) => !FIRST_EVENTS.has(r.event));
+  for (const batch of [first, ...chunks(rest, ENTRY_BATCH)]) {
+    if (batch.length > 0) await tx.invoiceExportEntry.createMany({ data: batch });
+  }
+  if (target.destination === "FORTNOX") await queueDeliveries(tx, tenantId, made.id, target.connectionId, rows);
+  const byEvent = countByEvent(picked);
+  const days = picked.map((c) => c.bookedOn).sort();
+  const waiting = candidates.length - picked.length;
+  await record(tx, {
+    action: "invoice_export.created",
+    targetType: "InvoiceExport",
+    targetId: made.id,
+    metadata: { number: made.number, method, destination: target.destination, ...byEvent, first: days[0]!, last: days.at(-1)!, waiting },
+  });
+  return { id: made.id, number: made.number, count: picked.length, waiting };
+}
+
+/** A QUEUED delivery for every entry of a Fortnox file that books a voucher (a credit note's listing books nothing). */
+async function queueDeliveries(
+  tx: TenantDb,
+  tenantId: string,
+  exportId: string,
+  connectionId: string,
+  rows: readonly { readonly id: string; readonly voucher?: unknown }[],
+): Promise<void> {
+  const owed = rows.filter((r) => r.voucher !== undefined).map((r) => ({ tenantId, entryId: r.id, exportId, connectionId }));
+  for (const batch of chunks(owed, ENTRY_BATCH)) await tx.invoiceExportDelivery.createMany({ data: batch });
+}
+
+/**
  * `invoice:export` — make the next file of what is new (see the header).
+ * While the workspace is connected to Fortnox, of every seller's entries but
+ * the connected company's — those are the night's (§10.3).
  * INVOICE_EXPORT_NO_METHOD before a method is chosen; INVOICE_EXPORT_EMPTY
  * when nothing is new; INVOICE_EXPORT_BUSY on a lock held past the bound.
  */
@@ -1253,70 +1578,16 @@ export async function createExport(
         const method = (await filesMethod(tx)) ?? methodOf(settings);
         if (method === null) return fail("INVOICE_EXPORT_NO_METHOD");
         const today = todayIn((await readPreferences(tx, ctx.tenantId)).timezone, now);
-        const yearStart = yearStartOf(settings);
-
-        // Read, lock what a mark could move, read AGAIN under the locks (the
-        // re-check's 7) — until the second read names nothing new to lock.
-        let p = await plan(tx, ctx.tenantId, method, today, yearStart);
-        const locked = new Set<string>();
-        for (let round = 0; ; round++) {
-          const toLock = p.stateIds.filter((id) => !locked.has(id));
-          if (toLock.length === 0) break;
-          if (round === 3) return fail("INVOICE_EXPORT_BUSY");
-          await tx.$queryRaw`SELECT id FROM invoice WHERE tenant_id = ${ctx.tenantId} AND id = ANY(${toLock}::text[]) ORDER BY id FOR SHARE`;
-          for (const id of toLock) locked.add(id);
-          p = await plan(tx, ctx.tenantId, method, today, yearStart);
-        }
-
-        const sorted = [...p.candidates].sort(byDate);
-        const picked = selectForFile(sorted, groupOf(yearStart, p.bookedYearEnds), max);
-        if (picked.length === 0) return fail("INVOICE_EXPORT_EMPTY");
-
-        const made = await tx.invoiceExport.create({
-          data: {
-            tenantId: ctx.tenantId,
-            number: 0, // the guard numbers it
-            method,
-            series: settings.series,
-            madeOn: new Date(`${today}T00:00:00Z`),
-            createdByMemberId: ctx.actor.memberId,
-          },
-          select: { id: true, number: true },
+        const live = await readLiveFortnox(tx, ctx.tenantId);
+        const made = await makeFile(tx, ctx.tenantId, { memberId: ctx.actor.memberId }, {
+          method,
+          settings,
+          today,
+          target: { destination: "DOWNLOAD" },
+          sellers: live ? { except: live.org } : null,
+          max,
         });
-        const built = build(p, picked, settings, made.number);
-        const rows = built.map((b, i) => ({
-          tenantId: ctx.tenantId,
-          exportId: made.id,
-          invoiceId: b.c.doc.id,
-          position: i + 1,
-          event: b.c.event,
-          bookedOn: new Date(`${b.c.bookedOn}T00:00:00Z`),
-          ...(b.c.yearEnd ? { yearEnd: new Date(`${b.c.yearEnd}T00:00:00Z`) } : {}),
-          ...(b.voucher ? { voucher: voucherToJson(b.voucher) } : {}),
-          detail: b.detail,
-        }));
-        // A few statements, not one per entry (the code review's 4: a thousand
-        // round trips outlast the transaction over a slow link): the
-        // REVERSALS and WITHDRAWALS first — a re-marked payment's guard counts
-        // its reversal, a payment by a booked year end's guard looks for that
-        // year end's withdrawal, and a reversal's withdrawal for the year
-        // end's (slice 111b) — then the rest. Within a statement each row's
-        // guard sees the rows before it, and nothing else in a file depends on
-        // another entry.
-        const first = rows.filter((r) => FIRST_EVENTS.has(r.event));
-        const rest = rows.filter((r) => !FIRST_EVENTS.has(r.event));
-        for (const batch of [first, ...chunks(rest, ENTRY_BATCH)]) {
-          if (batch.length > 0) await tx.invoiceExportEntry.createMany({ data: batch });
-        }
-        const byEvent = countByEvent(picked);
-        const days = picked.map((c) => c.bookedOn).sort();
-        await record(tx, {
-          action: "invoice_export.created",
-          targetType: "InvoiceExport",
-          targetId: made.id,
-          metadata: { number: made.number, method, ...byEvent, first: days[0]!, last: days.at(-1)!, waiting: p.candidates.length - picked.length },
-        });
-        return { id: made.id, number: made.number, count: picked.length, waiting: p.candidates.length - picked.length };
+        return made ?? fail("INVOICE_EXPORT_EMPTY");
       },
       { lockTimeoutMs: EXPORT_LOCK_WAIT_MS, timeoutMs: EXPORT_TX_TIMEOUT_MS },
     );
@@ -1324,6 +1595,36 @@ export async function createExport(
     if (isLockTimeout(e) || isDeadlock(e)) return fail("INVOICE_EXPORT_BUSY");
     throw e;
   }
+}
+
+/**
+ * THE NIGHT'S FILE (slice 114b; C89 (b), (c)) — the next file of the connected
+ * company's entries, made as SYSTEM to `connection`, every voucher QUEUED for
+ * the nightly send. Called by `fortnox-send.ts` alone, inside its own
+ * transaction, which has opened the sender's right (its GUC —
+ * `fortnox-census.test.ts`) and holds the send's lease; the export lock is
+ * taken here, every maker's order. Null when no method is chosen or nothing
+ * of the company's is new — the night closes.
+ */
+export async function makeFortnoxFile(
+  tx: TenantDb,
+  tenantId: string,
+  connection: { readonly id: string; readonly org: string },
+  now: Date,
+): Promise<MadeFile | null> {
+  await tx.$executeRaw`SELECT invoice_export_lock(${tenantId})`;
+  const settings = await readBookkeepingSettings(tx, tenantId);
+  const method = (await filesMethod(tx)) ?? methodOf(settings);
+  if (method === null) return null;
+  const today = todayIn((await readPreferences(tx, tenantId)).timezone, now);
+  return makeFile(tx, tenantId, null, {
+    method,
+    settings,
+    today,
+    target: { destination: "FORTNOX", connectionId: connection.id },
+    sellers: { only: connection.org },
+    max: EXPORT_MAX,
+  });
 }
 
 // ── Downloading a file ──────────────────────────────────────────────
@@ -1348,9 +1649,13 @@ export async function exportFile(
     await openBookkeeping(tx, ctx);
     const file = await tx.invoiceExport.findFirst({
       where: { id: exportId },
-      select: { id: true, number: true, series: true, madeOn: true },
+      select: { id: true, number: true, series: true, madeOn: true, destination: true },
     });
     if (!file) return deny("NOT_FOUND");
+    // Slice 114b: a Fortnox file's vouchers are SENT — its SIE imported as well
+    // would book them twice (§5.6). Refused here, not only unlinked; its list
+    // stays downloadable.
+    if (format === "sie" && file.destination === "FORTNOX") return deny("NOT_FOUND");
     const entries = await tx.invoiceExportEntry.findMany({
       where: { exportId },
       orderBy: { position: "asc" },

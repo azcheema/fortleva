@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatMoney } from "@/lib/format";
 import { addDays } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
-import { readBookkeeping, type BookkeepingPage } from "@/modules/invoicing";
+import { readBookkeeping, type BookkeepingPage, type FortnoxFileState } from "@/modules/invoicing";
 
 import { BookYearEnd } from "./book-year-end";
 import { NEWEST_FILE_LINK_ID } from "./ids";
@@ -24,6 +24,24 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const LINK =
   "rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+/** The stops the Settings card names (`settings.invoicing.fortnox.broken.kinds`); any other reads as Fortnox refusing. */
+const BROKEN_KINDS = [
+  "CONSENT_GONE",
+  "NO_LICENCE",
+  "COMPANY_CHANGED",
+  "NO_FINANCIAL_YEAR",
+  "SERIES",
+  "ACCOUNT",
+  "PERIOD_LOCKED",
+  "PDF_MISSING",
+  "NOT_ANSWERING",
+  "REFUSED",
+] as const;
+type BrokenKind = (typeof BROKEN_KINDS)[number];
+const isBrokenKind = (v: string): v is BrokenKind => (BROKEN_KINDS as readonly string[]).includes(v);
+/** Kinds only a reconnect mends (the design review's S3). */
+const NEEDS_RECONNECT: ReadonlySet<BrokenKind> = new Set<BrokenKind>(["CONSENT_GONE", "NO_LICENCE", "COMPANY_CHANGED"]);
 
 /**
  * /invoices/bookkeeping (Phase 4 slice 111; founder decision C82) — the files
@@ -38,10 +56,18 @@ const LINK =
  * Book the year end, waiting while entries of that year still go in a file;
  * and a warning on the next file when it books into a year whose year end is
  * already booked (a late payment's correction).
+ *
+ * Slice 114b (C89 (b)): while the workspace is connected to Fortnox, a Sent to
+ * Fortnox card on top — how many of the company's entries go tonight, how
+ * many vouchers are on their way, and, when it stopped, why (the kind in the
+ * Settings card's words, Fortnox's own words and the entry — this page's
+ * tenant-wide scope, S8); Make file only for ANOTHER company's entries; and
+ * each Fortnox file says where its vouchers stand, its SIE never offered.
  */
 export default async function BookkeepingPageRoute({ searchParams }: { searchParams: Promise<{ before?: string | string[] }> }) {
   const { membership, actor } = await requireTenantContext();
   const t = await getTranslations("invoices.bookkeeping");
+  const tBroken = await getTranslations("settings.invoicing.fortnox.broken");
   const format = await getFormatter();
   const locale = await getLocale();
   const { before } = await searchParams;
@@ -61,6 +87,17 @@ export default async function BookkeepingPageRoute({ searchParams }: { searchPar
   const sek = (amount: string) => formatMoney(locale, Number(amount), "SEK");
   const next = page.next;
   const yearEnd = page.yearEnd;
+  const fortnox = page.fortnox;
+  const broken = fortnox?.broken ?? null;
+  const brokenKind: BrokenKind | null = broken ? (isBrokenKind(broken.kind) ? broken.kind : "REFUSED") : null;
+  /** Where a Fortnox file's vouchers stand, in a line. */
+  const fileState = (s: FortnoxFileState): string | null => {
+    if (s.vouchers === 0) return null;
+    if (s.waiting > 0) return s.booked === 0 ? t("files.state.waiting") : t("files.state.sending", { booked: s.booked, vouchers: s.vouchers });
+    const numbers = s.from === null || s.to === null ? "" : s.from === s.to ? String(s.from) : `${s.from}–${s.to}`;
+    const done = t("files.state.done", { series: s.series ?? "", numbers });
+    return s.pdfsOwed > 0 ? `${done} · ${t("files.state.pdfs", { count: s.pdfsOwed })}` : done;
+  };
 
   return (
     <Page width="form">
@@ -81,6 +118,34 @@ export default async function BookkeepingPageRoute({ searchParams }: { searchPar
               )}
             </Callout>
           </div>
+        ) : null}
+
+        {fortnox ? (
+          <SectionCard title={t("fortnox.title")} description={t("fortnox.description", { company: fortnox.companyName })}>
+            <div className="flex flex-col gap-3" data-testid="bookkeeping-fortnox" data-status={fortnox.status}>
+              {broken && brokenKind ? (
+                <div data-testid="bookkeeping-fortnox-broken" data-kind={brokenKind}>
+                  <Callout tone="caution" title={tBroken("title")}>
+                    <span className="flex flex-col gap-1">
+                      <span>
+                        {tBroken(`kinds.${brokenKind}`)} {NEEDS_RECONNECT.has(brokenKind) ? tBroken("reconnect") : tBroken("retrying")}
+                      </span>
+                      {broken.invoice && broken.day ? <span>{t("fortnox.stoppedAt", { invoice: broken.invoice, day: day(broken.day) })}</span> : null}
+                      {broken.message ? <span className="break-words">{t("fortnox.said", { message: broken.message })}</span> : null}
+                    </span>
+                  </Callout>
+                </div>
+              ) : (
+                <p className="text-sm">{t("fortnox.active")}</p>
+              )}
+              <ul className="flex flex-col gap-0.5 text-sm text-muted-foreground">
+                <li data-testid="bookkeeping-fortnox-tonight">
+                  {fortnox.tonight > 0 ? t("fortnox.tonight", { count: fortnox.tonight }) : t("fortnox.tonightNone")}
+                </li>
+                {fortnox.waiting > 0 ? <li data-testid="bookkeeping-fortnox-waiting">{t("fortnox.waiting", { count: fortnox.waiting })}</li> : null}
+              </ul>
+            </div>
+          </SectionCard>
         ) : null}
 
         {yearEnd ? (
@@ -157,8 +222,11 @@ export default async function BookkeepingPageRoute({ searchParams }: { searchPar
           </SectionCard>
         ) : null}
 
-        {page.method === null ? null : (
-          <SectionCard title={t("next.title")} description={t(`method.${page.method}`)}>
+        {page.method === null || (fortnox && (next === null || next.count === 0)) ? null : (
+          <SectionCard
+            title={fortnox ? t("next.otherTitle") : t("next.title")}
+            description={fortnox ? t("next.otherBody", { company: fortnox.companyName }) : t(`method.${page.method}`)}
+          >
             {next === null || next.count === 0 ? (
               <p className="text-sm text-muted-foreground" data-testid="bookkeeping-nothing">
                 {t("next.empty")}
@@ -214,43 +282,62 @@ export default async function BookkeepingPageRoute({ searchParams }: { searchPar
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {page.files.map((f, i) => (
-                    <TableRow key={f.id} data-testid="bookkeeping-file" data-number={f.number} data-year-end={f.yearEnd ?? undefined}>
-                      <TableCell className="whitespace-nowrap font-medium">
-                        {f.yearEnd ? t("files.numberYearEnd", { number: f.number, day: day(f.yearEnd) }) : t("files.number", { number: f.number })}
-                      </TableCell>
-                      <TableCell priority="medium" className="num whitespace-nowrap text-muted-foreground">
-                        {day(f.madeOn)}
-                      </TableCell>
-                      <TableCell priority="low" className="min-w-24">
-                        <div className="w-full min-w-0 truncate contain-inline-size text-muted-foreground">{f.madeBy ?? t("files.someoneGone")}</div>
-                      </TableCell>
-                      <TableCell className="num text-right whitespace-nowrap">{f.vouchers + f.listed}</TableCell>
-                      <TableCell priority="low" className="num whitespace-nowrap text-muted-foreground">
-                        {range(f.first, f.last)}
-                      </TableCell>
-                      <TableCell pinned className="text-right whitespace-nowrap">
-                        <span className="inline-flex items-center gap-3">
-                          {f.vouchers > 0 ? (
-                            <a href={`/invoices/bookkeeping/${f.id}/sie`} className={LINK} data-testid="bookkeeping-sie" download>
-                              {t("files.fortnox")}
+                  {page.files.map((f, i) => {
+                    const state = f.fortnox ? fileState(f.fortnox) : null;
+                    return (
+                      <TableRow
+                        key={f.id}
+                        data-testid="bookkeeping-file"
+                        data-number={f.number}
+                        data-year-end={f.yearEnd ?? undefined}
+                        data-destination={f.fortnox ? "FORTNOX" : "DOWNLOAD"}
+                      >
+                        <TableCell className="font-medium">
+                          <div className="whitespace-nowrap">
+                            {f.yearEnd ? t("files.numberYearEnd", { number: f.number, day: day(f.yearEnd) }) : t("files.number", { number: f.number })}
+                          </div>
+                          {state ? (
+                            <div className="text-xs font-normal text-muted-foreground" data-testid="bookkeeping-file-fortnox">
+                              {state}
+                            </div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell priority="medium" className="num whitespace-nowrap text-muted-foreground">
+                          {day(f.madeOn)}
+                        </TableCell>
+                        <TableCell priority="low" className="min-w-24">
+                          <div className="w-full min-w-0 truncate contain-inline-size text-muted-foreground">
+                            {f.byNight ? t("files.byNight") : (f.madeBy ?? t("files.someoneGone"))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="num text-right whitespace-nowrap">{f.vouchers + f.listed}</TableCell>
+                        <TableCell priority="low" className="num whitespace-nowrap text-muted-foreground">
+                          {range(f.first, f.last)}
+                        </TableCell>
+                        <TableCell pinned className="text-right whitespace-nowrap">
+                          <span className="inline-flex items-center gap-3">
+                            {/* A Fortnox file's vouchers are SENT — its SIE is never offered (the server refuses it too). */}
+                            {f.fortnox ? null : f.vouchers > 0 ? (
+                              <a href={`/invoices/bookkeeping/${f.id}/sie`} className={LINK} data-testid="bookkeeping-sie" download>
+                                {t("files.fortnox")}
+                              </a>
+                            ) : (
+                              <span className="text-muted-foreground">{t("files.nothingToBook")}</span>
+                            )}
+                            <a
+                              href={`/invoices/bookkeeping/${f.id}/xlsx`}
+                              id={i === 0 && !beforeNumber ? NEWEST_FILE_LINK_ID : undefined}
+                              className={LINK}
+                              data-testid="bookkeeping-xlsx"
+                              download
+                            >
+                              {t("files.list")}
                             </a>
-                          ) : (
-                            <span className="text-muted-foreground">{t("files.nothingToBook")}</span>
-                          )}
-                          <a
-                            href={`/invoices/bookkeeping/${f.id}/xlsx`}
-                            id={i === 0 && !beforeNumber ? NEWEST_FILE_LINK_ID : undefined}
-                            className={LINK}
-                            data-testid="bookkeeping-xlsx"
-                            download
-                          >
-                            {t("files.list")}
-                          </a>
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </DataTable>
