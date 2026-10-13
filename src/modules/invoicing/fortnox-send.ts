@@ -15,11 +15,13 @@ import {
 } from "@/integrations/fortnox";
 import { DomainError, isDeadlock, isLockTimeout } from "@/lib/domain-error";
 import { todayIn } from "@/lib/due-date";
+import { emit } from "@/notify/emit";
+import type { NotificationReason } from "@/notify/reasons";
 import { readPreferences } from "@/preferences/service";
 import { getStorage } from "@/storage";
 
 import { EXPORT_LOCK_WAIT_MS, EXPORT_TX_TIMEOUT_MS, makeFortnoxFile } from "./bookkeeping";
-import { draftOf, isOurVoucher, isThrowawayWorkspace, storedReason, type BrokenReason } from "./fortnox-voucher";
+import { PDF_GRACE_MS, draftOf, isOurVoucher, isThrowawayWorkspace, stopReminderDue, storedReason, type BrokenReason } from "./fortnox-voucher";
 import { orgDigitsOf } from "./org-digits";
 import { errorTag } from "./pdf-store";
 import { isoDay } from "./print";
@@ -73,6 +75,12 @@ import { PDF_MAX_BYTES } from "./send";
  *     answer still on its way — and leaves the state as it is, until no run
  *     has reached Fortnox for a day (NOT_ANSWERING); a refusal or an answer
  *     Fortleva cannot read is a stop at once (the code review's medium).
+ *  6. THE OWNERS TOLD (slice 114c; C89 (c), (e), C90): a stop once —
+ *     `integration.fortnox_stopped` — then every Monday while it lasts —
+ *     `integration.fortnox_still_stopped` — inbox and email as each owner's
+ *     level allows (`tellOwners`; also for a stop only a reconnect mends,
+ *     whose runs skip everything else); a restore that follows a told stop,
+ *     a note in their inbox (`integration.fortnox_restored`, in `settle()`).
  *
  * ONE VOUCHER: intent first — QUEUED → SENDING with the series' next number,
  * committed — then `createVoucher` (no HTTP call inside a transaction):
@@ -103,8 +111,8 @@ const VOUCHER_MIN_LEFT_MS = 20_000;
 const FILE_MIN_LEFT_MS = EXPORT_TX_TIMEOUT_MS;
 /** No PDF is begun with less than this left. */
 const PDF_MIN_LEFT_MS = 8_000;
-/** A booked voucher whose PDF is still not attached after this is reported (PDF_MISSING). */
-export const PDF_GRACE_MS = 24 * 3_600_000;
+/** A booked voucher whose PDF is still not attached after this is reported (PDF_MISSING) — and a person's to attach (slice 114c). */
+export { PDF_GRACE_MS };
 /**
  * Runs that stop QUIETLY (Fortnox unreachable, its rate, an answer still on
  * its way) leave the connection as it is — but once none has reached Fortnox
@@ -180,6 +188,71 @@ async function sending<T>(tenantId: string, run: string, fn: (tx: TenantDb) => P
     },
     { lockTimeoutMs: 5_000, ...opts },
   );
+}
+
+// ── The owners told (slice 114c) ────────────────────────────────────
+
+/** The workspace's ACTIVE owners — who hear that Fortnox stopped, and that it works again (C89 (c)). */
+async function ownersOf(tx: TenantDb, tenantId: string): Promise<Map<string, NotificationReason>> {
+  const owners = await tx.member.findMany({
+    where: { tenantId, status: "ACTIVE", memberRoles: { some: { role: { isSystem: true, templateKey: "owner" } } } },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  return new Map(owners.map((o): [string, NotificationReason] => [o.id, "OWNER"]));
+}
+
+/**
+ * THE OWNERS TOLD THAT FORTNOX STOPPED (slice 114c; founder decisions C89
+ * (c), (e), C90 (a)) — once per breakage, then every Monday while it lasts.
+ * Under the sender's own right (the connection's `stop_told_at` is one of its
+ * upkeep columns), the connection locked: when it is BROKEN and its owners
+ * have not been told since it broke → `integration.fortnox_stopped`; else
+ * when this week's Monday reminder is due (`stopReminderDue`, the
+ * workspace's zone) → `integration.fortnox_still_stopped`; either way
+ * `stop_told_at` moves (the guard stamps its own clock), so a second run the
+ * same hour, or a read inbox row, never tells twice. Inbox + email as each
+ * owner's level allows (`emit`); IDS ONLY — the connection. Never throws: a
+ * failure is logged by its tag and the next run tells instead.
+ */
+export async function tellOwners(tenantId: string, connectionId: string, run: string, now: Date): Promise<"stopped" | "reminded" | null> {
+  try {
+    return await sending(tenantId, run, async (tx) => {
+      const [c] = await tx.$queryRaw<{ status: string; broken_since: Date | null; first: boolean; told: Date | null }[]>`
+        SELECT status::text AS status, broken_since,
+               (stop_told_at IS NULL OR stop_told_at < broken_since) AS first,
+               stop_told_at AS told
+          FROM integration_connection
+         WHERE tenant_id = ${tenantId} AND id = ${connectionId}
+           FOR UPDATE`;
+      if (!c || c.status !== "BROKEN" || c.broken_since === null) return null;
+      let told: "stopped" | "reminded";
+      let dedupeKey: string;
+      if (c.first || c.told === null) {
+        told = "stopped";
+        dedupeKey = `integration.fortnox_stopped:${connectionId}:${c.broken_since.toISOString()}`;
+      } else {
+        const due = stopReminderDue(now, (await readPreferences(tx, tenantId)).timezone, c.told);
+        if (due === null) return null;
+        told = "reminded";
+        // Per breakage AND week: a new stop's reminder never folds into an unread one of an earlier stop.
+        dedupeKey = `integration.fortnox_still_stopped:${connectionId}:${c.broken_since.toISOString()}:${due.week}`;
+      }
+      await emit(tx, tenantId, {
+        kind: told === "stopped" ? "integration.fortnox_stopped" : "integration.fortnox_still_stopped",
+        entity: { type: "IntegrationConnection", id: connectionId },
+        receivers: await ownersOf(tx, tenantId),
+        dedupeKey,
+      });
+      await tx.$executeRaw`
+        UPDATE integration_connection SET stop_told_at = now()
+         WHERE tenant_id = ${tenantId} AND id = ${connectionId}`;
+      return told;
+    });
+  } catch (e) {
+    console.error(`fortnox send: tenant ${tenantId}: the owners were not told: ${errorTag(e)}`);
+    return null;
+  }
 }
 
 // ── What is owed ────────────────────────────────────────────────────
@@ -350,8 +423,10 @@ export async function sendToFortnox(
     });
     if (!row || row.status === "DISCONNECTED") return "none" as const;
     if (row.transport !== transport.kind || row.appClientId !== appClientId) return "foreign" as const;
-    if (row.status === "BROKEN" && TERMINAL_KINDS.has(kindOf(row.brokenReason) ?? "")) return "stopped" as const;
     if (transport.kind === "fake" && !(await isThrowawayWorkspace(tx, tenantId))) return "not_throwaway" as const;
+    // A stop only a person's reconnect mends: nothing is tried — but its
+    // owners are still reminded every Monday (slice 114c), so it is told below.
+    if (row.status === "BROKEN" && TERMINAL_KINDS.has(kindOf(row.brokenReason) ?? "")) return { go: false as const, id: row.id };
     const today = todayIn((await readPreferences(tx, tenantId)).timezone, now);
     const connection: Connection = {
       id: row.id,
@@ -362,9 +437,13 @@ export async function sendToFortnox(
       connectAttemptId: row.connectAttemptId,
       lastReachedAt: row.lastOkAt && row.lastOkAt > row.connectedAt ? row.lastOkAt : row.connectedAt,
     };
-    return { connection, today };
+    return { go: true as const, connection, today };
   });
   if (typeof facts === "string") return skip(facts);
+  if (!facts.go) {
+    await tellOwners(tenantId, facts.id, randomUUID(), now);
+    return skip("stopped");
+  }
   const { connection, today } = facts;
 
   // 2. The lease. A file being made holds the connection FOR SHARE for its
@@ -393,7 +472,11 @@ export async function sendToFortnox(
 
   const sender = new Sender(tenantId, run, connection, transport, opts.deadline, opts.softUntil ?? opts.deadline, now, today);
   try {
-    return await sender.go();
+    const done = await sender.go();
+    // 6. The owners: a stop this run recorded — or one they have not heard of
+    // this week — told now (its own transaction; a failure is the next run's).
+    await tellOwners(tenantId, connection.id, run, now);
+    return done;
   } finally {
     try {
       await sending(tenantId, run, (tx) =>
@@ -1001,8 +1084,10 @@ class Sender {
     let recorded: BrokenReason | null = null;
     try {
       await sending(this.tenantId, this.run, async (tx) => {
-        const [was] = await tx.$queryRaw<{ status: string; broken_reason: unknown; connect_attempt_id: string }[]>`
-          SELECT status::text AS status, broken_reason, connect_attempt_id FROM integration_connection
+        const [was] = await tx.$queryRaw<{ status: string; broken_reason: unknown; connect_attempt_id: string; broken_since: Date | null; told: boolean }[]>`
+          SELECT status::text AS status, broken_reason, connect_attempt_id, broken_since,
+                 (stop_told_at IS NOT NULL AND stop_told_at >= broken_since) AS told
+            FROM integration_connection
            WHERE tenant_id = ${this.tenantId} AND id = ${this.connection.id}
              FOR UPDATE`;
         if (!was || was.status === "DISCONNECTED") return;
@@ -1012,9 +1097,13 @@ class Sender {
         if (was.status === "BROKEN" && TERMINAL_KINDS.has(kindOf(was.broken_reason) ?? "")) return;
         if (reason !== null) {
           const json = JSON.stringify(storedReason(reason));
+          // The statement's clock, read AFTER the lock above — never earlier
+          // than a telling another run committed meanwhile, which `stop_told_at
+          // < broken_since` must see as a new breakage (slice 114c's pre-apply
+          // review, low 2; `now()` is this transaction's start, before the wait).
           await tx.$executeRaw`
             UPDATE integration_connection
-               SET status = 'BROKEN'::integration_status, broken_since = coalesce(broken_since, now()), broken_reason = ${json}::jsonb
+               SET status = 'BROKEN'::integration_status, broken_since = coalesce(broken_since, statement_timestamp()), broken_reason = ${json}::jsonb
              WHERE tenant_id = ${this.tenantId} AND id = ${this.connection.id}`;
           if (was.status === "ACTIVE") {
             await record(tx, {
@@ -1039,6 +1128,16 @@ class Sender {
             targetId: this.connection.id,
             metadata: { provider: "FORTNOX", was: kindOf(was.broken_reason) },
           });
+          // The owners who were told it stopped hear that it works again — a
+          // note in the inbox, no email (C90 (b)); one per breakage.
+          if (was.told && was.broken_since !== null) {
+            await emit(tx, this.tenantId, {
+              kind: "integration.fortnox_restored",
+              entity: { type: "IntegrationConnection", id: this.connection.id },
+              receivers: await ownersOf(tx, this.tenantId),
+              dedupeKey: `integration.fortnox_restored:${this.connection.id}:${was.broken_since.toISOString()}`,
+            });
+          }
           return;
         }
         await tx.$executeRaw`

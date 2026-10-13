@@ -32,6 +32,8 @@ export type FortnoxCardProps = {
   } | null;
   readonly orgDiffers: boolean;
   readonly pending: { readonly count: number; readonly first: string | null; readonly last: string | null } | null;
+  /** Entries a disconnect left never sent (slice 114c) — for a viewer the Bookkeeping page opens for. */
+  readonly unsent: number | null;
   readonly outcome: { readonly outcome: ConnectOutcome; readonly seenCompanyName: string | null; readonly seenOrgNr: string | null } | null;
 };
 
@@ -52,6 +54,9 @@ type BrokenKind = (typeof BROKEN_KINDS)[number];
 const isBrokenKind = (v: string | null | undefined): v is BrokenKind => (BROKEN_KINDS as readonly string[]).includes(v ?? "");
 /** Kinds of stop only a reconnect mends (the design review's S3). */
 const NEEDS_RECONNECT: ReadonlySet<BrokenKind> = new Set<BrokenKind>(["CONSENT_GONE", "NO_LICENCE", "COMPANY_CHANGED"]);
+
+/** The card's in-text link (as its "set up an authenticator" link). */
+const UNSENT_LINK = "rounded-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 /** Next rejects a server action's promise with its redirect, then navigates by itself. */
 const isRedirect = (e: unknown): boolean => {
@@ -271,6 +276,17 @@ export function FortnoxCard({
         <div data-testid="fortnox-expired">
           <Callout tone="caution" role="status" title={t("expired.title")}>
             {t("expired.body")}
+          </Callout>
+        </div>
+      ) : null}
+      {card.unsent !== null && card.unsent > 0 ? (
+        // Slice 114c (C90 (c)): what a disconnect left — never sent by a later connection.
+        <div data-testid="fortnox-unsent">
+          <Callout tone="caution" title={t("unsent.title", { count: card.unsent })}>
+            {t("unsent.body")}{" "}
+            <Link href="/invoices/bookkeeping#needs-you" className={UNSENT_LINK}>
+              {t("unsent.action")}
+            </Link>
           </Callout>
         </div>
       ) : null}

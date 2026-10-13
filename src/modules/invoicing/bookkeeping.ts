@@ -117,8 +117,8 @@ export const EXPORT_FILES_PAGE = 50;
 
 const memberPrincipal = (ctx: InvoicingCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
 
-/** The gates every verb takes, in order: see invoices, export them, and every client. */
-async function openBookkeeping(tx: TenantDb, ctx: InvoicingCtx): Promise<void> {
+/** The gates every verb takes, in order: see invoices, export them, and every client (also the Fortnox people's acts — `fortnox-people.ts`). */
+export async function openBookkeeping(tx: TenantDb, ctx: InvoicingCtx): Promise<void> {
   await requireAccess(tx, ctx.tenantId, ctx.actor, "invoice:view");
   await requireAccess(tx, ctx.tenantId, ctx.actor, "invoice:export");
   // A file is every client's invoices: a member scoped to some clients would
@@ -1159,6 +1159,10 @@ export type FortnoxFileState = {
   readonly waiting: number;
   /** Handed over in a download after a disconnect (slice 114c). */
   readonly downloaded: number;
+  /** Booked by hand instead of by the night (slice 114c) — a voucher whose PDF alone was attached by hand is inside `from`–`to`. */
+  readonly byHand: number;
+  /** Its connection still sends (not disconnected) — what "waiting" means (slice 114c). */
+  readonly live: boolean;
   /** Fortnox's voucher numbers, lowest and highest, and their series. */
   readonly series: string | null;
   readonly from: number | null;
@@ -1203,6 +1207,12 @@ export type BookkeepingPage = {
     readonly waiting: number;
     /** The newest booked year end when this file books on or before it — a correction into a closed year (C83 (b)). */
     readonly intoBookedYear: string | null;
+    /**
+     * While connected (slice 114c): the organisation numbers these entries
+     * name — another company's than the connected one, which is why they
+     * cannot go to its Fortnox. Empty when not connected, or none is readable.
+     */
+    readonly otherOrgs: readonly string[];
   } | null;
   /** The year end that is due (CASH only; C83 (a)), or null. */
   readonly yearEnd: {
@@ -1268,6 +1278,18 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
         waiting: mine.length - picked.length,
         // A credit note's listing books nothing — it never reopens a year (the re-check's NIT).
         intoBookedYear: lastYearEnd !== null && picked.some((c) => c.bookedOn <= lastYearEnd && c.event !== "CREDIT_NOTED") ? lastYearEnd : null,
+        // As each invoice froze its seller's number, read as the per-seller rule reads it (`orgDigitsOf`) —
+        // one company once, however it was written (the code review's nit) — and printed NNNNNN-NNNN, sorted.
+        otherOrgs: live
+          ? [
+              ...new Set(
+                mine
+                  .map((c) => orgDigitsOf(c.doc.seller.orgNr))
+                  .filter((d): d is string => d !== null)
+                  .map((d) => `${d.slice(0, 6)}-${d.slice(6)}`),
+              ),
+            ].sort()
+          : [],
       };
       if (due !== null) {
         const ye = await planYearEnd(tx, ctx.tenantId, due, settings, live?.org ?? null);
@@ -1320,6 +1342,8 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
               pdfs_owed: number;
               waiting: number;
               downloaded: number;
+              by_hand: number;
+              live: boolean;
               series: string | null;
               from_n: number | null;
               to_n: number | null;
@@ -1332,9 +1356,14 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
                    count(*) FILTER (WHERE d.state = 'BOOKED')::int AS pdfs_owed,
                    count(*) FILTER (WHERE d.state IN ('QUEUED', 'SENDING'))::int AS waiting,
                    count(*) FILTER (WHERE d.state = 'DOWNLOADED')::int AS downloaded,
+                   -- Booked by hand INSTEAD of by the night: a voucher the night booked whose PDF was then
+                   -- attached by hand keeps Fortnox's number, and stays inside "In Fortnox" (the code review's L3).
+                   count(*) FILTER (WHERE d.state = 'BY_HAND' AND d.fortnox_number IS NULL)::int AS by_hand,
+                   bool_and(c.status <> 'DISCONNECTED') AS live,
                    min(d.fortnox_series) AS series,
                    min(d.fortnox_number) AS from_n, max(d.fortnox_number) AS to_n
               FROM invoice_export_delivery d
+              JOIN integration_connection c ON c.tenant_id = d.tenant_id AND c.id = d.connection_id
              WHERE d.tenant_id = ${ctx.tenantId} AND d.export_id = ANY(${fortnoxIds}::text[])
              GROUP BY d.export_id`;
     const sentOf = new Map(sent.map((s) => [s.export_id, s]));
@@ -1392,6 +1421,8 @@ export async function readBookkeeping(ctx: InvoicingCtx, opts: { readonly before
                   pdfsOwed: s?.pdfs_owed ?? 0,
                   waiting: s?.waiting ?? 0,
                   downloaded: s?.downloaded ?? 0,
+                  byHand: s?.by_hand ?? 0,
+                  live: s?.live ?? true,
                   series: s?.series ?? null,
                   from: s?.from_n ?? null,
                   to: s?.to_n ?? null,
@@ -1629,7 +1660,8 @@ export async function makeFortnoxFile(
 
 // ── Downloading a file ──────────────────────────────────────────────
 
-export type ExportFormat = "sie" | "xlsx";
+/** The SIE import, the list — or (slice 114c) the SIE of a Fortnox file's entries handed over after a disconnect. */
+export type ExportFormat = "sie" | "xlsx" | "unsent";
 
 export type ExportedFile = { readonly bytes: Uint8Array; readonly fileName: string; readonly number: number };
 
@@ -1638,6 +1670,11 @@ export type ExportedFile = { readonly bytes: Uint8Array; readonly fileName: stri
  * import (its vouchers by day, then place) or the list (every entry). The
  * company the SIE names is the files' invoices' frozen seller. Audited with
  * the bytes' SHA-256 — what exactly was handed over (the review's nit).
+ *
+ * Slice 114c (C90 (c), (d)): "unsent" — a Fortnox file's entries HANDED OVER
+ * after a disconnect (`handOverUnsent`, deliveries DOWNLOADED), as an SIE of
+ * just those, the same bytes on every download; NOT_FOUND for any other file,
+ * or one with none handed over. A GET: the hand-over is the POST before it.
  */
 export async function exportFile(
   ctx: InvoicingCtx,
@@ -1656,15 +1693,18 @@ export async function exportFile(
     // would book them twice (§5.6). Refused here, not only unlinked; its list
     // stays downloadable.
     if (format === "sie" && file.destination === "FORTNOX") return deny("NOT_FOUND");
+    if (format === "unsent" && file.destination !== "FORTNOX") return deny("NOT_FOUND");
     const entries = await tx.invoiceExportEntry.findMany({
-      where: { exportId },
+      // Slice 114c: only what a person was handed after a disconnect — never an entry sent, booked by hand or still owed.
+      where: format === "unsent" ? { exportId, delivery: { is: { state: "DOWNLOADED" } } } : { exportId },
       orderBy: { position: "asc" },
       select: { invoiceId: true, position: true, event: true, bookedOn: true, voucher: true, detail: true },
     });
+    if (format === "unsent" && entries.length === 0) return deny("NOT_FOUND");
     const docs = await loadDocs(tx, [...new Set(entries.map((e) => e.invoiceId))]);
     let bytes: Uint8Array;
     let fileName: string;
-    if (format === "sie") {
+    if (format === "sie" || format === "unsent") {
       const first = entries.length > 0 ? docs.get(entries[0]!.invoiceId) : undefined;
       const vouchers = entries
         .map((e) => ({ e, v: voucherFromJson(e.voucher, isoDay(e.bookedOn)) }))
@@ -1677,7 +1717,7 @@ export async function exportFile(
         series: file.series,
         vouchers,
       });
-      fileName = `fortleva-fakt-${file.number}.si`;
+      fileName = format === "unsent" ? `fortleva-fakt-${file.number}-ej-skickade.si` : `fortleva-fakt-${file.number}.si`;
     } else {
       const rows = entries.map((e) => {
         const doc = docs.get(e.invoiceId);

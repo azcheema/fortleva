@@ -313,6 +313,20 @@ export const AUDIT_EVENTS = {
   "integration.broken": TENANT,
   "integration.restored": TENANT,
   "invoice_export.sent": TENANT,
+  // Phase 4 slice 114c — a person's acts on an entry owed to Fortnox
+  // (fortnox-people.ts; C90), each as the member, under the Bookkeeping page's
+  // gates. `invoice_export.entry_booked_by_hand`: "it is in Fortnox's books"
+  // (or its PDF attached there) — Fortleva never sends it; the file's number,
+  // the entry, its event, the invoice's number and the state it left.
+  // `invoice_export.entry_not_in_fortnox`: an unanswered voucher of a
+  // disconnected connection declared never made — back in the queue, so it
+  // downloads. `invoice_export.unsent_downloaded`: a disconnected
+  // connection's file of entries never sent handed over to the person — how
+  // many (each later download of its SIE is `invoice_export.downloaded`,
+  // format "unsent", with the bytes' hash).
+  "invoice_export.entry_booked_by_hand": TENANT,
+  "invoice_export.entry_not_in_fortnox": TENANT,
+  "invoice_export.unsent_downloaded": TENANT,
   // Data egress
   "export.requested": TENANT,
   "export.generated": TENANT,

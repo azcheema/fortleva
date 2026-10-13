@@ -39,7 +39,10 @@ type KindCopyKey =
   | "contractSigned"
   | "contractDeclined"
   | "contractEnding"
-  | "renewalDrafted";
+  | "renewalDrafted"
+  | "fortnoxStopped"
+  | "fortnoxStillStopped"
+  | "fortnoxRestored";
 
 export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "work_item.assigned": "assigned",
@@ -61,6 +64,9 @@ export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "contract.signed": "contractSigned",
   "contract.declined": "contractDeclined",
   "invoice.renewal_drafted": "renewalDrafted",
+  "integration.fortnox_stopped": "fortnoxStopped",
+  "integration.fortnox_still_stopped": "fortnoxStillStopped",
+  "integration.fortnox_restored": "fortnoxRestored",
 };
 
 /** The label for a row whose kind this build does not know — a row

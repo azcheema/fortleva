@@ -178,3 +178,15 @@ export {
   type FortnoxCheck,
   type FortnoxCheckItem,
 } from "./fortnox-connection";
+// Phase 4 slice 114c — the nightly send's people's side (founder decision C90).
+export {
+  handOverUnsent,
+  markFortnoxDelivery,
+  NEEDS_YOU_MAX,
+  readFortnoxNeeds,
+  type FortnoxNeed,
+  type FortnoxNeeds,
+  type HandedOver,
+  type UnsentFile,
+} from "./fortnox-people";
+export type { FortnoxAct } from "./fortnox-acts";

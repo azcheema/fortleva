@@ -112,6 +112,44 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Fortleva har gjort ett fakturautkast för en kunds avtal som snart förnyas. Granska det och utfärda det sedan.",
     },
   },
+  // Phase 4 slice 114c (C89 (c), (e), C90) — sending to Fortnox stopped:
+  // once per breakage, then every Monday while it lasts. To the owners as
+  // their level allows. LINKS, NOT DATA: neither the company, the entry, the
+  // kind of stop nor Fortnox's words — the Bookkeeping page says them (S8).
+  // NEUTRAL on purpose (the code review's M1): a stop may be an entry Fortnox
+  // refused, or only an invoice's PDF that never attached while the entries
+  // themselves went on — "Fortnox stopped taking your entries" would be false.
+  "integration.fortnox_stopped": {
+    en: {
+      subject: "Sending to Fortnox needs your attention",
+      body: "Fortleva couldn't send everything to Fortnox — an entry, or an invoice's PDF. Nothing is lost: see what and why on the Bookkeeping page.",
+    },
+    sv: {
+      subject: "Överföringen till Fortnox behöver åtgärdas",
+      body: "Fortleva kunde inte skicka allt till Fortnox – en verifikation eller en fakturas pdf. Inget går förlorat: se vad och varför på sidan Bokföring.",
+    },
+  },
+  "integration.fortnox_still_stopped": {
+    en: {
+      subject: "Sending to Fortnox still needs your attention",
+      body: "Something still isn't reaching Fortnox, so your books there may be falling behind. See what and why on the Bookkeeping page.",
+    },
+    sv: {
+      subject: "Överföringen till Fortnox behöver fortfarande åtgärdas",
+      body: "Något når fortfarande inte Fortnox, så bokföringen där kan släpa efter. Se vad och varför på sidan Bokföring.",
+    },
+  },
+  // Never mailed (COALESCED, no `email` — C90 (b)); every kind still carries its copy.
+  "integration.fortnox_restored": {
+    en: {
+      subject: "Sending to Fortnox works again",
+      body: "Fortleva sends to Fortnox again, and anything that was waiting follows.",
+    },
+    sv: {
+      subject: "Överföringen till Fortnox fungerar igen",
+      body: "Fortleva skickar till Fortnox igen, och det som har väntat följer efter.",
+    },
+  },
   // Phase 3V slice 89 — the renewal reminders. LINKS, NOT DATA, as every
   // mail here: no asset, agreement, client or login is named, and the
   // count and the days stay in the inbox, which renders them under the
@@ -523,6 +561,11 @@ const linkFor = (
   if (key === INVOICE_DETAILS_CHANGED_MAIL) return new URL("/settings/invoicing", appUrl);
   // The Fortnox connection (slice 114): its card on Settings → Invoicing.
   if (key === INTEGRATION_CONNECTED_MAIL || key === INTEGRATION_DISCONNECTED_MAIL) return new URL("/settings/invoicing#fortnox", appUrl);
+  // Fortnox stopped, or works again (slice 114c): the Bookkeeping page, which
+  // says which entry and why — every receiver is an owner, whom it opens for.
+  if (key === "integration.fortnox_stopped" || key === "integration.fortnox_still_stopped" || key === "integration.fortnox_restored") {
+    return new URL("/invoices/bookkeeping", appUrl);
+  }
   // An invoice issued with a Pay now link (slice 109): that invoice's page —
   // the id the issue put in `params`, else the list.
   if (key === INVOICE_PAY_LINK_ISSUED_MAIL) {

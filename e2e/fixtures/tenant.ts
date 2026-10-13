@@ -310,6 +310,16 @@ export async function runFortnoxNight(tenantId: string): Promise<{ skipped: stri
   return runCli<{ skipped: string | null; booked: number; files: number; stopped: string | null }>(["run-fortnox-night", tenantId]);
 }
 
+/** The night stopped (slice 114c): one more invoice, the night opened, the fake Fortnox with no financial year. */
+export async function stopFortnoxWorkspace(tenantId: string): Promise<{ ready: boolean; invoice: string }> {
+  return runCli<{ ready: boolean; invoice: string }>(["fortnox-stop-workspace", tenantId]);
+}
+
+/** The workspace's Fortnox connection disconnected as its owner (slice 114c), without a code. */
+export async function disconnectFortnoxWorkspace(tenantId: string): Promise<{ disconnected: number }> {
+  return runCli<{ disconnected: number }>(["fortnox-disconnect", tenantId]);
+}
+
 /** The workspace ready to issue — company details, a real encrypted Bankgiro, the client's address (slice 108; `seed-cli.ts` says how). */
 export async function readyInvoicing(tenantId: string, clientId: string): Promise<void> {
   await runCli<{ ready: number }>(["ready-invoicing", tenantId, clientId]);

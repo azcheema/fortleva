@@ -316,6 +316,13 @@ export type DomainErrorCode =
   | "FORTNOX_ALREADY_CONNECTED" // the workspace is connected already: disconnect first
   | "FORTNOX_NOT_CONNECTED" // there is no connection to check or disconnect
   | "FORTNOX_TOO_MANY" // too many connects or checks just now
+  // Phase 4 slice 114c — the nightly send's people's side (src/modules/invoicing/fortnox-people.ts; C90).
+  | "FORTNOX_BUSY" // the nightly send holds the connection right now: try again in a minute
+  | "FORTNOX_ENTRY_DECIDED" // that entry was sent, decided or handed over meanwhile — reload
+  | "FORTNOX_ENTRY_NOT_STUCK" // Fortleva still sends that entry by itself: only the entry it stopped at, or a PDF a day overdue, is a person's
+  | "FORTNOX_UNSURE_FIRST" // an entry of this file may already be in Fortnox: decide it before the file is handed over
+  | "FORTNOX_OLDER_FIRST" // an older file's entries were not sent either: hand that one over first
+  | "FORTNOX_UNSENT_CHANGED" // the entries not sent changed since the page was read — look again
   | "CONTRACT_SIGNER_INVALID"; // the picked signer is not a main contact of this client in the portal (the database holds "of this client"; sending re-checks the rest — 112b)
 
 export class DomainError extends Error {

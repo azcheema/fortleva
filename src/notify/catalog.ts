@@ -360,6 +360,47 @@ const KINDS = {
     audience: "MEMBER",
     class: "COALESCED",
   },
+  /**
+   * Phase 4 slice 114c (founder decisions C89 (c), (e), C90 (a)): sending to
+   * Fortnox stopped (an entry refused, or only a PDF that never attached —
+   * the words are neutral, "needs attention": the code review's M1) — told ONCE per
+   * breakage (`stopped`), then every Monday at 08:00 workspace time while it
+   * is still stopped (`still_stopped`), by the nightly send itself
+   * (`tellOwners`, `src/modules/invoicing/fortnox-send.ts`). To the
+   * workspace's ACTIVE OWNERS, reason OWNER (C89 (c)).
+   *
+   * INSTANT and PARTICIPATING — "inbox and email as the owner's email setting
+   * allows, the same rule as other work notices" (C90 (a), over email always
+   * like a security notice): books that quietly fall behind are the risk, and
+   * a member who turned email down to MENTIONS has said they only want to be
+   * named. No `debounceMinutes`, no `cancelledIfRead`: the connection's
+   * `stop_told_at` is the dedupe, and a Monday reminder is meant to land even
+   * over an unread first notice. Entity: the CONNECTION; the inbox names its
+   * Fortnox company and links to the Bookkeeping page under the reader's own
+   * codes (`fortnoxSubjects`, `src/modules/invoicing/subjects.ts`); the mail
+   * names nothing (S8, ARC-09).
+   */
+  "integration.fortnox_stopped": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
+  "integration.fortnox_still_stopped": {
+    audience: "MEMBER",
+    class: "INSTANT",
+    email: { atLevel: "PARTICIPATING" },
+  },
+  /**
+   * Phase 4 slice 114c (founder decision C90 (b)): sending to Fortnox works
+   * again — written in the transaction that audits `integration.restored`,
+   * only when the owners were told of that breakage. A NOTE IN THE INBOX, NO
+   * EMAIL: COALESCED with no `email`, so it neither mails nor pushes; the
+   * team's summary still counts it while unread, as every kind (C68 (h)).
+   */
+  "integration.fortnox_restored": {
+    audience: "MEMBER",
+    class: "COALESCED",
+  },
 } as const satisfies Record<string, NotificationKindSpec>;
 
 export type NotificationKind = keyof typeof KINDS;

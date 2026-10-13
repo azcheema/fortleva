@@ -14,13 +14,17 @@ import { exportFile, LIST_COLUMNS, LIST_EVENTS, VAT_PROFILES, type ListWords } f
  * `invoice:export`, `invoice:view` and the tenant-wide scope, and audits the
  * bytes' hash). Tenant and member from the session, never the URL; a
  * same-origin attachment, `no-store` (ARC-25).
+ *
+ * `/unsent` (slice 114c; C90 (d)): the SIE of a Fortnox file's entries handed
+ * over after a disconnect — as often as asked; the hand-over itself is the
+ * POST before it (`handOverUnsentAction`), never this GET.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string; format: string }> }): Promise<Response> {
   const refused = crossSiteRefusal(request);
   if (refused) return refused;
   const { id, format } = await params;
   if (!isUuid(id)) return badRequest("file");
-  if (format !== "sie" && format !== "xlsx") return badRequest("format");
+  if (format !== "sie" && format !== "xlsx" && format !== "unsent") return badRequest("format");
   const { membership, actor } = await requireTenantContext();
   const t = await getTranslations("invoices.bookkeeping.list");
   const formatter = await getFormatter();
@@ -36,7 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   };
   try {
     const file = await exportFile({ tenantId: membership.tenantId, actor }, id, format, words);
-    return fileResponse(file.bytes, file.fileName, format === "sie" ? "application/octet-stream" : XLSX_MIME);
+    return fileResponse(file.bytes, file.fileName, format === "xlsx" ? XLSX_MIME : "application/octet-stream");
   } catch (e) {
     return downloadFailure(e, "/invoices/bookkeeping");
   }

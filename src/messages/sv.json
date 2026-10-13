@@ -287,7 +287,10 @@
       "contractSigned": "En kund har skrivit under ett kontrakt",
       "contractDeclined": "En kund har tackat nej till ett kontrakt",
       "contractEnding": "Ett kontrakt löper ut",
-      "renewalDrafted": "En förnyelsefaktura väntar på granskning"
+      "renewalDrafted": "En förnyelsefaktura väntar på granskning",
+      "fortnoxStopped": "Överföringen till Fortnox behöver åtgärdas",
+      "fortnoxStillStopped": "Överföringen till Fortnox behöver fortfarande åtgärdas",
+      "fortnoxRestored": "Överföringen till Fortnox fungerar igen"
     },
     "reminder": {
       "assetDue": "Ska förnyas inom {days, plural, one {# dag} other {# dagar}}",
@@ -1707,6 +1710,11 @@
         "expired": {
           "title": "Kopplingen tog för lång tid",
           "body": "Det tog mer än tio minuter, eller så öppnades sidan igen. Tryck på Koppla till Fortnox en gång till."
+        },
+        "unsent": {
+          "title": "{count, plural, one {# verifikation från före bortkopplingen väntar på dig} other {# verifikationer från före bortkopplingen väntar på dig}}",
+          "body": "Ladda ner dem som en fil, eller markera dem, på sidan Bokföring – en koppling som görs senare skickar dem aldrig.",
+          "action": "Öppna Bokföring"
         }
       }
     }
@@ -1976,7 +1984,13 @@
     "FORTNOX_NO_ORG_NR": "Fyll först i företagets organisationsnummer i företagskortet – det måste stämma med företagets i Fortnox.",
     "FORTNOX_ALREADY_CONNECTED": "Den här arbetsytan är redan kopplad till Fortnox. Koppla bort den först.",
     "FORTNOX_NOT_CONNECTED": "Den här arbetsytan är inte kopplad till Fortnox. Ladda om sidan.",
-    "FORTNOX_TOO_MANY": "För många försök just nu. Vänta några minuter och försök igen."
+    "FORTNOX_TOO_MANY": "För många försök just nu. Vänta några minuter och försök igen.",
+    "FORTNOX_BUSY": "Fortleva skickar till Fortnox just nu. Försök igen om en minut.",
+    "FORTNOX_ENTRY_DECIDED": "Den verifikationen har skickats eller markerats under tiden. Ladda om sidan.",
+    "FORTNOX_ENTRY_NOT_STUCK": "Fortleva skickar fortfarande den verifikationen av sig självt. Ladda om sidan.",
+    "FORTNOX_UNSURE_FIRST": "En av filens verifikationer kan redan finnas i Fortnox. Bestäm den först.",
+    "FORTNOX_OLDER_FIRST": "En äldre fils verifikationer skickades inte heller. Ladda ner den filen först.",
+    "FORTNOX_UNSENT_CHANGED": "Verifikationerna som inte skickades har ändrats under tiden. Ladda om sidan."
   },
   "assignments": {
     "title": "Team",
@@ -5592,7 +5606,8 @@
           "body": "En inbetalning daterad då har markerats eller ändrats sedan dess. Kontrollera med er redovisningskonsult att året fortfarande är öppet i Fortnox innan du läser in filen — och att inget i den redan har bokförts där för hand."
         },
         "otherTitle": "Poster för ett annat företag",
-        "otherBody": "De här hör till ett annat företag än {company} och kan inte skickas till dess Fortnox. Gör en fil av dem till den bokföring där de hör hemma."
+        "otherBody": "De här hör till ett annat företag än {company} och kan inte skickas till dess Fortnox. Gör en fil av dem till den bokföring där de hör hemma.",
+        "otherBodyOrgs": "De här är fakturor från ett annat företag än {company} (org.nr {orgs}) och kan inte skickas till dess Fortnox. Gör en fil av dem till den bokföring där de hör hemma."
       },
       "yearEnd": {
         "title": "Bokslut {day}: obetalda fakturor",
@@ -5649,8 +5664,12 @@
           "waiting": "Väntar på Fortnox",
           "sending": "Skickas till Fortnox — {booked} av {vouchers}",
           "done": "I Fortnox: {series} {numbers}",
-          "pdfs": "{count, plural, one {# PDF att bifoga} other {# PDF:er att bifoga}}"
-        }
+          "pdfs": "{count, plural, one {# PDF att bifoga} other {# PDF:er att bifoga}}",
+          "byHand": "{count, plural, one {# bokförd för hand} other {# bokförda för hand}}",
+          "downloaded": "{count, plural, one {# nedladdad som fil} other {# nedladdade som fil}}",
+          "notSent": "{count, plural, one {# inte skickad} other {# inte skickade}}"
+        },
+        "unsent": "Ej skickade (SIE)"
       },
       "help": {
         "title": "Läsa in i Fortnox",
@@ -5726,6 +5745,50 @@
         "waiting": "{count, plural, one {# verifikation är på väg.} other {# verifikationer är på väg.}}",
         "stoppedAt": "Det stannade vid faktura {invoice}, daterad {day}.",
         "said": "Fortnox svarade: ”{message}”"
+      },
+      "needs": {
+        "title": "Väntar på dig",
+        "description": "Verifikationer som bara en person kan avgöra.",
+        "columns": {
+          "entry": "Verifikation",
+          "date": "Datum",
+          "state": "Status",
+          "actions": "Åtgärder"
+        },
+        "state": {
+          "stopped": "Skickandet stoppades här – se varför ovan. Markera den bara om den redan finns i Fortnox bokföring, eller om ni har bestämt att den inte ska dit.",
+          "pdfOwed": "I Fortnox som {series} {number}, men en pdf är inte bifogad.",
+          "notSent": "Skickades aldrig till Fortnox.",
+          "unsure": "Kan redan finnas i Fortnox: titta i verifikationsserie {series} från nummer {from} efter ”{marker}” i kommentaren.",
+          "unsureBare": "Kan redan finnas i Fortnox."
+        },
+        "act": {
+          "byHand": "Bokförd för hand…",
+          "pdfByHand": "Pdf:er bifogade för hand…",
+          "notInFortnox": "Finns inte i Fortnox…"
+        },
+        "confirm": {
+          "byHand": "Markera den som bokförd för hand? Fortleva skickar den aldrig till Fortnox.",
+          "pdfByHand": "Markera dess pdf:er som bifogade för hand? Fortleva slutar försöka bifoga dem.",
+          "notInFortnox": "Finns den inte i Fortnox? Den hamnar bland verifikationerna som inte skickades, för nedladdning – finns den i Fortnox ändå bokförs den två gånger när filen importeras."
+        },
+        "byHandDone": "Markerad. Fortleva skickar den inte.",
+        "notInFortnoxDone": "Markerad som saknad i Fortnox – den finns bland verifikationerna som inte skickades.",
+        "more": "{count, plural, one {# verifikation till väntar} other {# verifikationer till väntar}} – de visas här när de här är avgjorda.",
+        "never": "Fortleva skickar aldrig en verifikation som du markerar, och en koppling som görs senare skickar aldrig dem som blev kvar vid en bortkoppling.",
+        "unsent": {
+          "line": "Fil {number}: {count, plural, one {# verifikation skickades inte} other {# verifikationer skickades inte}} innan Fortnox kopplades bort.",
+          "lineUnsureOnly": "Fil {number}:",
+          "unsure": "{count, plural, one {# kan redan finnas i Fortnox – avgör den i listan nedan först.} other {# kan redan finnas i Fortnox – avgör dem i listan nedan först.}}",
+          "older": "Ladda först ner verifikationerna i fil {number}.",
+          "open": "Ladda ner dem…",
+          "confirmTitle": "Ladda ner {count, plural, one {# verifikation} other {# verifikationer}} i fil {number} som inte skickades?",
+          "confirmBody": "Fortleva skickar dem aldrig till Fortnox. Importera filen i Fortnox själv – Bokföring → Importera SIE-fil – en gång.",
+          "confirmAgain": "Du kan ladda ner den igen från filens rad: Ej skickade (SIE).",
+          "confirm": "Ladda ner",
+          "handedOver": "Fil {number}: {count, plural, one {# verifikation överlämnad} other {# verifikationer överlämnade}} – nedladdningen börjar.",
+          "olderDecide": "Avgör först verifikationen i fil {number}."
+        }
       }
     },
     "hoursPage": {

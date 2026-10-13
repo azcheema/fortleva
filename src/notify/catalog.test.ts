@@ -105,7 +105,7 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * — INSTANT because an alarm must not wait for a digest. The next test
    * pins that it never mails through `emailAllowed`, at any level.
    */
-  it("the instant set is assignment, mention, the eight client-caused kinds, the three renewal reminders, the door's alarm and the update reminder — and nothing else", () => {
+  it("the instant set is assignment, mention, the eight client-caused kinds, the three renewal reminders, the door's alarm, the update reminder and Fortnox's stop — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -137,6 +137,11 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       // A signed contract's end (Phase 4 slice 112c2, C86 (c)): like an agreement's.
       "expiration.contract_ending",
       "expiration.logins_expiring",
+      // Fortnox stopped taking the workspace's entries, and the Monday
+      // reminders while it lasts (Phase 4 slice 114c, C89 (e), C90 (a)):
+      // books quietly falling behind are the risk — never a digest's.
+      "integration.fortnox_still_stopped",
+      "integration.fortnox_stopped",
       // A project's progress update is due or late (Phase 5 slice 102,
       // C70): the receiver's own job on a day — a digest is a day late.
       "project_update.due",

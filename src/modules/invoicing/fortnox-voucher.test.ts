@@ -1,6 +1,43 @@
 import { describe, expect, it } from "vitest";
 
-import { draftOf, isOurVoucher, isThrowawayWorkspace, markerOf, storedReason, THROWAWAY_EMAIL_DOMAIN } from "./fortnox-voucher";
+import { draftOf, isOurVoucher, isThrowawayWorkspace, markerOf, stopReminderDue, storedReason, THROWAWAY_EMAIL_DOMAIN } from "./fortnox-voucher";
+
+/**
+ * Slice 114c (C89 (e)): a stop's Monday reminder — 08:00 on the workspace's
+ * wall clock, once a week, never hours after the first notice. 2026-10-12 is
+ * a Monday; Stockholm is UTC+2 until 25 October, UTC+1 after.
+ */
+describe("stopReminderDue", () => {
+  const ZONE = "Europe/Stockholm";
+  const at = (iso: string) => new Date(iso);
+
+  it("due from Monday 08:00 local when the owners were last told more than a day before", () => {
+    expect(stopReminderDue(at("2026-10-12T06:30:00Z"), ZONE, at("2026-10-09T10:00:00Z"))).toEqual({ week: "2026-W42" });
+    // 07:59 local: not yet.
+    expect(stopReminderDue(at("2026-10-12T05:59:00Z"), ZONE, at("2026-10-09T10:00:00Z"))).toBeNull();
+  });
+
+  it("not hours after the first notice: told on Sunday evening, nothing on Monday morning", () => {
+    expect(stopReminderDue(at("2026-10-12T06:30:00Z"), ZONE, at("2026-10-11T20:00:00Z"))).toBeNull();
+    // The next Monday it is.
+    expect(stopReminderDue(at("2026-10-19T06:30:00Z"), ZONE, at("2026-10-11T20:00:00Z"))).toEqual({ week: "2026-W43" });
+  });
+
+  it("once a week: a reminder sent this Monday holds until the next", () => {
+    expect(stopReminderDue(at("2026-10-12T09:00:00Z"), ZONE, at("2026-10-12T06:05:00Z"))).toBeNull();
+    expect(stopReminderDue(at("2026-10-18T20:00:00Z"), ZONE, at("2026-10-12T06:05:00Z"))).toBeNull();
+  });
+
+  it("a week whose Monday the job missed still gets its reminder later that week", () => {
+    expect(stopReminderDue(at("2026-10-15T12:00:00Z"), ZONE, at("2026-10-09T10:00:00Z"))).toEqual({ week: "2026-W42" });
+  });
+
+  it("08:00 on the wall clock across the change to winter time", () => {
+    // Monday 26 October: 08:00 Stockholm is 07:00Z.
+    expect(stopReminderDue(at("2026-10-26T06:30:00Z"), ZONE, at("2026-10-20T10:00:00Z"))).toBeNull();
+    expect(stopReminderDue(at("2026-10-26T07:05:00Z"), ZONE, at("2026-10-20T10:00:00Z"))).toEqual({ week: "2026-W44" });
+  });
+});
 
 /**
  * The nightly send's pure pieces (slice 114b): the voucher an entry froze as

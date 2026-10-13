@@ -15,10 +15,14 @@ import { describe, expect, it } from "vitest";
  * normalised, so a re-indented rule is still the same rule), and fails on
  * any HUNK — a run of added or removed lines — without a line saying "114b".
  * A reviewer then reads only the marked hunks.
+ *
+ * Slice 114c (migration 20261021090000) re-creates `integration_connection_guard`
+ * the same way, its hunks marked "114c" — the second block below.
  */
 
 const MIGRATIONS = join(__dirname, "..", "..", "..", "prisma", "migrations");
-const NEW = "20261020090000_fortnox_send";
+
+type Replaced = { readonly fn: string; readonly from: string; readonly removed: readonly string[] };
 
 /**
  * Each function, the migration it was copied from, and EVERY line of the old
@@ -26,7 +30,7 @@ const NEW = "20261020090000_fortnox_send";
  * cannot hide a removal (the pre-apply review's nit). Each is replaced by a
  * widened twin in a marked hunk; a reviewer reads them here.
  */
-const REPLACED: readonly { readonly fn: string; readonly from: string; readonly removed: readonly string[] }[] = [
+const REPLACED_114B: readonly Replaced[] = [
   {
     fn: "invoice_export_lock",
     from: "20261010230000_invoice_bookkeeping_export",
@@ -46,6 +50,23 @@ const REPLACED: readonly { readonly fn: string; readonly from: string; readonly 
       "SELECT i.kind, i.status, i.issue_date, i.paid_on",
     ],
   },
+];
+
+/** Slice 114c: the connection's guard — `stop_told_at` among the sender's columns. */
+const REPLACED_114C: readonly Replaced[] = [
+  {
+    fn: "integration_connection_guard",
+    from: "20261019090000_fortnox_connection",
+    removed: [
+      "upkeep constant text[] := ARRAY['status', 'broken_since', 'broken_reason', 'last_ok_at', 'last_night', 'send_lease_until', 'send_run_id'];",
+      "OR NEW.send_lease_until IS NOT NULL THEN",
+    ],
+  },
+];
+
+const MIGRATIONS_UNDER_TEST: readonly { readonly migration: string; readonly marker: string; readonly replaced: readonly Replaced[] }[] = [
+  { migration: "20261020090000_fortnox_send", marker: "114b", replaced: REPLACED_114B },
+  { migration: "20261021090000_fortnox_people", marker: "114c", replaced: REPLACED_114C },
 ];
 
 /** A function's lines, from its CREATE to its closing `$fn$;`, whitespace normalised, blank lines dropped. */
@@ -99,20 +120,22 @@ function hunks(a: readonly string[], b: readonly string[]): Hunk[] {
   return out;
 }
 
-describe("the guards migration 20261020090000 re-creates", () => {
-  for (const { fn, from, removed } of REPLACED) {
-    it(`${fn}: every change from ${from} is in a hunk marked 114b, and only the listed old lines are gone`, () => {
-      const was = bodyOf(from, fn);
-      const now = bodyOf(NEW, fn);
-      const changes = hunks(was, now);
-      // It changed at all (the slice's point) …
-      expect(changes.length, `${fn} was re-created unchanged`).toBeGreaterThan(0);
-      // … only where it says so …
-      const unmarked = changes.filter((h) => !h.added.some((l) => l.includes("114b")));
-      expect(unmarked, `${fn}: unmarked changes`).toEqual([]);
-      // … and of the old rules, only these lines went (each replaced in its hunk).
-      expect(changes.flatMap((h) => h.removed), `${fn}: old lines removed`).toEqual(removed);
-    });
+describe("the guards slices 114b and 114c re-create", () => {
+  for (const { migration, marker, replaced } of MIGRATIONS_UNDER_TEST) {
+    for (const { fn, from, removed } of replaced) {
+      it(`${migration} — ${fn}: every change from ${from} is in a hunk marked ${marker}, and only the listed old lines are gone`, () => {
+        const was = bodyOf(from, fn);
+        const now = bodyOf(migration, fn);
+        const changes = hunks(was, now);
+        // It changed at all (the slice's point) …
+        expect(changes.length, `${fn} was re-created unchanged`).toBeGreaterThan(0);
+        // … only where it says so …
+        const unmarked = changes.filter((h) => !h.added.some((l) => l.includes(marker)));
+        expect(unmarked, `${fn}: unmarked changes`).toEqual([]);
+        // … and of the old rules, only these lines went (each replaced in its hunk).
+        expect(changes.flatMap((h) => h.removed), `${fn}: old lines removed`).toEqual(removed);
+      });
+    }
   }
 
   it("the diff finds an unmarked change (the test tests something)", () => {

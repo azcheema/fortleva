@@ -1,13 +1,41 @@
 import type { TenantDb } from "@/db";
 import { voucherBody } from "@/integrations/fortnox/body";
 import type { FortnoxVoucherDraft } from "@/integrations/fortnox/types";
+import { dueAt } from "@/notify/weekly-reminder";
 
 /**
  * THE NIGHTLY SEND'S PURE PIECES (Phase 4 slice 114b) — the voucher an entry
  * froze as Fortnox takes it, the marker a reconcile matches, and a stop's
- * reason as the connection keeps it. Pure, so `fortnox-voucher.test.ts` pins
- * them; `fortnox-send.ts` uses them.
+ * reason as the connection keeps it; and (slice 114c) when a stop's Monday
+ * reminder is due. Pure, so `fortnox-voucher.test.ts` pins them;
+ * `fortnox-send.ts` uses them.
  */
+
+/**
+ * A booked voucher whose PDF is still not attached after this is reported
+ * (PDF_MISSING) — and, from then on, a person may mark it attached by hand
+ * (slice 114c). Here, not in `fortnox-send.ts`, because the Bookkeeping page
+ * reads it too and that module imports the page's.
+ */
+export const PDF_GRACE_MS = 24 * 3_600_000;
+
+/** The Monday reminder's day and hour, on the workspace's wall clock (C89 (e); C90). */
+export const STOP_REMINDER_WEEKDAY = 1;
+export const STOP_REMINDER_HOUR = 8;
+
+/**
+ * Whether a stop's Monday reminder is due now (slice 114c; C89 (e)): this ISO
+ * week's Monday 08:00 in the workspace's zone has passed, and the owners were
+ * last told MORE THAN A DAY before it — so a stop told on Sunday evening is
+ * not told again on Monday morning, and a week whose Monday the job missed
+ * still gets its reminder on a later day of that week. The week's key, or null.
+ */
+export function stopReminderDue(now: Date, timeZone: string, lastTold: Date): { readonly week: string } | null {
+  const due = dueAt(now, timeZone, STOP_REMINDER_WEEKDAY, STOP_REMINDER_HOUR);
+  if (due === null || now.getTime() < due.at.getTime()) return null;
+  if (lastTold.getTime() >= due.at.getTime() - 24 * 3_600_000) return null;
+  return { week: `${due.isoYear}-W${String(due.isoWeek).padStart(2, "0")}` };
+}
 
 /** Under the FAKE transport, a workspace is sent only when every member's address ends so (S′10b). */
 export const THROWAWAY_EMAIL_DOMAIN = "@test.invalid";

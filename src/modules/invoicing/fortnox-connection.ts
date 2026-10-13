@@ -573,6 +573,12 @@ export type FortnoxCard = {
   readonly orgDiffers: boolean;
   /** Entries waiting for a file — the first night's — for a viewer who may see the books, while a Fortnox exists. */
   readonly pending: { readonly count: number; readonly first: string | null; readonly last: string | null } | null;
+  /**
+   * Entries a disconnect left never sent (slice 114c; C90 (c)) — for a viewer
+   * the Bookkeeping page opens for, where they are downloaded or marked; 0
+   * when none, null for anyone else.
+   */
+  readonly unsent: number | null;
   /** The viewer's OWN attempt the callback just finished (S9), or null. */
   readonly outcome: {
     readonly outcome: ConnectOutcome;
@@ -622,6 +628,15 @@ export async function readFortnoxCard(
       // The company card's entries only: another seller's never go to Fortnox (slice 114b, §10.3).
       pending = await pendingForFiles(tx, ctx.tenantId, now, { onlyOrg: orgDigitsOf(cardOrg) });
     }
+    let unsent: number | null = null;
+    if (mayExport && everyClient) {
+      const [row] = await tx.$queryRaw<{ n: number }[]>`
+        SELECT (count(*))::int AS n
+          FROM invoice_export_delivery d
+          JOIN integration_connection c ON c.tenant_id = d.tenant_id AND c.id = d.connection_id
+         WHERE d.tenant_id = ${ctx.tenantId} AND c.status = 'DISCONNECTED' AND d.state IN ('QUEUED', 'SENDING')`;
+      unsent = row?.n ?? 0;
+    }
     let outcome: FortnoxCard["outcome"] = null;
     if (opts.attemptId && /^[0-9a-f-]{36}$/.test(opts.attemptId)) {
       const a = await tx.integrationConnectAttempt.findFirst({
@@ -640,6 +655,7 @@ export async function readFortnoxCard(
       connection,
       orgDiffers: live !== null && cardOrg !== live.companyOrgNr,
       pending,
+      unsent,
       outcome,
     };
   });

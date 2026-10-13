@@ -304,6 +304,20 @@ export const SUMMARY_LINES: Readonly<Record<NotificationKind, Line | null>> = {
     ["1 renewal invoice is ready to check", "# renewal invoices are ready to check"],
     ["1 förnyelsefaktura väntar på granskning", "# förnyelsefakturor väntar på granskning"],
   ),
+  // Slice 114c (C90): counted like every unread kind (C68 (h)) — the stop's
+  // notice and reminders were mailed at once as the owner's level allows.
+  "integration.fortnox_stopped": line(
+    ["1 notice that sending to Fortnox needs attention", "# notices that sending to Fortnox needs attention"],
+    ["1 meddelande om att överföringen till Fortnox behöver åtgärdas", "# meddelanden om att överföringen till Fortnox behöver åtgärdas"],
+  ),
+  "integration.fortnox_still_stopped": line(
+    ["1 reminder that sending to Fortnox still needs attention", "# reminders that sending to Fortnox still needs attention"],
+    ["1 påminnelse om att överföringen till Fortnox fortfarande behöver åtgärdas", "# påminnelser om att överföringen till Fortnox fortfarande behöver åtgärdas"],
+  ),
+  "integration.fortnox_restored": line(
+    ["1 note that sending to Fortnox works again", "# notes that sending to Fortnox works again"],
+    ["1 meddelande om att överföringen till Fortnox fungerar igen", "# meddelanden om att överföringen till Fortnox fungerar igen"],
+  ),
 };
 
 const OTHER: Line = line(["1 other update", "# other updates"], ["1 annan uppdatering", "# andra uppdateringar"]);

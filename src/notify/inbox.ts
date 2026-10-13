@@ -9,7 +9,7 @@ import type { WeekStart } from "@/lib/week";
 import { readPreferences } from "@/preferences/service";
 import { DEFAULT_TIMEZONE } from "@/i18n/config";
 import { contractSubjects, isContractDecisionKind } from "@/modules/contracts/subjects";
-import { invoiceSubjects, isInvoiceSubjectKind } from "@/modules/invoicing/subjects";
+import { fortnoxSubjects, invoiceSubjects, isFortnoxSubjectKind, isInvoiceSubjectKind } from "@/modules/invoicing/subjects";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
 import {
   askDeclineSubjects,
@@ -555,6 +555,20 @@ async function resolveSubjects(
       out.set(id, { title: subject.title, href: subject.href });
     }
     rows = rows.filter((r) => !isInvoiceSubjectKind(r.kind));
+    if (rows.length === 0) return out;
+  }
+
+  // …AND FORTNOX STOPPED, STILL STOPPED, OR TAKING ENTRIES AGAIN (slice 114c,
+  // C90): the connection's company, linked to the Bookkeeping page or the
+  // Settings card under the reader's own codes — `fortnoxSubjects`. Never the
+  // fall-through below.
+  const fortnox = rows.filter((r) => isFortnoxSubjectKind(r.kind));
+  if (fortnox.length > 0) {
+    const refs = fortnox.map((r) => ({ id: r.id, kind: r.kind, entityType: r.entityType, entityId: r.entityId }));
+    for (const [id, subject] of await fortnoxSubjects(tx, ctx.tenantId, ctx.actor, refs)) {
+      out.set(id, { title: subject.title, href: subject.href });
+    }
+    rows = rows.filter((r) => !isFortnoxSubjectKind(r.kind));
     if (rows.length === 0) return out;
   }
 

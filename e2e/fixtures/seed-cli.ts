@@ -46,6 +46,8 @@
  *        tsx e2e/fixtures/seed-cli.ts forget-fortnox <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts fortnox-night-workspace <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts run-fortnox-night <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts fortnox-stop-workspace <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts fortnox-disconnect <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts set-invoice-series <tenantId> <firstNumber>
  *        tsx e2e/fixtures/seed-cli.ts plant-hours <tenantId> <projectId> <memberId> <count>
  *        tsx e2e/fixtures/seed-cli.ts plant-renewal-draft <tenantId> <clientId>
@@ -178,6 +180,9 @@ const DBTEST_PREFIXES = [
   // Phase 4 slice 114b, the nightly send — `src/modules/invoicing/fortnox-send.dbtest.ts`,
   // `setupTenant("fnxs")`.
   "fnxs-",
+  // Phase 4 slice 114c, the nightly send's people's side — `src/modules/invoicing/fortnox-people.dbtest.ts`,
+  // `setupTenant("fnxp")`.
+  "fnxp-",
   "gate-",
   "inbox-",
   // Phase 5 slice 104, the inbox's reasons and housekeeping —
@@ -2762,6 +2767,67 @@ async function runFortnoxNight(tenantId: string): Promise<void> {
 }
 
 /**
+ * THE NIGHTLY SEND STOPPED (Phase 4 slice 114c; `invoices-fortnox.spec.ts`) —
+ * in the workspace `fortnox-night-workspace` made ready: ONE more SEK invoice
+ * issued as the owner, the connection's night opened again (its last night
+ * two days back), and the fake Fortnox company left with NO financial year —
+ * so the next `run-fortnox-night` makes the night's file and stops at that
+ * invoice's entry (NO_FINANCIAL_YEAR), every run, until a person acts.
+ * Throwaway tenant only. Its result: the invoice's number.
+ */
+async function fortnoxStopWorkspace(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("fortnox-stop-workspace: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  const { addLine, createDraft, issueInvoice, updateLine } = await import("../../src/modules/invoicing");
+  const { fakeCompanyTenantIdFor, readFakeCompany, setFakeCompany } = await import("../../src/integrations/fortnox/fake");
+  try {
+    await assertE2ETenant(db, tenantId);
+    const ownerMember = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const client = await db.client.findFirstOrThrow({ where: { tenantId, name: "E2E Fortnox Client AB" }, select: { id: true } });
+    const ctx = { tenantId, actor: { memberId: ownerMember.id, mfa: { enrolled: false, verifiedAt: null } } };
+    const id = await createDraft(ctx, { clientId: client.id });
+    const line = await addLine(ctx, id, { description: "Fortnox work that waits" });
+    await updateLine(ctx, id, line, { unitPrice: "3000", vatRate: "25" });
+    await issueInvoice(ctx, id);
+    const invoice = await db.invoice.findUniqueOrThrow({ where: { id }, select: { displayNumber: true } });
+    const live = await db.integrationConnection.findFirstOrThrow({ where: { tenantId, status: { not: "DISCONNECTED" } }, select: { id: true } });
+    await db.integrationConnection.update({ where: { id: live.id }, data: { lastNight: new Date(Date.now() - 2 * 86_400_000) } });
+    const companyTenantId = fakeCompanyTenantIdFor(tenantId);
+    const company = readFakeCompany(companyTenantId);
+    if (!company) throw new Error("fortnox-stop-workspace: run fortnox-night-workspace first");
+    setFakeCompany({ ...company, years: [] });
+    process.stdout.write(`${MARKER}${JSON.stringify({ ready: true, invoice: invoice.displayNumber })}\n`);
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/**
+ * The workspace's live Fortnox connection DISCONNECTED (slice 114c) — through
+ * the platform role, which the connection's guard does not judge, as the
+ * owner, now: a person's Disconnect in a browser asks for the authenticator
+ * code, which the run spends once, in `fortnox.spec.ts`. Throwaway tenant
+ * only. Its result: how many were disconnected.
+ */
+async function fortnoxDisconnect(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("fortnox-disconnect: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  try {
+    await assertE2ETenant(db, tenantId);
+    const ownerMember = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const { count } = await db.integrationConnection.updateMany({
+      where: { tenantId, status: { not: "DISCONNECTED" } },
+      data: { status: "DISCONNECTED", disconnectedAt: new Date(), disconnectedByMemberId: ownerMember.id, sendLeaseUntil: null, sendRunId: null },
+    });
+    process.stdout.write(`${MARKER}${JSON.stringify({ disconnected: count })}\n`);
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/**
  * Make the workspace ready to issue (Phase 4 slice 108), without spending an
  * authenticator code: the company details and a Bankgiro on `tenant`, and an
  * address on ONE client — through the PLATFORM role, which the details'
@@ -3927,6 +3993,8 @@ const main = async (): Promise<void> => {
   if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);
   if (command === "run-fortnox-night") return runFortnoxNight(argument!);
+  if (command === "fortnox-stop-workspace") return fortnoxStopWorkspace(argument!);
+  if (command === "fortnox-disconnect") return fortnoxDisconnect(argument!);
   if (command === "set-invoice-series") return setInvoiceSeries(argument!, Number(process.argv[4]));
   if (command === "year-end-workspace") return yearEndWorkspace(argument!);
   if (command === "plant-hours") return plantHours(argument!, process.argv[4]!, process.argv[5]!, Number(process.argv[6]));

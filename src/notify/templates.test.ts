@@ -81,3 +81,26 @@ describe("a contract's mails", () => {
     }
   });
 });
+
+/**
+ * FORTNOX STOPPED, STILL STOPPED, WORKS AGAIN (Phase 4 slice 114c; C89 (e),
+ * C90): the owners' mails open the Bookkeeping page, which says which entry
+ * and why — the mail names nothing (S8, ARC-09), in either language.
+ */
+describe("the Fortnox stop's mails", () => {
+  const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
+
+  it("open the Bookkeeping page and carry nothing but the link", () => {
+    for (const key of ["integration.fortnox_stopped", "integration.fortnox_still_stopped", "integration.fortnox_restored"] as const) {
+      expect(isEmailTemplate(key), key).toBe(true);
+      for (const locale of ["en", "sv"]) {
+        const mail = renderEmail(key, locale, { ignored: "a stray param never reaches the mail" });
+        expect(new URL(lastLine(mail.text)).pathname, `${key} ${locale}`).toBe("/invoices/bookkeeping");
+        expect(mail.text).not.toContain("stray");
+      }
+    }
+    // The first notice and the reminder read differently, in both languages.
+    expect(renderEmail("integration.fortnox_stopped", "en", null).subject).not.toBe(renderEmail("integration.fortnox_still_stopped", "en", null).subject);
+    expect(renderEmail("integration.fortnox_stopped", "sv", null).subject).not.toBe(renderEmail("integration.fortnox_still_stopped", "sv", null).subject);
+  });
+});

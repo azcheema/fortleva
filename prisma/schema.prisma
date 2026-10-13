@@ -2026,6 +2026,8 @@ model IntegrationConnection {
   /// The nightly sender's lease (slice 114b): one sender at a time.
   sendLeaseUntil         DateTime?           @map("send_lease_until") @db.Timestamptz(6)
   sendRunId              String?             @map("send_run_id")
+  /// When the owners were last told it is stopped (slice 114c; C89 (e)): the first notice, then each Monday's. Stamped by the guard.
+  stopToldAt             DateTime?           @map("stop_told_at") @db.Timestamptz(6)
   createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
 
   tenant     Tenant                    @relation(fields: [tenantId], references: [id])

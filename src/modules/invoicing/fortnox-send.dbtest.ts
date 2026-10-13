@@ -220,6 +220,8 @@ afterAll(async () => {
   rmSync(storageDir, { recursive: true, force: true });
   if (!f) return;
   await f.deleteInvoices();
+  // Slice 114c: a stop now tells the owners — inbox rows RESTRICT the tenant.
+  await f.platform.notification.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.emailOutbox.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.client.deleteMany({ where: { tenantId: f.tenantId } });
   await f.platform.tenantPreference.deleteMany({ where: { tenantId: f.tenantId } });

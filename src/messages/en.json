@@ -287,7 +287,10 @@
       "contractSigned": "A client signed a contract",
       "contractDeclined": "A client declined a contract",
       "contractEnding": "A contract is ending",
-      "renewalDrafted": "A renewal invoice is ready to check"
+      "renewalDrafted": "A renewal invoice is ready to check",
+      "fortnoxStopped": "Sending to Fortnox needs attention",
+      "fortnoxStillStopped": "Sending to Fortnox still needs attention",
+      "fortnoxRestored": "Sending to Fortnox works again"
     },
     "reminder": {
       "assetDue": "Due for renewal within {days, plural, one {# day} other {# days}}",
@@ -1707,6 +1710,11 @@
         "expired": {
           "title": "That connect ran out of time",
           "body": "It took more than ten minutes, or the page was opened again. Press Connect to Fortnox once more."
+        },
+        "unsent": {
+          "title": "{count, plural, one {# entry from before Fortnox was disconnected waits for you} other {# entries from before Fortnox was disconnected wait for you}}",
+          "body": "Download them as a file, or mark them, on the Bookkeeping page — a connection made later never sends them.",
+          "action": "Open Bookkeeping"
         }
       }
     }
@@ -1976,7 +1984,13 @@
     "FORTNOX_NO_ORG_NR": "Fill in your company's organisation number in the company card first — it must match the Fortnox company's.",
     "FORTNOX_ALREADY_CONNECTED": "This workspace is already connected to Fortnox. Disconnect it first.",
     "FORTNOX_NOT_CONNECTED": "This workspace isn't connected to Fortnox. Reload the page.",
-    "FORTNOX_TOO_MANY": "Too many tries just now. Wait a few minutes and try again."
+    "FORTNOX_TOO_MANY": "Too many tries just now. Wait a few minutes and try again.",
+    "FORTNOX_BUSY": "Fortleva is sending to Fortnox right now. Try again in a minute.",
+    "FORTNOX_ENTRY_DECIDED": "That entry was sent or marked meanwhile. Reload the page.",
+    "FORTNOX_ENTRY_NOT_STUCK": "Fortleva still sends that entry by itself. Reload the page.",
+    "FORTNOX_UNSURE_FIRST": "One of this file's entries may already be in Fortnox. Decide that one first.",
+    "FORTNOX_OLDER_FIRST": "An older file's entries weren't sent either. Download that file first.",
+    "FORTNOX_UNSENT_CHANGED": "The entries that weren't sent changed meanwhile. Reload the page."
   },
   "assignments": {
     "title": "Team",
@@ -5592,7 +5606,8 @@
           "body": "A payment dated then was marked or changed since. Before you import this file, check with your accountant that the year is still open in Fortnox — and that nothing in it was already booked there by hand."
         },
         "otherTitle": "Entries of another company",
-        "otherBody": "These belong to another company than {company}, so they can't go to its Fortnox. Make a file of them for the books they belong in."
+        "otherBody": "These belong to another company than {company}, so they can't go to its Fortnox. Make a file of them for the books they belong in.",
+        "otherBodyOrgs": "These are invoices of another company than {company} (org. no. {orgs}), so they can't go to its Fortnox. Make a file of them for the books they belong in."
       },
       "yearEnd": {
         "title": "Year end: {day}",
@@ -5649,8 +5664,12 @@
           "waiting": "Waiting for Fortnox",
           "sending": "Sending to Fortnox — {booked} of {vouchers}",
           "done": "In Fortnox: {series} {numbers}",
-          "pdfs": "{count, plural, one {# PDF to attach} other {# PDFs to attach}}"
-        }
+          "pdfs": "{count, plural, one {# PDF to attach} other {# PDFs to attach}}",
+          "byHand": "{count, plural, one {# booked by hand} other {# booked by hand}}",
+          "downloaded": "{count, plural, one {# downloaded as a file} other {# downloaded as a file}}",
+          "notSent": "{count, plural, one {# not sent} other {# not sent}}"
+        },
+        "unsent": "Not sent (SIE)"
       },
       "help": {
         "title": "Importing into Fortnox",
@@ -5726,6 +5745,50 @@
         "waiting": "{count, plural, one {# voucher is on its way.} other {# vouchers are on their way.}}",
         "stoppedAt": "It stopped at invoice {invoice}, dated {day}.",
         "said": "Fortnox said: “{message}”"
+      },
+      "needs": {
+        "title": "Waiting for you",
+        "description": "Entries only a person can decide.",
+        "columns": {
+          "entry": "Entry",
+          "date": "Date",
+          "state": "Where it stands",
+          "actions": "Actions"
+        },
+        "state": {
+          "stopped": "Sending stopped here — see why above. Mark it only if it's already in Fortnox's books, or you've decided it shouldn't be.",
+          "pdfOwed": "In Fortnox as {series} {number}, but a PDF isn't attached.",
+          "notSent": "Never sent to Fortnox.",
+          "unsure": "May already be in Fortnox: look in voucher series {series} from number {from} for “{marker}” in the comment.",
+          "unsureBare": "May already be in Fortnox."
+        },
+        "act": {
+          "byHand": "Booked by hand…",
+          "pdfByHand": "PDFs attached by hand…",
+          "notInFortnox": "Not in Fortnox…"
+        },
+        "confirm": {
+          "byHand": "Mark it booked by hand? Fortleva will never send it to Fortnox.",
+          "pdfByHand": "Mark its PDFs attached by hand? Fortleva stops trying to attach them.",
+          "notInFortnox": "Not in Fortnox? It goes with the entries not sent, to download — if it is in Fortnox after all, importing it books it twice."
+        },
+        "byHandDone": "Marked. Fortleva won't send it.",
+        "notInFortnoxDone": "Marked as not in Fortnox — it's with the entries not sent.",
+        "more": "{count, plural, one {# more entry waits} other {# more entries wait}} — they show here once these are decided.",
+        "never": "Fortleva never sends an entry you mark, and a connection made later never sends the ones a disconnect left.",
+        "unsent": {
+          "line": "File {number}: {count, plural, one {# entry wasn't sent} other {# entries weren't sent}} to Fortnox before it was disconnected.",
+          "lineUnsureOnly": "File {number}:",
+          "unsure": "{count, plural, one {# may already be in Fortnox — decide it in the list below first.} other {# may already be in Fortnox — decide them in the list below first.}}",
+          "older": "Download the entries of file {number} first.",
+          "open": "Download them…",
+          "confirmTitle": "Download the {count, plural, one {# entry} other {# entries}} of file {number} that weren't sent?",
+          "confirmBody": "Fortleva will never send them to Fortnox. Import the file in Fortnox yourself — Bokföring → Importera SIE-fil — once.",
+          "confirmAgain": "You can download it again from the file's row: Not sent (SIE).",
+          "confirm": "Download",
+          "handedOver": "File {number}: {count, plural, one {# entry} other {# entries}} handed over — the download starts.",
+          "olderDecide": "Decide the entry of file {number} first."
+        }
       }
     },
     "hoursPage": {
