@@ -144,6 +144,10 @@ export async function setupTenant(label: string) {
       await tx.invoice.deleteMany({ where: { tenantId } });
       await tx.invoiceSeries.deleteMany({ where: { tenantId } });
       await tx.fileObject.deleteMany({ where: { tenantId, kind: "INVOICE_PDF" } });
+      // Slice 114: the Fortnox connection RESTRICTs the tenant and its
+      // attempt; both guards admit a delete under this GUC on this role.
+      await tx.integrationConnection.deleteMany({ where: { tenantId } });
+      await tx.integrationConnectAttempt.deleteMany({ where: { tenantId } });
       // Slice 112: contracts and templates, under their own maintenance GUC.
       await tx.$executeRaw`SELECT set_config('app.contract_maintenance', 'on', true)`;
       await tx.contract.deleteMany({ where: { tenantId } });

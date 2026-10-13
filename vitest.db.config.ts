@@ -43,6 +43,12 @@ delete process.env["AMAZON_SES_FEEDBACK_TOPIC_ARN"];
 // passes its own file (`issueInvoice`'s `fetchText`), anything else gets the
 // fixed table.
 process.env["FX_TRANSPORT"] = "fixed";
+// Phase 4 slice 114: never Fortnox itself from a dbtest — the file-backed fake
+// (`src/integrations/fortnox/fake.ts`), set explicitly (the default is "off"
+// everywhere), and never a founder's keys from `.env.local`.
+process.env["FORTNOX_TRANSPORT"] = "fake";
+delete process.env["FORTNOX_CLIENT_ID"];
+delete process.env["FORTNOX_CLIENT_SECRET"];
 
 // Integration suite: runs against a real Postgres as the REAL
 // app_runtime role (TENANCY.md §11 — a local owner/superuser role

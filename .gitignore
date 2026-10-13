@@ -50,6 +50,7 @@ desktop.ini
 src/generated/
 .dev-outbox/
 .dev-storage/
+.dev-fortnox/
 
 # Playwright (browser harness)
 test-results/

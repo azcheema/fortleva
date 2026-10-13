@@ -7,6 +7,7 @@ import { MEMBER_DIGEST_MAIL, renderMemberDigest } from "./digest";
 import { REPLY_ADDRESS_CHANGED_MAIL } from "./reply-address-mail-key";
 import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
 import { INVOICE_PAY_LINK_ISSUED_MAIL } from "./invoice-pay-link-mail-key";
+import { INTEGRATION_CONNECTED_MAIL, INTEGRATION_DISCONNECTED_MAIL, INTEGRATION_MAIL_KEYS } from "./integration-mail-keys";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MAIL_KEYS, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { SEALED_CONTACT_MAIL, SEALED_MAIL_KEYS, SEALED_MEMBER_MAIL } from "./sealed-mail-keys";
@@ -46,6 +47,7 @@ const EXTRA_TEMPLATES = [
   INVOICE_DETAILS_CHANGED_MAIL,
   INVOICE_PAY_LINK_ISSUED_MAIL,
   ...CONTRACT_MAIL_KEYS,
+  ...INTEGRATION_MAIL_KEYS,
 ] as const;
 
 export type EmailTemplateKey = NotificationKind | (typeof EXTRA_TEMPLATES)[number];
@@ -372,6 +374,29 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "En faktura i er arbetsyta utfärdades med en betallänk – kunden kan betala den via den sidan hos Stripe eller PayPal. Öppna fakturan för att se länken och vem som utfärdade den. Om ni inte väntade er detta, kontrollera att länken går till ert eget konto innan kunden betalar.",
     },
   },
+  // Phase 4 slice 114 — the workspace CONNECTED TO, or DISCONNECTED FROM, its
+  // Fortnox company (C89 (d); `integration-mail-keys.ts`). Security notices
+  // to every owner, whatever their level; LINKS, NOT DATA — no company named.
+  [INTEGRATION_CONNECTED_MAIL]: {
+    en: {
+      subject: "Your workspace was connected to Fortnox",
+      body: "Your workspace was connected to a Fortnox company. From the next night on, Fortleva books your invoices' entries there by itself. See which company, and who connected it, in Fortleva under Settings, Invoicing. If you did not expect this, disconnect it there now.",
+    },
+    sv: {
+      subject: "Er arbetsyta har kopplats till Fortnox",
+      body: "Er arbetsyta har kopplats till ett företag i Fortnox. Från och med nästa natt bokför Fortleva era fakturors verifikationer där av sig självt. Se vilket företag, och vem som kopplade det, i Fortleva under Inställningar, Fakturering. Om ni inte väntade er detta, koppla bort det där nu.",
+    },
+  },
+  [INTEGRATION_DISCONNECTED_MAIL]: {
+    en: {
+      subject: "Your workspace was disconnected from Fortnox",
+      body: "Your workspace was disconnected from its Fortnox company. Fortleva no longer books your invoices' entries there. See who disconnected it in Fortleva under Settings, Invoicing.",
+    },
+    sv: {
+      subject: "Er arbetsyta har kopplats bort från Fortnox",
+      body: "Er arbetsyta har kopplats bort från sitt företag i Fortnox. Fortleva bokför inte längre era fakturors verifikationer där. Se vem som kopplade bort den i Fortleva under Inställningar, Fakturering.",
+    },
+  },
   // Phase 5 slice 101 — a client person's weekly summary (C69;
   // `client-digest.ts`). The real mail is `renderContactDigest`, rendered by
   // the outbox with the person's own unsubscribe link; this copy is only what
@@ -496,6 +521,8 @@ const linkFor = (
   if (key === CONTACT_DIGEST_MAIL) return new URL("/portal", appUrl);
   if (key === REPLY_ADDRESS_CHANGED_MAIL) return new URL("/settings/preferences", appUrl);
   if (key === INVOICE_DETAILS_CHANGED_MAIL) return new URL("/settings/invoicing", appUrl);
+  // The Fortnox connection (slice 114): its card on Settings → Invoicing.
+  if (key === INTEGRATION_CONNECTED_MAIL || key === INTEGRATION_DISCONNECTED_MAIL) return new URL("/settings/invoicing#fortnox", appUrl);
   // An invoice issued with a Pay now link (slice 109): that invoice's page —
   // the id the issue put in `params`, else the list.
   if (key === INVOICE_PAY_LINK_ISSUED_MAIL) {

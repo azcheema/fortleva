@@ -288,6 +288,19 @@ export const AUDIT_EVENTS = {
   // kronor (the corrections that follow ride in later files'
   // `invoice_export.created` counts).
   "invoice_export.year_end_booked": TENANT,
+  // Phase 4 slice 114 — the direct Fortnox connection (fortnox-connection.ts;
+  // C89). `integration.connect_started`: an owner pressed Connect (the
+  // attempt's id). `integration.connect_refused`: a callback that did not
+  // connect — why (the attempt's outcome; ORG_MISMATCH and ELSEWHERE are the
+  // security signals). `integration.connected` / `integration.reconnected`:
+  // the connection, its provider and Fortnox's DatabaseNumber — NEVER an org.
+  // number (a sole trader's is a personnummer; seller.ts's rule).
+  // `integration.disconnected`: who and which connection.
+  "integration.connect_started": TENANT,
+  "integration.connect_refused": TENANT,
+  "integration.connected": TENANT,
+  "integration.reconnected": TENANT,
+  "integration.disconnected": TENANT,
   // Data egress
   "export.requested": TENANT,
   "export.generated": TENANT,

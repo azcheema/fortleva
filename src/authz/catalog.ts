@@ -333,6 +333,16 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   // already hold). C A, not ✦. The database holds it
   // (`contract_template_guard`, migration 20261011120000).
   p("contract:manage_templates", "contracts", "Create, change and delete contract templates", CA),
+  // ── Phase 4 slice 114 (+1; catalog 116 → 117; TEMPLATE_VERSION 17,
+  // 2026-10-13) — the direct Fortnox connection (founder decision C89 (d):
+  // "owners only, with their authenticator code, every owner emailed"; the
+  // connection decides where every client's invoices go). Seeded on the
+  // OWNER template only and ✦ — "owners only" is the seeding, not a
+  // structural check (an owner may grant it to a custom role, as with
+  // `credential:unseal`); its verbs also take the code typed IN THE FORM
+  // (the bank details' one-minute window). The database holds the code
+  // (`integration_connection_guard`, migration 20261019090000).
+  p("invoice:connect_bookkeeping", "invoicing", "Connect the workspace to its bookkeeping program (Fortnox), and disconnect it — every owner is emailed", C, true),
 ];
 
 export type RoleTemplate = {
@@ -431,8 +441,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
  *     slice 112, contracts, founder decision C84 (g)). C A, not ✦, so clones
  *     gain it too; additive. The same rule as v6: a release carrying this
  *     bump MUST run `prisma/seed.ts` — until it runs, nobody can keep a
- *     contract template (`contract_template_guard`). */
-export const TEMPLATE_VERSION = 16;
+ *     contract template (`contract_template_guard`).
+ * v17 (2026-10-13): +1 `invoicing` code (invoice:connect_bookkeeping ✦ —
+ *     Phase 4 slice 114, the direct Fortnox connection, founder decision
+ *     C89 (d)). Owner template only; additive. The same rule as v6: a
+ *     release carrying this bump MUST run `prisma/seed.ts` — until it runs,
+ *     nobody can connect Fortnox (`integration_connection_guard`). */
+export const TEMPLATE_VERSION = 17;
 
 export const permissionsForTemplate = (key: TemplateKey): readonly PermissionDef[] =>
   PERMISSIONS.filter((perm) => perm.seeded.includes(key));

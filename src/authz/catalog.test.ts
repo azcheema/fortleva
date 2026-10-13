@@ -8,9 +8,16 @@ import {
 } from "./catalog";
 
 describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
-  it("holds exactly 116 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 + 1 vault @ slice 95 + 1 invoicing + 1 time @ slice 110 + 1 invoicing @ slice 111 + 1 contracts @ slice 112 — bumped deliberately 2026-10-10)", () => {
-    expect(PERMISSIONS).toHaveLength(116);
-    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(116);
+  it("holds exactly 117 codes, all unique (63 v1 + 17 work @ 2W + 16 time @ 2T + 1 work @ 2W-R + 1 portal @ P3 + 1 work @ P3 slice 6b + 5 vault @ 3V slice 1 + 1 core @ slice 84 + 3 vault @ slice 87 + 1 vault @ slice 90 + 1 vault @ slice 91 + 1 vault @ slice 92 + 1 vault @ slice 95 + 1 invoicing + 1 time @ slice 110 + 1 invoicing @ slice 111 + 1 contracts @ slice 112 + 1 invoicing @ slice 114 — bumped deliberately 2026-10-13)", () => {
+    expect(PERMISSIONS).toHaveLength(117);
+    expect(new Set(PERMISSIONS.map((p) => p.code)).size).toBe(117);
+  });
+
+  it("invoice:connect_bookkeeping is invoicing-module, ✦, and the owner's alone (slice 114, C89 (d); AUTHZ.md §3.2)", () => {
+    const def = PERMISSIONS.find((p) => p.code === "invoice:connect_bookkeeping");
+    expect(def?.seeded).toEqual(["owner"]);
+    expect(def?.requiresMfa).toBe(true);
+    expect(def?.module).toBe("invoicing");
   });
 
   it("invoice:export is invoicing-module, C A, never ✦ (slice 111, C82; AUTHZ.md §3.2)", () => {
@@ -135,6 +142,8 @@ describe("permission catalog (AUTHZ.md §3.1–§3.2, closed)", () => {
         "credential:export",
         // slice 84 — puts a teammate's account back on the password alone (C50)
         "member:reset_two_factor",
+        // Phase 4 slice 114 — decides where every client's invoices are booked (C89 (d))
+        "invoice:connect_bookkeeping",
       ].sort(),
     );
   });

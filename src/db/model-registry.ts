@@ -99,6 +99,9 @@ export const MODEL_CLASSES = {
     // Phase 4 slice 112b — signatures (C84 (b)–(d), C85).
     "contractSignature",
     "contractSignatureEvidence",
+    // Phase 4 slice 114 — the direct Fortnox connection (C89).
+    "integrationConnectAttempt",
+    "integrationConnection",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -260,6 +263,10 @@ export const RLS_CLASSES = {
     // evidence of a simple electronic signature, never a client's to read
     // (moved here from the signature row by a SECURITY DEFINER trigger).
     "contractSignatureEvidence",
+    // Phase 4 slice 114 — the workspace's connection to its Fortnox company
+    // and each press of Connect (C89): the agency's books, never a client's.
+    "integrationConnectAttempt",
+    "integrationConnection",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

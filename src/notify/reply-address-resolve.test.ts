@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { CONTRACT_SENT_MAIL, CONTRACT_SIGNED_MAIL } from "./contract-mail-keys";
 import { INVOICE_DETAILS_CHANGED_MAIL } from "./invoice-details-mail-key";
 import { INVOICE_PAY_LINK_ISSUED_MAIL } from "./invoice-pay-link-mail-key";
+import { INTEGRATION_CONNECTED_MAIL, INTEGRATION_DISCONNECTED_MAIL } from "./integration-mail-keys";
 import { DOOR_ALARM_CONTACT_MAIL, DOOR_ALARM_MEMBER_MAIL } from "./door-alarm-mail-keys";
 import { LOGIN_ASK_MAIL } from "./login-ask-mail-key";
 import { MAIL_WITHOUT_REPLY_TO } from "./reply-address-resolve";
@@ -23,6 +24,8 @@ describe("mail without a reply address", () => {
       REPLY_ADDRESS_CHANGED_MAIL,
       INVOICE_DETAILS_CHANGED_MAIL,
       INVOICE_PAY_LINK_ISSUED_MAIL,
+      INTEGRATION_CONNECTED_MAIL,
+      INTEGRATION_DISCONNECTED_MAIL,
       VAULT_EXPORTED_MAIL,
       DOOR_ALARM_MEMBER_MAIL,
       ...Object.values(SEALED_MEMBER_MAIL),

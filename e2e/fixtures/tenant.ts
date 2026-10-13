@@ -295,6 +295,11 @@ export async function resetInvoiceDetails(tenantId: string): Promise<void> {
   await runCli<{ reset: number }>(["reset-invoice-details", tenantId]);
 }
 
+/** The workspace's Fortnox connection and connect attempts forgotten, and the fake's company file (slice 114). */
+export async function forgetFortnox(tenantId: string): Promise<void> {
+  await runCli<{ forgotten: number }>(["forget-fortnox", tenantId]);
+}
+
 /** The workspace ready to issue — company details, a real encrypted Bankgiro, the client's address (slice 108; `seed-cli.ts` says how). */
 export async function readyInvoicing(tenantId: string, clientId: string): Promise<void> {
   await runCli<{ ready: number }>(["ready-invoicing", tenantId, clientId]);

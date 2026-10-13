@@ -362,6 +362,19 @@ const POLICIES = {
    * already turned on.
    */
   "push.register": { limit: 20, window: "1 h" },
+  /**
+   * PRESSES OF "Connect to Fortnox" (Phase 4 slice 114), per MEMBER
+   * (`<tenantId>:<memberId>`): each one writes an attempt and sends the
+   * browser to Fortnox; the code typed with it is already budgeted
+   * (`auth.step_up`). Ten an hour is far beyond a person retrying a refusal.
+   */
+  "fortnox.connect": { limit: 10, window: "1 h" },
+  /**
+   * "Check again" on the Fortnox card (slice 114), per WORKSPACE: each one asks
+   * Fortnox a dozen questions under the workspace's company limit (25 calls
+   * in five seconds, shared with the nightly send — the design review's S13).
+   */
+  "fortnox.check": { limit: 10, window: "10 m" },
 } as const satisfies Record<string, { limit: number; window: `${number} ${"s" | "m" | "h"}` }>;
 
 export type RateLimitResult = {

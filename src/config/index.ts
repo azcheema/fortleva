@@ -119,6 +119,12 @@ const envSchema = z.object({
   PUSH_TRANSPORT: z.string().optional(),
   // Only the literal "fixed" means anything (`fxTransportKind`).
   FX_TRANSPORT: z.string().optional(),
+  // Phase 4 slice 114 — the direct Fortnox connection (founder decision C89;
+  // `fortnoxTransportKind` below). Only the literals "fake" and "live" mean
+  // anything; empty is unset, for the Upstash reason above.
+  FORTNOX_TRANSPORT: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  FORTNOX_CLIENT_ID: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  FORTNOX_CLIENT_SECRET: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
 });
 
 const env = envSchema.parse(process.env);
@@ -682,6 +688,66 @@ export const fxTransportKind: "ecb" | "fixed" = env.FX_TRANSPORT === "fixed" ? "
  * carry links, not data (ARC-09), and always point here. */
 export const absoluteUrl = (path: string): string =>
   new URL(path, appUrl).toString();
+
+/**
+ * THE DIRECT FORTNOX CONNECTION (Phase 4 slice 114; founder decision C89;
+ * docs/research/2026-10-12-slice-114-fortnox-connection-design.md §2 as
+ * amended by §10.4). Which Fortnox a workspace may connect to:
+ *
+ * - `"off"` — THE DEFAULT, EVERYWHERE (the design review's S2, R9). The
+ *   Fortnox card says "not available yet" and nothing is ever sent. **This is
+ *   how C89 (a) is kept:** Fortnox's Developer Agreement §5.2 forbids using
+ *   its API for a product "competing with Fortnox current or future
+ *   products", and §5.7 has such a use wait for Fortnox's WRITTEN consent —
+ *   so production stays `off` until the founder has that consent and sets
+ *   `live` there.
+ * - `"fake"` — `FORTNOX_TRANSPORT=fake`: the file-backed fake Fortnox
+ *   (`src/integrations/fortnox/fake.ts`), set explicitly by the harnesses
+ *   (`playwright.config.ts`, `vitest.db.config.ts`). NEVER on a production
+ *   build off loopback — a fake would "book" a workspace's entries into a
+ *   file on the server, and they would be in no bookkeeping file anywhere
+ *   (PUSH_TRANSPORT's and FX_TRANSPORT's rule, so it stops the boot).
+ * - `"live"` — Fortnox itself; needs `FORTNOX_CLIENT_ID` and
+ *   `FORTNOX_CLIENT_SECRET` (it stops the boot without them). THAT SECRET IS
+ *   A ROOT CREDENTIAL for every connected company (a consenting company's
+ *   TenantId plus the secret is a token — the design review's S1): the
+ *   PRODUCTION app's secret lives only in production's environment, never in
+ *   `.env.local`, a Vercel Preview or GitHub Actions; a developer tries the
+ *   separate TEST app against Fortnox's sandbox companies (RUNBOOK). Every
+ *   connection row records the transport and client id that made it, and a
+ *   sender skips rows not its own.
+ */
+export type FortnoxTransportKind = "off" | "fake" | "live";
+if (env.FORTNOX_TRANSPORT === "fake" && isProduction && !LOOPBACK_HOSTS.has(appUrl.hostname)) {
+  throw new Error("FORTNOX_TRANSPORT=fake on a production build off loopback (src/config): entries would be 'sent' to a fake Fortnox");
+}
+if (env.FORTNOX_TRANSPORT === "live" && (!env.FORTNOX_CLIENT_ID || !env.FORTNOX_CLIENT_SECRET)) {
+  throw new Error("FORTNOX_TRANSPORT=live needs FORTNOX_CLIENT_ID and FORTNOX_CLIENT_SECRET (src/config)");
+}
+export const fortnoxTransportKind: FortnoxTransportKind =
+  env.FORTNOX_TRANSPORT === "fake" ? "fake" : env.FORTNOX_TRANSPORT === "live" ? "live" : "off";
+/** The fake's own client id: what a fake connection row records. */
+export const FORTNOX_FAKE_CLIENT_ID = "fortleva-fake";
+/** The Fortnox app this process speaks as — recorded on every connection it makes, compared by every send. */
+export const fortnoxClientId: string | null =
+  fortnoxTransportKind === "live" ? (env.FORTNOX_CLIENT_ID ?? null) : fortnoxTransportKind === "fake" ? FORTNOX_FAKE_CLIENT_ID : null;
+/**
+ * The app's client credentials, for the live transport's token calls only —
+ * a function, so nothing holds the secret but the call that sends it.
+ */
+export const fortnoxClientCredentials = (): { readonly clientId: string; readonly clientSecret: string } | null =>
+  fortnoxTransportKind === "live" && env.FORTNOX_CLIENT_ID && env.FORTNOX_CLIENT_SECRET
+    ? { clientId: env.FORTNOX_CLIENT_ID, clientSecret: env.FORTNOX_CLIENT_SECRET }
+    : null;
+/** Fortnox's hosts (INV-D2: hosts live here and only here). */
+export const fortnoxAuthorizeUrl = "https://apps.fortnox.se/oauth-v1/auth";
+export const fortnoxTokenUrl = "https://apps.fortnox.se/oauth-v1/token";
+export const fortnoxApiBase = "https://api.fortnox.se/3";
+/** Where Fortnox sends the administrator back — registered in Fortnox's developer portal. */
+export const FORTNOX_CALLBACK_PATH = "/settings/invoicing/fortnox/callback";
+export const fortnoxRedirectUri = absoluteUrl(FORTNOX_CALLBACK_PATH);
+/** The fake's consent screen — our own route, answering only under the fake transport. */
+export const FORTNOX_FAKE_CONSENT_PATH = "/settings/invoicing/fortnox/fake-consent";
 
 /**
  * Host→plane resolution (ARC-11 / decision 9): ops.naxdor.com serves

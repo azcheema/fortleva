@@ -43,6 +43,7 @@
  *        tsx e2e/fixtures/seed-cli.ts reset-update-layouts <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts reset-invoice-details <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts ready-invoicing <tenantId> <clientId>
+ *        tsx e2e/fixtures/seed-cli.ts forget-fortnox <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts set-invoice-series <tenantId> <firstNumber>
  *        tsx e2e/fixtures/seed-cli.ts plant-hours <tenantId> <projectId> <memberId> <count>
  *        tsx e2e/fixtures/seed-cli.ts plant-renewal-draft <tenantId> <clientId>
@@ -168,6 +169,10 @@ const DBTEST_PREFIXES = [
   // `setupTenant("expir")`.
   "expir-",
   "export-",
+  // Phase 4 slice 114, the Fortnox connection — `src/modules/invoicing/fortnox-connection.dbtest.ts`,
+  // `setupTenant("fnx")` and `setupTenant("fnxb")` (the second workspace, for one company across two).
+  "fnx-",
+  "fnxb-",
   "gate-",
   "inbox-",
   // Phase 5 slice 104, the inbox's reasons and housekeeping —
@@ -1872,6 +1877,10 @@ async function removeTenant(
     await tx.invoiceExportEntry.deleteMany({ where: { tenantId } });
     await tx.invoiceExport.deleteMany({ where: { tenantId } });
     await tx.invoice.deleteMany({ where: { tenantId } });
+    // Slice 114: the Fortnox connection RESTRICTs the tenant and its attempt;
+    // both guards admit a delete under the invoice-maintenance GUC on this role.
+    await tx.integrationConnection.deleteMany({ where: { tenantId } });
+    await tx.integrationConnectAttempt.deleteMany({ where: { tenantId } });
     // Slice 112: contracts RESTRICT their client, their PDFs and the tenant,
     // and only a draft is deleted outside the contract-maintenance GUC on this
     // role; templates likewise.
@@ -2564,6 +2573,31 @@ async function resetInvoiceDetails(tenantId: string): Promise<void> {
   await db.tenantPreference.deleteMany({ where: { tenantId, key: "invoice.paymentTermsDays" } });
   await db.$disconnect();
   process.stdout.write(`${MARKER}{"reset":1}\n`);
+}
+
+/**
+ * The workspace's Fortnox connection forgotten (Phase 4 slice 114): every
+ * connection row and connect attempt of the e2e tenant — under the
+ * invoice-maintenance GUC, which both guards admit on this (platform) role —
+ * and the fake Fortnox's file for its company. The spec connects through the
+ * browser with ONE code (the TOTP owner's step-ups are shared across the run),
+ * so the disconnect is the database test's, and this puts the tenant back.
+ */
+async function forgetFortnox(tenantId: string): Promise<void> {
+  const { getPlatformClient } = await import("../../src/db/client");
+  const { fakeCompanyTenantIdFor, removeFakeCompany } = await import("../../src/integrations/fortnox/fake");
+  if (!tenantId) throw new Error("forget-fortnox: a tenant id");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const removed = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.invoice_maintenance', 'on', true)`;
+    const connections = await tx.integrationConnection.deleteMany({ where: { tenantId } });
+    await tx.integrationConnectAttempt.deleteMany({ where: { tenantId } });
+    return connections.count;
+  });
+  removeFakeCompany(fakeCompanyTenantIdFor(tenantId));
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ forgotten: removed })}\n`);
 }
 
 /**
@@ -3733,6 +3767,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-update-layouts") return resetUpdateLayouts(argument!);
   if (command === "reset-invoice-details") return resetInvoiceDetails(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
+  if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "set-invoice-series") return setInvoiceSeries(argument!, Number(process.argv[4]));
   if (command === "year-end-workspace") return yearEndWorkspace(argument!);
   if (command === "plant-hours") return plantHours(argument!, process.argv[4]!, process.argv[5]!, Number(process.argv[6]));

@@ -1547,6 +1547,166 @@
         "setUpFactor": "Set up an authenticator",
         "unreachable": "Couldn't reach Fortleva. Check your connection and try again.",
         "nothingChanged": "Nothing to save — no field was changed."
+      },
+      "fortnox": {
+        "title": "Fortnox",
+        "description": "Send your bookkeeping entries straight into your company's Fortnox every night, each with its invoice's PDF.",
+        "unavailable": "The Fortnox connection isn't available yet. Until it is, make a bookkeeping file under Invoices and import it in Fortnox.",
+        "intro": "Once connected, Fortleva sends the entries the bookkeeping file would hold into Fortnox by itself, every night, each with its invoice attached. Nothing else in Fortnox changes, and you still mark payments here.",
+        "needs": {
+          "title": "Fortnox needs",
+          "addOn": "Fortnox's integration add-on (included in its larger plans)",
+          "admin": "one of the company's system administrators in Fortnox, to approve Fortleva",
+          "series": "a voucher series {series}, marked manual (the series in the Bookkeeping card above)",
+          "year": "the financial year the entries fall in"
+        },
+        "pending": {
+          "title": "{count, plural, one {# entry goes to Fortnox on the first night} other {# entries go to Fortnox on the first night}}",
+          "body": "They are dated {first} to {last}. If any of them are already in your books, make a bookkeeping file of them first under Invoices, Bookkeeping — a file takes them out of what is sent.",
+          "bodyUndated": "If any of them are already in your books, make a bookkeeping file of them first under Invoices, Bookkeeping — a file takes them out of what is sent."
+        },
+        "ownersOnly": "Not connected. Only an owner can connect Fortnox.",
+        "needsFactor": "To connect or disconnect Fortnox you first need an authenticator app on your account.",
+        "setUpFactor": "Set up an authenticator app",
+        "codeLabel": "Your authenticator code",
+        "codeHint": "From your authenticator app — it is asked every time, and every owner gets an email.",
+        "cancel": "Cancel",
+        "connect": {
+          "open": "Connect to Fortnox…",
+          "formLabel": "Connect to Fortnox",
+          "intro": "You'll go to Fortnox, where one of the company's system administrators signs in and approves Fortleva. The Fortnox company must have the same organisation number as your company card. Nothing is sent until the night after.",
+          "submit": "Go to Fortnox"
+        },
+        "reconnect": {
+          "open": "Connect again…",
+          "formLabel": "Connect Fortnox again",
+          "intro": "You'll go to Fortnox to approve Fortleva again for the same company. What wasn't sent yet goes from the night after."
+        },
+        "disconnect": {
+          "open": "Disconnect…",
+          "formLabel": "Disconnect Fortnox",
+          "intro": "Fortleva stops sending entries to Fortnox at once. Entries not yet sent can then be downloaded as a file. Every owner gets an email.",
+          "submit": "Disconnect"
+        },
+        "disconnected": "Fortnox is disconnected.",
+        "company": "Fortnox company",
+        "orgNr": "Organisation number",
+        "connectedBy": "Connected by {name}, {when}.",
+        "someoneGone": "someone no longer in the workspace",
+        "active": "Connected. Entries go to Fortnox every night.",
+        "broken": {
+          "title": "Fortnox stopped taking entries",
+          "reconnect": "An owner needs to connect it again.",
+          "retrying": "Nothing is lost — Fortleva tries again every hour. The Bookkeeping page under Invoices says which entry and why.",
+          "kinds": {
+            "CONSENT_GONE": "Fortnox no longer accepts Fortleva — the integration was removed in Fortnox.",
+            "NO_LICENCE": "The Fortnox company no longer has the integration add-on.",
+            "COMPANY_CHANGED": "The Fortnox company is no longer the one that was connected.",
+            "NO_FINANCIAL_YEAR": "Fortnox has no financial year for an entry's date.",
+            "SERIES": "Fortnox's voucher series is missing or isn't marked manual.",
+            "ACCOUNT": "An account is missing or inactive in Fortnox.",
+            "PERIOD_LOCKED": "Fortnox is locked for an entry's date.",
+            "PDF_MISSING": "An invoice's PDF couldn't be attached.",
+            "REFUSED": "Fortnox refused an entry."
+          }
+        },
+        "foreign": "This connection was made from another Fortleva environment. This one never sends to it.",
+        "orgDiffers": "Your company card's organisation number isn't the connected Fortnox company's. Invoices issued under it won't go to this Fortnox.",
+        "check": "Is Fortnox ready?",
+        "checkAgain": "Check again",
+        "checking": "Asking Fortnox…",
+        "removeInFortnox": "To remove Fortleva from Fortnox completely, a system administrator removes it in Fortnox under Manage integrations.",
+        "unreachable": "Fortleva couldn't be reached. Check your connection and try again.",
+        "outcome": {
+          "CONNECTED": {
+            "title": "Connected to Fortnox",
+            "body": "The first entries go to Fortnox tonight. Every owner got an email."
+          },
+          "RECONNECTED": {
+            "title": "Connected to Fortnox again",
+            "body": "What wasn't sent yet goes to Fortnox tonight. Every owner got an email."
+          },
+          "DENIED": {
+            "title": "Not connected",
+            "body": "Fortnox didn't approve Fortleva. A system administrator of the Fortnox company has to approve it."
+          },
+          "NO_LICENCE": {
+            "title": "Not connected",
+            "body": "The Fortnox company doesn't have Fortnox's integration add-on. Add it in Fortnox, then connect again."
+          },
+          "NO_ORG_NR": {
+            "title": "Not connected",
+            "body": "Fill in your company's organisation number in the company card above first — it must match the Fortnox company's."
+          },
+          "ORG_MISMATCH": {
+            "title": "Not connected — another company",
+            "body": "Fortnox answered for {name} ({orgNr}), which isn't the company on your invoices. Sign in to the right company in Fortnox and connect again."
+          },
+          "NOT_SERVICE": {
+            "title": "Not connected",
+            "body": "Fortnox approved Fortleva for a person, not for the company. Connect again and approve it as the company's system administrator."
+          },
+          "ELSEWHERE": {
+            "title": "Not connected",
+            "body": "That Fortnox company is already connected to another Fortleva workspace. An owner of that workspace has to disconnect it first."
+          },
+          "OTHER_COMPANY": {
+            "title": "Not connected",
+            "body": "This workspace is connected to another Fortnox company. Disconnect it first."
+          },
+          "FAILED": {
+            "title": "Not connected",
+            "body": "Something went wrong between Fortleva and Fortnox. Try again in a moment; if it keeps happening, tell support."
+          },
+          "ALREADY": {
+            "title": "Already connected",
+            "body": "This workspace was connected to that Fortnox company meanwhile — from another tab, or by another owner."
+          },
+          "BUSY": {
+            "title": "Not connected — try again",
+            "body": "A bookkeeping file was being made just then. Press Connect to Fortnox again in a moment."
+          }
+        },
+        "checkResult": {
+          "readyTitle": "Fortnox is ready.",
+          "notReadyTitle": "Fortnox isn't ready yet:",
+          "okLabel": "Ready",
+          "problemLabel": "Needs attention",
+          "consent": {
+            "ok": "Fortleva can reach the company.",
+            "gone": "Fortnox no longer accepts Fortleva. An owner needs to connect it again.",
+            "licence": "The company doesn't have Fortnox's integration add-on.",
+            "unreachable": "Fortnox couldn't be reached just now. Try again in a moment."
+          },
+          "year": {
+            "ok": "A financial year covers today.",
+            "missing": "Fortnox has no financial year for {day}. Add it in Fortnox."
+          },
+          "method": {
+            "ok": "Fortnox books this year the same way as Fortleva.",
+            "differs": "Fortnox books this year {fortnox}, but Fortleva is set to book {ours}. Check with your accountant."
+          },
+          "methods": {
+            "CASH": "when invoices are paid (cash method)",
+            "ACCRUAL": "when invoices are issued (invoice method)"
+          },
+          "series": {
+            "ok": "Voucher series {series} exists and is marked manual.",
+            "missing": "Fortnox has no voucher series {series}. Add it in Fortnox, marked manual.",
+            "notManual": "Voucher series {series} isn't marked manual in Fortnox, so it can't take entries from another program."
+          },
+          "account": {
+            "missing": "Account {account} ({role}) doesn't exist in Fortnox.",
+            "inactive": "Account {account} ({role}) isn't active in Fortnox."
+          },
+          "accountsOk": "All {count} accounts exist and are active.",
+          "refused": "Fortnox said: {detail} ({code})"
+        },
+        "needsOrgNr": "To connect Fortnox, first fill in your company's organisation number in the company card above — it must be the Fortnox company's.",
+        "expired": {
+          "title": "That connect ran out of time",
+          "body": "It took more than ten minutes, or the page was opened again. Press Connect to Fortnox once more."
+        }
       }
     }
   },
@@ -1810,7 +1970,12 @@
     "CONTRACT_NOT_REPLACEABLE": "Only a declined or withdrawn contract can get a new version, and only once. Reload the page.",
     "CONTRACT_PDF_UNAVAILABLE": "The contract's PDF couldn't be made just now. Try again in a moment.",
     "AGREEMENT_ENDED": "This agreement has ended: it can't be paused, run again or given a new end date. Reload the page.",
-    "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page."
+    "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page.",
+    "FORTNOX_UNAVAILABLE": "The Fortnox connection isn't available yet.",
+    "FORTNOX_NO_ORG_NR": "Fill in your company's organisation number in the company card first — it must match the Fortnox company's.",
+    "FORTNOX_ALREADY_CONNECTED": "This workspace is already connected to Fortnox. Disconnect it first.",
+    "FORTNOX_NOT_CONNECTED": "This workspace isn't connected to Fortnox. Reload the page.",
+    "FORTNOX_TOO_MANY": "Too many tries just now. Wait a few minutes and try again."
   },
   "assignments": {
     "title": "Team",

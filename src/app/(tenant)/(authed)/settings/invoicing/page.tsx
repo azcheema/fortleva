@@ -5,10 +5,12 @@ import { AuthzError } from "@/authz/errors";
 import { enrolUrl } from "@/authz/redirects";
 import { Callout, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
 import { requireTenantContext } from "@/members/tenant-context";
-import { readBookkeepingSettingsPage, readInvoiceSettings, type BookkeepingSettingsPage, type InvoiceSettings } from "@/modules/invoicing";
+import { readBookkeepingSettingsPage, readFortnoxCard, readInvoiceSettings, type BookkeepingSettingsPage, type InvoiceSettings } from "@/modules/invoicing";
 
+import { beginFortnoxConnectAction, checkFortnoxAction, disconnectFortnoxAction } from "./actions";
 import { BookkeepingCard } from "./bookkeeping-card";
 import { CompanyCard } from "./company-card";
+import { FortnoxCard } from "./fortnox-card";
 import { NumberingCard } from "./numbering-card";
 import { PaymentCard } from "./payment-card";
 import { TermsCard } from "./terms-card";
@@ -33,8 +35,9 @@ const changedOf = (c: InvoiceSettings["companyChanged"]) => (c ? { by: c.by, at:
  * reads it, `settings:edit` changes it; the invoicing module closes it. A
  * caution says what issuing still needs.
  */
-export default async function InvoicingSettingsPage() {
+export default async function InvoicingSettingsPage({ searchParams }: { searchParams: Promise<{ attempt?: string; fortnox?: string }> }) {
   const { membership, actor } = await requireTenantContext();
+  const { attempt, fortnox: fortnoxFlag } = await searchParams;
   const t = await getTranslations("settings.invoicing");
   const tCommon = await getTranslations("common");
 
@@ -60,6 +63,9 @@ export default async function InvoicingSettingsPage() {
   // Slice 111 (C82): the bookkeeping file's method, year and accounts — read
   // after the page's own gates, under the same two codes.
   const bookkeeping: BookkeepingSettingsPage = await readBookkeepingSettingsPage({ tenantId: membership.tenantId, actor });
+  // Slice 114 (C89): the Fortnox connection — and, back from Fortnox, what
+  // came of the viewer's own attempt (read from their row, never the URL).
+  const fortnox = await readFortnoxCard({ tenantId: membership.tenantId, actor }, { attemptId: typeof attempt === "string" ? attempt : null });
   const { company, payment, missing, canEdit } = settings;
   const hasFactor = actor.mfa?.enrolled === true;
   // The enrolment notice, and back here after (the action's own redirect keeps the same way back).
@@ -94,6 +100,21 @@ export default async function InvoicingSettingsPage() {
         </SectionCard>
         <SectionCard id="bookkeeping" title={t("bookkeeping.title")} description={t("bookkeeping.description")}>
           <BookkeepingCard values={bookkeeping.values} editable={bookkeeping.canEdit} methodFixed={bookkeeping.methodFixed} />
+        </SectionCard>
+        <SectionCard id="fortnox" title={t("fortnox.title")} description={t("fortnox.description")}>
+          <FortnoxCard
+            card={{
+              ...fortnox,
+              connection: fortnox.connection ? { ...fortnox.connection, connectedAt: fortnox.connection.connectedAt.toISOString() } : null,
+            }}
+            expired={fortnoxFlag === "expired"}
+            series={bookkeeping.values.series}
+            hasFactor={hasFactor}
+            enrolHref={enrolHref}
+            begin={beginFortnoxConnectAction}
+            disconnect={disconnectFortnoxAction}
+            check={checkFortnoxAction}
+          />
         </SectionCard>
       </div>
     </Page>

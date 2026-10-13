@@ -8,9 +8,14 @@ import { getTranslations } from "next-intl/server";
 import { verifyStepUpWithHeaders } from "@/auth/step-up";
 import type { MemberActor } from "@/authz/authorize";
 import { enrolUrl } from "@/authz/redirects";
-import { field, messageForError, runForm, type FormResult } from "@/lib/server-actions";
+import { field, messageForError, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
+  beginFortnoxConnect,
+  checkFortnox,
+  disconnectFortnox,
+  fortnoxConnectBlocker,
+  type FortnoxCheck,
   COMPANY_FIELDS,
   normalizeCompanyPatch,
   normalizePaymentPatch,
@@ -185,4 +190,45 @@ export async function updateBookkeepingAction(patch: unknown): Promise<FormResul
     revalidatePath("/invoices/bookkeeping");
   }
   return r;
+}
+
+/**
+ * "Connect to Fortnox" (slice 114; founder decision C89 (d)): the code typed
+ * in the dialog — the protected cards' pattern above — then
+ * `beginFortnoxConnect` writes the attempt and answers the consent screen's
+ * address, which the card opens. Owners only (`invoice:connect_bookkeeping`
+ * ✦); every refusal is a sentence.
+ */
+export async function beginFortnoxConnectAction(code: unknown): Promise<ActionResult<{ url: string }> & { codeChecked?: boolean }> {
+  // A plain refusal (no org. number, connected already, not available) is
+  // answered BEFORE the code is checked, so it never spends one of the
+  // owner's six code attempts (the code review's 9).
+  const { membership, actor } = await requireTenantContext();
+  const blocked = await runAction(PATH, () => fortnoxConnectBlocker({ tenantId: membership.tenantId, actor }));
+  if (!blocked.ok) return { ok: false, message: blocked.message, codeChecked: false };
+  const verified = await withCode(code);
+  if (!("ctx" in verified)) return { ok: false, message: verified.message, ...(verified.codeChecked === false ? { codeChecked: false } : {}) };
+  return runAction(PATH, () => beginFortnoxConnect(verified.ctx));
+}
+
+/** "Disconnect…" (slice 114; C89 (d)): the code typed in the dialog; every owner is mailed. */
+export async function disconnectFortnoxAction(code: unknown): Promise<FormResult & { codeChecked?: boolean }> {
+  const t = await getTranslations("settings.invoicing.fortnox");
+  const verified = await withCode(code);
+  if (!("ctx" in verified)) return verified;
+  const r = await runForm(PATH, async () => {
+    await disconnectFortnox(verified.ctx);
+    return t("disconnected");
+  });
+  if (r.ok) {
+    revalidatePath(PATH);
+    revalidatePath("/invoices/bookkeeping");
+  }
+  return r;
+}
+
+/** "Check again" (slice 114): read-only questions to the connected Fortnox company. */
+export async function checkFortnoxAction(): Promise<ActionResult<FortnoxCheck>> {
+  const { membership, actor } = await requireTenantContext();
+  return runAction(PATH, () => checkFortnox({ tenantId: membership.tenantId, actor }));
 }

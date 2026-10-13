@@ -1547,6 +1547,166 @@
         "setUpFactor": "Ställ in en autentiseringsapp",
         "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen.",
         "nothingChanged": "Inget att spara – inget fält ändrades."
+      },
+      "fortnox": {
+        "title": "Fortnox",
+        "description": "Skicka era verifikationer direkt till företagets Fortnox varje natt, var och en med fakturans pdf.",
+        "unavailable": "Kopplingen till Fortnox är inte tillgänglig än. Skapa till dess en bokföringsfil under Fakturor och importera den i Fortnox.",
+        "intro": "När kopplingen är gjord skickar Fortleva själv varje natt de verifikationer som bokföringsfilen skulle innehålla till Fortnox, var och en med fakturan bifogad. Inget annat i Fortnox ändras, och ni markerar fortfarande betalningar här.",
+        "needs": {
+          "title": "Fortnox behöver",
+          "addOn": "Fortnox tilläggstjänst för integrationer (ingår i de större paketen)",
+          "admin": "en av företagets systemadministratörer i Fortnox, som godkänner Fortleva",
+          "series": "en verifikationsserie {series}, markerad som manuell (serien i kortet Bokföring ovan)",
+          "year": "räkenskapsåret som verifikationerna hör till"
+        },
+        "pending": {
+          "title": "{count, plural, one {# verifikation skickas till Fortnox första natten} other {# verifikationer skickas till Fortnox första natten}}",
+          "body": "De är daterade {first} till {last}. Om någon av dem redan finns i bokföringen, skapa först en bokföringsfil av dem under Fakturor, Bokföring – det som ligger i en fil skickas inte.",
+          "bodyUndated": "Om någon av dem redan finns i bokföringen, skapa först en bokföringsfil av dem under Fakturor, Bokföring – det som ligger i en fil skickas inte."
+        },
+        "ownersOnly": "Inte kopplad. Bara en ägare kan koppla Fortnox.",
+        "needsFactor": "För att koppla eller koppla bort Fortnox behöver du först ställa in en autentiseringsapp på ditt konto.",
+        "setUpFactor": "Ställ in en autentiseringsapp",
+        "codeLabel": "Din kod från autentiseringsappen",
+        "codeHint": "Från din autentiseringsapp – den behövs varje gång, och alla ägare får ett mejl.",
+        "cancel": "Avbryt",
+        "connect": {
+          "open": "Koppla till Fortnox…",
+          "formLabel": "Koppla till Fortnox",
+          "intro": "Du skickas till Fortnox, där en av företagets systemadministratörer loggar in och godkänner Fortleva. Företaget i Fortnox måste ha samma organisationsnummer som ert företagskort. Inget skickas förrän natten efter.",
+          "submit": "Gå till Fortnox"
+        },
+        "reconnect": {
+          "open": "Koppla igen…",
+          "formLabel": "Koppla Fortnox igen",
+          "intro": "Du skickas till Fortnox för att godkänna Fortleva igen för samma företag. Det som inte har skickats än skickas från och med natten efter."
+        },
+        "disconnect": {
+          "open": "Koppla bort…",
+          "formLabel": "Koppla bort Fortnox",
+          "intro": "Fortleva slutar genast skicka verifikationer till Fortnox. Det som inte har skickats än kan sedan laddas ner som en fil. Alla ägare får ett mejl.",
+          "submit": "Koppla bort"
+        },
+        "disconnected": "Fortnox är bortkopplat.",
+        "company": "Företag i Fortnox",
+        "orgNr": "Organisationsnummer",
+        "connectedBy": "Kopplat av {name}, {when}.",
+        "someoneGone": "någon som inte längre finns i arbetsytan",
+        "active": "Kopplat. Verifikationerna skickas till Fortnox varje natt.",
+        "broken": {
+          "title": "Fortnox tar inte emot verifikationer just nu",
+          "reconnect": "En ägare behöver koppla det igen.",
+          "retrying": "Inget går förlorat – Fortleva försöker igen varje timme. Sidan Bokföring under Fakturor visar vilken verifikation det gäller och varför.",
+          "kinds": {
+            "CONSENT_GONE": "Fortnox tar inte längre emot Fortleva – integrationen har tagits bort i Fortnox.",
+            "NO_LICENCE": "Företaget i Fortnox har inte längre tilläggstjänsten för integrationer.",
+            "COMPANY_CHANGED": "Företaget i Fortnox är inte längre det som kopplades.",
+            "NO_FINANCIAL_YEAR": "Fortnox saknar räkenskapsår för en verifikations datum.",
+            "SERIES": "Verifikationsserien saknas i Fortnox eller är inte markerad som manuell.",
+            "ACCOUNT": "Ett konto saknas eller är inaktivt i Fortnox.",
+            "PERIOD_LOCKED": "Fortnox är låst för en verifikations datum.",
+            "PDF_MISSING": "En fakturas pdf gick inte att bifoga.",
+            "REFUSED": "Fortnox tog inte emot en verifikation."
+          }
+        },
+        "foreign": "Den här kopplingen gjordes från en annan Fortleva-miljö. Den här miljön skickar aldrig dit.",
+        "orgDiffers": "Organisationsnumret på ert företagskort är inte det kopplade företagets i Fortnox. Fakturor som utfärdas med det skickas inte till detta Fortnox.",
+        "check": "Är Fortnox redo?",
+        "checkAgain": "Kontrollera igen",
+        "checking": "Frågar Fortnox…",
+        "removeInFortnox": "För att ta bort Fortleva helt från Fortnox tar en systemadministratör bort det i Fortnox under Hantera integrationer.",
+        "unreachable": "Det gick inte att nå Fortleva. Kontrollera anslutningen och försök igen.",
+        "outcome": {
+          "CONNECTED": {
+            "title": "Kopplat till Fortnox",
+            "body": "De första verifikationerna skickas till Fortnox i natt. Alla ägare har fått ett mejl."
+          },
+          "RECONNECTED": {
+            "title": "Kopplat till Fortnox igen",
+            "body": "Det som inte har skickats än skickas till Fortnox i natt. Alla ägare har fått ett mejl."
+          },
+          "DENIED": {
+            "title": "Inte kopplat",
+            "body": "Fortnox godkände inte Fortleva. En systemadministratör för företaget i Fortnox måste godkänna det."
+          },
+          "NO_LICENCE": {
+            "title": "Inte kopplat",
+            "body": "Företaget i Fortnox har inte Fortnox tilläggstjänst för integrationer. Lägg till den i Fortnox och koppla sedan igen."
+          },
+          "NO_ORG_NR": {
+            "title": "Inte kopplat",
+            "body": "Fyll först i företagets organisationsnummer i företagskortet ovan – det måste stämma med företagets i Fortnox."
+          },
+          "ORG_MISMATCH": {
+            "title": "Inte kopplat – ett annat företag",
+            "body": "Fortnox svarade för {name} ({orgNr}), som inte är företaget på era fakturor. Logga in på rätt företag i Fortnox och koppla igen."
+          },
+          "NOT_SERVICE": {
+            "title": "Inte kopplat",
+            "body": "Fortnox godkände Fortleva för en person, inte för företaget. Koppla igen och godkänn det som företagets systemadministratör."
+          },
+          "ELSEWHERE": {
+            "title": "Inte kopplat",
+            "body": "Det företaget i Fortnox är redan kopplat till en annan arbetsyta i Fortleva. En ägare av den arbetsytan måste koppla bort det först."
+          },
+          "OTHER_COMPANY": {
+            "title": "Inte kopplat",
+            "body": "Den här arbetsytan är kopplad till ett annat företag i Fortnox. Koppla bort det först."
+          },
+          "FAILED": {
+            "title": "Inte kopplat",
+            "body": "Något gick fel mellan Fortleva och Fortnox. Försök igen om en liten stund; om det fortsätter, kontakta supporten."
+          },
+          "ALREADY": {
+            "title": "Redan kopplat",
+            "body": "Den här arbetsytan kopplades till det företaget i Fortnox under tiden – från en annan flik, eller av en annan ägare."
+          },
+          "BUSY": {
+            "title": "Inte kopplat – försök igen",
+            "body": "En bokföringsfil höll på att skapas just då. Tryck på Koppla till Fortnox igen om en liten stund."
+          }
+        },
+        "checkResult": {
+          "readyTitle": "Fortnox är redo.",
+          "notReadyTitle": "Fortnox är inte redo än:",
+          "okLabel": "Klart",
+          "problemLabel": "Behöver åtgärdas",
+          "consent": {
+            "ok": "Fortleva når företaget.",
+            "gone": "Fortnox tar inte längre emot Fortleva. En ägare behöver koppla det igen.",
+            "licence": "Företaget har inte Fortnox tilläggstjänst för integrationer.",
+            "unreachable": "Det gick inte att nå Fortnox just nu. Försök igen om en liten stund."
+          },
+          "year": {
+            "ok": "Ett räkenskapsår omfattar dagens datum.",
+            "missing": "Fortnox saknar räkenskapsår för {day}. Lägg till det i Fortnox."
+          },
+          "method": {
+            "ok": "Fortnox bokför detta år på samma sätt som Fortleva.",
+            "differs": "Fortnox bokför detta år {fortnox}, men Fortleva är inställt på att bokföra {ours}. Stäm av med er redovisningskonsult."
+          },
+          "methods": {
+            "CASH": "när fakturor betalas (kontantmetoden)",
+            "ACCRUAL": "när fakturor utfärdas (fakturametoden)"
+          },
+          "series": {
+            "ok": "Verifikationsserie {series} finns och är markerad som manuell.",
+            "missing": "Fortnox saknar verifikationsserie {series}. Lägg till den i Fortnox, markerad som manuell.",
+            "notManual": "Verifikationsserie {series} är inte markerad som manuell i Fortnox och kan därför inte ta emot verifikationer från ett annat program."
+          },
+          "account": {
+            "missing": "Konto {account} ({role}) finns inte i Fortnox.",
+            "inactive": "Konto {account} ({role}) är inte aktivt i Fortnox."
+          },
+          "accountsOk": "Alla {count} konton finns och är aktiva.",
+          "refused": "Fortnox svarade: {detail} ({code})"
+        },
+        "needsOrgNr": "För att koppla Fortnox, fyll först i företagets organisationsnummer i företagskortet ovan – det måste vara företagets i Fortnox.",
+        "expired": {
+          "title": "Kopplingen tog för lång tid",
+          "body": "Det tog mer än tio minuter, eller så öppnades sidan igen. Tryck på Koppla till Fortnox en gång till."
+        }
       }
     }
   },
@@ -1810,7 +1970,12 @@
     "CONTRACT_NOT_REPLACEABLE": "Bara ett avböjt eller återkallat kontrakt kan få en ny version, och bara en gång. Ladda om sidan.",
     "CONTRACT_PDF_UNAVAILABLE": "Det gick inte att skapa kontraktets pdf just nu. Försök igen om en liten stund.",
     "AGREEMENT_ENDED": "Avtalet är avslutat och kan inte pausas, startas igen eller få ett nytt slutdatum. Ladda om sidan.",
-    "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan."
+    "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan.",
+    "FORTNOX_UNAVAILABLE": "Kopplingen till Fortnox är inte tillgänglig än.",
+    "FORTNOX_NO_ORG_NR": "Fyll först i företagets organisationsnummer i företagskortet – det måste stämma med företagets i Fortnox.",
+    "FORTNOX_ALREADY_CONNECTED": "Den här arbetsytan är redan kopplad till Fortnox. Koppla bort den först.",
+    "FORTNOX_NOT_CONNECTED": "Den här arbetsytan är inte kopplad till Fortnox. Ladda om sidan.",
+    "FORTNOX_TOO_MANY": "För många försök just nu. Vänta några minuter och försök igen."
   },
   "assignments": {
     "title": "Team",

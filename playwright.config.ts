@@ -157,6 +157,11 @@ export default defineConfig({
       // Phase 4 slice 108: an invoice in another currency carrying Swedish VAT
       // takes the ECB's rate at issue — the harness never calls the ECB.
       FX_TRANSPORT: "fixed",
+      // Phase 4 slice 114: Fortnox is the file-backed fake (its consent screen
+      // is our own route); empty keys keep `.env.local`'s out (the Upstash rule).
+      FORTNOX_TRANSPORT: "fake",
+      FORTNOX_CLIENT_ID: "",
+      FORTNOX_CLIENT_SECRET: "",
     },
   },
 });

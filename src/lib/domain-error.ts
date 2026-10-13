@@ -310,6 +310,12 @@ export type DomainErrorCode =
   | "CONTRACT_NOT_UPLOADED" // slice 112c: that verb is for a contract signed elsewhere
   // Phase 4 slice 113 — agreements (src/services/service.ts; C88).
   | "AGREEMENT_ENDED" // pause, run again or a new end date: an ended agreement stays ended, on the day it ended
+  // Phase 4 slice 114 — the direct Fortnox connection (src/modules/invoicing/fortnox-connection.ts; C89).
+  | "FORTNOX_UNAVAILABLE" // this deployment connects to no Fortnox (FORTNOX_TRANSPORT is off)
+  | "FORTNOX_NO_ORG_NR" // the company card has no org. number: it must match Fortnox's company
+  | "FORTNOX_ALREADY_CONNECTED" // the workspace is connected already: disconnect first
+  | "FORTNOX_NOT_CONNECTED" // there is no connection to check or disconnect
+  | "FORTNOX_TOO_MANY" // too many connects or checks just now
   | "CONTRACT_SIGNER_INVALID"; // the picked signer is not a main contact of this client in the portal (the database holds "of this client"; sending re-checks the rest — 112b)
 
 export class DomainError extends Error {

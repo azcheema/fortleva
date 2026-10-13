@@ -63,6 +63,13 @@ export const EXPORT_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>
   // and every INVOICE_PDF is bundled whatever the export's size
   // (`src/export/service.ts`; the design review's medium).
   invoice: ["paymentSnapshot"],
+  // Phase 4 slice 114: a connect attempt's OAuth state hash and its PKCE
+  // verifier are the keys of a sign-in to Fortnox still in flight (ten
+  // minutes at most) — never the tenant's record; who pressed Connect, when
+  // and what came of it leave with it (the design review's R15, S12). Nor the
+  // org. number of ANOTHER company a mismatch met — a sole trader's is a
+  // personnummer, and it is not the tenant's (the security review's nit 7).
+  integrationConnectAttempt: ["stateHash", "pkceVerifier", "seenOrgNr"],
 };
 
 /**

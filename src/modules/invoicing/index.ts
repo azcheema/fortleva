@@ -164,3 +164,16 @@ export {
   type BookkeepingSettings,
 } from "./bookkeeping-accounts";
 export { LIST_COLUMNS, LIST_EVENTS, type ListColumn, type ListEvent, type ListRemark, type ListWords } from "./invoice-list";
+export {
+  beginFortnoxConnect,
+  checkFortnox,
+  completeFortnoxConnect,
+  disconnectFortnox,
+  fortnoxConnectBlocker,
+  readFortnoxCard,
+  type ConnectFinished,
+  type ConnectOutcome,
+  type FortnoxCard,
+  type FortnoxCheck,
+  type FortnoxCheckItem,
+} from "./fortnox-connection";

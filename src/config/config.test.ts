@@ -312,3 +312,50 @@ describe("Amazon SES: which transport, where, and the feedback topic", () => {
     expect(stockholm.mailFeedbackConfig?.snsHost).toBe("sns.eu-north-1.amazonaws.com");
   });
 });
+
+/**
+ * THE FORTNOX TRANSPORT (Phase 4 slice 114; founder decision C89 (a) — no
+ * real Fortnox company is reached until Fortnox's written consent; the design
+ * review's S2, R9): OFF unless set, everywhere; the fake never on a production
+ * build off loopback; Fortnox itself only with both keys.
+ */
+describe("FORTNOX_TRANSPORT is off unless set, the fake never in a deployment", () => {
+  // A production build needs its auth secret to load at all (the tests above).
+  const unset = { FORTNOX_TRANSPORT: "", FORTNOX_CLIENT_ID: "", FORTNOX_CLIENT_SECRET: "", BETTER_AUTH_SECRET: "s" };
+
+  it("is off by default — in production and on a developer's machine", async () => {
+    for (const env of [
+      { ...unset, NODE_ENV: "production", APP_URL: "https://os.example.test" },
+      { ...unset, NODE_ENV: "development", APP_URL: "http://localhost:3000" },
+    ]) {
+      const c = await configWith(env);
+      expect(c.fortnoxTransportKind, env.NODE_ENV).toBe("off");
+      expect(c.fortnoxClientId, env.NODE_ENV).toBeNull();
+      expect(c.fortnoxClientCredentials(), env.NODE_ENV).toBeNull();
+    }
+  });
+
+  it("anything but the two literals is off", async () => {
+    const c = await configWith({ ...unset, FORTNOX_TRANSPORT: "true", APP_URL: "http://localhost:3000" });
+    expect(c.fortnoxTransportKind).toBe("off");
+  });
+
+  it("the fake stops the boot on a production build off loopback, and runs on loopback (the e2e server)", async () => {
+    await expect(
+      configWith({ ...unset, FORTNOX_TRANSPORT: "fake", NODE_ENV: "production", APP_URL: "https://os.example.test" }),
+    ).rejects.toThrow(/FORTNOX_TRANSPORT=fake/);
+    const e2e = await configWith({ ...unset, FORTNOX_TRANSPORT: "fake", NODE_ENV: "production", APP_URL: "http://127.0.0.1:3457" });
+    expect(e2e.fortnoxTransportKind).toBe("fake");
+    expect(e2e.fortnoxClientId).toBe(e2e.FORTNOX_FAKE_CLIENT_ID);
+    expect(e2e.fortnoxClientCredentials()).toBeNull();
+  });
+
+  it("Fortnox itself needs both keys, and only then hands them to a token call", async () => {
+    await expect(configWith({ ...unset, FORTNOX_TRANSPORT: "live", FORTNOX_CLIENT_ID: "app" })).rejects.toThrow(/FORTNOX_CLIENT_SECRET/);
+    const c = await configWith({ ...unset, FORTNOX_TRANSPORT: "live", FORTNOX_CLIENT_ID: "app-id", FORTNOX_CLIENT_SECRET: "s3cret", NODE_ENV: "production", APP_URL: "https://os.example.test" });
+    expect(c.fortnoxTransportKind).toBe("live");
+    expect(c.fortnoxClientId).toBe("app-id");
+    expect(c.fortnoxClientCredentials()).toEqual({ clientId: "app-id", clientSecret: "s3cret" });
+    expect(c.fortnoxRedirectUri).toBe("https://os.example.test/settings/invoicing/fortnox/callback");
+  });
+});

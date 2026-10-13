@@ -336,6 +336,9 @@ model Tenant {
   invoiceLineTimeEntries InvoiceLineTimeEntry[]
   invoiceExports         InvoiceExport[]
   invoiceExportEntries   InvoiceExportEntry[]
+  // Phase 4 slice 114 — the direct Fortnox connection (§6.13, C89):
+  integrationConnections     IntegrationConnection[]
+  integrationConnectAttempts IntegrationConnectAttempt[]
   // Phase 4 slice 112 — contracts (§6.6, C84):
   contractTemplates      ContractTemplate[]
   contracts              Contract[]
@@ -1892,6 +1895,103 @@ model InvoiceExportEntry {
   @@unique([tenantId, exportId, position])
   @@index([tenantId, invoiceId]) // an invoice's booked events
   @@map("invoice_export_entry")
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Phase 4 slice 114 — THE DIRECT FORTNOX CONNECTION (founder decision C89;
+// docs/research/2026-10-12-slice-114-fortnox-connection-design.md, §10
+// overriding its body; DATA_MODEL §6.13 made real for one provider). A
+// workspace's owner connects its Fortnox company as a SERVICE ACCOUNT: the
+// tokens come from the app's own secret plus the company's TenantId, so no
+// per-workspace secret is kept. Both tables class A; their guards are in
+// migration 20261019090000.
+// ───────────────────────────────────────────────────────────────────
+
+enum IntegrationProvider {
+  FORTNOX
+
+  @@map("integration_provider")
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  BROKEN // the nightly send stopped; `broken_reason` says why (slice 114b)
+  DISCONNECTED // an owner disconnected it — kept as history, never revived
+
+  @@map("integration_status")
+}
+
+/// A workspace's connection to its bookkeeping program (slice 114; C89).
+/// One live (ACTIVE or BROKEN) per workspace and provider, one live per
+/// Fortnox company across every workspace. Written by a member holding
+/// `invoice:connect_bookkeeping` through a spent connect attempt (connect,
+/// reconnect) or as themselves (disconnect); its upkeep columns by the
+/// nightly send (slice 114b) behind `app.fortnox_sending`. Never deleted.
+model IntegrationConnection {
+  id                     String              @id @default(uuid(7))
+  tenantId               String              @map("tenant_id")
+  provider               IntegrationProvider
+  status                 IntegrationStatus   @default(ACTIVE)
+  /// The transport and the Fortnox app (client id) that made it: a sender skips every row not its own.
+  transport              String
+  /// The Fortnox app's id (never a tenant's Client — the pre-apply review's rename).
+  appClientId            String              @map("app_client_id")
+  /// Fortnox's DatabaseNumber — the TenantId its tokens are asked for.
+  externalTenantId       String              @map("external_tenant_id")
+  companyName            String              @map("company_name")
+  /// NNNNNN-NNNN, as the workspace's company card stores one.
+  companyOrgNr           String              @map("company_org_nr")
+  /// The attempt that (re)connected it last.
+  connectAttemptId       String              @map("connect_attempt_id")
+  connectedByMemberId    String              @map("connected_by_member_id") // attribution, no FK
+  connectedAt            DateTime            @map("connected_at") @db.Timestamptz(6)
+  disconnectedByMemberId String?             @map("disconnected_by_member_id")
+  disconnectedAt         DateTime?           @map("disconnected_at") @db.Timestamptz(6)
+  brokenSince            DateTime?           @map("broken_since") @db.Timestamptz(6)
+  brokenReason           Json?               @map("broken_reason") // { kind, code?, message?, entryId?, day? }
+  lastOkAt               DateTime?           @map("last_ok_at") @db.Timestamptz(6)
+  /// The workspace day whose night is done (slice 114b); set to the connect day at (re)connect.
+  lastNight              DateTime?           @map("last_night") @db.Date
+  /// The nightly sender's lease (slice 114b): one sender at a time.
+  sendLeaseUntil         DateTime?           @map("send_lease_until") @db.Timestamptz(6)
+  sendRunId              String?             @map("send_run_id")
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant                    @relation(fields: [tenantId], references: [id])
+  attempt IntegrationConnectAttempt @relation(fields: [tenantId, connectAttemptId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, connectAttemptId]) // one connection per attempt (and the 1:1 relation's key)
+  @@index([tenantId, provider, status])
+  @@map("integration_connection")
+}
+
+/// One press of Connect (slice 114; C89 (d)): the OAuth `state` (stored as its
+/// SHA-256), the PKCE verifier until it is used, ten minutes to come back, and
+/// what came of it. Written only by the member who pressed it.
+model IntegrationConnectAttempt {
+  id              String              @id @default(uuid(7))
+  tenantId        String              @map("tenant_id")
+  provider        IntegrationProvider
+  memberId        String              @map("member_id") // attribution, no FK
+  stateHash       String              @unique @map("state_hash")
+  /// Cleared when the attempt is spent; never exported.
+  pkceVerifier    String?             @map("pkce_verifier")
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt       DateTime            @map("expires_at") @db.Timestamptz(6)
+  usedAt          DateTime?           @map("used_at") @db.Timestamptz(6)
+  /// CONNECTED, RECONNECTED, or why not (see the migration's CHECK).
+  outcome         String?
+  /// The Fortnox company the attempt met — shown when it was not this workspace's.
+  seenCompanyName String?             @map("seen_company_name")
+  seenOrgNr       String?             @map("seen_org_nr")
+
+  tenant     Tenant                 @relation(fields: [tenantId], references: [id])
+  connection IntegrationConnection?
+
+  @@unique([tenantId, id])
+  @@index([tenantId, memberId, createdAt])
+  @@map("integration_connect_attempt")
 }
 
 enum InvoiceDeliveryMethod {

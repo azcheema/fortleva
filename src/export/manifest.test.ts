@@ -84,6 +84,8 @@ describe("excluded columns (encrypted / key material never leave)", () => {
       pushSubscription: ["endpoint", "keysCiphertext", "sessionId"],
       // Phase 4 slice 108: an issued invoice's bank details — the tenant's ciphertexts, copied at issue
       invoice: ["paymentSnapshot"],
+      // Phase 4 slice 114: a connect attempt's OAuth state hash and PKCE verifier — a sign-in to Fortnox in flight
+      integrationConnectAttempt: ["stateHash", "pkceVerifier", "seenOrgNr"],
     });
   });
 

@@ -1049,6 +1049,32 @@ export async function readYearEndReminder(ctx: InvoicingCtx, opts: { readonly no
   });
 }
 
+/**
+ * Every entry still waiting for a file — across every year and seller, the
+ * cap aside — and the first and last day it books (a credit note's listing
+ * books nothing: neither counted nor dated). The Fortnox card's "the first night sends
+ * N" (slice 114; the design review's R16: `count + waiting`, not one file's).
+ * NO GATE: the caller's — it holds `invoice:export` and a tenant-wide scope.
+ */
+export async function pendingForFiles(
+  tx: TenantDb,
+  tenantId: string,
+  now: Date,
+): Promise<{ readonly count: number; readonly first: string | null; readonly last: string | null } | null> {
+  const settings = await readBookkeepingSettings(tx, tenantId);
+  const method = (await filesMethod(tx)) ?? methodOf(settings);
+  if (method === null) return null;
+  const today = todayIn((await readPreferences(tx, tenantId)).timezone, now);
+  const p = await plan(tx, tenantId, method, today, yearStartOf(settings));
+  // Only what BOOKS — a credit note's listing never becomes an entry in
+  // Fortnox (the code review's nit).
+  const days = p.candidates
+    .filter((c) => c.event !== "CREDIT_NOTED")
+    .map((c) => c.bookedOn)
+    .sort();
+  return { count: days.length, first: days[0] ?? null, last: days.at(-1) ?? null };
+}
+
 // ── The page ────────────────────────────────────────────────────────
 
 export type BookkeepingFile = {
