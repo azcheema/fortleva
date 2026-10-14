@@ -27,6 +27,7 @@ export { ProgressMeter } from "./progress-meter";
 export { RowActions, type RowAction, type RowActionsProps } from "./row-actions";
 export { SectionCard } from "./section-card";
 export { StatusBadge } from "./status-badge";
+export { WebsiteSpeedCharts } from "./website-speed";
 export { StatusIcon } from "./status-icon";
 export { ThemeToggle } from "./theme-toggle";
 export { Timeline, TimelineItem } from "./timeline";

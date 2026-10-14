@@ -1,10 +1,12 @@
 import { DownloadIcon, FileChartColumnIcon } from "lucide-react";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
-import { Callout, EmptyState, Page, PageHeader, SectionCard } from "@/components/semantic";
+import { Callout, EmptyState, Page, PageHeader, SectionCard, WebsiteSpeedCharts } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { listPortalReports, type PortalReport } from "@/documents/portal";
+import type { CruxFormFactor } from "@/integrations/crux";
 import { formatBytes } from "@/lib/format";
+import { listPortalWebsiteSpeed } from "@/modules/reports/portal";
 import { portalReadOrNull, type PortalPrincipal } from "@/portal";
 
 import { downloadDocumentAction } from "../files/actions";
@@ -23,18 +25,25 @@ import { PortalFrame } from "../portal-frame";
  * the download, the Files page's own form POST (`downloadDocumentAction`,
  * which asks `portal.report.view` too for a report). Nothing else.
  *
- * ONE READ, through `portalReadOrNull`: a refusal and an empty answer are the
- * same page (`src/portal/render.ts`). THE REFUSAL BANNER is the one thing that
- * makes the two routes differ, and only when it is there.
+ * TWO READS, each through `portalReadOrNull`: a refusal and an empty answer
+ * are the same page (`src/portal/render.ts`). THE REFUSAL BANNER is the one
+ * thing that makes the two routes differ, and only when it is there.
+ *
+ * WEBSITE SPEED (Phase 6 slice 118; C94): above the monthly cards, one card
+ * per project whose charts the agency switched on — Google's weekly numbers
+ * for the client's own site, phones first, `?device=desktop` a tap away
+ * (a relative link, so the View-as twin renders the same bytes).
  */
 export async function PortalReportsView({
   principal,
   name,
   error,
+  device = "PHONE",
 }: {
   principal: PortalPrincipal;
   name: string;
   error?: PortalFileError;
+  device?: CruxFormFactor;
 }) {
   const t = await getTranslations("portal.reports");
   const tFiles = await getTranslations("portal.files");
@@ -43,6 +52,8 @@ export async function PortalReportsView({
   const locale = await getLocale();
   const refusal = error === "rate" ? tDomain("DOWNLOAD_RATE_LIMITED") : error ? tFiles("errors.download") : null;
   const reports = (await portalReadOrNull("listPortalReports", () => listPortalReports(principal))) ?? [];
+  // In SEQUENCE, after the reports' transaction has closed.
+  const speed = (await portalReadOrNull("listPortalWebsiteSpeed", () => listPortalWebsiteSpeed(principal))) ?? [];
 
   // A card per month, in the projection's order (newest month first).
   const months: { month: string; reports: PortalReport[] }[] = [];
@@ -68,7 +79,31 @@ export async function PortalReportsView({
               </Callout>
             </div>
           ) : null}
-          {months.length === 0 ? (
+          {speed.length > 0 ? (
+            <section aria-labelledby="portal-speed-heading" data-testid="portal-speed" className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <h2 id="portal-speed-heading" className="text-base font-semibold text-foreground">
+                  {t("speed.title")}
+                </h2>
+                <p className="text-sm text-muted-foreground">{t("speed.description")}</p>
+              </div>
+              {speed.map((p) => (
+                <div key={p.id} data-testid="portal-speed-project" data-project-key={p.key} className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="text-sm font-semibold text-foreground">{p.name}</h3>
+                    <p className="text-xs text-muted-foreground">{t("speed.measured", { origin: p.origin })}</p>
+                  </div>
+                  <WebsiteSpeedCharts
+                    series={p.series}
+                    device={device}
+                    deviceHref={(d) => (d === "DESKTOP" ? "?device=desktop" : "?device=phone")}
+                    idPrefix={`portal-speed-${p.key}`}
+                  />
+                </div>
+              ))}
+            </section>
+          ) : null}
+          {months.length === 0 && speed.length === 0 ? (
             <SectionCard>
               <EmptyState variant="forbidden" icon={FileChartColumnIcon} title={t("empty")} body={t("emptyBody")} />
             </SectionCard>

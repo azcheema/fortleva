@@ -125,6 +125,12 @@ const envSchema = z.object({
   FORTNOX_TRANSPORT: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   FORTNOX_CLIENT_ID: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   FORTNOX_CLIENT_SECRET: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  // Phase 6 slice 118 — the website speed charts (founder decision C94;
+  // `cruxTransportKind` below). Only the literals "fake" and "live" mean
+  // anything; empty is unset, for the Upstash reason above. The key is the
+  // founder's, set on the server, never printed.
+  CRUX_TRANSPORT: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  CRUX_API_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
 });
 
 const env = envSchema.parse(process.env);
@@ -748,6 +754,38 @@ export const FORTNOX_CALLBACK_PATH = "/settings/invoicing/fortnox/callback";
 export const fortnoxRedirectUri = absoluteUrl(FORTNOX_CALLBACK_PATH);
 /** The fake's consent screen — our own route, answering only under the fake transport. */
 export const FORTNOX_FAKE_CONSENT_PATH = "/settings/invoicing/fortnox/fake-consent";
+
+/**
+ * THE WEBSITE SPEED CHARTS' GOOGLE (Phase 6 slice 118; founder decision C94;
+ * docs/research/2026-10-14-slice-118-website-speed-design.md §3). Which
+ * Chrome UX Report the weekly fetch asks:
+ *
+ * - `"off"` — THE DEFAULT, EVERYWHERE: nothing is ever asked of Google, the
+ *   project's Website speed card says the server has it switched off.
+ * - `"fake"` — `CRUX_TRANSPORT=fake`: a deterministic fake
+ *   (`src/integrations/crux/fake.ts`), set explicitly by the harnesses.
+ *   NEVER on a production build off loopback — a fake would show a client
+ *   invented numbers for their site (the Fortnox transport's rule).
+ * - `"live"` — Google itself; needs `CRUX_API_KEY` (it stops the boot
+ *   without it). THE KEY IS A SECRET of the founder's Google project (free,
+ *   but a quota someone else could spend; restricted to the one API, and to
+ *   the server's address at go-live — RUNBOOK): read only by the live
+ *   transport at the moment it sends a request, never logged, never in an
+ *   error, never in a page.
+ */
+export type CruxTransportKind = "off" | "fake" | "live";
+if (env.CRUX_TRANSPORT === "fake" && isProduction && !LOOPBACK_HOSTS.has(appUrl.hostname)) {
+  throw new Error("CRUX_TRANSPORT=fake on a production build off loopback (src/config): clients would be shown invented speed numbers");
+}
+if (env.CRUX_TRANSPORT === "live" && !env.CRUX_API_KEY) {
+  throw new Error("CRUX_TRANSPORT=live needs CRUX_API_KEY (src/config)");
+}
+export const cruxTransportKind: CruxTransportKind =
+  env.CRUX_TRANSPORT === "fake" ? "fake" : env.CRUX_TRANSPORT === "live" ? "live" : "off";
+/** The key, for the live transport's one request — a function, so nothing holds it but the call that sends it. */
+export const cruxApiKey = (): string | null => (cruxTransportKind === "live" ? (env.CRUX_API_KEY ?? null) : null);
+/** Google's host (INV-D2: hosts live here and only here). */
+export const cruxHistoryUrl = "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord";
 
 /**
  * Host→plane resolution (ARC-11 / decision 9): ops.naxdor.com serves

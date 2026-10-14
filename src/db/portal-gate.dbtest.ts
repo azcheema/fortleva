@@ -66,8 +66,10 @@ beforeAll(async () => {
   });
   await db.project.createMany({
     data: [
-      { id: P, tenantId: T, clientId: acme, key: "ACME", name: "Acme site" },
-      { id: PB, tenantId: T, clientId: beta, key: "BETA", name: "Beta site", portalEnabled: true, hoursSharingMode: "HOURS" },
+      // Both carry the site the speed rows below name (slice 118: a row of a
+      // site the project does not name is INTERNAL whatever the switch says).
+      { id: P, tenantId: T, clientId: acme, key: "ACME", name: "Acme site", productionUrl: "https://example.invalid" },
+      { id: PB, tenantId: T, clientId: beta, key: "BETA", name: "Beta site", portalEnabled: true, hoursSharingMode: "HOURS", portalShowSpeed: true, productionUrl: "https://example.invalid" },
     ],
   });
   for (const [projectId, clientId] of [
@@ -154,6 +156,26 @@ beforeAll(async () => {
         { tenantId: T, clientId, projectId, health: "AT_RISK", body: { sections: [] }, status: "DRAFT", visibility: "INTERNAL", authorMemberId: member.id },
       ],
     });
+    // Phase 6 slice 118: website_speed_week — visibility DERIVED from the
+    // project's portalShowSpeed switch (P is off ⇒ INTERNAL, PB is on ⇒
+    // CLIENT_VISIBLE; the app-supplied value is overwritten, as the hours
+    // summary's is).
+    await db.websiteSpeedWeek.create({
+      data: {
+        tenantId: T,
+        clientId,
+        projectId,
+        origin: "https://example.invalid",
+        formFactor: "PHONE",
+        periodStart: new Date("2026-09-13T00:00:00Z"),
+        periodEnd: new Date("2026-10-10T00:00:00Z"),
+        lcpP75Ms: 2100,
+        lcpGood: 0.8,
+        lcpNeedsWork: 0.15,
+        lcpPoor: 0.05,
+        visibility: "CLIENT_VISIBLE",
+      },
+    });
     // clientId/projectId deliberately omitted: comment_denorm_guard
     // derives them from the subject — that derivation is under test.
     // The second owed fixture: an INTERNAL comment on the CLIENT_VISIBLE
@@ -178,6 +200,7 @@ afterAll(async () => {
     await tx.$executeRaw`SELECT set_config('app.time_maintenance', 'on', true)`;
     await tx.$executeRaw`SELECT set_config('app.work_maintenance', 'on', true)`;
     await tx.projectUpdate.deleteMany({ where: { tenantId: T } });
+    await tx.websiteSpeedWeek.deleteMany({ where: { tenantId: T } });
     await tx.timeReport.deleteMany({ where: { tenantId: T } });
     await tx.projectTimeSummary.deleteMany({ where: { tenantId: T } });
     await tx.comment.deleteMany({ where: { tenantId: T } });
@@ -252,6 +275,7 @@ describe("portalEnabled=false ⇒ zero project rows for the contact", () => {
         project_time_summary: 1, // PB shares hours (HOURS) ⇒ derived CLIENT_VISIBLE (2T)
         time_report: 1, // PUBLISHED + CLIENT_VISIBLE only (2T, 4-term gate)
         project_update: 1, // PUBLISHED + CLIENT_VISIBLE only (Phase 3, 4-term gate)
+        website_speed_week: 1, // PB's speed switch is on ⇒ derived CLIENT_VISIBLE (slice 118)
       });
     });
     // The control that keeps the two `1`s above honest: the INTERNAL
@@ -295,6 +319,7 @@ describe("flipping portalEnabled=true exposes only CLIENT_VISIBLE / SHIPPED rows
         project_time_summary: 0, // P does not share hours (NONE) ⇒ derived INTERNAL even with the portal on
         time_report: 1, // the PUBLISHED one; the DRAFT stays invisible
         project_update: 1, // the PUBLISHED one; the DRAFT stays invisible
+        website_speed_week: 0, // P's speed switch is off ⇒ derived INTERNAL even with the portal on (slice 118)
       });
       expect((await tx.milestone.findMany()).map((m) => m.name)).toEqual(["Design"]);
       expect((await tx.projectVersion.findMany()).map((v) => v.version)).toEqual(["1.0"]);

@@ -49,6 +49,10 @@ process.env["FX_TRANSPORT"] = "fixed";
 process.env["FORTNOX_TRANSPORT"] = "fake";
 delete process.env["FORTNOX_CLIENT_ID"];
 delete process.env["FORTNOX_CLIENT_SECRET"];
+// Phase 6 slice 118: never Google itself from a dbtest — the deterministic
+// fake (`src/integrations/crux/fake.ts`); never a founder's key from `.env.local`.
+process.env["CRUX_TRANSPORT"] = "fake";
+delete process.env["CRUX_API_KEY"];
 
 // Integration suite: runs against a real Postgres as the REAL
 // app_runtime role (TENANCY.md §11 — a local owner/superuser role

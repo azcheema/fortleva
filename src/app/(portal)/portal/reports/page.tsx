@@ -21,9 +21,16 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PortalReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; device?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, device } = await searchParams;
   const { principal, name } = await requirePortalContext();
-  return <PortalReportsView principal={principal} name={name} error={portalFileErrorOf(error)} />;
+  return (
+    <PortalReportsView
+      principal={principal}
+      name={name}
+      error={portalFileErrorOf(error)}
+      device={device === "desktop" ? "DESKTOP" : "PHONE"}
+    />
+  );
 }

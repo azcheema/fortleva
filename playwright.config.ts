@@ -162,6 +162,10 @@ export default defineConfig({
       FORTNOX_TRANSPORT: "fake",
       FORTNOX_CLIENT_ID: "",
       FORTNOX_CLIENT_SECRET: "",
+      // Phase 6 slice 118: Google's Chrome UX Report is the deterministic fake;
+      // an empty key keeps `.env.local`'s out.
+      CRUX_TRANSPORT: "fake",
+      CRUX_API_KEY: "",
     },
   },
 });

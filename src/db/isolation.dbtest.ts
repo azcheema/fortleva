@@ -658,7 +658,7 @@ describe("the portal switch gate, structurally (slice 74)", () => {
     expect(src).toMatch(/ERRCODE\s*=\s*'55P03'/);
   });
 
-  it("the switch changes only through the fan-out: no BEFORE trigger on `project` writes the switch, and its trigger set is exactly the four pinned here", async () => {
+  it("the switch changes only through the fan-out: no BEFORE trigger on `project` writes the switch, and its trigger set is exactly the five pinned here", async () => {
     // THE PROOF'S THIRD PREMISE. The fan-out is `AFTER UPDATE OF
     // portal_enabled`, and a column-specific trigger fires only when the
     // column is in the statement's SET list — a change a BEFORE UPDATE
@@ -703,9 +703,14 @@ describe("the portal switch gate, structurally (slice 74)", () => {
       rows.filter((r) => r.row_level && r.before && r.on_update).map((r) => r.tgname),
       "the one BEFORE UPDATE row trigger on project is the update schedule's stamp",
     ).toEqual(["project_update_schedule_stamp"]);
+    // Phase 6 slice 118 (its migration reviewed before it was applied):
+    // `project_speed_sharing_fanout`, an AFTER UPDATE OF portal_show_speed,
+    // production_url row trigger that re-derives `website_speed_week.visibility`
+    // — it never touches the switch (AFTER, and its own columns' SET list).
     expect(rows.map((r) => r.tgname).sort()).toEqual([
       "project_hours_sharing_fanout",
       "project_portal_enabled_fanout",
+      "project_speed_sharing_fanout",
       "project_update_schedule_stamp",
       "search_feed_project",
     ]);
@@ -721,7 +726,9 @@ describe("the portal switch gate, structurally (slice 74)", () => {
     for (const { fn } of beforeFns) {
       const src = await bodyOf(fn);
       expect(src, `${fn} exists`).toMatch(/update_schedule_since/);
-      expect(src, `${fn} never writes the switch`).not.toMatch(/NEW\s*\.\s*"?portal_enabled"?\s*:?=/i);
+      // …nor the speed switch (slice 118), whose fan-out has the same
+      // `AFTER UPDATE OF <column>` shape and the same blind spot.
+      expect(src, `${fn} never writes the switch`).not.toMatch(/NEW\s*\.\s*"?portal_(enabled|show_speed)"?\s*:?=/i);
       // …nor the whole record, nor by `SELECT … INTO NEW…` (the re-check's nits).
       expect(src, `${fn} never assigns the whole record`).not.toMatch(/\bNEW\s*:?=/i);
       expect(src, `${fn} never selects into NEW`).not.toMatch(/\bINTO\s+(STRICT\s+)?NEW\b/i);

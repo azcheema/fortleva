@@ -313,6 +313,8 @@ model Tenant {
   timeReports                TimeReport[]
   // Phase 3 — progress updates (§6.16):
   projectUpdates                 ProjectUpdate[]
+  speedWeeks                     WebsiteSpeedWeek[]
+  speedChecks                    WebsiteSpeedCheck[]
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   projectUpdateReminders         ProjectUpdateReminderSent[]
   projectUpdateTemplates         ProjectUpdateTemplate[]
@@ -698,6 +700,7 @@ model Client {
   projectTimeSummaries ProjectTimeSummary[]
   timeReports          TimeReport[]
   projectUpdates       ProjectUpdate[]
+  speedWeeks           WebsiteSpeedWeek[]
   credentials          CredentialItem[]
   assets               ClientAsset[]
   sealedOpenRequests   SealedOpenRequest[]
@@ -993,6 +996,13 @@ model Project {
   portalShowUpdates    Boolean @default(true) @map("portal_show_updates")
   portalShowMilestones Boolean @default(true) @map("portal_show_milestones")
   portalShowFiles      Boolean @default(true) @map("portal_show_files")
+  // Phase 6 slice 118 (C94 (a)): "Show to the client" for the website speed
+  // charts — OFF at birth. Unlike the four above it IS a gate: the trigger
+  // `project_speed_sharing_fanout` derives every `website_speed_week` row's
+  // `visibility` from it, and the portal gate reads that. INTERNAL-ONLY as a
+  // column (never in a portal projection; its effect reaches the client
+  // through the rows).
+  portalShowSpeed      Boolean @default(false) @map("portal_show_speed")
   billingCurrency    String?          @map("billing_currency") @db.Char(3)
   defaultBillable    Boolean          @default(true) @map("default_billable")
   leadMemberId       String?          @map("lead_member_id") // Member.id, attribution, no FK
@@ -1050,6 +1060,9 @@ model Project {
   updates        ProjectUpdate[]
   // Phase 5 slice 102:
   updateReminders ProjectUpdateReminderSent[]
+  // Phase 6 slice 118 — with the project (cascade), as its updates are.
+  speedWeeks     WebsiteSpeedWeek[]
+  speedCheck     WebsiteSpeedCheck?
   // Phase 5 slice 105 — RESTRICT, as `defaultService`: deleting a layout
   // first points its projects back at the default (update-templates.ts).
   updateTemplate ProjectUpdateTemplate? @relation(fields: [tenantId, updateTemplateId], references: [tenantId, id], onDelete: Restrict)
@@ -1286,6 +1299,100 @@ model ProjectUpdateInternalSnapshot {
 /// the audit row, and a conflict means "already sent". Deleted with its
 /// project (FK cascade) and by the job's own sweep 60 days after its day.
 /// scope=tenant  rls=A (portal_deny)  ret=60 days, or with the project (FK cascade)  enc=none
+// ───────────────────────────────────────────────────────────────────
+// 6.10 WEBSITE SPEED — AS BUILT, Phase 6 slice 118 (2026-10-14; founder
+// decision C94; migration 20261023090000_website_speed; design
+// docs/research/2026-10-14-slice-118-website-speed-design.md). Fortleva's
+// own weekly copy of Google's Chrome UX Report numbers for the whole site
+// behind a project's Production URL: one row per project × device kind ×
+// rolling 28-day period. `visibility` is DERIVED by trigger from the
+// project's `portalShowSpeed` switch (never written by the app);
+// `portalEnabled` is the project fan-out's, as on every projectScoped row.
+// The weekly job (`src/modules/reports/speed-fetch.ts`) is the one writer.
+// ───────────────────────────────────────────────────────────────────
+
+enum SpeedFormFactor {
+  PHONE
+  DESKTOP
+
+  @@map("speed_form_factor")
+}
+
+enum SpeedCheckOutcome {
+  OK
+  NO_DATA
+  REFUSED
+  FAILED
+
+  @@map("speed_check_outcome")
+}
+
+/// WebsiteSpeedWeek — one of Google's rolling 28-day periods for one
+/// project's site on one device kind: the three Core Web Vitals' 75th
+/// percentiles and the share of visits in each of Google's bands.
+/// scope=project  rls=B (projectScoped)  ret=with the project  enc=none
+model WebsiteSpeedWeek {
+  id            String          @id @default(uuid(7))
+  tenantId      String          @map("tenant_id")
+  clientId      String          @map("client_id") // denormalised for portal RLS
+  projectId     String          @map("project_id")
+  /// What Google was asked about — the Production URL's origin at fetch time.
+  origin        String
+  formFactor    SpeedFormFactor @map("form_factor")
+  periodStart   DateTime        @map("period_start") @db.Date
+  periodEnd     DateTime        @map("period_end") @db.Date
+  lcpP75Ms      Int?            @map("lcp_p75_ms")
+  inpP75Ms      Int?            @map("inp_p75_ms")
+  clsP75        Decimal?        @map("cls_p75") @db.Decimal(6, 3)
+  lcpGood       Decimal?        @map("lcp_good") @db.Decimal(5, 4)
+  lcpNeedsWork  Decimal?        @map("lcp_needs_work") @db.Decimal(5, 4)
+  lcpPoor       Decimal?        @map("lcp_poor") @db.Decimal(5, 4)
+  inpGood       Decimal?        @map("inp_good") @db.Decimal(5, 4)
+  inpNeedsWork  Decimal?        @map("inp_needs_work") @db.Decimal(5, 4)
+  inpPoor       Decimal?        @map("inp_poor") @db.Decimal(5, 4)
+  clsGood       Decimal?        @map("cls_good") @db.Decimal(5, 4)
+  clsNeedsWork  Decimal?        @map("cls_needs_work") @db.Decimal(5, 4)
+  clsPoor       Decimal?        @map("cls_poor") @db.Decimal(5, 4)
+  /// Trigger-derived from Project.portalShowSpeed — a direct write is overwritten.
+  visibility    Visibility      @default(INTERNAL)
+  portalEnabled Boolean         @default(false) @map("portal_enabled") // trigger-maintained
+  fetchedAt     DateTime        @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  client  Client  @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id]) // composite-FK target
+  // The dedupe: Google's past periods never change — per SITE, so a project
+  // whose URL moved keeps the old origin's rows as history and still stores
+  // the new site's (migration 20261023100000). Named by hand — the default
+  // would be over Postgres's 63 characters.
+  @@unique([tenantId, projectId, origin, formFactor, periodEnd], map: "website_speed_week_project_site_kind_period_key")
+  @@index([tenantId, clientId, visibility]) // the portal's read
+  @@map("website_speed_week")
+}
+
+/// WebsiteSpeedCheck — when Google was last asked about a project's site
+/// and what came of it; the team's card reads it for its empty states.
+/// scope=tenant  rls=A  ret=with the project  enc=none
+model WebsiteSpeedCheck {
+  id        String            @id @default(uuid(7))
+  tenantId  String            @map("tenant_id")
+  projectId String            @map("project_id")
+  origin    String?
+  checkedAt DateTime          @map("checked_at") @db.Timestamptz(6)
+  outcome   SpeedCheckOutcome
+  /// A short token (`bad_url`, `key`, `rate`, `network`, `shape`) — never Google's text.
+  detail    String?           @db.VarChar(40)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  project Project @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, projectId])
+  @@map("website_speed_check")
+}
+
 model ProjectUpdateReminderSent {
   tenantId  String   @map("tenant_id")
   projectId String   @map("project_id")

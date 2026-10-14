@@ -201,6 +201,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // the empty state with Put in a signed contract… and Write a contract.
     { name: "client-contracts", path: `${client}/contracts` },
     { name: "projects", path: "/projects" },
+    // Since Phase 6 slice 118 (C94) the Overview also photographs the Website
+    // speed card with the fake Google's numbers for the seeded project's site,
+    // its switch on.
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },
     {

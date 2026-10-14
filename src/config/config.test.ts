@@ -319,6 +319,39 @@ describe("Amazon SES: which transport, where, and the feedback topic", () => {
  * review's S2, R9): OFF unless set, everywhere; the fake never on a production
  * build off loopback; Fortnox itself only with both keys.
  */
+describe("CRUX_TRANSPORT is off unless set, the fake never in a deployment, the key only with live (slice 118)", () => {
+  const unset = { CRUX_TRANSPORT: "", CRUX_API_KEY: "", BETTER_AUTH_SECRET: "s" };
+
+  it("is off by default — in production and on a developer's machine — and anything but the two literals is off", async () => {
+    for (const env of [
+      { ...unset, NODE_ENV: "production", APP_URL: "https://os.example.test" },
+      { ...unset, NODE_ENV: "development", APP_URL: "http://localhost:3000" },
+      { ...unset, CRUX_TRANSPORT: "true", APP_URL: "http://localhost:3000" },
+    ]) {
+      const c = await configWith(env);
+      expect(c.cruxTransportKind).toBe("off");
+      expect(c.cruxApiKey()).toBeNull();
+    }
+  });
+
+  it("the fake stops the boot on a production build off loopback, and runs on loopback (the e2e server)", async () => {
+    await expect(
+      configWith({ ...unset, CRUX_TRANSPORT: "fake", NODE_ENV: "production", APP_URL: "https://os.example.test" }),
+    ).rejects.toThrow(/CRUX_TRANSPORT=fake/);
+    const e2e = await configWith({ ...unset, CRUX_TRANSPORT: "fake", NODE_ENV: "production", APP_URL: "http://127.0.0.1:3457" });
+    expect(e2e.cruxTransportKind).toBe("fake");
+    expect(e2e.cruxApiKey()).toBeNull();
+  });
+
+  it("Google itself needs the key, and hands it only to the live transport's call", async () => {
+    await expect(configWith({ ...unset, CRUX_TRANSPORT: "live" })).rejects.toThrow(/CRUX_API_KEY/);
+    const c = await configWith({ ...unset, CRUX_TRANSPORT: "live", CRUX_API_KEY: "k3y", NODE_ENV: "production", APP_URL: "https://os.example.test" });
+    expect(c.cruxTransportKind).toBe("live");
+    expect(c.cruxApiKey()).toBe("k3y");
+    expect(c.cruxHistoryUrl).toMatch(/^https:\/\/chromeuxreport\.googleapis\.com\//);
+  });
+});
+
 describe("FORTNOX_TRANSPORT is off unless set, the fake never in a deployment", () => {
   // A production build needs its auth secret to load at all (the tests above).
   const unset = { FORTNOX_TRANSPORT: "", FORTNOX_CLIENT_ID: "", FORTNOX_CLIENT_SECRET: "", BETTER_AUTH_SECRET: "s" };

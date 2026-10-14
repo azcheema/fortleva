@@ -12,6 +12,7 @@ import {
   ProjectInternalForm,
   ProjectStatusControls,
 } from "./overview-forms";
+import { WebsiteSpeedCard } from "./speed-card";
 
 /**
  * Overview tab: details · internal (private) fields · status/key/archive.
@@ -27,9 +28,20 @@ import {
  *
  * Archiving is a danger footer at the foot of the main column, not a
  * red button inside the routine Status card (UI.md §5.9).
+ *
+ * Phase 6 slice 118 (C94 (d)): the Website speed card under Details, beside
+ * the Production URL it measures, for a member holding `report:view`; its
+ * `?device=` parameter picks phones (the default) or computers.
  */
-export default async function ProjectOverviewPage({ params }: { params: Promise<{ key: string }> }) {
+export default async function ProjectOverviewPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ key: string }>;
+  searchParams: Promise<{ device?: string }>;
+}) {
   const { key } = await params;
+  const { device } = await searchParams;
   const project = await loadProject(key);
   const t = await getTranslations("projects.overview");
   const { membership } = await requireTenantContext();
@@ -45,6 +57,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
         <SectionCard title={t("details")}>
           <ProjectDetailsForm project={project} members={members} />
         </SectionCard>
+        {project.caps.viewSpeed ? <WebsiteSpeedCard project={project} device={device === "desktop" ? "DESKTOP" : "PHONE"} /> : null}
         <SectionCard
           title={t("internal")}
           description={t("internalHint")}

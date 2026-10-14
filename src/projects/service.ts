@@ -200,6 +200,8 @@ export type ProjectDetail = {
   hoursSharingMode: HoursSharingMode;
   /** Which parts of the project the client's portal draws (C47) — layout, not a gate. */
   portalSections: PortalSections;
+  /** Phase 6 slice 118 (C94 (a)): the website speed charts shown to the client — a GATE (the rows' visibility derives from it). */
+  portalShowSpeed: boolean;
   billingCurrency: string | null;
   defaultBillable: boolean;
   /** Phase 4 slice 110 (C75 (b)): how its hours are rounded on invoices, entry by entry — null = off. INTERNAL-ONLY. */
@@ -264,6 +266,8 @@ export type ProjectDetail = {
      * module's own answer, behind its door (C52).
      */
     viewCredentials: boolean;
+    /** `report:view` on all four gates — the Overview's Website speed card (Phase 6 slice 118). */
+    viewSpeed: boolean;
   };
 };
 
@@ -285,6 +289,9 @@ const PROJECT_MODULE_CODES = [
   // Slice 110 (C80 (h)): the project's rounding on invoices — a `time`-module
   // code, so the control closes with time tracking switched off.
   "rate:manage_bill",
+  // Slice 118: the Website speed card — a `reports`-module code, so the card
+  // closes with the reports module switched off.
+  "report:view",
 ] as const;
 
 /** project:view; assertInScope({projectId}) ⇒ NOT_FOUND outside scope. */
@@ -372,6 +379,7 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         milestones: p.portalShowMilestones,
         files: p.portalShowFiles,
       },
+      portalShowSpeed: p.portalShowSpeed,
       billingCurrency: p.billingCurrency,
       defaultBillable: p.defaultBillable,
       invoiceRounding: roundingRuleOf(p),
@@ -441,6 +449,7 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         // Slice 86: the project's Vault tab, off the same read — so the tab
         // closes with the vault module as Files does with documentation.
         viewCredentials: modules.has("credential:view"),
+        viewSpeed: modules.has("report:view"),
       },
     };
   });
@@ -1088,6 +1097,55 @@ export async function setPortalSection(
     });
     return { changed: true };
   });
+}
+
+/** How long the speed switch's one UPDATE may wait on the weekly job's `FOR SHARE` of the project row (design §2.3). */
+const SPEED_SWITCH_LOCK_WAIT_MS = 3_000;
+
+/**
+ * project:manage_portal — show or hide the project's website speed charts
+ * on the client's portal (Phase 6 slice 118, founder decision C94 (a)),
+ * audited `project.speed_sharing_changed` with `{ shown }`.
+ *
+ * A GATE, unlike the section switches: the trigger
+ * `project_speed_sharing_fanout` derives every `website_speed_week` row's
+ * `visibility` from this column, and the portal gate reads that. Still none
+ * of `setPortalEnabled`'s machinery — the rows' `portal_enabled` is the
+ * project switch's business, untouched here — but the UPDATE can wait on
+ * the weekly job's `FOR SHARE` of the project row (milliseconds: the job
+ * holds it for one insert), so the wait is bounded and a spent bound is
+ * told to the member as PORTAL_SWITCH_BUSY (the pre-apply review's 6).
+ * Turning it ON is refused on an ARCHIVED project (the security review's 2:
+ * the portal's projections hide an archived project's rows, the gate does
+ * not); turning it OFF is never the unsafe direction and is always allowed.
+ */
+export async function setSpeedShared(ctx: ProjectCtx, projectId: string, shown: boolean): Promise<{ changed: boolean }> {
+  try {
+    return await withTenant(
+      ctx.tenantId,
+      principalOf(ctx),
+      async (tx) => {
+        await requireAccess(tx, ctx.tenantId, ctx.actor, "project:manage_portal");
+        const p = await loadInScope(tx, ctx.actor, projectId);
+        if (p.portalShowSpeed === shown) return { changed: false };
+        if (shown && (p.archivedAt !== null || p.status === "ARCHIVED")) fail("ARCHIVED");
+        // `select` so the UPDATE returns one column, not the row (AGENTS.md).
+        await tx.project.update({ where: { id: projectId }, data: { portalShowSpeed: shown }, select: { id: true } });
+        await record(tx, {
+          action: "project.speed_sharing_changed",
+          targetType: "Project",
+          targetId: projectId,
+          metadata: { shown },
+        });
+        return { changed: true };
+      },
+      { lockTimeoutMs: SPEED_SWITCH_LOCK_WAIT_MS },
+    );
+  } catch (e) {
+    if (isLockTimeout(e)) fail("PORTAL_SWITCH_BUSY", "lock timeout");
+    if (isDeadlock(e)) fail("PORTAL_SWITCH_BUSY", "deadlock");
+    throw e;
+  }
 }
 
 /** project:edit — audited project.key_changed; old keys are NOT redirected in v1. */

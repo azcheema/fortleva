@@ -118,6 +118,14 @@ export const STATUS_MAP = {
     PAUSED: spec("caution", "circle-pause"),
     ENDED: spec("quiet", "circle-x"),
   },
+  // Phase 6 slice 118: Google's band for a Core Web Vital's 75th percentile
+  // (`src/modules/reports/speed-bands.ts`). Status tones with their icon and
+  // their word — never colour alone (the dataviz rule), on both planes.
+  speedBand: {
+    GOOD: spec("success", "circle-check"),
+    NEEDS_WORK: spec("caution", "triangle-alert"),
+    POOR: spec("danger", "octagon-alert"),
+  },
   portalStatus: {
     NO_ACCESS: spec("quiet", "minus", "outline"),
     INVITED: spec("caution", "mail-question"),

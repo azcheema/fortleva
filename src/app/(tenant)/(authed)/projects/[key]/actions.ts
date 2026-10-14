@@ -23,6 +23,7 @@ import {
   setPortalEnabled,
   setPortalSection,
   setProjectRounding,
+  setSpeedShared,
   unarchiveProject,
   updateProject,
   type ProjectPatch,
@@ -244,6 +245,23 @@ export async function setPortalSectionAction(
   const r = await runForm(projectPath(key, "/portal"), async () => {
     await setPortalSection(ctx, projectId, section, shown);
     return tCommon("saved");
+  });
+  if (r.ok) revalidateProject(key);
+  return r;
+}
+
+/**
+ * Phase 6 slice 118 (C94 (a)): the Website speed card's "Show to the client"
+ * switch. The same shape as the section switches: the id is validated, the
+ * key only names the path revalidated.
+ */
+export async function setSpeedSharedAction(projectId: string, key: string, shown: boolean): Promise<FormResult> {
+  if (!uuid.safeParse(projectId).success || typeof key !== "string" || typeof shown !== "boolean") return invalid();
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.speed");
+  const r = await runForm(projectPath(key), async () => {
+    await setSpeedShared(ctx, projectId, shown);
+    return shown ? t("shownToast") : t("hiddenToast");
   });
   if (r.ok) revalidateProject(key);
   return r;

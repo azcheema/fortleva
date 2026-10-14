@@ -104,6 +104,10 @@ export const MODEL_CLASSES = {
     // Phase 4 slice 114 — the direct Fortnox connection (C89).
     "integrationConnectAttempt",
     "integrationConnection",
+    // Phase 6 slice 118 — the website speed charts (C94): Google's weekly
+    // numbers for a project's site, and when Google was last asked.
+    "websiteSpeedWeek",
+    "websiteSpeedCheck",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -272,6 +276,10 @@ export const RLS_CLASSES = {
     // and each press of Connect (C89): the agency's books, never a client's.
     "integrationConnectAttempt",
     "integrationConnection",
+    // Phase 6 slice 118 — when Google was last asked about a project's site
+    // and what came of it (C94): the team's card reads it for its empty
+    // states; a contact has no business reading it.
+    "websiteSpeedCheck",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no
@@ -315,6 +323,12 @@ export const RLS_CLASSES = {
     // Phase 3 — the portal centrepiece (4-term gate: + status = PUBLISHED,
     // like time_report). Its per-member / cost twin is class A below.
     "projectUpdate",
+    // Phase 6 slice 118 — Google's weekly speed numbers for a project's
+    // site (C94): the standard three-term gate; `visibility` is DERIVED by
+    // trigger from the project's `portal_show_speed` switch (the
+    // project_time_summary / hours_sharing_mode shape), so a contact reads a
+    // row only while the switch AND the project's portal are on.
+    "websiteSpeedWeek",
   ],
   // Receiver-bound rows: tenant_isolation + a RESTRICTIVE principal_scope
   // policy binding SELECT/UPDATE to the receiver (member => own MEMBER

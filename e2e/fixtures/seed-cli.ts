@@ -360,6 +360,9 @@ const DBTEST_PREFIXES = [
   // `setupTenant("vshare")`.
   "vshare-",
   "work-",
+  // Phase 6 slice 118, the website speed charts — `src/modules/reports/website-speed.dbtest.ts`,
+  // `setupTenant("wspd")`.
+  "wspd-",
   "wu-",
 ] as const;
 
@@ -993,6 +996,24 @@ async function provision(seedFile: string): Promise<void> {
     productionUrl: "https://example.invalid",
     scopeSummary: "Ny webbplats, tre språk, e-handel.",
   });
+  // ── Phase 6 slice 118: the website speed charts ─────────────────────
+  // The FIRST project (the one whose portal is on, so the charts can reach
+  // the client) gets a Production URL too, and the fake Google's 40 weeks for
+  // it are fetched through the real weekly body (the fake transport named
+  // directly — the seed runs outside the harness's environment), then shown
+  // to the client through the real switch, so `/portal/reports` and the
+  // `project-overview` stop photograph the charts. `website-speed.spec.ts`
+  // turns the switch off and back on and leaves it as found. (The ACTIVE
+  // project's site gets its weeks too — nobody shows them.)
+  {
+    await updateProject(ctx, projectId, { productionUrl: "https://example.invalid" });
+    const { fakeCrux } = await import("../../src/integrations/crux/fake");
+    const { fetchWebsiteSpeed } = await import("../../src/modules/reports/speed-fetch");
+    const { setSpeedShared } = await import("../../src/projects/service");
+    const fetched = await fetchWebsiteSpeed(tenantId, { transport: fakeCrux });
+    if (fetched.weeks === 0) throw new Error(`seed: the fake Google answered no weeks (${JSON.stringify(fetched)})`);
+    await setSpeedShared(ctx, projectId, true);
+  }
   const { id: completedProjectId, key: completedProjectKey } = await createProject(ctx, {
     clientId: longClientId,
     key: `C${run.slice(0, 3).toUpperCase()}`,

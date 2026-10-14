@@ -17,6 +17,7 @@ import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
 import { runUpdateReminders } from "@/jobs/update-reminders";
 import { runVaultRetention } from "@/jobs/vault-retention";
+import { runWebsiteSpeed } from "@/jobs/website-speed";
 import { runWeeklyReminders } from "@/jobs/weekly-reminders";
 
 /**
@@ -56,6 +57,10 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * each with its invoice's PDF, into the Fortnox company of every workspace
  * connected by this deployment, and makes the night's bookkeeping file; while
  * `FORTNOX_TRANSPORT` is off — the default — it does nothing),
+ * and the weekly website speed fetch (Phase 6 slice 118 — it ASKS GOOGLE's
+ * Chrome UX Report about every measured site, in every sending workspace,
+ * about once a week each, and keeps the answers; while `CRUX_TRANSPORT` is
+ * off — the default — it does nothing),
  * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
@@ -176,6 +181,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     console.error(`jobs: fortnox send failed: ${e instanceof Error ? e.name : typeof e}${code}`);
     fortnoxSend = { failed: "discovery" };
   }
+  // Phase 6 slice 118 (C94 (c)): the weekly speed fetch — Google asked about
+  // every measured site due this week, within 45 seconds of its own. Its
+  // failure is its own.
+  let websiteSpeed: Awaited<ReturnType<typeof runWebsiteSpeed>> | { failed: "discovery" };
+  try {
+    websiteSpeed = await runWebsiteSpeed();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: website speed failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    websiteSpeed = { failed: "discovery" };
+  }
   // Phase 5 slice 106 (founder decision C74): phone and browser notifications —
   // the BACKSTOP for a push whose kick was lost (each is due for fifteen
   // minutes, then never), and the jobs above's own notifications, which their
@@ -213,6 +229,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     updateReminders,
     agreementRenewals,
     fortnoxSend,
+    websiteSpeed,
     invoicePdfs,
     contractPdfs,
     pushes,

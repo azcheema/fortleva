@@ -192,7 +192,8 @@ async function addProject(clientId: string, portalEnabled: boolean): Promise<Pro
   const projectId = randomUUID();
   const n = next();
   await f.platform.project.create({
-    data: { id: projectId, tenantId: T(), clientId, key: `PS${n}`, name: `Gate ${n}`, portalEnabled, hoursSharingMode: "HOURS" },
+    // Hours shared, the speed switch on and the site the SPEED vehicle names (slice 118), so a summary row and a speed row are the contact's.
+    data: { id: projectId, tenantId: T(), clientId, key: `PS${n}`, name: `Gate ${n}`, portalEnabled, hoursSharingMode: "HOURS", portalShowSpeed: true, productionUrl: "https://example.invalid" },
     select: { id: true },
   });
   const stateId = randomUUID();
@@ -344,8 +345,23 @@ const UPDATE: Vehicle = {
       RETURNING id, portal_enabled`),
 };
 
+/** Phase 6 slice 118: a week of Google's numbers — visibility derived from the project's speed switch (on in `addProject`). */
+const SPEED: Vehicle = {
+  table: "website_speed_week",
+  insert: (tx, p) => {
+    const n = next();
+    return stamped(tx.$queryRaw<Row[]>`
+      INSERT INTO website_speed_week (id, tenant_id, client_id, project_id, origin, form_factor, period_start, period_end,
+                                      lcp_p75_ms, lcp_good, lcp_needs_work, lcp_poor, visibility)
+      VALUES (${randomUUID()}, ${T()}, ${p.clientId}, ${p.projectId}, 'https://example.invalid', 'PHONE',
+              DATE '2026-01-03' + (${n}::int * 7 - 27), DATE '2026-01-03' + (${n}::int * 7),
+              2100, 0.8, 0.15, 0.05, 'CLIENT_VISIBLE')
+      RETURNING id, portal_enabled`);
+  },
+};
+
 /** One per stamped table but `comment`, whose guard share-locks its subject. */
-const VEHICLES: readonly Vehicle[] = [MILESTONE, VERSION, SERVICE, DOCUMENT, TASK, ACTIVITY, SUMMARY, REPORT, UPDATE];
+const VEHICLES: readonly Vehicle[] = [MILESTONE, VERSION, SERVICE, DOCUMENT, TASK, ACTIVITY, SUMMARY, REPORT, UPDATE, SPEED];
 
 // ── Holding a transaction open ────────────────────────────────────────
 
@@ -593,7 +609,7 @@ async function expectRefusal(p: Promise<unknown>, pattern: RegExp): Promise<void
 
 const PROJECT_TABLES = RLS_CLASSES.B_projectScoped.map(tableNameOf);
 const NOTHING = Object.fromEntries(PROJECT_TABLES.map((t) => [t, 0]));
-/** The ten stamped tables and the one unstamped copy. */
+/** The eleven stamped tables (slice 118 added `website_speed_week`) and the one unstamped copy. */
 const STAMPED = [...PORTAL_ENABLED_FANOUT_TARGETS.map(tableNameOf), "search_index"];
 
 /** What the contact reads of the project, raw, table by table (portal-gate.dbtest.ts' walk): `portal_gate` answers. */

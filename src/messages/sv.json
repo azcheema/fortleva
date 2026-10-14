@@ -2438,6 +2438,30 @@
       },
       "archivedHint": "Arkiverat — du kan fortfarande stänga av delningen."
     },
+    "speed": {
+      "title": "Webbplatsens hastighet",
+      "description": "Webbplatsen bakom produktions-URL:en, så som Googles Chrome-besökare upplever den.",
+      "show": "Visa för kunden",
+      "shownToast": "Visas för kunden. De hittar det under Rapporter i sin portal.",
+      "hiddenToast": "Dolt för kunden.",
+      "sharing": {
+        "on": "Kunden ser det under Rapporter i sin portal.",
+        "portalOff": "Projektets portal är avstängd, så kunden kan inte se det än.",
+        "off": "Bara ditt team kan se det."
+      },
+      "measured": "Mätt: {origin}",
+      "checked": "Kontrollerat {date}",
+      "states": {
+        "noUrl": "Ange produktions-URL:en ovan, så visas Googles hastighetssiffror för webbplatsen här efter nästa veckokontroll.",
+        "transportOff": "Inte påslaget på den här servern.",
+        "notChecked": "Inte kontrollerat än. De första siffrorna kommer efter nästa veckokontroll.",
+        "noData": "Google har inga hastighetsdata för den här webbplatsen än. Google publicerar bara siffror för webbplatser med tillräckligt många Chrome-besökare.",
+        "refused": "Google avvisade förfrågan. Kontrollera att produktions-URL:en är en riktig webbadress.",
+        "refusedKey": "Google avvisade serverns nyckel. Fråga den som driver servern.",
+        "failed": "Kunde inte nå Google vid den senaste kontrollen. Ett nytt försök görs automatiskt.",
+        "shape": "Google svarade i en form som Fortleva inte kunde läsa. Ett nytt försök görs nästa vecka."
+      }
+    },
     "overview": {
       "details": "Detaljer",
       "name": "Namn",
@@ -3694,7 +3718,12 @@
       "description": "Rapporter som din byrå har publicerat för dig, senaste månaden först.",
       "empty": "Inga rapporter än",
       "emptyBody": "Din byrå har inte publicerat några rapporter för dig än.",
-      "published": "Publicerad {date}"
+      "published": "Publicerad {date}",
+      "speed": {
+        "title": "Webbplatsens hastighet",
+        "description": "Hur din webbplats presterar för sina besökare, så som Google mäter det.",
+        "measured": "Mätt av Google på {origin}"
+      }
     },
     "company": {
       "title": "Ditt företag",
@@ -4080,6 +4109,11 @@
       "ACTIVE": "Aktiv",
       "PAUSED": "Pausad",
       "ENDED": "Avslutad"
+    },
+    "speedBand": {
+      "GOOD": "Bra",
+      "NEEDS_WORK": "Behöver förbättras",
+      "POOR": "Dålig"
     },
     "portalStatus": {
       "NO_ACCESS": "Ingen portalåtkomst",
@@ -6319,6 +6353,50 @@
         "empty": "Inga aktiva budgetar.",
         "over": "Över budget"
       }
+    }
+  },
+  "websiteSpeed": {
+    "metrics": {
+      "lcp": {
+        "name": "Hur snabbt sidan laddar",
+        "hint": "Largest Contentful Paint: när huvudinnehållet har visats"
+      },
+      "inp": {
+        "name": "Hur snabbt den reagerar på ett tryck",
+        "hint": "Interaction to Next Paint: fördröjningen efter ett tryck eller klick"
+      },
+      "cls": {
+        "name": "Hur mycket den hoppar omkring",
+        "hint": "Cumulative Layout Shift: innehåll som flyttar sig medan sidan laddar"
+      }
+    },
+    "goodUpTo": "Bra upp till {value}",
+    "poorFrom": "Dålig från {value}",
+    "device": {
+      "label": "Besökare på",
+      "PHONE": "Mobiler",
+      "DESKTOP": "Datorer"
+    },
+    "latestEnding": "28 dagar till {date}",
+    "noLatest": "Inga data för den senaste perioden",
+    "noDevice": "Inga data för {device} än.",
+    "shares": "Andel besök under den senaste perioden",
+    "trend": "Veckotrend för {metric}",
+    "trendHint": "Varje punkt är de 28 dagarna fram till den lördagen, så som Chrome-besökarna upplevde hela webbplatsen. Google publicerar nya siffror varje vecka.",
+    "pointTitle": "{date}: {value}",
+    "showTable": "Visa som tabell",
+    "tableLabel": "Veckor",
+    "columns": {
+      "period": "28 dagar till",
+      "value": "Värde",
+      "good": "Bra",
+      "needsWork": "Behöver förbättras",
+      "poor": "Dålig"
+    },
+    "units": {
+      "s": "{value} s",
+      "ms": "{value} ms",
+      "none": "{value}"
     }
   }
 }

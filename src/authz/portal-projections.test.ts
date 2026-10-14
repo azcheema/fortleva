@@ -143,6 +143,10 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   // the agency's own bookkeeping on the same class-B row.
   "invoiceRenewals",
   "invoicedThrough",
+  // Slice 118: the project's "Show to the client" switch for its website speed
+  // charts — a gate whose effect reaches the client through the rows' derived
+  // visibility; the column itself is the agency's.
+  "portalShowSpeed",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -476,6 +480,10 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "renewalDay",
       "invoiceRenewals",
       "invoicedThrough",
+      // Slice 118: the project's "Show to the client" switch for its website speed
+      // charts — a gate whose effect reaches the client through the rows' derived
+      // visibility; the column itself is the agency's.
+      "portalShowSpeed",
     ]);
   });
 
@@ -564,6 +572,10 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         "renewalDay",
         "invoiceRenewals",
         "invoicedThrough",
+        // Slice 118: the project's "Show to the client" switch for its website speed
+        // charts — a gate whose effect reaches the client through the rows' derived
+        // visibility; the column itself is the agency's.
+        "portalShowSpeed",
         "origin",
       ].sort(),
     );
@@ -775,6 +787,10 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   // below), so the bare word appears in portal source by right.
   "invoiceRenewals",
   "invoicedThrough",
+  // Slice 118: the project's "Show to the client" switch for its website speed
+  // charts — a gate whose effect reaches the client through the rows' derived
+  // visibility; the column itself is the agency's.
+  "portalShowSpeed",
   "origin",
 ]);
 

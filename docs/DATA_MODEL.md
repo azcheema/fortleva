@@ -24,7 +24,7 @@
 
 ### 1.2 Canonical entity names
 
-`Tenant, User, Member, Role, Permission, RolePermission, MemberRole, MemberClient, MemberProject, Client, Contact, Project, ProjectVersion, Milestone, Service, Contract, ContractSignature, InvoiceSeries, Invoice, InvoiceLine, Document, FileObject, FileVersion, ~~Issue, IssueComment~~ (superseded 2026-08-16, below), PerformanceReport, AuditEvent, ContinuityBox, ContinuityOpenRequest, TenantPreference, FeatureFlag`.
+`Tenant, User, Member, Role, Permission, RolePermission, MemberRole, MemberClient, MemberProject, Client, Contact, Project, ProjectVersion, Milestone, Service, Contract, ContractSignature, InvoiceSeries, Invoice, InvoiceLine, Document, FileObject, FileVersion, ~~Issue, IssueComment~~ (superseded 2026-08-16, below), ~~PerformanceReport~~ *(not built — slice 118's `WebsiteSpeedWeek` + `WebsiteSpeedCheck`, §6.10)*, AuditEvent, ContinuityBox, ContinuityOpenRequest, TenantPreference, FeatureFlag`.
 
 Supporting models (this doc's additions, still canonical): `Session, Account, Verification, TwoFactor, Passkey` (Better Auth, member side), `AuthMail` (the member plane's per-recipient auth-mail ledger, C30), `ContactSession, ContactAccount, ContactVerification` (portal auth), `MemberInvite`, `ContactInvite` (the portal's own invitation — Phase 3, the invite slice; it names a `Contact` row the agency has already recorded, where `MemberInvite` names an email and creates the `Member` on acceptance), `TenantCounter`, `StripeWebhookEvent` (webhook idempotency ledger, §6.2), `IntegrationConnection` (v2). Tenant entitlements are a **versioned JSON column `entitlements` on `Tenant`**, not a table (§4).
 
@@ -84,7 +84,7 @@ Full enforcement design lives in `TENANCY.md`; the schema commitments are:
 | **P — platform/global** | No TENANT RLS. Global reference or platform-owned data; never exposed to tenant/portal queries directly. `User`, `Permission` and `FeatureFlag` carry the same AUTH-class template as the row below — ENABLE + FORCE, `allow_runtime`, restrictive `portal_deny` (`20260808191500_security_foundations`) *(corrected 2026-09-24: this said "No RLS" too)*. | `Permission`, `FeatureFlag`, `User`, `StripeWebhookEvent` |
 | **AUTH — auth-managed** | No TENANT RLS. Touched only by the auth layer (runs before tenant context exists). Locked down by role grants, plus the AUTH-class template every one of them carries — ENABLE + FORCE, a blanket `allow_runtime` for `app_runtime` and a restrictive `portal_deny`, so a contact-principal transaction reads none of them *(corrected 2026-09-24: this said "No RLS", which `20260808191500_security_foundations` contradicted from the start)*. | `Session`, `Account`, `Verification`, `TwoFactor`, `Passkey`, `ContactSession`, `ContactAccount`, `ContactVerification`, `AuthMail` *(C30)* |
 | **A — tenant-strict** | Permissive policy: `tenantId = app.tenant_id`. Staff plane only; a portal principal (`app.principal = 'contact'`) gets zero rows via a restrictive deny policy. | `Member`, `MemberInvite`, `ContactInvite`, `Role`, `RolePermission`, `MemberRole`, `MemberClient`, `MemberProject`, `TenantPreference`, `TenantCounter`, `InvoiceSeries`, `FileObject`, `FileVersion`, `IntegrationConnection` |
-| **B — client-scoped** | Class A policy **plus** a RESTRICTIVE portal policy: when `app.principal = 'contact'`, row must satisfy `clientId = app.client_id` AND (where the model has `visibility`) `visibility = 'CLIENT_VISIBLE'`. Restrictive (AND-ed), never permissive (OR-ed) — permissive policies OR together, which is the footgun. | `Client`, `Contact`, `Project`, `ProjectVersion`, `Milestone`, `Service`, `Contract`, `ContractSignature`, `Invoice`, `InvoiceLine`, `Document`, ~~`Issue`, `IssueComment`~~ *(superseded 2026-08-16 — `WorkItem`, `Comment` below)*, `PerformanceReport`, `ContinuityBox`, `ContinuityOpenRequest` |
+| **B — client-scoped** | Class A policy **plus** a RESTRICTIVE portal policy: when `app.principal = 'contact'`, row must satisfy `clientId = app.client_id` AND (where the model has `visibility`) `visibility = 'CLIENT_VISIBLE'`. Restrictive (AND-ed), never permissive (OR-ed) — permissive policies OR together, which is the footgun. | `Client`, `Contact`, `Project`, `ProjectVersion`, `Milestone`, `Service`, `Contract`, `ContractSignature`, `Invoice`, `InvoiceLine`, `Document`, ~~`Issue`, `IssueComment`~~ *(superseded 2026-08-16 — `WorkItem`, `Comment` below)*, ~~`PerformanceReport`~~ `WebsiteSpeedWeek` *(slice 118, projectScoped)*, `ContinuityBox`, `ContinuityOpenRequest` |
 | **AU — audit** | Append-only: runtime role has INSERT + SELECT only (`REVOKE UPDATE, DELETE`) plus a raise-exception trigger. Tenant reads filter `tenantId = app.tenant_id AND visibility = 'TENANT'`. | `AuditEvent` |
 | **T — tenant root** | The `Tenant` row itself: platform plane writes it; tenant plane reads its own row (policy on `id = app.tenant_id`). | `Tenant` |
 
@@ -93,7 +93,7 @@ Full enforcement design lives in `TENANCY.md`; the schema commitments are:
 | Registry subclass (`src/db/model-registry.ts`) | Class | Required columns / policy | Models |
 |---|---|---|---|
 | `principalScoped` | A | `portal_deny`; **never a `visibility` column** — a class-A table carrying one is a posture-test failure (it invites a later "just gate it" shortcut). | all class-A models above + `WorkflowState`, `WorkflowPreset`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `Mention`, `ProjectTemplate`, `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `StaffNotice`, `StaffNoticeAcknowledgment`, `RoundingRule`, `ProjectUpdateInternalSnapshot`, `TenantKey`, `CredentialSecret`, `CredentialVersion`, `CredentialAccessGrant`, `CredentialShareLink`, `ExpirationReminderSent`, `Subscription`, `NotificationPreference`, `EmailOutbox`, `PushSubscription` |
-| `clientScoped` | B | `client_id`, `visibility`, RESTRICTIVE `portal_gate` in the two-term form `client_id = app.client_id AND visibility = 'CLIENT_VISIBLE'`. | `Client`, `Contact` (structural — client match only), `Document` without `projectId`, `Contract`, `ContractSignature`, `Invoice`, `InvoiceLine`, `PerformanceReport`, `ContinuityBox`, `ContinuityOpenRequest`, `CredentialItem`, `ClientAsset` |
+| `clientScoped` | B | `client_id`, `visibility`, RESTRICTIVE `portal_gate` in the two-term form `client_id = app.client_id AND visibility = 'CLIENT_VISIBLE'`. | `Client`, `Contact` (structural — client match only), `Document` without `projectId`, `Contract`, `ContractSignature`, `Invoice`, `InvoiceLine`, ~~`PerformanceReport`~~ *(slice 118: `WebsiteSpeedWeek` is projectScoped, below)*, `ContinuityBox`, `ContinuityOpenRequest`, `CredentialItem`, `ClientAsset` |
 | `projectScoped` | B | `client_id`, `visibility`, **`portal_enabled boolean NOT NULL DEFAULT false`** (denormalised from `Project.portalEnabled`, maintained by an `AFTER UPDATE OF portal_enabled ON project` trigger fanning out to every projectScoped table in the same transaction, and set on INSERT by a BEFORE trigger reading the parent project — *since slice 74, 2026-09-28, that trigger only TRIES the project's switch gate and writes FALSE while a switch is in flight, re-derived at the writer's commit or by the switch's reconcile (TENANCY.md §7.2), so the copy can lag the switch toward FALSE — transiently, except the recorded residuals (the migration header's list: rows left FALSE until the project is next switched) — and never toward TRUE; before it, a row written during a DISABLE kept `true`*), RESTRICTIVE `portal_gate` in the **three-term form** `portal_gate = client_id = app.client_id AND visibility = 'CLIENT_VISIBLE' AND portal_enabled`. | `Project` (its own row: `client_id` + `portal_enabled` — a project row is a structural row, so the visibility term is replaced by `portal_enabled`), `Milestone`, `ProjectVersion`, `Service`, `Document` with `projectId`, `WorkItem`, `WorkItemActivity`, `Comment`, `ProjectUpdate`, `ProjectTimeSummary`, `search_index` rows with `project_id` |
 | (special) | — | `Notification`: contact rows readable/updatable (`read_at`, `archived_at` only) under `receiver_type='CONTACT' AND receiver_id = app.principal_id AND client_id = app.client_id`. | `Notification` |
 
@@ -2422,54 +2422,119 @@ model IssueComment {
 }
 
 // ───────────────────────────────────────────────────────────────────
-// 6.10 PERFORMANCE REPORTS (§6, §10.5)
-// AMENDED 2026-10-13 (Phase 6 slice 115, founder decision C91): an UPLOADED
-// report is NOT a row here. It is a Document of kind REPORT with its month
-// (§6.8's "CLIENT REPORTS" note) — one visibility, the document's, through
-// the one portal gate, rather than a listing row whose visibility could
-// disagree with its file's. MANUAL_UPLOAD and `documentId` below are dropped
-// from the design; this table is the CrUX slice's (CRUX_SNAPSHOT `metrics`).
-// v1: MANUAL_UPLOAD (report PDFs as client-visible Documents, linked
-// here for grouping) + CRUX_SNAPSHOT (API-key-only, free, cron-fetched
-// per Project.productionUrl: https://developer.chrome.com/docs/crux/api
-// — graceful empty state: small sites often have no CrUX data).
-// v2: GSC_SYNC / GA4_SYNC via IntegrationConnection (service-account
-// invite pattern preferred over OAuth — §10.5 research).
+// 6.10 WEBSITE SPEED (§6, §10.5) — AS BUILT, Phase 6 slice 118
+// (2026-10-14; founder decision C94; migration 20261023090000_website_speed;
+// design docs/research/2026-10-14-slice-118-website-speed-design.md).
+//
+// THE SKETCH THAT STOOD HERE — `PerformanceReport` with a `kind`
+// (MANUAL_UPLOAD / CRUX_SNAPSHOT / GSC_SYNC / GA4_SYNC), `metrics` JSON and
+// a `visibility` of its own — is NOT built. Slice 115 made an uploaded
+// report a `Document` of kind REPORT (§6.8); slice 118 keeps Google's
+// Chrome UX Report numbers in TYPED columns, one row per project × device
+// kind × rolling 28-day period, with `visibility` DERIVED from the
+// project's "Show to the client" switch rather than written per row. The
+// GSC / GA4 syncs stay v2 (an IntegrationConnection, §10.5).
+//
+// WHAT IS KEPT: the whole site behind `Project.productionUrl` (its ORIGIN —
+// a page URL is reduced to its site; the row records the origin it
+// measured, so a project whose URL changes starts a new series and the old
+// rows stay as history nobody draws), phones and computers as two series,
+// the three Core Web Vitals' 75th percentiles (LCP, INP in whole ms; CLS to
+// three decimals) and the share of visits in each of Google's bands (nine
+// DECIMAL(5,4) columns). Up to 40 periods a fetch (Google's history), only
+// the period ends not yet held inserted — the composite unique is the
+// dedupe, PER SITE since 20261023100000 (named by hand,
+// `website_speed_week_project_site_kind_period_key`: Prisma's default
+// would be over Postgres's 63 characters).
+//
+// THE SWITCH: `Project.portalShowSpeed` (false at birth — C94 (a)). A BEFORE
+// INSERT OR UPDATE OF project_id, visibility trigger
+// (`website_speed_week_stamp_visibility`) derives `visibility` from it —
+// a direct write is overwritten, like `portal_enabled` — and
+// `project_speed_sharing_fanout` (AFTER UPDATE OF portal_show_speed ON
+// project) re-derives the project's rows; the `project_time_summary` /
+// `hours_sharing_mode` shape. The one writer, the weekly job
+// (`src/modules/reports/speed-fetch.ts`), takes `SELECT … FOR SHARE` on the
+// project row before it inserts, so a press and a write are serialised in
+// either order. SINCE 20261023110000 THE SITE IS PART OF THE RULE (the
+// slice's security review): a row is CLIENT_VISIBLE only while the switch
+// is on AND its `origin` is the origin of the project's CURRENT Production
+// URL (`website_speed_origin_of`, IMMUTABLE SQL: scheme + host lower-cased,
+// a default port dropped), the fan-out firing on a change of either
+// column — a URL move makes the previous site's rows INTERNAL in the same
+// transaction; an IDN host (punycode in `new URL`, unicode in SQL) matches
+// nothing and stays INTERNAL, fail closed; a URL with a credential or
+// whitespace before its path is no origin at all (20261023120000 — what
+// `originOf` refuses, the database refuses). `portal_enabled` is the project switch's, as on every
+// projectScoped row: the stamp, the heal, the twelfth leg of the fan-out
+// and of the reconcile (TENANCY.md §7.2).
+//
+// WHO READS: the team with `report:view` on the project's Overview
+// (`readWebsiteSpeed`); the client under `portal.report.view` on the
+// portal's Reports page (`src/modules/reports/portal.ts` — never the row's
+// `origin`, which is on the never-list; the project's current origin is a
+// `where` term). The `website_speed_check` row — when Google was last asked
+// and what came of it (OK / NO_DATA / REFUSED / FAILED, a short token) — is
+// class A: the team's card reads it for its empty states.
+//
+// The job: `POST /api/jobs/run` → `runWebsiteSpeed` (`src/jobs/website-speed.ts`)
+// while `CRUX_TRANSPORT` is `live`; off by default everywhere, `fake` in the
+// harnesses. Google's quota is 150 queries a minute per Google project.
 // ───────────────────────────────────────────────────────────────────
 
-enum PerformanceReportKind {
-  MANUAL_UPLOAD   // v1
-  CRUX_SNAPSHOT   // v1
-  GSC_SYNC        // v2
-  GA4_SYNC        // v2
+enum SpeedFormFactor {
+  PHONE
+  DESKTOP
 }
 
-/// PerformanceReport — one report/datapoint set for a client (optionally
-/// a project) over a period. metrics JSON shape per kind; for
-/// CRUX_SNAPSHOT (v1): { formFactor, lcpP75Ms, inpP75Ms, clsP75,
-/// ttfbP75Ms, histograms: {...}, collectionPeriod: {...} } — the raw
-/// CrUX API record, chart-ready. For MANUAL_UPLOAD, documentId points
-/// at the uploaded file (its own visibility applies to the file; this
-/// row's visibility gates the chart/listing).
-/// scope=client  rls=B  ret=R2  enc=none
-/// audit: performance_report.created | performance_report.published (visibility flip)
-model PerformanceReport {
-  id          String                @id @default(uuid(7))
-  tenantId    String
-  clientId    String
-  projectId   String?
-  kind        PerformanceReportKind
-  subjectUrl  String?                            // origin or page (CrUX subject)
-  periodStart DateTime?             @db.Date
-  periodEnd   DateTime?             @db.Date
-  metrics     Json?                              // kind-specific; see comment
-  documentId  String?                            // MANUAL_UPLOAD source file
-  visibility  Visibility            @default(INTERNAL)
-  fetchedAt   DateTime?             @db.Timestamptz(6)  // sync kinds
-  createdAt   DateTime              @default(now()) @db.Timestamptz(6)
+enum SpeedCheckOutcome {
+  OK
+  NO_DATA
+  REFUSED
+  FAILED
+}
 
-  @@index([tenantId, clientId, kind, periodEnd])
-  @@index([tenantId, projectId, kind])
+/// WebsiteSpeedWeek — one of Google's rolling 28-day periods for one
+/// project's site on one device kind. CHECKs: the period 28 days; p75s ≥ 0;
+/// shares in 0..1; a metric's four values all set or all NULL; at least one
+/// metric; the origin an http(s) origin (no path, query, fragment or
+/// credential), ≤ 2048.
+/// scope=project  rls=B (projectScoped)  ret=with the project (cascade)  enc=none
+/// audit: none of its own — `project.speed_sharing_changed` is the switch's
+model WebsiteSpeedWeek {
+  id            String          @id @default(uuid(7))
+  tenantId      String
+  clientId      String                          // denormalised for portal RLS
+  projectId     String
+  origin        String                          // what Google was asked about
+  formFactor    SpeedFormFactor
+  periodStart   DateTime        @db.Date
+  periodEnd     DateTime        @db.Date
+  lcpP75Ms      Int?
+  inpP75Ms      Int?
+  clsP75        Decimal?        @db.Decimal(6, 3)
+  lcpGood       Decimal?        @db.Decimal(5, 4)  // … lcpNeedsWork, lcpPoor, inp×3, cls×3
+  visibility    Visibility      @default(INTERNAL)  // trigger-derived from Project.portalShowSpeed
+  portalEnabled Boolean         @default(false)     // trigger-maintained
+  fetchedAt     DateTime        @default(now()) @db.Timestamptz(6)
+
+  @@unique([tenantId, projectId, origin, formFactor, periodEnd], map: "website_speed_week_project_site_kind_period_key")
+  @@index([tenantId, clientId, visibility])
+}
+
+/// WebsiteSpeedCheck — when Google was last asked about a project's site
+/// and what came of it. Staff bookkeeping; never a contact's.
+/// scope=tenant  rls=A  ret=with the project (cascade)  enc=none
+model WebsiteSpeedCheck {
+  id        String            @id @default(uuid(7))
+  tenantId  String
+  projectId String
+  origin    String?
+  checkedAt DateTime          @db.Timestamptz(6)
+  outcome   SpeedCheckOutcome
+  detail    String?           @db.VarChar(40)   // bad_url | bad_request | key | network | shape | rate
+
+  @@unique([tenantId, projectId])
 }
 
 // ───────────────────────────────────────────────────────────────────

@@ -115,6 +115,10 @@ export const AUDIT_EVENTS = {
   // the client's portal. Metadata `{ section, shown }` — layout, not a
   // gate, but it changes what a client is shown, so it is recorded.
   "project.portal_section_changed": TENANT,
+  // Phase 6 slice 118 (C94 (a)): the project's website speed charts shown to
+  // or hidden from the client. Metadata `{ shown }` — a GATE this time: the
+  // database derives every speed row's visibility from the switch.
+  "project.speed_sharing_changed": TENANT,
   "project.viewed_as_contact": TENANT,
   "project_version.created": TENANT,
   "project_version.updated": TENANT,

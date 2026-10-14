@@ -33,7 +33,8 @@ export async function generateMetadata(): Promise<Metadata> {
  * Nothing is read here; `src/authz/portal-view-as.test.ts` fails if this file
  * ever grows a query of its own.
  */
-export default async function ViewAsReportsPage() {
+export default async function ViewAsReportsPage({ searchParams }: { searchParams: Promise<{ device?: string }> }) {
+  const { device } = await searchParams;
   const target = await resolveViewAsTarget();
   if (!target) redirect("/home");
 
@@ -51,7 +52,7 @@ export default async function ViewAsReportsPage() {
           carries a download form that can only bounce a member to the client
           sign-in page. */}
       <div inert>
-        <PortalReportsView principal={principal} name={target.name} />
+        <PortalReportsView principal={principal} name={target.name} device={device === "desktop" ? "DESKTOP" : "PHONE"} />
       </div>
     </>
   );

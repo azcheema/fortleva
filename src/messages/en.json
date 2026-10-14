@@ -2438,6 +2438,30 @@
       },
       "archivedHint": "Archived — you can still switch sharing off."
     },
+    "speed": {
+      "title": "Website speed",
+      "description": "The site behind the Production URL, as Google's Chrome visitors experience it.",
+      "show": "Show to the client",
+      "shownToast": "Shown to the client. They find it under Reports in their portal.",
+      "hiddenToast": "Hidden from the client.",
+      "sharing": {
+        "on": "The client sees it under Reports in their portal.",
+        "portalOff": "The project's portal is off, so the client can't see it yet.",
+        "off": "Only your team can see it."
+      },
+      "measured": "Measured: {origin}",
+      "checked": "Checked {date}",
+      "states": {
+        "noUrl": "Set the Production URL above and Google's speed numbers for the site appear here after the next weekly check.",
+        "transportOff": "Not switched on for this server.",
+        "notChecked": "Not checked yet. The first numbers arrive after the next weekly check.",
+        "noData": "Google has no speed data for this site yet. Google publishes numbers only for sites with enough Chrome visitors.",
+        "refused": "Google refused the request. Check that the Production URL is a real site address.",
+        "refusedKey": "Google refused the server's key. Ask whoever runs the server.",
+        "failed": "Couldn't reach Google at the last check. It's tried again automatically.",
+        "shape": "Google answered in a form Fortleva couldn't read. It's tried again next week."
+      }
+    },
     "overview": {
       "details": "Details",
       "name": "Name",
@@ -3694,7 +3718,12 @@
       "description": "Reports your agency has published for you, newest month first.",
       "empty": "No reports yet",
       "emptyBody": "Your agency hasn't published any reports for you yet.",
-      "published": "Published {date}"
+      "published": "Published {date}",
+      "speed": {
+        "title": "Website speed",
+        "description": "How your site performs for its visitors, as Google measures it.",
+        "measured": "Measured by Google at {origin}"
+      }
     },
     "company": {
       "title": "Your company",
@@ -4080,6 +4109,11 @@
       "ACTIVE": "Active",
       "PAUSED": "Paused",
       "ENDED": "Ended"
+    },
+    "speedBand": {
+      "GOOD": "Good",
+      "NEEDS_WORK": "Needs work",
+      "POOR": "Poor"
     },
     "portalStatus": {
       "NO_ACCESS": "No portal access",
@@ -6319,6 +6353,50 @@
         "empty": "No active budgets.",
         "over": "Over budget"
       }
+    }
+  },
+  "websiteSpeed": {
+    "metrics": {
+      "lcp": {
+        "name": "How fast the page loads",
+        "hint": "Largest Contentful Paint: when the main content has appeared"
+      },
+      "inp": {
+        "name": "How fast it reacts to a tap",
+        "hint": "Interaction to Next Paint: the delay after a tap or click"
+      },
+      "cls": {
+        "name": "How much it jumps around",
+        "hint": "Cumulative Layout Shift: content moving while the page loads"
+      }
+    },
+    "goodUpTo": "Good up to {value}",
+    "poorFrom": "Poor from {value}",
+    "device": {
+      "label": "Visitors on",
+      "PHONE": "Phones",
+      "DESKTOP": "Computers"
+    },
+    "latestEnding": "28 days to {date}",
+    "noLatest": "No data for the latest period",
+    "noDevice": "No data for {device} yet.",
+    "shares": "Share of visits in the latest period",
+    "trend": "Weekly trend of {metric}",
+    "trendHint": "Each point is the 28 days ending that Saturday, as Chrome visitors experienced the whole site. Google publishes new numbers weekly.",
+    "pointTitle": "{date}: {value}",
+    "showTable": "Show as a table",
+    "tableLabel": "Weeks",
+    "columns": {
+      "period": "28 days to",
+      "value": "Value",
+      "good": "Good",
+      "needsWork": "Needs work",
+      "poor": "Poor"
+    },
+    "units": {
+      "s": "{value} s",
+      "ms": "{value} ms",
+      "none": "{value}"
     }
   }
 }
