@@ -12,8 +12,11 @@ import { localDateString } from "@/lib/duration";
 import { requireTenantContext } from "@/members/tenant-context";
 import { readPreferences } from "@/preferences/service";
 
+import { readMakeReportForm } from "@/documents/made-reports";
+
 import { loadClient } from "../data";
 import { AddReport } from "./add-report";
+import { MakeReport } from "./make-report";
 import { ReportTable } from "./report-table";
 
 /**
@@ -49,6 +52,10 @@ export default async function ClientReportsPage({
   const latestMonth = reportMonthFormValue(latestReportMonth(today));
   const defaultMonth = reportMonthFormValue(defaultReportMonth(today));
   const active = client.status === "ACTIVE";
+  // The Make a report card (slice 119): the client's portal projects, whether
+  // anyone there could read it, and its invoice language. In SEQUENCE after
+  // the list (its own transaction).
+  const makeForm = client.caps.makeReports ? await readMakeReportForm(ctx, client.id) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -68,12 +75,12 @@ export default async function ClientReportsPage({
               variant="empty"
               icon={FileChartColumnIcon}
               title={t("empty")}
-              body={t("emptyBody")}
+              body={makeForm ? t("emptyBodyMake") : t("emptyBody")}
               action={
                 <Button asChild size="sm">
-                  <Link href="#new-report">
+                  <Link href={makeForm ? "#make-report" : "#new-report"}>
                     <PlusIcon />
-                    {t("add.title")}
+                    {makeForm ? t("make.title") : t("add.title")}
                   </Link>
                 </Button>
               }
@@ -96,6 +103,18 @@ export default async function ClientReportsPage({
           />
         )}
       </SectionCard>
+      {makeForm ? (
+        <SectionCard id="make-report" className="scroll-mt-16" title={t("make.title")} description={t("make.description")}>
+          {/* The picker's newest month is LAST month: a made report covers a month that has ENDED (C95 (g)). */}
+          <MakeReport
+            clientId={client.id}
+            latestMonth={defaultMonth}
+            defaultLocale={makeForm.defaultLocale}
+            projects={makeForm.projects}
+            hasAudience={makeForm.hasAudience}
+          />
+        </SectionCard>
+      ) : null}
       {client.caps.uploadReports ? (
         <SectionCard id="new-report" className="scroll-mt-16" title={t("add.title")} description={t("add.description")}>
           <AddReport clientId={client.id} defaultMonth={defaultMonth} latestMonth={latestMonth} />

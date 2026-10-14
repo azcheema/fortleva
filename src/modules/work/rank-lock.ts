@@ -259,6 +259,13 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
  * it cannot cycle with a bulk edit or the cascade; `publishReport`
  * retries a deadlock with the unqueued lockers above.
  *
+ * AND A SECOND, since Phase 7 slice 119: the MADE monthly report's publish
+ * check (`src/documents/made-report-check.ts`) share-locks every task the
+ * PDF names (and the projects and updates, on their own tables), in id
+ * order — behind this queue for each named project, projects in sorted
+ * order, before its first row lock; the documents' `publishReport` retries
+ * contention and tells the member `MADE_REPORT_BUSY` when it is spent.
+ *
  * SINCE 6c A QUEUED WRITER ALSO TOUCHES A `contact` ROW — the foreign
  * key on `assignee_contact_id` takes `FOR KEY SHARE` on it — so the
  * sentence above needed checking rather than extending. It closes no

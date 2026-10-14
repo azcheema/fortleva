@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { Document, Link, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import { createTranslator } from "next-intl";
 
+import { listMarker } from "@/lib/list-marker";
 import { registerPdfFonts } from "@/lib/pdf-fonts";
 import en from "@/messages/en.json";
 import sv from "@/messages/sv.json";
@@ -154,31 +155,8 @@ function paragraph(node: PmNode, key: number, style: BlockStyle | undefined): Re
 
 const runs = (node: PmNode): ReactNode[] => children(node).map((child, i) => inline(child, i));
 
-const ROMAN: readonly [number, string][] = [
-  [1000, "m"], [900, "cm"], [500, "d"], [400, "cd"], [100, "c"], [90, "xc"],
-  [50, "l"], [40, "xl"], [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"],
-];
-
-/** An ordered list's marker as the editor shows it: 1, a, A, i or I (the normaliser's `type`). */
-export function listMarker(n: number, type: string): string {
-  if (type === "a" || type === "A") {
-    let out = "";
-    for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) out = String.fromCharCode(97 + ((k - 1) % 26)) + out;
-    return type === "A" ? out.toUpperCase() : out;
-  }
-  if (type === "i" || type === "I") {
-    let out = "";
-    let k = n;
-    for (const [v, r] of ROMAN) {
-      while (k >= v) {
-        out += r;
-        k -= v;
-      }
-    }
-    return type === "I" ? out.toUpperCase() : out;
-  }
-  return String(n);
-}
+/** The marker, shared with the monthly report's PDF since slice 119 (`src/lib/list-marker.ts`); re-exported for `print.test.ts`. */
+export { listMarker };
 
 /** One block of the body. */
 function block(node: PmNode, key: number): ReactNode {

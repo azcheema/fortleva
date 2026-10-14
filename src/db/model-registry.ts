@@ -108,6 +108,9 @@ export const MODEL_CLASSES = {
     // numbers for a project's site, and when Google was last asked.
     "websiteSpeedWeek",
     "websiteSpeedCheck",
+    // Phase 7 slice 119 — the monthly report Fortleva makes (C95): the record
+    // of a made report beside its REPORT document.
+    "madeReport",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -280,6 +283,11 @@ export const RLS_CLASSES = {
     // and what came of it (C94): the team's card reads it for its empty
     // states; a contact has no business reading it.
     "websiteSpeedCheck",
+    // Phase 7 slice 119 — what a made monthly report was made FROM (C95):
+    // the language, the team's two texts, the ids it names, whose view it
+    // was read as and the fingerprint the publish check compares. The client
+    // reads the PDF (a REPORT document, class B); never this row.
+    "madeReport",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

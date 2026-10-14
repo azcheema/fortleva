@@ -2113,7 +2113,11 @@ enum AttachableType {
 /// enum value — a two-migration job, since Postgres refuses a value added in
 /// the same transaction that uses it — and its retention rule moves with it.
 /// The Client Timeline's DELIVERABLE | REPORT is per project, so a report
-/// (never on a project) is not on it.)*
+/// (never on a project) is not on it.)* *(Amended 2026-10-15, Phase 7 slice
+/// 119, C95: the MONTHLY REPORT FORTLEVA MAKES is a REPORT too — the client's,
+/// for one month, on the same Reports page — with a `MadeReport` row beside
+/// it (below) saying it was made and from what; it takes no new kind. The
+/// progress-update PDF and the tidrapport still do.)*
 enum DocumentKind {
   GENERAL
   DELIVERABLE      // client-approvable output (design, build, copy…)

@@ -315,6 +315,7 @@ model Tenant {
   projectUpdates                 ProjectUpdate[]
   speedWeeks                     WebsiteSpeedWeek[]
   speedChecks                    WebsiteSpeedCheck[]
+  madeReports                    MadeReport[]
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   projectUpdateReminders         ProjectUpdateReminderSent[]
   projectUpdateTemplates         ProjectUpdateTemplate[]
@@ -2306,10 +2307,12 @@ model Document {
   createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant   Tenant        @relation(fields: [tenantId], references: [id])
-  client   Client?       @relation(fields: [tenantId, clientId], references: [tenantId, id])
-  project  Project?      @relation(fields: [tenantId, projectId], references: [tenantId, id])
-  versions FileVersion[]
+  tenant     Tenant        @relation(fields: [tenantId], references: [id])
+  client     Client?       @relation(fields: [tenantId, clientId], references: [tenantId, id])
+  project    Project?      @relation(fields: [tenantId, projectId], references: [tenantId, id])
+  versions   FileVersion[]
+  /// Present on a REPORT Fortleva MADE (Phase 7 slice 119, C95) — the "made in Fortleva" marker and the record of the making.
+  madeReport MadeReport?
 
   @@unique([tenantId, id])
   @@index([tenantId, clientId, visibility])
@@ -2318,6 +2321,52 @@ model Document {
   // Composite GIN needs the btree_gin extension (created in migration 001)
   @@index([tenantId(ops: raw("text_ops")), tags], type: Gin)
   @@map("document")
+}
+
+/// MadeReport — the record of a monthly report Fortleva MADE (Phase 7
+/// slice 119; founder decision C95; migration 20261024090000; design
+/// docs/research/2026-10-15-slice-119-monthly-report-design.md §1). The
+/// report itself is the `Document` of kind REPORT it hangs off (slice 115:
+/// the same list, verbs, mails and portal page as an uploaded one); this
+/// row says it was made, in which language, with the team's two texts,
+/// for which projects, naming which tasks and updates (ids — what the
+/// publish check share-locks), read AS which contact, and the FINGERPRINT
+/// of what was drawn (sha256 over the canonical content), which
+/// `publishReport` derives again as the client and compares before the
+/// flip — any difference refuses MADE_REPORT_STALE. CLASS A: the client
+/// reads the PDF, never this row. Written ONCE (`made_report_frozen`), on a
+/// live REPORT of the same tenant (`made_report_kind_guard`); the texts are
+/// client-visible words and never reach an audit row.
+/// scope=tenant  rls=A (portal_deny)  ret=with the document  enc=none
+/// audit: (document.created with `made: true` and the fingerprint; the publish's document.visibility_changed likewise)
+model MadeReport {
+  documentId      String   @id @map("document_id")
+  tenantId        String   @map("tenant_id")
+  /// 'sv' | 'en' (CHECK) — the PDF's language, the client's invoice language unless changed when making it (C95 (f)).
+  locale          String   @db.VarChar(2)
+  /// The team's words at the top, at most 2 000 characters (CHECK); null when none were given.
+  summary         String?
+  /// The team's words at the end ("Coming next"), at most 2 000 characters (CHECK); null when none.
+  comingNext      String?  @map("coming_next")
+  /// The projects ticked, in the order made (1–25, CHECK).
+  projectIds      String[] @map("project_ids")
+  /// Every task the PDF names (≤ 500, CHECK) and every update it draws (≤ 60, CHECK).
+  taskIds         String[] @map("task_ids")
+  updateIds       String[] @map("update_ids")
+  /// Whose view it was read as — the narrowest profile that could sign in (attribution, no FK).
+  asContactId     String   @map("as_contact_id")
+  /// sha256, lower-case hex (CHECK), over the canonical JSON of what was drawn.
+  contentSha256   String   @map("content_sha256") @db.Char(64)
+  /// Which drawing the bytes are (`MADE_REPORT_TEMPLATE_VERSION`), ≥ 1.
+  templateVersion Int      @map("template_version") @db.SmallInt
+  madeAt          DateTime @map("made_at") @db.Timestamptz(6)
+  madeByMemberId  String?  @map("made_by_member_id") // attribution, no FK
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  document Document @relation(fields: [tenantId, documentId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, documentId])
+  @@map("made_report")
 }
 
 /// Current version = max versionNumber. The portal never queries this

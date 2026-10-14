@@ -182,7 +182,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "client-files", path: `${client}/files` },
     // Phase 6 slice 115 (C91): the Reports tab — the seed's published report
     // (the warm row cue, "Client can see", its date) above its INTERNAL draft,
-    // the legend, and the Add a report card with its month and year.
+    // the legend, and the Add a report card with its month and year. Since
+    // Phase 7 slice 119 (C95): the made report's row ("Made in Fortleva")
+    // and the Make a report card above the upload card.
     { name: "client-reports", path: `${client}/reports` },
     // 2T: agreements with their rate and this month's hours, plus the
     // agreement-scoped rate cards.

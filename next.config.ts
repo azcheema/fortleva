@@ -40,6 +40,9 @@ const nextConfig: NextConfig = {
     // Slice 112b2: the signed copy is drawn when the client signs, inside the
     // portal contract page's action (`sign-announce.ts`).
     "/portal/contracts/**": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
+    // Phase 7 slice 119: the monthly report Fortleva makes is drawn by the
+    // client's Reports tab's action (`src/documents/pdf/made-report-pdf.tsx`).
+    "/clients/**": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
     "/api/jobs/run": ["./src/modules/invoicing/pdf/fonts/*.ttf"],
   },
   // CI already runs `next typegen && tsc --noEmit` over this exact

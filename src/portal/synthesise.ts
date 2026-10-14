@@ -61,6 +61,10 @@ import { resolvePortalModuleGates } from "./module-gates";
  * contact's own tenant and the belt still holds; what authorises them is
  * that the contact is one of that tenant's own people with portal access,
  * which each re-reads first. "Member plane" below is the first two callers'.
+ * Two more since Phase 7 slice 119, on the member plane: the monthly report
+ * Fortleva makes reads its content as the client's narrowest contact
+ * (`src/documents/made-reports.ts`) and publishing it derives the content
+ * again (`src/documents/made-report-check.ts`) — callers, not builders.
  *
  * WHAT THIS DELIBERATELY DOES NOT DO. It does not authorise the MEMBER
  * — no permission, no scope, no contact admission. Those are the

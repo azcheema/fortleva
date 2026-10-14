@@ -502,6 +502,14 @@ export type PortalTaskListOptions = {
    * reasoning `portalShownTaskTerms` gives for its own REQUEST term).
    */
   readonly followSectionSwitches?: boolean;
+  /**
+   * Only the tasks FINISHED in `[from, to)` — DONE now, with a `completedAt`
+   * inside the window (Phase 7 slice 119: the monthly report Fortleva makes
+   * reads "what got done" this way, as the client). A narrowing in the same
+   * `where`, so it can only ever return FEWER of the rows the list returns;
+   * the cap then applies to the window's tasks alone.
+   */
+  readonly doneWithin?: { readonly from: Date; readonly to: Date };
 };
 
 /**
@@ -608,6 +616,10 @@ export async function listPortalTasks(
         // `portal-switch-belts.test.ts` follows that literal.
         ...(opts?.followSectionSwitches
           ? { AND: [{ OR: [{ project: { portalShowTasks: true } }, { kind: "REQUEST" as const }] }] }
+          : {}),
+        // Finished in the window (slice 119): DONE now, and finished then.
+        ...(opts?.doneWithin
+          ? { stateCategory: "DONE" as const, completedAt: { gte: opts.doneWithin.from, lt: opts.doneWithin.to } }
           : {}),
       },
       select: {
@@ -1035,6 +1047,13 @@ export type PortalUpdateListOptions = {
    * `where`, so it can only ever return fewer of the rows the list returns.
    */
   readonly publishedSince?: Date;
+  /**
+   * Only the posts published BEFORE this moment — `publishedSince`'s twin,
+   * so a window is `[since, before)` (Phase 7 slice 119: the monthly report
+   * Fortleva makes reads a month's updates this way, as the client). The
+   * same narrowing in the same `where`.
+   */
+  readonly publishedBefore?: Date;
 };
 
 /**
@@ -1087,7 +1106,14 @@ export async function listPortalUpdates(
         status: "PUBLISHED",
         project: { archivedAt: null },
         ...(projectId ? { projectId } : {}),
-        ...(opts?.publishedSince ? { publishedAt: { gte: opts.publishedSince } } : {}),
+        ...(opts?.publishedSince || opts?.publishedBefore
+          ? {
+              publishedAt: {
+                ...(opts.publishedSince ? { gte: opts.publishedSince } : {}),
+                ...(opts.publishedBefore ? { lt: opts.publishedBefore } : {}),
+              },
+            }
+          : {}),
         // The Updates section's switch (C47), as an `AND` beside the
         // project literal rather than a spread into it.
         ...(opts?.followSectionSwitches ? { AND: [{ project: { portalShowUpdates: true } }] } : {}),

@@ -288,6 +288,12 @@ export type ClientDetail = {
     publishReports: boolean;
     editReports: boolean;
     deleteReports: boolean;
+    /**
+     * MAKE a monthly report (Phase 7 slice 119, C95): the upload's two codes
+     * plus `project:view` (the card lists the client's project names), on an
+     * ACTIVE client.
+     */
+    makeReports: boolean;
   };
 };
 
@@ -454,6 +460,7 @@ export async function getClient(ctx: ClientCtx, clientId: string): Promise<Clien
         publishReports: can("document:change_visibility") && can("report:upload") && direct,
         editReports: can("document:edit") && can("report:upload") && direct && c.status === "ACTIVE",
         deleteReports: can("document:delete") && can("report:delete") && direct,
+        makeReports: can("document:upload") && can("report:upload") && can("project:view") && direct && c.status === "ACTIVE",
       },
     };
   });

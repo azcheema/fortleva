@@ -1979,6 +1979,12 @@
     "CONTRACT_NOT_UPLOADED": "That can only be done to a contract signed outside Fortleva.",
     "CONTRACT_NOT_REPLACEABLE": "Only a declined or withdrawn contract can get a new version, and only once. Reload the page.",
     "CONTRACT_PDF_UNAVAILABLE": "The contract's PDF couldn't be made just now. Try again in a moment.",
+    "MADE_REPORT_NO_AUDIENCE": "Nobody at the client can use the portal yet, so there is no one to make the report for. Invite someone under Contacts first.",
+    "MADE_REPORT_PROJECT_HIDDEN": "One of the projects can't be seen by the client any more. Reload the page and try again.",
+    "MADE_REPORT_TOO_LARGE": "This report would be too long. Untick some projects and try again.",
+    "MADE_REPORT_STALE": "What the client can see has changed since this report was made, so it wasn't published. Make the report again.",
+    "MADE_REPORT_BUSY": "Someone is changing this client's projects right now. Try again in a moment.",
+    "REPORT_PDF_UNAVAILABLE": "The report couldn't be made just now. Try again in a moment.",
     "AGREEMENT_ENDED": "This agreement has ended: it can't be paused, run again or given a new end date. Reload the page.",
     "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page.",
     "FORTNOX_UNAVAILABLE": "The Fortnox connection isn't available yet.",
@@ -2165,6 +2171,7 @@
       "description": "Monthly reports for this client. Only your team sees one until you publish it; then everyone at the client with portal access can open it under Reports in their portal.",
       "empty": "No reports yet",
       "emptyBody": "Upload a monthly report and publish it when it's ready. The client finds it under Reports in their portal.",
+      "emptyBodyMake": "Make a monthly report from what the client can already see, or upload one, and publish it when it's ready. The client finds it under Reports in their portal.",
       "tableLabel": "Reports",
       "columns": {
         "month": "Month",
@@ -2184,6 +2191,7 @@
       "deletePublishedConfirm": "Delete {name}? The client can see it now, and it will disappear from their portal.",
       "download": "Download {name}",
       "monthPrefix": "{month} · ",
+      "made": "Made in Fortleva",
       "legend": {
         "internal": "Only your team can see it",
         "clientVisible": "Published: everyone at the client with portal access can open it"
@@ -2192,6 +2200,31 @@
         "label": "Month the report covers",
         "monthLabel": "Month",
         "yearLabel": "Year"
+      },
+      "make": {
+        "title": "Make a report",
+        "description": "Fortleva writes the month's report from what the client can already see in their portal.",
+        "language": "Language",
+        "languageHint": "The client's invoice language unless you change it.",
+        "languages": {
+          "sv": "Svenska",
+          "en": "English"
+        },
+        "projects": "Projects",
+        "projectsHint": "Every project the client sees in their portal. Untick any to leave it out.",
+        "noProjects": "The client has no project with the portal on, so there is nothing to report on.",
+        "summary": "Summary",
+        "summaryHint": "Optional. A few sentences at the top, in your own words.",
+        "comingNext": "Coming next",
+        "comingNextHint": "Optional. What happens next, at the end of the report.",
+        "chars": "{count} / {max}",
+        "shows": "The report shows only what the client can already see in their portal: the tasks finished in the month and the progress updates published, for the projects you tick. No hours, no files.",
+        "private": "Only your team can see it until you publish it.",
+        "noAudience": "Nobody at the client can use the portal yet. Invite someone under Contacts, then make a report.",
+        "submit": "Make report",
+        "submitting": "Making…",
+        "done": "Report made. Only your team can see it until you publish it.",
+        "failed": "The report could not be made. Try again."
       },
       "add": {
         "title": "Add a report",
@@ -2213,6 +2246,7 @@
       "edit": {
         "title": "Edit report",
         "description": "Change its name or the month it covers.",
+        "descriptionMade": "Change its name. The month is the one its PDF was drawn for.",
         "name": "Name",
         "submit": "Save",
         "submitting": "Saving…"
@@ -6167,6 +6201,24 @@
       "fingerprintTitle": "Fingerprint of the signed contract (SHA-256)",
       "fingerprintBody": "Both signatures apply to the contract's text and details exactly as stored when it was sent. This fingerprint identifies that version: any change to it gives a different fingerprint."
     }
+  },
+  "reportPdf": {
+    "name": "Monthly report {month}",
+    "fileName": "monthly-report-{month}.pdf",
+    "eyebrow": "Monthly report",
+    "from": "From {agency}",
+    "madeOn": "Made {date}",
+    "summary": "Summary",
+    "comingNext": "Coming next",
+    "done": "What got done",
+    "updates": "Progress updates",
+    "updateNumber": "Update #{seq}",
+    "period": "{from} – {to}",
+    "periodFrom": "From {from}",
+    "periodTo": "Until {to}",
+    "note": "Note added after publishing: {note}",
+    "nothing": "Nothing finished or published this month.",
+    "page": "Page {page} of {pages}"
   },
   "invoicePdf": {
     "kind": {

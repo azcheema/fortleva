@@ -104,6 +104,78 @@ test.describe("a client's Reports tab (owner)", () => {
     }
   });
 
+  // ── Phase 7 slice 119 (C95): the monthly report Fortleva makes ───────
+  test("the Make a report card: last month, the client's language, the project ticked, the two texts — and the made report's marker", async ({ page }) => {
+    await page.goto(tab());
+    const form = page.getByTestId("make-report");
+    await expect(form).toBeVisible();
+    // The month picker starts at LAST month (a made report covers a month
+    // that has ended) — in the WORKSPACE's zone (Europe/Stockholm, the seed's),
+    // never UTC's: the two differ for two hours on the last day of a month.
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Stockholm", year: "numeric", month: "2-digit" }).format(new Date());
+    const [y, m] = today.split("-").map(Number) as [number, number];
+    const last = m === 1 ? { year: y - 1, month: 12 } : { year: y, month: m - 1 };
+    await expect(form.getByTestId("report-month")).toHaveValue(String(last.month));
+    await expect(form.getByTestId("report-year")).toHaveValue(String(last.year));
+    // A client with no country invoices in Swedish (C76 (e)) — the select starts there.
+    await expect(form.getByTestId("make-report-locale")).toHaveValue("sv");
+    const boxes = form.getByTestId("make-report-projects").locator('input[type="checkbox"]');
+    expect(await boxes.count()).toBeGreaterThanOrEqual(1);
+    for (const box of await boxes.all()) await expect(box).toBeChecked();
+    await expect(form.getByTestId("make-report-summary")).toBeVisible();
+    await expect(form.getByTestId("make-report-coming-next")).toBeVisible();
+    await expect(form.getByTestId("make-report-shows")).toContainText("No hours, no files.");
+    await expect(form).toContainText("Only your team can see it until you publish it.");
+    // Nothing ticked, nothing to make.
+    for (const box of await boxes.all()) await box.uncheck();
+    await expect(form.getByTestId("make-report-submit")).toBeDisabled();
+
+    const madeRow = rowOf(page, seed.madeReportName);
+    await expect(madeRow).toHaveAttribute("data-visibility", "INTERNAL");
+    await expect(madeRow.getByTestId("report-made")).toHaveText("Made in Fortleva");
+    await expect(rowOf(page, seed.reportName).getByTestId("report-made")).toHaveCount(0);
+  });
+
+  // The fixture's month holds no finished task and no update (the seed's
+  // land in the current month), so this walks the check PATH — the dialog,
+  // the toast, the row, the portal page, R5 — not its judgement; the content
+  // cases are `src/documents/made-reports.dbtest.ts`'s.
+  test("publishing a made report runs the check again and the client's page shows it — and Hide puts it back", async ({ page, browser }) => {
+    await page.goto(tab());
+    const row = rowOf(page, seed.madeReportName);
+    await row.getByRole("button", { name: `Actions for ${seed.madeReportName}` }).click();
+    await page.getByRole("menuitem", { name: "Publish…" }).click();
+    const dialog = page.getByTestId("publish-report-dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByTestId("publish-report-confirm").click();
+    await expect(toast(page, /^Published\./)).toBeVisible();
+    await expect(row).toHaveAttribute("data-visibility", "CLIENT_VISIBLE");
+
+    const client = await contactPage(browser, "/portal/reports");
+    try {
+      const shown = client.page.locator('[data-slot="portal-report"]', { hasText: seed.madeReportName });
+      await expect(shown).toBeVisible();
+      // The client's copy says nothing of Fortleva (R5).
+      await expect(shown).not.toContainText("Fortleva");
+    } finally {
+      await client.close();
+    }
+
+    await row.getByRole("button", { name: `Actions for ${seed.madeReportName}` }).click();
+    await page.getByRole("menuitem", { name: "Hide from client" }).click();
+    await expect(toast(page, "Hidden. Only your team can see it now.")).toBeVisible();
+    await expect(row).toHaveAttribute("data-visibility", "INTERNAL");
+  });
+
+  test("Make report draws the PDF and files it private", async ({ page }) => {
+    test.skip(!HAS_R2, "the drawing's upload needs the R2 env (the production harness refuses the dev transport by design); the same path runs in src/documents/made-reports.dbtest.ts");
+    await page.goto(tab());
+    const form = page.getByTestId("make-report");
+    await form.getByTestId("make-report-summary").fill(`E2E made ${Date.now()}`);
+    await form.getByTestId("make-report-submit").click();
+    await expect(toast(page, "Report made.")).toBeVisible();
+  });
+
   test("a report uploads for a month, private", async ({ page }) => {
     test.skip(!HAS_R2, "the upload's presign needs the R2 env (the production harness refuses the dev transport by design); the same hops run in src/documents/reports.dbtest.ts");
     await page.goto(tab());

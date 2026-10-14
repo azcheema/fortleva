@@ -227,6 +227,20 @@ export type DomainErrorCode =
   | "UPDATE_IMMUTABLE" // a published update cannot be edited (trigger) — retract within 15 min, or add a note
   | "UPDATE_NOT_DRAFT" // the verb wanted a draft: edit, discard, publish
   | "UPDATE_NOT_PUBLISHED" // the verb wanted a published post: archive, visibility, annotate, retract
+  // The monthly report Fortleva makes (Phase 7 slice 119 —
+  // src/documents/made-reports.ts; founder decision C95), said to the MEMBER:
+  // nobody at the client could sign in to read it (so there is nobody to read
+  // it AS); a ticked project the client cannot see now; more than the drawing
+  // holds (untick some projects); the client's view changed since it was made
+  // (a task made private, an update unpublished, a switch turned) — make it
+  // again; the publish's share-locks lost a deadlock on every attempt; and the
+  // drawing or the upload failed (the invoice's INVOICE_PDF_UNAVAILABLE shape).
+  | "MADE_REPORT_NO_AUDIENCE"
+  | "MADE_REPORT_PROJECT_HIDDEN"
+  | "MADE_REPORT_TOO_LARGE"
+  | "MADE_REPORT_STALE"
+  | "MADE_REPORT_BUSY"
+  | "REPORT_PDF_UNAVAILABLE"
   | "UPDATE_RETRACT_WINDOW_CLOSED" // more than 15 minutes since publishing
   | "UPDATE_CHANGED" // the draft was saved by somebody else between the two publish transactions
   | "UPDATE_EMPTY" // publishing a post whose sections say nothing

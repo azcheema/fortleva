@@ -1979,6 +1979,12 @@
     "CONTRACT_NOT_UPLOADED": "Det går bara att göra med ett kontrakt som undertecknats utanför Fortleva.",
     "CONTRACT_NOT_REPLACEABLE": "Bara ett avböjt eller återkallat kontrakt kan få en ny version, och bara en gång. Ladda om sidan.",
     "CONTRACT_PDF_UNAVAILABLE": "Det gick inte att skapa kontraktets pdf just nu. Försök igen om en liten stund.",
+    "MADE_REPORT_NO_AUDIENCE": "Ingen hos kunden kan använda portalen än, så det finns ingen att göra rapporten för. Bjud in någon under Kontakter först.",
+    "MADE_REPORT_PROJECT_HIDDEN": "Ett av projekten kan inte längre ses av kunden. Ladda om sidan och försök igen.",
+    "MADE_REPORT_TOO_LARGE": "Rapporten skulle bli för lång. Avmarkera några projekt och försök igen.",
+    "MADE_REPORT_STALE": "Det kunden kan se har ändrats sedan rapporten skapades, så den publicerades inte. Skapa rapporten igen.",
+    "MADE_REPORT_BUSY": "Någon ändrar kundens projekt just nu. Försök igen om en liten stund.",
+    "REPORT_PDF_UNAVAILABLE": "Rapporten kunde inte skapas just nu. Försök igen om en liten stund.",
     "AGREEMENT_ENDED": "Avtalet är avslutat och kan inte pausas, startas igen eller få ett nytt slutdatum. Ladda om sidan.",
     "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan.",
     "FORTNOX_UNAVAILABLE": "Kopplingen till Fortnox är inte tillgänglig än.",
@@ -2165,6 +2171,7 @@
       "description": "Månadsrapporter för kunden. Bara ert team ser en rapport tills ni publicerar den – sedan kan alla hos kunden med tillgång till portalen öppna den under Rapporter i kundportalen.",
       "empty": "Inga rapporter än",
       "emptyBody": "Ladda upp en månadsrapport och publicera den när den är klar. Kunden hittar den under Rapporter i kundportalen.",
+      "emptyBodyMake": "Skapa en månadsrapport av det kunden redan kan se, eller ladda upp en, och publicera den när den är klar. Kunden hittar den under Rapporter i kundportalen.",
       "tableLabel": "Rapporter",
       "columns": {
         "month": "Månad",
@@ -2184,6 +2191,7 @@
       "deletePublishedConfirm": "Ta bort {name}? Kunden kan se den nu, och den försvinner från kundportalen.",
       "download": "Ladda ner {name}",
       "monthPrefix": "{month} · ",
+      "made": "Skapad i Fortleva",
       "legend": {
         "internal": "Bara ert team kan se den",
         "clientVisible": "Publicerad: alla hos kunden med tillgång till portalen kan öppna den"
@@ -2192,6 +2200,31 @@
         "label": "Vilken månad rapporten gäller",
         "monthLabel": "Månad",
         "yearLabel": "År"
+      },
+      "make": {
+        "title": "Skapa en rapport",
+        "description": "Fortleva skriver månadens rapport av det kunden redan kan se i kundportalen.",
+        "language": "Språk",
+        "languageHint": "Kundens fakturaspråk om du inte ändrar det.",
+        "languages": {
+          "sv": "Svenska",
+          "en": "Engelska"
+        },
+        "projects": "Projekt",
+        "projectsHint": "Alla projekt kunden ser i kundportalen. Avmarkera ett för att utelämna det.",
+        "noProjects": "Kunden har inget projekt med portalen på, så det finns inget att rapportera om.",
+        "summary": "Sammanfattning",
+        "summaryHint": "Valfritt. Några meningar överst, med egna ord.",
+        "comingNext": "Härnäst",
+        "comingNextHint": "Valfritt. Vad som händer härnäst, sist i rapporten.",
+        "chars": "{count} / {max}",
+        "shows": "Rapporten visar bara det kunden redan kan se i kundportalen: uppgifterna som blev klara under månaden och uppdateringarna som publicerades, för projekten du markerar. Inga timmar, inga filer.",
+        "private": "Bara ert team kan se den tills ni publicerar den.",
+        "noAudience": "Ingen hos kunden kan använda portalen än. Bjud in någon under Kontakter och skapa sedan en rapport.",
+        "submit": "Skapa rapport",
+        "submitting": "Skapar…",
+        "done": "Rapporten är skapad. Bara ert team kan se den tills ni publicerar den.",
+        "failed": "Rapporten kunde inte skapas. Försök igen."
       },
       "add": {
         "title": "Lägg till en rapport",
@@ -2213,6 +2246,7 @@
       "edit": {
         "title": "Redigera rapport",
         "description": "Ändra namnet eller vilken månad den gäller.",
+        "descriptionMade": "Ändra namnet. Månaden är den som pdf:en skapades för.",
         "name": "Namn",
         "submit": "Spara",
         "submitting": "Sparar…"
@@ -6167,6 +6201,24 @@
       "fingerprintTitle": "Fingeravtryck av det undertecknade kontraktet (SHA-256)",
       "fingerprintBody": "Båda underskrifterna gäller kontraktets text och uppgifter exakt som de sparades när det skickades. Fingeravtrycket identifierar den versionen: minsta ändring ger ett annat fingeravtryck."
     }
+  },
+  "reportPdf": {
+    "name": "Månadsrapport {month}",
+    "fileName": "manadsrapport-{month}.pdf",
+    "eyebrow": "Månadsrapport",
+    "from": "Från {agency}",
+    "madeOn": "Skapad {date}",
+    "summary": "Sammanfattning",
+    "comingNext": "Härnäst",
+    "done": "Det här blev klart",
+    "updates": "Uppdateringar",
+    "updateNumber": "Uppdatering #{seq}",
+    "period": "{from} – {to}",
+    "periodFrom": "Från {from}",
+    "periodTo": "Till {to}",
+    "note": "Anteckning tillagd efter publiceringen: {note}",
+    "nothing": "Inget blev klart eller publicerades den här månaden.",
+    "page": "Sida {page} av {pages}"
   },
   "invoicePdf": {
     "kind": {

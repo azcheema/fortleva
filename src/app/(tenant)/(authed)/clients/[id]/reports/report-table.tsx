@@ -40,6 +40,8 @@ export type ReportRowData = {
   readonly publishedAt: Date | null;
   readonly sizeBytes: number;
   readonly contentType: string;
+  /** Made by Fortleva (slice 119) rather than uploaded — the row says so. */
+  readonly made: boolean;
 };
 
 export type ReportAbilities = {
@@ -221,6 +223,12 @@ function ReportRow({
             <span className={cn("font-medium", HIDE_FROM.medium)}>{t("monthPrefix", { month: shortMonth })}</span>
             {row.name}
           </span>
+          {row.made ? (
+            // The team's marker (slice 119, R5): the client's copy says nothing of Fortleva.
+            <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground" data-testid="report-made">
+              {t("made")}
+            </span>
+          ) : null}
         </span>
       </TableCell>
       <TableCell>
@@ -333,7 +341,7 @@ function EditDialog({
       <DialogContent {...focusReturn} className="sm:max-w-md" data-testid="edit-report-dialog">
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
-          <DialogDescription>{t("description")}</DialogDescription>
+          <DialogDescription>{t(row.made ? "descriptionMade" : "description")}</DialogDescription>
         </DialogHeader>
         <EditForm clientId={clientId} row={row} latestMonth={latestMonth} onDone={close} />
       </DialogContent>
@@ -380,7 +388,10 @@ function EditForm({
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="documentId" value={row.id} />
       <input type="hidden" name="month" value={month} />
-      <MonthPicker id={`edit-${row.id}`} value={month} latest={latestMonth} onChange={setMonth} disabled={pending} />
+      {/* A made report's month is its PDF's (slice 119): the name may change, the month may not. */}
+      {row.made ? null : (
+        <MonthPicker id={`edit-${row.id}`} value={month} latest={latestMonth} onChange={setMonth} disabled={pending} />
+      )}
       <Field label={t("name")} htmlFor={`edit-${row.id}-name`} required>
         <Input
           id={`edit-${row.id}-name`}

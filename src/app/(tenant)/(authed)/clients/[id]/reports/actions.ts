@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
+import { makeReport } from "@/documents/made-reports";
 import {
   commitReportUpload,
   deleteReport,
@@ -95,6 +96,30 @@ export async function hideReportAction(clientId: string, documentId: string): Pr
   const ctx = await ctxOf();
   const t = await getTranslations("clients.reports.toast");
   const r = await runForm(pathOf(clientId), async () => ((await hideReport(ctx, documentId)).hidden ? t("hidden") : t("alreadyHidden")));
+  if (r.ok) revalidatePath(pathOf(clientId));
+  return r;
+}
+
+const makeSchema = z.object({
+  clientId: uuid,
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  locale: z.enum(["sv", "en"]),
+  projectIds: z.array(uuid).min(1).max(25),
+  summary: z.string().max(4000).optional(),
+  comingNext: z.string().max(4000).optional(),
+});
+
+/**
+ * MAKE a report (Phase 7 slice 119, C95): Fortleva reads what the client can
+ * already see, draws the PDF and files it as a private report. The service
+ * does everything — the gates, whose view, the drawing, the upload, the row.
+ */
+export async function makeReportAction(raw: z.input<typeof makeSchema>): Promise<ActionResult<{ documentId: string }>> {
+  const parsed = makeSchema.safeParse(raw);
+  if (!parsed.success) return invalid();
+  const { clientId, ...rest } = parsed.data;
+  const ctx = await ctxOf();
+  const r = await runAction(pathOf(clientId), () => makeReport(ctx, { clientId, ...rest }));
   if (r.ok) revalidatePath(pathOf(clientId));
   return r;
 }

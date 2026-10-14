@@ -219,6 +219,9 @@ const DBTEST_PREFIXES = [
   "members-",
   "mfa-",
   "money-",
+  // Phase 7 slice 119, the monthly report Fortleva makes — `src/documents/made-reports.dbtest.ts`,
+  // `setupTenant("mrpt")`.
+  "mrpt-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -486,6 +489,14 @@ export type E2ESeed = {
   readonly reportName: string;
   readonly internalReportId: string;
   readonly internalReportName: string;
+  /**
+   * The monthly report FORTLEVA MADE (Phase 7 slice 119, C95) — last month's,
+   * INTERNAL, made in-process through the real service (the PDF drawn here;
+   * its bytes in the seed's temp dir, as every seeded file's). The Reports
+   * tab marks it "Made in Fortleva"; publishing it runs the check again.
+   */
+  readonly madeReportId: string;
+  readonly madeReportName: string;
   readonly serviceName: string;
   readonly serviceNotesSentinel: string;
   /**
@@ -754,6 +765,9 @@ async function provision(seedFile: string): Promise<void> {
     "../../src/documents/service"
   );
   const { commitReportUpload, publishReport: publishClientReport } = await import("../../src/documents/reports");
+  const { deriveMadeReportContent } = await import("../../src/documents/made-report-content");
+  const { contentFingerprint, namedIds } = await import("../../src/documents/made-report-shape");
+  const { synthesiseContactPrincipal } = await import("../../src/portal");
   const { defaultReportMonth, reportMonthFormValue } = await import("../../src/documents/report-month");
   const { LocalDiskTransport, setStorage } = await import("../../src/storage");
 
@@ -1699,6 +1713,73 @@ async function provision(seedFile: string): Promise<void> {
     },
   });
 
+  // ── Phase 7 slice 119: the monthly report Fortleva makes ───────────
+  // Last month's, planted NOW that a contact can sign in (the content is
+  // read as them — R1). NOT through `makeReport`: the PDF renderer
+  // (`@react-pdf/renderer`, ESM-only) does not load under this script's
+  // runner (ERR_PACKAGE_PATH_NOT_EXPORTED, measured 2026-10-15), so the rows
+  // are written here with a placeholder PDF — but the FINGERPRINT is the real
+  // one, derived through the portal's own projections as the contact, exactly
+  // as the service derives it, so `reports.spec.ts`'s Publish… runs the real
+  // check (over a month that holds nothing of this project's — the content
+  // cases are the dbtest's). The bytes land in the seed's temp dir, which
+  // the production harness cannot serve (the download is R2-gated, as every
+  // seeded file's). INTERNAL: the spec publishes it and hides it back.
+  const madeMonth = `${reportMonth}-01`;
+  const madePrincipal = await synthesiseContactPrincipal(tenantId, { id: contactId, tenantId, clientId });
+  const madeContent = await deriveMadeReportContent(madePrincipal, { month: madeMonth, timezone: "Europe/Stockholm", projectIds: [projectId] });
+  const madeIds = namedIds(madeContent);
+  const madeBytes = new Uint8Array(Buffer.from(`%PDF-1.4\n% E2E made report ${run}\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n`, "latin1"));
+  const madeFileId = randomUUID();
+  const madeReportId = randomUUID();
+  const madeReportName = `E2E Made report ${run}`;
+  await storage.putObject(`${tenantId}/${madeFileId}`, madeBytes);
+  await db.fileObject.create({
+    data: {
+      id: madeFileId,
+      tenantId,
+      r2Key: `${tenantId}/${madeFileId}`,
+      kind: "GENERAL",
+      sha256: createHash("sha256").update(madeBytes).digest("hex"),
+      sizeBytes: BigInt(madeBytes.byteLength),
+      contentType: "application/pdf",
+      originalFilename: "monthly-report.pdf",
+      status: "COMMITTED",
+      committedAt: new Date(),
+      createdByMemberId: ownerMemberId,
+    },
+  });
+  await db.document.create({
+    data: {
+      id: madeReportId,
+      tenantId,
+      clientId,
+      name: madeReportName,
+      kind: "REPORT",
+      visibility: "INTERNAL",
+      reportMonth: dateColumn(madeMonth),
+      createdByMemberId: ownerMemberId,
+      versions: { create: { versionNumber: 1, fileObjectId: madeFileId, uploadedByMemberId: ownerMemberId } },
+    },
+  });
+  await db.madeReport.create({
+    data: {
+      documentId: madeReportId,
+      tenantId,
+      locale: "en",
+      summary: `E2E summary ${run}`,
+      comingNext: `E2E coming next ${run}`,
+      projectIds: [projectId],
+      taskIds: madeIds.taskIds,
+      updateIds: madeIds.updateIds,
+      asContactId: contactId,
+      contentSha256: contentFingerprint(madeContent),
+      templateVersion: 1,
+      madeAt: new Date(),
+      madeByMemberId: ownerMemberId,
+    },
+  });
+
   // ── A LIVE PASSWORD-RESET LINK for Astrid, so the new-password screen
   // has an address that stands still ─────────────────────────────────
   //
@@ -1841,6 +1922,8 @@ async function provision(seedFile: string): Promise<void> {
     reportName,
     internalReportId,
     internalReportName,
+    madeReportId,
+    madeReportName,
     serviceName,
     serviceNotesSentinel,
     timeReportTitle,

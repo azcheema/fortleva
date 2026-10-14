@@ -4,10 +4,12 @@ import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { localDateString } from "@/lib/duration";
-import { fail } from "@/lib/domain-error";
+import { fail, isDeadlock, isLockTimeout } from "@/lib/domain-error";
 import { newId } from "@/lib/ids";
+import { retryOnContention } from "@/lib/retry";
 import { readPreferences } from "@/preferences/service";
 
+import { checkMadeReport } from "./made-report-check";
 import { enqueueReportMails } from "./report-mail";
 import { latestReportMonth, parseReportMonth, reportMonthDate, reportMonthOf } from "./report-month";
 import { commitFileObject, softDeleteDocumentsInTx, type DocumentCtx } from "./service";
@@ -47,6 +49,17 @@ const memberPrincipal = (ctx: ReportCtx) => ({ type: "member", id: ctx.actor.mem
 async function requireBoth(tx: TenantDb, ctx: ReportCtx, documentCode: string, reportCode: string): Promise<void> {
   await requireAccess(tx, ctx.tenantId, ctx.actor, documentCode);
   await requireAccess(tx, ctx.tenantId, ctx.actor, reportCode);
+}
+
+/**
+ * The UPLOAD verb's gates, for a caller that brings its own bytes — the
+ * monthly report Fortleva makes (`./made-reports.ts`, Phase 7 slice 119):
+ * both codes, the client directly in scope, and ACTIVE.
+ */
+export async function assertMayUploadReport(tx: TenantDb, ctx: ReportCtx, clientId: string): Promise<void> {
+  await requireBoth(tx, ctx, "document:upload", "report:upload");
+  const { archived } = await directClient(tx, ctx.actor, clientId);
+  if (archived) fail("ARCHIVED", "client");
 }
 
 /** The client, directly in scope, and whether it is archived. NOT_FOUND outside scope. */
@@ -109,6 +122,8 @@ export type ClientReport = {
   readonly sizeBytes: number;
   readonly contentType: string;
   readonly createdAt: Date;
+  /** Made by Fortleva (slice 119) — a `made_report` row beside it — rather than uploaded. */
+  readonly made: boolean;
 };
 
 /** The client's live reports, newest month first, then by name. */
@@ -130,6 +145,7 @@ export async function listClientReports(ctx: ReportCtx, clientId: string): Promi
           take: 1,
           select: { fileObject: { select: { sizeBytes: true, contentType: true } } },
         },
+        madeReport: { select: { documentId: true } },
       },
       orderBy: [{ reportMonth: "desc" }, { name: "asc" }, { id: "asc" }],
       // A report a month for sixteen years; a cap, not a pager.
@@ -147,6 +163,7 @@ export async function listClientReports(ctx: ReportCtx, clientId: string): Promi
               sizeBytes: Number(r.versions[0]?.fileObject.sizeBytes ?? 0n),
               contentType: r.versions[0]?.fileObject.contentType ?? "application/octet-stream",
               createdAt: r.createdAt,
+              made: r.madeReport !== null,
             },
           ]
         : [],
@@ -235,30 +252,84 @@ export type PublishOutcome = {
  * once, audit once and mail once. Refused on an archived client.
  */
 export async function publishReport(ctx: ReportCtx, documentId: string, now = new Date()): Promise<PublishOutcome> {
-  return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
-    await requireBoth(tx, ctx, "document:change_visibility", "report:upload");
-    const doc = await reportInScope(tx, ctx, documentId);
-    if (doc.archived) fail("ARCHIVED", "client");
-    const taken = await tx.document.updateManyAndReturn({
-      where: { id: doc.id, kind: "REPORT", deletedAt: null, visibility: "INTERNAL" },
-      data: { visibility: "CLIENT_VISIBLE", reportPublishedAt: now },
-      select: { id: true },
-    });
-    if (taken.length === 0) {
-      // Already published — or deleted since the read, which is NOT_FOUND
-      // rather than "already published" (the code review's nit).
-      await stillThere(tx, doc.id);
-      return { published: false, queued: 0, reachable: 0, mailable: 0 };
-    }
-    const mail = await enqueueReportMails(tx, ctx.tenantId, doc.clientId, doc.id);
-    await record(tx, {
-      action: "document.visibility_changed",
-      targetType: "Document",
-      targetId: doc.id,
-      metadata: { from: "INTERNAL", to: "CLIENT_VISIBLE", kind: "REPORT", reportMonth: doc.month, mailed: mail.queued },
-    });
-    return { published: true, queued: mail.queued, reachable: mail.reachable, mailable: mail.mailable };
-  });
+  // RETRIED ON CONTENTION, and told when every attempt is spent: a MADE
+  // report's check share-locks the rows it names (slice 119, design §3.2),
+  // which a make-private cascade or a portal switch may be locking in
+  // another order. The transaction is database-only, so a re-run is the
+  // whole remedy. An uploaded report takes no lock and never meets either.
+  try {
+    return await retryOnContention(() => publishReportOnce(ctx, documentId, now));
+  } catch (e) {
+    if (isDeadlock(e) || isLockTimeout(e) || isPoolTimeout(e)) fail("MADE_REPORT_BUSY");
+    throw e;
+  }
+}
+
+/**
+ * The check's contact-principal reads borrow a SECOND connection while the
+ * flip's holds its own with the locks (design §3.2) — many publishes at once
+ * in one process can spend the pool, which Prisma reports as P2024. "Try
+ * again" is the truth and the whole remedy, so it is BUSY, never a 500.
+ */
+const isPoolTimeout = (e: unknown): boolean =>
+  typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2024";
+
+/** How long a made report's publish may wait for a row another writer holds, per statement. */
+const PUBLISH_LOCK_TIMEOUT_MS = 5_000;
+/** The flip's transaction budget: the check derives the content again, one contact transaction per read. */
+const PUBLISH_TX_TIMEOUT_MS = 60_000;
+
+async function publishReportOnce(ctx: ReportCtx, documentId: string, now: Date): Promise<PublishOutcome> {
+  return withTenant(
+    ctx.tenantId,
+    memberPrincipal(ctx),
+    async (tx) => {
+      await requireBoth(tx, ctx, "document:change_visibility", "report:upload");
+      const doc = await reportInScope(tx, ctx, documentId);
+      if (doc.archived) fail("ARCHIVED", "client");
+      // A MADE report (slice 119, R3) is checked before it is flipped: the
+      // rows it names are share-locked, the content derived again AS THE
+      // CLIENT and compared by fingerprint — any difference refuses
+      // MADE_REPORT_STALE and this transaction rolls back, nothing audited.
+      // Every publish checks, the first and each one after a hide.
+      const made = await tx.madeReport.findFirst({
+        where: { documentId: doc.id },
+        select: { documentId: true, projectIds: true, taskIds: true, updateIds: true, asContactId: true, contentSha256: true },
+      });
+      let checked: { contentSha256: string; asContactId: string } | null = null;
+      if (made) {
+        const { timezone } = await readPreferences(tx, ctx.tenantId);
+        checked = await checkMadeReport(tx, ctx.tenantId, doc.clientId, made, timezone, doc.month);
+      }
+      const taken = await tx.document.updateManyAndReturn({
+        where: { id: doc.id, kind: "REPORT", deletedAt: null, visibility: "INTERNAL" },
+        data: { visibility: "CLIENT_VISIBLE", reportPublishedAt: now },
+        select: { id: true },
+      });
+      if (taken.length === 0) {
+        // Already published — or deleted since the read, which is NOT_FOUND
+        // rather than "already published" (the code review's nit).
+        await stillThere(tx, doc.id);
+        return { published: false, queued: 0, reachable: 0, mailable: 0 };
+      }
+      const mail = await enqueueReportMails(tx, ctx.tenantId, doc.clientId, doc.id);
+      await record(tx, {
+        action: "document.visibility_changed",
+        targetType: "Document",
+        targetId: doc.id,
+        metadata: {
+          from: "INTERNAL",
+          to: "CLIENT_VISIBLE",
+          kind: "REPORT",
+          reportMonth: doc.month,
+          mailed: mail.queued,
+          ...(checked ? { made: true, contentSha256: checked.contentSha256, checkedAsContactId: checked.asContactId } : {}),
+        },
+      });
+      return { published: true, queued: mail.queued, reachable: mail.reachable, mailable: mail.mailable };
+    },
+    { timeoutMs: PUBLISH_TX_TIMEOUT_MS, lockTimeoutMs: PUBLISH_LOCK_TIMEOUT_MS },
+  );
 }
 
 /**
@@ -310,6 +381,12 @@ export async function editReport(
     if (!input.name.trim()) fail("NAME_REQUIRED", "report name");
     const month = await monthFromForm(tx, ctx.tenantId, input.month, now);
     if (name === doc.name && month === doc.month) return;
+    // A MADE report's month is the month its PDF was drawn for (slice 119,
+    // the security review's nit): the name may change, the month may not.
+    if (month !== doc.month) {
+      const made = await tx.madeReport.findFirst({ where: { documentId: doc.id }, select: { documentId: true } });
+      if (made) fail("INVALID_INPUT", "a made report's month is its PDF's");
+    }
     // A compare, as publish and hide are: deleted since the read is NOT_FOUND,
     // never a raw P2025 (the code review's L4).
     const { count } = await tx.document.updateMany({
