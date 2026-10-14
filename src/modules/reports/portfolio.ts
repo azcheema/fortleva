@@ -1,5 +1,5 @@
 import { scopeWhere, type MemberActor } from "@/authz/authorize";
-import { withTenant } from "@/db";
+import { withTenant, type TenantDb } from "@/db";
 import { accessibleCodes, requireAccess } from "@/entitlements/resolver";
 import type { ProjectHealth, ProjectStatus } from "@/generated/prisma/enums";
 import { localDateString } from "@/lib/duration";
@@ -71,6 +71,23 @@ const COLUMN_CODES = ["project_update:view", "work_item:view", "budget:view"] as
 
 const PROJECT_SCOPE = { clientField: "clientId", projectField: "id" } as const;
 
+/** Planned, active or paused, and not archived — the table's default rows (C92 (a)). */
+export const RUNNING_PROJECT = { status: { in: [...RUNNING_PROJECT_STATUSES] }, archivedAt: null };
+
+/**
+ * The Reports page's one door, for the table and the team charts alike:
+ * `report:view_portfolio`, then `project:view` (a role holding the page but
+ * not projects must not read project names it could not open), both on all
+ * four gates, then the member's project scope. Compose the scope with AND,
+ * NEVER a spread: it may itself be a `clientId` term, which a spread client
+ * filter would OVERWRITE — widening it.
+ */
+export async function openPortfolio(tx: TenantDb, ctx: PortfolioCtx) {
+  await requireAccess(tx, ctx.tenantId, ctx.actor, "report:view_portfolio");
+  await requireAccess(tx, ctx.tenantId, ctx.actor, "project:view");
+  return scopeWhere(tx, ctx.actor, PROJECT_SCOPE);
+}
+
 export async function readPortfolio(
   ctx: PortfolioCtx,
   opts: { readonly finished?: boolean; readonly clientId?: string | null } = {},
@@ -78,10 +95,7 @@ export async function readPortfolio(
 ): Promise<Portfolio> {
   const { tenantId } = ctx;
   return withTenant(tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
-    await requireAccess(tx, tenantId, ctx.actor, "report:view_portfolio");
-    // A role holding the table but not projects must not read project names
-    // it could not open.
-    await requireAccess(tx, tenantId, ctx.actor, "project:view");
+    const scope = await openPortfolio(tx, ctx);
     const codes = await accessibleCodes(tx, tenantId, ctx.actor, COLUMN_CODES);
     const show = {
       updates: codes.has("project_update:view"),
@@ -89,10 +103,7 @@ export async function readPortfolio(
       budget: codes.has("budget:view"),
     };
 
-    // AND, never a spread: the scope may itself be a `clientId` term, which
-    // a spread client filter would OVERWRITE — widening it.
-    const scope = await scopeWhere(tx, ctx.actor, PROJECT_SCOPE);
-    const running = { status: { in: [...RUNNING_PROJECT_STATUSES] }, archivedAt: null };
+    const running = RUNNING_PROJECT;
     const clientRows = await tx.project.findMany({
       where: { AND: [{ tenantId }, scope, opts.finished ? {} : running] },
       distinct: ["clientId"],

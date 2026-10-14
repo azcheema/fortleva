@@ -3,8 +3,11 @@
  * how it looks. Screens import from here, never from src/components/ui
  * for anything that carries domain meaning.
  */
+export { BarList, ChartLegend, type BarListRow, type BarSeries } from "./bar-list";
 export { CalendarGrid } from "./calendar-grid";
 export { Callout, type CalloutTone } from "./callout";
+export { ChartTable } from "./chart-table";
+export { ColumnChart, type Column } from "./column-chart";
 export { CreateVisibilitySelect } from "./create-visibility-select";
 export { DataTable, ROW_HEIGHT, type Density } from "./data-table";
 export { Disclosure } from "./disclosure";

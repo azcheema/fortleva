@@ -54,7 +54,8 @@ test.describe("project health (owner)", () => {
 
     // Two clients now: the filter narrows to the completed project's.
     await page.locator("#portfolio-filter").selectOption(seed.longClientId);
-    await page.waitForURL(`**/reports?client=${seed.longClientId}&finished=1`);
+    // The select keeps the parameters already there and adds its own after them.
+    await page.waitForURL(`**/reports?finished=1&client=${seed.longClientId}`);
     await expect.poll(() => rowKeys(page)).toEqual([seed.completedProjectKey]);
 
     await page.getByTestId("portfolio-finished").click();
@@ -63,6 +64,43 @@ test.describe("project health (owner)", () => {
     // list does not span — read as every client (`/invoices`' rule), never
     // as an empty table that looks like a workspace with no projects.
     await expect.poll(() => rowKeys(page)).toContain(seed.projectKey);
+  });
+
+  // Slice 117 (C93): the team charts under the table. What each view COUNTS
+  // is `portfolio.dbtest.ts`'s; this pins the page — every view drawn for an
+  // owner, and the period select and "Show finished" keeping each other.
+  test("the team charts sit under the table, and the period and Show finished keep each other", async ({ page }) => {
+    await page.goto("/reports");
+    const charts = page.getByTestId("team-charts");
+    await expect(charts).toBeVisible();
+    await expect(charts.getByTestId("chart-numbers")).toBeVisible();
+    for (const title of ["Open tasks by project", "How long tasks take", "Hours by project", "Budget used"]) {
+      await expect(charts.getByRole("heading", { name: title, exact: true })).toBeVisible();
+    }
+    // Never hours per person (C93 (e)): an hour ranking is on the never-list.
+    await expect(charts.getByRole("heading", { name: "Hours by person" })).toHaveCount(0);
+    // Six months of columns — or, when no task in them went from In progress
+    // to Done (the seed has none), the line that says so instead of an empty plot.
+    const columns = await charts.getByTestId("column").count();
+    if (columns === 0) {
+      await expect(charts.getByText("No task went from In progress to Done in these six months.")).toBeVisible();
+    } else {
+      expect(columns).toBe(6);
+    }
+
+    await page.goto("/reports?finished=1");
+    await page.locator("#chart-period").selectOption("last");
+    await page.waitForURL("**/reports?finished=1&period=last");
+    await expect(page.locator("#chart-period")).toHaveValue("last");
+    await expect(charts.getByText("Done last month")).toBeVisible();
+
+    await page.getByTestId("portfolio-finished").click();
+    await page.waitForURL("**/reports?period=last");
+    await expect(page.locator("#chart-period")).toHaveValue("last");
+
+    // Back to this month: the default is written as no parameter at all.
+    await page.locator("#chart-period").selectOption("this");
+    await page.waitForURL(/\/reports$/);
   });
 });
 

@@ -21,20 +21,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { HIDE_FROM } from "@/components/ui/table-rungs";
 import { cn } from "@/lib/utils";
 import { requireTenantContext } from "@/members/tenant-context";
+import { CHART_PERIODS, DEFAULT_CHART_PERIOD, isChartPeriod, type ChartPeriod } from "@/modules/reports/chart-shapes";
+import { readTeamCharts, type TeamCharts } from "@/modules/reports/charts";
 import { PORTFOLIO_LIMIT, readPortfolio, type Portfolio, type PortfolioRow } from "@/modules/reports/portfolio";
 
-import { PortfolioFilter } from "./portfolio-filter";
+import { ReportsFilter } from "./reports-filter";
+import { TeamChartsSection } from "./team-charts";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("reports");
   return { title: t("title") };
 }
 
-/** `/reports` with the page's two parameters — the filter keeps one when the other changes. */
-const reportsHref = (o: { finished: boolean; clientId: string | null }): string => {
+/** `/reports` with the page's three parameters — changing one keeps the others. */
+const reportsHref = (o: { finished: boolean; clientId: string | null; period: ChartPeriod }): string => {
   const params = new URLSearchParams();
   if (o.clientId) params.set("client", o.clientId);
   if (o.finished) params.set("finished", "1");
+  if (o.period !== DEFAULT_CHART_PERIOD) params.set("period", o.period);
   const query = params.toString();
   return query === "" ? "/reports" : `/reports?${query}`;
 };
@@ -58,15 +62,21 @@ const reportsHref = (o: { finished: boolean; clientId: string | null }): string 
  * the health cell's late cue is a 14px icon beside the widest chip, and the
  * last update's date truncates before its badge, which never shrinks (the
  * code review's MEDIUM, measured in Swedish).
+ *
+ * Below the table, THE TEAM CHARTS (slice 117, founder decision C93): a
+ * "Team" heading with the charts' own period select (`?period=`, calendar
+ * months — it scopes only what is under it), then `TeamChartsSection`. The
+ * client filter in the header scopes both; "Show finished" the table only.
  */
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ finished?: string; client?: string }>;
+  searchParams: Promise<{ finished?: string; client?: string; period?: string }>;
 }) {
   const { membership, actor } = await requireTenantContext();
   const params = await searchParams;
   const finished = params.finished === "1";
+  const period: ChartPeriod = isChartPeriod(params.period) ? params.period : DEFAULT_CHART_PERIOD;
   const t = await getTranslations("reports");
   const tCommon = await getTranslations("common");
 
@@ -96,6 +106,16 @@ export default async function ReportsPage({
   // The server's reading of the filter: a client the list does not span is "all".
   const clientId =
     typeof params.client === "string" && clients.some((c) => c.id === params.client) ? params.client : null;
+  // In sequence after the table, with the table's reading of the client. Its
+  // own transaction asks the door again: refused in between (a role changed
+  // that second), the charts are left out rather than the page failing.
+  let charts: TeamCharts | null = null;
+  try {
+    charts = await readTeamCharts({ tenantId: membership.tenantId, actor }, { period, clientId });
+  } catch (e) {
+    if (!(e instanceof AuthzError)) throw e;
+  }
+  const tCharts = await getTranslations("reports.charts");
 
   return (
     <Page width="wide">
@@ -105,9 +125,12 @@ export default async function ReportsPage({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {clients.length > 1 ? (
-              <PortfolioFilter
+              <ReportsFilter
+                id="portfolio-filter"
+                param="client"
+                label={t("health.filter")}
                 value={clientId ?? ""}
-                finished={finished}
+                fallback=""
                 options={[
                   { value: "", label: t("health.allClients") },
                   ...clients.map((c) => ({ value: c.id, label: c.name })),
@@ -115,7 +138,7 @@ export default async function ReportsPage({
               />
             ) : null}
             <Button asChild variant="outline" size="sm">
-              <Link href={reportsHref({ finished: !finished, clientId })} data-testid="portfolio-finished">
+              <Link href={reportsHref({ finished: !finished, clientId, period })} data-testid="portfolio-finished">
                 {finished ? <ArchiveRestoreIcon /> : <ArchiveIcon />}
                 {finished ? t("health.hideFinished") : t("health.showFinished")}
               </Link>
@@ -137,7 +160,7 @@ export default async function ReportsPage({
                   {finished ? (
                     <Link href="/projects">{t("health.openProjects")}</Link>
                   ) : (
-                    <Link href={reportsHref({ finished: true, clientId })}>{t("health.showFinished")}</Link>
+                    <Link href={reportsHref({ finished: true, clientId, period })}>{t("health.showFinished")}</Link>
                   )}
                 </Button>
               }
@@ -154,6 +177,28 @@ export default async function ReportsPage({
           )}
         </SectionCard>
       </div>
+
+      {charts && (charts.show.tasks || charts.show.hours || charts.show.budget) ? (
+        <section aria-labelledby="team-charts-heading" className="mt-10 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="team-charts-heading" className="text-lg font-semibold">
+              {tCharts("heading")}
+            </h2>
+            {/* Only where a view has a period — the budget meters have their own. */}
+            {charts.show.tasks || charts.show.hours ? (
+              <ReportsFilter
+                id="chart-period"
+                param="period"
+                label={tCharts("periodLabel")}
+                value={period}
+                fallback={DEFAULT_CHART_PERIOD}
+                options={CHART_PERIODS.map((p) => ({ value: p, label: tCharts(`period.${p}`) }))}
+              />
+            ) : null}
+          </div>
+          <TeamChartsSection charts={charts} period={period} />
+        </section>
+      ) : null}
     </Page>
   );
 }

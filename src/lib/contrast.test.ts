@@ -49,6 +49,8 @@ const lightness = (name: string, theme: ThemeName): number => {
 const TEXT_SURFACES = ["--background", "--card", "--popover", "--muted", "--sidebar", "--accent"];
 const TONES = ["neutral", "brand", "caution", "success", "danger"] as const;
 const CHARTS = [1, 2, 3, 4, 5].map((n) => `--chart-${n}`);
+/** The team charts' roles (slice 117): To do / Non-billable, In progress / Billable, Late. */
+const CHART_ROLES = ["--chart-neutral", "--chart-active", "--chart-late"];
 const ENTITIES = Array.from({ length: 12 }, (_, i) => `--entity-${i}`);
 
 /** Surfaces a dot or a series can be drawn on, per theme. */
@@ -145,6 +147,16 @@ describe.each(THEMES)("%s theme — non-text contrast (WCAG 2.2 SC 1.4.11)", (th
     }
   });
 
+  // The roles plot on a card (or the canvas, or a popover's table twin) —
+  // never on `--accent`, a HOVER surface: the charts' rows have no hover
+  // state. Dark `--accent` measures 2.64–2.97 against them; a chart row
+  // that gains a hover must move to a lighter step first.
+  it.each(CHART_ROLES)(`%s is >= ${AA_NON_TEXT}:1 on every surface it plots on`, (role) => {
+    for (const surface of ["--background", "--card", "--popover"]) {
+      expect(ratio(role, surface, theme), `${role} on ${surface}`).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+  });
+
   it.each(ENTITIES)(`%s is >= ${AA_NON_TEXT}:1 on every surface it appears on`, (entity) => {
     for (const surface of NON_TEXT_SURFACES[theme]) {
       expect(ratio(entity, surface, theme), `${entity} on ${surface}`).toBeGreaterThanOrEqual(
@@ -224,6 +236,25 @@ describe("colour-vision deficiency (Machado 2009, severity 1.0)", () => {
       }
     },
   );
+});
+
+describe("colour-vision deficiency — the team charts' roles (slice 117)", () => {
+  /**
+   * The three are stacked side by side (To do | In progress | Late) and
+   * Late is the one a reader must never miss. The dataviz validator measured
+   * the set at dE 0.100 worst (red vs the neutral, protan) — the floor here.
+   */
+  it.each(THEMES)("%s: every pair of chart roles stays >= 0.10 apart for every vision type", (theme) => {
+    for (const vision of VISION_TYPES) {
+      for (let i = 0; i < CHART_ROLES.length; i++) {
+        for (let j = i + 1; j < CHART_ROLES.length; j++) {
+          const a = simulateCvd(rgb(CHART_ROLES[i]!, theme), vision);
+          const b = simulateCvd(rgb(CHART_ROLES[j]!, theme), vision);
+          expect(round(deltaEOk(a, b)), `${theme}/${vision}: ${CHART_ROLES[i]} vs ${CHART_ROLES[j]}`).toBeGreaterThanOrEqual(0.1);
+        }
+      }
+    }
+  });
 });
 
 describe("token hygiene", () => {

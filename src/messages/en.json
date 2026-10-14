@@ -6254,6 +6254,71 @@
       "openProjects": "Go to Projects",
       "emptyFinishedBody": "There are no projects you can see.",
       "capped": "Showing the first {count} projects — choose a client to see the rest."
+    },
+    "charts": {
+      "heading": "Team",
+      "periodLabel": "Period",
+      "period": {
+        "this": "This month",
+        "last": "Last month",
+        "3m": "Last 3 months"
+      },
+      "in": {
+        "this": "this month",
+        "last": "last month",
+        "3m": "in the last 3 months"
+      },
+      "numbers": {
+        "open": "Open tasks",
+        "late": "Late",
+        "done": {
+          "this": "Done this month",
+          "last": "Done last month",
+          "3m": "Done in the last 3 months"
+        },
+        "typical": "Typical time to done",
+        "day": "day",
+        "days": "days"
+      },
+      "other": "Other",
+      "showTable": "Show as a table",
+      "columns": {
+        "project": "Project",
+        "month": "Month",
+        "total": "Total"
+      },
+      "tasks": {
+        "title": "Open tasks by project",
+        "description": "Running projects. Late means not done and past its due date.",
+        "todo": "To do",
+        "doing": "In progress",
+        "late": "Late",
+        "empty": "No open tasks."
+      },
+      "speed": {
+        "title": "How long tasks take",
+        "description": "Typical days from In progress to Done, by the month the task was done.",
+        "inPeriod": "The chosen period",
+        "otherMonths": "Earlier months",
+        "median": "Typical days",
+        "done": "Done",
+        "timed": "Went through In progress",
+        "empty": "No task went from In progress to Done in these six months."
+      },
+      "hours": {
+        "byProject": "Hours by project",
+        "description": "{total} logged {period}.",
+        "billable": "Billable",
+        "nonBillable": "Non-billable",
+        "noProject": "No project",
+        "empty": "No hours logged in this period."
+      },
+      "budget": {
+        "title": "Budget used",
+        "description": "Each running project's active budget, in its current budget period.",
+        "empty": "No active budgets.",
+        "over": "Over budget"
+      }
     }
   }
 }

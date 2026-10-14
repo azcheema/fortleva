@@ -226,6 +226,17 @@
   --chart-3: oklch(0.532 0.084 196);
   --chart-4: oklch(0.302 0.104 258);
   --chart-5: oklch(0.516 0.23 320);
+  /* Chart ROLES (Phase 6 slice 117, the team charts) — the SAME steps in
+     both themes, so `.dark` does not restate them: slate-600, indigo-600,
+     red-600, hue hard-coded like every --chart-*. Validated as a set by the
+     dataviz validator (light on the card, dark on the dark card; adjacent
+     and all pairs): CVD worst dE 10.0, normal vision 19.5, >=3:1 on both.
+     The neutral is the de-emphasis role (To do, Non-billable, months outside
+     the period) — never an identity hue. Amber "In progress" beside red
+     "Late" was rejected: deutan dE 2.8. */
+  --chart-neutral: oklch(0.535 0.014 268);
+  --chart-active: oklch(0.575 0.205 268);
+  --chart-late: oklch(0.589 0.215 25);
 
   /* The sidebar RECEDES: darker than the canvas in both themes. */
   --sidebar: var(--color-surface-l0);
@@ -472,6 +483,9 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-neutral: var(--chart-neutral);
+  --color-chart-active: var(--chart-active);
+  --color-chart-late: var(--chart-late);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

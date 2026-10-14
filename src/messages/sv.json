@@ -6254,6 +6254,71 @@
       "openProjects": "Gå till Projekt",
       "emptyFinishedBody": "Det finns inga projekt som du kan se.",
       "capped": "Visar de första {count} projekten — välj en kund för att se resten."
+    },
+    "charts": {
+      "heading": "Team",
+      "periodLabel": "Period",
+      "period": {
+        "this": "Denna månad",
+        "last": "Förra månaden",
+        "3m": "Senaste 3 månaderna"
+      },
+      "in": {
+        "this": "denna månad",
+        "last": "förra månaden",
+        "3m": "de senaste 3 månaderna"
+      },
+      "numbers": {
+        "open": "Öppna uppgifter",
+        "late": "Försenade",
+        "done": {
+          "this": "Klara denna månad",
+          "last": "Klara förra månaden",
+          "3m": "Klara de senaste 3 månaderna"
+        },
+        "typical": "Typisk tid till klar",
+        "day": "dag",
+        "days": "dagar"
+      },
+      "other": "Övriga",
+      "showTable": "Visa som tabell",
+      "columns": {
+        "project": "Projekt",
+        "month": "Månad",
+        "total": "Totalt"
+      },
+      "tasks": {
+        "title": "Öppna uppgifter per projekt",
+        "description": "Pågående projekt. Försenad betyder inte klar och förbi sitt förfallodatum.",
+        "todo": "Att göra",
+        "doing": "Pågår",
+        "late": "Försenad",
+        "empty": "Inga öppna uppgifter."
+      },
+      "speed": {
+        "title": "Hur lång tid uppgifter tar",
+        "description": "Typiskt antal dagar från Pågår till Klar, per månad då uppgiften blev klar.",
+        "inPeriod": "Vald period",
+        "otherMonths": "Tidigare månader",
+        "median": "Typiska dagar",
+        "done": "Klara",
+        "timed": "Gick via Pågår",
+        "empty": "Ingen uppgift gick från Pågår till Klar under dessa sex månader."
+      },
+      "hours": {
+        "byProject": "Timmar per projekt",
+        "description": "{total} registrerat {period}.",
+        "billable": "Debiterbart",
+        "nonBillable": "Ej debiterbart",
+        "noProject": "Inget projekt",
+        "empty": "Inga timmar registrerade under perioden."
+      },
+      "budget": {
+        "title": "Använd budget",
+        "description": "Varje pågående projekts aktiva budget, i dess nuvarande budgetperiod.",
+        "empty": "Inga aktiva budgetar.",
+        "over": "Över budget"
+      }
     }
   }
 }

@@ -5,6 +5,8 @@ import { AuthzError } from "@/authz/errors";
 import { dateColumn, localDateString } from "@/lib/duration";
 import { actorFor, setupTenant } from "@/members/dbtest-fixture";
 
+import { addMonths, lastDayOf } from "./chart-shapes";
+import { readTeamCharts } from "./charts";
 import { readPortfolio, type PortfolioCtx, type PortfolioRow } from "./portfolio";
 
 /**
@@ -18,6 +20,11 @@ import { readPortfolio, type PortfolioCtx, type PortfolioRow } from "./portfolio
  * the slice-102 rule over the post IT counts (a client-visible one while the
  * portal is on); the order C92 (c) asked for; the five exclusions of % done;
  * and the batched burn's windows (the period, the anchor, non-billable hours).
+ * And THE TEAM CHARTS (slice 117, C93) on the same fixture: open and late
+ * tasks, done ones and the median days started → done (bucketed in the
+ * workspace's zone), hours by project with the no-project bar only
+ * unfiltered — NEVER by person (C93 (e)) — the budgets, each view hidden
+ * without its code or its module, and scope.
  *
  * Tenant slug prefix `pfo-` is registered in `DBTEST_PREFIXES`
  * (e2e/fixtures/seed-cli.ts) so `sweep-dbtests` collects orphans.
@@ -37,6 +44,7 @@ const extras: { userId: string; memberId: string; roleId: string }[] = [];
 let scoped: PortfolioCtx;
 let onOneProject: PortfolioCtx;
 let tableOnly: PortfolioCtx;
+let hoursOnBeta: PortfolioCtx;
 let nextNumber = 1;
 let seq = 0;
 
@@ -143,7 +151,16 @@ async function post(
 async function task(
   name: string,
   category: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED" | "TRIAGE",
-  opts: { type?: "EPIC" | "TASK" | "SUBTASK"; parentId?: string; archived?: boolean; deleted?: boolean } = {},
+  opts: {
+    type?: "EPIC" | "TASK" | "SUBTASK";
+    parentId?: string;
+    archived?: boolean;
+    deleted?: boolean;
+    startedAt?: Date;
+    completedAt?: Date;
+    /** Local `YYYY-MM-DD`. */
+    targetDate?: string;
+  } = {},
 ): Promise<string> {
   const id = randomUUID();
   const clientId = (await f.platform.project.findFirstOrThrow({ where: { id: P[name]! }, select: { clientId: true } }))
@@ -160,7 +177,9 @@ async function task(
       stateId: states[`${name}:${category}`]!,
       stateCategory: category,
       ...(category === "TRIAGE" ? { triageStatus: "PENDING" } : {}),
-      ...(category === "DONE" ? { completedAt: new Date() } : {}),
+      ...(category === "DONE" ? { completedAt: opts.completedAt ?? new Date() } : {}),
+      ...(opts.startedAt ? { startedAt: opts.startedAt } : {}),
+      ...(opts.targetDate ? { targetDate: dateColumn(opts.targetDate) } : {}),
       rootId: opts.parentId ?? id,
       ...(opts.parentId ? { parentId: opts.parentId } : {}),
       rank: `Zz${randomUUID().replace(/-/g, "")}1`,
@@ -171,17 +190,25 @@ async function task(
   return id;
 }
 
-/** A closed entry of the owner's, `hours` long, on `localDate`. */
-async function hours(name: string, h: number, localDate: string, billable: boolean, billRate = "1000") {
-  const clientId = (await f.platform.project.findFirstOrThrow({ where: { id: P[name]! }, select: { clientId: true } }))
-    .clientId;
+/** A closed entry of the owner's (or `memberId`'s), `hours` long, on `localDate` — on NO project when `name` is null. */
+async function hours(
+  name: string | null,
+  h: number,
+  localDate: string,
+  billable: boolean,
+  billRate = "1000",
+  memberId = f.seats.owner.memberId,
+) {
+  const clientId = name
+    ? (await f.platform.project.findFirstOrThrow({ where: { id: P[name]! }, select: { clientId: true } })).clientId
+    : null;
   const startedAt = new Date(`${localDate}T08:00:00Z`);
   await f.platform.timeEntry.create({
     data: {
       tenantId: f.tenantId,
       clientId,
-      projectId: P[name]!,
-      memberId: f.seats.owner.memberId,
+      projectId: name ? P[name]! : null,
+      memberId,
       startedAt,
       stoppedAt: new Date(startedAt.getTime() + h * 3_600_000),
       durationSeconds: Math.round(h * 3600),
@@ -281,12 +308,35 @@ beforeAll(async () => {
   await hours("Echo", 1, "2026-06-15", true);
   await hours("Echo", 1, "2026-06-16", false);
 
+  // The team charts' own plantings (slice 117) — on Kilo, which no table
+  // assertion counts: a LATE task (due yesterday), one in progress due
+  // tomorrow, one to do with no due date, two done today that started 2 and
+  // 4 days ago, and one done at 23:30 UTC on the last day of LAST month — the
+  // 1st of THIS month in Stockholm, a day after it started (median 2 days);
+  // the manager's billable hour on Kilo; the owner's half hour on NO project.
+  const now = Date.now();
+  await task("Kilo", "TODO", { targetDate: localDateString(new Date(now - DAY), "Europe/Stockholm") });
+  await task("Kilo", "IN_PROGRESS", { targetDate: localDateString(new Date(now + DAY), "Europe/Stockholm") });
+  await task("Kilo", "TODO");
+  await task("Kilo", "DONE", { startedAt: new Date(now - 2 * DAY), completedAt: new Date(now) });
+  await task("Kilo", "DONE", { startedAt: new Date(now - 4 * DAY), completedAt: new Date(now) });
+  const boundary = new Date(`${lastDayOf(addMonths(today.slice(0, 7), -1))}T23:30:00Z`);
+  await task("Kilo", "DONE", { startedAt: new Date(boundary.getTime() - DAY), completedAt: boundary });
+  await hours("Kilo", 1, today, true, "1000", f.seats.manager.memberId);
+  await hours(null, 0.5, today, false);
+
   // A member kept to Acme holding the table and projects, nothing else.
   scoped = await customMember("scoped", ["report:view_portfolio", "project:view"], { clientId: acme });
   // The same codes, assigned to ONE project of Acme's (the scope's other branch).
   onOneProject = await customMember("oneproject", ["report:view_portfolio", "project:view"], { projectId: P["Delta"]! });
   // A member holding the table but not projects.
   tableOnly = await customMember("tableonly", ["report:view_portfolio"], { clientId: acme });
+  // A member kept to Beta who may see tasks and the team's hours.
+  hoursOnBeta = await customMember(
+    "hoursonbeta",
+    ["report:view_portfolio", "project:view", "work_item:view", "time:view_team"],
+    { clientId: beta },
+  );
 }, 120_000);
 
 afterAll(async () => {
@@ -434,5 +484,110 @@ describe("% done (C92 (b)) and the budget", () => {
     expect(byName(p.rows, "Foxtrot").budget).toEqual({ percent: 25 });
     expect(byName(p.rows, "Echo").budget).toEqual({ percent: 20 });
     expect(byName(p.rows, "Alpha").budget).toBeNull();
+  });
+});
+
+describe("the team charts (slice 117, C93)", () => {
+  const H = 3600;
+
+  it("asks the page's door", async () => {
+    expect(await reason(readTeamCharts(ctxOf("employee"), { period: "this" }))).toBe("FORBIDDEN");
+    expect(await reason(readTeamCharts(tableOnly, { period: "this" }))).toBe("FORBIDDEN");
+  });
+
+  it("counts open and late tasks on running projects — late = not done and past its due date (C93 (c))", async () => {
+    const c = await readTeamCharts(ctxOf("owner"), { period: "this" });
+    expect(c.show).toEqual({ tasks: true, hours: true, budget: true });
+    expect(c.tasks).toMatchObject({ open: 5, late: 1 });
+    expect(c.tasks!.byProject.map((b) => [b.name, b.parts])).toEqual([
+      ["Kilo", { todo: 1, doing: 1, late: 1 }],
+      ["Delta", { todo: 1, doing: 1, late: 0 }],
+    ]);
+  });
+
+  it("counts done tasks in the period and the MEDIAN days started → done over those that had a start (C93 (d))", async () => {
+    const c = await readTeamCharts(ctxOf("owner"), { period: "this" });
+    // Delta's done task and its done task put away (no start) + Kilo's three
+    // (2, 4 and 1 days).
+    expect(c.tasks).toMatchObject({ done: 5, timed: 3, medianDays: 2 });
+    expect(c.tasks!.months).toHaveLength(6);
+    expect(c.tasks!.months.at(-1)).toMatchObject({ inPeriod: true, done: 5, timed: 3, medianDays: 2 });
+    expect(c.tasks!.months.slice(0, 5).every((m) => !m.inPeriod && m.done === 0 && m.medianDays === null)).toBe(true);
+    // In UTC the boundary task is last month's; in the workspace's zone it is
+    // this month's — so last month is empty.
+    const last = await readTeamCharts(ctxOf("owner"), { period: "last" });
+    expect(last.tasks).toMatchObject({ done: 0, timed: 0, medianDays: null });
+    expect(last.tasks!.months.at(-1)!.inPeriod).toBe(true);
+  });
+
+  it("puts the hours by project, billable apart — the no-project bar only while no client is chosen", async () => {
+    const c = await readTeamCharts(ctxOf("owner"), { period: "this" });
+    expect(c.hours!.byProject.map((b) => [b.name, b.parts.billable / H, b.parts.nonBillable / H])).toEqual([
+      ["Delta", 2, 1],
+      ["Bravo", 1.5, 0],
+      ["Foxtrot", 1, 0],
+      ["Kilo", 1, 0],
+      [null, 0, 0.5],
+    ]);
+    // NEVER per person (C93 (e)): an hour ranking is on the never-list.
+    expect(Object.keys(c.hours!).sort()).toEqual(["byProject", "total"]);
+    expect(c.hours!.total).toEqual({ billable: 5.5 * H, nonBillable: 1.5 * H });
+
+    const acmeOnly = await readTeamCharts(ctxOf("owner"), { period: "this", clientId: acme });
+    expect(acmeOnly.hours!.byProject.map((b) => b.name)).toEqual(["Delta", "Foxtrot", "Kilo"]);
+    expect(acmeOnly.tasks).toMatchObject({ open: 5, done: 5 });
+
+    // The last 3 months hold Foxtrot's hours of 40 days ago too.
+    const three = await readTeamCharts(ctxOf("owner"), { period: "3m" });
+    expect(three.hours!.byProject.find((b) => b.name === "Foxtrot")!.parts.billable / H).toBe(4);
+  });
+
+  it("meters each running project's active budget, the most used first, as a percent", async () => {
+    const c = await readTeamCharts(ctxOf("owner"), { period: "this" });
+    expect(c.budgets!.map((b) => [b.name, b.percent])).toEqual([
+      ["Bravo", 150],
+      ["Foxtrot", 25],
+      ["Delta", 20],
+      ["Echo", 20],
+    ]);
+    const acmeOnly = await readTeamCharts(ctxOf("owner"), { period: "this", clientId: acme });
+    expect(acmeOnly.budgets!.map((b) => b.name)).toEqual(["Foxtrot", "Delta"]);
+  });
+
+  it("draws nothing a member's codes do not reach — and only their scope's hours", async () => {
+    const none = await readTeamCharts(scoped, { period: "this" });
+    expect(none.show).toEqual({ tasks: false, hours: false, budget: false });
+    expect([none.tasks, none.hours, none.budgets]).toEqual([null, null, null]);
+
+    const beta = await readTeamCharts(hoursOnBeta, { period: "this" });
+    expect(beta.show).toEqual({ tasks: true, hours: true, budget: false });
+    expect(beta.budgets).toBeNull();
+    expect(beta.tasks).toMatchObject({ open: 0, late: 0, done: 0 });
+    // Bravo's hours and the no-project half hour (`/time/team`'s rule) — never Acme's.
+    expect(beta.hours!.byProject.map((b) => [b.name, b.parts.billable / H, b.parts.nonBillable / H])).toEqual([
+      ["Bravo", 1.5, 0],
+      [null, 0, 0.5],
+    ]);
+    // A client outside the member's scope narrows to nothing — never widens.
+    const widened = await readTeamCharts(hoursOnBeta, { period: "this", clientId: acme });
+    expect(widened.hours!.byProject).toEqual([]);
+    expect(widened.tasks).toMatchObject({ open: 0, done: 0 });
+  });
+
+  it("hides a view whose MODULE is switched off, whatever the role holds", async () => {
+    for (const [key, show] of [
+      ["module.time.enabled", { tasks: true, hours: false, budget: false }],
+      ["module.work.enabled", { tasks: false, hours: true, budget: true }],
+    ] as const) {
+      await f.platform.tenantPreference.create({ data: { tenantId: f.tenantId, key, value: false } });
+      try {
+        const c = await readTeamCharts(ctxOf("owner"), { period: "this" });
+        expect(c.show, key).toEqual(show);
+        expect(c.hours === null, key).toBe(!show.hours);
+        expect(c.tasks === null, key).toBe(!show.tasks);
+      } finally {
+        await f.platform.tenantPreference.deleteMany({ where: { tenantId: f.tenantId, key } });
+      }
+    }
   });
 });
