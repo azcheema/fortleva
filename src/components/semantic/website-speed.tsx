@@ -120,7 +120,11 @@ export async function WebsiteSpeedCharts({
             const band = latest.value ? bandOf(metric, latest.value.p75) : null;
             const { goodMax, needsMax } = BANDS[metric];
             const values = points.map((p) => p.value?.p75 ?? 0);
-            const yMax = Math.max(needsMax * 1.25, Math.max(...values) * 1.1, 0.001);
+            // The plot's top: the Good edge with headroom, or the data with
+            // headroom when it climbs past that — so a fast site's line is not
+            // squashed under a Poor edge it never nears (seen on the founder's
+            // first real site); a hairline is drawn only inside the plot.
+            const yMax = Math.max(goodMax * 1.25, Math.max(...values) * 1.15, 0.001);
             const drawn = points.map((p, i) => ({ ...p, i })).filter((p) => p.value !== null);
             // 2–98 % of the plot, so the end dots (centred on their point) stay inside its box.
             const x = (i: number) => (points.length === 1 ? 50 : 2 + (i / (points.length - 1)) * 96);
@@ -192,7 +196,7 @@ export async function WebsiteSpeedCharts({
                       preserveAspectRatio="none"
                       className="absolute inset-0 size-full overflow-visible"
                     >
-                      {[goodMax, needsMax].map((edge) => (
+                      {[goodMax, needsMax].filter((edge) => edge <= yMax).map((edge) => (
                         <line
                           key={edge}
                           x1="0"
