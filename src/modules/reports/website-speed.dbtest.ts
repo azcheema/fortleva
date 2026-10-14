@@ -6,7 +6,7 @@ import { actorFor, setupTenant } from "@/members/dbtest-fixture";
 import { parseEntitlements } from "@/entitlements/resolver";
 import { fakeCrux } from "@/integrations/crux/fake";
 import { resolvePortalModuleGates, type PortalPrincipal } from "@/portal";
-import { setPortalEnabled, setSpeedShared, type ProjectCtx } from "@/projects/service";
+import { setPortalEnabled, setSpeedShared, updateProject, type ProjectCtx } from "@/projects/service";
 
 import { countPortalWebsiteSpeed, listPortalWebsiteSpeed } from "./portal";
 import { readWebsiteSpeed } from "./speed";
@@ -387,6 +387,18 @@ describe("the client's side", () => {
     expect((await listPortalWebsiteSpeed(principal(carol)))[0]!.series.PHONE).toHaveLength(40);
     await setSpeedShared(owner(), P.site!, false);
     expect(await listPortalWebsiteSpeed(principal(carol))).toEqual([]);
+  });
+
+  it("a Production URL edited through the service resets the check, so the next fetch asks about the new site at once — not six days on", async () => {
+    expect(await checkOf(P.site!)).not.toBeNull();
+    await updateProject(owner(), P.site!, { productionUrl: "https://again.example.invalid" });
+    expect(await checkOf(P.site!)).toBeNull();
+    // Every other project was checked at a later clock than NOW: only this one is due.
+    const r = await fetchWebsiteSpeed(f.tenantId, { transport: fakeCrux, now: NOW });
+    expect(r.projects).toBe(1);
+    expect(r.weeks).toBe(80);
+    expect(await checkOf(P.site!)).toMatchObject({ outcome: "OK", origin: "https://again.example.invalid" });
+    expect((await readWebsiteSpeed(owner(), P.site!)).series.PHONE).toHaveLength(40);
   });
 });
 

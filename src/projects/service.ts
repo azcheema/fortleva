@@ -32,6 +32,7 @@ import { guarded as guardLayoutKey } from "@/modules/work/db-errors";
 import { readUpdateSchedule } from "@/modules/work/update-reminders";
 import { isUpdateWeekday, type UpdateScheduleStatus } from "@/modules/work/update-schedule";
 import { latestPublishedHealth } from "@/modules/work/updates";
+import { originOf } from "@/modules/reports/speed-shapes";
 import { retryOnContention } from "@/lib/retry";
 import { beginPortalSwitch, reconcilePortalStamps } from "@/projects/portal-gate";
 import type { PortalSection, PortalSections } from "@/projects/portal-sections";
@@ -658,6 +659,14 @@ export async function updateProject(
     // A layout deleted between the check above and this write is the
     // project's RESTRICT key refusing it — LAYOUT_BUSY, a sentence (slice 105).
     await guardLayoutKey(() => tx.project.update({ where: { id: projectId }, data, select: { id: true } }));
+    // Slice 118: a Production URL moved to ANOTHER SITE is a site never asked
+    // about — the check row of the old one goes, so the weekly fetch asks on
+    // its next run rather than six days on (the rows' visibility the database
+    // re-derives itself, `project_speed_sharing_fanout`). A URL edited within
+    // the same site (a page, a slash) changes nothing Google would be asked.
+    if (changed.includes("productionUrl") && originOf(patch.productionUrl ?? null) !== originOf(p.productionUrl)) {
+      await tx.websiteSpeedCheck.deleteMany({ where: { projectId } });
+    }
     await record(tx, {
       action: "project.updated",
       targetType: "Project",

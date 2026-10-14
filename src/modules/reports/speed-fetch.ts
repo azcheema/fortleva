@@ -11,7 +11,10 @@ import { originOf } from "./speed-shapes";
  * workspace's measured sites asked of Google and the answers kept as our
  * own copy. Run per workspace by `src/jobs/website-speed.ts` (the jobs
  * route), under the workspace's OWN system principal, RLS live. The ONE
- * writer of `website_speed_week` and `website_speed_check`.
+ * writer of `website_speed_week`, and of `website_speed_check` but for one
+ * DELETE: `updateProject` removes a project's check row when its Production
+ * URL moves to another site, so the new site is asked on the next run
+ * rather than a week on.
  *
  * A RUN, in order:
  *  1. The workspace: the `reports` module open (else nothing).
@@ -249,9 +252,23 @@ export async function fetchWebsiteSpeed(
       logFailure(project.id, e);
       if (isCheckViolation(e)) {
         // Google's shape and ours disagree for this site: recorded as a
-        // FAILED `shape`, which waits the week (the pre-apply review's 7).
+        // FAILED `shape`, which waits the week (the pre-apply review's 7) —
+        // under the same lock and the same "still this site" rule as the
+        // write it replaces, so it can never re-create a check row for a
+        // URL that moved meanwhile (the fix review's low).
         try {
-          await withTenant(tenantId, SYSTEM, (tx) => writeCheck(tx, tenantId, project.id, origin, now, "FAILED", "shape"));
+          await withTenant(
+            tenantId,
+            SYSTEM,
+            async (tx) => {
+              const [p] = await tx.$queryRaw<{ production_url: string | null; archived_at: Date | null }[]>`
+                SELECT production_url, archived_at FROM project
+                 WHERE tenant_id = ${tenantId} AND id = ${project.id} FOR SHARE`;
+              if (!p || p.archived_at !== null || originOf(p.production_url) !== origin) return;
+              await writeCheck(tx, tenantId, project.id, origin, now, "FAILED", "shape");
+            },
+            { lockTimeoutMs: WRITE_LOCK_WAIT_MS },
+          );
         } catch {
           // The next run tries again.
         }

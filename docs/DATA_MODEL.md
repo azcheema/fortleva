@@ -2475,7 +2475,9 @@ model IssueComment {
 // `origin`, which is on the never-list; the project's current origin is a
 // `where` term). The `website_speed_check` row — when Google was last asked
 // and what came of it (OK / NO_DATA / REFUSED / FAILED, a short token) — is
-// class A: the team's card reads it for its empty states.
+// class A: the team's card reads it for its empty states. `updateProject`
+// deletes it when the Production URL moves to another site (the weekly
+// job re-creates it on its next run — the new site asked at once).
 //
 // The job: `POST /api/jobs/run` → `runWebsiteSpeed` (`src/jobs/website-speed.ts`)
 // while `CRUX_TRANSPORT` is `live`; off by default everywhere, `fake` in the
