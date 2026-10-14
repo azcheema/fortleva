@@ -306,6 +306,23 @@ test.describe("summary email settings", () => {
 });
 
 /**
+ * THE MONTHLY REPORTS DRAFTED BY THEMSELVES (Phase 7 slice 120; founder
+ * decision C96 (b)): one workspace switch on Preferences, ON by default. The
+ * drafter's judgement is `src/documents/report-drafts.dbtest.ts`'s; the
+ * browser proves the switch is where the founder was told and starts on.
+ */
+test.describe("monthly reports drafted by themselves (owner)", () => {
+  test("the Preferences page offers the switch, on by default", async ({ page }) => {
+    await page.goto("/settings/preferences");
+    const box = page.getByTestId("pref-reports-draft-monthly");
+    await expect(box).toBeVisible();
+    await expect(box).toBeChecked();
+    await expect(box).toBeEnabled();
+    await expect(page.getByText("Draft a monthly report for every client on the 1st")).toBeVisible();
+  });
+});
+
+/**
  * THE WORKSPACE'S REPLY ADDRESS (Phase 5 slice 100; C68 (k)): asking for one
  * takes a FRESH second factor, and this shared owner has no authenticator at
  * all — so the press sends them to set one up, and nothing is mailed. The

@@ -361,6 +361,22 @@ const KINDS = {
     class: "COALESCED",
   },
   /**
+   * Phase 7 slice 120 (founder decision C96 (c)): on the 1st the drafter made
+   * a client's monthly report by itself — private, waiting for someone to
+   * read it, add the team's words if they like, and publish it
+   * (`src/documents/report-drafts.ts`). To the people who may PUBLISH that
+   * client's reports and reach the client directly; IDS ONLY (the client,
+   * the document, the month); deduplicated per draft while unread.
+   *
+   * COALESCED, NO `email` — "no email, like the renewal invoice drafts"
+   * (C96 (c)): the inbox only; not a push either (`isPushKind` wants
+   * INSTANT). The team's summary email still counts it (C68 (h)).
+   */
+  "report.drafted": {
+    audience: "MEMBER",
+    class: "COALESCED",
+  },
+  /**
    * Phase 4 slice 114c (founder decisions C89 (c), (e), C90 (a)): sending to
    * Fortnox stopped (an entry refused, or only a PDF that never attached —
    * the words are neutral, "needs attention": the code review's M1) — told ONCE per

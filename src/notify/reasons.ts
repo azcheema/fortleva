@@ -36,6 +36,13 @@ export const NOTIFICATION_REASONS = [
    * `invoice:issue`, tenant-wide. One assigned to the client is CLIENT_MEMBER.
    */
   "INVOICE_ACCESS",
+  /**
+   * They can publish that client's reports — a monthly report Fortleva
+   * drafted by itself is waiting (Phase 7 slice 120, founder decision C96
+   * (c)): the Reports tab's and the publish verb's codes, tenant-wide. One
+   * assigned to the client is CLIENT_MEMBER.
+   */
+  "REPORT_ACCESS",
   /** They own the workspace (the owners hear some things always). */
   "OWNER",
 ] as const;

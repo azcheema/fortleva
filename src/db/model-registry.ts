@@ -111,6 +111,9 @@ export const MODEL_CLASSES = {
     // Phase 7 slice 119 — the monthly report Fortleva makes (C95): the record
     // of a made report beside its REPORT document.
     "madeReport",
+    // Phase 7 slice 120 — the drafter's ledger (C96): one outcome per client
+    // and month the job considered for a self-drafted report.
+    "monthlyReportDraft",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -288,6 +291,9 @@ export const RLS_CLASSES = {
     // was read as and the fingerprint the publish check compares. The client
     // reads the PDF (a REPORT document, class B); never this row.
     "madeReport",
+    // Phase 7 slice 120 — the drafter's ledger (C96): what the job decided
+    // for a client and a month. The job's own record; never a client's.
+    "monthlyReportDraft",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

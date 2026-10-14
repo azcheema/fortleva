@@ -8,6 +8,7 @@ import { idCursor } from "@/lib/id-cursor";
 import type { WeekStart } from "@/lib/week";
 import { readPreferences } from "@/preferences/service";
 import { DEFAULT_TIMEZONE } from "@/i18n/config";
+import { isReportSubjectKind, reportSubjects } from "@/documents/report-subjects";
 import { contractSubjects, isContractDecisionKind } from "@/modules/contracts/subjects";
 import { fortnoxSubjects, invoiceSubjects, isFortnoxSubjectKind, isInvoiceSubjectKind } from "@/modules/invoicing/subjects";
 import { BUDGET_ALERT_ENTITY, PROJECT_MONEY_CODES } from "@/modules/time/money-codes";
@@ -569,6 +570,20 @@ async function resolveSubjects(
       out.set(id, { title: subject.title, href: subject.href });
     }
     rows = rows.filter((r) => !isFortnoxSubjectKind(r.kind));
+    if (rows.length === 0) return out;
+  }
+
+  // …AND A MONTHLY REPORT DRAFTED BY ITSELF (slice 120, C96 (c)): its client,
+  // linked to the client's Reports tab under the reader's `document:view` +
+  // `report:view` and direct reach — `reportSubjects`. Never the fall-through
+  // below, which would link the Files tab, which lists no report.
+  const reports = rows.filter((r) => isReportSubjectKind(r.kind));
+  if (reports.length > 0) {
+    const refs = reports.map((r) => ({ id: r.id, kind: r.kind, entityType: r.entityType, entityId: r.entityId }));
+    for (const [id, subject] of await reportSubjects(tx, ctx.tenantId, ctx.actor, refs)) {
+      out.set(id, { title: subject.title, href: subject.href });
+    }
+    rows = rows.filter((r) => !isReportSubjectKind(r.kind));
     if (rows.length === 0) return out;
   }
 

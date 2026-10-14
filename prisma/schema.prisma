@@ -316,6 +316,7 @@ model Tenant {
   speedWeeks                     WebsiteSpeedWeek[]
   speedChecks                    WebsiteSpeedCheck[]
   madeReports                    MadeReport[]
+  monthlyReportDrafts            MonthlyReportDraft[]
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   projectUpdateReminders         ProjectUpdateReminderSent[]
   projectUpdateTemplates         ProjectUpdateTemplate[]
@@ -708,6 +709,7 @@ model Client {
   credentialAsks       CredentialAsk[]
   invoices             Invoice[]
   contracts            Contract[]
+  monthlyReportDrafts  MonthlyReportDraft[]
 
   @@unique([tenantId, id]) // composite-FK target for ALL client-scoped children
   @@index([tenantId, status])
@@ -2360,13 +2362,45 @@ model MadeReport {
   /// Which drawing the bytes are (`MADE_REPORT_TEMPLATE_VERSION`), ≥ 1.
   templateVersion Int      @map("template_version") @db.SmallInt
   madeAt          DateTime @map("made_at") @db.Timestamptz(6)
-  madeByMemberId  String?  @map("made_by_member_id") // attribution, no FK
+  madeByMemberId  String?  @map("made_by_member_id") // attribution, no FK; NULL = drafted by the job on the 1st (slice 120, C96)
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   document Document @relation(fields: [tenantId, documentId], references: [tenantId, id], onDelete: Cascade)
 
   @@unique([tenantId, documentId])
   @@map("made_report")
+}
+
+/// THE DRAFTER'S LEDGER (Phase 7 slice 120; founder decision C96) — one row
+/// per client and month the job has CONSIDERED for a self-drafted monthly
+/// report, with its outcome: DRAFTED (`documentId` the draft), EXISTS (a
+/// report for the month was already there), NO_AUDIENCE (nobody at the
+/// client could sign in), EMPTY (nothing finished, nothing published),
+/// TOO_LARGE (over the drawing's ceilings) or FAILED (tried again up to
+/// three times). Class A; written by the drafter alone, as SYSTEM, and not
+/// audited — the draft's own `document.created` is. A DRAFTED row is written
+/// in the same transaction as the draft, so the UNIQUE key is the guard
+/// against two kicks drafting one month twice.
+model MonthlyReportDraft {
+  id         String   @id @default(uuid(7))
+  tenantId   String   @map("tenant_id")
+  clientId   String   @map("client_id")
+  /// The first of the month drafted (CHECK).
+  month      DateTime @db.Date
+  /// DRAFTED | EXISTS | NO_AUDIENCE | EMPTY | TOO_LARGE | FAILED (CHECK).
+  outcome    String
+  /// The draft's document, exactly when DRAFTED (CHECK); attribution, no FK.
+  documentId String?  @map("document_id")
+  /// 1–3 (CHECK): FAILED is tried again on later kicks until the third.
+  attempts   Int      @default(1) @db.SmallInt
+  decidedAt  DateTime @map("decided_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  client Client @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, clientId, month])
+  @@map("monthly_report_draft")
 }
 
 /// Current version = max versionNumber. The portal never queries this

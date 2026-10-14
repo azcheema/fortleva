@@ -20,6 +20,7 @@ describe("why a notification reached someone", () => {
       "BUDGET_WATCHER",
       "VAULT_ACCESS",
       "INVOICE_ACCESS",
+      "REPORT_ACCESS",
       "OWNER",
     ]);
     expect(isNotificationReason("OWNER")).toBe(true);

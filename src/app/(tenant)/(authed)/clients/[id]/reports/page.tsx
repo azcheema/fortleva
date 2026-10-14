@@ -112,6 +112,8 @@ export default async function ClientReportsPage({
             defaultLocale={makeForm.defaultLocale}
             projects={makeForm.projects}
             hasAudience={makeForm.hasAudience}
+            draftMonths={makeForm.draftMonths.map(reportMonthFormValue)}
+            emptyMonths={makeForm.emptyMonths.map(reportMonthFormValue)}
           />
         </SectionCard>
       ) : null}

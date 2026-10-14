@@ -5,6 +5,7 @@ import {
   CalendarClockIcon,
   CircleCheckIcon,
   ClipboardCheckIcon,
+  FileChartColumnIcon,
   FileClockIcon,
   FileSignatureIcon,
   FileXIcon,
@@ -55,6 +56,8 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "contract.declined": FileXIcon,
   // The Invoices nav's own glyph (slice 113b).
   "invoice.renewal_drafted": ReceiptTextIcon,
+  // The Reports tab's own glyph (slice 120).
+  "report.drafted": FileChartColumnIcon,
   // The bookkeeping that stopped reaching Fortnox, and works again (slice 114c).
   "integration.fortnox_stopped": BookAlertIcon,
   "integration.fortnox_still_stopped": BookAlertIcon,

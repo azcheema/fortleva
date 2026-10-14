@@ -289,6 +289,7 @@
       "contractDeclined": "A client declined a contract",
       "contractEnding": "A contract is ending",
       "renewalDrafted": "A renewal invoice is ready to check",
+      "reportDrafted": "A monthly report is drafted and waiting",
       "fortnoxStopped": "Sending to Fortnox needs attention",
       "fortnoxStillStopped": "Sending to Fortnox still needs attention",
       "fortnoxRestored": "Sending to Fortnox works again"
@@ -353,6 +354,7 @@
       "BUDGET_WATCHER": "On the alert list",
       "VAULT_ACCESS": "Logins you can open",
       "INVOICE_ACCESS": "Invoices you can issue",
+      "REPORT_ACCESS": "Reports you can publish",
       "OWNER": "You're an owner"
     },
     "keys": {
@@ -1041,6 +1043,12 @@
         "description": "What Fortleva emails the people at your clients who have portal access.",
         "summary": "Send a weekly summary every Monday morning",
         "summaryHint": "Each person gets an email at 08:00 your workspace's time when something in their portal is new or waiting for them — numbers and a link, never names. Each person can stop their own."
+      },
+      "reports": {
+        "title": "Monthly reports",
+        "description": "The reports Fortleva drafts by itself for your clients.",
+        "draftMonthly": "Draft a monthly report for every client on the 1st",
+        "draftMonthlyHint": "For every client with someone in the portal: what got done and the progress updates of the month that just ended, in the client's language, private until someone on your team publishes it. A month with nothing to show gets no draft. The people who can publish a client's reports are told in their inbox."
       }
     },
     "export": {
@@ -2192,6 +2200,7 @@
       "download": "Download {name}",
       "monthPrefix": "{month} · ",
       "made": "Made in Fortleva",
+      "drafted": "Drafted by Fortleva",
       "legend": {
         "internal": "Only your team can see it",
         "clientVisible": "Published: everyone at the client with portal access can open it"
@@ -2224,6 +2233,9 @@
         "submit": "Make report",
         "submitting": "Making…",
         "done": "Report made. Only your team can see it until you publish it.",
+        "doneReplaced": "Report made — it replaced the draft Fortleva made. Only your team can see it until you publish it.",
+        "replaces": "Fortleva drafted this month's report on the 1st. Making one here replaces that draft — the client has not seen it.",
+        "emptyMonth": "Nothing was finished or published for this client that month, so Fortleva drafted no report. You can still make one.",
         "failed": "The report could not be made. Try again."
       },
       "add": {

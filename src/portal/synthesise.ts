@@ -65,6 +65,10 @@ import { resolvePortalModuleGates } from "./module-gates";
  * Fortleva makes reads its content as the client's narrowest contact
  * (`src/documents/made-reports.ts`) and publishing it derives the content
  * again (`src/documents/made-report-check.ts`) — callers, not builders.
+ * A fifth since slice 120, under SYSTEM like the first two: the drafter
+ * that makes last month's report by itself on the 1st
+ * (`src/documents/report-drafts.ts`), reading as the same narrowest
+ * contact — a caller, not a builder.
  *
  * WHAT THIS DELIBERATELY DOES NOT DO. It does not authorise the MEMBER
  * — no permission, no scope, no contact admission. Those are the

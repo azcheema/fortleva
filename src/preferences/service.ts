@@ -17,6 +17,7 @@ import {
   moduleKey,
   portalCredentialsSwitchLockKey,
   PREF_KEYS,
+  REPORT_PREF_KEYS,
   TIME_HOURS_MAX,
   TIME_HOURS_MIN,
   TIME_PREF_KEYS,
@@ -125,6 +126,8 @@ const patchSchema = z
       .partial(),
     // Phase 5 slice 101 (C69 (d)): the clients' weekly summary.
     mail: z.object({ clientSummary: z.boolean() }).partial(),
+    // Phase 7 slice 120 (C96 (b)): the monthly reports drafted by themselves.
+    reports: z.object({ draftMonthly: z.boolean() }).partial(),
   })
   .partial();
 
@@ -315,6 +318,11 @@ export async function updatePreferences(
     }
     for (const [field, key] of Object.entries(MAIL_PREF_KEYS) as [keyof typeof MAIL_PREF_KEYS, string][]) {
       const value = patch.mail?.[field];
+      if (value === undefined) continue;
+      if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
+    }
+    for (const [field, key] of Object.entries(REPORT_PREF_KEYS) as [keyof typeof REPORT_PREF_KEYS, string][]) {
+      const value = patch.reports?.[field];
       if (value === undefined) continue;
       if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
     }

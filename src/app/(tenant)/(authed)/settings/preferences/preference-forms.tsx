@@ -302,3 +302,31 @@ export function ClientMailPreferencesForm({ prefs, editable }: { prefs: TenantPr
     </AutoForm>
   );
 }
+
+/**
+ * Phase 7 slice 120 — the monthly reports Fortleva drafts by itself (founder
+ * decision C96 (b)): ON by default, one workspace switch. The mail form's
+ * hidden-marker convention, so "unchecked" posts as a real value.
+ */
+export function ReportPreferencesForm({ prefs, editable }: { prefs: TenantPreferences; editable: boolean }) {
+  const t = useTranslations("settings.preferences.reports");
+  return (
+    <AutoForm action={updatePreferencesAction} className="flex flex-col gap-4">
+      <div className="flex items-start gap-2">
+        <input type="hidden" name="reports.draftMonthlyMarker" value="1" />
+        <NativeCheckbox
+          id="p-reports-draftMonthly"
+          name="reports.draftMonthly"
+          defaultChecked={prefs.reports.draftMonthly}
+          disabled={!editable}
+          className="mt-0.5"
+          data-testid="pref-reports-draft-monthly"
+        />
+        <div className="flex flex-col">
+          <Label htmlFor="p-reports-draftMonthly">{t("draftMonthly")}</Label>
+          <span className="text-xs text-muted-foreground">{t("draftMonthlyHint")}</span>
+        </div>
+      </div>
+    </AutoForm>
+  );
+}

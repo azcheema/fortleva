@@ -873,6 +873,14 @@ export async function softDeleteDocument(ctx: DocumentCtx, documentId: string): 
 }
 
 /**
+ * Why a job-drafted monthly report was removed: the member MADE the same
+ * month again, with their words (Phase 7 slice 120, founder decision C96
+ * (d)); `replacedBy` is the new report. On the `document.deleted` row, so a
+ * log reader sees why a member without `document:delete` removed one.
+ */
+export type ReplacedDraftReason = { readonly reason: "replaced_draft"; readonly replacedBy: string };
+
+/**
  * The transaction-level soft delete both deleters share: the member's
  * own `softDeleteDocument` above, and `deleteItem`'s attachment cascade
  * in the work module (attachments live the life of their parent,
@@ -899,7 +907,13 @@ export async function softDeleteDocumentsInTx(
   tenantId: string,
   documentIds: readonly string[],
   deletedAt: Date,
-  why?: WorkItemDeletedReason,
+  why?: WorkItemDeletedReason | ReplacedDraftReason,
+  /**
+   * Extra terms the UPDATE must still find true — the replace's "still
+   * INTERNAL, never published" (slice 120): the compare-and-set then refuses a
+   * row a concurrent publish changed, not only one deleted since the read.
+   */
+  only?: { readonly visibility?: "INTERNAL"; readonly reportPublishedAt?: null },
 ): Promise<string[]> {
   if (documentIds.length === 0) return [];
   // THE UPDATE IS THE SELECT, for the same reason the comment cascade
@@ -909,7 +923,7 @@ export async function softDeleteDocumentsInTx(
   // would put two actors on one deletion, and a later undo would trust
   // whichever it read.
   const taken = await tx.document.updateManyAndReturn({
-    where: { tenantId, id: { in: [...documentIds] }, deletedAt: null },
+    where: { tenantId, id: { in: [...documentIds] }, deletedAt: null, ...(only ?? {}) },
     data: { deletedAt },
     select: { id: true },
   });
@@ -934,7 +948,7 @@ export async function softDeleteDocumentsInTx(
   const reasonFor = (documentId: string): CascadeReason => ({
     reason: "document_deleted",
     documentId,
-    ...(why ? { workItemId: why.workItemId } : {}),
+    ...(why?.reason === "work_item_deleted" ? { workItemId: why.workItemId } : {}),
   });
   const subjects: CascadeSubject[] = [
     ...ids.map((id) => ({ type: "DOCUMENT" as const, id, why: reasonFor(id) })),

@@ -124,6 +124,8 @@ export type ClientReport = {
   readonly createdAt: Date;
   /** Made by Fortleva (slice 119) — a `made_report` row beside it — rather than uploaded. */
   readonly made: boolean;
+  /** Made by the drafter on the 1st (slice 120, C96) — a made report with no maker — rather than by a person's press. */
+  readonly drafted: boolean;
 };
 
 /** The client's live reports, newest month first, then by name. */
@@ -145,7 +147,7 @@ export async function listClientReports(ctx: ReportCtx, clientId: string): Promi
           take: 1,
           select: { fileObject: { select: { sizeBytes: true, contentType: true } } },
         },
-        madeReport: { select: { documentId: true } },
+        madeReport: { select: { documentId: true, madeByMemberId: true } },
       },
       orderBy: [{ reportMonth: "desc" }, { name: "asc" }, { id: "asc" }],
       // A report a month for sixteen years; a cap, not a pager.
@@ -164,6 +166,7 @@ export async function listClientReports(ctx: ReportCtx, clientId: string): Promi
               contentType: r.versions[0]?.fileObject.contentType ?? "application/octet-stream",
               createdAt: r.createdAt,
               made: r.madeReport !== null,
+              drafted: r.madeReport !== null && r.madeReport.madeByMemberId === null,
             },
           ]
         : [],

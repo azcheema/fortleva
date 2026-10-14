@@ -42,6 +42,7 @@ export type ReportRowData = {
   readonly contentType: string;
   /** Made by Fortleva (slice 119) rather than uploaded — the row says so. */
   readonly made: boolean;
+  readonly drafted: boolean;
 };
 
 export type ReportAbilities = {
@@ -224,9 +225,10 @@ function ReportRow({
             {row.name}
           </span>
           {row.made ? (
-            // The team's marker (slice 119, R5): the client's copy says nothing of Fortleva.
+            // The team's marker (slice 119, R5): the client's copy says nothing of
+            // Fortleva. "Drafted" when the job made it on the 1st (slice 120).
             <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground" data-testid="report-made">
-              {t("made")}
+              {row.drafted ? t("drafted") : t("made")}
             </span>
           ) : null}
         </span>

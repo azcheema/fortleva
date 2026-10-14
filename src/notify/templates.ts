@@ -114,6 +114,15 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Fortleva har gjort ett fakturautkast för en kunds avtal som snart förnyas. Granska det och utfärda det sedan.",
     },
   },
+  // Slice 120: never mailed (COALESCED, no `email` — C96 (c)); every kind
+  // still carries its copy.
+  "report.drafted": {
+    en: { subject: "A monthly report is drafted and waiting", body: "Fortleva drafted a client's monthly report. Read it, add your words if you like, then publish it." },
+    sv: {
+      subject: "En månadsrapport är utkast och väntar",
+      body: "Fortleva har gjort ett utkast till en kunds månadsrapport. Läs det, lägg till era egna ord om ni vill och publicera det sedan.",
+    },
+  },
   // Phase 4 slice 114c (C89 (c), (e), C90) — sending to Fortnox stopped:
   // once per breakage, then every Monday while it lasts. To the owners as
   // their level allows. LINKS, NOT DATA: neither the company, the entry, the

@@ -2117,7 +2117,23 @@ enum AttachableType {
 /// 119, C95: the MONTHLY REPORT FORTLEVA MAKES is a REPORT too — the client's,
 /// for one month, on the same Reports page — with a `MadeReport` row beside
 /// it (below) saying it was made and from what; it takes no new kind. The
-/// progress-update PDF and the tidrapport still do.)*
+/// progress-update PDF and the tidrapport still do.)* *(Amended 2026-10-15,
+/// Phase 7 slice 120, C96: the DRAFTER makes the same REPORT by itself on
+/// the 1st for the month that just ended — every maker column NULL
+/// (`created_by_member_id`, `uploaded_by_member_id`, `made_by_member_id`:
+/// NULL = the job), audited `document.created` as SYSTEM with `drafted:
+/// true` — and keeps a LEDGER, `monthly_report_draft` (class A, migration
+/// 20261025090000): one row per client and month considered, with the
+/// verdict (DRAFTED with the document's id, EXISTS, NO_AUDIENCE, EMPTY,
+/// TOO_LARGE, FAILED tried up to three times), the UNIQUE (tenant, client,
+/// month) being the guard against two kicks drafting one month twice — a
+/// DRAFTED row is written in the draft's own transaction. Unaudited: the
+/// job's own record. The same migration widened `notification_reason_known`
+/// by `REPORT_ACCESS` for the inbox notice `report.drafted` (COALESCED, no
+/// mail) to the people who may publish the client's reports. Making the
+/// month again by hand soft-deletes a never-published job draft of it
+/// (`document.deleted` with `reason: "replaced_draft"`, under the make
+/// codes — AUTHZ §3).)*
 enum DocumentKind {
   GENERAL
   DELIVERABLE      // client-approvable output (design, build, copy…)

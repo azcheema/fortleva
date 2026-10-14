@@ -13,6 +13,7 @@ import { runInvoicePdfs } from "@/jobs/invoice-pdfs";
 import { runNotificationRetention } from "@/jobs/notification-retention";
 import { drainOutbox } from "@/jobs/outbox";
 import { runPushes } from "@/jobs/push-sweep";
+import { runReportDrafts } from "@/jobs/report-drafts";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
 import { runUpdateReminders } from "@/jobs/update-reminders";
@@ -61,6 +62,11 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * Chrome UX Report about every measured site, in every sending workspace,
  * about once a week each, and keeps the answers; while `CRUX_TRANSPORT` is
  * off — the default — it does nothing),
+ * and the monthly reports drafted by themselves (Phase 7 slice 120 — for
+ * the month that just ended, every client with someone in the portal and
+ * something to show gets the report the Make a report button would make,
+ * private, in every sending workspace whose switch is on; it ADDS a PDF per
+ * client per month, deletes nothing),
  * until Vercel Pro crons exist. Whenever a
  * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
  * compare); without one the route exists only outside production (local
@@ -192,6 +198,19 @@ export async function POST(request: Request): Promise<NextResponse> {
     console.error(`jobs: website speed failed: ${e instanceof Error ? e.name : typeof e}${code}`);
     websiteSpeed = { failed: "discovery" };
   }
+  // Phase 7 slice 120 (C96): the monthly reports drafted by themselves — for
+  // the month that just ended, every client with someone in the portal and
+  // something to show, in every sending workspace whose switch is on; it
+  // adds files, deletes nothing; within 45 seconds of its own. Its failure
+  // is its own.
+  let reportDrafts: Awaited<ReturnType<typeof runReportDrafts>> | { failed: "discovery" };
+  try {
+    reportDrafts = await runReportDrafts();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: report drafts failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    reportDrafts = { failed: "discovery" };
+  }
   // Phase 5 slice 106 (founder decision C74): phone and browser notifications —
   // the BACKSTOP for a push whose kick was lost (each is due for fifteen
   // minutes, then never), and the jobs above's own notifications, which their
@@ -230,6 +249,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     agreementRenewals,
     fortnoxSend,
     websiteSpeed,
+    reportDrafts,
     invoicePdfs,
     contractPdfs,
     pushes,

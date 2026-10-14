@@ -17,6 +17,7 @@ import {
   FormatPreferencesForm,
   ModuleToggles,
   RegionalPreferencesForm,
+  ReportPreferencesForm,
   TimePreferencesForm,
 } from "./preference-forms";
 
@@ -98,6 +99,13 @@ export default async function PreferencesPage() {
         {entitled.portal ? (
           <SectionCard title={t("clientMail.title")} description={t("clientMail.description")}>
             <ClientMailPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
+          </SectionCard>
+        ) : null}
+        {/* Phase 7 slice 120 (C96 (b)): the monthly reports Fortleva drafts by
+            itself — whenever the plan includes reports, switched on or not. */}
+        {entitled.reports ? (
+          <SectionCard title={t("reports.title")} description={t("reports.description")}>
+            <ReportPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
           </SectionCard>
         ) : null}
         <SectionCard title={t("modulesTitle")} description={t("modulesDescription")}>

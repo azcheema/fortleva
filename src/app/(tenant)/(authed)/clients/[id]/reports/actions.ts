@@ -114,7 +114,7 @@ const makeSchema = z.object({
  * already see, draws the PDF and files it as a private report. The service
  * does everything — the gates, whose view, the drawing, the upload, the row.
  */
-export async function makeReportAction(raw: z.input<typeof makeSchema>): Promise<ActionResult<{ documentId: string }>> {
+export async function makeReportAction(raw: z.input<typeof makeSchema>): Promise<ActionResult<{ documentId: string; replaced: number }>> {
   const parsed = makeSchema.safeParse(raw);
   if (!parsed.success) return invalid();
   const { clientId, ...rest } = parsed.data;

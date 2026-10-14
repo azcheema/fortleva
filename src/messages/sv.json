@@ -289,6 +289,7 @@
       "contractDeclined": "En kund har tackat nej till ett kontrakt",
       "contractEnding": "Ett kontrakt löper ut",
       "renewalDrafted": "En förnyelsefaktura väntar på granskning",
+      "reportDrafted": "En månadsrapport är utkast och väntar",
       "fortnoxStopped": "Överföringen till Fortnox behöver åtgärdas",
       "fortnoxStillStopped": "Överföringen till Fortnox behöver fortfarande åtgärdas",
       "fortnoxRestored": "Överföringen till Fortnox fungerar igen"
@@ -353,6 +354,7 @@
       "BUDGET_WATCHER": "På larmlistan",
       "VAULT_ACCESS": "Inloggningar du kan öppna",
       "INVOICE_ACCESS": "Fakturor du kan utfärda",
+      "REPORT_ACCESS": "Rapporter du kan publicera",
       "OWNER": "Du är ägare"
     },
     "keys": {
@@ -1041,6 +1043,12 @@
         "description": "Vad Fortleva mejlar till personerna hos era kunder som har tillgång till kundportalen.",
         "summary": "Skicka en veckosammanfattning varje måndag morgon",
         "summaryHint": "Varje person får ett mejl klockan 08.00 enligt arbetsytans tid när något i deras portal är nytt eller väntar på dem – siffror och en länk, aldrig namn. Var och en kan stänga av sin egen."
+      },
+      "reports": {
+        "title": "Månadsrapporter",
+        "description": "Rapporterna Fortleva gör utkast till på egen hand åt era kunder.",
+        "draftMonthly": "Gör ett utkast till månadsrapport för varje kund den 1:a",
+        "draftMonthlyHint": "För varje kund med någon i kundportalen: vad som blev klart och lägesuppdateringarna för månaden som just tog slut, på kundens språk, privat tills någon i ert team publicerar den. En månad utan något att visa får inget utkast. De som kan publicera en kunds rapporter får veta det i sin inkorg."
       }
     },
     "export": {
@@ -2192,6 +2200,7 @@
       "download": "Ladda ner {name}",
       "monthPrefix": "{month} · ",
       "made": "Skapad i Fortleva",
+      "drafted": "Utkast av Fortleva",
       "legend": {
         "internal": "Bara ert team kan se den",
         "clientVisible": "Publicerad: alla hos kunden med tillgång till portalen kan öppna den"
@@ -2224,6 +2233,9 @@
         "submit": "Skapa rapport",
         "submitting": "Skapar…",
         "done": "Rapporten är skapad. Bara ert team kan se den tills ni publicerar den.",
+        "doneReplaced": "Rapporten är skapad – den ersatte utkastet Fortleva gjorde. Bara ert team kan se den tills ni publicerar den.",
+        "replaces": "Fortleva gjorde ett utkast till den här månadens rapport den 1:a. Skapar du en här ersätter den utkastet – kunden har inte sett det.",
+        "emptyMonth": "Inget blev klart och inget publicerades för den här kunden den månaden, så Fortleva gjorde inget utkast. Du kan ändå skapa en rapport.",
         "failed": "Rapporten kunde inte skapas. Försök igen."
       },
       "add": {

@@ -304,6 +304,11 @@ export const SUMMARY_LINES: Readonly<Record<NotificationKind, Line | null>> = {
     ["1 renewal invoice is ready to check", "# renewal invoices are ready to check"],
     ["1 förnyelsefaktura väntar på granskning", "# förnyelsefakturor väntar på granskning"],
   ),
+  // Slice 120 (C96 (c)): counted like every unread kind — the drafts' only mail.
+  "report.drafted": line(
+    ["1 monthly report is drafted and waiting to be published", "# monthly reports are drafted and waiting to be published"],
+    ["1 månadsrapport väntar på att publiceras", "# månadsrapporter väntar på att publiceras"],
+  ),
   // Slice 114c (C90): counted like every unread kind (C68 (h)) — the stop's
   // notice and reminders were mailed at once as the owner's level allows.
   "integration.fortnox_stopped": line(

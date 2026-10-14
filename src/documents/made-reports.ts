@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { record } from "@/audit/record";
-import { withTenant } from "@/db";
+import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { localDateString } from "@/lib/duration";
@@ -11,11 +11,11 @@ import { synthesiseContactPrincipal } from "@/portal";
 import { readPreferences } from "@/preferences/service";
 import { getStorage } from "@/storage";
 
-import { audienceContact, deriveAsAudience } from "./made-report-check";
-import { contentFingerprint, MADE_REPORT_MAX_PROJECTS, namedIds } from "./made-report-content";
-import { defaultReportMonth, parseReportMonth, reportMonthDate } from "./report-month";
+import { audienceContact, deriveAsAudience, type AudienceContact } from "./made-report-check";
+import { contentFingerprint, MADE_REPORT_MAX_PROJECTS, namedIds, type MadeReportContent } from "./made-report-content";
+import { defaultReportMonth, parseReportMonth, reportMonthDate, reportMonthOf } from "./report-month";
 import { assertMayUploadReport, type ReportCtx } from "./reports";
-import { enforceStorageQuota } from "./service";
+import { enforceStorageQuota, softDeleteDocumentsInTx } from "./service";
 
 /**
  * THE MONTHLY REPORT FORTLEVA MAKES (Phase 7 slice 119; founder decision
@@ -47,6 +47,17 @@ import { enforceStorageQuota } from "./service";
  * the FINGERPRINT, the template version), the workspace's storage count, and
  * `document.created` with `made: true` — never the two texts (they are the
  * client's words to read, not a log's).
+ *
+ * TWO MAKERS SINCE SLICE 120 (founder decision C96): the button, here
+ * (`makeReport`), and the DRAFTER that makes last month's report by itself
+ * on the 1st (`./report-drafts.ts`) — the same drawing and the same rows
+ * through `fileMadeReport` below, with every maker column NULL and the
+ * write audited as SYSTEM. The button, for a month that holds such a draft
+ * — private, never published — REPLACES it in the same step (C96 (d)): the
+ * draft is soft-deleted in the transaction that files the new report, under
+ * the MAKE codes (design R5 — it is a never-published, system-drafted PDF
+ * for the same client and month that the member is re-making), and the
+ * `document.deleted` row says `replaced_draft`.
  */
 
 export const MADE_REPORT_TEXT_MAX = 2000;
@@ -64,7 +75,7 @@ export type MakeReportInput = {
 };
 
 /** What a log line may say about an error: its name and code, never its message. */
-const errorTag = (e: unknown): string => {
+export const errorTag = (e: unknown): string => {
   if (!(e instanceof Error)) return typeof e;
   const code = (e as { code?: unknown }).code;
   return typeof code === "string" || typeof code === "number" ? `${e.name} (${code})` : e.name;
@@ -90,6 +101,23 @@ export function endedMonthFromForm(raw: unknown, today: string): string {
   return month;
 }
 
+/**
+ * The job-drafted reports of a client that the button would REPLACE (C96
+ * (d)): live REPORT documents for the month with a `made_report` row made by
+ * nobody, still INTERNAL and NEVER published — `report_published_at` stays
+ * set through a hide, so a draft a client has once read is never replaced
+ * (design R5). Null `month` = every month, for the form's list.
+ */
+const replaceableDraftsWhere = (clientId: string, month: string | null) => ({
+  clientId,
+  kind: "REPORT" as const,
+  deletedAt: null,
+  visibility: "INTERNAL" as const,
+  reportPublishedAt: null,
+  ...(month ? { reportMonth: reportMonthDate(month) } : {}),
+  madeReport: { is: { madeByMemberId: null } },
+});
+
 // ── The form ─────────────────────────────────────────────────────────
 
 export type MakeReportForm = {
@@ -99,6 +127,10 @@ export type MakeReportForm = {
   readonly hasAudience: boolean;
   /** The client's invoice language — the select's start (C95 (f)). */
   readonly defaultLocale: InvoiceLocale;
+  /** Months (`YYYY-MM-01`) holding a job-drafted report the button would replace (slice 120, C96 (d)). */
+  readonly draftMonths: readonly string[];
+  /** Months (`YYYY-MM-01`) the drafter found nothing to show for — no draft was made (C96 (a)); the newest twelve. */
+  readonly emptyMonths: readonly string[];
 };
 
 /**
@@ -119,13 +151,213 @@ export async function readMakeReportForm(ctx: ReportCtx, clientId: string): Prom
       orderBy: [{ name: "asc" }, { id: "asc" }],
     });
     const contact = await audienceContact(tx, ctx.tenantId, clientId);
-    return { projects, hasAudience: contact !== null, defaultLocale: invoiceLocaleFor(client) };
+    // In sequence (AGENTS.md's trap): the drafts the button would replace,
+    // then the months the drafter found empty.
+    const drafts = await tx.document.findMany({ where: replaceableDraftsWhere(clientId, null), select: { reportMonth: true } });
+    const empties = await tx.monthlyReportDraft.findMany({
+      where: { clientId, outcome: "EMPTY" },
+      select: { month: true },
+      orderBy: { month: "desc" },
+      take: 12,
+    });
+    return {
+      projects,
+      hasAudience: contact !== null,
+      defaultLocale: invoiceLocaleFor(client),
+      draftMonths: [...new Set(drafts.flatMap((d) => (d.reportMonth ? [reportMonthOf(d.reportMonth)] : [])))],
+      emptyMonths: empties.map((e) => reportMonthOf(e.month)),
+    };
   });
 }
 
-// ── Make ─────────────────────────────────────────────────────────────
+// ── The filing, shared by the button and the drafter ─────────────────
 
-export async function makeReport(ctx: ReportCtx, input: MakeReportInput, now = new Date()): Promise<{ documentId: string }> {
+export type FileMadeReportInput = {
+  readonly tenantId: string;
+  /** The button's member, or the drafter's SYSTEM. */
+  readonly principal: { readonly type: "member"; readonly id: string } | { readonly type: "system" };
+  /** The member who pressed Make, or null = the drafter (every maker column NULL). */
+  readonly madeBy: string | null;
+  readonly clientId: string;
+  readonly clientName: string;
+  readonly agencyName: string;
+  /** `YYYY-MM-01`. */
+  readonly month: string;
+  readonly locale: InvoiceLocale;
+  /** The workspace's local date, drawn on the PDF as the day it was made. */
+  readonly today: string;
+  readonly summary: string | null;
+  readonly comingNext: string | null;
+  /** In the order the PDF draws. */
+  readonly projectIds: readonly string[];
+  readonly contact: AudienceContact;
+  readonly content: MadeReportContent;
+  readonly now: Date;
+  /** The caller's gates, re-asked inside the transaction that writes. */
+  readonly beforeWrite: (tx: TenantDb) => Promise<void>;
+  /**
+   * The caller's own writes in the same transaction, BEFORE the audit row —
+   * what it returns is merged into `document.created`'s metadata (the button:
+   * the drafts it replaced; the drafter: nothing, its ledger row and notice).
+   */
+  readonly afterWrite?: (tx: TenantDb, documentId: string) => Promise<Record<string, unknown> | void>;
+};
+
+/**
+ * Slice 119's steps 3–5: the drawing (the renderer loaded HERE, never at
+ * import — ESM-only), the upload, then ONE transaction — the caller's gates,
+ * the quota, the four rows, the storage count, the caller's own writes, the
+ * audit. The blob goes if the transaction fails.
+ */
+export async function fileMadeReport(input: FileMadeReportInput): Promise<{ documentId: string }> {
+  const { tenantId, clientId, content, now } = input;
+  const sha = contentFingerprint(content);
+  const ids = namedIds(content);
+
+  // 3. The drawing.
+  let renderer: typeof import("./pdf/made-report-pdf");
+  try {
+    renderer = await import("./pdf/made-report-pdf");
+  } catch (e) {
+    console.error(`made report: the renderer did not load (client ${clientId}): ${errorTag(e)}`);
+    return fail("REPORT_PDF_UNAVAILABLE");
+  }
+  const { MADE_REPORT_TEMPLATE_VERSION, madeReportFileName, madeReportName, renderMadeReportPdf } = renderer;
+  let bytes: Uint8Array;
+  try {
+    bytes = await renderMadeReportPdf({
+      locale: input.locale,
+      clientName: input.clientName,
+      agencyName: input.agencyName,
+      madeOn: input.today,
+      summary: input.summary,
+      comingNext: input.comingNext,
+      content,
+    });
+  } catch (e) {
+    console.error(`made report: render failed (client ${clientId}): ${errorTag(e)}`);
+    return fail("REPORT_PDF_UNAVAILABLE");
+  }
+
+  // 4. The upload — "try again", never a raw error: a deployment without its
+  //    bucket (the browser harness's production build) refuses here.
+  const fileObjectId = newId();
+  const documentId = newId();
+  const r2Key = `${tenantId}/${fileObjectId}`;
+  const fileName = madeReportFileName(input.month, input.locale);
+  const name = madeReportName(input.month, input.locale);
+  const fileSha256 = createHash("sha256").update(bytes).digest("hex");
+  let storage: ReturnType<typeof getStorage>;
+  try {
+    storage = getStorage();
+    await storage.putObject(r2Key, bytes, "application/pdf");
+  } catch (e) {
+    console.error(`made report: upload failed (client ${clientId}): ${errorTag(e)}`);
+    return fail("REPORT_PDF_UNAVAILABLE");
+  }
+
+  // 5. The record — ONE transaction; the blob goes if it fails.
+  try {
+    await withTenant(tenantId, input.principal, async (tx) => {
+      // The gates again, in the transaction that writes (the quota too: a
+      // made file counts as an upload would).
+      await input.beforeWrite(tx);
+      await enforceStorageQuota(tx, tenantId, bytes.byteLength);
+      await tx.fileObject.create({
+        data: {
+          id: fileObjectId,
+          tenantId,
+          r2Key,
+          kind: "GENERAL",
+          sha256: fileSha256,
+          sizeBytes: BigInt(bytes.byteLength),
+          contentType: "application/pdf",
+          originalFilename: fileName,
+          status: "COMMITTED",
+          committedAt: now,
+          createdByMemberId: input.madeBy,
+        },
+        select: { id: true },
+      });
+      await tx.document.create({
+        data: {
+          id: documentId,
+          tenantId,
+          clientId,
+          projectId: null,
+          name,
+          kind: "REPORT",
+          visibility: "INTERNAL",
+          reportMonth: reportMonthDate(input.month),
+          createdByMemberId: input.madeBy,
+          versions: { create: { versionNumber: 1, fileObjectId, uploadedByMemberId: input.madeBy } },
+        },
+        select: { id: true },
+      });
+      // The record of the making — its own statement, after the document
+      // (the kind guard reads the REPORT row this transaction just wrote).
+      await tx.madeReport.create({
+        data: {
+          documentId,
+          tenantId,
+          locale: input.locale,
+          summary: input.summary,
+          comingNext: input.comingNext,
+          projectIds: [...input.projectIds],
+          taskIds: ids.taskIds,
+          updateIds: ids.updateIds,
+          asContactId: input.contact.id,
+          contentSha256: sha,
+          templateVersion: MADE_REPORT_TEMPLATE_VERSION,
+          madeAt: now,
+          madeByMemberId: input.madeBy,
+        },
+        select: { documentId: true },
+      });
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { storageUsedBytes: { increment: BigInt(bytes.byteLength) } },
+        select: { id: true },
+      });
+      const extra = (await input.afterWrite?.(tx, documentId)) ?? {};
+      await record(tx, {
+        action: "document.created",
+        targetType: "Document",
+        targetId: documentId,
+        metadata: {
+          name,
+          kind: "REPORT",
+          visibility: "INTERNAL",
+          fileObjectId,
+          clientId,
+          projectId: null,
+          reportMonth: input.month,
+          made: true,
+          drafted: input.madeBy === null,
+          locale: input.locale,
+          projectIds: [...input.projectIds],
+          asContactId: input.contact.id,
+          contentSha256: sha,
+          templateVersion: MADE_REPORT_TEMPLATE_VERSION,
+          sizeBytes: bytes.byteLength,
+          ...extra,
+        },
+      });
+    });
+  } catch (e) {
+    await storage.delete(r2Key).catch(() => undefined);
+    throw e;
+  }
+  return { documentId };
+}
+
+// ── Make (the button) ────────────────────────────────────────────────
+
+export async function makeReport(
+  ctx: ReportCtx,
+  input: MakeReportInput,
+  now = new Date(),
+): Promise<{ documentId: string; replaced: number }> {
   if (!input.clientId) fail("INVALID_INPUT", "client");
   if (!isInvoiceLocale(input.locale)) return fail("INVALID_INPUT", "report language");
   const locale: InvoiceLocale = input.locale;
@@ -157,146 +389,63 @@ export async function makeReport(ctx: ReportCtx, input: MakeReportInput, now = n
     if (projects.length !== ticked.length) fail("INVALID_INPUT", "a project is not the client's to share");
     const contact = await audienceContact(tx, ctx.tenantId, input.clientId);
     if (!contact) return fail("MADE_REPORT_NO_AUDIENCE");
-    return { timezone, today, month, clientName: client.name, agencyName: tenant?.name ?? "", projectIds: projects.map((p) => p.id), contact };
+    // The job's drafts for this month the new report replaces (C96 (d)).
+    const drafts = await tx.document.findMany({ where: replaceableDraftsWhere(input.clientId, month), select: { id: true }, orderBy: { id: "asc" } });
+    return {
+      timezone,
+      today,
+      month,
+      clientName: client.name,
+      agencyName: tenant?.name ?? "",
+      projectIds: projects.map((p) => p.id),
+      contact,
+      draftIds: drafts.map((d) => d.id),
+    };
   });
 
   // 2. As the contact — outside any member transaction.
   const contactPrincipal = await synthesiseContactPrincipal(ctx.tenantId, prep.contact);
   const content = await deriveAsAudience(contactPrincipal, { month: prep.month, timezone: prep.timezone, projectIds: prep.projectIds });
-  const sha = contentFingerprint(content);
-  const ids = namedIds(content);
 
-  // 3. The drawing — the renderer loaded HERE, never at import (ESM-only).
-  let renderer: typeof import("./pdf/made-report-pdf");
-  try {
-    renderer = await import("./pdf/made-report-pdf");
-  } catch (e) {
-    console.error(`made report: the renderer did not load (client ${input.clientId}): ${errorTag(e)}`);
-    return fail("REPORT_PDF_UNAVAILABLE");
-  }
-  const { MADE_REPORT_TEMPLATE_VERSION, madeReportFileName, madeReportName, renderMadeReportPdf } = renderer;
-  let bytes: Uint8Array;
-  try {
-    bytes = await renderMadeReportPdf({
-      locale,
-      clientName: prep.clientName,
-      agencyName: prep.agencyName,
-      madeOn: prep.today,
-      summary,
-      comingNext,
-      content,
-    });
-  } catch (e) {
-    console.error(`made report: render failed (client ${input.clientId}): ${errorTag(e)}`);
-    return fail("REPORT_PDF_UNAVAILABLE");
-  }
-
-  // 4. The upload — "try again", never a raw error: a deployment without its
-  //    bucket (the browser harness's production build) refuses here.
-  const fileObjectId = newId();
-  const documentId = newId();
-  const r2Key = `${ctx.tenantId}/${fileObjectId}`;
-  const fileName = madeReportFileName(prep.month, locale);
-  const name = madeReportName(prep.month, locale);
-  const fileSha256 = createHash("sha256").update(bytes).digest("hex");
-  let storage: ReturnType<typeof getStorage>;
-  try {
-    storage = getStorage();
-    await storage.putObject(r2Key, bytes, "application/pdf");
-  } catch (e) {
-    console.error(`made report: upload failed (client ${input.clientId}): ${errorTag(e)}`);
-    return fail("REPORT_PDF_UNAVAILABLE");
-  }
-
-  // 5. The record — ONE transaction; the blob goes if it fails.
-  try {
-    await withTenant(ctx.tenantId, principal, async (tx) => {
-      // The gates again, in the transaction that writes (the quota too: a
-      // made file counts as an upload would).
-      await assertMayUploadReport(tx, ctx, input.clientId);
-      await enforceStorageQuota(tx, ctx.tenantId, bytes.byteLength);
-      await tx.fileObject.create({
-        data: {
-          id: fileObjectId,
-          tenantId: ctx.tenantId,
-          r2Key,
-          kind: "GENERAL",
-          sha256: fileSha256,
-          sizeBytes: BigInt(bytes.byteLength),
-          contentType: "application/pdf",
-          originalFilename: fileName,
-          status: "COMMITTED",
-          committedAt: now,
-          createdByMemberId: ctx.actor.memberId,
-        },
-        select: { id: true },
-      });
-      await tx.document.create({
-        data: {
-          id: documentId,
-          tenantId: ctx.tenantId,
-          clientId: input.clientId,
-          projectId: null,
-          name,
-          kind: "REPORT",
-          visibility: "INTERNAL",
-          reportMonth: reportMonthDate(prep.month),
-          createdByMemberId: ctx.actor.memberId,
-          versions: { create: { versionNumber: 1, fileObjectId, uploadedByMemberId: ctx.actor.memberId } },
-        },
-        select: { id: true },
-      });
-      // The record of the making — its own statement, after the document
-      // (the kind guard reads the REPORT row this transaction just wrote).
-      await tx.madeReport.create({
-        data: {
-          documentId,
-          tenantId: ctx.tenantId,
-          locale,
-          summary,
-          comingNext,
-          projectIds: [...prep.projectIds],
-          taskIds: ids.taskIds,
-          updateIds: ids.updateIds,
-          asContactId: prep.contact.id,
-          contentSha256: sha,
-          templateVersion: MADE_REPORT_TEMPLATE_VERSION,
-          madeAt: now,
-          madeByMemberId: ctx.actor.memberId,
-        },
-        select: { documentId: true },
-      });
-      await tx.tenant.update({
-        where: { id: ctx.tenantId },
-        data: { storageUsedBytes: { increment: BigInt(bytes.byteLength) } },
-        select: { id: true },
-      });
-      await record(tx, {
-        action: "document.created",
-        targetType: "Document",
-        targetId: documentId,
-        metadata: {
-          name,
-          kind: "REPORT",
-          visibility: "INTERNAL",
-          fileObjectId,
-          clientId: input.clientId,
-          projectId: null,
-          reportMonth: prep.month,
-          made: true,
-          locale,
-          projectIds: [...prep.projectIds],
-          asContactId: prep.contact.id,
-          contentSha256: sha,
-          templateVersion: MADE_REPORT_TEMPLATE_VERSION,
-          sizeBytes: bytes.byteLength,
-        },
-      });
-    });
-  } catch (e) {
-    await storage.delete(r2Key).catch(() => undefined);
-    throw e;
-  }
-  return { documentId };
+  // 3–5. The drawing, the upload, the record — with the replace inside it.
+  let replaced: string[] = [];
+  const { documentId } = await fileMadeReport({
+    tenantId: ctx.tenantId,
+    principal,
+    madeBy: ctx.actor.memberId,
+    clientId: input.clientId,
+    clientName: prep.clientName,
+    agencyName: prep.agencyName,
+    month: prep.month,
+    locale,
+    today: prep.today,
+    summary,
+    comingNext,
+    projectIds: prep.projectIds,
+    contact: prep.contact,
+    content,
+    now,
+    beforeWrite: (tx) => assertMayUploadReport(tx, ctx, input.clientId),
+    afterWrite: async (tx, newId) => {
+      if (prep.draftIds.length === 0) return;
+      // The UPDATE is the SELECT (the function's own compare-and-set), and it
+      // carries the draft's own terms — still INTERNAL, never published — so
+      // a draft a colleague PUBLISHED during this make's window (the derive,
+      // the drawing, the upload: seconds) is not taken either, not only one
+      // deleted since the read (both reviews' medium): the publish and this
+      // UPDATE serialise on the row, and the loser sees no row. Then two
+      // reports for the month, the team's to tidy. Under the MAKE codes
+      // (design R5); the `document.deleted` row says why.
+      replaced = await softDeleteDocumentsInTx(
+        tx,
+        ctx.tenantId,
+        prep.draftIds,
+        now,
+        { reason: "replaced_draft", replacedBy: newId },
+        { visibility: "INTERNAL", reportPublishedAt: null },
+      );
+      return replaced.length > 0 ? { replacedDraftIds: replaced } : undefined;
+    },
+  });
+  return { documentId, replaced: replaced.length };
 }
-

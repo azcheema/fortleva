@@ -222,6 +222,9 @@ const DBTEST_PREFIXES = [
   // Phase 7 slice 119, the monthly report Fortleva makes — `src/documents/made-reports.dbtest.ts`,
   // `setupTenant("mrpt")`.
   "mrpt-",
+  // Phase 7 slice 120, reports drafted by themselves on the 1st — `src/documents/report-drafts.dbtest.ts`,
+  // `setupTenant("rdft")`.
+  "rdft-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -497,6 +500,16 @@ export type E2ESeed = {
    */
   readonly madeReportId: string;
   readonly madeReportName: string;
+  /**
+   * A report the DRAFTER made by itself (Phase 7 slice 120, C96) — the month
+   * before the made report's, every maker column NULL, never published, with
+   * its ledger row. Planted: the harness cannot run the drafter. The tab marks
+   * it "Drafted by Fortleva"; the Make card, on its month, says it replaces it.
+   */
+  readonly draftedReportId: string;
+  readonly draftedReportName: string;
+  /** `YYYY-MM-01`. */
+  readonly draftedMonth: string;
   readonly serviceName: string;
   readonly serviceNotesSentinel: string;
   /**
@@ -1780,6 +1793,72 @@ async function provision(seedFile: string): Promise<void> {
     },
   });
 
+  // ── A report the DRAFTER made by itself (Phase 7 slice 120, C96) ────
+  //
+  // The month BEFORE the made report's, with every maker column NULL and
+  // the ledger's DRAFTED row beside it — planted, since the harness cannot
+  // run the drafter (no file storage); the drafter's judgement is
+  // `src/documents/report-drafts.dbtest.ts`'s. The Reports tab marks it
+  // "Drafted by Fortleva" and, with its month picked, the Make a report
+  // card says making one replaces it. INTERNAL, never published: nothing a
+  // portal spec can see.
+  const draftedMonth = defaultReportMonth(`${reportMonth}-15`);
+  const draftedContent = await deriveMadeReportContent(madePrincipal, { month: draftedMonth, timezone: "Europe/Stockholm", projectIds: [projectId] });
+  const draftedIds = namedIds(draftedContent);
+  const draftedBytes = new Uint8Array(Buffer.from(`%PDF-1.4\n% E2E drafted report ${run}\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n`, "latin1"));
+  const draftedFileId = randomUUID();
+  const draftedReportId = randomUUID();
+  const draftedReportName = `E2E Drafted report ${run}`;
+  await storage.putObject(`${tenantId}/${draftedFileId}`, draftedBytes);
+  await db.fileObject.create({
+    data: {
+      id: draftedFileId,
+      tenantId,
+      r2Key: `${tenantId}/${draftedFileId}`,
+      kind: "GENERAL",
+      sha256: createHash("sha256").update(draftedBytes).digest("hex"),
+      sizeBytes: BigInt(draftedBytes.byteLength),
+      contentType: "application/pdf",
+      originalFilename: "monthly-report.pdf",
+      status: "COMMITTED",
+      committedAt: new Date(),
+      createdByMemberId: null,
+    },
+  });
+  await db.document.create({
+    data: {
+      id: draftedReportId,
+      tenantId,
+      clientId,
+      name: draftedReportName,
+      kind: "REPORT",
+      visibility: "INTERNAL",
+      reportMonth: dateColumn(draftedMonth),
+      createdByMemberId: null,
+      versions: { create: { versionNumber: 1, fileObjectId: draftedFileId, uploadedByMemberId: null } },
+    },
+  });
+  await db.madeReport.create({
+    data: {
+      documentId: draftedReportId,
+      tenantId,
+      locale: "en",
+      summary: null,
+      comingNext: null,
+      projectIds: [projectId],
+      taskIds: draftedIds.taskIds,
+      updateIds: draftedIds.updateIds,
+      asContactId: contactId,
+      contentSha256: contentFingerprint(draftedContent),
+      templateVersion: 1,
+      madeAt: new Date(),
+      madeByMemberId: null,
+    },
+  });
+  await db.monthlyReportDraft.create({
+    data: { tenantId, clientId, month: dateColumn(draftedMonth), outcome: "DRAFTED", documentId: draftedReportId, attempts: 1, decidedAt: new Date() },
+  });
+
   // ── A LIVE PASSWORD-RESET LINK for Astrid, so the new-password screen
   // has an address that stands still ─────────────────────────────────
   //
@@ -1924,6 +2003,9 @@ async function provision(seedFile: string): Promise<void> {
     internalReportName,
     madeReportId,
     madeReportName,
+    draftedReportId,
+    draftedReportName,
+    draftedMonth,
     serviceName,
     serviceNotesSentinel,
     timeReportTitle,

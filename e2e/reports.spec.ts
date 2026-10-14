@@ -167,6 +167,25 @@ test.describe("a client's Reports tab (owner)", () => {
     await expect(row).toHaveAttribute("data-visibility", "INTERNAL");
   });
 
+  // ── Phase 7 slice 120 (C96): the report the drafter made by itself ────
+  test("a report Fortleva drafted by itself is marked so, and the Make card on its month says making one replaces it", async ({ page }) => {
+    await page.goto(tab());
+    const drafted = rowOf(page, seed.draftedReportName);
+    await expect(drafted).toHaveAttribute("data-visibility", "INTERNAL");
+    await expect(drafted.getByTestId("report-made")).toHaveText("Drafted by Fortleva");
+    // A person's press says "Made"; the drafter's says "Drafted".
+    await expect(rowOf(page, seed.madeReportName).getByTestId("report-made")).toHaveText("Made in Fortleva");
+
+    const form = page.getByTestId("make-report");
+    // Last month (the picker's start) holds the made report, not a draft: no sentence.
+    await expect(form.getByTestId("make-report-replaces")).toHaveCount(0);
+    // The drafted month, picked: the card says making one here replaces the draft.
+    const [year, month] = seed.draftedMonth.split("-");
+    await form.getByTestId("report-year").selectOption(String(Number(year)));
+    await form.getByTestId("report-month").selectOption(String(Number(month)));
+    await expect(form.getByTestId("make-report-replaces")).toContainText("Making one here replaces that draft");
+  });
+
   test("Make report draws the PDF and files it private", async ({ page }) => {
     test.skip(!HAS_R2, "the drawing's upload needs the R2 env (the production harness refuses the dev transport by design); the same path runs in src/documents/made-reports.dbtest.ts");
     await page.goto(tab());

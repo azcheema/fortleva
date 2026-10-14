@@ -76,6 +76,7 @@ export type TenantPreferences = {
   finance: FinancePreferences;
   vault: VaultPreferences;
   mail: MailPreferences;
+  reports: ReportPreferences;
 };
 
 export const PREF_KEYS = {
@@ -268,7 +269,22 @@ export const MAIL_PREF_KEYS: Readonly<Record<keyof MailPreferences, string>> = {
 };
 export const MAIL_DEFAULTS: MailPreferences = { clientSummary: true };
 
-const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance" | "vault" | "mail"> = {
+export type ReportPreferences = {
+  /**
+   * On the 1st, Fortleva drafts the month that just ended for every client
+   * with someone in the portal and something to show (Phase 7 slice 120;
+   * founder decision C96 (b): ON by default — one workspace switch; a
+   * per-client one can come later on top). `settings:edit` both ways (a
+   * behavioural key). Off: the drafter considers nobody and records nothing.
+   */
+  draftMonthly: boolean;
+};
+export const REPORT_PREF_KEYS: Readonly<Record<keyof ReportPreferences, string>> = {
+  draftMonthly: "reports.draftMonthly",
+};
+export const REPORT_DEFAULTS: ReportPreferences = { draftMonthly: true };
+
+const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance" | "vault" | "mail" | "reports"> = {
   timezone: "Europe/Stockholm",
   weekStart: "MONDAY",
   showIsoWeek: true,
@@ -358,5 +374,6 @@ export function materializePreferences(
       allowContactSubmission: bool(VAULT_PREF_KEYS.allowContactSubmission, VAULT_DEFAULTS.allowContactSubmission),
     },
     mail: { clientSummary: bool(MAIL_PREF_KEYS.clientSummary, MAIL_DEFAULTS.clientSummary) },
+    reports: { draftMonthly: bool(REPORT_PREF_KEYS.draftMonthly, REPORT_DEFAULTS.draftMonthly) },
   };
 }

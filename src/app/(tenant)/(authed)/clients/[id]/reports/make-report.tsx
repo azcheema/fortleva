@@ -39,6 +39,8 @@ export function MakeReport({
   defaultLocale,
   projects,
   hasAudience,
+  draftMonths,
+  emptyMonths,
 }: {
   clientId: string;
   /** `YYYY-MM` — the newest month that has ENDED, in the workspace's zone; the picker starts there. */
@@ -49,6 +51,10 @@ export function MakeReport({
   projects: readonly MakeReportProject[];
   /** Whether anyone at the client could sign in to read it — without one, no report can be made. */
   hasAudience: boolean;
+  /** `YYYY-MM` months holding a report Fortleva drafted by itself, which making one here replaces (slice 120, C96 (d)). */
+  draftMonths: readonly string[];
+  /** `YYYY-MM` months Fortleva found nothing to show for, so drafted none (C96 (a)). */
+  emptyMonths: readonly string[];
 }) {
   const t = useTranslations("clients.reports.make");
   const [month, setMonth] = useState(latestMonth);
@@ -64,15 +70,16 @@ export function MakeReport({
 
   if (!hasAudience) {
     return (
-      <Callout tone="info" data-testid="make-report-no-audience">
-        {t("noAudience")}
+      <Callout tone="info">
+        {/* The id on a span: `Callout` forwards no attributes. */}
+        <span data-testid="make-report-no-audience">{t("noAudience")}</span>
       </Callout>
     );
   }
   if (projects.length === 0) {
     return (
-      <Callout tone="info" data-testid="make-report-no-projects">
-        {t("noProjects")}
+      <Callout tone="info">
+        <span data-testid="make-report-no-projects">{t("noProjects")}</span>
       </Callout>
     );
   }
@@ -103,7 +110,7 @@ export function MakeReport({
           setError(r.message);
           return;
         }
-        toast.success(t("done"));
+        toast.success(r.value.replaced > 0 ? t("doneReplaced") : t("done"));
         setSummary("");
         setComingNext("");
         setMonth(latestMonth);
@@ -124,6 +131,17 @@ export function MakeReport({
   return (
     <form onSubmit={onSubmit} className="flex max-w-lg flex-col gap-4" data-testid="make-report">
       <MonthPicker id="make-report" value={month} latest={latestMonth} onChange={setMonth} disabled={pending} />
+      {/* Slice 120 (C96): what the drafter did for the picked month — a draft this
+          replaces, or nothing to show, so none was made. */}
+      {draftMonths.includes(month) ? (
+        <Callout tone="info">
+          <span data-testid="make-report-replaces">{t("replaces")}</span>
+        </Callout>
+      ) : emptyMonths.includes(month) ? (
+        <p className="text-xs text-muted-foreground" data-testid="make-report-empty-month">
+          {t("emptyMonth")}
+        </p>
+      ) : null}
       <Field label={t("language")} htmlFor="make-report-locale" hint={t("languageHint")}>
         <NativeSelect
           id="make-report-locale"
