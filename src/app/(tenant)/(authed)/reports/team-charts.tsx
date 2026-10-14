@@ -88,7 +88,12 @@ export async function TeamChartsSection({ charts, period }: { charts: TeamCharts
     titles: [`${t("hours.billable")}: ${hours(p.billable)}`, `${t("hours.nonBillable")}: ${hours(p.nonBillable)}`],
     totalText: hours(p.billable + p.nonBillable),
   });
-  const hourColumns = (first: string) => [first, t("hours.billable"), t("hours.nonBillable"), t("columns.total")];
+  // A twin's DERIVED columns wait for a 38rem box (CI run 38547997418: a
+  // phone's Swedish headings overflowed by 10–14 px): a row's Total is the
+  // sum of the parts beside it (and the bar's own label for the top eight),
+  // and the speed twin's median is printed on every month's column.
+  const total = { label: t("columns.total"), priority: "medium" } as const;
+  const hourColumns = (first: string) => [first, t("hours.billable"), t("hours.nonBillable"), total];
   const hourCells = (name: string, p: HourParts) => [name, hours(p.billable), hours(p.nonBillable), hours(p.billable + p.nonBillable)];
 
   const tasks = charts.tasks;
@@ -139,7 +144,7 @@ export async function TeamChartsSection({ charts, period }: { charts: TeamCharts
                 <ChartTable
                   label={showTable}
                   scrollLabel={t("tasks.title")}
-                  columns={[t("columns.project"), t("tasks.todo"), t("tasks.doing"), t("tasks.late"), t("columns.total")]}
+                  columns={[t("columns.project"), t("tasks.todo"), t("tasks.doing"), t("tasks.late"), total]}
                   rows={tasks.byProject.map((b) => ({
                     key: b.id!,
                     cells: [projectName(b), count(b.parts.todo), count(b.parts.doing), count(b.parts.late), count(b.parts.todo + b.parts.doing + b.parts.late)],
@@ -174,7 +179,7 @@ export async function TeamChartsSection({ charts, period }: { charts: TeamCharts
                 <ChartTable
                   label={showTable}
                   scrollLabel={t("speed.title")}
-                  columns={[t("columns.month"), t("speed.median"), t("speed.done"), t("speed.timed")]}
+                  columns={[t("columns.month"), { label: t("speed.median"), priority: "medium" }, t("speed.done"), t("speed.timed")]}
                   rows={tasks.months.map((m) => ({
                     key: m.month,
                     cells: [monthLabel(m.month, "long"), m.medianDays === null ? "—" : days(m.medianDays), count(m.done), count(m.timed)],
