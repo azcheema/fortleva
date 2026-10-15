@@ -50,7 +50,18 @@ test.afterEach(async ({ page }) => {
 });
 
 const toast = (page: Page, text: string | RegExp): Locator => page.locator("[data-sonner-toast]", { hasText: text });
-const stageRow = (page: Page, name: string): Locator => page.getByTestId("stage-row").filter({ hasText: name }).first();
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * A stage's row, by the EXACT name its inline edit wears ("Edit Name,
+ * currently Done") — never by `hasText`, which is a case-insensitive
+ * substring of the whole row: the To do row reads "To do" straight into its
+ * "New tasks start here" badge, "To doNew…", which contains "done" (CI run
+ * 38755445021 found the To do row for "Done").
+ */
+const stageRow = (page: Page, name: string): Locator =>
+  page
+    .getByTestId("stage-row")
+    .filter({ has: page.getByRole("button", { name: new RegExp(`^Edit Name, currently ${escapeRegExp(name)}$`) }) });
 
 /**
  * Rename through the inline edit: focus the trigger ("Edit Name, currently
@@ -102,7 +113,7 @@ test("a project's own stages: renamed on its Stages page, the board shows it; a 
   await page.getByRole("menuitem", { name: "Remove" }).click();
   await stageRow(page, "QA").getByRole("button", { name: "Yes" }).click();
   await expect(toast(page, "Stage removed.")).toBeVisible({ timeout: 15_000 * SLOW });
-  await expect(page.getByTestId("stage-row").filter({ hasText: "QA" })).toHaveCount(0);
+  await expect(stageRow(page, "QA")).toHaveCount(0);
 
   // The last Done stage cannot go: its menu says why instead.
   await openMenu(page, stageRow(page, "Done"), "Remove");
@@ -134,7 +145,7 @@ test("the workspace default is what a NEW project starts with, and Restore bring
   await page.getByRole("button", { name: "Yes" }).click();
   await expect(toast(page, "The original stages are back.")).toBeVisible({ timeout: 15_000 * SLOW });
   await expect(stageRow(page, "Backlog")).toBeVisible();
-  await expect(page.getByTestId("stage-row").filter({ hasText: "Ideas" })).toHaveCount(0);
+  await expect(stageRow(page, "Ideas")).toHaveCount(0);
 });
 
 test("a label is made with a colour, renamed, merged into another and deleted", async ({ page }) => {
