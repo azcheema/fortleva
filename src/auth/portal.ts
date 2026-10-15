@@ -428,7 +428,7 @@ export const portalAuth = betterAuth({
    */
   secret: portalAuthSecret,
   // The portal is served from the APP host under /portal (config's
-  // planeForHost: "os.naxdor.com serves tenant + portal"), so it shares
+  // planeForHost: "app.fortleva.se serves tenant + portal"), so it shares
   // an origin with the member plane and is separated by path, cookie
   // name and tables. src/proxy.ts host-scopes this basePath to the app
   // host exactly as it does the other two.

@@ -13,13 +13,13 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
-  // Canonical origin of the app plane, e.g. https://os.naxdor.com — later the
-  // real product domain. Absolute URLs are built from this and only this.
+  // Canonical origin of the app plane — https://app.fortleva.se in production
+  // (founder decision C98). Absolute URLs are built from this and only this.
   APP_URL: z.url().default("http://localhost:3000"),
-  // Origin of the platform-ops console (ops.naxdor.com for v1). Falls back to
-  // APP_URL in dev where both planes run in one process.
+  // Origin of the platform-ops console (https://ops.fortleva.se, C98). Falls
+  // back to APP_URL in dev where both planes run in one process.
   OPS_URL: z.url().optional(),
-  // Sender identity: "Fortleva <no-reply@mailer.naxdor.com>" shape, split so
+  // Sender identity: "Fortleva <no-reply@mailer.fortleva.se>" shape, split so
   // templates and the mail adapter never compose addresses themselves.
   MAIL_FROM_NAME: z.string().default("Fortleva"),
   MAIL_FROM_ADDRESS: z.email().default("dev@localhost.invalid"),
@@ -224,9 +224,10 @@ export const sessionCookieName = (plane: Plane): string =>
   `__Host-flv.${plane}`;
 
 /**
- * INV-D1 (ARC-11): while the app lives under naxdor.com, a cookie with
- * Domain=.naxdor.com would broadcast sessions to every sibling Naxdor
- * property. This type structurally has no `domain` field; the CI test in
+ * INV-D1 (ARC-11): a cookie with Domain=.fortleva.se would broadcast
+ * sessions to every sibling host — the console's `ops.fortleva.se` among
+ * them (C98; under naxdor.com it was every Naxdor property). This type
+ * structurally has no `domain` field; the CI test in
  * inv-d1.test.ts additionally scans the source tree for violations.
  */
 export type CookieAttributes = {
@@ -788,8 +789,8 @@ export const cruxApiKey = (): string | null => (cruxTransportKind === "live" ? (
 export const cruxHistoryUrl = "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord";
 
 /**
- * Host→plane resolution (ARC-11 / decision 9): ops.naxdor.com serves
- * ONLY the platform console; os.naxdor.com serves tenant + portal.
+ * Host→plane resolution (ARC-11, C98): ops.fortleva.se serves ONLY the
+ * platform console; app.fortleva.se serves tenant + portal.
  * In dev both share localhost and path prefixes separate the planes.
  * The hostname→tenantId lookup for v2 subdomains stubs in here too —
  * this function is the tenant-resolution seam's host half.

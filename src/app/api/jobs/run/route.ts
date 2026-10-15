@@ -1,17 +1,17 @@
-import { timingSafeEqual } from "node:crypto";
-
 import { NextResponse } from "next/server";
 
 import { isProduction } from "@/config";
 import { runAgreementRenewals } from "@/jobs/agreement-renewals";
 import { runClientDigests } from "@/jobs/client-digests";
 import { runContractPdfs } from "@/jobs/contract-pdfs";
+import { isCronRequest, secretMatches } from "@/jobs/cron-auth";
 import { runMemberDigests } from "@/jobs/digests";
 import { runExpirationReminders } from "@/jobs/expiration-reminders";
+import { expirePendingUploads } from "@/jobs/expire-pending-uploads";
 import { runFortnoxSend } from "@/jobs/fortnox-send";
 import { runInvoicePdfs } from "@/jobs/invoice-pdfs";
 import { runNotificationRetention } from "@/jobs/notification-retention";
-import { drainOutbox } from "@/jobs/outbox";
+import { drainOutboxKick } from "@/jobs/outbox-kick";
 import { runPushes } from "@/jobs/push-sweep";
 import { runReportDrafts } from "@/jobs/report-drafts";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
@@ -67,66 +67,58 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * something to show gets the report the Make a report button would make,
  * private, in every sending workspace whose switch is on; it ADDS a PDF per
  * client per month, deletes nothing),
- * until Vercel Pro crons exist. Whenever a
- * JOBS_RUN_TOKEN is configured the caller must present it (constant-time
- * compare); without one the route exists only outside production (local
- * convenience) — a preview/staging deployment without a token is closed.
- * The proxy lists this path as public: the token IS the gate.
+ * — and, since slice 122 (founder decision C98, going live), Vercel Cron
+ * calls it every hour with GET (`vercel.json`), its `CRON_SECRET` the gate;
+ * mail additionally leaves every five minutes through `/api/jobs/outbox`.
+ * A POST is the manual kick: whenever a JOBS_RUN_TOKEN is configured the
+ * caller must present it (constant-time compare); without one the POST
+ * exists only outside production (local convenience) — a preview/staging
+ * deployment without a token is closed. The proxy lists this path as
+ * public: the secret IS the gate.
  */
-/** One outbox claim's size, the passes one kick may make, and their time budget. */
-const DRAIN_BATCH = 50;
-const DRAIN_PASSES = 10;
-const DRAIN_BUDGET_MS = 60_000;
 /** How long the pushes' backstop may go on starting sends, across every workspace. */
 const PUSH_BUDGET_MS = 60_000;
+/** An upload presigned this long ago and never committed is released (slice 122). */
+const PENDING_UPLOAD_MINUTES = 24 * 60;
 
 /**
  * THE FUNCTION'S LIFETIME, declared (slice 103, the code review's medium):
  * with a real transport a send takes real time, and every job below the drain
  * must still run in the same kick. The drain may START sends for its first
  * minute only (`sendUntil`), a pass ends after three failed sends in a row, and
- * the rest of the five minutes is the other jobs'. Vercel Pro's ceiling.
+ * the rest of the run is the other jobs'.
  */
-export const maxDuration = 300;
+// Raised from 300 (slice 122's review): the jobs' own budgets add up to about
+// five minutes on a heavy hour, and a kill would skip the last two. 800 is
+// Vercel Pro's ceiling with Fluid compute (on by default for new projects;
+// RUNBOOK §11 says to keep it on).
+export const maxDuration = 800;
 
-const tokenMatches = (given: string | null, expected: string): boolean => {
-  if (given === null) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-};
+const notFound = () => NextResponse.json({ error: "not found" }, { status: 404 });
 
+/** The manual kick: `x-jobs-token`, or — without a configured token — outside production only. */
 export async function POST(request: Request): Promise<NextResponse> {
   const token = process.env["JOBS_RUN_TOKEN"];
-  if (token ? !tokenMatches(request.headers.get("x-jobs-token"), token) : isProduction) {
-    return NextResponse.json({ error: "not found" }, { status: 404 });
-  }
-  // DRAINED UNTIL IT RUNS DRY, within bounds (slice 101's design review): one
-  // claim takes 50 rows, and an hourly kick that sent only those would drop
-  // the rest of a Monday morning — every client person of every workspace in
-  // one zone is due in the same hour, on top of that morning's team
-  // summaries — as too late four hours on. Another pass only while the last
-  // one claimed a full batch, at most ten (500 mails a kick), and none begun
-  // after the first minute — a bound on STARTING passes, not on the route:
-  // one pass of client summaries counts each one again, about ten short
-  // transactions apiece. A pass that THROWS ends the drain, never the kick
-  // (the code review's low): the jobs below — the summaries among them, whose
-  // window is three hours — still run, and the next kick drains again.
-  const outbox = { sent: 0, skipped: 0, suppressed: 0, failed: 0, dead: 0, held: 0 };
-  const drainStarted = Date.now();
-  for (let pass = 0; pass < DRAIN_PASSES; pass += 1) {
-    let r: Awaited<ReturnType<typeof drainOutbox>>;
-    try {
-      r = await drainOutbox(DRAIN_BATCH, { sendUntil: drainStarted + DRAIN_BUDGET_MS });
-    } catch (e) {
-      const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
-      console.error(`jobs: outbox drain pass ${pass + 1} failed: ${e instanceof Error ? e.name : typeof e}${code}`);
-      break;
-    }
-    for (const k of Object.keys(outbox) as (keyof typeof outbox)[]) outbox[k] += r[k];
-    const claimed = r.sent + r.skipped + r.suppressed + r.failed + r.dead + r.held;
-    if (claimed < DRAIN_BATCH || Date.now() - drainStarted > DRAIN_BUDGET_MS) break;
-  }
+  if (token ? !secretMatches(request.headers.get("x-jobs-token"), token) : isProduction) return notFound();
+  return runAll();
+}
+
+/**
+ * VERCEL CRON (slice 122, founder decision C98 — going live): the hourly
+ * full run (`vercel.json`). Vercel's scheduler calls with GET and
+ * `Authorization: Bearer <CRON_SECRET>`; with no secret configured there is
+ * no GET caller at all, in any environment (`src/jobs/cron-auth.ts`).
+ */
+export async function GET(request: Request): Promise<NextResponse> {
+  if (!isCronRequest(request)) return notFound();
+  return runAll();
+}
+
+async function runAll(): Promise<NextResponse> {
+  // The drain FIRST, as it always was (`src/jobs/outbox-kick.ts` holds its
+  // bounds); the light kick at /api/jobs/outbox runs the same drain every
+  // five minutes, so mail never waits for this hourly run.
+  const outbox = await drainOutboxKick();
   const timeSweep = await runTimeSweep();
   const budgets = await runBudgetAlerts();
   // Reminders enqueue; the NEXT drain sends them. Draining again here
@@ -225,6 +217,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     console.error(`jobs: pushes failed: ${e instanceof Error ? e.name : typeof e}${code}`);
     pushes = { failed: "discovery" };
   }
+  // Slice 122 (going live): an upload presigned a day ago and never committed
+  // gives back its storage reservation and its bytes (R:58's "not scheduled
+  // yet"). A day, not the PUT URL's fifteen minutes, so no commit in flight is
+  // ever raced. Its failure is its own.
+  let expiredUploads: Awaited<ReturnType<typeof expirePendingUploads>> | { failed: "discovery" };
+  try {
+    expiredUploads = await expirePendingUploads(PENDING_UPLOAD_MINUTES);
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: expired uploads failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    expiredUploads = { failed: "discovery" };
+  }
   // Phase 5 slice 104: the inbox's housekeeping. LAST, and its failure is its
   // own: every job above has already run and reports below either way.
   let notificationRetention: Awaited<ReturnType<typeof runNotificationRetention>> | { failed: "discovery" };
@@ -253,6 +257,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     invoicePdfs,
     contractPdfs,
     pushes,
+    expiredUploads,
     notificationRetention,
   });
 }

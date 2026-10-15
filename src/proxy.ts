@@ -41,7 +41,7 @@ const PORTAL_PREFIX = "/portal";
  * portal's is derived from it, `portalAuthSecret`), so any credential
  * surface reachable on the wrong host is a way to mint that plane's
  * cookies where the host's controls do not apply. The portal belongs
- * to the APP host — `planeForHost`: "os.naxdor.com serves tenant +
+ * to the APP host — `planeForHost`: "app.fortleva.se serves tenant +
  * portal" — so the ops host must 404 it, exactly as it does /api/auth.
  */
 const PORTAL_API_PREFIX = "/api/portal-auth";
@@ -186,14 +186,16 @@ const MAIL_FEEDBACK_PATH = "/api/mail-feedback";
 // The PWA shell's manifest and worker (ARC-25) carry no tenant data and
 // must be fetchable without a session; on the ops host they are swept
 // under /ops/… by the platform branch and 404 there — un-installable.
-// /api/jobs/run authenticates itself (JOBS_RUN_TOKEN header): a cron has
-// no member cookie, so the presence gate must not redirect it to /login.
+// /api/jobs/run authenticates itself (JOBS_RUN_TOKEN on a POST, Vercel
+// Cron's CRON_SECRET on a GET) and so does /api/jobs/outbox (CRON_SECRET,
+// slice 122): a cron has no member cookie, so the presence gate must not
+// redirect it to /login.
 // /api/mail-feedback is Amazon SNS delivering SES's bounces and complaints
 // (Phase 5 slice 103): SNS has no session either, and the route trusts a
 // message only when AWS signed it AND it came from our topic
 // (`src/mailer/feedback-handler.ts`). An exact path, on the app host only —
 // the ops host sweeps it under /ops, where it 404s.
-const PUBLIC_PATHS = new Set(["/login", "/signup", MEMBER_RESET, "/ops/login", PORTAL_LOGIN, PORTAL_RESET, "/api/health", "/api/jobs/run", MAIL_FEEDBACK_PATH, "/manifest.webmanifest", "/sw.js"]);
+const PUBLIC_PATHS = new Set(["/login", "/signup", MEMBER_RESET, "/ops/login", PORTAL_LOGIN, PORTAL_RESET, "/api/health", "/api/jobs/run", "/api/jobs/outbox", MAIL_FEEDBACK_PATH, "/manifest.webmanifest", "/sw.js"]);
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;

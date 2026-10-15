@@ -71,5 +71,8 @@
     "typescript": "^5",
     "vitest": "^4.1.10"
   },
+  "engines": {
+    "node": "22.x"
+  },
   "packageManager": "pnpm@11.3.0"
 }

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm exec prisma generate && pnpm build",
+  "regions": ["fra1"],
+  "crons": [
+    { "path": "/api/jobs/outbox", "schedule": "*/5 * * * *" },
+    { "path": "/api/jobs/run", "schedule": "7 * * * *" }
+  ]
+}

@@ -38,6 +38,14 @@ export class R2Transport implements StorageTransport {
       endpoint: cfg.endpoint,
       forcePathStyle: true,
       credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
+      // Checksums only where S3 REQUIRES one (slice 122's review, before R2's
+      // first real use). Since aws-sdk-js-v3 3.729 the default is WHEN_SUPPORTED,
+      // which puts the CRC32 of an EMPTY body into every presigned PUT URL — the
+      // browser then uploads the real file, and an S3-compatible store refuses
+      // it for the mismatch. Our integrity checks are the signed
+      // Content-Length + Content-Type and the HEAD after the upload.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
   }
 

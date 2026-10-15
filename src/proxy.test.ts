@@ -444,3 +444,13 @@ describe("the view-as request header", () => {
     expect(forwarded(proxy(reqWith("/view-as-contact", {}))).get("x-flv-view-as")).toBeNull();
   });
 });
+
+describe("proxy: the scheduler's two paths are not behind the member cookie", () => {
+  it("lets Vercel Cron reach both job routes on the app host — the routes check CRON_SECRET themselves", async () => {
+    const proxy = await proxyWith({ APP_URL: `https://${APP}`, OPS_URL: `https://${OPS}` });
+    // No cookie: a cron has none. A redirect to /login would silently stop
+    // every mail and every job (slice 122, going live).
+    expect(dest(proxy(req(APP, "/api/jobs/run")))).toBe("next");
+    expect(dest(proxy(req(APP, "/api/jobs/outbox")))).toBe("next");
+  });
+});

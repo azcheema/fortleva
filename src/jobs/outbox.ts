@@ -33,9 +33,11 @@ import { MAIL_PREF_KEYS, PREF_KEYS, workspaceTimezoneOf } from "@/preferences/co
  * `src/notify/work-mail.ts`), debounce cancelled → SKIPPED, suppressed
  * address → SUPPRESSED, template rendered), then sends each
  * remaining message OUTSIDE any database transaction and finalises it in
- * its own short transaction. Invoked by a Vercel Cron every 2 minutes
- * (Pro) later; today by after() kicks and the authenticated
- * POST /api/jobs/run. Safe to run concurrently — the claim is the lock.
+ * its own short transaction. Invoked by Vercel Cron (slice 122,
+ * `vercel.json`): every five minutes through `/api/jobs/outbox` and every
+ * hour through `/api/jobs/run`, whose POST is also the manual kick. (No
+ * `after()` kick was ever built, whatever older notes say.) Safe to run
+ * concurrently — the claim is the lock.
  *
  * Delivery is AT-LEAST-ONCE: enqueue is exactly-once (the idempotency
  * key), but a send that succeeded just before its finalise failed is
