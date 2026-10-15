@@ -47,16 +47,33 @@ test("the list shows what is left to do, links each step, and Hide puts it away 
   // `import.spec.ts` (which adds a client here) ran first, e.g. on a retry.
   await expect(list.locator('li[data-step="client"]')).toHaveCount(1);
 
-  await page.getByTestId("first-run-hide").click();
+  // Hide's handler is React's, live only after hydration (the arrival here is
+  // a full page load): press until the list is gone, never twice after it is.
+  const hide = page.getByTestId("first-run-hide");
+  // Only an ENABLED button is pressed: it is disabled while its action and
+  // the refresh run, and a click waiting on it would spend the whole budget.
+  await expect(async () => {
+    // `isEnabled` WAITS for the element, unbounded by default — bounded here,
+    // so a card unmounting between the two checks never spends the budget.
+    if ((await hide.isVisible()) && (await hide.isEnabled({ timeout: 500 }).catch(() => false))) {
+      await hide.click({ timeout: 2_000 });
+    }
+    await expect(list).toHaveCount(0, { timeout: 10_000 });
+  }).toPass({ timeout: 60_000 });
+  // The action's own response carries the list away and raises the toast together.
   await expect(page.locator("[data-sonner-toast]", { hasText: "The getting-started list is hidden." })).toBeVisible();
-  await expect(list).toHaveCount(0);
 
   await page.goto("/settings/preferences");
   const box = page.getByTestId("pref-onboarding-checklist");
   await expect(box).not.toBeChecked();
-  await box.check();
-  // The settings form saves on change; its success is the quiet "Saved" tick.
-  await expect(page.locator("form", { has: box }).getByText("Saved")).toBeVisible({ timeout: 15_000 });
+  // The same hydration race: a box ticked before hydration STAYS ticked
+  // without saving, so each attempt unticks and ticks again — every attempt
+  // posts, and the last post is "on".
+  await expect(async () => {
+    if (await box.isChecked()) await box.uncheck({ timeout: 2_000 });
+    await box.check({ timeout: 2_000 });
+    await expect(page.locator("form", { has: box }).getByText("Saved")).toBeVisible({ timeout: 10_000 });
+  }).toPass({ timeout: 60_000 });
   await page.goto("/home");
   await expect(page.getByTestId("first-run")).toBeVisible();
 });

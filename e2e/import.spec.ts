@@ -53,8 +53,28 @@ const CSV = [
   "",
 ].join("\r\n");
 
+/**
+ * The field's change handler is React's, attached at HYDRATION: a file set
+ * after a full `goto` but before it is simply lost (CI run 38712393591 —
+ * the field showed nothing chosen and the check never came). Set it until
+ * the field names it, as `pressUntil` does for a key.
+ */
 async function chooseFile(page: Page, name: string, mimeType: string, body: string) {
-  await page.locator("#import-file").setInputFiles({ name, mimeType, buffer: Buffer.from(body, "utf8") });
+  const field = page.locator('[data-slot="file-drop"]');
+  await expect(async () => {
+    await page.locator("#import-file").setInputFiles({ name, mimeType, buffer: Buffer.from(body, "utf8") });
+    await expect(field).toContainText(name, { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
+/** A row's menu, opened until its item shows — the trigger is Radix's, live only after hydration. */
+async function openMenu(page: Page, row: Locator, trigger: string, item: string) {
+  await expect(async () => {
+    if (!(await page.getByRole("menuitem", { name: item }).isVisible())) {
+      await row.getByRole("button", { name: trigger }).click({ timeout: 2_000 });
+    }
+    await expect(page.getByRole("menuitem", { name: item })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 test("a Swedish spreadsheet imports, and importing it again changes nothing", async ({ page }) => {
@@ -128,7 +148,7 @@ test("Undo takes an import's tasks off the backlog, and Bring back returns them"
   await page.goto(`/projects/${project.projectKey}/import`);
   // The FIRST import (the oldest row) made the two spreadsheet tasks.
   const first = page.locator('[data-testid="import-history-row"]').last();
-  await first.getByRole("button", { name: "Actions for uppgifter.csv" }).click();
+  await openMenu(page, first, "Actions for uppgifter.csv", "Undo import");
   await page.getByRole("menuitem", { name: "Undo import" }).click();
   // The danger item asks in place (UI.md §5.9): the row's question, then Yes.
   await expect(first).toContainText("Move this import's tasks to the bin?");
@@ -141,7 +161,7 @@ test("Undo takes an import's tasks off the backlog, and Bring back returns them"
 
   await page.goto(`/projects/${project.projectKey}/import`);
   const undone = page.locator('[data-testid="import-history-row"][data-status="UNDONE"]');
-  await undone.getByRole("button", { name: "Actions for uppgifter.csv" }).click();
+  await openMenu(page, undone, "Actions for uppgifter.csv", "Bring back the tasks");
   await page.getByRole("menuitem", { name: "Bring back the tasks" }).click();
   await expect(toast(page, "2 tasks brought back.")).toBeVisible();
 
