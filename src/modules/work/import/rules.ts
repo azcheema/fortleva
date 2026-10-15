@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { isInvisible } from "@/lib/single-line-name";
 import { MAX_LABEL_NAME_LENGTH, MAX_TITLE_LENGTH } from "@/lib/work-view";
 
 /**
@@ -125,7 +126,30 @@ export const importRowSchema = z
     stateId: z.uuid(),
     targetDate: z.string().refine(isImportDay).nullable(),
     assigneeMemberId: z.uuid().nullable(),
-    labels: z.array(trimmed(MAX_LABEL_NAME_LENGTH).pipe(z.string().min(1))).max(IMPORT_LABELS_MAX),
+    // A label name is one line with no control character (slice 123's name
+    // CHECK refuses one), so a pasted newline or tab in a cell becomes a
+    // space here rather than a failed batch — and without the invisible
+    // formatting the labels page refuses (`isInvisible`), so an import
+    // cannot make a look-alike twin of a label; spaces are folded AGAIN
+    // after that strip ("Bug <zero-width> fix" must not become "Bug  fix",
+    // which a page renders as "Bug fix"). A name that is nothing BUT such
+    // characters is DROPPED, never a refusal: one stray cell must not stop
+    // a batch of a hundred rows (both the fix review's LOWs).
+    labels: z
+      .array(
+        z
+          .string()
+          .transform((s) =>
+            Array.from(withoutNameControls(storable(s).replace(/\s+/g, " ")))
+              .filter((ch) => !isInvisible(ch.codePointAt(0)!))
+              .join("")
+              .replace(/ {2,}/g, " ")
+              .trim(),
+          )
+          .pipe(z.string().max(MAX_LABEL_NAME_LENGTH)),
+      )
+      .max(IMPORT_LABELS_MAX)
+      .transform((names) => names.filter((n) => n !== "")),
   })
   .strict()
   .refine((r) => r.checklists.reduce((n, c) => n + c.items.length, 0) <= IMPORT_CHECKLIST_ITEMS_MAX, {

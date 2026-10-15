@@ -421,6 +421,11 @@ export const AUDIT_EVENTS = {
   "workflow.changed": TENANT,
   "label.created": TENANT,
   "label.deleted": TENANT,
+  // The labels page (slice 123, C99 (b)): a rename, a colour, a merge — each
+  // changes the word on every task at once.
+  "label.renamed": TENANT,
+  "label.color_changed": TENANT,
+  "label.merged": TENANT,
   "project_template.applied": TENANT,
   "notification.preference_changed": TENANT,
   // Phase 5 slice 106 (founder decision C74) — a member turned phone

@@ -8,11 +8,16 @@ import {
   changeItemVisibility,
   createItem,
   createLabel,
+  deleteLabel,
   getItemDetail,
   listItems,
+  mergeLabel,
   projectWorkVersion,
+  renameLabel,
   setItemLabel,
+  setLabelColor,
 } from "./index";
+import { listWorkspaceLabels } from "./labels";
 
 /**
  * The labels service against the real database and the real
@@ -323,5 +328,86 @@ describe("listItems carries the chips (labels on the card and the row)", () => {
     // fingerprint of the board, not a counter of requests.
     await setItemLabel(ownerCtx(), item.id, label.id, false);
     expect(await projectWorkVersion(ownerCtx(), projectId)).toBe(removed);
+  });
+});
+
+describe("the labels page (slice 123, C99 (b))", () => {
+  const audit = (action: string, targetId: string) =>
+    f.platform.auditEvent.findMany({ where: { tenantId: f.tenantId, action, targetId }, orderBy: { id: "asc" } });
+  const labelsOn = async (itemId: string) =>
+    (await f.platform.workItemLabel.findMany({ where: { tenantId: f.tenantId, workItemId: itemId }, select: { labelId: true } })).map(
+      (r) => r.labelId,
+    );
+
+  it("renames a label everywhere at once, audited from → to; a taken name is refused ignoring case", async () => {
+    const a = (await createLabel(ownerCtx(), { name: unique("Old") })).label;
+    const b = (await createLabel(ownerCtx(), { name: unique("Other") })).label;
+    const item = await createItem(ownerCtx(), { projectId, title: unique("Renamed chip") });
+    await setItemLabel(ownerCtx(), item.id, a.id, true);
+    const token = await projectWorkVersion(ownerCtx(), projectId);
+
+    const fresh = unique("New");
+    const renamed = await renameLabel(ownerCtx(), a.id, ` ${fresh}  `);
+    expect(renamed.name).toBe(fresh);
+    expect((await listItems(ownerCtx(), projectId)).items.find((i) => i.id === item.id)?.labels.map((l) => l.name)).toEqual([fresh]);
+    expect((await audit("label.renamed", a.id)).map((e) => e.metadata)).toEqual([{ from: a.name, to: fresh }]);
+    // A colleague's open board refreshes: the rename touched no task and no join row.
+    expect(await projectWorkVersion(ownerCtx(), projectId)).not.toBe(token);
+
+    await expect(renameLabel(ownerCtx(), a.id, b.name.toUpperCase())).rejects.toMatchObject({ code: "LABEL_TAKEN" });
+    await expect(renameLabel(ownerCtx(), a.id, "   ")).rejects.toMatchObject({ code: "NAME_REQUIRED" });
+  });
+
+  it("colours a label with a palette token, audited; the database refuses anything else", async () => {
+    const a = (await createLabel(ownerCtx(), { name: unique("Colour"), color: "teal" })).label;
+    expect(a.color).toBe("teal");
+    await setLabelColor(ownerCtx(), a.id, "pink");
+    await setLabelColor(ownerCtx(), a.id, null);
+    expect((await audit("label.color_changed", a.id)).map((e) => (e.metadata as { color: string | null }).color)).toEqual(["pink", null]);
+    await expect(f.platform.label.update({ where: { id: a.id }, data: { color: "#ff0000" } })).rejects.toThrow();
+  });
+
+  it("deletes a label off every task, audited with the count", async () => {
+    const a = (await createLabel(ownerCtx(), { name: unique("Doomed") })).label;
+    const one = await createItem(ownerCtx(), { projectId, title: unique("Doomed one") });
+    const two = await createItem(ownerCtx(), { projectId, title: unique("Doomed two") });
+    await setItemLabel(ownerCtx(), one.id, a.id, true);
+    await setItemLabel(ownerCtx(), two.id, a.id, true);
+    expect((await listWorkspaceLabels(ownerCtx())).find((l) => l.id === a.id)?.tasks).toBe(2);
+
+    expect(await deleteLabel(ownerCtx(), a.id)).toEqual({ tasks: 2 });
+    expect(await labelsOn(one.id)).not.toContain(a.id);
+    expect(await f.platform.label.findUnique({ where: { id: a.id } })).toBeNull();
+    expect((await audit("label.deleted", a.id)).map((e) => e.metadata)).toEqual([{ name: a.name, tasks: 2 }]);
+  });
+
+  it("merges one label into another: each task wears the survivor once, and the source is gone", async () => {
+    const from = (await createLabel(ownerCtx(), { name: unique("Dupe") })).label;
+    const into = (await createLabel(ownerCtx(), { name: unique("Keeper") })).label;
+    const onlyFrom = await createItem(ownerCtx(), { projectId, title: unique("Only from") });
+    const both = await createItem(ownerCtx(), { projectId, title: unique("Both") });
+    await setItemLabel(ownerCtx(), onlyFrom.id, from.id, true);
+    await setItemLabel(ownerCtx(), both.id, from.id, true);
+    await setItemLabel(ownerCtx(), both.id, into.id, true);
+
+    expect(await mergeLabel(ownerCtx(), from.id, into.id)).toEqual({ tasks: 2 });
+    expect(await labelsOn(onlyFrom.id)).toEqual([into.id]);
+    expect(await labelsOn(both.id)).toEqual([into.id]);
+    expect(await f.platform.label.findUnique({ where: { id: from.id } })).toBeNull();
+    expect((await audit("label.merged", into.id)).map((e) => e.metadata)).toEqual([
+      { from: from.name, into: into.name, fromId: from.id, tasks: 2 },
+    ]);
+
+    // The source is gone, so a second merge of it is NOT_FOUND; a label into itself is refused.
+    await expect(mergeLabel(ownerCtx(), from.id, into.id)).rejects.toBeInstanceOf(AuthzError);
+    await expect(mergeLabel(ownerCtx(), into.id, into.id)).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("is label:manage's — an employee can neither list nor change the vocabulary", async () => {
+    const a = (await createLabel(ownerCtx(), { name: unique("Guarded") })).label;
+    await expect(listWorkspaceLabels(employeeCtx())).rejects.toBeInstanceOf(AuthzError);
+    await expect(renameLabel(employeeCtx(), a.id, unique("Mine"))).rejects.toBeInstanceOf(AuthzError);
+    await expect(setLabelColor(employeeCtx(), a.id, "red")).rejects.toBeInstanceOf(AuthzError);
+    await expect(deleteLabel(employeeCtx(), a.id)).rejects.toBeInstanceOf(AuthzError);
   });
 });

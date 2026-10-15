@@ -1,9 +1,10 @@
 import { record } from "@/audit/record";
 import { deny } from "@/authz/errors";
-import { clean } from "@/clients/service";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
+import { isLabelColor, type LabelColor } from "@/lib/label-colors";
+import { singleLineName } from "@/lib/single-line-name";
 import { MAX_LABEL_NAME_LENGTH, compareLabelNames } from "@/lib/work-view";
 
 import { writeActivity } from "./activity";
@@ -37,7 +38,7 @@ import { principalOf, type WorkCtx } from "./states";
 export type LabelEntry = {
   id: string;
   name: string;
-  /** A design-token name, or null — never a hex literal (UI.md §10). Nothing writes one yet; every chip is neutral. */
+  /** A palette token name (`@/lib/label-colors`), or null — never a hex literal (UI.md §10). Drawn as a dot inside the neutral chip (slice 123). */
   color: string | null;
 };
 
@@ -240,12 +241,11 @@ export type LabelCreated<A extends string | undefined = undefined> = {
  */
 export async function createLabel<A extends string | undefined = undefined>(
   ctx: WorkCtx,
-  input: { name: string; applyTo?: A },
+  input: { name: string; applyTo?: A; color?: LabelColor | null },
 ): Promise<LabelCreated<A>> {
-  const name = clean(input.name) ?? fail("NAME_REQUIRED");
   // The bound lives in @/lib/work-view (client-safe); the action's zod
   // shape enforces it first, this is the belt.
-  if (name.length > MAX_LABEL_NAME_LENGTH) fail("INVALID_INPUT", "label name too long");
+  const name = labelName(input.name);
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
       await requireAccess(tx, ctx.tenantId, ctx.actor, "label:manage");
@@ -259,7 +259,7 @@ export async function createLabel<A extends string | undefined = undefined>(
             await loadItemInScope(tx, ctx, input.applyTo, { lock: "SHARE" }))
           : null;
       const label = await tx.label.create({
-        data: { tenantId: ctx.tenantId, projectId: null, name },
+        data: { tenantId: ctx.tenantId, projectId: null, name, color: input.color ?? null },
         select,
       });
       await record(tx, {
@@ -270,6 +270,173 @@ export async function createLabel<A extends string | undefined = undefined>(
       });
       const labels = item ? (await writeLabel(tx, ctx, item, label.id, true), await appliedLabels(tx, ctx.tenantId, item.id)) : null;
       return { label, labels: labels as LabelCreated<A>["labels"] };
+    }),
+  );
+}
+
+/** A label name as it will be stored (`singleLineName`), or the refusal — one rule for create and rename. */
+function labelName(raw: string): string {
+  const checked = singleLineName(raw, MAX_LABEL_NAME_LENGTH);
+  return checked.ok ? checked.name : fail(checked.code);
+}
+
+// ── The labels page (slice 123, founder decision C99 (b)) ───────────
+//
+// Settings → Labels: rename, colour, delete, merge — every one under
+// `label:manage` and audited, because each changes the vocabulary on
+// every task at once (design doc §7). Only tenant-wide labels: nothing
+// makes a project-scoped one yet, and a scoped id here is NOT_FOUND.
+//
+// NO PER-TASK HISTORY ROWS for any of the four. A history row holds the
+// label's id and the read resolves it (`activity.ts`), so a rename is
+// shown everywhere at once and a deleted label reads as one that is gone
+// — which is also what a merged label's old rows say. The audit row is
+// the record of the act.
+
+/** One row of the labels page. `tasks` counts tasks on the board and in the archive — not the bin. */
+export type LabelRow = LabelEntry & { tasks: number };
+
+export async function listWorkspaceLabels(ctx: WorkCtx): Promise<LabelRow[]> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "label:manage");
+    const rows = await tx.label.findMany({
+      where: { tenantId: ctx.tenantId, projectId: null },
+      select: {
+        ...select,
+        _count: { select: { workItems: { where: { workItem: { deletedAt: null } } } } },
+      },
+    });
+    return rows
+      .map(({ _count, ...l }) => ({ ...l, tasks: _count.workItems }))
+      .sort((a, b) => compareLabelNames(a.name, b.name));
+  });
+}
+
+/**
+ * The label, locked for this transaction's write — so a rename's audit
+ * `from` is the name it replaced, and two merges cannot interleave.
+ * Tenant-wide only; anything else is as absent as a missing one.
+ *
+ * `"keep"` is the lock of a label that SURVIVES this transaction — a
+ * merge's target: `FOR NO KEY UPDATE`, which a concurrent "put it on a
+ * task" does not wait on (its foreign-key check takes only KEY SHARE).
+ * `FOR UPDATE` there was a deadlock: that add holds its new join row and
+ * waits on the target's lock, while the merge's INSERT reaches the same
+ * uncommitted join row and waits on the add (the code review's LOW).
+ */
+async function lockLabel(
+  tx: TenantDb,
+  tenantId: string,
+  id: string,
+  mode: "write" | "keep" = "write",
+): Promise<{ id: string; name: string; color: string | null }> {
+  const [row] =
+    mode === "keep"
+      ? await tx.$queryRaw<{ id: string; name: string; color: string | null }[]>`
+          SELECT id, name, color FROM label
+          WHERE tenant_id = ${tenantId} AND id = ${id} AND project_id IS NULL
+          FOR NO KEY UPDATE`
+      : await tx.$queryRaw<{ id: string; name: string; color: string | null }[]>`
+          SELECT id, name, color FROM label
+          WHERE tenant_id = ${tenantId} AND id = ${id} AND project_id IS NULL
+          FOR UPDATE`;
+  return row ?? deny("NOT_FOUND");
+}
+
+export async function renameLabel(ctx: WorkCtx, id: string, rawName: string): Promise<LabelEntry> {
+  const name = labelName(rawName);
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
+    guarded(async () => {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "label:manage");
+      const before = await lockLabel(tx, ctx.tenantId, id);
+      if (before.name === name) return { id, name, color: before.color };
+      // The index decides a clash, case-insensitively (`LABEL_TAKEN`) — a
+      // change of case alone is the same row and passes.
+      const label = await tx.label.update({ where: { id }, data: { name }, select });
+      await record(tx, {
+        action: "label.renamed",
+        targetType: "Label",
+        targetId: id,
+        metadata: { from: before.name, to: name },
+      });
+      return label;
+    }),
+  );
+}
+
+export async function setLabelColor(ctx: WorkCtx, id: string, color: LabelColor | null): Promise<LabelEntry> {
+  // The database's `label_color_token` CHECK is the belt.
+  if (color !== null && !isLabelColor(color)) fail("INVALID_INPUT", "not a palette colour");
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "label:manage");
+    const before = await lockLabel(tx, ctx.tenantId, id);
+    if (before.color === color) return { id, name: before.name, color };
+    const label = await tx.label.update({ where: { id }, data: { color }, select });
+    await record(tx, {
+      action: "label.color_changed",
+      targetType: "Label",
+      targetId: id,
+      metadata: { name: before.name, color },
+    });
+    return label;
+  });
+}
+
+/** Deleting a label takes it off every task (the join cascades) — the bin's tasks too. */
+export async function deleteLabel(ctx: WorkCtx, id: string): Promise<{ tasks: number }> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "label:manage");
+    const label = await lockLabel(tx, ctx.tenantId, id);
+    const tasks = await tx.workItemLabel.count({ where: { tenantId: ctx.tenantId, labelId: id } });
+    await tx.label.delete({ where: { id }, select: { id: true } });
+    await record(tx, {
+      action: "label.deleted",
+      targetType: "Label",
+      targetId: id,
+      metadata: { name: label.name, tasks },
+    });
+    return { tasks };
+  });
+}
+
+/**
+ * MERGE `fromId` INTO `intoId`: every task wearing the first wears the
+ * second (once — a task with both keeps one), and the first is gone.
+ *
+ * Both labels are locked in ID ORDER — the source `FOR UPDATE` (it is
+ * deleted), the target `FOR NO KEY UPDATE` (it survives; `lockLabel`'s
+ * `"keep"`) — so two opposite merges at once cannot deadlock: the second
+ * waits on the first's lock, then finds its source gone (NOT_FOUND). A
+ * member putting the SOURCE label on a task meanwhile waits on its lock
+ * (the join's foreign-key check) and then finds it gone too
+ * (`LABEL_GONE`, `db-errors.ts`); one putting the TARGET on waits on
+ * nothing this holds.
+ */
+export async function mergeLabel(ctx: WorkCtx, fromId: string, intoId: string): Promise<{ tasks: number }> {
+  if (fromId === intoId) fail("INVALID_INPUT", "a label cannot be merged into itself");
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
+    guarded(async () => {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "label:manage");
+      const [first, second] = fromId < intoId ? [fromId, intoId] : [intoId, fromId];
+      const a = await lockLabel(tx, ctx.tenantId, first, first === fromId ? "write" : "keep");
+      const b = await lockLabel(tx, ctx.tenantId, second, second === fromId ? "write" : "keep");
+      const from = a.id === fromId ? a : b;
+      const into = a.id === intoId ? a : b;
+      const tasks = await tx.workItemLabel.count({ where: { tenantId: ctx.tenantId, labelId: from.id } });
+      await tx.$executeRaw`
+        INSERT INTO work_item_label (tenant_id, work_item_id, label_id, created_at)
+        SELECT tenant_id, work_item_id, ${into.id}, now()
+        FROM work_item_label
+        WHERE tenant_id = ${ctx.tenantId} AND label_id = ${from.id}
+        ON CONFLICT DO NOTHING`;
+      await tx.label.delete({ where: { id: from.id }, select: { id: true } });
+      await record(tx, {
+        action: "label.merged",
+        targetType: "Label",
+        targetId: into.id,
+        metadata: { from: from.name, into: into.name, fromId: from.id, tasks },
+      });
+      return { tasks };
     }),
   );
 }

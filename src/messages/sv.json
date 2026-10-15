@@ -103,7 +103,9 @@
     "invoiceSettings": "Fakturering",
     "contracts": "Kontrakt",
     "contractSettings": "Kontraktsmallar",
-    "reports": "Rapporter"
+    "reports": "Rapporter",
+    "stageSettings": "Steg",
+    "labelSettings": "Etiketter"
   },
   "shell": {
     "palette": {
@@ -1768,6 +1770,59 @@
           "action": "Öppna Bokföring"
         }
       }
+    },
+    "stages": {
+      "title": "Steg",
+      "description": "Kolumnerna som ett nytt projekts tavla börjar med. Varje projekt kan sedan ändra sina egna från sin tavla.",
+      "noPermission": "Du behöver behörighet för att ändra steg.",
+      "listTitle": "Standardsteg",
+      "listCustom": "Arbetsytans egen uppsättning. Befintliga projekt behåller sina steg.",
+      "listOriginal": "Fortlevas originalsteg. Ändra något av dem för att göra dem till era egna.",
+      "addTitle": "Lägg till ett steg",
+      "addDescription": "Det hamnar sist bland sitt slag; flytta det upp eller ned från dess meny.",
+      "restore": {
+        "menu": "Mer för standardstegen",
+        "action": "Återställ originalstegen",
+        "confirm": "Gå tillbaka till Fortlevas originalsteg? Bara projekt som skapas härefter får dem; inget projekt ändras."
+      }
+    },
+    "labels": {
+      "title": "Etiketter",
+      "description": "Orden som teamet märker uppgifter med. Etiketter är interna – kunderna ser dem aldrig.",
+      "noPermission": "Du behöver behörighet för att hantera etiketter.",
+      "listTitle": "Etiketter",
+      "listDescription": "{count, plural, one {# etikett} other {# etiketter}}",
+      "addTitle": "Ny etikett",
+      "empty": "Inga etiketter än",
+      "emptyBody": "Skapa en nedan, eller från fältet Etiketter på en uppgift.",
+      "columns": {
+        "name": "Namn",
+        "color": "Färg",
+        "tasks": "Uppgifter"
+      },
+      "menu": {
+        "merge": "Slå ihop med…",
+        "delete": "Ta bort"
+      },
+      "deleteConfirm": "{count, plural, one {# uppgift har etiketten. Ta bort ”{name}”? Den tas bort från uppgiften.} other {# uppgifter har etiketten. Ta bort ”{name}”? Den tas bort från alla.}}",
+      "add": {
+        "name": "Namn",
+        "color": "Färg",
+        "submit": "Lägg till etikett",
+        "adding": "Lägger till…"
+      },
+      "added": "Etiketten ”{name}” har lagts till.",
+      "renamed": "Etiketten har bytt namn.",
+      "colorChanged": "Färgen har ändrats.",
+      "deleted": "Etiketten har tagits bort.",
+      "merged": "{count, plural, one {# uppgift har nu etiketten den slogs ihop med.} other {# uppgifter har nu etiketten den slogs ihop med.}}",
+      "mergeDialog": {
+        "title": "Slå ihop ”{name}”",
+        "description": "{count, plural, one {# uppgift har ”{name}”. Den får etiketten du väljer i stället, och ”{name}” försvinner.} other {# uppgifter har ”{name}”. De får etiketten du väljer i stället, och ”{name}” försvinner.}}",
+        "into": "Slå ihop med",
+        "submit": "Slå ihop med ”{name}”",
+        "submitting": "Slår ihop…"
+      }
     }
   },
   "files": {
@@ -2050,7 +2105,19 @@
     "FORTNOX_ENTRY_NOT_STUCK": "Fortleva skickar fortfarande den verifikationen av sig självt. Ladda om sidan.",
     "FORTNOX_UNSURE_FIRST": "En av filens verifikationer kan redan finnas i Fortnox. Bestäm den först.",
     "FORTNOX_OLDER_FIRST": "En äldre fils verifikationer skickades inte heller. Ladda ner den filen först.",
-    "FORTNOX_UNSENT_CHANGED": "Verifikationerna som inte skickades har ändrats under tiden. Ladda om sidan."
+    "FORTNOX_UNSENT_CHANGED": "Verifikationerna som inte skickades har ändrats under tiden. Ladda om sidan.",
+    "STAGE_NAME_TAKEN": "Ett annat steg har redan det namnet.",
+    "STAGE_LIMIT": "En tavla kan ha högst 20 steg.",
+    "STAGE_LAST_OF_KIND": "Varje tavla behåller minst ett steg av varje slag.",
+    "STAGE_NOT_EMPTY": "Flytta först stegets uppgifter någon annanstans – inget annat steg av samma slag finns kvar.",
+    "STAGE_DEFAULT_KIND": "Nya uppgifter kan bara börja i ett steg av slaget Backlogg eller Att göra.",
+    "STAGE_IS_DEFAULT": "Nya uppgifter börjar i det här steget. Välj ett annat steg för dem först.",
+    "STAGE_TOO_FULL": "Fler än 2 000 uppgifter ligger i steget. Flytta några till ett annat steg först.",
+    "STAGE_GONE": "Steget togs precis bort. Ladda om sidan och försök igen.",
+    "STAGE_BUSY": "Någon ändrade stegen samtidigt. Ladda om sidan och försök igen.",
+    "LABEL_GONE": "Etiketten togs precis bort eller slogs ihop. Ladda om sidan och försök igen.",
+    "STAGE_DEFAULT_GATED": "Nya uppgifter kan inte börja i ett steg som kräver godkännande.",
+    "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget. Fortleva rensar dem 30 dagar efter att de togs bort; till dess finns det sista backloggsteget kvar."
   },
   "assignments": {
     "title": "Team",
@@ -2749,7 +2816,8 @@
         "move": "Flytta till…",
         "timer": "Starta eller stoppa en timer på kortet som har fokus",
         "navigate": "Flytta mellan kort"
-      }
+      },
+      "editStages": "Ändra steg"
     },
     "workView": {
       "filters": {
@@ -3789,6 +3857,19 @@
         "TRELLO": "Trello"
       },
       "mapTo": "{to} för ”{from}”"
+    },
+    "stages": {
+      "title": "Steg",
+      "back": "Tillbaka till tavlan",
+      "forbidden": {
+        "title": "Du kan inte ändra projektets steg",
+        "body": "För att ändra steg krävs behörighet att hantera arbetsflöden."
+      },
+      "archived": "Projektet är arkiverat, så stegen kan inte ändras.",
+      "listTitle": "Projektets steg",
+      "listDescription": "Kolumnerna på projektets tavla, i ordning. Varje steg räknas som ett fast slag – det är allt som rapporter och kundportalen ser.",
+      "addTitle": "Lägg till ett steg",
+      "addDescription": "Det hamnar sist bland sitt slag; flytta det upp eller ned från dess meny."
     }
   },
   "portal": {
@@ -6642,5 +6723,71 @@
       "ms": "{value} ms",
       "none": "{value}"
     }
+  },
+  "labelColors": {
+    "none": "Ingen färg",
+    "red": "Röd",
+    "orange": "Orange",
+    "olive": "Oliv",
+    "teal": "Blågrön",
+    "blue": "Blå",
+    "purple": "Lila",
+    "pink": "Rosa"
+  },
+  "stageEditor": {
+    "title": "Steg",
+    "columns": {
+      "name": "Namn",
+      "kind": "Räknas som",
+      "tasks": "Uppgifter"
+    },
+    "badge": {
+      "default": "Nya uppgifter börjar här",
+      "approval": "Kräver godkännande"
+    },
+    "menu": {
+      "moveUp": "Flytta upp",
+      "moveDown": "Flytta ned",
+      "makeDefault": "Låt nya uppgifter börja här",
+      "approvalOn": "Kräv godkännande för att flytta en uppgift hit",
+      "approvalOff": "Sluta kräva godkännande",
+      "remove": "Ta bort",
+      "removeMove": "Ta bort och flytta uppgifterna…"
+    },
+    "cannotRemove": {
+      "STAGE_LAST_OF_KIND": "Varje tavla behåller minst ett steg av varje slag.",
+      "STAGE_NOT_EMPTY": "Flytta först uppgifterna till ett annat steg – inget annat steg av samma slag finns kvar.",
+      "STAGE_IS_DEFAULT": "Nya uppgifter börjar här. Välj ett annat steg för dem först.",
+      "STAGE_TOO_FULL": "Fler än 2 000 uppgifter ligger i steget. Flytta några först.",
+      "INVALID_INPUT": "Steget kan inte tas bort.",
+      "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget. Fortleva rensar dem 30 dagar efter att de togs bort; till dess finns steget kvar."
+    },
+    "removeConfirmProject": "Ta bort steget ”{name}”? Ingen uppgift på tavlan ligger i det.",
+    "removeConfirmWorkspace": "Ta bort ”{name}” från standardstegen? Befintliga projekt behåller sina.",
+    "removeDialog": {
+      "title": "Ta bort ”{name}”",
+      "description": "{count, plural, one {# uppgift ligger i steget. Välj vart den ska – bara steg av samma slag visas, så inget som kunden ser ändras.} other {# uppgifter ligger i steget. Välj vart de ska – bara steg av samma slag visas, så inget som kunden ser ändras.}}",
+      "target": "Flytta uppgifterna till",
+      "submit": "Ta bort och flytta",
+      "submitting": "Tar bort…"
+    },
+    "add": {
+      "name": "Namn",
+      "kind": "Räknas som",
+      "kindHelp": "Rapporter och kundportalen läser slaget, aldrig namnet.",
+      "submit": "Lägg till steg",
+      "adding": "Lägger till…"
+    },
+    "renamed": "Steget har bytt namn.",
+    "added": "Steget har lagts till.",
+    "moved": "Steget har flyttats.",
+    "defaultSet": "Nya uppgifter börjar nu i det här steget.",
+    "approvalOn": "Att flytta en uppgift hit kräver nu godkännande.",
+    "approvalOff": "Att flytta en uppgift hit kräver inte längre godkännande.",
+    "removed": "Steget har tagits bort.",
+    "removedMoved": "{count, plural, one {# uppgift flyttad och steget borttaget.} other {# uppgifter flyttade och steget borttaget.}}",
+    "restored": "Originalstegen är tillbaka. Nya projekt får dem.",
+    "cannotStartHere": "Ett steg som kräver godkännande kan inte vara där nya uppgifter börjar.",
+    "cannotGateStart": "Nya uppgifter börjar här, så steget kan inte kräva godkännande. Välj ett annat steg för nya uppgifter först."
   }
 }

@@ -103,7 +103,9 @@
     "invoiceSettings": "Invoicing",
     "contracts": "Contracts",
     "contractSettings": "Contract templates",
-    "reports": "Reports"
+    "reports": "Reports",
+    "stageSettings": "Stages",
+    "labelSettings": "Labels"
   },
   "shell": {
     "palette": {
@@ -1768,6 +1770,59 @@
           "action": "Open Bookkeeping"
         }
       }
+    },
+    "stages": {
+      "title": "Stages",
+      "description": "The columns a new project’s board starts with. Each project can then change its own from its board.",
+      "noPermission": "You need permission to change stages.",
+      "listTitle": "Default stages",
+      "listCustom": "Your workspace’s own set. Projects that already exist keep their stages.",
+      "listOriginal": "Fortleva’s original stages. Change any of them to make them your own.",
+      "addTitle": "Add a stage",
+      "addDescription": "It goes at the end of its kind; move it up or down from its menu.",
+      "restore": {
+        "menu": "More for the default stages",
+        "action": "Restore the original stages",
+        "confirm": "Go back to Fortleva’s original stages? Only projects made from now on get them; no project changes."
+      }
+    },
+    "labels": {
+      "title": "Labels",
+      "description": "The words your team tags tasks with. Labels are internal — clients never see them.",
+      "noPermission": "You need permission to manage labels.",
+      "listTitle": "Labels",
+      "listDescription": "{count, plural, one {# label} other {# labels}}",
+      "addTitle": "New label",
+      "empty": "No labels yet",
+      "emptyBody": "Make one below, or from any task’s Labels field.",
+      "columns": {
+        "name": "Name",
+        "color": "Colour",
+        "tasks": "Tasks"
+      },
+      "menu": {
+        "merge": "Merge into…",
+        "delete": "Delete"
+      },
+      "deleteConfirm": "{count, plural, one {# task wears this label. Delete “{name}”? It comes off that task.} other {# tasks wear this label. Delete “{name}”? It comes off every one of them.}}",
+      "add": {
+        "name": "Name",
+        "color": "Colour",
+        "submit": "Add label",
+        "adding": "Adding…"
+      },
+      "added": "Label “{name}” added.",
+      "renamed": "Label renamed.",
+      "colorChanged": "Colour changed.",
+      "deleted": "Label deleted.",
+      "merged": "{count, plural, one {# task now wears the label it was merged into.} other {# tasks now wear the label it was merged into.}}",
+      "mergeDialog": {
+        "title": "Merge “{name}”",
+        "description": "{count, plural, one {# task wears “{name}”. It will wear the label you choose instead, and “{name}” will be gone.} other {# tasks wear “{name}”. They will wear the label you choose instead, and “{name}” will be gone.}}",
+        "into": "Merge into",
+        "submit": "Merge into “{name}”",
+        "submitting": "Merging…"
+      }
     }
   },
   "files": {
@@ -2050,7 +2105,19 @@
     "FORTNOX_ENTRY_NOT_STUCK": "Fortleva still sends that entry by itself. Reload the page.",
     "FORTNOX_UNSURE_FIRST": "One of this file's entries may already be in Fortnox. Decide that one first.",
     "FORTNOX_OLDER_FIRST": "An older file's entries weren't sent either. Download that file first.",
-    "FORTNOX_UNSENT_CHANGED": "The entries that weren't sent changed meanwhile. Reload the page."
+    "FORTNOX_UNSENT_CHANGED": "The entries that weren't sent changed meanwhile. Reload the page.",
+    "STAGE_NAME_TAKEN": "Another stage already has that name.",
+    "STAGE_LIMIT": "A board can have at most 20 stages.",
+    "STAGE_LAST_OF_KIND": "Every board keeps at least one stage of each kind.",
+    "STAGE_NOT_EMPTY": "Move this stage’s tasks somewhere else first — no other stage of its kind is left.",
+    "STAGE_DEFAULT_KIND": "New tasks can only start in a Backlog or To do stage.",
+    "STAGE_IS_DEFAULT": "New tasks start in this stage. Choose another stage for them first.",
+    "STAGE_TOO_FULL": "More than 2,000 tasks are in this stage. Move some to another stage first.",
+    "STAGE_GONE": "That stage was just removed. Reload the page and try again.",
+    "STAGE_BUSY": "Someone changed the stages at the same moment. Reload the page and try again.",
+    "LABEL_GONE": "That label was just deleted or merged. Reload the page and try again.",
+    "STAGE_DEFAULT_GATED": "New tasks can’t start in a stage that needs approval.",
+    "STAGE_IN_BIN": "Deleted tasks still belong to this stage. Fortleva clears them 30 days after they were deleted; until then the last Backlog stage stays."
   },
   "assignments": {
     "title": "Team",
@@ -2749,7 +2816,8 @@
         "move": "Move to…",
         "timer": "Start or stop a timer on the focused card",
         "navigate": "Move between cards"
-      }
+      },
+      "editStages": "Edit stages"
     },
     "workView": {
       "filters": {
@@ -3789,6 +3857,19 @@
         "TRELLO": "Trello"
       },
       "mapTo": "{to} for “{from}”"
+    },
+    "stages": {
+      "title": "Stages",
+      "back": "Back to the board",
+      "forbidden": {
+        "title": "You can’t change this project’s stages",
+        "body": "Changing stages needs permission to manage workflows."
+      },
+      "archived": "This project is archived, so its stages can’t be changed.",
+      "listTitle": "This project’s stages",
+      "listDescription": "The columns on this project’s board, in order. Each one counts as a fixed kind — that is all reports and the client portal see.",
+      "addTitle": "Add a stage",
+      "addDescription": "It goes at the end of its kind; move it up or down from its menu."
     }
   },
   "portal": {
@@ -6642,5 +6723,71 @@
       "ms": "{value} ms",
       "none": "{value}"
     }
+  },
+  "labelColors": {
+    "none": "No colour",
+    "red": "Red",
+    "orange": "Orange",
+    "olive": "Olive",
+    "teal": "Teal",
+    "blue": "Blue",
+    "purple": "Purple",
+    "pink": "Pink"
+  },
+  "stageEditor": {
+    "title": "Stages",
+    "columns": {
+      "name": "Name",
+      "kind": "Counts as",
+      "tasks": "Tasks"
+    },
+    "badge": {
+      "default": "New tasks start here",
+      "approval": "Needs approval"
+    },
+    "menu": {
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "makeDefault": "Start new tasks here",
+      "approvalOn": "Require approval to move a task here",
+      "approvalOff": "Stop requiring approval",
+      "remove": "Remove",
+      "removeMove": "Remove and move its tasks…"
+    },
+    "cannotRemove": {
+      "STAGE_LAST_OF_KIND": "Every board keeps at least one stage of each kind.",
+      "STAGE_NOT_EMPTY": "Move its tasks to another stage first — no other stage of its kind is left.",
+      "STAGE_IS_DEFAULT": "New tasks start here. Choose another stage for them first.",
+      "STAGE_TOO_FULL": "More than 2,000 tasks are in this stage. Move some first.",
+      "INVALID_INPUT": "This stage can’t be removed.",
+      "STAGE_IN_BIN": "Deleted tasks still belong to this stage. Fortleva clears them 30 days after they were deleted; until then it stays."
+    },
+    "removeConfirmProject": "Remove the stage “{name}”? No task on the board is in it.",
+    "removeConfirmWorkspace": "Remove “{name}” from the default stages? Projects that already exist keep theirs.",
+    "removeDialog": {
+      "title": "Remove “{name}”",
+      "description": "{count, plural, one {# task is in this stage. Choose where it goes — only stages of the same kind are listed, so nothing a client sees changes.} other {# tasks are in this stage. Choose where they go — only stages of the same kind are listed, so nothing a client sees changes.}}",
+      "target": "Move the tasks to",
+      "submit": "Remove and move",
+      "submitting": "Removing…"
+    },
+    "add": {
+      "name": "Name",
+      "kind": "Counts as",
+      "kindHelp": "Reports and the client portal read the kind, never the name.",
+      "submit": "Add stage",
+      "adding": "Adding…"
+    },
+    "renamed": "Stage renamed.",
+    "added": "Stage added.",
+    "moved": "Stage moved.",
+    "defaultSet": "New tasks now start in this stage.",
+    "approvalOn": "Moving a task here now needs approval.",
+    "approvalOff": "Moving a task here no longer needs approval.",
+    "removed": "Stage removed.",
+    "removedMoved": "{count, plural, one {# task moved, and the stage removed.} other {# tasks moved, and the stage removed.}}",
+    "restored": "The original stages are back. New projects get them.",
+    "cannotStartHere": "A stage that needs approval can’t be where new tasks start.",
+    "cannotGateStart": "New tasks start here, so it can’t need approval. Choose another stage for new tasks first."
   }
 }

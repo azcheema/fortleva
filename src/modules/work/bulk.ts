@@ -7,6 +7,7 @@ import { fail } from "@/lib/domain-error";
 import { MAX_BULK_ITEMS } from "@/lib/work-view";
 
 import { writeActivity } from "./activity";
+import { guarded } from "./db-errors";
 import { lockProjectRanks } from "./rank-lock";
 import { transitionState, type WorkCtx } from "./states";
 
@@ -184,7 +185,11 @@ export async function bulkChangeState(
   itemIds: readonly string[],
   stateId: string,
 ): Promise<BulkResult> {
-  return withTenant(
+  // `guarded` since slice 123, as a BELT: the selection takes the rank queue
+  // before it reads the target stage, and a stage removal holds that queue,
+  // so a removed target reads as NOT_FOUND; `STAGE_GONE` is for the
+  // unqueued writers (the fix review's note).
+  return guarded(() => withTenant(
     ctx.tenantId,
     { type: "member", id: ctx.actor.memberId },
     async (tx) => {
@@ -202,7 +207,7 @@ export async function bulkChangeState(
       return { changed, skipped: items.length - changed };
     },
     { timeoutMs: 60_000 },
-  );
+  ));
 }
 
 /**

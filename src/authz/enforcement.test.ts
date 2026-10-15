@@ -105,10 +105,9 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
     // Triage SHIPPED on 2026-09-22 (Phase 3 slice 6b): `work_item:triage`
     // is enforced in `src/modules/work/triage.ts`, so it is no longer
     // declared here. It was the oldest name on this list.
-    // The app CREATES a project's default states lazily
-    // (`ensureProjectStates`) and reads them; it has never updated or
-    // deleted one, so there is no "edit a project's workflow" to guard.
-    "workflow:manage",
+    // The stage editors SHIPPED on 2026-10-15 (slice 123, C99 (a)):
+    // `workflow:manage` is enforced in `src/modules/work/stage-editor.ts`,
+    // so it is no longer declared here.
     // ProjectUpdate SHIPPED on 2026-09-25 (Phase 3 slice 67): all four
     // `project_update:*` codes are enforced in `src/modules/work/updates.ts`.
     // ProjectTemplate: the model is in the schema, no `templates.ts`.

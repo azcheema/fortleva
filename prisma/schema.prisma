@@ -2655,10 +2655,10 @@ model WorkflowState {
   /// NULL = still wearing its seeded default, so it renders through i18n
   /// in the VIEWER's language (resolve with `seedKey`). Any non-NULL
   /// value is plain TENANT TEXT and is never translated again — writing
-  /// a name IS the rename. One-way is enforced by the WRITE PATH, not by
-  /// the schema — `SET name = NULL` returns a state to translate-mode, so
-  /// the future state editor must refuse to clear a name. Existing
-  /// projects keep their stored names until opted in. (§6.14, 2026-09-01.)
+  /// a name IS the rename. One-way is held by the state editor AND, since
+  /// slice 123, by the database (trigger `workflow_state_name_one_way`,
+  /// 20261027090000). Existing projects keep their stored names until
+  /// opted in. (§6.14, 2026-09-01.)
   name             String?
   seedKey          StateSeedKey? @map("seed_key")
   color            String?
@@ -2677,7 +2677,7 @@ model WorkflowState {
   workItems WorkItem[]
 
   @@unique([tenantId, projectId, name]) // NULLs do not collide — untouched seeds are all NULL
-  @@unique([tenantId, projectId, seedKey]) // one of each default per project; also what makes the lazy seed's skipDuplicates race-safe now that names are NULL
+  @@unique([tenantId, projectId, seedKey]) // one of each default per project (the lazy seed's race is the `work_states:` key's since slice 123)
   @@unique([tenantId, projectId, rank])
   @@unique([tenantId, id]) // composite-FK target (WorkItem.stateId)
   @@index([tenantId, projectId, category])
@@ -2932,8 +2932,9 @@ model Label {
   tenantId  String   @map("tenant_id")
   projectId String?  @map("project_id") // NULL = tenant-wide
   name      String
-  color     String?
+  color     String? // a palette TOKEN NAME (`src/lib/label-colors.ts`) or NULL — the `label_color_token` CHECK (20261027090000)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6) // the board's freshness token sees a rename (20261027100000)
 
   tenant    Tenant          @relation(fields: [tenantId], references: [id])
   project   Project?        @relation(fields: [tenantId, projectId], references: [tenantId, id])

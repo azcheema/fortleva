@@ -288,6 +288,33 @@ export async function lockProjectRanks(tx: TenantDb, projectId: string): Promise
 }
 
 /**
+ * THE PROJECT'S STAGE KEY (slice 123, C99 (a) — design doc §6): the
+ * mutex of the stage editors (`stage-editor.ts`) and of a project's FIRST
+ * seed (`ensureProjectStates`, which takes it only when the project has no
+ * states and counts again under it). It is what keeps a set rule — "every
+ * kind but Backlog keeps a stage", "one default" — true when two members
+ * edit at once: each check-then-write runs alone.
+ *
+ * ITS PLACE IN THE ORDER — FIRST: this key → the task counter → the rank
+ * queue → row locks. An editor takes it before anything else; a stage
+ * REMOVAL then takes the rank queue (it writes many task rows), the
+ * removed stage's row and the stage's tasks, in that order. No task writer
+ * ever takes this key, so a removal waiting on a task a writer holds never
+ * closes a cycle. THE RULE THAT KEEPS IT SO: never call
+ * `ensureProjectStates` (which takes this key on a FIRST seed) after
+ * `lockProjectRanks` or `lockCounter` — every caller seeds before both
+ * (`createItem`, `createRequest`, `importBatch`, `listItems`, the
+ * editors); a seed under the queue, against a removal holding this key and
+ * waiting for the queue, would be the cycle (the code review's LOW, which
+ * caught this comment saying otherwise). Same single 64-bit key space as
+ * `work_rank:` (see below — a collision serialises two unrelated waiters,
+ * nothing more).
+ */
+export async function lockProjectStages(tx: TenantDb, projectId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`work_states:${projectId}`}))`;
+}
+
+/**
  * THE PORTAL INTAKE'S BUDGET LOCK, and the database's own clock with it
  * (Phase 3 slice 6a).
  *

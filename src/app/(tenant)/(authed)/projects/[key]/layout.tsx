@@ -99,7 +99,8 @@ export default async function ProjectLayout({
 
   const tabs = [
     { href: base, label: t("tabs.overview"), exact: true },
-    { href: `${base}/board`, label: t("tabs.board") },
+    // Slice 123: the project's Stages page is a Board sub-view (its "Edit stages").
+    { href: `${base}/board`, label: t("tabs.board"), also: [`${base}/stages`] },
     // A single item's page is a Backlog sub-view, the way /money is a
     // sub-view of Time: the backlog is the project's full list of items
     // (archived ones included), and an item page reached from search or

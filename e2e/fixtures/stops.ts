@@ -208,6 +208,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // its switch on.
     { name: "project-overview", path: project },
     { name: "project-board", path: `${project}/board` },
+    // Slice 123 (C99 (a)): the project's own stages, reached from the
+    // board's "Edit stages" — the seeded set, untouched (`stages.spec.ts`
+    // edits a project of its own in the second workspace).
+    { name: "project-stages", path: `${project}/stages` },
     {
       // Phase 3 slice 73: the column "+" with "Client can see" picked — the
       // select in its warm fill and the sentence that says who will see the
@@ -383,6 +387,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     },
     { name: "settings-roles", path: "/settings/roles" },
     { name: "settings-preferences", path: "/settings/preferences" },
+    // Slice 123 (C99): the workspace's default stages (Fortleva's original
+    // set in the fixture) and its labels.
+    { name: "settings-stages", path: "/settings/stages" },
+    { name: "settings-labels", path: "/settings/labels" },
     // 2T: bill cards + the ✦ cost section in its "confirm two-factor"
     // state (the fixture owner has no factor); notice status + work types.
     { name: "settings-rates", path: "/settings/rates" },

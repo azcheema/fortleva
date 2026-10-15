@@ -361,6 +361,13 @@ export async function importBatch(
           });
           if (!probe) deny("NOT_FOUND");
           await assertInScope(tx, ctx.actor, { projectId: probe!.projectId });
+          // THE STAGES BEFORE THE COUNTER (slice 123): a FIRST seed takes the
+          // project's `work_states:` key, which a stage editor holds while it
+          // waits for the rank queue (rank-lock.ts) — so the seed must come
+          // before this batch holds the queue. In practice the Import page's
+          // read has seeded long before, and this is a count; the order is
+          // what makes it safe rather than merely unreached.
+          await ensureProjectStates(tx, ctx.tenantId, probe!.projectId);
           // THE COUNTER BEFORE THE QUEUE — the order `createItem` and a
           // portal request take the two (rank-lock.ts, THE ONE ORDER). Taken
           // after the queue, a batch holding the queue while a member's
@@ -533,8 +540,11 @@ async function resolveLabels(
     .sort();
   if (fresh.length > 0 && (await isAuthorized(tx, ctx.actor, "label:manage"))) {
     // `skipDuplicates` is ON CONFLICT DO NOTHING, which covers the partial
-    // `label_tenant_wide_name_key` on lower(name): a colleague's label made
-    // meanwhile is not an error, it is simply found by the re-read below.
+    // unique index on lower(name): a colleague's label made meanwhile is not
+    // an error, it is simply found by the re-read below. (The index is not
+    // NAMED here on purpose: outside production Prisma copies the lines
+    // above a failing call into its message, and `mapDbError` would then
+    // read any error from this call as that index's — the fix review's NIT.)
     const made = await tx.label.createManyAndReturn({
       data: fresh.map((name) => ({ tenantId: ctx.tenantId, projectId: null, name })),
       skipDuplicates: true,

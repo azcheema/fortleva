@@ -7,10 +7,11 @@ import type { StateSeedKey } from "./enum-map";
  * The rule, and it is one line: a state still wearing its seeded default
  * has a NULL `name` and renders through i18n **in the viewer's
  * language**; a state with a name renders that name, verbatim, forever.
- * Writing a name IS the rename. "Renamed ⇒ tenant text" is enforced by
- * the WRITE PATH rather than by the schema: nothing writes a name except
- * a rename, but `SET name = NULL` would put a state back into
- * translate-mode, so the future state editor must refuse to clear one.
+ * Writing a name IS the rename. "Renamed ⇒ tenant text" is held by the
+ * state editor (slice 123, which never writes NULL) AND, since then, by
+ * the database: `workflow_state_name_one_way` (20261027090000) refuses
+ * `SET name = NULL` on a renamed state, which would otherwise put it back
+ * into translate-mode.
  *
  * Why this is a plain function taking a translator, rather than
  * something the work service does: nothing under `src/modules` imports

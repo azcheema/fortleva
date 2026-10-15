@@ -7,6 +7,7 @@ import { retryOnDeadlock } from "@/lib/retry";
 import { portalGatesFor, portalModuleVerdict, portalPrincipalVerdict } from "@/portal";
 
 import { writeActivity } from "./activity";
+import { guarded } from "./db-errors";
 import { loadItemInScope, type ItemRow } from "./rows";
 import { TRIAGE_REASON_MAX, TRIAGE_SNOOZE_MAX_DAYS, type TriageVerb } from "./triage-limits";
 import {
@@ -209,7 +210,9 @@ export async function triageItem(
   // path has no "should not happen" branch.
   const parsed = parseInput(input);
 
-  const outcome = await retryOnDeadlock(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+  // `guarded` OUTSIDE the retry (slice 123): the retry sees the raw
+  // deadlock it retries; a stage removed while this waited is `STAGE_GONE`.
+  const outcome = await guarded(() => retryOnDeadlock(() => withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:triage");
     const item = await loadItemInScope(tx, ctx, itemId);
 
@@ -387,7 +390,7 @@ export async function triageItem(
       state,
       clientSees,
     };
-  }));
+  })));
 
   // TERM 5, AFTER THE COMMIT AND ONLY WHEN THE OTHER FOUR SAID YES. The
   // module gates are a system-principal round trip of their own

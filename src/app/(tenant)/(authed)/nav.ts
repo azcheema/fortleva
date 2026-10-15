@@ -33,6 +33,8 @@ export type NavIcon =
   | "updateSettings"
   | "invoiceSettings"
   | "contractSettings"
+  | "stageSettings"
+  | "labelSettings"
   | "export"
   | "design"
   | "account";
@@ -64,6 +66,8 @@ export type NavEntry = {
     | "updateSettings"
     | "invoiceSettings"
     | "contractSettings"
+    | "stageSettings"
+    | "labelSettings"
     | "export"
     | "design"
     | "account";
@@ -211,6 +215,22 @@ export const NAV: readonly NavEntry[] = [
         href: "/settings/preferences",
         icon: "preferences",
         permission: "settings:view",
+      },
+      // Slice 123 (C99): the workspace's default stages and its labels —
+      // each on the code its page asks, so the entry and the page agree.
+      {
+        id: "stageSettings",
+        labelKey: "stageSettings",
+        href: "/settings/stages",
+        icon: "stageSettings",
+        permission: "workflow:manage",
+      },
+      {
+        id: "labelSettings",
+        labelKey: "labelSettings",
+        href: "/settings/labels",
+        icon: "labelSettings",
+        permission: "label:manage",
       },
       // 2T (UI.md §3.1 "Settings"): bill-rate cards need rate:view_bill;
       // the time-tracking page (staff notice, work types) is a settings page.

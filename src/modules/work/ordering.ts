@@ -5,6 +5,7 @@ import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail, isDeadlock, isUniqueViolation } from "@/lib/domain-error";
 import { RANK_REBALANCE_LENGTH, rankBetween, ranksBetween } from "@/lib/rank";
+import { guarded } from "./db-errors";
 import { lockLiveRow, lockPredecessor, lockProjectRanks, lockSuccessor } from "./rank-lock";
 import { loadItemInScope } from "./rows";
 import { principalOf, transitionState, type WorkCtx } from "./states";
@@ -83,7 +84,12 @@ export type MovedItem = {
  * disposition 2026-08-21); the state leg audits as every state change.
  */
 export async function moveItem(ctx: WorkCtx, input: MoveInput): Promise<MovedItem> {
-  return retryOnRankCollision(() =>
+  // `guarded` OUTSIDE the retry (slice 123): the retry sees the raw
+  // collision it retries; only what escapes it is mapped. A BELT here: a
+  // drop takes the rank queue before it reads its target stage, and a stage
+  // removal holds that queue, so the drop reads after the removal committed
+  // (NOT_FOUND) or finishes first — `STAGE_GONE` is for the unqueued writers.
+  return guarded(() => retryOnRankCollision(() =>
     withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
       await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
       // THE ONE ORDER of a queued writer (rank-lock.ts): an unlocked probe
@@ -157,7 +163,7 @@ export async function moveItem(ctx: WorkCtx, input: MoveInput): Promise<MovedIte
       });
       return { ...after, rebalanced };
     }),
-  );
+  ));
 }
 
 /**

@@ -837,13 +837,20 @@ describe("stage names follow the viewer's language until renamed (§6.14, 2026-0
   });
 
   it("a rename is a ONE-WAY DOOR: writing a name makes the state tenant text, and re-seeding never undoes it", async () => {
-    const todo = await f.platform.workflowState.findFirstOrThrow({
-      where: { tenantId: f.tenantId, projectId, seedKey: "TODO" },
+    // A THROWAWAY project, not the shared fixture's: since slice 123 the
+    // database refuses to put a name back to NULL
+    // (`workflow_state_name_one_way`), so a rename cannot be undone in a
+    // `finally` — and the shared project's states must stay unnamed for
+    // the tests below.
+    const oneWay = randomUUID();
+    await f.platform.project.create({
+      data: { id: oneWay, tenantId: f.tenantId, clientId, key: "ONEWAY", name: "One way" },
     });
-    // finally, not a trailing statement: this renames a state on the
-    // SHARED fixture project, and a failure below would leave it named
-    // for every later test in this file.
     try {
+      await listItems(ownerCtx(), oneWay);
+      const todo = await f.platform.workflowState.findFirstOrThrow({
+        where: { tenantId: f.tenantId, projectId: oneWay, seedKey: "TODO" },
+      });
       await f.platform.workflowState.update({
         where: { id: todo.id },
         data: { name: "Redo att göra" },
@@ -851,12 +858,21 @@ describe("stage names follow the viewer's language until renamed (§6.14, 2026-0
 
       // ensureProjectStates runs on every work read; it must not resurrect
       // the default over a name the tenant chose.
-      await listItems(ownerCtx(), projectId);
+      await listItems(ownerCtx(), oneWay);
       const after = await f.platform.workflowState.findUniqueOrThrow({ where: { id: todo.id } });
       expect(after.name).toBe("Redo att göra");
       expect(after.seedKey).toBe("TODO"); // identity survives the rename
+
+      // ...and the door is the DATABASE's, not only the editor's. Read off
+      // `meta`, never `message`: outside production Prisma prints the
+      // caller's source lines into the message, this one's token included.
+      const refused = await f.platform.workflowState
+        .update({ where: { id: todo.id }, data: { name: null } })
+        .then(() => null, (e: unknown) => e);
+      expect(JSON.stringify((refused as { meta?: unknown } | null)?.meta ?? null)).toContain("WORKFLOW_STATE_NAME_ONE_WAY");
     } finally {
-      await f.platform.workflowState.update({ where: { id: todo.id }, data: { name: null } });
+      await f.platform.workflowState.deleteMany({ where: { tenantId: f.tenantId, projectId: oneWay } });
+      await f.platform.project.deleteMany({ where: { tenantId: f.tenantId, id: oneWay } });
     }
   });
 
@@ -1166,6 +1182,7 @@ describe("listItems — the caps the board and the backlog gate on", () => {
       canDelete: true,
       canApprove: true,
       canEndRequest: true,
+      canManageStages: true,
     });
     // C M A for visibility and approval, C M for delete, and neither
     // triage code (C M E / C M).
@@ -1176,6 +1193,7 @@ describe("listItems — the caps the board and the backlog gate on", () => {
       canDelete: false,
       canApprove: true,
       canEndRequest: false,
+      canManageStages: true,
     });
     // The employee edits the work and holds none of the rest — and cannot
     // END a client's request, which is the founder's C29 split (a delivery
@@ -1187,6 +1205,7 @@ describe("listItems — the caps the board and the backlog gate on", () => {
       canDelete: false,
       canApprove: false,
       canEndRequest: false,
+      canManageStages: false,
     });
   });
 
@@ -1261,6 +1280,7 @@ describe("listItems — the caps the board and the backlog gate on", () => {
         canDelete: false,
         canApprove: false,
         canEndRequest: false,
+        canManageStages: true,
       });
     } finally {
       // Put back EXACTLY as found, row by row.

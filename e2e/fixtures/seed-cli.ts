@@ -230,6 +230,8 @@ const DBTEST_PREFIXES = [
   // `setupTenant("frun")`.
   "imp-",
   "frun-",
+  // Slice 123, the stage editors — `src/modules/work/stages.dbtest.ts`, `setupTenant("stg")`.
+  "stg-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -2826,6 +2828,22 @@ async function importWorkspace(tenantId: string): Promise<void> {
   }
 }
 
+/**
+ * The workspace's default stages back to Fortleva's original set (slice 123,
+ * `stages.spec.ts`'s afterAll): a failed run must not leave a custom default
+ * behind for `import.spec.ts`, whose fresh projects in the same workspace copy
+ * it and map the file's statuses onto the stages by name.
+ */
+async function resetStagePreset(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("reset-stage-preset: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { count } = await db.workflowPreset.deleteMany({ where: { tenantId } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ removed: count })}\n`);
+}
+
 /** The getting-started list switched back ON in a throwaway workspace (`first-run.spec.ts`, so a retry starts as the first attempt did). */
 async function firstRunOn(tenantId: string): Promise<void> {
   if (!tenantId) throw new Error("first-run-on: a tenant id");
@@ -4279,6 +4297,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-invoice-details") return resetInvoiceDetails(argument!);
   if (command === "import-workspace") return importWorkspace(argument!);
   if (command === "first-run-on") return firstRunOn(argument!);
+  if (command === "reset-stage-preset") return resetStagePreset(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);

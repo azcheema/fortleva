@@ -1,4 +1,4 @@
-import { KanbanSquareIcon } from "lucide-react";
+import { Columns3Icon, KanbanSquareIcon } from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -117,33 +117,46 @@ export default async function ProjectBoardPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <nav aria-label={t("group.label")} className="flex flex-wrap items-center gap-1 text-sm">
-        <span className="eyebrow mr-1 text-muted-foreground">{t("group.label")}</span>
-        {GROUP_BYS.map((g) => {
-          const current = g === groupBy;
-          return (
-            <Button
-              key={g}
-              asChild
-              size="sm"
-              variant={current ? "secondary" : "ghost"}
-              className={cn(current && "font-semibold")}
-            >
-              <Link
-                href={workViewHref(base, query, {
-                  group: g === "none" ? null : g,
-                  item: null,
-                  error: null,
-                })}
-                aria-current={current ? "page" : undefined}
-                data-testid={`board-group-${g}`}
+      <div className="flex flex-wrap items-center gap-2">
+        <nav aria-label={t("group.label")} className="flex flex-wrap items-center gap-1 text-sm">
+          <span className="eyebrow mr-1 text-muted-foreground">{t("group.label")}</span>
+          {GROUP_BYS.map((g) => {
+            const current = g === groupBy;
+            return (
+              <Button
+                key={g}
+                asChild
+                size="sm"
+                variant={current ? "secondary" : "ghost"}
+                className={cn(current && "font-semibold")}
               >
-                {t(`group.${g}`)}
-              </Link>
-            </Button>
-          );
-        })}
-      </nav>
+                <Link
+                  href={workViewHref(base, query, {
+                    group: g === "none" ? null : g,
+                    item: null,
+                    error: null,
+                  })}
+                  aria-current={current ? "page" : undefined}
+                  data-testid={`board-group-${g}`}
+                >
+                  {t(`group.${g}`)}
+                </Link>
+              </Button>
+            );
+          })}
+        </nav>
+        {data.caps.canManageStages ? (
+          // Slice 123 (C99 (a)): this project's own stages. A plain link at
+          // the end of the toolbar — the columns ARE the stages, so this is
+          // where a member looks for it.
+          <Button asChild size="sm" variant="ghost" className="ml-auto">
+            <Link href={`/projects/${project.key}/stages`} data-testid="board-edit-stages">
+              <Columns3Icon />
+              {t("editStages")}
+            </Link>
+          </Button>
+        ) : null}
+      </div>
       <Board
         projectId={project.id}
         projectKey={project.key}

@@ -315,6 +315,11 @@ export async function importWorkspace(tenantId: string): Promise<{ projectKey: s
   return runCli<{ projectKey: string; projectName: string }>(["import-workspace", tenantId]);
 }
 
+/** The workspace's default stages put back to Fortleva's original set (slice 123, `stages.spec.ts`). */
+export async function resetStagePreset(tenantId: string): Promise<{ removed: number }> {
+  return runCli<{ removed: number }>(["reset-stage-preset", tenantId]);
+}
+
 /** One run of the nightly send for that workspace, against the fake Fortnox (slice 114b). */
 export async function runFortnoxNight(tenantId: string): Promise<{ skipped: string | null; booked: number; files: number; stopped: string | null }> {
   return runCli<{ skipped: string | null; booked: number; files: number; stopped: string | null }>(["run-fortnox-night", tenantId]);

@@ -51,6 +51,31 @@ export const { mapDbError, guarded } = dbErrorMapper([
   // second two tenant-wide labels named alike were both accepted.
   ["label_tenant_id_project_id_name_key", "LABEL_TAKEN"],
   ["label_tenant_wide_name_key", "LABEL_TAKEN"],
+  // Slice 123 (the stage editors, the labels page). A task moved into a
+  // stage, or given a label, that a colleague removed or merged in the
+  // same moment: the editor holds the row's lock, the mover waits on its
+  // foreign-key check and then finds it gone — a sentence, not a stack.
+  // The stage name and one-default indexes are belts under the editors'
+  // `work_states:` mutex (rank-lock.ts), so a raise is a race worth a
+  // sentence too.
+  ["work_item_tenant_id_state_id_fkey", "STAGE_GONE"],
+  // ...and more often the BEFORE trigger `work_item_state_sync`
+  // (20260820170000), which reads the stage first: a create or a move that
+  // read its stage before a removal committed, then wrote after it, finds
+  // the stage gone there rather than at the key (the fix review's LOW). The
+  // services pre-check every stage they are handed against the item's
+  // project, so reaching this message means the stage vanished meanwhile.
+  ["state does not belong to the item", "STAGE_GONE"],
+  ["work_item_label_tenant_id_label_id_fkey", "LABEL_GONE"],
+  ["workflow_state_tenant_id_project_id_name_key", "STAGE_NAME_TAKEN"],
+  // The ignoring-case one decides with Postgres's `lower()`, which the
+  // service's JavaScript fold does not always match — a pair only the
+  // database calls alike reaches it (both reviews' LOW).
+  ["workflow_state_name_ci_key", "STAGE_NAME_TAKEN"],
+  ["workflow_state_one_default", "STAGE_BUSY"],
+  // The start-here stage is never gated (20261027110000) — the services
+  // refuse first; this is the belt.
+  ["workflow_state_default_ungated", "STAGE_DEFAULT_GATED"],
   // project_update_immutable / project_update_no_delete_published
   // (20260925200000): every service in `updates.ts` checks the status
   // and the retraction clock before it writes, so a raise here is the

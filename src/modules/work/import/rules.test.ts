@@ -41,6 +41,20 @@ describe("importRowSchema", () => {
     expect(importRowSchema.safeParse({ ...ROW, checklists: [{ name: null, items: many }] }).success).toBe(false);
   });
 
+  it("folds a label name to one clean line, and drops one with nothing visible in it (slice 123)", () => {
+    const zwsp = String.fromCharCode(0x200b);
+    const rlo = String.fromCharCode(0x202e);
+    const row = importRowSchema.parse({
+      ...ROW,
+      labels: ["Bug\tfix", `Bug ${zwsp} fix`, `${rlo}Urgent`, `${zwsp}${zwsp}`, "   "],
+    });
+    // A tab is a space; a zero-width character leaves no double space (it
+    // would look exactly like "Bug fix"); a bidi override is gone; a name
+    // that was only invisible characters, or blank, is dropped — the batch
+    // is not refused for one stray cell.
+    expect(row.labels).toEqual(["Bug fix", "Bug fix", "Urgent"]);
+  });
+
   it(`takes 1–${IMPORT_BATCH_ROWS} rows a batch`, () => {
     expect(importBatchSchema.safeParse([]).success).toBe(false);
     expect(importBatchSchema.safeParse(Array.from({ length: IMPORT_BATCH_ROWS + 1 }, () => ROW)).success).toBe(false);

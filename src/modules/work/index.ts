@@ -132,15 +132,43 @@ export {
 } from "./comments";
 export { descriptionToken } from "./description-token";
 // The writers; `readItemLabels` stays off the barrel for the same reason (labels.ts).
+// Slice 123's labels page adds four writers, all under `label:manage`; its
+// READ (`listWorkspaceLabels`) stays off the barrel with the module's other
+// reads, for the same reason — the Settings page imports it from labels.ts.
 export {
   createLabel,
+  deleteLabel,
+  mergeLabel,
+  renameLabel,
   setItemLabel,
+  setLabelColor,
   type ItemLabels,
   type LabelCreated,
   type LabelEntry,
   type LabelVerb,
   type LabelsCommitted,
 } from "./labels";
+// Slice 123's stage editors (C99 (a)): the workspace default and a project's own.
+export {
+  addProjectStage,
+  addWorkspaceStage,
+  getProjectStages,
+  getWorkspaceStages,
+  moveProjectStage,
+  moveWorkspaceStage,
+  removeProjectStage,
+  removeWorkspaceStage,
+  renameProjectStage,
+  renameWorkspaceStage,
+  restoreWorkspaceStages,
+  setProjectDefaultStage,
+  setProjectStageApproval,
+  setWorkspaceDefaultStage,
+  setWorkspaceStageApproval,
+  type ProjectStageRow,
+  type WorkspaceStages,
+} from "./stage-editor";
+export type { PresetStage } from "./stage-preset";
 // Phase 3 — the portal projections (reads only; the brokered writes are
 // below). Exported from the barrel because the portal PAGES are the
 // callers and ARC-16 routes every cross-boundary import through here.

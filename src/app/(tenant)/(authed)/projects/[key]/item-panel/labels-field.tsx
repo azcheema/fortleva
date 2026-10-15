@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { PropertyPicker, type PickerOption } from "@/components/semantic";
 import { useScopeKeys } from "@/components/shell/use-hotkeys";
 import { Badge } from "@/components/ui/badge";
+import { LabelDot } from "@/components/work-view/label-dot";
 import { MAX_LABEL_NAME_LENGTH, compareLabelNames, labelNameKey, panelSurfaceOf } from "@/lib/work-view";
 import type { LabelEntry, LabelVerb } from "@/modules/work";
 
@@ -139,9 +140,11 @@ export function LabelsField({
 
   const chips = (labels: readonly LabelEntry[]) =>
     labels.map((l) => (
-      // Neutral, deliberately: `color` is a token name nothing writes yet,
-      // and a chip is identity, never status (§10.4) — the name carries it.
+      // Neutral, deliberately: a chip is identity, never status (§10.4) —
+      // the name carries it, and a label's colour (slice 123) is a dot
+      // inside the outline chip, never a fill.
       <Badge key={l.id} variant="outline" data-label={l.id}>
+        <LabelDot color={l.color} />
         {l.name}
       </Badge>
     ));
@@ -168,7 +171,8 @@ export function LabelsField({
   const options: PickerOption<string>[] = rows.map((l, i) => ({
     value: l.id,
     label: l.name,
-    icon: tagIcon,
+    // A coloured label's row wears its dot (slice 123); the rest the tag.
+    icon: l.color ? <LabelDot color={l.color} /> : tagIcon,
     // A label whose create is still in flight is a row (checked, and so
     // the typed row does not offer to coin it twice) but not a target:
     // its id is provisional, and a pick would post it as a label id.

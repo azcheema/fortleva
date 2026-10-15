@@ -106,8 +106,15 @@ const CLIENT_DIRECTIVE = directive("client");
  */
 const SERVER_DIRECTIVE = directive("server");
 
-const isServerBoundary = (file: string): boolean =>
-  SERVER_DIRECTIVE.test(readFileSync(file, "utf8"));
+/** Read once per file, like the refs below — every walk asks it of every file it reaches. */
+const boundaryCache = new Map<string, boolean>();
+const isServerBoundary = (file: string): boolean => {
+  const cached = boundaryCache.get(file);
+  if (cached !== undefined) return cached;
+  const answer = SERVER_DIRECTIVE.test(readFileSync(file, "utf8"));
+  boundaryCache.set(file, answer);
+  return answer;
+};
 
 const isTest = (path: string): boolean => /\.(test|dbtest)\.[cm]?[jt]sx?$/.test(path);
 
@@ -246,15 +253,36 @@ describe("the database seam never reaches a browser module", () => {
  * same walk, asked for a `node:` specifier anywhere in a client module's
  * graph, finds that in seconds instead of minutes into a build.
  */
+/**
+ * The first `node:` specifier a file imports for a value, or null — parsed
+ * ONCE per file. It was re-parsed for every client entry whose walk
+ * reached it, which put this test past its 30 s budget under the full
+ * suite's load once slice 123 added three client modules (14.3 s alone
+ * against 12.8 s on `main`; 31 s in the suite).
+ */
+const builtinCache = new Map<string, string | null>();
+const nodeBuiltinOf = (file: string): string | null => {
+  const cached = builtinCache.get(file);
+  if (cached !== undefined) return cached;
+  let found: string | null = null;
+  for (const ref of moduleRefsOf(readFileSync(file, "utf8"), file)) {
+    if (!ref.bindsValue || ref.computed) continue;
+    if (ref.specifier.startsWith("node:")) {
+      found = ref.specifier;
+      break;
+    }
+  }
+  builtinCache.set(file, found);
+  return found;
+};
+
 const nodeBuiltinPath = (entry: string): string[] | null => {
   const seen = new Set<string>([entry]);
   const queue: { file: string; trail: string[] }[] = [{ file: entry, trail: [rel(entry)] }];
   while (queue.length > 0) {
     const { file, trail } = queue.shift()!;
-    for (const ref of moduleRefsOf(readFileSync(file, "utf8"), file)) {
-      if (!ref.bindsValue || ref.computed) continue;
-      if (ref.specifier.startsWith("node:")) return [...trail, ref.specifier];
-    }
+    const builtin = nodeBuiltinOf(file);
+    if (builtin) return [...trail, builtin];
     for (const next of valueImportsOf(file)) {
       if (seen.has(next)) continue;
       seen.add(next);

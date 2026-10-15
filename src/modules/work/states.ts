@@ -5,8 +5,12 @@ import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
 import { ranksBetween } from "@/lib/rank";
+import { TRIAGE_STAGE } from "@/lib/stage-rules";
 import { writeActivity } from "./activity";
+import { guarded } from "./db-errors";
+import { lockProjectStages } from "./rank-lock";
 import { loadItemInScope } from "./rows";
+import { readWorkspaceStages } from "./stage-preset";
 
 /**
  * Workflow states (DATA_MODEL §6.14): tenant-named states inside fixed
@@ -25,33 +29,32 @@ export type WorkCtx = { readonly tenantId: string; readonly actor: MemberActor }
 /** The `withTenant` principal a work service opens its transaction under — ONE builder for the module (the time module's `ctx.ts` rule). */
 export const principalOf = (ctx: WorkCtx) => ({ type: "member", id: ctx.actor.memberId }) as const;
 
-// "In review" is a tenant-named state in the IN_PROGRESS category (the
-// category set is pinned closed; the portal reads categories only —
-// exactly ADO's mapping of In Review). Done carries the approval gate:
-// entering it needs work_item:approve on top of work_item:edit (2W-R).
-//
-// Seeded states are created with **no name at all** (2026-09-01): a NULL
-// name means "still wearing its default", so the UI renders `seedKey`
-// through i18n in the VIEWER's language — an English account no longer
-// reads a Swedish tenant's board in Swedish. The first rename writes a
-// name and the state becomes plain tenant text forever, which is why
-// this file no longer needs Tenant.defaultLocale: there is no seed-time
-// language left to choose. Existing projects are untouched; their names
-// are already non-NULL and therefore already tenant text.
-const DEFAULT_STATE_SHAPE = [
-  { seedKey: "BACKLOG", category: "BACKLOG", isDefault: false, isHidden: false, requiresApproval: false },
-  { seedKey: "TODO", category: "TODO", isDefault: true, isHidden: false, requiresApproval: false },
-  { seedKey: "IN_PROGRESS", category: "IN_PROGRESS", isDefault: false, isHidden: false, requiresApproval: false },
-  { seedKey: "IN_REVIEW", category: "IN_PROGRESS", isDefault: false, isHidden: false, requiresApproval: false },
-  { seedKey: "DONE", category: "DONE", isDefault: false, isHidden: false, requiresApproval: true },
-  { seedKey: "CANCELLED", category: "CANCELLED", isDefault: false, isHidden: false, requiresApproval: false },
-  { seedKey: "TRIAGE", category: "TRIAGE", isDefault: false, isHidden: true, requiresApproval: false }, // shown only when it has items
-] as const;
-
-/** Idempotent + race-safe: `skipDuplicates` dedupes on the (tenant,
- * project, seedKey) unique. It relied on the NAME unique until
- * 2026-09-01, which stopped working the day seeded names became NULL —
- * NULLs do not collide. The deterministic rank unique is the second net. */
+/**
+ * Idempotent + race-safe — and since slice 123 by the KEY below, not by
+ * `skipDuplicates`. Two concurrent first seeds used to collapse into one
+ * set on the uniques; the second now waits on the key, counts again and
+ * finds the first's rows. The insert takes no `skipDuplicates` any more on
+ * purpose: under the key nothing can clash, so a clash is a bug, and a
+ * skip would have hidden it as a project silently missing a stage (the
+ * migration review's nit — `ON CONFLICT DO NOTHING` also skips a row the
+ * one-default index refuses).
+ *
+ * WHAT IT SEEDS (slice 123, C99 (a)): the WORKSPACE'S DEFAULT SET when it
+ * has one (`stage-preset.ts`, Settings → Stages), else Fortleva's
+ * built-in set — and TRIAGE last, always. Read only when the project has
+ * no states, so a project keeps its stages whatever the default later
+ * becomes; a project never opened since it was made copies the default
+ * as it is when it is first opened.
+ *
+ * THE FIRST SEED TAKES THE PROJECT'S `work_states:` KEY and counts again
+ * under it (rank-lock.ts), which the uniques alone could not settle once
+ * the set became the workspace's: two first seeds reading two different
+ * defaults either side of an edit would have written a mixture. The key is
+ * taken only when the count is zero, so an ordinary work read never waits
+ * on a stage editor. A caller that holds the counter or the rank queue
+ * must call this BEFORE taking them (the import batch does — rank-lock.ts
+ * has the order).
+ */
 export async function ensureProjectStates(
   tx: TenantDb,
   tenantId: string,
@@ -59,24 +62,24 @@ export async function ensureProjectStates(
 ): Promise<void> {
   const existing = await tx.workflowState.count({ where: { tenantId, projectId } });
   if (existing > 0) return;
-  const ranks = ranksBetween(null, null, DEFAULT_STATE_SHAPE.length);
+  await lockProjectStages(tx, projectId);
+  if ((await tx.workflowState.count({ where: { tenantId, projectId } })) > 0) return;
+  const shape = [...(await readWorkspaceStages(tx, tenantId)).stages, TRIAGE_STAGE];
+  const ranks = ranksBetween(null, null, shape.length);
   await tx.workflowState.createMany({
-    // `skipDuplicates` deduped on the (tenant, project, NAME) unique
-    // until names became NULL — and NULLs do not collide. The
-    // (tenant, project, SEED_KEY) unique added with this column is what
-    // keeps two concurrent lazy seeds from writing fourteen states.
-    data: DEFAULT_STATE_SHAPE.map((s, i) => ({
+    data: shape.map((s, i) => ({
       tenantId,
       projectId,
-      name: null,
+      // A seeded default keeps NULL — still the viewer's language until a
+      // rename; a workspace's own stage carries the name it was given.
+      name: "name" in s ? s.name : null,
       seedKey: s.seedKey,
       category: s.category,
       rank: ranks[i]!,
       isDefault: s.isDefault,
-      isHidden: s.isHidden,
+      isHidden: s.category === "TRIAGE",
       requiresApproval: s.requiresApproval,
     })),
-    skipDuplicates: true,
   });
 }
 
@@ -433,7 +436,9 @@ export async function changeState(
   itemId: string,
   stateId: string,
 ): Promise<StateChange> {
-  return withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
+  // `guarded` since slice 123: a stage removed while this waited on its
+  // foreign-key check is a sentence (`STAGE_GONE`), not a raw error.
+  return guarded(() => withTenant(ctx.tenantId, { type: "member", id: ctx.actor.memberId }, async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
     // LOCKED, then read, then scope (rows.ts — updateItemFields' fix, for
     // the same race; review 2026-09-13). Read unlocked, a pick that waited
@@ -462,5 +467,5 @@ export async function changeState(
     });
     if (!state) deny("NOT_FOUND");
     return transitionState(tx, ctx, item, state!);
-  });
+  }));
 }

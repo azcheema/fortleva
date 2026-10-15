@@ -207,6 +207,8 @@ export type ItemList = {
      * refused.
      */
     canEndRequest: boolean;
+    /** `workflow:manage` — the board's "Edit stages" link (slice 123). */
+    canManageStages: boolean;
   };
 };
 
@@ -363,6 +365,7 @@ export async function listItems(
           // C29b's verb, and BOTH of its codes (see `canEndRequest`).
           "work_item:triage",
           "work_item:triage_decline",
+          "workflow:manage",
         ]),
       ]);
 
@@ -434,6 +437,7 @@ export async function listItems(
         canDelete: held.has("work_item:delete"),
         canApprove: held.has("work_item:approve"),
         canEndRequest: held.has("work_item:triage") && held.has("work_item:triage_decline"),
+        canManageStages: held.has("workflow:manage"),
       },
     };
   });
@@ -2017,9 +2021,12 @@ export async function projectWorkVersion(ctx: WorkCtx, projectId: string): Promi
         _max: { updatedAt: true },
         _count: { _all: true },
       }),
+      // The COUNT since slice 123: removing an empty stage changes no task
+      // and leaves the others' `updated_at` alone, so the max alone missed it.
       tx.workflowState.aggregate({
         where: { tenantId: ctx.tenantId, projectId },
         _max: { updatedAt: true },
+        _count: { _all: true },
       }),
       // LABELS ARE THE FIRST THING ON A CARD THAT LIVES OUTSIDE `work_item`
       // (2026-09-16, labels on the card and the row). A toggle inserts or
@@ -2030,17 +2037,26 @@ export async function projectWorkVersion(ctx: WorkCtx, projectId: string): Promi
       // every remove (a smaller count), including an add and a remove in
       // one poll interval. Read-side only, on purpose: touching
       // `work_item.updated_at` instead would fire every work_item trigger
-      // (the search feed among them) for a routine edit. Not seen: a label
-      // RENAME — nothing can rename one yet; the settings surface that adds
-      // it must add `label.updated_at` here too.
+      // (the search feed among them) for a routine edit. A label RENAME or
+      // recolour (slice 123's labels page) is the read below.
       tx.workItemLabel.aggregate({
         where: { tenantId: ctx.tenantId, workItem: { projectId } },
         _max: { createdAt: true },
         _count: { _all: true },
       }),
     ]);
+    // THE WORKSPACE'S LABELS' newest change (slice 123, 20261027100000): a
+    // rename or a colour touches no task and no join row, so the pair above
+    // cannot see it. Tenant-wide — a rename anywhere refreshes every open
+    // board once, which is cheap and never wrong. IN SEQUENCE, after the
+    // batch, never a fourth leg: a Promise.all on an interactive
+    // transaction is not safe to grow (AGENTS.md).
+    const vocabulary = await tx.label.aggregate({
+      where: { tenantId: ctx.tenantId },
+      _max: { updatedAt: true },
+    });
     const stamp = (d: Date | null) => (d ? d.getTime().toString(36) : "0");
-    return `${stamp(items._max.updatedAt)}.${items._count._all}.${stamp(states._max.updatedAt)}.${stamp(labels._max.createdAt)}.${labels._count._all}`;
+    return `${stamp(items._max.updatedAt)}.${items._count._all}.${stamp(states._max.updatedAt)}.${states._count._all}.${stamp(labels._max.createdAt)}.${labels._count._all}.${stamp(vocabulary._max.updatedAt)}`;
   });
 }
 

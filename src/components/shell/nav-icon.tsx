@@ -9,6 +9,7 @@ import {
   BellIcon,
   CalendarClockIcon,
   ChartColumnIcon,
+  Columns3Icon,
   InboxIcon,
   SearchIcon,
   KeyRoundIcon,
@@ -17,6 +18,7 @@ import {
   ReceiptTextIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
+  TagsIcon,
   TimerIcon,
   UserRoundIcon,
   UsersIcon,
@@ -56,6 +58,9 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   // Invoicing settings wear the invoices' glyph, as Time's settings wear Time's.
   invoiceSettings: ReceiptTextIcon,
   contractSettings: FileSignatureIcon,
+  // The board's columns ARE its stages; a label is a tag.
+  stageSettings: Columns3Icon,
+  labelSettings: TagsIcon,
   // A bell is "reach me", the inbox tray is "what reached me": two
   // concepts, two glyphs.
   notifications: BellIcon,

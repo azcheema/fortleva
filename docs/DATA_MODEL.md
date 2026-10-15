@@ -2879,19 +2879,37 @@ enum StateCategory {
 /// UNIQUE (tenantId, projectId, seedKey): one of each default per
 /// project — and it is also what keeps the lazy seed's `skipDuplicates`
 /// race-safe, since NULL names no longer collide.
-/// OPEN, for the future state editor: the `name` unique cannot see a
-/// clash between a RENAMED state and another state's untouched seed
-/// LABEL (one side is NULL), so a tenant could produce two columns
-/// reading "Done" for an English viewer. No rename UI exists today
-/// (`workflow:manage` has zero call sites); guard it in that slice.
-/// Copied from a WorkflowPreset at project creation; default preset =
+/// DECIDED in the state editor (slice 123, design doc §3.6): the `name`
+/// unique cannot see a clash between a RENAMED state and another state's
+/// untouched seed LABEL (one side is NULL), so a tenant can produce two
+/// columns reading "Done" for an English viewer — NOT refused: the member
+/// sees the twin and renames it. Stored names ARE unique ignoring case
+/// (`workflow_state_name_ci_key`, 20261027090000).
+/// THE STATE EDITOR (slice 123, C99 (a); the rules are
+/// `src/lib/stage-rules.ts`, the services `src/modules/work/stage-editor.ts`):
+/// a project's states are seeded LAZILY from the workspace's default set
+/// (`WorkflowPreset`, below) or, with none, Fortleva's built-in one =
 /// Backlog / To do / In progress / In review / Done / Cancelled + hidden
 /// Triage (2026-08-31, 2W-R: "In review" is an IN_PROGRESS-category
 /// state — the ADO mapping; the portal keeps seeing categories only).
-/// App invariants (states.ts): exactly one isDefault per project (the
-/// state new items land in), >= 1 DONE-category and >= 1 CANCELLED-
-/// category state, exactly one TRIAGE state. Deleting a state requires a
-/// target state for its items (same category or explicit remap).
+/// Each project then edits its own under `workflow:manage`: rename (one
+/// way), add (at the end of its kind), move (within its kind — the kinds
+/// stay in board order), remove (its tasks move to ANOTHER STATE OF THE
+/// SAME CATEGORY, one set UPDATE, each live task given an INTERNAL history
+/// row and a `work_item.state_changed` audit), "new tasks start here",
+/// "needs approval". TRIAGE is fixed, hidden and never editable.
+/// Invariants: every category but BACKLOG keeps >= 1 state (the last
+/// BACKLOG may go only when empty and not the default); exactly one
+/// isDefault per project, of category BACKLOG or TODO and NOT gated (services; the
+/// database holds AT MOST one — `workflow_state_one_default` — and its
+/// category — `workflow_state_default_kind`, load-bearing because create
+/// and import put a task straight into the default without the state
+/// machine); exactly one TRIAGE state; at most 20 others; a name is one
+/// line of <= 40 characters, never blank (`workflow_state_name_not_blank`)
+/// and never cleared once written (trigger `workflow_state_name_one_way`).
+/// The editors and a FIRST seed serialise on the project's advisory key
+/// `work_states:` (rank-lock.ts — taken before the counter and the rank
+/// queue; a removal then takes the queue and the removed state's row).
 /// APPROVAL GATE (2W-R): entering a `requiresApproval` state needs
 /// `work_item:approve` IN ADDITION to `work_item:edit`, enforced inside
 /// `transitionState` so every entry point (select, drag, picker,
@@ -2900,7 +2918,15 @@ enum StateCategory {
 /// CLASS A: the portal never joins this table — it reads
 /// WorkItem.stateCategory only (P10). Therefore no visibility column.
 /// SQL: `rank text COLLATE "C"`; trigger workflow_state_category_immutable
-///      (BEFORE UPDATE: NEW.category <> OLD.category ⇒ RAISE).
+///      (BEFORE UPDATE: NEW.category <> OLD.category ⇒ RAISE); slice 123
+///      (20261027090000): trigger workflow_state_name_one_way, CHECKs
+///      workflow_state_name_not_blank + workflow_state_default_kind,
+///      partial UNIQUEs workflow_state_one_default (WHERE is_default) and
+///      workflow_state_name_ci_key (lower(name) WHERE name IS NOT NULL);
+///      20261027110000: CHECK workflow_state_default_ungated (NOT
+///      (is_default AND requires_approval)) — where new tasks start is
+///      never gated, because create and import put a task straight into
+///      the default, past the state machine's approval check.
 /// scope=tenant  rls=A (principalScoped)  ret=R2  enc=none
 /// audit: workflow.changed
 model WorkflowState {
@@ -2912,7 +2938,7 @@ model WorkflowState {
   color            String?                          // hex, UI hint
   category         StateCategory                    // IMMUTABLE after insert (trigger)
   rank             String                           // text COLLATE "C" — column order on the board
-  isDefault        Boolean       @default(false)    // where new items land (exactly one per project)
+  isDefault        Boolean       @default(false)    // where new items land (exactly one per project; BACKLOG or TODO)
   isHidden         Boolean       @default(false)    // TRIAGE state hidden until it has items
   wipLimit         Int?                             // stored, enforced v1.5 (soft warning only in v1)
   requiresApproval Boolean       @default(false)    // 2W-R: entering needs work_item:approve on top of work_item:edit
@@ -2927,19 +2953,30 @@ model WorkflowState {
   @@index([tenantId, projectId, category])
 }
 
-/// WorkflowPreset — tenant-editable named state sets, copied into each
-/// new project. `states Json` = [{name, color, category, rank, isDefault}].
-/// The seed ships one preset per tenant ("Default", locale-aware names
-/// from Tenant.defaultLocale at provisioning; the NAMES are tenant text
-/// after that — never re-translated). Preference work.defaultPreset.
+/// WorkflowPreset — THE WORKSPACE'S DEFAULT STAGES (slice 123, C99 (a)):
+/// ONE row per tenant, `name = 'default'` (never shown), `isDefault`
+/// true, made on the first change on Settings → Stages and deleted by
+/// its "Restore the original stages". No row = Fortleva's built-in set.
+/// `states Json` = an ordered array of {key, name|null, seedKey|null,
+/// category, isDefault, requiresApproval} — NO Triage entry (it is
+/// appended last at copy time); `key` is the editor's address for an
+/// entry (`seed-<KEY>` for a built-in one, else a uuid); an untouched
+/// default keeps `name: null` + its seedKey, so a new project's board is
+/// still in each viewer's language. Read DEFENSIVELY on every use: zod
+/// plus the stage rules, anything invalid reads as the built-in set
+/// (`stage-preset.ts`). CHECK workflow_preset_states_is_array. Copied into
+/// a project only when that project has no states (`ensureProjectStates`),
+/// so an edit reaches NEW projects only. (The original plan — several
+/// named presets, a provisioning seed in the tenant's language, a
+/// `work.defaultPreset` preference — was not built.)
 /// scope=tenant  rls=A (principalScoped)  ret=R2  enc=none
 /// audit: workflow.changed
 model WorkflowPreset {
   id        String   @id @default(uuid(7))
   tenantId  String
   name      String
-  states    Json                                   // [{name, color, category, rank, isDefault}]
-  isDefault Boolean  @default(false)               // used when a project is created without a choice
+  states    Json                                   // [{key, name|null, seedKey|null, category, isDefault, requiresApproval}] — no TRIAGE
+  isDefault Boolean  @default(false)               // true on the one 'default' row
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
@@ -3282,7 +3319,21 @@ model WorkItemActivity {
 /// class A and carries no visibility. Planner's per-plan-label trap is
 /// avoided by making them tenant-wide with an optional project filter.
 /// scope=tenant  rls=A (principalScoped)  ret=R2  enc=none
-/// audit: label.created | label.deleted
+/// audit: label.created | label.renamed | label.color_changed | label.merged | label.deleted
+/// THE LABELS PAGE (slice 123, C99 (b) — Settings → Labels, `label:manage`):
+/// rename (audited {from, to}), colour (a palette TOKEN NAME — red,
+/// orange, olive, teal, blue, purple, pink — or NULL, drawn as a dot
+/// from the `--entity-*` identity hues inside the NEUTRAL outline chip,
+/// never a fill; CHECK `label_color_token` holds the list and a unit test
+/// pins it to `src/lib/label-colors.ts`), delete (the joins cascade —
+/// the bin's tasks too; audited with the task count) and merge A into B
+/// (every task wearing A wears B once, A deleted; both rows locked FOR
+/// UPDATE in id order; audited {from, into, fromId, tasks}). None writes
+/// per-task history rows: a history row holds the label id and the read
+/// resolves it, so a rename shows everywhere and a deleted or merged label
+/// reads as gone. A name is one line, <= 40, never blank
+/// (`label_name_not_blank`). `updated_at` (20261027100000) exists so the
+/// board's freshness token sees a rename or a colour.
 /// SHIPPED 2026-09-15 (the L-key slice, src/modules/work/labels.ts):
 /// `createLabel` (tenant-wide only, `label:manage`, audited) and
 /// `setItemLabel` (one label on or off a task, `work_item:edit`,
@@ -3309,10 +3360,11 @@ model Label {
   tenantId  String
   projectId String?                                // NULL = tenant-wide
   name      String
-  color     String?
+  color     String?                              // a palette token name or NULL (CHECK label_color_token)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) // slice 123: the board's freshness token
 
-  @@unique([tenantId, projectId, name])          // NULL projectId distinct in PG — app also checks tenant-wide uniqueness
+  @@unique([tenantId, projectId, name])          // NULL projectId distinct in PG — label_tenant_wide_name_key decides tenant-wide names
   @@unique([tenantId, id])
 }
 

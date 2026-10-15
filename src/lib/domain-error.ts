@@ -248,6 +248,20 @@ export type DomainErrorCode =
   | "IMPORT_CLOSED"
   | "IMPORT_UNDO_CLOSED"
   | "IMPORT_RESTORE_CLOSED"
+  // The stage editors (slice 123 — src/modules/work/stage-editor.ts, C99 (a);
+  // the rules are src/lib/stage-rules.ts).
+  | "STAGE_NAME_TAKEN" // another stage of this project (or the default set) has that name, ignoring case
+  | "STAGE_LIMIT" // twenty stages already
+  | "STAGE_LAST_OF_KIND" // the last To do, In progress, Done or Cancelled stage
+  | "STAGE_NOT_EMPTY" // the last Backlog stage still has tasks (the bin's included)
+  | "STAGE_DEFAULT_KIND" // new tasks can start only in a Backlog or To do stage
+  | "STAGE_DEFAULT_GATED" // …and never in one that needs approval (the create skips the state machine)
+  | "STAGE_IN_BIN" // the last Backlog stage still holds deleted tasks (cleared 30 days after deletion)
+  | "STAGE_IS_DEFAULT" // the last Backlog stage is where new tasks start: choose another first
+  | "STAGE_TOO_FULL" // more than 2 000 tasks to move in one removal
+  | "STAGE_GONE" // the stage a task was being moved into was removed meanwhile
+  | "STAGE_BUSY" // two stage edits at the same moment (the one-default index)
+  | "LABEL_GONE" // the label was deleted or merged while it was being put on a task
   | "UPDATE_RETRACT_WINDOW_CLOSED" // more than 15 minutes since publishing
   | "UPDATE_CHANGED" // the draft was saved by somebody else between the two publish transactions
   | "UPDATE_EMPTY" // publishing a post whose sections say nothing

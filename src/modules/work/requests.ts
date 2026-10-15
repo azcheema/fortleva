@@ -171,9 +171,9 @@ export async function createRequest(
     orderBy: { rank: "asc" },
     select: { id: true },
   });
-  // A tenant cannot delete a workflow state today (nothing in the
-  // product writes or removes one after the lazy seed), so this is a
-  // belt rather than a branch anyone can reach — and it fails CLOSED,
+  // TRIAGE is the one stage nobody can remove (the stage editors of slice
+  // 123 never address it), so this is a belt rather than a branch anyone
+  // can reach — and it fails CLOSED,
   // because the alternative is landing a client's request in whatever
   // state happened to sort first.
   //

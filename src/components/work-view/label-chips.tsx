@@ -7,6 +7,8 @@ import { LABEL_CHIP_CAP, splitLabelChips, type LabelSurface } from "@/lib/work-v
 import { cn } from "@/lib/utils";
 import type { LabelEntry } from "@/modules/work";
 
+import { LabelDot } from "./label-dot";
+
 /**
  * A task's labels as chips, on the board card and the backlog row
  * (`display.labels`, UI.md §5.3) — the ONE renderer for both, so the two
@@ -14,8 +16,9 @@ import type { LabelEntry } from "@/modules/work";
  * order.
  *
  * NEUTRAL OUTLINE `Badge`s, and that is a pin, not a default (UI.md §5.2
- * slice 12): `Label.color` is a design-token name nothing writes yet, and
- * a chip is IDENTITY, never status (§10.4) — a coloured label chip beside
+ * slice 12): a chip is IDENTITY, never status (§10.4) — so since slice 123
+ * a label's colour is a DOT inside the outline chip (`LabelDot`), never a
+ * fill — a filled coloured label chip beside
  * the visibility badge would put a second meaning on the one filled warm
  * pill that means "Client can see". The rail's chips
  * (`item-panel/labels-field.tsx`) are the same `variant="outline"`, so a
@@ -95,6 +98,7 @@ export function LabelChips({
           className="min-w-0 shrink"
           title={l.name}
         >
+          <LabelDot color={l.color} />
           <span className="truncate">{l.name}</span>
         </Badge>
       ))}
