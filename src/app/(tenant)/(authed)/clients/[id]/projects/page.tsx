@@ -19,6 +19,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { requireTenantContext } from "@/members/tenant-context";
+// Off the barrel on purpose: the templates are one feature's service.
+import { listTemplateChoices } from "@/modules/work/templates/service";
 
 import { loadClient } from "../data";
 import { CreateClientProjectForm } from "./create-project-form";
@@ -36,6 +39,11 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
   const tProjects = await getTranslations("projects");
   const format = await getFormatter();
   const canCreate = client.caps.createProject && client.status === "ACTIVE";
+  // Slice 124: the templates the form offers, and today in the workspace's zone.
+  const { membership, actor } = await requireTenantContext();
+  const templates = canCreate
+    ? await listTemplateChoices({ tenantId: membership.tenantId, actor })
+    : { choices: [], today: "" };
 
   return (
     <div className="flex flex-col gap-6">
@@ -146,7 +154,7 @@ export default async function ClientProjectsPage({ params }: { params: Promise<{
 
       {canCreate ? (
         <SectionCard id="new-project" className="scroll-mt-16" title={tProjects("create.title")}>
-          <CreateClientProjectForm clientId={client.id} />
+          <CreateClientProjectForm clientId={client.id} templates={templates.choices} today={templates.today} />
         </SectionCard>
       ) : null}
     </div>

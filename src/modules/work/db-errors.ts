@@ -89,6 +89,15 @@ export const { mapDbError, guarded } = dbErrorMapper([
   // layout deleted while a project was picking it (the project's RESTRICT
   // key). Each a sentence, not a stack (the migration review's L1).
   ["project_update_template_name_key", "LAYOUT_NAME_TAKEN"],
+  // Project templates (20261028090000, slice 124): a name the workspace
+  // already uses — the ignoring-case index (Postgres's `lower()`) and the
+  // schema's exact one; the services ask first, so a raise is the race. A
+  // document past the database's size bound is the belt under the
+  // service's own, smaller one.
+  ["project_template_name_ci_key", "TEMPLATE_NAME_TAKEN"],
+  ["project_template_tenant_id_name_key", "TEMPLATE_NAME_TAKEN"],
+  ["project_template_definition_size", "TEMPLATE_TOO_LARGE"],
+  ["project_template_counts_range", "TEMPLATE_TOO_LARGE"],
   ["project_update_template_one_default", "LAYOUT_BUSY"],
   ["project_tenant_id_update_template_id_fkey", "LAYOUT_BUSY"],
 ]);

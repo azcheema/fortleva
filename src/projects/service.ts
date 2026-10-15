@@ -269,6 +269,8 @@ export type ProjectDetail = {
     viewCredentials: boolean;
     /** `report:view` on all four gates — the Overview's Website speed card (Phase 6 slice 118). */
     viewSpeed: boolean;
+    /** Slice 124: "Save as template" — `project_template:manage` on all four gates. */
+    saveTemplate: boolean;
   };
 };
 
@@ -293,6 +295,9 @@ const PROJECT_MODULE_CODES = [
   // Slice 118: the Website speed card — a `reports`-module code, so the card
   // closes with the reports module switched off.
   "report:view",
+  // Slice 124: the Overview's Template card — a `work`-module code, so the
+  // card closes with the work module switched off.
+  "project_template:manage",
 ] as const;
 
 /** project:view; assertInScope({projectId}) ⇒ NOT_FOUND outside scope. */
@@ -451,6 +456,7 @@ export async function getProjectByKey(ctx: ProjectCtx, key: string): Promise<Pro
         // closes with the vault module as Files does with documentation.
         viewCredentials: modules.has("credential:view"),
         viewSpeed: modules.has("report:view"),
+        saveTemplate: modules.has("project_template:manage"),
       },
     };
   });
@@ -473,6 +479,8 @@ export type ProjectCreateInput = {
   type?: string | null;
   scopeSummary?: string | null;
   status?: ProjectStatus;
+  /** A day at UTC midnight (a date column's shape) — slice 124 sets it from a template's "Start date". */
+  startDate?: Date | null;
 };
 
 /**
@@ -485,44 +493,63 @@ export async function createProject(
   ctx: ProjectCtx,
   input: ProjectCreateInput,
 ): Promise<{ id: string; key: string }> {
+  return withTenant(ctx.tenantId, principalOf(ctx), (tx) => insertProject(tx, ctx, input));
+}
+
+/**
+ * `createProject`'s whole body, inside the CALLER's transaction — the
+ * gates, the row and its audit. Exported for the one caller that must make
+ * more in the same transaction: a project from a template (slice 124,
+ * `modules/work/templates`), whose tasks and milestones commit with the
+ * project or not at all. The work module calls core, never the reverse
+ * (ARC-16's direction).
+ *
+ * A key the unique index refuses aborts the caller's transaction (it is
+ * mapped to KEY_TAKEN, never retried here).
+ */
+export async function insertProject(
+  tx: TenantDb,
+  ctx: ProjectCtx,
+  input: ProjectCreateInput,
+): Promise<{ id: string; key: string }> {
   const name = clean(input.name);
   if (!name) fail("NAME_REQUIRED");
   const key = normalizeProjectKey(input.key);
   const id = newId();
-  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "project:create");
-    await assertInScope(tx, ctx.actor, { clientId: input.clientId });
-    const client = await tx.client.findFirst({
-      where: { id: input.clientId },
-      select: { status: true },
+  await requireAccess(tx, ctx.tenantId, ctx.actor, "project:create");
+  await assertInScope(tx, ctx.actor, { clientId: input.clientId });
+  const client = await tx.client.findFirst({
+    where: { id: input.clientId },
+    select: { status: true },
+  });
+  if (!client) deny("NOT_FOUND");
+  if (client!.status === "ARCHIVED") fail("ARCHIVED");
+  const taken = await tx.project.findFirst({ where: { key }, select: { id: true } });
+  if (taken) fail("KEY_TAKEN", key);
+  try {
+    await tx.project.create({
+      data: {
+        id,
+        tenantId: ctx.tenantId,
+        clientId: input.clientId,
+        key,
+        name: name!,
+        type: clean(input.type),
+        scopeSummary: clean(input.scopeSummary),
+        status: input.status ?? "PLANNED",
+        startDate: input.startDate ?? null,
+      },
+      select: { id: true },
     });
-    if (!client) deny("NOT_FOUND");
-    if (client!.status === "ARCHIVED") fail("ARCHIVED");
-    const taken = await tx.project.findFirst({ where: { key }, select: { id: true } });
-    if (taken) fail("KEY_TAKEN", key);
-    try {
-      await tx.project.create({
-        data: {
-          id,
-          tenantId: ctx.tenantId,
-          clientId: input.clientId,
-          key,
-          name: name!,
-          type: clean(input.type),
-          scopeSummary: clean(input.scopeSummary),
-          status: input.status ?? "PLANNED",
-        },
-      });
-    } catch (e) {
-      if (isUniqueViolation(e)) fail("KEY_TAKEN", key);
-      throw e;
-    }
-    await record(tx, {
-      action: "project.created",
-      targetType: "Project",
-      targetId: id,
-      metadata: { key, name, clientId: input.clientId },
-    });
+  } catch (e) {
+    if (isUniqueViolation(e)) fail("KEY_TAKEN", key);
+    throw e;
+  }
+  await record(tx, {
+    action: "project.created",
+    targetType: "Project",
+    targetId: id,
+    metadata: { key, name, clientId: input.clientId },
   });
   return { id, key };
 }

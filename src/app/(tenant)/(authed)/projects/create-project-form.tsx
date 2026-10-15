@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import type { FormResult } from "@/lib/server-actions";
 
 import { createProjectAction } from "./actions";
+import { TemplatePicker, type TemplateChoiceView } from "./template-picker";
 
 /**
  * Inline project creation (UI.md rule 2): client · key · name on one
@@ -22,12 +23,19 @@ import { createProjectAction } from "./actions";
  *
  * The keyboard hint is part of the affordance, not decoration: rule 7
  * says every action shows its key where the action is.
+ *
+ * Slice 124 (C100): when the workspace has templates, a second row offers
+ * one, and its Start date once chosen (`TemplatePicker`).
  */
 export function CreateProjectForm({
   clients,
+  templates,
+  today,
   autoFocus = false,
 }: {
   clients: { id: string; name: string }[];
+  templates: TemplateChoiceView[];
+  today: string;
   autoFocus?: boolean;
 }) {
   const t = useTranslations("projects.create");
@@ -97,6 +105,11 @@ export function CreateProjectForm({
         <PlusIcon />
         {pending ? t("submitting") : t("submit")}
       </Button>
+      {templates.length > 0 ? (
+        <div className="grid grid-cols-1 items-start gap-3 sm:col-span-4 sm:grid-cols-[14rem_12rem]">
+          <TemplatePicker templates={templates} today={today} idPrefix="p" disabled={pending} />
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:col-span-4">
         <p className="text-xs text-muted-foreground">{t("keyHint")}</p>
         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

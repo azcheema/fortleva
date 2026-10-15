@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
+import { TemplatePicker, type TemplateChoiceView } from "@/app/(tenant)/(authed)/projects/template-picker";
 import { Field, FormMessage } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +12,16 @@ import type { FormResult } from "@/lib/server-actions";
 
 import { createClientProjectAction } from "../actions";
 
-/** Inline project creation under a client: key + name (UI.md rule 2). */
-export function CreateClientProjectForm({ clientId }: { clientId: string }) {
+/** Inline project creation under a client: key + name (UI.md rule 2), and a template with its start date (slice 124). */
+export function CreateClientProjectForm({
+  clientId,
+  templates,
+  today,
+}: {
+  clientId: string;
+  templates: TemplateChoiceView[];
+  today: string;
+}) {
   const t = useTranslations("projects.create");
   const [state, action, pending] = useActionState<FormResult | null, FormData>(
     createClientProjectAction,
@@ -53,6 +62,13 @@ export function CreateClientProjectForm({ clientId }: { clientId: string }) {
           disabled={pending}
         />
       </Field>
+      <TemplatePicker
+        templates={templates}
+        today={today}
+        idPrefix="cp"
+        disabled={pending}
+        classNames={{ template: "w-56", start: "w-44" }}
+      />
       <Button type="submit" disabled={pending}>
         {pending ? t("submitting") : t("submit")}
       </Button>

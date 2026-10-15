@@ -105,7 +105,8 @@
     "contractSettings": "Kontraktsmallar",
     "reports": "Rapporter",
     "stageSettings": "Steg",
-    "labelSettings": "Etiketter"
+    "labelSettings": "Etiketter",
+    "templateSettings": "Projektmallar"
   },
   "shell": {
     "palette": {
@@ -1823,6 +1824,29 @@
         "submit": "Slå ihop med ”{name}”",
         "submitting": "Slår ihop…"
       }
+    },
+    "templates": {
+      "title": "Projektmallar",
+      "description": "Nya projekt kan starta från dessa. För att ändra en mall, ändra ett projekt och spara det igen med samma namn.",
+      "noPermission": "Du behöver behörighet för att hantera projektmallar.",
+      "listTitle": "Mallar",
+      "listDescription": "{count, plural, one {# mall} other {# mallar}}",
+      "empty": "Inga mallar än",
+      "emptyBody": "Öppna ett projekt och välj Spara som mall under Översikt.",
+      "emptyAction": "Öppna projekt",
+      "columns": {
+        "name": "Namn",
+        "tasks": "Uppgifter",
+        "milestones": "Milstolpar",
+        "saved": "Sparad"
+      },
+      "savedFrom": "{date} från <link>{key}</link>",
+      "menu": {
+        "delete": "Ta bort"
+      },
+      "deleteConfirm": "Ta bort mallen ”{name}”? Projekt som redan skapats från den behåller sina uppgifter.",
+      "renamed": "Mallen har bytt namn.",
+      "deleted": "Mallen har tagits bort."
     }
   },
   "files": {
@@ -2116,6 +2140,10 @@
     "STAGE_GONE": "Steget togs precis bort. Ladda om sidan och försök igen.",
     "STAGE_BUSY": "Någon ändrade stegen samtidigt. Ladda om sidan och försök igen.",
     "LABEL_GONE": "Etiketten togs precis bort eller slogs ihop. Ladda om sidan och försök igen.",
+    "TEMPLATE_NAME_TAKEN": "En annan mall har redan det namnet.",
+    "TEMPLATE_TOO_LARGE": "Projektet är för stort för en mall. En mall rymmer högst 1 000 uppgifter, 100 milstolpar och 500 etiketter, och deras text tillsammans högst ungefär 3 MB.",
+    "TEMPLATE_EMPTY": "Projektet har inga uppgifter eller milstolpar att spara.",
+    "TEMPLATE_INVALID": "Den här mallen går inte att använda. Spara den igen från ett projekt.",
     "STAGE_DEFAULT_GATED": "Nya uppgifter kan inte börja i ett steg som kräver godkännande.",
     "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget. Fortleva rensar dem 30 dagar efter att de togs bort; till dess finns det sista backloggsteget kvar."
   },
@@ -2507,7 +2535,13 @@
       "submitting": "Skapar…",
       "created": "Skapade {key}",
       "description": "Skapa ett projekt under en kund. Nyckeln är den korta beteckning du skriver överallt.",
-      "enterHint": "skapar det och börjar på nästa"
+      "enterHint": "skapar det och börjar på nästa",
+      "template": "Mall",
+      "noTemplate": "Ingen mall",
+      "templateOption": "{name} ({count, plural, one {# uppgift} other {# uppgifter}})",
+      "startDate": "Startdatum",
+      "startDateHint": "Mallens datum räknas från den här dagen.",
+      "createdFromTemplate": "Skapade {key} med {tasks, plural, one {# uppgift} other {# uppgifter}} och {milestones, plural, one {# milstolpe} other {# milstolpar}}"
     },
     "showArchived": "Visa arkiverade",
     "hideArchived": "Dölj arkiverade",
@@ -3870,6 +3904,30 @@
       "listDescription": "Kolumnerna på projektets tavla, i ordning. Varje steg räknas som ett fast slag – det är allt som rapporter och kundportalen ser.",
       "addTitle": "Lägg till ett steg",
       "addDescription": "Det hamnar sist bland sitt slag; flytta det upp eller ned från dess meny."
+    },
+    "template": {
+      "title": "Mall",
+      "description": "Starta nya projekt från det här: dess uppgifter, milstolpar och steg följer med.",
+      "open": "Spara som mall…",
+      "dialogTitle": "Spara som mall",
+      "dialogDescription": "Nya projekt kan starta från den. Alla som kan skapa projekt i arbetsytan kan använda den.",
+      "name": "Mallens namn",
+      "contents": "{tasks, plural, one {# uppgift} other {# uppgifter}}, {milestones, plural, one {# milstolpe} other {# milstolpar}} och tavlans steg.",
+      "fresh": "Varje uppgift börjar om: klara uppgifter börjar på nytt, checklistor blir obockade och inget är tilldelat eller delat med kunden.",
+      "wordForWord": "Beskrivningarna följer med ordagrant, så läs dem innan du delar en uppgift med en kund.",
+      "anchorStart": "Datum räknas från {date}, projektets start.",
+      "anchorCreated": "Projektet har inget startdatum, så datum räknas från {date}, dagen det skapades.",
+      "replaces": "Det finns redan en mall som heter ”{name}”. Om du sparar ersätts den.",
+      "submit": "Spara mallen",
+      "submitReplace": "Ersätt mallen",
+      "submitting": "Sparar…",
+      "loading": "Räknar vad som följer med…",
+      "empty": "Projektet har inga uppgifter eller milstolpar att spara än.",
+      "tooLarge": "Projektet har fler än 1 000 uppgifter eller 100 milstolpar – för många för en mall.",
+      "saved": "Mallen ”{name}” har sparats.",
+      "replaced": "Mallen ”{name}” har ersatts.",
+      "failed": "Något gick fel och inget sparades. Försök igen.",
+      "readFailed": "Det gick inte att räkna vad som följer med. Stäng och försök igen."
     }
   },
   "portal": {

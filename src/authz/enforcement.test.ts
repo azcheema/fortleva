@@ -110,8 +110,10 @@ const DECLARED_AHEAD: Record<string, readonly string[]> = {
     // so it is no longer declared here.
     // ProjectUpdate SHIPPED on 2026-09-25 (Phase 3 slice 67): all four
     // `project_update:*` codes are enforced in `src/modules/work/updates.ts`.
-    // ProjectTemplate: the model is in the schema, no `templates.ts`.
-    "project_template:manage",
+    // Project templates SHIPPED on 2026-10-15 (slice 124, C100):
+    // `project_template:manage` is enforced in
+    // `src/modules/work/templates/service.ts`, so it is no longer declared
+    // here — and the work module has nothing declared ahead any more.
   ],
   time: [
     // The LOCK is real at the database — a locked entry refuses every

@@ -105,7 +105,8 @@
     "contractSettings": "Contract templates",
     "reports": "Reports",
     "stageSettings": "Stages",
-    "labelSettings": "Labels"
+    "labelSettings": "Labels",
+    "templateSettings": "Project templates"
   },
   "shell": {
     "palette": {
@@ -1823,6 +1824,29 @@
         "submit": "Merge into “{name}”",
         "submitting": "Merging…"
       }
+    },
+    "templates": {
+      "title": "Project templates",
+      "description": "New projects can start from these. To change one, change a project and save it again under the same name.",
+      "noPermission": "You need permission to manage project templates.",
+      "listTitle": "Templates",
+      "listDescription": "{count, plural, one {# template} other {# templates}}",
+      "empty": "No templates yet",
+      "emptyBody": "Open a project and choose Save as template on its Overview.",
+      "emptyAction": "Open projects",
+      "columns": {
+        "name": "Name",
+        "tasks": "Tasks",
+        "milestones": "Milestones",
+        "saved": "Saved"
+      },
+      "savedFrom": "{date} from <link>{key}</link>",
+      "menu": {
+        "delete": "Delete"
+      },
+      "deleteConfirm": "Delete the template “{name}”? Projects already made from it keep their tasks.",
+      "renamed": "Template renamed.",
+      "deleted": "Template deleted."
     }
   },
   "files": {
@@ -2116,6 +2140,10 @@
     "STAGE_GONE": "That stage was just removed. Reload the page and try again.",
     "STAGE_BUSY": "Someone changed the stages at the same moment. Reload the page and try again.",
     "LABEL_GONE": "That label was just deleted or merged. Reload the page and try again.",
+    "TEMPLATE_NAME_TAKEN": "Another template already has that name.",
+    "TEMPLATE_TOO_LARGE": "This project is too large for a template. A template holds at most 1,000 tasks, 100 milestones and 500 labels, and their words together at most about 3 MB.",
+    "TEMPLATE_EMPTY": "This project has no tasks or milestones to save.",
+    "TEMPLATE_INVALID": "This template can’t be used. Save it again from a project.",
     "STAGE_DEFAULT_GATED": "New tasks can’t start in a stage that needs approval.",
     "STAGE_IN_BIN": "Deleted tasks still belong to this stage. Fortleva clears them 30 days after they were deleted; until then the last Backlog stage stays."
   },
@@ -2507,7 +2535,13 @@
       "submitting": "Creating…",
       "created": "Created {key}",
       "description": "Create a project under a client. The key is the short handle you will type everywhere.",
-      "enterHint": "creates it and starts the next"
+      "enterHint": "creates it and starts the next",
+      "template": "Template",
+      "noTemplate": "No template",
+      "templateOption": "{name} ({count, plural, one {# task} other {# tasks}})",
+      "startDate": "Start date",
+      "startDateHint": "The template’s dates are counted from this day.",
+      "createdFromTemplate": "Created {key} with {tasks, plural, one {# task} other {# tasks}} and {milestones, plural, one {# milestone} other {# milestones}}"
     },
     "showArchived": "Show archived",
     "hideArchived": "Hide archived",
@@ -3870,6 +3904,30 @@
       "listDescription": "The columns on this project’s board, in order. Each one counts as a fixed kind — that is all reports and the client portal see.",
       "addTitle": "Add a stage",
       "addDescription": "It goes at the end of its kind; move it up or down from its menu."
+    },
+    "template": {
+      "title": "Template",
+      "description": "Start new projects from this one: its tasks, milestones and stages come along.",
+      "open": "Save as template…",
+      "dialogTitle": "Save as template",
+      "dialogDescription": "New projects can start from it. Anyone who can create projects in this workspace can use it.",
+      "name": "Template name",
+      "contents": "{tasks, plural, one {# task} other {# tasks}}, {milestones, plural, one {# milestone} other {# milestones}} and the board’s stages.",
+      "fresh": "Every task starts fresh: finished tasks start again, checklists come unticked, and nothing is assigned or shared with a client.",
+      "wordForWord": "Descriptions come along word for word, so read them before you share a task with a client.",
+      "anchorStart": "Dates are counted from {date}, this project’s start.",
+      "anchorCreated": "This project has no start date, so dates are counted from {date}, the day it was made.",
+      "replaces": "A template called “{name}” already exists. Saving replaces it.",
+      "submit": "Save template",
+      "submitReplace": "Replace template",
+      "submitting": "Saving…",
+      "loading": "Counting what comes along…",
+      "empty": "This project has no tasks or milestones to save yet.",
+      "tooLarge": "This project has more than 1,000 tasks or 100 milestones — too many for a template.",
+      "saved": "Template “{name}” saved.",
+      "replaced": "Template “{name}” replaced.",
+      "failed": "Something went wrong and nothing was saved. Try again.",
+      "readFailed": "Could not count what comes along. Close this and try again."
     }
   },
   "portal": {

@@ -140,7 +140,7 @@ One event model, one capture mechanism, two audiences (brief §9):
 
 | Domain | Events |
 |---|---|
-| Work (2W) | `work_item.created`, `work_item.deleted`, `work_item.state_changed`, `work_item.visibility_changed`, `work_item.triaged`, `work_item.archived`, `work_item.bulk_edited`, `comment.deleted`, `comment.visibility_changed`, `comment.edited_by_other` *(added 2026-09-15 — founder decision 2026-09-12: one's own comment is routine and writes a history row only; editing someone else's is `comment:edit_any` and audits)*, `workflow.changed`, `label.created`, `label.deleted`, `project_template.applied`, `notification.preference_changed`, `reply_address.requested|request_cancelled|confirmed|removed` *(Phase 5 slice 100 — the workspace's reply address; each with the address in its metadata; `confirmed` is a SYSTEM row naming the member who asked)*, `search.index_rebuilt` [TENANT] |
+| Work (2W) | `work_item.created`, `work_item.deleted`, `work_item.state_changed`, `work_item.visibility_changed`, `work_item.triaged`, `work_item.archived`, `work_item.bulk_edited`, `comment.deleted`, `comment.visibility_changed`, `comment.edited_by_other` *(added 2026-09-15 — founder decision 2026-09-12: one's own comment is routine and writes a history row only; editing someone else's is `comment:edit_any` and audits)*, `workflow.changed`, `label.created`, `label.deleted`, `project_template.applied`, `project_template.created|replaced|renamed|deleted` *(slice 124 — the name, the source project and the counts, never a task's words; a project made from a template also audits `project.created`, each `milestone.created` and each `work_item.created` with `templateId`)*, `notification.preference_changed`, `reply_address.requested|request_cancelled|confirmed|removed` *(Phase 5 slice 100 — the workspace's reply address; each with the address in its metadata; `confirmed` is a SYSTEM row naming the member who asked)*, `search.index_rebuilt` [TENANT] |
 | Time (2T) | `timer.started`, `timer.stopped`, `timer.auto_stopped`, `time_entry.created`, `time_entry.edited_by_other`, `time_entry.deleted`, `time_entry.locked`, `time_entry.unlocked`, `time_entry.repriced`, `time.exported`, `rate_card.created`, `rate_card.closed`, `rate_card.cost_revealed` (aggregate, per session — never per row), `budget.created`, `budget.changed`, `budget.alert_sent`, `staff_notice.published`, `staff_notice.acknowledged` [TENANT]. **Metadata never contains a cost amount** — card id + field only. |
 | Portal & sharing (2, 3) | `project.portal_enabled`, `project.portal_disabled`, `project.portal_stamp_alarm` *(added 2026-09-28, Phase 3 slice 74: actor SYSTEM; written whenever a reconcile pass reads the project's switch OFF and finds rows of that project disagreeing with it — in the pass's own transaction when it corrects them, so the correction and its record commit together, and once more after the last pass if rows are still held disagreeing. The gate should make that impossible, so the row is the durable trace of a possible exposure, never a routine event. It follows the switch the pass READ, which need not be the press that ran it. Metadata ids and counts only — `src/projects/portal-gate.ts`)*, `project.hours_sharing_changed`, `project.portal_section_changed` *(added 2026-09-30, Phase 3 slice 80: a section of the project shown or hidden on the client’s portal — layout, not a gate; metadata `{section, shown}`)*, `project.key_changed`, `project.viewed_as_contact`, `project_update.published`, `project_update.archived`, `project_update.visibility_changed`, `portal.request_created`, `portal.comment_created`, `portal.task_completed`, `document.approval_requested`, `document.approval_decided` [TENANT] |
 | Vault & assets (3V) | `credential.created`, `credential.updated`, `credential.deleted`, `credential.revealed`, `credential.copied`, `credential.totp_generated`, `credential.visibility_changed`, `credential.shared`, `credential.share_revoked`, `credential.share_viewed`, `credential.exported`, `credential.rotation_flagged`, `asset.created`, `asset.updated`, `asset.deleted`, `tenant_key.created`, `tenant_key.rotated`, `expiration.reminder_sent`, `vault.step_up_required`, `vault.reveal_budget_exceeded` [TENANT]. Metadata: credential id + field name only, never a secret, never a username. |
@@ -3527,22 +3527,46 @@ model Mention {
 }
 
 /// ProjectTemplate — "pick a template" is the ONLY process picker in the
-/// product (UI.md rule 13). Tenant-owned rows only: platform templates
-/// are COPIED into the tenant at provisioning (no nullable tenantId —
-/// keeps RLS and the census clean). definition Json = { states:
-/// [{name, category, color}], epics: [{title, items: [{title,
-/// description, estimateMinutes, checklist, visibility, labels}]}],
-/// milestones: [...], settings: {defaultBillable, updateCadence, …} }.
-/// "Save project as template" writes one; applying is audited.
+/// product (UI.md rule 13). Tenant-owned rows only (no nullable tenantId —
+/// keeps RLS and the census clean).
+/// BUILT 2026-10-15 (slice 124, founder decision C100; migration
+/// 20261028090000; design docs/research/2026-10-16-slice-124-project-
+/// templates-design.md). Made ONLY by "Save as template" on a project
+/// (`project_template:manage`); renamed and deleted in Settings →
+/// Templates; never edited in place — saving a project again under the
+/// same name replaces the document. definition Json (v1, written by
+/// `modules/work/templates/definition.ts`, zod-parsed on EVERY use, never
+/// trusted) = { v: 1, stages: [PresetStage — the source project's own,
+/// Triage left out], milestones: [{key, name, description, dueDay}],
+/// labels: [{key, id, name, color}], tasks: [{key, parent, type, kind,
+/// title, description (ProseMirror, checklists UNTICKED), estimateMinutes,
+/// stage (one new tasks may start in), milestone, labels, startDay,
+/// targetDay}] } — days counted from the source project's start (or the
+/// day it was made). NOT carried: assignees, priority, comments, files,
+/// time, visibility (a project made from a template is born PRIVATE,
+/// milestones included — the "flip milestones to CLIENT_VISIBLE" idea in
+/// Milestone's note above was never built), the client, the project's
+/// settings. Caps: 1 000 tasks, 100 milestones, 3 MiB by JSON.stringify
+/// (the service), 4 MiB in jsonb text (CHECK). Applying makes the project,
+/// its stages (the template's REPLACE the workspace default), milestones,
+/// labels (the same label, else one of the same name, else made again under
+/// `label:manage`, else left off) and tasks in ONE transaction, under
+/// `project:create` + `work_item:create` + `work_item:edit`
+/// (+ `project:manage_versions` with milestones). `description` and
+/// `locale` are still unused.
 /// scope=tenant  rls=A (principalScoped)  ret=R2  enc=none
-/// audit: project_template.applied
+/// audit: project_template.created | replaced | renamed | deleted | applied
 model ProjectTemplate {
   id                String   @id @default(uuid(7))
   tenantId          String
-  name              String
+  name              String                        // one line, ≤ 80, trimmed (CHECK); unique per tenant ignoring case (lower() index)
   description       String?
   locale            String?                       // language of the seeded titles (informational)
-  definition        Json
+  definition        Json                          // an object, ≤ 4 MiB as jsonb text (CHECK)
+  taskCount         Int      @default(0)          // the document's list lengths, written with it — lists never read the document
+  milestoneCount    Int      @default(0)
+  savedAt           DateTime @default(now()) @db.Timestamptz(6) // last made or replaced; a rename does not move it
+  sourceProjectId   String?                       // the project last saved from — attribution, no FK
   createdByMemberId String?
   createdAt         DateTime @default(now()) @db.Timestamptz(6)
   updatedAt         DateTime @updatedAt @db.Timestamptz(6)

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
+import { createProjectFromForm } from "@/app/(tenant)/(authed)/projects/create-from-form";
 import { AuthzError, type DenialReason } from "@/authz/errors";
 import { assignMemberToClient, unassignMemberFromClient } from "@/clients/assignments";
 import {
@@ -24,7 +25,6 @@ import {
 import { caution, field, has, runForm, strictDateField, type FormResult } from "@/lib/server-actions";
 import type { DeliveryOutcome } from "@/mailer";
 import { requireTenantContext } from "@/members/tenant-context";
-import { createProject } from "@/projects/service";
 import { createService, deleteService, endService, setAgreementRunning, updateService, type ServicePatch } from "@/services/service";
 
 /**
@@ -358,15 +358,8 @@ export async function createClientProjectAction(
   const clientId = uuid.safeParse(formData.get("clientId"));
   if (!clientId.success) return invalid();
   const ctx = await ctxOf();
-  const t = await getTranslations("projects.create");
-  const r = await runForm(path(clientId.data, "/projects"), async () => {
-    const created = await createProject(ctx, {
-      clientId: clientId.data,
-      key: field(formData, "key") ?? "",
-      name: field(formData, "name") ?? "",
-    });
-    return t("created", { key: created.key });
-  });
+  // The /projects row's body — a template too (slice 124).
+  const r = await runForm(path(clientId.data, "/projects"), () => createProjectFromForm(ctx, clientId.data, formData));
   if (r.ok) {
     revalidatePath(path(clientId.data), "layout");
     revalidatePath("/projects");

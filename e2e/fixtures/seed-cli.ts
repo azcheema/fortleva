@@ -54,6 +54,8 @@
  *        tsx e2e/fixtures/seed-cli.ts clear-renewal-drafts <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts client-summary-link <tenantId> <contactEmail>
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
+ *        tsx e2e/fixtures/seed-cli.ts template-source <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts clear-templates <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
  *        tsx e2e/fixtures/seed-cli.ts sweep-dbtests [maxAgeMinutes]
  */
@@ -232,6 +234,9 @@ const DBTEST_PREFIXES = [
   "frun-",
   // Slice 123, the stage editors — `src/modules/work/stages.dbtest.ts`, `setupTenant("stg")`.
   "stg-",
+  // Slice 124, project templates — `src/modules/work/templates/templates.dbtest.ts`,
+  // `setupTenant("tpl")`.
+  "tpl-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -1986,6 +1991,13 @@ async function provision(seedFile: string): Promise<void> {
     throw new Error("seed: the confirmation link does not verify the way /confirm-email/[token] reads it");
   }
 
+  // Slice 124 (C100): ONE project template, saved from this project through
+  // the real service, so Settings → Templates photographs a row and the New
+  // project form its Template field. It only READS the project and is never
+  // applied here; `templates.spec.ts` works in the second workspace.
+  const { saveProjectAsTemplate } = await import("../../src/modules/work/templates/service");
+  await saveProjectAsTemplate(ctx, { projectId, name: "Webbplats – standard", replace: false });
+
   const clientVisibleDocName = `e2e-shared-${run}.txt`;
   const internalDocName = `e2e-private-${run}.txt`;
   const seed: E2ESeed = {
@@ -2826,6 +2838,74 @@ async function importWorkspace(tenantId: string): Promise<void> {
   } finally {
     await db.$disconnect();
   }
+}
+
+/**
+ * A project to save as a template (slice 124, `templates.spec.ts`), in the
+ * SECOND workspace: an Epic with a Task under it — the Task with an estimate
+ * and a checklist item already ticked — a Backlog task, and one milestone the
+ * Epic belongs to. Through the real services, as the owner; a fresh key per
+ * run, so a CI retry cannot collide with the first attempt.
+ */
+async function templateSource(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("template-source: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { createClient } = await import("../../src/clients/service");
+  const { createProject } = await import("../../src/projects/service");
+  const { createMilestone } = await import("../../src/projects/milestones");
+  const { changeState, createItem, setItemMilestone, updateItemFields } = await import("../../src/modules/work");
+  const { normalizeDescription } = await import("../../src/lib/rich-text/normalize");
+  try {
+    const owner = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const ctx = { tenantId, actor: { memberId: owner.id, mfa: { enrolled: false, verifiedAt: null } } };
+    const clientName = "E2E Import Client";
+    const client =
+      (await db.client.findFirst({ where: { tenantId, name: clientName }, select: { id: true } })) ??
+      (await createClient(ctx, { name: clientName }));
+    const suffix = randomUUID().replace(/[^a-z0-9]/g, "").slice(0, 5).toUpperCase();
+    const { id: projectId, key } = await createProject(ctx, { clientId: client.id, key: `TS${suffix}`, name: `E2E Template ${suffix}` });
+    const { id: milestoneId } = await createMilestone(ctx, { projectId, name: "Launch", dueAt: null });
+    const epic = await createItem(ctx, { projectId, title: "Website build" });
+    await db.workItem.update({ where: { id: epic.id }, data: { type: "EPIC" } });
+    await setItemMilestone(ctx, epic.id, milestoneId);
+    const page = await createItem(ctx, { projectId, title: "Design the start page", parentId: epic.id });
+    await updateItemFields(ctx, page.id, { estimateMinutes: 180 });
+    // The checklist through the one gate, written straight (a fixture has no
+    // editor's compare-and-set token to offer `updateItemDescription`).
+    const doc = normalizeDescription({
+      type: "doc",
+      content: [
+        {
+          type: "taskList",
+          content: [{ type: "taskItem", attrs: { checked: true }, content: [{ type: "paragraph", content: [{ type: "text", text: "Pick the photos" }] }] }],
+        },
+      ],
+    });
+    await db.workItem.update({
+      where: { id: page.id },
+      data: { description: doc.doc as object, descriptionText: doc.text, checklistTotal: doc.checklistTotal, checklistDone: doc.checklistDone },
+      select: { id: true },
+    });
+    const later = await createItem(ctx, { projectId, title: "Write the privacy page" });
+    const backlog = await db.workflowState.findFirstOrThrow({ where: { tenantId, projectId, category: "BACKLOG" }, select: { id: true } });
+    await changeState(ctx, later.id, backlog.id);
+    process.stdout.write(`${MARKER}${JSON.stringify({ projectKey: key, projectName: `E2E Template ${suffix}` })}\n`);
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/** Every project template of a throwaway workspace deleted (`templates.spec.ts`'s afterAll, pass or fail). */
+async function clearTemplates(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("clear-templates: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { count } = await db.projectTemplate.deleteMany({ where: { tenantId } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ removed: count })}\n`);
 }
 
 /**
@@ -4298,6 +4378,8 @@ const main = async (): Promise<void> => {
   if (command === "import-workspace") return importWorkspace(argument!);
   if (command === "first-run-on") return firstRunOn(argument!);
   if (command === "reset-stage-preset") return resetStagePreset(argument!);
+  if (command === "template-source") return templateSource(argument!);
+  if (command === "clear-templates") return clearTemplates(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);

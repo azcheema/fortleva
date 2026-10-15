@@ -105,6 +105,8 @@ export async function setupTenant(label: string) {
     // project that picked one RESTRICTs the layout — so this relies on the
     // suite having deleted its projects, as the tenant's own delete does.
     await platform.projectUpdateTemplate.deleteMany({ where: { tenantId } });
+    // Project templates (slice 124) RESTRICT the tenant and point at nothing.
+    await platform.projectTemplate.deleteMany({ where: { tenantId } });
     // Phone-notification devices (Phase 5 slice 106) RESTRICT the tenant; the
     // member delete below would cascade them, but say it rather than rely on
     // the order.

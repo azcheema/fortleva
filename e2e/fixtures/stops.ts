@@ -391,6 +391,9 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // set in the fixture) and its labels.
     { name: "settings-stages", path: "/settings/stages" },
     { name: "settings-labels", path: "/settings/labels" },
+    // Slice 124 (C100 (b)): the workspace's project templates — the one the
+    // fixture saves from the shared project.
+    { name: "settings-templates", path: "/settings/templates" },
     // 2T: bill cards + the ✦ cost section in its "confirm two-factor"
     // state (the fixture owner has no factor); notice status + work types.
     { name: "settings-rates", path: "/settings/rates" },

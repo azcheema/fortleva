@@ -262,6 +262,11 @@ export type DomainErrorCode =
   | "STAGE_GONE" // the stage a task was being moved into was removed meanwhile
   | "STAGE_BUSY" // two stage edits at the same moment (the one-default index)
   | "LABEL_GONE" // the label was deleted or merged while it was being put on a task
+  // Project templates (slice 124 — src/modules/work/templates, C100).
+  | "TEMPLATE_NAME_TAKEN" // another template of the workspace has that name, ignoring case (Postgres's fold)
+  | "TEMPLATE_TOO_LARGE" // past 1 000 tasks, 100 milestones (or one past its length bounds), 500 labels, or 3 MiB
+  | "TEMPLATE_EMPTY" // the project has no task and no milestone a template would take
+  | "TEMPLATE_INVALID" // a stored document that does not parse (or a project whose stages could not seed one)
   | "UPDATE_RETRACT_WINDOW_CLOSED" // more than 15 minutes since publishing
   | "UPDATE_CHANGED" // the draft was saved by somebody else between the two publish transactions
   | "UPDATE_EMPTY" // publishing a post whose sections say nothing

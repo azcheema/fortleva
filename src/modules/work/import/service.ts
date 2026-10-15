@@ -532,12 +532,15 @@ async function resolveLabels(
   for (const l of offered.sort((a, b) => Number(a.projectId !== null) - Number(b.projectId !== null))) {
     byKey.set(l.name.toLowerCase(), l.id);
   }
-  // SORTED: two imports making overlapping new names in opposite orders
-  // would otherwise deadlock on the workspace's label-name index.
+  // SORTED by the folded name, the order the workspace's label-name index
+  // keys on: two writers making overlapping new names in opposite orders
+  // would otherwise deadlock on it — two imports, or an import and a project
+  // made from a template (slice 124's fix review), which sorts the same way.
+  const fold = (n: string) => n.toLowerCase();
   const fresh = [...names.entries()]
     .filter(([key]) => !byKey.has(key))
     .map(([, name]) => name)
-    .sort();
+    .sort((a, b) => (fold(a) < fold(b) ? -1 : fold(a) > fold(b) ? 1 : 0));
   if (fresh.length > 0 && (await isAuthorized(tx, ctx.actor, "label:manage"))) {
     // `skipDuplicates` is ON CONFLICT DO NOTHING, which covers the partial
     // unique index on lower(name): a colleague's label made meanwhile is not

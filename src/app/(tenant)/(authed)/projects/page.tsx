@@ -35,6 +35,8 @@ import {
 } from "@/components/ui/table";
 import { withTenant } from "@/db";
 import { requireTenantContext } from "@/members/tenant-context";
+// Off the barrel on purpose: the templates are one feature's service.
+import { listTemplateChoices } from "@/modules/work/templates/service";
 import { listProjects } from "@/projects/service";
 
 import { CreateProjectForm } from "./create-project-form";
@@ -75,6 +77,8 @@ export default async function ProjectsPage({
   ]);
   // Creation needs a client directly in scope — the same scoped list the Clients page shows.
   const clients = canCreate ? (await listClients(ctx)).map((c) => ({ id: c.id, name: c.name })) : [];
+  // Slice 124: the templates the form offers, and today in the workspace's zone.
+  const templates = canCreate ? await listTemplateChoices(ctx) : { choices: [], today: "" };
   const canCreateHere = canCreate && clients.length > 0;
 
   return (
@@ -278,7 +282,12 @@ export default async function ProjectsPage({
             title={t("create.title")}
             description={t("create.description")}
           >
-            <CreateProjectForm clients={clients} autoFocus={groups.length === 0} />
+            <CreateProjectForm
+              clients={clients}
+              templates={templates.choices}
+              today={templates.today}
+              autoFocus={groups.length === 0}
+            />
           </SectionCard>
         </div>
       ) : null}

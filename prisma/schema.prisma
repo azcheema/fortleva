@@ -3077,7 +3077,11 @@ model ProjectTemplate {
   name              String
   description       String?
   locale            String? // language of the seeded titles (informational)
-  definition        Json // { states, epics: [{title, items}], milestones, settings }
+  definition        Json // slice 124: { v: 1, stages, milestones, labels, tasks } — zod-parsed on every read (`modules/work/templates`); object ≤ 4 MB (CHECK)
+  taskCount         Int      @default(0) @map("task_count") // the document's list lengths, written with it (20261028090000)
+  milestoneCount    Int      @default(0) @map("milestone_count")
+  savedAt           DateTime @default(now()) @map("saved_at") @db.Timestamptz(6) // last made or replaced — a rename does not move it
+  sourceProjectId   String?  @map("source_project_id") // the project it was last saved from — attribution, no FK (20261028090000)
   createdByMemberId String?  @map("created_by_member_id") // attribution, no FK
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)

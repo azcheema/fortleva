@@ -35,6 +35,7 @@ export type NavIcon =
   | "contractSettings"
   | "stageSettings"
   | "labelSettings"
+  | "templateSettings"
   | "export"
   | "design"
   | "account";
@@ -68,6 +69,7 @@ export type NavEntry = {
     | "contractSettings"
     | "stageSettings"
     | "labelSettings"
+    | "templateSettings"
     | "export"
     | "design"
     | "account";
@@ -231,6 +233,16 @@ export const NAV: readonly NavEntry[] = [
         href: "/settings/labels",
         icon: "labelSettings",
         permission: "label:manage",
+      },
+      // Slice 124 (C100 (b)): the workspace's project templates — renamed and
+      // deleted here, made by "Save as template" on a project. On the code the
+      // page asks.
+      {
+        id: "templateSettings",
+        labelKey: "templateSettings",
+        href: "/settings/templates",
+        icon: "templateSettings",
+        permission: "project_template:manage",
       },
       // 2T (UI.md §3.1 "Settings"): bill-rate cards need rate:view_bill;
       // the time-tracking page (staff notice, work types) is a settings page.

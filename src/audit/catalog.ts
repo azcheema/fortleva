@@ -427,6 +427,14 @@ export const AUDIT_EVENTS = {
   "label.color_changed": TENANT,
   "label.merged": TENANT,
   "project_template.applied": TENANT,
+  // Slice 124 (C100): "Save as template" makes one or replaces the document
+  // of one of the same name; Settings → Templates renames and deletes.
+  // Metadata: the name (tenant vocabulary, as a label's), the source project
+  // and the counts — never a task title or description.
+  "project_template.created": TENANT,
+  "project_template.replaced": TENANT,
+  "project_template.renamed": TENANT,
+  "project_template.deleted": TENANT,
   "notification.preference_changed": TENANT,
   // Phase 5 slice 106 (founder decision C74) — a member turned phone
   // notifications on for a device, or removed one (`src/push/devices.ts`).

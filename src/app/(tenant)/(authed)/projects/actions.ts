@@ -4,31 +4,24 @@ import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
-import { field, runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
+import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
-import { createProject, listProjects } from "@/projects/service";
+import { listProjects } from "@/projects/service";
 
-/** Inline create on /projects: client + key + name. */
+import { createProjectFromForm } from "./create-from-form";
+
+/** Inline create on /projects: client + key + name, and a template with its start date (slice 124). */
 export async function createProjectAction(
   _prev: FormResult | null,
   formData: FormData,
 ): Promise<FormResult> {
   const { membership, actor } = await requireTenantContext();
-  const t = await getTranslations("projects.create");
   const tCommon = await getTranslations("common");
   const clientId = z.uuid().safeParse(formData.get("clientId"));
   if (!clientId.success) return { ok: false, message: tCommon("invalidInput") };
-  const r = await runForm("/projects", async () => {
-    const created = await createProject(
-      { tenantId: membership.tenantId, actor },
-      {
-        clientId: clientId.data,
-        key: field(formData, "key") ?? "",
-        name: field(formData, "name") ?? "",
-      },
-    );
-    return t("created", { key: created.key });
-  });
+  const r = await runForm("/projects", () =>
+    createProjectFromForm({ tenantId: membership.tenantId, actor }, clientId.data, formData),
+  );
   if (r.ok) {
     revalidatePath("/projects");
     revalidatePath(`/clients/${clientId.data}`, "layout");

@@ -315,6 +315,16 @@ export async function importWorkspace(tenantId: string): Promise<{ projectKey: s
   return runCli<{ projectKey: string; projectName: string }>(["import-workspace", tenantId]);
 }
 
+/** A project to save as a template, in a throwaway workspace (slice 124, `templates.spec.ts`). */
+export async function templateSource(tenantId: string): Promise<{ projectKey: string; projectName: string }> {
+  return runCli<{ projectKey: string; projectName: string }>(["template-source", tenantId]);
+}
+
+/** Every project template of a throwaway workspace deleted (slice 124, `templates.spec.ts`'s afterAll). */
+export async function clearTemplates(tenantId: string): Promise<{ removed: number }> {
+  return runCli<{ removed: number }>(["clear-templates", tenantId]);
+}
+
 /** The workspace's default stages put back to Fortleva's original set (slice 123, `stages.spec.ts`). */
 export async function resetStagePreset(tenantId: string): Promise<{ removed: number }> {
   return runCli<{ removed: number }>(["reset-stage-preset", tenantId]);

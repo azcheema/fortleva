@@ -13,6 +13,7 @@ import {
   InboxIcon,
   SearchIcon,
   KeyRoundIcon,
+  LayoutTemplateIcon,
   MegaphoneIcon,
   PaletteIcon,
   ReceiptTextIcon,
@@ -61,6 +62,8 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   // The board's columns ARE its stages; a label is a tag.
   stageSettings: Columns3Icon,
   labelSettings: TagsIcon,
+  // A project laid out in advance.
+  templateSettings: LayoutTemplateIcon,
   // A bell is "reach me", the inbox tray is "what reached me": two
   // concepts, two glyphs.
   notifications: BellIcon,

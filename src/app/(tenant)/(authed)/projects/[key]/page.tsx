@@ -12,6 +12,7 @@ import {
   ProjectInternalForm,
   ProjectStatusControls,
 } from "./overview-forms";
+import { SaveTemplateButton } from "./save-template";
 import { WebsiteSpeedCard } from "./speed-card";
 
 /**
@@ -44,6 +45,7 @@ export default async function ProjectOverviewPage({
   const { device } = await searchParams;
   const project = await loadProject(key);
   const t = await getTranslations("projects.overview");
+  const tTemplate = await getTranslations("projects.template");
   const { membership } = await requireTenantContext();
   const members = project.caps.edit
     ? await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, listAssignableMembers)
@@ -71,6 +73,12 @@ export default async function ProjectOverviewPage({
         <SectionCard title={t("status")}>
           <ProjectStatusControls project={project} />
         </SectionCard>
+        {/* Slice 124 (C100 (b)): start new projects from this one. */}
+        {project.caps.saveTemplate ? (
+          <SectionCard title={tTemplate("title")} description={tTemplate("description")}>
+            <SaveTemplateButton projectId={project.id} projectKey={project.key} projectName={project.name} />
+          </SectionCard>
+        ) : null}
       </div>
     </div>
   );
