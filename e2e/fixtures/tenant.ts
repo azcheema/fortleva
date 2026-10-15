@@ -305,6 +305,16 @@ export async function readyFortnoxNightWorkspace(tenantId: string): Promise<{ re
   return runCli<{ ready: boolean; invoices: number }>(["fortnox-night-workspace", tenantId]);
 }
 
+/** The getting-started list back ON in that workspace (slice 121, `first-run.spec.ts`). */
+export async function firstRunOn(tenantId: string): Promise<{ on: number }> {
+  return runCli<{ on: number }>(["first-run-on", tenantId]);
+}
+
+/** A NEW empty project in the owner's SECOND workspace, for `import.spec.ts` (slice 121). */
+export async function importWorkspace(tenantId: string): Promise<{ projectKey: string; projectName: string }> {
+  return runCli<{ projectKey: string; projectName: string }>(["import-workspace", tenantId]);
+}
+
 /** One run of the nightly send for that workspace, against the fake Fortnox (slice 114b). */
 export async function runFortnoxNight(tenantId: string): Promise<{ skipped: string | null; booked: number; files: number; stopped: string | null }> {
   return runCli<{ skipped: string | null; booked: number; files: number; stopped: string | null }>(["run-fortnox-night", tenantId]);

@@ -39,7 +39,7 @@ export {
   tableNameOf,
 } from "./model-registry";
 export type { ModelClass, RlsClass } from "./model-registry";
-export { nextCounter } from "./counters";
+export { lockCounter, nextCounter, nextCounters } from "./counters";
 // The SUPPRESSION LOOKUP (Phase 5 slice 103, founder decision C71 (e)). A
 // SIXTH narrow entry point: one read of the GLOBAL `email_suppression` table
 // on the runtime client, outside any seam, so that every `send()` — the

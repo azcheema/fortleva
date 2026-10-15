@@ -114,6 +114,10 @@ export const MODEL_CLASSES = {
     // Phase 7 slice 120 — the drafter's ledger (C96): one outcome per client
     // and month the job considered for a self-drafted report.
     "monthlyReportDraft",
+    // Phase 6 slice 121 — imports (C97): one row per import, and one per
+    // task an import wrote.
+    "importJob",
+    "importJobItem",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -294,6 +298,11 @@ export const RLS_CLASSES = {
     // Phase 7 slice 120 — the drafter's ledger (C96): what the job decided
     // for a client and a month. The job's own record; never a client's.
     "monthlyReportDraft",
+    // Phase 6 slice 121 — imports (C97): who brought tasks into a project,
+    // from which file NAME, and the stamps an undo and a Bring back go by.
+    // The tasks themselves are `work_item` rows (class B, born INTERNAL).
+    "importJob",
+    "importJobItem",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

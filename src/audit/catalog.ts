@@ -367,6 +367,17 @@ export const AUDIT_EVENTS = {
   "work_item.triaged": TENANT,
   "work_item.archived": TENANT,
   "work_item.bulk_edited": TENANT,
+  // Phase 6 slice 121 (founder decision C97) — imports. A task an import
+  // makes audits `work_item.created` like any other (with `importJobId`);
+  // the job's own life is these four, and a task an undo removed and a
+  // Bring back returned is `work_item.deleted` / `work_item.restored`
+  // (`reason: "import_undone"` / `"import_restored"`). The file's NAME is
+  // never in an audit row — it can say anything.
+  "work_item.restored": TENANT,
+  "import_job.started": TENANT,
+  "import_job.finished": TENANT,
+  "import_job.undone": TENANT,
+  "import_job.restored": TENANT,
   "comment.deleted": TENANT,
   "comment.visibility_changed": TENANT,
   // Editing SOMEONE ELSE's comment (`comment:edit_any`) — founder

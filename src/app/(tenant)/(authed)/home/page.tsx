@@ -9,10 +9,12 @@ import { canTrackTime, getCurrentTimerOnce, myTimeTotals } from "@/modules/time"
 import { expirationsGlance } from "@/modules/vault";
 import { listMyWork, resolveRowState, triageGlance, waitingOnClient } from "@/modules/work";
 import { inboxGlance } from "@/notify/inbox";
+import { readFirstRunList } from "@/onboarding/first-run";
 
 import { getTimerStateAction, type TimerPillState } from "../time/actions";
 import { labelOf } from "../time/label";
 import { resolveWeekContext } from "../time/week-context";
+import { FirstRunCard } from "./first-run-card";
 import { InboxCard } from "./inbox-card";
 import { MyWorkQueue, type QueueRow } from "./my-work-queue";
 import { RenewalsCard } from "./renewals-card";
@@ -142,6 +144,10 @@ export default async function HomePage() {
   }
 
   const renewals = await renewalsRead;
+  // The getting-started list (Phase 6 slice 121, C97 (d)): its own
+  // transaction, after the others — `null` for anyone without
+  // `settings:edit`, with the switch off, or with every step done.
+  const firstRun = await readFirstRunList(ctx);
 
   const queue: QueueRow[] | null = myWork
     ? myWork.items.map((item) => {
@@ -167,6 +173,9 @@ export default async function HomePage() {
       <PageHeader title={t(`greeting.${greetingKey(hour)}`, { name: firstName })} />
 
       <div className="mt-6 flex flex-col gap-4">
+        {/* FIRST: a new workspace has nothing else to show, and an older
+            one sees it only while a step is still undone. */}
+        {firstRun ? <FirstRunCard list={firstRun} /> : null}
         {strip ? <HomeTimeStrip {...strip} /> : null}
         {/* On ROWS, not the count: the two are separate statements, so the
             count can disagree with the rows by a notification read or written

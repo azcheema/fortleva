@@ -28,7 +28,7 @@
   No epics or subtasks are built from Asana's "Parent task" or Jira's hierarchy. An ARCHIVED project refuses imports (`PROJECT_ARCHIVED`).
 - **R3 — WHAT A ROW BRINGS.**
   - Name: required, trimmed, at most 400 characters (`MAX_TITLE_LENGTH`). A row without one is skipped and counted.
-  - Description: text, drawn as paragraphs, bullet and numbered lists, `- [ ]` and `- [x]` checklist lines, `#`–`###` headings and links (§2.4). At most 50 000 characters; a longer one is cut and the check step says how many were.
+  - Description: text, drawn as paragraphs, bullet and numbered lists, `- [ ]` and `- [x]` checklist lines, `#`–`###` headings and links (§2.4). At most 40 000 characters; a longer one is cut and the check step says how many were.
   - Status: one of the project's states (R5).
   - Due date: a date only.
   - Assignee: one person (R4).
@@ -118,15 +118,14 @@ CREATE TABLE import_job (
 );
 ```
 
-CHECKs:
-- `source IN ('CSV','TRELLO')`;
-- `status IN ('RUNNING','DONE','UNDONE')`;
-- every count ≥ 0;
-- `row_count BETWEEN 1 AND 2000`;
-- `(status = 'UNDONE') = (undone_at IS NOT NULL AND (restored_at IS NULL OR restored_at < undone_at))`. A restore returns the status to DONE, and a second undo after a restore is refused by the service (one undo per import: §5);
-- `undone_at IS NULL OR (undone_by_member_id IS NOT NULL AND undone_count IS NOT NULL)`;
-- `restored_at IS NULL OR (undone_at IS NOT NULL AND restored_by_member_id IS NOT NULL AND restored_at >= undone_at)`;
-- `char_length(btrim(file_name)) BETWEEN 1 AND 200`.
+CHECKs (as applied; §10 records the review that shaped them):
+- `source IN ('CSV','TRELLO')`; `status IN ('RUNNING','DONE','UNDONE')`;
+- `row_count BETWEEN 1 AND 2000`; `char_length(btrim(file_name)) BETWEEN 1 AND 200`;
+- every count ≥ 0, `created + updated + kept + unchanged ≤ row_count`, and `undone_count ≤ created_count`;
+- `last_write_at ≥ started_at`, `finished_at ≥ started_at`;
+- a RUNNING job has neither `finished_at` nor `undone_at`;
+- `undone_at`, `undone_by_member_id` and `undone_count` are set together; so are `restored_at` and `restored_by_member_id`, and a restore is never older than its undo;
+- `(status = 'UNDONE') = (undone_at IS NOT NULL AND restored_at IS NULL)`. A Bring back returns the status to DONE and keeps both stamps; one undo per import is the service's rule (the CHECKs refuse only a careless second undo).
 
 UNIQUE `(tenant_id, id)` (the composite-FK target); index `(tenant_id, project_id, started_at DESC)` for the page's list. FKs: `tenant` RESTRICT; `(tenant_id, project_id) → project` CASCADE (the harness hard-deletes projects; the product archives them).
 
@@ -145,18 +144,18 @@ CREATE TABLE import_job_item (
 );
 ```
 
-CHECK `action IN ('CREATED','UPDATED')`; UNIQUE `(tenant_id, import_job_id, work_item_id)`, so one job writes a task once; index `(tenant_id, work_item_id, created_at DESC)` for "the last import write of this task". FKs: job CASCADE, `(tenant_id, work_item_id) → work_item` CASCADE.
+CHECK `action IN ('CREATED','UPDATED')`; UNIQUE `(tenant_id, import_job_id, work_item_id)`, so one job writes a task once; index `(tenant_id, work_item_id, written_at)` for the re-import's test, "SOME import write left exactly this `updated_at`" (an EXISTS; ordering by `created_at` was wrong — §10). FKs: job CASCADE, `(tenant_id, work_item_id) → work_item` CASCADE.
 
 ### 1.3 `work_item`: the reserved columns get their rules
 
 - `work_item_source_live_key`: UNIQUE `(tenant_id, project_id, source_system, source_id) WHERE source_id IS NOT NULL AND deleted_at IS NULL`. It refuses a second live task for one source id in a project; a binned one does not count (R7, R10). Every existing row has `source_id` NULL, so creating it cannot fail.
 - `work_item_source_pair`: CHECK `(source_system IS NULL) = (source_id IS NULL)`.
-- `work_item_source_system_known`: CHECK `source_system IS NULL OR source_system IN ('csv','trello')`.
+- `work_item_source_system_known`: CHECK `source_system IS NULL OR (source_system IN ('csv','trello') AND source = 'IMPORT')`.
 - `work_item_source_id_length`: CHECK `source_id IS NULL OR char_length(source_id) BETWEEN 1 AND 200`.
 - `work_item_import_job_is_import`: CHECK `import_job_id IS NULL OR source = 'IMPORT'`.
-- FK `(tenant_id, import_job_id) → import_job (tenant_id, id) ON DELETE SET NULL (import_job_id)` (PG ≥ 15 column list).
+- **No FK on `import_job_id`** (changed while writing the migration): it stays attribution, as `created_by_member_id` is. A composite FK's `SET NULL` needs a column list Prisma cannot model (drift), and the links that matter, with FKs, are `import_job_item`'s.
 
-Every existing row satisfies every CHECK (all NULL), so they are added VALID. The table is small on dev, and the scan is one pass.
+Every existing row satisfies every CHECK (all NULL), so they are added VALID. A `DO` guard at the top of the migration refuses to run if any task already carries import provenance, so no CHECK can be half-added.
 
 ### 1.4 Registration
 
@@ -228,8 +227,8 @@ The gates, in sequence and never as a batch leg (`authz-batches.test.ts`):
 Each `ImportRow` is zod-checked:
 - `sourceId`: ≤ 200 chars, unique within the batch;
 - `title`: 1–400 after trim;
-- `text`: ≤ 50 000;
-- `checklists`: ≤ 20 groups and ≤ 200 items in all, each ≤ 500 chars;
+- `text`: ≤ 40 000;
+- `checklists`: ≤ 20 groups and ≤ 200 items in all, each ≤ 250 chars;
 - `link`: `https://trello.com/` only, ≤ 300;
 - `stateId`: must be a state of THIS project, not TRIAGE;
 - `targetDate`: `YYYY-MM-DD` in 1970–2100;
@@ -338,8 +337,62 @@ The rule is R7. The safety argument:
 
 ## 10. Pre-apply migration review
 
-*(To be filled in by the building session.)*
+A fresh read-only agent reviewed the migration and the schema before apply. It found no HIGH. Every finding was taken except where noted; the same agent re-checked the delta and called it safe to apply. Applied to dev with `migrate deploy` after `migrate status`; the ledger checksum `35abec16…f7ce` was verified against the file.
+
+| # | Severity | Finding | Done |
+|---|---|---|---|
+| 1 | MEDIUM | `written_at = updated_at` and `deleted_at = undone_at` are exact `timestamptz(6)` equalities, and a JS Date drops the microseconds. A description saved with `now()` and then re-read through Prisma would never match again, so the task would be "kept" for good. | `import_job_item` rows are written `INSERT … SELECT w.updated_at` (CREATED and UPDATED alike). The undo's stamp is ONE parameter for both `deleted_at` and `undone_at`; the Bring back reads `undone_at` in SQL. Pinned by the dbtest: three re-imports in a row each update. |
+| 2 | MEDIUM | A batch waiting on the rank lock while an undo commits could write into an UNDONE job. | The batch probes the job unlocked, takes the project's queue, then reads the job `FOR UPDATE` and checks RUNNING and the starter (THE ONE ORDER). Undo and Bring back take the same queue, then the job row. Pinned: a batch after an undo is `IMPORT_CLOSED`. |
+| 3 | LOW | The guard reads `work_item`, which is FORCE RLS: a role without BYPASSRLS would see no rows and the guard would pass having looked at nothing. | `SET LOCAL row_security = off` before it (the 20260906150000 precedent). |
+| 4 | LOW | The lock on `work_item` climbs from AccessShare to AccessExclusive, which can deadlock with live dev traffic. | `SET LOCAL lock_timeout = '10s'; LOCK TABLE work_item IN ACCESS EXCLUSIVE MODE` first. Applied with no dev server running. |
+| 5 | LOW | "Last import write" was ordered by `created_at`, which is a transaction's start time. | An EXISTS on `written_at = updated_at`; the index is now on `written_at`. |
+| 6 | LOW | The comment overstated "one undo per import, held by the database". | Softened: it is the service's rule; the CHECKs only back it against a careless writer. |
+| 7 | LOW | "Live" must mean exactly what the partial index means. | The match, the preview and the Bring back's twin check all use `deleted_at IS NULL` (archived included) and spell out `source_id IS NOT NULL`. |
+| 8 | LOW | Nothing ties an item row to its job's project. | The undo and the Bring back filter `w.project_id = job.project_id`. |
+| 9 | LOW | A never-finished import brought back returns to DONE with no finish; also, should the undo and Bring back touch `updated_at`? | The page's "stopped part-way" keys on `finished_at`. Both touch `updated_at` (the board's freshness poll reads it), and both move the matching `written_at` to their own stamp, so an untouched task stays updatable. Pinned: undo → Bring back → re-import updates. |
+| 10 | NIT | Cheap extra CHECKs. | Added `import_job_counts_within_rows` and `import_job_undone_within_created`. `work_item_import_job_is_import` is now both ways, and the guard also tests `source = 'IMPORT'`. |
+| 11 | NIT | Docs out of step: the header's "last import write", the drift note, DATA_MODEL. | All three fixed before apply. |
 
 ## 11. Code and security reviews
 
-*(To be filled in by the building session.)*
+Two fresh read-only agents reviewed the whole tree after every gate was green. Neither found a HIGH, and neither found a path by which a client sees, or infers, an import, an imported task or a file name: every create writes INTERNAL, the re-import and undo touch only private rows with no contact assignee, and both new tables are class A.
+
+**Security review**
+
+| # | Severity | Finding | Done |
+|---|---|---|---|
+| S1 | MEDIUM | `/\s+$/` in the description builder is quadratic in V8 on a long run of spaces (the shape of CVE-2021-3765). It ran on the server before any gate: one 1 MB request could hold the event loop for seconds. The URL-tail regex had the same shape. | `trimEnd()`, plus a backwards loop for the URL tail. Measured: the old regex took ~300 ms per 40 000-character line, `trimEnd` 0 ms. Pinned by a unit test that would take ~2 s on the old code. |
+| S2 | LOW | Undo's NOT EXISTS checks run on the statement's snapshot. A comment, file, hour or subtask committed while the statement waited on the task's row lock was invisible, so a worked-on task could be binned. | A second statement, on a new snapshot, after the rows are held, puts back any binned task that now has live work (`deleteItem`'s count-after-lock precedent). |
+| S3 | LOW | The first-run list's import link named the tenant's oldest project, unscoped. A custom role with `settings:edit` but no `client:view_all` could be shown another client's project key. | The link's project comes through `scopeWhere`. Whether any project exists (the tick) stays workspace-wide. |
+| S4 | NIT | Bring back matched by stamp alone. | It also requires INTERNAL and no contact assignee, so it can never publish. |
+| S5 | NIT | `matchImportPeople` says which emails are active members. | Accepted: every built-in holder of create + edit also holds `member:view`. Recorded for custom roles. |
+| S6 | NIT | Nothing caps how many imports a workspace runs. | Accepted: it is the hand-create surface, 2 000 rows at a time; there is no per-tenant task cap anywhere. Recorded. |
+| S7 | NIT | File names kept control and bidi characters. | Stripped server-side (C0, C1, U+202A–202E, U+2066–2069). |
+
+**Code review**
+
+| # | Severity | Finding | Done |
+|---|---|---|---|
+| C1 | MEDIUM | Lock-order inversion. A batch took the project queue, then the task counter. `createItem` and a portal request take the counter, then the queue. An import could deadlock a member's "New task" or a client's request, which have no retry. | The batch takes the counter row first (`lockCounter`, a `+0` upsert), then the queue. `rank-lock.ts` states "the counter comes before the queue". Not pinned by a concurrency test: the window needs a sub-second interleaving the Neon link cannot reproduce reliably. |
+| C2 | LOW–MEDIUM | A run stopped by a refused batch was finished DONE and listed green. | The browser still finishes, so the trail records when the run ended. `import_job.finished` carries `rows` and `stopped`, and the list derives STOPPED from the counts as well as from `finished_at`. Pinned by a dbtest. |
+| C3 | LOW | Rows the browser let through could refuse their whole batch: a Trello due date outside 1970–2100, a Trello link the server refuses, a cut through an emoji, and a description whose JSON exceeds 512 KB. | The Trello reader keeps only days and links the server takes. `cut` never splits a surrogate pair. The server strips unstorable characters from every text (`storable`), and a description the gate refuses falls back to one plain paragraph. Each is pinned by a unit test or a dbtest. |
+| C4 | NIT | The birth history row lacked `oldRef`. | `oldRef` = the default state's id, as `createItem` writes it. |
+| C5 | NIT | App-clock skew could fail `import_job_times_ordered` or `_restored_shape`. | `last_write_at`, `finished_at` and `restored_at` are written with `greatest(…)` against the stamps they must follow. |
+| C6 | NIT | e2e fragility: a project-key collision on a CI retry, and the first-run list left hidden by a failed attempt. | The key keeps digits. `first-run-on` resets the list before each attempt, and the spec no longer depends on `import.spec.ts` having run or not. |
+| C7 | NIT | Design drift. The company step's link condition; Bring back offered in an archived project; the caps named 50 000/500. | The company step shows, and links, exactly when the viewer can open Settings → Invoicing (`settings:edit` + `invoice:view`). Bring back is not offered in an archived project. The design's numbers are 40 000/250 (corrected below). |
+
+**Fix-round re-check.** A third fresh agent re-checked every fix above. It confirmed all of them, and found:
+
+| # | Severity | Finding | Done |
+|---|---|---|---|
+| F1 | MEDIUM | S1 was incomplete. The four line patterns (`\s+(.+)$`) were still quadratic: a U+2028/U+2029 inside a line made `$` fail, and a space matches both groups. | Each tail is now `\s+(\S.*)$`, so the spaces can only belong to one group. U+2028/U+2029 are line breaks, built from their codes. Measured: the old heading pattern took ~550 ms per line, the new one 0 ms. The timing pin now runs those four shapes; the old URL-tail half, which could not fail, is gone. |
+| F2 | LOW | A task the undo put back got a fresh `updated_at`, so a re-import would treat it as changed forever. | It is put back with the undo's own stamp, which its `written_at` already carries. |
+| F3 | LOW | Bring back failed with an unmapped `RESTORE_PARENT_GONE` when a member had moved a task under a parent that was later deleted. | Such a task stays in the bin and is counted as skipped. |
+| F4 | NIT | The S2 comment over-claimed for logged hours. | Reworded: a time entry takes only the foreign key's KEY SHARE, a residual shared with `deleteItem`. |
+| F5 | NIT | `matchLive` locked `FOR UPDATE`. | Now `FOR NO KEY UPDATE`, the mode the re-import's UPDATEs take (no unique-indexed column changes). The undo CTE keeps `FOR UPDATE`, which is what makes F2's re-check catch in-flight writers. |
+| F6 | NIT | The timing pin's URL half could not fail. | Replaced (F1). |
+| F7 | NIT | `link` skipped `storable`. | It is cleaned before the Trello-host check. |
+| F8 | NIT | A JSDoc was orphaned in `seed-cli.ts`. | Moved back. |
+| F9 | NIT | New label names in file order could deadlock two imports. S3 is not pinned. | Names are sorted before insert. S3 stays unpinned: it needs a custom role, and the fix is a one-line `scopeWhere` spread with two precedents. |
+
+(Read §2–§3 with the caps as built: description text ≤ 40 000 characters, checklist items ≤ 250.)

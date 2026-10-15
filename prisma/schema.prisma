@@ -317,6 +317,8 @@ model Tenant {
   speedChecks                    WebsiteSpeedCheck[]
   madeReports                    MadeReport[]
   monthlyReportDrafts            MonthlyReportDraft[]
+  importJobs                     ImportJob[]
+  importJobItems                 ImportJobItem[]
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   projectUpdateReminders         ProjectUpdateReminderSent[]
   projectUpdateTemplates         ProjectUpdateTemplate[]
@@ -1075,6 +1077,8 @@ model Project {
   credentialAsks CredentialAsk[]
   // Phase 4:
   invoices       Invoice[]
+  // Phase 6 slice 121 — imports:
+  importJobs     ImportJob[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -2403,6 +2407,76 @@ model MonthlyReportDraft {
   @@map("monthly_report_draft")
 }
 
+/// ONE IMPORT of tasks into a project (Phase 6 slice 121; founder decision
+/// C97; docs/research/2026-10-15-slice-121-imports-design.md). Class A:
+/// members only. The file itself is read in the member's browser and never
+/// reaches the server (R1) — this row is what is kept: who, when, the file's
+/// NAME (shown on the Import page, never audited), the counts, and the
+/// undo/restore stamps. The undo window runs from `lastWriteAt` (7 days); a
+/// "Bring back" from `undoneAt` (30 days) — the service's rules, the shape's
+/// CHECKs.
+model ImportJob {
+  id                 String    @id @default(uuid(7))
+  tenantId           String    @map("tenant_id")
+  projectId          String    @map("project_id")
+  /// CSV | TRELLO (CHECK).
+  source             String
+  fileName           String    @map("file_name") @db.VarChar(200)
+  /// The rows the browser said it would send, 1–2000 (CHECK).
+  rowCount           Int       @map("row_count")
+  /// RUNNING | DONE | UNDONE (CHECK).
+  status             String    @default("RUNNING")
+  createdCount       Int       @default(0) @map("created_count")
+  updatedCount       Int       @default(0) @map("updated_count")
+  /// Matched a task someone changed in Fortleva since an import wrote it — left alone.
+  keptCount          Int       @default(0) @map("kept_count")
+  /// Matched a task already holding the file's values — nothing written.
+  unchangedCount     Int       @default(0) @map("unchanged_count")
+  startedByMemberId  String    @map("started_by_member_id") // attribution, no FK
+  startedAt          DateTime  @map("started_at") @db.Timestamptz(6)
+  lastWriteAt        DateTime  @map("last_write_at") @db.Timestamptz(6)
+  finishedAt         DateTime? @map("finished_at") @db.Timestamptz(6)
+  /// THE stamp the undo wrote on every task it removed — what a Bring back restores by.
+  undoneAt           DateTime? @map("undone_at") @db.Timestamptz(6)
+  undoneByMemberId   String?   @map("undone_by_member_id") // attribution, no FK
+  undoneCount        Int?      @map("undone_count")
+  restoredAt         DateTime? @map("restored_at") @db.Timestamptz(6)
+  restoredByMemberId String?   @map("restored_by_member_id") // attribution, no FK
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  project Project         @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  items   ImportJobItem[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, projectId, startedAt(sort: Desc)])
+  @@map("import_job")
+}
+
+/// One task an import WROTE (Phase 6 slice 121): CREATED it, or UPDATED it
+/// on a re-import. `writtenAt` is the task's `updated_at` exactly as that
+/// write left it (written from SQL, never a Date read back) — a re-import
+/// overwrites a task only while SOME import write's `writtenAt` still equals
+/// its `updated_at` (compared in SQL; design R7), and an undo removes only
+/// the tasks a job CREATED.
+model ImportJobItem {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  importJobId String   @map("import_job_id")
+  workItemId  String   @map("work_item_id")
+  /// CREATED | UPDATED (CHECK).
+  action      String
+  writtenAt   DateTime @map("written_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  job      ImportJob @relation(fields: [tenantId, importJobId], references: [tenantId, id], onDelete: Cascade)
+  workItem WorkItem  @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, importJobId, workItemId])
+  @@index([tenantId, workItemId, writtenAt])
+  @@map("import_job_item")
+}
+
 /// Current version = max versionNumber. The portal never queries this
 /// layer — downloads resolve through Document's visibility check.
 model FileVersion {
@@ -2747,8 +2821,15 @@ model WorkItem {
   source              WorkItemSource   @default(IN_APP)
   checklistTotal      Int              @default(0) @map("checklist_total") // denormalised from description on save
   checklistDone       Int              @default(0) @map("checklist_done")
-  sourceSystem        String?          @map("source_system") // "trello" | "csv" | … (Phase 6 import)
-  sourceId            String?          @map("source_id") // (sourceSystem, sourceId) idempotency
+  // IMPORT PROVENANCE (Phase 6 slice 121, C97): both or neither (CHECK
+  // work_item_source_pair); "csv" | "trello" (CHECK); one LIVE task per
+  // (project, source_system, source_id) — a partial UNIQUE the migration
+  // owns (`work_item_source_live_key`, `deleted_at IS NULL`), so a binned
+  // task never blocks a re-import. `importJobId` = the import that MADE the
+  // row (attribution, no FK — `import_job_item` carries the real links);
+  // set only on a `source = IMPORT` row (CHECK).
+  sourceSystem        String?          @map("source_system")
+  sourceId            String?          @map("source_id")
   importJobId         String?          @map("import_job_id")
   createdByMemberId   String?          @map("created_by_member_id") // attribution, no FK
   reportedByContactId String?          @map("reported_by_contact_id") // attribution, no FK (PORTAL/EMAIL requests)
@@ -2774,6 +2855,7 @@ model WorkItem {
   collaborators   WorkItemCollaborator[]
   subscribers     WorkItemSubscriber[]
   timeEntries     TimeEntry[] // 2T
+  importWrites    ImportJobItem[] // Phase 6 slice 121
 
   @@unique([tenantId, projectId, number]) // human key ACME-12
   @@unique([tenantId, projectId, rank]) // one position per item (retry-with-jitter)

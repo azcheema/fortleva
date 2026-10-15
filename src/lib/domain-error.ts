@@ -241,6 +241,13 @@ export type DomainErrorCode =
   | "MADE_REPORT_STALE"
   | "MADE_REPORT_BUSY"
   | "REPORT_PDF_UNAVAILABLE"
+  // Imports (Phase 6 slice 121 — src/modules/work/import/service.ts, C97): a
+  // batch for an import that is not this member's or no longer running (an
+  // undo committed while it waited); an undo after 7 days, or a second one;
+  // a Bring back after 30 days, or of an import that is not undone.
+  | "IMPORT_CLOSED"
+  | "IMPORT_UNDO_CLOSED"
+  | "IMPORT_RESTORE_CLOSED"
   | "UPDATE_RETRACT_WINDOW_CLOSED" // more than 15 minutes since publishing
   | "UPDATE_CHANGED" // the draft was saved by somebody else between the two publish transactions
   | "UPDATE_EMPTY" // publishing a post whose sections say nothing

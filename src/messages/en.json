@@ -251,6 +251,42 @@
       "start": "Start a timer on {task}",
       "stop": "Stop the timer on {task}",
       "running": "Your timer is running on this task"
+    },
+    "firstRun": {
+      "title": "Get started",
+      "progress": "{done, number} of {total, number} done",
+      "hide": "Hide",
+      "hidden": "The getting-started list is hidden. Settings → Preferences brings it back.",
+      "failed": "That didn't work. Try again in a moment.",
+      "doneSr": "Done",
+      "todoSr": "Not done yet",
+      "steps": {
+        "company": {
+          "title": "Add your company details",
+          "body": "Your company's name, organisation number and address, for your invoices.",
+          "action": "Open invoicing"
+        },
+        "client": {
+          "title": "Add your first client",
+          "body": "A client is a company you do work for. Their people can follow along in the portal.",
+          "action": "Add a client"
+        },
+        "project": {
+          "title": "Make your first project",
+          "body": "Every task, hour and update belongs to a project.",
+          "action": "Make a project"
+        },
+        "team": {
+          "title": "Invite your team",
+          "body": "Invite the people you work with, so tasks can be shared out.",
+          "action": "Invite people"
+        },
+        "tasks": {
+          "title": "Add or import your tasks",
+          "body": "Bring in your tasks from a spreadsheet or a Trello board, or add them by hand.",
+          "action": "Import tasks"
+        }
+      }
     }
   },
   "inbox": {
@@ -1049,6 +1085,12 @@
         "description": "The reports Fortleva drafts by itself for your clients.",
         "draftMonthly": "Draft a monthly report for every client on the 1st",
         "draftMonthlyHint": "For every client with someone in the portal: what got done and the progress updates of the month that just ended, in the client's language, private until someone on your team publishes it. A month with nothing to show gets no draft. The people who can publish a client's reports are told in their inbox."
+      },
+      "onboarding": {
+        "title": "Getting started",
+        "description": "The getting-started list on Home, for the people who set up this workspace.",
+        "checklist": "Show the getting-started list on Home",
+        "checklistHint": "It disappears by itself once every step is done."
       }
     },
     "export": {
@@ -1993,6 +2035,9 @@
     "MADE_REPORT_STALE": "What the client can see has changed since this report was made, so it wasn't published. Make the report again.",
     "MADE_REPORT_BUSY": "Someone is changing this client's projects right now. Try again in a moment.",
     "REPORT_PDF_UNAVAILABLE": "The report couldn't be made just now. Try again in a moment.",
+    "IMPORT_CLOSED": "This import has stopped, so it took no more tasks. Reload the page to see what was imported.",
+    "IMPORT_UNDO_CLOSED": "This import can't be undone any more. Delete its tasks by hand if you need to.",
+    "IMPORT_RESTORE_CLOSED": "These tasks can't be brought back any more.",
     "AGREEMENT_ENDED": "This agreement has ended: it can't be paused, run again or given a new end date. Reload the page.",
     "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page.",
     "FORTNOX_UNAVAILABLE": "The Fortnox connection isn't available yet.",
@@ -2805,7 +2850,8 @@
         "title": "No tasks yet",
         "body": "Every task in this project lives here, in one ordered list. Create the first one.",
         "bodyReadOnly": "Tasks will appear here once someone creates them.",
-        "action": "New task"
+        "action": "New task",
+        "import": "Import tasks"
       },
       "columns": {
         "key": "Key",
@@ -2859,7 +2905,8 @@
       "visibilityPrivateWith": "{key} is now private to the team, together with {list}.",
       "visibilityAsk": "The client can still see {key}. Make it private, together with {list}?",
       "visibilityAskPortalOff": "Make {key} private, together with {list}?",
-      "visibilityAskAction": "Make all private"
+      "visibilityAskAction": "Make all private",
+      "importLink": "Import tasks"
     },
     "triage": {
       "title": "Triage",
@@ -3615,6 +3662,133 @@
         "write": "Write the update",
         "continue": "Continue the draft"
       }
+    },
+    "import": {
+      "title": "Import tasks",
+      "intro": "Bring tasks into this project from a spreadsheet file or a Trello board. The file is read here in your browser; only the tasks are sent to Fortleva.",
+      "private": "Imported tasks are private to your team until you share them. Nobody is notified, not even the people tasks are assigned to.",
+      "back": "Back to the backlog",
+      "trelloLink": "Imported from Trello:",
+      "forbidden": {
+        "title": "You can't import tasks here",
+        "body": "Importing needs the right to create and edit tasks in this project."
+      },
+      "archived": "This project is archived, so no tasks can be imported into it.",
+      "file": {
+        "title": "Choose a file",
+        "label": "File",
+        "hint": "Drop a CSV or Trello JSON file here, or choose one",
+        "dragging": "Drop the file here",
+        "choose": "Choose file",
+        "how": "Trello: open the board, then Menu → Print, export and share → Export as JSON. Asana, ClickUp, Jira, Monday, Excel and Google Sheets: export or save the list as CSV.",
+        "tooBig": "This file is larger than 50 MB.",
+        "unreadable": "This isn't a CSV file or a Trello board export.",
+        "tooMany": "This file has more than {max, number} rows. Split it and import the parts one at a time.",
+        "empty": "This file has no rows to import.",
+        "column": "Column {n, number}"
+      },
+      "columns": {
+        "title": "Match the columns",
+        "description": "Which column holds what. Only the name is required.",
+        "none": "Not in this file",
+        "fields": {
+          "name": "Name",
+          "description": "Description",
+          "status": "Status",
+          "due": "Due date",
+          "assignee": "Assigned to",
+          "assigneeEmail": "Assignee's email",
+          "labels": "Labels",
+          "id": "ID"
+        },
+        "idHint": "With an ID column, importing the same file again updates the tasks instead of making copies.",
+        "dateFormat": "Dates in this file are written",
+        "dmy": "Day first (31/12/2026)",
+        "mdy": "Month first (12/31/2026)",
+        "needName": "Pick the column that holds each task's name."
+      },
+      "statuses": {
+        "titleCsv": "Match the statuses",
+        "titleTrello": "Match the lists",
+        "descriptionCsv": "Each status in the file goes to one of this project's states.",
+        "descriptionTrello": "Each Trello list goes to one of this project's states.",
+        "fromFile": "In the file",
+        "toState": "State in Fortleva",
+        "empty": "(no status)",
+        "rows": "{count, plural, one {# task} other {# tasks}}",
+        "approvalHint": "States that need approval aren't offered, because you can't move tasks into them."
+      },
+      "people": {
+        "title": "Match the people",
+        "description": "Matched by email, or by exact name. You can change any match.",
+        "fromFile": "In the file",
+        "toMember": "Assign to",
+        "nobody": "Nobody"
+      },
+      "check": {
+        "title": "Check before importing",
+        "create": "{count, plural, one {# new task} other {# new tasks}}",
+        "update": "{count, plural, one {# task imported before is updated where the file has changed} other {# tasks imported before are updated where the file has changed}}",
+        "keep": "{count, plural, one {# task imported before was changed in Fortleva and stays as it is} other {# tasks imported before were changed in Fortleva and stay as they are}}",
+        "skipped": "{count, plural, one {# row has no name and is skipped} other {# rows have no name and are skipped}}",
+        "shortened": "{count, plural, one {# row is too long and is shortened} other {# rows are too long and are shortened}}",
+        "badDates": "{count, plural, one {# date can't be read, so that task gets no due date} other {# dates can't be read, so those tasks get no due date}}",
+        "duplicateIds": "{count, plural, one {# row repeats an ID and is imported without one} other {# rows repeat an ID and are imported without one}}",
+        "archived": "{count, plural, one {# archived Trello card is left out} other {# archived Trello cards are left out}}",
+        "newLabels": "New labels: {names}",
+        "noLabelRight": "These labels don't exist yet and you can't make labels, so they're left off: {names}",
+        "noId": "This file has no ID column, so importing it again will make copies.",
+        "first": "The first rows, as they will be imported",
+        "columns": {
+          "name": "Name",
+          "status": "State",
+          "due": "Due",
+          "assignee": "Assigned to",
+          "labels": "Labels"
+        },
+        "more": "{count, plural, one {# more row} other {# more rows}}",
+        "submit": "Import {count, plural, one {# task} other {# tasks}}",
+        "nothing": "There is nothing to import."
+      },
+      "run": {
+        "importing": "Importing… {done, number} of {total, number}",
+        "progress": "Import progress"
+      },
+      "result": {
+        "title": "Imported",
+        "summary": "New: {created, number} · Updated: {updated, number} · Kept: {kept, number} · Unchanged: {unchanged, number}",
+        "stopped": "The import stopped part-way. The tasks imported so far stay — import the file again to finish.",
+        "openBacklog": "Open the backlog",
+        "another": "Import another file",
+        "failed": "The import couldn't be finished. Try again in a moment."
+      },
+      "history": {
+        "title": "Earlier imports",
+        "description": "An import can be undone for 7 days. Tasks someone has worked on since are kept.",
+        "columns": {
+          "when": "Started",
+          "file": "File",
+          "by": "By",
+          "tasks": "Tasks",
+          "status": "Status"
+        },
+        "tasks": "{created, number} new · {updated, number} updated",
+        "inBin": "{count, plural, one {# in the bin} other {# in the bin}}",
+        "undo": "Undo import",
+        "undoConfirm": "Move this import's tasks to the bin?",
+        "restore": "Bring back the tasks",
+        "actionsFor": "Actions for {file}",
+        "undone": "{removed, plural, one {# task moved to the bin.} other {# tasks moved to the bin.}}",
+        "undoneKept": "{kept, plural, one {# task was kept: someone has worked on it.} other {# tasks were kept: someone has worked on them.}}",
+        "restored": "{restored, plural, one {# task brought back.} other {# tasks brought back.}}",
+        "restoredSkipped": "{skipped, plural, one {# task stays in the bin: it has been imported again since.} other {# tasks stay in the bin: they have been imported again since.}}",
+        "formerMember": "A former member"
+      },
+      "source": {
+        "CSV": "Spreadsheet",
+        "TRELLO": "Trello"
+      },
+      "mapTo": "{to} for “{from}”"
     }
   },
   "portal": {
@@ -4200,6 +4374,12 @@
       "EPIC": "Epic",
       "TASK": "Task",
       "SUBTASK": "Subtask"
+    },
+    "importStatus": {
+      "RUNNING": "Importing",
+      "STOPPED": "Stopped part-way",
+      "DONE": "Done",
+      "UNDONE": "Undone"
     },
     "loginAsk": {
       "OPEN": "Waiting",

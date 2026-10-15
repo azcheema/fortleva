@@ -17,6 +17,7 @@ import {
   FormatPreferencesForm,
   ModuleToggles,
   RegionalPreferencesForm,
+  OnboardingPreferencesForm,
   ReportPreferencesForm,
   TimePreferencesForm,
 } from "./preference-forms";
@@ -108,6 +109,10 @@ export default async function PreferencesPage() {
             <ReportPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
           </SectionCard>
         ) : null}
+        {/* Phase 6 slice 121 (C97 (d)): the getting-started list on Home. */}
+        <SectionCard title={t("onboarding.title")} description={t("onboarding.description")}>
+          <OnboardingPreferencesForm prefs={prefs} editable={held.has("settings:edit")} />
+        </SectionCard>
         <SectionCard title={t("modulesTitle")} description={t("modulesDescription")}>
           {/* ✦ code: shown to holders; a stale factor becomes step-up on the first flip. */}
           <ModuleToggles

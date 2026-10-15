@@ -15,6 +15,7 @@ import {
   MAIL_PREF_KEYS,
   materializePreferences,
   moduleKey,
+  ONBOARDING_PREF_KEYS,
   portalCredentialsSwitchLockKey,
   PREF_KEYS,
   REPORT_PREF_KEYS,
@@ -128,6 +129,8 @@ const patchSchema = z
     mail: z.object({ clientSummary: z.boolean() }).partial(),
     // Phase 7 slice 120 (C96 (b)): the monthly reports drafted by themselves.
     reports: z.object({ draftMonthly: z.boolean() }).partial(),
+    // Phase 6 slice 121 (C97 (d)): the getting-started list on Home.
+    onboarding: z.object({ checklist: z.boolean() }).partial(),
   })
   .partial();
 
@@ -323,6 +326,11 @@ export async function updatePreferences(
     }
     for (const [field, key] of Object.entries(REPORT_PREF_KEYS) as [keyof typeof REPORT_PREF_KEYS, string][]) {
       const value = patch.reports?.[field];
+      if (value === undefined) continue;
+      if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
+    }
+    for (const [field, key] of Object.entries(ONBOARDING_PREF_KEYS) as [keyof typeof ONBOARDING_PREF_KEYS, string][]) {
+      const value = patch.onboarding?.[field];
       if (value === undefined) continue;
       if (await upsertPreference(tx, ctx, key, value)) changed.push(key);
     }

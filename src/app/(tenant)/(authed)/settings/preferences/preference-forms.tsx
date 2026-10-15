@@ -330,3 +330,31 @@ export function ReportPreferencesForm({ prefs, editable }: { prefs: TenantPrefer
     </AutoForm>
   );
 }
+
+/**
+ * Phase 6 slice 121 — the getting-started list on Home (founder decision
+ * C97 (d)): ON by default; the card's own Hide turns it off, and this is
+ * where it comes back. The same hidden-marker convention as the cards above.
+ */
+export function OnboardingPreferencesForm({ prefs, editable }: { prefs: TenantPreferences; editable: boolean }) {
+  const t = useTranslations("settings.preferences.onboarding");
+  return (
+    <AutoForm action={updatePreferencesAction} className="flex flex-col gap-4">
+      <div className="flex items-start gap-2">
+        <input type="hidden" name="onboarding.checklistMarker" value="1" />
+        <NativeCheckbox
+          id="p-onboarding-checklist"
+          name="onboarding.checklist"
+          defaultChecked={prefs.onboarding.checklist}
+          disabled={!editable}
+          className="mt-0.5"
+          data-testid="pref-onboarding-checklist"
+        />
+        <div className="flex flex-col">
+          <Label htmlFor="p-onboarding-checklist">{t("checklist")}</Label>
+          <span className="text-xs text-muted-foreground">{t("checklistHint")}</span>
+        </div>
+      </div>
+    </AutoForm>
+  );
+}

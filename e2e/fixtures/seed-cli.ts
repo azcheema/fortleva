@@ -225,6 +225,11 @@ const DBTEST_PREFIXES = [
   // Phase 7 slice 120, reports drafted by themselves on the 1st — `src/documents/report-drafts.dbtest.ts`,
   // `setupTenant("rdft")`.
   "rdft-",
+  // Phase 6 slice 121, imports — `src/modules/work/import/import.dbtest.ts`,
+  // `setupTenant("imp")`; and the first-run list — `src/onboarding/first-run.dbtest.ts`,
+  // `setupTenant("frun")`.
+  "imp-",
+  "frun-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -543,7 +548,10 @@ export type E2ESeed = {
    * — a year end needs a cash-method workspace, and the first is the
    * invoice method's for good. Nothing in it reaches `/home` or
    * `account.spec.ts`'s assertions, which name only the workspace. It is
-   * torn down with the first. */
+   * torn down with the first. Slice 121: its Home shows the getting-started
+   * list (`first-run.spec.ts` — on here, off in the first workspace), and
+   * `import.spec.ts` makes a fresh project in it per run
+   * (`import-workspace`), so the first workspace's lists never see an import. */
   readonly secondTenantId: string;
   readonly secondTenantSlug: string;
   readonly secondTenantName: string;
@@ -827,6 +835,13 @@ async function provision(seedFile: string): Promise<void> {
     slug: secondSlug,
     ownerUserId: user.id,
   });
+
+  // The getting-started list (slice 121, C97 (d)) is ON by default; the
+  // shared workspace's Home is what the visual walk and `home.spec.ts`
+  // photograph and count, so it is OFF here. `first-run.spec.ts` walks the
+  // list in the SECOND workspace, where it is on (its team and tasks are
+  // undone).
+  await db.tenantPreference.create({ data: { tenantId, key: "onboarding.checklist", value: false } });
 
   // Seeding runs as the owner would: no ✦ code is involved, so the
   // browser session (which has no TOTP) can do the same work.
@@ -2780,6 +2795,49 @@ async function resetUpdateLayouts(tenantId: string): Promise<void> {
 }
 
 /**
+ * THE IMPORT SPEC'S PROJECT (Phase 6 slice 121; `import.spec.ts`) — a NEW
+ * empty project, under its own client, in the fixture owner's SECOND
+ * workspace, made through the real services as the owner. A fresh key each
+ * call, so a CI retry starts from an empty backlog rather than the first
+ * attempt's imports; the shared workspace never sees any of it (its backlog,
+ * project list and health table are other specs' counts). Throwaway tenant only.
+ */
+async function importWorkspace(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("import-workspace: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { createClient } = await import("../../src/clients/service");
+  const { createProject } = await import("../../src/projects/service");
+  try {
+    const owner = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const ctx = { tenantId, actor: { memberId: owner.id, mfa: { enrolled: false, verifiedAt: null } } };
+    const clientName = "E2E Import Client";
+    const client =
+      (await db.client.findFirst({ where: { tenantId, name: clientName }, select: { id: true } })) ??
+      (await createClient(ctx, { name: clientName }));
+    // Letters AND digits (a key is ^[A-Z][A-Z0-9]{0,7}$, and "IM" leads), so a
+    // CI retry's fresh key cannot collide with the first attempt's.
+    const suffix = randomUUID().replace(/[^a-z0-9]/g, "").slice(0, 5).toUpperCase();
+    const { key } = await createProject(ctx, { clientId: client.id, key: `IM${suffix}`, name: `E2E Import ${suffix}` });
+    process.stdout.write(`${MARKER}${JSON.stringify({ projectKey: key, projectName: `E2E Import ${suffix}` })}\n`);
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/** The getting-started list switched back ON in a throwaway workspace (`first-run.spec.ts`, so a retry starts as the first attempt did). */
+async function firstRunOn(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("first-run-on: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  await db.tenantPreference.deleteMany({ where: { tenantId, key: "onboarding.checklist" } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}{"on":1}\n`);
+}
+
+/**
  * Put the workspace's invoice details back to none (Phase 4 slice 107): the
  * company columns and the payment columns on `tenant`, and the default
  * payment terms — through the PLATFORM role, which the database's backstop
@@ -4219,6 +4277,8 @@ const main = async (): Promise<void> => {
   if (command === "reset-update-schedule") return resetUpdateSchedule(argument!, process.argv[4]!);
   if (command === "reset-update-layouts") return resetUpdateLayouts(argument!);
   if (command === "reset-invoice-details") return resetInvoiceDetails(argument!);
+  if (command === "import-workspace") return importWorkspace(argument!);
+  if (command === "first-run-on") return firstRunOn(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);

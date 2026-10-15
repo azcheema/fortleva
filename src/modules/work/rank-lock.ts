@@ -1,5 +1,5 @@
 import type { TenantDb } from "@/db";
-import { rankBetween } from "@/lib/rank";
+import { rankBetween, ranksBetween } from "@/lib/rank";
 import { lockContactBudget } from "@/portal/contact-budget-lock";
 
 /**
@@ -42,6 +42,13 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
  * once, and a writer of ONE work_item row cannot close a cycle among
  * work_item rows with them. A new multi-row writer MUST take it.
  * (lockItemRow, below, is the lock a writer of ONE row takes instead.)
+ *
+ * THE COUNTER COMES BEFORE THE QUEUE (slice 121's code review). A writer
+ * that numbers a task holds `tenant_counter`'s `work_item:<projectId>` row
+ * first and this lock second — `createItem` (nextCounter, then
+ * lockProjectRanks), a portal request, and an import batch, which takes the
+ * row with `lockCounter` before the queue and draws its numbers later. The
+ * other order deadlocked an import against a member's "New task".
  *
  * THE ONE ORDER, stated once (slice 7): a queued writer PROBES its item
  * unlocked first (`loadItemInScope(…, { lock: false })`, rows.ts) —
@@ -466,4 +473,15 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 export async function bottomRank(tx: TenantDb, tenantId: string, projectId: string): Promise<string> {
   const last = await lockPredecessor(tx, tenantId, projectId, null, NIL_UUID);
   return rankBetween(last?.rank ?? null, null);
+}
+
+/**
+ * `n` keys for new rows at the bottom of the project, ascending — the
+ * import's batch create (Phase 6 slice 121). The same rule as `bottomRank`:
+ * below the last row live OR binned, which still owns its slot; the caller
+ * holds the project rank lock.
+ */
+export async function bottomRanks(tx: TenantDb, tenantId: string, projectId: string, n: number): Promise<string[]> {
+  const last = await lockPredecessor(tx, tenantId, projectId, null, NIL_UUID);
+  return ranksBetween(last?.rank ?? null, null, n);
 }

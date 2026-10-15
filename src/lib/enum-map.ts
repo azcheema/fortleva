@@ -209,6 +209,17 @@ export const STATUS_MAP = {
     DECLINED: spec("caution", "circle-x"),
     CANCELLED: spec("quiet", "minus", "outline"),
   },
+  /**
+   * Phase 6 slice 121 (C97): an import on the project's Import page.
+   * STOPPED is a run the browser left part-way — its tasks stay, and
+   * importing the file again finishes it — so caution, not danger.
+   */
+  importStatus: {
+    RUNNING: spec("brand", "clock"),
+    STOPPED: spec("caution", "circle-pause"),
+    DONE: spec("success", "circle-check"),
+    UNDONE: spec("quiet", "undo-2", "outline"),
+  },
 } as const satisfies Record<string, Record<string, StatusSpec>>;
 
 export type StatusDomain = keyof typeof STATUS_MAP;

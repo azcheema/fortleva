@@ -70,6 +70,8 @@ export async function updatePreferencesAction(formData: FormData): Promise<FormR
   if (has(formData, "mail.clientSummaryMarker")) patch.mail = { clientSummary: has(formData, "mail.clientSummary") };
   // Phase 7 slice 120: the monthly reports drafted by themselves (same marker convention).
   if (has(formData, "reports.draftMonthlyMarker")) patch.reports = { draftMonthly: has(formData, "reports.draftMonthly") };
+  // Phase 6 slice 121: the getting-started list on Home (same marker convention).
+  if (has(formData, "onboarding.checklistMarker")) patch.onboarding = { checklist: has(formData, "onboarding.checklist") };
   const r = await runForm(PATH, async () => {
     await updatePreferences(ctx, patch);
     return tCommon("saved");

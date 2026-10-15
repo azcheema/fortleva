@@ -113,9 +113,20 @@ export default async function ProjectBacklogPage({
                 title={t("empty.title")}
                 body={t("empty.body")}
                 action={
-                  <Button asChild size="sm">
-                    <Link href="#new-task">{t("empty.action")}</Link>
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild size="sm">
+                      <Link href="#new-task">{t("empty.action")}</Link>
+                    </Button>
+                    {/* An empty project is where an agency arrives with its
+                        tasks somewhere else (Phase 6 slice 121, C97). */}
+                    {data.caps.canEdit ? (
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/projects/${project.key}/import`} data-testid="backlog-empty-import">
+                          {t("empty.import")}
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </div>
                 }
               />
             </SectionCard>

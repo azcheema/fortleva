@@ -77,6 +77,7 @@ export type TenantPreferences = {
   vault: VaultPreferences;
   mail: MailPreferences;
   reports: ReportPreferences;
+  onboarding: OnboardingPreferences;
 };
 
 export const PREF_KEYS = {
@@ -284,7 +285,22 @@ export const REPORT_PREF_KEYS: Readonly<Record<keyof ReportPreferences, string>>
 };
 export const REPORT_DEFAULTS: ReportPreferences = { draftMonthly: true };
 
-const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance" | "vault" | "mail" | "reports"> = {
+export type OnboardingPreferences = {
+  /**
+   * The getting-started list on Home (Phase 6 slice 121; founder decision
+   * C97 (d)): shown to the members who hold `settings:edit` while a step is
+   * still undone. ON by default — a workspace whose steps are all done never
+   * sees it; "Hide" on the card turns it off for the whole workspace and
+   * Settings → Preferences turns it on again. `settings:edit` both ways.
+   */
+  checklist: boolean;
+};
+export const ONBOARDING_PREF_KEYS: Readonly<Record<keyof OnboardingPreferences, string>> = {
+  checklist: "onboarding.checklist",
+};
+export const ONBOARDING_DEFAULTS: OnboardingPreferences = { checklist: true };
+
+const DEFAULTS: Omit<TenantPreferences, "modules" | "defaultLocale" | "time" | "finance" | "vault" | "mail" | "reports" | "onboarding"> = {
   timezone: "Europe/Stockholm",
   weekStart: "MONDAY",
   showIsoWeek: true,
@@ -375,5 +391,6 @@ export function materializePreferences(
     },
     mail: { clientSummary: bool(MAIL_PREF_KEYS.clientSummary, MAIL_DEFAULTS.clientSummary) },
     reports: { draftMonthly: bool(REPORT_PREF_KEYS.draftMonthly, REPORT_DEFAULTS.draftMonthly) },
+    onboarding: { checklist: bool(ONBOARDING_PREF_KEYS.checklist, ONBOARDING_DEFAULTS.checklist) },
   };
 }

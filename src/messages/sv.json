@@ -251,6 +251,42 @@
       "start": "Starta en timer på {task}",
       "stop": "Stoppa timern på {task}",
       "running": "Din timer är igång på den här uppgiften"
+    },
+    "firstRun": {
+      "title": "Kom igång",
+      "progress": "{done, number} av {total, number} klara",
+      "hide": "Dölj",
+      "hidden": "Kom igång-listan är dold. Under Inställningar → Preferenser kan du visa den igen.",
+      "failed": "Det gick inte. Försök igen om en liten stund.",
+      "doneSr": "Klar",
+      "todoSr": "Inte klar än",
+      "steps": {
+        "company": {
+          "title": "Lägg till företagets uppgifter",
+          "body": "Företagets namn, organisationsnummer och adress, till era fakturor.",
+          "action": "Öppna fakturering"
+        },
+        "client": {
+          "title": "Lägg till er första kund",
+          "body": "En kund är ett företag ni arbetar åt. Kundens personer kan följa arbetet i portalen.",
+          "action": "Lägg till en kund"
+        },
+        "project": {
+          "title": "Skapa ert första projekt",
+          "body": "Varje uppgift, timme och uppdatering hör till ett projekt.",
+          "action": "Skapa ett projekt"
+        },
+        "team": {
+          "title": "Bjud in teamet",
+          "body": "Bjud in dem ni arbetar med, så att uppgifter kan fördelas.",
+          "action": "Bjud in personer"
+        },
+        "tasks": {
+          "title": "Lägg till eller importera era uppgifter",
+          "body": "Hämta in uppgifter från ett kalkylblad eller en Trello-tavla, eller lägg till dem för hand.",
+          "action": "Importera uppgifter"
+        }
+      }
     }
   },
   "inbox": {
@@ -1049,6 +1085,12 @@
         "description": "Rapporterna Fortleva gör utkast till på egen hand åt era kunder.",
         "draftMonthly": "Gör ett utkast till månadsrapport för varje kund den 1:a",
         "draftMonthlyHint": "För varje kund med någon i kundportalen: vad som blev klart och lägesuppdateringarna för månaden som just tog slut, på kundens språk, privat tills någon i ert team publicerar den. En månad utan något att visa får inget utkast. De som kan publicera en kunds rapporter får veta det i sin inkorg."
+      },
+      "onboarding": {
+        "title": "Kom igång",
+        "description": "Kom igång-listan på Hem, för dem som ställer in arbetsytan.",
+        "checklist": "Visa kom igång-listan på Hem",
+        "checklistHint": "Den försvinner av sig själv när alla steg är klara."
       }
     },
     "export": {
@@ -1993,6 +2035,9 @@
     "MADE_REPORT_STALE": "Det kunden kan se har ändrats sedan rapporten skapades, så den publicerades inte. Skapa rapporten igen.",
     "MADE_REPORT_BUSY": "Någon ändrar kundens projekt just nu. Försök igen om en liten stund.",
     "REPORT_PDF_UNAVAILABLE": "Rapporten kunde inte skapas just nu. Försök igen om en liten stund.",
+    "IMPORT_CLOSED": "Importen har stoppats och tog inte emot fler uppgifter. Ladda om sidan för att se vad som importerades.",
+    "IMPORT_UNDO_CLOSED": "Importen kan inte ångras längre. Ta bort uppgifterna för hand om det behövs.",
+    "IMPORT_RESTORE_CLOSED": "Uppgifterna kan inte tas tillbaka längre.",
     "AGREEMENT_ENDED": "Avtalet är avslutat och kan inte pausas, startas igen eller få ett nytt slutdatum. Ladda om sidan.",
     "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan.",
     "FORTNOX_UNAVAILABLE": "Kopplingen till Fortnox är inte tillgänglig än.",
@@ -2805,7 +2850,8 @@
         "title": "Inga uppgifter ännu",
         "body": "Alla uppgifter i projektet samlas här, i en ordnad lista. Skapa den första.",
         "bodyReadOnly": "Uppgifter visas här när någon har skapat dem.",
-        "action": "Ny uppgift"
+        "action": "Ny uppgift",
+        "import": "Importera uppgifter"
       },
       "columns": {
         "key": "Nyckel",
@@ -2859,7 +2905,8 @@
       "visibilityPrivateWith": "{key} är nu privat för teamet, tillsammans med {list}.",
       "visibilityAsk": "Kunden kan fortfarande se {key}. Vill du göra den privat, tillsammans med {list}?",
       "visibilityAskPortalOff": "Vill du göra {key} privat, tillsammans med {list}?",
-      "visibilityAskAction": "Gör allt privat"
+      "visibilityAskAction": "Gör allt privat",
+      "importLink": "Importera uppgifter"
     },
     "triage": {
       "title": "Triage",
@@ -3615,6 +3662,133 @@
         "write": "Skriv uppdateringen",
         "continue": "Fortsätt på utkastet"
       }
+    },
+    "import": {
+      "title": "Importera uppgifter",
+      "intro": "Hämta in uppgifter till projektet från en kalkylbladsfil eller en Trello-tavla. Filen läses här i din webbläsare; bara uppgifterna skickas till Fortleva.",
+      "private": "Importerade uppgifter är privata för teamet tills ni delar dem. Ingen får något meddelande, inte heller de som tilldelas uppgifter.",
+      "back": "Tillbaka till backloggen",
+      "trelloLink": "Importerad från Trello:",
+      "forbidden": {
+        "title": "Du kan inte importera uppgifter här",
+        "body": "För att importera behöver du kunna skapa och ändra uppgifter i projektet."
+      },
+      "archived": "Projektet är arkiverat, så inga uppgifter kan importeras till det.",
+      "file": {
+        "title": "Välj en fil",
+        "label": "Fil",
+        "hint": "Släpp en CSV-fil eller en JSON-fil från Trello här, eller välj en",
+        "dragging": "Släpp filen här",
+        "choose": "Välj fil",
+        "how": "Trello: öppna tavlan och välj Meny → Skriv ut, exportera och dela → Exportera som JSON. Asana, ClickUp, Jira, Monday, Excel och Google Kalkylark: exportera eller spara listan som CSV.",
+        "tooBig": "Filen är större än 50 MB.",
+        "unreadable": "Det här är varken en CSV-fil eller en export av en Trello-tavla.",
+        "tooMany": "Filen har fler än {max, number} rader. Dela upp den och importera delarna en i taget.",
+        "empty": "Filen har inga rader att importera.",
+        "column": "Kolumn {n, number}"
+      },
+      "columns": {
+        "title": "Para ihop kolumnerna",
+        "description": "Vilken kolumn som innehåller vad. Bara namnet krävs.",
+        "none": "Finns inte i filen",
+        "fields": {
+          "name": "Namn",
+          "description": "Beskrivning",
+          "status": "Status",
+          "due": "Förfallodatum",
+          "assignee": "Tilldelad",
+          "assigneeEmail": "Den tilldelades e-post",
+          "labels": "Etiketter",
+          "id": "ID"
+        },
+        "idHint": "Med en ID-kolumn uppdateras uppgifterna när samma fil importeras igen, i stället för att kopior skapas.",
+        "dateFormat": "Datumen i filen skrivs",
+        "dmy": "Dagen först (31/12/2026)",
+        "mdy": "Månaden först (12/31/2026)",
+        "needName": "Välj kolumnen som innehåller uppgifternas namn."
+      },
+      "statuses": {
+        "titleCsv": "Para ihop statusarna",
+        "titleTrello": "Para ihop listorna",
+        "descriptionCsv": "Varje status i filen hamnar i en av projektets statusar.",
+        "descriptionTrello": "Varje lista från Trello hamnar i en av projektets statusar.",
+        "fromFile": "I filen",
+        "toState": "Status i Fortleva",
+        "empty": "(ingen status)",
+        "rows": "{count, plural, one {# uppgift} other {# uppgifter}}",
+        "approvalHint": "Statusar som kräver godkännande visas inte, eftersom du inte kan flytta uppgifter dit."
+      },
+      "people": {
+        "title": "Para ihop personerna",
+        "description": "Parade efter e-post, eller efter exakt samma namn. Du kan ändra varje par.",
+        "fromFile": "I filen",
+        "toMember": "Tilldela",
+        "nobody": "Ingen"
+      },
+      "check": {
+        "title": "Kontrollera innan du importerar",
+        "create": "{count, plural, one {# ny uppgift} other {# nya uppgifter}}",
+        "update": "{count, plural, one {# uppgift som importerats förut uppdateras där filen har ändrats} other {# uppgifter som importerats förut uppdateras där filen har ändrats}}",
+        "keep": "{count, plural, one {# uppgift som importerats förut har ändrats i Fortleva och lämnas som den är} other {# uppgifter som importerats förut har ändrats i Fortleva och lämnas som de är}}",
+        "skipped": "{count, plural, one {# rad saknar namn och hoppas över} other {# rader saknar namn och hoppas över}}",
+        "shortened": "{count, plural, one {# rad är för lång och kortas} other {# rader är för långa och kortas}}",
+        "badDates": "{count, plural, one {# datum går inte att läsa, så den uppgiften får inget förfallodatum} other {# datum går inte att läsa, så de uppgifterna får inget förfallodatum}}",
+        "duplicateIds": "{count, plural, one {# rad upprepar ett ID och importeras utan ID} other {# rader upprepar ett ID och importeras utan ID}}",
+        "archived": "{count, plural, one {# arkiverat kort från Trello tas inte med} other {# arkiverade kort från Trello tas inte med}}",
+        "newLabels": "Nya etiketter: {names}",
+        "noLabelRight": "De här etiketterna finns inte än och du kan inte skapa etiketter, så de utelämnas: {names}",
+        "noId": "Filen har ingen ID-kolumn, så om den importeras igen skapas kopior.",
+        "first": "De första raderna, så som de importeras",
+        "columns": {
+          "name": "Namn",
+          "status": "Status",
+          "due": "Förfaller",
+          "assignee": "Tilldelad",
+          "labels": "Etiketter"
+        },
+        "more": "{count, plural, one {# rad till} other {# rader till}}",
+        "submit": "Importera {count, plural, one {# uppgift} other {# uppgifter}}",
+        "nothing": "Det finns inget att importera."
+      },
+      "run": {
+        "importing": "Importerar … {done, number} av {total, number}",
+        "progress": "Importens förlopp"
+      },
+      "result": {
+        "title": "Importerat",
+        "summary": "Nya: {created, number} · Uppdaterade: {updated, number} · Lämnade: {kept, number} · Oförändrade: {unchanged, number}",
+        "stopped": "Importen avbröts halvvägs. Uppgifterna som hann importeras finns kvar — importera filen igen för att slutföra.",
+        "openBacklog": "Öppna backloggen",
+        "another": "Importera en fil till",
+        "failed": "Importen kunde inte slutföras. Försök igen om en liten stund."
+      },
+      "history": {
+        "title": "Tidigare importer",
+        "description": "En import kan ångras i 7 dagar. Uppgifter som någon har arbetat med sedan dess finns kvar.",
+        "columns": {
+          "when": "Startad",
+          "file": "Fil",
+          "by": "Av",
+          "tasks": "Uppgifter",
+          "status": "Status"
+        },
+        "tasks": "{created, number} nya · {updated, number} uppdaterade",
+        "inBin": "{count, plural, one {# i papperskorgen} other {# i papperskorgen}}",
+        "undo": "Ångra importen",
+        "undoConfirm": "Flytta importens uppgifter till papperskorgen?",
+        "restore": "Ta tillbaka uppgifterna",
+        "actionsFor": "Åtgärder för {file}",
+        "undone": "{removed, plural, one {# uppgift flyttades till papperskorgen.} other {# uppgifter flyttades till papperskorgen.}}",
+        "undoneKept": "{kept, plural, one {# uppgift finns kvar: någon har arbetat med den.} other {# uppgifter finns kvar: någon har arbetat med dem.}}",
+        "restored": "{restored, plural, one {# uppgift togs tillbaka.} other {# uppgifter togs tillbaka.}}",
+        "restoredSkipped": "{skipped, plural, one {# uppgift ligger kvar i papperskorgen: den har importerats igen sedan dess.} other {# uppgifter ligger kvar i papperskorgen: de har importerats igen sedan dess.}}",
+        "formerMember": "En tidigare medlem"
+      },
+      "source": {
+        "CSV": "Kalkylblad",
+        "TRELLO": "Trello"
+      },
+      "mapTo": "{to} för ”{from}”"
     }
   },
   "portal": {
@@ -4200,6 +4374,12 @@
       "EPIC": "Epik",
       "TASK": "Uppgift",
       "SUBTASK": "Deluppgift"
+    },
+    "importStatus": {
+      "RUNNING": "Importerar",
+      "STOPPED": "Avbröts halvvägs",
+      "DONE": "Klar",
+      "UNDONE": "Ångrad"
     },
     "loginAsk": {
       "OPEN": "Väntar",

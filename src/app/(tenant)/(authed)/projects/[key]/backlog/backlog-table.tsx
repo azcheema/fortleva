@@ -2127,7 +2127,7 @@ export function BacklogTable({
           visibilityTriggerRef={visibilityTrigger}
         />
       ) : null}
-      <p className="text-xs">
+      <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
         <Link
           className="text-muted-foreground underline-offset-2 hover:underline"
           href={archivedHref}
@@ -2135,6 +2135,17 @@ export function BacklogTable({
         >
           {includeArchived ? tProjects("hideArchived") : tProjects("showArchived")}
         </Link>
+        {/* Phase 6 slice 121 (C97): importing makes tasks and sets their
+            fields, so it is offered to a member who may do both by hand. */}
+        {data.caps.canCreate && data.caps.canEdit ? (
+          <Link
+            className="text-muted-foreground underline-offset-2 hover:underline"
+            href={`/projects/${projectKey}/import`}
+            data-testid="backlog-import-link"
+          >
+            {tProjects("backlog.importLink")}
+          </Link>
+        ) : null}
       </p>
       {filteredEmpty ? (
         <EmptyState
