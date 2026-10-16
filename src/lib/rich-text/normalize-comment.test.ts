@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { DomainError } from "@/lib/domain-error";
-import { COMMENT_JSON_BYTES, COMMENT_TEXT_CHARS, normalizeComment, normalizeDescription } from "./normalize";
+import { mentionIdsIn } from "./mention-ids";
+import { COMMENT_JSON_BYTES, COMMENT_TEXT_CHARS, MENTION_MAX, normalizeComment, normalizeDescription } from "./normalize";
 
 /**
  * The comment half of the gatekeeper (panel slice 10): the comment
@@ -96,6 +97,92 @@ describe("normalizeComment", () => {
       } catch (e) {
         expect(code(e)).toBe("INVALID_INPUT");
       }
+    }
+  });
+});
+
+/**
+ * @mentions (slice 125, founder decision C101): the node stores a member id
+ * and nothing else, the normaliser hands back who was mentioned, and no name
+ * ever reaches the stored text.
+ */
+describe("normalizeComment — mentions", () => {
+  const ANNA = "0192f1d2-0000-7000-8000-00000000a001";
+  const BO = "0192f1d2-0000-7000-8000-00000000b002";
+  const mention = (id: unknown, extra: Record<string, unknown> = {}) => ({ type: "mention", attrs: { id, ...extra } });
+
+  it("keeps a mention's id and drops everything else on it — a label is a name", () => {
+    const out = normalizeComment(doc(para(text("Over to "), mention(ANNA, { label: "Anna Andersson", class: "x" }), text(" now"))));
+    expect(JSON.stringify(out.doc)).not.toContain("Anna");
+    expect(out.doc).toEqual(
+      doc(para(text("Over to "), { type: "mention", attrs: { id: ANNA } }, text(" now"))),
+    );
+    expect(out.mentions).toEqual([ANNA]);
+  });
+
+  it("hands back the people distinct and in order of first appearance", () => {
+    const out = normalizeComment(doc(para(mention(BO), text(" and "), mention(ANNA)), para(mention(BO))));
+    expect(out.mentions).toEqual([BO, ANNA]);
+  });
+
+  it("never puts a name into the text — a mention is a space there, so the search index holds no name", () => {
+    const out = normalizeComment(doc(para(text("Ask"), mention(ANNA), text("today"))));
+    expect(out.text).toBe("Ask today");
+    expect(out.text).not.toContain(ANNA);
+  });
+
+  it("a comment of nothing but a mention says something (the person) and stores no text", () => {
+    const out = normalizeComment(doc(para(mention(ANNA))));
+    expect(out.mentions).toEqual([ANNA]);
+    expect(out.text).toBe("");
+    expect(out.doc).not.toBeNull();
+  });
+
+  it("refuses a mention with no id, or an id that is not a member id — a chip naming nobody", () => {
+    for (const bad of [undefined, null, "", "Anna", 42, "0192F1D2-0000-7000-8000-00000000A001", `${ANNA} `]) {
+      try {
+        normalizeComment(doc(para(text("hi "), mention(bad))));
+        expect.unreachable(String(bad));
+      } catch (e) {
+        expect(code(e), String(bad)).toBe("INVALID_INPUT");
+      }
+    }
+  });
+
+  it(`refuses more than ${MENTION_MAX} people in one comment, and counts a person once`, () => {
+    const id = (n: number) => `0192f1d2-0000-7000-8000-${String(n).padStart(12, "0")}`;
+    const many = (n: number) => doc(para(...Array.from({ length: n }, (_, i) => mention(id(i)))));
+    expect(normalizeComment(many(MENTION_MAX)).mentions).toHaveLength(MENTION_MAX);
+    expect(normalizeComment(doc(para(...Array.from({ length: 40 }, () => mention(ANNA))))).mentions).toEqual([ANNA]);
+    try {
+      normalizeComment(many(MENTION_MAX + 1));
+      expect.unreachable();
+    } catch (e) {
+      expect(code(e)).toBe("TOO_MANY_MENTIONS");
+    }
+  });
+
+  it("the refusal's copy names the cap the code holds, in both languages", async () => {
+    const en = (await import("@/messages/en.json")).default as { domainErrors: Record<string, string> };
+    const sv = (await import("@/messages/sv.json")).default as { domainErrors: Record<string, string> };
+    expect(en.domainErrors["TOO_MANY_MENTIONS"]).toContain(String(MENTION_MAX));
+    expect(sv.domainErrors["TOO_MANY_MENTIONS"]).toContain(String(MENTION_MAX));
+  });
+
+  it("the description's schema has no mention node — refused there", () => {
+    try {
+      normalizeDescription(doc(para(text("for "), mention(ANNA))));
+      expect.unreachable();
+    } catch (e) {
+      expect(code(e)).toBe("INVALID_INPUT");
+    }
+  });
+
+  it("mentionIdsIn reads the same people back off a stored body, and nothing off an odd shape", () => {
+    const stored = normalizeComment(doc(para(mention(BO), text(" "), mention(ANNA), mention(BO)))).doc;
+    expect(mentionIdsIn(stored)).toEqual([BO, ANNA]);
+    for (const odd of [null, 42, "doc", { type: "mention" }, { type: "mention", attrs: null }, { content: "x" }]) {
+      expect(mentionIdsIn(odd)).toEqual([]);
     }
   });
 });

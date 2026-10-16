@@ -219,6 +219,8 @@ const DBTEST_PREFIXES = [
   // `setupTenant("mailfb")` (the outbox's blocked-at-send branch).
   "mailfb-",
   "members-",
+  // Slice 125, @mentions — `src/modules/work/mentions.dbtest.ts`, `setupTenant("mention")`.
+  "mention-",
   "mfa-",
   "money-",
   // Phase 7 slice 119, the monthly report Fortleva makes — `src/documents/made-reports.dbtest.ts`,

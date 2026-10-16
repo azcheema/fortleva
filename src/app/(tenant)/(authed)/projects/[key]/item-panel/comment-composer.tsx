@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { ItemSurface } from "@/lib/work-view";
 
-import { createCommentAction } from "./actions";
+import { createCommentAction, listMentionableAction } from "./actions";
 import { LazyCommentEditor } from "./lazy-comment-editor";
 
 /**
@@ -37,6 +37,12 @@ import { LazyCommentEditor } from "./lazy-comment-editor";
  * whatever the mode was — the draft is never wiped (the composer is
  * keyed by the item alone, comments-section.tsx).
  *
+ * @MENTIONS (slice 125, founder decision C101): `@` offers the teammates
+ * who can open this task — in "Internal note" mode ONLY. In "Reply to
+ * client" mode the list is off (a client never reads a teammate's name), and
+ * a draft that already holds a mention is refused at post with a sentence;
+ * the words stay.
+ *
  * The post runs in a TRANSITION with `router.refresh()` inside it, so
  * the editor clears and the announcement speaks on the render that
  * commits the server's row (the subtask island's rule). A refusal is
@@ -51,6 +57,8 @@ export function CommentComposer({
   itemVisibility,
   projectKey,
   surface,
+  canMention,
+  mentionNames,
 }: {
   itemId: string;
   itemNumber: number;
@@ -59,6 +67,10 @@ export function CommentComposer({
   itemVisibility: VisibilityValue;
   projectKey: string;
   surface: ItemSurface;
+  /** `@` offers teammates — `comment:create` + `member:view` (slice 125). */
+  canMention: boolean;
+  /** The thread's resolved names — so a chip pasted from a posted note reads its name. */
+  mentionNames: Readonly<Record<string, string | null>>;
 }) {
   const t = useTranslations("projects.item.comments");
   const tRich = useTranslations("richText");
@@ -69,6 +81,21 @@ export function CommentComposer({
   const shared = itemVisibility === "CLIENT_VISIBLE";
   // A pick that is no longer offerable is not posted (see the header).
   const visibility: VisibilityValue = shared ? mode : "INTERNAL";
+  // Loaded once per composer, on the first `@` (the editor caches it).
+  const mentions = useMemo(
+    () =>
+      canMention
+        ? {
+            enabled: visibility === "INTERNAL",
+            load: async () => {
+              const r = await listMentionableAction({ itemId, itemNumber, projectKey, surface });
+              if (!r.ok) throw new Error(r.message);
+              return r.value;
+            },
+          }
+        : undefined,
+    [canMention, visibility, itemId, itemNumber, projectKey, surface],
+  );
 
   const post = (doc: unknown): Promise<boolean> =>
     new Promise((resolve) => {
@@ -135,6 +162,8 @@ export function CommentComposer({
         busy={isPending}
         onSubmit={post}
         footerStart={toggle}
+        mentions={mentions}
+        mentionNames={mentionNames}
         testId="comment-editor"
       />
       <span role="status" aria-live="polite" className="sr-only">

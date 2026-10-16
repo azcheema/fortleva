@@ -184,6 +184,11 @@ export type DomainErrorCode =
   | "COMMENT_EMPTY" // a comment with no text
   | "COMMENT_TOO_LARGE" // the comment's JSON or its extracted text is past its cap
   | "SUBJECT_NOT_VISIBLE" // a comment cannot be client-visible on a task the client cannot see
+  // Mentions (slice 125, founder decision C101 — src/modules/work/mentions.ts)
+  | "COMMENT_MENTION_VISIBLE" // a reply the client can see cannot @mention a teammate (also the CHECK `comment_visible_no_mention`, mapped by name)
+  | "COMMENT_HAS_MENTION" // a note that @mentions a teammate cannot be shown to the client
+  | "MENTION_NOT_ALLOWED" // someone mentioned cannot open the task (left, suspended, out of scope)
+  | "TOO_MANY_MENTIONS" // more than MENTION_MAX people in one comment
   // Labels (2W panel slice 12 — src/modules/work/labels.ts)
   | "LABEL_TAKEN" // a label with that name already exists (case-insensitive, tenant-wide)
   // Time (2T — DATA_MODEL.md §6.15; trigger tokens map 1:1 in src/modules/time/ctx.ts)

@@ -1421,6 +1421,8 @@ describe("getItemDetail — the panel's one scoped read", () => {
       changeVisibility: true,
       create: true,
       comment: true,
+      // Slice 125: `comment:create` + `member:view` — the composer's `@` list.
+      mention: true,
       manageLabels: true,
       endRequest: true,
     });

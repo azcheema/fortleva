@@ -763,6 +763,22 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* An @mention (slice 125): the editor's chip and the static renderer's
+   span wear the same marker, so a mention reads the same while it is
+   written and after. Weight and a quiet fill, never a colour of its own —
+   the accent is the visibility chip's. */
+.prose-body :where(span[data-type="mention"]) {
+  font-weight: 500;
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+  border-radius: var(--radius-sm);
+  padding: 0 0.1875rem;
+  white-space: nowrap;
+}
+/* The suggestion plugin's decoration on the "@query" being typed. */
+.prose-body :where(span.suggestion) {
+  color: var(--muted-foreground);
+}
 /* The checklist: a list that carries controls, so it loses the marker
    and lays each item out as [checkbox, text]. */
 .prose-body :where(ul[data-type="taskList"]) {

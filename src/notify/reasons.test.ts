@@ -12,6 +12,7 @@ import { isNotificationReason, NOTIFICATION_REASONS, pickReason, reasonsFor } fr
 describe("why a notification reached someone", () => {
   it("is a closed set, in precedence order", () => {
     expect([...NOTIFICATION_REASONS]).toEqual([
+      "MENTIONED",
       "ASSIGNEE",
       "REQUESTER",
       "PROJECT_LEAD",
@@ -24,7 +25,8 @@ describe("why a notification reached someone", () => {
       "OWNER",
     ]);
     expect(isNotificationReason("OWNER")).toBe(true);
-    for (const bad of ["owner", "MENTIONED", "", null, 3]) expect(isNotificationReason(bad), String(bad)).toBe(false);
+    expect(isNotificationReason("MENTIONED")).toBe(true); // slice 125
+    for (const bad of ["owner", "mentioned", "WATCHER", "", null, 3]) expect(isNotificationReason(bad), String(bad)).toBe(false);
   });
 
   it("the more specific reason wins, either way round", () => {

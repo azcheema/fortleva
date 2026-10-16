@@ -130,6 +130,9 @@ export {
   type CommentVisibilityCommitted,
   type ItemComments,
 } from "./comments";
+// Slice 125: the composer's @ list. The rule itself (`mentionableMembers`)
+// stays off the barrel — the writers call it from comments.ts.
+export { listMentionable, type Mentionable } from "./mentions";
 export { descriptionToken } from "./description-token";
 // The writers; `readItemLabels` stays off the barrel for the same reason (labels.ts).
 // Slice 123's labels page adds four writers, all under `label:manage`; its

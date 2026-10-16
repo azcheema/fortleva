@@ -11,6 +11,14 @@
  * dismissal for a key pressed inside such an element. The field's own
  * handler then runs as the only handler of that key. A caller's own
  * `onEscapeKeyDown` still runs first and may prevent default itself.
+ *
+ * NOT FOR A PROSEMIRROR EDITOR (slice 125, measured in a browser): the
+ * contract works by PREVENTING the Escape, and ProseMirror ignores every
+ * bubbling event that is already prevented (`eventBelongsToView`), so no
+ * binding inside the editor — its keymap, a plugin's `handleKeyDown` —
+ * ever sees the key. An editor that owns Escape takes it at the WINDOW's
+ * capture phase, before this layer, and prevents it there
+ * (`comment-editor.tsx`).
  */
 export const ESCAPE_LOCAL_ATTR = "data-escape-local";
 

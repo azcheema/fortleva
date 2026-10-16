@@ -158,6 +158,7 @@ export async function ItemPanel({
     changeVisibility: canChangeVisibility,
     create: canCreate,
     comment: canComment,
+    mention: canMention,
     endRequest: canEndRequest,
   } = itemCaps;
   const t = await getTranslations("projects.item");
@@ -591,6 +592,7 @@ export async function ItemPanel({
           surface={surface}
           comments={comments}
           canComment={canComment}
+          canMention={canMention}
         />
       </div>
 

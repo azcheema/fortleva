@@ -93,3 +93,33 @@ describe("RichText", () => {
     expect(out).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 });
+
+/**
+ * @mentions (slice 125): a mention renders a NAME only where the caller
+ * hands the renderer one — the member panel. With no map (the portal,
+ * View-as) it renders nothing at all: not the id, not an "@".
+ */
+describe("RichText — mentions", () => {
+  const ANNA = "0192f1d2-0000-7000-8000-00000000a001";
+  const stored = normalizeComment(
+    doc(para(text("Over to "), { type: "mention", attrs: { id: ANNA } }, text(" now"))),
+  ).doc;
+
+  it("with no names map — every client-facing surface — a mention renders nothing", () => {
+    const out = html(stored);
+    expect(out).toBe('<div class="prose-body"><p>Over to  now</p></div>');
+    expect(out).not.toContain(ANNA);
+    expect(out).not.toContain("@");
+  });
+
+  it("with a names map — the member panel — it renders @Name in the mention's span", () => {
+    const out = renderToStaticMarkup(RichText({ doc: stored, mentions: { [ANNA]: "Anna Andersson" } }));
+    expect(out).toContain(`<span data-type="mention" data-id="${ANNA}">@Anna Andersson</span>`);
+  });
+
+  it("an id the map cannot name reads as the caller's unknown label", () => {
+    const out = renderToStaticMarkup(RichText({ doc: stored, mentions: { [ANNA]: null }, unknownMention: "Unknown" }));
+    expect(out).toContain(`<span data-type="mention" data-id="${ANNA}">@Unknown</span>`);
+  });
+});
+

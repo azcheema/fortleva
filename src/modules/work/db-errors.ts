@@ -43,6 +43,15 @@ export const { mapDbError, guarded } = dbErrorMapper([
   // live before any write, so the trigger cannot find a subject they
   // did not.
   ["COMMENT_NOT_VISIBLE", "SUBJECT_NOT_VISIBLE"],
+  // comment_visible_no_mention (20261029090000, slice 125): a CHECK — a
+  // client-visible body holding an @mention. The writers refuse first with
+  // this code (or COMMENT_HAS_MENTION on a raise), so reaching the CHECK
+  // means a writer forgot — still a sentence, never a stack. Matched by the
+  // constraint's name, which is not the code's spelling on purpose: Prisma
+  // prints the caller's source into a message outside production, and the
+  // services `fail` with the code right beside their queries (the
+  // code-frame trap).
+  ["comment_visible_no_mention", "COMMENT_MENTION_VISIBLE"],
   // The two label-name indexes (labels.ts): the schema's composite one
   // decides for a project-scoped name, and the partial expression index
   // on `(tenant_id, lower(name)) WHERE project_id IS NULL`

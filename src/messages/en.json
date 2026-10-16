@@ -385,6 +385,7 @@
       "older": "Older"
     },
     "reason": {
+      "MENTIONED": "Mentioned you",
       "ASSIGNEE": "Assigned to you",
       "REQUESTER": "You asked",
       "PROJECT_LEAD": "You lead this project",
@@ -1997,6 +1998,10 @@
     "COMMENT_EMPTY": "A comment needs some text.",
     "COMMENT_TOO_LARGE": "This comment is too long to post. Shorten it, or attach the detail as a file.",
     "SUBJECT_NOT_VISIBLE": "This task is private to your team, so a reply can’t be shown to the client. Share the task first.",
+    "COMMENT_MENTION_VISIBLE": "A reply to the client can’t @mention a teammate. Remove the mention, or post it as an internal note.",
+    "COMMENT_HAS_MENTION": "This note @mentions a teammate, so it can’t be shown to the client. Remove the mention first.",
+    "MENTION_NOT_ALLOWED": "Someone you mentioned can’t open this task. Remove them and post again.",
+    "TOO_MANY_MENTIONS": "A comment can mention at most 20 people.",
     "LABEL_TAKEN": "A label with that name already exists.",
     "CONTACT_NOT_VIEWABLE": "That person cannot sign in to the portal yet, so there is no client view to open. Invite them from the client's Contacts tab first.",
     "CONTACT_NOT_INVITABLE": "This person cannot be invited in their current state — reload the page to see where their access stands.",
@@ -3405,6 +3410,7 @@
         "postVisible": "Post reply to client",
         "update": "Update comment",
         "makeVisible": "Show to client",
+        "mentionBlocksVisible": "It mentions a teammate. Remove the mention first.",
         "makePrivate": "Make private",
         "confirmDelete": "Delete this comment?",
         "mode": {
@@ -4990,6 +4996,11 @@
       "taskList": "Checklist",
       "heading": "Heading",
       "underline": "Underline"
+    },
+    "mention": {
+      "list": "Teammates to mention",
+      "none": "No teammates match",
+      "failed": "Couldn’t load your teammates. Type @ again to try once more."
     }
   },
   "timeReports": {

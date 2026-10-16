@@ -12,7 +12,7 @@ import { RowActions, VisibilityBadge, visibilityRowCue, type RowAction } from "@
 import { cn } from "@/lib/utils";
 import type { ItemSurface } from "@/lib/work-view";
 
-import { deleteCommentAction, setCommentVisibilityAction, updateCommentAction } from "./actions";
+import { deleteCommentAction, listMentionableAction, setCommentVisibilityAction, updateCommentAction } from "./actions";
 import { LazyCommentEditor } from "./lazy-comment-editor";
 
 /**
@@ -38,6 +38,14 @@ import { LazyCommentEditor } from "./lazy-comment-editor";
  * holds the canonical value until the server answers. A deletion is
  * announced by a toast, not by a live region inside the row: the row
  * unmounts on the very render that would have spoken.
+ *
+ * @MENTIONS (slice 125): the body renders each mention with the name the
+ * section's read resolved (`mentionNames`) — this is a MEMBER surface; the
+ * portal renders the same body with no names and so no mentions. A note
+ * that mentions someone offers "Show to client" DISABLED, saying why — the
+ * service would refuse it (COMMENT_HAS_MENTION) and so would the database.
+ * Editing an internal note in place offers the `@` list; a client-visible
+ * comment's editor does not.
  */
 export type CommentCardData = {
   id: string;
@@ -49,19 +57,29 @@ export type CommentCardData = {
   canEdit: boolean;
   canDelete: boolean;
   canChangeVisibility: boolean;
+  /** The body @mentions someone — it can never be shown to the client (slice 125). */
+  hasMention: boolean;
   /** The stored document — rendered here, and the in-place editor starts from it. */
   body: unknown;
 };
 
 export function CommentCard({
   comment,
+  itemId,
   itemNumber,
+  mentionNames,
+  canMention,
   projectKey,
   surface,
   now,
 }: {
   comment: CommentCardData;
+  itemId: string;
   itemNumber: number;
+  /** Member id → name for the mentions in the thread's bodies (the section's one read). */
+  mentionNames: Readonly<Record<string, string | null>>;
+  /** `@` offers teammates in the in-place editor — `comment:create` + `member:view`. */
+  canMention: boolean;
   projectKey: string;
   surface: ItemSurface;
   /** The server's instant, for the relative time. */
@@ -129,10 +147,30 @@ export function CommentCard({
   if (comment.canChangeVisibility) {
     items.push(
       comment.visibility === "INTERNAL"
-        ? { key: "visibility", label: t("makeVisible"), icon: EyeIcon, onSelect: flip }
+        ? {
+            key: "visibility",
+            label: t("makeVisible"),
+            icon: EyeIcon,
+            onSelect: flip,
+            // A note naming a teammate never reaches the client (C101 (b)).
+            ...(comment.hasMention ? { disabled: true, disabledReason: t("mentionBlocksVisible") } : {}),
+          }
         : { key: "visibility", label: t("makePrivate"), icon: LockIcon, onSelect: flip },
     );
   }
+
+  // The in-place editor's @ list — an internal note only, for a member
+  // who may see the member list.
+  const mentions = canMention
+    ? {
+        enabled: comment.visibility === "INTERNAL",
+        load: async () => {
+          const r = await listMentionableAction({ itemId, itemNumber, projectKey, surface });
+          if (!r.ok) throw new Error(r.message);
+          return r.value;
+        },
+      }
+    : undefined;
   if (comment.canDelete) {
     items.push({
       key: "delete",
@@ -175,10 +213,18 @@ export function CommentCard({
           onCancel={() => {
             if (!isPending) setEditing(false);
           }}
+          mentions={mentions}
+          mentionNames={mentionNames}
           testId="comment-edit-editor"
         />
       ) : (
-        <RichText doc={comment.body} data-testid="item-comment-body" className={cn("text-sm", isPending && "opacity-60")} />
+        <RichText
+          doc={comment.body}
+          mentions={mentionNames}
+          unknownMention={tCommon("unknown")}
+          data-testid="item-comment-body"
+          className={cn("text-sm", isPending && "opacity-60")}
+        />
       )}
       <span role="status" aria-live="polite" className="sr-only">
         {announced}

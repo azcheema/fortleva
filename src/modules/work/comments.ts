@@ -3,10 +3,12 @@ import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
+import { mentionIdsIn } from "@/lib/rich-text/mention-ids";
 import { normalizeComment } from "@/lib/rich-text/normalize";
 
 import { resolveActorNames, writeActivity } from "./activity";
 import { guarded } from "./db-errors";
+import { assertMentionable, mentionedBy, recordMentions } from "./mentions";
 import { notifyItemMembers } from "./notify";
 import { loadItemInScope } from "./rows";
 import { principalOf, type WorkCtx } from "./states";
@@ -43,10 +45,17 @@ import { principalOf, type WorkCtx } from "./states";
  *   rule with `requireAccess`, so a verb the panel offers is a verb the
  *   service accepts — own words under `comment:create`, another
  *   member's under the `any` code — whatever a custom role holds.
- * · Mentions are not extracted here: `Mention` stays untouched, and the
- *   comment schema has no mention node (extensions.ts). The assignee is
- *   told (`work_item.commented`, coalesced) — a task's conversation is
- *   the assignee's business; a subscriber model has no writer yet.
+ * · MENTIONS (slice 125, founder decision C101 — `mentions.ts` has the
+ *   rules): teammates only, in an INTERNAL note only. `normalizeComment`
+ *   hands back the people a body mentions; a client-visible post or edit
+ *   with any is refused (COMMENT_MENTION_VISIBLE) and so is a raise of
+ *   one (COMMENT_HAS_MENTION), with the database's guard behind both;
+ *   every person must be able to open the task (MENTION_NOT_ALLOWED); the
+ *   `mention` rows follow the body and the people ADDED are told
+ *   (`comment.mentioned`). The assignee is told of a comment
+ *   (`work_item.commented`, coalesced) — a task's conversation is the
+ *   assignee's business — unless that comment mentions them, which is
+ *   the one notice they get for it. A subscriber model has no writer yet.
  *
  * LOCKS (20260915120000, the header states the order). A write that can
  * put a client-visible comment on a task — a create, a raise — takes
@@ -96,6 +105,11 @@ export type CommentEntry = {
   canDelete: boolean;
   /** `comment:change_visibility`, a member's comment, and a task the client can see (or a row already visible, to lower). */
   canChangeVisibility: boolean;
+  /**
+   * The body @mentions someone (slice 125) — so it can never be shown to the
+   * client, and the panel offers "Show to client" disabled, saying why.
+   */
+  hasMention: boolean;
 };
 
 export type ItemComments = {
@@ -105,6 +119,13 @@ export type ItemComments = {
   total: number;
   /** More than `COMMENT_LIST_LIMIT` live comments exist; only the newest are listed. */
   truncated: boolean;
+  /**
+   * The names of the people the listed bodies mention (slice 125) — member
+   * id → name, null for one that no longer resolves. For the static
+   * renderer's `mentions` map on the MEMBER panel only; the portal never
+   * reads this function.
+   */
+  mentionNames: Record<string, string | null>;
 };
 
 /** What the reading member holds — resolved once by `getItemDetail`, stamped per row here. */
@@ -176,11 +197,19 @@ export async function readItemComments(
 
   const memberIds = new Set<string>();
   const contactIds = new Set<string>();
+  // The people each body mentions ride the authors' one name read — no
+  // statement of their own (slice 125).
+  const mentioned = new Map<string, string[]>();
   for (const r of page) {
     if (r.authorMemberId) memberIds.add(r.authorMemberId);
     if (r.authorContactId) contactIds.add(r.authorContactId);
+    const ids = mentionIdsIn(r.body);
+    mentioned.set(r.id, ids);
+    for (const id of ids) memberIds.add(id);
   }
   const names = await resolveActorNames(tx, tenantId, item.clientId, memberIds, contactIds);
+  const mentionNames: Record<string, string | null> = {};
+  for (const ids of mentioned.values()) for (const id of ids) mentionNames[id] = names.member(id);
 
   return {
     rows: page.map((r) => ({
@@ -194,9 +223,11 @@ export async function readItemComments(
       createdAt: r.createdAt,
       editedAt: r.editedAt,
       ...commentCaps(r, actorMemberId, item.visibility, caps),
+      hasMention: (mentioned.get(r.id) ?? []).length > 0,
     })),
     total,
     truncated,
+    mentionNames,
   };
 }
 
@@ -234,11 +265,26 @@ async function probeComment(tx: TenantDb, tenantId: string, commentId: string): 
  * that is deleted, or on another subject type, is NOT_FOUND — the
  * address never leaks what it was.
  */
-async function lockComment(tx: TenantDb, tenantId: string, commentId: string): Promise<LiveComment> {
+async function lockComment(
+  tx: TenantDb,
+  tenantId: string,
+  commentId: string,
+): Promise<LiveComment & { hasMention: boolean }> {
+  // `has_mention` is the database guard's own test (20261029090000), read
+  // off the version this lock holds — so a raise decides on the body it
+  // would raise, not on one a moment older.
   const rows = await tx.$queryRaw<
-    { id: string; subject_id: string; author_member_id: string | null; author_contact_id: string | null; visibility: "INTERNAL" | "CLIENT_VISIBLE" }[]
+    {
+      id: string;
+      subject_id: string;
+      author_member_id: string | null;
+      author_contact_id: string | null;
+      visibility: "INTERNAL" | "CLIENT_VISIBLE";
+      has_mention: boolean;
+    }[]
   >`
-    SELECT id, subject_id, author_member_id, author_contact_id, visibility
+    SELECT id, subject_id, author_member_id, author_contact_id, visibility,
+           jsonb_path_exists(body, '$.** ? (@.type == "mention")') AS has_mention
       FROM comment
      WHERE tenant_id = ${tenantId} AND id = ${commentId}
        AND subject_type = 'WORK_ITEM' AND deleted_at IS NULL
@@ -251,6 +297,7 @@ async function lockComment(tx: TenantDb, tenantId: string, commentId: string): P
     authorMemberId: row!.author_member_id,
     authorContactId: row!.author_contact_id,
     visibility: row!.visibility,
+    hasMention: row!.has_mention,
   };
 }
 
@@ -259,8 +306,9 @@ export type CommentCreated = { id: string; visibility: "INTERNAL" | "CLIENT_VISI
 /**
  * Post a comment on a live task in scope (`comment:create`). The task is
  * share-locked first (see the header); a client-visible post on a task
- * the client cannot see is refused before any write. The assignee is
- * told, unless they wrote it.
+ * the client cannot see is refused before any write, and so is one that
+ * mentions anyone. The people mentioned are told; the assignee is told,
+ * unless they wrote it or were mentioned in it.
  */
 export async function createComment(
   ctx: WorkCtx,
@@ -270,6 +318,7 @@ export async function createComment(
   // Normalise BEFORE the transaction: pure, and where a crafted document
   // is refused at no database cost.
   const body = normalizeComment(input.doc);
+  if (input.visibility === "CLIENT_VISIBLE" && body.mentions.length > 0) fail("COMMENT_MENTION_VISIBLE");
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
       await requireAccess(tx, ctx.tenantId, ctx.actor, "comment:create");
@@ -277,6 +326,7 @@ export async function createComment(
       if (input.visibility === "CLIENT_VISIBLE" && item.visibility !== "CLIENT_VISIBLE") {
         fail("SUBJECT_NOT_VISIBLE");
       }
+      await assertMentionable(tx, ctx.tenantId, item, body.mentions);
       const created = await tx.comment.create({
         data: {
           tenantId: ctx.tenantId,
@@ -293,7 +343,8 @@ export async function createComment(
       // portal-safe, so the row is INTERNAL by construction — and by the
       // CHECK since 20260912120000 — whatever the comment's visibility.
       await writeActivity(tx, ctx, item, { field: "comment", newValue: "created", commentId: created.id });
-      if (item.assigneeMemberId) {
+      await recordMentions(tx, ctx, created.id, item, { add: body.mentions, remove: [] });
+      if (item.assigneeMemberId && !body.mentions.includes(item.assigneeMemberId)) {
         await notifyItemMembers(tx, ctx, item, "work_item.commented", new Map([[item.assigneeMemberId, "ASSIGNEE"]]), "commented");
       }
       return created;
@@ -307,7 +358,10 @@ export type CommentEdited = { id: string; editedAt: Date };
  * Replace a comment's body. Own words under `comment:create` (routine:
  * a history row); another member's under `comment:edit_any`, audited
  * `comment.edited_by_other`; a contact's never. Locks only the comment
- * row.
+ * row. Mentions follow the body: a client-visible comment may hold none;
+ * only the people ADDED are checked and told (one mentioned before and
+ * gone since stays in the text — an edit must not fail because a
+ * colleague left), and the removed people's rows go.
  */
 export async function updateComment(
   ctx: WorkCtx,
@@ -330,6 +384,11 @@ export async function updateComment(
       // this writer never harms it and must not wait behind its lever.
       const item = await loadItemInScope(tx, ctx, probe.subjectId, { lock: false });
       const comment = await lockComment(tx, ctx.tenantId, commentId);
+      if (comment.visibility === "CLIENT_VISIBLE" && body.mentions.length > 0) fail("COMMENT_MENTION_VISIBLE");
+      const before = await mentionedBy(tx, ctx.tenantId, comment.id);
+      const add = body.mentions.filter((id) => !before.has(id));
+      const remove = [...before].filter((id) => !body.mentions.includes(id));
+      await assertMentionable(tx, ctx.tenantId, item, add);
       const row = await tx.comment.update({
         where: { id: comment.id },
         data: { body: body.doc as object, bodyText: body.text, editedAt: new Date() },
@@ -337,6 +396,7 @@ export async function updateComment(
         select: { id: true, editedAt: true },
       });
       await writeActivity(tx, ctx, item, { field: "comment", newValue: "edited", commentId: comment.id });
+      await recordMentions(tx, ctx, comment.id, item, { add, remove });
       if (!own) {
         await record(tx, {
           action: "comment.edited_by_other",
@@ -425,6 +485,9 @@ export async function setCommentVisibility(
       if (comment.authorMemberId === null) deny("FORBIDDEN", "a contact's comment keeps its visibility");
       if (comment.visibility === visibility) return { id: comment.id, visibility, changed: false };
       if (raise && item.visibility !== "CLIENT_VISIBLE") fail("SUBJECT_NOT_VISIBLE");
+      // A note that names a teammate is never one a client reads (C101 (b));
+      // the database's guard refuses it too.
+      if (raise && comment.hasMention) fail("COMMENT_HAS_MENTION");
       const row = await tx.comment.update({
         where: { id: comment.id },
         data: { visibility },

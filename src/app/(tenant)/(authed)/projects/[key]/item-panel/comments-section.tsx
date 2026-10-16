@@ -35,6 +35,7 @@ export async function CommentsSection({
   surface,
   comments,
   canComment,
+  canMention,
 }: {
   item: Pick<ResolvedItemDetail, "id" | "number" | "visibility">;
   /** "ACME-12" — the composer's private hint names it. */
@@ -44,6 +45,8 @@ export async function CommentsSection({
   comments: ItemComments;
   /** `comment:create` — whether the composer is rendered. */
   canComment: boolean;
+  /** `comment:create` + `member:view` — whether `@` offers teammates (slice 125). */
+  canMention: boolean;
 }) {
   const t = await getTranslations("projects.item.comments");
   // The instant every relative time on this render is measured from,
@@ -85,9 +88,13 @@ export async function CommentsSection({
                   canEdit: row.canEdit,
                   canDelete: row.canDelete,
                   canChangeVisibility: row.canChangeVisibility,
+                  hasMention: row.hasMention,
                   body: row.body,
                 }}
+                itemId={item.id}
                 itemNumber={item.number}
+                mentionNames={comments.mentionNames}
+                canMention={canMention}
                 projectKey={projectKey}
                 surface={itemSurface}
                 now={serverNow}
@@ -108,6 +115,8 @@ export async function CommentsSection({
             itemVisibility={item.visibility}
             projectKey={projectKey}
             surface={itemSurface}
+            canMention={canMention}
+            mentionNames={comments.mentionNames}
           />
         ) : null}
       </div>

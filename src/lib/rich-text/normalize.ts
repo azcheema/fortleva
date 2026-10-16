@@ -3,6 +3,7 @@ import { Node as PMNode } from "@tiptap/pm/model";
 
 import { fail, type DomainErrorCode } from "@/lib/domain-error";
 import { commentExtensions, contractExtensions, descriptionExtensions } from "./extensions";
+import { MEMBER_ID, MENTION_NODE } from "./mention-node";
 
 /**
  * The rich-text gatekeeper: the browser sends JSON, and NOTHING it
@@ -85,6 +86,12 @@ const LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
  */
 const UNSTORABLE = /\u0000|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const LANGUAGE = /^[a-z0-9+#-]{0,20}$/;
+/**
+ * At most this many PEOPLE in one comment (slice 125). Far past any honest
+ * remark, and the bound on the work one post can cause: a notification,
+ * maybe a mail and a push, per person.
+ */
+export const MENTION_MAX = 20;
 const LIST_TYPES = new Set(["a", "A", "i", "I", "1"]);
 
 /** http(s) and mailto only — `javascript:`, `data:` and a relative href are dropped with the mark. */
@@ -122,6 +129,11 @@ const NODE_ATTRS: Record<string, (attrs: Record<string, unknown>) => Record<stri
   }),
   // A STRING "false" is truthy in JavaScript and would have counted as done.
   taskItem: (a) => ({ checked: a["checked"] === true }),
+  // The member id and NOTHING else — a `label` (Tiptap's own mention
+  // stores one) is a name, and a name in a body is how one reaches a
+  // client (extensions.ts). A malformed id is dropped here and the derive
+  // walk below refuses the mention it leaves without one.
+  [MENTION_NODE]: (a) => (typeof a["id"] === "string" && MEMBER_ID.test(a["id"]) ? { id: a["id"] } : {}),
 };
 
 /** Mark attributes. A mark whose builder returns null is dropped; its text stays. */
@@ -186,6 +198,8 @@ type Normalized = {
   readonly text: string | null;
   readonly checklistTotal: number;
   readonly checklistDone: number;
+  /** The members the document mentions — distinct, in order of first appearance (only a comment's schema has the node). */
+  readonly mentions: readonly string[];
 };
 
 /**
@@ -247,15 +261,28 @@ function normalizeRichText(input: unknown, kind: RichTextKind): Normalized {
 
   let checklistTotal = 0;
   let checklistDone = 0;
+  const mentions = new Set<string>();
+  let badMention = false;
   node!.descendants((child) => {
     if (child.type.name === "taskItem") {
       checklistTotal += 1;
       if (child.attrs["checked"] === true) checklistDone += 1;
     }
+    if (child.type.name === MENTION_NODE) {
+      // The attribute's default is null, so a mention whose id the
+      // allow-list dropped parses happily — and would be a chip naming
+      // nobody that notifies nobody. Refused instead.
+      const id = child.attrs["id"];
+      if (typeof id === "string" && MEMBER_ID.test(id)) mentions.add(id);
+      else badMention = true;
+    }
     return true; // nested checklists count too
   });
+  if (badMention) fail("INVALID_INPUT", `${kind} mentions no one`);
+  if (mentions.size > MENTION_MAX) fail("TOO_MANY_MENTIONS");
 
-  const empty = text.length === 0 && checklistTotal === 0;
+  // A document of mentions alone ("@Anna") says something: the person.
+  const empty = text.length === 0 && checklistTotal === 0 && mentions.size === 0;
   const out = node!.toJSON() as JsonNode;
   // The cap above measured what ARRIVED; this measures what is STORED.
   // Normalisation adds attributes the sender omitted — every taskItem
@@ -270,32 +297,41 @@ function normalizeRichText(input: unknown, kind: RichTextKind): Normalized {
     text: empty ? null : text,
     checklistTotal,
     checklistDone,
+    mentions: [...mentions],
   };
 }
 
-export type NormalizedDescription = Normalized;
+/** A description has no mention node (its schema refuses one), so it carries no list of them. */
+export type NormalizedDescription = Omit<Normalized, "mentions">;
 
 /** The description: may be empty (stored as null), carries checklist counters. */
 export function normalizeDescription(input: unknown): NormalizedDescription {
-  return normalizeRichText(input, "description");
+  const n = normalizeRichText(input, "description");
+  return { doc: n.doc, text: n.text, checklistTotal: n.checklistTotal, checklistDone: n.checklistDone };
 }
 
 export type NormalizedComment = {
   /** Canonical JSON to store — never null: an empty comment is refused. */
   readonly doc: JsonNode;
-  /** Plain text for `bodyText` (the search feed, previews) — never empty. */
+  /**
+   * Plain text for `bodyText` (the search feed, previews). Empty only for a
+   * comment that is nothing but mentions ("@Anna") — a mention's text is a
+   * space, never the name (extensions.ts).
+   */
   readonly text: string;
+  /** The members it mentions (slice 125) — distinct, in order; at most `MENTION_MAX`. */
+  readonly mentions: readonly string[];
 };
 
 /**
  * The comment: the comment schema (no headings, no checklist), the
- * comment caps, and it must say something — a document whose text is
- * empty is COMMENT_EMPTY, never a stored blank.
+ * comment caps, and it must say something — a document with no text and
+ * no mention is COMMENT_EMPTY, never a stored blank.
  */
 export function normalizeComment(input: unknown): NormalizedComment {
   const n = normalizeRichText(input, "comment");
   if (n.doc === null || n.text === null) fail("COMMENT_EMPTY");
-  return { doc: n.doc!, text: n.text! };
+  return { doc: n.doc!, text: n.text!, mentions: n.mentions };
 }
 
 export type NormalizedUpdateSection = {

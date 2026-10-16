@@ -171,7 +171,9 @@ describe("why it reached them", () => {
     for (const reason of NOTIFICATION_REASONS) {
       await expect(plant(a, a.seats.owner.memberId, { reason }), reason).resolves.toBeTypeOf("string");
     }
-    await expect(plant(a, a.seats.owner.memberId, { reason: "MENTIONED" })).rejects.toThrow(/notification_reason_known/);
+    // MENTIONED joined the set with slice 125 (20261029090000); a reason
+    // nothing writes is still refused.
+    await expect(plant(a, a.seats.owner.memberId, { reason: "WATCHER" })).rejects.toThrow(/notification_reason_known/);
     await expect(plant(a, a.seats.owner.memberId, { reason: "owner" })).rejects.toThrow(/notification_reason_known/);
   });
 

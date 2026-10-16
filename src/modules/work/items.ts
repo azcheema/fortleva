@@ -604,6 +604,12 @@ export type ItemDetailCaps = {
   create: boolean;
   /** `comment:create` — the composer is rendered. */
   comment: boolean;
+  /**
+   * `comment:create` AND `member:view` — the composer's `@` offers teammates
+   * (slice 125; `listMentionable` asks both, so a custom role without the
+   * member list gets a plain `@`, never a list that can only fail).
+   */
+  mention: boolean;
   /** `label:manage` — the `L` picker offers to create a label from the typed text. */
   manageLabels: boolean;
   /**
@@ -789,6 +795,8 @@ export async function getItemDetail(
         // picker's CLIENT group, which is a list of `Contact` rows and
         // therefore the client card's own code (`getClient`).
         "client:view",
+        // Slice 125: with `comment:create`, the `@` list (`mention`).
+        "member:view",
       ]),
       tx.workflowState.findMany({
         where: { tenantId: ctx.tenantId, projectId },
@@ -937,6 +945,7 @@ export async function getItemDetail(
         changeVisibility: held.has("work_item:change_visibility"),
         create: held.has("work_item:create"),
         comment: held.has("comment:create"),
+        mention: held.has("comment:create") && held.has("member:view"),
         manageLabels: held.has("label:manage"),
         endRequest:
           held.has("work_item:triage") && held.has("work_item:triage_decline"),

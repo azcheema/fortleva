@@ -88,6 +88,50 @@ export async function effectivePermissions(
   return codes;
 }
 
+/**
+ * `effectivePermissions` for MANY members at once, narrowed to `codes` —
+ * the same rows under the same filter (ACTIVE members only, a
+ * TENANT_REVOKE row ignored), in ONE statement. For a read that asks one
+ * question of every teammate — "who may open this task?" for the @mention
+ * list (slice 125) — where a resolution per member would be a statement
+ * per person on the panel's one connection. It answers gate 4 as
+ * `effectivePermissions` holds it and NOTHING else: no impersonation mask
+ * (it is never the actor's own answer) and no second factor, so it is for
+ * non-✦ codes asked ABOUT a member, never FOR one. A member absent from
+ * the map holds none of `codes`. `mentions.dbtest.ts` pins it equal to the
+ * per-member answer.
+ */
+export async function effectivePermissionsOf(
+  tx: TenantDb,
+  memberIds: readonly string[],
+  codes: readonly string[],
+): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (memberIds.length === 0 || codes.length === 0) return out;
+  const rows = await tx.memberRole.findMany({
+    where: { memberId: { in: [...memberIds] }, member: { status: "ACTIVE" } },
+    select: {
+      memberId: true,
+      role: {
+        select: {
+          rolePermissions: {
+            where: { source: { not: "TENANT_REVOKE" }, permission: { code: { in: [...codes] } } },
+            select: { permission: { select: { code: true } } },
+          },
+        },
+      },
+    },
+  });
+  for (const row of rows) {
+    for (const rp of row.role.rolePermissions) {
+      const held = out.get(row.memberId) ?? new Set<string>();
+      held.add(rp.permission.code);
+      out.set(row.memberId, held);
+    }
+  }
+  return out;
+}
+
 /** View-class verbs an impersonating platform admin is limited to (§9). */
 const VIEW_VERBS = new Set(["view", "view_all"]);
 

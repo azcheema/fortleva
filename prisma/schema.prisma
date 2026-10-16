@@ -3064,6 +3064,10 @@ model Mention {
   comment Comment @relation(fields: [tenantId, commentId], references: [tenantId, id], onDelete: Cascade)
 
   @@unique([tenantId, commentId, mentionedMemberId, mentionedContactId])
+  // Slice 125 (20261029090000): the index that deduplicates — with
+  // `mention_member_only` (a CHECK, not modelled) the member column is never
+  // NULL. Modelled so a generated diff never proposes dropping it.
+  @@unique([tenantId, commentId, mentionedMemberId], map: "mention_member_once")
   @@index([tenantId, mentionedMemberId])
   @@map("mention")
 }

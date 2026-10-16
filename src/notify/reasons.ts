@@ -6,11 +6,13 @@
  * none and show none.
  *
  * A CLOSED SET, held by the database too (the migration's CHECK): a new reason
- * — mentions, when they arrive (C44) — is a migration that widens it. The ORDER
+ * is a migration that widens it (MENTIONED was 20261029090000). The ORDER
  * is the precedence: someone who qualifies twice (an owner who is also assigned
  * to the client) is tagged with the more specific reason, the earlier one here.
  */
 export const NOTIFICATION_REASONS = [
+  /** Someone @mentioned them in a comment (slice 125, C101) — nothing is more specific. */
+  "MENTIONED",
   /** The task is theirs (assigned, or a comment on a task assigned to them). */
   "ASSIGNEE",
   /** They asked for the thing that answered (a login asked of a client). */

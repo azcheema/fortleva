@@ -9,6 +9,7 @@ import {
   createComment,
   createItem,
   deleteComment,
+  listMentionable,
   setCommentVisibility,
   updateComment,
   updateItemDescription,
@@ -17,6 +18,7 @@ import {
   type CommentVisibilityCommitted,
   type DescriptionSaved,
   type ItemCreated,
+  type Mentionable,
   type WorkCtx,
 } from "@/modules/work";
 import { PROJECT_KEY_RE } from "@/projects/service";
@@ -190,6 +192,19 @@ export async function createCommentAction(
   return commentAction(CreateComment, input, (p, ctx) =>
     createComment(ctx, p.itemId, { doc: input.doc, visibility: p.visibility }),
   );
+}
+
+/**
+ * The composer's @ list (slice 125): the teammates who may be mentioned on
+ * this task, loaded once per composer on the first `@`. Read-only, under
+ * the post's gates plus `member:view` (`listMentionable` says why).
+ */
+const MentionList = z.object({ itemId: z.uuid(), ...CommentAddress });
+
+export async function listMentionableAction(
+  input: z.input<typeof MentionList>,
+): Promise<ActionResult<Mentionable[]>> {
+  return commentAction(MentionList, input, (p, ctx) => listMentionable(ctx, p.itemId));
 }
 
 const CommentTarget = z.object({ commentId: z.uuid(), ...CommentAddress });

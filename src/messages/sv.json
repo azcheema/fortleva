@@ -385,6 +385,7 @@
       "older": "Äldre"
     },
     "reason": {
+      "MENTIONED": "Nämnde dig",
       "ASSIGNEE": "Tilldelad dig",
       "REQUESTER": "Du bad om den",
       "PROJECT_LEAD": "Du leder projektet",
@@ -1997,6 +1998,10 @@
     "COMMENT_EMPTY": "En kommentar behöver text.",
     "COMMENT_TOO_LARGE": "Kommentaren är för lång för att publiceras. Korta ner den, eller bifoga detaljerna som en fil.",
     "SUBJECT_NOT_VISIBLE": "Uppgiften är privat för teamet, så ett svar kan inte visas för kunden. Dela uppgiften först.",
+    "COMMENT_MENTION_VISIBLE": "Ett svar till kunden kan inte @nämna en kollega. Ta bort omnämnandet, eller publicera det som en intern anteckning.",
+    "COMMENT_HAS_MENTION": "Anteckningen @nämner en kollega, så den kan inte visas för kunden. Ta bort omnämnandet först.",
+    "MENTION_NOT_ALLOWED": "Någon du nämnde kan inte öppna uppgiften. Ta bort hen och publicera igen.",
+    "TOO_MANY_MENTIONS": "En kommentar kan nämna högst 20 personer.",
     "LABEL_TAKEN": "Det finns redan en etikett med det namnet.",
     "CONTACT_NOT_VIEWABLE": "Personen kan ännu inte logga in i portalen, så det finns ingen kundvy att öppna. Bjud in hen från kundens kontaktflik först.",
     "CONTACT_NOT_INVITABLE": "Personen kan inte bjudas in i sitt nuvarande läge — ladda om sidan för att se hur åtkomsten ser ut.",
@@ -3405,6 +3410,7 @@
         "postVisible": "Skicka svar till kunden",
         "update": "Uppdatera kommentar",
         "makeVisible": "Visa för kunden",
+        "mentionBlocksVisible": "Den nämner en kollega. Ta bort omnämnandet först.",
         "makePrivate": "Gör privat",
         "confirmDelete": "Ta bort kommentaren?",
         "mode": {
@@ -4990,6 +4996,11 @@
       "taskList": "Checklista",
       "heading": "Rubrik",
       "underline": "Understruken"
+    },
+    "mention": {
+      "list": "Kollegor att nämna",
+      "none": "Inga kollegor matchar",
+      "failed": "Det gick inte att hämta kollegorna. Skriv @ igen för att försöka på nytt."
     }
   },
   "timeReports": {
