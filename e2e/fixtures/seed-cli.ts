@@ -131,6 +131,9 @@ const DBTEST_PREFIXES = [
   // Phase 3V slice 87, the asset registry — `src/modules/vault/assets.dbtest.ts`,
   // `setupTenant("assets")`.
   "assets-",
+  // Slice 126, the bin for deleted tasks — `src/modules/work/bin.dbtest.ts`,
+  // `setupTenant("bin")`.
+  "bin-",
   // Phase 4 slice 111, the bookkeeping file — `src/modules/invoicing/bookkeeping.dbtest.ts`,
   // `setupTenant("bkx")` (the invoice method, and a raw-write tenant) and
   // `setupTenant("bkxc")` (the cash method).
@@ -1999,6 +2002,15 @@ async function provision(seedFile: string): Promise<void> {
   // applied here; `templates.spec.ts` works in the second workspace.
   const { saveProjectAsTemplate } = await import("../../src/modules/work/templates/service");
   await saveProjectAsTemplate(ctx, { projectId, name: "Webbplats – standard", replace: false });
+
+  // Slice 126 (C102): ONE task in this project's bin, made and deleted
+  // through the real services, so the Deleted tasks page photographs a row.
+  // A deleted task shows on no list, board, count or search, so no other
+  // spec sees it; it takes the project's next number, after every task
+  // above. `task-bin.spec.ts` works in the second workspace.
+  const { createItem: createBinned, deleteItem: deleteBinned } = await import("../../src/modules/work");
+  const binned = await createBinned(ctx, { projectId, title: "Gammal offertförfrågan" });
+  await deleteBinned(ctx, binned.id);
 
   const clientVisibleDocName = `e2e-shared-${run}.txt`;
   const internalDocName = `e2e-private-${run}.txt`;

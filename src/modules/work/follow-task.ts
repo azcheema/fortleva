@@ -28,7 +28,10 @@ import type { WorkCtx } from "./states";
  * (a) a contact's comment is born CLIENT_VISIBLE (the census WITH CHECK,
  * under the contact principal only); (b) no member verb lowers one —
  * `setCommentVisibility` refuses, `comments.ts`; (c) the only other
- * lowering is a task make-private, which is what this undoes. A later
+ * lowerings are a task make-private, which is what this undoes, and —
+ * since slice 126 — a task brought back from the bin, which returns
+ * private with its whole thread (`bin.ts`; the same shape, so the next
+ * share raises the client's words exactly as after a make-private). A later
  * path that hides a client's comment for another reason (moderation, an
  * email intake writing as system) must revisit this function, and the
  * refusal in `setCommentVisibility` says so where that path would be

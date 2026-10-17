@@ -59,10 +59,13 @@ import type { TenantDb } from "@/db";
  * (`deleteItem` makes two: one for its documents and their versions,
  * one for the item itself.)
  *
- * NOT DONE HERE, recorded for whoever builds them: the 30-day hard
- * delete must remove comments by (subject_type, subject_id) itself — no
- * FK ever will; and an undo must restore only the comments whose
- * `comment.deleted` row names its subject.
+ * NOT DONE HERE, recorded for whoever builds it: an erase of old deleted
+ * rows (C102 (c) leaves it for later) must remove comments by
+ * (subject_type, subject_id) itself — no FK ever will. The undo this
+ * comment once asked for is the bin (slice 126, `modules/work/bin.ts`): it
+ * restores a comment only when its `deletedAt` is the task's stamp AND its
+ * NEWEST `comment.deleted` row is this cascade's, naming the task — the
+ * reason matters, because a hand delete names its task too.
  */
 
 export type CascadeReason =

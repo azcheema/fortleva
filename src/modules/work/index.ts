@@ -61,6 +61,16 @@ export {
   type PrivacyPreview,
 } from "./visibility";
 export { listMyWork } from "./my-work";
+// The bin for deleted tasks (slice 126, founder decision C102).
+export {
+  listDeletedItems,
+  restoreDeletedItem,
+  type BinEntry,
+  type BinPage,
+  type ItemRestored,
+  type RestoreVia,
+} from "./bin";
+export { BIN_DAYS, BIN_PAGE_SIZE, type BinBlock } from "./bin-rules";
 // The project's row-lock queue, for ANOTHER module's writer that locks
 // many work_item rows of one project (rank-lock.ts: "a new multi-row
 // writer MUST take it") — the time reports' publish check, slice 72.

@@ -1,4 +1,4 @@
-import { dbErrorMapper } from "@/lib/db-error-map";
+import { dbErrorMapper, type DbErrorTokens } from "@/lib/db-error-map";
 
 /**
  * The work-tree triggers' tokens (20260911200000_work_tree_guards) that a
@@ -7,8 +7,9 @@ import { dbErrorMapper } from "@/lib/db-error-map";
  * reparents or crosses projects — the services pre-check both),
  * WORK_TREE_PARENT_GONE (createItem share-locks and re-reads the parent
  * first, so a vanished parent is its NOT_FOUND) and the RESTORE_* family
- * (nothing in the app restores a soft-deleted row yet; the undo that
- * does maps them then).
+ * — but the bin's own table, `guardedRestore` below, maps the parent's
+ * (slice 126); the rest guard children the bin restores only after their
+ * subject and only as INTERNAL.
  *
  * WORK_MILESTONE_PROJECT (20260912120000) stays unmapped for the same
  * reason, and the M slice looked before deciding: `setItemMilestone`
@@ -32,7 +33,7 @@ import { dbErrorMapper } from "@/lib/db-error-map";
  * got through would be a bug worth seeing raw rather than a sentence
  * inviting them to try something else.
  */
-export const { mapDbError, guarded } = dbErrorMapper([
+const WORK_TOKENS: DbErrorTokens = [
   ["WORK_ITEM_VISIBLE_CHILDREN", "HAS_VISIBLE_CHILDREN"],
   ["WORK_TREE_CHILD_VISIBILITY", "PARENT_NOT_VISIBLE"],
   ["WORK_TREE_NESTING", "CANNOT_NEST"],
@@ -109,4 +110,25 @@ export const { mapDbError, guarded } = dbErrorMapper([
   ["project_template_counts_range", "TEMPLATE_TOO_LARGE"],
   ["project_update_template_one_default", "LAYOUT_BUSY"],
   ["project_tenant_id_update_template_id_fkey", "LAYOUT_BUSY"],
+];
+
+export const { mapDbError, guarded } = dbErrorMapper(WORK_TOKENS);
+
+/**
+ * The bin's transaction (slice 126, `bin.ts`) — the module's table plus two
+ * answers that are the bin's alone, kept out of the shared table so another
+ * writer reaching the same constraint is never told the bin's sentence: a
+ * parent deleted between the restore's read and its write (the restore
+ * guard share-locks it and refuses a dead one, 20260911200000), and a card
+ * imported again in the same moment (the import's partial unique index —
+ * which the import's own writes avoid under the project's queue). The
+ * service asks both first, under that queue; these are the belts. The
+ * guard's other refusal, a task restored as anything but private
+ * (20261030090000), stays UNMAPPED: the service writes INTERNAL itself, so
+ * reaching it is a bug worth seeing raw.
+ */
+export const { guarded: guardedRestore } = dbErrorMapper([
+  ...WORK_TOKENS,
+  ["RESTORE_PARENT_GONE", "BIN_PARENT_DELETED"],
+  ["work_item_source_live_key", "BIN_SOURCE_TWIN"],
 ]);

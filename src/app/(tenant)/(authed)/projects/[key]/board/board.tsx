@@ -49,6 +49,7 @@ import { Input } from "@/components/ui/input";
 import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge";
 import { LabelChips } from "@/components/work-view/label-chips";
 import { onCreateGroupBlur, useRootCreatePick } from "@/components/work-view/use-create-visibility";
+import { isActionRedirect } from "@/lib/action-redirect";
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
 import { formatDuration, type DurationStyle } from "@/lib/format";
 import { focusedKeyApplies, keyEventShape, type KeyBinding } from "@/lib/keymap";
@@ -80,6 +81,7 @@ import type { ItemList, ResolvedItemList } from "@/modules/work";
 import type { TimerPillState } from "../../../time/actions";
 import { useTaskTimer } from "../../../time/use-task-timer";
 import { createItemInStateAction, deleteItemAction, moveItemAction, setItemArchivedAction } from "../backlog/actions";
+import { useDeletedToast } from "../backlog/deleted-toast";
 import { TimerElapsed } from "../item-panel/timer-control";
 import { useEndRequest } from "../triage/end-request";
 import { MovePicker } from "./move-picker";
@@ -1128,6 +1130,22 @@ function BoardCard({
       else toast.success(r.message);
       onMutate();
     });
+  // The delete's success is its own toast, which carries Undo (slice 126).
+  const deletedToast = useDeletedToast(projectKey);
+  const runDelete = () =>
+    startTransition(async () => {
+      let r: Awaited<ReturnType<typeof deleteItemAction>>;
+      try {
+        r = await deleteItemAction(item.id, projectKey);
+      } catch (err) {
+        // A redirect (a session that ended) navigates on its own.
+        if (isActionRedirect(err)) return;
+        r = { ok: false, message: tBacklog("actionFailed") };
+      }
+      if (!r.ok) toast.error(r.message);
+      else deletedToast(item.id, r.value);
+      onMutate();
+    });
 
   // The board never lists archived items (listItems hides them), so there
   // is no Restore here — archiving says where the item went, and the
@@ -1176,7 +1194,7 @@ function BoardCard({
                 label: tBacklog("actions.delete"),
                 tone: "danger" as const,
                 confirm: tBacklog("actions.confirmDelete"),
-                onSelect: () => run(() => deleteItemAction(item.id, projectKey)),
+                onSelect: runDelete,
               },
         ]
       : []),

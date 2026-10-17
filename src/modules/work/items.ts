@@ -1506,7 +1506,7 @@ export async function assignItemToContact(
     // the product yet, so the case cannot arise today — but the slice
     // that ships "revoke access" must sweep this column, or a revoked
     // contact holding a task (including a SOFT-deleted one, whose FK
-    // reference survives its 30-day window) makes `deleteContact` fail
+    // reference survives deletion — deleted tasks are KEPT, C102 (c)) makes `deleteContact` fail
     // on the RESTRICT foreign key: an erasure control broken by a task
     // nobody can see.
     //
@@ -1907,9 +1907,15 @@ export async function setItemArchived(
   });
 }
 
-/** Soft delete (30 d, then hard delete by a later sweep). */
-export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
-  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+/**
+ * Soft delete. The task stays in its project's bin for 30 days, where
+ * whoever may delete it may bring it back (slice 126, `bin.ts`); after that
+ * it is kept, out of the bin — erasing old deleted tasks is C102 (c)'s
+ * later piece. Returns the deletion's one stamp, which the Undo on "Task
+ * deleted" names so it can never bring back a LATER deletion.
+ */
+export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<{ deletedAt: Date }> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:delete");
     // Unlocked, explicitly (rows.ts): the compare-and-set below IS this
     // writer's guard — it diffs nothing from this read but the id.
@@ -1955,9 +1961,10 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
       fail("REQUEST_ANSWER_IS_THE_CLIENTS", "answered request");
     }
     // ONE stamp for the item and everything that goes with it, so the
-    // whole deletion reads as a single event to an export and to the
-    // retention sweep. What a future undo restores by is the audit
-    // trail, not this timestamp (comments/cascade.ts).
+    // whole deletion reads as a single event to an export and to the bin.
+    // The bin restores by this stamp AND the audit trail together — the
+    // stamp alone cannot tell this cascade from another delete in the same
+    // millisecond (bin.ts).
     const deletedAt = new Date();
     // Guarded on `deletedAt: null`, not just the id: the scope check
     // above read the row in an earlier statement, and a concurrent
@@ -2007,6 +2014,7 @@ export async function deleteItem(ctx: WorkCtx, itemId: string): Promise<void> {
       targetId: item.id,
       metadata: { number: item.number, projectId: item.projectId },
     });
+    return { deletedAt };
   });
 }
 

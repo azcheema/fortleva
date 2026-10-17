@@ -107,7 +107,7 @@ export default async function ProjectLayout({
     // the inbox has no board context to return to. Without this the
     // strip renders with NOTHING current, which reads as "this page has
     // no tabs".
-    { href: `${base}/backlog`, label: t("tabs.backlog"), also: [`${base}/items`, `${base}/import`] },
+    { href: `${base}/backlog`, label: t("tabs.backlog"), also: [`${base}/items`, `${base}/import`, `${base}/deleted`] },
     // Phase 3 slice 6b: the client's requests, waiting for an answer.
     // It sits after Backlog because that is where the work it produces
     // lands, and it is HIDDEN without `work_item:triage`, off the same

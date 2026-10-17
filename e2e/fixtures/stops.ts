@@ -234,6 +234,11 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // both states of the new chrome are audited (and a chip row that
     // wrapped or overflowed at 390 px would fail here, not in review).
     { name: "project-backlog-grouped", path: `${project}/backlog?group=assignee&hideDone=true` },
+    // Slice 126 (C102): the project's bin — at least the task provision
+    // deletes (seed-cli.ts), plus whatever specs that ran earlier deleted
+    // in the shared project; its Bring back in the pinned actions column.
+    // Not volatile: the title cell is contained, so rows never widen it.
+    { name: "project-deleted", path: `${project}/deleted` },
     {
       // 2W-F slice 4: the selection bar, which only exists once a row is
       // ticked — so the audit reaches it through `drive`. This is the one

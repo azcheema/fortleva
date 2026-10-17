@@ -2122,6 +2122,11 @@
     "IMPORT_CLOSED": "This import has stopped, so it took no more tasks. Reload the page to see what was imported.",
     "IMPORT_UNDO_CLOSED": "This import can't be undone any more. Delete its tasks by hand if you need to.",
     "IMPORT_RESTORE_CLOSED": "These tasks can't be brought back any more.",
+    "BIN_CLOSED": "This task was deleted more than 30 days ago, so it can't be brought back any more.",
+    "BIN_FROM_IMPORT": "This task was removed by undoing an import. Bring it back from the import's history.",
+    "BIN_PARENT_DELETED": "Its parent task is deleted too. Bring that back first.",
+    "BIN_SOURCE_TWIN": "A task imported from the same card is already in this project, so this one can't come back.",
+    "BIN_BUSY": "Someone else was changing this project at the same moment, so nothing was brought back. Try again in a moment.",
     "AGREEMENT_ENDED": "This agreement has ended: it can't be paused, run again or given a new end date. Reload the page.",
     "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page.",
     "FORTNOX_UNAVAILABLE": "The Fortnox connection isn't available yet.",
@@ -2150,7 +2155,7 @@
     "TEMPLATE_EMPTY": "This project has no tasks or milestones to save.",
     "TEMPLATE_INVALID": "This template can’t be used. Save it again from a project.",
     "STAGE_DEFAULT_GATED": "New tasks can’t start in a stage that needs approval.",
-    "STAGE_IN_BIN": "Deleted tasks still belong to this stage. Fortleva clears them 30 days after they were deleted; until then the last Backlog stage stays."
+    "STAGE_IN_BIN": "Deleted tasks still belong to this stage, so the last Backlog stage stays. Fortleva keeps deleted tasks for now."
   },
   "assignments": {
     "title": "Team",
@@ -3013,7 +3018,8 @@
       "visibilityAsk": "The client can still see {key}. Make it private, together with {list}?",
       "visibilityAskPortalOff": "Make {key} private, together with {list}?",
       "visibilityAskAction": "Make all private",
-      "importLink": "Import tasks"
+      "importLink": "Import tasks",
+      "binLink": "Deleted tasks"
     },
     "triage": {
       "title": "Triage",
@@ -3770,6 +3776,42 @@
         "write": "Write the update",
         "continue": "Continue the draft"
       }
+    },
+    "bin": {
+      "title": "Deleted tasks",
+      "back": "Back to the backlog",
+      "description": "Tasks deleted in the last 30 days. A task comes back hidden from the client, with its files and comments. Sharing it again shows the task and the client's own comments; files and your replies to the client are shared one by one.",
+      "more": "Showing the {count, number} most recently deleted.",
+      "columns": {
+        "task": "Task",
+        "deleted": "Deleted",
+        "by": "By"
+      },
+      "actionsFor": "Actions for {task}",
+      "restore": "Bring back",
+      "blocked": {
+        "archived": "The project is archived.",
+        "parentInBin": "Bring back {parent} first.",
+        "parentFromImport": "Its parent task was removed by undoing an import. Bring the import's tasks back first.",
+        "parentGone": "Its parent task can no longer be brought back.",
+        "sourceTwin": "A task imported from the same card is in the project now."
+      },
+      "formerMember": "A former member",
+      "empty": {
+        "title": "Nothing deleted",
+        "body": "Nothing was deleted in this project in the last 30 days."
+      },
+      "forbidden": {
+        "title": "Deleted tasks",
+        "body": "Only someone who can delete tasks can see deleted ones and bring them back."
+      },
+      "restored": "Task brought back.",
+      "restoredPrivate": "Task brought back, hidden from the client. Sharing it again shows the task and the client's own comments; its files and your replies to the client stay private until you share each one.",
+      "alreadyBack": "This task is already back.",
+      "undoStale": "This deletion was already undone, so nothing was changed. If the task was deleted again since, it's in Deleted tasks.",
+      "open": "Open",
+      "undo": "Undo",
+      "failed": "The task couldn't be brought back. Try again in a moment."
     },
     "import": {
       "title": "Import tasks",
@@ -6829,7 +6871,7 @@
       "STAGE_IS_DEFAULT": "New tasks start here. Choose another stage for them first.",
       "STAGE_TOO_FULL": "More than 2,000 tasks are in this stage. Move some first.",
       "INVALID_INPUT": "This stage can’t be removed.",
-      "STAGE_IN_BIN": "Deleted tasks still belong to this stage. Fortleva clears them 30 days after they were deleted; until then it stays."
+      "STAGE_IN_BIN": "Deleted tasks still belong to this stage, so it stays. Fortleva keeps deleted tasks for now."
     },
     "removeConfirmProject": "Remove the stage “{name}”? No task on the board is in it.",
     "removeConfirmWorkspace": "Remove “{name}” from the default stages? Projects that already exist keep theirs.",

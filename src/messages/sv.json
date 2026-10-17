@@ -2122,6 +2122,11 @@
     "IMPORT_CLOSED": "Importen har stoppats och tog inte emot fler uppgifter. Ladda om sidan för att se vad som importerades.",
     "IMPORT_UNDO_CLOSED": "Importen kan inte ångras längre. Ta bort uppgifterna för hand om det behövs.",
     "IMPORT_RESTORE_CLOSED": "Uppgifterna kan inte tas tillbaka längre.",
+    "BIN_CLOSED": "Uppgiften togs bort för mer än 30 dagar sedan och kan inte tas tillbaka längre.",
+    "BIN_FROM_IMPORT": "Uppgiften togs bort när en import ångrades. Ta tillbaka den från importens historik.",
+    "BIN_PARENT_DELETED": "Den överordnade uppgiften är också borttagen. Ta tillbaka den först.",
+    "BIN_SOURCE_TWIN": "En uppgift som importerats från samma kort finns redan i projektet, så den här kan inte tas tillbaka.",
+    "BIN_BUSY": "Någon annan ändrade projektet i samma stund, så inget togs tillbaka. Försök igen om en liten stund.",
     "AGREEMENT_ENDED": "Avtalet är avslutat och kan inte pausas, startas igen eller få ett nytt slutdatum. Ladda om sidan.",
     "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan.",
     "FORTNOX_UNAVAILABLE": "Kopplingen till Fortnox är inte tillgänglig än.",
@@ -2150,7 +2155,7 @@
     "TEMPLATE_EMPTY": "Projektet har inga uppgifter eller milstolpar att spara.",
     "TEMPLATE_INVALID": "Den här mallen går inte att använda. Spara den igen från ett projekt.",
     "STAGE_DEFAULT_GATED": "Nya uppgifter kan inte börja i ett steg som kräver godkännande.",
-    "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget. Fortleva rensar dem 30 dagar efter att de togs bort; till dess finns det sista backloggsteget kvar."
+    "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget, så det sista backloggsteget finns kvar. Fortleva sparar borttagna uppgifter tills vidare."
   },
   "assignments": {
     "title": "Team",
@@ -3013,7 +3018,8 @@
       "visibilityAsk": "Kunden kan fortfarande se {key}. Vill du göra den privat, tillsammans med {list}?",
       "visibilityAskPortalOff": "Vill du göra {key} privat, tillsammans med {list}?",
       "visibilityAskAction": "Gör allt privat",
-      "importLink": "Importera uppgifter"
+      "importLink": "Importera uppgifter",
+      "binLink": "Borttagna uppgifter"
     },
     "triage": {
       "title": "Triage",
@@ -3770,6 +3776,42 @@
         "write": "Skriv uppdateringen",
         "continue": "Fortsätt på utkastet"
       }
+    },
+    "bin": {
+      "title": "Borttagna uppgifter",
+      "back": "Tillbaka till backloggen",
+      "description": "Uppgifter som tagits bort de senaste 30 dagarna. En uppgift som tas tillbaka är dold för kunden, med sina filer och kommentarer. Delar ni den igen ser kunden uppgiften och sina egna kommentarer; filer och era svar till kunden delas en i taget.",
+      "more": "Visar de {count, number} senast borttagna.",
+      "columns": {
+        "task": "Uppgift",
+        "deleted": "Borttagen",
+        "by": "Av"
+      },
+      "actionsFor": "Åtgärder för {task}",
+      "restore": "Ta tillbaka",
+      "blocked": {
+        "archived": "Projektet är arkiverat.",
+        "parentInBin": "Ta tillbaka {parent} först.",
+        "parentFromImport": "Den överordnade uppgiften togs bort när en import ångrades. Ta tillbaka importens uppgifter först.",
+        "parentGone": "Den överordnade uppgiften kan inte tas tillbaka längre.",
+        "sourceTwin": "En uppgift som importerats från samma kort finns redan i projektet."
+      },
+      "formerMember": "En tidigare medlem",
+      "empty": {
+        "title": "Inget borttaget",
+        "body": "Inget har tagits bort i projektet de senaste 30 dagarna."
+      },
+      "forbidden": {
+        "title": "Borttagna uppgifter",
+        "body": "Bara den som får ta bort uppgifter kan se borttagna uppgifter och ta tillbaka dem."
+      },
+      "restored": "Uppgiften är tillbaka.",
+      "restoredPrivate": "Uppgiften är tillbaka och dold för kunden. Delar ni den igen ser kunden uppgiften och sina egna kommentarer; filerna och era svar till kunden förblir privata tills ni delar dem en i taget.",
+      "alreadyBack": "Uppgiften är redan tillbaka.",
+      "undoStale": "Borttagningen var redan ångrad, så inget ändrades. Om uppgiften tagits bort igen sedan dess finns den under Borttagna uppgifter.",
+      "open": "Öppna",
+      "undo": "Ångra",
+      "failed": "Uppgiften kunde inte tas tillbaka. Försök igen om en liten stund."
     },
     "import": {
       "title": "Importera uppgifter",
@@ -6829,7 +6871,7 @@
       "STAGE_IS_DEFAULT": "Nya uppgifter börjar här. Välj ett annat steg för dem först.",
       "STAGE_TOO_FULL": "Fler än 2 000 uppgifter ligger i steget. Flytta några först.",
       "INVALID_INPUT": "Steget kan inte tas bort.",
-      "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget. Fortleva rensar dem 30 dagar efter att de togs bort; till dess finns steget kvar."
+      "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget, så det finns kvar. Fortleva sparar borttagna uppgifter tills vidare."
     },
     "removeConfirmProject": "Ta bort steget ”{name}”? Ingen uppgift på tavlan ligger i det.",
     "removeConfirmWorkspace": "Ta bort ”{name}” från standardstegen? Befintliga projekt behåller sina.",

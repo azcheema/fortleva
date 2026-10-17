@@ -65,6 +65,7 @@ import { isoDateOf, parseEstimateMinutes } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { wroteSomething } from "@/lib/action-result";
 import { durationInputText, formatDay, formatDuration, type DurationStyle } from "@/lib/format";
+import { isActionRedirect } from "@/lib/action-redirect";
 import { withCurrentOption } from "@/lib/inline-edit";
 import { focusedKeyApplies, focusedKeyGuards, keyEventShape, ownsArrows, rovingStep } from "@/lib/keymap";
 import type { ActionResult, FormResult } from "@/lib/server-actions";
@@ -134,6 +135,8 @@ import {
   type BulkPrivateResult,
   type ItemPrivateResult,
 } from "./actions";
+import type { DeletedView } from "./actions";
+import { useDeletedToast } from "./deleted-toast";
 
 /**
  * The ordered task list (2W core slice, grown into the full backlog by
@@ -158,7 +161,8 @@ type RunResult = FormResult | ActionResult<unknown>;
 
 /**
  * Runs one row mutation in a transition. Accepts both result shapes: the
- * message-bearing `FormResult` (rename, archive, delete…) and the six
+ * message-bearing `FormResult` (rename, archive…), the delete's
+ * `ActionResult<DeletedView>` (its own toast, through `onValue`) and the six
  * property setters' `ActionResult`, whose success carries the canonical
  * row instead of a sentence. The table re-renders from the server either
  * way, on failure too. ONE toast policy for both: nothing on success
@@ -177,16 +181,27 @@ const useRun = (fallbackMessage: string) => {
       success?: string;
       /** A success sentence that depends on the ANSWER (slice 72: what else went private); null says nothing. */
       successOf?: (value: unknown) => string | null;
+      /** Shows the success ITSELF from the answer — the delete's toast, which carries Undo (slice 126). */
+      onValue?: (value: unknown) => void;
       /** Runs when the write was refused or failed — nothing was written. */
       onFail?: () => void;
     } = {},
   ) =>
     start(async () => {
-      const r = await fn().catch(() => ({ ok: false as const, message: fallbackMessage }));
+      let r: RunResult;
+      try {
+        r = await fn();
+      } catch (err) {
+        // A redirect (a session that ended) navigates on its own — never a
+        // "failed" toast flashed over a page that is leaving (slice 126).
+        if (isActionRedirect(err)) return;
+        r = { ok: false, message: fallbackMessage };
+      }
       if (!r.ok) {
         opts.onFail?.();
         toast.error(r.message);
       }
+      else if (opts.onValue && "value" in r) opts.onValue(r.value);
       else if (opts.serverMessage && "message" in r) toast.success(r.message);
       else if (opts.successOf && "value" in r) {
         const sentence = opts.successOf(r.value);
@@ -480,6 +495,7 @@ export function BacklogTable({
   const tPriority = useTranslations("states.priority");
   const router = useRouter();
   const { run } = useRun(t("actionFailed"));
+  const deletedToast = useDeletedToast(projectKey);
   const { partsOf, detailsOf, hasBelow, portalOff } = usePrivacyCopy();
   // Per row: bumped when a pick from the visibility cell wrote nothing (yet).
   const [cellResets, setCellResets] = useState<Record<string, number>>({});
@@ -1598,7 +1614,10 @@ export function BacklogTable({
                             label: t("actions.delete"),
                             tone: "danger" as const,
                             confirm: t("actions.confirmDelete"),
-                            onSelect: () => run(() => deleteItemAction(item.id, projectKey), { serverMessage: true }),
+                            onSelect: () =>
+                              run(() => deleteItemAction(item.id, projectKey), {
+                                onValue: (value) => deletedToast(item.id, value as DeletedView),
+                              }),
                           },
                     ]
                   : []),
@@ -2144,6 +2163,17 @@ export function BacklogTable({
             data-testid="backlog-import-link"
           >
             {tProjects("backlog.importLink")}
+          </Link>
+        ) : null}
+        {/* Slice 126 (C102 (a)): the project's bin, for whoever may delete —
+            the code that brings a task back. */}
+        {data.caps.canDelete ? (
+          <Link
+            className="text-muted-foreground underline-offset-2 hover:underline"
+            href={`/projects/${projectKey}/deleted`}
+            data-testid="backlog-bin-link"
+          >
+            {tProjects("backlog.binLink")}
           </Link>
         ) : null}
       </p>

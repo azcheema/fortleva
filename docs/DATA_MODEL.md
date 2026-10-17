@@ -130,7 +130,7 @@ One event model, one capture mechanism, two audiences (brief §9):
 | Impersonation | `impersonation.started`, `impersonation.ended` — both identities, always [TENANT] (visible to the tenant in their own log, §7) |
 | Membership & authz | `member.invited`, `member.joined`, `member.suspended`, `member.removed`, `member.two_factor_reset`, `member.signed_out_everywhere` *(the two added 2026-10-02, slice 84 — an owner's reset of a teammate's two-factor and sign-out everywhere; actor the owner, target the teammate)*, `role.created`, `role.updated`, `role.deleted`, `permission.granted`, `permission.revoked`, `assignment.client_added/removed`, `assignment.project_added/removed` [TENANT] |
 | Contacts & portal | `contact.created`, `contact.invited`, `contact.activated`, `contact.suspended`, `contact.access_restored`, `contact.access_revoked`, `contact.updated`, `contact.deleted`, `contact.summary_stopped`, `contact.summary_started` *(the two added 2026-10-07 — Phase 5 slice 101: a person's own weekly summary stopped or started again from its link; actor SYSTEM, target the Contact, metadata `{ via }` only)* [TENANT] |
-| Files & visibility | `file.uploaded`, `file.downloaded` (incl. every portal download), `document.visibility_changed` (INTERNAL↔CLIENT_VISIBLE flips are privileged), `document.deleted` [TENANT] |
+| Files & visibility | `file.uploaded`, `file.downloaded` (incl. every portal download), `document.visibility_changed` (INTERNAL↔CLIENT_VISIBLE flips are privileged), `document.deleted`, `document.restored` *(slice 126 — a file a task's deletion took, back with the task from the bin; files have no bin of their own)* [TENANT] |
 | Money | `contract.sent`, `contract.signed`, `contract.declined`, `invoice.issued`, `invoice.sent`, `invoice.paid`, `invoice.credited`, `series.created` [TENANT] |
 | Data egress | `export.requested`, `export.generated`, `export.downloaded` [TENANT] |
 | Continuity box | `continuity_box.sealed`, `.resealed`, `.beneficiary_changed`, `.trustee_changed`, `.open_requested`, `.request_withdrawn`, `.vetoed`, `.escalated`, `.opened` (the once), `.download_issued` (every presign), `.closed` [TENANT] |
@@ -140,7 +140,7 @@ One event model, one capture mechanism, two audiences (brief §9):
 
 | Domain | Events |
 |---|---|
-| Work (2W) | `work_item.created`, `work_item.deleted`, `work_item.state_changed`, `work_item.visibility_changed`, `work_item.triaged`, `work_item.archived`, `work_item.bulk_edited`, `comment.deleted`, `comment.visibility_changed`, `comment.edited_by_other` *(added 2026-09-15 — founder decision 2026-09-12: one's own comment is routine and writes a history row only; editing someone else's is `comment:edit_any` and audits)*, `workflow.changed`, `label.created`, `label.deleted`, `project_template.applied`, `project_template.created|replaced|renamed|deleted` *(slice 124 — the name, the source project and the counts, never a task's words; a project made from a template also audits `project.created`, each `milestone.created` and each `work_item.created` with `templateId`)*, `notification.preference_changed`, `reply_address.requested|request_cancelled|confirmed|removed` *(Phase 5 slice 100 — the workspace's reply address; each with the address in its metadata; `confirmed` is a SYSTEM row naming the member who asked)*, `search.index_rebuilt` [TENANT] |
+| Work (2W) | `work_item.created`, `work_item.deleted`, `work_item.restored` *(slice 121 — an import's Bring back; slice 126 — the project's bin and the Undo on "Task deleted", `reason: "bin" | "undo"`, with the files and comments that came back and `madePrivate` / `endedContactAssignment` when the client could see it; each file and comment that came back writes `document.restored` / `comment.restored`)*, `comment.restored`, `work_item.state_changed`, `work_item.visibility_changed`, `work_item.triaged`, `work_item.archived`, `work_item.bulk_edited`, `comment.deleted`, `comment.visibility_changed`, `comment.edited_by_other` *(added 2026-09-15 — founder decision 2026-09-12: one's own comment is routine and writes a history row only; editing someone else's is `comment:edit_any` and audits)*, `workflow.changed`, `label.created`, `label.deleted`, `project_template.applied`, `project_template.created|replaced|renamed|deleted` *(slice 124 — the name, the source project and the counts, never a task's words; a project made from a template also audits `project.created`, each `milestone.created` and each `work_item.created` with `templateId`)*, `notification.preference_changed`, `reply_address.requested|request_cancelled|confirmed|removed` *(Phase 5 slice 100 — the workspace's reply address; each with the address in its metadata; `confirmed` is a SYSTEM row naming the member who asked)*, `search.index_rebuilt` [TENANT] |
 | Time (2T) | `timer.started`, `timer.stopped`, `timer.auto_stopped`, `time_entry.created`, `time_entry.edited_by_other`, `time_entry.deleted`, `time_entry.locked`, `time_entry.unlocked`, `time_entry.repriced`, `time.exported`, `rate_card.created`, `rate_card.closed`, `rate_card.cost_revealed` (aggregate, per session — never per row), `budget.created`, `budget.changed`, `budget.alert_sent`, `staff_notice.published`, `staff_notice.acknowledged` [TENANT]. **Metadata never contains a cost amount** — card id + field only. |
 | Portal & sharing (2, 3) | `project.portal_enabled`, `project.portal_disabled`, `project.portal_stamp_alarm` *(added 2026-09-28, Phase 3 slice 74: actor SYSTEM; written whenever a reconcile pass reads the project's switch OFF and finds rows of that project disagreeing with it — in the pass's own transaction when it corrects them, so the correction and its record commit together, and once more after the last pass if rows are still held disagreeing. The gate should make that impossible, so the row is the durable trace of a possible exposure, never a routine event. It follows the switch the pass READ, which need not be the press that ran it. Metadata ids and counts only — `src/projects/portal-gate.ts`)*, `project.hours_sharing_changed`, `project.portal_section_changed` *(added 2026-09-30, Phase 3 slice 80: a section of the project shown or hidden on the client’s portal — layout, not a gate; metadata `{section, shown}`)*, `project.key_changed`, `project.viewed_as_contact`, `project_update.published`, `project_update.archived`, `project_update.visibility_changed`, `portal.request_created`, `portal.comment_created`, `portal.task_completed`, `document.approval_requested`, `document.approval_decided` [TENANT] |
 | Vault & assets (3V) | `credential.created`, `credential.updated`, `credential.deleted`, `credential.revealed`, `credential.copied`, `credential.totp_generated`, `credential.visibility_changed`, `credential.shared`, `credential.share_revoked`, `credential.share_viewed`, `credential.exported`, `credential.rotation_flagged`, `asset.created`, `asset.updated`, `asset.deleted`, `tenant_key.created`, `tenant_key.rotated`, `expiration.reminder_sent`, `vault.step_up_required`, `vault.reveal_budget_exceeded` [TENANT]. Metadata: credential id + field name only, never a secret, never a username. |
@@ -3150,7 +3150,15 @@ enum WorkItemSource {
 ///     CLIENT_VISIBLE row also needs it client-visible and an INTERNAL
 ///     row is always accepted — so a row that died under a shared item
 ///     cannot come back into view after the item went private. A soft
-///     delete never fires them.
+///     delete never fires them. *Amended 2026-10-17 (slice 126,
+///     20261030090000, C102 (b)):* `work_item_restore_guard` first refuses
+///     ANY task restored as anything but INTERNAL (`RESTORE_NOT_PRIVATE`),
+///     so a deleted task always comes back private, whoever writes it; its
+///     `RESTORE_VISIBILITY` branch is gone (subsumed). The comment and
+///     document guards are unchanged — with the task private they refuse a
+///     client-visible child. The bin's service (`src/modules/work/bin.ts`)
+///     restores the task, then its files, then their comments and the
+///     task's, each INTERNAL, under the project's rank queue.
 ///   TRIGGER work_item_activity_denorm_guard BEFORE INSERT OR UPDATE OF
 ///     visibility, work_item_id, client_id, project_id: derives
 ///     client_id / project_id from the item (never trusted from the
@@ -3172,7 +3180,7 @@ enum WorkItemSource {
 ///     mutations (REQUEST create, complete own-assigned) run under the
 ///     system principal in modules/work/portal.ts.
 /// scope=client  rls=B (projectScoped)  ret=R2  enc=none
-/// audit: work_item.created | work_item.deleted | work_item.state_changed | work_item.visibility_changed | work_item.triaged | work_item.archived | work_item.bulk_edited | portal.request_created | portal.task_completed
+/// audit: work_item.created | work_item.deleted | work_item.restored (slices 121, 126) | work_item.state_changed | work_item.visibility_changed | work_item.triaged | work_item.archived | work_item.bulk_edited | portal.request_created | portal.task_completed
 model WorkItem {
   id                 String           @id @default(uuid(7))
   tenantId           String
@@ -3239,7 +3247,7 @@ model WorkItem {
   createdByMemberId  String?
   reportedByContactId String?                     // attribution for PORTAL/EMAIL requests (brokered write)
   archivedAt         DateTime?        @db.Timestamptz(6)  // explicit archive; never silent
-  deletedAt          DateTime?        @db.Timestamptz(6)  // soft delete (30 d), then hard delete
+  deletedAt          DateTime?        @db.Timestamptz(6)  // soft delete: 30 days in the project's bin, then KEPT (C102 (c), slice 126)
   createdAt          DateTime         @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime         @updatedAt @db.Timestamptz(6)
 
@@ -3486,11 +3494,16 @@ enum CommentSubjectType {
 /// (`src/comments/cascade.ts`), one `comment.deleted {reason,
 /// workItemId|documentId}` per comment, ids only, one `deletedAt` for the
 /// whole set. Soft delete is an application filter, never an RLS term:
-/// every projection selects `deletedAt: null`. The 30-day hard delete
-/// must remove comments by (subjectType, subjectId) itself — no FK will —
-/// and an undo restores only comments whose audit row names the subject.
+/// every projection selects `deletedAt: null`. A later erase (C102 (c)
+/// leaves it for later) must remove comments by (subjectType, subjectId)
+/// itself — no FK will. The bin (slice 126, 2026-10-17) brings a comment
+/// back with its task only when its `deletedAt` IS the task's stamp AND
+/// its NEWEST `comment.deleted` record is the cascade's naming the task
+/// (reason `work_item_deleted` / `document_deleted` — a comment deleted by
+/// hand names its task too, with `removed_by_*`), always INTERNAL, audited
+/// `comment.restored`.
 /// scope=client (clientId nullable only for tenant-internal DOCUMENT subjects)  rls=B (projectScoped when projectId set, else clientScoped; contact INSERT allowed by WITH CHECK)  ret=R2  enc=none
-/// audit: comment.deleted | comment.visibility_changed | comment.edited_by_other | portal.comment_created
+/// audit: comment.deleted | comment.restored (slice 126) | comment.visibility_changed | comment.edited_by_other | portal.comment_created
 model Comment {
   id              String             @id @default(uuid(7))
   tenantId        String

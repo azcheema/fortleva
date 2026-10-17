@@ -71,8 +71,8 @@ export async function releaseContactAssignments(
   // arrival, never the assignment), and it is exactly those forgotten
   // rows that would block the erasure this sweep exists to unblock.
   // Soft-deleted rows too, for the same reason: the FK does not care
-  // that `deleted_at` is set, and a 30-day window is long enough to
-  // strand a deletion request.
+  // that `deleted_at` is set, and deleted tasks are KEPT (C102 (c)) — a
+  // forgotten one would strand a deletion request for good.
   const held = await tx.workItem.findMany({
     where: { tenantId: ctx.tenantId, clientId: target.clientId, assigneeContactId: target.contactId },
     // INLINE, never select-less: a work item carries a 512 KB

@@ -253,6 +253,12 @@ export type DomainErrorCode =
   | "IMPORT_CLOSED"
   | "IMPORT_UNDO_CLOSED"
   | "IMPORT_RESTORE_CLOSED"
+  // The bin for deleted tasks (slice 126 — src/modules/work/bin.ts, C102).
+  | "BIN_CLOSED" // deleted more than 30 days ago: out of the bin (the row is kept, C102 (c))
+  | "BIN_FROM_IMPORT" // removed by undoing an import — the import's own row brings it back
+  | "BIN_PARENT_DELETED" // its parent task is deleted too: bring that back first
+  | "BIN_SOURCE_TWIN" // a task imported from the same card is in the project now
+  | "BIN_BUSY" // the project's queue or a row stayed locked past the wait, twice
   // The stage editors (slice 123 — src/modules/work/stage-editor.ts, C99 (a);
   // the rules are src/lib/stage-rules.ts).
   | "STAGE_NAME_TAKEN" // another stage of this project (or the default set) has that name, ignoring case
@@ -261,7 +267,7 @@ export type DomainErrorCode =
   | "STAGE_NOT_EMPTY" // the last Backlog stage still has tasks (the bin's included)
   | "STAGE_DEFAULT_KIND" // new tasks can start only in a Backlog or To do stage
   | "STAGE_DEFAULT_GATED" // …and never in one that needs approval (the create skips the state machine)
-  | "STAGE_IN_BIN" // the last Backlog stage still holds deleted tasks (cleared 30 days after deletion)
+  | "STAGE_IN_BIN" // the last Backlog stage still holds deleted tasks (kept for now — C102 (c))
   | "STAGE_IS_DEFAULT" // the last Backlog stage is where new tasks start: choose another first
   | "STAGE_TOO_FULL" // more than 2 000 tasks to move in one removal
   | "STAGE_GONE" // the stage a task was being moved into was removed meanwhile

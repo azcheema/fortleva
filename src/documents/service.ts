@@ -850,8 +850,10 @@ async function changeVisibilityOnce(
   });
 }
 
-/** Soft delete: the row and its versions stay (export/undo later);
- * bytes stay metered until a hard-delete job reclaims them. */
+/** Soft delete: the row and its versions stay (export; a file a TASK's
+ * deletion took comes back with the task from its project's bin, slice
+ * 126 — a file deleted on its own has no way back yet); bytes stay metered
+ * until a hard-delete job reclaims them. */
 export async function softDeleteDocument(ctx: DocumentCtx, documentId: string): Promise<void> {
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:delete");

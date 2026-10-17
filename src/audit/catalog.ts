@@ -165,6 +165,10 @@ export const AUDIT_EVENTS = {
   "file.downloaded": TENANT,
   "document.visibility_changed": TENANT,
   "document.deleted": TENANT,
+  // Slice 126 (founder decision C102) — a file a task's deletion took came
+  // back with the task from the project's bin: `{ workItemId, projectId,
+  // madePrivate? }`. Files have no bin of their own.
+  "document.restored": TENANT,
   // A client report's name or month changed (Phase 6 slice 115, C91) — one
   // row for one edit, `{ from: { name, month }, to: { name, month } }`. A
   // report is published and hidden through `document.visibility_changed`
@@ -372,13 +376,21 @@ export const AUDIT_EVENTS = {
   // the job's own life is these four, and a task an undo removed and a
   // Bring back returned is `work_item.deleted` / `work_item.restored`
   // (`reason: "import_undone"` / `"import_restored"`). The file's NAME is
-  // never in an audit row — it can say anything.
+  // never in an audit row — it can say anything. Since slice 126 (C102) a
+  // task deleted by hand comes back from its project's bin or the Undo on
+  // "Task deleted" as `work_item.restored` with `reason: "bin"` / `"undo"`,
+  // `files`, `comments`, and `madePrivate` / `endedContactAssignment` when
+  // the client could see it (it always comes back private).
   "work_item.restored": TENANT,
   "import_job.started": TENANT,
   "import_job.finished": TENANT,
   "import_job.undone": TENANT,
   "import_job.restored": TENANT,
   "comment.deleted": TENANT,
+  // Slice 126 (C102) — a comment a task's deletion took came back with the
+  // task: `{ workItemId, projectId, documentId? | fileVersionId?,
+  // madePrivate? }`. A comment deleted on its own has no way back.
+  "comment.restored": TENANT,
   "comment.visibility_changed": TENANT,
   // Editing SOMEONE ELSE's comment (`comment:edit_any`) — founder
   // decision 2026-09-12: one's own comments are routine (a history row,

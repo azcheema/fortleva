@@ -10,8 +10,9 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
  * snapshot, so two "bottom" writers would otherwise mint the same key.
  *
  * Neighbour reads include SOFT-DELETED rows on purpose: they keep their
- * slot under the unique `(tenant_id, project_id, rank)` index for the
- * 30-day window, so a key generated as if they were gone would collide
+ * slot under the unique `(tenant_id, project_id, rank)` index — deleted
+ * tasks are KEPT (C102 (c)), and one brought back from the bin returns to
+ * that very slot (slice 126) — so a key generated as if they were gone would collide
  * (2026-08-21 review) — they are simply invisible rows that still
  * occupy a position. Only an ANCHOR the client names must be live.
  *
@@ -131,6 +132,16 @@ import { lockContactBudget } from "@/portal/contact-budget-lock";
  *     which takes nothing. `document_anchor_guard_v2` added `FOR SHARE
  *     OF wi` to close a write-skew, and THAT is the lock. Reading v1
  *     alone says this cycle does not exist; it does.
+ *   • restoreDeletedItem (slice 126, `bin.ts`) is a QUEUED writer: the
+ *     queue, then the task's row FOR NO KEY UPDATE, then UPDATEs of the
+ *     task's DEAD files and comments (the restore guards share-lock the
+ *     task, its files, and a parent). Three unqueued writers also lock dead
+ *     rows of a project, in the other order: the portal switch's fan-out
+ *     (documents before tasks), `releaseContactAssignments`, and the search
+ *     language's restamp — so it can be a deadlock victim. It passes
+ *     `lockTimeoutMs` and takes `retryOnContention`; a spent retry is
+ *     BIN_BUSY. (A file's visibility flip touches LIVE files only, so it
+ *     closes no cycle with it.)
  * ABLE TO DEADLOCK WITH EACH OTHER — and, SINCE PHASE 3 SLICE 72, WITH
  * THE QUEUE TOO. The sentence that stood here said "never with the
  * queue", resting on no queued writer ever locking a document or comment

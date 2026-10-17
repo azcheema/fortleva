@@ -555,10 +555,13 @@ describe("a row deleted under a shared item cannot be restored into view once th
     // Dead rows do not block the item's make-private...
     await changeItemVisibility(ownerCtx(), parent, "INTERNAL");
 
-    // ...and none of them can be restored as they were.
+    // ...and none of them can be restored as they were. Since slice 126
+    // (20261030090000, C102 (b)) a TASK is refused by the stronger rule —
+    // a task restored from deletion lands INTERNAL, whatever its parent —
+    // so it says so; the comment and the file keep the parent rule.
     await expect(
       f.platform.workItem.update({ where: { id: child }, data: { deletedAt: null } }),
-    ).rejects.toThrow(/RESTORE_VISIBILITY/);
+    ).rejects.toThrow(/RESTORE_NOT_PRIVATE/);
     await expect(
       f.platform.comment.update({ where: { id: comment.id }, data: { deletedAt: null } }),
     ).rejects.toThrow(/RESTORE_VISIBILITY/);

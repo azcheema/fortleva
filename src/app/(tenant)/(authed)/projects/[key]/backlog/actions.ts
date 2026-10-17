@@ -21,6 +21,7 @@ import {
   makePrivateWithChildren,
   moveItem,
   previewMakePrivate,
+  restoreDeletedItem,
   setItemArchived,
   setItemLabel,
   setItemMilestone,
@@ -67,6 +68,7 @@ const ctxOf = async (): Promise<WorkCtx> => {
 
 const backlogPath = (key: string) => `/projects/${key}/backlog`;
 const boardPath = (key: string) => `/projects/${key}/board`;
+const binPath = (key: string) => `/projects/${key}/deleted`;
 
 /** One order, one item set: whichever surface wrote, both re-render. */
 const revalidate = (key: string) => {
@@ -543,17 +545,85 @@ export async function setItemArchivedAction(
   return r;
 }
 
-export async function deleteItemAction(itemId: string, projectKey: string): Promise<FormResult> {
+/** What a delete tells the surface: the sentence, and the deletion's stamp — what its Undo names (slice 126). */
+export type DeletedView = { readonly message: string; readonly deletedAt: string };
+
+export async function deleteItemAction(itemId: string, projectKey: string): Promise<ActionResult<DeletedView>> {
   const ctx = await ctxOf();
   const t = await getTranslations("projects.backlog");
   const id = uuid.safeParse(itemId);
   const key = keyShape.safeParse(projectKey);
   if (!id.success || !key.success) return { ok: false, message: t("invalidTitle") };
-  const r = await runForm(backlogPath(key.data), async () => {
-    await deleteItem(ctx, id.data);
-    return t("deletedToast");
+  const r = await runAction(backlogPath(key.data), async (): Promise<DeletedView> => {
+    const { deletedAt } = await deleteItem(ctx, id.data);
+    return { message: t("deletedToast"), deletedAt: deletedAt.toISOString() };
   });
   if (r.ok) revalidate(key.data);
+  return r;
+}
+
+/** What a Bring back tells the surface: the sentence, and the task's number for the toast's Open. */
+export type RestoredView = {
+  readonly message: string;
+  readonly number: number;
+  readonly changed: boolean;
+  /** The sentence is a long one (what stays private) and wants a longer toast. */
+  readonly madePrivate: boolean;
+  /** An Undo for a deletion that no longer stands — told as information, never as a success. */
+  readonly superseded: boolean;
+};
+
+/**
+ * BRING BACK a deleted task (slice 126, founder decision C102) — from the
+ * project's bin (`via: "bin"`) or the Undo on "Task deleted" (`"undo"`).
+ * One service either way; it comes back hidden from the client, and the
+ * sentence says so when the client could see it. Positional and closed at
+ * the boundary, like the rest: `restoreDeletedItem` gates and scopes.
+ */
+export async function restoreDeletedItemAction(
+  itemId: string,
+  projectKey: string,
+  via: "bin" | "undo",
+  /** An Undo's: the stamp its delete returned — a later deletion is not this Undo's to bring back. */
+  deletedAt?: string,
+): Promise<ActionResult<RestoredView>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.bin");
+  const id = uuid.safeParse(itemId);
+  const key = keyShape.safeParse(projectKey);
+  const how = z.enum(["bin", "undo"]).safeParse(via);
+  const stamp = z.iso.datetime().optional().safeParse(deletedAt);
+  // An Undo always names the deletion it undoes (the security review's NIT):
+  // without it, the "brought back and deleted again" protection is opt-in.
+  if (!id.success || !key.success || !how.success || !stamp.success || (how.data === "undo" && !stamp.data)) {
+    return { ok: false, message: t("failed") };
+  }
+  const r = await runAction(binPath(key.data), async (): Promise<RestoredView> => {
+    const done = await restoreDeletedItem(
+      ctx,
+      id.data,
+      how.data,
+      stamp.data === undefined ? undefined : new Date(stamp.data),
+    );
+    const message = done.superseded
+      ? t("undoStale")
+      : !done.changed
+        ? t("alreadyBack")
+        : done.madePrivate
+          ? t("restoredPrivate")
+          : t("restored");
+    return {
+      message,
+      number: done.number,
+      changed: done.changed,
+      madePrivate: done.madePrivate,
+      superseded: done.superseded,
+    };
+  });
+  if (r.ok) {
+    revalidate(key.data);
+    revalidatePath(binPath(key.data));
+  }
   return r;
 }
 
