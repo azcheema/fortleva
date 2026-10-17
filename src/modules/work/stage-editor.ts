@@ -10,6 +10,7 @@ import type { StateSeedKey } from "@/lib/enum-map";
 import { rankBetween } from "@/lib/rank";
 import {
   MAX_STAGE_REMOVE_TASKS,
+  binHeir,
   canAddStage,
   checkStageName,
   defaultHeir,
@@ -251,7 +252,11 @@ export async function restoreWorkspaceStages(ctx: WorkCtx): Promise<WorkspaceSta
 
 // ── A project's own ─────────────────────────────────────────────────
 
-/** One row of a project's Stages page. `tasks` counts tasks on the board and in the archive — not the bin. */
+/**
+ * One row of a project's Stages page. `tasks` counts tasks on the board and
+ * in the archive — not the bin; `binned` counts the deleted ones, which
+ * move with a removal too (the confirm says where).
+ */
 export type ProjectStageRow = {
   id: string;
   name: string | null;
@@ -260,6 +265,7 @@ export type ProjectStageRow = {
   isDefault: boolean;
   requiresApproval: boolean;
   tasks: number;
+  binned: number;
 };
 
 const stateSelect = {
@@ -301,12 +307,18 @@ export async function getProjectStages(
     if (!project) deny("NOT_FOUND");
     await ensureProjectStates(tx, ctx.tenantId, projectId);
     const states = (await readStates(tx, ctx.tenantId, projectId)).filter((s) => s.category !== "TRIAGE");
-    const counts = await tx.workItem.groupBy({
-      by: ["stateId"],
-      where: { tenantId: ctx.tenantId, projectId, deletedAt: null },
-      _count: { _all: true },
-    });
-    const byState = new Map(counts.map((c) => [c.stateId, c._count._all]));
+    // Both counts from ONE statement, so one snapshot: two reads under READ
+    // COMMITTED could count a task deleted (or brought back) between them
+    // twice, or not at all (the code review's NIT).
+    const counts = await tx.$queryRaw<{ state_id: string; live: bigint; binned: bigint }[]>`
+      SELECT state_id,
+             count(*) FILTER (WHERE deleted_at IS NULL) AS live,
+             count(*) FILTER (WHERE deleted_at IS NOT NULL) AS binned
+      FROM work_item
+      WHERE tenant_id = ${ctx.tenantId} AND project_id = ${projectId}
+      GROUP BY state_id`;
+    const byState = new Map(counts.map((c) => [c.state_id, Number(c.live)]));
+    const binnedByState = new Map(counts.map((c) => [c.state_id, Number(c.binned)]));
     return {
       stages: states.map((s) => ({
         id: s.id,
@@ -316,6 +328,7 @@ export async function getProjectStages(
         isDefault: s.isDefault,
         requiresApproval: s.requiresApproval,
         tasks: byState.get(s.id) ?? 0,
+        binned: binnedByState.get(s.id) ?? 0,
       })),
       archived: project!.status === "ARCHIVED",
     };
@@ -464,12 +477,32 @@ export function setProjectStageApproval(ctx: WorkCtx, projectId: string, stateId
  * request rule; that is what lets it be one set UPDATE rather than the
  * state machine run once per task.
  *
+ * THE ONE EXCEPTION (founder decision C104, slice 126b): the LAST Backlog
+ * stage has no other stage of its kind, so once nothing on the board or
+ * in the archive is in it, its DELETED tasks go where new tasks start
+ * (`binHeir` — a To do stage, never gated) and `targetId` is not read.
+ * That move is Backlog → To do, and it writes to the ROW what the state
+ * machine writes for that pair: the category (the trigger derives it;
+ * written too, as a belt) and both stamps cleared (`transitionState`'s
+ * rule on entering To do — a Backlog task has neither, so this normally
+ * changes nothing). No triage, claim or accepted column moves for that
+ * pair (`transitionState` touches them only leaving Triage or Cancelled,
+ * or entering Done or Cancelled). Its HISTORY row departs from the state
+ * machine, in the safe direction: INTERNAL even for a task the client
+ * could see before it was deleted — nobody saw it move, and it comes back
+ * private anyway (C102 (b)). Nobody is told. It needs `workflow:manage`
+ * and not `work_item:edit`, which is why it is held to deleted tasks and
+ * the start stage only (AUTHZ.md's `workflow:manage` row) — never widen it
+ * to a live task or another kind on this precedent.
+ *
  * EVERY task moved — the bin's too, which still point at the stage and
- * which the database refuses to orphan — gets an INTERNAL history row (a
- * within-category move — `forceInternal`, `transitionState`'s rule) and a
- * `work_item.state_changed` audit row in the transition's own shape, so
- * "state is never routine" holds per task and a task brought back from
- * the bin keeps its trail (the security review's NIT).
+ * which the database refuses to orphan — gets an INTERNAL history row
+ * (`forceInternal`: within a category that is `transitionState`'s own
+ * rule; across, the paragraph above) and a `work_item.state_changed`
+ * audit row in the transition's own shape plus `via: "stage_removed"`
+ * (and `deleted: true` for one in the bin), so "state is never routine"
+ * holds per task, a task brought back from the bin keeps its trail, and
+ * the row says why it moved (the security reviews' NIT and LOW).
  *
  * LOCKS, after the stage key: THE RANK QUEUE, because this writes many of
  * the project's task rows and every such writer queues first
@@ -493,14 +526,18 @@ export function setProjectStageApproval(ctx: WorkCtx, projectId: string, stateId
  * A MINUTE'S BUDGET, as the bulk edits have: up to 2 000 rows moved, each
  * firing the state-sync and search-feed triggers, plus a history row and
  * an audit row each (the code review's MEDIUM — the default five seconds
- * was never measured near the bound).
+ * was never measured near the bound). The bound counts the bin's tasks
+ * too, since they move as well; a stage with more than 2 000 DELETED tasks
+ * therefore stays until old deleted tasks are erased (C102 (c)'s later
+ * piece) — accepted and recorded by slice 126b's reviews; the refusal says
+ * deleted ones count and can't be moved, rather than "move some first".
  */
 export function removeProjectStage(
   ctx: WorkCtx,
   projectId: string,
   stateId: string,
   targetId: string | null,
-): Promise<{ moved: number }> {
+): Promise<{ moved: number; toStart: number }> {
   return editProject(
     ctx,
     projectId,
@@ -531,9 +568,21 @@ export function removeProjectStage(
       // The member's pick, which must be another stage of the same kind —
       // required when anything is moved (the bin's tasks count: they point
       // at the stage too, though the page's count leaves them out, which is
-      // why the page always sends a pick when one exists).
-      const target = removalTargets(states, self.id).find((s) => s.id === targetId) ?? null;
+      // why the page always sends a pick when one exists). With no other
+      // stage of the kind — the last Backlog stage, every task left in it
+      // deleted (`removalRefusal` refused live ones) — they go where new
+      // tasks start (C104), whatever the page sent.
+      const sameKind = removalTargets(states, self.id);
+      const target =
+        sameKind.length > 0
+          ? (sameKind.find((s) => s.id === targetId) ?? null)
+          : inStage.length > 0
+            ? binHeir(states, self.id)
+            : null;
       if (inStage.length > 0 && !target) fail("INVALID_INPUT", "target must be another stage of the same kind");
+      // Only the bin's case crosses a kind: Backlog → To do (`binHeir` is a
+      // Backlog or To do stage, never this one, and this is the last Backlog).
+      const crossKind = target !== null && target.category !== self.category;
       // Where the mark goes when this was the default: with the tasks when
       // their stage may carry it, else the first other stage of the kind
       // that may (`defaultHeir` — never a gated one; `removalRefusal`
@@ -545,7 +594,11 @@ export function removeProjectStage(
         const ids = inStage.map((i) => i.id);
         await tx.workItem.updateMany({
           where: { tenantId: ctx.tenantId, projectId, id: { in: ids }, stateId: self.id },
-          data: { stateId: target!.id },
+          // Entering a Backlog or To do stage from another kind clears both
+          // stamps — `transitionState`'s rule, the only kinds `binHeir` gives.
+          data: crossKind
+            ? { stateId: target!.id, stateCategory: target!.category, startedAt: null, completedAt: null }
+            : { stateId: target!.id },
         });
         const items = inStage.map((i) => ({
           id: i.id,
@@ -553,6 +606,7 @@ export function removeProjectStage(
           projectId: i.project_id,
           visibility: i.visibility,
           stateCategory: i.state_category,
+          deleted: i.deleted_at !== null,
         }));
         await writeActivityMany(
           tx,
@@ -562,9 +616,11 @@ export function removeProjectStage(
             change: {
               field: "stateCategory",
               oldValue: item.stateCategory,
-              newValue: item.stateCategory,
+              newValue: target!.category,
               oldRef: self.id,
               newRef: target!.id,
+              // Same kind: nothing a client is shown changed. Across kinds
+              // (the bin's tasks): deleted, unseen, and private on return.
               forceInternal: true,
             },
           })),
@@ -575,7 +631,13 @@ export function removeProjectStage(
             action: "work_item.state_changed" as const,
             targetType: "WorkItem",
             targetId: item.id,
-            metadata: { from: item.stateCategory, to: item.stateCategory, projectId },
+            metadata: {
+              from: item.stateCategory,
+              to: target!.category,
+              projectId,
+              via: "stage_removed",
+              ...(item.deleted ? { deleted: true } : {}),
+            },
           })),
         );
       }
@@ -590,12 +652,13 @@ export function removeProjectStage(
       await auditProject(tx, projectId, self, "removed", {
         movedTasks: inStage.length,
         binnedTasks: binned,
-        ...(inStage.length > 0 && target ? { into: target.id } : {}),
+        ...(inStage.length > 0 && target ? { into: target.id, intoCategory: target.category } : {}),
         ...(heir ? { defaultTo: heir.id } : {}),
       });
       // What the page told the member: tasks on the board and in the
-      // archive, not the bin.
-      return { moved: inStage.length - binned };
+      // archive, not the bin — and, apart, deleted ones sent to the start
+      // stage, which the toast names.
+      return { moved: inStage.length - binned, toStart: crossKind ? binned : 0 };
     },
     { timeoutMs: 60_000 },
   );

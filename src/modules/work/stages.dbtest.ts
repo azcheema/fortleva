@@ -9,11 +9,13 @@ import {
   addProjectStage,
   addWorkspaceStage,
   createItem,
+  deleteItem,
   getProjectStages,
   listItems,
   moveProjectStage,
   removeProjectStage,
   renameProjectStage,
+  restoreDeletedItem,
   renameWorkspaceStage,
   restoreWorkspaceStages,
   setProjectDefaultStage,
@@ -29,7 +31,9 @@ import {
  * its stages); a project's own stages are renamed one way, added at the
  * end of their kind, moved within it, and removed only into another stage
  * of the same kind — the tasks moved with INTERNAL history rows and a
- * `work_item.state_changed` audit each; every kind but Backlog keeps a
+ * `work_item.state_changed` audit each; the one exception, the last
+ * Backlog stage's DELETED tasks, goes where new tasks start (C104,
+ * slice 126b); every kind but Backlog keeps a
  * stage; "new tasks start here" is one Backlog or To do stage, held by the
  * database too; and `workflow:manage` is the gate.
  */
@@ -199,7 +203,11 @@ describe("a project's own stages", () => {
     });
     expect(history).toHaveLength(2);
     expect(history.every((h) => h.visibility === "INTERNAL" && h.oldValue === "IN_PROGRESS" && h.newValue === "IN_PROGRESS")).toBe(true);
-    expect((await audits("work_item.state_changed")).length).toBe(auditsBefore + 2);
+    const moves = (await audits("work_item.state_changed")).slice(auditsBefore);
+    expect(moves).toHaveLength(2);
+    // Why each moved; neither was in the bin.
+    expect(moves.every((m) => (m.metadata as { via?: string }).via === "stage_removed")).toBe(true);
+    expect(moves.every((m) => !("deleted" in (m.metadata as object)))).toBe(true);
     const removal = (await audits("workflow.changed")).at(-1)!;
     expect(removal.metadata).toMatchObject({ scope: "project", projectId: p, change: "removed", movedTasks: 2, into: progress.id });
     expect(removal.metadata).toMatchObject({ binnedTasks: 0 });
@@ -337,12 +345,101 @@ describe("a removal near its bound, and the bin", () => {
     ).toBe(n);
   }, 120_000);
 
-  it("the last Backlog stage with only deleted tasks says so, rather than 'move its tasks first'", async () => {
+  it("a stage holding only deleted tasks moves them to the member's pick of its kind — the kind unchanged", async () => {
+    const p = await newProject();
+    await listItems(ownerCtx(), p);
+    const review = await seedState(p, "IN_REVIEW");
+    const progress = await seedState(p, "IN_PROGRESS");
+    const { id } = await createItem(ownerCtx(), { projectId: p, title: "Gone", stateId: review.id });
+    await deleteItem(ownerCtx(), id);
+    const page = await getProjectStages(ownerCtx(), p);
+    expect(page.stages.find((s) => s.id === review.id)).toMatchObject({ tasks: 0, binned: 1 });
+
+    const before = (await audits("work_item.state_changed")).length;
+    expect(await removeProjectStage(ownerCtx(), p, review.id, progress.id)).toEqual({ moved: 0, toStart: 0 });
+    const row = await f.platform.workItem.findUniqueOrThrow({
+      where: { id },
+      select: { stateId: true, stateCategory: true, deletedAt: true },
+    });
+    expect(row).toMatchObject({ stateId: progress.id, stateCategory: "IN_PROGRESS" });
+    expect(row.deletedAt).not.toBeNull();
+    const moves = (await audits("work_item.state_changed")).slice(before);
+    expect(moves).toHaveLength(1);
+    expect(moves[0]!.metadata).toMatchObject({ from: "IN_PROGRESS", to: "IN_PROGRESS", via: "stage_removed", deleted: true });
+  });
+
+  it("the last Backlog stage's deleted tasks move to where new tasks start, and one brought back lands there (C104)", async () => {
     const p = await newProject();
     await listItems(ownerCtx(), p);
     const backlog = await seedState(p, "BACKLOG");
-    const { id } = await createItem(ownerCtx(), { projectId: p, title: "In the bin", stateId: backlog.id });
-    await f.platform.workItem.update({ where: { id }, data: { deletedAt: new Date() } });
-    await expect(removeProjectStage(ownerCtx(), p, backlog.id, null)).rejects.toMatchObject({ code: "STAGE_IN_BIN" });
+    const todo = await seedState(p, "TODO"); // where new tasks start
+    expect(todo.isDefault).toBe(true);
+    const a = await createItem(ownerCtx(), { projectId: p, title: "Binned one", stateId: backlog.id });
+    const b = await createItem(ownerCtx(), { projectId: p, title: "Binned two", stateId: backlog.id });
+    const live = await createItem(ownerCtx(), { projectId: p, title: "Still here", stateId: backlog.id });
+    // The client could see b before it was deleted: the history row of its
+    // move must be INTERNAL all the same.
+    await f.platform.workItem.update({ where: { id: b.id }, data: { visibility: "CLIENT_VISIBLE" } });
+    await deleteItem(ownerCtx(), a.id);
+    await deleteItem(ownerCtx(), b.id);
+    // A Backlog task never carries a stamp, so plant both: the move into To
+    // do must clear them, as the state machine would (the code review's NIT).
+    await f.platform.workItem.update({ where: { id: a.id }, data: { startedAt: new Date(), completedAt: new Date() } });
+
+    // A task on the board still holds the stage in place — and the page
+    // counts it apart from the bin's (the one-statement read, both halves).
+    expect((await getProjectStages(ownerCtx(), p)).stages.find((s) => s.id === backlog.id)).toMatchObject({
+      tasks: 1,
+      binned: 2,
+    });
+    await expect(removeProjectStage(ownerCtx(), p, backlog.id, null)).rejects.toMatchObject({ code: "STAGE_NOT_EMPTY" });
+    await deleteItem(ownerCtx(), live.id);
+    // The page counts the bin's apart, for its confirm.
+    const page = await getProjectStages(ownerCtx(), p);
+    expect(page.stages.find((s) => s.id === backlog.id)).toMatchObject({ tasks: 0, binned: 3 });
+
+    const auditsBefore = (await audits("work_item.state_changed")).length;
+    // Whatever the page sent as a target, the start stage takes them.
+    expect(await removeProjectStage(ownerCtx(), p, backlog.id, randomUUID())).toEqual({ moved: 0, toStart: 3 });
+    const ids = [a.id, b.id, live.id];
+    expect((await states(p)).some((s) => s.id === backlog.id)).toBe(false);
+    const rows = await f.platform.workItem.findMany({
+      where: { tenantId: f.tenantId, id: { in: ids } },
+      select: { stateId: true, stateCategory: true, startedAt: true, completedAt: true, deletedAt: true },
+    });
+    expect(rows).toHaveLength(3);
+    for (const r of rows) {
+      expect(r).toMatchObject({ stateId: todo.id, stateCategory: "TODO", startedAt: null, completedAt: null });
+      expect(r.deletedAt).not.toBeNull(); // still in the bin
+    }
+    const history = await f.platform.workItemActivity.findMany({
+      where: { tenantId: f.tenantId, workItemId: { in: ids }, oldRef: backlog.id, newRef: todo.id },
+      select: { visibility: true, oldValue: true, newValue: true },
+    });
+    expect(history).toHaveLength(3);
+    expect(history.every((h) => h.visibility === "INTERNAL" && h.oldValue === "BACKLOG" && h.newValue === "TODO")).toBe(true);
+    const moves = (await audits("work_item.state_changed")).slice(auditsBefore);
+    expect(moves.map((m) => m.targetId).sort()).toEqual([...ids].sort());
+    expect(moves.every((m) => (m.metadata as { from: string; to: string }).from === "BACKLOG")).toBe(true);
+    expect(moves.every((m) => (m.metadata as { from: string; to: string }).to === "TODO")).toBe(true);
+    // Each row says why it moved, and that the task was in the bin.
+    expect(moves.every((m) => (m.metadata as { via?: string }).via === "stage_removed")).toBe(true);
+    expect(moves.every((m) => (m.metadata as { deleted?: boolean }).deleted === true)).toBe(true);
+    const removal = (await audits("workflow.changed")).at(-1)!;
+    expect(removal.metadata).toMatchObject({
+      scope: "project",
+      change: "removed",
+      category: "BACKLOG",
+      movedTasks: 3,
+      binnedTasks: 3,
+      into: todo.id,
+      intoCategory: "TODO",
+    });
+    // The start stage keeps the mark, and a task brought back lands there.
+    expect((await states(p)).filter((s) => s.isDefault).map((s) => s.id)).toEqual([todo.id]);
+    await restoreDeletedItem(ownerCtx(), a.id, "bin");
+    expect(
+      await f.platform.workItem.findUniqueOrThrow({ where: { id: a.id }, select: { stateId: true, deletedAt: true } }),
+    ).toEqual({ stateId: todo.id, deletedAt: null });
   });
 });

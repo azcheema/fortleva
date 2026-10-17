@@ -20,7 +20,7 @@
 - **The partial unique index** `work_item_source_live_key` (one LIVE task per project, source system and source id): restoring an imported task whose card was imported again since would violate it.
 - **Callers of the delete**: the backlog row's menu and the board card's menu (`run(() => deleteItemAction(…))`, a plain success toast). No bulk delete, no delete in the item panel.
 - **The backlog's foot** (`backlog-table.tsx`): "Show archived" and, for `canCreate && canEdit`, "Import tasks". The layout lights the Backlog tab for `/items` and `/import` (`also`).
-- **Copy that C102 (c) makes false**: `STAGE_IN_BIN` ("Fortleva clears them 30 days after they were deleted", twice, both languages), `deleteItem`'s doc comment and `schema.prisma`'s `deletedAt` comment ("then hard delete by a later sweep").
+- **Copy that C102 (c) makes false**: `STAGE_IN_BIN` ("Fortleva clears them 30 days after they were deleted", twice, both languages — the code itself is gone since slice 126b, C104), `deleteItem`'s doc comment and `schema.prisma`'s `deletedAt` comment ("then hard delete by a later sweep").
 
 ## 3. The design
 
@@ -85,7 +85,7 @@ Not a tab: reached from the backlog's foot ("Deleted tasks", beside "Import task
 
 ### 3.7 Copy C102 (c) corrects
 
-`STAGE_IN_BIN` (both namespaces, both languages): "Deleted tasks still belong to this stage, so the last Backlog stage stays. Fortleva keeps deleted tasks for now." — the stage can never be removed while one is there, which C102 (c) makes lasting; recorded, not changed here, and put to the founder (§9, finding 5). Every "30 days, then hard delete" comment the review listed now says the task is kept (§9, finding 8).
+`STAGE_IN_BIN` (both namespaces, both languages): "Deleted tasks still belong to this stage, so the last Backlog stage stays. Fortleva keeps deleted tasks for now." — the stage can never be removed while one is there, which C102 (c) makes lasting; recorded, not changed here, and put to the founder (§9, finding 5) — answered C104 and built in slice 126b, which removed the code. Every "30 days, then hard delete" comment the review listed now says the task is kept (§9, finding 8).
 
 ### 3.8 Not built
 
@@ -110,7 +110,7 @@ UI.md (the bin page; the delete's Undo); DATA_MODEL §6.14 (restore and the new 
 2. **LOW — the import exclusion could strand a task** (one an import's Bring back skipped; a subtask under a parent the undo removed). TAKEN: excluded only while the import is still UNDONE; the parent's case has its own reason. Both in the dbtest.
 3. **LOW — Undo was keyed on the task, not its deletion.** TAKEN: the delete returns its stamp, the Undo sends it, a mismatch answers `superseded` and writes nothing (dbtest).
 4. **LOW — "share it again" over-promised:** a share brings back the task and the client's own comments only (C37); files and the team's replies to the client are shared one by one, and an unanswered client request comes back hidden from the client who wrote it. TAKEN in the copy (toast and page) — it follows from C102 (b) — and told to the founder.
-5. **LOW — the last Backlog stage can never be removed once a task in it was deleted** (C102 (c) keeps deleted tasks). Pre-existing since slice 123; NOT changed here (the stage editor is another slice's reviewed code) — put to the founder with a recommendation.
+5. **LOW — the last Backlog stage can never be removed once a task in it was deleted** (C102 (c) keeps deleted tasks). Pre-existing since slice 123; NOT changed here (the stage editor is another slice's reviewed code) — put to the founder with a recommendation. *(Answered C104 with the recommendation and BUILT in slice 126b, 2026-10-17: removing the last Backlog stage moves its deleted tasks to where new tasks start; `STAGE_IN_BIN` is gone.)*
 6. **LOW — tests:** history rows the client could read before the delete are unreadable after Bring back; a client's comment on a FILE stays private after a re-share; the same-millisecond case. TAKEN, all three.
 7. **NIT — lock wording** (`FOR NO KEY UPDATE`, three attempts). TAKEN in §3.3.
 8. **NIT — docs:** `rank-lock.ts`' ledger names the restore; `follow-task.ts`' list of lowering paths gains the restore; every "30 days, then hard delete" comment amended. TAKEN.

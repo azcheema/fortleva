@@ -25,6 +25,7 @@ import { afterClosingLayers } from "@/lib/after-closing-layers";
 import {
   MAX_STAGE_NAME_LENGTH,
   STAGE_KINDS,
+  binHeir,
   canMove,
   defaultKindAllowed,
   defaultRefusal,
@@ -67,6 +68,8 @@ export type StageRowView = {
   requiresApproval: boolean;
   /** Tasks in it (board and archive, not the bin) — null on the workspace default, which holds none. */
   tasks: number | null;
+  /** Deleted tasks in it (the bin) — they move with a removal too; null on the workspace default. */
+  binned: number | null;
 };
 
 const asLike = (rows: readonly StageRowView[]): StageLike[] =>
@@ -138,8 +141,12 @@ export function StageTable({
         ? { disabled: true, disabledReason: t("cannotGateStart") }
         : { onSelect: () => run(() => setStageApprovalAction({ scope, id: row.id, on: !row.requiresApproval })) }),
     });
-    const refusal = removalRefusal(like, row.id, row.tasks ?? 0);
+    const binned = row.binned ?? 0;
+    const refusal = removalRefusal(like, row.id, (row.tasks ?? 0) + binned, binned);
     const firstTarget = removalTargets(like, row.id)[0]?.id ?? null;
+    // Where its deleted tasks go: with the first other stage of its kind,
+    // else — the last Backlog stage — where new tasks start (C104).
+    const binTo = binned > 0 ? rows.find((r) => r.id === (firstTarget ?? binHeir(like, row.id)?.id)) : undefined;
     if (refusal) {
       items.push({
         key: "remove",
@@ -163,7 +170,11 @@ export function StageTable({
         label: t("menu.remove"),
         icon: Trash2Icon,
         tone: "danger",
-        confirm: project ? t("removeConfirmProject", { name: row.name }) : t("removeConfirmWorkspace", { name: row.name }),
+        confirm: !project
+          ? t("removeConfirmWorkspace", { name: row.name })
+          : binTo
+            ? t("removeConfirmProjectBin", { name: row.name, target: binTo.name })
+            : t("removeConfirmProject", { name: row.name }),
         // A project's empty stage still sends a pick when one exists: tasks
         // in the BIN point at it too, and the server moves them there.
         onSelect: () => run(() => removeStageAction({ scope, id: row.id, targetId: project ? firstTarget : null })),

@@ -5,6 +5,7 @@ import {
   MAX_STAGES,
   MAX_STAGE_REMOVE_TASKS,
   TRIAGE_STAGE,
+  binHeir,
   canAddStage,
   canStartHere,
   checkStageName,
@@ -106,9 +107,20 @@ describe("removal", () => {
     expect(removalRefusal(list, "BACKLOG", 0)).toBe("STAGE_IS_DEFAULT");
   });
 
-  it("answers a last Backlog stage holding only deleted tasks with its own reason", () => {
-    expect(removalRefusal(project(), "BACKLOG", 2, 2)).toBe("STAGE_IN_BIN");
+  it("lets the last Backlog stage go with only deleted tasks in it — they go where new tasks start (C104)", () => {
+    expect(removalRefusal(project(), "BACKLOG", 2, 2)).toBeNull();
+    expect(binHeir(project(), "BACKLOG")?.id).toBe("TODO");
+    // A live task still holds it in place.
     expect(removalRefusal(project(), "BACKLOG", 3, 2)).toBe("STAGE_NOT_EMPTY");
+    // The mark on it is answered first: choose another start stage, not "nowhere to go".
+    const marked = project().map((s) => ({ ...s, isDefault: s.id === "BACKLOG" }));
+    expect(removalRefusal(marked, "BACKLOG", 2, 2)).toBe("STAGE_IS_DEFAULT");
+    expect(binHeir(marked, "BACKLOG")).toBeNull();
+    // The start stage is never a gated one (a belt: the database holds the pair).
+    const gatedStart = project().map((s) => (s.id === "TODO" ? { ...s, requiresApproval: true } : s));
+    expect(binHeir(gatedStart, "BACKLOG")).toBeNull();
+    expect(removalRefusal(gatedStart, "BACKLOG", 2, 2)).toBe("INVALID_INPUT");
+    expect(removalRefusal(gatedStart, "BACKLOG", 0)).toBeNull(); // nothing to move, nothing to refuse
   });
 
   it("passes the start-here mark only to a stage of its kind that is not gated", () => {

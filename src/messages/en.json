@@ -2146,7 +2146,7 @@
     "STAGE_NOT_EMPTY": "Move this stage’s tasks somewhere else first — no other stage of its kind is left.",
     "STAGE_DEFAULT_KIND": "New tasks can only start in a Backlog or To do stage.",
     "STAGE_IS_DEFAULT": "New tasks start in this stage. Choose another stage for them first.",
-    "STAGE_TOO_FULL": "More than 2,000 tasks are in this stage. Move some to another stage first.",
+    "STAGE_TOO_FULL": "More than 2,000 tasks belong to this stage, deleted ones included — too many to move at once. Tasks on the board can be moved to another stage first; deleted ones can’t.",
     "STAGE_GONE": "That stage was just removed. Reload the page and try again.",
     "STAGE_BUSY": "Someone changed the stages at the same moment. Reload the page and try again.",
     "LABEL_GONE": "That label was just deleted or merged. Reload the page and try again.",
@@ -2154,8 +2154,7 @@
     "TEMPLATE_TOO_LARGE": "This project is too large for a template. A template holds at most 1,000 tasks, 100 milestones and 500 labels, and their words together at most about 3 MB.",
     "TEMPLATE_EMPTY": "This project has no tasks or milestones to save.",
     "TEMPLATE_INVALID": "This template can’t be used. Save it again from a project.",
-    "STAGE_DEFAULT_GATED": "New tasks can’t start in a stage that needs approval.",
-    "STAGE_IN_BIN": "Deleted tasks still belong to this stage, so the last Backlog stage stays. Fortleva keeps deleted tasks for now."
+    "STAGE_DEFAULT_GATED": "New tasks can’t start in a stage that needs approval."
   },
   "assignments": {
     "title": "Team",
@@ -6869,11 +6868,11 @@
       "STAGE_LAST_OF_KIND": "Every board keeps at least one stage of each kind.",
       "STAGE_NOT_EMPTY": "Move its tasks to another stage first — no other stage of its kind is left.",
       "STAGE_IS_DEFAULT": "New tasks start here. Choose another stage for them first.",
-      "STAGE_TOO_FULL": "More than 2,000 tasks are in this stage. Move some first.",
-      "INVALID_INPUT": "This stage can’t be removed.",
-      "STAGE_IN_BIN": "Deleted tasks still belong to this stage, so it stays. Fortleva keeps deleted tasks for now."
+      "STAGE_TOO_FULL": "More than 2,000 tasks belong to this stage, deleted ones included — too many to move at once. Tasks on the board can be moved first; deleted ones can’t.",
+      "INVALID_INPUT": "This stage can’t be removed."
     },
     "removeConfirmProject": "Remove the stage “{name}”? No task on the board is in it.",
+    "removeConfirmProjectBin": "Remove the stage “{name}”? No task on the board is in it. Deleted tasks in it move to “{target}”, so one brought back lands there.",
     "removeConfirmWorkspace": "Remove “{name}” from the default stages? Projects that already exist keep theirs.",
     "removeDialog": {
       "title": "Remove “{name}”",
@@ -6896,6 +6895,7 @@
     "approvalOn": "Moving a task here now needs approval.",
     "approvalOff": "Moving a task here no longer needs approval.",
     "removed": "Stage removed.",
+    "removedToStart": "Stage removed. Deleted tasks that were in it now belong to the stage where new tasks start.",
     "removedMoved": "{count, plural, one {# task moved, and the stage removed.} other {# tasks moved, and the stage removed.}}",
     "restored": "The original stages are back. New projects get them.",
     "cannotStartHere": "A stage that needs approval can’t be where new tasks start.",

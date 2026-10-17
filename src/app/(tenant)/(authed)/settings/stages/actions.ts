@@ -154,7 +154,11 @@ export async function setStageApprovalAction(raw: { scope: StageScope; id: strin
   return r;
 }
 
-/** Remove a stage; a project's tasks in it move to `targetId` (another stage of the same kind). */
+/**
+ * Remove a stage; a project's tasks in it move to `targetId` (another stage
+ * of the same kind) — or, for the last Backlog stage, its deleted tasks to
+ * where new tasks start (C104), which the toast says.
+ */
 export async function removeStageAction(raw: {
   scope: StageScope;
   id: string;
@@ -171,8 +175,9 @@ export async function removeStageAction(raw: {
       await removeWorkspaceStage(ctx, id);
       return t("removed");
     }
-    const { moved } = await removeProjectStage(ctx, scope.projectId, id, targetId);
-    return moved > 0 ? t("removedMoved", { count: moved }) : t("removed");
+    const { moved, toStart } = await removeProjectStage(ctx, scope.projectId, id, targetId);
+    if (moved > 0) return t("removedMoved", { count: moved });
+    return toStart > 0 ? t("removedToStart") : t("removed");
   });
   if (r.ok) revalidate(scope);
   return r;

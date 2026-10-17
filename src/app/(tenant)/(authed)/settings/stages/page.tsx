@@ -53,6 +53,7 @@ export default async function StageSettingsPage() {
     isDefault: s.isDefault,
     requiresApproval: s.requiresApproval,
     tasks: null,
+    binned: null,
   }));
 
   return (

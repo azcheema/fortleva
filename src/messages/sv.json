@@ -2146,7 +2146,7 @@
     "STAGE_NOT_EMPTY": "Flytta först stegets uppgifter någon annanstans – inget annat steg av samma slag finns kvar.",
     "STAGE_DEFAULT_KIND": "Nya uppgifter kan bara börja i ett steg av slaget Backlogg eller Att göra.",
     "STAGE_IS_DEFAULT": "Nya uppgifter börjar i det här steget. Välj ett annat steg för dem först.",
-    "STAGE_TOO_FULL": "Fler än 2 000 uppgifter ligger i steget. Flytta några till ett annat steg först.",
+    "STAGE_TOO_FULL": "Fler än 2 000 uppgifter hör till steget, borttagna medräknade – för många för att flyttas på en gång. Uppgifter på tavlan kan flyttas till ett annat steg först, men inte de borttagna.",
     "STAGE_GONE": "Steget togs precis bort. Ladda om sidan och försök igen.",
     "STAGE_BUSY": "Någon ändrade stegen samtidigt. Ladda om sidan och försök igen.",
     "LABEL_GONE": "Etiketten togs precis bort eller slogs ihop. Ladda om sidan och försök igen.",
@@ -2154,8 +2154,7 @@
     "TEMPLATE_TOO_LARGE": "Projektet är för stort för en mall. En mall rymmer högst 1 000 uppgifter, 100 milstolpar och 500 etiketter, och deras text tillsammans högst ungefär 3 MB.",
     "TEMPLATE_EMPTY": "Projektet har inga uppgifter eller milstolpar att spara.",
     "TEMPLATE_INVALID": "Den här mallen går inte att använda. Spara den igen från ett projekt.",
-    "STAGE_DEFAULT_GATED": "Nya uppgifter kan inte börja i ett steg som kräver godkännande.",
-    "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget, så det sista backloggsteget finns kvar. Fortleva sparar borttagna uppgifter tills vidare."
+    "STAGE_DEFAULT_GATED": "Nya uppgifter kan inte börja i ett steg som kräver godkännande."
   },
   "assignments": {
     "title": "Team",
@@ -6869,11 +6868,11 @@
       "STAGE_LAST_OF_KIND": "Varje tavla behåller minst ett steg av varje slag.",
       "STAGE_NOT_EMPTY": "Flytta först uppgifterna till ett annat steg – inget annat steg av samma slag finns kvar.",
       "STAGE_IS_DEFAULT": "Nya uppgifter börjar här. Välj ett annat steg för dem först.",
-      "STAGE_TOO_FULL": "Fler än 2 000 uppgifter ligger i steget. Flytta några först.",
-      "INVALID_INPUT": "Steget kan inte tas bort.",
-      "STAGE_IN_BIN": "Borttagna uppgifter hör fortfarande till steget, så det finns kvar. Fortleva sparar borttagna uppgifter tills vidare."
+      "STAGE_TOO_FULL": "Fler än 2 000 uppgifter hör till steget, borttagna medräknade – för många för att flyttas på en gång. Uppgifter på tavlan kan flyttas först, men inte de borttagna.",
+      "INVALID_INPUT": "Steget kan inte tas bort."
     },
     "removeConfirmProject": "Ta bort steget ”{name}”? Ingen uppgift på tavlan ligger i det.",
+    "removeConfirmProjectBin": "Ta bort steget ”{name}”? Ingen uppgift på tavlan ligger i det. Borttagna uppgifter i det flyttas till ”{target}”, så en uppgift som tas tillbaka hamnar där.",
     "removeConfirmWorkspace": "Ta bort ”{name}” från standardstegen? Befintliga projekt behåller sina.",
     "removeDialog": {
       "title": "Ta bort ”{name}”",
@@ -6896,6 +6895,7 @@
     "approvalOn": "Att flytta en uppgift hit kräver nu godkännande.",
     "approvalOff": "Att flytta en uppgift hit kräver inte längre godkännande.",
     "removed": "Steget har tagits bort.",
+    "removedToStart": "Steget har tagits bort. Borttagna uppgifter som låg i det hör nu till steget där nya uppgifter börjar.",
     "removedMoved": "{count, plural, one {# uppgift flyttad och steget borttaget.} other {# uppgifter flyttade och steget borttaget.}}",
     "restored": "Originalstegen är tillbaka. Nya projekt får dem.",
     "cannotStartHere": "Ett steg som kräver godkännande kan inte vara där nya uppgifter börjar.",

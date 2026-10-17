@@ -2895,11 +2895,14 @@ enum StateCategory {
 /// Each project then edits its own under `workflow:manage`: rename (one
 /// way), add (at the end of its kind), move (within its kind — the kinds
 /// stay in board order), remove (its tasks move to ANOTHER STATE OF THE
-/// SAME CATEGORY, one set UPDATE, each live task given an INTERNAL history
-/// row and a `work_item.state_changed` audit), "new tasks start here",
-/// "needs approval". TRIAGE is fixed, hidden and never editable.
+/// SAME CATEGORY, one set UPDATE, each task — the bin's too — given an
+/// INTERNAL history row and a `work_item.state_changed` audit), "new tasks
+/// start here", "needs approval". TRIAGE is fixed, hidden and never editable.
 /// Invariants: every category but BACKLOG keeps >= 1 state (the last
-/// BACKLOG may go only when empty and not the default); exactly one
+/// BACKLOG may go only when no live task is in it and it is not the
+/// default; its DELETED tasks then move to the default — a TODO state —
+/// as BACKLOG → TODO with both stamps cleared, history INTERNAL: founder
+/// decision C104, slice 126b); exactly one
 /// isDefault per project, of category BACKLOG or TODO and NOT gated (services; the
 /// database holds AT MOST one — `workflow_state_one_default` — and its
 /// category — `workflow_state_default_kind`, load-bearing because create

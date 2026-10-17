@@ -24,7 +24,11 @@ export type StageCategory = StageKind | "TRIAGE";
 export const MAX_STAGES = 20;
 /** The label bound (`MAX_LABEL_NAME_LENGTH`), for the same reason: a name is a column header. */
 export const MAX_STAGE_NAME_LENGTH = 40;
-/** A removal moves its tasks in one transaction; past this, "move some first". */
+/**
+ * A removal moves its tasks in one transaction — the bin's included, which
+ * cannot be moved by hand, so a stage past this on deleted tasks alone
+ * stays until old deleted tasks are erased (slice 126b, recorded).
+ */
 export const MAX_STAGE_REMOVE_TASKS = 2000;
 
 /**
@@ -80,7 +84,6 @@ export type StageRefusal =
   | "STAGE_LIMIT"
   | "STAGE_LAST_OF_KIND"
   | "STAGE_NOT_EMPTY"
-  | "STAGE_IN_BIN"
   | "STAGE_DEFAULT_KIND"
   | "STAGE_DEFAULT_GATED"
   | "STAGE_IS_DEFAULT"
@@ -198,16 +201,29 @@ export function defaultHeir<S extends StageLike>(list: readonly S[], id: string,
 }
 
 /**
+ * Where the last Backlog stage's DELETED tasks go when it is removed
+ * (founder decision C104, slice 126b): the stage where new tasks start —
+ * a To do stage, since this was the last Backlog one and it cannot carry
+ * the mark itself (`removalRefusal` refuses that first), and never gated
+ * (`canStartHere`; the database holds the pair). One brought back from the
+ * bin later lands there. Null only if the project had no start stage,
+ * which the one-default rule never leaves.
+ */
+export const binHeir = <S extends StageLike>(list: readonly S[], id: string): S | null =>
+  list.find((s) => s.id !== id && s.isDefault && canStartHere(s)) ?? null;
+
+/**
  * Whether a stage may go, given how many tasks point at it (design §3.2):
  * To do, In progress, Done and Cancelled each keep at least one stage —
  * the triage Decline needs a Cancelled one, reports need Done, a new task
  * needs a To do or Backlog default — and the last Backlog stage may go
- * only when nothing points at it, because its tasks would have nowhere of
- * their own kind to move to. `tasks` counts every task pointing at the
- * stage; `binned` says how many of those are deleted (in the bin), which
- * the page's count leaves out — so a last Backlog stage whose only tasks
- * are deleted ones gets its own answer (`STAGE_IN_BIN`) rather than "move
- * its tasks first", which nobody could do (the code review's LOW).
+ * only when no task on the board or in the archive is in it, because they
+ * would have nowhere of their own kind to move to. `tasks` counts every
+ * task pointing at the stage; `binned` says how many of those are deleted
+ * (in the bin). Deleted ones never hold a stage in place: with no other
+ * stage of their kind they move to where new tasks start (`binHeir`, C104
+ * — before it, the stage could never be removed once a task in it was
+ * deleted, since deleted tasks are kept, C102 (c)).
  */
 export function removalRefusal(
   list: readonly StageLike[],
@@ -217,14 +233,13 @@ export function removalRefusal(
 ): StageRefusal | null {
   const self = list.find((s) => s.id === id);
   if (!self || self.category === "TRIAGE") return "INVALID_INPUT";
-  if (removalTargets(list, id).length === 0) {
-    if (self.category !== "BACKLOG") return "STAGE_LAST_OF_KIND";
-    if (tasks - binned > 0) return "STAGE_NOT_EMPTY";
-    if (binned > 0) return "STAGE_IN_BIN";
-  }
+  const lastOfKind = removalTargets(list, id).length === 0;
+  if (lastOfKind && self.category !== "BACKLOG") return "STAGE_LAST_OF_KIND";
+  if (lastOfKind && tasks - binned > 0) return "STAGE_NOT_EMPTY";
   // The mark must have somewhere to go: another stage of the kind that may
   // carry it. Choose another stage for new tasks first.
   if (self.isDefault && defaultHeir(list, id, null) === null) return "STAGE_IS_DEFAULT";
+  if (lastOfKind && binned > 0 && binHeir(list, id) === null) return "INVALID_INPUT";
   if (tasks > MAX_STAGE_REMOVE_TASKS) return "STAGE_TOO_FULL";
   return null;
 }

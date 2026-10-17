@@ -16,7 +16,8 @@ import { loadProject } from "../data";
 /**
  * /projects/[key]/stages — this project's own stages (slice 123, founder
  * decision C99 (a)): rename, add, reorder within a kind, remove (its tasks
- * move to another stage of the same kind), where new tasks start, which
+ * move to another stage of the same kind — or, for the last Backlog stage,
+ * its deleted ones to where new tasks start, C104), where new tasks start, which
  * stages need approval. Not a tab: reached from the board's "Edit stages",
  * with the Board tab lit (`also` in the layout). `workflow:manage` + the
  * project's scope — the service's gate; anyone else sees `forbidden`.
@@ -52,6 +53,7 @@ export default async function ProjectStagesPage({ params }: { params: Promise<{ 
             isDefault: s.isDefault,
             requiresApproval: s.requiresApproval,
             tasks: s.tasks,
+            binned: s.binned,
           },
         ]
       : [],
