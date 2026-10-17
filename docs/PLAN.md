@@ -12,6 +12,15 @@
 
 **STATE, 2026-10-17 (latest): SLICE 129 IS BUILT — COPY A TASK, AND A FULLER "NEW TASK" (founder decision C106: the founder's pick on "suggest me more features" — "Copy the task" and "an easier way to create a task in a project"; then three answers: (a) TICK WHAT TO COPY EACH TIME and (b) I PICK THE PROJECT, both AGAINST the recommendation, and (c) A NEW TASK BUTTON + FULLER FORM, WITH it. A copy always starts hidden from the client — mine, stated, theirs to overturn). NEXT = founder orders — ask with a recommendation (going live, RUNBOOK §11, steps A.1/A.2 are the founder's and involve waiting; Phase 7 stays postponed).** `ce9806d`, **GREEN first run — CI 39048264903** (unit 203 / 3 081 / 1 skipped, test:db 123 / 2 015, harness 306 passed / 5 skipped / 0 flaky in 33.9 min).
 
+**For the next session — the founder's own-use list, still open** (offered 2026-10-17; the founder picked Copy and the fuller New task from it). Offer these as plain-language multiple choice with a recommendation:
+1. **Due dates in Google/Apple Calendar** — a private, resettable calendar link (ICS) per member. Small–medium; builds on slice 128.
+2. **Saved views** — a saved backlog filter in the left menu. Medium.
+3. **Forward an email → a task** — a per-project address. Large (two parts), and AFTER go-live: it needs SES receiving on the domain. `WorkItemSource.EMAIL` is already reserved. Max effort.
+4. **"Blocked by" between tasks.** Medium–large; was on the v1 skip list.
+5. **Erase the bin after 30 days** — C102 (c)'s owed piece: the rows are kept today. Small.
+
+Going live (RUNBOOK §11) is still the founder's to start — steps A.1 (fortleva.se into Vercel, then Loopia's nameservers to `ns1/ns2.vercel-dns.com`) and A.2 (the SES identity for `mailer.fortleva.se` + production access), which involve waiting. At go-live, remind them of the VAPID keys and a real `MAIL_FROM_ADDRESS`, and that production needs `migrate deploy` (slice 127's migration) before Promote.
+
 **What it is.**
 - **New task.** Every project page's header has a **New task** button (`work_item:create`, on all four gates; not on an archived project). It opens the shell's ONE create dialog — the same one `C` opens — with the project taken from the route (`openQuickCreate`, a window event).
 - **The fuller form.** For a member who may also edit, the dialog gains:
