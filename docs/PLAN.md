@@ -12,12 +12,23 @@
 
 **STATE, 2026-10-17 (latest): SLICE 129 IS BUILT — COPY A TASK, AND A FULLER "NEW TASK" (founder decision C106: the founder's pick on "suggest me more features" — "Copy the task" and "an easier way to create a task in a project"; then three answers: (a) TICK WHAT TO COPY EACH TIME and (b) I PICK THE PROJECT, both AGAINST the recommendation, and (c) A NEW TASK BUTTON + FULLER FORM, WITH it. A copy always starts hidden from the client — mine, stated, theirs to overturn). NEXT = founder orders — ask with a recommendation (going live, RUNBOOK §11, steps A.1/A.2 are the founder's and involve waiting; Phase 7 stays postponed).** `ce9806d`, **GREEN first run — CI 39048264903** (unit 203 / 3 081 / 1 skipped, test:db 123 / 2 015, harness 306 passed / 5 skipped / 0 flaky in 33.9 min).
 
-**For the next session — the founder's own-use list, still open** (offered 2026-10-17; the founder picked Copy and the fuller New task from it). Offer these as plain-language multiple choice with a recommendation:
-1. **Due dates in Google/Apple Calendar** — a private, resettable calendar link (ICS) per member. Small–medium; builds on slice 128.
-2. **Saved views** — a saved backlog filter in the left menu. Medium.
-3. **Forward an email → a task** — a per-project address. Large (two parts), and AFTER go-live: it needs SES receiving on the domain. `WorkItemSource.EMAIL` is already reserved. Max effort.
-4. **"Blocked by" between tasks.** Medium–large; was on the v1 skip list.
-5. **Erase the bin after 30 days** — C102 (c)'s owed piece: the rows are kept today. Small.
+**For the next session — the founder's own-use list, still open** (merged 2026-10-17 from the 2026-10-16 Basecamp comparison's remainder and the own-use list; the founder asked "which features if you look at Basecamp"; each item checked ABSENT in code that day). Offer these as plain-language multiple choice with a recommendation. **The recommendation given was 1 + 2 together, then 4, then 3.**
+1. **Every task across all projects in one list** — filters: overdue, unassigned, due this week. Home is only "mine" and the calendar only dated tasks. Medium; no migration.
+2. **All projects on one timeline** (Basecamp's "Lineup") — each project a bar from its start date to its launch date, about 13 weeks. Small; no migration.
+3. **The calendar in Google/Apple Calendar** — a private, resettable ICS link per member — plus milestones, launch dates, renewals and expiry dates on `/calendar`. Medium.
+4. **Move a task to another project** — copy exists (slice 129); move is its pair. Small–medium: it touches the rank/tree/stage rules and labels.
+5. **Pasted formatting kept** (ChatGPT, Claude, Word) and simple tables in descriptions. Small–medium (the normaliser's schema).
+6. **A client's logo** on its projects and in the portal. Small (storage).
+7. **Schedule a progress update** to publish at a set time. Small–medium.
+8. **A "what happened today" feed** for the workspace, by project or client. Medium.
+9. **Forward an email → a task** — a per-project address. Large (two parts), and AFTER go-live: it needs SES receiving on the domain. `WorkItemSource.EMAIL` is already reserved. Max effort.
+
+Also still open:
+- **Saved views** — a backlog filter in the left menu. Medium.
+- **"Blocked by" between tasks.** Medium–large; it was on the v1 skip list.
+- **Erase the bin after 30 days** — C102 (c)'s owed piece. Small.
+
+Not worth copying, as the comparison said: chat or private messages, per-person check-ins and activity reports (employee monitoring, never-list), Hill charts, AI agents (they need their own security design first).
 
 Going live (RUNBOOK §11) is still the founder's to start — steps A.1 (fortleva.se into Vercel, then Loopia's nameservers to `ns1/ns2.vercel-dns.com`) and A.2 (the SES identity for `mailer.fortleva.se` + production access), which involve waiting. At go-live, remind them of the VAPID keys and a real `MAIL_FROM_ADDRESS`, and that production needs `migrate deploy` (slice 127's migration) before Promote.
 
