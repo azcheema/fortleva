@@ -18,7 +18,7 @@ import { useScopeKeys } from "@/components/shell/use-hotkeys";
 import { VisibilityQuestion } from "@/components/visibility-question";
 import { afterClosingLayers } from "@/lib/after-closing-layers";
 import { usePrivacyCopy } from "@/components/work-view/use-privacy-copy";
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 import type { PrivacyPreview } from "@/modules/work";
 
 import {
@@ -123,7 +123,7 @@ export function VisibilityField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   visibility: VisibilityValue;
   /** `work_item:change_visibility` — REQUIRED, from `getItemDetail`. */
   canChangeVisibility: boolean;

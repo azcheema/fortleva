@@ -4,7 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { ProgressMeter, SectionCard, StatusIcon, VisibilityBadge, visibilityRowCue } from "@/components/semantic";
 import { STATUS_MAP, childTypeOf } from "@/lib/enum-map";
 import { cn } from "@/lib/utils";
-import { isDone, panelItemHref, panelSurfaceOf } from "@/lib/work-view";
+import { isDone, panelItemHref, panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 import type { ResolvedItemDetail, ResolvedItemSubtasks } from "@/modules/work";
 
 import { SubtaskAdd } from "./subtask-add";
@@ -56,7 +56,7 @@ export async function SubtasksSection({
   itemKey: string;
   projectId: string;
   projectKey: string;
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   /** This panel's own URL — a child's link is this URL re-addressed (peek), or the child's page. */
   returnTo: string;
   subtasks: ResolvedItemSubtasks;

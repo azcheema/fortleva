@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
 import { SectionCard } from "@/components/semantic";
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 import { COMMENT_LIST_LIMIT, type ItemComments, type ResolvedItemDetail } from "@/modules/work";
 
 import { CommentCard } from "./comment-card";
@@ -41,7 +41,7 @@ export async function CommentsSection({
   /** "ACME-12" — the composer's private hint names it. */
   itemKey: string;
   projectKey: string;
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   comments: ItemComments;
   /** `comment:create` — whether the composer is rendered. */
   canComment: boolean;

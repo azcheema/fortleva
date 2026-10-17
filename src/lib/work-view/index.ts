@@ -72,7 +72,7 @@ export {
   type WorkView,
 } from "./model";
 
-export { ITEM_SURFACES, itemReturnTo, panelSurfaceOf, type ItemSurface } from "./item-surface";
+export { ITEM_SURFACES, itemReturnTo, panelSurfaceOf, type ItemSurface, type PanelSurface } from "./item-surface";
 
 export {
   copyLandingHref,

@@ -157,6 +157,8 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // craft audits hold whatever it holds.
     { name: "calendar", path: "/calendar" },
     { name: "calendar-week", path: "/calendar?view=week" },
+    // Slice 130 (C107): every open task in one list, soonest due first.
+    { name: "tasks", path: "/tasks" },
     {
       // Global chrome (UI.md §3.2) that held none of the design shots
       // until now — and the stop that would have caught the palette
@@ -209,6 +211,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // the empty state with Put in a signed contract… and Write a contract.
     { name: "client-contracts", path: `${client}/contracts` },
     { name: "projects", path: "/projects" },
+    // Slice 130 (C107 (d)): the same projects on one timeline. The shared
+    // workspace's projects carry the dates their fixture gave them, so where
+    // a bar falls moves with the run's date; the craft audits hold what it holds.
+    { name: "projects-timeline", path: "/projects?view=timeline" },
     // Since Phase 6 slice 118 (C94) the Overview also photographs the Website
     // speed card with the fake Google's numbers for the seeded project's site,
     // its switch on.

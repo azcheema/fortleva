@@ -140,6 +140,8 @@ export {
 } from "./copy";
 // Slice 128 — the calendar of tasks (C105): its one read.
 export { readCalendar, type CalendarCopy, type CalendarEntry, type CalendarRead } from "./calendar";
+// Slice 130 — every task in one list (C107): its one read.
+export { listAllTasks, type TaskListEntry, type TaskListRead } from "./all-tasks";
 export { ACTIVITY_PAGE_SIZE, type ActivityActor, type ActivityEntry, type ItemActivityPage } from "./activity";
 // Types only — `readItemSubtasks` stays off the barrel for the reason `readItemActivity` does (subtasks.ts).
 export { type ItemSubtasks, type SubtaskEntry } from "./subtasks";

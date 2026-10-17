@@ -8,7 +8,7 @@ import { PropertyPicker, type PickerOption } from "@/components/semantic";
 import { useScopeKeys } from "@/components/shell/use-hotkeys";
 import { Badge } from "@/components/ui/badge";
 import { LabelDot } from "@/components/work-view/label-dot";
-import { MAX_LABEL_NAME_LENGTH, compareLabelNames, labelNameKey, panelSurfaceOf } from "@/lib/work-view";
+import { MAX_LABEL_NAME_LENGTH, compareLabelNames, labelNameKey, panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 import type { LabelEntry, LabelVerb } from "@/modules/work";
 
 import { createItemLabelAction, setItemLabelAction, type LabelsChanged } from "../backlog/actions";
@@ -84,7 +84,7 @@ export function LabelsField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   /** REQUIRED — `getItemDetail`'s, by name. */
   applied: readonly LabelEntry[];
   /** REQUIRED — the vocabulary this task may draw from, by name; empty for a member who cannot edit. */

@@ -12,7 +12,7 @@ import { dateColumn } from "@/lib/duration";
 import { formatDay } from "@/lib/format";
 import { REPEAT_RHYTHMS, firstRepeatDay, isRepeatRhythm, nextDayAllowed, type RepeatRhythm } from "@/lib/repeat-rules";
 import type { WeekStart } from "@/lib/week";
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 import type { ItemRepeat } from "@/modules/work";
 
 import { setItemRepeatAction, type RepeatSettingCommitted } from "../backlog/actions";
@@ -67,7 +67,7 @@ export function RepeatField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   /** REQUIRED — `getItemDetail`'s answer. */
   repeat: ItemRepeat;
   /** The next day formatted on the server (`formatDay`), so the trigger never flickers between ICUs. */

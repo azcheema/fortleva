@@ -248,6 +248,10 @@ const DBTEST_PREFIXES = [
   "cal-",
   // Slice 129, copying a task and the "New task" form — `src/modules/work/copy.dbtest.ts`, `setupTenant("cpy")`.
   "cpy-",
+  // Slice 130, every task in one list — `src/modules/work/all-tasks.dbtest.ts`, `setupTenant("tasks")`.
+  "tasks-",
+  // Slice 130, all projects on one timeline — `src/projects/lineup.dbtest.ts`, `setupTenant("lineup")`.
+  "lineup-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -3023,6 +3027,66 @@ async function calendarWorkspace(tenantId: string): Promise<void> {
   }
 }
 
+/**
+ * Two projects for `tasks.spec.ts` (slice 130), in a throwaway workspace. The
+ * first has a start a week ago, a launch in a month and a milestone in a
+ * week (the timeline draws its bar and a dot), and three tasks: one overdue
+ * and unassigned, one due today and the owner's, one due in three weeks and
+ * unassigned. The second has no dates (the timeline lists it underneath) and
+ * one undated task. Through the real services as the owner; fresh keys per run.
+ */
+async function tasksWorkspace(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("tasks-workspace: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { createClient } = await import("../../src/clients/service");
+  const { createProject, updateProject } = await import("../../src/projects/service");
+  const { createMilestone } = await import("../../src/projects/milestones");
+  const { assignItem, createItem, updateItemFields } = await import("../../src/modules/work");
+  const { dateColumn, localDateString } = await import("../../src/lib/duration");
+  const { addDays } = await import("../../src/lib/week");
+  try {
+    const owner = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const ctx = { tenantId, actor: { memberId: owner.id, mfa: { enrolled: false, verifiedAt: null } } };
+    const clientName = "E2E Tasks Client";
+    const client =
+      (await db.client.findFirst({ where: { tenantId, name: clientName }, select: { id: true } })) ??
+      (await createClient(ctx, { name: clientName }));
+    const suffix = randomUUID().replace(/[^a-z0-9]/g, "").slice(0, 5).toUpperCase();
+    const today = localDateString(new Date(), "Europe/Stockholm");
+    const main = await createProject(ctx, { clientId: client.id, key: `TA${suffix}`, name: `E2E Tasks ${suffix}` });
+    await updateProject(ctx, main.id, { startDate: dateColumn(addDays(today, -7)), launchDate: dateColumn(addDays(today, 30)) });
+    await createMilestone(ctx, { projectId: main.id, name: `Design sign-off ${suffix}`, dueAt: dateColumn(addDays(today, 7)) });
+    const other = await createProject(ctx, { clientId: client.id, key: `TB${suffix}`, name: `E2E Tasks other ${suffix}` });
+    const make = async (projectId: string, title: string, due: string | null) => {
+      const t = await createItem(ctx, { projectId, title });
+      if (due) await updateItemFields(ctx, t.id, { targetDate: dateColumn(due) });
+      return { id: t.id, number: t.number, title };
+    };
+    const overdue = await make(main.id, `Fix the contact form ${suffix}`, addDays(today, -2));
+    const mine = await make(main.id, `Write the launch post ${suffix}`, today);
+    await assignItem(ctx, mine.id, owner.id);
+    const later = await make(main.id, `Plan the next sprint ${suffix}`, addDays(today, 21));
+    const elsewhere = await make(other.id, `Collect the logo files ${suffix}`, null);
+    const strip = ({ number, title }: { number: number; title: string }) => ({ number, title });
+    process.stdout.write(
+      `${MARKER}${JSON.stringify({
+        projectKey: main.key,
+        projectName: `E2E Tasks ${suffix}`,
+        otherKey: other.key,
+        today,
+        overdue: strip(overdue),
+        mine: strip(mine),
+        later: strip(later),
+        elsewhere: strip(elsewhere),
+      })}\n`,
+    );
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 /** Every project template of a throwaway workspace deleted (`templates.spec.ts`'s afterAll, pass or fail). */
 async function clearTemplates(tenantId: string): Promise<void> {
   if (!tenantId) throw new Error("clear-templates: a tenant id");
@@ -4509,6 +4573,7 @@ const main = async (): Promise<void> => {
   if (command === "repeat-due") return repeatDue(argument!, process.argv[4]!, process.argv[5]!);
   if (command === "run-repeats") return runRepeats(argument!);
   if (command === "calendar-workspace") return calendarWorkspace(argument!);
+  if (command === "tasks-workspace") return tasksWorkspace(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);

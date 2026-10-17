@@ -6,7 +6,7 @@ import { useRef } from "react";
 import { Callout } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 
 import { useEndRequest } from "../triage/end-request";
 
@@ -65,7 +65,7 @@ export function RequestBand({
    * hardcoded backlog path did the same thing once before. Latent today
    * (neither triage code sets `requiresMfa`) and cheap to get right.
    */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
 }) {
   const t = useTranslations("projects.item");
   const button = useRef<HTMLButtonElement>(null);

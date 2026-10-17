@@ -10,11 +10,11 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
-**STATE, 2026-10-17 (latest): SLICE 129 IS BUILT — COPY A TASK, AND A FULLER "NEW TASK" (founder decision C106: the founder's pick on "suggest me more features" — "Copy the task" and "an easier way to create a task in a project"; then three answers: (a) TICK WHAT TO COPY EACH TIME and (b) I PICK THE PROJECT, both AGAINST the recommendation, and (c) A NEW TASK BUTTON + FULLER FORM, WITH it. A copy always starts hidden from the client — mine, stated, theirs to overturn). NEXT = founder orders — ask with a recommendation (going live, RUNBOOK §11, steps A.1/A.2 are the founder's and involve waiting; Phase 7 stays postponed).** `ce9806d`, **GREEN first run — CI 39048264903** (unit 203 / 3 081 / 1 skipped, test:db 123 / 2 015, harness 306 passed / 5 skipped / 0 flaky in 33.9 min).
+**STATE, 2026-10-17 (latest): SLICE 130 IS BUILT — EVERY TASK IN ONE LIST, AND ALL PROJECTS ON ONE TIMELINE (founder decision C107: on "continue" the founder took the recommendation — items 1 + 2 of the own-use list, built together — then four answers, ALL WITH the recommendation: (a) TASKS IN THE LEFT MENU, THE TIMELINE A SWITCH ON PROJECTS; (b) A TASK OPENS BESIDE THE LIST; (c) BY DUE DATE, WITH A GROUP-BY SWITCH; (d) BARS, MILESTONES, TODAY). NEXT = founder orders — ask with a recommendation (the open list below; what is left of the recommendation is 4, then 3).** The commit and its CI run are recorded under "Gates" below.
 
-**For the next session — the founder's own-use list, still open** (merged 2026-10-17 from the 2026-10-16 Basecamp comparison's remainder and the own-use list; the founder asked "which features if you look at Basecamp"; each item checked ABSENT in code that day). Offer these as plain-language multiple choice with a recommendation. **The recommendation given was 1 + 2 together, then 4, then 3.**
-1. **Every task across all projects in one list** — filters: overdue, unassigned, due this week. Home is only "mine" and the calendar only dated tasks. Medium; no migration.
-2. **All projects on one timeline** (Basecamp's "Lineup") — each project a bar from its start date to its launch date, about 13 weeks. Small; no migration.
+**For the next session — the founder's own-use list, still open** (merged 2026-10-17 from the 2026-10-16 Basecamp comparison's remainder and the own-use list; the founder asked "which features if you look at Basecamp"; each item checked ABSENT in code that day). Offer these as plain-language multiple choice with a recommendation. **The recommendation given was 1 + 2 together, then 4, then 3 — 1 and 2 are BUILT (slice 130), so 4, then 3.**
+1. ~~**Every task across all projects in one list** — filters: overdue, unassigned, due this week.~~ **BUILT — slice 130** (`/tasks`).
+2. ~~**All projects on one timeline** (Basecamp's "Lineup") — each project a bar from its start date to its launch date, about 13 weeks.~~ **BUILT — slice 130** (Projects → Timeline).
 3. **The calendar in Google/Apple Calendar** — a private, resettable ICS link per member — plus milestones, launch dates, renewals and expiry dates on `/calendar`. Medium.
 4. **Move a task to another project** — copy exists (slice 129); move is its pair. Small–medium: it touches the rank/tree/stage rules and labels.
 5. **Pasted formatting kept** (ChatGPT, Claude, Word) and simple tables in descriptions. Small–medium (the normaliser's schema).
@@ -24,13 +24,33 @@
 9. **Forward an email → a task** — a per-project address. Large (two parts), and AFTER go-live: it needs SES receiving on the domain. `WorkItemSource.EMAIL` is already reserved. Max effort.
 
 Also still open:
-- **Saved views** — a backlog filter in the left menu. Medium.
+- **Saved views** — a backlog filter in the left menu (now also the Tasks page's filters). Medium.
 - **"Blocked by" between tasks.** Medium–large; it was on the v1 skip list.
 - **Erase the bin after 30 days** — C102 (c)'s owed piece. Small.
+- **An error CODE, not free text, in `?error=`** — the task panel shows the bounce's text in a danger callout on the board, the backlog, the item page and now `/tasks` (slice 130's security LOW-1, accepted there because it is all four surfaces' contract with the file actions' `withError`). Small.
+- **`J K` and `T` on the Tasks page's rows** (Home's row keys) — left out of slice 130 (design §6). Small.
 
 Not worth copying, as the comparison said: chat or private messages, per-person check-ins and activity reports (employee monitoring, never-list), Hill charts, AI agents (they need their own security design first).
 
 Going live (RUNBOOK §11) is still the founder's to start — steps A.1 (fortleva.se into Vercel, then Loopia's nameservers to `ns1/ns2.vercel-dns.com`) and A.2 (the SES identity for `mailer.fortleva.se` + production access), which involve waiting. At go-live, remind them of the VAPID keys and a real `MAIL_FROM_ADDRESS`, and that production needs `migrate deploy` (slice 127's migration) before Promote.
+
+**What slice 130 is** (design `docs/research/2026-10-17-slice-130-all-tasks-and-lineup-design.md`).
+- **Tasks** (`/tasks`) — a rail entry between Projects and Calendar on `work_item:view`; the page also asks `project:view` (`listAllTasks`, `src/modules/work/all-tasks.ts`).
+  - Every OPEN task (backlog, to do, in progress; subtasks in) in the member's scope, composed with `AND`; soonest due first, undated last, then priority, project key, number; at most 500.
+  - `?due=overdue|week&person=me|none|<member>&project=&group=project|person`, read strictly (`task-list-plan.ts`). Four toggles (`aria-pressed`): Overdue · Due this week (the workspace's whole week) · Nobody assigned · Mine; three native selects: Project · Person · Group by. A key or member id outside scope is no filter; the person picker names only members holding an open task in scope.
+  - **A task opens beside the list** (`?item=KEY-N`): the backlog peek's reads and `ItemPanel` with a fourth surface, `tasks` → action surface `tasks-peek` (step-up back to `/tasks?item=`). Closing keeps the filters; focus returns to the row, or to the list's region when the row is gone (`PeekFocusReturn`).
+- **Projects → Timeline** (`/projects?view=timeline`, a List · Timeline switch) — `readProjectLineup` (`src/projects/lineup.ts`): `project:view` + scope, as the list; PLANNED, ACTIVE and PAUSED projects; milestones not cancelled, 100 a project.
+  - 13 weeks (`?from=` snapped to the workspace's week start; default two weeks before this week; Earlier / Today / Later by four weeks), drawn in plain HTML from server-computed percentages (`lineup-plan.ts`): the bar start → launch in the project's identity colour, milestones as dots (filled = done) on their due day, a today line, a legend; "Launch date passed" in words; a project outside the window keeps its row with an edge note; missing or reversed dates listed under **Without dates**.
+- No migration, no new permission code, no new audit action, no portal path. Two visual stops (`tasks`, `projects-timeline`: 102 stops, 408 shots).
+
+**Reviews** (fresh agents, read-only; dispositions in the design's §7):
+- **Security:** no HIGH or MEDIUM; 2 LOW, 2 NIT. Taken: the milestone cap; the sibling-project person pinned in the dbtest; the AUTHZ entry. Accepted: `?error=`'s free text (the four surfaces' existing contract — its own item above).
+- **Code:** 1 MEDIUM, taken — a fresh load of the timeline handed focus to the New project form (the list's empty-state `autoFocus`), e2e-pinned. 2 LOW, taken — focus to `<body>` when the closed peek's row was gone (now the region, e2e-pinned); an undated done milestone on its UTC day (now the reader's zone, dbtest-pinned). 5 NIT taken. Test gaps taken but the 500-cap truncation.
+- **Narrow re-check of the fixes:** no HIGH, MEDIUM or LOW; 4 NIT — the region focuses without scrolling, the docs' focus wording, a name tie broken by id: taken; the milestone cap untested: accepted (design §8).
+
+**Gates (slice 130):** typecheck 0 · ESLint `src e2e` 0 · unit 205 / 3 111 / 1 skipped · `all-tasks.dbtest.ts` 12 + `lineup.dbtest.ts` 6 against dev · `pnpm build` 0 (inside the e2e run) · e2e `tasks.spec.ts` 3/3 on port 3457 · eyes on both pages, light/dark × desktop/phone (a throwaway spec, not committed).
+
+**STATE, 2026-10-17: SLICE 129 IS BUILT — COPY A TASK, AND A FULLER "NEW TASK" (founder decision C106: the founder's pick on "suggest me more features" — "Copy the task" and "an easier way to create a task in a project"; then three answers: (a) TICK WHAT TO COPY EACH TIME and (b) I PICK THE PROJECT, both AGAINST the recommendation, and (c) A NEW TASK BUTTON + FULLER FORM, WITH it. A copy always starts hidden from the client — mine, stated, theirs to overturn). NEXT = founder orders — ask with a recommendation (going live, RUNBOOK §11, steps A.1/A.2 are the founder's and involve waiting; Phase 7 stays postponed).** `ce9806d`, **GREEN first run — CI 39048264903** (unit 203 / 3 081 / 1 skipped, test:db 123 / 2 015, harness 306 passed / 5 skipped / 0 flaky in 33.9 min).
 
 **What it is.**
 - **New task.** Every project page's header has a **New task** button (`work_item:create`, on all four gates; not on an archived project). It opens the shell's ONE create dialog — the same one `C` opens — with the project taken from the route (`openQuickCreate`, a window event).

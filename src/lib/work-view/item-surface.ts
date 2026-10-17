@@ -18,12 +18,26 @@
  * No directive: a client island needs `panelSurfaceOf`, a server action
  * needs `ITEM_SURFACES`, and a `"use server"` module may export neither.
  */
-export const ITEM_SURFACES = ["backlog", "board-peek", "backlog-peek", "page"] as const;
+export const ITEM_SURFACES = ["backlog", "board-peek", "backlog-peek", "tasks-peek", "page"] as const;
 export type ItemSurface = (typeof ITEM_SURFACES)[number];
 
+/**
+ * Where the item panel is drawn: a peek over the board, the backlog or — since
+ * slice 130 (C107 (b)) — the Tasks page, or the item's own page. Every
+ * surface but `page` is a peek, and its in-panel links re-address its own
+ * `returnTo` (`panelItemHref`, `copyLandingHref`).
+ */
+export type PanelSurface = "board" | "backlog" | "tasks" | "page";
+
 /** The item panel's own `surface` prop, as the surface the actions take. */
-export const panelSurfaceOf = (surface: "board" | "backlog" | "page"): ItemSurface =>
-  surface === "page" ? "page" : surface === "board" ? "board-peek" : "backlog-peek";
+export const panelSurfaceOf = (surface: PanelSurface): ItemSurface =>
+  surface === "page"
+    ? "page"
+    : surface === "board"
+      ? "board-peek"
+      : surface === "tasks"
+        ? "tasks-peek"
+        : "backlog-peek";
 
 /** MFA step-up return address, built ONLY from validated values (open-redirect surface). */
 export function itemReturnTo(surface: ItemSurface, projectKey: string, itemNumber: number): string {
@@ -34,6 +48,10 @@ export function itemReturnTo(surface: ItemSurface, projectKey: string, itemNumbe
       return `/projects/${projectKey}/board?item=${projectKey}-${itemNumber}`;
     case "backlog-peek":
       return `/projects/${projectKey}/backlog?item=${projectKey}-${itemNumber}`;
+    // The Tasks page's peek (slice 130): the list's filters are dropped, the
+    // accepted cost every surface carries — the task itself is reopened.
+    case "tasks-peek":
+      return `/tasks?item=${projectKey}-${itemNumber}`;
     case "page":
       return `/projects/${projectKey}/items/${itemNumber}`;
   }

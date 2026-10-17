@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { MemberAvatar, PropertyPicker, type PickerOption } from "@/components/semantic";
 import { useScopeKeys } from "@/components/shell/use-hotkeys";
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 
 import {
   setItemAssigneeAction,
@@ -113,7 +113,7 @@ export function AssigneeField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   assigneeMemberId: string | null;
   /** The other half of the pair — never set together with the member's. */
   assigneeContactId: string | null;

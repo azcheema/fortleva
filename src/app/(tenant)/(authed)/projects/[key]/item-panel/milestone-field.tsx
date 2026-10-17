@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { PropertyPicker, StatusIcon, type PickerOption } from "@/components/semantic";
 import { useScopeKeys } from "@/components/shell/use-hotkeys";
 import { STATUS_MAP } from "@/lib/enum-map";
-import { milestonePickerTargets, panelSurfaceOf } from "@/lib/work-view";
+import { milestonePickerTargets, panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 import type { MilestoneEntry, MilestoneStatus } from "@/modules/work";
 
 import { setItemMilestoneAction, type MilestoneCommitted } from "../backlog/actions";
@@ -60,7 +60,7 @@ export function MilestoneField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   milestoneId: string | null;
   milestoneName: string | null;
   milestoneStatus: MilestoneStatus | null;

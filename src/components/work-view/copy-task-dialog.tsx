@@ -24,7 +24,7 @@ import { NativeCheckbox } from "@/components/ui/native-checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { useFocusReturn } from "@/components/ui/use-focus-return";
 import { isActionRedirect } from "@/lib/action-redirect";
-import { MAX_TITLE_LENGTH, copyLandingHref, type ItemSurface } from "@/lib/work-view";
+import { MAX_TITLE_LENGTH, copyLandingHref, type ItemSurface, type PanelSurface } from "@/lib/work-view";
 import type { CopyPart, CopySource } from "@/modules/work";
 
 /**
@@ -61,7 +61,7 @@ export function CopyTaskDialog({
   /** The surface the actions name — the step-up's return address. */
   actionSurface: ItemSurface;
   /** Where the copy opens: the surface it was copied from, and that surface's own URL. */
-  landing: { readonly surface: "board" | "backlog" | "page"; readonly returnTo: string };
+  landing: { readonly surface: PanelSurface; readonly returnTo: string };
   /**
    * Closed — Cancel, Escape, or a copy made (then just before the copy
    * opens). The caller clears `subject` and, opened from a menu item that is
@@ -99,7 +99,7 @@ function CopyBody({
 }: {
   subject: CopySubject;
   actionSurface: ItemSurface;
-  landing: { readonly surface: "board" | "backlog" | "page"; readonly returnTo: string };
+  landing: { readonly surface: PanelSurface; readonly returnTo: string };
   onClosed: () => void;
 }) {
   const t = useTranslations("projects.copy");

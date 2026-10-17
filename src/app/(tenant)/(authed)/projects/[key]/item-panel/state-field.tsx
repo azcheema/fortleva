@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { PropertyPicker, StatusIcon, type PickerOption } from "@/components/semantic";
 import { useScopeKeys } from "@/components/shell/use-hotkeys";
 import { STATUS_MAP, type StatusValue } from "@/lib/enum-map";
-import { panelSurfaceOf, statePickerTargets } from "@/lib/work-view";
+import { panelSurfaceOf, statePickerTargets, type PanelSurface } from "@/lib/work-view";
 import type { ResolvedWorkflowState } from "@/modules/work";
 
 import { setItemStateAction, type StateCommitted } from "../backlog/actions";
@@ -46,7 +46,7 @@ export function StateField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   stateId: string;
   stateName: string;
   stateCategory: string;

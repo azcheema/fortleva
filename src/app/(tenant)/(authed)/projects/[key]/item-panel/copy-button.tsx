@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { CopyTaskDialog, type CopySubject } from "@/components/work-view/copy-task-dialog";
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 
 /**
  * "Copy…" in the task panel's header (slice 129, founder decision C106): the
@@ -24,7 +24,7 @@ export function CopyTaskButton({
   itemId: string;
   itemNumber: number;
   projectKey: string;
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   /** The panel's own URL — where a copy in the same project opens, as a peek. */
   returnTo: string;
 }) {

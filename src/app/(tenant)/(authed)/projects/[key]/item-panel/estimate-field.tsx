@@ -7,7 +7,7 @@ import { PropertyPicker, type PickerOption } from "@/components/semantic";
 import { useScopeKeys } from "@/components/shell/use-hotkeys";
 import { parseEstimateMinutes } from "@/lib/duration";
 import { formatDuration, type DurationStyle } from "@/lib/format";
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 
 import { setItemEstimateAction, type EstimateCommitted } from "../backlog/actions";
 import { usePanelCommit } from "./use-panel-commit";
@@ -50,7 +50,7 @@ export function EstimateField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   estimateMinutes: number | null;
   /** Formatted on the server with the same helper, so the trigger never flickers. */
   estimateLabel: string | null;

@@ -88,6 +88,7 @@
     "switchWorkspace": "Switch workspace",
     "clients": "Clients",
     "projects": "Projects",
+    "tasks": "Tasks",
     "export": "Export",
     "design": "Design",
     "time": "Time",
@@ -2827,6 +2828,45 @@
       "milestonesHint": "Phases of the project in order — design, build, launch.",
       "versionsHint": "What shipped, and the notes that went with it.",
       "setDate": "Set date"
+    },
+    "lineup": {
+      "viewSwitch": "Show projects as",
+      "viewList": "List",
+      "viewTimeline": "Timeline",
+      "rangeTitle": "{from} – {to}",
+      "earlier": "Earlier",
+      "later": "Later",
+      "today": "Today",
+      "todayTitle": "Today, {date}",
+      "truncated": "Only the first {count} projects are shown.",
+      "listLabel": "Projects on the timeline",
+      "late": "Launch date passed",
+      "legendToday": "Today",
+      "legendDone": "Milestone done",
+      "legendOpen": "Milestone not done",
+      "dates": "{start} – {launch}",
+      "srDates": "Starts {start}, launches {launch}.",
+      "srMilestones": "Milestones: {list}.",
+      "milestoneDone": "{name}, {date}, done",
+      "milestoneOpen": "{name}, {date}",
+      "barTitle": "{name}: {dates}",
+      "endedBefore": "← launch {date}",
+      "startsAfter": "starts {date} →",
+      "missingBoth": "No start or launch date",
+      "missingStart": "No start date",
+      "missingLaunch": "No launch date",
+      "reversed": "The launch date is before the start date",
+      "empty": {
+        "title": "No projects on the timeline",
+        "body": "Planned, active and paused projects show here once they have a start and a launch date.",
+        "bodyUndated": "Give the projects below a start and a launch date to see them here.",
+        "toUndated": "See projects without dates",
+        "toList": "Show the list"
+      },
+      "undated": {
+        "title": "Without dates",
+        "description": "Set a start and a launch date on a project's Overview to put it on the timeline."
+      }
     },
     "files": {
       "empty": "Upload the first file",
@@ -6816,6 +6856,40 @@
     "moveTomorrow": "Tomorrow, {date}",
     "moved": "Moved {key} to {date}",
     "moveFailed": "The task wasn't moved. The calendar shows its current day."
+  },
+  "tasks": {
+    "title": "Tasks",
+    "description": "Every open task in the projects you can see.",
+    "forbidden": "You can't see tasks in this workspace.",
+    "quickFilters": "Quick filters",
+    "filterOverdue": "Overdue",
+    "filterWeek": "Due this week",
+    "filterNobody": "Nobody assigned",
+    "filterMine": "Mine",
+    "projectFilter": "Project",
+    "allProjects": "All projects",
+    "personFilter": "Person",
+    "anyone": "Anyone",
+    "me": "Me",
+    "nobody": "Nobody",
+    "groupBy": "Group by",
+    "groupNone": "No grouping",
+    "groupProject": "Project",
+    "groupPerson": "Person",
+    "atClient": "at the client",
+    "priority": "Priority: {priority}",
+    "overdueSuffix": "(overdue)",
+    "truncated": "Only the first {count} tasks are shown. Choose a filter to see the rest.",
+    "empty": {
+      "title": "No open tasks",
+      "body": "Open tasks from every project you can see will show here.",
+      "action": "See projects"
+    },
+    "emptyFiltered": {
+      "title": "No tasks match these filters",
+      "body": "Try another filter, or clear them to see every open task."
+    },
+    "clearFilters": "Clear filters"
   },
   "reports": {
     "title": "Reports",

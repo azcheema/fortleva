@@ -333,6 +333,22 @@ export async function calendarWorkspace(tenantId: string): Promise<CalendarWorks
   return runCli<CalendarWorkspace>(["calendar-workspace", tenantId]);
 }
 
+/** `tasks.spec.ts`'s two projects (slice 130): one dated with a milestone and three tasks, one undated with one. */
+export type TasksWorkspace = {
+  projectKey: string;
+  projectName: string;
+  otherKey: string;
+  today: string;
+  overdue: { number: number; title: string };
+  mine: { number: number; title: string };
+  later: { number: number; title: string };
+  elsewhere: { number: number; title: string };
+};
+
+export async function tasksWorkspace(tenantId: string): Promise<TasksWorkspace> {
+  return runCli<TasksWorkspace>(["tasks-workspace", tenantId]);
+}
+
 /** A task's repeat planted due — its next day yesterday in UTC (slice 127, `repeat.spec.ts`). */
 export async function repeatDue(tenantId: string, projectKey: string, number: number): Promise<{ nextOn: string }> {
   return runCli<{ nextOn: string }>(["repeat-due", tenantId, projectKey, String(number)]);

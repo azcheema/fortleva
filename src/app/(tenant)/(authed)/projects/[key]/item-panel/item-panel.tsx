@@ -10,7 +10,7 @@ import { dateColumn, isoDateOf } from "@/lib/duration";
 import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
 import type { WeekStart } from "@/lib/week";
 import { childTypeOf } from "@/lib/enum-map";
-import { isEndableRequest, panelItemHref, panelSurfaceOf } from "@/lib/work-view";
+import { isEndableRequest, panelItemHref, panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 import type {
   ItemActivityPage,
   ItemComments,
@@ -125,7 +125,7 @@ export async function ItemPanel({
    * was — cannot be expressed.
    * The look follows from it (`variant`, below).
    */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   /**
    * The full item page — REQUIRED on every surface: the peek links out
    * to it, and the Activity section's older pages live on it whichever

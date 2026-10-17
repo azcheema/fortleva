@@ -14,6 +14,7 @@ import {
   InboxIcon,
   SearchIcon,
   KeyRoundIcon,
+  ListTodoIcon,
   LayoutTemplateIcon,
   MegaphoneIcon,
   PaletteIcon,
@@ -37,6 +38,9 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   search: SearchIcon,
   clients: Building2Icon,
   projects: FolderKanbanIcon,
+  // Every task in one list (slice 130). Not the checklist's ListChecks (a board
+  // card's badge).
+  tasks: ListTodoIcon,
   // The calendar of tasks (slice 128). Not Renewals' clock-calendar, and not
   // the due date's plain calendar (the history's and the calendar's "Move…").
   calendar: CalendarDaysIcon,

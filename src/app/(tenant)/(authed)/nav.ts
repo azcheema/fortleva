@@ -16,6 +16,7 @@ export type NavIcon =
   | "notifications"
   | "clients"
   | "projects"
+  | "tasks"
   | "calendar"
   | "time"
   | "files"
@@ -51,6 +52,7 @@ export type NavEntry = {
     | "notifications"
     | "clients"
     | "projects"
+    | "tasks"
     | "calendar"
     | "time"
     | "files"
@@ -112,6 +114,17 @@ export const NAV: readonly NavEntry[] = [
     permission: "project:view",
     goKey: "P",
     mobileTab: true,
+  },
+  // Slice 130 (founder decision C107 (a)): every open task in one list, across
+  // the projects the member reaches, beside Calendar. Gated on the code its
+  // read asks first (it also asks `project:view`, as the calendar does). No
+  // `G` key (none fits, the calendar's reason); not a phone tab — it is in More.
+  {
+    id: "tasks",
+    labelKey: "tasks",
+    href: "/tasks",
+    icon: "tasks",
+    permission: "work_item:view",
   },
   // Slice 128 (founder decision C105 (a)): the calendar of tasks — every task
   // with a due date across the projects the member reaches. Gated on the code

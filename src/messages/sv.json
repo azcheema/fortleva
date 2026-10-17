@@ -88,6 +88,7 @@
     "switchWorkspace": "Byt arbetsyta",
     "clients": "Kunder",
     "projects": "Projekt",
+    "tasks": "Uppgifter",
     "export": "Export",
     "design": "Design",
     "time": "Tid",
@@ -2827,6 +2828,45 @@
       "milestonesHint": "Projektets faser i ordning — design, bygge, lansering.",
       "versionsHint": "Vad som levererades, och anteckningarna som följde med.",
       "setDate": "Ange datum"
+    },
+    "lineup": {
+      "viewSwitch": "Visa projekten som",
+      "viewList": "Lista",
+      "viewTimeline": "Tidslinje",
+      "rangeTitle": "{from} – {to}",
+      "earlier": "Tidigare",
+      "later": "Senare",
+      "today": "I dag",
+      "todayTitle": "I dag, {date}",
+      "truncated": "Bara de första {count} projekten visas.",
+      "listLabel": "Projekt på tidslinjen",
+      "late": "Lanseringsdatumet har passerat",
+      "legendToday": "I dag",
+      "legendDone": "Milstolpe klar",
+      "legendOpen": "Milstolpe inte klar",
+      "dates": "{start} – {launch}",
+      "srDates": "Startar {start}, lanseras {launch}.",
+      "srMilestones": "Milstolpar: {list}.",
+      "milestoneDone": "{name}, {date}, klar",
+      "milestoneOpen": "{name}, {date}",
+      "barTitle": "{name}: {dates}",
+      "endedBefore": "← lansering {date}",
+      "startsAfter": "startar {date} →",
+      "missingBoth": "Inget start- eller lanseringsdatum",
+      "missingStart": "Inget startdatum",
+      "missingLaunch": "Inget lanseringsdatum",
+      "reversed": "Lanseringsdatumet ligger före startdatumet",
+      "empty": {
+        "title": "Inga projekt på tidslinjen",
+        "body": "Planerade, aktiva och pausade projekt visas här när de har ett start- och ett lanseringsdatum.",
+        "bodyUndated": "Ge projekten nedan ett start- och ett lanseringsdatum för att se dem här.",
+        "toUndated": "Visa projekt utan datum",
+        "toList": "Visa listan"
+      },
+      "undated": {
+        "title": "Utan datum",
+        "description": "Ange ett start- och ett lanseringsdatum under projektets Översikt för att visa det på tidslinjen."
+      }
     },
     "files": {
       "empty": "Ladda upp den första filen",
@@ -6816,6 +6856,40 @@
     "moveTomorrow": "I morgon, {date}",
     "moved": "Flyttade {key} till {date}",
     "moveFailed": "Uppgiften flyttades inte. Kalendern visar dess nuvarande dag."
+  },
+  "tasks": {
+    "title": "Uppgifter",
+    "description": "Alla öppna uppgifter i de projekt du har tillgång till.",
+    "forbidden": "Du kan inte se uppgifter i den här arbetsytan.",
+    "quickFilters": "Snabbfilter",
+    "filterOverdue": "Försenade",
+    "filterWeek": "Förfaller den här veckan",
+    "filterNobody": "Ingen tilldelad",
+    "filterMine": "Mina",
+    "projectFilter": "Projekt",
+    "allProjects": "Alla projekt",
+    "personFilter": "Person",
+    "anyone": "Alla",
+    "me": "Jag",
+    "nobody": "Ingen",
+    "groupBy": "Gruppera efter",
+    "groupNone": "Ingen gruppering",
+    "groupProject": "Projekt",
+    "groupPerson": "Person",
+    "atClient": "hos kunden",
+    "priority": "Prioritet: {priority}",
+    "overdueSuffix": "(försenad)",
+    "truncated": "Bara de första {count} uppgifterna visas. Välj ett filter för att se resten.",
+    "empty": {
+      "title": "Inga öppna uppgifter",
+      "body": "Öppna uppgifter från alla projekt du har tillgång till visas här.",
+      "action": "Visa projekt"
+    },
+    "emptyFiltered": {
+      "title": "Inga uppgifter matchar filtren",
+      "body": "Prova ett annat filter, eller rensa dem för att se alla öppna uppgifter."
+    },
+    "clearFilters": "Rensa filter"
   },
   "reports": {
     "title": "Rapporter",

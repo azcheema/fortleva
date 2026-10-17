@@ -2,6 +2,7 @@ import { parseAsArrayOf, parseAsBoolean, parseAsString, parseAsStringLiteral } f
 
 import { PRIORITIES } from "@/lib/enum-map";
 
+import type { PanelSurface } from "./item-surface";
 import { GROUP_BYS, NO_FILTERS, type GroupBy, type WorkFilters } from "./model";
 
 /**
@@ -142,7 +143,7 @@ export function withItemParam(href: string, itemKey: string): string {
  * item's page. One rule, one place; the two call sites cannot drift.
  */
 export function panelItemHref(
-  surface: "board" | "backlog" | "page",
+  surface: PanelSurface,
   returnTo: string,
   projectKey: string,
   number: number,
@@ -159,7 +160,7 @@ export function panelItemHref(
  * from a full page, the copy's own page.
  */
 export function copyLandingHref(
-  surface: "board" | "backlog" | "page",
+  surface: PanelSurface,
   returnTo: string,
   sourceProjectKey: string,
   copy: { readonly projectKey: string; readonly number: number },

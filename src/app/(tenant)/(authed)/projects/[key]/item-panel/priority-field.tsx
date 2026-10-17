@@ -11,7 +11,7 @@ import {
 } from "@/components/semantic";
 import { useScopeKeys } from "@/components/shell/use-hotkeys";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 
 import { setItemPriorityAction, type PriorityCommitted } from "../backlog/actions";
 import { usePanelCommit } from "./use-panel-commit";
@@ -41,7 +41,7 @@ export function PriorityField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   priority: Priority;
   canEdit: boolean;
 }) {

@@ -3,8 +3,10 @@ import {
   ArchiveIcon,
   ArchiveRestoreIcon,
   Building2Icon,
+  ChartNoAxesGanttIcon,
   FolderKanbanIcon,
   GlobeIcon,
+  ListIcon,
   PlusIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -34,12 +36,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { withTenant } from "@/db";
+import { parseProjectsParams, projectsHref } from "@/lib/lineup-plan";
 import { requireTenantContext } from "@/members/tenant-context";
 // Off the barrel on purpose: the templates are one feature's service.
 import { listTemplateChoices } from "@/modules/work/templates/service";
 import { listProjects } from "@/projects/service";
 
 import { CreateProjectForm } from "./create-project-form";
+import { ProjectsTimeline } from "./projects-timeline";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("projects");
@@ -56,21 +60,28 @@ export async function generateMetadata(): Promise<Metadata> {
  * meter whose accessible value is the count beside it, never the bar.
  * Portal state is a BRAND badge with a globe — never the warm fill,
  * which product-wide means "Client can see" and nothing else.
+ *
+ * `?view=timeline` (slice 130, C107) draws the same projects on one
+ * timeline instead (`ProjectsTimeline`); the header's List · Timeline
+ * switch moves between the two.
  */
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { membership, actor } = await requireTenantContext();
-  const { archived } = await searchParams;
-  const includeArchived = archived === "1";
+  // Slice 130 (C107 (a)): `?view=timeline` is the same projects on one
+  // timeline; the list stays the default. Read strictly (`parseProjectsParams`).
+  const params = parseProjectsParams(await searchParams);
+  const includeArchived = params.view === "list" && params.archived;
   const t = await getTranslations("projects");
   const tCommon = await getTranslations("common");
   const ctx = { tenantId: membership.tenantId, actor };
 
   const [groups, canCreate] = await Promise.all([
-    listProjects(ctx, { includeArchived }),
+    // The timeline makes its own read (`ProjectsTimeline`); the list's is not wasted on it.
+    params.view === "list" ? listProjects(ctx, { includeArchived }) : Promise.resolve([]),
     withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
       isAuthorized(tx, actor, "project:create"),
     ),
@@ -87,12 +98,33 @@ export default async function ProjectsPage({
         title={t("title")}
         actions={
           <>
-            <Button asChild variant="outline" size="sm">
-              <Link href={includeArchived ? "/projects" : "/projects?archived=1"}>
-                {includeArchived ? <ArchiveRestoreIcon /> : <ArchiveIcon />}
-                {includeArchived ? t("hideArchived") : t("showArchived")}
-              </Link>
-            </Button>
+            {/* List · Timeline (C107 (a)): two links, the one shown marked current. */}
+            <nav aria-label={t("lineup.viewSwitch")} className="flex items-center gap-1" data-testid="projects-view-switch">
+              <Button asChild variant={params.view === "list" ? "secondary" : "ghost"} size="sm">
+                <Link href={projectsHref({ ...params, view: "list" })} aria-current={params.view === "list" ? "page" : undefined} data-testid="projects-view-list">
+                  <ListIcon />
+                  {t("lineup.viewList")}
+                </Link>
+              </Button>
+              <Button asChild variant={params.view === "timeline" ? "secondary" : "ghost"} size="sm">
+                <Link
+                  href={projectsHref({ ...params, view: "timeline" })}
+                  aria-current={params.view === "timeline" ? "page" : undefined}
+                  data-testid="projects-view-timeline"
+                >
+                  <ChartNoAxesGanttIcon />
+                  {t("lineup.viewTimeline")}
+                </Link>
+              </Button>
+            </nav>
+            {params.view === "list" ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={projectsHref({ ...params, archived: !includeArchived })}>
+                  {includeArchived ? <ArchiveRestoreIcon /> : <ArchiveIcon />}
+                  {includeArchived ? t("hideArchived") : t("showArchived")}
+                </Link>
+              </Button>
+            ) : null}
             {canCreateHere ? (
               <Button asChild size="sm">
                 <Link href="#new-project">
@@ -105,6 +137,9 @@ export default async function ProjectsPage({
         }
       />
 
+      {params.view === "timeline" ? (
+        <ProjectsTimeline ctx={ctx} from={params.from} />
+      ) : (
       <section className="mt-6 flex flex-col gap-8">
         {groups.length === 0 ? (
           <SectionCard>
@@ -273,6 +308,7 @@ export default async function ProjectsPage({
           ))
         )}
       </section>
+      )}
 
       {canCreateHere ? (
         <div className="mt-8">
@@ -286,7 +322,11 @@ export default async function ProjectsPage({
               clients={clients}
               templates={templates.choices}
               today={templates.today}
-              autoFocus={groups.length === 0}
+              // Only the LIST's empty state hands focus to the form: on the
+              // timeline `groups` is never read, so it is always empty, and
+              // a fresh load would scroll the chart away into the Key field
+              // (the slice-130 review's MEDIUM).
+              autoFocus={params.view === "list" && groups.length === 0}
             />
           </SectionCard>
         </div>

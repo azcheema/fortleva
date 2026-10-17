@@ -9,7 +9,7 @@ import { DUE_TOKENS, dueChoiceToIso, parseDueQuery, resolveDueToken, todayIn } f
 import { dateColumn } from "@/lib/duration";
 import { dateFormat, formatDay } from "@/lib/format";
 import type { WeekStart } from "@/lib/week";
-import { panelSurfaceOf } from "@/lib/work-view";
+import { panelSurfaceOf, type PanelSurface } from "@/lib/work-view";
 
 import { setItemDueDateAction, type DueDateCommitted } from "../backlog/actions";
 import { usePanelCommit } from "./use-panel-commit";
@@ -56,7 +56,7 @@ export function DueDateField({
   itemNumber: number;
   projectKey: string;
   /** Decides the MFA step-up return address — see `panelSurfaceOf` / `itemReturnTo`. */
-  surface: "board" | "backlog" | "page";
+  surface: PanelSurface;
   /** ISO date of the stored `@db.Date`, or null. */
   dueDate: string | null;
   /** Formatted on the server (`formatDay`), so the trigger never flickers between ICUs. */
