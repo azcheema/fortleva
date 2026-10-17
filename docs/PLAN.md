@@ -10,7 +10,7 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
-**STATE, 2026-10-17 (latest): SLICE 127b IS BUILT — A REPEAT MARKER ON THE BOARD AND THE BACKLOG (the founder's pick on "what is next", over going live, a week of use first, and erasing old deleted tasks — against my recommendation of going live). NEXT = founder orders — ask with a recommendation (Phase 7 stays postponed).** CI result: see the commit after this one.
+**STATE, 2026-10-17 (latest): SLICE 127b IS BUILT — A REPEAT MARKER ON THE BOARD AND THE BACKLOG (the founder's pick on "what is next", over going live, a week of use first, and erasing old deleted tasks — against my recommendation of going live). NEXT = founder orders — ask with a recommendation (Phase 7 stays postponed).** `64dbb01`, **GREEN first run — CI 39023635835** (unit 201 / 3 060 / 1 skipped, test:db 121 / 1 991, harness 302 / 5 skipped in 24.9 min).
 
 **What it is.**
 - A small repeat icon (`RepeatIcon`, muted) on the task a repeat is made from, the newest of its series, never an older copy.
